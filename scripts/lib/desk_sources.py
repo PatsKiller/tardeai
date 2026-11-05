@@ -65,6 +65,37 @@ def _successful_runs(path: Path, ids: list[str], now: datetime) -> dict:
     return found
 
 
+RECEIPT_SCHEMAS = ('LaneRunReceipt@v1', 'LaneRunReceipt@v2')
+RECEIPT_MAX_BYTES = 256 * 1024
+
+
+def _receipt_success(root: Path, lane: dict, now: datetime) -> str | None:
+    """A lane's own run receipt (scripts/lib/lane_last_receipt.py), only where the registry declares it.
+
+    The registry ``output_signal`` must be ``json_key`` on ``ok_at`` under ``data/runtime/``. The receipt must name
+    this lane, be a live run that exited 0 with status ok, and carry an aware ``ok_at`` that is not in the future.
+    ``ok_at`` only advances on a successful real run (a dry run never writes it); a file mtime is never used.
+    """
+    signal = lane.get('output_signal') if isinstance(lane.get('output_signal'), dict) else {}
+    rel = signal.get('path')
+    if signal.get('kind') != 'json_key' or signal.get('key') != 'ok_at' or not isinstance(rel, str):
+        return None
+    if not re.fullmatch(r'data/runtime/[A-Za-z0-9][A-Za-z0-9._-]{0,160}\.json', rel):
+        return None
+    path = root / rel
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+    except OSError:
+        return None
+    receipt = _read_object(path, RECEIPT_MAX_BYTES)
+    if (receipt.get('schema') not in RECEIPT_SCHEMAS or receipt.get('lane_id') != lane.get('lane_id')
+            or receipt.get('status') != 'ok' or receipt.get('exit') != 0 or receipt.get('mode', 'live') != 'live'):
+        return None
+    at = instant(receipt.get('ok_at'))
+    return iso(at) if at is not None and at <= now else None
+
+
 def get_sources(query=None, *, registry_path=None, root=None, now=None) -> dict:
     """GET projection; only a caller's lane IDs are returned (max 24, no paths)."""
     now = now or datetime.now(timezone.utc)
@@ -105,6 +136,11 @@ def get_sources(query=None, *, registry_path=None, root=None, now=None) -> dict:
         last = successes.get(lane_id)
         evidence_source = 'n8n run receipt' if last else None
         evidence_as_of = iso(now) if last else None
+        receipt = _receipt_success(root, row, now) if row else None
+        if receipt and (last is None or instant(receipt) > instant(last)):
+            last = receipt
+            evidence_source = 'lane run receipt'
+            evidence_as_of = iso(now)
         measured = instant(monitor.get(lane_id, {}).get('last_success_at')) if row else None
         if measured and measured <= observed and (last is None or measured > instant(last)):
             last = iso(measured)

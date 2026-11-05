@@ -123,7 +123,7 @@ def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_
     if kind not in KINDS or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,160}", ident):
         raise Refused("INVALID_SOURCE_ITEM", 503)
     # Only known local UI destinations; source text never supplies an executable command or arbitrary URL.
-    href = governed_href if governed_href and governed_href.startswith(("/system/ops-controls", "/coordination", "/watch", "/trading?tab=Proposals", "/cio")) and not governed_href.startswith("//") else None
+    href = governed_href if governed_href and governed_href.startswith(("/system/ops-controls", "/coordination", "/watch", "/trading?tab=Proposals", "/cio", "/conflicts/rules?proposal=")) and not governed_href.startswith("//") else None
     return {"id": ident, "kind": kind, "title": title[:300], "proposed_by": proposed_by,
             "created_at": created_at, "document": doc, "source": source, "pr": pr,
             "source_refs": list(dict.fromkeys([source + ":" + ident] + (source_refs or []))),
@@ -131,13 +131,16 @@ def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_
 
 
 def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions: list[dict], now: datetime) -> dict:
-    rows, gaps = [], []
+    rows, gaps, resolved = [], [], []
     for name, load in sources.items():
         try:
             batch = load()
             if isinstance(batch, dict):
                 if batch.get("gap"):
                     gaps.append({"source": name, "reason": str(batch["gap"])[:160]})
+                # Items a source reconciled as already applied/superseded: never pending, never dropped.
+                if isinstance(batch.get("resolved"), list) and len(batch["resolved"]) <= 500:
+                    resolved.extend(batch["resolved"])
                 batch = batch.get("rows")
             if not isinstance(batch, list) or len(batch) > 500:
                 raise Refused("SOURCE_BUDGET_EXCEEDED", 503)
@@ -174,7 +177,8 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
     pending = [r for r in rows if r["requires_governed_action"] or (r["id"], r["document"]["document_sha"]) not in terminal]
     pending.sort(key=lambda r: (r.get("created_at") or "9999", r["id"]))
     return {"items": pending, "known_pending_count": len(pending), "pending_count": len(pending) if not gaps else None,
-            "complete": not gaps, "gaps": gaps, "as_of": iso(now), "recent": recent[-30:][::-1]}
+            "complete": not gaps, "gaps": gaps, "as_of": iso(now), "recent": recent[-30:][::-1],
+            "resolved": sorted(resolved, key=lambda r: (r.get("created_at") or "9999", r["id"]))}
 
 
 def writes_approved(registry: dict) -> bool:
@@ -320,6 +324,35 @@ class DecisionLedger:
                            "decision": choice, "comment": comment, "request_id": request, "policy_token": token,
                            "effect": "RECORD_ONLY", "governed_href": it["governed_href"]})
 
+    def incident_decision(self, actor: str, body: dict) -> dict:
+        """Operator acknowledge / close-as-won't-fix on an IncidentRecord@v1 (Ops → Incidents, 2026-10-27).
+
+        RECORD_ONLY, same chain and the same store-approval gate as every other decision. The incident ledger row
+        that follows (scripts/lib/incidents.py ``ack``/``close``) cites this row's ``hash_self``.
+        """
+        choice = body.get("decision")
+        if choice not in ("ACKNOWLEDGE", "CLOSE_WONT_FIX"):
+            raise Refused("INVALID_DECISION", 400)
+        incident = body.get("incident_id")
+        if not isinstance(incident, str) or not re.fullmatch(r"INC-\d{6}-[g-z]{6}", incident):
+            raise Refused("INCIDENT_ID_REQUIRED", 400)
+        request = body.get("request_id")
+        if not isinstance(request, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request):
+            raise Refused("REQUEST_ID_REQUIRED", 400)
+        comment = body.get("comment") or ""
+        if not isinstance(comment, str) or len(comment) > 4000:
+            raise Refused("COMMENT_TOO_LONG", 400)
+        if choice == "CLOSE_WONT_FIX" and not comment.strip():
+            raise Refused("COMMENT_REQUIRED", 400)
+        with self._transaction() as (rows, append):
+            for r in rows:
+                if r.get("event") == "INCIDENT_DECISION" and r.get("request_id") == request:
+                    if (r["actor"], r["item_id"], r["decision"], r["comment"]) == (actor, f"incident:{incident}", choice, comment):
+                        return r
+                    raise Refused("IDEMPOTENCY_CONFLICT")
+            return append({"event": "INCIDENT_DECISION", "actor": actor, "item_id": f"incident:{incident}",
+                           "decision": choice, "comment": comment, "request_id": request, "effect": "RECORD_ONLY"})
+
     def feedback(self, actor: str, current_policy: Callable[[], dict], body: dict) -> dict:
         if body.get("position") not in ("AGREE", "QUESTION", "DISAGREE"):
             raise Refused("INVALID_POSITION", 400)
@@ -328,10 +361,24 @@ class DecisionLedger:
             raise Refused("COMMENT_TOO_LONG", 400)
         if body["position"] != "AGREE" and not comment.strip():
             raise Refused("COMMENT_REQUIRED", 400)
+        # Propose a new AGENTS.md section (Rulebook "Add section") — no existing rule_id.
+        add_section = body.get("action") == "add_section"
+        if add_section:
+            if body.get("position") != "DISAGREE":
+                raise Refused("INVALID_POSITION", 400)
+            title = body.get("section_title") or ""
+            if not isinstance(title, str) or not title.strip() or len(title) > 200:
+                raise Refused("SECTION_TITLE_REQUIRED", 400)
         with self._transaction() as (rows, append):
             policy = current_policy()
             if body.get("document_sha") != policy["document_sha"]:
                 raise Refused("DOCUMENT_CHANGED")
+            if add_section:
+                return append({"event": "RULE_FEEDBACK", "actor": actor, "document_sha": policy["document_sha"],
+                               "source_sha": policy["source_sha"], "rule_id": None,
+                               "section": title.strip(), "rule_text": "", "position": "DISAGREE",
+                               "comment": comment, "action": "add_section",
+                               "proposal_id": "feedback_" + secrets.token_hex(12), "effect": "PROPOSAL_ONLY"})
             rule = next((r for r in policy["rules"] if r["id"] == body.get("rule_id")), None)
             if not rule:
                 raise Refused("RULE_UNAVAILABLE", 404)
@@ -352,9 +399,14 @@ class DecisionLedger:
                 continue
             if row.get("event") != "RULE_FEEDBACK" or row.get("position") != "DISAGREE":
                 continue
-            doc = document(f"{row['section']}\n\n{row['rule_text']}\n\nRequested change:\n{row['comment']}",
-                           source_sha=row["source_sha"], version=row["document_sha"])
-            out.append(item(ident=row["proposal_id"], kind="DESIGN", title="Proposed rule change: " + row["section"],
+            if row.get("action") == "add_section":
+                body = f"Proposed new section: {row['section']}\n\n{row['comment']}"
+                title = "Proposed new section: " + row["section"]
+            else:
+                body = f"{row['section']}\n\n{row.get('rule_text') or ''}\n\nRequested change:\n{row['comment']}"
+                title = "Proposed rule change: " + row["section"]
+            doc = document(body, source_sha=row["source_sha"], version=row["document_sha"])
+            out.append(item(ident=row["proposal_id"], kind="DESIGN", title=title,
                             proposed_by=row["actor"], created_at=row["at"], source="operator_decisions", doc=doc))
         return out
 
@@ -382,19 +434,163 @@ class DecisionLedger:
                            "findings": normalized, "effect": "PROPOSAL_ONLY"})
 
 
+_LIST_ITEM = re.compile(r"^(?P<indent> {0,3})(?P<marker>[-*+]|\d{1,3}[.)])\s+(?P<body>\S.*)$")
+_SECTION_NUMBER = re.compile(r"^(?:§\s*)?\d+[A-Z]?\s*(?:·|\.|\s)")
+_SECTION_SORT = re.compile(r"^(?:§\s*)?(\d+)([A-Z])?\b")
+_HISTORY_SECTION = re.compile(r"\b(?:version history|changelog|change log)\b", re.I)
+_POLICY_VERSION = re.compile(r"^Policy-Version:\s*(\S+)\s*$", re.M)
+_LAST_REVIEWED = re.compile(r"^Last-Reviewed:\s*(\S+)\s*$", re.M)
+AUDIT_NOT_RUN = "The enforcement audit has not run against this policy version, so no rule has measured evidence yet."
+
+
+def _section_sort_key(title: str) -> tuple:
+    """AGENTS.md chapter order: numbered sections first (§0, 1, 2, 2A…), meta headings last.
+
+    Document-order alone put 'Document version policy' ahead of §0, so the Rulebook opened on
+    meta before the ten rules an agent must actually follow.
+    """
+    match = _SECTION_SORT.match(title.strip())
+    if match:
+        return (0, int(match.group(1)), match.group(2) or "", title)
+    return (1, 0, "", title)
+
+
+def _rule_items(text: str) -> list[dict]:
+    """Real rule items: top-level numbered or bulleted list items under a section.
+
+    Skipped: the document title and its preamble (header fence, version banners, intro), headings,
+    code fences, tables, block quotes, HTML comments, horizontal rules and version-history sections.
+    A list item keeps its continuation lines and nested sub-items as part of its text. A section
+    written only as prose (no list at all, e.g. §17) contributes its paragraphs instead, except
+    bare labels such as "**At session start:**".
+    """
+    items: list[dict] = []
+    prose: list[dict] = []
+    section, subsection = None, None
+    first_heading = True
+    skip_section = True  # until the first real section heading
+    in_fence = in_comment = False
+    current: dict | None = None
+    paragraph: dict | None = None
+    blank_run = 0
+
+    seq = 0
+
+    def joined(lines: list[str]) -> str:
+        # Source line wraps become spaces; a blank line or a nested item starts a new line.
+        out = ""
+        for line in lines:
+            if not out:
+                out = line.lstrip("\n")
+            elif line.startswith("\n"):
+                out += "\n" + line.lstrip("\n")
+            elif line.startswith("- "):
+                out += "\n" + line
+            else:
+                out += " " + line
+        return out.strip()
+
+    def close_item():
+        nonlocal current, seq
+        if current is not None:
+            body = joined(current.pop("lines"))
+            if body:
+                seq += 1
+                items.append({**current, "text": body, "_seq": seq})
+        current = None
+
+    def close_paragraph():
+        nonlocal paragraph, seq
+        if paragraph is not None:
+            body = joined(paragraph.pop("lines"))
+            label = re.fullmatch(r"\*\*[^*]+\*\*:?|[^\s].{0,80}:", body)
+            if body and not label:
+                seq += 1
+                prose.append({**paragraph, "text": body, "_seq": seq})
+        paragraph = None
+
+    def close():
+        close_item()
+        close_paragraph()
+
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if in_comment:
+            if "-->" in stripped:
+                in_comment = False
+            continue
+        if stripped.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            close()
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith("<!--"):
+            close()
+            in_comment = "-->" not in stripped
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", raw)
+        if heading:
+            close()
+            level, title = len(heading[1]), heading[2].strip()
+            if level == 1:
+                # The first H1 is the document title unless it is itself a numbered section.
+                is_title = first_heading and not _SECTION_NUMBER.match(title)
+                section, subsection = title, None
+                skip_section = is_title or bool(_HISTORY_SECTION.search(title))
+            else:
+                if section is None:
+                    section, skip_section = title, bool(_HISTORY_SECTION.search(title))
+                subsection = title
+            first_heading = False
+            continue
+        if skip_section or section is None:
+            continue
+        if not stripped:
+            close_paragraph()
+            blank_run += 1
+            continue
+        if stripped.startswith(("|", ">")) or re.fullmatch(r"[-*_]{3,}", stripped):
+            close()
+            blank_run = 0
+            continue
+        match = _LIST_ITEM.match(raw)
+        if match and not match["indent"]:
+            close()
+            marker = match["marker"]
+            current = {"section": section, "subsection": subsection,
+                       "number": marker.rstrip(".)") if marker[0].isdigit() else None, "lines": [match["body"]]}
+            blank_run = 0
+            continue
+        if current is not None and (raw.startswith((" ", "\t")) or not blank_run):
+            nested = _LIST_ITEM.match(raw.strip())
+            line = "- " + nested["body"] if nested and not nested["marker"][0].isdigit() else raw.strip()
+            current["lines"].append(("\n" if blank_run else "") + line)
+            blank_run = 0
+            continue
+        close_item()
+        blank_run = 0
+        if paragraph is None:
+            paragraph = {"section": section, "subsection": subsection, "number": None, "lines": []}
+        paragraph["lines"].append(stripped)
+    close()
+    listed = {item["section"] for item in items}
+    extra = [p for p in prose if p["section"] not in listed]
+    # Document order.
+    return [{k: v for k, v in r.items() if k != "_seq"} for r in sorted([*items, *extra], key=lambda r: r["_seq"])]
+
+
 def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = None) -> dict:
     doc = document(text, source_sha=source_sha)
     rules = []
-    # Paragraphs preserve full rule wording; the amendment reader separately chunks changes for viewport proof.
-    blocks, section = [], "Document"
-    for paragraph in re.split(r"\n\s*\n", text):
-        if not paragraph.strip():
-            continue
-        if heading := re.match(r"^#{1,6}\s+(.+)", paragraph):
-            section = heading[1].strip()
-        blocks.append({"section": section, "text": paragraph})
-    for i, block in enumerate(blocks):
-        key = "rule_" + digest([i, block])[:20]
+    # ``enforcement`` is None when no audit result applies to this document; then the measured
+    # tiles are a gap ("Audit not run"), never 0.
+    measured = enforcement is not None
+    per_section: dict[str, int] = {}
+    for block in _rule_items(text):
+        ordinal = per_section.get(block["section"], 0)
+        per_section[block["section"]] = ordinal + 1
+        key = "rule_" + digest([block["section"], ordinal, block["text"]])[:20]
         proof = (enforcement or {}).get(key) or {}
         # An existence map is not runtime proof. Evidence must bind the exact policy document.
         same = proof.get("document_sha") == doc["document_sha"]
@@ -405,7 +601,31 @@ def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = 
             status = "ENFORCED" if proof.get("runtime_passed") and proof.get("runtime_receipt") else "TESTED"
         plain = next((meaning for anchor, meaning in PLAIN_RULES.items() if anchor in block["text"]), None)
         rules.append({"id": key, **block, "plain": proof.get("plain") if same and proof.get("plain") else plain, "status": status,
-                      "evidence": proof if same else {}, "reason": None if same else "No evidence for this document version"})
-    counts = {s: sum(r["status"] == s for r in rules) for s in ("ENFORCED", "TESTED", "WRITTEN-only", "VIOLATED")}
-    return {"document_sha": doc["document_sha"], "source_sha": source_sha, "sections": doc["sections"],
-            "rules": rules, "counts": counts, "audit": {"state": "NOT_MEASURED", "last_audit": None}}
+                      "evidence": proof if same else {},
+                      "reason": None if same else ("No evidence for this document version" if measured else "Audit not run")})
+    counts = {"RULES": len(rules)}
+    for name in ("ENFORCED", "TESTED", "WRITTEN-only", "VIOLATED"):
+        counts[name] = sum(r["status"] == name for r in rules) if measured or name == "WRITTEN-only" else None
+    sections = sorted(per_section, key=_section_sort_key)
+    section_status = {}
+    rank = {"VIOLATED": 0, "WRITTEN-only": 1, "TESTED": 2, "ENFORCED": 3}
+    for rule in rules:
+        prior = section_status.get(rule["section"])
+        if prior is None or rank[rule["status"]] < rank[prior]:
+            section_status[rule["section"]] = rule["status"]
+    version_match = _POLICY_VERSION.search(text)
+    reviewed_match = _LAST_REVIEWED.search(text)
+    return {"document_sha": doc["document_sha"], "source_sha": source_sha, "sections": sections,
+            "section_counts": per_section, "section_status": section_status if measured else {},
+            "rules": rules, "counts": counts, "counts_measured": measured,
+            "policy_version": version_match.group(1) if version_match else (doc.get("version") or None),
+            "last_reviewed": reviewed_match.group(1) if reviewed_match else None,
+            "audit": {"state": "NOT_MEASURED", "last_audit": None, "last_run": None, "reason": AUDIT_NOT_RUN}}
+
+
+def unverified_audit(report: dict) -> dict:
+    """An audit report exists but does not bind this exact policy version: name its run time, measure nothing."""
+    when = report.get("as_of") if isinstance(report, dict) and isinstance(report.get("as_of"), str) else None
+    reason = ("The last enforcement audit run does not match the served policy version, so its results are not shown."
+              if when else AUDIT_NOT_RUN)
+    return {"state": "NOT_MEASURED", "last_audit": None, "last_run": when, "reason": reason}

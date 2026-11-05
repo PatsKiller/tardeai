@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_21_0_0_hands_off",
+  "files": [
+    "tests/test_agents_policy_21_0_0_hands_off.py"
+  ],
+  "anchor": "AGENTS_POLICY_21_0_0_HANDS_OFF",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_21_0_0_HANDS_OFF — AGENTS.md 21.0.0 (MAJOR) §28.13 design lifecycle, §28.14 self-heal monitor and fixer, §28.15 hands-off delivery (PROPOSED): push budget 5,",
+    "coordinator override on approved scope, solo trains (one review; two plus a veto window for train-self/guard), lane activation from the repo, no TTY ACK for",
+    "routine setup, configuration vs secrets, and what still reaches the operator. Hermetic text checks."
+  ]
+}

@@ -1,0 +1,13 @@
+# PROPOSED (release-train schedule, 2026-10-25; packet docs/ops/packets/release-train-canary-arm-20261025/).
+# host-timer request, 12:00 America/New_York window (every day; the policy schedules weekdays + weekends). A missed window is never replayed late (Persistent=false).
+[Unit]
+Description=Trade AI release train: host-timer request, 12:00 America/New_York window (every day; the policy schedules weekdays + weekends).
+
+[Timer]
+OnCalendar=*-*-* 12:00:00 America/New_York
+Persistent=false
+AccuracySec=30s
+Unit=tradeai-release-train-request@1200.service
+
+[Install]
+WantedBy=timers.target

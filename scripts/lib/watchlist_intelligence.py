@@ -335,8 +335,14 @@ def _load_intelligence_artifacts(symbol: str) -> dict[str, dict[str, Any]]:
         return {}
 
 
-def _reviews_for_symbol(symbol: str) -> list[dict[str, Any]]:
-    """Assemble per-agent review objects — COMPLETE only with full provenance."""
+_UNSET: Any = object()
+
+
+def _reviews_for_symbol(symbol: str, *, legacy_rows: Any = _UNSET, synthesis_row: Any = _UNSET) -> list[dict[str, Any]]:
+    """Assemble per-agent review objects — COMPLETE only with full provenance.
+
+    ``legacy_rows`` / ``synthesis_row``: rows already read for this symbol by ``_review_rows_batch`` (one query per
+    table per page instead of two per symbol); omitted = read them here as before."""
     sym = symbol.upper()
     agents = ("cio", "maria", "sentinel", "steph", "risk", "grok", "chatgpt")
     by_agent: dict[str, dict[str, Any]] = {
@@ -390,22 +396,24 @@ def _reviews_for_symbol(symbol: str) -> list[dict[str, Any]]:
 
     # Legacy DB rows: never COMPLETE without full provenance — surface typed NOT RUN
     try:
-        from db_adapter import _get_conn
-        conn = _get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT DISTINCT ON (lower(agent))
-                   agent, model_used, summary, recommendation, full_narrative,
-                   prompt_hash, started_at, completed_at, status, id
-              FROM watchlist_agent_results
-             WHERE upper(symbol)=%s
-               AND status IN ('complete','completed','done','success','ok')
-             ORDER BY lower(agent), completed_at DESC NULLS LAST
-            """,
-            (sym,),
-        )
-        for row in cur.fetchall() or []:
+        if legacy_rows is _UNSET:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT DISTINCT ON (lower(agent))
+                       agent, model_used, summary, recommendation, full_narrative,
+                       prompt_hash, started_at, completed_at, status, id
+                  FROM watchlist_agent_results
+                 WHERE upper(symbol)=%s
+                   AND status IN ('complete','completed','done','success','ok')
+                 ORDER BY lower(agent), completed_at DESC NULLS LAST
+                """,
+                (sym,),
+            )
+            legacy_rows = cur.fetchall()
+        for row in legacy_rows or []:
             if hasattr(row, "keys"):
                 agent = str(row.get("agent") or "").lower()
                 model = row.get("model_used")
@@ -449,20 +457,22 @@ def _reviews_for_symbol(symbol: str) -> list[dict[str, Any]]:
 
     # CIO synthesis table: incomplete provenance → NOT RUN
     try:
-        from db_adapter import _get_conn
-        conn = _get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT recommendation, synthesis_narrative, model_used, updated_at,
-                   dual_consensus_json, decision_safety
-              FROM watchlist_final_synthesis
-             WHERE upper(symbol)=%s
-             LIMIT 1
-            """,
-            (sym,),
-        )
-        row = cur.fetchone()
+        if synthesis_row is _UNSET:
+            from db_adapter import _get_conn
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT recommendation, synthesis_narrative, model_used, updated_at,
+                       dual_consensus_json, decision_safety
+                  FROM watchlist_final_synthesis
+                 WHERE upper(symbol)=%s
+                 LIMIT 1
+                """,
+                (sym,),
+            )
+            synthesis_row = cur.fetchone()
+        row = synthesis_row
         if row and by_agent["cio"].get("status") != "COMPLETE":
             if hasattr(row, "keys"):
                 rec = row.get("recommendation")
@@ -506,6 +516,65 @@ def _reviews_for_symbol(symbol: str) -> list[dict[str, Any]]:
         pass
 
     return [by_agent[a] for a in agents]
+
+
+def _review_rows_batch(symbols: list[str]) -> tuple[dict[str, list], dict[str, Any]] | None:
+    """The two per-symbol review reads of ``_reviews_for_symbol`` for a whole page: one query per table.
+
+    Same filters and ordering as the per-symbol queries; the symbol is selected LAST so positional row access
+    (``row[0..9]`` / ``row[0..3]``) is unchanged. Returns None when the batch cannot be read, and the caller then
+    falls back to the per-symbol reads (never a silent empty review set)."""
+    syms = sorted({str(s).upper() for s in symbols if s})
+    if not syms:
+        return {}, {}
+    try:
+        from db_adapter import _get_conn
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT DISTINCT ON (upper(symbol), lower(agent))
+                   agent, model_used, summary, recommendation, full_narrative,
+                   prompt_hash, started_at, completed_at, status, id, upper(symbol) AS batch_symbol
+              FROM watchlist_agent_results
+             WHERE upper(symbol) = ANY(%s)
+               AND status IN ('complete','completed','done','success','ok')
+             ORDER BY upper(symbol), lower(agent), completed_at DESC NULLS LAST
+            """,
+            (syms,),
+        )
+        legacy: dict[str, list] = {s: [] for s in syms}
+        for row in cur.fetchall() or []:
+            key = row.get("batch_symbol") if hasattr(row, "keys") else row[10]
+            legacy.setdefault(str(key), []).append(row)
+        cur.execute(
+            """
+            SELECT DISTINCT ON (upper(symbol))
+                   recommendation, synthesis_narrative, model_used, updated_at,
+                   dual_consensus_json, decision_safety, upper(symbol) AS batch_symbol
+              FROM watchlist_final_synthesis
+             WHERE upper(symbol) = ANY(%s)
+            """,
+            (syms,),
+        )
+        synthesis: dict[str, Any] = {s: None for s in syms}
+        for row in cur.fetchall() or []:
+            key = row.get("batch_symbol") if hasattr(row, "keys") else row[6]
+            synthesis[str(key)] = row
+        return legacy, synthesis
+    except Exception:
+        return None
+
+
+def _reviews_for_symbols(symbols: list[str]) -> dict[str, list[dict[str, Any]]]:
+    batch = _review_rows_batch(symbols)
+    if batch is None:
+        return {s: _reviews_for_symbol(s) for s in symbols}
+    legacy, synthesis = batch
+    return {
+        s: _reviews_for_symbol(s, legacy_rows=legacy.get(s.upper(), []), synthesis_row=synthesis.get(s.upper()))
+        for s in symbols
+    }
 
 
 def _street_batch(symbols: list[str]) -> dict[str, dict]:
@@ -751,41 +820,70 @@ def _decision_for(symbol: str) -> dict[str, Any]:
     """Trade AI deterministic projection — no provider calls."""
     try:
         from lib.rockville.live_projection import build_live_symbol
-        card = build_live_symbol(symbol)
-        if not card.get("ok"):
-            return {
-                "primary_state": "DATA_UNAVAILABLE",
-                "proposal_allowed": False,
-                "current_mechanics_visible": False,
-                "current_mechanics": None,
-                "operator_meaning": "Symbol decision packet unavailable",
-                "allowed_action_now": "REFRESH INPUTS",
-            }
-        dec = card.get("decision") or {}
-        return {
-            "primary_state": dec.get("primary_state"),
-            "proposal_allowed": bool(dec.get("proposal_allowed")),
-            "current_mechanics_visible": bool(dec.get("current_mechanics_visible")),
-            "current_mechanics": dec.get("current_mechanics") if dec.get("current_mechanics_visible") else None,
-            "wait_contract": dec.get("wait_contract"),
-            "operator_meaning": dec.get("operator_meaning"),
-            "allowed_action_now": dec.get("allowed_action_now"),
-            "blockers": dec.get("blockers") or [],
-            "next_deterministic_review_condition": dec.get("next_deterministic_review_condition"),
-            "verification_stages": card.get("verification_stages") or dec.get("verification_stages"),
-            "held": bool(card.get("held")),
-            "packet_id": card.get("packet_id"),
-            "material_fingerprint": card.get("material_fingerprint"),
-        }
+        return _decision_from_card(build_live_symbol(symbol))
     except Exception as e:
+        return _decision_error(e)
+
+
+def _decisions_for(symbols: list[str]) -> dict[str, dict[str, Any]]:
+    """``_decision_for`` for a whole page in one batched projection (perf 2026-10-25: was one identity + one
+    quote query per row). Falls back to the per-symbol path if the batch itself fails, so a failure is still
+    reported per row exactly as before."""
+    try:
+        from lib.rockville.live_projection import build_live_symbols
+        cards = build_live_symbols(symbols)
+    except Exception:
+        return {s: _decision_for(s) for s in symbols}
+    out: dict[str, dict[str, Any]] = {}
+    for sym in symbols:
+        card = cards.get(str(sym).upper())
+        if card is None:
+            out[sym] = _decision_for(sym)
+            continue
+        try:
+            out[sym] = _decision_from_card(card)
+        except Exception as e:
+            out[sym] = _decision_error(e)
+    return out
+
+
+def _decision_error(e: BaseException) -> dict[str, Any]:
+    return {
+        "primary_state": "DATA_UNAVAILABLE",
+        "proposal_allowed": False,
+        "current_mechanics_visible": False,
+        "current_mechanics": None,
+        "operator_meaning": f"Decision projection error: {type(e).__name__}",
+        "allowed_action_now": "VIEW SOURCE HEALTH",
+    }
+
+
+def _decision_from_card(card: dict[str, Any]) -> dict[str, Any]:
+    if not card.get("ok"):
         return {
             "primary_state": "DATA_UNAVAILABLE",
             "proposal_allowed": False,
             "current_mechanics_visible": False,
             "current_mechanics": None,
-            "operator_meaning": f"Decision projection error: {type(e).__name__}",
-            "allowed_action_now": "VIEW SOURCE HEALTH",
+            "operator_meaning": "Symbol decision packet unavailable",
+            "allowed_action_now": "REFRESH INPUTS",
         }
+    dec = card.get("decision") or {}
+    return {
+        "primary_state": dec.get("primary_state"),
+        "proposal_allowed": bool(dec.get("proposal_allowed")),
+        "current_mechanics_visible": bool(dec.get("current_mechanics_visible")),
+        "current_mechanics": dec.get("current_mechanics") if dec.get("current_mechanics_visible") else None,
+        "wait_contract": dec.get("wait_contract"),
+        "operator_meaning": dec.get("operator_meaning"),
+        "allowed_action_now": dec.get("allowed_action_now"),
+        "blockers": dec.get("blockers") or [],
+        "next_deterministic_review_condition": dec.get("next_deterministic_review_condition"),
+        "verification_stages": card.get("verification_stages") or dec.get("verification_stages"),
+        "held": bool(card.get("held")),
+        "packet_id": card.get("packet_id"),
+        "material_fingerprint": card.get("material_fingerprint"),
+    }
 
 
 def _relative_performance(sym: str, enrich: dict, profile: dict) -> dict[str, Any]:
@@ -1057,10 +1155,12 @@ def list_intelligence(
     enrich = _enrichment_map(syms)
     held = _held_set()
 
+    decisions = _decisions_for(syms)
+    reviews_by_sym = _reviews_for_symbols(syms)
     cards = []
     for sym in syms:
-        decision = _decision_for(sym)
-        reviews = _reviews_for_symbol(sym)
+        decision = decisions[sym]
+        reviews = reviews_by_sym[sym]
         cards.append(_compose_card(
             sym,
             street=street.get(sym) or {},

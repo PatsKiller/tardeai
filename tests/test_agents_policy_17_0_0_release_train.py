@@ -37,13 +37,16 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_25  # noqa: E402  (25.0.0: frozen pre-25 text)
 for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+AGENTS = read_pre_25("AGENTS.md")
 # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
 # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
 # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
@@ -56,7 +59,7 @@ AGENTS = pre_20_0_0(AGENTS)
 from tests.test_agents_policy_19_0_0_broker_read_controls import pre_19_0_0  # noqa: E402
 
 AGENTS = pre_19_0_0(AGENTS)
-AWP = (ROOT / "AI_WORK_POLICY.md").read_text(encoding="utf-8")
+AWP = read_pre_25("AI_WORK_POLICY.md")
 TOKEN = "APPROVE_AGENTS_POLICY_17_0_0"
 ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
 
@@ -272,7 +275,7 @@ def test_23_14_is_byte_identical():
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
 def test_adapters_carry_nothing_from_17_0_0(adapter):
-    text = (ROOT / adapter).read_text(encoding="utf-8")
+    text = read_pre_25(adapter)
     for frag in ("17.0.0", "release train", "train/*", "ReleaseDelegation", "release_control"):
         assert frag not in text, f"{adapter} carries {frag!r}"
 
@@ -312,14 +315,23 @@ def test_section_25_9_quotes_the_clauses_verbatim_with_their_digests():
 
 
 def test_ai_work_policy_only_appends_section_28():
-    i = AWP.find("---\n\n# 28. RELEASE TRAIN PUSHES")
+    # 24.0.0 rewrote tip §28 to AUTOMATED MERGE; 17.0.0 train-push text lives under ## 28.HISTORICAL.
+    i = AWP.find("---\n\n# 28. AUTOMATED MERGE AND DEPLOY")
+    if i < 0:
+        i = AWP.find("---\n\n# 28. RELEASE TRAIN PUSHES")
     assert i > 0, "AI_WORK_POLICY.md §28 missing: the 17.0.0 AI_WORK_POLICY patch is not applied"
-    assert h(AWP[:i]) == AWP_MAIN_SHA256, "AI_WORK_POLICY.md sections 1-27 changed"
-    s28 = _flat(AWP[i:])
+    # AGENTS.md 21.0.0 (§28.15) adds two marked "Hands-off delivery (AGENTS.md 21.0.0 ..." paragraphs to §3 and §17;
+    # taken out, sections 1-27 are byte-identical to the 17.0.0 pin.
+    pre = re.sub(r"Hands-off delivery \(AGENTS\.md 21\.0\.0.*?\n\n", "", AWP[:i], flags=re.S)
+    assert h(pre) == AWP_MAIN_SHA256, "AI_WORK_POLICY.md sections 1-27 changed"
+    hist = AWP.find("## 28.HISTORICAL — RELEASE TRAIN PUSHES")
+    s28 = _flat(AWP[hist if hist > 0 else i :])
     # while PROPOSED §28 is binding only once 17.0.0 is ACTIVE and the delegation is armed; the ratifying edit marks
     # 17.0.0 ACTIVE there and leaves the arming condition
-    gate = (("(AGENTS.md 17.0.0, ACTIVE)", "AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914)",
-             "Binding only once the operator has also armed the standing release delegation at the host")
+    # 24.0.0 moved train-push text under HISTORICAL; tip heading no longer carries the 17.0.0 ACTIVE paren.
+    gate = (("AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914)",
+             "Binding only once the operator has also armed the standing release delegation at the host",
+             "AGENTS.md 17.0.0; retired")
             if _ratified() else ("(AGENTS.md 17.0.0, PROPOSED)", "Binding only once AGENTS.md 17.0.0 is ACTIVE"))
     for frag in gate + ("only automated remote synchronization",
                  "refs/heads/train/<train_id>", "ReleaseCapability@v1", "GitHub App installation", "not counted against",
@@ -342,9 +354,11 @@ def test_code_named_in_section_25_exists_and_agrees():
                  "scripts/lib/release_control.py", "scripts/release_control_cli.py",
                  "config/release_train_delegation.example.json", "config/schemas/release_delegation_v1.schema.json",
                  "docs/ops/RELEASE_TRAIN_GITHUB_APP.md", "tests/test_release_train_authority_20261021.py"):
-        assert (ROOT / path).exists(), path
+        # 2026-10-27: the retired release train's docs moved to archive/release_train_20261026/ (operator directive).
+        assert (ROOT / path).exists() or (ROOT / "archive" / "release_train_20261026" / path).exists(), path
         assert path.split("/")[-1] in s25 or path.startswith("config/schemas"), path
-    assert set(RD.WINDOW_IDS) == {"0000", "0600", "0800", "1800"}
+    # the four 17.0.0 windows plus the 2026-10-25 schedule slots (weekdays 12:00; weekends every three hours)
+    assert set(RD.WINDOW_IDS) == {"0000", "0300", "0600", "0800", "0900", "1200", "1500", "1800", "2100"}
     assert RD.HARD_MAX_TTL_S == 3600 and RD.HARD_MAX_ATTEMPTS == 3
     assert not str(RD.DEFAULT_PATH).startswith(str(ROOT))
     assert not (CAP.PHASE_ACTIONS[CAP.PHASE_BUILD] & (CAP.PHASE_ACTIONS[CAP.PHASE_MERGE]

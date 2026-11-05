@@ -148,3 +148,14 @@ appear in Evidence/Command Center.
 
 `lint_cio_text()` flags these and truncation/underscore/length defects so a
 defective body can be suppressed or fallbacked before send.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1847-1851 -->
+## Moved from AGENTS.md (25.0.1 lines 1847-1851)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **Source pills are spelled out, never bare dots.**
+  - `🟢 Trade-AI data` · `🔵 Looked up outside Trade-AI` · `🟣 AI model (DeepSeek)`.
+  - Every reply opens with `LEGEND`, defined once in `reply_provenance`.
+  - A model is never "outside data": it goes on the 🟣 role, not in "Went outside".
+- **`MAX_SOURCE_LABELS` is 16.** At 10 the dossier's stores pushed "conversation memory" off the Sources line.

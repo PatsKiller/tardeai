@@ -470,6 +470,9 @@ What changed (`scripts/system_health_agent.py`, `scripts/lib/system_health_fresh
   ACTIVE `config/lane_registry.json` row(s) of `monitor_lane_ids`; the literal is the fallback and a test pins it
   equal to the registry (Finviz: `0 10 * * 1-5`, matching the crontab). Opt-in: other components' drift
   (`trade_ai_orchestrator` literal vs registry `30 17 * * 1-5`) is reported in `schedule_evidence`, not adopted.
+- **Declared, not installed.** A resolved schedule is the ACTIVE lane's DECLARATION; installation is not measured.
+  A fail-back is labelled `NOT MEASURED` with its real reason (unreadable registry, missing/ambiguous lane,
+  invalid scheduler entry, or no measured schedule).
 - **Run grace.** Finviz `max_runtime_sec` 600 → 1500: the 10:00 full `--run` measured 556–1161 s (2026-10-15..22).
 
 `scripts/finviz_screener_runner.py`: a `--screener <id>` run writes `finviz-screener-runner-subset_last.json`; only a
@@ -492,3 +495,26 @@ Tests: `tests/test_system_health_receipt_debounce_20261023.py` (CI gate
 | WEDGED | no answer | restart `cio-governed-bridge.service` after 2 consecutive probes (30 min cooldown), re-probe, alert |
 
 The receipt is `data/runtime/cio_bridge_watchdog.json`. The bridge fix and diagnosis order are in `docs/architecture/GOVERNED_MODEL_BRIDGE.md` §8.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1853-1862 -->
+## Moved from AGENTS.md (25.0.1 lines 1853-1862)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+### The research heartbeat — measure the queue, not the store next to it
+- **Two research stores exist. Watching the wrong one hid a week of failures.**
+  - `hermes_external_research` is the scheduled symbol research. It was healthy (56/57).
+  - `data/cio/hermes_research_requests.jsonl` holds operator questions and plan research. 62% of its requests failed in the week to 09-14 with no alarm.
+  - Lane `cio-hermes-queue` (`lib/cio_hermes_queue_health.py`) now watches the queue inside `research_lane_health`. It fires on:
+    - failure rate;
+    - no completions;
+    - stalled queue;
+    - lost requests;
+    - unclassified failures.
+
+<!-- moved from AGENTS.md 25.0.1 lines 1876 -->
+## Moved from AGENTS.md (25.0.1 lines 1876)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **"Failed to start tradeai-hermes-cio-worker.service" is a request failure, not a crash.** The oneshot drain exits 1 when a request fails. Read the queue lane, not systemd.

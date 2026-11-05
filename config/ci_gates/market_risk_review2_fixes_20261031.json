@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_review2_fixes_20261031",
+  "files": [
+    "tests/test_market_risk_review2_fixes_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_REVIEW2_FIXES_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_REVIEW2_FIXES_20261031 — round-2 review of the Market Risk Engine (#2383): curation allow-list",
+    "template, crash-safe outbox, account-weighted budget uplift, GREEN guard, reopen on re-entry, ATR without OHLC,",
+    "torn-ledger quarantine, names-only book, pre-gate versions, NYSE session_of, FRED last_seen_at, ACK principal.",
+    "Every failing probe input from ~/agent_scratch/review-2383/probes is a case here. Hermetic."
+  ]
+}

@@ -17,9 +17,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Least privilege for GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions, 2026-10-27).
+permissions:
+  contents: read
+
 jobs:
   release-readiness:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
     runs-on: ubuntu-latest
     env:
       ALPACA_MODE: paper

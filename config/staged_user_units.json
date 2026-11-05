@@ -1,0 +1,71 @@
+{
+  "schema": "StagedUserUnits@v1",
+  "note": "Reviewed list of host systemd USER units that the release installs itself (scripts/install_staged_units.py, called by scripts/cio_phase2_exact_main_deploy.sh promote after the bound-unit restart). A group is installed only when its admission config says enabled + REVIEWED, only after its dry-run succeeded (AGENTS rule 7), and replaced copies are archived, never deleted. Adding a group here is a [shared-infra] change: it puts a new scheduled unit on the host at the next release with no operator step. Rollback: scripts/install_staged_units.py rollback --release <dir> (disable --now + archive).",
+  "groups": [
+    {
+      "id": "cron-outage-watchdog",
+      "lane_id": "cron-outage-watchdog",
+      "why": "Independent cron/wrapper outage watchdog (docs/ops/packets/cron-outage-prevention-20261024 section 6). Host timer by design, not n8n: the alert path must not depend on what it watches.",
+      "source_dir": "ops/systemd",
+      "units": [
+        "tradeai-cron-outage-watchdog.service",
+        "tradeai-cron-outage-watchdog.timer"
+      ],
+      "enable": [
+        "tradeai-cron-outage-watchdog.timer"
+      ],
+      "admission": {
+        "config": "config/cron_outage_watchdog.json",
+        "require": {
+          "enabled": true,
+          "review_status": "REVIEWED"
+        }
+      },
+      "dry_run": {
+        "argv": [
+          "scripts/cron_outage_watchdog.py",
+          "--dry-run"
+        ],
+        "ok_exit": [
+          0,
+          1
+        ],
+        "expect": {
+          "schema": "CronOutageWatchdog@v1",
+          "mode": "dry_run"
+        }
+      },
+      "once": [
+        {
+          "id": "ack-rl3-safe-flock-refusal-20261025",
+          "why": "The coordinator's own real-layout safe_flock proof (rl3, 2026-10-25) wrote one refusal into the production journal. It is not a lane; acknowledge it once so the first live run does not page for it.",
+          "argv": [
+            "scripts/cron_outage_watchdog.py",
+            "--ack-refusal",
+            "safe_flock:2817912-1792876677401655717:refused",
+            "--ack-by",
+            "coordinator",
+            "--ack-reason",
+            "agent real-layout proof, not a lane"
+          ],
+          "apply_flag": "--apply-ack",
+          "done_when_reason": [
+            "refusal_key_not_in_current_journal_window"
+          ]
+        }
+      ],
+      "first_run": "tradeai-cron-outage-watchdog.service",
+      "verify": {
+        "active": [
+          "tradeai-cron-outage-watchdog.timer"
+        ],
+        "receipt": "data/runtime/cron_outage_watchdog_latest.json",
+        "receipt_expect": {
+          "schema": "CronOutageWatchdog@v1",
+          "mode": "monitor"
+        },
+        "receipt_clock": "observed_at"
+      }
+    }
+  ]
+}

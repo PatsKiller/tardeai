@@ -179,6 +179,50 @@ def test_no_mint_or_arbitrary_head_selection(tmp_path, duplicate, reason):
     assert tree(tmp_path) == before
 
 
+def test_judged_prospect_plus_fact_only_sibling_is_one_canonical_record(tmp_path):
+    """One judged prospect + one fact-only SECURITY record for the same GUID is one
+    canonical record (no ``multiple_cio_records_for_guid``), and the fact-only sibling's
+    company facts still render when the prospect lacks them (2026-10-24 design)."""
+    store = ir.InstrumentRecordStore(tmp_path / ir.DEFAULT_PATH)
+    # fact-only SECURITY record — the designed home of research.company_facts.
+    fact_only = ir.new_record("SECURITY", "ACME", symbols=["ACME"], **IDENT)
+    fact_only, _ = ir.apply_prospect(fact_only, prospect={"research": {"company_facts": facts()}}, fact_only=True)
+    store.upsert(fact_only)
+    # judged HELD prospect for the same GUID, with no company facts of its own.
+    prospect = ir.new_record("HELD", "ACME", symbols=["ACME"], **IDENT)
+    prospect, _ = ir.apply_prospect(prospect, prospect={
+        "stage": "held", "stance": "HOLD", "conviction": 61,
+        "evidence_at": AT, "expires_at": (NOW + timedelta(days=1)).isoformat(),
+        "research": {"review_lifecycle": {"status": "ANSWERED", "request_id": "prospect-req"}},
+    })
+    store.upsert(prospect)
+    assert ir.is_prospect_record(prospect) and ir.is_fact_only_record(fact_only)
+    snapshot = broker.load_snapshot(tmp_path)
+    row = broker.for_security(snapshot, "ACME", GUID, now=NOW)
+    # The judged prospect is canonical: lifecycle kept, no multiple_cio_records_for_guid.
+    assert row["review_lifecycle"]["status"] == "ANSWERED"
+    assert row["review_lifecycle"]["request_id"] == "prospect-req"
+    assert row["company_facts"].get("missing_reason") != "multiple_cio_records_for_guid"
+    # The fact-only sibling's company facts still render (never silently dropped).
+    assert row["company_facts"]["company"]["value"] == "Acme Instruments Inc."
+    assert row["company_facts"]["description"]["value"].startswith("Acme makes")
+
+
+def test_more_than_one_judged_prospect_still_flags_multiple_records(tmp_path):
+    store = ir.InstrumentRecordStore(tmp_path / ir.DEFAULT_PATH)
+    for kind, stage, stance in (("HELD", "held", "HOLD"), ("WATCH", "watching", "WATCH")):
+        rec = ir.new_record(kind, "ACME", symbols=["ACME"], **IDENT)
+        rec, _ = ir.apply_prospect(rec, prospect={
+            "stage": stage, "stance": stance, "conviction": 61,
+            "evidence_at": AT, "expires_at": (NOW + timedelta(days=1)).isoformat(),
+        })
+        store.upsert(rec)
+    snapshot = broker.load_snapshot(tmp_path)
+    row = broker.for_security(snapshot, "ACME", GUID, now=NOW)
+    assert row["company_facts"]["missing_reason"] == "multiple_cio_records_for_guid"
+    assert row["review_lifecycle"]["missing_reason"] == "multiple_cio_records_for_guid"
+
+
 def test_builder_merges_extension_and_review_without_writing(tmp_path):
     from scripts.lib import cio_prospect_builder as b
     seed(tmp_path)

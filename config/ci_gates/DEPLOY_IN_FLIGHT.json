@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "DEPLOY_IN_FLIGHT",
+  "files": [
+    "tests/test_deploy_in_flight_20261029.py"
+  ],
+  "anchor": "DEPLOY_IN_FLIGHT_20261029",
+  "comment": [
+    "ANCHOR: DEPLOY_IN_FLIGHT_20261029 — Deploy console P1 (DSN-20261029-deploy-console), read-only in-flight board:",
+    "GET /api/v2/ops/in-flight (scripts/lib/deploy_in_flight.py) lists open PRs to main through `gh pr list` and",
+    "projects number/title/head SHA/mergeable/mergeStateStatus/why-held/next. No write path, no label/merge/push/",
+    "promote/schedule, no broker path. Hermetic: fixture PR dicts + injected lister; a gh failure is UNAVAILABLE, never 0."
+  ]
+}

@@ -47,7 +47,7 @@ scripts/lib/cio_operator_renderers.py 1
 scripts/lib/cio_plan_enrichment.py 1
 scripts/lib/cio_theses.py 0
 scripts/lib/gain_guardian_publish.py 1
-scripts/market_regime_classifier.py 1
+scripts/market_regime_classifier.py 0
 scripts/moomoo/opend_health.py 1
 scripts/nightly_integrity_sweep.py 1
 scripts/oauth_lane_keepalive.py 1
@@ -67,7 +67,7 @@ scripts/proposal_alerter.py 3
 scripts/proposal_paper_submitter.py 3
 scripts/pullback_macd_screener.py 1
 scripts/rebalance_verifier.py 1
-scripts/recovery_watch_daily.py 2
+scripts/recovery_watch_daily.py 0
 scripts/rerun_cio_dual_consensus.py 1
 scripts/research_intelligence_queue.py 1
 scripts/rotation_rebalance_digest.py 1

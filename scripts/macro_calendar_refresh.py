@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""macro_calendar_refresh.py — build the 08:30 ET macro-release calendar for the release train's 08:00 window.
+"""macro_calendar_refresh.py — build the 08:30 ET macro-release calendar (CIO and prospectus readers; Needs-action).
+
+Built 2026-10-21 for the release train's 08:00 window; the train was retired 2026-10-27 (operator directive) and
+the calendar's remaining readers are the CIO / prospectus paths and the P3 Needs-action item.
 
 Operator ruling 2026-10-21: FRED is the primary source, plus a yearly file for FOMC and overrides
 (``config/macro_calendar_overrides.json``); n8n runs this (lane ``macro-calendar-refresh``, daily ~05:00 ET);
-the host controller decides (``scripts/lib/macro_calendar.py``); fail closed.
+readers decide through ``scripts/lib/macro_calendar.py``; fail closed.
 
 One run:
 
@@ -149,7 +152,10 @@ RELEASE_MAP: tuple[Release, ...] = (
         95,
         "durable_goods",
         "Durable Goods (Manufacturers' Shipments, Inventories, and Orders)",
-        r"manufacturers'? shipments,? inventories,? (and|&) orders|durable goods",
+        # 2026-10-31: FRED now names release 95 "Manufacturer's Shipments, Inventories, and Orders (M3) Survey"
+        # (apostrophe before the s). The old pattern required "manufacturers'?" and failed verification on every
+        # run from 2026-10-23, so no calendar was ever written and the breaker opened on 10-25.
+        r"manufacturer'?s'? shipments,? inventories,? (and|&) orders|durable goods",
         "08:30",
         "Census",
         "FRED release 95 'Manufacturers' Shipments, Inventories, and Orders' (DGORDER). Census publishes the "
