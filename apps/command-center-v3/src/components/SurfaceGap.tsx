@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { DeskGap } from './DeskPage'
-import { refreshMarker, rendersData, surfaceGap, type SurfaceShape, type SurfaceState } from '../lib/surfaceState'
+import { nextSurfaceReport, refreshMarker, rendersData, surfaceGap, type SurfaceShape, type SurfaceState } from '../lib/surfaceState'
 
 /**
  * The one banner every damaged surface renders, plus the shell's view of the active surface's state.
@@ -22,6 +22,21 @@ export function SurfaceGap<T>({ state, shape, onRetry }: { state: SurfaceState<T
 export type SurfaceStateReport = { name: string; dataLoaded: boolean }
 export type SurfaceStateChannel = { report: SurfaceStateReport | null; publish: (r: SurfaceStateReport | null, clearingFrom?: string) => void }
 export const SurfaceStateContext = createContext<SurfaceStateChannel>({ report: null, publish: () => {} })
+
+/**
+ * The shell's channel. `publish` is created ONCE: every surface that mounts publishes through an effect that depends on it,
+ * so a publish that changed identity on each report update would retrigger every publisher and loop (Codex cloud P1,
+ * 2026-11-05). The provider value is memoised separately, so a report update re-renders consumers without recreating the
+ * function they call.
+ */
+export function useSurfaceChannel(): SurfaceStateChannel {
+  const [report, setReport] = useState<SurfaceStateReport | null>(null)
+  const publish = useCallback(
+    (next: SurfaceStateReport | null, clearingFrom?: string) => setReport(prev => nextSurfaceReport(prev, next, clearingFrom)),
+    [],
+  )
+  return useMemo(() => ({ report, publish }), [report, publish])
+}
 
 /**
  * Publish a surface's state to the footer. `dataLoaded` comes from `rendersData`, the SAME predicate the page uses, so

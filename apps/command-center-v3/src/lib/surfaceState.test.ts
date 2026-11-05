@@ -1,6 +1,7 @@
 // SurfaceState@v1 contract tests (BOARD row 36). Pure: no React, no fetch, no fixtures with real values.
 // The "must never say" half is what makes this a contract: every state's OWN wording is checked against every
 // vocabulary it is forbidden to use, so a future edit that re-introduces "unavailable" into a loading state fails here.
+import { readFileSync } from 'node:fs'
 import { deriveSurfaceState, surfaceGap, refreshMarker, rendersData, nextSurfaceReport, MUST_NEVER_SAY, type SurfaceShape, type SurfaceStateName } from './surfaceState.ts'
 
 declare const process: { exit(code?: number): never }
@@ -91,6 +92,21 @@ check('rendersData: loading is not rendered', !rendersData(deriveSurfaceState({ 
 check('footer: a publish takes the slot', nextSurfaceReport(null, { name: 'Agents', dataLoaded: true })?.name === 'Agents')
 check('footer: an OUTGOING page cannot erase the INCOMING page', nextSurfaceReport({ name: 'Approvals', dataLoaded: false }, null, 'Agents')?.name === 'Approvals')
 check('footer: the owner can clear its own slot', nextSurfaceReport({ name: 'Agents', dataLoaded: true }, null, 'Agents') === null)
+
+// Cloud review 2026-11-05 (P1): the shell's surface publisher must keep ONE identity across report updates. Every mounted
+// surface publishes from an effect whose dependencies include `publish`; when publish was recreated per render, publishing
+// caused a render that produced a new publish, which re-ran every effect, which published again — a loop that never settled.
+// This repo has no effect-capable renderer (no jsdom, no react-test-renderer), so the guard is structural and pins the exact
+// wiring that removes the loop rather than claiming to exercise it.
+const surfaceGapSrc = readFileSync(new URL('../components/SurfaceGap.tsx', import.meta.url), 'utf8')
+const appSrc = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8')
+const hookBlock = surfaceGapSrc.slice(surfaceGapSrc.indexOf('const publish = useCallback('), surfaceGapSrc.indexOf('return useMemo('))
+check('the channel builds publish with useCallback and an empty dependency list',
+  hookBlock.includes('useCallback(') && /\[\s*\]\s*,?\s*\)/.test(hookBlock))
+check('the channel value is memoised on the report and the stable publish',
+  surfaceGapSrc.includes('return useMemo(() => ({ report, publish }), [report, publish])'))
+check('the shell takes the channel from the hook, never an inline publish',
+  appSrc.includes('const surfaceChannel = useSurfaceChannel()') && !appSrc.includes('publish: (next'))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

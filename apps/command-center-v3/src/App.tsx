@@ -1,5 +1,5 @@
 import { OpportunityModalProvider } from './components/opportunity/OpportunityContext'
-import { useContext, useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import { initialProbeState, onProbeResult } from './lib/reconnectProbe'
@@ -75,8 +75,7 @@ import {
 import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
 import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
-import { SurfaceStateContext, type SurfaceStateReport } from './components/SurfaceGap'
-import { nextSurfaceReport } from './lib/surfaceState'
+import { SurfaceStateContext, useSurfaceChannel } from './components/SurfaceGap'
 
 
 function BuildMarker() {
@@ -240,13 +239,11 @@ function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
   // The active page publishes its SurfaceState here so the build footer can say "this page's data did not load"
   // instead of leaving "matches served artifact" to be read as an all-clear (BOARD row 36, rule 7).
-  const [surfaceReport, setSurfaceReport] = useState<SurfaceStateReport | null>(null)
   // Ownership: a clearing null is accepted only when it comes from the surface that currently owns the slot, so the
-  // outgoing page of a route change cannot erase the incoming page's state (F2 review, 2026-11-04).
-  const surfaceChannel = useMemo(() => ({
-    report: surfaceReport,
-    publish: (next: SurfaceStateReport | null, clearingFrom?: string) => setSurfaceReport(prev => nextSurfaceReport(prev, next, clearingFrom)),
-  }), [surfaceReport])
+  // outgoing page of a route change cannot erase the incoming page's state (F2 review, 2026-11-04). The hook keeps
+  // `publish` at one identity for the life of the shell: a per-render publish retriggered every publisher's effect and
+  // looped (Codex cloud P1, 2026-11-05).
+  const surfaceChannel = useSurfaceChannel()
   return (
     <OpportunityModalProvider>
     <SurfaceStateContext.Provider value={surfaceChannel}>
