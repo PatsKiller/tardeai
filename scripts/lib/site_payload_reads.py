@@ -306,6 +306,7 @@ def canonical_rows(rows, *, resolver=None, projection=None):
             r["conflicts"].append(
                 {
                     "kind": "cio_record_conflict",
+                    **({"resolved": True} if conflict.get("resolved") is True else {}),
                     "summary": conflict.get("summary") or conflict.get("label"),
                     "a": {"value": a.get("value"), "source": a.get("source_label"), "at": a.get("as_of")},
                     "b": {"value": b.get("value"), "source": b.get("source_label"), "at": b.get("as_of")},
@@ -324,12 +325,17 @@ def canonical_rows(rows, *, resolver=None, projection=None):
                 "stance": row.get("stance"),
                 "conviction": row.get("conviction"),
                 "source": row.get("conviction_source"),
+                "as_of": row.get("conviction_as_of"),
+                "lane": row.get("lane"),
+                "stage": row.get("stage"),
+                "why": row.get("why"),
+                "summary": row.get("summary"),
             },
         )
         if truth.get("gap"):
             r["whats_missing"] = [*(row.get("whats_missing") or []), truth["gap"]["reason"]]
         added = r["conflicts"][len(row.get("conflicts") or []) :]
-        unresolved = [c for c, raw in zip(added, _sources(row, truth)) if not raw.get("resolved")]
+        unresolved = [c for c, raw in zip(added, _sources(row, truth)) if raw.get("resolved") is not True]
         kind = (row.get("next_action") or {}).get("kind")
         if unresolved:
             r["next_action"] = {
@@ -345,6 +351,10 @@ def canonical_rows(rows, *, resolver=None, projection=None):
                 "reason": truth["gap"]["reason"],
                 "gap": dict(truth["gap"]),
             }
+        if r.get("lane") == "actionable" and r["next_action"].get("kind") in {"resolve_conflict", "cio_missing"}:
+            # The source setup is preserved above. Its go lane cannot describe a composed row
+            # whose current next step requires a CIO review (operator capture, 2026-10-27).
+            r.update(lane="forming", stage="setup_forming", why=f"CIO review required — {r['next_action']['reason']}")
         out.append(r)
     return out
 
@@ -459,8 +469,51 @@ def prospects_page(
     membership = {}
     out = {**payload, "lanes": [], "conflict_count": None, "conflict_count_scope": "flagged_names_on_page"}
     selected = []
-    for item in lanes:
-        item = {**item, "items": [next(resolved) for _ in item.get("items") or []]}
+    composed_lanes = [{**item, "items": [next(resolved) for _ in item.get("items") or []]} for item in lanes]
+    if any(row.get("lane", item["id"]) != item["id"] for item in composed_lanes for row in item["items"]):
+        from .data_broker.watch_prospects import _sort_key
+
+        buckets = {item["id"]: [] for item in composed_lanes}
+        deltas = Counter()
+        for item in composed_lanes:
+            for row in item["items"]:
+                target = row.get("lane") if row.get("lane") in buckets else item["id"]
+                buckets[target].append(row)
+                deltas[item["id"]] -= 1
+                deltas[target] += 1
+        # Overflow names have no loaded row to validate. Preserve their source assignment
+        # and expose that scope instead of claiming a canonical read of unseen records.
+        out["lane_membership_unverified"] = {
+            item["id"]: list(item["overflow"]) for item in lanes if item.get("overflow")
+        }
+        out["counts"] = dict(payload.get("counts") or {})
+        regrouped = []
+        for item in composed_lanes:
+            rows = sorted(buckets[item["id"]], key=_sort_key)
+            cap = item.get("cap") if isinstance(item.get("cap"), int) else len(rows)
+            shown, overflow, system_shown = [], [], 0
+            for row in rows:
+                if row.get("mine") or system_shown < cap:
+                    shown.append(row)
+                    system_shown += not bool(row.get("mine"))
+                else:
+                    overflow.append(row["symbol"])
+            count = max(0, item.get("count", len(item["items"]) + len(item.get("overflow") or [])) + deltas[item["id"]])
+            out["counts"][item["id"]] = count
+            regrouped.append(
+                {
+                    **item,
+                    "items": shown,
+                    "count": count,
+                    "overflow": list(dict.fromkeys([*(item.get("overflow") or []), *overflow])),
+                }
+            )
+        composed_lanes = regrouped
+    from .data_broker.watch_prospects import filter_payload
+
+    out = filter_payload({**out, "lanes": composed_lanes}, query or {})
+    composed_lanes, out["lanes"] = out["lanes"], []
+    for item in composed_lanes:
         for symbol in [*(r.get("symbol") for r in item["items"]), *(item.get("overflow") or [])]:
             if symbol:
                 membership[str(symbol).upper()] = item["id"]
@@ -504,21 +557,19 @@ def read_curation(
 ):
     """Validate stages BEFORE ranking so expired names never consume suggestion slots."""
     from .data_broker.watch_prospects import gather
-    from .data_broker.watch_curation import build_curation, read_dismissed, eligible_opportunities
+    from .data_broker.watch_curation import build_curation, read_dismissed, eligible_opportunities, my_rows
 
     g = gather(query or {})
     now = g.get("now") or datetime.now(timezone.utc)
     eligible = eligible_opportunities(g.get("opps") or {}, g["row_for"], now=now)
     dismissed, status = read_dismissed(now=now)
-    out = build_curation(
-        g, n=value(query, "n", 20), dismissed=dismissed, dismissed_status=status, filters=query or {}, now=now
-    )
+    out = build_curation(g, n=value(query, "n", 20), dismissed=dismissed, dismissed_status=status, filters={}, now=now)
     filtered = build_curation(
         {**g, "opps": eligible},
         n=value(query, "n", 20),
         dismissed=dismissed,
         dismissed_status=status,
-        filters=query or {},
+        filters={},
         now=now,
     )
     out["suggests"] = filtered["suggests"]
@@ -528,7 +579,25 @@ def read_curation(
     )
     out["my_watchlist"]["rows"], out["suggests"]["rows"] = records[:mine_count], records[mine_count:]
     mine = out["my_watchlist"]
-    mine_rows = mine.get("rows") or []
+    from .data_broker import watch_position_facts as wpf
+
+    # Compose first, then filter/facet/sort the operator's complete uncapped list.
+    # Filtering the lower source first could both hide matching canonical rows
+    # and display a canonical 71 under an "at least 80" filter.
+    lookup = {r["symbol"]: r for r in mine.get("rows") or []}
+    canonical_mine = my_rows({s: {} for s in lookup}, lookup.__getitem__, g.get("opps") or {})
+    active = wpf.active_filters(query or {})
+    mine_rows = [r for r in canonical_mine if wpf.passes(r, active, now=now)] if active else canonical_mine
+    sort = str(value(query, "sort", ""))
+    if sort in wpf.SORTS:
+        mine_rows.sort(key=lambda r: (*wpf.sort_key(sort, r, r.get("conviction")), r["symbol"]))
+    mine.update(
+        rows=mine_rows,
+        count=len(mine_rows),
+        starred=sum(bool(r.get("starred")) for r in mine_rows),
+        filters=active,
+        position_facets=wpf.facet_counts(canonical_mine, now=now, filters=active),
+    )
     kinds = {"all": len(mine_rows), "starred": sum(bool(r.get("starred")) for r in mine_rows)}
     for row in mine_rows:
         for kind in {m.get("kind") for m in row.get("membership") or [] if m.get("kind")}:

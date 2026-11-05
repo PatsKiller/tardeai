@@ -30,4 +30,17 @@ eq('fallback preserves original observation', original.price.as_of, row.price_as
 eq('fallback does not invent quote provider/freshness', [original.price.source, original.price.freshness], [null, 'UNKNOWN'])
 const canon = { ...row, market_facts: original }
 eq('canonical fact object retained', rowMarketFacts(canon) === original, true)
+const historyOnly = { ...row, lane: 'actionable', trade_ai_state: null,
+  next_action: { kind: 'propose', label: 'Propose', reason: 'Recorded view agrees' },
+  conflicts: [{ kind: 'cio_record_conflict', summary: 'Prior disagreement', resolved: true,
+    a: { value: 'WATCH', source: 'stored CIO', at: null }, b: { value: 'RE_ENTER', source: 'prior review', at: null } }],
+} as ListRow
+eq('resolved history does not block a current proposal', blockingReasons(historyOnly), [])
+eq('resolved history does not show a breach rail', cardRail(historyOnly), 'favorable')
+eq('a malformed resolved flag stays blocking', blockingReasons({ ...historyOnly,
+  conflicts: [{ ...historyOnly.conflicts[0], resolved: 'false' as unknown as boolean }],
+}), ['Prior disagreement'])
+eq('open disagreement remains blocking', blockingReasons({ ...historyOnly,
+  conflicts: [...historyOnly.conflicts, { ...historyOnly.conflicts[0], summary: 'Current disagreement', resolved: false }],
+}), ['Current disagreement'])
 console.log(`watchRecordCardModel: ${count} assertions passed`)
