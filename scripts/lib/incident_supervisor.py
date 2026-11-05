@@ -512,6 +512,22 @@ def _flush_escalations(d: Path, deps: Deps, out: dict, now: datetime) -> None:
     pending = out.pop("_pending_escalations", [])
     if not pending:
         return
+    # Work later in the cycle may have closed, reopened or delivered an earlier obligation.
+    # Re-read the ledger before notification; an old episode must not page for the new one.
+    records = L.load_records(d)
+    current_pending = []
+    for row in pending:
+        rec = records.get(row["id"])
+        if (rec and rec.get("status") in (*L.UNRESOLVED, "blocked")
+                and int(rec.get("episode") or 1) == row["episode"]
+                and not any(e.get("delivered") is True and (e.get("key") or e.get("reason")) == row["key"]
+                            for e in _current_escalations(rec))):
+            current_pending.append(row)
+        else:
+            out["skipped"].append({"id": row["id"], "why": "escalation superseded"})
+    pending = current_pending
+    if not pending:
+        return
     priority = "P1" if any(row.get("operator_only") for row in pending) else "P2"
     delivered = False
     try:
@@ -582,6 +598,31 @@ def _call_fixer(deps: Deps, req: Path, apply: bool, timeout_s: float) -> dict:
 def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
           now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT,
           clock: Callable[[], float] = time.monotonic) -> dict:
+    """Flush one batch on every exit, including a failure in unrelated incident work."""
+    now = now or L.utcnow()
+    out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
+                           "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
+                           "would_escalate": [], "skipped": []}
+    try:
+        return _run_cycle(d=d, state_root=state_root, release_root=release_root, cfg=cfg, deps=deps,
+                          apply=apply, now=now, environ=environ, root=root, clock=clock, out=out)
+    except BaseException as exc:
+        out["cycle_error"] = {"error_class": type(exc).__name__}
+        raise
+    finally:
+        if apply:
+            _flush_escalations(d, deps, out, now)
+            if "cycle_error" not in out:
+                d.mkdir(parents=True, exist_ok=True)
+            # Invalid setup with no ledger must retain its original exception, not a receipt error.
+            if d.is_dir():
+                p = d / "supervisor_last.json"
+                p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
+
+
+def _run_cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
+          now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT,
+          clock: Callable[[], float] = time.monotonic, out: dict) -> dict:
     now = now or L.utcnow()
     pol = cfg["policy"]
     environ = os.environ if environ is None else environ
@@ -602,9 +643,6 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             return None, remaining
         return min(fixer_timeout_s, remaining), remaining
 
-    out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
-                           "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
-                           "would_escalate": [], "skipped": []}
     recs = L.load_records(d)
     max_n = int(pol.get("max_incidents_per_cycle", 5))
     queue = sorted((r for r in recs.values() if r["status"] in L.UNRESOLVED), key=lambda r: r["opened_at"])
@@ -615,6 +653,19 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
     retries = sorted((r for r in recs.values()
                       if r["status"] == "blocked" and _pending_escalation(r)),
                      key=lambda r: r["opened_at"])[:max_n]
+    # Stage already-durable delivery retries before fallible work. The public cycle's finally
+    # flushes this same batch if an unresolved incident fails, without running a model for the retry.
+    for rec in retries:
+        pending = _pending_escalation(rec)
+        if not pending:
+            continue
+        iid = rec["id"]
+        out["considered"].append(iid)
+        key = pending.get("key") or pending.get("reason")
+        reason = pending.get("reason") or "incident blocked"
+        ask = rec.get("handoff") or "A person must take this incident."
+        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key,
+                  operator_only=key in ("needs_operator", "refused_scope"))
     for rec in queue[:max_n]:
         iid = rec["id"]
         out["considered"].append(iid)
@@ -838,25 +889,6 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: {verdict['rationale'][:300]}",
                           handoff=verdict["action"] or "operator decision required", d=d, now=now)
             out["blocked"].append({"id": iid, "why": "needs_operator"})
-    # Delivery-only retry (2026-11-03) for blocked incidents whose latest current-episode page was
-    # not delivered. This runs AFTER the unresolved queue and does nothing else: no model call, no
-    # runbook action, no fixer dispatch and no new block. A successful retry makes the escalation
-    # delivered, so the next cycle no longer sees it; a failed one is retried again next cycle.
-    for rec in retries:
-        pending = _pending_escalation(rec)
-        if not pending:
-            continue
-        iid = rec["id"]
-        out["considered"].append(iid)
-        key = pending.get("key") or pending.get("reason")
-        reason = pending.get("reason") or "incident blocked"
-        ask = rec.get("handoff") or "A person must take this incident."
-        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key,
-                  operator_only=key in ("needs_operator", "refused_scope"))
-    if apply:
-        _flush_escalations(d, deps, out, now)
-        p = d / "supervisor_last.json"
-        p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
     return out
 
 

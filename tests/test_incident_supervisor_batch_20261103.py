@@ -175,12 +175,13 @@ def test_later_dispatch_fault_keeps_blocked_operator_page_durably_retryable(tmp_
                                severity="P2", d=d, now=T0 + timedelta(seconds=1))
     pages = []
     with pytest.raises(RuntimeError, match="synthetic later dispatch fault"):
-        _cycle_with(tmp_path, _fault_deps(pages))
+        _cycle_with(tmp_path, _fault_deps(pages, result=False))
     rec = L.load_records(d)[first]
     assert rec["status"] == "blocked"
     pending = S._pending_escalation(rec)
     assert pending and pending["key"] == "refused_scope" and pending["delivered"] is False
-    assert pages == [], "the failed cycle did not reach the single batch send"
+    assert len(pages) == 1 and pages[0]["priority"] == "P1", "even a failed cycle must attempt its one batch"
+    pages.clear()
     events = [e for e in L.read_events(d) if e["incident_id"] == first]
     assert next(i for i, e in enumerate(events) if e["kind"] == "escalate") < next(
         i for i, e in enumerate(events) if e["kind"] == "block"), "retry obligation precedes blocking"
@@ -296,3 +297,84 @@ def test_a_delivered_reason_wins_over_a_late_stale_pending_append():
         for delivered in (False, True, False)
     ]}
     assert S._pending_escalation(rec) is None, "a concurrent stale intent cannot undo a real delivered receipt"
+
+
+@pytest.mark.parametrize("first_result", [True, False, "raises"])
+def test_recurring_unrelated_fault_cannot_starve_operator_delivery(tmp_path, first_result):
+    d = tmp_path / "ledger"
+    first = _seed(d, n=1, refused_first=True)[0]
+    second, _ = L.open_incident(source={"kind": "watcher", "watcher": "lane_health"},
+                               title="synthetic recurring worker fault", where="tests/recurring_worker",
+                               severity="P2", d=d, now=T0 + timedelta(seconds=1))
+    pages = []
+    deps = _fault_deps(pages)
+
+    def notify(text, producer, priority="P2"):
+        pages.append({"text": text, "producer": producer, "priority": priority})
+        if len(pages) == 1:
+            if first_result == "raises":
+                raise RuntimeError("synthetic first delivery fault")
+            return first_result
+        return True
+
+    deps.notify = notify
+    for tick in range(3):
+        with pytest.raises(RuntimeError, match="synthetic later dispatch fault"):
+            _cycle_with(tmp_path, deps, now=NOW + timedelta(minutes=tick))
+        assert L.load_records(d)[second["id"]]["status"] in L.UNRESOLVED, "do not retire the recurring fault"
+    assert len(pages) == (1 if first_result is True else 2), "the unrelated fault must not starve or duplicate delivery"
+    assert all(page["priority"] == "P1" and first in page["text"] for page in pages)
+    assert S._pending_escalation(L.load_records(d)[first]) is None
+    receipt = json.loads((d / "supervisor_last.json").read_text())
+    assert receipt["cycle_error"]["error_class"] == "RuntimeError", "a partial cycle must retain its failure"
+
+
+def test_exception_flush_keeps_one_batch_for_all_already_queued_incidents(tmp_path):
+    d = tmp_path / "ledger"
+    ids = _seed(d, n=5, refused_first=True)
+    L.open_incident(source={"kind": "watcher", "watcher": "lane_health"},
+                    title="synthetic last worker fault", where="tests/last_worker",
+                    severity="P2", d=d, now=T0 + timedelta(seconds=1))
+    pages = []
+    with pytest.raises(RuntimeError, match="synthetic later dispatch fault"):
+        _cycle_with(tmp_path, _fault_deps(pages))
+    assert len(pages) == 1 and pages[0]["text"].count("•") == 5
+    assert all(iid in pages[0]["text"] for iid in ids)
+    assert all(S._pending_escalation(L.load_records(d)[iid]) is None for iid in ids)
+
+
+@pytest.mark.parametrize("transition", ["closed", "fixed", "reopened", "delivered"])
+def test_exception_flush_does_not_page_a_superseded_episode(tmp_path, transition):
+    d = tmp_path / "ledger"
+    first = _seed(d, n=1, refused_first=True)[0]
+    L.open_incident(source={"kind": "watcher", "watcher": "lane_health"},
+                    title="synthetic concurrent worker fault", where="tests/concurrent_worker",
+                    severity="P2", d=d, now=T0 + timedelta(seconds=1))
+    pages = []
+    deps = _fault_deps(pages)
+
+    def supersede_then_fail(*_args, **_kwargs):
+        if transition == "closed":
+            L.operator_close(first, decision_ref="fixture:closed", comment="synthetic decision", d=d, now=NOW)
+        elif transition == "fixed":
+            L.fix(first, actor="fixture", fix_refs=[{"kind": "pr", "ref": "fixture"}], d=d, now=NOW)
+        elif transition == "delivered":
+            L.escalate(first, actor="fixture", reason="refused scope", key="refused_scope",
+                       delivered=True, episode=1, d=d, now=NOW)
+        else:
+            L.append_event({"kind": "reopen", "incident_id": first, "actor": "fixture"}, d=d, now=NOW)
+        raise RuntimeError("synthetic later dispatch fault")
+
+    deps.fixer = supersede_then_fail
+    with pytest.raises(RuntimeError, match="synthetic later dispatch fault"):
+        _cycle_with(tmp_path, deps)
+    assert pages == [], "the old obligation no longer describes the current incident state/episode"
+
+
+def test_invalid_config_preserves_its_error_without_inventing_a_ledger(tmp_path):
+    d = tmp_path / "missing-ledger"
+    pages = []
+    with pytest.raises(KeyError, match="policy"):
+        S.cycle(d=d, state_root=tmp_path / "ps", release_root=tmp_path, cfg={},
+                deps=_fault_deps(pages), apply=True, now=NOW, environ={}, root=ROOT)
+    assert not d.exists() and pages == []
