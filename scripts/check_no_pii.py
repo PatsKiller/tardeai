@@ -470,14 +470,13 @@ class MergeContext:
 
     def __init__(self, repo: Path):
         self.repo = repo
-        r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", f"{MERGE_TARGET}^{{commit}}"],
-                           cwd=repo, capture_output=True)
-        if r.returncode != 0:
+        try:
+            self.sha = _git(repo, "rev-parse", "--verify", "--quiet", f"{MERGE_TARGET}^{{commit}}").decode().strip()
+        except ScanError:
             raise ScanError(
                 f"a merge is in progress and {MERGE_TARGET} cannot be resolved; refusing to judge merge lines "
                 "without the merge target (fetch it, then re-run)"
-            )
-        self.sha = r.stdout.decode().strip()
+            ) from None
         self._cache: dict[str, list[str] | None] = {}
         self.exempt = 0
 
@@ -485,11 +484,12 @@ class MergeContext:
         """The merge target's text for ``path``, decoded exactly as the working blob is (a .gz is decompressed on
         both sides, so the line numbers and the line text are comparable)."""
         if path not in self._cache:
-            r = subprocess.run(["git", "show", f"{self.sha}:{path}"], cwd=self.repo, capture_output=True)
-            if r.returncode != 0:
+            try:
+                blob = _git(self.repo, "show", f"{self.sha}:{path}")
+            except ScanError:
                 self._cache[path] = None
             else:
-                text = _merge_text(r.stdout, path)
+                text = _merge_text(blob, path)
                 self._cache[path] = text.split("\n") if text is not None else None
         return self._cache[path]
 
@@ -510,8 +510,11 @@ class MergeContext:
 
 
 def in_merge(repo: Path) -> bool:
-    r = subprocess.run(["git", "rev-parse", "--git-path", "MERGE_HEAD"], cwd=repo, capture_output=True)
-    return r.returncode == 0 and (repo / r.stdout.decode().strip()).exists()
+    try:
+        rel = _git(repo, "rev-parse", "--git-path", "MERGE_HEAD").decode().strip()
+    except ScanError:
+        return False
+    return (repo / rel).exists()
 
 
 # ── modes ───────────────────────────────────────────────────────────────────────────────────────────
