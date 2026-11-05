@@ -339,3 +339,60 @@ def test_f3_oldest_evidence_clock_is_ordered_by_instant_not_iso_text():
     assert src["evidence_as_of"] == "2026-11-04T14:00:00+00:00", src
     assert src["evidence_stale"] is True, src
 
+
+# ── cx-openai-3 clock-provenance note (20261105T174539Z): the producer's per_account entries carry no ────────────
+# member clock, so the consumer must read a member's own clock when one exists and say "unknown" when it does not,
+# never stamping the aggregate row's clock onto a member as if it had been independently measured.
+
+
+def _real_plan_with_member_clocks(clocks):
+    """The REAL producer, with an injected measure clock on the named per-account opinions.
+
+    `aggregate_position_decisions` emits `per_account` opinions with no clock of their own (cx-openai-3 note
+    2026-11-05). Building through the real producer and then giving selected opinions a clock exercises the
+    consumer's member-clock path without inventing a row shape the producer cannot emit: the aggregate row keeps
+    its own distinct `generated_at`, as it does in production.
+    """
+    plan = _real_plan(("schwab_taxable", "moomoo"), (NOW - timedelta(seconds=20)).isoformat())
+    for o in plan["position_decisions"][0]["per_account"]:
+        if o.get("account") in clocks:
+            o["generated_at"] = clocks[o["account"]]
+    return plan
+
+
+def test_provenance_different_account_clocks_stay_separate_and_the_oldest_drives_staleness():
+    """Each opinion keeps ITS OWN clock; the oldest member clock, not the aggregate's, is the evidence clock."""
+    older, newer = "2026-11-02T15:25:00+00:00", "2026-11-04T14:00:00+00:00"
+    plan = _real_plan_with_member_clocks({"schwab_taxable": older, "moomoo": newer})
+    row = plan["position_decisions"][0]
+    assert row["generated_at"] not in (older, newer), row  # the aggregate clock is a third, distinct clock
+    index = H.cio_verdict_index(plan)
+    assert index["by_account"][("SYN", "schwab_taxable")]["as_of"] == older, index
+    assert index["by_account"][("SYN", "moomoo")]["as_of"] == newer, index
+    risk = _risk(_pos("SYN", account="schwab_taxable"), _pos("SYN", value=4_000.0, account="moomoo"))
+    out = _build(risk, plan)
+    src = out["sources"]["cio"]
+    assert src["evidence_as_of"] == older, src  # the OLDER member clock drives the stale determination
+    assert src["evidence_stale"] is True, src
+    why = _why(out, "stop:SYN")
+    assert older in why, why
+    assert "Schwab Individual: HOLD" in why and "Moomoo: HOLD" in why, why
+
+
+def test_provenance_missing_member_clock_is_unknown_not_the_aggregate_clock():
+    """A member opinion with no clock says "decision time not recorded"; the aggregate clock does not leak onto it."""
+    plan = _real_plan_with_member_clocks({"moomoo": "2026-11-04T14:00:00+00:00"})
+    row = plan["position_decisions"][0]
+    agg_clock = row["generated_at"]
+    assert agg_clock
+    index = H.cio_verdict_index(plan)
+    assert index["by_account"][("SYN", "schwab_taxable")]["as_of"] is None, index  # unknown, not borrowed
+    assert index["by_account"][("SYN", "schwab_taxable")]["as_of"] != agg_clock
+    assert index["by_account"][("SYN", "moomoo")]["as_of"] == "2026-11-04T14:00:00+00:00", index
+    out = _build(_risk(_pos("SYN", account="schwab_taxable")), plan)
+    why = _why(out, "stop:SYN")
+    assert "Schwab Individual: HOLD" in why, why
+    assert "CIO verdict (decision time not recorded)" in why, why
+    assert f"CIO verdict ({agg_clock})" not in why, why  # the aggregate clock is NOT this member's clock
+    assert f"aggregate HOLD ({agg_clock})" in why, why   # still named, as the aggregate only
+
