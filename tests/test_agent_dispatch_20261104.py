@@ -1968,7 +1968,15 @@ def test_d51_cx4_registered_reference_is_loaded_without_guessed_sibling(tmp_path
     coord = tmp_path / "coordinator"
     _d51_registered_review(coord)
     verdicts = D.verdicts_at_head(CLI.load_review_artifacts(coord))
-    assert verdicts[(7, "a" * 40)] == [{"verdict": "MERGE", "reviewer": "independent"}]
+    assert verdicts[(7, "a" * 40)] == [
+        {
+            "verdict": "MERGE",
+            "reviewer": "independent",
+            "engineering_completion_head": "a" * 40,
+            "engineering_tests_completed": False,
+            "engineering_docs_completed": False,
+        }
+    ]
 
 
 @pytest.mark.parametrize("fault", ["hash", "identity", "head", "traversal", "absolute", "symlink", "empty"])
@@ -2102,3 +2110,163 @@ def test_d51_a_current_held_block_requires_repair_not_a_third_opinion():
         )
         is None
     )
+
+
+# Second cloud pass: explicit-reference regression must be driven through a real cycle.
+@pytest.mark.parametrize("artifact_kind", ["prose", "machine"])
+def test_cloud2_cx1_registered_coord_reference_survives_real_cycle(tmp_path, artifact_kind):
+    import hashlib
+
+    paths = make_tree(
+        tmp_path,
+        panes={"cc-deepseek-9": "❯ \n"},
+        queue=[],
+        claims=[
+            {
+                "claim_id": "source",
+                "session": "author",
+                "branch": "wt/synthetic",
+                "status": "done",
+                "heartbeat_at": iso(NOW),
+                "head_sha": "a" * 40,
+                "paths": [".githooks/pre-push"],
+            }
+        ],
+    )
+    doc = _d51_registered_review(paths["coord"])
+    target = paths["coord"] / "coord" / "review.md"
+    target.parent.mkdir()
+    if artifact_kind == "prose":
+        raw = f"Adversarial-review: MERGE reviewer=independent head={'a' * 40}\n".encode()
+    else:
+        raw = json.dumps({"reviewer_session": "independent", "head_sha": "a" * 40, "verdict": "MERGE"}).encode()
+    target.write_bytes(raw)
+    doc["reviews"][0].update(artifact="coord/review.md", artifact_sha256=hashlib.sha256(raw).hexdigest())
+    (paths["coord"] / "review-evidence" / f"7-{'a' * 40}.json").write_text(json.dumps(doc))
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "a" * 40,
+            "mergeStateStatus": "BLOCKED",
+            "isDraft": True,
+            "changedFiles": 1,
+            "files": [{"path": ".githooks/pre-push"}],
+            "statusCheckRollup": [],
+        }
+    ]
+    before = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    out = CLI.run_cycle(
+        apply=False,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=fake_runner({"cc-deepseek-9": "❯ \n"}, rows),
+    )
+    assert [(r["kind"], r["target"]) for r in out["assignments"]] == [("review", "7")]
+    assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def _cloud2_held_ready_fixture(tmp_path, flags):
+    import hashlib
+
+    coord = tmp_path / "coordinator"
+    doc = _d51_registered_review(coord)
+    raw = f"Adversarial-review: MERGE reviewer=second head={'a' * 40}\n".encode()
+    (coord / "proofs" / "second.artifact").write_bytes(raw)
+    doc["reviews"].append(
+        {
+            "reviewer_session": "second",
+            "head_sha": "a" * 40,
+            "verdict": "MERGE",
+            "artifact": "proofs/second.artifact",
+            "artifact_sha256": hashlib.sha256(raw).hexdigest(),
+        }
+    )
+    doc.update(flags)
+    (coord / "review-evidence" / f"7-{'a' * 40}.json").write_text(json.dumps(doc))
+    pr = _held_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False)
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha, status="done", paths=pr.files)]
+    verdicts = D.verdicts_at_head(CLI.load_review_artifacts(coord))
+    return pr, claims, verdicts, doc
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        {},
+        {"engineering_tests_completed": True},
+        {"engineering_docs_completed": True},
+        {"engineering_tests_completed": False, "engineering_docs_completed": True},
+        {"engineering_tests_completed": True, "engineering_docs_completed": False},
+        {"engineering_tests_completed": "true", "engineering_docs_completed": True},
+        {"engineering_tests_completed": True, "engineering_docs_completed": "true"},
+    ],
+)
+def test_cloud2_cx2_held_readiness_refuses_missing_false_or_untyped_completion(tmp_path, flags):
+    pr, claims, verdicts, _doc = _cloud2_held_ready_fixture(tmp_path, flags)
+    out = D.merge_ready([pr], verdicts, claims, {7: "author"})
+    assert out["ready"] == []
+    assert "engineering" in out["one_step"][0]["step"]
+
+
+def test_cloud2_cx2_exact_head_true_completion_allows_otherwise_ready_held_pr(tmp_path):
+    pr, claims, verdicts, _doc = _cloud2_held_ready_fixture(
+        tmp_path,
+        {"engineering_tests_completed": True, "engineering_docs_completed": True},
+    )
+    assert [r["pr"] for r in D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"]] == [7]
+
+
+def test_cloud2_cx2_old_head_and_latest_false_cannot_supply_completion(tmp_path):
+    pr, claims, verdicts, doc = _cloud2_held_ready_fixture(
+        tmp_path,
+        {"engineering_tests_completed": True, "engineering_docs_completed": True},
+    )
+    old = {**doc, "head_sha": "b" * 40}
+    current_reviews = {"pr": 7, "head_sha": pr.head_sha, "reviews": doc["reviews"]}
+    old_index = D.verdicts_at_head([old, current_reviews])
+    assert D.merge_ready([pr], old_index, claims, {7: "author"})["ready"] == []
+    later_false = {**doc, "engineering_docs_completed": False}
+    latest = D.verdicts_at_head([doc, later_false])
+    assert D.merge_ready([pr], latest, claims, {7: "author"})["ready"] == []
+    assert [r["pr"] for r in D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"]] == [7]
+
+
+@pytest.mark.parametrize("open_pr", [False, True])
+def test_cloud2_cx3_foreign_claim_chore_requires_canonical_takeover(open_pr):
+    stale = claim(cid="foreign-source", session="cc-owner", branch="wt/synthetic", age=4)
+    prs = [_complete_pr(7, "a" * 40, "wt/synthetic", "DIRTY", False)] if open_pr else []
+    task = D.select_work(
+        "cc-idle",
+        queue=[],
+        claims=[stale],
+        prs=prs,
+        verdicts={},
+        author_of={7: "cc-owner"},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert task.kind == "chore"
+    assert "agent_claim.py takeover foreign-source --claim" in task.instruction
+    assert "new claim" in task.instruction and "cc-owner" in task.instruction
+    assert "do not impersonate" in task.instruction.lower()
+    assert "agent_claim.py handoff" not in task.instruction
+    assert "agent_claim.py release" not in task.instruction
+
+
+def test_cloud2_cx3_owner_can_maintain_own_claim_without_takeover():
+    stale = claim(cid="own-source", session="cc-owner", age=4)
+    task = D.select_work(
+        "cc-owner",
+        queue=[],
+        claims=[stale],
+        prs=[],
+        verdicts={},
+        author_of={},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert task.kind == "chore" and "takeover" not in task.instruction
+    assert "own-source" in task.instruction and "agent_claim.py release" in task.instruction

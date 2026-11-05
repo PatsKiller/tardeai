@@ -73,10 +73,12 @@ become a review. The latest file observation wins per reviewer and head. Dispatc
 spend the independent cap, including a head for which no verdict has arrived yet; a source author never spends that
 independent cap and an already-filed reviewer is not dispatched the same head again.
 
-The ready report also requires released (`done` or `released`) author claims covering every changed path at a source commit, no overlapping live holder, a complete `changedFiles`/file-list match and canonical exact-head check evidence: all four mandatory Actions checks explicitly completed SUCCESS; optional NEUTRAL is acceptable. An active author claim never earns ready status.
+The ready report also requires released (`done` or `released`) author claims covering every changed path at a source commit, no overlapping live holder, a complete `changedFiles`/file-list match and canonical exact-head check evidence: all four mandatory Actions checks explicitly completed SUCCESS; optional NEUTRAL is acceptable. An active author claim never earns ready status. Held engineering also requires the latest canonical registration at this exact head to affirm both `engineering_tests_completed` and `engineering_docs_completed`; absent, false, untyped or other-head values never count.
 Missing authority, truncated paths or unmeasured/red checks leave an explicit next step rather than a ready row.
 A retry admission refusal preserves `submitted: true` if an earlier attempt already delivered Enter; it never claims
 that the earlier dispatch was busy-confirmed.
+
+Claim maintenance keeps the native owner boundary: the owning session may maintain its own stale claim. A foreign recipient first reads the handoff, notifies the owner and lead, and requests authorization for canonical `agent_claim.py takeover <id> --claim`; only the returned new claim may be maintained under that recipient's own identity. It must not impersonate the previous owner or release another session's record. An open PR and completed source records are preserved.
 
 ## How to read the ledger
 

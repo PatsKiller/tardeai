@@ -290,6 +290,7 @@ class PullRequest:
 def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str], list[dict[str, Any]]]:
     """Index the latest verdict per reviewer/head in supplied observation order."""
     index: dict[tuple[int, str], dict[str, dict[str, Any]]] = {}
+    completion: dict[tuple[int, str], dict[str, Any]] = {}
     for art in artifacts:
         if not isinstance(art, dict):
             continue
@@ -300,6 +301,14 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
         head = str(art.get("head_sha") or "")
         if not head:
             continue
+        if art.get("schema") == "PrMergeReviewEvidence@v1":
+            # The latest canonical registration owns this HEAD's completion evidence. Missing/false values
+            # replace prior true values; another head or a standalone review cannot lend an attestation.
+            completion[(pr, head)] = {
+                "engineering_completion_head": head,
+                "engineering_tests_completed": art.get("engineering_tests_completed") is True,
+                "engineering_docs_completed": art.get("engineering_docs_completed") is True,
+            }
         rows = art.get("reviews") if isinstance(art.get("reviews"), list) else [art]
         for row in rows:
             if not isinstance(row, dict):
@@ -308,7 +317,13 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
             reviewer = str(row.get("reviewer_session") or row.get("reviewer") or "")
             if verdict in ("MERGE", "BLOCK") and reviewer:
                 index.setdefault((pr, head), {})[reviewer] = {"verdict": verdict, "reviewer": reviewer}
-    return {key: list(rows.values()) for key, rows in index.items()}
+    result = {}
+    for key, rows in index.items():
+        entries = list(rows.values())
+        for entry in entries:
+            entry.update(completion.get(key, {}))
+        result[key] = entries
+    return result
 
 
 AUTHORITY_PATH = Path(__file__).resolve().parents[2] / "config" / "agent_standing_authority.json"
@@ -468,6 +483,13 @@ def merge_ready(
                 step = "changed-file list incomplete — held paths cannot be ruled out"
             elif pr.checks_green is not True:
                 step = "exact-head checks are not all measured green"
+            elif held and not any(
+                e.get("engineering_completion_head") == pr.head_sha
+                and e.get("engineering_tests_completed") is True
+                and e.get("engineering_docs_completed") is True
+                for e in merges
+            ):
+                step = "held engineering completion unproven — register tests and documentation at this exact head"
             else:
                 ready.append({**base, "verdicts": sorted(reviewers)})
                 continue
@@ -594,22 +616,32 @@ def _merge_prep_instruction(session: str, pr: PullRequest, claim: Claim | None, 
 
 
 def _chore_instruction(session: str, claim: Claim, coord: str, *, open_pr: bool = False) -> str:
-    if open_pr:
-        # R1 (cc-deepseek-2 at fffe2c9cb): "release --status done" on a claim whose branch still has an OPEN PR is the
-        # move that permanently unmerges it — the merge gate needs a live claim at the PR head and a done claim cannot
-        # be re-stamped. A chore on an open-PR branch is a resume-or-hand-off, never a release.
+    prefix = (
+        f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
+        f"{claim.age_h:.1f}h. "
+    )
+    if session != claim.session:
         return (
-            f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
-            f"{claim.age_h:.1f}h, and its branch has an OPEN PR. Do NOT release it as done or abandoned: the merge "
-            f"gate needs a live claim at the PR head, and a done claim cannot be re-stamped. Heartbeat it from the "
-            f"worktree whose HEAD is the PR head, or hand it off with agent_claim.py handoff naming the exact next "
-            f"step, then report to {coord}/inbox/<lead>/."
+            prefix + f"It belongs to {claim.session or 'an unresolved owner'}, not {session}. Do not impersonate "
+            f"the owner or perform owner-only maintenance on its record. Notify the owner and {coord}/inbox/<lead>/; "
+            f"ask the lead to authorize canonical takeover if the owner cannot continue. First read the handoff "
+            f"with agent_claim.py takeover {claim.claim_id} (read-only). Only after authorization, run "
+            f"agent_claim.py takeover {claim.claim_id} --claim from the actual source worktree, then verify the "
+            f"returned new claim belongs to your own session before resuming maintenance. A refusal stops the route. "
+            + ("The branch has an OPEN PR: preserve its work and PR state. " if open_pr else "")
+            + "Completed source records cannot be re-stamped; never fabricate their ownership or release."
+        )
+    if open_pr:
+        return (
+            prefix + "Its branch has an OPEN PR. Do NOT release unfinished work as done or abandoned. Resume the "
+            "repair or publish its existing checkpoint, heartbeat from the actual source head, and hand it off "
+            f"with agent_claim.py handoff naming the exact next step; report to {coord}/inbox/<lead>/. "
+            "Completed, published work needs genuine released custody for merge; a completed claim cannot be re-stamped."
         )
     return (
-        f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
-        f"{claim.age_h:.1f}h and no open PR depends on it. Either resume it (heartbeat from its worktree) or close "
+        prefix + "No open PR depends on it. Either resume your own work (heartbeat from its worktree) or close "
         f"it with agent_claim.py release --status abandoned and a summary, then report to {coord}/inbox/<lead>/ so "
-        f"the board is honest."
+        "the board is honest."
     )
 
 
