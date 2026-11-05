@@ -12,9 +12,9 @@ Uses flock to prevent duplicate instances.
 Paper mode only. No live trading.
 """
 
-import json, logging, os, sys, time
+import json, logging, os, re, sys, time
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -28,6 +28,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [tg-poller] %(messag
 log = logging.getLogger(__name__)
 
 OFFSET_FILE = PROJECT_ROOT / "data" / "portfolios" / "state" / ".telegram_callback_offset"
+
+#: Typed operator replies (2026-11-03 operator request #7). The operator's free-text Telegram messages
+#: reached only the CIO responder, never the coordinator, so every approval needed a relay or a pasted
+#: command. A second getUpdates poller would steal updates from this one (one bot token, one consumer),
+#: so the EXISTING loop appends the plain-text message here instead, with its message id and timestamps.
+#: Override with TRADEAI_OPERATOR_REPLIES_DIR (tests); otherwise resolved under the persistent root.
+OPERATOR_REPLIES_REL = "data/coordination/coordinator/inbox/cc-deepseek-7/operator-replies"
+#: Durable at-least-once queue for a reply whose inbox append failed (cx-openai-4 R2). A reply that cannot
+#: be written to the inbox is queued here BEFORE the update checkpoint advances, then flushed into the inbox
+#: on a later poll; if even the queue cannot be written the checkpoint is not advanced and Telegram
+#: redelivers the update.
+OPERATOR_REPLIES_PENDING_REL = "data/runtime/operator_replies_pending.jsonl"
 
 #: Phase 8 activation — when truthy, inbound goes through
 #: ``process_update_atomically`` (checkpoint only after event+turn+receipt).
@@ -140,9 +152,286 @@ def _allowed_chats():
     return chats
 
 
+def _operator_replies_dir() -> Path:
+    """Where typed operator replies are appended (persistent root; env override for tests)."""
+    override = os.environ.get("TRADEAI_OPERATOR_REPLIES_DIR", "").strip()
+    if override:
+        return Path(override)
+    try:
+        from scripts.lib.persistent_state_root import resolve_durable_dir
+
+        return resolve_durable_dir(OPERATOR_REPLIES_REL, PROJECT_ROOT)
+    except Exception:  # noqa: BLE001 — a resolver fault must not stop the poll loop
+        return PROJECT_ROOT / OPERATOR_REPLIES_REL
+
+
+def _operator_replies_pending_path() -> Path:
+    override = os.environ.get("TRADEAI_OPERATOR_REPLIES_PENDING", "").strip()
+    if override:
+        return Path(override)
+    try:
+        from scripts.lib.persistent_state_root import resolve_durable_dir
+
+        return resolve_durable_dir(OPERATOR_REPLIES_PENDING_REL, PROJECT_ROOT)
+    except Exception:  # noqa: BLE001
+        return PROJECT_ROOT / OPERATOR_REPLIES_PENDING_REL
+
+
+def _append_private(path: Path, line: str) -> None:
+    """Append one line, creating the file 0600. Raises on failure so the caller can queue/refuse."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
+#: Parameter names whose VALUE is a credential when an operator pastes a callback URL or a form into Telegram.
+#: The Schwab OAuth redirect the handler accepts is ``127.0.0.1?code=...``; the same shape covers the others.
+_CREDENTIAL_KEYS = ("code", "access_token", "refresh_token", "id_token", "api_key", "apikey", "client_secret",
+                    "password", "token")
+# F2 (cx-openai-2, 2026-11-04): `key=value` was the only shape covered, so `"code": "…"` (JSON), `code = …` and
+# `code: …` all reached the log and the inbox verbatim. The key may now be quoted (JSON), the separator is `=` OR `:`,
+# and a bare value is recognised as a credential when it is a TOKEN: it ends at a delimiter (`& , } ] ) " ' #`) or the
+# end of the message. Prose keeps its text — "the code: path is under review" has a value followed by a space, which is
+# a sentence, not a token. A long token-bodied run is redacted even mid-sentence, and a whole message that is one
+# whitespace-free token of 12+ characters (mixed case or a digit) is redacted whole.
+#
+# RESIDUAL, stated at its real width (cc5, 2026-11-04): a credential is NOT redacted when it arrives inside a longer
+# message that contains a SPACE — `code=<value>` mid-sentence is caught, but a bare value pasted with any surrounding
+# prose ("here it is AbCdEf… right?"), or a whitespace-free value of fewer than 12 characters with no keyed rule and
+# no preceding key-bearing message, survives. Length is a proxy; the context rule (previous message ends with a key
+# and separator) is the real evidence, and it catches a split paste at any length.
+"""A whole message that is a single opaque token: no whitespace, token characters only, at least 24 of them, and it
+carries a digit or mixed case (prose words and short words are not credentials)."""
+_STANDALONE_CREDENTIAL_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~+/=%\\-]{12,}$")
+
+#: A message that ENDS with a credential key and separator (…code=, …token:). The next message in the same chat is then
+#: that value, whatever its length — Schwab authorization codes are commonly 20-30 characters, and a floor is a proxy
+#: for evidence we actually have (cc5, 2026-11-04).
+#: Used ONLY to mark an ambiguous record (`redaction_incomplete`), never to delete: a whitespace-free token with mixed
+#: case or a digit. Deleting on this shape is what erased the operator's SHAs and paths.
+_AMBIGUOUS_TOKEN_RE = re.compile(r"^(?=.*[0-9A-Z])(?=.*[a-z])[A-Za-z0-9._~+/=%\\-]{12,}$")
+
+_TRAILING_KEY_RE = re.compile(
+    # A KEY BOUNDARY, not a suffix (cx-openai-3, 2026-11-04): the key must begin the message or follow a character that
+    # can only be a separator context — query/form punctuation, a brace, a quote, a slash — never a letter and never a
+    # bare space. Without this, "Please review the source code:" made the NEXT ordinary reply redacted, because `code:`
+    # is a suffix of the word "code" in prose. The key may be quoted, which is how JSON arrives split: `{"code": `.
+    r"(?:^|[?&;{,/'\"(])"
+    r"[\"']?"
+    r"(?:" + "|".join(_CREDENTIAL_KEYS) + r")"
+    r"[\"']?\s*[=:]\s*$",
+    re.I,
+)
+#: The marker a row carries when its value was redacted because the PRECEDING message named a credential key. The
+#: context is never persisted as text — only this marker — so a restart or a queue flush cannot carry a raw credential.
+REDACTION_CONTEXT = "split_paste_predecessor"
+
+
+_CREDENTIAL_PARAM_RE = re.compile(
+    r"(?i)"
+    r"(?P<key>(?P<kq>[\"']?)\b(?:" + "|".join(_CREDENTIAL_KEYS) + r")\b(?P=kq))"
+    r"(?P<sep>\s*[=:]\s*)"
+    r"(?:"
+    r"(?P<dq>\"(?:[^\"\\]|\\.)*\")"                        # double-quoted, JSON escapes ok
+    r"|(?P<sq>'(?:[^'\\]|\\.)*')"                              # single-quoted, own delimiter only
+    r"|(?P<val>[^\s&,}\])]+)"                                    # bare value: ends at whitespace or a delimiter
+    r")"
+)
+
+
+def redact_credentials(text: str, previous: str | None = None) -> str:
+    """Redact the VALUE of a credential-bearing parameter. Two rules, both keyed — never shape.
+
+    WHY KEYED, NOT SHAPE (cc5 + cx-openai-3, 2026-11-04, after both reviews pulled in opposite directions): a
+    length/shape heuristic fails in BOTH directions at once. A 24-character floor let a 20-character Schwab
+    authorization code through; lowering it silently erased a 40-character SHA, a 32-character hash, a design-doc path,
+    a base64 filename and a version string — facts the operator was ANSWERING a question with. There is no length that
+    satisfies both, because length is not the evidence. A credential is identified by the thing that names it: the key.
+
+    1. **Same message.** `key=` / `key:` — `code`, `access_token`, `refresh_token`, `id_token`, `api_key`, `apikey`,
+       `client_secret`, `password`, `token` — the value ends at whitespace or a delimiter, so `password=synth123
+       thanks` and `code=synth123 please retry` redact and the rest of the sentence survives. Quoted values keep their
+       own delimiter and JSON escapes.
+    2. **Split paste.** If the PREVIOUS message in the same chat ended with a credential key and separator
+       (`…code=`, `…token:`), THIS message is that value, whatever its length. The preceding key is the evidence; a
+       value alone carries none.
+
+    RESIDUAL, at its real width: a credential value pasted in a message that neither follows a key-bearing message nor
+    names its own key is NOT redacted — nothing in the text identifies it, and guessing by shape is what erased the
+    operator's SHAs and paths. Ambiguity is resolved in favour of keeping the operator's words, and the value is never
+    silently deleted.
+    """
+    if not text:
+        return text
+
+    def _keep(m: "re.Match[str]") -> str:
+        quote = '"' if m.group("dq") else ("'" if m.group("sq") else "")
+        return f"{m.group('key')}{m.group('sep')}{quote}[redacted]{quote}"
+
+    redacted = _CREDENTIAL_PARAM_RE.sub(_keep, text)
+    if previous and _TRAILING_KEY_RE.search(str(previous).strip()) and redacted.strip():
+        return "[redacted]"
+    return redacted
+
+
+def _log_text(text: str, limit: int) -> str:
+    """Redact, THEN truncate (F3, cx-openai-2 2026-11-04).
+
+    Truncating first cuts a credential at the boundary and leaves its first half in the log: a fragment no secret
+    scanner matches and a reader still reads. Every log site that echoes operator text uses this.
+    """
+    return redact_credentials(text)[:limit]
+
+def _record_operator_reply(msg: dict, text: str, chat_id: str, *, previous_text: str | None = None, replies_dir=None,
+                           allowed=None, chat_type=None, sender_id=None,
+                           pending_path=None) -> str:
+    """Append one plain-text operator message to the coordinator inbox; never raise.
+
+    Returns a status: ``recorded`` | ``queued`` | ``refused_room`` | ``refused_sender`` |
+    ``refused_chat`` | ``blank`` | ``failed``.
+
+    Two defects cx-openai-4 found on 2026-11-03 shaped this:
+
+    * **The room is not the operator (R1).** Being in the allowlisted chat used to be enough, so any member
+      of an allowed supergroup could type as the operator. The reply path now requires the SENDER to be an
+      operator user id — ``market_risk_ack_telegram.operator_from_ids`` (``TRADEAI_OPERATOR_FROM_IDS`` when set,
+      else the positive/private allowlisted ids). A group id is never an operator, and a message with no
+      ``from`` is refused rather than trusted; either way it is never recorded. The chat must also be
+      allowlisted (``refused_chat``), but the room alone authenticates nobody.
+    * **A failed write must not lose the reply (R2).** The caller commits the update checkpoint only after
+      this returns; on an inbox failure the record goes to a durable pending queue and is flushed later. If
+      even that fails the status is ``failed`` and the caller must NOT advance the checkpoint, so Telegram
+      redelivers the update.
+
+    One JSON line per message: ``message_id``, the Telegram ``date``, ``recorded_at`` (UTC ISO), ``chat_id``,
+    ``sender_id`` and the text. Append-only and 0600 on create.
+    """
+    if not text or not str(text).strip():
+        return "blank"
+    if allowed is not None and str(chat_id) not in {str(c) for c in allowed}:
+        return "refused_chat"
+    # R1, settled direction (lead 2026-11-03): the SENDER must be an operator user id, using the existing
+    # pattern from market_risk_ack_telegram.operator_from_ids — TRADEAI_OPERATOR_FROM_IDS when set, else the
+    # positive (private-chat) allowlisted ids; a group id is never an operator. A missing sender is refused.
+    # Being in an allowlisted room is not enough: that is how any group member could type as the operator.
+    try:
+        try:
+            from lib.market_risk_ack_telegram import operator_from_ids
+        except ImportError:
+            from scripts.lib.market_risk_ack_telegram import operator_from_ids
+        operator_ids = operator_from_ids(allowed or ())
+    except Exception as exc:  # noqa: BLE001 — a resolver fault must not authenticate anybody
+        log.warning(f"operator reply refused: operator-id resolver unavailable ({exc})")
+        return "refused_sender"
+    if sender_id is None:
+        log.warning(f"operator reply refused: no sender on a message from chat {chat_id}")
+        return "refused_sender"
+    if str(sender_id) not in operator_ids:
+        log.warning(f"operator reply refused: sender {sender_id!r} is not an operator id (chat={chat_id}, "
+                    f"type={chat_type!r})")
+        return "refused_sender"
+    record = {"message_id": msg.get("message_id"), "date": msg.get("date"),
+              "recorded_at": datetime.now(timezone.utc).isoformat(),
+              "chat_id": chat_id, "sender_id": str(sender_id), "text": text}  # redacted at the _append_or_queue boundary
+    status = _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path, previous_text=previous_text)
+    # R6-F1 (cx-openai-3, 2026-11-04): the LOG must be derived from the SAME sanitised text as the row. These three
+    # lines rendered the original, so a correctly redacted continuation was stored safely and then logged in full.
+    safe = _log_text(redact_credentials(str(text), previous_text), 40)
+    if status == "recorded":
+        log.info(f"operator reply recorded: {safe} from chat={chat_id}")
+    elif status == "queued":
+        log.warning(f"operator reply queued for flush: {safe} from chat={chat_id}")
+    else:
+        log.error(f"operator reply neither recorded nor queued: {safe} from chat={chat_id}")
+    return status
+
+
+def _record_operator_outcome(msg: dict, text: str, chat_id: str, *, handled: bool,
+                             previous_text: str | None = None, replies_dir=None, pending_path=None) -> str:
+    """The second line of a reply pair: what happened to it after classification (cx-openai-3 F3).
+
+    A handled command (``/approve …``, a Schwab ``code=`` paste, a cap change) used to commit with no
+    coordinator copy at all. The message line is written BEFORE classification, so the reply always
+    reaches the inbox; this line carries the outcome and is paired by ``message_id``. It is evidence of
+    what the operator typed and what the system did — it is never treated as authority.
+    """
+    record = {"event": "outcome", "message_id": msg.get("message_id"),
+              "recorded_at": datetime.now(timezone.utc).isoformat(), "chat_id": chat_id,
+              "handled": bool(handled), "text": text}
+    return _append_or_queue(record, replies_dir=replies_dir, pending_path=pending_path, previous_text=previous_text)
+
+
+def _append_or_queue(record: dict, *, replies_dir=None, pending_path=None, previous_text: str | None = None) -> str:
+    """Inbox append first; on failure a durable queue; ``failed`` only when neither can be written.
+
+    THE redaction boundary: every record passes through here, both lines of a reply pair included, so a credential
+    cannot reach the inbox or the durable queue by a path that forgot to call the redactor.
+    """
+    if isinstance(record.get("text"), str):
+        raw = record["text"]
+        redacted = redact_credentials(raw, previous_text)
+        # FALLBACK, named rather than discovered (cc5 2026-11-04): with no previous message in this chat — the first
+        # message after a restart, a fresh chat, or a queue flush — the split-paste rule has no evidence to work from.
+        # The value is NOT deleted on a guess (that is what erased the operator's SHAs and paths); it is stored and
+        # MARKED, so the ambiguity is visible in the record instead of silent.
+        if redacted != raw and previous_text and _TRAILING_KEY_RE.search(str(previous_text).strip()):
+            record = {**record, "redaction_context": REDACTION_CONTEXT}
+        if redacted == raw and previous_text is None and _AMBIGUOUS_TOKEN_RE.match(raw.strip()):
+            record = {**record, "redaction_incomplete": True}
+        if record.get("redaction_incomplete"):
+            # THE CONSUMER (cc5, 2026-11-04): a marker nothing reads is the "stored silently" defect renamed. This is
+            # the poller log — the surface an operator and incident evidence actually read — and it says what is true:
+            # the value was kept because the text carried no evidence that it was a credential.
+            log.warning("operator reply stored UNVERIFIED-REDACTION: no preceding key, value left intact "
+                        f"(chat={record.get('chat_id')}, message={record.get('message_id')}); "
+                        "review it if it may be a credential")
+        record = {**record, "text": redacted}
+    line = json.dumps(record, ensure_ascii=False) + "\n"
+    try:
+        directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
+        _append_private(directory / "telegram.jsonl", line)
+        return "recorded"
+    except Exception as exc:  # noqa: BLE001 — the inbox fault must not lose the reply
+        log.warning(f"operator reply inbox write failed ({exc}); queueing durably")
+    try:
+        queue = Path(pending_path) if pending_path is not None else _operator_replies_pending_path()
+        _append_private(queue, line)
+        return "queued"
+    except Exception as exc:  # noqa: BLE001
+        log.error(f"operator reply queue write failed: {exc}")
+        return "failed"
+
+
+def _flush_operator_replies(*, replies_dir=None, pending_path=None) -> int:
+    """Move queued replies into the inbox. At-least-once: the queue is truncated only after the append."""
+    queue = Path(pending_path) if pending_path is not None else _operator_replies_pending_path()
+    try:
+        lines = [line for line in queue.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except OSError:
+        return 0
+    if not lines:
+        return 0
+    directory = Path(replies_dir) if replies_dir is not None else _operator_replies_dir()
+    try:
+        _append_private(directory / "telegram.jsonl", "\n".join(lines) + "\n")
+    except Exception as exc:  # noqa: BLE001 — still not writable; keep the queue for the next poll
+        log.warning(f"operator reply flush deferred: {exc}")
+        return 0
+    try:
+        queue.write_text("", encoding="utf-8")
+    except OSError as exc:  # a crash here re-delivers the same lines; message_id keeps them identifiable
+        log.warning(f"operator reply queue not cleared after flush: {exc}")
+    log.info(f"operator replies flushed from the durable queue: {len(lines)}")
+    return len(lines)
+
+
 def poll_once(timeout=25):
     """Single long-poll iteration. Returns number of updates processed."""
-    import urllib.request
+    try:
+        _flush_operator_replies()
+    except Exception as exc:  # noqa: BLE001 — a flush fault never stalls the poll
+        log.warning(f"operator reply flush error: {exc}")
 
     token = _token()
     if not token:
@@ -185,14 +474,59 @@ def poll_once(timeout=25):
     allowed = _allowed_chats()
     processed = 0
 
+    #: The previous AUTHENTICATED OPERATOR message, keyed by (room, sender). Identity, not room: a refused group member
+    #: must never become the operator's redaction context (R6-F2, cx3 2026-11-04 — an outsider's refused '{"code": '
+    #: redacted the operator's next reply, and an outsider's refused ordinary text CLEARED a real credential
+    #: predecessor). Advanced only after authentication succeeds.
+    #:
+    #: RESET, stated plainly: this map lives for ONE poll. There is no durable loader, so a split paste that straddles
+    #: two polls — and every first message after a restart — has no context; those rows are stored with
+    #: `redaction_incomplete` and the unverified-redaction warning. Context survival is not claimed.
+    last_text_by_operator: dict[tuple[str, str], str] = {}
     for update in results:
         uid = update.get("update_id")
+        this_prev: str | None = None      # the previous message in THIS chat, for the split-paste rule
 
         if inbound is not None:
-            # Replay denial: skip updates already committed by a prior poll.
+            # Replay denial: skip updates already committed by a prior poll. The claim is taken BEFORE the
+            # coordinator copy so a redelivery does not duplicate a line that is already durable.
             claim = inbound["claim_update"](uid)
             if claim.already_processed:
                 continue
+
+        # The coordinator copy is attempted BEFORE anything can commit a checkpoint — including the ATOMIC
+        # path, whose process_update_atomically commits inside the persist call below (cx-openai-4 R2a,
+        # 2026-11-03: the ordering fix had covered only the legacy path). If this append and its durable
+        # queue both fail, NO checkpoint is committed for this update and the whole batch stops, so a later
+        # update cannot stride over the failed reply (R2b).
+        early_msg = update.get("message") or {}
+        early_chat = str((early_msg.get("chat") or {}).get("id", ""))
+        early_text = (early_msg.get("text") or "").strip()
+        early_sender = str((early_msg.get("from") or {}).get("id") or "")
+        this_prev = last_text_by_operator.get((early_chat, early_sender))
+        # The safe rendering of this update's text, from the SAME context and the SAME function as its rows. Every log
+        # line below uses it; the raw text is kept only for ephemeral handler processing.
+        safe_text = redact_credentials(early_text, this_prev)
+        reply_status = None
+        if early_chat and early_text and early_chat in allowed:
+            reply_status = _record_operator_reply(
+                early_msg, early_text, early_chat, allowed=allowed,
+                chat_type=(early_msg.get("chat") or {}).get("type"),
+                sender_id=(early_msg.get("from") or {}).get("id"),
+                previous_text=this_prev)
+            if reply_status in ("recorded", "queued"):
+                # ONLY an authenticated operator event advances the context: refused_sender / refused_chat /
+                # refused_room / blank / failed never do (R6-F2).
+                last_text_by_operator[(early_chat, early_sender)] = early_text
+            if reply_status == "failed":
+                log.error(f"operator reply neither recorded nor queued; stopping the batch before any "
+                          f"checkpoint (update {uid})")
+                # the batch stops; the caller must not advance the checkpoint (R2b)
+                break
+
+        # (the early coordinator copy lives above this point, before any checkpoint can commit)
+
+        if inbound is not None:
             # Persist a canonical INBOUND event before business processing (C3).
             #
             # SFR-I-RUNTIME-001: route through Lane I so the operator reply
@@ -222,12 +556,15 @@ def poll_once(timeout=25):
                     pass
                 continue
         else:
-            _save_offset(uid)
             used_atomic = False
 
         def _commit_if_legacy():
-            # Atomic path already committed inside process_update_atomically.
-            if inbound is not None and not used_atomic:
+            # Atomic path already committed inside process_update_atomically. Without the inbound
+            # machinery the durable checkpoint IS the offset file, so it must advance here — never
+            # before the operator reply has been recorded or queued (cx-openai-4 R2).
+            if inbound is None:
+                _save_offset(uid)
+            elif not used_atomic:
                 inbound["commit_checkpoint"](uid)
 
         # Handle callback queries (inline button presses)
@@ -256,6 +593,11 @@ def poll_once(timeout=25):
         if chat_id not in allowed or not text:
             _commit_if_legacy()
             continue
+
+        # cx-openai-3 F3: the coordinator copy was written ABOVE, before any checkpoint could be committed
+        # and before handler classification — so a handled command ("/approve …", a Schwab `code=` paste, a
+        # cap change) still leaves a message line, and the outcome line below says what happened to it.
+        authenticated = reply_status in ("recorded", "queued")
 
         # Route all recognized commands
         lower = text.lower()
@@ -342,6 +684,18 @@ def poll_once(timeout=25):
             except Exception as e:
                 log.error(f"schwab callback error: {e}")
 
+        # The outcome half of the reply pair, written before the checkpoint for the same reason: a
+        # durable record of what happened must exist even for a reply a handler consumed.
+        if authenticated:
+            # The outcome line belongs to THIS message, so it uses the same previous message the message line did —
+            # not the map after it was advanced (that would make the outcome its own predecessor).
+            outcome_status = _record_operator_outcome(msg, text, chat_id, handled=handled,
+                                                     previous_text=this_prev)
+            if outcome_status == "failed":
+                log.error(f"operator reply outcome neither recorded nor queued; stopping the batch (update {uid})")
+                # same contract as the message line: a lost outcome is not a reason to keep going
+                break
+
         # Legacy path: inbound event is persisted; advance the durable
         # checkpoint so a crash or replayed poll does not re-deliver.
         # Atomic path already committed inside process_update_atomically.
@@ -349,10 +703,9 @@ def poll_once(timeout=25):
 
         # Free text nobody routed. Until now this fell off the end of the loop:
         # the message was persisted, bound to a subject and receipted, and the
-        # operator got silence. Placed AFTER the checkpoint commit on purpose --
-        # the atomic path committed inside process_update_atomically and the
-        # legacy path commits just above, so an answer that fails to compose can
-        # neither lose the message nor cause it to be redelivered.
+        # operator got silence. The checkpoint is committed just above, so an
+        # answer that fails to compose can neither lose the message nor cause it
+        # to be redelivered.
         if not handled:
             try:
                 from scripts.lib import cio_poller_reply
@@ -368,19 +721,20 @@ def poll_once(timeout=25):
                     processed += 1
                     if ans.get("delivered") is False:
                         log.error(
-                            f"reply NOT delivered (status={ans.get('delivery_status')}): {text[:40]} from chat={chat_id}"
+                            f"reply NOT delivered (status={ans.get('delivery_status')}): "
+                            f"{_log_text(safe_text, 40)} from chat={chat_id}"
                         )
                     else:
-                        log.info(f"replied: {text[:40]} from chat={chat_id}")
+                        log.info(f"replied: {_log_text(safe_text, 40)} from chat={chat_id}")
                 elif ans.get("reason") not in ("flag_off", "not_allowlisted"):
-                    log.info(f"reply skipped ({ans.get('reason')}): {text[:40]}")
+                    log.info(f"reply skipped ({ans.get('reason')}): {_log_text(safe_text, 40)}")
             except Exception as e:
                 # A responder fault must never stall the poll loop.
                 log.error(f"cio reply error: {e}")
 
         if handled:
             processed += 1
-            log.info(f"command: {text[:40]} from chat={chat_id}")
+            log.info(f"command: {_log_text(safe_text, 40)} from chat={chat_id}")
 
     return processed
 
@@ -1156,7 +1510,7 @@ def _handle_schwab_callback(msg, text, chat_id):
     """Operator pasted a Schwab OAuth redirect URL containing ?code=.
     Auto-extract the code, exchange for a token, and reply with status."""
     message_id = msg.get("message_id")
-    log.info(f"schwab callback from chat={chat_id}: {text[:80]}...")
+    log.info(f"schwab callback from chat={chat_id}: {_log_text(redact_credentials(text), 80)}...")
 
     # Extract the full redirect URL (the user may have pasted extra text)
     import re as _re

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "releases_coordination_20261102",
+  "files": [
+    "tests/test_releases_coordination_20261102.py"
+  ],
+  "anchor": "RELEASES_COORDINATION_20261102",
+  "comment": [
+    "2026-11-02 (operator-requested Releases page fix): the coordination view is read-only and must not",
+    "invent evidence. The suite pins head-bound review/CI, BLOCK dominance over MERGE, no inference from",
+    "merge state or draft status, a bounded worklog parse through the canonical parser, BOARD primary",
+    "agents plus the Open-PRs fallback, and the adversarial cases (future heartbeat, BOARD-absent fallback,",
+    "empty or headless evidence). Reviewer finding: this file was not registered, so CI ran the view."
+  ]
+}

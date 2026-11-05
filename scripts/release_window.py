@@ -81,7 +81,7 @@ MIN_GRANT_USES = 2            # prepare + promote each consume one use (release_
 # cio-hardening, agent-governance, release-readiness). release_grant_preflight.REQUIRED_PUSH_WORKFLOWS names only
 # the first two, so its `ok` can be true while release-readiness is missing or still running.
 REQUIRED_TRAIN_WORKFLOWS = (
-    ".github/workflows/cio-production-hardening-ci.yml",
+    ".github/workflows/cio-full-suite-sharded.yml",
     ".github/workflows/agent-governance.yml",
     ".github/workflows/release-readiness.yml",
 )

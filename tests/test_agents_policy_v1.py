@@ -208,7 +208,8 @@ DENIALS = (
     "no broker subsystem access",
     "no behavior writes",
     "no live credentials, endpoints, 2FA, deploy, live flags, or real broker calls",
-    "no merge and no deploy without exact-SHA operator approval",
+    "may merge only under §25.10.3 or the ratified standing authority in §25.10.4",
+    "no self-approval or deployment authority",
     "never an LLM agent",
 )
 
