@@ -15,6 +15,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
@@ -190,3 +192,79 @@ def test_status_prints_the_three_way_split(monkeypatch, capsys):
     assert hc["behind_tip_no_longer_covering"] == 2, "both behind claims name a path that changed"
     assert hc["not_on_branch"] == 1
     assert hc["unresolved"] == 0
+
+
+# ── the WIRING, not just the helper (cc-deepseek-5 BLOCK at fb9c88e05, F2) ──────────────────────────────────────────
+# A test that stays green when the protection is removed is worse than no test, because it is counted as evidence.
+# These drive the real command against a real (tiny) repository, so deleting the call site fails them.
+
+import subprocess  # noqa: E402
+
+
+def _git_run(repo, *args):
+    p = subprocess.run(["git", "-C", str(repo), "-c", "user.email=t@example.invalid", "-c", "user.name=t", *args],
+                       capture_output=True, text=True, timeout=60)
+    assert p.returncode == 0, f"git {args}: {p.stderr}"
+    return p.stdout.strip()
+
+
+@pytest.fixture()
+def git_repo(tmp_path):
+    """A repo with two branches: wt/claim-target (the claim's) and wt/stranger (a foreign head on top of it)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git_run(repo, "init", "-q", "-b", "main")
+    (repo / "AGENTS.md").write_text((ROOT / "AGENTS.md").read_text(encoding="utf-8")[:4000], encoding="utf-8")
+    _git_run(repo, "add", "AGENTS.md")
+    _git_run(repo, "commit", "-q", "-m", "root")
+    _git_run(repo, "checkout", "-q", "-b", "wt/claim-target")
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    _git_run(repo, "add", "a.py")
+    _git_run(repo, "commit", "-q", "-m", "claim work")
+    _git_run(repo, "checkout", "-q", "-b", "wt/stranger")
+    (repo / "b.py").write_text("y = 2\n", encoding="utf-8")
+    _git_run(repo, "add", "b.py")
+    _git_run(repo, "commit", "-q", "-m", "foreign work")
+    _git_run(repo, "checkout", "-q", "wt/claim-target")
+    return repo
+
+
+def _claim_on(repo, tmp_path, monkeypatch, branch="wt/claim-target"):
+    monkeypatch.chdir(repo)
+    argv = ["--claims-dir", str(tmp_path / "claims"), "--session", "s1", "--vendor", "claude"]
+    assert CLI.main([*argv, "claim", "--task", "t", "--paths", "a.py", "--branch", branch]) == 0
+    return sorted((tmp_path / "claims").glob("*.json"))[0].stem, argv
+
+
+def test_the_command_does_not_stamp_a_foreign_head(git_repo, tmp_path, monkeypatch, capsys):
+    cid, argv = _claim_on(git_repo, tmp_path, monkeypatch)
+    recorded = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())["head_sha"]
+    _git_run(git_repo, "checkout", "-q", "wt/stranger")
+    assert CLI.main([*argv, "heartbeat", cid]) == 0
+    err = capsys.readouterr().err
+    after = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())
+    assert after["head_sha"] == recorded, "the claim must keep its head; this is the call site, not the helper"
+    assert "not on claim" in err, err
+    assert "wt/stranger" not in after["branch"]
+
+
+def test_the_strict_env_turns_the_foreign_head_into_a_refusal(git_repo, tmp_path, monkeypatch, capsys):
+    cid, argv = _claim_on(git_repo, tmp_path, monkeypatch)
+    recorded = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())["head_sha"]
+    _git_run(git_repo, "checkout", "-q", "wt/stranger")
+    monkeypatch.setenv(CLI.HEAD_STRICT_ENV, "1")
+    assert CLI.main([*argv, "heartbeat", cid]) == 2
+    assert "refused:" in capsys.readouterr().err
+    assert json.loads((tmp_path / "claims" / f"{cid}.json").read_text())["head_sha"] == recorded
+
+
+def test_branch_walks_around_the_guard_and_is_refused_as_a_reclaim(git_repo, tmp_path, monkeypatch, capsys):
+    """cc-deepseek-5's F1: validated against the old branch, written against the new one."""
+    cid, argv = _claim_on(git_repo, tmp_path, monkeypatch)
+    before = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())
+    assert CLI.main([*argv, "heartbeat", cid, "--branch", "main"]) == 2
+    err = capsys.readouterr().err
+    after = json.loads((tmp_path / "claims" / f"{cid}.json").read_text())
+    assert "would re-point it" in err, err
+    assert after["branch"] == before["branch"] == "wt/claim-target"
+    assert after["head_sha"] == before["head_sha"]

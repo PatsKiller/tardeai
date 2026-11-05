@@ -232,6 +232,12 @@ def head_position(branch: str | None, head_sha: str | None, paths, cwd: str | Pa
     ``position`` is one of ``at_tip``, ``behind_tip``, ``not_on_branch`` or ``unresolved``. ``paths_changed`` counts
     the claim's own claimed paths that differ between the recorded head and the branch tip -- the difference between
     "behind, harmless" and "behind, and no longer covers what is being pushed".
+
+    ``unresolved`` FAILS OPEN, deliberately and for two reasons: there is no local ``refs/heads/<branch>`` (the branch
+    may exist only on ``origin``, or the claim may name a branch that was never created locally), or the claim records no
+    branch/head at all. In that state the guard is silently absent -- it stamps what the caller's tree says, exactly as
+    before FQ-152 -- because guessing a tip from ``origin/<branch>`` would let a remote ref decide whether a local claim
+    is corrupt. A caller that needs certainty can compare ``branch_tip`` for None (cc-deepseek-5's N1).
     """
     out = {"position": "unresolved", "branch_tip": None, "commits_behind": None, "paths_changed": None}
     if not branch or not head_sha:
@@ -409,9 +415,19 @@ def cmd_heartbeat(a: argparse.Namespace) -> int:
         # FQ-152: only a HEAD that belongs to the claim's own branch may be stamped. A tree left on a review head or
         # another branch's worktree used to overwrite the claim with an unrelated commit, silently, which is why 9 of
         # 152 live claims could never satisfy a claim-at-head gate.
+        # FQ-152 repair (cc-deepseek-5 BLOCK at fb9c88e05): --branch walked around the guard, because the check used
+        # the claim's OLD branch while the write used the new one. A branch change is a re-claim, not a heartbeat, so it
+        # is refused before anything is validated or written.
+        if a.branch and prev.get("branch") and a.branch != prev.get("branch"):
+            print(
+                f"refused: claim {a.claim_id} is for branch {prev.get('branch')}; --branch {a.branch} would re-point it. "
+                f"Claim the new branch instead (agent_claim.py claim --branch {a.branch}), then heartbeat there.",
+                file=sys.stderr,
+            )
+            return 2
         branch = a.branch or prev.get("branch")
         guard = heartbeat_head_guard(
-            prev.get("branch"), head, prev.get("paths") or [], top, claim_id=a.claim_id,
+            branch, head, prev.get("paths") or [], top, claim_id=a.claim_id,
             strict=bool(getattr(a, "strict_head", False)) or os.environ.get(HEAD_STRICT_ENV) == "1",
         )
         stamp = guard["stamp"]
