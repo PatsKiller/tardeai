@@ -5,7 +5,8 @@
     "tests/test_agents_policy_30_0_0.py",
     "tests/test_pr_all_checks_standing_20261102.py",
     "tests/test_guard_standing_policy_20261102.py",
-    "tests/test_pr_merge_delegation_20261102.py"
+    "tests/test_pr_merge_delegation_20261102.py",
+    "tests/test_pr_merge_delegation_effective_state.py"
   ],
   "anchor": "AGENTS_POLICY_30_0_0",
   "comment": [
