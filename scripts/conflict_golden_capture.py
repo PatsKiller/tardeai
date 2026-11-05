@@ -34,7 +34,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 SCHEMA = "ConflictGoldenFixture@v1"
 NO_CONSUMER_REASON = "operator/agent capture CLI; its private output feeds scripts/conflict_golden_anonymize.py"
 CARD_FIELDS = ("symbol", "security_guid", "trade_ai_state", "trade_ai_as_of")
-TRUTH_FIELDS = ("security_guid", "symbol", "canonical", "conviction", "context", "protection_inputs", "gap")
+TRUTH_FIELDS = ("security_guid", "symbol", "canonical", "conviction", "context", "protection_inputs",
+                "saved_diagnostics", "gap")
 
 
 def _load(path):
@@ -98,7 +99,9 @@ def build(*, watch_pages, holdings, risk, cio_shadow, reentry_snapshot, state_ro
         truth = security_inputs_for(guid, document=document, projection=projection, now=now)
         truth["symbol"] = symbol
         truth.setdefault("context", {})["concentration_policy"] = policy_for_security(guid, document=document)
-        truth = {k: truth.get(k) for k in TRUTH_FIELDS}      # what security_inputs_from_truth reads, plus the gap
+        # Exactly what security_inputs_from_truth reads. saved_diagnostics feeds ownership_facts (R12):
+        # dropping it would replay a different conflict truth than the decision this capture records.
+        truth = {k: truth.get(k) for k in TRUTH_FIELDS}
         subjects.append({"symbol": symbol, "identity_status": identity.get("identity_status"), "truth": truth,
                          "card": cards.get(symbol), "reentry": desk.get(symbol)})
     return {"schema": SCHEMA, "captured_at": captured_at, "now": now.isoformat(),
