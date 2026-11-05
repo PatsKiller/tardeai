@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_usage_monitor_realert_20261104",
+  "files": [
+    "tests/test_disk_usage_monitor_20261104.py"
+  ],
+  "anchor": "DISK_USAGE_MONITOR_REALERT_20261104",
+  "comment": [
+    "ANCHOR: DISK_USAGE_MONITOR_REALERT_20261104 — the disk monitor alerts on one clock: the first thing ever said",
+    "about a mount is immediate, and after that nothing is said until realert_minutes has passed, so a band that",
+    "STAYS bad keeps being reported (a 23-hour critical band used to be one alert and then silence), a flapping band",
+    "cannot storm (96 alerts in 24 hours), and a future stamp left by a clock correction is treated as due rather",
+    "than as silence. Every band inherits the interval through metric_policy, so a new band cannot be a one-shot."
+  ]
+}

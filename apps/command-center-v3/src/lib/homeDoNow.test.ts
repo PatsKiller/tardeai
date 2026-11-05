@@ -1,11 +1,25 @@
 import {
   doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
 } from './homeDoNow.ts'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, opportunitiesQuery, isHomeBestOpportunities } from './bestOpportunities.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
 function check(name: string, cond: boolean) {
   if (cond) { pass++; console.log(`  [PASS] ${name}`) } else { fail++; console.log(`  [FAIL] ${name}`) }
 }
+const homeBestSearch = new URL(BEST_OPPORTUNITIES_PATH, 'https://synthetic.invalid').searchParams
+check('Home best link carries the producer top5 preset', homeBestSearch.get('tab') === 'opportunities' && homeBestSearch.get('preset') === 'top5')
+check('Home API uses the same canonical preset', new URL(BEST_OPPORTUNITIES_API, 'https://synthetic.invalid').search === '?preset=top5')
+check('focused Watch request cannot inject the old limit100 override', JSON.stringify(opportunitiesQuery(homeBestSearch)) === '{"preset":"top5"}')
+check('Home best route is focused', isHomeBestOpportunities(homeBestSearch))
+check('mobile detail state does not change the selection', isHomeBestOpportunities(new URLSearchParams('tab=opportunities&preset=top5&detail=ZZAA')))
+check('explicit canonical sort/page remain focused', isHomeBestOpportunities(new URLSearchParams('preset=top5&sort=conviction&limit=5&page=1')))
+check('custom research limit is not labeled the Home selection', !isHomeBestOpportunities(new URLSearchParams('preset=top5&limit=100')))
+check('custom research sort is not labeled the Home selection', !isHomeBestOpportunities(new URLSearchParams('preset=top5&sort=rr')))
+check('position research filter is retained and not labeled Home', opportunitiesQuery(new URLSearchParams('preset=top5&position=formerly_held')).position === 'formerly_held' && !isHomeBestOpportunities(new URLSearchParams('preset=top5&position=formerly_held')))
+check('ordinary Full universe keeps100 default', opportunitiesQuery(new URLSearchParams('tab=opportunities')).limit === '100')
+check('other research presets retain their existing pagination default', opportunitiesQuery(new URLSearchParams('preset=new')).limit === '100')
+check('explicit research limit is preserved', opportunitiesQuery(new URLSearchParams('limit=20')).limit === '20')
 const now = Date.parse('2026-10-22T15:00:00Z') // 11:00 ET, Thursday — market hours
 const it = (id: string, category: string, severity: string, m: number | null = null) => ({
   id, category, severity, title: id, why: 'w', action: { label: 'Go', where: '/v3/risk?symbol=X' }, money_at_risk_usd: m,

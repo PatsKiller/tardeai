@@ -291,5 +291,16 @@ check('the short price stamp keeps quote coverage on the face',
   /shortPriceStamp\([\s\S]{0,200}quoteCovered, quoteTotal/.test(code))
 check('a date-only clock on a tile face is shown as its date', code.includes('dateOnlyPart(asOfRaw) ??'))
 
+// P3 (cc-deepseek-8 WHOLEHEAD at 757ef398d). The portfolio tip suffix
+// interpolated overviewFresh.reason unconditionally on the stale path, but
+// overviewSurfaceFreshness returns reason: null on the fresh path. A tile that
+// was stale for the POSITION clock (portfolioStaleObs) while the surface clock
+// was fresh therefore rendered a trailing " · null". The suffix must fall back
+// to oldestLine, which always has a non-empty last resort ("oldest —").
+const bareReasonSuffix = /\$\{portfolioSurfaceStale \? ` · \$\{overviewFresh\.reason\}` : ''\}/
+check('the portfolio tip never interpolates a null staleness reason',
+  !bareReasonSuffix.test(code) && code.includes('${overviewFresh.reason || oldestLine}'))
+check('oldestLine has a non-empty last resort', /: 'oldest —'/.test(code))
+
 console.log(`\nmetric_strip_header_truth: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
