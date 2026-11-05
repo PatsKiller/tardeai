@@ -163,6 +163,14 @@ def test_15_build_marker_visible_for_deployment_verification():
     assert "__ANALYST_UI_VERSION__" in identity and "__CC_BUNDLE_SOURCE_SHA__" in identity
     assert "LOADED_BUILD" in src and "compareServedBuild(LOADED_BUILD, served)" in src
     assert "build-meta" in src and "Loaded bundle:" in src
+    # FQ-081: the marker is still compiled and still machine-readable, but the identifiers now sit inside the
+    # Diagnostics disclosure rather than in the footer's normal reading line (which keeps the served-artifact verdict).
+    start = src.index("data-testid=\"build-diagnostics\"")
+    end = src.index("</details>", start)
+    assert "Loaded bundle:" in src[start:end], "build identifiers must be inside the Diagnostics disclosure"
+    head = src.index('data-testid="cc-loaded-build"')
+    assert "Loaded bundle:" not in src[head:start], "identifiers must not also sit in the visible part"
+    assert "Running the artifact the server serves" in src[head:start] or "Serves" in src[head:start] or "artifact" in src[head:start]
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():
