@@ -10,14 +10,16 @@
  *   - side-effect GET routes (/v2/morning-brief, /v2/bot-morning-brief, ?refresh=, ?force=) are aborted too;
  *   - buttons whose text/aria matches WRITE_WORDS are never clicked; confirm()/alert() are dismissed.
  *
- * Load protection: one page, one context; portfolio-server MemoryCurrent checked before every route
- * (pause 30s above 1.2 GB, abort above 1.3 GB). Refuses production 04:00–16:15 ET Mon–Fri (§28.8).
+ * Load protection: one page, one context; 4 s pacing between route×viewport navigations on a production
+ * base (SWEEP_PACE_MS, default 4000; 0 off-production); portfolio-server MemoryCurrent checked before every
+ * route (pause 30s above 1.2 GB, abort above 1.3 GB). Refuses production 04:00–16:15 ET Mon–Fri (§28.8).
  *
  * Run through scripts/site_sweep.sh. Env:
  *   SWEEP_BASE_URL   default http://127.0.0.1:7777
  *   SWEEP_OUT_DIR    output directory (findings.json, summary.md, shots/)
  *   SWEEP_ROUTES     optional comma list of route substrings to restrict the sweep
  *   SWEEP_VIEWPORTS  optional comma list of viewport names (m412,m390,d1440)
+ *   SWEEP_PACE_MS    ms between route×viewport navigations (default 4000 for a production base, 0 otherwise)
  *   SWEEP_NO_ROUTER_ONLY=1  skip routes that exist only in the router source (not on the nav rail)
  *   SWEEP_READER_HEADER / SWEEP_READER_TOKEN_FILE  read-only agent identity (config/cc_auth.yaml agent_reader;
  *                    scripts/site_sweep.sh fills both). The header is added ONLY to GET/HEAD requests to SWEEP_BASE_URL,
@@ -104,6 +106,16 @@ function etParts(d = new Date()) {
 }
 function isProduction(base: string): boolean {
   return /\/\/(127\.0\.0\.1|localhost|\[::1\]):7777\b/.test(base) || /ms01-openclaw\./.test(base)
+}
+// Operator live-crawl condition: 4 s pacing between pages. A production base defaults to 4000 ms; a
+// non-production base defaults to no pacing. SWEEP_PACE_MS overrides either way.
+const PACE_MS = (() => {
+  const raw = (process.env.SWEEP_PACE_MS || '').trim()
+  if (raw) { const n = Number(raw); return Number.isFinite(n) && n >= 0 ? n : 0 }
+  return isProduction(BASE) ? 4_000 : 0
+})()
+async function pace(): Promise<void> {
+  if (PACE_MS > 0) await new Promise(r => setTimeout(r, PACE_MS))
 }
 function marketWindowRefusal(): string | null {
   if (!isProduction(BASE)) return null
@@ -663,6 +675,7 @@ async function main() {
     const vps = r.source === 'nav' ? VIEWPORTS : VIEWPORTS.filter(v => v.name === 'm412').concat(VIEWPORTS.length && !VIEWPORTS.some(v => v.name === 'm412') ? [VIEWPORTS[0]] : [])
     for (const vp of vps) {
       if (!await memoryGate()) { console.error(`[sweep] ABORT: ${aborted}`); break outer }
+      await pace() // operator live-crawl condition: 4 s between route×viewport navigations on production
       await sweepRoute(ctx, r.route, vp, r.source)
       writeReport(todo) // incremental: a crash keeps what was found
     }
