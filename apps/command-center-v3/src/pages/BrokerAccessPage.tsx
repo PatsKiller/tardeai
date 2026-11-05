@@ -14,6 +14,7 @@ import { accountName } from '../lib/accountLabels'
 import './OpsEvidencePages.css'
 import { observedTime } from '../lib/w9PageModel'
 import OpsDeskFrame from '../components/OpsDeskFrame'
+import { brokerRowSentence, diagnosticsOf, operatorLogSummary, plainState, type Diagnostic } from '../lib/brokerAccessPlain'
 
 type State = 'OK' | 'STALE' | 'DEGRADED' | 'PAUSED' | 'NEEDS_REAUTH'
 type Step = { name?: string; rc?: number | null; signals?: string[] }
@@ -69,6 +70,17 @@ function CopyLine({ text, label }: { text: string; label: string }) {
   </div>
 }
 
+/** FQ-066: raw codes, exit values and field identifiers stay in the page, behind this. */
+function Diagnostics({ rows, label = 'Diagnostics' }: { rows: Diagnostic[]; label?: string }) {
+  return <details data-testid="broker-diagnostics" style={{ minWidth: 0 }}>
+    <summary style={{ cursor: 'pointer', fontSize: TYPE.sm, color: TOKENS.text[2], minHeight: 44, display: 'flex', alignItems: 'center' }}>{label}</summary>
+    <dl style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, auto) 1fr', gap: '2px 10px', margin: '6px 0 0' }}>
+      {rows.map(r => [<dt key={`${r.label}-k`} style={{ fontSize: TYPE.xs, color: TOKENS.text[2], fontWeight: 800 }}>{r.label}</dt>,
+        <dd key={`${r.label}-v`} style={{ margin: 0, fontFamily: FONT.mono, fontSize: TYPE.xs, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{r.value}</dd>])}
+    </dl>
+  </details>
+}
+
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return <div style={panel}><h2 style={h2}>{title}</h2>{children}</div>
 }
@@ -83,11 +95,6 @@ function Table({ label, heads, rows }: { label: string; heads: string[]; rows: A
       </tbody>
     </table>
   </div>
-}
-
-function StepSummary({ step }: { step?: Step | null }) {
-  if (!step) return <span style={{ color: TOKENS.text[3] }}>not in log</span>
-  return <span>{step.rc == null ? 'Result not recorded' : step.rc === 0 ? 'Completed' : `Failed (exit ${step.rc})`}{step.signals?.length ? ` · ${step.signals.join(', ').replace(/_/g, ' ')}` : ''}</span>
 }
 
 function ReloginBlock({ r }: { r?: Relogin }) {
@@ -141,9 +148,21 @@ export default function BrokerAccessPage() {
 
     <Panel title="Schwab login (token state)">
       {d?.schwab_tokens?.db === 'unavailable' ? <p role="alert" style={muted}>Token store unreadable. Token state is unknown, not assumed healthy.</p> : null}
-      <Table label="Schwab token state per account" heads={['Account', 'State', 'Days left', 'True expiry', 'Last login', 'Last error', 'Reason']}
-        rows={(d?.schwab_tokens?.accounts || []).map(t => [accountName(t.account_key), <StateChip state={t.state} />, t.days_left ?? '—', et(t.true_expiry), et(t.last_login),
-          t.last_error || (t.last_failed_event ? `${s(t.last_failed_event.event)} ${s(t.last_failed_event.status)} ${et(t.last_failed_event.at)}` : '—'), t.reason])} />
+      <Table label="Schwab token state per account" heads={['Account', 'State', 'Days left', 'True expiry', 'Last login', 'Last error', 'What it means']}
+        rows={(d?.schwab_tokens?.accounts || []).map(t => {
+          const failed = !!(t.last_error || t.last_failed_event)
+          return [accountName(t.account_key), <StateChip state={t.state} />, t.days_left ?? '—', et(t.true_expiry), et(t.last_login),
+            failed ? `Login failed${t.last_failed_event?.at ? ` ${et(t.last_failed_event.at)}` : ''}` : '—',
+            <span>
+              <span>{plainState(t.state, t.reason).words}.</span>
+              <Diagnostics rows={[
+                { label: 'Reported state', value: s(t.state) },
+                { label: 'Reason code', value: s(t.reason) },
+                { label: 'Last error', value: s(t.last_error) },
+                { label: 'Failed event', value: t.last_failed_event ? `${s(t.last_failed_event.event)} ${s(t.last_failed_event.status)}` : 'not recorded' },
+              ]} label="Diagnostics" />
+            </span>]
+        })} />
       <p style={muted}>Auto-reauth: {s(auto.mode)}; proactive on day {s(auto.reauth_at_days)} ({s(auto.proactive_due_at ? et(auto.proactive_due_at) : null)}), hours {Array.isArray(auto.allowed_hours_local) ? (auto.allowed_hours_local as number[]).join('–') : '—'} local, due now {auto.due_now ? 'yes' : 'no'}. Last attempt {et(auto.last_attempt_at)}: {s(auto.last_result)} {auto.last_error ? `(${String(auto.last_error)})` : ''}</p>
     </Panel>
 
@@ -156,12 +175,25 @@ export default function BrokerAccessPage() {
     </Panel>
 
     <Panel title="Sync freshness by broker">
-      <Table label="Broker sync freshness" heads={['Source', 'State', 'Last success', 'Operator log step', 'Reason']}
-        rows={(d?.brokers || []).map(b => {
-          const state = b.state
-          return [b.label, <span><StateChip state={state} />{(b.flags || []).filter(f => f !== state && f !== 'OK').map(f => <Chip key={f} tone={STATE_TONE[f as State] || 'warning'} style={{ marginLeft: 4 }}>{STATE_LABEL[f as State] || f.replace(/_/g, ' ')}</Chip>)}</span>,
-            et(b.last_success_at), <StepSummary step={b.operator_log_step} />, <span>{b.reason}{b.note ? <span style={{ display: 'block', color: TOKENS.text[2] }}>{b.note}</span> : null}</span>]
-        })} />
+      {!(d?.brokers || []).length ? <p style={muted}>No broker connections are reported.</p> : null}
+      <div style={{ display: 'grid', gap: 8, minWidth: 0 }}>
+        {(d?.brokers || []).map(b => {
+          const m = brokerRowSentence(b)
+          const plain = plainState(b.state, b.reason)
+          return <div key={b.id} data-testid={`broker-row-${b.id}`} style={{ display: 'grid', gap: 6, padding: 10, minWidth: 0,
+            background: TOKENS.bg[2], border: `1px solid ${TOKENS.borderSubtle}`, borderRadius: RADIUS.md }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: TYPE.base, fontWeight: 800, color: TOKENS.text[0] }}>{b.label}</span>
+              <StateChip state={b.state} />
+            </div>
+            <p data-testid={`broker-sentence-${b.id}`} style={{ margin: 0, fontSize: TYPE.sm, color: TOKENS.text[1] }}>{m.headline}</p>
+            <p data-testid={`broker-next-${b.id}`} style={{ margin: 0, fontSize: TYPE.sm, color: TOKENS.text[1], fontWeight: 700 }}>{m.nextStep}</p>
+            {b.note ? <p style={{ margin: 0, fontSize: TYPE.xs, color: TOKENS.text[2] }}>{b.note}</p> : null}
+            <Diagnostics rows={diagnosticsOf(b)} label={`Diagnostics for ${b.label}`} />
+            <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }} aria-label={plain.words}>Last success {et(b.last_success_at)}</span>
+          </div>
+        })}
+      </div>
     </Panel>
 
     <Panel title="Stop health">
@@ -183,9 +215,13 @@ export default function BrokerAccessPage() {
         {' '}Disabled: {s(cmd?.run_action?.reason)}.
       </p>
       <h3 style={{ ...h2, fontSize: TYPE.sm, marginTop: 10 }}>Latest operator run {log?.present ? `· ${s(log.mode)} · ${et(log.ran_at)} · release ${s(log.release)}` : ''}</h3>
-      {log?.present ? <Table label="Operator sync log steps" heads={['Step', 'Exit', 'Signals']}
-        rows={(log.steps || []).map(st => [s(st.name), <Chip tone={st.rc === 0 ? 'neutral' : 'danger'}>rc={s(st.rc)}</Chip>, (st.signals || []).join(', ') || '—'])} />
-        : <p style={muted}>{s(log?.note)}</p>}
+      {log?.present ? <>
+        <p style={muted}>{operatorLogSummary(log.steps)}</p>
+        <Diagnostics label="Diagnostics: every step, exit code and signal"
+          rows={(log.steps || []).flatMap(st => [
+            { label: s(st.name), value: `exit ${s(st.rc)} · ${(st.signals || []).join(', ') || 'no signals'}` },
+          ])} />
+      </> : <p style={muted}>{s(log?.note)}</p>}
     </Panel>
 
     <section id="automation-controls" data-testid="automation-controls" aria-label="Automation controls" style={{ ...panel, display: 'grid', gap: 8, minWidth: 0 }}>
