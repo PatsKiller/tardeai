@@ -24,7 +24,11 @@ try:  # A is a separate PR (#2550); this file is the integration proof that land
 except ImportError:  # pragma: no cover - exercised until #2550 merges
     ha = None
 
-pytestmark = pytest.mark.skipif(ha is None, reason="piece A (lib/home_approvals.py) is not on this branch yet")
+pytestmark = [
+    pytest.mark.skipif(ha is None, reason="piece A (lib/home_approvals.py) is not on this branch yet"),
+    # The operator login is the one cc_auth allows; reading it is the point of this integration proof.
+    pytest.mark.host_state("reads config/cc_auth.yaml for the allowed operator login"),
+]
 
 NOW = datetime(2026, 11, 3, 20, 0, tzinfo=timezone.utc)
 # Must match config/cc_auth.yaml — handle() re-checks via home_approvals.server_context → allowed_logins().
@@ -37,16 +41,18 @@ def _operator_login() -> str:
     return logins[0]
 
 
-OPERATOR_LOGIN = _operator_login()
-OPERATOR_PRINCIPAL = f"tailnet:{OPERATOR_LOGIN}"
+# Resolved per test, not at import: the hermetic guard refuses a module-scope read of the live tree, and a
+# module-level constant here made the file uncollectable the moment origin/main gained that guard.
+def _operator_principal() -> str:
+    return f"tailnet:{_operator_login()}"
 
 
-def _ctx(*, principal=OPERATOR_PRINCIPAL, listener="serve_proxy", csrf_ok=True, reader=False):
+def _ctx(*, principal=None, listener="serve_proxy", csrf_ok=True, reader=False):
     return api.Ctx(
-        principal=lambda: principal,
+        principal=lambda: principal or _operator_principal(),
         listener=lambda: listener,
         csrf=lambda method, path: (csrf_ok, "" if csrf_ok else "same-origin check failed"),
-        allowed_logins=(OPERATOR_LOGIN,),
+        allowed_logins=(_operator_login(),),
         can_read=lambda: reader,
         clock=lambda: NOW,
         session=lambda: "sess-1",
@@ -122,9 +128,9 @@ def test_a_real_approve_with_an_injected_executor_executes_and_reports_executed(
         def execute(self, rec, *, actor, now, progress, deadline=None):
             return {"ok": True, "outcome": "executed", "plain": "Merged"}
 
-    ctx_a = ha.server_context(principal=OPERATOR_PRINCIPAL, session="sess-1", csrf_ok=True,
+    ctx_a = ha.server_context(principal=_operator_principal(), session="sess-1", csrf_ok=True,
                               listener="serve_proxy")
-    out = ha.decide(real, record["id"], ctx=ctx_a, actor=OPERATOR_LOGIN, decision="approve", now=NOW,
+    out = ha.decide(real, record["id"], ctx=ctx_a, actor=_operator_login(), decision="approve", now=NOW,
                     executor=Exec())
     assert out["state"] == "executed"
     status, payload = api.handle(f"/api/v2/home/approvals/{record['id']}", "GET", ctx=_ctx(reader=True))
@@ -137,10 +143,10 @@ def test_an_expired_real_request_is_410(real):
     later = NOW + timedelta(hours=25)
     status, payload = api.handle(f"{api.PREFIX}/{record['id']}/approve", "POST",
                                  {"binding": ha._binding_of(record)},
-                                 ctx=api.Ctx(principal=lambda: OPERATOR_PRINCIPAL,
+                                 ctx=api.Ctx(principal=_operator_principal,
                                              listener=lambda: "serve_proxy",
                                              csrf=lambda m, p: (True, ""),
-                                             allowed_logins=(OPERATOR_LOGIN,), can_read=lambda: False,
+                                             allowed_logins=(_operator_login(),), can_read=lambda: False,
                                              clock=lambda: later, session=lambda: "sess-1"))
     assert status == 410 and payload["code"] == "EXPIRED"
 
