@@ -177,6 +177,13 @@ def choose_pr(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[st
     chosen = max(pool, key=rank)
     if owned is not None and int(chosen.get("number") or 0) != int(owned) and row not in rows_claimed_by(chosen):
         return None
+    # QS3 (cx-openai-2/cx-openai-5 at 0c2614145): a mere mention is not evidence. When NO candidate claims the row, only
+    # the row's own existing association may decide its status — otherwise an unrelated PR that says "FQ-021 came up in
+    # passing" would deliver, park or re-assign a row it has nothing to do with.
+    if not claimed:
+        if owned is not None and int(chosen.get("number") or 0) == int(owned):
+            return chosen
+        return None
     return chosen
 
 
@@ -227,7 +234,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     path = Path(args.queue)
-    queue = json.loads(path.read_text(encoding="utf-8"))
+    snapshot = path.read_text(encoding="utf-8")
+    queue = json.loads(snapshot)
     report = sync(queue, gh_pr_list())
 
     if args.json:
@@ -243,6 +251,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not report["changed"]:
         return 0
+    # QS4 (cx-openai-2/cx-openai-5 at 0c2614145): this run read the whole queue, then spent seconds-to-minutes collecting
+    # GitHub state, then wrote its stale snapshot back. Anything that happened to the file in between — another agent's
+    # decision, an operator's HELD_* — was silently overwritten, including rows this run never looked at. Refuse instead:
+    # a status writer that loses an operator decision is worse than one that asks to be re-run.
+    if path.read_text(encoding="utf-8") != snapshot:
+        print(
+            f"REFUSED: {path} changed while GitHub state was being collected (another writer's update would be lost). "
+            "Nothing was written; re-run.",
+            file=sys.stderr,
+        )
+        return 2
     bak = _backup(path)
     path.write_text(json.dumps(report["queue"], indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
     if not args.json:

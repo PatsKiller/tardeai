@@ -258,6 +258,55 @@ def test_the_document_clock_and_source_advance_only_on_a_change():
     assert moved["queue"]["as_of"] == NOW and S.AUTHOR in moved["queue"]["status_source"]
 
 
+# ── QS3 / QS4 (cx-openai-2 and cx-openai-5 at 0c2614145) ────────────────────────────────────────────────────────
+
+
+def test_a_mention_only_pr_does_not_deliver_an_unassociated_row():
+    """QS3: 'FQ-021 came up in passing' in an unrelated, merged PR must not close or move the row."""
+    rep = S.sync(queue(row("FQ-021")),
+                 [pr(2700, state="MERGED", branch="wt/unrelated-cleanup", body="FQ-021 came up in passing.",
+                     merge="f" * 40)], now=NOW)
+    assert rep["changed"] == 0, rep["changes"]
+    assert rep["queue"]["items"][0]["status"] == "queued"
+
+
+def test_a_mention_only_pr_does_not_park_an_unassociated_row():
+    rep = S.sync(queue(row("FQ-021", status="assigned")),
+                 [pr(2700, state="CLOSED", branch="wt/unrelated-cleanup", body="FQ-021 came up in passing.")],
+                 now=NOW)
+    assert rep["changed"] == 0, rep["changes"]
+
+
+def test_an_apply_refuses_when_the_queue_changed_during_collection(tmp_path, monkeypatch):
+    """QS4: a concurrent writer's decision (e.g. an operator HELD_*) must not be overwritten by a stale snapshot."""
+    p = tmp_path / "q.json"
+    p.write_text(json.dumps(queue(row("FQ-021"), row("FQ-099", status="queued"))), encoding="utf-8")
+
+    def concurrent_collector(*_a, **_k):
+        # another session decides FQ-099 while this run is waiting on GitHub
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        for item in doc["items"]:
+            if item["id"] == "FQ-099":
+                item["status"] = "HELD_operator_decision"
+        p.write_text(json.dumps(doc), encoding="utf-8")
+        return [pr(2700, branch="wt/fq021-example", body="Closes FQ-021.")]
+
+    monkeypatch.setattr(S, "gh_pr_list", concurrent_collector)
+    rc = S.main(["--queue", str(p), "--apply"])
+    assert rc == 2, "an apply must refuse rather than overwrite a concurrent write"
+    after = {i["id"]: i["status"] for i in json.loads(p.read_text(encoding="utf-8"))["items"]}
+    assert after["FQ-099"] == "HELD_operator_decision", "the concurrent operator decision was overwritten"
+    assert after["FQ-021"] == "queued", "the refused run must not have applied its own change either"
+
+
+def test_an_apply_still_writes_when_nothing_else_changed(tmp_path, monkeypatch):
+    p = tmp_path / "q.json"
+    p.write_text(json.dumps(queue(row("FQ-021"))), encoding="utf-8")
+    monkeypatch.setattr(S, "gh_pr_list", lambda *a, **k: [pr(2700, branch="wt/fq021-example", body="Closes FQ-021.")])
+    assert S.main(["--queue", str(p), "--apply"]) == 0
+    assert json.loads(p.read_text(encoding="utf-8"))["items"][0]["status"] == "fix_in_review"
+
+
 def test_a_dry_run_writes_nothing(tmp_path, monkeypatch):
     p = tmp_path / "q.json"
     p.write_text(json.dumps(queue(row("FQ-022"))), encoding="utf-8")
