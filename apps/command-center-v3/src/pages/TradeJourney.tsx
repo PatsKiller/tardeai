@@ -13,7 +13,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  API_LIST, EXIT_TONE, FILTERS, TIMELINE_LABEL, TOOLTIPS, alertIntel, apiDetail, chartGeom, compactWhenLabel, drawers,
+  API_LIST, EXIT_TONE, FILTERS, TIMELINE_LABEL, TOOLTIPS, alertIntel, apiDetail, chartGeom, drawers,
   etShort, exitText, filterJourneys, originBadge, pct, plText, plTone, px, spreadLabels, stopSegments, timelineTone, unwrap,
   unwrapDetail, type Chart, type FilterId, type Journey, type JourneysPayload,
 } from '../lib/tradeJourneyModel'
@@ -37,21 +37,17 @@ function Chip({ tone, children, tip, testId, size = 'md' }: { tone: Tone; childr
   )
 }
 
-// FQ-042: exported so the node view test can render the real compact Row, not a source pattern.
-export function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected: boolean; onSelect: () => void; compact?: boolean }) {
+function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelect: () => void }) {
   const ob = originBadge(j.origin)
   const exitTone = EXIT_TONE[j.exit_cause.kind]
   const end = j.status === 'closed' ? j.exit : j.mark
-  // FQ-042: in compact mode the outer <details> carries the row identity (tj-row), because the phone proof locates the
-  // primary action through it and the full row is inside a closed disclosure. The grid keeps its own id so exactly one
-  // node answers to `tj-row` per journey.
-  const grid = (
-    <div className="tradeinview-journey-row" data-testid={compact ? 'tj-row-full' : 'tj-row'} data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
+  return (
+    <div className="tradeinview-journey-row" data-testid="tj-row" data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
       style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '12px 16px', alignItems: 'start',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}` }}>
       <span className="tradeinview-mobile-symbol" style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md }}>{j.symbol}</span>
-      <button className="tradeinview-open-journey" data-testid={compact ? 'tj-open-journey-full' : 'tj-open-journey'} type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${j.symbol} journey`}
+      <button className="tradeinview-open-journey" data-testid="tj-open-journey" type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${j.symbol} journey`}
         style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 36 }}>
         <span className="tradeinview-desktop-symbol">{j.symbol}</span><span className="tradeinview-mobile-action">Journey →</span>
       </button>
@@ -71,29 +67,6 @@ export function Row({ j, selected, onSelect, compact = false }: { j: Journey; se
         <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm, marginTop: 4 }}>{readableTimesInText(j.exit_cause.detail)}</span>
       </span>
     </div>
-  )
-  if (!compact) return grid
-  // FQ-042: on a phone the list is a set of DATED SUMMARIES, not a wall of expanded rows. Nothing is removed — entry,
-  // exit and cause stay one tap away, and the conflicts/data-gaps sections are no longer buried behind every card.
-  return (
-    <details className="tradeinview-journey-compact" data-testid="tj-row" data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
-      style={{ borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined }}>
-      <summary style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '10px 12px', cursor: 'pointer', minHeight: 44, listStyle: 'none' }}>
-        {/* The primary action stays a real, tappable button on the summary so the phone proof's tap target is visible;
-            it opens the journey detail without toggling the disclosure. */}
-        <button className="tradeinview-open-journey" data-testid="tj-open-journey" type="button" aria-pressed={selected}
-          title={`Open the ${j.symbol} journey`}
-          onClick={event => { event.preventDefault(); event.stopPropagation(); onSelect() }}
-          style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 44, minWidth: 44 }}>
-          {j.symbol}
-        </button>
-        {/* FQ-042: the dated line is rendered intact — an ET timestamp keeps its minutes, a date keeps its
-            `· date only` provenance. Never slice the formatter (BLOCK 2026-11-05: "11-05 10:3", "11-05 · da"). */}
-        <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{compactWhenLabel(j.entry.at)} · {j.account_label || 'Unlabelled account'}</span>
-        <span style={{ marginLeft: 'auto', ...numStyle, fontSize: TYPE.base, color: toneVars(plTone(j.pl.amount ?? j.pl.pct)).color }}>{plText(j)}</span>
-      </summary>
-      {grid}
-    </details>
   )
 }
 
@@ -423,7 +396,7 @@ export default function TradeJourney({ payload, loading, error, embedded = false
                 <span title={TOOLTIPS.exit}>Status</span>
               </div>
               {rows.length === 0 && <div style={{ padding: 16, fontSize: TYPE.base, color: TOKENS.text[2] }}>No trades in this filter.</div>}
-              {rows.map(j => <Row key={j.trade_id} j={j} selected={sel?.trade_id === j.trade_id} onSelect={() => select(j)} compact={phone} />)}
+              {rows.map(j => <Row key={j.trade_id} j={j} selected={sel?.trade_id === j.trade_id} onSelect={() => select(j)} />)}
             </div>
           </section>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
