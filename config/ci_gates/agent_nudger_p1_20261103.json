@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_nudger_p1_20261103",
+  "files": [
+    "tests/test_agent_nudger_p1_20261103.py"
+  ],
+  "anchor": "AGENT_NUDGER_P1_20261103",
+  "comment": [
+    "ANCHOR: AGENT_NUDGER_P1_20261103 — the repo-owned nudger decides BUSY/IDLE/STALL/UNSENT exactly like the coordinator script, refuses broker/order/execution session names even when the config refusal list is empty, types and writes nothing in dry run, and writes exactly one ledger line per applied nudge. Hermetic: injected session list, captured screens and send stub; no tmux, no network."
+  ]
+}

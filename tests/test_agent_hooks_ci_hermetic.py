@@ -114,6 +114,67 @@ def test_mutating_hooks_path_missing_fails_closed_no_writes(tmp_path: Path):
     assert not list((tmp_path / "coord-must-not-exist").glob("**/*")) if coord.exists() else True
 
 
+def test_configured_hooks_path_without_hook_files_is_not_mechanical(tmp_path: Path):
+    """FQ-113: core.hooksPath set, files absent (sparse checkout excluded .githooks) must fail closed.
+
+    Found by cx-openai-4 on 2026-11-04: a local checkpoint printed no hook output, the sparse patterns excluded
+    .githooks, and the session had been told enforcement was MECHANICAL because the receipt only checked that the
+    config value was a non-empty string.
+    """
+    main = _init_repo(tmp_path / "main")
+    _run(["git", "config", "core.hooksPath", ".githooks"], cwd=main)
+    # What a sparse checkout excluding .githooks leaves behind: the config, and no files.
+    for name in ("pre-commit", "pre-push"):
+        (main / ".githooks" / name).unlink()
+    assert _hooks_path(main) == ".githooks"
+    assert not (main / ".githooks" / "pre-commit").exists()
+
+    coord = tmp_path / "coord-hooks-files-missing"
+    receipt = start_session(
+        agent_id="grok",
+        repo_root=main,
+        claimed_paths=["docs/INDEX.md"],
+        docs_read=["AGENTS.md", "AI_WORK_POLICY.md", "docs/INDEX.md"],
+        mode="mutating",
+        acknowledge_dirty=True,
+        expected_worktree=main,
+        cwd=main,
+        coordination_root_path=coord,
+        task_scope="hooks-files-missing",
+    )
+    assert receipt["ok"] is False, "a configured path with no hook files must not pass"
+    assert any(e.startswith("HOOKS_FILES_MISSING") for e in receipt["errors"]), receipt["errors"]
+    assert not any("HOOKS_PATH_MISSING" in e for e in receipt["errors"]), \
+        "the path IS set; the missing thing is the files, and the error must say so"
+    inst = receipt["hook_installation"]
+    assert inst["core.hooksPath"] == ".githooks"
+    assert inst["complete"] is False
+    assert {f["name"] for f in inst["files"]} == {"pre-commit", "pre-push"}
+    assert all(f["present"] is False for f in inst["files"])
+    assert receipt["enforcement_level"] != "MECHANICAL", "enforcement must not be reported as mechanical"
+    assert receipt["enforcement_level"] == "ADVISORY_HOOKS_MISSING"
+    assert receipt["enforcement_level_declared"] == "MECHANICAL", "the client's claim is still recorded, separately"
+    assert not coord.exists(), "a hooks-files failure must not create coordination writes"
+
+
+def test_configured_hooks_path_with_a_non_executable_hook_is_not_mechanical(tmp_path: Path):
+    """A present-but-chmod-a hook does not run either; presence alone is not enough."""
+    main = _init_repo(tmp_path / "main")
+    _run(["git", "config", "core.hooksPath", ".githooks"], cwd=main)
+    (main / ".githooks" / "pre-commit").chmod(0o644)
+    receipt = start_session(
+        agent_id="grok", repo_root=main, claimed_paths=["docs/INDEX.md"],
+        docs_read=["AGENTS.md", "AI_WORK_POLICY.md", "docs/INDEX.md"], mode="mutating",
+        acknowledge_dirty=True, expected_worktree=main, cwd=main,
+        coordination_root_path=tmp_path / "coord-not-exec", task_scope="hooks-not-executable",
+    )
+    assert receipt["ok"] is False
+    assert any(e == "HOOKS_FILES_MISSING:pre-commit" for e in receipt["errors"]), receipt["errors"]
+    inst = receipt["hook_installation"]
+    assert inst["complete"] is False
+    assert {f["name"]: f["executable"] for f in inst["files"]}["pre-commit"] is False
+
+
 def test_mutating_with_docs_and_claims_ok_hermetic_worktree(tmp_path: Path):
     """Linked worktree: installer sets worktree-local hooksPath; mutating OK."""
     main = _init_repo(tmp_path / "main")
