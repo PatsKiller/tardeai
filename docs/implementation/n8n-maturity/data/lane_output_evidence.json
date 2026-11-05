@@ -54,12 +54,13 @@
   },
   "ask-alerts": {
    "output_signal": {
-    "kind": "file_mtime",
-    "path": "data/runtime/ask_alerts.json"
+    "kind": "json_key",
+    "path": "data/runtime/ask-alerts_last.json",
+    "key": "ok_at"
    },
-   "verified_token": "ask_alerts.json",
+   "verified_token": "write_lane_receipt",
    "source_file": "scripts/ask_alerts.py",
-   "evidence": "scripts/ask_alerts.py:25 STORE; check_alerts() calls _save(d) unconditionally (:122); host mtime 2026-10-09T16:00:01"
+   "evidence": "scripts/ask_alerts.py:143-155 writes LaneRunReceipt@v1 via lib.lane_last_receipt on a real --check run (ok/ok_at only on success, previous ok_at preserved on failure, nothing on --dry-run); the alert STORE (scripts/ask_alerts.py:29) is saved unconditionally and cannot prove a run (jobs coverage audit 2026-11-03)"
   },
   "build-hermes-canonical-status": {
    "output_signal": {
