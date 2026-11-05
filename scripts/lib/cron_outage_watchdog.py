@@ -107,22 +107,105 @@ def recurring_jobs(events: list[dict], *, now: datetime) -> set[str]:
     return {job for job, seen in hours.items() if len(seen) >= 2}
 
 
-def business_success(event: dict) -> bool:
-    """New events declare mode; legacy commands can prove an explicit dry run only.
+#: A fire that lands inside a wrapper run's own execution window is IN PROGRESS, not missed — the lane is
+#: working. A run older than this at the fire is a stall, not progress, and does not cover it.
+IN_PROGRESS_LIMIT_SECONDS = 3600
+#: The launch may start a few seconds after the scheduler's fire instant; that still counts as the fire landing.
+LAUNCH_GRACE_SECONDS = 120
 
-    Legacy events without mode remain usable as wrapper-execution evidence when
-    their command is present and contains no dry-run flag. They do not prove
-    business output correctness. Missing command/mode is unmeasured.
+
+def run_windows(events: list[dict], *, now: datetime) -> dict[str, list[tuple[datetime, datetime | None]]]:
+    """``{job: [(start, end_or_None)]}`` — when each wrapper job was actually executing BUSINESS work.
+
+    Built from ``safe_flock`` events: a ``started`` opens a window and the next ``completed`` for the same
+    job closes it; a window still open at ``now`` means the job is running right now. Future events are
+    ignored, as everywhere in this module: an observation is never backdated.
+
+    Only business-mode events open or close a window (cc-deepseek-5 BLOCK on #2553, 2026-11-05): a dry run,
+    plan or wrapper preflight starts and finishes without doing the lane's work, so letting one cover a fire
+    would report a dead lane as OK — and cutovers run dry runs and preflights routinely, which is exactly
+    when that lie is worst. The test is the one :func:`business_success` already applies to successes.
     """
-    if event.get("event_type") != "completed" or event.get("exit_code") != 0:
-        return False
+    by_job: dict[str, list[tuple[datetime, str]]] = {}
+    for event in events:
+        when = instant(event.get("ts"))
+        if when is None or when > now:
+            continue
+        kind = str(event.get("event_type") or "")
+        if kind not in {"started", "completed"}:
+            continue
+        if not business_mode(event):
+            continue
+        job = job_key(event.get("job_id") or event.get("component"))
+        if job:
+            by_job.setdefault(job, []).append((when, kind))
+    windows: dict[str, list[tuple[datetime, datetime | None]]] = {}
+    for job, rows in by_job.items():
+        rows.sort(key=lambda r: r[0])
+        out: list[tuple[datetime, datetime | None]] = []
+        open_start: datetime | None = None
+        for when, kind in rows:
+            if kind == "started":
+                if open_start is not None:          # a started without a completed: keep the earliest
+                    continue
+                open_start = when
+            elif open_start is not None:
+                out.append((open_start, when))
+                open_start = None
+        if open_start is not None:
+            out.append((open_start, None))
+        windows[job] = out
+    return windows
+
+
+def fire_was_in_progress(fire: datetime, windows: list[tuple[datetime, datetime | None]], *,
+                         now: datetime, limit_seconds: int = IN_PROGRESS_LIMIT_SECONDS,
+                         launch_grace_seconds: int = LAUNCH_GRACE_SECONDS) -> bool:
+    """True when a wrapper run is still executing and covers the fire (or started within the launch grace).
+
+    Only an OPEN window counts (claude-lead BLOCK on #2553, 2026-11-05): a closed run is over, whatever it did.
+    If it closed successfully, its success time is after the fire and the fire is not late at all; if it closed
+    with a non-zero exit, the lane did not do the work, so the fire is missed. Counting closed windows let a lane
+    failing every run report OK forever — each fire was covered by the very run it launched (two fires, each run
+    exiting 1 after a minute, gave missed_fires 0).
+    """
+    for start, end in windows:
+        if end is not None:
+            continue                      # a closed run is not in progress: see the docstring
+        if start - timedelta(seconds=launch_grace_seconds) <= fire <= now and \
+                (fire - start) <= timedelta(seconds=limit_seconds):
+            return True
+    return False
+
+
+_NON_BUSINESS_COMMAND = re.compile(r"(?:--dry[-_]run|--plan(?:\s|$)|--wrapper-preflight|\.dryrun(?:\s|$))")
+
+
+def business_mode(event: dict) -> bool:
+    """Whether this event belongs to a BUSINESS execution of the lane, not a dry run, plan or preflight.
+
+    New events declare ``mode``. Legacy events can prove an explicit dry run only through their command, so a
+    legacy event is business evidence when its command is present and carries no dry-run flag. Missing
+    mode and command is unmeasured, and an unmeasured event is never business evidence. One predicate, used
+    by :func:`business_success` for successes and by :func:`run_windows` for in-progress windows: the window
+    and the receipt must agree on what counts as the lane actually working (cc-deepseek-5 BLOCK on #2553).
+    """
     mode = event.get("mode")
     if mode is not None:
         return mode == "business"
     command = event.get("command")
     if not isinstance(command, str) or not command.strip():
         return False
-    return not re.search(r"(?:--dry[-_]run|--plan(?:\s|$)|--wrapper-preflight|\.dryrun(?:\s|$))", command)
+    return not _NON_BUSINESS_COMMAND.search(command)
+
+
+def business_success(event: dict) -> bool:
+    """A completed, zero-exit BUSINESS execution. Legacy events without mode are judged by their command;
+    they do not prove business output correctness. Missing command/mode is unmeasured.
+    """
+    if event.get("event_type") != "completed" or event.get("exit_code") != 0:
+        return False
+    return business_mode(event)
 
 
 def evaluate(
@@ -130,6 +213,7 @@ def evaluate(
     now: datetime, grace_seconds: int = 120, lookback_days: int = 400,
     previous_refusal_keys: set[str] | None = None, trading_day=None,
     registered_jobs: set[str] | None = None, acknowledged: dict[str, dict] | None = None,
+    in_progress_limit_seconds: int = IN_PROGRESS_LIMIT_SECONDS,
 ) -> dict:
     """One point-in-time result. Future observations are ignored, never backdated.
 
@@ -189,6 +273,7 @@ def evaluate(
         else:
             attributed.append(refusal)
     refusals = attributed
+    windows = run_windows(events, now=now)
     rows = []
     for lane in registry.get("lanes", []):
         if lane.get("state") != "ACTIVE" or not lane.get("expected_cadence_hours"):
@@ -262,8 +347,14 @@ def evaluate(
             # fabricate a successful history to calculate missed runs.
         else:
             last = max(times)
-            missed = sum(fire > last for fire in eligible)
+            job_windows = windows.get(job_key(component(lane) or ""), [])
+            late = [fire for fire in eligible if fire > last]
+            in_progress = [fire for fire in late
+                           if fire_was_in_progress(fire, job_windows, now=now,
+                                                   limit_seconds=in_progress_limit_seconds)]
+            missed = len(late) - len(in_progress)
             result.update(last_success_at=iso(last), missed_fires=missed,
+                          in_progress_fires=len(in_progress),
                           status="MISSED_RUNS" if missed >= 2 else "OK",
                           reason="two_or_more_scheduled_successes_missing" if missed >= 2 else None)
         rows.append(result)

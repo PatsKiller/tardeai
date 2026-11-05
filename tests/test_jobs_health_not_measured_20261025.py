@@ -35,13 +35,17 @@ def test_unmeasured_jobs_make_missed_unmeasured_not_zero():
     assert summary["missed_measured"] is False
     assert "2 jobs not measured" in summary["gap_reasons"]["missed"]
     assert summary["gap_reasons"]["not_measured"]
-    # "Not measured" is three facts and they must sum to it (2026-11-01).
+    # "Not measured" is four facts and they must sum to it (2026-11-02 adds the schedule-unknown one).
     assert (summary["unknown_never_scheduled"] + summary["unknown_schedule_not_declared"]
+            + summary["unknown_schedule_unmeasurable"]
             + summary["unknown_execution_not_measured"]) == summary["unknown"]
-    assert summary["unknown_schedule_not_declared"] == 1   # the systemd fixture declares no schedule
+    # The systemd fixture's expression is "fixture" - not a unit name, so the host can never be
+    # asked about it. That is a declaration defect, not a lane that declares nothing.
+    assert summary["unknown_schedule_not_declared"] == 0
+    assert summary["unknown_schedule_unmeasurable"] == 1
     assert summary["unknown_execution_not_measured"] == 1  # job-a is scheduled but has no run
     assert summary["unknown_never_scheduled"] == 0
-    assert "declare no schedule" in summary["gap_reasons"]["not_measured"]
+    assert "cannot measure the schedule" in summary["gap_reasons"]["not_measured"]
 
 
 def test_never_scheduled_is_its_own_bucket_not_a_missing_receipt():

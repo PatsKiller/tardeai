@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_health_census_state_20261102",
+  "files": [
+    "tests/test_jobs_health_census_state_20261102.py"
+  ],
+  "anchor": "JOBS_HEALTH_CENSUS_STATE_20261102",
+  "comment": [
+    "ANCHOR: JOBS_HEALTH_CENSUS_STATE_20261102 — a systemd lane whose schedule cannot be measured says",
+    "which fact is missing (census missing/stale/incomplete, unit absent/inactive, expression not a unit,",
+    "continuous service) instead of claiming the lane declares nothing. Hermetic tmp_path census fixtures."
+  ]
+}

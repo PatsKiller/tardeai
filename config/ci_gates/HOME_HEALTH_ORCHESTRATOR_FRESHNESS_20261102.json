@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HOME_HEALTH_ORCHESTRATOR_FRESHNESS_20261102",
+  "files": [
+    "tests/test_home_health_orchestrator_freshness_20261102.py"
+  ],
+  "anchor": "HOME_HEALTH_ORCHESTRATOR_FRESHNESS_20261102",
+  "comment": [
+    "Home health: the Trade AI Orchestrator is judged against the schedule its ACTIVE lane runs, not the retired",
+    "lane's literal; the registry fallback is stated in the escalation the operator reads, and the declared-vs-running",
+    "drift is named on the row. Hermetic: fixture components and registry rows, no host read."
+  ]
+}

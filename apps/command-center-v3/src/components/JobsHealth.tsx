@@ -9,8 +9,11 @@ import CountTile from './CountTile'
 import { jobsCount, jobsMissed, jobsNotMeasured, type JobsSummary } from '../lib/measuredCount'
 
 export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
-/** Which fact makes an unknown row unmeasured. Three different facts, three different remedies. */
+/** Which fact makes an unknown row unmeasured. Each one is a different remedy. */
 export type EvidenceGap = 'never_scheduled' | 'schedule_not_declared' | 'execution_not_measured'
+  | 'schedule_census_unavailable' | 'schedule_census_stale' | 'schedule_census_incomplete'
+  | 'schedule_unit_not_installed' | 'schedule_unit_not_active' | 'schedule_unit_uninspected'
+  | 'schedule_expression_not_a_unit' | 'schedule_continuous_service'
 export interface JobHealthRow {
   lane_id: string; job: string; scheduler: string; state: string; result: JobResult
   last_run_at: string | null; last_success_at: string | null; next_due_at: string | null
@@ -32,7 +35,19 @@ const filters = [['attention', 'Needs attention'], ['all', 'All jobs'], ['market
 const panel: CSSProperties = { padding: 14, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0 }
 const tone = (result: JobResult): Tone => result === 'failed' ? 'danger' : result === 'missed' || result === 'unknown' ? 'warning' : result === 'succeeded' ? 'success' : 'neutral'
 const resultLabel: Record<JobResult, string> = { succeeded: 'Succeeded', failed: 'Failed', missed: 'Missed', paused: 'Paused', retired: 'Retired', unknown: 'Not measured', due: 'Due', outside_window: 'Outside window' }
-const gapLabel: Record<EvidenceGap, string> = { never_scheduled: 'Unscheduled by design', schedule_not_declared: 'No schedule declared', execution_not_measured: 'No run receipt' }
+const gapLabel: Record<EvidenceGap, string> = {
+  never_scheduled: 'Unscheduled by design',
+  schedule_not_declared: 'No schedule declared',
+  execution_not_measured: 'No run receipt',
+  schedule_census_unavailable: 'Host timer census missing',
+  schedule_census_stale: 'Host timer census stale',
+  schedule_census_incomplete: 'Unit not covered by the census',
+  schedule_unit_not_installed: 'Unit not installed',
+  schedule_unit_not_active: 'Unit installed but not active',
+  schedule_unit_uninspected: 'Unit not inspected',
+  schedule_expression_not_a_unit: 'Registry declares an expression, not a unit',
+  schedule_continuous_service: 'Continuous service, no schedule',
+}
 const at = (value: string | null) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : 'Not measured'
 
 export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {

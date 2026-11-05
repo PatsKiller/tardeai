@@ -10,7 +10,8 @@ on early closes) -- becomes one row in ``market_quotes_extended`` through its si
 ``reference_close`` is the daily-bar close of the last session that closed before the bar, labelled with its basis.
 
 Never ``market_quotes``: that is the latest-quote ledger and ~20 readers take its newest row with no source filter.
-Default is a dry run (prints the rows; writes nothing); ``--apply`` writes. ``--bars-json`` replays a saved response.
+Default is a dry run (prints the rows; writes nothing) and it is FIXTURE-ONLY: ``--bars-json`` replays a saved
+response; without it the dry run refuses unless ``--live-read`` asks for a labelled live Alpaca read. ``--apply`` writes.
 AUTHORITY: READ_ONLY_ADVISORY. Market data only; never touches a broker account or an order route.
 """
 
@@ -220,19 +221,32 @@ def run(
     cfg: dict | None = None,
     conn: Any = None,
     fetcher: Callable[..., tuple[dict, dict]] | None = None,
+    live_read: bool = False,
 ) -> dict[str, Any]:
+    """A dry run is fixture-only (review F7, 2026-10-31): without ``bars_json`` (or an injected ``fetcher``) it
+    refuses rather than call Alpaca, unless ``live_read`` is set -- then the output says ``source: alpaca_live``."""
     cfg = cfg or load_config()
     now = (now or datetime.now(timezone.utc)).astimezone(ET)
     if bars_json:
         saved = json.loads(Path(bars_json).read_text())
         bars, daily = saved["bars"], saved.get("daily") or {}
+        source = f"fixture:{bars_json}"
+    elif fetcher is not None:
+        bars, daily = fetcher(cfg, now=now)
+        source = "injected_fetcher"
+    elif apply or live_read:
+        bars, daily = fetch(cfg, now=now)
+        source = "alpaca_live"
     else:
-        bars, daily = (fetcher or fetch)(cfg, now=now)
+        return {"now": now.isoformat(), "apply": False, "status": "refused", "source": None, "inserted": 0,
+                "detail": "dry run is fixture-only: pass --bars-json FILE, or --live-read to read Alpaca live "
+                          "(read-only market data, writes nothing)"}
     refused: list[dict[str, Any]] = []
     rows = rows_from_bars(bars, daily, cfg, now=now, refused_out=refused)
     out: dict[str, Any] = {
         "now": now.isoformat(),
         "apply": apply,
+        "source": source,
         "candidates": len(rows),
         "inserted": 0,
         "refused": refused,
@@ -268,12 +282,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="default; overrides --apply")
     ap.add_argument("--bars-json", help="replay a saved {bars, daily} response instead of calling Alpaca")
     ap.add_argument("--now", help="evaluation instant (ISO-8601); default now")
+    ap.add_argument("--live-read", action="store_true",
+                    help="dry run against live Alpaca market data (read-only; labelled source alpaca_live)")
     a = ap.parse_args(argv)
     now = datetime.fromisoformat(a.now) if a.now else None
     if now is not None and now.tzinfo is None:
         now = now.replace(tzinfo=ET)
-    print(json.dumps(run(apply=bool(a.apply) and not a.dry_run, bars_json=a.bars_json, now=now), indent=2, default=str))
-    return 0
+    out = run(apply=bool(a.apply) and not a.dry_run, bars_json=a.bars_json, now=now, live_read=a.live_read)
+    print(json.dumps(out, indent=2, default=str))
+    return 2 if out.get("status") == "refused" else 0
 
 
 if __name__ == "__main__":

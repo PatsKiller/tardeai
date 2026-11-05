@@ -175,7 +175,11 @@ def missing_registered_files(gates) -> list[tuple[str, str]]:
 
 
 #: Files proven to need the serial tail even though no pattern marks them.
-SERIAL_FILES: frozenset[str] = frozenset()
+SERIAL_FILES: frozenset[str] = frozenset({
+    # This observer snapshots the whole checkout. Parallel gates create/restore
+    # probe files there, so run it alone without weakening its mutation check.
+    "tests/test_pr_merge_delegation_effective_state.py",
+})
 
 
 def _profile_from_env() -> str:
