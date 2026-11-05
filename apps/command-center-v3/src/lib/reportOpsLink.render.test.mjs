@@ -74,5 +74,19 @@ check(!!anchor && anchor[1] === '/v3/ops/jobs',
   `the Open Ops destination is ${anchor ? anchor[1] : '(none)'}; it must include the /v3 basename`)
 check(!/<a[^>]*href="\/ops\/jobs"/.test(html), 'a raw root-relative /ops/jobs href is still rendered')
 
+// 3. The words, not just the element (cc-deepseek-5 F1, FQ-132). Both of these mutations used to leave
+//    this file green: `cadenceWords(t.cadence)` -> `cadenceWords(t.key)` renders "Schedule not stated"
+//    while the never-run div still exists, and truncating the guidance sentence removes the whole
+//    explanation while the link is untouched. Assert the rendered text itself, and take the sentence from
+//    the module rather than retyping it here, so a change to the copy cannot drift past this test.
+const { neverRunText } = await import(compile(join(app, 'src/lib/reportCardText.ts')))
+check(html.includes('Every day'),
+  'the cadence words are not rendered; cadenceWords(t.cadence) must produce "Every day" for a daily report')
+check(html.includes('around 20:40'),
+  'the schedule time is not rendered; the card must say "around 20:40" for a 20:40 nightly generator')
+const guidance = neverRunText(null)
+check(html.includes(guidance),
+  'the never-run guidance sentence is not rendered verbatim; it must be neverRunText(null) from reportCardText.ts')
+
 if (failed) { console.error(`reportOpsLink.render: ${failed} failure(s)`); process.exit(1) }
 console.log('reportOpsLink.render: ok')
