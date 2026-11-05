@@ -809,3 +809,15 @@ def test_a_models_subtree_is_protected_from_removal(tmp_path):
                           live_worktrees=[], live_claims=[])
     assert result["candidate"] is False, result
     assert any("models" in reason for reason in result["reasons"]), result["reasons"]
+
+
+def test_dot_components_cannot_derive_ownership_outside_the_namespace():
+    """D52 triage at d70805061: "." and ".." are directory references, not identities. As a slug, `base / ..` is the
+    scratch root's PARENT, so ownership roots were derived outside the agent's own namespace."""
+    mod = _load()
+    for value in (".", "..", "...", ""):
+        assert mod.slug(value) == "unknown", (value, mod.slug(value))
+    home = tmp_path_home = Path("/tmp/synthetic-home")
+    base = home / ".cache" / "agent-tmp"
+    for candidate in mod.auto_candidates(home, mod.slug(".."), mod.slug("..")):
+        assert candidate == base or base in candidate.parents, candidate

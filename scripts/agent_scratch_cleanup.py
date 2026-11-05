@@ -126,7 +126,11 @@ def slug(value: Any) -> str:
     the FULL normalized name, so two long identities can never share a directory.
     """
     s = _SLUG_RE.sub("-", str(value or "").strip().lower()).strip("-")
-    s = s or "unknown"
+    # D52 triage at d70805061: "." and ".." are directory references, not identities. As a slug they made
+    # ``base / slug(task)`` resolve to the scratch root itself or to its parent, so ownership roots were derived
+    # outside the agent's own namespace.
+    if not s or set(s) <= {"."}:
+        return "unknown"
     if len(s) <= SLUG_MAX:
         return s
     digest = hashlib.sha256(s.encode("utf-8")).hexdigest()[:8]
