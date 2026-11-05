@@ -4788,7 +4788,7 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/disk_pressure_guard_receipts.jsonl"
       },
-      "note": "Operator-requested 2026-09-21: act at >=85% used instead of waiting for Sunday's tradeai-weekly-disk-cleanup, after the disk hit 100% with 84MB free. Every 15 min; shells disk_hygiene_enforcer.py --apply, which owns ALL deletion and its CURRENT/EXPECTED_RELEASE protections -- this guard deletes nothing itself. Pages only on a transition via alert_condition_state (6h re-alert): a 15-min timer with no dedupe would add 96 messages/day. Threshold is read as df reads it, used/(used+avail); used/total left it silent at df 89%. ABSOLUTE path for the same reason as weekly-disk-cleanup.",
+      "note": "Operator-requested 2026-09-21: act at >=85% used instead of waiting for Sunday's tradeai-weekly-disk-cleanup, after the disk hit 100% with 84MB free. Every 15 min. Disarmed (the shipped state) it shells disk_hygiene_enforcer.py --dry-run for a plan and pages; when the operator arms pressure_act in config/disk_hygiene_rules.json it triggers scripts/disk_hygiene.py --standing (dry run -> quoted selection -> apply under its reviewed rules and per-run caps), which owns ALL deletion and its CURRENT/EXPECTED_RELEASE protections -- this guard deletes nothing itself. Pages only on a transition via alert_condition_state (6h re-alert): a 15-min timer with no dedupe would add 96 messages/day. Threshold is read as df reads it, used/(used+avail); used/total left it silent at df 89%. ABSOLUTE path for the same reason as weekly-disk-cleanup.",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
