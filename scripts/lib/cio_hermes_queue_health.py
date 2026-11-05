@@ -98,6 +98,55 @@ def load_events(path: Path, *, since: datetime) -> list[dict[str, Any]]:
     return out
 
 
+def _ledger_state(path: Path) -> str:
+    """Classify the request ledger: ``ok | absent | empty | unreadable | invalid``.
+
+    An unreadable input is "I could not tell", never "no requests": reading it as an empty
+    ledger made a missing or corrupt file report a healthy lane with zero lost requests
+    (lead ruling, 2026-11-03, after cx-openai-2 and cc-deepseek-3 reached it independently).
+    """
+    try:
+        if path.is_dir():
+            return "unreadable"
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "unreadable"
+    if not raw.strip():
+        return "empty"
+    for line in raw.decode("utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            if isinstance(json.loads(line), dict):
+                return "ok"
+        except (ValueError, RecursionError):
+            continue
+    return "invalid"
+
+
+def _projection_state(path: Path) -> tuple[Optional[dict[str, Any]], str]:
+    """``(document, state)`` for the projection: ok | absent | empty | unparseable | not_object | unreadable."""
+    try:
+        if path.is_dir():
+            return None, "unreadable"
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None, "absent"
+    except OSError:
+        return None, "unreadable"
+    if not raw.strip():
+        return None, "empty"
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (ValueError, RecursionError):
+        return None, "unparseable"
+    if not isinstance(doc, dict):
+        return None, "not_object"
+    return doc, "ok"
+
+
 def summarise(events: Iterable[dict[str, Any]], *, now: datetime, stall_hours: float = 3.0,
               classify=None) -> dict[str, Any]:
     """Latest status per research_id, failure classes, stalled queue. Pure."""
@@ -136,6 +185,88 @@ def summarise(events: Iterable[dict[str, Any]], *, now: datetime, stall_hours: f
     }
 
 
+# ── Question ownership: the exact predicate the restore path uses ────────────────────────────────────────────
+# `restore_lost_requests` (scripts/lib/cio_hermes_research.py) suppresses a candidate only when the question is
+# genuinely owned: an OPEN row with the same fingerprint, or a COMPLETED row whose completion clock is >= the asked
+# clock. It never treats a failed, cancelled, superseded or expired row as an owner, and it never suppresses on an
+# answer that predates the question. This function mirrors that rule so the health check cannot be silenced by
+# history the restore path would still restore.
+#
+# The vocabulary is the QUEUE's, imported rather than re-typed (cx-openai-4 P1, 2026-11-03): invented aliases
+# (pending/claimed/open/queued_running) suppressed requests the native lookup does not consider in flight, and the
+# native legacy "started" state was missing, so a real owner's duplicate was reported lost. One constant, two
+# consumers, no drift. Import through the SAME package prefix as this module so the repo's dual lib./scripts.lib.
+# imports cannot create a second copy of the constant.
+if __package__ and __package__.startswith("scripts."):
+    from scripts.lib.hermes_research_queue import IN_FLIGHT as _OPEN_STATES, TERMINAL as _TERMINAL_STATES
+else:  # pragma: no cover - depends on how the caller set sys.path
+    from lib.hermes_research_queue import IN_FLIGHT as _OPEN_STATES, TERMINAL as _TERMINAL_STATES  # type: ignore
+
+# A terminal row owns a question only when it actually ANSWERED it; failed/cancelled/superseded never do.
+_DONE_STATES = frozenset(_TERMINAL_STATES - {"failed", "cancelled", "superseded"})
+
+
+def _parse_clock(value: Any) -> Optional[datetime]:
+    """One clock, parsed once — the same accepted shape as the oracle's `parse_ts`."""
+    if not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.astimezone(timezone.utc)
+
+
+def _completion_clock(record: dict[str, Any]) -> Optional[datetime]:
+    """The oracle's exact completion expression: `parse_ts(completed_ts or as_of or updated_ts)`.
+
+    The FIRST POPULATED field is selected before parsing, so a populated-but-invalid
+    `completed_ts` does NOT fall through to a later field (cx-openai-4 R3). Falling through
+    suppressed requests the restore path would genuinely restore — a false all-clear. A row
+    carrying only a generic `ts` has no completion clock at all.
+    """
+    return _parse_clock(record.get("completed_ts") or record.get("as_of") or record.get("updated_ts"))
+
+
+def _asked_clock(record: dict[str, Any]) -> Optional[datetime]:
+    """The oracle's asked clock: `parse_ts(created_ts or updated_ts)`.
+
+    Never the event `ts` the ledger row was loaded on (cx-openai-4 R4): the event clock moves
+    with every update, so comparing an answer against it reported an already-answered request
+    as lost.
+    """
+    return _parse_clock(record.get("created_ts") or record.get("updated_ts"))
+
+
+def _question_owned(fingerprint: str, asked: Optional[datetime],
+                    by_rid: dict[str, Any], open_fp: dict[str, Any],
+                    done_fp: dict[str, Any]) -> bool:
+    """True only when an open or completed-before-now owner genuinely holds this question."""
+    if not fingerprint:
+        return False
+    if fingerprint in open_fp:
+        return True
+    done = done_fp.get(fingerprint)
+    if isinstance(done, dict):
+        completed = _completion_clock(done)
+        if completed is not None and asked is not None and completed >= asked:
+            return True
+    for row in by_rid.values():
+        if not isinstance(row, dict) or str(row.get("fingerprint") or "") != fingerprint:
+            continue
+        state = str(row.get("status") or row.get("state") or "").strip().lower()
+        if state in _OPEN_STATES:
+            return True
+        if state in _DONE_STATES:
+            completed = _completion_clock(row)
+            if completed is not None and asked is not None and completed >= asked:
+                return True
+        # failed / cancelled / superseded / expired / unknown: never owns the question
+    return False
+
+
 def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Optional[Path] = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     ledger = Path(path or os.getenv("CIO_HERMES_REQUEST_LEDGER") or REQUEST_LEDGER)
@@ -143,28 +274,70 @@ def collect_cio_hermes_queue_health(*, now: Optional[datetime] = None, path: Opt
     fail_share = _env_float("CIO_HERMES_QUEUE_FAIL_SHARE", 0.30)
     min_outcomes = int(_env_float("CIO_HERMES_QUEUE_MIN_OUTCOMES", 5))
     stall_h = _env_float("CIO_HERMES_QUEUE_STALL_HOURS", 3.0)
-    row: dict[str, Any] = {"lane": LANE, "schema": SCHEMA, "authority": AUTHORITY,
-                           "as_of": now.replace(microsecond=0).isoformat(), "ledger": str(ledger),
-                           "ledger_present": ledger.exists(), "window_hours": window_h}
-    if not ledger.exists():
-        return {**row, "ok": True, "firing": [], "note": "request ledger absent (no CIO Hermes queue on this host)"}
+    projection = Path(os.getenv("CIO_HERMES_PROJECTION") or ledger.with_name("hermes_research_projection.json"))
+    ledger_state = _ledger_state(ledger)
+    proj_doc, projection_state = _projection_state(projection)
+    row: dict[str, Any] = {
+        "lane": LANE,
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "as_of": now.replace(microsecond=0).isoformat(),
+        "ledger": str(ledger),
+        "ledger_present": ledger_state != "absent",
+        "window_hours": window_h,
+        # The read state travels with the numbers: a consumer must be able to
+        # tell "zero lost" from "could not read" (lead ruling, 2026-11-03).
+        "ledger_state": ledger_state,
+        "projection": str(projection),
+        "projection_state": projection_state,
+    }
+    if ledger_state != "ok":
+        # NEVER healthy when the input could not be read, and never a count from a file we did not
+        # read: an absent/empty/corrupt ledger is "I could not tell", not "no requests".
+        return {
+            **row,
+            "ok": False,
+            "firing": [f"request_ledger_unreadable:{ledger_state}"],
+            "lost": None,
+            "lost_n": None,
+            "note": f"request ledger is {ledger_state}; no outcome or lost-request count was measured",
+        }
     events = load_events(ledger, since=now - timedelta(hours=window_h))
     s = summarise(events, now=now, stall_hours=stall_h)
     # A request the ledger recorded but the projection does not hold is invisible to the worker.
     # Measured 2026-09-14: 7 that day, lost to unlocked writers. The worker now restores those
     # under 48h on its next claim; this signal staying on means a writer still bypasses the lock.
-    projection = Path(os.getenv("CIO_HERMES_PROJECTION") or ledger.with_name("hermes_research_projection.json"))
-    try:
-        known = set(json.loads(projection.read_text(encoding="utf-8")).get("by_research_id") or {})
-    except (OSError, ValueError):
-        known = None
+    projection_ok = projection_state == "ok" and proj_doc is not None
+    if projection_ok:
+        by_rid = proj_doc.get("by_research_id") or {}
+        known = set(by_rid)
+        # A request is NOT lost when its QUESTION is already owned by an open or completed
+        # projection entry: `restore_lost_requests` dedups on fingerprint, so a same-question
+        # row is intentionally not re-projected. 2026-11-03: `res_c30a22ae6af8` was reported
+        # lost while `res_cfaa3b471ead` (2.7 s earlier, same fingerprint) was in the projection.
+        open_fp = {str(k): v for k, v in (proj_doc.get("by_fingerprint_open") or {}).items() if k}
+        done_fp = {str(k): v for k, v in (proj_doc.get("by_fingerprint_completed") or {}).items() if k}
+    else:
+        # Ownership cannot be determined without the projection. Report the measured lane signals,
+        # flag the unreadable input, and publish NO lost count rather than a zero we did not read.
+        by_rid, known, open_fp, done_fp = {}, None, {}, {}
     grace = now - timedelta(minutes=10)
-    lost = sorted({str(r["research_id"]) for r in events
-                   if known is not None and r.get("event") == "HERMES_RESEARCH_REQUESTED"
-                   and r["_ts"] <= grace and str(r["research_id"]) not in known})
-    s["lost"], s["lost_n"] = lost[:5], len(lost)
+    lost = sorted(
+        {
+            str(r["research_id"])
+            for r in events
+            if known is not None
+            and r.get("event") == "HERMES_RESEARCH_REQUESTED"
+            and r["_ts"] <= grace
+            and str(r["research_id"]) not in known
+            and not _question_owned(str(r.get("fingerprint") or ""), _asked_clock(r), by_rid, open_fp, done_fp)
+        }
+    )
+    s["lost"], s["lost_n"] = (lost[:5], len(lost)) if known is not None else (None, None)
     outcomes = s["completed"] + s["failed"]
     firing: list[str] = []
+    if not projection_ok:
+        firing.append(f"projection_unreadable:{projection_state if projection_state != 'ok' else 'unreadable'}")
     if lost:
         firing.append(f"requests_lost:{len(lost)}")
     if outcomes >= min_outcomes and s["failed"] / outcomes >= fail_share:

@@ -103,6 +103,25 @@ def _bar(day, close, *, provisional=False, open_=None, volume=None):
             "close": close, "volume": volume, "provisional": provisional}
 
 
+
+
+def test_current_display_quote_changes_neither_confirmed_close_nor_stage_verdict():
+    from copy import deepcopy
+    from decimal import Decimal
+    from scripts.lib.market_risk.book_precision import reentry_display_quote
+
+    stages = {"last_close": 9.0, "last_date": "2026-10-30", "verdict": "Still falling", "sma20": 10.0}
+    before = deepcopy(stages)
+    quote = {"status": "available", "price": 12.0, "source": "market_quotes:alpaca", "session": "regular",
+             "session_date": "2026-11-02", "expected_session_date": "2026-11-02", "as_of": "2026-11-02T21:00:59Z"}
+    display = reentry_display_quote(quote, exit_price=Decimal("10"), sma20=stages["sma20"])
+    assert display["price"] == 12 and round(display["pct_vs_exit"], 6) == 20
+    assert round(display["pct_vs_sma20"], 6) == 20
+    assert stages == before and "pct_vs_exit" not in quote
+    missing = reentry_display_quote(None, exit_price=10, sma20=10)
+    assert missing["status"] == "unavailable" and missing["price"] is None and missing["pct_vs_exit"] is None
+
+
 def test_a_provisional_bar_never_decides_the_verdict():
     start = date(2026, 10, 20)
     bars = [_bar(start + timedelta(days=i), 100 - i * 2, open_=None, volume=None) for i in range(6)]

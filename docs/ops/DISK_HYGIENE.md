@@ -8,6 +8,41 @@ Source:  AGENTS.md 25.0.1 (moved by 26.0.0)
 
 Reference material for the rules in AGENTS.md. The binding rules stay in AGENTS.md; this document holds the detail they point to.
 
+## Pressure act: the 85% guard triggers this cleaner, only when armed (2026-11-03)
+
+`scripts/disk_pressure_guard.py` reads disk usage every 15 minutes and pages above 85% used. Until 2026-11-03 it only
+reported. Operator, 2026-11-03 (disk permanent fix, item 3): *"Make the pressure guard ACT at 85%: it triggers the
+cleaner, not just a report."*
+
+What the guard does now, above the trigger:
+
+| `pressure_act.armed` | `standing_apply` | What runs |
+|---|---|---|
+| `false` (shipped default) | any | `disk_hygiene_enforcer.py --dry-run` for a plan; the page says the disk-hygiene lane owns reclaim. Nothing is removed. |
+| `true` | enabled **and** approval APPROVED | `disk_hygiene.py --standing --dry-run --report` (writes nothing) quotes the selection; then, only if it selects at least one item, `disk_hygiene.py --standing --apply --only-if-above <trigger> --until-target <target>`. |
+| `true` | anything else | Disarmed, with `why_not_active` in the receipt. Fail-closed. |
+
+- **The guard still deletes nothing itself.** Every removal is `scripts/disk_hygiene.py`'s, under the reviewed
+  standing rules S/T/W/C/R, the never-touch list, `CURRENT`/`EXPECTED_RELEASE` protections and the per-run caps,
+  exactly as when the n8n lane runs it. The guard only decides whether to invoke it and records the result
+  (`removed`, `reclaimed_bytes`) in `logs/disk_pressure_guard_receipts.jsonl`.
+- **Zero eligible items is a refusal, not an invitation.** If the dry run selects nothing, the guard records
+  `refused_nothing_eligible`, applies nothing and pages a person. It never widens the rules to find something to do.
+- **The switch is operator-only (AGENTS.md §17) and ships OFF.** Arming it changes what runs unattended at 85% used,
+  so it is a reviewed config change: `pressure_act.armed: true` plus `armed_by` and `armed_at`, in a PR the operator
+  approves. No agent arms it. Disarming is the same edit in reverse and needs no code change.
+- **The kill switch still binds.** `standing_apply.enabled: false` (or an approval status other than APPROVED)
+  disarms the guard as well as the cleaner, so the two switches cannot disagree.
+- **Arming needs a longer unit timeout, measured first.** The cleaner collects evidence before it plans, so the armed
+  path is slow: the n8n `disk-hygiene` lane's standing run at 2026-11-03 14:00:20Z → 14:01:23Z took 63.6 s. The
+  pressure guard's unit has `TimeoutStartUSec=1min 30s`, which leaves almost no margin and would kill a run
+  mid-cleanup. Raise the unit's timeout (e.g. 20 min) and watch the first armed run before relying on it. The code
+  change in this repo does not alter any unit.
+
+The incident supervisor has the matching route: an incident whose structured source names a disk lane (see
+`policy.disk_incident_routes` in `config/incident_runbook_actions.json`) is dispatched to the §28.14 fixer instead of
+being parked as `needs_operator`. It runs after the refused scopes, so those rails still bind.
+
 <!-- moved from AGENTS.md 25.0.1 lines 5614-5687 -->
 ## Moved from AGENTS.md (25.0.1 lines 5614-5687)
 

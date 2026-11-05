@@ -41,7 +41,7 @@ def main():
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
-    from telegram_alert_router import should_send_telegram, classify_alert
+    from telegram_alert_router import peek_should_send, classify_alert
 
     results = []
     passed = 0
@@ -49,7 +49,7 @@ def main():
 
     all_cases = CASES + JUN25_CASES
     for msg, expected in all_cases:
-        would_send = should_send_telegram(msg)
+        would_send = peek_should_send(msg)
         level = classify_alert(msg)
         actual = "primary" if would_send else "suppressed"
         ok = actual == expected
