@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "precommit_pii_eol_20261102",
+  "files": [
+    "tests/test_precommit_pii_eol_20261102.py"
+  ],
+  "comment": [
+    "2026-11-02 (item 3 of PLAN_COLLISION_AUTOREMEDIATION_20261101): the local pre-commit gate catches personal/identifying data on a staged added line and line-ending churn in the staged diff, both of which previously surfaced only on hosted CI (CRLF churn cost ~40 minutes on 2026-11-01). Tests build a throwaway git repo, copy the two checkers in, and assert both refusals plus a clean pass and a runtime bound. Hermetic: no network, no real repository state, deny file outside the fixture repo."
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_engine_integrated_20261031",
+  "files": [
+    "tests/test_market_risk_cio_llm_20261031.py",
+    "tests/test_market_risk_collectors_20261031.py",
+    "tests/test_market_risk_escalation_alerts_20261031.py",
+    "tests/test_market_risk_event_breadth_20261031.py",
+    "tests/test_market_risk_exposure_20261031.py",
+    "tests/test_market_risk_reader_20261031.py",
+    "tests/test_market_risk_replay_20261030.py",
+    "tests/test_market_risk_scenarios.py",
+    "tests/test_market_risk_scoring_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_ENGINE_INTEGRATED_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_ENGINE_INTEGRATED_20261031 — the integrated Market Risk Engine (DSN-20261031-market-risk-engine",
+    "P2): production reader, categories, noisy-OR composite, tiers/hysteresis/decay, exposure uplift, explainability,",
+    "alerts + Red/Orange escalation, LLM why-curation, CIO overlay, scenario replay (look-ahead-free) and the 10-30",
+    "acceptance. Hermetic: fixture readers and stubbed sends/models; no DB, no network."
+  ]
+}
