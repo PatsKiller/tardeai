@@ -73,6 +73,45 @@ def test_the_query_guard_refuses_anything_that_is_not_a_select():
         M.query_n8n("update workflow_entity set active = false")
 
 
+def test_the_query_guard_refuses_a_second_statement(monkeypatch):
+    """cc-deepseek-9's F1 at d4bc7430.
+
+    A prefix test cannot make a statement read-only: `select 1; drop table workflow_entity` starts with "select"
+    and had no trailing semicolon to strip, so the old guard handed it to `psql -c`, which runs both. The refusal
+    must happen BEFORE anything executes — asserted by making subprocess explode if it is ever reached.
+    """
+    def _boom(*_a, **_k):
+        raise AssertionError("the guard passed a multi-statement to psql")
+
+    monkeypatch.setattr(M.subprocess, "run", _boom)
+    for sql in ("select 1; drop table workflow_entity",
+                "select 1; drop table workflow_entity;",
+                "select 1;;delete from workflow_entity",
+                "select 'a;b'"):
+        with pytest.raises(ValueError):
+            M.query_n8n(sql)
+
+
+def test_a_single_select_with_one_trailing_semicolon_is_still_allowed(monkeypatch):
+    """The refusal above must not refuse the query the lane actually runs."""
+    captured = {}
+
+    class Done:
+        returncode = 0
+        stdout = "1\t2\n"
+        stderr = ""
+
+    def _run(cmd, **_kw):
+        captured["cmd"] = cmd
+        return Done()
+
+    monkeypatch.setattr(M.subprocess, "run", _run)
+    rows = M.query_n8n("select workflow_id, name from workflow_entity;")
+    assert rows == [{"raw": ["1", "2"]}]
+    assert captured["cmd"][-1] == "select workflow_id, name from workflow_entity"
+    assert "-e" in captured["cmd"] and any("default_transaction_read_only=on" in x for x in captured["cmd"])
+
+
 def test_a_source_that_cannot_be_read_is_null_not_zero():
     """cron unreadable → None in the payload; the page must render 'not read', never 'no cron left'."""
     out = M.summarize(M.workflow_rows([wf("1", "a")]), M.run_stats([], NOW), {}, now=NOW, cron_lines=None, drafts=None)

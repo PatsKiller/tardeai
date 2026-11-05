@@ -100,11 +100,28 @@ def one_line(message: str | None, limit: int = 160) -> str | None:
 
 # ── the read path ─────────────────────────────────────────────────────────────────────────────────────────────
 def query_n8n(sql: str, *, timeout: int = 45) -> list[dict[str, Any]]:
-    """Run one read-only query through the lab's documented path. Refuses anything that is not a plain SELECT."""
-    statement = sql.strip().rstrip(";")
+    """Run ONE read-only query through the lab's documented path.
+
+    cc-deepseek-9's F1 at d4bc7430: ``statement.lower().startswith("select")`` after ``rstrip(";")`` accepts
+    ``select 1; drop table workflow_entity`` — no trailing semicolon to strip, so the prefix test passes and
+    ``psql -c`` executes BOTH statements. The guard now refuses any remaining ``;``, so the rule is one statement
+    and it is a SELECT; a single trailing ``;`` is still accepted because that is how a statement is written.
+
+    Deliberately stricter than SQL: a ``;`` inside a string literal is refused too. This is a read-only lane whose
+    whole purpose is to run three known queries, and a guard that has to parse SQL to be correct is the wrong shape
+    for it. Fail closed.
+    """
+    statement = sql.strip()
+    if statement.endswith(";"):
+        statement = statement[:-1].rstrip()
+    if ";" in statement:
+        raise ValueError("n8n_automations is read-only: one statement per query")
     if not statement.lower().startswith("select"):
         raise ValueError("n8n_automations is read-only: only SELECT is allowed")
-    cmd = ["docker", "exec", DB_CONTAINER, "psql", "-U", "n8n", "-d", "n8n", "-t", "-A", "-F", "\t", "-c", statement]
+    # Belt and braces: even a single SELECT cannot write if the session is read-only. PGOPTIONS is honoured by psql
+    # inside the container, so a future guard change cannot turn this into a writer by itself.
+    cmd = ["docker", "exec", "-e", "PGOPTIONS=-c default_transaction_read_only=on", DB_CONTAINER,
+           "psql", "-U", "n8n", "-d", "n8n", "-t", "-A", "-F", "\t", "-c", statement]
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)  # noqa: S603
     if out.returncode != 0:
         raise RuntimeError(f"n8n query failed ({out.returncode}): {(out.stderr or '')[:200]}")
