@@ -7469,6 +7469,11 @@ def _ops_audit():
 
 def ops_summary():
     fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    # The manifest proves a producer ran; it does not prove the store it describes
+    # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
+    from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
+
+    _store_guard = _holdings_guard(STATE_DIR)
     health_rows = (
         _db_query(
             """
@@ -7484,7 +7489,8 @@ def ops_summary():
 
     return {
         "pipeline": {
-            "status": fresh.get("status", "unknown"),
+            "status": _effective_status(fresh.get("status", "unknown"), _store_guard),
+            "authoritative_store": _store_guard,
             "completed_at": fresh.get("completed_at", ""),
             "duration_seconds": fresh.get("pipeline_duration_seconds", 0),
             "steps": fresh.get("steps_completed", 0),
@@ -17913,8 +17919,6 @@ def _ticket_review_run(body):
     # Explicit single-lane metered Flash is allowed; Pro/policies needing confirmation are not.
     metered_flash = {"deepseek-flash", "fast", "fast_think"}
     blocked_paid = {
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
         "deepseek-pro",
         "deepseek-v4",
         "pro",
