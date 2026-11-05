@@ -41,7 +41,7 @@ For every READY PR:
 | Phone full-screen sheet with ← Back; desktop side panel | `MobileDetailSheet.tsx`, `OpsIncidents.tsx` (#2238) | The sheet itself |
 | Digest: READY = not draft, the four required checks green on the head, not held | `pr_merge_digest.classify_pr` | Deciding when a review is queued |
 | Approve → `PrMergeDigestApproval@v1` → `operator-merge` label → `PrMergeHeadBinding@v1` | `settle_approve_all` | The same label call, with `source: "cc_review"` |
-| Head moved → label removed, PR goes back into the next digest | `reconcile_head_binding` (every 3 min) | Making a review stale (no new mechanism) |
+| Head moved → label removed, PR goes back into the next digest | `reconcile_head_binding`, run by the n8n lane `pr-review-head-binding` (§7) | Making a review stale (no new mechanism) |
 | Held classes: `broker_order`, `secrets`, `agents_policy`, `hooks_guard`, `merge_deploy_control` | `config/merge_hold_paths.json`, `scripts/lib/merge_hold_paths.py` | The held banner; no `operator-merge` |
 | Anthropic credit (tiers, per-call caps, daily cap, journal); per-process caps | `config/anthropic_credit_policy.json`, `config/llm_process_registry.json` | The reviewer's budget (§7) |
 
@@ -49,7 +49,7 @@ For every READY PR:
 
 ```
 PR READY (non-draft, 4 checks green on head H)
-  → host review runner queues review(PR, H)       [debounce 10 min after the last push]
+  → n8n lane pr-independent-review queues review(PR, H)   [debounce 10 min after the last push]
   → independence check (author ≠ reviewer)         [refuse → no review, gap shown]
   → data-quality gate (§29): full file list, diff hash, H still the head
   → reviewer model call (Anthropic credit)         [caps: §7]
@@ -57,7 +57,7 @@ PR READY (non-draft, 4 checks green on head H)
   → Approvals "Merges" tab + digest line link to /approvals/pr:<N>
   → operator opens the sheet, reads the findings (read markers), decides
        Approve → ledger DECIDED(APPROVE, item pr:<N>, head H)
-                → host applier adds operator-merge for H, writes PrMergeHeadBinding@v1 (source cc_review)
+                → n8n lane pr-review-apply adds operator-merge for H, writes PrMergeHeadBinding@v1 (source cc_review)
                 → Mergify merges in its ET window → deploy_on_main promotes
        Hold    → ledger DECIDED(HOLD); PR is left out of later digests until it gets a new head or the operator releases the hold
        Ask     → ledger QUESTION; reviewer answers in the sheet (one capped call); not terminal
@@ -94,10 +94,10 @@ does, not what the PR body claims, and raise a finding wherever the two disagree
 
 ## 6 Independence — how this satisfies an "independent review" for the merge actor
 
-- **The reviewer is never the author.** The review runner is a host process (`pr_independent_review`) with a fresh
-  context. It has no access to the author's session transcript or worktree. Its id is
-  `host:pr_independent_review:<run_id>`. That id is never the same as an author agent and session, so it meets
-  §28.15 item 10 ("another agent identity").
+- **The reviewer is never the author.** The review runner is the n8n lane `pr-independent-review`, whose body is
+  `scripts/pr_independent_review.py`, with a fresh context. It has no access to the author's session transcript or
+  worktree. Its id is `n8n:pr_independent_review:<run_id>`. That id is never the same as an author agent and
+  session, so it meets §28.15 item 10 ("another agent identity").
 - **Different model where it matters.** By default the reviewer is Claude Opus 5.5. If the author's trailers name
   the same model family, and the PR is `shared-infra` or held, a second read is added from a different provider:
   the free OAuth ChatGPT or Grok lane through the existing `cloud_review` path, which costs $0. A held-class PR
@@ -117,9 +117,21 @@ does, not what the PR body claims, and raise a finding wherever the two disagree
 
 ## 7 Who runs the reviewer, and what it may spend (§29)
 
-- **Runner:** `scripts/pr_independent_review.py`, run by a host timer `tradeai-pr-review` every 5 minutes. It
-  reviews only PRs that are READY by the `classify_pr` rules. Held PRs are reviewed too, so the operator can read
-  them. A draft or red PR gets no review.
+- **Runner:** the n8n lane `pr-independent-review`, whose body is `scripts/pr_independent_review.py`, on a
+  5-minute schedule. Scheduling is n8n-only (house rule A); there is no host timer for this work, and none may be
+  added. It reviews only PRs that are READY by the `classify_pr` rules. Held PRs are reviewed too, so the operator
+  can read them. A draft or red PR gets no review.
+- **The two other triggers are n8n lanes too.** `pr-review-head-binding` runs `reconcile_head_binding` on a
+  3-minute schedule, and `pr-review-apply` runs `pr_review_apply`: it watches the ledger for `DECIDED APPROVE`
+  rows of kind `MERGE` and is the only path that turns one into an `operator-merge` label (§8).
+- **Cutover, for each of the three lanes** (house rules A–C): draft workflow → dry run (`--dry-run` prints the
+  would-review set and the preflight, makes no call) → shadow against real inputs with no effect → cutover with a
+  receipt. No lane runs beside a competing timer: the same hour a lane is cut over, any host timer that performs the
+  same work is disabled, and the receipt names the unit, the disable and the two clock times. 72 hours of shadow
+  before cutover; the sunset for the timer is recorded in the same receipt. A lane that has not completed its shadow
+  window does not run.
+- **Nothing here schedules itself.** `config/lane_registry.json` is operator-only (§17); proposing the three lane
+  rows is part of the build, not an edit an agent makes.
   - It never merges, labels, pushes, comments on GitHub, or reads a secret beyond the credit key the existing
     Anthropic router already uses.
   - Advisory only; `MBI_BEHAVIOR = 0`.
@@ -163,7 +175,7 @@ does, not what the PR body claims, and raise a finding wherever the two disagree
     `REQUEST_CHANGES` ("Ask the author to change it");
   - read markers on each finding and on the summary. The operator must read every finding before Approve; hunks can
     be browsed but are not gated.
-- **Label effect:** a host applier (`pr_review_apply`, inside the reconcile timer) reads new `DECIDED APPROVE`
+- **Label effect:** the n8n lane `pr-review-apply` (`pr_review_apply`) reads new `DECIDED APPROVE`
   rows of kind `MERGE` and checks:
   - the PR's current head equals `source_sha`;
   - the PR is not held;
@@ -237,8 +249,9 @@ approved". The Telegram digest stays the only working merge approval.
 
 1. `PrReview@v1` contract, harness and hunk splitter, independence check, store row (proposed), process registry
    rows. Tests: synthetic fixtures only; the token manager and credit are stubbed (§24.6).
-2. `pr_independent_review.py` with a dry run (prints the would-review set and the preflight; makes no call), the timer,
-   and one live review of a docs-only PR as the proof.
+2. `pr_independent_review.py` with a dry run (prints the would-review set and the preflight; makes no call), the three
+   n8n lane definitions (`pr-independent-review`, `pr-review-head-binding`, `pr-review-apply`) with their draft → dry
+   run → shadow → cutover receipts, and one live review of a docs-only PR as the proof. No host timer is created.
 3. Ledger: the MERGE kind, HOLD/QUESTION, finding read markers, the `pr_review_apply` applier. It touches the
    digest and label code, which is on the held list (`merge_deploy_control`). The new applier module is added to
    that class in the same PR. The operator merges it himself.
