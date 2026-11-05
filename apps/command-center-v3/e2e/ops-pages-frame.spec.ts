@@ -48,8 +48,10 @@ for (const width of [1440, 412, 390]) for (const spec of PAGES) {
     await expect(heading).toBeVisible()
     const clocks = page.getByRole('region', { name: 'Source clocks' })
     await expect(clocks).toBeVisible()
-    // FQ-051: the card reads "Refreshing"; the writer's own state code is inside Diagnostics.
-    await expect(clocks).toContainText('Refreshing')
+    // FQ-051 / FQ-072: the card reads "Enabled" — the lane is registered active. It says "Enabled", not
+    // "Refreshing": enablement is what the registry states, and a proven refresh is a different fact that the
+    // row does not claim (cx-openai-3's writer-state repair). The writer's own state code stays in Diagnostics.
+    await expect(clocks).toContainText('Enabled')
     await expect(clocks).toContainText('Last successful run')
     const decisions = page.getByRole('region', { name: 'Decisions for you' })
     await expect(decisions.getByRole('link', { name: /Approvals waiting on you/ })).toHaveAttribute('href', /\/approvals$/)

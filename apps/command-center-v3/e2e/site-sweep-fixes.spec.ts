@@ -192,7 +192,8 @@ test.describe('phone: DeskPage clocks + analyst report confirm', () => {
       const { posts, other } = await serveBundle(page)
       await page.goto(ORIGIN + '/v3/home')
       const clocks = page.getByRole('region', { name: 'Source clocks' })
-      await expect(clocks.getByText('Refreshing').first()).toBeVisible()
+      // FQ-072: the row says "Enabled" (registered active), never "Refreshing" — a proven refresh is not claimed.
+      await expect(clocks.getByText('Enabled').first()).toBeVisible()
       expect(await rawIsoTexts(clocks)).toEqual([])
       await expect(clocks).not.toContainText(/Updated update/i)
       const cio = clocks.locator('article', { hasText: 'CIO record' })
