@@ -52,14 +52,37 @@ def _get_conn():
                             password=os.environ.get("DB_PASSWORD", ""))
 
 
-def _get_holdings_symbols():
-    """Get portfolio symbols from holdings.json."""
+def holdings_universe():
+    """``(symbols, state)`` from holdings.json — the read state travels WITH the symbols.
+
+    0 bytes / corrupt / wrong-shaped is "no snapshot", not a crash: this lane ingests social
+    rows and needs the symbol list only as OPTIONAL context. 2026-11-03: a 0-byte store raised
+    JSONDecodeError here at 10:30. This consumer therefore continues with an empty list — it
+    does not assert an empty book. The portfolio consumers render the same state as UNKNOWN
+    (process_watchlist_agent_jobs._get_context / _get_portfolio_context / _build_layer_status).
+
+    2026-11-04 (cc-deepseek-6, review of #2545): the state used to be discarded here, so a 0-byte or unparseable
+    store produced a lane run indistinguishable from a healthy one whose holdings held no qualifying symbol —
+    the lane's own header calls an empty symbol list a successful poll. The state is now returned with the list
+    and carried into the lane receipt (``summary["holdings_state"]``); a damaged store still continues as an
+    empty list, because symbol discovery is optional context and must not fail the lane.
+    """
+    from lib.state_read import object_rows, read_holdings_state
+
     f = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-    if not f.exists():
-        return []
-    data = json.loads(f.read_text())
-    return [h["symbol"] for h in data.get("holdings", [])
-            if h.get("symbol") and not h.get("is_cash") and not h.get("is_fund")]
+    data, state = read_holdings_state(f)
+    if data is None:
+        return [], state
+    return [
+        h["symbol"]
+        for h in object_rows(data.get("holdings")) or []
+        if h.get("symbol") and not h.get("is_cash") and not h.get("is_fund")
+    ], state
+
+
+def _get_holdings_symbols():
+    """The symbol list only. Callers that report on the run should use ``holdings_universe`` for the state."""
+    return holdings_universe()[0]
 
 
 def ingest_stocktwits(symbols: list) -> dict:
@@ -653,6 +676,8 @@ def main(argv=None) -> int:
         return exc.code if isinstance(exc.code, int) else 2
     source = "stocktwits"
     symbols = []
+    #: The holdings read state, when this run read the store at all: None = the run never needed the portfolio.
+    holdings_state = None
 
     if "--source" in argv:
         idx = argv.index("--source")
@@ -665,7 +690,7 @@ def main(argv=None) -> int:
             symbols = [s.strip() for s in argv[idx + 1].split(",") if s.strip()]
 
     if "--holdings" in argv:
-        symbols = _get_holdings_symbols()
+        symbols, holdings_state = holdings_universe()
 
     discover = "--discover" in argv
     if "--scalp-list" in argv:
@@ -730,7 +755,8 @@ def main(argv=None) -> int:
                 _count(ingest_stocktwits_discovery())
             else:
                 if not symbols:
-                    symbols = _get_holdings_symbols()[:15]
+                    symbols, holdings_state = holdings_universe()
+                    symbols = symbols[:15]
                 if not symbols:
                     symbols = list(DEFAULT_STOCKTWITS_SYMBOLS)
                 print(f"[stocktwits] Ingesting for {len(symbols)} symbols: {', '.join(symbols[:10])}...")
@@ -747,7 +773,8 @@ def main(argv=None) -> int:
         elif source == "all":
             print("=== FULL SOCIAL INGEST ===")
             print("\n[1/3] StockTwits: portfolio holdings...")
-            _count(ingest_stocktwits(_get_holdings_symbols()[:15]))
+            holdings_symbols, holdings_state = holdings_universe()
+            _count(ingest_stocktwits(holdings_symbols[:15]))
             print("\n[2/3] StockTwits: discovery (trending + strategies)...")
             _count(ingest_stocktwits_discovery())
             print("\n[3/3] Reddit: discovery mode (hot + ticker extraction)...")
@@ -773,11 +800,19 @@ def main(argv=None) -> int:
 
     failed = run_failed(_results)
     rc = 1 if failed else 0
+    # A damaged holdings store is a stated state, not a quiet empty symbol list (cc-deepseek-6, #2545): the lane
+    # still succeeds — discovery is optional context — but the receipt says which read produced the universe.
+    damaged_state = holdings_state not in (None, "ok", "absent")
+    if damaged_state:
+        print(f"[social_ingest] holdings snapshot is {holdings_state}: the portfolio symbol list was skipped as "
+              "optional context; the portfolio consumers report the same state as UNKNOWN", file=sys.stderr)
     if lane_id:
         _receipt_lib().write_lane_receipt(lane_id, ok=not failed, exit_code=rc, started_at=started,
                                           script="social_ingest.py",
                                           summary={"source": source, "discover": discover,
                                                    "rows_produced": rows_measured,
+                                                   "holdings_state": holdings_state,
+                                                   "holdings_damaged": damaged_state,
                                                    "per_source": _per_source(source, discover, _results)})
     return rc
 
