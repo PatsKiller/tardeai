@@ -98,8 +98,28 @@ rm -f node_modules
 Proceed only under a current, operator-approved `git-push` grant bound to this branch/PR and
 the exact push/merge purpose. This grant does not authorize prepare or promote.
 
+**Pre-upload check (operator D50 item 4).** Before the push, run the automatic check from this
+worktree at the exact head being uploaded. A clean branch prints nothing and exits 0; otherwise
+it prints one plain-English reason per line and exits 1. Fix the reason; do not upload around it.
+
+```bash
+python3 scripts/preflight_upload.py --record-tests   # run this branch's touched tests, write the head receipt
+python3 scripts/preflight_upload.py                  # clean: prints nothing, exit 0
+```
+
+It refuses when (a) the test files this branch adds or changes were not run green at this exact
+head — the receipt is bound to the full head SHA under the worktree's git dir, and a receipt for
+another head is refused by name, so re-run `--record-tests` after every commit; (b) a new or
+renamed Python test is named in no `config/ci_gates/*.json`, or a new UI test is missing from the
+`apps/command-center-v3` `package.json` `scripts.build` string; (c) the PR description lacks its
+six answers under `## In plain English` (`scripts/check_pr_plain_english.py`, drafts included);
+(d) merging `origin/main` would conflict — the conflicted files are named; (e) a binary file was
+added under `docs/evidence/`; or (f) the session already has three open non-draft pull requests.
+`--skip-wip-cap` skips only the last check, prints a warning, and is for the check's own PR.
+
 ```bash
 cd /home/johnclaw/tradeai-wt-<name>
+# only after `python3 scripts/preflight_upload.py` exits 0 at this exact head:
 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/agent-push -u origin wt/<name>
 gh pr create --base main --head wt/<name> --title "..." --body "..."
 ```
