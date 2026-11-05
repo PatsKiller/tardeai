@@ -420,14 +420,20 @@ def rerun_for_request(run_id, expected_head_sha: str, *, config: Optional[Mappin
                     "plain": f"GitHub refused the re-run: {(out or '').strip()[:200]}"}
         ledger[head_key] = {"run_id": rid, "at": _utcnow(), "via": "approval_request"}
         _write_json(path / "state.json", state)
+    progress_error = None
     if progress is not None:
         try:
             progress.reached("rerun_issued")
-        except Exception:  # noqa: BLE001 — a progress recorder must never undo an issued re-run
-            pass
-    return {"ok": True, "head_key": head_key, "run_id": rid,
-            "plain": f"Re-ran the failed jobs of run {rid} once ({run_head[:12]}). A second failure is REAL "
-                     "and will not be re-run again."}
+        except Exception as exc:  # noqa: BLE001 — a progress recorder must never undo an issued re-run
+            # Reported, not swallowed: ruff's S110 (try/except/pass) is a baseline this repo only shrinks,
+            # and a silent drop here would be the one place a step could vanish without a trace.
+            progress_error = f"{type(exc).__name__}: {exc}"
+    result = {"ok": True, "head_key": head_key, "run_id": rid,
+              "plain": f"Re-ran the failed jobs of run {rid} once ({run_head[:12]}). A second failure is REAL "
+                       "and will not be re-run again."}
+    if progress_error:
+        result["progress_error"] = progress_error
+    return result
 
 
 def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry_run,
