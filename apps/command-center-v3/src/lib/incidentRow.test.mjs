@@ -30,6 +30,21 @@ for (const t of CAPTURED) {
   check(`nothing invented, nothing dropped: ${t.slice(0, 46)}…`, missing.length === 0, missing.join(','))
 }
 
+// ---- 1b. A DECIMAL KEEPS ITS POINT (cc-deepseek-5 F2 on #2628) -------------------------------------------
+// "Disk at99.7percent used" rendered as "at99 7percent" — the dotted-identifier rule ate the decimal separator on the
+// operator's row. The rule must split market.regime.indicators and leave 99.7 alone.
+for (const [text, wanted] of [
+  ['Disk at99.7percent used; approved cleanup remains unapplied', '99.7'],
+  ['Margin buffer is 12.5 percent of the book', '12.5'],
+]) {
+  const { headline } = plainTitle(text)
+  check(`a decimal keeps its point: ${wanted}`, headline.includes(wanted), headline)
+}
+for (const dotted of ['market.regime.indicators', 'risk.snapshot.v2']) {
+  const { headline } = plainTitle(dotted)
+  check(`a dotted identifier still separates: ${dotted}`, !headline.includes(dotted), headline)
+}
+
 // ---- 2. THE IDENTIFIER NOISE IS GONE FROM THE ROW --------------------------------------------------------------
 check('an underscore lane name is spelled out', !plainTitle(CAPTURED[0]).headline.includes('_'))
 check('it reads as a sentence', /^Lane coverage-stall unhealthy: research up thesis flat/.test(plainTitle(CAPTURED[0]).headline), plainTitle(CAPTURED[0]).headline)
@@ -90,6 +105,15 @@ const compactRow = rowModel({ ...base, status: 'open', title: 't' }, { age: '1 h
 check('R2: the row model carries the age on its own', compactRow.age === '1 h 30 min', compactRow.age)
 
 // the phone branch of the page must render the age, not drop the whole meta line
+// cc-deepseek-5 F1 on #2628: the server renderer emits one `useLayoutEffect does nothing on the server` warning per
+// component, each stack line carrying a multi-megabyte data: URL of the compiled page. Unfiltered this file wrote ~19.5 MB
+// of stderr per build. Five sibling view tests filter exactly this one warning; everything else still prints.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
+
 import { readFileSync } from 'node:fs'
 const pageSrc = readFileSync(new URL('../pages/OpsIncidents.tsx', import.meta.url), 'utf8')
 check('R2: the phone branch renders the age', /sheet\.mobile[\s\S]{0,120}m\.age/.test(pageSrc), 'no m.age in the mobile branch')

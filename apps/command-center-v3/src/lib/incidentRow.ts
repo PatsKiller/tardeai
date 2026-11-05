@@ -73,7 +73,11 @@ export function plainWords(s: string): string {
   out = out.replace(ALL_CAPS, m => m.replace(/_/g, ' ').toLowerCase())
   out = out.replace(SNAKE, m => m.replace(/_/g, ' '))
   out = out.replace(CAMEL, m => m.replace(/([a-z])([A-Z])/g, '$1 $2'))
-  out = out.replace(DOTTED, m => m.replace(/\./g, ' '))
+  // cc-deepseek-5 F2 on #2628: a decimal point is not a dotted identifier separator. "99.7" inside a word used to
+  // become "99 7", losing the point on the operator's row. A dot between two digits is kept; every other dot still
+  // separates the identifier's words.
+  out = out.replace(DOTTED, m => m.replace(/\d\.\d/g, mm => mm.replace('.', '\u0000'))
+    .replace(/\./g, ' ').replace(/\u0000/g, '.'))
   return words(out)
 }
 
