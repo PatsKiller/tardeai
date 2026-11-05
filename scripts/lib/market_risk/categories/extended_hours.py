@@ -361,6 +361,7 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
                           and not _confirmed(s)}
             rest = {s: m for s, m in moves.items() if s not in restricted}
             rest_state, rest_score, rest_sym, rest_worst = "CALM", 0.0, None, None
+            rest_is_gap = False
             if rest:
                 rest_sym = min(rest, key=rest.get)
                 rest_worst = rest[rest_sym]
@@ -371,6 +372,13 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
                 else:
                     rest_state, rest_score = ("CALM",
                                               max(0.0, 40.0 * rest_worst / warn) if rest_worst < 0 else 0.0)
+            # 2026-11-05 (cx-openai D52 triage at dc016b5fe): an opening gap is an independently printed index-proxy
+            # observation, not futures evidence, so the cap may not take its severity away. A gap that reached STRESS
+            # at 318-320 keeps it even when the row being removed is the one that made the futures score the worst.
+            if gaps and gap_state is not None and gap_score > rest_score:
+                rest_state, rest_score, rest_sym = gap_state, gap_score, gsym
+                rest_worst = gaps[gsym]["gap_pct"]
+                rest_is_gap = True
             capped_score = min(score, 74.0)
             evidence.append(Evidence(label="futures-only move not confirmed", value=None, as_of=None,
                                      source=CATEGORY,
@@ -378,7 +386,11 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
                                             "not counted above WARN"))
             if rest_score > capped_score:
                 state, score = rest_state, rest_score
-                head = f"{rest_sym} {rest_worst:+.1f}% extended · {worst_sym} not confirmed: not counted above WARN"
+                if rest_is_gap:
+                    head = (f"{rest_sym} opened {rest_worst:+.1f}% ({gaps[gsym]['gap_atr']:+.1f} ATR) vs previous "
+                            f"close · {worst_sym} not confirmed: not counted above WARN")
+                else:
+                    head = f"{rest_sym} {rest_worst:+.1f}% extended · {worst_sym} not confirmed: not counted above WARN"
                 worst_sym, worst = rest_sym, rest_worst
             else:
                 state, score = "WARN", capped_score

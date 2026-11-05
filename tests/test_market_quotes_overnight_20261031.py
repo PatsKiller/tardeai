@@ -467,11 +467,34 @@ def test_reader_returns_level_only_rows_as_none_never_zero():
 
 
 class _Reader:
-    def __init__(self, rows):
+    def __init__(self, rows, opens=None, bars=None):
         self.rows = rows
+        self.opens = opens or []
+        self.bars = bars or []
 
     def quotes(self, symbols, *, start, end):
         return [r for r in self.rows if r["symbol"] in symbols and start <= datetime.fromisoformat(r["as_of"]) <= end]
+
+    def session_opens(self, symbols, *, sessions=1, end=None):
+        return [o for o in self.opens if o["symbol"] in symbols]
+
+    def daily_bars(self, symbols, *, sessions=14, end=None):
+        return [b for b in self.bars if b["symbol"] in symbols]
+
+
+def _gap_session(sym, open_pct, today="2026-11-02", prev_close=670.0):
+    """A regular-session open plus the 16 prior full OHLC bars the ATR needs, so ``_gap_moves`` measures it."""
+    bars = []
+    d = date(2026, 10, 10)
+    while d < date.fromisoformat(today):
+        if d.weekday() < 5:
+            bars.append({"symbol": sym, "date": d.isoformat(), "open": prev_close,
+                         "high": prev_close * 1.015, "low": prev_close * 0.985, "close": prev_close})
+        d += timedelta(days=1)
+    opened = datetime.fromisoformat(today).replace(hour=9, minute=30, tzinfo=ZoneInfo("America/New_York"))
+    opens = [{"symbol": sym, "date": today, "open": prev_close * (1 + open_pct / 100.0),
+              "as_of": opened.isoformat()}]
+    return opens, bars
 
 
 def _q(sym, at, price, prev=None, session="overnight", sdate="2026-11-02", ref_date="2026-10-30", feed="schwab"):
@@ -603,6 +626,24 @@ def test_a_second_same_day_futures_move_cannot_stand_in_for_an_index_proxy():
                  _same_day_q("/ES", now - timedelta(minutes=2), 5997.0, 6200.0)], now)  # -3.3%
     assert obs.state == "WARN" and obs.score <= 74.0
     assert "capped at WARN" in obs.headline
+
+
+def test_an_independent_opening_gap_stress_survives_the_same_day_futures_cap():
+    """cx-openai D52 triage at dc016b5fe (#2526): the cap removes the same-day futures CONTRIBUTION, so the category
+    has to be re-scored on the evidence that remains -- and an opening gap is an independently printed index-proxy
+    observation, never futures evidence. Here SPY gaps -1.5% (STRESS at the threshold, score 75) while an
+    unconfirmed same-day /NQ -1.7% (score 78.3) happens to be the worst row: removing the /NQ left an empty move
+    set, the cap held the category at WARN 74, and the gap's own STRESS was silently overwritten."""
+    now = _et(2026, 11, 2, 10, 5)
+    opens, bars = _gap_session("SPY", -1.6, today="2026-11-02", prev_close=670.0)
+    rows = [_same_day_q("/NQ", now - timedelta(minutes=2), 25263.1, 25700.0)]  # -1.7%, unconfirmed
+    obs = extended_hours.evaluate(EvalContext(now=now, reader=_Reader(rows, opens, bars), policy=POLICY,
+                                              session="closed"))
+    assert obs.state == "STRESS", (obs.state, obs.score, obs.headline)
+    # the gap's own score, exactly as 318-320 computed it: no threshold is moved to get here
+    assert obs.score == pytest.approx(75.0 + 25.0 * (1.6 - 1.5) / 1.5, abs=0.1)
+    assert obs.headline.startswith("SPY opened -1.6%")
+    assert "/NQ not confirmed: not counted above WARN" in obs.headline
 
 
 def test_sunday_futures_open_print_is_measured_from_friday_close():
