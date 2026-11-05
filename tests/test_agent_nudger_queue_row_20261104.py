@@ -5,6 +5,7 @@ sessions dispatched twice this hour by hand because every session does one turn 
 
 Runs in CI:  pytest -q tests/test_agent_nudger_queue_row_20261104.py
 """
+# ANCHOR: AGENT_NUDGER_QUEUE_ROW_20261104 — gate record: config/ci_gates/AGENT_NUDGER_QUEUE_ROW_20261104.json
 from __future__ import annotations
 
 import json
