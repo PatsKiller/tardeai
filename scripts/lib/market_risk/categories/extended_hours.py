@@ -331,9 +331,14 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     # Belt and braces (round-2 review of #2485, 2026-11-02): futures-only evidence may not raise this category above
     # WARN — and so may not drive a page — unless an index proxy moves the same way by at least the configured
     # fraction of the futures move. A stale futures close with a fresh stamp then cannot alert on its own.
+    # 2026-11-05 (claude-lead BLOCK on #2526): that cap is scoped to a close the provider dates to the PRINT's own
+    # session (``settle_same_day``), the only basis that can carry a stale closePrice under a fresh stamp. A properly
+    # dated reference (the prior session's close) is independently anchored, so it is not capped: a Sunday 18:00-20:00
+    # futures crash with no QQQ/SPY print still reaches STRESS, as it does on main.
     frac = float((cfg.get("futures_confirm") or {}).get("fraction", 0.5))
+    same_day_basis = "settle_same_day" in str(latest.get(worst_sym, {}).get("reference_basis") or "")
     if (state in ("WARN", "STRESS") and worst_sym in futures and worst is not None and worst < 0
-            and not shock.get("shock") and worst_sym not in gaps):
+            and not shock.get("shock") and worst_sym not in gaps and same_day_basis):
         confirmed = any(moves.get(p) is not None and moves[p] < 0 and abs(moves[p]) >= frac * abs(worst)
                         for p in proxies)
         if not confirmed:

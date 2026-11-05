@@ -487,11 +487,44 @@ def _eval(rows, now):
     return extended_hours.evaluate(EvalContext(now=now, reader=_Reader(rows), policy=POLICY, session="closed"))
 
 
-def test_fresh_overnight_futures_drop_is_measured_but_capped_without_a_proxy():
-    """Round-2 review of #2485: futures-only evidence is measured but may not exceed WARN, so a stale futures close
-    with a fresh stamp can never page on its own."""
+DATED_BASIS = "schwab_quote_close_price_settle_dated"
+SAME_DAY_BASIS = "schwab_quote_close_price_settle_same_day"
+
+
+def test_a_properly_dated_sunday_futures_crash_reaches_stress_and_only_same_day_is_capped():
+    """claude-lead BLOCK at 3dff9e8b0 (#2526): the futures-only WARN cap belongs to a close the provider dates to the
+    PRINT's own session (``settle_same_day``), which can be stale under a fresh stamp. A properly dated reference
+    (the prior session's close) is independently anchored and must not be capped: a Sunday 18:00-20:00 futures crash
+    with no QQQ/SPY print still has to reach STRESS, as it does on main. The same crash on the same-day basis is
+    capped at WARN."""
+    now = _et(2026, 11, 1, 19, 0)
+    dated = _q("/NQ", _et(2026, 11, 1, 18, 55), 25200.0, 25700.0, "futures_open")
+    dated["reference_basis"] = DATED_BASIS
+    obs = _eval([dated], now)
+    assert "/NQ" in obs.headline and obs.state == "STRESS"
+    assert obs.score > 74.0  # the WARN cap's ceiling: a properly dated crash is not held at it
+    assert "capped at WARN" not in obs.headline
+
+    same_day = _q("/NQ", _et(2026, 11, 1, 18, 55), 25200.0, 25700.0, "futures_open")
+    same_day["reference_basis"] = SAME_DAY_BASIS
+    obs = _eval([same_day], now)
+    assert "/NQ" in obs.headline and obs.state == "WARN"
+    assert obs.score <= 74.0
+    assert "capped at WARN" in obs.headline
+
+
+def _same_day_q(sym, at, price, prev, **kw):
+    """A futures row whose close the provider dates to the print's own session -- the shape the cap exists for."""
+    row = _q(sym, at, price, prev, **kw)
+    row["reference_basis"] = SAME_DAY_BASIS
+    return row
+
+
+def test_fresh_same_day_futures_drop_is_measured_but_capped_without_a_proxy():
+    """Round-2 review of #2485: a same-day dated futures close is measured but may not exceed WARN, so a stale
+    closePrice with a fresh stamp can never page on its own."""
     now = _et(2026, 11, 2, 2, 30)
-    obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)], now)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)], now)
     assert obs.state == "WARN" and "/NQ" in obs.headline  # measured, but capped
     assert "capped at WARN" in obs.headline
     assert obs.evidence[0].label.startswith("/NQ overnight move")
@@ -500,15 +533,15 @@ def test_fresh_overnight_futures_drop_is_measured_but_capped_without_a_proxy():
 
 def test_futures_stress_stands_when_an_index_proxy_confirms():
     now = _et(2026, 11, 2, 2, 30)
-    obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
                  _q("SPY", now - timedelta(minutes=2), 670.0, 680.0)], now)  # -1.47% vs -1.56% futures
     assert obs.state == "STRESS" and "/NQ" in obs.headline
     assert "capped at WARN" not in obs.headline
 
 
-def test_a_weak_proxy_does_not_confirm_a_futures_stress():
+def test_a_weak_proxy_does_not_confirm_a_same_day_futures_stress():
     now = _et(2026, 11, 2, 2, 30)
-    obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
                  _q("SPY", now - timedelta(minutes=2), 678.0, 680.0)], now)  # -0.29%, well under half
     assert obs.state == "WARN" and "capped at WARN" in obs.headline
 
@@ -516,7 +549,7 @@ def test_a_weak_proxy_does_not_confirm_a_futures_stress():
 def test_sunday_futures_open_print_is_measured_from_friday_close():
     now = _et(2026, 11, 1, 18, 10)
     obs = _eval([_q("/NQ", _et(2026, 11, 1, 18, 5), 25200.0, 25700.0, "futures_open")], now)
-    assert obs.state == "WARN" and obs.evidence[0].label.startswith("/NQ futures_open move")
+    assert obs.state == "STRESS" and obs.evidence[0].label.startswith("/NQ futures_open move")
     assert "2026-10-30 close" in obs.evidence[0].detail
 
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import { protectionHref } from '../lib/stopDisplay'
+import { cioStanceLine } from '../lib/cioStanceAge'
 
 export const usd = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : 'Not available'
 export const pct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : 'Not measured'
@@ -62,7 +63,7 @@ export function W7HomePanels({ data }: { data: any }) {
         <div style={{ flex: '1 1 220px' }}><b>{item.symbol && <span style={mono}>{item.symbol} </span>}{item.title || item.text}</b>
           {item.account_label && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{item.account_label}</div>}
           <div style={{ color: TOKENS.text[2], marginTop: 4 }}>{item.reason || item.why || item.detail}</div>
-          {item.stance && <span>CIO {item.stance} · conviction {text(item.conviction)}</span>}
+          {item.stance && (() => { const l = cioStanceLine(String(item.stance), (item as any).stance_as_of, text(item.conviction)); return <span data-testid="cio-stance" data-stale={l.stale ? "1" : undefined} style={l.stale ? { color: TOKENS.warning } : undefined}>{l.text}</span> })()}
         </div>{itemHref(item) && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={itemHref(item)!}>{item.cta || item.action?.label || 'Review'} →</Link>}
       </div>)}
     </W7Panel>
