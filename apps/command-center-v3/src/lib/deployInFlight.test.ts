@@ -6,7 +6,7 @@
 // and an old backend (no `work` / no `coordination`) pretending to have facts.
 import {
   IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, evidenceSentence, evidenceState, executionState, nextActionFor,
-  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeRows, normalizeWork, publicationLabel,
+  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeRows, normalizeWork, publicationLabel, prPipelineStage,
   reviewLabel, rowFacts, shortSha, type CiState, type ReviewState,
 } from './deployInFlight.ts'
 
@@ -372,6 +372,34 @@ eq('P1 a plain MERGE envelope with MERGE records is still a pass',
   rowWith({ state: 'MERGE', head_sha: HEAD,
     records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
   'MERGE')
+
+// FIRST cloud #2592: an operator approval cannot promote an unready exact head.
+// Feed raw rows through normalizeRows so old/missing review and CI receipts stay unknown.
+for (const approved of [false, true]) {
+  const base = row()
+  const cases: Array<[string, Record<string, unknown>, string]> = [
+    ['draft', { is_draft: true }, 'building'],
+    ['local only', { work: { ...base.work, publication_state: 'local_only' } }, 'building'],
+    ['conflict', { mergeable: 'CONFLICTING' }, 'pr_open'],
+    ['unknown mergeability', { mergeable: 'UNKNOWN' }, 'pr_open'],
+    ['missing review', { work: { ...base.work, review: undefined } }, 'pr_open'],
+    ['blocking review', { work: { ...base.work, review: { state: 'CHANGES', head_sha: HEAD } } }, 'pr_open'],
+    ['old review', { work: { ...base.work, review: { state: 'MERGE', head_sha: OLD } } }, 'pr_open'],
+    ['missing CI', { work: { ...base.work, ci: undefined } }, 'pr_open'],
+    ['red CI', { work: { ...base.work, ci: { state: 'RED', head_sha: HEAD } } }, 'pr_open'],
+    ['pending CI', { work: { ...base.work, ci: { state: 'PENDING', head_sha: HEAD } } }, 'pr_open'],
+    ['old CI', { work: { ...base.work, ci: { state: 'GREEN', head_sha: OLD } } }, 'pr_open'],
+  ]
+  for (const [name, overrides, expected] of cases) {
+    const normalized = normalizeRows([{ ...base, has_operator_merge: approved, ...overrides }]).rows[0]
+    eq(`approval=${approved}/${name}: unproven readiness stays building/review`, prPipelineStage(normalized), expected)
+  }
+  eq(`approval=${approved}/ready: exact-head green review remains positive`,
+    prPipelineStage(normalizeRows([{ ...base, has_operator_merge: approved }]).rows[0]), approved ? 'in_batch' : 'approved')
+  for (const publication of ['merged', 'live']) eq(`approval=${approved}/${publication}: publication evidence survives`,
+    prPipelineStage(normalizeRows([{ ...base, has_operator_merge: approved,
+      work: { ...base.work, publication_state: publication } }]).rows[0]), publication === 'merged' ? 'merged' : 'released')
+}
 
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

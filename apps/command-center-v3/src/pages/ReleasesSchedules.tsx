@@ -19,7 +19,7 @@ import {
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
-import { IN_FLIGHT_PATH, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
+import { IN_FLIGHT_PATH, KNOWN_SCHEMAS, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
 import { agentStateSentence, coordinationSource, engineerPanelProps, flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, panelSentence, plainText, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
@@ -175,7 +175,6 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
  *  \`{}\` is an invalid response, not an empty one (codex round five): deriving this with \`!!wire\` made an
  *  invalid census render as "Nothing needs you" / "Nothing is stuck". The page calls THIS, and the test feeds
  *  \`{}\` through it rather than handing a pre-computed false to the child. */
-export const IN_FLIGHT_SCHEMA = 'DeployInFlight@v2'
 
 /** F1 (cx-openai-2): is this response a CENSUS the page may draw conclusions from?
  *
@@ -191,7 +190,7 @@ export function inFlightCensus(wire: unknown, transport: { stale?: boolean } = {
   const w = wire as { schema?: string; freshness?: string; status?: string; prs?: unknown;
     generated_at?: string; coordination?: { status?: string } } | null | undefined
   if (!w) return { answered: false, reason: 'no response' }
-  if (w.schema !== IN_FLIGHT_SCHEMA) return { answered: false, reason: `unsupported schema ${w.schema ?? 'none'}` }
+  if (!(KNOWN_SCHEMAS as readonly unknown[]).includes(w.schema)) return { answered: false, reason: `unsupported schema ${w.schema ?? 'none'}` }
   const fresh = String(w.freshness ?? '').toUpperCase()
   if (fresh && fresh !== 'OK') return { answered: false, reason: `the source says ${fresh.toLowerCase()}` }
   const status = String(w.status ?? '').toUpperCase()

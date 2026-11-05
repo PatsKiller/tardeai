@@ -165,6 +165,7 @@ const legacyWire = (publication) => {
 }
 const renderWire = wire => render({ rows: normalizeRows(wire.prs).rows,
   flightAnswered: inFlightCensus(wire).answered, flightAsOf: wire.generated_at,
+  flightError: wire.reason ?? null, coordStatus: wire.coordination?.status ?? 'UNAVAILABLE',
   now: Date.parse(wire.generated_at), s: {} })
 const knownFacts = {
   published: 'recorded as uploaded', local_only: 'has not been uploaded yet',
@@ -213,6 +214,62 @@ for (const [name, verification] of [
     at: nativeLegacy.generated_at, verify: verification }], receipts_total: 1 }) } })
   check(`actual history ${name}: working claim matches structured receipt`,
     name === 'success' ? output.includes('Checked working: yes.') : !output.includes('Checked working: yes.'))
+}
+
+// FIRST cloud #2592: assert the real v1 producer ABI answers; merely rendering its rows
+// did not test the census contract and allowed the page's v2-only check to pass.
+check('native build v1 list is an answered census', inFlightCensus(nativeLegacy).answered)
+const nativeEmpty = { ...structuredClone(nativeLegacy), prs: [], count: 0 }
+check('native build v1 empty list is an answered census', inFlightCensus(nativeEmpty).answered)
+const nativeEmptyHtml = renderWire(nativeEmpty)
+check('native v1 empty: Needs you may state its measured empty answer', nativeEmptyHtml.includes(noneNeedsYou))
+check('native v1 empty: Stuck may state its measured empty answer', nativeEmptyHtml.includes(noneStuck))
+check('native v1 empty: no false source-unanswered warning', !nativeEmptyHtml.includes('Nothing has been read from the open-change source'))
+// build() keeps a successful PR census OK when its independent coordination read fails/partly answers.
+for (const coordinationStatus of ['PARTIAL', 'UNAVAILABLE']) {
+  const wire = { ...structuredClone(nativeEmpty), coordination: { ...nativeEmpty.coordination, status: coordinationStatus } }
+  check(`native v1/${coordinationStatus}: separate coordination failure does not erase PR census`, inFlightCensus(wire).answered)
+  const output = renderWire(wire)
+  check(`native v1/${coordinationStatus}: no claim that all agents are idle`, !output.includes('No agent is working right now.'))
+  check(`native v1/${coordinationStatus}: coordination gap is stated`, /partly answered|Cannot tell who is working/.test(output))
+}
+for (const [name, wire] of [
+  ['lister failure', { ...nativeEmpty, status: 'UNAVAILABLE', freshness: 'UNAVAILABLE', prs: null, count: null, reason: 'synthetic lister failure' }],
+  ['stale', { ...nativeEmpty, freshness: 'STALE' }],
+  ['error status', { ...nativeEmpty, status: 'ERROR' }],
+  ['missing list', { ...nativeEmpty, prs: undefined }],
+  ['dropped row', { ...nativeEmpty, prs: [null] }],
+  ['unsupported schema', { ...nativeEmpty, schema: 'Unsupported@v3' }],
+]) {
+  check(`native v1/${name}: unusable census is not answered`, !inFlightCensus(wire).answered)
+  const output = renderWire(wire)
+  check(`native v1/${name}: unanswered is not a measured empty decision list`, !output.includes(noneNeedsYou))
+  check(`native v1/${name}: unanswered is not a measured empty stuck list`, !output.includes(noneStuck))
+}
+// Real normalized rows reach the real component; a label must not yield Ready or merging
+// while draft/conflict/unknown/head-binding/review/CI facts say it is unready.
+for (const [name, overrides] of [
+  ['draft', { is_draft: true }], ['conflict', { mergeable: 'CONFLICTING' }],
+  ['unknown mergeability', { mergeable: 'UNKNOWN' }],
+  ['local only', { work: { ...nativeLegacy.prs[0].work, publication_state: 'local_only' } }],
+  ['missing review', { work: { ...nativeLegacy.prs[0].work, review: undefined } }],
+  ['old review', { work: { ...nativeLegacy.prs[0].work, review: { state: 'MERGE', head_sha: 'b'.repeat(40) } } }],
+  ['missing CI', { work: { ...nativeLegacy.prs[0].work, ci: undefined } }],
+  ['red CI', { work: { ...nativeLegacy.prs[0].work, ci: { state: 'RED', head_sha: nativeLegacy.prs[0].head_sha } } }],
+  ['pending CI', { work: { ...nativeLegacy.prs[0].work, ci: { state: 'PENDING', head_sha: nativeLegacy.prs[0].head_sha } } }],
+]) {
+  const wire = structuredClone(nativeLegacy)
+  wire.prs[0] = { ...wire.prs[0], has_operator_merge: true, ...overrides }
+  const output = renderWire(wire)
+  check(`approved/${name}: actual page never groups unready change as Ready`, !/>Ready\s*·/.test(output))
+  check(`approved/${name}: actual page never promises merging`, !output.includes('Merging in the next window'))
+}
+for (const approved of [false, true]) {
+  const wire = structuredClone(nativeLegacy)
+  wire.prs[0].has_operator_merge = approved
+  const output = renderWire(wire)
+  check(`ready/approval=${approved}: actual positive group remains`, approved
+    ? output.includes('Merging in the next window') : />Ready\s*·/.test(output))
 }
 
 console.log(`releasesOperatorView.render: ${pass} passed, ${fail} failed`)
