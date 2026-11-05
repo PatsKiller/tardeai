@@ -193,3 +193,35 @@ def test_the_committed_capture_is_an_exact_recount_of_its_own_rows():
         "scheduler_active",
     ):
         assert recount[key] == inventory["summary"][key], key
+
+
+def _row(lane_id, state="ACTIVE", coverage="Covered", presence="present"):
+    return {"lane_id": lane_id, "registry_state": state, "coverage": coverage,
+            "scheduler_kind": "n8n", "registry_presence": presence}
+
+
+def test_a_retired_or_removed_lane_does_not_count_towards_current_registry_figures():
+    """Codex cloud at 4eb07317f: retiring a lane gave active_total 492 beside a 493-member coverage_active, and removing
+    one gave 687 lanes in a 686-lane registry. Current figures count current presence only."""
+    rows = [_row("a"), _row("b"),
+            # retired: still in the registry, no longer active
+            _row("old", state="RETIRED", coverage="Covered"),
+            # removed: preserved row, absent from the current registry
+            _row("gone", presence="absent")]
+    s = G._recount(rows, as_of="2026-11-05T00:00:00Z")
+    assert s["registry_total"] == 3, s                      # the removed row is not in the registry
+    assert s["active_total"] == 2, s                        # the retired lane is not active
+    assert sum(s["coverage_active"].values()) == 2, s       # and neither inflates current coverage
+    assert sum(s["coverage_all"].values()) == 3, s
+
+
+def test_two_refreshes_keep_the_original_runtime_evidence_stamp():
+    """Cloud finding 2: two refreshes relabelled unchanged 2 Nov evidence as 5 Nov. The tool never re-measures."""
+    inv = {"rows": [_row("a")], "summary": {"registry_total": 1}, "snapshot": {"captured_at": "2026-11-02T18:45:27Z",
+                                                                             "runtime_evidence_from": "2026-11-02T18:45:27Z"}}
+    reg = {"lanes": [{"id": "a", "state": "ACTIVE", "owner": "x", "scheduler": {"kind": "n8n"}}]}
+    one = G.refresh(inv, reg, as_of="2026-11-05T10:00:00Z", registry_path="config/lane_registry.json")
+    assert one["snapshot"]["runtime_evidence_from"] == "2026-11-02T18:45:27Z", one["snapshot"]
+    two = G.refresh(one, reg, as_of="2026-11-05T12:00:00Z", registry_path="config/lane_registry.json")
+    assert two["snapshot"]["runtime_evidence_from"] == "2026-11-02T18:45:27Z", two["snapshot"]
+    assert two["snapshot"]["captured_at"] == "2026-11-05T12:00:00Z"

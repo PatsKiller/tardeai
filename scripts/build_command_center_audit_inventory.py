@@ -221,9 +221,15 @@ def _blank_row(lane: dict, *, as_of: str) -> dict:
 
 
 def _recount(rows: list[dict], *, as_of: str) -> dict:
-    state_counts = Counter(row.get("registry_state") for row in rows)
-    coverage_all = Counter(row.get("coverage") for row in rows)
-    active_rows = [row for row in rows if row.get("coverage") != "Disabled"]
+    # Codex cloud at 4eb07317f: a retired or removed lane kept its historical coverage and row, so the CURRENT registry
+    # statistics contradicted themselves (active_total 492 beside a 493-member coverage_active; 687 lanes in a 686-lane
+    # registry). Only rows present in the current registry count towards current figures; a row written by the frozen
+    # capture carries no presence field and is present by definition.
+    current = [row for row in rows if row.get("registry_presence", "present") == "present"]
+    state_counts = Counter(row.get("registry_state") for row in current)
+    coverage_all = Counter(row.get("coverage") for row in current)
+    active_rows = [row for row in current
+                   if row.get("coverage") != "Disabled" and str(row.get("registry_state") or "").upper() == "ACTIVE"]
     coverage_active = Counter(row.get("coverage") for row in active_rows)
     scheduler_all = Counter(row.get("scheduler_kind") for row in rows)
     scheduler_active = Counter(row.get("scheduler_kind") for row in active_rows)
@@ -286,7 +292,10 @@ def refresh(inventory: dict, registry: dict, *, as_of: str, registry_path: str) 
         "registry_sha256": hashlib.sha256(
             json.dumps(registry, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest(),
-        "runtime_evidence_from": _capture_as_of(inventory),
+        # Cloud finding 2: two refreshes relabelled unchanged runtime evidence with the later date. The original
+        # stamp is carried forward; this tool never re-measures execution.
+        "runtime_evidence_from": ((inventory.get("snapshot") or {}).get("runtime_evidence_from")
+                                  or _capture_as_of(inventory)),
         "note": (
             "Registry projection refreshed from the current lane registry. Runtime execution "
             "evidence is preserved from the prior capture; re-measure it with the served Jobs "
