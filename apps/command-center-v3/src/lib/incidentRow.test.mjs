@@ -123,5 +123,97 @@ for (const t of MIXED.concat(['Data service healthy (NO VALID READ; rc=1)'])) {
   check(`a qualified headline keeps its bracket closed: ${t}`, balanced(m.headline), m.headline)
 }
 
+// ---- THE PAGE ITSELF (cc-deepseek-5's BLOCK at 43cd0cbae) ----------------------------------------------------------
+// Everything above tests a model. The page could render `r.title` or lose the next-action line and every check above
+// would stay green, so this mounts the real OpsIncidents and asserts what the operator's phone shows. Same pattern as
+// the other view tests: compile the TSX with the repo's own TypeScript, stub the data hook, render to static markup.
+import { existsSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, join, resolve as resolvePath } from 'node:path'
+import { pathToFileURL, fileURLToPath } from 'node:url'
+
+const APP = resolvePath(dirname(fileURLToPath(import.meta.url)), '../..')
+const nodeRequire = createRequire(join(APP, 'package.json'))
+const ts = nodeRequire('typescript')
+const React = nodeRequire('react')
+const { renderToStaticMarkup } = nodeRequire('react-dom/server')
+const { MemoryRouter } = nodeRequire('react-router-dom')
+
+const compiledTsx = new Map()
+function compileTsx(path) {
+  if (compiledTsx.has(path)) return compiledTsx.get(path)
+  const source = readFileSync(path, 'utf8').replace(
+    /import \{ useApi \} from ['"][^'"]+['"]/,
+    'const useApi = (..._a: any[]): any => (globalThis as any).__incidentFixture',
+  )
+  let js = ts.transpileModule(source, {
+    compilerOptions: { jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  }).outputText
+  // a stylesheet has nothing to contribute to markup, and node cannot resolve its import
+  js = js.replace(/^[ \t]*import\s+['"][^'"]+\.css['"];?[ \t]*$/gm, '')
+    .replace(/^[ \t]*import\s+(\w+)\s+from\s+['"][^'"]+\.css['"];?[ \t]*$/gm, 'const $1 = {}')
+  js = js.replace(/from ["']([^"']+)["']/g, (whole, spec) => {
+    if (!spec.startsWith('.')) return `from ${JSON.stringify(pathToFileURL(nodeRequire.resolve(spec)).href)}`
+    const wanted = resolvePath(dirname(path), spec)
+    const target = [wanted, wanted + '.ts', wanted + '.tsx', wanted + '.js',
+      join(wanted, 'index.ts'), join(wanted, 'index.tsx'), join(wanted, 'index.js')]
+      .find(p => existsSync(p) && !statSync(p).isDirectory())
+    if (!target) throw new Error(`missing fixture dependency ${spec}`)
+    return `from ${JSON.stringify(compileTsx(target))}`
+  })
+  const url = `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
+  compiledTsx.set(path, url)
+  return url
+}
+
+const at21h07m = new Date(Date.now() - (21 * 60 + 7) * 60_000).toISOString()
+const LEDGER = {
+  ledger_present: true,
+  watchers_as_of: at21h07m,
+  supervisor_as_of: at21h07m,
+  summary: { counts: { open: 1, fixing: 0, blocked: 1, fixed: 0 } },
+  incidents: [
+    { schema: 'IncidentRecord@v1', id: 'inc-blocked', status: 'blocked', severity: 'P1',
+      title: 'lane drive-sync unhealthy: DEGRADED_STALE_SOURCE', handoff: 're-auth the drive lane',
+      opened_at: at21h07m, updated_at: at21h07m, source: { kind: 'watcher', watcher: 'lane_health' },
+      evidence: [], attempts: [], fix_refs: [] },
+    { schema: 'IncidentRecord@v1', id: 'inc-open', status: 'open',
+      title: 'health tick step pipeline-watchdog broken (rc=1)',
+      opened_at: at21h07m, updated_at: at21h07m, source: { kind: 'watcher', watcher: 'lane_health' },
+      evidence: [], attempts: [], fix_refs: [] },
+  ],
+}
+
+let Page = null
+const renderPage = (mobile) => {
+  globalThis.window = { matchMedia: () => ({ matches: mobile, addEventListener() {}, removeEventListener() {},
+    addListener() {}, removeListener() {} }) }
+  globalThis.__incidentFixture = { data: LEDGER, loading: false, error: null, refetch() {} }
+  return renderToStaticMarkup(React.createElement(MemoryRouter, { basename: '/v3', initialEntries: ['/v3/ops/incidents'] },
+    React.createElement(Page)))
+}
+
+let phone = '', desk = ''
+try {
+  Page = (await import(compileTsx(join(APP, 'src/pages/OpsIncidents.tsx')))).default
+  phone = renderPage(true)
+  desk = renderPage(false)
+} catch (e) {
+  check('the incidents page renders at all', false, `${e.name}: ${String(e.message).split('\n')[0]}`)
+}
+
+if (phone) {
+  check('the phone shows the plain headline, not the ledger title',
+    phone.includes('Lane drive-sync unhealthy: degraded stale source') && !phone.includes('DEGRADED_STALE_SOURCE'), phone.slice(0, 300))
+  check('the phone shows the priority the ledger recorded', />P1</.test(phone), phone.slice(0, 300))
+  check('an unrecorded priority says so on the phone', phone.includes('Not recorded'))
+  check('the phone shows the next action, in words', phone.includes('Needs a person. Next: re-auth the drive lane'))
+  check('the phone says nobody is on an open incident', phone.includes('Nobody is working on it yet'))
+  check('the phone keeps the age and drops the SOURCE identifier', /21 h 07 min/.test(phone) && !phone.includes('watcher · lane_health'),
+    phone.match(/.{0,40}21 h.{0,40}/)?.[0] ?? 'no age on the phone')
+  check('the desktop row keeps the source the phone drops', desk.includes('watcher · lane health') && !desk.includes('lane_health'),
+    desk.match(/.{0,40}watcher.{0,40}/)?.[0] ?? 'no source on the desktop row')
+}
+
 console.log(`incidentRow: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
