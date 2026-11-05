@@ -8,6 +8,9 @@ Canonical operator-facing decision semantics for Alex / Command Center / reports
   * Map internal enums to professional prose
   * Require ticker identity proof before a symbol enters CIO output
   * Stable decision_id so CIO NOW / report / Telegram share one identity
+  * REVIEW is deliberately asymmetric across the two resolvers: `stance_from_queue_item` honours a recorded
+    REVIEW as final (prose cannot overrule a verdict), while `resolve_display_stance` lets a decisive label speak
+    because the capital plan reads a TRIM for the sizing engine from the label when the stance is REVIEW
 
 Pure and deterministic. No broker / order / stop / 2FA / Telegram side effects.
 """
@@ -29,6 +32,11 @@ STANCE_REVIEW = "REVIEW"
 ACTIONABLE_STANCES = frozenset({
     STANCE_EXIT, STANCE_TRIM, STANCE_RE_ENTER, STANCE_ADD,
 })
+
+#: Every stance a queue item can RECORD as a verdict. HOLD and REVIEW are included on purpose (FQ-103): an explicit
+#: HOLD is a decision, not a missing value, so free text cannot overrule it. Only an absent, empty, placeholder or
+#: unrecognised verdict lets the desk state and then the label speak.
+RECORDED_STANCES = ACTIONABLE_STANCES | {STANCE_HOLD, STANCE_REVIEW}
 
 # Higher = more decisive / overrides weaker desk noise.
 STANCE_PRECEDENCE: dict[str, int] = {
@@ -560,6 +568,10 @@ def reentry_state_from_desk(state: Any = None, verdict: Any = None) -> Optional[
 def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     """Stance for one queue item: explicit verdict > state > directive label.
 
+    "Verdict" means any recorded verdict, HOLD and REVIEW included — an explicit HOLD is a decision, not an
+    absence, and prose has zero authority over it. Absent, empty, placeholder ("—", "N/A", "UNKNOWN") and
+    unrecognised verdict values are not verdicts, so the state and then the label are consulted.
+
     Desk readiness states (READY TO REVIEW / NEAR ENTRY / OVERSOLD REVIEW) map to
     REVIEW — ready to review is not ready to buy. Only an explicit RE_ENTER
     verdict produces STANCE_RE_ENTER.
@@ -569,7 +581,7 @@ def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     verdict = str(item.get("verdict") or "").upper().strip() or None
     state = str(item.get("state") or "").upper().strip() or None
     label = item.get("directive_label") or item.get("label") or item.get("note")
-    from_verdict = verdict if verdict in ACTIONABLE_STANCES else None
+    from_verdict = verdict if verdict in RECORDED_STANCES else None
     from_state = None
     reentry = reentry_state_from_desk(state, verdict)
     if reentry == "RE_ENTER":
@@ -577,7 +589,19 @@ def stance_from_queue_item(item: Optional[dict[str, Any]]) -> str:
     elif reentry:
         from_state = STANCE_REVIEW
     from_label = infer_stance_from_text(label)
-    return merge_stances(from_verdict, from_state, from_label)
+    # FQ-103: the order stated above is the order this function obeys. An explicit formal verdict is the only input
+    # that records what the CIO decided; prose and desk readiness may speak only when no actionable verdict was
+    # recorded. Before this, all three went through the decisive-stance merge, so a stronger word in the label
+    # ("Advisory EXIT — …") silently outranked an explicit ADD — free text deciding a position.
+    if from_verdict is not None:
+        return from_verdict
+    # FQ-103 R1 (cc-deepseek-6 at 8b7da7bee): with no recorded verdict, the desk STATE is consulted before the label,
+    # which is the order this docstring states. Merging the two through `merge_stances` let the stronger word win, so a
+    # label reading "Advisory EXIT" turned a READY TO REVIEW desk into EXIT — free text deciding a position one level
+    # below the verdict guard. The label now speaks only when the desk state says nothing.
+    if from_state is not None:
+        return from_state
+    return from_label or STANCE_HOLD
 
 
 def stance_for_symbol(symbol: str, queue: Optional[dict[str, Any]]) -> str:
@@ -600,14 +624,34 @@ def stance_for_symbol(symbol: str, queue: Optional[dict[str, Any]]) -> str:
     return merge_stances(*stances) if stances else STANCE_HOLD
 
 
-def resolve_display_stance(cio_stance: Any, why_now: Any = None) -> str:
-    """Eliminate HOLD + TRIM contradictions for operator-facing stance.
+#: Stances that record a decision. Prose never overrides one; REVIEW and the default HOLD still yield.
+_DECIDED_STANCES = frozenset({STANCE_ADD, STANCE_TRIM, STANCE_EXIT, STANCE_RE_ENTER})
 
-    Prefer the more decisive of formal stance and stance inferred from why_now.
+
+def resolve_display_stance(cio_stance: Any, why_now: Any = None) -> str:
+    """Eliminate HOLD + TRIM contradictions for operator-facing stance — without letting prose outrank a decision.
+
+    The contradiction this exists for is a row whose stance is the DEFAULT (no decision was recorded, so it reads
+    HOLD) while its prose says something decisive: there the prose may speak. Every DECIDED stance — ADD, TRIM, EXIT,
+    RE_ENTER — is final, and the module's rule is that prose has zero authority over one. cc-deepseek-6's
+    FQ-103 finding reproduced here one level over: `resolve_display_stance("ADD", "Advisory EXIT — SYNX")` returned
+    EXIT and called a recorded ADD an exit; a decisive formal stance now wins unconditionally. REVIEW is not in that
+    set — it means "look again", and the capital plan reads a TRIM for the sizing engine from the label when the
+    stance is REVIEW, so REVIEW still yields to a decisive label.
+
+    **The limit, stated rather than hidden:** this function receives a stance string, not a verdict, so a HOLD is
+    ambiguous — it is the default value AND it is a valid recorded stance. A HOLD therefore still yields to decisive
+    prose here, because that is the contradiction this function was written to remove ("HOLD + TRIM"). Closing that
+    last case needs the caller to say whether the HOLD was recorded; it is not guessable at this layer.
     """
-    formal = str(cio_stance or "").upper().strip() or STANCE_HOLD
+    formal = str(cio_stance or "").upper().strip()
+    # A DECIDED stance is final: prose must not turn an ADD into an exit. REVIEW is not a decision — it is "look
+    # again" — and the capital plan reads the desk's intent from the label when the stance is REVIEW (that is how a
+    # TRIM reaches the sizing engine), so REVIEW still yields to a decisive label. HOLD, the default, does too.
+    if formal in _DECIDED_STANCES:
+        return formal
     from_why = infer_stance_from_text(why_now)
-    return merge_stances(formal, from_why)
+    return merge_stances(formal or STANCE_HOLD, from_why)
 
 
 def is_pseudo_sector(name: Any) -> bool:
