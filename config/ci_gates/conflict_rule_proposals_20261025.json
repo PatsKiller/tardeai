@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conflict_rule_proposals_20261025",
+  "files": [
+    "tests/test_conflict_rule_proposals.py"
+  ],
+  "anchor": "CONFLICT_RULE_PROPOSALS_20261025",
+  "comment": [
+    "ANCHOR: CONFLICT_RULE_PROPOSALS_20261025 — operator 2026-10-25: unmatched conflicts go to AI for a proposed rule, approved on the same page.",
+    "Pins: UNMATCHED detection (vocabulary/role/domain/dropped input/N-way), dedupe by pattern signature, per-run/daily/cost/attempt caps,",
+    "stubbed governed bridge (no model call), RuleProposal@v1 schema + grounded citations/numbers + data-only machine form, operator-only",
+    "decision (agents 403, CSRF, activation 503), approval appends a hash-chained amendment and keeps matrix_sha256, never-auto refusal,",
+    "reject cooldown, one grouped P2 intent, resolver hook dry-run write-free."
+  ]
+}

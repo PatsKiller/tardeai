@@ -1,108 +1,107 @@
 #!/usr/bin/env python3
-"""delivery_failure_alerts.py — page the operator (Telegram + email + SMS) on any delivery failure (AGENTS.md §29).
+"""Immediate P1 failure paging for delivery / deploy failures (AGENTS.md §28.12 step 10).
 
-    python3 scripts/delivery_failure_alerts.py                 # dry run (default): render + channel list, send nothing
-    python3 scripts/delivery_failure_alerts.py --live          # send due P1 alerts, update dedupe state
-    python3 scripts/delivery_failure_alerts.py --channels      # which channels are configured (key names only)
-
-Temp-root proof (never the live state):
-    python3 scripts/delivery_failure_alerts.py --state-root $T/state --release-state-dir $T/rw \
-        --deploy-state-dir $T/deploy --no-github --no-systemd
-
-Triggers, message format, dedupe and rate limits: scripts/lib/delivery_failure_alerts.py. Exit 0 = ran (incidents are
-output, not failures); 1 = a live message reached no channel; 2 = usage/config error.
-MBI_BEHAVIOR = 0. Authority: OPERATOR_NOTIFY_SYSTEM_OPS. Never reads a credential value.
+Best-effort: Telegram via send_telegram when available; always appends a durable
+receipt so silence is detectable. Never raises into the caller.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
-for _p in (str(ROOT), str(ROOT / "scripts")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from scripts.lib import delivery_failure_alerts as DFA  # noqa: E402
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def _ci_reader():
-    import main_ci_watch as MCW
-    import pr_hygiene_audit as PHA
-
-    slug = PHA.resolve_slug(None, PHA.Git(PHA.resolve_repo(None)))
-    if not slug:
-        raise RuntimeError("no GitHub slug")
-    return MCW.watch(PHA.Gh(slug))
+def _utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0], allow_abbrev=False)
-    ap.add_argument("--live", action="store_true", help="send (default: dry run)")
-    ap.add_argument("--channels", action="store_true", help="print channel readiness and exit")
-    ap.add_argument("--config", type=Path, default=DFA.CONFIG_PATH)
-    ap.add_argument("--state-root", type=Path)
-    ap.add_argument("--release-state-dir", type=Path)
-    ap.add_argument("--deploy-state-dir", type=Path)
-    ap.add_argument("--only", action="append", choices=DFA.TRIGGERS, help="limit to these triggers (repeatable)")
-    ap.add_argument("--no-github", action="store_true", help="main CI: read the receipt only, never call GitHub")
-    ap.add_argument("--no-systemd", action="store_true", help="request slots: skip systemd (temp-root proofs)")
-    ap.add_argument("--now", help="ISO time (proofs and tests)")
-    ap.add_argument("--json", action="store_true")
-    a = ap.parse_args(argv)
+def _receipts_dir() -> Path:
+    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    return root / "data" / "runtime" / "delivery_failure_alerts"
+
+
+def page_p1(*, kind: str, message: str, detail: dict[str, Any] | None = None, priority: str = "P1",
+            resolving: bool = False) -> dict[str, Any]:
+    """Send a P1 (intent dedupe off) and write a receipt. Returns the receipt body.
+
+    ``delivered`` is the TRANSPORT truth (Telegram returned a message id), not send_telegram's
+    "accepted". 2026-10-27: 386 deploy_on_main pages were receipted delivered:true while the comms
+    editor held every one after the first as a 20h duplicate (the SHA is stripped from its
+    fingerprint), so the operator saw one message at 15:50 ET and nothing after. ``delivery_status``
+    (DELIVERED / HELD / ROUTED / FAILED / …) now says which.
+    """
+    text = f"[{priority}] {kind}: {message}"
+    delivered: bool | None = None
+    accepted: bool | None = None
+    status = ""
+    err = ""
     try:
-        cfg = DFA.load_config(a.config)
-    except (OSError, ValueError) as exc:
-        print(f"[delivery-failure-alerts] config: {exc}", file=sys.stderr)
-        return 2
-    if a.channels:
-        for ch, r in DFA.channel_readiness(cfg).items():
-            print(f"{ch:9s} {r['status']:15s} {r['why']}")
-        return 0
-    state_root = a.state_root or Path(
-        os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state"
-    )
-    rsd = a.release_state_dir or Path(
-        os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR") or state_root / "data" / "runtime" / "release_window"
-    )
-    dsd = a.deploy_state_dir or Path.home() / ".local" / "state" / "cio-phase2-exact-main"
-    now = DFA.parse_ts(a.now) if a.now else datetime.now(timezone.utc)
-    ctx = DFA.Context(
-        state_root=state_root,
-        release_state_dir=rsd,
-        deploy_state_dir=dsd,
-        now=now,
-        config=cfg,
-        ci_reader=None if a.no_github else _ci_reader,
-        systemd_timers=(lambda: []) if a.no_systemd else None,
-    )
-    receipt = DFA.run(ctx, live=a.live, only=a.only)
-    if a.json:
-        print(json.dumps(receipt, indent=2, default=str))
-    else:
-        print(
-            f"[delivery-failure-alerts] {receipt['mode']} {receipt['as_of']}: {len(receipt['incidents'])} incident(s), "
-            f"{len(receipt['due'])} due, {len(receipt['held_rate_limited'])} held by the hourly cap"
-        )
-        for m in receipt["messages"]:
-            print("---")
-            print(m["rendered"]["text"])
-            print(
-                "  channels: "
-                + ", ".join(
-                    f"{c}={v['status']}"
-                    + (f" ({v.get('why') or v.get('error')})" if v.get("why") or v.get("error") else "")
-                    for c, v in m["channels"].items()
-                )
+        from scripts.telegram_alert import send_telegram  # type: ignore
+
+        accepted = bool(
+            send_telegram(
+                text,
+                priority=priority,
+                dedupe_minutes=0,
+                producer=f"delivery_failure_alerts:{kind}",
+                resolving=resolving,
             )
-        for n in receipt["notes"]:
-            print(f"  note: {n}")
-    return 0 if receipt["ok"] else 1
+        )
+        try:
+            from scripts.telegram_alert import delivery_outcome  # type: ignore
+
+            outcome = delivery_outcome(accepted)
+            status = str(outcome.get("status") or "")
+            delivered = bool(outcome.get("delivered"))
+        except Exception as exc:  # noqa: BLE001 — older transport: fall back to accepted
+            delivered = accepted
+            status = f"UNKNOWN:{type(exc).__name__}"
+    except Exception as exc:  # noqa: BLE001
+        delivered = None
+        err = f"{type(exc).__name__}:{exc}"[:200]
+
+    row = {
+        "schema": "DeliveryFailureAlert@v1",
+        "as_of": _utc(),
+        "kind": kind,
+        "message": message,
+        "delivered": delivered,
+        "accepted": accepted,
+        "delivery_status": status,
+        "priority": priority,
+        "error": err,
+        "detail": detail or {},
+    }
+    out = _receipts_dir()
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "latest.json").write_text(json.dumps(row, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        stamp = _utc().replace(":", "").replace("-", "")
+        (out / f"{stamp}_{kind}.json").write_text(json.dumps(row, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return row
+
+
+def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--kind", default="manual_test")
+    ap.add_argument("--message", default="delivery_failure_alerts dry probe")
+    ap.add_argument("--dry-run", action="store_true")
+    args = ap.parse_args()
+    if args.dry_run:
+        print(json.dumps({"would_page": True, "kind": args.kind, "message": args.message}))
+        return 0
+    row = page_p1(kind=args.kind, message=args.message)
+    print(json.dumps(row, indent=2, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,0 +1,79 @@
+{
+  "schema": "IncidentWatchersConfig@v1",
+  "_why": "Operator 2026-10-27: \"Could the LLM API monitor these processes if something goes wrong in terms of deployment, that it will fix it automatically … or tell the agents what to do?\" Deterministic watchers (no model) run from a host timer every 5 minutes (config/systemd/incidents/tradeai-incident-watchers.timer) and open one IncidentRecord@v1 per condition, deduped by a fingerprint that carries the distinguishing token (SHA, job, lane, symbol). An incident auto-resolves when its watcher collected cleanly and the condition is gone; a watcher whose input is unreadable records a collection gap and resolves nothing. Every input is an EXISTING producer's output; the watchers never write another producer's store. Host timer, not n8n (AGENTS.md section 28.14 item 1 and section 23.14: a monitor never depends on the thing it monitors).",
+  "enabled": true,
+  "watchers": {
+    "deploy_failures": {
+      "enabled": true,
+      "_why": "deploy_on_main poller: 388 deploy_failed receipts 2026-10-26/27 reached nobody (comms editor fingerprint stripped the SHA).",
+      "receipts_rel": "data/runtime/deploy_on_main",
+      "consecutive_failures": 3,
+      "failure_outcomes": ["deploy_failed", "verify_failed"],
+      "severity": "P1"
+    },
+    "deploy_stuck": {
+      "enabled": true,
+      "receipts_rel": "data/runtime/deploy_on_main",
+      "stuck_minutes": 30,
+      "severity": "P1"
+    },
+    "health_tick": {
+      "enabled": true,
+      "receipt_rel": "data/runtime/health_tick_last.json",
+      "step_lists": ["failed", "broken", "timed_out"],
+      "stale_minutes": 30,
+      "severity": "P2"
+    },
+    "expected_services": {
+      "enabled": true,
+      "receipt_rel": "data/runtime/expected_services_last_run.json",
+      "stale_minutes": 180,
+      "ignore_items": [],
+      "severity": "P2"
+    },
+    "lane_health": {
+      "enabled": true,
+      "_why": "research lane health (scripts/research_lane_health.py) and the cron outage watchdog (scripts/cron_outage_watchdog.py, currently enabled:false in its own config; read only when its receipt is fresh).",
+      "research_rel": "data/runtime/research_lane_health.json",
+      "cron_watchdog_rel": "data/runtime/cron_outage_watchdog_latest.json",
+      "stale_minutes": 120,
+      "severity": "P2"
+    },
+    "main_ci": {
+      "enabled": true,
+      "_why": "Main CI red on the tip of main. Read-only `gh run list` (GET). Fingerprint = head SHA + workflow, so a new red SHA is a new incident and the old one resolves when the tip moves on green.",
+      "repo": "PatsKiller/tardeai",
+      "limit": 40,
+      "severity": "P1"
+    },
+    "prospectus_queue": {
+      "enabled": true,
+      "queue_rel": "data/prospectus/queue.json",
+      "running_hours": 2,
+      "severity": "P2"
+    },
+    "llm_backlog": {
+      "enabled": true,
+      "_why": "Postgres llm_deferred_requests via scripts/lib/llm_deferral.queue_summary(); psycopg2/DB unavailable = collection gap, never an incident.",
+      "pending_threshold": 200,
+      "severity": "P2"
+    },
+    "cap_hits": {
+      "enabled": true,
+      "_why": "Anthropic credit journal fallback rows whose reason is a cap (hash-chained journal, read only).",
+      "journal_rel": "data/runtime/provider_cost/anthropic_credit.jsonl",
+      "reasons": ["CREDIT_PROCESS_CAP", "PAUSED_TODAY", "EXHAUSTED", "CREDIT_PER_CALL_CAP"],
+      "window_minutes": 60,
+      "min_hits": 3,
+      "tail_lines": 4000,
+      "severity": "P2"
+    },
+    "dirty_checkout": {
+      "enabled": true,
+      "_why": "Agent work left in the canonical checkout (2026-10-27, rescued by #2231). Dirty for longer than dirty_minutes opens an incident; first-seen is kept in watchers_state.json.",
+      "repo": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "dirty_minutes": 30,
+      "severity": "P2"
+    }
+  }
+}

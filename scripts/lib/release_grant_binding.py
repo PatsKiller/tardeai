@@ -318,11 +318,12 @@ def decide_from_disk(act: ReleaseAction, *, grants_path: Path = GRANTS_PATH,
 
 # ── the standing-release binding: the host capability ledger (arming packet §K) ───────────────────────────
 #
-# PROPOSED, inert. While ``CAPABILITY_BINDING_STATUS`` is not "ACTIVE", ``release_grant_preflight.py`` never calls
+# ACTIVE since 2026-10-25 (operator directive: "It needs to work without grant. It's a perpetual grant."; arming
+# packet I.4 PR 3). While ``CAPABILITY_BINDING_STATUS`` is not "ACTIVE", ``release_grant_preflight.py`` never calls
 # ``decide_capability`` and its output is byte-identical to the grant-only behaviour above. The flag is a code
 # constant in this protected surface (release_train_controller.PROTECTED_SURFACES): it moves only by a reviewed PR
-# released by the manual path (packet L.1), after the operator says so. No environment variable, argument or file
-# turns it on.
+# released by the manual path (packet L.1). No environment variable, argument or file turns it on; setting it back
+# to "PROPOSED" (or STOP / revoke on the host) returns every train prepare/promote to needing a guard grant.
 #
 # When ACTIVE, a train's ``prepare`` / ``promote`` with no binding grant is accepted only when ALL of these hold
 # (packet §K; AGENTS §25.2 "checks first, then one reservation, then the effect"):
@@ -348,7 +349,7 @@ def decide_from_disk(act: ReleaseAction, *, grants_path: Path = GRANTS_PATH,
 # working unchanged and is tried first. The state dir is the default one; an environment override that resolves to
 # a different directory is refused (a planted state dir must not stand in for the real control and ledger).
 
-CAPABILITY_BINDING_STATUS = "PROPOSED"
+CAPABILITY_BINDING_STATUS = "ACTIVE"
 CAPABILITY_BINDING_SCHEMA = "ReleaseCapabilityBinding@v1"
 CAPABILITY_ACTIONS = {"prepare": "prepare_release", "promote": "promote_release"}
 TRAIN_CAMPAIGN_PREFIX = "release-train-"
@@ -381,6 +382,22 @@ def reservation_token_path(state_dir: Path, train_id: str, cap_action: str) -> P
     return Path(state_dir) / "trains" / train_id / "capability" / f"{cap_action}.rcap"
 
 
+def release_artifact_digest(release_dir: Path, sha: str) -> str:
+    """The prepared release's identity, computed exactly as ``release_train_controller.artifact_digest`` (resolved
+    path, BUILD_SHA and build metadata files) so the deploy's promote can bind ``--artifact-digest`` (review F4)."""
+    import hashlib  # noqa: PLC0415
+
+    p = Path(os.path.realpath(release_dir))
+    parts: dict[str, Any] = {"path": str(p), "sha": sha}
+    for name in ("BUILD_SHA", "BUILD_META.json", "BUILD_INFO.json"):
+        try:
+            parts[name] = hashlib.sha256((p / name).read_bytes()).hexdigest()
+        except OSError:
+            parts[name] = None
+    blob = json.dumps(parts, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return "sha256:" + hashlib.sha256(blob).hexdigest()
+
+
 def write_reservation_token(state_dir: Path, train_id: str, cap_action: str, token: str) -> Path:
     """For the controller, while it holds the reservation: put the signed token where the preflight looks
     (mode 600, atomic). The token alone grants nothing: the preflight also needs the RESERVED intent, a live lock
@@ -388,6 +405,10 @@ def write_reservation_token(state_dir: Path, train_id: str, cap_action: str, tok
     p = reservation_token_path(state_dir, train_id, cap_action)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(p.name + f".{os.getpid()}.tmp")
+    try:
+        os.unlink(tmp)                     # review F6: a stale tmp from a crashed writer with a reused pid
+    except FileNotFoundError:
+        pass
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w", encoding="ascii") as fh:
         fh.write(token)
@@ -499,6 +520,9 @@ def _decide_capability(action: str, sha: str, campaign: Optional[str], *, state_
         state_dir = default_sd
     state_dir = Path(state_dir)
     now = time.time() if now is None else float(now)
+    if cap_action == "promote_release" and artifact_digest is None:
+        # Review F4: a promote binds the exact prepared artifact; the deploy passes it (--release-dir).
+        raise _Refuse("ARTIFACT_DIGEST_REQUIRED", "promote needs --artifact-digest / --release-dir of the prepared dir")
 
     # 1. the token: signed by the host key, equal to the issued record
     token = _read_token(reservation_token_path(state_dir, train_id, cap_action))
@@ -598,5 +622,5 @@ def _decide_capability(action: str, sha: str, campaign: Optional[str], *, state_
 __all__ = ["SCHEMA", "TIER", "ACTIONS", "ReleaseAction", "Verdict", "decide", "decide_from_disk",
            "load_grants", "load_requests", "named_shas", "pending_requests_for", "window_campaigns",
            "CAPABILITY_BINDING_STATUS", "CapabilityVerdict", "capability_binding_active", "decide_capability",
-           "default_release_state_dir", "reservation_token_path", "train_id_from_campaign",
+           "default_release_state_dir", "release_artifact_digest", "reservation_token_path", "train_id_from_campaign",
            "write_reservation_token"]

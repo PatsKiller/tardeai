@@ -143,3 +143,32 @@ sector, industry or theme a cadence; a checkpoint or belief joins a record by `s
 (`HELD|EXIT|WATCH:SYM`), never by a tag GUID; `is_mintable` is the one place that states
 the refusal reason, and a caller that reads `tags_only_by_policy:*` has found policy, not
 a defect.
+
+<!-- moved from AGENTS.md 25.0.1 lines 3066-3088 -->
+## Moved from AGENTS.md (25.0.1 lines 3066-3088)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+**What each lane must stamp.** Any agent writing to one of these carries the
+subject types named here.
+
+| lane | subject | mentions |
+|---|---|---|
+| `material_changes` (`sector_move`) | SECTOR | member SECURITYs |
+| `material_changes` (other kinds) | SECURITY | — |
+| `subject_state_narratives` | SECURITY | SECTOR |
+| `defense_directive_hits_staging` | SECURITY | SECTOR, THEME |
+| `rotation_directive_hits_staging` | **SECTOR** | SECURITY (ETF proxy only), THEME |
+| `inference_sizing_recommendations` | SECURITY | STRATEGY, SECTOR, INDUSTRY |
+| `watchlist_final_synthesis` | SECURITY | SECTOR, INDUSTRY |
+| `agent_recommendation_registry` | SECURITY | STRATEGY, SECTOR, INDUSTRY |
+| `rec_rotation_links`, `aegis_rotation_candidates` | SECURITY `from` + `to` | SECTOR both legs |
+| `strategy_lesson_rollup`, `profit_protection_shadow_recommendations` | STRATEGY | — |
+| `risk_synthesis_results` | PORTFOLIO | SECURITYs from `top_risks` |
+| `run_summary`, `system_rollup_daily`, `closed_trade_digest_log` | PORTFOLIO | — |
+| `learning_recommendations` | THEME (domain) | — |
+| outbound `communication_events` | whatever the message is about | — |
+
+Owner: `scripts/lib/cio_narrative_subjects.py` (resolve) and
+`scripts/lib/cio_narrative_write.py` (persist). Store: `narrative_subjects`.
+Contract: `docs/architecture/narrative-subject-identity.md`.

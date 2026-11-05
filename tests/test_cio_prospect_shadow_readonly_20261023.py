@@ -109,14 +109,20 @@ def test_directive_core_preserves_strict_and_fail_soft_boundaries():
         directives.active_ticker_directives(db_query=None)
 
 
-def test_restored_lane_is_shadow_only_and_preserves_historical_owner_review():
+def test_lane_is_canary_writing_only_the_shadow_and_preserves_historical_owner_review():
+    """2026-10-25 operator directive: promoted shadow -> canary. The live argv adds exactly --write-shadow
+    (shadow artifact + comparison + receipt); never --write-company-facts, never a store write."""
     lane = _row("config/lane_registry.json", "lanes", LANE)
     run = _row("config/n8n_run_allowlist.json", "lanes", LANE)
     contract = _row("config/n8n_health_contracts.json", "contracts", LANE)
-    assert lane["scheduler"]["kind"] == "n8n" and lane["scheduler"]["stage"] == "shadow"
-    assert lane["dispatch"]["mode"] == "dry_run"
-    assert run["live_arg"] is None and run["dry_run_arg"] == ["--dry-run"]
+    assert lane["scheduler"]["kind"] == "n8n" and lane["scheduler"]["stage"] == "canary"
+    assert lane["dispatch"]["mode"] == "live" and lane["state"] == "ACTIVE"
+    assert lane["canary"]["rollback"].startswith("revert this registry")
+    assert run["live_arg"] == ["--write-shadow"] and run["dry_run_arg"] == ["--dry-run"]
     assert run["command"] == ["$PY", "scripts/cio_prospect_shadow_build.py", "--with-db"]
+    assert not any("company-facts" in a for a in run["command"] + run["live_arg"])
+    assert run["output_signal"] == lane["output_signal"]["path"] == "data/runtime/cio-prospect-shadow_last.json"
+    assert contract["stage"] == "canary" and contract["target_reason"] == "stage:canary"
     assert contract["status"] == contract["review"]["status"] == "REVIEWED"
     assert contract["review"]["reviewed_on"] == "2026-10-22"
     assert "#1953" in contract["review"]["reference"]

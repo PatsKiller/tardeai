@@ -1,0 +1,51 @@
+{
+  "domain": "conflict_rule_proposals",
+  "status": "proposed",
+  "approval": null,
+  "entity": "AI-proposed conflict rules and operator-approved rulebook amendments",
+  "title": "Conflict rule proposals and rulebook amendments",
+  "class": "derived",
+  "store": {
+    "file": "data/conflicts/rule_proposals.jsonl"
+  },
+  "writer": "scripts/lib/conflicts/proposals.py",
+  "facts": [
+    "unmatched conflict pattern",
+    "AI rule proposal",
+    "operator proposal decision",
+    "rulebook amendment"
+  ],
+  "cadence": "conflict-resolver shadow runs (unmatched observations); conflict-rule-proposals lane (proposals); operator decisions",
+  "stale_after_hours": 24,
+  "freshness_sla": "a pending proposal is announced once (grouped P2); no produced evidence means a gap",
+  "refresh_lane": {
+    "runner": "n8n_shadow_then_live",
+    "lane": "conflict-rule-proposals",
+    "note": "schedule lands in a separate [shared-infra] PR (lane_registry / n8n_run_allowlist / host_comms_intent_routes are sha-pinned by docs/ops/packets/disk-standing-apply-20261024)"
+  },
+  "projection": "scripts.lib.conflicts.proposals.collection",
+  "readers": [
+    "Conflict rules page",
+    "Approvals Center queue (operator_approvals_api conflict_rule_proposals source; link only, no decision)",
+    "GET /api/v3/conflicts/proposals",
+    "conflict-resolver (effective rulebook)"
+  ],
+  "derived_copies": [
+    {
+      "store": {
+        "file": "data/conflicts/rulebook_amendments.jsonl"
+      },
+      "role": "derived",
+      "how": "hash-chained RulebookAmendment@v1 appended only by an operator approval through proposals.decide; base config/conflict_rulebook.json and its matrix_sha256 are never rewritten"
+    }
+  ],
+  "no_coverage": "say_so",
+  "proposal": {
+    "proposed_by": "claude-conflict-proposals-20261025",
+    "proposed_on": "2026-10-25",
+    "reference": "operator 2026-10-25 'if no rules on the resolution matches, it should put it out to AI to fix and recommend a new resolution for my approval right there on that same page'; docs/ops/CONFLICT_RULE_PROPOSALS.md",
+    "decision": "Row promotion and decision-writer activation (config/conflict_rule_proposals.json decision_writes_enabled) remain explicit operator acts."
+  },
+  "retention_days": 400,
+  "retention_mode": "archive_then_tripwire; no deletion by this module"
+}

@@ -3,7 +3,8 @@ import os
 _ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 
 
-def get_conn():
+def get_conn(**connect_kwargs):
+    """``connect_kwargs`` (e.g. ``connect_timeout``, ``options``) are passed to psycopg2.connect; none by default."""
     # Importing a writer for its offline preview must not read credential files.
     # The shared loader also honours the executor's per-lane environment bound.
     try:
@@ -25,4 +26,5 @@ def get_conn():
         password=password,
         # attribution in pg_stat_activity / idle-txn triage (these showed as app='' before)
         application_name=os.path.basename(sys.argv[0] or "python")[:63],
+        **connect_kwargs,
     )

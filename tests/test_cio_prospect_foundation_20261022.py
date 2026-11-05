@@ -445,6 +445,30 @@ def test_cli_dry_run_writes_nothing_and_write_shadow_writes_the_artifact(tmp_pat
     assert shadow["schema"] == "CioProspectShadowBuild@v1" and len(shadow["prospects"]) == 3
 
 
+def test_write_shadow_with_no_prospect_keeps_the_last_shadow_and_receipt(tmp_path, monkeypatch, capsys):
+    """2026-10-25 canary guard: an empty build exits 1 and never replaces the last good shadow or advances ok_at."""
+    from scripts import cio_prospect_shadow_build as cli
+    root = _state(tmp_path)
+    for rel in (cli.SHADOW_REL, cli.RECEIPT_REL):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text('{"prior": true}')
+    real_build = B.build
+
+    def empty(*a, **k):
+        doc = real_build(*a, **{**k, "identity_resolver": _identity})
+        doc["prospects"], doc["counts"]["prospects"] = [], 0
+        return doc
+    monkeypatch.setattr(B, "load_held", lambda state_root, held_reader=None: {
+        "symbols": set(), "source": "test", "as_of": NOW.isoformat(), "status": "ok"})
+    monkeypatch.setattr(B, "build", empty)
+    assert cli.main(["--write-shadow", "--state-root", str(root)]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["wrote"] == [] and out["refused_write"].startswith("empty_output")
+    assert json.loads((root / cli.SHADOW_REL).read_text()) == {"prior": True}
+    assert json.loads((root / cli.RECEIPT_REL).read_text()) == {"prior": True}
+    assert not (root / cli.COMPARE_REL).exists()
+
+
 def test_builder_never_reads_positions_current_or_reaches_a_sender():
     for path in ("scripts/lib/cio_prospect_builder.py", "scripts/cio_prospect_shadow_build.py",
                  "scripts/lib/data_broker/cio_prospect.py", "scripts/lib/cio_prospect_watchlist_rules.py"):

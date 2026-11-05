@@ -141,7 +141,16 @@ def load_cached(root: Path | str | None = None) -> dict[str, Any]:
     hit = _CACHE.get(key)
     if hit and hit[0] == stamp:
         return hit[1]
-    doc = load(root)
+    # 2026-10-25 (portfolio-server memory): the parse lives in the process-wide stat-keyed store
+    # (scripts/lib/shared_json_cache.py). The server imports this module as both ``lib.identity_registry``
+    # and ``scripts.lib.identity_registry``; each copy used to hold its own ~18 MB parse in _CACHE. _CACHE
+    # now only remembers the stamp -> shared doc, so both copies point at one object.
+    from scripts.lib import shared_json_cache as _sjc
+
+    doc = _sjc.get_or_load(path, lambda _p: load(root), namespace="identity_registry", default=None)
+    if doc is None:
+        return empty_registry()
+    _CACHE.clear()  # one registry path per process in practice; never retain a superseded parse
     _CACHE[key] = (stamp, doc)
     return doc
 

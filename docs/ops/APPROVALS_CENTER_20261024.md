@@ -22,6 +22,19 @@ new decision store or any pending amendment.
 | Enforcement status | Exact-document test receipt and runtime receipt / violation evidence | Existence of a test or file never earns ENFORCED |
 | Agree / Question / Disagree | Version-bound rule feedback; disagreement becomes a proposal in the same ledger | No automatic amendment; question is sent through existing Ask CIO only by the operator |
 
+## AI-proposed conflict rules (batch 35, 2026-10-25)
+
+Source `conflict_rule_proposals` reads `scripts/lib/conflicts/proposals.collection(status=PENDING)` (the same store as
+`GET /api/v3/conflicts/proposals`, docs/ops/CONFLICT_RULE_PROPOSALS.md §4–5). Each pending `RuleProposal` becomes one
+`CONFLICT` item `rule-proposal:<proposal_id>` with `decision_mode=GOVERNED_PATH` and
+`governed_href=/conflicts/rules?proposal=<id>`; approved/rejected proposals never appear. The queue row links straight
+to that proposal's sheet (← Back returns to the queue). The ledger refuses APPROVE for it (`GOVERNED_ACTION_REQUIRED`)
+and a recorded disposition never hides it: Approve / Edit then approve / Reject happen only on the Conflict rules page,
+with its own operator identity, CSRF and activation gate. An unreadable or truncated store is a named gap
+(`pending_count` null), never zero. The pending items count in `pending_count` and `queue_summary.by_type.conflict`.
+The header/Home ⚑ approvals count stays the financial queue total (W1 `approvals.total`), which this queue must not
+replace.
+
 `operator_approvals_api.handle(path, method, body, query)` owns
 `/api/v2/governance/approvals`, `/approvals/:id`, `/approvals/:id/open`,
 `/approvals/:id/read`, `/approvals/:id/decide`, `/policy`, `/policy/feedback`.

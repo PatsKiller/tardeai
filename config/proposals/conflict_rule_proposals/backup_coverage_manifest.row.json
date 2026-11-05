@@ -1,0 +1,12 @@
+{
+  "id": "conflict_rule_proposals",
+  "description": "Conflict rule proposal events (RuleProposalEvent@v1) and hash-chained rulebook amendments (RulebookAmendment@v1)",
+  "covers": [
+    "ps:data/conflicts"
+  ],
+  "mechanism": "NONE",
+  "coverage": "NONE",
+  "gap": "Same tree as the proposed conflict_ledger row (ps:data/conflicts): no backup admission or restore drill is measured. Owner must add data/conflicts to a real persistent-state backup source before decision writes are activated.",
+  "retention_days": 400,
+  "restore": "Restore rule_proposals.jsonl and rulebook_amendments.jsonl together; both are sequence + sha256 hash chained and fail closed on a gap; the effective rulebook is rebuilt from config/conflict_rulebook.json plus the amendments."
+}

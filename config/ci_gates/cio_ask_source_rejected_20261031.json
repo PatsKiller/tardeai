@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_source_rejected_20261031",
+  "files": [
+    "tests/test_cio_ask_source_rejected_20261031.py"
+  ],
+  "anchor": "CIO_ASK_SOURCE_REJECTED_20261031",
+  "comment": [
+    "ANCHOR: CIO_ASK_SOURCE_REJECTED_20261031 — a source that answered with a rejected fact (a recorded gap) does not",
+    "fail the Ask-the-CIO hourly check; an errored source still fails and the reason names SOURCE_CHECK_INCOMPLETE.",
+    "Root cause of the 10-30 cio-ask-lifecycle / cio-ask-material-events n8n breakers. Hermetic."
+  ]
+}

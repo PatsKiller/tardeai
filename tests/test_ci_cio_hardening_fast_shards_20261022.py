@@ -18,7 +18,10 @@ The `if:` expressions are evaluated by a small interpreter for exactly the forms
 from __future__ import annotations
 
 import fnmatch
+import importlib.util
 import json
+import os
+import shutil
 import re
 import sys
 from pathlib import Path
@@ -55,7 +58,8 @@ SMOKES = ("Report HTML export smoke", "DOCX smoke (optional)", "PDF smoke (optio
 
 
 def _eval(expr: str, ctx: dict) -> bool:
-    """`(a == 'x' && !cancelled()) || (... && always())` with ==, !=, &&, ||, !cancelled(), always()."""
+    """`(a == 'x' && !cancelled()) || (... && always())` with ==, !=, &&, ||, !cancelled(), always(),
+    and `startsWith(github.head_ref, 'mergify/')` (Mergify speculative drafts must still run checks)."""
     expr = " ".join(str(expr).split())
 
     def sub(m: re.Match) -> str:
@@ -68,6 +72,13 @@ def _eval(expr: str, ctx: dict) -> bool:
         lambda m: repr(ctx["draft"] == (m.group(1) == "true")),
         py,
     )
+    # Mergify merge-queue speculative PRs are drafts on `mergify/*` heads; they must run
+    # required checks or the queue bisects / dequeues on CHECKS_FAILED (2026-10-27).
+    py = re.sub(
+        r"startsWith\(github\.head_ref,\s*'mergify/'\)",
+        repr(bool(ctx.get("mergify_head"))),
+        py,
+    )
     py = py.replace("!cancelled()", repr(not ctx["cancelled"])).replace("always()", "True")
     py = py.replace("&&", " and ").replace("||", " or ")
     assert re.fullmatch(r"[\sA-Za-z()]*", py) and set(re.findall(r"[A-Za-z]+", py)) <= {"True", "False", "and", "or"}, (
@@ -76,16 +87,27 @@ def _eval(expr: str, ctx: dict) -> bool:
     return bool(eval(py))  # noqa: S307 - the string is only True/False/and/or/parentheses
 
 
-def _ctx(event: str, *, draft: bool = False, cancelled: bool = False) -> dict:
-    return {"github.event_name": event, "draft": draft, "cancelled": cancelled}
+def _ctx(event: str, *, draft: bool = False, cancelled: bool = False, mergify_head: bool = False) -> dict:
+    return {
+        "github.event_name": event,
+        "draft": draft,
+        "cancelled": cancelled,
+        "mergify_head": mergify_head,
+    }
 
 
 def test_triggers_cover_ready_for_review_and_keep_push_and_dispatch():
+    # 29.3.0 (DSN-20261031-ci-load-reduction §4.3): this workflow is retired as a PR/push provider.
+    # The combined suite in cio-full-suite-sharded.yml carries those triggers and reports both required
+    # contexts (ci-gate and cio-hardening) from one run. The legacy file stays dispatch-only for the
+    # full isolation profile.
     on = HARD.get(True, HARD.get("on"))
-    assert on["push"] == {"branches": ["main"]}
-    assert {"opened", "synchronize", "reopened", "ready_for_review"} <= set(on["pull_request"]["types"])
-    assert "paths" not in on["pull_request"] and "paths-ignore" not in on["pull_request"]
-    assert "workflow_dispatch" in on and "schedule" not in on
+    assert list(on) == ["workflow_dispatch"], on
+    con = SHARD.get(True, SHARD.get("on"))
+    assert con["push"] == {"branches": ["main"]}
+    assert {"opened", "synchronize", "reopened", "ready_for_review"} <= set(con["pull_request"]["types"])
+    assert "paths" not in con["pull_request"] and "paths-ignore" not in con["pull_request"]
+    assert "workflow_dispatch" in con and "schedule" in con
 
 
 @pytest.mark.parametrize("job", PARTS)
@@ -96,6 +118,8 @@ def test_triggers_cover_ready_for_review_and_keep_push_and_dispatch():
         (_ctx("workflow_dispatch"), True),
         (_ctx("pull_request"), True),  # 2026-10-23: PRs are sharded too (release PRs took 28-38 min in one job)
         (_ctx("pull_request", draft=True), False),  # push policy v2: a draft runs none of the fleet
+        # Mergify speculative drafts on mergify/* must run (else queue CHECKS_FAILED / bisect).
+        (_ctx("pull_request", draft=True, mergify_head=True), True),
     ],
 )
 def test_parts_run_on_every_event_but_drafts(job, ctx, runs):
@@ -311,6 +335,7 @@ def test_rerun_does_not_mask_invalid_or_genuinely_duplicated_shards(tmp_path, mo
         (_ctx("pull_request"), True),
         (_ctx("pull_request", cancelled=True), False),  # a superseded PR run is never reported green
         (_ctx("pull_request", draft=True), False),
+        (_ctx("pull_request", draft=True, mergify_head=True), True),  # Mergify speculative draft
         (_ctx("push"), True),
         (_ctx("push", cancelled=True), True),  # a cancelled/timed-out shard still yields a red aggregate
         (_ctx("workflow_dispatch"), True),
@@ -397,3 +422,93 @@ def test_alerting_and_concurrency_are_unchanged():
     assert HARD["concurrency"]["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
     assert AGG["timeout-minutes"] <= 15
     assert JOBS["cio-hardening-full"]["if"] == "github.event_name == 'workflow_dispatch'"
+
+
+def _ci_module_by_path(name, relative):
+    spec = importlib.util.spec_from_file_location(name, ROOT / relative)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_checkout_wide_readonly_observer_is_serial_exactly_once():
+    runner = _ci_module_by_path("ci_readonly_serial_runner", "scripts/run_cio_hardening_ci.py")
+    observer = "tests/test_pr_merge_delegation_effective_state.py"
+    assert runner.file_needs_serial(observer)
+    plan = runner.shard_plan(N)
+    owners = [shard for shard, files in plan["shards"].items() for path in files if path == observer]
+    assert owners == ["serial"]
+    parallel, serial = runner.plan_units(runner.GATES)
+    assert not any(observer in files for _, files in parallel)
+    assert sum(files.count(observer) for _, files in serial) == 1
+
+
+def _isolated_readonly_observer(tmp_path, monkeypatch):
+    observer = _ci_module_by_path(
+        "ci_readonly_snapshot_probe", "tests/test_pr_merge_delegation_effective_state.py")
+    merge = observer.mod.__wrapped__(monkeypatch)
+    checkout = tmp_path / "checkout"
+    checks = checkout / "scripts/lib/pr_all_checks_green.py"
+    checks.parent.mkdir(parents=True)
+    shutil.copyfile(ROOT / "scripts/lib/pr_all_checks_green.py", checks)
+    source = checkout / "synthetic_source.py"
+    source.write_bytes(b"before\n")
+    # The real observer excludes TMPDIR. Keep that exclusion in an owned
+    # sibling, so pytest may put its base under /tmp or any other temp root.
+    excluded = tmp_path / "excluded_temp"
+    excluded.mkdir()
+    monkeypatch.setenv("TMPDIR", str(excluded))
+    monkeypatch.setattr(observer, "ROOT", checkout)
+    snapshots = []
+    actual_tree_state = observer.tree_state
+
+    def recorded_tree_state(root, **kwargs):
+        state = actual_tree_state(root, **kwargs)
+        if Path(root) == checkout:
+            snapshots.append(state)
+        return state
+
+    monkeypatch.setattr(observer, "tree_state", recorded_tree_state)
+    return observer, merge, source, snapshots
+
+
+def test_readonly_observer_accepts_metadata_established_before_its_snapshot(tmp_path, monkeypatch):
+    observer, merge, source, snapshots = _isolated_readonly_observer(tmp_path, monkeypatch)
+    initial = source.stat()
+    os.utime(source, ns=(initial.st_atime_ns, initial.st_mtime_ns - 1_000_000_000))
+    assert source.read_bytes() == b"before\n" and source.stat().st_mtime_ns != initial.st_mtime_ns
+    observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
+    assert snapshots and str(source) in snapshots[0], "the real observer must watch the fixture"
+
+
+@pytest.mark.parametrize("mutation", ["same_size_content", "metadata_only", "new_file", "missing_file"])
+def test_serial_placement_preserves_real_snapshot_mutation_detection(tmp_path, monkeypatch, mutation):
+    observer, merge, source, snapshots = _isolated_readonly_observer(tmp_path, monkeypatch)
+    actual_evaluate = merge.evaluate
+    reached = []
+
+    def changed(*args, **kwargs):
+        result = actual_evaluate(*args, **kwargs)
+        assert result["ok"], result
+        assert snapshots and str(source) in snapshots[0], "empty watch set before mutation"
+        before = source.stat()
+        if mutation == "same_size_content":
+            source.write_bytes(b"after!\n")
+            os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+            assert source.stat().st_size == before.st_size
+            assert source.stat().st_mtime_ns == before.st_mtime_ns
+        elif mutation == "metadata_only":
+            os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns - 1_000_000_000))
+        elif mutation == "new_file":
+            source.with_name("synthetic_new.py").write_bytes(b"new\n")
+        else:
+            source.rename(tmp_path / "archived_synthetic_source.py")
+        reached.append(mutation)
+        return result
+
+    monkeypatch.setattr(merge, "evaluate", changed)
+    with pytest.raises(AssertionError):
+        observer.test_evaluate_is_readonly_and_uses_only_read_apis(merge, tmp_path / "state", monkeypatch)
+    assert reached == [mutation]
+    assert snapshots and str(source) in snapshots[0]

@@ -1,0 +1,62 @@
+name: rulebook-rules-ui
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/rulebook-rules-ui.yml'
+      - 'apps/command-center-v3/src/pages/PolicyHub.tsx'
+      - 'apps/command-center-v3/src/components/PolicyRuleParts.tsx'
+      - 'apps/command-center-v3/e2e/rulebook-rules.spec.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rulebook-rules-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rulebook-rules-playwright:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Start preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/rulebook-rules-preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:4173/v3/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/rulebook-rules-preview.log
+          exit 1
+      - name: Rulebook rule model fixture taps
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
+          CI: 'true'
+        run: npx playwright test e2e/rulebook-rules.spec.ts --project=chromium --reporter=line
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rulebook-rules-playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/command-center-v3/test-results/
+            /tmp/rulebook-rules-preview.log
+          if-no-files-found: warn

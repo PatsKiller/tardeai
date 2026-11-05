@@ -43,7 +43,11 @@ export function useConnectionHealth() {
   return { degraded: n > 0, failing: n }
 }
 
-export type UseApiOptions = { enabled?: boolean }
+// `priority: 'background'` (perf 2026-10-25): app-chrome polls (status strip, gates, health) yield to the page's own
+// reads. On a phone the shell's ~10 chrome requests filled the 3 shared slots first, so Watch / Portfolio data
+// queued behind them for 4-5 s before it was even asked for. Background requests start only when no page request
+// is waiting, and never take the last free slot. Nothing is dropped — they only run later.
+export type UseApiOptions = { enabled?: boolean; priority?: 'background' }
 
 // v3.1 (WS-A): manual ETag revalidation — server answers 304 before any JSON
 // serialize/gzip, which is where the CPU actually went. Keyed by path.
@@ -54,32 +58,51 @@ const _etags = new Map<string, string>()
 // healthy backend into a burst of 503s/timeouts. Keep the browser-side fan-out
 // bounded while preserving FIFO ordering and the existing last-good semantics.
 const MAX_ACTIVE_API_REQUESTS = 3
+// At most two chrome reads at once: one slot always stays free for the page.
+const MAX_BACKGROUND_API_REQUESTS = MAX_ACTIVE_API_REQUESTS - 1
 let _activeApiRequests = 0
 type ApiRequestTask<T> = {
   run: () => Promise<T>
   resolve: (value: T | PromiseLike<T>) => void
   reject: (reason?: unknown) => void
   cancelled: boolean
+  background: boolean
 }
 const _apiRequestQueue: ApiRequestTask<unknown>[] = []
+const _backgroundQueue: ApiRequestTask<unknown>[] = []
+let _activeBackground = 0
+
+function startApiTask(task: ApiRequestTask<unknown>) {
+  _activeApiRequests += 1
+  if (task.background) _activeBackground += 1
+  void task.run().then(task.resolve, task.reject).finally(() => {
+    _activeApiRequests -= 1
+    if (task.background) _activeBackground -= 1
+    drainApiRequestQueue()
+  })
+}
 
 function drainApiRequestQueue() {
   while (_activeApiRequests < MAX_ACTIVE_API_REQUESTS && _apiRequestQueue.length > 0) {
     const task = _apiRequestQueue.shift()!
     if (task.cancelled) continue
-    _activeApiRequests += 1
-    void task.run().then(task.resolve, task.reject).finally(() => {
-      _activeApiRequests -= 1
-      drainApiRequestQueue()
-    })
+    startApiTask(task)
+  }
+  // Background work only when no page request waits, and never in the last free slot.
+  while (_apiRequestQueue.length === 0 && _backgroundQueue.length > 0
+    && _activeApiRequests < MAX_ACTIVE_API_REQUESTS && _activeBackground < MAX_BACKGROUND_API_REQUESTS) {
+    const task = _backgroundQueue.shift()!
+    if (task.cancelled) continue
+    startApiTask(task)
   }
 }
 
-function scheduleApiRequest<T>(run: () => Promise<T>): { promise: Promise<T>; cancel: () => void } {
+function scheduleApiRequest<T>(run: () => Promise<T>, background = false): { promise: Promise<T>; cancel: () => void } {
   let task!: ApiRequestTask<T>
+  const queue = background ? _backgroundQueue : _apiRequestQueue
   const promise = new Promise<T>((resolve, reject) => {
-    task = { run, resolve, reject, cancelled: false }
-    _apiRequestQueue.push(task as ApiRequestTask<unknown>)
+    task = { run, resolve, reject, cancelled: false, background }
+    queue.push(task as ApiRequestTask<unknown>)
     drainApiRequestQueue()
   })
   return {
@@ -87,8 +110,8 @@ function scheduleApiRequest<T>(run: () => Promise<T>): { promise: Promise<T>; ca
     cancel: () => {
       if (task.cancelled) return
       task.cancelled = true
-      const index = _apiRequestQueue.indexOf(task as ApiRequestTask<unknown>)
-      if (index >= 0) _apiRequestQueue.splice(index, 1)
+      const index = queue.indexOf(task as ApiRequestTask<unknown>)
+      if (index >= 0) queue.splice(index, 1)
       task.reject(Object.assign(new Error('request cancelled'), { name: 'AbortError' }))
     },
   }
@@ -103,6 +126,7 @@ function backoffMs(attempt: number): number {
 
 export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOptions) {
   const enabled = options?.enabled !== false
+  const background = options?.priority === 'background'
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(enabled)
   const [refreshing, setRefreshing] = useState(false) // manual refetch in flight (keeps last data)
@@ -203,7 +227,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           } finally {
             if (timer) clearTimeout(timer)
           }
-        })
+        }, background)
         cancelQueued.add(scheduled.cancel)
         const r = await scheduled.promise
         cancelQueued.delete(scheduled.cancel)
@@ -346,7 +370,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       cancelQueued.clear()
       clearFailing()   // don't leave a stuck failure registered when this hook unmounts / path changes
     }
-  }, [path, intervalMs, tick, enabled])
+  }, [path, intervalMs, tick, enabled, background])
 
   return { data, loading, refreshing, error, stale, receivedAt, transport, authState, refetch }
 }

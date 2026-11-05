@@ -27,6 +27,11 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
     if base != PREFIX and not base.startswith(PREFIX + "/"):
         return None
     method = method.upper()
+    if base == PREFIX + "/rulebook":                 # read-only plain-language rulebook (matrix page)
+        if method != "GET":
+            return 405, {"error": "METHOD_NOT_ALLOWED"}
+        from .rulebook_view import build
+        return 200, build(root=root)
     if method == "POST":
         from scripts.lib.cio_ask_api import _default_ctx, _operator
         try:

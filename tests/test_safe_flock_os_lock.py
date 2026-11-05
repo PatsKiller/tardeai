@@ -262,3 +262,108 @@ def test_real_layout_refusal_proof_journals_only_to_the_temp_state(tmp_path, _te
     assert [(e["job_id"], e["event_type"], e["reason"]) for e in events] == [("rl3", "refused", "log_path_preflight_refused")]
     assert not any(real.iterdir())
     assert not _temp_refusal_journal.exists()
+
+
+# --- Trusted release symlinks in caller paths (2026-10-25) -------------------------------
+# d5f51dbef refused EVERY symlink component; a2424b17f fixed only the default log dir.
+# A caller path through the operator-owned CURRENT link (SAFE_FLOCK_LOG_DIR or a lock under
+# CURRENT/) is accepted when every link is caller-owned and resolves inside a trusted root;
+# links elsewhere, dangling links and unsafe resolved parents are still refused.
+
+def _layout_env(project_root, **extra):
+    env = {k: v for k, v in os.environ.items() if k not in ("SAFE_FLOCK_LOG_DIR", "PROJECT_ROOT")}
+    env["PROJECT_ROOT"] = str(project_root)
+    env.update({k: str(v) for k, v in extra.items()})
+    return env
+
+
+def _events(journal):
+    return [json.loads(line) for line in journal.read_text().splitlines()]
+
+
+def test_real_layout_log_dir_and_lock_through_current_run(tmp_path):
+    """Real layout: CURRENT -> release, release/logs -> persistent-state/logs (all temp)."""
+    layout = real_release_layout(tmp_path, ROOT)
+    (layout.release / "locks").mkdir()
+    ran = tmp_path / "ran"
+    result = subprocess.run(
+        ["bash", str(layout.current / "scripts" / "safe_flock.sh"), str(layout.current / "locks" / "rl4.lock"),
+         "touch", str(ran)],
+        env=_layout_env(layout.current, SAFE_FLOCK_LOG_DIR=layout.current / "logs"),
+        cwd=str(layout.current), text=True, capture_output=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert ran.exists()
+    events = _events(layout.state / "logs" / "safe_flock_events.jsonl")
+    assert [(e["job_id"], e["event_type"]) for e in events] == [("rl4", "started"), ("rl4", "completed")]
+    assert (layout.release / "locks" / "rl4.lock").exists()
+
+
+def test_release_base_layout_other_release_current_logs_run(tmp_path):
+    """Production shape: portfolio-server/{relA,relB,CURRENT->relB}; wrapper served from relA."""
+    base = tmp_path / "portfolio-server"
+    state_logs = tmp_path / "persistent-state" / "logs"
+    state_logs.mkdir(parents=True)
+    os.chmod(state_logs, 0o775)
+    for rel in ("relA", "relB"):
+        (base / rel / "scripts" / "lib").mkdir(parents=True)
+        (base / rel / "logs").symlink_to(state_logs, target_is_directory=True)
+        for name in ("safe_flock.sh", "lib/wrapper_events.py"):
+            shutil.copy2(ROOT / "scripts" / name, base / rel / "scripts" / name)
+    (base / "CURRENT").symlink_to(base / "relB", target_is_directory=True)
+    result = subprocess.run(
+        ["bash", str(base / "relA" / "scripts" / "safe_flock.sh"), str(tmp_path / "rl5.lock"), "true"],
+        env=_layout_env(base / "relA", SAFE_FLOCK_LOG_DIR=base / "CURRENT" / "logs"),
+        text=True, capture_output=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert [e["event_type"] for e in _events(state_logs / "safe_flock_events.jsonl")] == ["started", "completed"]
+
+
+def test_real_layout_symlink_out_of_trusted_roots_is_refused(tmp_path):
+    layout = real_release_layout(tmp_path, ROOT)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (layout.release / "escape").symlink_to(outside, target_is_directory=True)
+    ran = tmp_path / "ran"
+    for extra, lock in (({"SAFE_FLOCK_LOG_DIR": layout.current / "escape"}, layout.locks / "rl6.lock"),
+                        ({}, layout.current / "escape" / "rl6.lock")):
+        result = subprocess.run(
+            ["bash", str(layout.current / "scripts" / "safe_flock.sh"), str(lock), "touch", str(ran)],
+            env=_layout_env(layout.current, **extra), text=True, capture_output=True, timeout=10,
+        )
+        assert result.returncode == 1
+        assert "symlink resolves outside the trusted roots" in result.stderr
+        assert not ran.exists()
+        assert not any(outside.iterdir())
+    reasons = [e["reason"] for e in _events(layout.state / "logs" / "safe_flock_events.jsonl")]
+    assert reasons == ["log_path_preflight_refused", "lock_or_journal_path_preflight_refused"]
+
+
+def test_real_layout_dangling_symlink_is_refused_without_mkdir(tmp_path):
+    layout = real_release_layout(tmp_path, ROOT)
+    missing = layout.release / "not-yet"
+    (layout.release / "dangling").symlink_to(missing, target_is_directory=True)
+    result = subprocess.run(
+        ["bash", str(layout.current / "scripts" / "safe_flock.sh"), str(layout.locks / "rl7.lock"), "true"],
+        env=_layout_env(layout.current, SAFE_FLOCK_LOG_DIR=layout.current / "dangling" / "logs"),
+        text=True, capture_output=True, timeout=10,
+    )
+    assert result.returncode == 1
+    assert "symlink target is not an existing directory" in result.stderr
+    assert not missing.exists()
+
+
+def test_symlink_into_unsafe_dir_inside_root_is_refused(tmp_path):
+    layout = real_release_layout(tmp_path, ROOT)
+    shared = layout.release / "shared"
+    shared.mkdir()
+    shared.chmod(0o777)
+    (layout.release / "via").symlink_to(shared, target_is_directory=True)
+    result = subprocess.run(
+        ["bash", str(layout.current / "scripts" / "safe_flock.sh"), str(layout.current / "via" / "rl8.lock"), "true"],
+        env=_layout_env(layout.current), text=True, capture_output=True, timeout=10,
+    )
+    assert result.returncode == 1
+    assert "unsafe parent directory permissions" in result.stderr
+    assert not (shared / "rl8.lock").exists()

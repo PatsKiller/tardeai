@@ -71,7 +71,7 @@ test('Prospects (now the third Watch tab): interim label, chips, five lanes, one
   await page.getByTestId('watch-drawer-how').getByRole('button').click()
   await expect(page.getByTestId('watch-drawer-how-body')).toContainText('never silently resolved')
 
-  expect(writes).toEqual(['POST /api/v3/opportunities/NAVN/review-request'])
+  expect(writes).toEqual(['POST /api/v2/cio/ask', 'POST /api/v3/opportunities/NAVN/review-request'])
 })
 
 test('Propose opens the existing propose form; Set alert opens the existing alert form', async ({ page }) => {

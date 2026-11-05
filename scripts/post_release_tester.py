@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-"""post_release_tester.py — verify every release: API checks at once, browser sweep when allowed (AGENTS.md §29).
+"""Post-release verification (AGENTS.md §28.12 step 9 / §25.10).
 
-    python3 scripts/post_release_tester.py                # dry run: the plan for this tick, runs nothing
-    python3 scripts/post_release_tester.py --live         # run what is due; write receipts
-    python3 scripts/post_release_tester.py --live --force api   # run one phase now (api | light | nightly)
-
-Phases, windows, the memory gate and receipts: scripts/lib/post_release_tester.py. A FAILED receipt is durable and
-readable, but this lane does not page: operator alert delivery is owned by critical-texts (#2678/#2680) (operator D42,
-2026-11-05). Exit 0 = ran; 1 = a phase FAILED; 2 = usage/config error.
-MBI_BEHAVIOR = 0. Authority: READ_ONLY_ADVISORY (GET only; never restarts, rolls back or writes the server).
+Thin host check after prepare+promote: health ok, /v3/cio reachable, served BUILD_SHA
+matches CURRENT pin when readable. Writes a small receipt under persistent-state.
+Full browser sweep stays optional and outside market hours (§28.8).
 """
 
 from __future__ import annotations
@@ -17,49 +12,87 @@ import argparse
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-for _p in (str(ROOT), str(ROOT / "scripts")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-from scripts.lib import post_release_tester as PRT  # noqa: E402
+DEFAULT_BASE = os.environ.get("TRADEAI_POST_RELEASE_BASE", "http://127.0.0.1:7777")
+
+
+def _utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _get(url: str, timeout: float = 8.0) -> tuple[int, str]:
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return int(resp.status), body
+    except urllib.error.HTTPError as exc:
+        return int(exc.code), (exc.read() or b"").decode("utf-8", errors="replace")[:500]
+    except Exception as exc:  # noqa: BLE001
+        return 0, f"{type(exc).__name__}:{exc}"
+
+
+def run(*, base: str = DEFAULT_BASE, skip_http: bool = False) -> dict:
+    from scripts.lib.deploy_on_main import current_pin_sha, receipts_dir
+
+    pin = current_pin_sha()
+    checks: list[dict] = []
+    ok = True
+
+    if skip_http:
+        checks.append({"name": "http", "ok": True, "detail": "skipped"})
+    else:
+        for path, need_substr in (("/api/health", None), ("/v3/cio", None)):
+            code, body = _get(base.rstrip("/") + path)
+            passed = 200 <= code < 400
+            if path == "/api/health" and body:
+                try:
+                    doc = json.loads(body)
+                    if isinstance(doc, dict) and "ok" in doc and doc.get("ok") is False:
+                        passed = False
+                except ValueError:
+                    pass
+            checks.append({"name": path, "ok": passed, "http": code, "detail": body[:200]})
+            ok = ok and passed
+
+    checks.append({"name": "current_pin", "ok": bool(pin and len(pin) >= 9), "detail": pin[:40]})
+    if not (pin and len(pin) >= 9):
+        ok = False
+
+    row = {
+        "schema": "PostReleaseTesterReceipt@v1",
+        "as_of": _utc(),
+        "outcome": "PASSED" if ok else "FAILED",
+        "current_pin": pin,
+        "base": base,
+        "checks": checks,
+    }
+    out = receipts_dir().parent / "post_release_tester"
+    out.mkdir(parents=True, exist_ok=True)
+    dest = out / "latest.json"
+    dest.write_text(json.dumps(row, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return row
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0], allow_abbrev=False)
-    ap.add_argument("--live", action="store_true")
-    ap.add_argument("--force", action="append", choices=("api", "light", "nightly"))
-    ap.add_argument("--config", type=Path, default=PRT.CONFIG_PATH)
-    ap.add_argument("--state-root", type=Path)
-    ap.add_argument("--deploy-state-dir", type=Path)
-    ap.add_argument("--releases-base", type=Path)
-    ap.add_argument("--project-root", type=Path, default=ROOT, help="where scripts/site_sweep.sh lives")
-    ap.add_argument("--now", help="ISO time (proofs and tests)")
-    a = ap.parse_args(argv)
-    try:
-        cfg = PRT.load_config(a.config)
-    except (OSError, ValueError) as exc:
-        print(f"[post-release-tester] config: {exc}", file=sys.stderr)
-        return 2
-    state_root = a.state_root or Path(
-        os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state"
-    )
-    now = datetime.fromisoformat(a.now.replace("Z", "+00:00")) if a.now else datetime.now(timezone.utc)
-    env = PRT.Env(
-        state_root=state_root,
-        deploy_state_dir=a.deploy_state_dir or Path.home() / ".local" / "state" / "cio-phase2-exact-main",
-        releases_base=a.releases_base or Path.home() / "trade-ai-releases" / "portfolio-server",
-        project_root=a.project_root,
-        now=now,
-        config=cfg,
-        memory=lambda: PRT._default_memory(str(cfg.get("memory_unit") or "portfolio-server.service")),
-    )
-    report = PRT.tick(env, live=a.live, force=a.force)
-    print(json.dumps(report, indent=2, default=str))
-    return 1 if any(r.get("status") == PRT.FAILED for r in report.get("results", {}).values()) else 0
+    ap = argparse.ArgumentParser(description="Post-release verify CURRENT")
+    ap.add_argument("--base", default=DEFAULT_BASE)
+    ap.add_argument("--skip-http", action="store_true", help="pin-only check (hermetic / offline)")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+    row = run(base=args.base, skip_http=bool(args.skip_http))
+    if args.json:
+        print(json.dumps(row, indent=2, sort_keys=True))
+    else:
+        print(f"post_release_tester outcome={row['outcome']} pin={row.get('current_pin', '')[:12]}")
+    return 0 if row["outcome"] == "PASSED" else 1
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "freshness_slo_same_window_20261029",
+  "files": [
+    "tests/test_freshness_slo_same_window_20261029.py"
+  ],
+  "comment": [
+    "2026-10-29: hermes_score_snapshots_2h false-WARNed every pre-market morning because its baseline (daily_median/12) assumed uniform 24h volume while the scorer is market-hours-weighted. The baseline is now the same-ET-clock-hour trailing median x2."
+  ]
+}

@@ -517,6 +517,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator-approved Ask the CIO Phase 9: research lane, n8n-native report, hourly dry_run
         # (tests/test_cio_ask_research_lane_20261023.py).
         "cio-ask-research",
+        # 2026-10-26 operator Ticker Prospectus: n8n-native report lane, every 15 min (windows 17:45 / 07:00 ET) dry_run
+        # (tests/test_prospectus_build_lane_20261026.py).
+        "prospectus-build",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
         "hermes-discovery-yield-on-learning",
@@ -524,11 +527,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # n8n-native shadow lanes (no cron line; tests/test_cio_portfolio_thesis_lane_20261021.py).
         "cio-portfolio-thesis",
         "advisory-maturity-evidence",
-        # 2026-10-21 operator ruling: macro calendar for the release train's 08:00 window,
-        # n8n-native ingest lane, daily 05:05 dry_run (tests/test_macro_calendar_20261021.py).
-        "macro-calendar-refresh",
-        # WP-21: same reviewed shadow lane, now with a clean injected-query import closure.
-        "cio-prospect-shadow",
+        # 2026-10-21 macro-calendar-refresh shadow lane; promoted to canary 2026-10-26
+        # (tests/support/macro_calendar_canary_20261026.py).
+        # WP-21 shadow lane; promoted to canary 2026-10-25 (tests/support/cio_prospect_canary_20261025.py).
         # 2026-10-22 operator Gate 4 design: calibration shadow harness, n8n-native report lane, weekdays 12:25
         # dry_run (tests/test_calibration_shadow_harness_20261022.py).
         "calibration-shadow-harness",
@@ -540,6 +541,13 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-23 operator "approved": JSONL archive rotation, n8n-native hygiene lane,
         # weekdays 16:45 ET dry_run (tests/test_jsonl_archive_rotate_20261023.py).
         "jsonl-archive-rotate",
+        # 2026-10-26 operator "Yahoo Finance feed … switched on: yes": yfinance snapshot owner lane, n8n-native
+        # ingest, weekdays 05:40 ET dry_run (tests/test_yfinance_info_snapshot_lane_20261026.py).
+        "yfinance-info-snapshot",
+        # 2026-11-03 board item 16 (nudger → n8n, P2): n8n-native dispatcher row at shadow, every 5 min, dispatch
+        # dry_run. The live host crontab entry keeps doing the typing; the stage clamp makes a requested live run a
+        # dry run (tests/test_agent_nudger_p2_20261103.py).
+        "agent_nudge",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
@@ -547,6 +555,8 @@ N8N_NATIVE_SHADOW = frozenset(
 #: 2026-10-18 + disk-usage-monitor and disk-hygiene (operator 2026-10-18: "a script with rules that's repeatable, n8n
 #: should run this weekly; and also monitor when a threshold is over 80%"; tests/support/disk_hygiene_n8n.py LIVE).
 from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
+from tests.support import cio_prospect_canary_20261025 as _CPC  # noqa: E402
+from tests.support import macro_calendar_canary_20261026 as _MCC  # noqa: E402
 
 #: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
 N8N_NATIVE_CANARY = frozenset(
@@ -562,19 +572,43 @@ N8N_NATIVE_CANARY = frozenset(
         # 2026-10-22 release train H.0 shadow-enable PR (docs/ops/packets/release-train-arming-20261021 H.0):
         # shadow -> canary, dispatch live, live_arg [] (a real run writes the census receipt).
         "pr-hygiene-audit",
+        # 2026-10-25 operator "turn on everything": cio-prospect-shadow shadow -> canary, live_arg --write-shadow.
+        *_CPC.LIVE,
+        # 2026-10-26 operator "switch it from test mode to live": macro-calendar-refresh shadow -> canary, live_arg [].
+        *_MCC.LIVE,
+        # 2026-10-29 Ask lifecycle + material-events shadow -> canary (DSN-20261026-ask-hourly P1-T4): live_arg [] (the
+        # --once / --once --events-only script default is the live run). Prerequisites code-complete; the verified
+        # per-thread check + memory/readback/delivery is operator-reviewed runtime evidence before cutover.
+        "cio-ask-lifecycle",
+        "cio-ask-material-events",
+        # 2026-10-29 conflict-resolver shadow -> canary (W8 live flip; docs/designs/DSN-20261028-cio-review-transparency.md
+        # §5 gate 4): the ledger-writing --shadow mode runs live, live_arg --shadow --state-root $STATE_ROOT.
+        "conflict-resolver",
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
-#: disk-hygiene's live run is --plan (a manifest, never a deletion).
+#: disk-hygiene's live run is the operator-approved standing apply (2026-10-31; config/disk_hygiene_rules.json
+#: standing_apply): hourly --scheduled fire, the day's full run from 04:00 ET, a pressure run above trigger_pct.
 N8N_NATIVE_CANARY_LIVE_ARG = {
     "momentum-cache-reconcile": ["--apply"],
     "n8n-comms-intent-consumer": ["--apply"],
     "active-trader-motion-watchdog": ["--apply"],
     "disk-usage-monitor": ["--apply"],
-    "disk-hygiene": ["--plan"],
+    "disk-hygiene": ["--standing", "--apply", "--scheduled"],
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
     "tmp-hygiene": ["--plan"],
     "registry-runtime-truth": ["--apply"],
+    # 2026-10-29 conflict-resolver canary live_arg: the ledger-writing --shadow mode (the runner has no notification
+    # mode; the comparison report the operator reviews lives at data/conflicts/reports/<sha256(run_id)>.json).
+    "conflict-resolver": ["--shadow", "--state-root", "$STATE_ROOT"],
+    **_CPC.LIVE_ARG,
+    **_MCC.LIVE_ARG,
+}
+
+#: n8n-native canary lanes whose dry_run_arg is not the bare ["--dry-run"] (their runner requires --state-root).
+N8N_NATIVE_CANARY_DRY_RUN_ARG = {
+    "conflict-resolver": ["--dry-run", "--state-root", "$STATE_ROOT"],
+    "disk-hygiene": ["--standing", "--dry-run"],
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.
@@ -611,7 +645,7 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # n8n-native canary — no cron twin; dispatcher row at stage canary + dispatch.mode live.
             assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
             assert (row["scheduler"]["kind"], row["scheduler"]["expression"]) == ("n8n", "dispatcher"), lane
-            assert allow[lane]["dry_run_arg"] == ["--dry-run"], lane
+            assert allow[lane]["dry_run_arg"] == N8N_NATIVE_CANARY_DRY_RUN_ARG.get(lane, ["--dry-run"]), lane
             if lane in N8N_NATIVE_CANARY_LIVE_ARG:
                 assert allow[lane]["live_arg"] == N8N_NATIVE_CANARY_LIVE_ARG[lane], lane
             else:

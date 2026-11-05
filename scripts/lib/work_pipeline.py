@@ -1085,7 +1085,11 @@ def build_items(
     pr_notes = queue.get("pr_notes") or {}
     heads = {int(n): p.get("head_sha") for n, p in open_by.items() if p.get("head_sha")}
     items = []
-    for g in groups[:MAX_ITEMS]:
+    # Designs awaiting the operator are appended last; a plain [:MAX_ITEMS] cut dropped every one of them (and its
+    # Tier 2 Approve, the only path design_registry reads) once tasks/PRs/claims filled the page (2026-10-31: 400/400).
+    waiting = [g for g in groups if (g.get("design") or {}).get("awaiting")][:MAX_ITEMS]
+    rest = [g for g in groups if not (g.get("design") or {}).get("awaiting")]
+    for g in rest[: MAX_ITEMS - len(waiting)] + waiting:
         task, cs, pr = g["task"], g["claims"], g["pr"]
         num0 = (pr or {}).get("number") or next((c.get("pr_number") for c in cs if c.get("pr_number")), None)
         held = (task or {}).get("held") or (held_prs.get(str(num0)) if num0 else None)

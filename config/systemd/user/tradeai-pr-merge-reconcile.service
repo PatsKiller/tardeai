@@ -1,0 +1,18 @@
+# PR merge digest reconcile (AGENTS.md §25.10). Install is operator-only (§17).
+# Head-SHA binding: a PR whose head moved off its approved SHA loses operator-merge and returns to
+# the next digest. Then one "Merged N, deploying" note and one "Live: <sha>" note per DeployOnMainReceipt.
+[Unit]
+Description=Trade AI — PR merge reconcile (head-SHA binding + Merged/Live notes)
+Documentation=docs/ops/MERGIFY_DEPLOY_FOUNDATION.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-%h/.config/tradeai/cio-telegram.env
+EnvironmentFile=-%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/pr_merge_digest.py --reconcile --apply --json
+Nice=10
+TimeoutStartSec=300

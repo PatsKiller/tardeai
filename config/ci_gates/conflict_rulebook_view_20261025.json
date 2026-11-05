@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conflict_rulebook_view_20261025",
+  "files": [
+    "tests/test_conflict_rulebook_view_20261025.py"
+  ],
+  "anchor": "CONFLICT_RULEBOOK_VIEW_20261025",
+  "comment": [
+    "ANCHOR: CONFLICT_RULEBOOK_VIEW_20261025 — GET /api/v3/conflicts/rulebook: the resolution matrix in plain words; thresholds read from the rulebook and IPS only; coverage re-checked per read; read-only (405 on writes)."
+  ]
+}

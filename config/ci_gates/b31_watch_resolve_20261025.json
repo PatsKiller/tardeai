@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "b31_watch_resolve_20261025",
+  "files": [
+    "tests/test_b31_watch_resolve_20261025.py"
+  ],
+  "anchor": "B31_WATCH_RESOLVE_20261025",
+  "comment": [
+    "ANCHOR: B31_WATCH_RESOLVE_20261025 — Watch Resolve: a missing CIO stance is cio_missing (not a conflict), rows carry ReviewRequestState@v1 from the priority queue + acquisition ledger, request_review returns the state and records review_queued for a conflict key when the ledger exists."
+  ]
+}

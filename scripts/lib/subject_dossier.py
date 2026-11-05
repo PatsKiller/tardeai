@@ -104,7 +104,8 @@ def gather(symbols: list[str], *, db_query: DbQuery, runtime_dir: Path,
            analyst_fn: Optional[Callable[[list[str]], list[dict[str, Any]]]] = None,
            research_fn: Optional[Callable[[list[str]], list[dict[str, Any]]]] = None,
            thesis_fn: Optional[Callable[[str], dict[str, Any]]] = None,
-           held: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, dict[str, Any]]:
+           held: Optional[dict[str, dict[str, Any]]] = None,
+           prospectus_fn: Optional[Callable[[str], Optional[dict[str, Any]]]] = None) -> dict[str, dict[str, Any]]:
     """One dict per symbol: every section the house holds, each with its store and as-of."""
     syms = [str(s).upper().strip() for s in symbols or [] if str(s).strip()][:3]
     sector_doc = _read_json(Path(runtime_dir) / "sector_momentum_latest.json")
@@ -172,6 +173,12 @@ def gather(symbols: list[str], *, db_query: DbQuery, runtime_dir: Path,
                 d["thesis"] = None
         if held is not None:
             d["held"] = held.get(sym)
+        if prospectus_fn:
+            # The latest Ticker Prospectus as the CIO memory holds it (security_research_spine.latest_prospectus).
+            try:
+                d["prospectus"] = prospectus_fn(sym) or None
+            except Exception:  # noqa: BLE001
+                d["prospectus"] = None
         out[sym] = d
     return out
 
@@ -236,6 +243,17 @@ def format_symbol(d: dict[str, Any], *, price: Optional[float] = None,
         lines.append(line)
     else:
         missing.append("company profile")
+
+    if "prospectus" in d:
+        rec = d.get("prospectus")
+        if rec:
+            try:
+                from scripts.lib.prospectus.cio_memory import dossier_line
+            except ImportError:  # pragma: no cover -- hub import path
+                from lib.prospectus.cio_memory import dossier_line  # type: ignore
+            lines.append(dossier_line(rec, PILL_HOUSE))
+        else:
+            missing.append("prospectus")
 
     if prof.get("last_eps_actual") is not None or prof.get("next_earnings_date"):
         parts = []

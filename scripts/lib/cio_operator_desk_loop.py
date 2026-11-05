@@ -1439,6 +1439,21 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                 "domain": "symbol_thesis", "symbol": sym, "field": "thesis",
                 "reason": f"{sym} thesis attach failed", "gap_type": "research",
             })
+    # Market Risk Engine (operator 2026-10-31: "The CIO agent needs to know about everything, including this market
+    # information"): tier, score, contributors and as-of, or an honest NOT_EVALUATED. DSN-20261031 P3-T3.
+    try:
+        from scripts.lib.market_risk import cio_context as _mr_cio
+
+        facts["market_risk"] = _mr_cio.ask_facts(_mr_cio.load_market_risk())
+        sources.append("market_risk_projection")
+        if _mr_cio.wants_deep_brief(str(intent.get("text") or "")):  # on-demand deep brief (operator 2026-10-31)
+            facts["market_risk_deep_brief"] = _mr_cio.deep_brief_on_demand()
+            sources.append("market_risk_deep_brief")
+    except Exception as exc:  # noqa: BLE001 — a named gap, never a crash of the answer path
+        soft_gaps.append({
+            "domain": "market_risk", "symbol": None, "field": "tier",
+            "reason": f"market risk DATA_UNAVAILABLE ({type(exc).__name__})", "gap_type": "soft",
+        })
     # The freeform path had the SAME defect as the reentry composer: it put the
     # global pipeline counters into TRADE_AI_FACTS, so the model was handed
     # "2502 rows exist somewhere" as a fact about whatever was asked. Fixing
@@ -4128,7 +4143,17 @@ _DOSSIER_STORES = (
     ("industry", "industry_momentum_latest.json"), ("research", "hermes_research_intelligence"),
     ("thesis", "symbol thesis store"), ("agents", "watchlist_agent_results"),
     ("iv", "options_iv_history"), ("dividends", "ticker_dividend_data"),
+    ("prospectus", "security_research_spine (prospectus)"),
 )
+
+
+def _latest_prospectus(symbol: str) -> dict[str, Any] | None:
+    """The latest Ticker Prospectus from the CIO memory (shared research spine), or None."""
+    try:
+        from scripts.lib.prospectus.cio_memory import latest_for  # noqa: PLC0415
+    except ImportError:
+        from lib.prospectus.cio_memory import latest_for  # type: ignore  # noqa: PLC0415
+    return latest_for(symbol, root=PROJECT_ROOT)
 
 
 def _attach_subject_dossier(intent: dict[str, Any], evidence: dict[str, Any]) -> None:
@@ -4160,6 +4185,7 @@ def _attach_subject_dossier(intent: dict[str, Any], evidence: dict[str, Any]) ->
         analyst_fn=subject_analyst_view, research_fn=subject_research,
         thesis_fn=(lambda s: thesis_fields_for_symbol(s, root=PROJECT_ROOT)) if thesis_fields_for_symbol else None,
         held=_held_positions_map(),
+        prospectus_fn=_latest_prospectus,
     )
     prices: dict[str, float] = {}
     known = avail.get("subject_price") or subject_price_facts(syms)

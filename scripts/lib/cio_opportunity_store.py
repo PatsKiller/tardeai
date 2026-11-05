@@ -60,6 +60,17 @@ def _f(v: Any) -> Optional[float]:
         return None
 
 
+def _stance_basis(a: dict[str, Any]) -> Any:
+    """The stance before the market-risk gate's overlay. A HOLD the gate imposed (``market_risk_gate.action == hold``
+    with ``stance_suppressed.from``) is an overlay, not the CIO's view, so crossing ORANGE and back is not a material
+    change and writes no new CIO-memory version (review of #2362, M4). The projection still shows the held stance."""
+    gate = a.get("market_risk_gate") if isinstance(a.get("market_risk_gate"), dict) else {}
+    sup = a.get("stance_suppressed") if isinstance(a.get("stance_suppressed"), dict) else {}
+    if gate.get("action") == "hold" and str(sup.get("reason") or "").startswith("market_risk_gate") and sup.get("from"):
+        return sup["from"]
+    return a.get("stance")
+
+
 def material_changes(prev: Optional[dict[str, Any]], new: dict[str, Any], cfg: dict[str, Any]) -> list[str]:
     """Reasons a new version is warranted (empty → not material). Pure."""
     if not prev:
@@ -76,7 +87,9 @@ def material_changes(prev: Optional[dict[str, Any]], new: dict[str, Any], cfg: d
     nb = (new.get("rank") - 1) // band if new.get("rank") else None
     if pb != nb:
         out.append(f"rank band {prev.get('rank')}→{new.get('rank')}")
-    for k in ("stance", "type", "technical_condition"):
+    if _stance_basis(prev) != _stance_basis(new):
+        out.append(f"stance {_stance_basis(prev)}→{_stance_basis(new)}")
+    for k in ("type", "technical_condition"):
         if prev.get(k) != new.get(k):
             out.append(f"{k} {prev.get(k)}→{new.get(k)}")
     lp = float(cfg.get("level_delta_pct") or 2.0)

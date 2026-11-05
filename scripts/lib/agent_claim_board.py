@@ -9,6 +9,14 @@ override ``--claims-dir`` or ``TRADEAI_AGENT_CLAIMS_DIR``)::
 
     <claims_dir>/<claim_id>.json        one AgentClaim@v1 per claim, owned by the session that made it
     <claims_dir>/claims_history.jsonl   append-only archive written by ``compact`` (the durable copy)
+    <claims_dir>/policy_changed/<claim_id>.json
+                                        AgentClaimPolicyChanged@v1: written by the version-change broadcast
+                                        (scripts/lib/policy_version_broadcast.py) when a new AGENTS.md Policy-Version
+                                        reaches origin/main while the claim is open; never written into the claim file
+
+Every claim records ``policy_version`` and ``policy_blob`` (the AGENTS.md it was made under; heartbeat refreshes them).
+A claim is ``policy_changed`` while a mark names a version other than the one it last recorded: re-read AGENTS.md,
+rebase on fresh origin/main, and heartbeat from that worktree to clear it.
 
 No shared-file writes on the claim path. A claim file is created atomically: written to a unique temp
 opened ``O_CREAT|O_EXCL``, fsynced, then ``os.link``-ed to its final name (``link`` fails instead of
@@ -70,6 +78,10 @@ except ImportError:  # scripts/ on sys.path (api_v2 inside portfolio_server)
     from lib.agent_file_lease import canonicalize_claim_path  # type: ignore[no-redef]
 
 SCHEMA = "AgentClaim@v1"
+#: Files that sit in the claims directory without being claims. Only these may be skipped; anything else that does not
+#: parse as an AgentClaim@v1 named by its claim_id stays unreadable, so an unknown, corrupt or conflicting file still
+#: refuses the board rather than being silently dropped.
+AUXILIARY_CLAIM_DIR_SCHEMAS = frozenset({"PolicyBroadcastState@v1"})
 BOARD_SCHEMA = "AgentClaimBoard@v1"
 CHECK_SCHEMA = "AgentClaimCheck@v1"
 HISTORY_NAME = "claims_history.jsonl"
@@ -92,6 +104,9 @@ ENV_STALE = "TRADEAI_AGENT_CLAIMS_STALE_HOURS"
 ENV_SESSION = "AGENT_CLAIM_SESSION"
 ENV_VENDOR = "AGENT_CLAIM_VENDOR"
 ENV_AGENT = "AGENT_CLAIM_AGENT"
+POLICY_CHANGED_DIR = "policy_changed"
+POLICY_CHANGED_SCHEMA = "AgentClaimPolicyChanged@v1"
+POLICY_FIELDS = ("policy_version", "policy_blob", "policy_check")
 
 _CLAIM_ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}Z-[a-z0-9_.-]{1,24}-[0-9a-f]{8}$")
 _SLUG_RE = re.compile(r"[^a-z0-9_.-]+")
@@ -517,7 +532,12 @@ class ClaimBoard:
                 break
             try:
                 d = json.loads(p.read_text(encoding="utf-8"))
-                if not isinstance(d, dict) or d.get("schema") != SCHEMA or d.get("claim_id") != p.stem:
+                schema = d.get("schema") if isinstance(d, dict) else None
+                # An unhashable schema (list/object) is not a known auxiliary schema and must fall through to the
+                # malformed path below, never raise TypeError from the frozenset membership test.
+                if isinstance(schema, str) and schema in AUXILIARY_CLAIM_DIR_SCHEMAS:
+                    continue  # a state file that lives here by design: not a claim and not corruption
+                if not isinstance(d, dict) or schema != SCHEMA or d.get("claim_id") != p.stem:
                     raise ValueError("not an AgentClaim@v1 named by its claim_id")
                 d["_path"] = str(p)
                 docs.append(d)
@@ -612,13 +632,22 @@ class ClaimBoard:
         branch: str | None = None,
         views: list[ClaimView] | None = None,
         exclude_ids: Iterable[str] = (),
+        include_stale: bool = False,
     ) -> list[dict[str, Any]]:
-        """Live claims of OTHER sessions/branches that overlap ``paths``."""
+        """Live claims of OTHER sessions/branches that overlap ``paths``.
+
+        ``include_stale=True`` also returns claims the board has marked stale that still hold their files.
+        A caller that only gates a write (``check``, ``claim``) wants the default: a stale claim does not
+        block. A caller that answers "who do I talk to, and what may I take over" (``ask``) must see them, or
+        it reports "nobody holds this" about a path someone else still claims.
+        """
         mine = [canonical_pattern(p) for p in paths]
         skip = set(exclude_ids)
         out = []
         for v in views if views is not None else self.views()[0]:
-            if not v.blocking or v.claim_id in skip or self._is_mine(v.doc, session, branch):
+            holds_files = (v.state in {"live", "stale"} and v.lifecycle.get("locks_held", True) is not False
+                           if include_stale else v.blocking)
+            if not holds_files or v.claim_id in skip or self._is_mine(v.doc, session, branch):
                 continue
             pairs = overlapping_pairs(mine, v.doc.get("paths") or [])
             if pairs:
@@ -640,7 +669,9 @@ class ClaimBoard:
         note: str | None = None,
         worktree: str | None = None,
         head_sha: str | None = None,
+        policy: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """``policy``: {"policy_version", "policy_blob", "policy_check"} of the AGENTS.md the claim is made under."""
         if not session:
             raise ClaimError("session is required (--session or AGENT_CLAIM_SESSION)")
         if not task or not str(task).strip():
@@ -672,9 +703,12 @@ class ClaimBoard:
                     pr=pr,
                     note=note,
                     extra={
-                        k: v
-                        for k, v in (("worktree", clip(worktree, 400)), ("head_sha", head_sha))
-                        if v and (k != "head_sha" or LC.SHA_RE.match(v))
+                        **{
+                            k: v
+                            for k, v in (("worktree", clip(worktree, 400)), ("head_sha", head_sha))
+                            if v and (k != "head_sha" or LC.SHA_RE.match(v))
+                        },
+                        **policy_fields(policy),
                     },
                 )
             finally:
@@ -788,6 +822,7 @@ class ClaimBoard:
         head_sha: str | None = None,
         worktree: str | None = None,
         logged_sha: str | None = None,
+        policy: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         v = self._own(claim_id, session, force=False)
         if v.doc.get("status") != "active":
@@ -819,11 +854,18 @@ class ClaimBoard:
             d["worktree"] = clip(worktree, 400)
         if logged_sha and LC.SHA_RE.match(logged_sha):
             d["logged_sha"] = logged_sha
+        d.update(policy_fields(policy))
         _replace_own(v.path, d)
         return d
 
-    def extend(self, claim_id: str, paths: Iterable[str], *, session: str | None) -> dict[str, Any]:
-        """``claim --add``: add paths to an own active claim; refused if they overlap another live session's claim."""
+    def extend(self, claim_id: str, paths: Iterable[str], *, session: str | None,
+               note: str | None = None, approval_ref: str | None = None) -> dict[str, Any]:
+        """``claim --add``: add paths to an own active claim; refused if they overlap another live session's claim.
+
+        ``note`` is written with the same owner-only, locked write that adds the paths. Before
+        2026-11-02 the CLI computed the ``Operator-approval:`` note and then dropped it on this
+        arm, so ``claim --add ... --operator-approval`` exited 0 having recorded nothing.
+        """
         canon = []
         for p in paths:
             c = canonical_pattern(p)
@@ -848,6 +890,14 @@ class ClaimBoard:
                 if len(d["paths"]) + len(added) > MAX_PATHS:
                     raise ClaimError(f"too many paths (> {MAX_PATHS})")
                 d["paths"] = list(d["paths"]) + added
+                if note:
+                    d["note"] = note
+                if approval_ref:
+                    # Merged with the note already stored, under this lock, so an extension cannot
+                    # overwrite an earlier note (2026-11-02 review: the --add arm dropped it entirely).
+                    from . import operator_approval as _OA
+
+                    d["note"] = _OA.merge_into_note(d.get("note"), approval_ref)
                 d["heartbeat_at"] = iso(self.now())
                 _replace_own(v.path, d)
             finally:
@@ -1185,6 +1235,61 @@ class ClaimBoard:
         }
 
 
+# --------------------------------------------------------------------------------------------- policy version
+
+
+def policy_fields(policy: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The AGENTS.md identity a claim records (only well-formed values; a 40-hex blob id)."""
+    out: dict[str, Any] = {}
+    for k in POLICY_FIELDS:
+        val = (policy or {}).get(k)
+        if val in (None, ""):
+            continue
+        if k == "policy_blob" and not LC.SHA_RE.match(str(val)):
+            continue
+        out[k] = clip(val, 40)
+    return out
+
+
+def policy_changed_path(claims_dir: Path | str, claim_id: str) -> Path:
+    if not valid_claim_id(claim_id):
+        raise ClaimError(f"bad claim id {claim_id!r}")
+    return Path(claims_dir) / POLICY_CHANGED_DIR / f"{claim_id}.json"
+
+
+def read_policy_mark(claims_dir: Path | str, claim_id: str) -> dict[str, Any] | None:
+    try:
+        d = json.loads(policy_changed_path(claims_dir, claim_id).read_text(encoding="utf-8"))
+    except (OSError, ValueError, ClaimError):
+        return None
+    return d if isinstance(d, dict) and d.get("schema") == POLICY_CHANGED_SCHEMA else None
+
+
+def write_policy_mark(claims_dir: Path | str, claim_id: str, mark: Mapping[str, Any]) -> Path:
+    """Mark one open claim ``policy_changed`` (a sidecar; the claim file stays its owner's alone)."""
+    target = policy_changed_path(claims_dir, claim_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _replace_own(target, {**dict(mark), "schema": POLICY_CHANGED_SCHEMA, "claim_id": claim_id})
+    return target
+
+
+def policy_changed(claims_dir: Path | str, doc: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The mark, while the claim has not re-recorded the version it names; None once it has (or with no mark)."""
+    if doc.get("status") != "active":
+        return None
+    mark = read_policy_mark(claims_dir, str(doc.get("claim_id")))
+    if not mark or not mark.get("to_version"):
+        return None
+    if doc.get("policy_version") == mark.get("to_version"):
+        return None
+    return {
+        "to_version": mark.get("to_version"),
+        "claim_policy_version": doc.get("policy_version"),
+        "marked_at": mark.get("marked_at"),
+        "message": mark.get("message"),
+    }
+
+
 # --------------------------------------------------------------------------------------------- render
 
 
@@ -1260,6 +1365,9 @@ def public_row(v: ClaimView, now: datetime | None = None) -> dict[str, Any]:
         "host": d.get("host"),
         "takeover_of": [t.get("claim_id") if isinstance(t, dict) else t for t in d.get("takeover_of") or []],
         "taken_over_by": list(v.taken_over_by),
+        "policy_version": d.get("policy_version"),
+        "policy_blob": d.get("policy_blob"),
+        "policy_changed": policy_changed(v.path.parent, d),
     }
 
 
@@ -1276,6 +1384,9 @@ def conflict_row(v: ClaimView, pairs: list[tuple[str, str]]) -> dict[str, Any]:
         "pr": d.get("pr"),
         "started_at": d.get("started_at"),
         "heartbeat_at": d.get("heartbeat_at"),
+        # The board's own verdict on the claim. Callers must not recompute staleness from the heartbeat:
+        # rounding a rounded age is how `ask` came to call a live claim stale.
+        "state": v.state,
         "overlaps": [{"path": a, "held": b} for a, b in pairs],
     }
 

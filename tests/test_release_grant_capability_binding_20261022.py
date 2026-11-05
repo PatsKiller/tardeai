@@ -1,6 +1,6 @@
 """Arming packet §K: the standing-release binding (release_grant_preflight accepts a train's prepare/promote on a
-RESERVED host capability). Built PROPOSED and inert: ``CAPABILITY_BINDING_STATUS`` stays "PROPOSED" until a reviewed
-PR flips it and the operator says so (protected surface; manual release path L.1).
+RESERVED host capability). Built PROPOSED and inert; ``CAPABILITY_BINDING_STATUS`` is "ACTIVE" since 2026-10-25 (arming
+packet I.4 PR 3; protected surface; manual release path L.1). Flag-off behaviour is pinned with monkeypatch.
 
 Adversarial list from the packet: forged, expired, wrong-SHA, wrong-phase and replayed reservations; STOP or an
 epoch change between reserve and preflight; a reservation for another train. Plus: flag off is inert and leaves the
@@ -127,6 +127,8 @@ class World:
         kw.setdefault("delegation_path", self.deleg)
         kw.setdefault("now", self.clock())
         kw.setdefault("status", "ACTIVE")
+        if action == "promote":
+            kw.setdefault("artifact_digest", ARTIFACT)   # review F4: the deploy always binds the prepared artifact
         return B.decide_capability(action, sha, campaign or f"release-train-{self.train}", **kw)
 
 
@@ -137,14 +139,16 @@ def w(tmp_path):
 
 # ── the flag ──────────────────────────────────────────────────────────────────────────────────────────
 
-def test_flag_ships_proposed_and_is_a_code_constant():
-    assert B.CAPABILITY_BINDING_STATUS == "PROPOSED"
-    assert B.capability_binding_active() is False
+def test_flag_is_active_and_is_a_code_constant():
+    """Arming packet I.4 PR 3 (2026-10-25, operator: "It needs to work without grant. It's a perpetual grant.")."""
+    assert B.CAPABILITY_BINDING_STATUS == "ACTIVE"
+    assert B.capability_binding_active() is True
     src = (ROOT / "scripts" / "lib" / "release_grant_binding.py").read_text(encoding="utf-8")
-    assert 'CAPABILITY_BINDING_STATUS = "PROPOSED"' in src
+    assert 'CAPABILITY_BINDING_STATUS = "ACTIVE"' in src
 
 
-def test_flag_off_refuses_even_a_perfect_reservation(w):
+def test_flag_off_refuses_even_a_perfect_reservation(monkeypatch, w):
+    monkeypatch.setattr(B, "CAPABILITY_BINDING_STATUS", "PROPOSED")
     _, res = w.reserve()
     v = w.decide(status=None)
     assert (v.allowed, v.code) == (False, "BINDING_NOT_ACTIVE")
@@ -152,9 +156,19 @@ def test_flag_off_refuses_even_a_perfect_reservation(w):
 
 
 def test_env_cannot_turn_the_flag_on(monkeypatch):
+    monkeypatch.setattr(B, "CAPABILITY_BINDING_STATUS", "PROPOSED")
     for name in ("TRADEAI_RELEASE_CAPABILITY_BINDING", "CAPABILITY_BINDING_STATUS", "TRADEAI_RELEASE_GRANT_BINDING"):
         monkeypatch.setenv(name, "ACTIVE")
     assert B.capability_binding_active() is False
+
+
+def test_env_cannot_turn_the_flag_off_or_retarget_the_state_dir(monkeypatch, tmp_path):
+    for name in ("TRADEAI_RELEASE_CAPABILITY_BINDING", "CAPABILITY_BINDING_STATUS"):
+        monkeypatch.setenv(name, "PROPOSED")
+    assert B.capability_binding_active() is True
+    monkeypatch.setenv("TRADEAI_RELEASE_WINDOW_STATE_DIR", str(tmp_path / "planted"))
+    v = B.decide_capability("promote", MERGED, f"release-train-{TRAIN}")
+    assert (v.allowed, v.code) == (False, "STATE_DIR_OVERRIDDEN")
 
 
 def _run_main(monkeypatch, capsys, argv, env=None):
@@ -169,6 +183,7 @@ def _run_main(monkeypatch, capsys, argv, env=None):
 def test_preflight_flag_off_output_is_unchanged(monkeypatch, capsys, w):
     """Flag off: a train campaign with no grant is refused exactly as before; no capability key appears and the
     capability ledger is never consulted."""
+    monkeypatch.setattr(B, "CAPABILITY_BINDING_STATUS", "PROPOSED")
     _, res = w.reserve()
     monkeypatch.setattr(PF, "decide_from_disk", lambda act: B.decide(act, grants=[]))
     monkeypatch.setattr(PF, "decide_capability", lambda *a, **k: pytest.fail("consulted while PROPOSED"))
@@ -204,7 +219,7 @@ def test_preflight_active_promote_still_reads_exact_sha_ci(monkeypatch, capsys, 
     _, res = w.reserve("promote_release")
     _active_main(monkeypatch, w)
     monkeypatch.setattr(PF, "promote_ci_gate", lambda sha, receipt: {"ok": False, "errors": ["missing"]})
-    rc, body = _run_main(monkeypatch, capsys, ["--action", "promote", "--sha", MERGED],
+    rc, body = _run_main(monkeypatch, capsys, ["--action", "promote", "--sha", MERGED, "--artifact-digest", ARTIFACT],
                          env={"TRADEAI_RELEASE_CAMPAIGN": f"release-train-{TRAIN}"})
     assert rc == 3 and body["consumed"] == {"ok": False, "skipped": "ci_not_green"}
     res.succeeded({"t": 1})
@@ -456,3 +471,20 @@ def test_missing_or_unreadable_key_is_refused(w, tmp_path):
 def test_written_token_is_mode_600(w):
     p = B.write_reservation_token(w.state, TRAIN, "promote_release", "rcap1.x.y")
     assert (p.stat().st_mode & 0o777) == 0o600
+
+
+def test_promote_without_an_artifact_digest_is_refused(w):
+    """Review F4: the capability path never accepts a promote that does not bind the prepared artifact."""
+    _, res = w.reserve()
+    v = w.decide(artifact_digest=None)
+    assert (v.allowed, v.code) == (False, "ARTIFACT_DIGEST_REQUIRED")
+    res.succeeded({"t": 1})
+
+
+def test_stale_tmp_from_a_reused_pid_does_not_block_the_token_write(tmp_path):
+    """Review F6: a crashed writer's <name>.<pid>.tmp is removed before the O_EXCL create."""
+    p = B.reservation_token_path(tmp_path, TRAIN, "prepare_release")
+    p.parent.mkdir(parents=True)
+    p.with_name(p.name + f".{os.getpid()}.tmp").write_text("stale")
+    assert B.write_reservation_token(tmp_path, TRAIN, "prepare_release", "tok") == p
+    assert p.read_text() == "tok" and (p.stat().st_mode & 0o777) == 0o600

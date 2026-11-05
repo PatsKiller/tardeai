@@ -39,7 +39,7 @@ export function blockingReasons(row: ListRow): string[] {
 
 export function cardRail(row: ListRow): RailState {
   if (row.conflicts.length) return 'breach'
-  if (blockingReasons(row).length || ['resolve_conflict', 'review_add', 'decide'].includes(row.next_action.kind)) return 'attention'
+  if (blockingReasons(row).length || ['resolve_conflict', 'cio_missing', 'review_add', 'decide'].includes(row.next_action.kind)) return 'attention'
   return row.lane === 'actionable' ? 'favorable' : 'neutral'
 }
 

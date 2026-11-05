@@ -144,21 +144,19 @@ _REGIME_CACHE: tuple[float, dict] | None = None
 
 
 def _state_json(path, cache_attr: str) -> dict:
-    """mtime-cached JSON state file read; {} fail-soft."""
-    global _VOLTIER_CACHE, _ENRICH_CACHE
+    """mtime-cached JSON state file read; {} fail-soft.
+
+    2026-10-25 (portfolio-server memory): served from the process-wide stat-keyed cache
+    (scripts/lib/shared_json_cache.py) so the 10 MB ticker_enrichment_cache.json is parsed once per process,
+    not once here and again in api_v2 / portfolio_benchmarks. ``cache_attr`` is kept for callers."""
     try:
-        mt = path.stat().st_mtime
-    except OSError:
-        return {}
-    cached = globals().get(cache_attr)
-    if cached and cached[0] == mt:
-        return cached[1]
-    try:
-        data = json.loads(path.read_text())
-    except Exception:
-        data = {}
-    globals()[cache_attr] = (mt, data)
-    return data
+        from scripts.lib import shared_json_cache as _sjc
+    except ImportError:  # pragma: no cover - lib-path import style
+        try:
+            from lib import shared_json_cache as _sjc  # type: ignore[no-redef]
+        except ImportError:
+            import shared_json_cache as _sjc  # type: ignore[no-redef]
+    return _sjc.load_json(path, default={})
 
 
 def classify_volatility_tier(beta: float | None, atr_pct: float | None,

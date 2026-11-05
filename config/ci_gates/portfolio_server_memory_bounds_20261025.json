@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "portfolio_server_memory_bounds_20261025",
+  "files": [
+    "tests/test_portfolio_server_memory_bounds_20261025.py"
+  ],
+  "anchor": "PORTFOLIO_SERVER_MEMORY_BOUNDS_20261025",
+  "comment": [
+    "ANCHOR: PORTFOLIO_SERVER_MEMORY_BOUNDS_20261025 — ticker_enrichment_cache.json (4 private parses) and the identity registry (lib.* + scripts.lib.* copies) share one bounded stat-keyed store (scripts/lib/shared_json_cache.py); the request loop calls malloc_trim when it goes idle (scripts/lib/malloc_relief.py)."
+  ]
+}
