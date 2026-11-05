@@ -1,5 +1,9 @@
 # Command Center operational readiness
 
+Status:      HISTORICAL
+as_of:       2026-11-02T18:45:27.608050Z
+Measured at: source capture 2026-11-02 / live pin a95a911a9 (`CURRENT`, observed 2026-11-02T19:29:45Z); no live service measurement in this document
+
 NOT READY for unattended operations. Snapshot: 2026-11-02, source remedies in progress.
 Grades are engineering judgments against the operator's acceptance criteria, not measured service levels.
 

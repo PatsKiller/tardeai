@@ -1,5 +1,9 @@
 # Command Center operational readiness audit
 
+Status:      HISTORICAL
+as_of:       2026-11-02T18:45:27.608050Z
+Measured at: source capture 2026-11-02 / live pin a95a911a9 (`CURRENT`, observed 2026-11-02T19:29:45Z); no live service measurement in this document
+
 IN PROGRESS — NOT READY for unattended operations.
 Source implementation, review, publication, deployment and runtime recovery are separate.
 

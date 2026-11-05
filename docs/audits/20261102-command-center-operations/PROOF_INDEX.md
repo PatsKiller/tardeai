@@ -1,5 +1,9 @@
 # Evidence index
 
+Status:      HISTORICAL
+as_of:       2026-11-02T18:45:27.608050Z
+Measured at: source capture 2026-11-02 / live pin a95a911a9 (`CURRENT`, observed 2026-11-02T19:29:45Z); no live service measurement in this document
+
 Specialist reports preserve their own VERIFIED/CODE tags and commands as attributed reports.
 Root verification is separately identified; do not restamp old measurements or equate source tests with runtime.
 

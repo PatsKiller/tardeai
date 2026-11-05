@@ -38,6 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "CommandCenterInventoryRefresh@v1"
+CAPTURE_FILES = ("inventory.json", "inventory.csv", "summary.json")
 DRIFT_SCHEMA = "CommandCenterInventoryDrift@v1"
 NO_CONSUMER_REASON = (
     "Manually invoked audit-maintenance CLI; its --check report and refreshed capture are "
@@ -400,6 +401,43 @@ def refresh(inventory: dict, registry: dict, *, as_of: str, registry_path: str) 
     return out
 
 
+def _write_preview(inventory: dict, refreshed: dict, out_dir: Path) -> dict:
+    """What `--write` would write, computed without touching the filesystem."""
+    before = {row["lane_id"]: row for row in inventory.get("rows") or [] if row.get("lane_id")}
+    after = {row["lane_id"]: row for row in refreshed.get("rows") or [] if row.get("lane_id")}
+    snapshot = refreshed.get("snapshot") or {}
+    return {
+        "schema": "CommandCenterInventoryWritePreview@v1",
+        "dry_run": True,
+        "out_dir": str(out_dir),
+        "files": [str(out_dir / name) for name in CAPTURE_FILES],
+        "rows_before": len(before),
+        "rows_after": len(after),
+        "added": sorted(set(after) - set(before)),
+        "removed": sorted(set(before) - set(after)),
+        "changed": sorted(lane for lane in set(before) & set(after) if before[lane] != after[lane]),
+        "captured_at": snapshot.get("captured_at"),
+        "runtime_evidence_from": snapshot.get("runtime_evidence_from"),
+        "registry_sha256": snapshot.get("registry_sha256"),
+    }
+
+
+def _print_preview(plan: dict) -> str:
+    lines = [
+        f"{plan['schema']}: dry run — nothing written",
+        f"  would write {len(plan['files'])} file(s) under {plan['out_dir']}",
+        *(f"    {path}" for path in plan["files"]),
+        f"  rows {plan['rows_before']} -> {plan['rows_after']}"
+        f" (added {len(plan['added'])}, removed {len(plan['removed'])}, changed {len(plan['changed'])})",
+        f"  captured_at {plan['captured_at']} · runtime evidence from {plan['runtime_evidence_from']}",
+        f"  registry_sha256 {plan['registry_sha256']}",
+    ]
+    for key in ("added", "removed", "changed"):
+        for lane in plan[key]:
+            lines.append(f"  {key.upper():7} {lane}")
+    return "\n".join(lines)
+
+
 def write_capture(inventory: dict, out_dir: Path) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
@@ -440,6 +478,8 @@ def main(argv=None) -> int:
     parser.add_argument("--check", action="store_true", help="report registry drift; exit 2 when stale")
     parser.add_argument("--write", action="store_true", help="write a refreshed capture into --out")
     parser.add_argument("--json", action="store_true", help="print the drift report as JSON")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="with --write, report the files and row changes it would make and write nothing")
     args = parser.parse_args(argv)
     if not args.check and not args.write:
         parser.error("choose --check or --write")
@@ -469,6 +509,11 @@ def main(argv=None) -> int:
         return 0 if is_clean(report) else 2
     as_of = args.as_of or _now()
     refreshed = refresh(inventory, registry, as_of=as_of, registry_path=str(args.registry))
+    if args.dry_run:
+        # AGENTS.md §6: a writing path exposes a real-path dry run that reports the intended changes first.
+        plan = _write_preview(inventory, refreshed, args.out)
+        print(json.dumps(plan, indent=2) if args.json else _print_preview(plan))
+        return 0
     written = write_capture(refreshed, args.out)
     for path in written:
         print(path)

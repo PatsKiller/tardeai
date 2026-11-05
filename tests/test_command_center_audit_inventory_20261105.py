@@ -336,3 +336,37 @@ def test_both_modes_fingerprint_the_registry_identically(tmp_path):
     report = G.drift(_mini_inventory(), registry, registry_path=path)
     on_disk = hashlib.sha256(path.read_bytes()).hexdigest()
     assert refreshed["snapshot"]["registry_sha256"] == report["registry_sha256"] == on_disk
+
+
+def test_write_has_a_dry_run_that_reports_its_targets_and_writes_nothing(tmp_path):
+    """AGENTS.md §6: a writing path exposes a real-path dry run that reports the intended changes first.
+    `--check` is not one — it returns before `refresh()` and reports registry drift, not the proposed writes."""
+    inventory = _dump(tmp_path / "inventory.json", _mini_inventory())
+    registry = _dump(tmp_path / "registry.json", _mini_registry())
+    out = tmp_path / "capture"
+    plan = G._write_preview(_mini_inventory(), G.refresh(_mini_inventory(), _mini_registry(),
+                                                         as_of="2026-11-05T06:00:00Z", registry_path=str(registry)), out)
+    assert plan["dry_run"] is True
+    assert plan["files"] == [str(out / "inventory.json"), str(out / "inventory.csv"), str(out / "summary.json")]
+    assert plan["rows_before"] == plan["rows_after"] == 3
+    assert plan["added"] == plan["removed"] == []
+    # a refresh rewrites every row it projects (presence, declared schedule), so all three are reported as changed
+    assert plan["changed"] == ["lane-a", "lane-b", "lane-c"]
+
+    code = G.main(["--write", "--dry-run", "--out", str(out), "--inventory", str(inventory),
+                   "--registry", str(registry), "--as-of", "2026-11-05T06:00:00Z"])
+    assert code == 0
+    assert not out.exists(), "the dry run created its target directory"
+    assert G.main(["--write", "--dry-run", "--json", "--out", str(out), "--inventory", str(inventory),
+                   "--registry", str(registry), "--as-of", "2026-11-05T06:00:00Z"]) == 0
+    assert not out.exists()
+
+
+def test_every_audit_document_carries_the_provenance_header():
+    """AGENTS.md §14: Status, an ISO as_of and Measured at, on every document in the audit set."""
+    import re
+    for name in ("EXECUTIVE_SUMMARY.md", "README.md", "PROOF_INDEX.md"):
+        text = (FROZEN.parent / name).read_text(encoding="utf-8")
+        assert re.search(r"^Status:\s+(ACTIVE|SUPERSEDED BY |HISTORICAL|DRAFT)", text, re.MULTILINE), name
+        assert re.search(r"^as_of:\s+\d{4}-\d{2}-\d{2}T", text, re.MULTILINE), name
+        assert re.search(r"^Measured at:\s+\S", text, re.MULTILINE), name
