@@ -84,7 +84,9 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
         </div>
         <div style={tile}>
           <span style={tileLabel}>Failure rate</span>
-          <span style={tileValue}>{view.kpi.failRate === null ? '—' : `${view.kpi.failRate}%`}</span>
+          <span style={tileValue} title={view.kpi.failRate === null ? (view.kpi.failRateUnavailable || 'rate unavailable') : undefined}>
+            {view.kpi.failRate === null ? '—' : `${view.kpi.failRate}%`}
+          </span>
         </div>
         <div style={tile}>
           <span style={tileLabel}>Avg run time</span>

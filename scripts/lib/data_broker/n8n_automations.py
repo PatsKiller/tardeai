@@ -223,11 +223,20 @@ def summarize(workflows: Sequence[dict[str, Any]], stats: dict[str, Any], errors
         if w["name"].endswith("-shadow"):
             state = "shadow"
         rows.append({**w, "state": state, "runs": total, "ok": ok, "fail": failed,
-                     "fail_pct": round(100.0 * failed / total, 1) if total else None,
+                     # cc-deepseek's F1 at 79ca2ac7e: a percentage over SAVED rows is not a failure rate on this n8n,
+                     # which saves failures only (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none). The absolute counts are the
+                     # honest figures; the ratio is withheld with the same reason the deltas carry.
+                     "fail_pct": None,
                      "last_error": err.get("one_line"), "last_error_kind": err.get("kind"),
                      "last_error_at": err.get("at")})
-    completed = fleet["ok"] + fleet["failed"]
-    fail_rate = round(100.0 * fleet["failed"] / completed, 1) if completed else None
+    # cc-deepseek's F1 at 79ca2ac7e (BLOCK): `failed / (ok + failed)` reads 98% on this host because successes are not
+    # kept, so the tile would say the fleet is 98% broken — the artefact this module exists to prevent, one layer up.
+    # LESSONS 2026-11-05: "compare saved failures to the schedule's expected run count, never to the table's own total".
+    # That denominator needs each workflow's schedule; until it is derived, the rate is withheld rather than guessed.
+    failures_only_reason = ("n8n stores failed runs only (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none), so a percentage over "
+                            "saved rows would read ~100% by construction; the absolute counts above are the real "
+                            "figures, and a rate needs each workflow's expected run count from its schedule")
+    fail_rate = None
     avg_s = fleet["duration_s_sum"] / fleet["duration_s_n"] if fleet["duration_s_n"] else None
     deltas = None
     delta_reason = None
@@ -241,6 +250,7 @@ def summarize(workflows: Sequence[dict[str, Any]], stats: dict[str, Any], errors
         "kpi": {
             "runs": fleet["runs"], "ok": fleet["ok"], "failed": fleet["failed"], "running": fleet["running"],
             "fail_rate_pct": fail_rate,
+            "fail_rate_unavailable_reason": failures_only_reason,
             "avg_run_s": round(avg_s, 2) if avg_s is not None else None,
             "cron_left": len(cron_lines) if cron_lines is not None else None,
             "cron_left_has_draft": drafts,

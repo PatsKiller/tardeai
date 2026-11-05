@@ -61,9 +61,27 @@ def test_the_payload_counts_and_ranks_and_never_invents_a_delta():
                       now=NOW, cron_lines=["a", "b"], drafts=1)
     assert out["counts"] == {"workflows": 2, "live": 1, "shadow": 0, "off": 1, "failing": 1}
     assert out["workflows"][0]["name"] == "failing" and out["workflows"][0]["fail"] == 2
-    assert out["kpi"]["fail_rate_pct"] == 66.7            # 2 failed of 3 completed
+    # cc-deepseek's F1 at 79ca2ac7e: this store keeps failures only, so 2 failed of 3 SAVED rows is not a failure rate.
+    # The absolute counts stand; the percentage is withheld and says why.
+    assert out["kpi"]["fail_rate_pct"] is None
+    assert "stores failed runs only" in out["kpi"]["fail_rate_unavailable_reason"]
+    assert out["workflows"][0]["fail_pct"] is None
     assert out["kpi"]["cron_left"] == 2 and out["kpi"]["cron_left_has_draft"] == 1
     assert out["kpi"]["deltas"] is None and "snapshot" in out["kpi"]["deltas_unavailable_reason"]
+
+
+def test_the_failure_rate_is_never_derived_from_saved_rows_alone():
+    """cc-deepseek's F1 at 79ca2ac7e (BLOCK). A fixture full of SAVED successes would make a ratio look sane while
+    production returns almost none (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none). The payload must not publish a rate at all,
+    and must carry the reason — the same shape the week-over-week deltas already use."""
+    wfs = [M.workflow_rows([{"raw": ["1", "w", "t", "[]", None, None, "f", None]}])[0]]
+    rows = ([ex("1", "success", NOW - 3 * HOUR)] * 50 +
+            [ex("1", "error", NOW - 2 * HOUR)] * 2)
+    stats = M.run_stats(rows, NOW)
+    out = M.summarize(wfs, stats, {}, now=NOW, cron_lines=[], drafts=0)
+    assert out["kpi"]["ok"] == 50 and out["kpi"]["failed"] == 2       # the counts are real
+    assert out["kpi"]["fail_rate_pct"] is None                        # the ratio is not
+    assert "by construction" in out["kpi"]["fail_rate_unavailable_reason"]
 
 
 def test_the_query_guard_refuses_anything_that_is_not_a_select():

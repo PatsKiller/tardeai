@@ -12,7 +12,8 @@ export type AutomationsPayload = {
   schema?: string; as_of?: string; window_days?: number
   kpi?: {
     runs?: number | null; ok?: number | null; failed?: number | null; running?: number | null
-    fail_rate_pct?: number | null; avg_run_s?: number | null; cron_left?: number | null
+    fail_rate_pct?: number | null; fail_rate_unavailable_reason?: string | null
+    avg_run_s?: number | null; cron_left?: number | null
     cron_left_has_draft?: number | null
     deltas?: Record<string, number | null> | null; deltas_unavailable_reason?: string | null
   }
@@ -105,6 +106,7 @@ export function projectAutomations(
     kpi: {
       runs: num(data?.kpi?.runs), failed: num(data?.kpi?.failed), running: num(data?.kpi?.running),
       failRate: rate, avgRunS: num(data?.kpi?.avg_run_s),
+      failRateUnavailable: data?.kpi?.fail_rate_unavailable_reason || null,
       cronLeft: num(data?.kpi?.cron_left), cronLeftHasDraft: num(data?.kpi?.cron_left_has_draft),
       deltas: data?.kpi?.deltas ?? null,
       deltasUnavailable: data?.kpi?.deltas_unavailable_reason || (data?.kpi?.deltas ? null : 'no prior 7-day snapshot'),

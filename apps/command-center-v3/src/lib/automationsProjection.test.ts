@@ -31,6 +31,16 @@ assert.equal(v.banner.cause?.reason, 'ETIMEDOUT calling relay')
 // At exactly the threshold it is quiet, and an unreadable rate never reads as "fine".
 assert.equal(projectAutomations(payload({ kpi: { ...payload().kpi, fail_rate_pct: FAIL_RATE_BANNER_PCT } }), { nowMs: NOW }).banner.show, false)
 assert.equal(projectAutomations(payload({ kpi: { ...payload().kpi, fail_rate_pct: null } }), { nowMs: NOW }).banner.show, false)
+// cc-deepseek's F1 at 79ca2ac7e (BLOCK): production returns thousands of failures and almost no successes, because n8n
+// saves failed runs only. A payload with that shape must carry NO rate, and the view must not invent one.
+{
+  const prodShape = payload({ kpi: { ...payload().kpi, ok: 56, failed: 3241, fail_rate_pct: null,
+    fail_rate_unavailable_reason: 'n8n stores failed runs only (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none), so a percentage over saved rows would read ~100% by construction' } })
+  const v = projectAutomations(prodShape, { nowMs: NOW })
+  assert.equal(v.kpi.failRate, null, 'a failures-only store must never yield a rate')
+  assert.match(String(v.kpi.failRateUnavailable), /stores failed runs only/)
+  assert.equal(v.kpi.failed, 3241)
+}
 
 // Stale after three missed one-minute refreshes; an unknown schema is UNAVAILABLE with no rows.
 assert.equal(projectAutomations(payload({ as_of: at(STALE_AFTER_MS + 1) }), { nowMs: NOW }).status, 'STALE')
