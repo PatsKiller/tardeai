@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "llm_queue_drain_windows_20261031",
+  "files": [
+    "tests/test_llm_queue_drain_windows_20261031.py"
+  ],
+  "anchor": "LLM_QUEUE_DRAIN_WINDOWS_20261031",
+  "comment": [
+    "ANCHOR: LLM_QUEUE_DRAIN_WINDOWS_20261031 — deep overnight queue drain: weekends/holidays all day and trading",
+    "days 21:00-04:00 ET; anthropic->grok->chatgpt->deepseek (off-peak only) under the consumption gate; triage keeps",
+    "only still-tracked strategy_classification; --dry-run writes nothing. Hermetic."
+  ]
+}

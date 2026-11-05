@@ -270,7 +270,10 @@ def test_incident_shape_is_debounced_in_the_real_loop(loop):
     report = loop["run"](dry_run=False)
     check = report["checks"][0]
     assert check["status"] == "OK" and check["output_reason"] == "latest_receipt_failed_debounced"
-    assert check["schedule"] == "0 10 * * 1-5"
+    # The fixture cannot read lane_registry.json for this component, so the row must SAY the lane
+    # schedule was not measured (2026-11-03): a bare literal would imply it had been resolved.
+    assert check["schedule"].startswith("0 10 * * 1-5")
+    assert "lane schedule NOT MEASURED" in check["schedule"]
     assert report["summary"]["debounced"] == 1 and report["summary"]["failed"] == 0
     assert loop["escalations"] == [] and len(loop["notices"]) == 1
 

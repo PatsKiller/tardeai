@@ -319,26 +319,42 @@ def test_tools_true_rows_keep_todays_passthrough(monkeypatch):
     assert provider.calls[0]["kwargs"]["tools"] == [_tool("get_financial_data")]
 
 
-def test_no_current_bridge_caller_sends_tools():
-    """Every Python client that names itself to the bridge (X-TradeAI-Agent) sends no `tools`: the
-    tools_allowed=false rows they map to (advisory_desk, cio_*, hermes_*, n8n_*) lose nothing."""
-    clients = []
+def test_only_a_caller_whose_row_admits_tools_sends_tools():
+    """A Python client that names itself to the bridge (X-TradeAI-Agent) sends a `tools` payload only when
+    the row it maps to admits tools (an allowlist), and never `tool_choice`.
+
+    Before 2026-11-01 no caller sent tools at all. One does now: ``web_search`` -> ``cio_ask_web_search``,
+    whose row is ``tools_allowed: ["web_search"]`` and whose only tool is the hosted server tool
+    ``web_search_20260209``. Every other caller (advisory_desk, cio_*, hermes_*, n8n_*) still maps to
+    ``tools_allowed: false`` and still sends none — the assertion is now "the guard follows the row",
+    not "nobody has one"."""
+    reg = {p["id"]: p for p in json.loads((ROOT / "config" / "llm_process_registry.json").read_text())["processes"]}
+    mapped: dict[str, str] = dict(bridge.CALLER_PROCESS_MAP)
+    for caller, tasks in bridge.CALLER_TASK_PROCESS_MAP.items():
+        for pid in tasks.values():
+            mapped.setdefault(caller, pid)
+    callers_admitted: dict[str, set[str]] = {}
+    for caller, pid in mapped.items():
+        mode, names = gate.tool_policy(reg.get(pid))
+        caller_openclaw = pid in {"alex_cio_synthesis", "maria_research_critique", "steph_allocation_review",
+                                  "guardian_risk_critique", "ledger_tax_critique", "morgan_wealth_synthesis"}
+        assert mode == ("allowlist" if names else ("passthrough" if caller_openclaw else "none")), (pid, mode)
+        if mode == "allowlist":
+            callers_admitted[caller] = set(names)
+    # Exactly one admitted caller, and its allowlist is the hosted search tool alone (no order-shaped name).
+    assert callers_admitted == {"web_search": {"web_search"}}
+    clients = 0
     for path in (ROOT / "scripts").rglob("*.py"):
         if path.name == "cio_governed_model_bridge.py":
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        if "X-TradeAI-Agent" in text:
-            clients.append(path)
-            assert not re.search(r"""["']tools["']\s*:""", text), path
-            assert "tool_choice" not in text, path
-    assert len(clients) >= 5
-    reg = {p["id"]: p for p in json.loads((ROOT / "config" / "llm_process_registry.json").read_text())["processes"]}
-    mapped = set(bridge.CALLER_PROCESS_MAP.values()) | {p for m in bridge.CALLER_TASK_PROCESS_MAP.values() for p in m.values()}
-    for pid in mapped:
-        mode, _ = gate.tool_policy(reg.get(pid))
-        caller_openclaw = pid in {"alex_cio_synthesis", "maria_research_critique", "steph_allocation_review",
-                                  "guardian_risk_critique", "ledger_tax_critique", "morgan_wealth_synthesis"}
-        assert mode == ("passthrough" if caller_openclaw else "none"), (pid, mode)
+        if "X-TradeAI-Agent" not in text:
+            continue
+        clients += 1
+        assert "tool_choice" not in text, path
+        if re.search(r"""["']tools["']\s*:""", text):
+            assert any(f'"{c}"' in text for c in callers_admitted), (path, sorted(callers_admitted))
+    assert clients >= 5
 
 
 # ── P6: n8n output validation ──────────────────────────────────────────────

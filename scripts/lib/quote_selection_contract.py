@@ -323,12 +323,14 @@ def build_quote_selection(
 
 
 # Map a top-level repricer ``reprice_source`` string to a provider name + a
-# freshness state. The repricer only ever writes ``finviz_live`` /
-# ``finviz_afterhours`` at the top level; per-row fallback is captured in
-# ``price_source`` counts, not here.
+# freshness state. The repricer writes ``finviz_premarket`` / ``finviz_live`` /
+# ``finviz_afterhours`` / ``finviz_overnight`` at the top level (one per session,
+# 2026-11-02); per-row fallback is captured in ``price_source`` counts, not here.
 _REPRICE_SOURCE_MAP = {
     "finviz_live": ("finviz", FRESHNESS_CURRENT),
+    "finviz_premarket": ("finviz", FRESHNESS_CURRENT),
     "finviz_afterhours": ("finviz", FRESHNESS_CURRENT),
+    "finviz_overnight": ("finviz", FRESHNESS_CURRENT),
     "finviz": ("finviz", FRESHNESS_CURRENT),
     "yahoo_cache_fallback": ("yahoo_cache", FRESHNESS_STALE),
     "yahoo_cache": ("yahoo_cache", FRESHNESS_STALE),
@@ -375,7 +377,7 @@ def project_quote_selection(
     nav_marked_symbols = 0
     for src, n in (source_counts or {}).items():
         s = str(src or "").lower()
-        if not s or s in ("finviz", "finviz_elite", "finviz_live", "finviz_afterhours"):
+        if not s or s in ("finviz", "finviz_elite", "finviz_live", "finviz_premarket", "finviz_afterhours", "finviz_overnight"):
             continue
         if s == "price_cache_nav":
             # 2026-09-28: a mutual fund has no live quote; its cached NAV IS its price. Counting it as a
@@ -384,7 +386,7 @@ def project_quote_selection(
             continue
         fallback_rows[s] = fallback_rows.get(s, 0) + int(n or 0)
     primary_rows = sum(int(n or 0) for src, n in (source_counts or {}).items()
-                       if str(src or "").lower() in ("finviz", "finviz_elite", "finviz_live", "finviz_afterhours"))
+                       if str(src or "").lower() in ("finviz", "finviz_elite", "finviz_live", "finviz_premarket", "finviz_afterhours", "finviz_overnight"))
     if nav_marked_symbols and primary_rows == 0:
         # Nothing priced by the vendor at all: NAV-only is total vendor failure, not a fund mark.
         fallback_rows["price_cache_nav"] = fallback_rows.get("price_cache_nav", 0) + nav_marked_symbols

@@ -210,6 +210,105 @@ def _head(cwd: str | Path | None = None) -> str | None:
     return _git(["rev-parse", "HEAD"], cwd)
 
 
+#: FQ-152 (claude-lead, 2026-11-05). A heartbeat used to stamp whatever commit the caller's tree happened to be on.
+#: Measured across the board that night: of 152 live claims heartbeated in 24 h, 61 sat at their branch tip, 81 were
+#: on the branch but behind it -- 67 of those claiming paths that had changed since, so they no longer describe what is
+#: being pushed -- and 9 carried a head from another branch entirely. A claim that is not at the pushed head cannot
+#: satisfy a claim-at-head gate, and the refusal reads downstream as "no claim exists" rather than "wrong commit".
+#: Warn by default: nineteen sessions share this tool, and a hard refusal mid-task would block work that is otherwise
+#: correct. Set AGENT_CLAIM_STRICT_HEAD=1 (or pass --strict-head) to turn the off-branch case into a refusal.
+HEAD_STRICT_ENV = "AGENT_CLAIM_STRICT_HEAD"
+
+
+def _branch_tip(branch: str | None, cwd: str | Path | None = None) -> str | None:
+    if not branch:
+        return None
+    return _git(["rev-parse", "--verify", "-q", f"refs/heads/{branch}"], cwd)
+
+
+def head_position(branch: str | None, head_sha: str | None, paths, cwd: str | Path | None = None) -> dict:
+    """Where a claim's recorded head sits relative to its own branch (FQ-152).
+
+    ``position`` is one of ``at_tip``, ``behind_tip``, ``not_on_branch`` or ``unresolved``. ``paths_changed`` counts
+    the claim's own claimed paths that differ between the recorded head and the branch tip -- the difference between
+    "behind, harmless" and "behind, and no longer covers what is being pushed".
+
+    ``unresolved`` FAILS OPEN, deliberately and for two reasons: there is no local ``refs/heads/<branch>`` (the branch
+    may exist only on ``origin``, or the claim may name a branch that was never created locally), or the claim records no
+    branch/head at all. In that state the guard is silently absent -- it stamps what the caller's tree says, exactly as
+    before FQ-152 -- because guessing a tip from ``origin/<branch>`` would let a remote ref decide whether a local claim
+    is corrupt. A caller that needs certainty can compare ``branch_tip`` for None (cc-deepseek-5's N1).
+    """
+    out = {"position": "unresolved", "branch_tip": None, "commits_behind": None, "paths_changed": None}
+    if not branch or not head_sha:
+        return out
+    tip = _branch_tip(branch, cwd)
+    if not tip:
+        return out
+    out["branch_tip"] = tip
+    if head_sha == tip:
+        out.update(position="at_tip", commits_behind=0, paths_changed=0)
+        return out
+    # _git returns None only on a non-zero exit, so "some string (even empty)" means the ancestor test passed.
+    if _git(["merge-base", "--is-ancestor", head_sha, branch], cwd) is None:
+        out["position"] = "not_on_branch"
+        return out
+    out["position"] = "behind_tip"
+    count = _git(["rev-list", "--count", f"{head_sha}..{branch}"], cwd)
+    out["commits_behind"] = int(count) if count and count.isdigit() else None
+    changed = (_git(["diff", "--name-only", head_sha, branch], cwd) or "").splitlines()
+    claimed = set(paths or [])
+    out["paths_changed"] = sum(1 for p in changed if p and p in claimed)
+    return out
+
+
+def heartbeat_head_guard(branch: str | None, head_sha: str | None, paths, cwd: str | Path | None = None,
+                         *, claim_id: str = "this claim", strict: bool = False,
+                         recorded_head: str | None = None) -> dict:
+    """What a heartbeat may stamp, and what it must say (FQ-152 a/b).
+
+    The rule in one sentence: **a heartbeat may move a claim's head forward, never backwards.**
+    ``stamp`` is the head to record, or ``None`` to keep the one the claim already has. It is ``None`` whenever the
+    tree's HEAD is not on the claim's branch, and it is also ``None`` whenever stamping it would move the recorded head
+    *backwards* -- which is the common case in this fleet, because a heartbeat run from the canonical checkout stamps
+    main's tip onto a claim whose branch contains it (cc-deepseek-6's BLOCK on #2687, 2026-11-05). ``refuse`` is True
+    only under ``strict`` (``AGENT_CLAIM_STRICT_HEAD=1`` or ``--strict-head``), because nineteen sessions share this tool
+    and a hard refusal mid-task would block work that is otherwise correct.
+    """
+    pos = head_position(branch, head_sha, paths, cwd)
+    warnings: list[str] = []
+    stamp = head_sha
+    refuse = False
+    recorded = str(recorded_head or "")
+    if pos["position"] == "not_on_branch":
+        msg = (
+            f"this tree is at {str(head_sha)[:12]}, which is not on claim {claim_id}'s branch {branch}; the claim keeps "
+            f"its recorded head so it is not stamped with an unrelated commit. "
+            f"Run the heartbeat from the claim's own worktree."
+        )
+        warnings.append(msg)
+        stamp = None
+        refuse = bool(strict)
+    elif recorded and head_sha and head_sha != recorded and \
+            _git(["merge-base", "--is-ancestor", head_sha, recorded], cwd) is not None:
+        # head is an ancestor of what the claim already records: stamping it would walk the claim backwards.
+        warnings.append(
+            f"this tree is at {str(head_sha)[:12]}, which is BEHIND claim {claim_id}'s recorded head "
+            f"{recorded[:12]} on {branch}; the claim keeps {recorded[:12]} rather than moving backwards. A heartbeat "
+            f"from another worktree (the canonical checkout is main's tip) must not re-point a claim. Run it from the "
+            f"branch's own worktree."
+        )
+        stamp = None
+        refuse = bool(strict)
+    elif pos["position"] == "behind_tip" and pos["paths_changed"]:
+        warnings.append(
+            f"claim {claim_id} is {pos['commits_behind']} commit(s) behind {branch} and {pos['paths_changed']} of its "
+            f"claimed path(s) changed since {str(head_sha)[:12]}; it no longer covers the branch. "
+            f"Commit or re-claim before a push that needs a claim at the head."
+        )
+    return {"position": pos["position"], "stamp": stamp, "warnings": warnings, "refuse": refuse, **pos}
+
+
 def _commits_since(base: str | None, head: str, cwd: str | Path | None) -> list[tuple[str, str]]:
     """(sha, subject) of commits in base..head, oldest first (max 50). Just head when base is unknown/unrelated."""
     if base == head:
@@ -249,13 +348,22 @@ def cmd_claim(a: argparse.Namespace) -> int:
     if not a.add and not (a.task and a.paths):
         print("error: claim needs --task and --paths (or --add <paths> to extend a claim)", file=sys.stderr)
         return 2
+    if getattr(a, "operator_approval", None):
+        try:
+            from lib import operator_approval as _OA
+
+            a.note = _OA.merge_into_note(a.note, a.operator_approval)
+        except ValueError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     allowed, policy = _policy_gate("claim")
     if not allowed:
         return 1
     if a.add:  # extend an existing claim
         try:
             cid = _resolve_claim(board, a)
-            doc = board.extend(cid, a.add, session=session)
+            doc = board.extend(cid, a.add, session=session,
+                               approval_ref=getattr(a, "operator_approval", None))
         except B.ClaimConflict as exc:
             _print_conflicts(exc.conflicts)
             print("refused: the added paths are claimed by another live session.", file=sys.stderr)
@@ -317,24 +425,50 @@ def cmd_claim(a: argparse.Namespace) -> int:
 def cmd_heartbeat(a: argparse.Namespace) -> int:
     board = _board(a, observe=False)
     head, top = _head(), _toplevel()
+    warnings: list[str] = []
     try:
         prev = board.get(a.claim_id).doc
+        # FQ-152: only a HEAD that belongs to the claim's own branch may be stamped. A tree left on a review head or
+        # another branch's worktree used to overwrite the claim with an unrelated commit, silently, which is why 9 of
+        # 152 live claims could never satisfy a claim-at-head gate.
+        # FQ-152 repair (cc-deepseek-5 BLOCK at fb9c88e05): --branch walked around the guard, because the check used
+        # the claim's OLD branch while the write used the new one. A branch change is a re-claim, not a heartbeat, so it
+        # is refused before anything is validated or written.
+        if a.branch and prev.get("branch") and a.branch != prev.get("branch"):
+            print(
+                f"refused: claim {a.claim_id} is for branch {prev.get('branch')}; --branch {a.branch} would re-point it. "
+                f"Claim the new branch instead (agent_claim.py claim --branch {a.branch}), then heartbeat there.",
+                file=sys.stderr,
+            )
+            return 2
+        branch = a.branch or prev.get("branch")
+        guard = heartbeat_head_guard(
+            branch, head, prev.get("paths") or [], top, claim_id=a.claim_id,
+            strict=bool(getattr(a, "strict_head", False)) or os.environ.get(HEAD_STRICT_ENV) == "1",
+            recorded_head=prev.get("head_sha"),
+        )
+        stamp = guard["stamp"]
+        warnings = list(guard["warnings"])
+        if guard["refuse"]:
+            print(f"refused: {warnings[0] if warnings else 'head is not on the claim branch'} ({HEAD_STRICT_ENV}=1)",
+                  file=sys.stderr)
+            return 2
         doc = board.heartbeat(
             a.claim_id,
             session=_session(a),
             pr=a.pr,
             note=a.note,
-            branch=a.branch,
-            head_sha=head,
+            branch=branch,
+            head_sha=stamp,
             worktree=top,
             policy=_local_policy_fields(),
         )
-        if head and head != prev.get("logged_sha"):  # commits since the last logged SHA go to the worklog
+        if stamp and stamp != prev.get("logged_sha"):  # commits since the last logged SHA go to the worklog
             wl = board.worklog(a.claim_id)
             if wl.exists():
-                for sha, subj in _commits_since(prev.get("logged_sha"), head, top):
+                for sha, subj in _commits_since(prev.get("logged_sha"), stamp, top):
                     wl.change(f"commit {sha[:12]} {subj}")
-            board.heartbeat(a.claim_id, session=_session(a), logged_sha=head)
+            board.heartbeat(a.claim_id, session=_session(a), logged_sha=stamp)
     except B.ClaimConflict as exc:
         _print_conflicts(exc.conflicts)
         print(f"refused: {exc}", file=sys.stderr)
@@ -342,7 +476,15 @@ def cmd_heartbeat(a: argparse.Namespace) -> int:
     except (B.ClaimError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{doc['claim_id']} heartbeat {doc['heartbeat_at']}")
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    if a.json:
+        out = dict(doc)
+        if warnings:
+            out["head_warnings"] = warnings
+        print(json.dumps(out, indent=2, sort_keys=True))
+    else:
+        print(f"{doc['claim_id']} heartbeat {doc['heartbeat_at']}")
     return 0
 
 
@@ -722,6 +864,24 @@ def cmd_status(a: argparse.Namespace) -> int:
 
     for r in in_flight + takeable:
         r["live_head_sha"] = live_head(r)
+
+    # FQ-152 (c): the board's head coverage, so the decay stays visible without anyone re-measuring by hand. A claim
+    # that is merely behind is not wrong; the number that matters is how many of those no longer claim a path that
+    # changed under them, because those look healthy and still cannot cover a push.
+    counts = {"at_tip": 0, "behind_tip": 0, "not_on_branch": 0, "unresolved": 0}
+    stale_coverage = 0
+    for r in in_flight:
+        try:
+            doc = board.get(r["claim_id"]).doc
+        except Exception:  # noqa: BLE001 — an unreadable claim is counted as unresolved, never fatal to status
+            counts["unresolved"] += 1
+            continue
+        pos = head_position(doc.get("branch"), doc.get("head_sha"), doc.get("paths") or [], cwd=cwd)
+        r["head_position"] = pos
+        counts[pos["position"]] = counts.get(pos["position"], 0) + 1
+        if pos["position"] == "behind_tip" and (pos.get("paths_changed") or 0) > 0:
+            stale_coverage += 1
+    head_coverage = {**counts, "behind_tip_no_longer_covering": stale_coverage, "live_claims": len(in_flight)}
     out = {
         "schema": "AgentClaimStatus@v1",
         "at": view["as_of"],
@@ -731,6 +891,7 @@ def cmd_status(a: argparse.Namespace) -> int:
         "local_only_at_risk": at_risk,
         "local_only_scanned_days": a.days,
         "github_warning": warn or view["lifecycle"].get("warning"),
+        "head_coverage": head_coverage,
     }
     if a.json:
         print(json.dumps(out, indent=2, sort_keys=True, default=str))
@@ -761,6 +922,17 @@ def cmd_status(a: argparse.Namespace) -> int:
         print(f"\n!! {len(changed)} open claim(s) were made under an older AGENTS.md — see POLICY CHANGED below")
     print(f"\n## In flight ({len(in_flight)})")
     print("\n".join(line(r) for r in in_flight) or "(none)")
+    hc = out["head_coverage"]
+    print(
+        f"\n   head coverage: {hc['at_tip']}/{hc['live_claims']} at their branch tip"
+        f" · {hc['behind_tip']} behind ({hc['behind_tip_no_longer_covering']} no longer claim a path that changed)"
+        f" · {hc['not_on_branch']} off-branch · {hc['unresolved']} unresolved"
+    )
+    if hc["not_on_branch"] or hc["behind_tip_no_longer_covering"]:
+        print(
+            "   -> those claims cannot satisfy a claim-at-head gate; heartbeat again from the branch's own worktree "
+            "after committing (FQ-152)"
+        )
     print(f"\n## Stale or can be taken over ({len(takeable)})  -> agent_claim.py takeover <claim_id>")
     print("\n".join(line(r) + f"\n    why: {r['state']}" for r in takeable) or "(none)")
     print(f"\n## Local-only work at risk ({len(at_risk)}): commits on no remote and no open PR, last {a.days} d")
@@ -1049,6 +1221,39 @@ def cmd_list(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ask(a: argparse.Namespace) -> int:
+    board = _board(a)
+    session = _session(a)
+    branch = B.current_branch()
+    try:
+        # include_stale: a stale claim still holds its files, and `ask` exists to name it and point at
+        # takeover. Without this the board filters it out before the holder list is built, and the command
+        # answers "go ahead" about a path someone still claims.
+        rows = board.conflicts(a.paths, session=session, branch=branch, include_stale=True)
+    except (B.ClaimError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    # The same read-only fallback `check` uses: a cloud agent may hold the path through an open draft PR the
+    # local claims dir cannot see. The answer must not be "go ahead" while a draft PR is editing the file.
+    if not getattr(a, "no_gh", False):
+        pr_rows, warning = B.draft_pr_conflicts(a.paths, exclude_branch=branch, timeout_s=a.gh_timeout)
+        rows += pr_rows
+        if warning:
+            print(f"WARN: {warning}", file=sys.stderr)
+    try:
+        from lib import claim_ask as _CA
+    except ImportError:
+        from scripts.lib import claim_ask as _CA
+    # The board's own threshold, not the raw flag: they differ when the flag is unset and the env default applies.
+    stale_hours = board.stale_after.total_seconds() / 3600.0
+    out = _CA.plan_ask(rows, now_iso=B.iso(board.now()), stale_hours=stale_hours, message=a.message, paths=a.paths)
+    if a.json:
+        print(json.dumps(out, indent=2, sort_keys=True))
+    else:
+        print(_CA.render(out))
+    return 0
+
+
 def cmd_check(a: argparse.Namespace) -> int:
     board = _board(a)
     session = _session(a)
@@ -1150,6 +1355,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--gh-call-timeout", type=float, default=B.LC.GH_TIMEOUT_S, help="seconds per GitHub GET")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    c = sub.add_parser("ask")
+    c.add_argument("paths", nargs="+", help="the paths you want to work on")
+    c.add_argument("--message", default=None, help="the message to send the holder")
+    # SUPPRESS, not a default: argparse writes every subparser default into the namespace, so any default here
+    # overwrites a global --stale-hours given before `ask` (and defeats TRADEAI_AGENT_CLAIMS_STALE_HOURS).
+    # Suppressed, the attribute exists only when the flag is actually passed.
+    c.add_argument("--stale-hours", type=float, default=argparse.SUPPRESS,
+                   help="heartbeat age that makes a claim stale")
+    # `ask` now consults the open-draft-PR fallback, so it needs the same knob `check` has.
+    c.add_argument("--gh-timeout", type=float, default=15.0)
+    c.add_argument("--json", action="store_true")
+    c.set_defaults(fn=cmd_ask)
+
     c = sub.add_parser("claim")
     c.add_argument("--task", default=None)
     c.add_argument("--paths", nargs="+", default=None)
@@ -1161,6 +1379,11 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--goal", default=None, help="worklog Goal (default: the task)")
     c.add_argument("--request", default=None, help="the operator request, quoted verbatim in the worklog Goal")
     c.add_argument("--plan", nargs="*", default=None, help="initial plan steps")
+    c.add_argument(
+        "--operator-approval",
+        default=None,
+        help="URL of the operator's GitHub comment approving this work; written as an Operator-approval: line the push guard reads",
+    )
     c.add_argument("--json", action="store_true")
     c.set_defaults(fn=cmd_claim)
 
@@ -1170,6 +1393,8 @@ def build_parser() -> argparse.ArgumentParser:
     h.add_argument("--note", default=None)
     h.add_argument("--branch", default=None)
     h.add_argument("--json", action="store_true")
+    h.add_argument("--strict-head", action="store_true",
+                   help="refuse instead of warn when this tree's HEAD is not on the claim's branch (FQ-152)")
     h.set_defaults(fn=cmd_heartbeat)
 
     for name, fn, arg, hlp in (
