@@ -66,12 +66,18 @@ export function readableSummary(l: { task_summary?: string }): string {
   if (!raw) return 'No summary recorded'
   // A size breakdown of the prompt, not a description of the work.
   if (/^((system|user|assistant):\d+chars;?\s*)+$/i.test(raw)) return 'No summary recorded — request text only'
-  // A composite internal key: the ticker (if any) plus the last segment, in plain words.
+  // A composite internal key: producer : task : (status) : ticker. The segment that says what the work was is the
+  // longest one that is not the ticker — a producer prefix is a short word ("agent_flash", "cloud_review") and a
+  // trailing status is short too ("deepseek_ok"), while the task is the descriptive one. Taking the LAST segment
+  // instead printed the ticker twice ("NVDA · Nvda") and reduced a research task to "Deepseek ok"
+  // (cc-deepseek-5's P3 on #2676). When nothing but the ticker survives, say so rather than repeat it.
   if (raw.includes(':') && !/\s/.test(raw)) {
     const parts = raw.split(':').filter(Boolean)
     const symbol = parts.find(p => /^[A-Z]{1,5}$/.test(p))
-    const tail = humaniseKey(parts[parts.length - 1] ?? '')
-    return symbol ? `${symbol} · ${tail}` : tail
+    const task = parts.filter(p => p !== symbol).sort((a, b) => b.length - a.length)[0] ?? ''
+    const label = humaniseKey(task)
+    if (!task || label.toLowerCase() === String(symbol ?? '').toLowerCase()) return 'No summary recorded'
+    return symbol ? `${symbol} · ${label}` : label
   }
   // A bare snake_case task key.
   if (/^[a-z0-9_]+$/.test(raw)) return humaniseKey(raw)

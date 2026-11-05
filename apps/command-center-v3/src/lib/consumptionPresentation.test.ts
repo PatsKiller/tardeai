@@ -3,7 +3,7 @@
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/consumptionPresentation.test.ts
 import {
   DESK_LOG_PREVIEW, DESK_PROCESS_PREVIEW, PHONE_LOG_PREVIEW, PHONE_PROCESS_PREVIEW,
-  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows,
+  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows, readableSummary,
 } from './consumptionPresentation.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -56,6 +56,13 @@ check('the internal key is gone from the reader line', !compositeLine.includes('
 
 const counts = log(169099, true, { task_summary: 'system:1557chars; system:385chars; user:18987chars' })
 check('a size breakdown is not passed off as a summary', callPrimaryText(counts).includes('request text only'), callPrimaryText(counts))
+
+// cc-deepseek-5's P3 on #2676: taking the LAST segment printed the ticker twice and dropped the task.
+const tickerLast = readableSummary({ task_summary: 'agent_flash:agent_narrative:NVDA' })
+eq('the ticker is not repeated back as a word', tickerLast, 'NVDA · Agent narrative')
+const statusLast = readableSummary({ task_summary: 'cloud_review:research_up_thesis_flat:deepseek_ok' })
+eq('a trailing status does not replace the task', statusLast, 'Research up thesis flat')
+eq('a key with nothing but the ticker says so', readableSummary({ task_summary: 'NVDA:NVDA' }), 'No summary recorded')
 
 const snake = log(169101, true, { task_summary: 'hermes_external_research' })
 check('a bare task key is humanised', callPrimaryText(snake).includes('Hermes external research'), callPrimaryText(snake))
