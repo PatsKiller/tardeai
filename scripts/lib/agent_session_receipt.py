@@ -24,6 +24,32 @@ def _git(args: list[str], cwd: Path) -> str:
     return subprocess.check_output(["git", *args], cwd=str(cwd), text=True).strip()
 
 
+#: The hooks this repository's guards depend on. A configured core.hooksPath proves none of them run.
+REQUIRED_HOOKS = ("pre-commit", "pre-push")
+
+
+def hook_files_status(repo_root: Path, hooks_path: str) -> dict[str, Any]:
+    """Resolve core.hooksPath and inspect the hook FILES, not just the config value.
+
+    FQ-113 (cx-openai-4, 2026-11-04): a sparse checkout configured core.hooksPath=.githooks while its sparse
+    patterns excluded .githooks. Nothing ran, and the session was told enforcement was MECHANICAL because the
+    receipt only checked that the config string was non-empty. A path is a claim; the files are the evidence.
+    """
+    if not hooks_path:
+        return {"resolved_path": None, "files": [], "complete": False}
+    raw = Path(hooks_path)
+    resolved = raw if raw.is_absolute() else (Path(repo_root) / raw)
+    files: list[dict[str, Any]] = []
+    import os as _os
+    for name in REQUIRED_HOOKS:
+        f = resolved / name
+        present = f.is_file()
+        files.append({"name": name, "present": present,
+                      "executable": bool(present and _os.access(f, _os.X_OK))})
+    return {"resolved_path": str(resolved), "files": files,
+            "complete": all(item["present"] and item["executable"] for item in files)}
+
+
 def build_receipt(
     *,
     agent_id: str,
@@ -84,6 +110,8 @@ def build_receipt(
     elif not errors:
         errors.append("GIT_IDENTITY_UNAVAILABLE")
 
+    hooks = hook_files_status(root, hooks_path)
+
     hub = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild").resolve()
     is_hub = root == hub
 
@@ -103,6 +131,10 @@ def build_receipt(
             errors.append("CANONICAL_HUB_MUTATION_DENIED")
         if not hooks_path:
             errors.append("HOOKS_PATH_MISSING")
+        elif not hooks["complete"]:
+            # A path with no runnable hooks is the failure this row is about: name the files, never pass silently.
+            missing = [f["name"] for f in hooks["files"] if not (f["present"] and f["executable"])]
+            errors.append("HOOKS_FILES_MISSING:" + ",".join(missing))
         if not base_sha:
             errors.append("BASE_SHA_UNPROVEN")
         if dirty_lines and not acknowledge_dirty:
@@ -126,7 +158,10 @@ def build_receipt(
         "session_id": session_id,
         "agent_id": client.get("agent_id"),
         "adapter_version": client.get("adapter_version"),
-        "enforcement_level": client.get("enforcement_level"),
+        # A client may declare MECHANICAL, but behaviour is only mechanical when the hook files are actually there.
+        "enforcement_level_declared": client.get("enforcement_level"),
+        "enforcement_level": (client.get("enforcement_level")
+                              if hooks["complete"] else "ADVISORY_HOOKS_MISSING"),
         "task_scope": task_scope,
         "authority_ceiling": "READ_ONLY_ADVISORY" if not mutating else "MUTATING_LOCAL_ONLY",
         "mode": "read_only" if verifier else mode,
@@ -142,7 +177,7 @@ def build_receipt(
         "claimed_stores": list(claimed_stores or []),
         "documentation_searched": list(docs_searched or []),
         "documentation_read": list(docs_read or []),
-        "hook_installation": {"core.hooksPath": hooks_path or None},
+        "hook_installation": {"core.hooksPath": hooks_path or None, **hooks},
         "dirty_before": dirty_lines,
         "lease": None,
         "parent_session_id": parent_session_id,
