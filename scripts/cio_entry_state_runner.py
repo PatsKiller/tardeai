@@ -302,6 +302,34 @@ def starred_symbols(cur) -> set[str]:
         return set()
 
 
+def changed_symbols(results: dict[str, dict], prior: dict) -> list[str]:
+    """Bare symbols whose state changed, deduped — what the prospect writer is handed.
+
+    F2 (cc-deepseek-3 / cc-deepseek-6 on #2603): ``results`` is keyed ``SYMBOL|ACCOUNT`` for a scoped row, so the old
+    comprehension looked up a key that ``prior`` (bare symbols) never carries: every scoped row read as changed and the
+    writer received ``"SPCX|schwab_ira"`` as a symbol — failing soft, so no prospect was written at all.
+    """
+    def _symbol_of(key, row):
+        return row.get("symbol") or str(key).split("|", 1)[0]
+
+    return sorted({_symbol_of(k, r) for k, r in results.items() if prior.get(_symbol_of(k, r)) != r["state"]})
+
+
+def decision_id(result: dict, *, now: datetime | None = None) -> str:
+    """The ``cio_decisions`` id for one entry-state row — unique per (symbol, account, second).
+
+    F1 (cc-deepseek-3 / cc-deepseek-6 on #2603): the id was ``cio-entry-<symbol>-<second>``, which is not unique once
+    one symbol can be reported for two accounts in the same pass (FQ-096); both rows formatted the same second, so the
+    second INSERT violated ``cio_decisions_pkey`` and the whole apply aborted before any commit. The account is part of
+    the row's identity, so it is part of the id. The ``cio-entry-`` prefix is unchanged: consumers exclude these rows
+    from stance stamping by that prefix (``stamp_cio_stance``).
+    """
+    at = now or datetime.now(timezone.utc)
+    account = str(result.get("account") or "").strip().lower()
+    suffix = f"-{account}" if account else ""
+    return f"cio-entry-{str(result['symbol']).lower()}{suffix}-{at.strftime('%Y%m%d%H%M%S')}"
+
+
 def alert_worthy(actionable: list[dict], prior: dict, done: set,
                  starred: set[str] | None = None) -> list[dict]:
     """Page only on a move TOWARD a buy, once per symbol, state and day.
@@ -611,6 +639,12 @@ def main() -> int:
     evidence_of: dict[int, dict] = {}
     for _key, _e in evidence.items():
         _r = ces.evaluate(_e)
+        # F1 (cc-deepseek-3 / cc-deepseek-6 on #2603): the row's account is part of its identity (FQ-096), so it has
+        # to reach the persisted decision id. `evaluate()` returns the plan fields only; carry the account from the
+        # evidence, or from the scoped key when the evidence omits it.
+        if not str(_r.get("account") or "").strip():
+            _acct_key = str(_key).split("|", 1)[1] if "|" in str(_key) else ""
+            _r["account"] = str(_e.get("account") or _acct_key).strip()
         results[_key] = _r
         evidence_of[id(_r)] = _e
     try:
@@ -652,11 +686,12 @@ def main() -> int:
                                VALUES (%s,%s,%s,true,%s::jsonb)""",
                             (r["symbol"], r["state"], r["state"],
                              json.dumps({**r, "transition_key": ces.transition_key(r)}, default=str)))
-            did = f"cio-entry-{r['symbol'].lower()}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            did = decision_id(r)
             cur.execute("""INSERT INTO cio_decisions (decision_id, symbol, strategy_type, action, action_class, priority,
                                                       confidence_raw, decision_safety, human_review_required, rationale,
                                                       status, agent_votes)
-                           VALUES (%s,%s,%s,%s,'entry',%s,%s,'safe',true,%s,'proposed','{}')""",
+                           VALUES (%s,%s,%s,%s,'entry',%s,%s,'safe',true,%s,'proposed','{}')
+                           ON CONFLICT (decision_id) DO NOTHING""",
                         (did, r["symbol"], r.get("plan_source"), r["state"], "high" if r["state"] == "BUY_READY" else "medium",
                          None, ces.render_cio(r, evidence_of[id(r)])[:500]))
         conn.commit()
@@ -692,7 +727,7 @@ def main() -> int:
                     primary_symbols=digest_syms,
                 ),
             })
-        changed = sorted(sym for sym, r in results.items() if prior.get(sym) != r["state"])
+        changed = changed_symbols(results, prior)
         prospect_writer = write_cio_prospects(changed)
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "counts": counts,

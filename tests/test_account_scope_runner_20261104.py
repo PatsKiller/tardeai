@@ -175,3 +175,33 @@ def test_F_the_send_and_sample_paths_find_a_scoped_row_by_symbol(state):
         # And the follow-up path, which only knows the recorded symbol.
         assert runner.evidence_for(ev, "SPCX") is ev[f"SPCX|{account}"]
         assert runner.evidence_for(ev, "NOPE") == {}
+
+
+# ── F1/F2 of the #2603 BLOCK (cc-deepseek-3, cc-deepseek-6): the persisted row must survive two accounts ──────────
+from datetime import datetime, timezone  # noqa: E402
+
+_WED = datetime(2026, 11, 5, 5, 56, 31, tzinfo=timezone.utc)
+
+
+def test_G_one_symbol_in_two_accounts_gets_two_decision_ids():
+    """cc-deepseek-6's P1: the decision id carried no account, so two rows collided on the primary key."""
+    a = runner.decision_id({"symbol": "SPCX", "account": "schwab_ira"}, now=_WED)
+    b = runner.decision_id({"symbol": "SPCX", "account": "schwab_individual"}, now=_WED)
+    assert a != b, f"both accounts produced {a} — the second INSERT would violate cio_decisions_pkey"
+    assert a.startswith("cio-entry-") and b.startswith("cio-entry-"), "the prefix consumers exclude by must survive"
+    # the same row twice is the same decision: the id is stable within one account
+    assert runner.decision_id({"symbol": "SPCX", "account": "schwab_ira"}, now=_WED) == a
+
+
+def test_H_the_prospect_writer_is_handed_symbols_not_evidence_keys():
+    """cc-deepseek-3's F2: `prior` is keyed by bare symbol, so a scoped key never matched and "SPCX|acct" was passed."""
+    results = {
+        "SPCX|schwab_ira": {"symbol": "SPCX", "state": "BUY_READY"},
+        "SPCX|schwab_individual": {"symbol": "SPCX", "state": "BUY_READY"},
+        "V|schwab_ira": {"symbol": "V", "state": "ENTRY_NEAR"},
+    }
+    changed = runner.changed_symbols(results, prior={"SPCX": "BUY_READY", "V": "ENTRY_NEAR"})
+    assert changed == [], f"unchanged rows were reported changed: {changed}"
+    changed = runner.changed_symbols(results, prior={"SPCX": "ENTRY_NEAR", "V": "ENTRY_NEAR"})
+    assert changed == ["SPCX"], f"expected the bare changed symbol once, got {changed}"
+    assert all("|" not in s for s in changed), "an evidence key reached the prospect writer"
