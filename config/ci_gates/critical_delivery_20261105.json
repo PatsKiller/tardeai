@@ -3,7 +3,8 @@
   "name": "critical_delivery_20261105",
   "files": [
     "tests/test_critical_delivery_20261105.py",
-    "tests/test_critical_channels_20261105.py"
+    "tests/test_critical_channels_20261105.py",
+    "tests/test_critical_producers_20261105.py"
   ],
   "anchor": "CRITICAL_DELIVERY_20261105",
   "comment": [
@@ -16,6 +17,6 @@
     "one event produces a receipt per channel; a failed or unconfigured channel is a receipt and never stops the others;",
     "DELIVERED means at least one channel confirmed; no receipt carries an address; and the text message leads with the action.",
     "What it does NOT assert: queuing to a durable outbox, retry with backoff, acknowledgement stopping repeats, and the",
-    "operator-facing hourly summary. Those are the next slice of FQ-143 and nothing here claims them."
+    "operator-facing hourly summary. Those are the next slice of FQ-143 and nothing here claims them. The producer gate (FQ-150/D35) checks that all twelve class ids have a producer, that B4's action carries the full https reauth link with no dev port and never asks the operator to reply with a code, and that the dry run produces every enabled class with fakes."
   ]
 }
