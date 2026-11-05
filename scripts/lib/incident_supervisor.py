@@ -48,6 +48,11 @@ try:
 except ImportError:  # noqa: SIM105
     import incidents as L  # type: ignore[no-redef]
 
+try:
+    from scripts.lib.telegram_batch import batch_text as _batch_message
+except ImportError:  # noqa: SIM105
+    from telegram_batch import batch_text as _batch_message  # type: ignore[no-redef]
+
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 ACTOR = "incident_supervisor"
@@ -415,17 +420,21 @@ def _batch_text(rows: list[dict], priority: str) -> str:
     operator asked for one batched message per run, never six separate P1s; a batch pages P1 only
     when it carries an operator-only decision, otherwise P2.
     """
-    lines = [f"[{priority}] Incident supervisor — {len(rows)} escalation(s) this run (batched once per run)", ""]
+    items = []
     for row in rows:
         age = row.get("age_min")
         unresolved = "unresolved age unknown" if age is None else f"unresolved {int(age)} min"
-        lines.append(f"• {row['id']} — {str(row.get('title') or '')[:140]}")
-        lines.append(f"  {str(row.get('reason') or '')[:180]} · {unresolved}")
-        lines.append(f"  Next: {str(row.get('ask') or '')[:240]}")
-        lines.append(f"  {CC_INCIDENT_URL.format(id=row['id'])}")
-    if any(row.get("operator_only") for row in rows):
-        lines += ["", "This batch contains an operator-only decision; no agent may act on it."]
-    return "\n".join(lines)
+        items.append({"title": f"{row['id']} — {str(row.get('title') or '')[:140]}",
+                      "detail": f"{str(row.get('reason') or '')[:180]} · {unresolved}",
+                      "next": str(row.get("ask") or "")[:240],
+                      "link": CC_INCIDENT_URL.format(id=row["id"])})
+    note = ("This batch contains an operator-only decision; no agent may act on it."
+            if any(row.get("operator_only") for row in rows) else None)
+    # The SAME batching style as the approvals nudge (scripts/lib/telegram_batch.py): one message per
+    # run, one bullet per item. Keeping one helper is what stops the two surfaces drifting apart.
+    return _batch_message(
+        header=f"[{priority}] Incident supervisor — {len(rows)} escalation(s) this run (batched once per run)",
+        items=items, footer=note)
 
 
 def _current_escalations(rec: Mapping[str, Any]) -> list[dict]:
