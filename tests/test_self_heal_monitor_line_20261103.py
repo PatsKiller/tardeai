@@ -316,6 +316,26 @@ def test_a_disabled_watcher_is_not_detect_alive():
     assert "1/2 without a gap, 1 disabled" in block[3]
 
 
+def test_a_failed_runbook_action_cannot_publish_live():
+    """cx-openai D52 refresh at 749c8a216, the ONE remaining item: the supervisor records actions[*].rc != 0 and still
+    writes its cycle receipt, so DECIDE — which looked only at skips and at the FIX queue — could publish LIVE after a
+    failed repair with an empty queue."""
+    sup = _supervisor(skips=(), dispatched=2, actions=2)
+    sup["actions"] = [{"id": "repair-a", "rc": 0}, {"id": "repair-b", "rc": 1}]
+    block = _ok(supervisor=sup)
+    assert "DECIDE failing" in block[4], block[4]
+    assert "1 of 2 action(s) exited non-zero" in block[4], block[4]
+    assert block[4].startswith("verdict: NOT LIVE"), block[4]
+
+
+def test_actions_that_all_exit_zero_still_read_working():
+    """The negative control: the gate must not turn a healthy cycle red."""
+    sup = _supervisor(skips=(), dispatched=2, actions=2)
+    sup["actions"] = [{"id": "repair-a", "rc": 0}, {"id": "repair-b", "rc": 0}]
+    block = _ok(supervisor=sup)
+    assert "DECIDE working" in block[4], block[4]
+
+
 def test_a_disabled_and_stale_watcher_reads_as_disabled_not_stale():
     """The two facts stay distinct: disabled wins over the freshness failure it would also cause."""
     watchers = _watchers(as_of=NOW - timedelta(hours=1))

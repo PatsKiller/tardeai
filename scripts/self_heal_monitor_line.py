@@ -239,6 +239,14 @@ def build_block(
     skipped = [] if supervisor_reason else (supervisor.get("skipped") or [])
     cap_skips = sum(1 for s in skipped if isinstance(s, dict) and s.get("why") == CAP_SKIP)
     failed_skips = sum(1 for s in skipped if isinstance(s, dict) and s.get("why") in FAIL_SKIPS)
+    # cx-openai D52 refresh at 749c8a216 (the ONE remaining item): a runbook action that exited non-zero is a FAILED
+    # repair, and the supervisor still writes its cycle receipt. DECIDE looked only at skips and at the FIX queue, so a
+    # failed repair with an empty queue could publish LIVE. A non-zero action rc is evidence the self-healing did not do
+    # its job, and it outranks the freshness checks for the same reason a stale receipt does.
+    failed_actions = [
+        a for a in (supervisor.get("actions") or [])
+        if isinstance(a, dict) and _int_or_none(a.get("rc")) not in (None, 0)
+    ]
     if supervisor_reason:
         decide_part = f"DECIDE unknown ({supervisor_reason})"
         supervisor_line = None
@@ -250,6 +258,9 @@ def build_block(
             decide_part = f"DECIDE future-dated (supervisor receipt {abs(age):.0f} min ahead — clock skew)"
         elif age > SUPERVISOR_FRESH_MIN:
             decide_part = f"DECIDE stale (supervisor receipt {age:.0f} min old)"
+        elif failed_actions:
+            decide_part = (f"DECIDE failing ({len(failed_actions)} of {len(supervisor.get('actions') or [])} "
+                           f"action(s) exited non-zero)")
         elif failed_skips:
             decide_part = f"DECIDE failing ({failed_skips} of {len(skipped)} skipped on a failed triage)"
         elif skipped and cap_skips == len(skipped):
