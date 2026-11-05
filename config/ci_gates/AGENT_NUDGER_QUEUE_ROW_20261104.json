@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "AGENT_NUDGER_QUEUE_ROW_20261104",
+  "files": [
+    "tests/test_agent_nudger_queue_row_20261104.py"
+  ],
+  "anchor": "AGENT_NUDGER_QUEUE_ROW_20261104",
+  "comment": [
+    "ANCHOR: AGENT_NUDGER_QUEUE_ROW_20261104 — FQ-093. The nudge that wakes an idle agent names its next queue row",
+    "instead of asking for a heartbeat: the row it owns and may work, else the oldest unowned row the hold rules",
+    "allow, else the old heartbeat chore so the nudger never goes silent. It stays mechanical — one queue read, no",
+    "model, no claim write, no queue-status change — and a session with nothing to do is still told something true.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}
