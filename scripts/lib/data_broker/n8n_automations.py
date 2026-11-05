@@ -241,6 +241,21 @@ def summarize(workflows: Sequence[dict[str, Any]], stats: dict[str, Any], errors
     }
 
 
+_CACHE: dict[str, Any] = {}
+_CACHE_TTL_S = 60.0
+
+
+def get_automations_cached(*, ttl_s: float = _CACHE_TTL_S) -> dict[str, Any]:
+    """The payload, cached briefly: the page polls, the database should not be asked on every render."""
+    import time as _time
+    hit = _CACHE.get("payload")
+    if hit and (_time.monotonic() - float(hit.get("_at") or 0)) < ttl_s:
+        return {k: v for k, v in hit.items() if k != "_at"}
+    out = get_automations()
+    _CACHE["payload"] = {**out, "_at": _time.monotonic()}
+    return out
+
+
 def get_automations(*, query: Query | None = None, now: datetime | None = None,
                     cron: Callable[[], list[str] | None] | None = None,
                     drafts: int | None = None) -> dict[str, Any]:
