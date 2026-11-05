@@ -7,6 +7,10 @@ import json, os, requests, time
 from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
+try:
+    from scripts.lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN  # type: ignore
 
 # Known dividend schedules for major holdings
 # Updated via FMP/Finviz; fallback to these defaults
@@ -61,8 +65,8 @@ def _fetch_dividend_dates(symbols: List[str], root: Path) -> Dict[str,Dict]:
                 cur.execute(
                     """SELECT symbol, ex_div_date::text AS ex_date, pay_date::text AS pay_date,
                               annual_dividend_per_share, frequency
-                         FROM ticker_dividend_data WHERE symbol = ANY(%s)""",
-                    ([s.upper() for s in symbols],),
+                         FROM ticker_dividend_data WHERE symbol = ANY(%s) AND COALESCE(source, '') !~* %s""",
+                    ([s.upper() for s in symbols], _DIV_RETIRED_PATTERN),
                 )
                 out = {}
                 for r in cur.fetchall():
