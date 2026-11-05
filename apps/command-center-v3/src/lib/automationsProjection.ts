@@ -21,7 +21,11 @@ export type AutomationsPayload = {
 }
 export type AutomationsFilter = 'all' | 'failing' | 'live' | 'off'
 
-const SCHEMA = 'Automations@v1'
+// cc-deepseek-5's BLOCK at d4bc7430, F1: this constant did not match what the producer emits
+// (scripts/lib/data_broker/n8n_automations.py: SCHEMA = "N8nAutomations@v1"), so every real payload
+// fell through to UNAVAILABLE and the page rendered nothing. The seam test below reads the Python
+// constant directly so the two cannot drift again.
+export const SCHEMA = 'N8nAutomations@v1'
 /** The broker caches 60 s and the page polls at 60 s; three missed refreshes is the stale line. */
 export const STALE_AFTER_MS = 180_000
 /** SPEC: the alert banner appears when the 7-day failure rate is over 10%. */

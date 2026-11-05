@@ -14,7 +14,7 @@ const row = (over: Partial<WorkflowRow> = {}): WorkflowRow => ({
   name: 'tradeai-fabric-run-lane', state: 'live', runs: 42, ok: 42, fail: 0, folder: 'fabric', steps: 6, ...over,
 })
 const payload = (over: Partial<AutomationsPayload> = {}): AutomationsPayload => ({
-  schema: 'Automations@v1', as_of: at(30_000), window_days: 7,
+  schema: 'N8nAutomations@v1', as_of: at(30_000), window_days: 7,
   kpi: { runs: 100, ok: 85, failed: 15, running: 0, fail_rate_pct: 15, avg_run_s: 4.2, cron_left: 368, cron_left_has_draft: 140, deltas: null, deltas_unavailable_reason: 'no prior 7-day snapshot' },
   workflows: [row(), row({ name: 'tradeai-event-router', fail: 15, ok: 0, runs: 15, last_error: 'ETIMEDOUT calling relay', state: 'off' })],
   counts: { workflows: 2, live: 1, shadow: 0, off: 1, failing: 1 },

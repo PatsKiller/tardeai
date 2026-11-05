@@ -23,6 +23,10 @@
       "path": "agents"
     },
     {
+      "url": "/v3/automations",
+      "path": "automations"
+    },
+    {
       "url": "/v3/cio",
       "path": "cio"
     },

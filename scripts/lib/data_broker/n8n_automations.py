@@ -282,14 +282,14 @@ def get_automations(*, query: Query | None = None, now: datetime | None = None,
     wf_raw = q("select id, name, active, nodes, \"createdAt\", \"updatedAt\", \"isArchived\", \"parentFolderId\" "
                f"from workflow_entity order by name")
     workflows = workflow_rows(wf_raw)
-    ex_raw = q("select \"workflowId\", status, \"startedAt\", \"stoppedAt\" from execution_entity "
+    ex_raw = q("select \"workflowId\", status, \"startedAt\", \"stoppedAt\" from execution_entity "  # noqa: S608 — WINDOW_DAYS is an int module constant, never caller input
                f"where \"startedAt\" > now() - interval '{WINDOW_DAYS} days'")
     stats = run_stats(ex_raw, at)
     errors: dict[str, dict[str, Any]] = {}
     failing = [w["id"] for w in workflows if (stats["per_workflow"].get(w["id"], {}).get("failed") or 0) > 0]
     if failing:
         ids = ", ".join("'" + i.replace("'", "''") + "'" for i in failing[:60])
-        err_rows = q("select e.\"workflowId\", e.\"startedAt\", d.data from execution_entity e "
+        err_rows = q("select e.\"workflowId\", e.\"startedAt\", d.data from execution_entity e "  # noqa: S608 — ids are this module's own workflow ids, quote-escaped
                      "join execution_data d on d.\"executionId\" = e.id "
                      f"where e.status = 'error' and e.\"workflowId\" in ({ids}) "
                      "order by e.id desc")
