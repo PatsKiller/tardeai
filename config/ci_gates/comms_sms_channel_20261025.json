@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "comms_sms_channel_20261025",
+  "files": [
+    "tests/test_comms_sms_channel_20261025.py"
+  ],
+  "anchor": "COMMS_SMS_CHANNEL_20261025",
+  "comment": [
+    "ANCHOR: COMMS_SMS_CHANNEL_20261025 — operator 2026-10-25 \"emailed, notified, and texted\": the communications gateway",
+    "gains channel sms (send_via_gateway -> scripts/alerting.send_sms), OFF unless ENABLE_SMS=true; recipient from",
+    "OPERATOR_SMS_EMAIL (carrier email-to-SMS) or TWILIO_SMS_FROM/TWILIO_SMS_TO, read by the adapter only. Mode gate",
+    "applies. Hermetic: SMTP and Twilio helpers stubbed."
+  ]
+}
