@@ -104,10 +104,14 @@ try {
     assert(geometry.panels.every(p => p.scroll <= p.client + 1), JSON.stringify(geometry))
     assert.deepEqual({ ...traffic, reads: [] }, { reads: [], unexpected: [], mutations: [], external: [], errors: [] })
     // Keyboard access reveals the original observations and both selected/broken sources.
-    const summary = first.locator('summary'); await summary.focus(); await page.keyboard.press('Enter')
-    await expect(first.locator('details')).toHaveAttribute('open', '')
-    await expect(first.locator('details')).toContainText('Broken reference: Watch symbol master')
+    const details = first.getByTestId('watch-market-facts').locator('details.watch-market-details')
+    const summary = details.locator('summary').filter({ hasText: /^Source details$/ })
+    await expect(summary).toHaveCount(1)
+    await summary.focus(); await page.keyboard.press('Enter')
+    await expect(details).toHaveAttribute('open', '')
+    await expect(details).toContainText('Broken reference: Watch symbol master')
     await page.keyboard.press('Enter')
+    await expect(details).not.toHaveAttribute('open', '')
     const name = `impl-c2-retention-${width}-${status}`
     await page.screenshot({ path: path.join(out, name + '.png'), fullPage: true, animations: 'disabled' })
     results.push({ name, fixture: true, clock, width, status, geometry, curation, source, observed,
