@@ -28,11 +28,15 @@ OPENERS = [
 
 
 class Node:
-    def __init__(self, href, text):
-        self._href, self._text = href, text
+    def __init__(self, href, text, aria_label=None):
+        self._href, self._text, self._aria = href, text, aria_label
 
     def get_attribute(self, name):
-        return self._href if name == "href" else None
+        if name == "href":
+            return self._href
+        if name == "aria-label":
+            return self._aria
+        return None
 
     def inner_text(self):
         return self._text
@@ -155,3 +159,133 @@ def test_a_blank_or_forbidden_target_is_recorded_as_such():
     outcomes = {l["href"]: l["outcome"] for l in out["links"]}
     assert outcomes["/v3/blank"] == BLANK
     assert outcomes["/v3/forbidden"] == NOT_PERMITTED
+
+
+def test_an_action_in_the_accessible_name_or_past_the_truncation_is_not_followed():
+    """cx-openai-4 R1 (residual) on #2648: the link phase judged the visible text only, truncated to 120 chars."""
+    long_prefix = "Read the settlement note for the pending leg " * 4
+    assert len(long_prefix) > 120 and "approve" not in long_prefix.lower()
+    anchors = [
+        Node("/v3/approve-icon", "", aria_label="Approve the request"),
+        Node("/v3/long", long_prefix + "approve"),
+        Node("/v3/watch?symbol=ADBE", "Open ADBE"),
+    ]
+    page = FakePage(anchors=anchors, targets={})
+    out = capture_page(page, route="/x", page_url=PAGE_URL, indices=[], out_dir=None, openers=[])
+    hrefs = [l["href"] for l in out["links"]]
+    assert "/v3/approve-icon" not in hrefs, "an icon link whose accessible name was 'Approve' was followed"
+    assert "/v3/long" not in hrefs, "an action word past the 120-character truncation was followed"
+    assert "/v3/watch?symbol=ADBE" in hrefs, "a safe link stopped being followed"
+
+
+class _Child:
+    """A button inside a discovered container. role=None means the element carries no role attribute."""
+
+    def __init__(self, label, role=None):
+        self._label, self._role, self.clicks = label, role, 0
+
+    def get_attribute(self, name):
+        if name == "role":
+            return self._role
+        if name == "aria-label":
+            return self._label
+        return None
+
+    def inner_text(self):
+        return ""
+
+    def evaluate(self, _js):
+        return "button"
+
+    def click(self, timeout=None):
+        self.clicks += 1
+
+
+class _Children:
+    def __init__(self, kids):
+        self.kids = kids
+
+    def count(self):
+        return len(self.kids)
+
+    def nth(self, i):
+        return self.kids[i]
+
+
+class _Row:
+    """The real Options desk shape: a div role=row carrying an onClick, with a labelled button inside."""
+
+    def __init__(self, kids, role="row"):
+        self._kids, self._role, self.clicks = kids, role, 0
+
+    def get_attribute(self, name):
+        return self._role if name == "role" else None
+
+    def inner_text(self):
+        return ""
+
+    def evaluate(self, _js):
+        return "div"
+
+    def is_visible(self, timeout=None):
+        return True
+
+    def locator(self, _sel):
+        return _Children(self._kids)
+
+    def click(self, timeout=None):
+        self.clicks += 1
+
+
+class RowPage:
+    def __init__(self, row):
+        self.row = row
+
+    def locator(self, _sel):
+        row = self.row
+
+        class _L:
+            @property
+            def first(self):
+                return row
+
+        return _L()
+
+    def wait_for_timeout(self, _ms):
+        return None
+
+    class keyboard:
+        @staticmethod
+        def press(_key):
+            return None
+
+    def query_selector_all(self, _sel):
+        return []
+
+
+def test_a_row_opens_its_own_detail_button_instead_of_being_refused():
+    """cx-openai-4 R9 on #2648: the Options desk row is a container; its detail button is the safe target."""
+    button = _Child("Show NVDA credit put details")
+    row = _Row([_Child("Remove"), button])
+    page = RowPage(row)
+    openers = [{"label": "NVDA", "role": "row", "selector": "[data-testid$='-row'] >> nth=0"}]
+
+    out = capture_page(page, route="/options", page_url=PAGE_URL, indices=[0], out_dir=None, openers=openers)
+
+    assert row.clicks == 0, "the row container itself was pressed"
+    assert button.clicks == 1, "the row's own detail button was not pressed"
+    assert out["details"][0]["opened"] is True
+    assert "Show NVDA credit put details" in (out["details"][0]["pressed"] or "")
+    assert out["refused"] == []
+
+
+def test_a_row_whose_children_are_not_openers_is_still_refused():
+    row = _Row([_Child("Remove"), _Child("Pin this"), _Child("", role=None)])
+    page = RowPage(row)
+    openers = [{"label": "NVDA", "role": "row", "selector": "[data-testid$='-row'] >> nth=0"}]
+
+    out = capture_page(page, route="/options", page_url=PAGE_URL, indices=[0], out_dir=None, openers=openers)
+
+    assert row.clicks == 0 and all(k.clicks == 0 for k in row._kids), "a non-opener child was pressed"
+    assert out["details"][0]["opened"] is False
+    assert out["refused"] and "will not press" in out["refused"][0]["reason"]

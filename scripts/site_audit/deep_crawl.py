@@ -11,6 +11,7 @@ this module's, and those decisions are tested against a fake page rather than by
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
@@ -34,6 +35,8 @@ class DetailRecord:
     skipped_reason: str | None = None
     fields: list[dict[str, str]] = field(default_factory=list)
     severity: str | None = None
+    #: The element actually pressed when it was not the discovered node itself (a row's own detail button).
+    pressed: str | None = None
 
 
 @dataclass
@@ -138,6 +141,43 @@ def _detail_is_open(page: Any) -> bool:
     return False
 
 
+#: Accessible names that read as "this opens something": the only children of a container the crawler will press.
+#: Deliberately narrower than "any non-action button" — a row can hold a toggle or a preference control, and §6 says
+#: the crawl opens details, not whatever happens to be clickable.
+OPENER_NAME = re.compile(r"^\s*(open|show|view|expand|see|review)\b|\bdetails?\b", re.I)
+
+
+def _safe_detail_child(target: Any) -> tuple[Any, str, str] | None:
+    """The container's own detail button, when the container itself is not something the crawler may press.
+
+    cx-openai-4 R9 on #2648. A table row is a container, not a control: the Options desk renders
+    ``<div role="row" data-testid="options-desk-row" onClick=…>`` holding
+    ``<button aria-label="Show NVDA credit put details">``. Refusing the row is right — its role is one the crawler
+    will not press — but stopping there opened nothing at all on that page. The row's DETAIL button is the deliberate,
+    read-only target, and it is chosen only when it names itself as an opener and passes the same click boundary.
+    Anything else in the row (a toggle, an unlabelled button, an action) is left alone.
+    """
+    try:
+        children = target.locator("button, [role='button']")
+        count = int(children.count())
+    except Exception as exc:  # noqa: BLE001 — no reachable children is a refusal, not a crash
+        _log.debug("could not enumerate a container's children: %s", exc)
+        return None
+    for i in range(min(count, 8)):
+        try:
+            child = children.nth(i)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("could not read child %d: %s", i, exc)
+            continue
+        live = _live_label_role(child)
+        if live is None:
+            continue
+        label, role = live
+        if OPENER_NAME.search(label) and safe_to_activate(label, role):
+            return child, label, role
+    return None
+
+
 def crawl_plan(openers: Iterable[dict[str, Any]], indices: Iterable[int]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split sampled openers into what may be opened and what is refused, with a reason. Never silent."""
     allowed: list[dict[str, Any]] = []
@@ -177,17 +217,26 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
             # role, and an absent/unknown role is never pressed to find out what it is. `<a>`, `<div>` and
             # role="none" labelled "Approve" are all refused here; only a readable, non-action clickable role
             # (a detail button, or a link) proceeds.
+            pressed, pressed_label, via = target, live_label, None
             if not safe_to_activate(live_label, live_role):
-                details.append(DetailRecord(**{**rec.__dict__, "label": live_label,
-                                               "skipped_reason": f"refused at click time: {live_role} {live_label!r}"}))
-                refused.append({**item, "label": live_label, "role": live_role,
-                                "reason": "the live element carries an action label or a role the crawler "
-                                          "will not press — §6 never presses an action"})
-                continue
-            target.click(timeout=5000)
+                # cx-openai-4 R9 on #2648: a row is a container, not a control. Its own detail button is the
+                # target the §6 contract means ("every selected row/card opens its read-only detail"); it is
+                # pressed only when it names itself as an opener and passes the same fail-closed boundary.
+                child = _safe_detail_child(target)
+                if child is None:
+                    details.append(DetailRecord(**{**rec.__dict__, "label": live_label,
+                                                   "skipped_reason": f"refused at click time: {live_role} {live_label!r}"}))
+                    refused.append({**item, "label": live_label, "role": live_role,
+                                    "reason": "the live element carries an action label or a role the crawler "
+                                              "will not press — §6 never presses an action"})
+                    continue
+                pressed, pressed_label, _child_role = child
+                via = f"row container {live_role!r}; pressed its own detail button {pressed_label!r}"
+            pressed.click(timeout=5000)
             page.wait_for_timeout(400)
             opened = _detail_is_open(page)
-            details.append(DetailRecord(**{**rec.__dict__, "label": live_label or rec.label, "opened": opened,
+            details.append(DetailRecord(**{**rec.__dict__, "label": pressed_label or rec.label, "opened": opened,
+                                           "pressed": via,
                                            "skipped_reason": None if opened else "clicked but no detail appeared"}))
         except Exception as exc:  # noqa: BLE001 — an opener that does not open is a finding, not a crash
             details.append(DetailRecord(**{**rec.__dict__, "skipped_reason": f"{type(exc).__name__}"}))
@@ -210,11 +259,15 @@ def _discover_openers(page: Any) -> list[dict[str, Any]]:
     for i, node in enumerate(nodes):
         try:
             label = node.get_attribute("aria-label") or node.inner_text() or ""
+            # cx-openai-4 R9 on #2648: the plan used to claim every discovered node was a button. A table row is
+            # discovered here and its live role is `row`, so the plan described a control that does not exist —
+            # and the click boundary, reading the truth, refused it while the plan said it was fine.
+            role = (node.get_attribute("role") or "").strip().lower()
         except Exception:  # noqa: BLE001
-            label = ""
+            label, role = "", ""
         # codex R3 (2026-11-04): the old selector was fabricated ([data-open=N]) and matched nothing, so
         # a real click could never land. This is the same selector discovery used, pinned to the node.
-        out.append({"index": i, "label": label[:120], "role": "button",
+        out.append({"index": i, "label": label[:120], "role": role or "button",
                     "selector": f"{OPENER_SELECTOR} >> nth={i}"})
     return out
 
@@ -229,14 +282,21 @@ def _follow_links(page: Any, *, page_url: str, max_links: int) -> list[LinkRecor
     # remaining anchor, so reading the second one raised and the loop skipped it — two allowed links produced one
     # record, silently. Snapshot what is needed (href, label) BEFORE leaving the page; a handle is then never used
     # after a navigation, and every allowed link gets a result.
-    snapshot: list[tuple[str | None, str]] = []
+    #
+    # cx-openai-4 R1 (residual) on #2648: the snapshot read ONLY the visible text, truncated to 120 characters, so
+    # an icon link whose accessible name was "Approve" had an empty label and was followed, and an action word past
+    # character 120 was never seen. The label judged here is the link's FULL accessible name — aria-label plus the
+    # whole text — and the truncation is applied only to what is recorded.
+    snapshot: list[tuple[str | None, str, str]] = []
     for node in anchors[:max_links]:
         try:
-            snapshot.append((node.get_attribute("href"), (node.inner_text() or "").strip()[:120]))
+            full = " ".join(part for part in ((node.get_attribute("aria-label") or "").strip(),
+                                              (node.inner_text() or "").strip()) if part)
+            snapshot.append((node.get_attribute("href"), full, full[:120]))
         except Exception as exc:  # noqa: BLE001 — an anchor we cannot read is skipped, and said so
             _log.debug("skipped an anchor without readable attributes: %s", exc)
-    for href, label in snapshot:
-        if not link_is_crawlable(label, href, page_url):
+    for href, full_label, label in snapshot:
+        if not link_is_crawlable(full_label, href, page_url):
             continue
         try:
             resp = page.goto(urljoin(page_url, str(href)), wait_until="domcontentloaded", timeout=20000)
