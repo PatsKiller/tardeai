@@ -115,8 +115,12 @@ console.error = (...args) => {
 }
 
 import { readFileSync } from 'node:fs'
-const pageSrc = readFileSync(new URL('../pages/OpsIncidents.tsx', import.meta.url), 'utf8')
-check('R2: the phone branch renders the age', /sheet\.mobile[\s\S]{0,120}m\.age/.test(pageSrc), 'no m.age in the mobile branch')
+
+// cx-openai cloud P1 on 75796da8c: the R2 age check used to be a regex over the page SOURCE, which fails if `m.age`
+// drifts more than 120 characters from `sheet.mobile` and passes on matching text inside a comment - a layout
+// assertion wearing a behaviour's name (AGENTS 8A). The rendered page already proves it: `the phone keeps the age and
+// drops the SOURCE identifier` asserts the real "21 h 07 min" on the server-rendered phone view below. Removing this
+// one loses no coverage; mutating the age out of the phone branch reds the rendered check.
 
 
 // ---- cx-openai-4's second review (43cd0cbae): ORDER-INDEPENDENT mixed cases, no word list ------------------------
