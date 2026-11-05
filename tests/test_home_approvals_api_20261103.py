@@ -117,7 +117,7 @@ def store(monkeypatch):
 
 
 def test_list_returns_the_card_contract(store):
-    status, payload = api.handle("/api/v2/home/approvals", "GET", ctx=_ctx(principal="service-token", reader=True))
+    status, payload = api.handle(api.PREFIX, "GET", ctx=_ctx(principal="service-token", reader=True))
     assert status == 200 and payload["ok"] is True
     data = payload["data"]
     assert data["schema"] == "HomeApprovalsQueue@v1" and data["count"] == 1 and data["empty_text"] == "Nothing needs you"
@@ -130,46 +130,46 @@ def test_list_returns_the_card_contract(store):
 
 
 def test_summary_is_the_badge_source(store):
-    status, payload = api.handle("/api/v2/home/approvals/summary", "GET", ctx=_ctx(reader=True))
+    status, payload = api.handle(f"{api.PREFIX}/summary", "GET", ctx=_ctx(reader=True))
     assert status == 200 and payload["data"]["count"] == 1
     assert payload["data"]["urgent_count"] == 0
     assert set(payload["data"]) == {"count", "urgent_count", "as_of"}
 
 
 def test_read_without_authentication_is_refused(store):
-    status, payload = api.handle("/api/v2/home/approvals", "GET", ctx=_ctx(principal="agent:cc2", reader=False))
+    status, payload = api.handle(api.PREFIX, "GET", ctx=_ctx(principal="agent:cc2", reader=False))
     assert status == 403 and payload["code"] == "AGENT_CALLER_REFUSED"
 
 
 def test_an_agent_cannot_approve(store):
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST",
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST",
                                  {"note": ""}, ctx=_ctx(principal="agent:cc2", reader=False))
     assert status == 403 and payload["code"] == "AGENT_CALLER_REFUSED"
     assert store.calls == [] and store.records["apr-1"]["state"] == "open"
 
 
 def test_a_tailnet_identity_through_another_listener_is_not_the_operator(store):
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {},
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {},
                                  ctx=_ctx(listener="direct"))
     assert status == 403 and payload["code"] == "AGENT_CALLER_REFUSED"
 
 
 def test_a_login_outside_allowed_logins_is_not_the_operator(store):
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {},
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {},
                                  ctx=_ctx(principal="tailnet:someone-else"))
     assert status == 403 and payload["code"] == "AGENT_CALLER_REFUSED"
 
 
 def test_csrf_is_required_and_checked_before_the_store_is_touched(store):
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {},
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {},
                                  ctx=_ctx(csrf_ok=False))
     assert status == 403 and payload["code"] == "CSRF_REFUSED"
     assert store.calls == []
 
 
 def test_the_operator_decision_passes_only_verified_rails_to_decide(store):
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {"note": "go"},
-                                 ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST",
+                                 {"note": "go", "binding": "bind-1"}, ctx=_ctx())
     assert status == 200 and payload["ok"] is True and payload["data"]["state"] == "executed"
     call = store.calls[0]
     assert call["actor"] == "operator" and call["decision"] == "approve"
@@ -178,14 +178,14 @@ def test_the_operator_decision_passes_only_verified_rails_to_decide(store):
 
 def test_requester_cannot_approve_its_own_request(store):
     store.records["apr-1"]["requester"]["session"] = "operator"
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert status == 403 and payload["code"] == "SELF_APPROVAL_REFUSED"
     assert store.records["apr-1"]["state"] == "open"
 
 
 def test_moved_facts_leave_the_request_open_with_a_plain_reason(store):
     store.records["apr-1"]["blocked_reason"] = "This changed. The lead will re-ask."
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert status == 409 and payload["code"] == "CHANGED"
     assert payload["reason"] == "This changed. The lead will re-ask."
     assert payload["blocked_reason"] == payload["reason"] and payload["state"] == "open"
@@ -194,12 +194,12 @@ def test_moved_facts_leave_the_request_open_with_a_plain_reason(store):
 
 def test_expired_request_is_refused_and_not_auto_approved(store):
     store.records["apr-1"]["state"] = "expired"
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert status == 410 and payload["code"] == "EXPIRED"
 
 
 def test_decline_is_the_same_chokepoint(store):
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/decline", "POST", {}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/decline", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert status == 200 and payload["data"]["state"] == "declined"
     assert store.calls[0]["decision"] == "decline"
 
@@ -209,7 +209,7 @@ def test_no_route_accepts_a_type_or_a_fact_override(store):
     for path, method in (("/api/v2/home/approvals", "POST"),
                          ("/api/v2/home/approvals/apr-1", "POST"),
                          ("/api/v2/home/approvals/apr-1/execute", "POST"),
-                         ("/api/v2/home/approvals/apr-1/approve", "GET")):
+                         (f"{api.PREFIX}/apr-1/approve", "GET")):
         status, payload = api.handle(path, method, {"type": "grant", "facts": {"tier": "x"}}, ctx=_ctx())
         assert status in (404, 405), (path, method, status)
     assert store.calls == []
@@ -222,14 +222,14 @@ def test_an_unreadable_store_is_never_an_empty_list(monkeypatch):
 
     monkeypatch.setattr(api, "_store_module", lambda: Broken({}))
     monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
-    status, payload = api.handle("/api/v2/home/approvals", "GET", ctx=_ctx(reader=True))
+    status, payload = api.handle(api.PREFIX, "GET", ctx=_ctx(reader=True))
     assert status == 500 and payload["ok"] is False and payload["code"] == "STORE_ERROR"
     assert "items" not in payload
 
 
 def test_question_is_recorded_and_delivered_without_deciding(store, monkeypatch, tmp_path):
     monkeypatch.setenv("TRADEAI_COORDINATION_ROOT", str(tmp_path))
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/question", "POST", {"note": "why now?"}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/question", "POST", {"note": "why now?"}, ctx=_ctx())
     assert status == 200 and payload["data"]["note_recorded"] is True and payload["data"]["delivered"] is True
     assert store.records["apr-1"]["state"] == "open"
     assert any(c.get("question") == "why now?" for c in store.calls)
@@ -239,7 +239,7 @@ def test_question_is_recorded_and_delivered_without_deciding(store, monkeypatch,
 
 def test_expired_is_derived_from_the_clock_even_when_the_state_says_open(store):
     store.records["apr-1"]["expires_at"] = (NOW - timedelta(minutes=1)).isoformat()
-    status, payload = api.handle("/api/v2/home/approvals", "GET", ctx=_ctx(reader=True))
+    status, payload = api.handle(api.PREFIX, "GET", ctx=_ctx(reader=True))
     item = payload["data"]["items"][0]
     assert item["state"] == "expired" and item["can_act"] is False
 
@@ -266,7 +266,7 @@ def test_a_plain_sentence_from_the_store_is_returned_verbatim(monkeypatch):
     fake = Module({"apr-1": _record()})
     monkeypatch.setattr(api, "_store_module", lambda: fake)
     monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert status == 409 and payload["code"] == "CHANGED"
     assert payload["reason"] == "This changed. The lead will re-ask."
 
@@ -280,7 +280,7 @@ def test_a_store_that_cannot_be_read_is_not_an_empty_board(monkeypatch, tmp_path
     fake = Module({})
     monkeypatch.setattr(api, "_store_module", lambda: fake)
     monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
-    status, payload = api.handle("/api/v2/home/approvals", "GET", ctx=_ctx(reader=True))
+    status, payload = api.handle(api.PREFIX, "GET", ctx=_ctx(reader=True))
     assert status == 500 and payload["ok"] is False and payload["code"] == "STORE_ERROR"
 
 
@@ -321,7 +321,7 @@ def _decide_with(monkeypatch, record):
     fake = _OutcomeModule(record)
     monkeypatch.setattr(api, "_store_module", lambda: fake)
     monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
-    return api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    return api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
 
 
 def test_an_executed_decision_is_200_and_named(monkeypatch):
@@ -368,7 +368,7 @@ def test_the_binding_is_passed_back_to_decide(store):
         return orig(store_, request_id, ctx=ctx, actor=actor, decision=decision, note=note, now=now)
 
     store.decide = spy
-    api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
+    api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert seen["binding"] == "bind-1"
 
 
@@ -380,7 +380,7 @@ def test_card_changed_is_409_changed(monkeypatch):
     fake = M({"apr-1": _record()})
     monkeypatch.setattr(api, "_store_module", lambda: fake)
     monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert status == 409 and payload["code"] == "CHANGED"
 
 
@@ -392,7 +392,7 @@ def test_no_recorded_approval_maps_to_record_not_approved(monkeypatch):
     fake = M({"apr-1": _record()})
     monkeypatch.setattr(api, "_store_module", lambda: fake)
     monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
-    status, payload = api.handle("/api/v2/home/approvals/apr-1/approve", "POST", {}, ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", {"binding": "bind-1"}, ctx=_ctx())
     assert status == 409 and payload["code"] == "RECORD_NOT_APPROVED"
 
 
@@ -403,3 +403,78 @@ def test_timed_out_unconfirmed_is_202_uncertain(monkeypatch):
                                          "attempted": {"type": "merge_pr", "step_reached": "merge"}}})
     assert status == 202 and payload["ok"] is True and payload["data"]["outcome"] == "uncertain"
     assert payload["data"]["attempted"]["step_reached"] == "merge"
+
+
+# ── codex-cloud PR 2551: the displayed-card binding and badge totals over every open request ──
+
+@pytest.mark.parametrize("verb", ["approve", "decline"])
+def test_a_decision_must_name_the_card_the_operator_was_shown(store, verb):
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/{verb}", "POST", {}, ctx=_ctx())
+    assert status == 400 and payload["code"] == "BAD_REQUEST"
+    assert "card" in payload["reason"].lower()
+    assert store.calls == [] and store.records["apr-1"]["state"] == "open"
+
+
+def test_a_blank_binding_is_not_a_binding(store):
+    for body in ({"binding": ""}, {"binding": "   "}, {"binding": None}, {"note": "go"}):
+        status, payload = api.handle(f"{api.PREFIX}/apr-1/approve", "POST", body, ctx=_ctx())
+        assert status == 400 and payload["code"] == "BAD_REQUEST", body
+    assert store.calls == []
+
+
+def test_a_question_is_not_a_decision_and_needs_no_binding(store, monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADEAI_COORDINATION_ROOT", str(tmp_path))
+    status, payload = api.handle(f"{api.PREFIX}/apr-1/question", "POST", {"note": "why now?"}, ctx=_ctx())
+    assert status == 200 and payload["data"]["note_recorded"] is True
+
+
+class _PagingModule(FakeModule):
+    """A's real ``list_open`` returns only the newest ``limit`` rows (100 by default); mirror that so
+    the summary and the queue are proved against the cap they must not inherit."""
+
+    def list_open(self, store, *, now, limit=100):
+        rows = [r for r in store.records.values() if r.get("state") == "open"]
+        rows.sort(key=lambda r: str(r.get("created_at", "")), reverse=True)
+        return rows[: max(1, int(limit))]
+
+
+def _many(n=105, urgent=5):
+    records = {}
+    for i in range(n):
+        record = _record(id=f"apr-{i:03d}", created_at=(NOW - timedelta(minutes=n - i)).isoformat(),
+                         expires_at=(NOW + timedelta(hours=1 if i < urgent else 24)).isoformat())
+        records[record["id"]] = record
+    return records
+
+
+def _paging(monkeypatch, records):
+    fake = _PagingModule(records)
+    monkeypatch.setattr(api, "_store_module", lambda: fake)
+    monkeypatch.setattr(api, "_store_handle", lambda module: module.store)
+    return fake
+
+
+def test_the_badge_counts_every_open_request_not_just_the_newest_page(monkeypatch):
+    _paging(monkeypatch, _many())
+    status, payload = api.handle(f"{api.PREFIX}/summary", "GET", ctx=_ctx(reader=True))
+    assert status == 200
+    assert payload["data"]["count"] == 105
+    # The five oldest are the urgent ones; the newest-100 page would have hidden them.
+    assert payload["data"]["urgent_count"] == 5
+
+
+def test_the_queue_can_page_past_the_newest_hundred(monkeypatch):
+    _paging(monkeypatch, _many())
+    status, payload = api.handle(api.PREFIX, "GET", query={"limit": "50", "offset": "100"},
+                                 ctx=_ctx(reader=True))
+    data = payload["data"]
+    assert status == 200 and data["total"] == 105
+    assert data["count"] == 5 and len(data["items"]) == 5
+    assert data["limit"] == 50 and data["offset"] == 100 and data["has_more"] is False
+
+
+def test_the_first_queue_page_says_more_remain(monkeypatch):
+    _paging(monkeypatch, _many())
+    status, payload = api.handle(api.PREFIX, "GET", query={"limit": "50"}, ctx=_ctx(reader=True))
+    data = payload["data"]
+    assert status == 200 and data["count"] == 50 and data["total"] == 105 and data["has_more"] is True

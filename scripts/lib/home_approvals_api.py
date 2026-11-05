@@ -24,6 +24,14 @@ from typing import Any, Callable, Iterable, Optional
 PREFIX = "/api/v2/home/approvals"
 QUEUE_SCHEMA = "HomeApprovalsQueue@v1"
 
+#: A complete read of the live open set. A's ``list_open()`` pages at 100 by default; totals and the
+#: queue's reachability must never inherit that page size (codex-cloud CX2, PR 2551).
+COMPLETE_READ_LIMIT = 2 ** 31 - 1
+
+#: The queue's own page. A caller may ask for another page, but never beyond ``MAX_PAGE``.
+DEFAULT_PAGE = 100
+MAX_PAGE = 500
+
 #: Status + code for every refusal this layer can produce. A's refusals are mapped onto the same set.
 REFUSALS = {
     "NOT_OPERATOR": 403,
@@ -183,15 +191,46 @@ def _parse(value) -> Optional[Any]:
     return parsed if parsed.tzinfo is not None else None
 
 
-def _queue(module, store, now) -> tuple[int, dict]:
-    records = module.list_open(store, now=now) or []
-    items = [_item(record, now) for record in records]
+def _open_records(module, store, now) -> list[dict]:
+    """Every live open request, not A's default page of 100 (codex-cloud CX2, PR 2551).
+
+    A's ``list_open()`` slices to ``limit`` (100 unless told otherwise). Both the badge and the queue
+    need the complete live set: the badge so old-but-urgent requests are counted, the queue so a
+    caller can page to the requests past the first hundred.
+    """
+    return module.list_open(store, now=now, limit=COMPLETE_READ_LIMIT) or []
+
+
+def _page_number(value, *, default: int, minimum: int, maximum: int) -> int:
+    """A query-string page bound, clamped rather than trusted. A bad value falls back to the default."""
+    try:
+        number = int(str(value))
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, number))
+
+
+def _queue(module, store, now, query=None) -> tuple[int, dict]:
+    records = _open_records(module, store, now)
+    limit = DEFAULT_PAGE
+    offset = 0
+    if isinstance(query, dict):
+        limit = _page_number(query.get("limit"), default=DEFAULT_PAGE, minimum=1, maximum=MAX_PAGE)
+        offset = _page_number(query.get("offset"), default=0, minimum=0, maximum=COMPLETE_READ_LIMIT)
+    page = records[offset:offset + limit]
+    items = [_item(record, now) for record in page]
     return 200, {
         "ok": True,
         "data": {
             "schema": QUEUE_SCHEMA,
             "as_of": now.isoformat().replace("+00:00", "Z"),
+            # ``count`` is this response's rows (unchanged contract); ``total`` is the complete live
+            # set, so a caller can tell that a page is not the whole board.
             "count": len(items),
+            "total": len(records),
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(items) < len(records),
             "empty_text": "Nothing needs you",
             "items": items,
         },
@@ -199,7 +238,7 @@ def _queue(module, store, now) -> tuple[int, dict]:
 
 
 def _summary(module, store, now) -> tuple[int, dict]:
-    records = module.list_open(store, now=now) or []
+    records = _open_records(module, store, now)
     urgent = 0
     for record in records:
         expires = _parse(record.get("expires_at"))
@@ -344,7 +383,7 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Optional[Ctx] 
             if sub == "/summary":
                 return _summary(module, store, now)
             if sub in ("", "/"):
-                return _queue(module, store, now)
+                return _queue(module, store, now, query)
             return _one(module, store, sub.lstrip("/"), now, query)
         except Exception as exc:  # noqa: BLE001 — an unreadable store is never an empty list
             return _store_error(exc)
@@ -370,7 +409,14 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Optional[Ctx] 
     expected_binding = None
     if isinstance(body, dict):
         note = str(body.get("note") or "")[:2000]
-        expected_binding = str(body.get("binding") or "") or None
+        expected_binding = str(body.get("binding") or "").strip() or None
+    # A decision is only meaningful against the card the operator was shown. If the confirm sheet's
+    # binding is missing or blank, A's decide() treats it as "no expectation" and a request edited
+    # between render and click would be decided silently (codex-cloud CX1, PR 2551; AGENTS §25.10.3).
+    # Refuse here, before the store is touched. Asking a question is not a decision and needs none.
+    if verb in DECISION_VERBS and not expected_binding:
+        return _refused("BAD_REQUEST",
+                        "Reload Home and decide again: this decision must name the card you were shown.")
     login = actor[8:] if actor.startswith("tailnet:") else actor
 
     try:

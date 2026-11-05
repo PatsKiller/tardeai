@@ -87,7 +87,7 @@ def test_a_real_request_created_by_the_store_appears_with_can_act(real):
 
 def test_an_agent_cannot_decide_a_real_request(real):
     record = _create(real)
-    status, payload = api.handle(f"/api/v2/home/approvals/{record['id']}/approve", "POST", {},
+    status, payload = api.handle(f"{api.PREFIX}/{record['id']}/approve", "POST", {},
                                  ctx=_ctx(principal="agent:cc2", reader=False))
     assert status == 403 and payload["code"] == "AGENT_CALLER_REFUSED"
     assert real.get(record["id"])["state"] == "open"
@@ -95,7 +95,7 @@ def test_an_agent_cannot_decide_a_real_request(real):
 
 def test_real_csrf_failure_is_refused_before_the_store(real):
     record = _create(real)
-    status, payload = api.handle(f"/api/v2/home/approvals/{record['id']}/approve", "POST", {},
+    status, payload = api.handle(f"{api.PREFIX}/{record['id']}/approve", "POST", {},
                                  ctx=_ctx(csrf_ok=False))
     assert status == 403 and payload["code"] == "CSRF_REFUSED"
     assert real.get(record["id"])["state"] == "open"
@@ -105,8 +105,8 @@ def test_a_real_approve_with_no_wired_executor_is_not_reported_as_executed(real)
     """A has no execute adapter for merge_pr yet; decide() must come back refused, and B must not
     dress that up as success — this is the false-comfort defect the review named."""
     record = _create(real)
-    status, payload = api.handle(f"/api/v2/home/approvals/{record['id']}/approve", "POST", {},
-                                 ctx=_ctx())
+    status, payload = api.handle(f"{api.PREFIX}/{record['id']}/approve", "POST",
+                                 {"binding": ha._binding_of(record)}, ctx=_ctx())
     assert status != 200 or payload.get("ok") is not True
     kept = real.get(record["id"])
     assert kept["state"] != "executed"
@@ -135,7 +135,8 @@ def test_a_real_approve_with_an_injected_executor_executes_and_reports_executed(
 def test_an_expired_real_request_is_410(real):
     record = _create(real)
     later = NOW + timedelta(hours=25)
-    status, payload = api.handle(f"/api/v2/home/approvals/{record['id']}/approve", "POST", {},
+    status, payload = api.handle(f"{api.PREFIX}/{record['id']}/approve", "POST",
+                                 {"binding": ha._binding_of(record)},
                                  ctx=api.Ctx(principal=lambda: OPERATOR_PRINCIPAL,
                                              listener=lambda: "serve_proxy",
                                              csrf=lambda m, p: (True, ""),
