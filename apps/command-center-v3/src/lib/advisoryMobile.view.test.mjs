@@ -37,6 +37,23 @@ globalThis.document = globalThis.document || { documentElement: { style: {} }, b
   addEventListener() {}, removeEventListener() {}, querySelector: () => null, querySelectorAll: () => [] }
 
 const memo = new Map()
+// MobileDetailSheet renders through createPortal, which the server renderer refuses. Keep the real hook
+// (the URL-driven detail id) and render the sheet's own children inline, so the phone path's markup is
+// what the assertions read instead of the portal wrapper.
+const sheetStubMemo = new Map()
+function sheetStub(realPath) {
+  if (sheetStubMemo.has(realPath)) return sheetStubMemo.get(realPath)
+  const src = `import React from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};
+import { useMobilePageDetail as realHook } from ${JSON.stringify(compile(realPath))};
+export const useMobilePageDetail = realHook;
+export function MobileDetailSheet({ children }) {
+  return React.createElement('section', { 'data-detail-sheet': '1' }, children);
+}
+`
+  const url = `data:text/javascript;base64,${Buffer.from(src).toString('base64')}`
+  sheetStubMemo.set(realPath, url)
+  return url
+}
 function compile(path) {
   if (memo.has(path)) return memo.get(path)
   let source = readFileSync(path, 'utf8').replace(
@@ -53,6 +70,7 @@ function compile(path) {
     let target = resolve(dirname(path), spec)
     if (!existsSync(target)) target = ['.ts', '.tsx', '.js'].map((s) => target + s).find(existsSync)
     if (!target) throw new Error(`Missing fixture dependency ${spec}`)
+    if (spec === '../components/MobileDetailSheet') return `from ${JSON.stringify(sheetStub(target))}`
     return `from ${JSON.stringify(compile(target))}`
   })
   const url = `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
@@ -75,9 +93,9 @@ globalThis.__apiFixture = (url) => {
 
 const { default: Page } = await import(compile(join(app, 'src/pages/AdvisoryDeskHub.tsx')))
 
-function render(phone) {
+function render(phone, entry = '/v3/advisory') {
   PHONE = phone
-  return renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/advisory'] }, React.createElement(Page, {})))
+  return renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: [entry] }, React.createElement(Page, {})))
 }
 
 const cases = []
@@ -100,6 +118,14 @@ check('the card shows the decision fields the table hid', () => {
 check('the card offers the full-screen detail entry', () => {
   const html = render(true)
   assert.match(html, /Open full details/)
+})
+
+// FQ-015 repair (cc-deepseek-6 F1): the sheet carries the row's feedback actions, not only its detail, so a
+// phone operator can acknowledge, snooze and rate. The match is the desktop path's own button markup.
+check('the phone detail sheet carries the row feedback actions', () => {
+  const html = render(true, '/v3/advisory?detail=SPCX%3Aschwab_taxable%3A')
+  const sheet = (html.match(/<section data-detail-sheet="1">([\s\S]*?)<\/section>/) || [])[1]
+  assert.ok(sheet && />Ack<\/button>/.test(sheet), 'the phone sheet body does not carry the Ack control')
 })
 
 // FQ-016 — the state vocabulary is a sentence, with the code kept in the tooltip.

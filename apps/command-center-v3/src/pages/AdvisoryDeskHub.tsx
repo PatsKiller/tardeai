@@ -829,6 +829,27 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
 
   }
 
+  // FQ-015 repair (cc-deepseek-6 F1): the row's feedback actions live in one renderer, used by the table's
+  // inline expansion on a wide screen and by the full-screen sheet on a phone — a phone operator can
+  // acknowledge, snooze and rate a row too, not just read its detail.
+  const renderRowActions = (r: DeskRow) => (
+    <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('ack', r) }}>Ack</button>
+      <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('snooze', r) }}>Snooze</button>
+      <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('rate', r, { rating: 'useful' }) }}>Useful</button>
+      <button type="button" style={btnStyle} onClick={(e) => {
+        e.stopPropagation()
+        postFeedback('rate', r, { rating: 'notuseful', reason_code: 'DISAGREE_THESIS', note: 'held through' })
+      }}>Not useful · DISAGREE_THESIS</button>
+      {onDrill && (
+        <button type="button" style={btnStyle} onClick={(e) => {
+          e.stopPropagation()
+          onDrill({ title: r.symbol, subtitle: r.verdict, endpoint: '/api/v3/advisory', rows: [r] })
+        }}>Drill</button>
+      )}
+    </div>
+  )
+
   async function postFeedback(kind: 'rate' | 'ack' | 'snooze', row: DeskRow, extra?: Record<string, string>) {
     try {
       const body: any = { symbol: row.symbol, row_id: row.row_id, ...extra }
@@ -1177,21 +1198,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     <tr style={{ background: 'var(--bg2)' }}>
                       <td colSpan={8} style={{ padding: 14 }}>
                         {renderRowDetail(r)}
-                        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('ack', r) }}>Ack</button>
-                          <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('snooze', r) }}>Snooze</button>
-                          <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('rate', r, { rating: 'useful' }) }}>Useful</button>
-                          <button type="button" style={btnStyle} onClick={(e) => {
-                            e.stopPropagation()
-                            postFeedback('rate', r, { rating: 'notuseful', reason_code: 'DISAGREE_THESIS', note: 'held through' })
-                          }}>Not useful · DISAGREE_THESIS</button>
-                          {onDrill && (
-                            <button type="button" style={btnStyle} onClick={(e) => {
-                              e.stopPropagation()
-                              onDrill({ title: r.symbol, subtitle: r.verdict, endpoint: '/api/v3/advisory', rows: [r] })
-                            }}>Drill</button>
-                          )}
-                        </div>
+                        {renderRowActions(r)}
                       </td>
                     </tr>
                   )}
@@ -1212,6 +1219,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         return row ? (
           <MobileDetailSheet title={`${row.symbol} advisory detail`} onBack={phone.close}>
             {renderRowDetail(row)}
+            {renderRowActions(row)}
           </MobileDetailSheet>
         ) : null
       })()}
