@@ -157,7 +157,12 @@ class ConflictLedger:
                     continue
                 new = current_lineages.get(lineage(old["key"]))
                 # U1 does not mean a disagreement has been resolved.
-                clear = new and new["kind"] in {"AGREEMENT", "SUPERSEDED"} and new.get("rule") != "R15"
+                # R15: only the recorded resolution still holding (bound to this conflict's lineage) clears it; the
+                # first-observation confirmation ("disagreement observed") shares the conflict key but never clears.
+                holds_resolution = bool(new and old.get("kind") == "CONFLICT" and new.get("rule") == "R15" and
+                                        new.get("holds_recorded_resolution") is True)
+                clear = new and new["kind"] in {"AGREEMENT", "SUPERSEDED"} and (
+                    new.get("rule") != "R15" or holds_resolution)
                 gate_passed = old.get("rule") in {"U6", "R3"} and not new and not any(
                     f["kind"] == "DATA_ERROR" for f in findings) and any(
                     side["source"] in observed_sources for side in old.get("sides", [])[:1])

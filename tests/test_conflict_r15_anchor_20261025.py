@@ -10,10 +10,10 @@ from urllib.parse import quote
 
 from scripts.lib.cio_ask_api import Ctx
 from scripts.lib.conflicts.adapters import evaluate_inputs, security_inputs
-from scripts.lib.conflicts.api import handle
-from scripts.lib.conflicts.engine import Input
+from scripts.lib.conflicts.api import handle, sections_for_guids
+from scripts.lib.conflicts.engine import Finding, Input
 from scripts.lib.conflicts.hysteresis import SCHEMA, anchor_holds, record_anchor
-from scripts.lib.conflicts.ledger import KINDS, ConflictLedger, DECISION_SCHEMA, decision_inputs
+from scripts.lib.conflicts.ledger import KINDS, ConflictLedger, DECISION_SCHEMA, decision_inputs, lineage
 from scripts.lib.conflicts.profiles.vocabulary import ordinal
 from scripts.lib.conflicts.review import complete_review
 
@@ -100,7 +100,9 @@ def test_conviction_70_plus_minus_1_over_three_runs_is_one_flag(tmp_path):
         assert not [e for e in events if e["event"] in {"opened", "reopened"}]
     opened = [e for e in runner.ledger.events() if e["event"] in {"opened", "reopened"} and e["finding"]["kind"] in KINDS]
     assert len(opened) == 1                                          # the one flag the CIO decided
-    assert runner.ledger.records()[conflict.key]["state"] == "DECIDED"
+    # The first held run binds to the conflict and clears it, so the served projection stops reading as a conflict;
+    # the decision and its anchor stay on the record.
+    assert runner.ledger.records()[conflict.key]["state"] == "CLEARED"
 
 
 def test_conviction_move_of_five_ends_the_hold(tmp_path):
@@ -157,6 +159,50 @@ def test_anchor_holds_rules():
     assert not anchor_holds(anchor, same + [{"source": "review", "value": "SELL"}], True)
     assert not anchor_holds(anchor, [{"source": "desk", "value": "ADD"}], True)
     assert not anchor_holds({"sides": {}}, same, True)                          # not an anchor
+
+
+def test_held_resolution_binds_to_the_original_conflict_and_clears_its_projection(tmp_path):
+    """D52 triage: the held result must belong to the conflict it resolved, and the served record must stop
+    reading as an active conflict. The judgment itself is not deleted."""
+    runner = Runner(tmp_path)
+    conflict = confirmed_conflict(runner, bundle)
+    decided = runner.decide(conflict.key, "WATCH", NOW + timedelta(minutes=20))
+    anchor = decided["decision"]["anchor"]
+    findings, _ = runner.run(bundle(), NOW + timedelta(minutes=30))
+    (held,) = [f for f in findings if f.summary == "Recorded resolution still holds"]
+    # Bound to the original conflict's lineage, not an unrelated "<subject>:R15" key.
+    assert lineage(held.key) == lineage(conflict.key)
+    assert held.key != "security:g1:R15"
+    assert held.holds_recorded_resolution is True
+    record = runner.ledger.records()[conflict.key]
+    assert record["state"] == "CLEARED"
+    assert record["decision"]["chosen_side"] == "WATCH"                 # the judgment stays on record
+    assert record["decision"]["anchor"] == anchor                       # the durable anchor is unchanged
+    cleared = [e for e in runner.ledger.events() if e["event"] == "cleared"]
+    assert [e["key"] for e in cleared] == [conflict.key]
+    assert cleared[0]["evidence"]["rule"] == "R15"
+    assert cleared[0]["evidence"]["holds_recorded_resolution"] is True
+    # The served projection no longer reads as an active conflict, and the ledger still holds the decision.
+    section = sections_for_guids(tmp_path, ["g1"])["g1"]
+    assert section["findings"] == [] and section["headline"] is None
+
+
+def test_first_observation_r15_never_clears_an_active_conflict(tmp_path):
+    """Negative control: the confirmation observation is not a held resolution and cannot clear, even when it
+    carries the conflict's own key."""
+    runner = Runner(tmp_path)
+    conflict = confirmed_conflict(runner, bundle)
+    desk = Input("advisory_desk", "BUY", NOW - timedelta(hours=1))
+    findings, _ = runner.run(bundle(extra=[desk]), NOW + timedelta(minutes=30))
+    (observation,) = [f for f in findings if f.summary == "Disagreement observed — confirmation due next run"]
+    assert observation.holds_recorded_resolution is False
+    assert runner.ledger.records()[conflict.key]["state"] == "OPEN"
+    # Same-key shape, exactly as the engine emits it for a two-sided observation: still no clear.
+    same_key = Finding("AGREEMENT", "R15", "Disagreement observed — confirmation due next run", "—",
+                       sides=conflict.sides, key=conflict.key)
+    events = runner.ledger.reconcile(bundle().subject, [same_key], at=NOW + timedelta(minutes=45), apply=True)
+    assert not [e for e in events if e["event"] in {"cleared", "superseded"}]
+    assert runner.ledger.records()[conflict.key]["state"] == "OPEN"
 
 
 def test_expired_decision_has_no_anchor(tmp_path):

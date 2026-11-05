@@ -236,6 +236,9 @@ def _hysteresis_subject(subject, inputs, findings, *, now):
             return None
         signature = sorted([side["source"], ordinal(side["value"], held)] for side in finding.sides)
         value = {"signature": signature, "recorded_at": decision.as_of.isoformat() if decision.as_of else None}
+        # Bind the held result to the conflict the decision resolved; the engine keeps that key's lineage.
+        if decision.metadata.get("conflict_key"):
+            value["key"] = decision.metadata["conflict_key"]
         if isinstance(anchor.get("conviction"), (int, float)) and not isinstance(anchor.get("conviction"), bool):
             value["conviction"] = anchor["conviction"]
         return replace(subject, context={**subject.context, "decision_anchor": value})
