@@ -74,6 +74,28 @@ def discover_routes(page, base: str) -> list[tuple[str, str]]:
     return sorted(found.items())
 
 
+#: The health contract page_audit_capture obeys (SPEC §2.1). A capture reads the v3 APIs, so the
+#: gate probes the API health contract rather than the frontend root.
+HEALTH_PATH = "/api/v2/health"
+#: The pacing floor. `--pause 0` used to be accepted, which removed the "at least 4 s between pages"
+#: safeguard entirely (cx-openai-4 R7).
+MIN_PAUSE_S = 4.0
+
+
+def HEALTH_PATH_FOR(base: str) -> str:
+    """The health URL for one base. Kept as a function so a test can pin it without a server."""
+    return base.rstrip("/") + HEALTH_PATH
+
+
+def effective_pause(requested: float | None) -> float:
+    """The pause actually slept between pages: never below the contract's floor, never negative."""
+    try:
+        value = float(requested if requested is not None else MIN_PAUSE_S)
+    except (TypeError, ValueError):
+        value = MIN_PAUSE_S
+    return max(MIN_PAUSE_S, value)
+
+
 def server_healthy(base: str, wait_s: int = 300) -> bool:
     """Gate before every page: the live server must answer quickly. If it does not, wait up to wait_s
     (it restarts itself), and abort the sweep rather than keep loading a struggling server.
@@ -87,7 +109,10 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
     while time.time() < deadline:
         try:
             t0 = time.time()
-            with urllib.request.urlopen(base + "/", timeout=10) as r:  # noqa: S310 — http(s) enforced above
+            # cx-openai-4 R7 on #2648: the contract names /api/v2/health, not the v3 frontend root —
+            # probing "/" only proves the page server is up, not that the API a capture reads is healthy.
+            with urllib.request.urlopen(HEALTH_PATH_FOR(base), timeout=10) as r:  # noqa: S310 — http(s) enforced
+
                 if r.status < 500 and time.time() - t0 < 8:
                     return True
         except Exception as exc:  # noqa: BLE001 — a failed probe is retried until the deadline
@@ -228,6 +253,7 @@ def main() -> int:
         if a.limit:
             routes = routes[: a.limit]
         print(f"{len(routes)} routes discovered", flush=True)
+        aborted = False
         for vp, (w, h) in VIEWPORTS.items():
             ctx = browser.new_context(viewport={"width": w, "height": h},
                                       is_mobile=vp != "desktop", has_touch=vp != "desktop")
@@ -235,8 +261,11 @@ def main() -> int:
                 if a.only and (vp, route) not in a.only:
                     continue
                 if not server_healthy(a.base):
+                    # cx-openai-4 R7: `break` left the ROUTE loop and the next viewport carried on, so an
+                    # aborted sweep kept capturing. The contract says stop the whole invocation.
                     print("ABORT: server not healthy for 5 minutes; stopping the sweep", flush=True)
                     rows.append({"route": route, "viewport": vp, "error": "aborted: server unhealthy"})
+                    aborted = True
                     break
                 page = ctx.new_page()
                 r = capture(page, a.base, route, label, vp, out, HUB_TABS.get(route, []), deep=not a.no_deep)
@@ -244,8 +273,10 @@ def main() -> int:
                 rows.append(r)
                 print(f"{vp:8} {route:40} {'ERR ' + r['error'][:60] if r.get('error') else ('BLANK? ' if r.get('blank_suspect') else 'ok')}"
                       f" fail={len(r.get('failed_requests', []))} console={len(r.get('console_errors', []))}", flush=True)
-                time.sleep(a.pause)
+                time.sleep(effective_pause(a.pause))
             ctx.close()
+            if aborted:
+                break
         browser.close()
     summary = {"schema": "PageAuditCapture@v1", "captured_at": stamp, "base": a.base, "routes": len(routes),
                "rows": len(rows), "errors": sum(1 for r in rows if r.get("error")),

@@ -264,3 +264,32 @@ def test_R5_every_allowed_link_gets_a_result_even_after_a_navigation(monkeypatch
     records = deep_crawl._follow_links(page, page_url="http://host/v3", max_links=5)
     assert [r.href for r in records] == ["/v3/a", "/v3/b"], [r.href for r in records]
     assert all(r.outcome for r in records)
+
+
+# ── R7 (cx-openai-4): the live-crawl safeguards must not be bypassable ───────────────────────────────────────
+def test_R7_the_health_gate_probes_the_declared_api_contract():
+    from site_audit.page_audit_capture import HEALTH_PATH, HEALTH_PATH_FOR
+
+    assert HEALTH_PATH == "/api/v2/health"
+    assert HEALTH_PATH_FOR("http://host:7777") == "http://host:7777/api/v2/health"
+    assert HEALTH_PATH_FOR("http://host:7777/") == "http://host:7777/api/v2/health"
+
+
+def test_R7_the_pause_cannot_be_configured_below_the_floor():
+    from site_audit.page_audit_capture import MIN_PAUSE_S, effective_pause
+
+    assert MIN_PAUSE_S >= 4.0
+    for requested in (0, 0.0, -3, None):
+        assert effective_pause(requested) >= MIN_PAUSE_S, requested
+    assert effective_pause(9) == 9
+
+
+def test_R7_an_abort_stops_the_whole_sweep_not_just_one_route():
+    """The loop must leave the viewport loop too; a `break` in the route loop alone kept capturing."""
+    src = (ROOT / "scripts/site_audit/page_audit_capture.py").read_text()
+    start = src.index("for vp, (w, h) in VIEWPORTS.items():")
+    body = src[start:]
+    end = body.index("browser.close()")
+    loop = body[:end]
+    assert "aborted = True" in loop, "an unhealthy server must set the abort flag"
+    assert "if aborted:" in loop and loop.count("break") >= 2, loop
