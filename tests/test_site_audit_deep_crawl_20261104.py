@@ -273,3 +273,15 @@ def test_the_imported_capture_script_cannot_write_into_the_repo():
     src = (ROOT / "scripts" / "site_audit" / "page_audit_capture.py").read_text()
     assert 'REPO = Path(__file__).resolve().parents[2]' in src
     assert "configured_capture_root(" in src
+
+
+def test_a_cio_label_with_an_absent_value_is_not_cio_content():
+    """Triage at 2371eedf0: the label alone graded present, so every technical could be missing and still store complete."""
+    from scripts.site_audit import completeness
+
+    card = completeness.detail_text_to_card("CIO stance —\nAs of unavailable")
+    assert "cio_stance" not in card, card
+    assert "cio_as_of" not in card, card
+
+    real = completeness.detail_text_to_card("CIO stance Buy the dip\nAs of 2026-11-04")
+    assert real.get("cio_stance") == "present" and real.get("cio_as_of") == "present", real

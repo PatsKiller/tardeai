@@ -80,6 +80,23 @@ def _label_present(text: str, labels: Iterable[str]) -> bool:
     return False
 
 
+def _pattern_present(text: str, pattern: re.Pattern[str]) -> bool:
+    """The same presence rule as ``_label_present``, for a label that needs a regex rather than a literal.
+
+    ``_CIO`` and ``_AS_OF`` match a family of spellings, so they cannot go through ``re.escape``. The rule they
+    must obey is identical: a label beside a printed ABSENT value ("—", "n/a", "unavailable") is a gap.
+    """
+    m = pattern.search(text)
+    if not m:
+        return False
+    rest = text[m.end():]
+    line, _, tail = rest.partition("\n")
+    candidate = line if line.strip() else tail.split("\n", 1)[0]
+    if not candidate.strip():
+        return True  # the label is present and the surface printed nothing beside it
+    return not _ABSENT.match(candidate)
+
+
 def _grouped_present(text: str, pattern: re.Pattern[str], names: tuple[str, ...]) -> Iterable[str]:
     """The fields of one grouped row whose OWN value is printed (not "—" / "n/a").
 
@@ -123,9 +140,12 @@ def detail_text_to_card(text: str) -> dict[str, Any]:
             continue
         if _label_present(body, labels):
             card[name] = "present"
-    if _CIO.search(body):
+    # A CIO LABEL is not CIO CONTENT. The crawl prints "CIO stance —" / "As of unavailable" when the desk has
+    # nothing, and matching the label alone graded that as present: every technical could be missing and the card
+    # still stored complete evidence (triage at 2371eedf0). The value rule is the same one the named fields use.
+    if _pattern_present(body, _CIO):
         card["cio_stance"] = "present"
-        if _AS_OF.search(body):
+        if _pattern_present(body, _AS_OF):
             card["cio_as_of"] = "present"
     return card
 
