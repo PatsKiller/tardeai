@@ -23,6 +23,10 @@ Usage:
 import json, logging, os, sys
 from datetime import datetime
 from pathlib import Path
+try:
+    from scripts.lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +216,8 @@ def _build_position_context(symbol: str) -> dict:
     income = cur.fetchone()
 
     # Dividend data
-    cur.execute("SELECT * FROM ticker_dividend_data WHERE symbol=%s", (symbol,))
+    cur.execute("SELECT * FROM ticker_dividend_data WHERE symbol=%s AND COALESCE(source, '') !~* %s",
+                (symbol, _DIV_RETIRED_PATTERN))
     div_data = cur.fetchone()
 
     conn.close()
