@@ -27,6 +27,8 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 
 from scripts import disk_monitor as DMON  # noqa: E402
 
+ORIG_DU = DMON.du_bytes  # the real subprocess-backed measurement, before the fixture monkeypatches it
+
 CONFIG = ROOT / "config"
 GIB = 1024 ** 3
 T0 = datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc)
@@ -157,6 +159,62 @@ def test_a_partially_unmeasurable_glob_is_unmeasured_and_preserves_the_baseline(
     assert b["hotspots"]["wt_glob"]["unmeasured"] == 1
     report = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert report["degraded_hotspots"] == 1 and report["failures"] == 0
+
+
+def test_du_bytes_rejects_a_nonzero_exit_even_with_a_numeric_total(monkeypatch):
+    """A traversal that could not finish may still print a PARTIAL total; it is not the directory's size."""
+    class Proc:
+        def __init__(self, stdout, returncode):
+            self.stdout, self.returncode, self.stderr = stdout, returncode, "du: cannot read directory"
+
+    for rc, expected in ((0, 123456), (1, None), (2, None)):
+        monkeypatch.setattr(DMON.subprocess, "run", lambda *a, _rc=rc, **k: Proc("123456\t/x\n", _rc))
+        assert DMON.du_bytes(Path("/x"), 5) == expected
+
+
+def test_a_nonzero_du_exit_never_overwrites_the_hotspot_baseline(mon, monkeypatch):
+    """The rejected measurement must keep the complete prior value and record the failure beside it."""
+    mon.doc["hotspots"] = [{"id": "cache", "path": "~/.cache", "purge": "rule C"}]
+    mon.cfg.write_text(json.dumps(mon.doc, indent=1))
+    monkeypatch.setattr(DMON, "du_bytes", lambda path, timeout: 10 * GIB)
+    assert _run(mon, apply=True, used=50.0) == 0
+    assert _baseline(mon)["hotspots"]["cache"]["bytes"] == 10 * GIB
+
+    class Proc:
+        returncode, stdout, stderr = 1, f"{4 * GIB}\t{mon.home / '.cache'}\n", "du: cannot read directory"
+
+    monkeypatch.setattr(DMON, "du_bytes", ORIG_DU)  # drive the real helper over a failing `du`
+    monkeypatch.setattr(DMON.subprocess, "run", lambda *a, **k: Proc())
+    assert _run(mon, apply=True, used=50.0, hours=1.0) == 0  # degradation, not a run failure
+    b = _baseline(mon)["hotspots"]["cache"]
+    assert b["bytes"] == 10 * GIB  # the partial 4 GiB never lands in the value slot
+    assert b["last_failure"] is not None
+
+
+def test_a_rejected_notification_is_retried_not_consumed(mon, monkeypatch):
+    """A transition whose send is not accepted must survive in the condition store so the next run retries it."""
+    assert _run(mon, apply=True, used=50.0) == 0  # seed
+    monkeypatch.setattr(DMON, "default_notify", lambda text, priority: "send_returned_false")
+    assert _run(mon, apply=True, used=85.0, hours=1.0) == 1  # the rejected send fails the run
+    assert mon.sends == []  # nothing accepted; the fixture's accepted-notifier list stays empty
+
+    # the operator fixes transport: the SAME still-bad warn band must be delivered, not suppressed as "ongoing"
+    monkeypatch.setattr(DMON, "default_notify",
+                        lambda text, priority: (mon.sends.append((text, priority)), "accepted")[1])
+    assert _run(mon, apply=True, used=86.0, hours=1.0) == 0
+    assert len(mon.sends) == 1 and "WARN" in mon.sends[0][0]
+
+
+def test_a_condition_store_write_failure_fails_the_run(mon):
+    """A condition store that cannot be written must make the run fail, not silently succeed with no alert."""
+    assert _run(mon, apply=True, used=50.0) == 0  # seed (the first run observes nothing)
+    bad = mon.state / "store_is_a_dir"
+    bad.mkdir()  # os.replace() onto a directory raises: the condition store cannot be written
+    mon.alert = bad
+    assert _run(mon, apply=True, used=92.0, hours=1.0) == 1  # measured CRITICAL, store unwritable
+    assert mon.sends == []  # observe never returned notify=True, so no alert was attempted
+    receipt = json.loads((mon.state / "data" / "runtime" / "disk-monitor_last.json").read_text())
+    assert receipt["status"] == "failed"
 
 
 def test_a_rejected_mount_notification_fails_the_run(mon, monkeypatch):

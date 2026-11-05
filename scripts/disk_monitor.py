@@ -28,16 +28,19 @@ from the latest disk_hygiene manifest, and the operator-gated purge command; ``-
 ``scripts/disk_hygiene.py --dry-run``.
 
 Fail closed (§7): a mount or hotspot that cannot be measured keeps its prior baseline value and records the failure
-beside it — never an error string in the value slot, never a silent zero. A partially measured glob is treated as
-unmeasured (a partial sum would later read as growth). An unmeasurable hotspot is a degradation (recorded), not a
-run failure; only an unmeasurable mount or a failed write/send fails the run.
+beside it — never an error string in the value slot, never a silent zero. A `du` that exits non-zero is rejected even
+when it printed a partial numeric total (an unreadable descendant is not a smaller directory). A partially measured
+glob is treated as unmeasured (a partial sum would later read as growth). An unmeasurable hotspot is a degradation
+(recorded), not a run failure; an unmeasurable mount, a failed write (baseline, receipt or condition store), or a
+failed/unaccepted send fails the run. A transition whose notification is not accepted is restored in the condition
+store, so the next run retries it instead of suppressing it as an already-seen "ongoing" state.
 
 Alerts are transitions only: there is no heartbeat re-alert, so an unchanged band stays quiet. A hotspot observed
 healthy clears its stored condition, so the next growth episode alerts independently.
 
 Exit: 0 = measured and (in --apply) baseline + receipt written and any due alert accepted; 1 = config unreadable, a
-mount unmeasurable, a write failed, or a send failed/was rejected; 2 = usage. MBI_BEHAVIOR = 0. No broker, no DB, no
-network beyond the Telegram chokepoint (scripts/telegram_alert.py).
+mount unmeasurable, a write failed (including the condition store), or a send failed/was rejected; 2 = usage.
+MBI_BEHAVIOR = 0. No broker, no DB, no network beyond the Telegram chokepoint (scripts/telegram_alert.py).
 """
 
 from __future__ import annotations
@@ -142,6 +145,11 @@ def du_bytes(path: Path, timeout_s: float) -> Optional[int]:
     try:
         proc = subprocess.run(["du", "-s", "-B1", "-x", str(path)], capture_output=True, text=True, timeout=timeout_s)  # noqa: S603, S607  (fixed argv, the `du` on PATH)
     except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        # du did not finish the traversal: an unreadable descendant or a file vanishing mid-walk still lets it
+        # print a PARTIAL numeric total. That partial is not this directory's size; storing it would overwrite a
+        # good baseline and later read the reappearing bytes as growth (a false alert), so reject the measurement.
         return None
     try:
         return int(proc.stdout.split()[0])
@@ -438,6 +446,44 @@ def _load_condition(state_path: Optional[Path]) -> dict[str, Any]:
         return {}
 
 
+def _condition_snapshot(state_path: Optional[Path], key: str) -> Optional[dict[str, Any]]:
+    """The stored record for ``key`` before this run observes it, or None when the key was absent. A send that is
+    not accepted restores this exact record: a transition must not be consumed by a failed notification."""
+    rec = _load_condition(state_path).get(key)
+    return dict(rec) if isinstance(rec, dict) else None
+
+
+def _restore_condition(state_path: Optional[Path], key: str,
+                       snapshot: Optional[Mapping[str, Any]]) -> None:
+    """Put ``key``'s record back exactly as it was before an unaccepted send, so the next run sees the same
+    transition (new/reversed/recovered) instead of a consumed "ongoing" state that never retries. Writes the
+    store, so it is only called on the apply path; a write failure here is a run failure (never swallowed)."""
+    from scripts.lib.alert_condition_state import load_store, save_store
+
+    data = load_store(state_path)
+    conds = data.setdefault("conditions", {})
+    if snapshot is None:
+        conds.pop(key, None)
+    else:
+        conds[key] = dict(snapshot)
+    save_store(data, state_path)
+
+
+def _restore_pending(state_path: Optional[Path],
+                     entries: "tuple[tuple[str, Optional[Mapping[str, Any]], Mapping[str, Any]], ...]") -> int:
+    """Restore every observed record whose alert was not accepted; returns how many restores failed. An observe
+    that errored never persisted anything, so it is skipped (the next run retries it on its own)."""
+    failed = 0
+    for key, snapshot, obs in entries:
+        if obs.get("action") == "error":
+            continue
+        try:
+            _restore_condition(state_path, key, snapshot)
+        except Exception:  # noqa: BLE001 - a failed rollback is itself a run failure, never swallowed
+            failed += 1
+    return failed
+
+
 def _predict_notify(prev: Optional[Mapping[str, Any]], band: str, alertable: bool) -> bool:
     """Whether ``observe()`` would notify for a transition, given the stored prior record (no write, no heartbeat
     re-alert — a dry run never advances the real clock)."""
@@ -506,11 +552,17 @@ def run(
         for m in ev["mounts"]:
             if "used_pct" not in m:
                 continue
-            used_obs = _transition(apply, condition_key(m["mount"], "used"), m["used_band"],
+            used_key = condition_key(m["mount"], "used")
+            grow_key = condition_key(m["mount"], "growth")
+            used_prev = _condition_snapshot(alert_state_path, used_key) if apply else None
+            grow_prev = _condition_snapshot(alert_state_path, grow_key) if apply else None
+            used_obs = _transition(apply, used_key, m["used_band"],
                                    m["used_band"] != "ok", mon, alert_state_path, {"used_pct": m["used_pct"]})
-            grow_obs = _transition(apply, condition_key(m["mount"], "growth"), m["growth_band"],
+            grow_obs = _transition(apply, grow_key, m["growth_band"],
                                    m["growth_band"] not in ("ok", "unknown"),
                                    mon, alert_state_path, {"delta_bytes": m.get("delta_bytes")})
+            # a condition store that cannot be written is a run failure, not a silent no-alert
+            failures += sum(1 for o in (used_obs, grow_obs) if o.get("action") == "error")
             if used_obs.get("notify") or grow_obs.get("notify"):
                 subject, summary = mount_alert_text(m, mon, manifest, top_hotspots)
                 priority = "P1" if "critical" in (m["used_band"], m["growth_band"]) else "P2"
@@ -525,8 +577,11 @@ def run(
                               "outcome": outcome})
                 if outcome != "accepted":
                     # any non-accepted outcome (a transport error OR send_telegram returning False) means the
-                    # operator was not told: the run must not report healthy
+                    # operator was not told: the run must not report healthy, and the observed transitions must be
+                    # put back so the next run retries them instead of suppressing them as an "ongoing" no-op
                     failures += 1
+                    failures += _restore_pending(alert_state_path,
+                                                 ((used_key, used_prev, used_obs), (grow_key, grow_prev, grow_obs)))
         # hotspot growth, P2 (diagnostic; the mount alert is the actionable one). Observe healthy flags with
         # alertable=False too, so recovery clears the persisted condition and a later growth episode is a fresh
         # transition instead of a suppressed "ongoing" one. An unmeasurable ("unknown") hotspot changes nothing:
@@ -535,9 +590,13 @@ def run(
             if h["flag"] == "unknown":
                 continue
             alertable = h["flag"] in ("growing", "new")
-            obs = _transition(apply, condition_key(h["id"], "hotspot"), h["flag"], alertable, mon,
+            key = condition_key(h["id"], "hotspot")
+            prev = _condition_snapshot(alert_state_path, key) if apply else None
+            obs = _transition(apply, key, h["flag"], alertable, mon,
                               alert_state_path,
                               {"bytes": h["bytes"], "baseline_bytes": h.get("baseline_bytes")})
+            if obs.get("action") == "error":
+                failures += 1  # the condition could not be persisted: the run must not report healthy
             if not alertable or not obs.get("notify"):
                 continue
             if not apply:
@@ -548,6 +607,7 @@ def run(
             sends.append({"kind": "hotspot", "hotspot": h["id"], "priority": "P2", "outcome": outcome})
             if outcome != "accepted":
                 failures += 1
+                failures += _restore_pending(alert_state_path, ((key, prev, obs),))
 
     report = {
         "dry_run": not apply,
