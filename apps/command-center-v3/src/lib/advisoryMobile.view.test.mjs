@@ -128,6 +128,44 @@ check('the phone detail sheet carries the row feedback actions', () => {
   assert.ok(sheet && />Ack<\/button>/.test(sheet), 'the phone sheet body does not carry the Ack control')
 })
 
+// FQ-015 repair (codex-cloud CX1): the desktop table names which kind of TRIM a row is — concentration
+// policy, profit-taking rule, or housekeeping remnant. The phone card must keep that label and its
+// explanation, or the three kinds of cut read as interchangeable.
+check('the phone card keeps the trim-kind label and its explanation', () => {
+  const prev = globalThis.__apiFixture
+  const trimmed = [{ ...rows[0], trim_kind: 'rule' }, rows[1]]
+  globalThis.__apiFixture = (url) => url.includes('/api/v3/advisory')
+    ? { data: { rows: trimmed, banners: [], timestamps: {}, desk_health: {}, by_class: {}, metadata: {} }, loading: false, error: null }
+    : { data: null, loading: false, error: null }
+  try {
+    const html = render(true)
+    const card = (html.match(/data-testid="card-SPCX"[\s\S]*?<\/button>/) || [])[0]
+    assert.ok(card, 'no SPCX card rendered')
+    assert.match(card, /data-testid="trim-kind"/, 'the phone card lost the trim-kind marker')
+    assert.match(card, />rule</, 'the phone card lost the trim-kind label text')
+    assert.ok(card.includes('profit-taking threshold'), 'the phone card lost the trim-kind explanation')
+  } finally {
+    globalThis.__apiFixture = prev
+  }
+})
+
+// FQ-015 repair (codex-cloud CX2): tapping Ack, Snooze, Useful or Not useful must show its result where
+// the operator is. The full-screen sheet covers the toolbar where feedbackMsg was the only copy, so the
+// action row owns a live status region instead.
+check('the phone detail sheet shows the feedback result in its action row', () => {
+  const html = render(true, '/v3/advisory?detail=SPCX%3Aschwab_taxable%3A')
+  const sheet = (html.match(/<section data-detail-sheet="1">([\s\S]*?)<\/section>/) || [])[1]
+  assert.ok(sheet, 'no sheet rendered for the detail entry')
+  const actions = (sheet.match(/<div[^>]*data-testid="advisory-row-actions"[^>]*>([\s\S]*?)<\/div>/) || [])[1]
+  assert.ok(actions, 'the sheet has no action row')
+  const status = (actions.match(/<span[^>]*data-testid="advisory-feedback-status"[^>]*>/) || [])[0]
+  assert.ok(status, 'the action row has no feedback status region')
+  assert.match(status, /role="status"/, 'the feedback status is not a status region')
+  assert.match(status, /aria-live="polite"/, 'the feedback status is not announced when it changes')
+  assert.ok(actions.indexOf('data-testid="advisory-feedback-status"') > actions.indexOf('>Ack</button>'),
+    'the feedback status does not sit alongside the action buttons')
+})
+
 // FQ-016 — the state vocabulary is a sentence, with the code kept in the tooltip.
 check('state codes are not the page text', () => {
   const html = render(true)

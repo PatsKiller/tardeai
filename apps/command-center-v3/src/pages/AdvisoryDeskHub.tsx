@@ -833,7 +833,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   // inline expansion on a wide screen and by the full-screen sheet on a phone — a phone operator can
   // acknowledge, snooze and rate a row too, not just read its detail.
   const renderRowActions = (r: DeskRow) => (
-    <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+    <div data-testid="advisory-row-actions" style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('ack', r) }}>Ack</button>
       <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('snooze', r) }}>Snooze</button>
       <button type="button" style={btnStyle} onClick={(e) => { e.stopPropagation(); postFeedback('rate', r, { rating: 'useful' }) }}>Useful</button>
@@ -847,6 +847,18 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
           onDrill({ title: r.symbol, subtitle: r.verdict, endpoint: '/api/v3/advisory', rows: [r] })
         }}>Drill</button>
       )}
+      {/* FQ-015 repair (codex-cloud CX2): postFeedback() writes both success and failure into feedbackMsg,
+          but its only visible copy sat in the toolbar behind the full-screen phone sheet. This live status
+          region sits in the action row itself, so the operator sees the result where they tapped. */}
+      <span
+        role="status"
+        aria-live="polite"
+        data-testid="advisory-feedback-status"
+        style={{
+          alignSelf: 'center', fontSize: 12, fontWeight: 600, minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word',
+          color: feedbackMsg ? (feedbackMsg.startsWith('✗') ? 'var(--red)' : 'var(--green)') : 'var(--text3)',
+        }}
+      >{feedbackMsg}</span>
     </div>
   )
 
@@ -1115,6 +1127,19 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     </span>
                     <span style={{ fontWeight: 800, color: VERDICT_COLOR[r.verdict] || 'var(--text)' }}>{r.verdict}
                       {r.verdict_suppressed ? <span style={{ color: 'var(--red)', marginLeft: 4 }}>SUPPRESSED</span> : null}
+                      {/* FQ-015 repair (codex-cloud CX1): the desktop table says which kind of TRIM this is
+                          (concentration policy / profit-taking rule / housekeeping remnant). The phone card must
+                          not drop that distinction, so the same label and help text travel with the verdict. */}
+                      {r.trim_kind && TRIM_KIND_LABEL[r.trim_kind] && (
+                        <span
+                          data-testid="trim-kind"
+                          title={TRIM_KIND_HELP[r.trim_kind]}
+                          aria-label={`${TRIM_KIND_LABEL[r.trim_kind]} — ${TRIM_KIND_HELP[r.trim_kind]}`}
+                          style={{ display: 'block', fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'capitalize' }}
+                        >
+                          {TRIM_KIND_LABEL[r.trim_kind]}
+                        </span>
+                      )}
                     </span>
                   </span>
                   <span style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, color: 'var(--text2)', minWidth: 0 }}>
