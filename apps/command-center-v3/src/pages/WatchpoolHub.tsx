@@ -131,9 +131,13 @@ const deskLabel = (v: unknown) => DESK_LABEL[String(v || '').toLowerCase()] || (
 const strategyLabel = (v: unknown) => humanizeIdentifier(v) || 'Unnamed strategy'
 const loopLabel = (v: unknown) => {
   const s = String(v || '').toUpperCase()
+  // api_v2 emits four states (CIRCULATING / REVERSE_ONLY / FORWARD_ONLY / COLD); mapping two of them printed the
+  // engine key for the other half (cc-deepseek's re-check at 89d4c9b84). Wording: what is flowing, in operator words.
   if (s === 'CIRCULATING') return 'Loop circulating'
+  if (s === 'REVERSE_ONLY') return 'Loop back only — no forward activity'
+  if (s === 'FORWARD_ONLY') return 'Loop forward only — no research returning'
   if (s === 'COLD') return 'Loop cold'
-  return v ? String(v) : 'Loop health unknown'
+  return v ? `Loop: ${String(v)}` : 'Loop health unknown'
 }
 
 export default function WatchpoolHub({ onDrill, embedded }: Props) {

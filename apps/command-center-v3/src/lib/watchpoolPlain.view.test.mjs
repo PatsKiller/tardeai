@@ -19,6 +19,15 @@ const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 const { MemoryRouter } = require('react-router-dom')
 
+// The server renderer emits one `useLayoutEffect does nothing on the server` warning per component, and each stack
+// line embeds a multi-megabyte `data:` module URL. Unfiltered this file wrote 1,094,336 bytes per build (cc-deepseek's
+// re-check at 89d4c9b84); the sibling page-render tests carry this same filter.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
+
 const memo = new Map()
 function compile(path) {
   if (memo.has(path)) return memo.get(path)
@@ -47,11 +56,13 @@ const ROW = (over = {}) => ({
   current_status: 'ACTIVE', origin_system: 'screener', ...over,
 })
 
-function render(rows, directives = null) {
+function render(rows, directives = null, loopStatus = null) {
   globalThis.__watchpoolFixture = (url) => {
     const u = String(url)
     if (u.includes('/api/v2/watchpool')) return { data: { rows, count: rows.length }, error: null, loading: false, refetch() {} }
     if (u.includes('/api/v2/watch-directives') && directives) return { data: directives, error: null, loading: false, refetch() {} }
+    if (u.includes('/api/v2/watch/two-way-curation') && loopStatus)
+      return { data: { loop_status: loopStatus }, error: null, loading: false, refetch() {} }
     return { data: null, error: null, loading: false, refetch() {} }
   }
   return renderToStaticMarkup(React.createElement(MemoryRouter, null,
@@ -140,6 +151,18 @@ check('the expanded directive hit uses the same desk words as the queue chip', (
   const chips = [...h.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)].map(m => m[1].replace(/<[^>]*>/g, '').trim())
   assert.ok(chips.includes('CIO desk'), `expanded hit chip did not read the desk word; chips=${JSON.stringify(chips.filter(Boolean).slice(0, 12))}`)
   assert.ok(!h.replace(/\stitle="[^"]*"/g, '').includes('>cio<'), 'a raw cio chip is still rendered somewhere on the page')
+})
+
+// FQ-080 (cc-deepseek's re-check at 89d4c9b84): api_v2 emits four loop states and the chip mapped two of them, so
+// REVERSE_ONLY and FORWARD_ONLY printed the engine key in amber. One fixture per state, asserted on the RENDERED text.
+check('every loop state reads in operator words, never the engine key', () => {
+  const words = { CIRCULATING: 'Loop circulating', REVERSE_ONLY: 'Loop back only', FORWARD_ONLY: 'Loop forward only',
+                  COLD: 'Loop cold' }
+  for (const [state, expected] of Object.entries(words)) {
+    const h = render([ROW()], null, state)
+    assert.match(visible(h), new RegExp(expected), `${state} did not render "${expected}"`)
+    assert.doesNotMatch(visible(h), new RegExp(`>\\s*${state}\\s*<`), `${state} was printed as the raw engine key`)
+  }
 })
 
 console.log(`watchpoolPlain.view: ${pass} passed, ${fail} failed`)
