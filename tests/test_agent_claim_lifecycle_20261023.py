@@ -778,4 +778,21 @@ def test_ci_gate_registered():
 
 def test_ui_model_test_runs_in_build():
     pkg = json.loads((ROOT / "apps" / "command-center-v3" / "package.json").read_text())
-    assert "src/lib/agentClaimLifecycle.test.ts" in pkg["scripts"]["build"]
+def _registered_by_discovery(pkg_text: str, rel: str) -> bool:
+    """A test is registered when the build runs the discovery runner AND the file is discoverable and not dormant.
+
+    2026-11-05: the build line no longer names ~100 test files (that single line was the four-PR collision); it runs
+    scripts/run-tests.mjs, which discovers src/**/*.test.ts|.mjs. Naming the file in the build is no longer a form of
+    registration, so this guard requires the runner, the file on disk, and the file absent from the dormant list.
+    """
+    from pathlib import Path as _P
+    import json as _json
+    if "scripts/run-tests.mjs" not in pkg_text:
+        return False
+    app = _P(__file__).resolve().parents[1] / "apps" / "command-center-v3"
+    if not (app / rel).is_file():
+        return False
+    dormant = _json.loads((app / "scripts" / "tests.dormant.json").read_text())["files"]
+    return rel not in dormant
+
+    assert _registered_by_discovery(pkg["scripts"]["build"], "src/lib/agentClaimLifecycle.test.ts")
