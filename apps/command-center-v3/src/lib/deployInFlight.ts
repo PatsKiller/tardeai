@@ -220,6 +220,12 @@ export function normalizeFactor<S extends string>(
   return { state: reported as S, ...base, reason: null }
 }
 
+/** Epoch milliseconds for an ISO-8601 clock, or null when it cannot be read. Never text-order two clocks. */
+export function parseInstant(raw: unknown): number | null {
+  const t = Date.parse(String(raw ?? '').trim())
+  return Number.isFinite(t) ? t : null
+}
+
 const VERDICT: Record<string, ReviewState> = {
   MERGE: 'MERGE', MERGED: 'MERGE', APPROVE: 'MERGE', APPROVED: 'MERGE', LGTM: 'MERGE',
   BLOCK: 'CHANGES', BLOCKED: 'CHANGES', CHANGES: 'CHANGES', 'REQUEST_CHANGES': 'CHANGES', 'CHANGES_REQUESTED': 'CHANGES', REJECT: 'CHANGES',
@@ -271,24 +277,34 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
     const latest = new Map<string, ReviewVerdict>()
     parsed.forEach((v) => {
       const prev = latest.get(v.reviewer)
-      if (!prev || !v.as_of || !prev.as_of || String(v.as_of) >= String(prev.as_of)) latest.set(v.reviewer, { ...v, reviewer: `${v.reviewer}` })
+      // R3 (cx-openai-4, 2026-11-03): compare INSTANTS, not text. '2026-11-03T12:00:00Z' sorts above
+      // '2026-11-03T12:00:00.900Z' as a string, which let an older MERGE win over a newer BLOCK.
+      if (!prev || !v.as_of || !prev.as_of || (parseInstant(v.as_of) ?? 0) >= (parseInstant(prev.as_of) ?? 0)) latest.set(v.reviewer, { ...v, reviewer: `${v.reviewer}` })
     })
     const verdicts = [...latest.values()]
     const blocks = verdicts.filter(v => v.verdict === 'CHANGES')
     const merges = verdicts.filter(v => v.verdict === 'MERGE')
     const envelope = asString(r.state).trim().toUpperCase()
     // BLOCK dominates — including a backend that reports blocked while its records disagree.
-    const envelopeBlocked = ['BLOCK', 'BLOCKED', 'CHANGES', 'CHANGES_REQUESTED', 'REJECT'].includes(envelope)
+    // ONE vocabulary (cx-openai-4, P1): this used to be a second, hand-written list that omitted
+    // REQUEST_CHANGES, so an envelope saying REQUEST_CHANGES beside a MERGE member rendered 'passed'.
+    // The envelope now goes through the same VERDICT map the records and the state-only path use.
+    const envelopeBlocked = VERDICT[envelope] === 'CHANGES'
     // Beyond that, a mixed or unrecognised set is UNKNOWN — never MERGE from the survivors alone, and never
     // an upgrade of an UNKNOWN the backend itself reported.
-    const uncertain = unrecognised > 0 || envelope === 'UNKNOWN'
-    const state: ReviewState = blocks.length || envelopeBlocked ? 'CHANGES' : uncertain || !merges.length ? 'UNKNOWN' : 'MERGE'
+    // R1: ANY envelope word we do not recognise is a fail-closed condition — it used to be invisible, so a
+    // MERGE member beside an unknown backend word rendered 'passed'.
+    const envelopeUnrecognised = envelope !== '' && !VERDICT[envelope]
+    const uncertain = unrecognised > 0 || envelopeUnrecognised || envelope === 'UNKNOWN'
+    // R2: an explicit source gap is NOT discarded once records parse. A gap means the record set is not
+    // whole, so same-head MERGE records cannot make the review a pass — the state-only path already says so.
+    const state: ReviewState = blocks.length || envelopeBlocked ? 'CHANGES' : (uncertain || !merges.length || (gap !== null && gap !== undefined)) ? 'UNKNOWN' : 'MERGE'
     const reason = blocks.length
       ? `${blocks.length} blocking verdict${blocks.length > 1 ? 's' : ''}${merges.length ? ` vs ${merges.length} merge (conflicting_verdicts)` : ''}: ${blocks.map(b => b.reviewer).join(', ')}`
       : envelopeBlocked
         ? `backend reports the review ${envelope}${merges.length ? ' while its records read merge — the backend verdict wins' : ''}`
         : uncertain
-          ? `${unrecognised ? `${unrecognised} unrecognised verdict(s)` : 'backend reports the review UNKNOWN'}${merges.length ? ` beside ${merges.length} merge — mixed verdicts are not a pass` : ''}`
+          ? `${unrecognised ? `${unrecognised} unrecognised verdict(s)` : envelopeUnrecognised ? `unrecognised backend review word ${envelope}` : 'backend reports the review UNKNOWN'}${merges.length ? ` beside ${merges.length} merge — mixed verdicts are not a pass` : ''}`
           : null
     const newest = verdicts.map(v => v.as_of).filter((x): x is string => !!x).sort().pop() ?? as_of
     return { state, reported: state, head_sha: envelopeHead ?? rowHead, as_of: newest, as_of_basis: newest === as_of ? as_of_basis : 'as_of', source, reason, verdicts }
@@ -298,7 +314,12 @@ export function normalizeReview(raw: unknown, rowHead: string): Factor<ReviewSta
   if (r.count !== undefined && r.state === undefined) {
     return unknown('record count is not a review verdict', { head_sha: envelopeHead, as_of, as_of_basis, source })
   }
-  return normalizeFactor<ReviewState>(raw, ['MERGE', 'CHANGES', 'NONE'], rowHead, 'review')
+  // No records: map the backend's own word through the SAME vocabulary before the factor check, so a
+  // legitimate `state: "BLOCK"` reads as blocked instead of "unrecognised" (found by rendering the served
+  // bundle, 2026-11-03). An unknown word still falls through to UNKNOWN.
+  const mappedWord = VERDICT[asString(r.state).trim().toUpperCase()]
+  const forFactor = mappedWord ? { ...(raw as Record<string, unknown>), state: mappedWord } : raw
+  return normalizeFactor<ReviewState>(forFactor, ['MERGE', 'CHANGES', 'NONE'], rowHead, 'review')
 }
 
 function normalizeBlockers(raw: unknown): Blocker[] {
