@@ -104,6 +104,14 @@ def main(argv: list[str] | None = None) -> int:
               f"${row['position_value']:,.0f}")
         print(f"    Protective put: floor ${row['floor_price']:,.2f} ({row['floor_basis']}), "
               f"cost ${row['cost_usd']:,.2f}" + (" (LABELED ESTIMATE)" if row["cost_is_estimate"] else ""))
+        # The target the strike was chosen FOR, whenever it is not the strike itself (cc-deepseek-5 second review).
+        if row.get("floor_target") is not None and row["floor_target"] != row["floor_price"]:
+            print(f"    Floor target: ${row['floor_target']:,.2f} ({row['floor_basis']}); the strike is "
+                  f"${row['floor_distance']:,.2f} {row['floor_target_relation']} it")
+        if row.get("floor_warning"):
+            print(f"    ⚠ {row['floor_warning']}")
+        if row.get("floor_after_cost") is None and row.get("floor_after_cost_note"):
+            print(f"    ⚠ {row['floor_after_cost_note']}")
         if row.get("collar"):
             c = row["collar"]
             print(f"    Collar option: cap ${c['cap_price']:,.2f}, net cost ${c['net_cost_usd']:,.2f}"

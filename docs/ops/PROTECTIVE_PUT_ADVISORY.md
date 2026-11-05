@@ -59,8 +59,17 @@ operator's mockup approval first, per the SPEC's build note.
 
 ## Acceptance (what the tests pin)
 
-`tests/test_protective_put_advisory.py` — 22 tests, registered by
+`tests/test_protective_put_advisory.py` — 27 tests, registered by
 `config/ci_gates/protective_put_advisory_20261105.json`:
+
+- **the chosen strike is compared to the floor its basis names**: every suggestion carries `floor_target`,
+  `floor_distance`, `floor_target_relation` and `floor_strike_far_from_target`, and past
+  `max_floor_distance_pct_of_target` of the target a `floor_warning` says the put only pays if the stock gaps through
+  that level — a 150 put quoted under a 235 broker stop does not defend the stop;
+- **the premium is gated against the position**: a quoted premium above `max_cost_pct_of_position` of the position
+  value is refused as `cost_exceeds_position_value` (a $12,600 premium on $4,000 of stock is not a hedge), and a
+  premium at or above the floor withholds `floor_after_cost` (null + `floor_after_cost_negative` + a note) rather than
+  printing a negative protected level;
 
 - the size threshold is inclusive at exactly the configured percent, and one dollar below it is skipped;
 - cash rows and option legs are never covered;

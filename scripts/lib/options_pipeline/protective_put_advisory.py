@@ -32,6 +32,15 @@ remove, and ``position_value`` erases the sign, so the side is a gate
 shares — ``_contracts`` may cover more (``over``) or fewer (``partial``) shares than the
 position holds — and the quoted premium per covered share is reported beside them as
 ``cost_per_covered_share``.
+
+Two numbers the operator reads are checked rather than assumed. The chosen strike is compared to the
+floor its basis NAMES: ``floor_target``, ``floor_distance``, ``floor_target_relation`` and
+``floor_strike_far_from_target`` travel with every suggestion, and past the configured distance a
+``floor_warning`` says the put only pays if the stock gaps through that level (a 150 put under a 235
+broker stop does not defend the stop). And the premium is gated against the position: a hedge costing
+more than ``max_cost_pct_of_position`` of the position value is refused (``cost_exceeds_position_value``)
+rather than shown with a plausible floor, while a premium at or above the floor withholds
+``floor_after_cost`` and labels why instead of printing a negative protected level.
 """
 from __future__ import annotations
 
@@ -56,6 +65,12 @@ DEFAULTS: dict[str, Any] = {
     "min_days_to_expiry": 7,
     "max_days_to_expiry": 60,
     "exclude_symbols": ["CASH"],
+    # cc-deepseek-5 second review (2026-11-05): a quoted premium can exceed the position it protects. A hedge
+    # costing more than this share of the position is refused, never shown with a plausible-looking number.
+    "max_cost_pct_of_position": 25.0,
+    # ... and a quoted strike can sit far from the floor the basis names (a broker stop of 235 beside a 150 put).
+    # Past this distance the suggestion says so: the target, the distance and the direction travel with it.
+    "max_floor_distance_pct_of_target": 5.0,
 }
 
 #: A symbol that cannot be a single stock position we would hedge with an equity put.
@@ -280,6 +295,25 @@ def suggest_for_position(
         strike_source = "target_not_a_quoted_strike" if chain else "estimate"
         expiry_label = None
 
+    # cc-deepseek-5 second review (2026-11-05): a quoted premium can exceed the position it protects — 40 shares at
+    # spot 100 against a 225 put quoted at 126 is $12,600 of premium for $4,000 of stock. A hedge costing more than
+    # the configured share of the position is refused; emitting it with a plausible-looking floor is the defect.
+    cost_pct_of_position = round(100.0 * cost_usd / value, 2) if value else None
+    if cost_pct_of_position is not None and cost_pct_of_position > float(cfg["max_cost_pct_of_position"]):
+        return None, "cost_exceeds_position_value"
+
+    # ... and the chosen strike is compared to the floor the basis NAMES: a broker stop of 235 beside a quoted 150 put
+    # was reported as "floor 150, basis broker_stop", 85 points apart, with nothing saying the put sits under the stop.
+    floor_distance = round(abs(floor_price - floor_target), 2)
+    if floor_distance < 1e-9:
+        floor_relation = "at"
+    elif floor_price < floor_target:
+        floor_relation = "below"
+    else:
+        floor_relation = "above"
+    floor_far = floor_distance > abs(floor_target) * float(cfg["max_floor_distance_pct_of_target"]) / 100.0
+    floor_after = round(floor_price - (cost_usd / held_shares), 2)
+
     suggestion: dict[str, Any] = {
         "schema": SCHEMA,
         "symbol": str(position.get("symbol") or "").upper(),
@@ -294,7 +328,11 @@ def suggest_for_position(
         "structure": "protective_put",
         "floor_price": floor_price,
         "floor_basis": floor_basis,
-        "floor_after_cost": round(floor_price - (cost_usd / held_shares), 2),
+        "floor_target": round(floor_target, 2),
+        "floor_distance": floor_distance,
+        "floor_target_relation": floor_relation,
+        "floor_strike_far_from_target": floor_far,
+        "floor_after_cost": floor_after if floor_after > 0 else None,
         "floor_strike_source": strike_source,
         "expiry": expiry_label,
         "contracts": contracts,
@@ -309,6 +347,18 @@ def suggest_for_position(
         "placed_by_system": False,
         "operator_action": "Review and place yourself if you choose; the system will not place, size or cancel it.",
     }
+    if floor_far:
+        suggestion["floor_warning"] = (
+            f"The quoted ${floor_price:,.2f} strike is ${floor_distance:,.2f} {floor_relation} the intended floor "
+            f"target of ${floor_target:,.2f} ({floor_basis}). This put only pays if the stock gaps through that "
+            "level; it does not defend the level the basis names."
+        )
+    if suggestion["floor_after_cost"] is None:
+        suggestion["floor_after_cost_negative"] = True
+        suggestion["floor_after_cost_note"] = (
+            f"The premium (${cost_usd:,.2f}) is at or above the ${floor_price:,.2f} floor, so no positive protected "
+            "level is left after cost. The number is withheld rather than shown as a floor."
+        )
     if expiry_label is None:
         suggestion["cost_basis"] = (
             f"LABELED ESTIMATE: {cfg['estimated_cost_pct_of_position']}% of the position value; "

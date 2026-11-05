@@ -182,6 +182,66 @@ def test_full_coverage_keeps_the_two_per_share_figures_equal():
     assert got["floor_after_cost"] == 177.9
 
 
+# ── cc-deepseek-5 second review (2026-11-05): the strike vs the target, and the premium vs the position ──────────
+
+def test_a_strike_far_from_the_broker_stop_is_flagged_with_target_and_distance():
+    """A 150 put quoted under a 235 broker stop was reported as `floor_price 150` beside `floor_basis broker_stop`
+    with nothing saying the put sits 85 points below the stop it claims to defend."""
+    got, why = adv.suggest_for_position(
+        position(stop_price=235.0), book_value=1_000_000.0, event={"days_to_event": 7},
+        chain=chain(spot=250.0, put=(2.9, 3.0), put_strike=150.0, call=None), cfg=CFG, now=NOW)
+    assert why is None
+    assert got["floor_basis"] == "broker_stop"
+    assert got["floor_target"] == 235.0 and got["floor_price"] == 150.0
+    assert got["floor_distance"] == 85.0 and got["floor_target_relation"] == "below"
+    assert got["floor_strike_far_from_target"] is True
+    assert "235.00" in got["floor_warning"] and "150.00" in got["floor_warning"] and "85.00" in got["floor_warning"]
+    assert "does not defend" in got["floor_warning"]
+
+
+def test_a_strike_far_from_the_ten_percent_target_is_flagged_the_same_way():
+    got, why = adv.suggest_for_position(
+        position(price=250.0, market_value=25_000.0), book_value=1_000_000.0, event={"days_to_event": 7},
+        chain=chain(spot=250.0, put=(2.9, 3.0), put_strike=150.0, call=None), cfg=CFG, now=NOW)
+    assert why is None
+    assert got["floor_basis"] == "spot_minus_10.0pct"
+    assert got["floor_target"] == 225.0 and got["floor_price"] == 150.0
+    assert got["floor_distance"] == 75.0 and got["floor_strike_far_from_target"] is True
+    assert "floor_warning" in got
+
+
+def test_a_nearby_strike_is_not_flagged():
+    got, _ = adv.suggest_for_position(
+        position(price=250.0, market_value=25_000.0), book_value=1_000_000.0, event={"days_to_event": 7},
+        chain=chain(spot=250.0, put=(1.9, 2.0), put_strike=220.0, call=None), cfg=CFG, now=NOW)
+    assert got["floor_target"] == 225.0 and got["floor_price"] == 220.0
+    assert got["floor_distance"] == 5.0 and got["floor_target_relation"] == "below"
+    assert got["floor_strike_far_from_target"] is False and "floor_warning" not in got
+
+
+def test_a_premium_above_the_configured_share_of_the_position_is_refused():
+    """cc5's case: 40 shares, spot crashed to 100 ($4,000 of stock), a 225 put quoted at 126 → $12,600 of premium.
+    The premium is a real quote; the answer to a hedge costing more than the position is a refusal, not a floor."""
+    row = position(quantity=40, price=100.0, market_value=4_000.0, stop_price=235.0)
+    got, why = adv.suggest_for_position(
+        row, book_value=200_000.0, event={"days_to_event": 7},
+        chain=chain(spot=100.0, put=(125.0, 126.0), put_strike=225.0, call=None), cfg=CFG, now=NOW)
+    assert got is None and why == "cost_exceeds_position_value"
+
+
+def test_a_premium_at_or_above_the_floor_withholds_the_floor_after_cost():
+    """A $1 floor with a $1.20 premium leaves no protected level; the number is withheld and labelled, never shown
+    as a negative or a plausible-looking floor."""
+    row = position(quantity=100, price=5.0, market_value=500.0)
+    got, why = adv.suggest_for_position(
+        row, book_value=25_000.0, event={"days_to_event": 7},
+        chain=chain(spot=5.0, put=(1.1, 1.2), put_strike=1.0, call=None), cfg=CFG, now=NOW)
+    assert why is None                                    # 120/500 = 24% of the position, under the 25% gate
+    assert got["cost_usd"] == 120.0 and got["cover"] == "full"
+    assert got["floor_price"] == 1.0 and got["floor_after_cost"] is None
+    assert got["floor_after_cost_negative"] is True and "withheld" in got["floor_after_cost_note"]
+
+
 def test_cover_is_stated_honestly_for_odd_share_counts():
     partial, _ = adv.suggest_for_position(position(quantity=250, market_value=50_000.0), book_value=1_000_000.0,
                                           event={"days_to_event": 7}, cfg=CFG, now=NOW)
