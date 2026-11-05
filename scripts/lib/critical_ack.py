@@ -86,13 +86,13 @@ def acknowledge(incident_id: str, by: str, *, conn: Any = None, connect: Optiona
     except Exception:
         try:
             conn.rollback()
-        except Exception:
+        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
             pass
         raise
     finally:
         try:
             cur.close()
-        except Exception:
+        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
             pass
 
 

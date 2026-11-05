@@ -104,13 +104,13 @@ def record(alert_id: str, receipts: list[dict[str, Any]], *, conn: Any = None, c
     except Exception:
         try:
             connection.rollback()
-        except Exception:
+        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
             pass
         raise
     finally:
         try:
             cur.close()
-        except Exception:
+        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
             pass
 
 
@@ -133,7 +133,7 @@ def for_alert(alert_id: str, *, conn: Any = None, connect: Optional[Any] = None)
     finally:
         try:
             cur.close()
-        except Exception:
+        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
             pass
     return [{"channel": r[0], "status": r[1], "reason": r[2], "provider_receipt": r[3], "created_at": r[4]} for r in rows]
 
