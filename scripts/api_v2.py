@@ -14645,8 +14645,20 @@ def _buy_ready_packet(symbol: str) -> dict:
     saved by cio_entry_state_runner (equity plan, per-unit options alternatives,
     portfolio facts, CIO review). Read-only; never sizes; NO_PACKET when none saved."""
     sym = str(symbol or "").upper()
-    path = BUY_READY_PACKET_DIR / f"{sym}.json"
+    # FQ-096: a scoped row's packet is SYMBOL|ACCOUNT.json so two accounts do not overwrite each
+    # other. Serve the newest of the bare and scoped records, preserving its account field.
+    candidates = []
+    bare = BUY_READY_PACKET_DIR / f"{sym}.json"
+    if bare.exists():
+        candidates.append(bare)
     try:
+        candidates.extend(p for p in BUY_READY_PACKET_DIR.glob(f"{sym}|*.json") if p.is_file())
+    except OSError:
+        pass
+    if not candidates:
+        return {"symbol": sym, "status": "NO_PACKET"}
+    try:
+        path = max(candidates, key=lambda p: p.stat().st_mtime)
         packet = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"symbol": sym, "status": "NO_PACKET"}

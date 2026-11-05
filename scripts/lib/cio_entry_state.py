@@ -145,6 +145,9 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
         # record carries both so a reader can see the scope instead of trusting a symbol-wide boolean.
         "account": ev.get("account"),
         "held_accounts": list(ev.get("held_accounts") or []),
+        # How sure the held answer is (CONFIRMED / UNKNOWN / SCOPE_UNKNOWN). A reader can see that
+        # an unavailable holdings source was not turned into an affirmative "not held".
+        "held_evidence": ev.get("held_evidence"),
         "earnings_in_days": earn_days,
     }
 
@@ -320,6 +323,17 @@ def render_cio(result: dict, ev: dict) -> str:
 
 
 def transition_key(result: dict, day: date | None = None) -> str:
-    """One alert per symbol per state per day."""
+    """One alert per scoped row per state per day.
+
+    FQ-096 / cx-openai-3 CX3-S-F2 (2026-11-05): the key was symbol-only, so an alert already
+    delivered for account A suppressed the equally actionable row for account B. The scoped row
+    carries its account into the key; an UNSCOPED row keeps the legacy key verbatim, so a repeat of
+    an unscoped transition is still suppressed.
+    """
+    from lib.account_scope import SCOPE_UNSCOPED
+
     day = day or datetime.now(timezone.utc).date()
-    return f"cio_entry:{result['symbol']}:{result['state']}:{day.isoformat()}"
+    symbol = str(result.get("symbol") or "").upper().strip()
+    account = str(result.get("account") or "").strip()
+    scope = "" if (not account or account == SCOPE_UNSCOPED) else f"{account}:"
+    return f"cio_entry:{symbol}:{scope}{result['state']}:{day.isoformat()}"

@@ -910,6 +910,9 @@ def build_buy_ready_packet(
     """
     ev = ev or {}
     sym = str(result.get("symbol") or ev.get("symbol") or "").upper()
+    # FQ-096: the account is part of the packet's identity, so two accounts for one symbol are two
+    # durable records rather than one overwriting the other (cx-openai-3 CX3-S-F3, cx-openai-2 F2).
+    acct = str(result.get("account") or ev.get("account") or "").strip()
     enr = enrichment if enrichment is not None else load_enrichment_row(sym)
     thesis = build_thesis_indicators(sym, ev=ev, enrichment=enr)
     atr = result.get("atr") if result.get("atr") is not None else ev.get("atr") or enr.get("atr")
@@ -973,6 +976,7 @@ def build_buy_ready_packet(
     former = former_holding_context(ev)
     equity = {
         "symbol": sym,
+        "account": acct or None,
         "state": result.get("state"),
         "price": result.get("price"),
         "quote_age_h": result.get("quote_age_h") if result.get("quote_age_h") is not None else ev.get("quote_age_h"),
@@ -996,6 +1000,7 @@ def build_buy_ready_packet(
     packet = {
         "schema": "BuyReadyInstitutionalPacket@v2",
         "symbol": sym,
+        "account": acct or None,
         "equity": equity,
         "options_alt": alt,
         "options_alternatives": alts if isinstance(alts, dict) else None,

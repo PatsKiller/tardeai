@@ -200,8 +200,199 @@ def test_H_the_prospect_writer_is_handed_symbols_not_evidence_keys():
         "SPCX|schwab_individual": {"symbol": "SPCX", "state": "BUY_READY"},
         "V|schwab_ira": {"symbol": "V", "state": "ENTRY_NEAR"},
     }
-    changed = runner.changed_symbols(results, prior={"SPCX": "BUY_READY", "V": "ENTRY_NEAR"})
+    prior = {"SPCX|schwab_ira": "BUY_READY", "SPCX|schwab_individual": "BUY_READY", "V|schwab_ira": "ENTRY_NEAR"}
+    changed = runner.changed_symbols(results, prior=prior)
     assert changed == [], f"unchanged rows were reported changed: {changed}"
-    changed = runner.changed_symbols(results, prior={"SPCX": "ENTRY_NEAR", "V": "ENTRY_NEAR"})
+    prior = {"SPCX|schwab_ira": "ENTRY_NEAR", "SPCX|schwab_individual": "BUY_READY", "V|schwab_ira": "ENTRY_NEAR"}
+    changed = runner.changed_symbols(results, prior=prior)
     assert changed == ["SPCX"], f"expected the bare changed symbol once, got {changed}"
     assert all("|" not in s for s in changed), "an evidence key reached the prospect writer"
+
+
+# ── The f65cfebac BLOCK (cx-openai-3 CX3-S-F1..F4, cx-openai-2 F1..F3) ──────────────────────────────
+
+
+class _FakeConn:
+    """A connection whose SQL never executes; main() only needs execute/commit/rollback."""
+
+    def cursor(self):
+        class _Cursor:
+            def execute(self, sql, params=None):  # noqa: D401 - fixture
+                self.sql, self.params = sql, params
+
+            def fetchall(self):
+                return []
+        return _Cursor()
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+
+def _evidence(account):
+    return {"symbol": "SPCX", "account": account, "price": 100.0, "quote_age_h": 0.2,
+            "entry_low": 95.0, "entry_high": 105.0, "stop": 90.0, "target": 140.0, "atr": 3.0,
+            "held": False, "plan_source": "reentry_desk"}
+
+
+def test_I_a_symbol_wide_held_flag_does_not_hold_another_account(state):
+    """CX3-S-F1 / CX2-F1: an inherited held=True on a named B row must not survive A-only holdings."""
+    state([_row("SPCX", "schwab_ira", held=True)],
+          [{"symbol": "SPCX", "account": "schwab_individual", "shares": 12}])
+    ev = runner.gather(ScriptedCursor(symbols=["SPCX"]))
+    e = ev["SPCX|schwab_ira"]
+    assert e["held"] is False, "the inherited symbol-wide flag defeated the scoped lookup"
+    assert e["held_evidence"] == "CONFIRMED"
+    result = ces.evaluate(e)
+    assert result["held"] is False
+    header = ces.render_operator(result, e).splitlines()[0]
+    assert "already owned" not in header and "add decision required" not in header, header
+
+    # truly held in this account: the positive control
+    state([_row("SPCX", "schwab_ira", held=False)],
+          [{"symbol": "SPCX", "account": "schwab_ira", "shares": 5}])
+    ev = runner.gather(ScriptedCursor(symbols=["SPCX"]))
+    assert ev["SPCX|schwab_ira"]["held"] is True
+    assert ev["SPCX|schwab_ira"]["held_evidence"] == "CONFIRMED"
+
+    # unscoped control: held somewhere, and the reader is told where
+    state([_row("SPCX", held=False)],
+          [{"symbol": "SPCX", "account": "schwab_individual", "shares": 12}])
+    ev = runner.gather(ScriptedCursor(symbols=["SPCX"]))
+    assert ev["SPCX"]["held"] is True
+    assert ev["SPCX"]["held_accounts"] == ["schwab_individual"]
+
+
+def test_J_alert_history_and_prior_state_are_account_scoped():
+    """CX3-S-F2 / CX2-F3: account A's delivered alert must not suppress account B's."""
+    day = _WED.date()
+    a = {"symbol": "SPCX", "account": "schwab_ira", "state": "BUY_READY"}
+    b = {"symbol": "SPCX", "account": "schwab_individual", "state": "BUY_READY"}
+    assert ces.transition_key(a, day=day) != ces.transition_key(b, day=day)
+    legacy = f"cio_entry:SPCX:BUY_READY:{day.isoformat()}"
+    assert ces.transition_key({"symbol": "SPCX", "state": "BUY_READY"}, day=day) == legacy
+
+    done = {ces.transition_key(a, day=day)}
+    assert runner.alert_worthy([b], {}, done, set()) == [b], "A's delivered alert suppressed B"
+    assert runner.alert_worthy([b], {}, {ces.transition_key(b, day=day)}, set()) == [], "a repeat of B must be suppressed"
+
+    class _Rows:
+        def execute(self, sql, params=None):
+            self.sql = sql
+
+        def fetchall(self):
+            return [("SPCX", "schwab_ira", "BUY_READY"), ("SPCX", "", "NOT_YET")]
+
+    assert runner.last_states(_Rows()) == {"SPCX|schwab_ira": "BUY_READY", "SPCX": "NOT_YET"}
+
+    # an ENTRY_NEAR row is not suppressed by another account's BUY_READY prior state
+    near = {"symbol": "SPCX", "account": "schwab_individual", "state": "ENTRY_NEAR"}
+    assert runner.alert_worthy([near], {"SPCX|schwab_ira": "BUY_READY"}, set(), {"SPCX"}) == [near]
+
+
+def test_K_two_accounts_keep_their_own_review_and_packet(tmp_path, monkeypatch):
+    """CX3-S-F3 / CX2-F2: reviews and durable packets are keyed by scoped identity."""
+    monkeypatch.setattr(runner, "PACKET_DIR", tmp_path / "packets")
+    from lib import cio_options_fluency
+    monkeypatch.setattr(
+        cio_options_fluency, "build_buy_ready_packet",
+        lambda result, ev: {"symbol": result["symbol"], "account": result.get("account"),
+                            "state": result.get("state")})
+    runner.save_packet({"symbol": "SPCX", "account": "schwab_ira", "state": "BUY_READY"}, {})
+    runner.save_packet({"symbol": "SPCX", "account": "schwab_individual", "state": "BUY_READY"}, {})
+    files = sorted(p.name for p in (tmp_path / "packets").glob("*.json"))
+    assert files == ["SPCX|schwab_individual.json", "SPCX|schwab_ira.json"], files
+    saved = json.loads((tmp_path / "packets" / "SPCX|schwab_ira.json").read_text())
+    assert saved["account"] == "schwab_ira", "the account did not survive into the durable packet"
+
+    # main --apply: each account's review is recorded against that account
+    seen: list[tuple] = []
+    monkeypatch.setattr(runner, "_conn", lambda: _FakeConn())
+    monkeypatch.setattr(runner, "gather", lambda cur: {
+        "SPCX|schwab_ira": _evidence("schwab_ira"),
+        "SPCX|schwab_individual": _evidence("schwab_individual"),
+    })
+    monkeypatch.setattr(runner, "last_states", lambda cur: {})
+    monkeypatch.setattr(runner, "alerted_today", lambda cur, keys: set())
+    monkeypatch.setattr(runner, "starred_symbols", lambda cur: set())
+    monkeypatch.setattr(
+        runner, "prepare_packet_inputs",
+        lambda r, ev, apply: {"status": "OK", "symbol": r["symbol"],
+                              "account": r.get("account"), "marker": r.get("account")})
+    monkeypatch.setattr(runner, "record_review",
+                        lambda cur, review, result: seen.append((review["marker"], result.get("account"))))
+    monkeypatch.setattr(runner, "send_alerts", lambda r, ev: {})
+    monkeypatch.setattr(runner, "save_packet", lambda r, ev: None)
+    monkeypatch.setattr(runner, "follow_up_pending_reviews", lambda cur, ev: [])
+    monkeypatch.setattr(runner, "write_cio_prospects", lambda changed: {})
+    monkeypatch.setattr(runner, "RECEIPT", tmp_path / "receipt.json")
+    monkeypatch.setattr(sys, "argv", ["cio_entry_state_runner", "--apply"])
+
+    assert runner.main() == 0
+    assert sorted(seen) == [("schwab_individual", "schwab_individual"),
+                            ("schwab_ira", "schwab_ira")], seen
+
+
+def test_L_follow_up_rows_keep_both_accounts(tmp_path, monkeypatch):
+    """CX3-S-F3: the pending-review queue is keyed by scoped identity, not symbol."""
+    pending = tmp_path / "pending.jsonl"
+    now = datetime.now(timezone.utc).isoformat()
+    rows = [
+        {"symbol": "SPCX", "account": "schwab_ira", "state": "BUY_READY", "queued_at": now,
+         "result": {"symbol": "SPCX", "account": "schwab_ira", "state": "BUY_READY"}, "status": "PENDING"},
+        {"symbol": "SPCX", "account": "schwab_individual", "state": "BUY_READY", "queued_at": now,
+         "result": {"symbol": "SPCX", "account": "schwab_individual", "state": "BUY_READY"}, "status": "PENDING"},
+    ]
+    pending.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    monkeypatch.setattr(runner, "REVIEW_PENDING", pending)
+    seen: list[tuple] = []
+
+    def _prep(result, ev, apply):
+        seen.append((ev.get("account"), result.get("account")))
+        return {"status": "PENDING"}
+
+    monkeypatch.setattr(runner, "prepare_packet_inputs", _prep)
+    evidence = {"SPCX|schwab_ira": {"symbol": "SPCX", "account": "schwab_ira"},
+                "SPCX|schwab_individual": {"symbol": "SPCX", "account": "schwab_individual"}}
+    out = runner.follow_up_pending_reviews(object(), evidence)
+    assert sorted(seen) == [("schwab_individual", "schwab_individual"),
+                            ("schwab_ira", "schwab_ira")], seen
+    assert len(out) == 2
+    assert len(pending.read_text().splitlines()) == 2, "one account's follow-up overwrote the other"
+
+
+def test_M_unknown_holdings_evidence_is_not_an_absent_position():
+    """CX3-S-F4: malformed/unknown evidence stays explicit, never READY/held=False."""
+    row = {"symbol": "SPCX", "account": "schwab_ira", "held": True,
+           "gates": [{"id": "fresh", "pass": True}], "price_age_h": 0.1}
+    # No holdings source supplied: the row's own fact stands (legacy path).
+    assert rs.reentry_row_status(row)["status"] == rs.HELD
+
+    for doc in ({}, {"holdings": None}):
+        status = rs.reentry_row_status(row, holdings_doc=doc)
+        assert status["status"] == rs.UNKNOWN_STATUS, (doc, status)
+        assert status["held_evidence"] == "UNKNOWN"
+
+    # A holding for the symbol with no account cannot be attributed to this account.
+    status = rs.reentry_row_status(row, holdings_doc={"holdings": [{"symbol": "SPCX", "shares": 3}]})
+    assert status["status"] == rs.UNKNOWN_STATUS, status
+    assert status["held_evidence"] == "SCOPE_UNKNOWN"
+
+    # Confirmed-empty stays an affirmative, positive control.
+    status = rs.reentry_row_status(dict(row, held=False), holdings_doc={"holdings": []})
+    assert status["status"] == rs.READY, status
+    assert status["held_evidence"] == "CONFIRMED"
+
+
+def test_N_the_served_projection_marks_an_unreadable_store_unknown(monkeypatch):
+    """CX3-S-F4: the served projection must not turn an unreadable holdings store into READY."""
+    monkeypatch.setattr(rs, "_holdings_for_scope", lambda: {})
+    payload = {"rows": [{"symbol": "SPCX", "account": "schwab_ira", "held": True,
+                         "gates": [{"id": "fresh", "pass": True}], "price_age_h": 0.1}],
+               "criteria": {"stale_hours": 6.0}}
+    served = rs.reentry_projection(payload)
+    row = served["rows"][0]
+    assert row["status"] == rs.UNKNOWN_STATUS, row
+    assert row["held_evidence"] == "UNKNOWN"

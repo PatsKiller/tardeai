@@ -65,6 +65,64 @@ def held_in(held: dict[str, set[str]], symbol: str) -> list[str]:
     """The accounts holding this symbol, sorted — for the reader, not for a cross-account block."""
     return sorted((held.get(str(symbol or "").upper().strip()) or set()))
 
+
+#: How sure the ``held`` answer is. Carried beside the boolean so "unknown" never renders as
+#: "not held" — the same class as a ``?? 0`` default (cx-openai-3 CX3-S-F4, 2026-11-05).
+HELD_CONFIRMED = "CONFIRMED"
+HELD_UNKNOWN = "UNKNOWN"
+HELD_SCOPE_UNKNOWN = "SCOPE_UNKNOWN"
+HELD_FROM_ROW = "ROW"
+
+
+def holdings_document_known(holdings_doc: Any) -> bool:
+    """True only for a holdings document that was actually read and can be enumerated.
+
+    ``{"holdings": []}`` is a valid, **confirmed-empty** portfolio: a named account is genuinely
+    absent and the reader may say so. ``{}`` (metadata only), ``{"holdings": null}``, a non-mapping,
+    or a failed read is NOT an empty portfolio — unknown is not zero.
+    """
+    return isinstance(holdings_doc, dict) and isinstance(holdings_doc.get("holdings"), list)
+
+
+def account_identity_unknown(held: dict[str, set[str]], symbol: str) -> bool:
+    """True when a holding for this symbol names no account, so absence cannot be confirmed.
+
+    A holding row without an account is still a holding: it proves the symbol exists in the book,
+    but not which account owns it. A named candidate must not read that as "not held in my account".
+    """
+    return SCOPE_UNSCOPED in (held.get(str(symbol or "").upper().strip()) or set())
+
+
+def resolve_held(
+    held: dict[str, set[str]],
+    symbol: str,
+    account: str | None,
+    *,
+    inherited: Any = None,
+    evidence_known: bool = True,
+) -> tuple[bool, str]:
+    """Resolve ``held`` for one row from validated evidence, and say how sure that answer is.
+
+    * An unscoped reader keeps the conservative "held somewhere" answer (and any inherited facts).
+    * A scoped reader whose holdings for the symbol all name an account is decided by that account
+      ALONE — an inherited symbol-wide flag never widens it (cx-openai-3 CX3-S-F1, cx-openai-2 F1).
+    * Unreadable/malformed evidence, or a holding row for the symbol with no account, cannot
+      confirm absence: the inherited fact stands and the caller is told UNKNOWN / SCOPE_UNKNOWN
+      (cx-openai-3 CX3-S-F4).
+    """
+    held = held or {}
+    sym = str(symbol or "").upper().strip()
+    acct = str(account or "").strip()
+    base = bool(inherited)
+    if not evidence_known:
+        return base, HELD_UNKNOWN
+    if not acct or acct == SCOPE_UNSCOPED:
+        return base or held_for(held, sym, None), HELD_CONFIRMED
+    if account_identity_unknown(held, sym):
+        return base, HELD_SCOPE_UNKNOWN
+    return acct in (held.get(sym) or set()), HELD_CONFIRMED
+
+
 def evidence_key(symbol: Any, account: Any) -> str:
     """The key an evidence row is stored under: the bare symbol when unscoped, ``SYMBOL|ACCOUNT`` otherwise.
 

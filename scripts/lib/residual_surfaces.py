@@ -23,7 +23,15 @@ RAG and LLM prose are evidence here, never canonical financial truth.
 
 from __future__ import annotations
 
-from lib.account_scope import SCOPE_UNSCOPED
+from lib.account_scope import (
+    HELD_FROM_ROW,
+    HELD_SCOPE_UNKNOWN,
+    HELD_UNKNOWN,
+    SCOPE_UNSCOPED,
+    held_accounts,
+    holdings_document_known,
+    resolve_held,
+)
 
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -702,21 +710,32 @@ def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0,
     # FQ-096 clearing condition (reviewer handoff 2026-11-04): where this surface decides HELD, it
     # must use account-specific evidence, not a symbol-wide boolean. With the holdings passed in, the
     # row's own account decides; the accounts that do hold the symbol are named either way.
+    #
+    # cx-openai-3 CX3-S-F4 (2026-11-05): a metadata-only document, ``holdings: null`` or a failed read
+    # is UNKNOWN evidence — not a confirmed-empty book. A holding for the symbol with no account is
+    # SCOPE_UNKNOWN. Neither may narrow a named row to "not held" (the ``?? 0`` class).
     held = bool(row.get("held"))
     held_accounts_named: list[str] = []
+    held_evidence = HELD_FROM_ROW          # no holdings source supplied: the row's own fact stands
     _acct = str(row.get("account") or "").strip()
     if holdings_doc is not None:
-        from lib.account_scope import held_accounts as _held_accounts, held_for as _held_for
-        _held = _held_accounts(holdings_doc)
         _sym = str(row.get("symbol") or "").upper().strip()
-        held_accounts_named = sorted(_held.get(_sym) or [])
-        scoped = _held_for(_held, _sym, _acct or None)
-        # Only an account-scoped row may be NARROWED by its account. An unscoped row keeps a held
-        # fact another surface (the served desk) already established — overwriting it with False
-        # here is the drop claude-lead's BLOCK on #2603 measured (14 HELD rows -> 0).
-        held = scoped if _acct else (held or scoped)
+        if holdings_document_known(holdings_doc):
+            _held = held_accounts(holdings_doc)
+            held_accounts_named = sorted(_held.get(_sym) or [])
+            held, held_evidence = resolve_held(_held, _sym, _acct, inherited=held, evidence_known=True)
+        else:
+            # An unread or malformed document cannot confirm absence; keep the inherited fact and
+            # tell the reader the evidence is unknown.
+            held, held_evidence = resolve_held({}, _sym, _acct, inherited=held, evidence_known=False)
 
-    if held:
+    if _acct and held_evidence in (HELD_UNKNOWN, HELD_SCOPE_UNKNOWN):
+        status = UNKNOWN_STATUS
+        if held_evidence == HELD_UNKNOWN:
+            reason = "the holdings source could not be read or was malformed; this account's position is unknown"
+        else:
+            reason = "a holding for this symbol names no account; this account's position is unknown"
+    elif held:
         if _acct:
             held_reason = "already held in this account; a re-entry does not apply"
         elif held_accounts_named:
@@ -759,6 +778,9 @@ def reentry_row_status(row: dict[str, Any], *, stale_hours: float = 6.0,
         },
         "observation_class": OBSERVED,
         "held": held,
+        # CONFIRMED / UNKNOWN / SCOPE_UNKNOWN / ROW — so a reader can distinguish "no account holds
+        # this" from "the holdings evidence was unavailable" (cx-openai-3 CX3-S-F4).
+        "held_evidence": held_evidence,
         # The accounts that hold the symbol, so an unscoped reader can say where the position is
         # instead of blocking a decision with a symbol-wide boolean.
         "held_accounts": held_accounts_named,
@@ -771,7 +793,8 @@ def _holdings_for_scope() -> dict[str, Any]:
     FQ-096 clearing condition (reviewer cc-deepseek-9, 2026-11-04): the HELD decision must be made per
     account on the PRODUCTION path, not only in tests. The projection serves exactly what this returns,
     so the store has to be read here; reading it nowhere made the account-aware rule unreachable.
-    An unreadable store returns {} and the row's own field stands, which is the pre-existing behaviour.
+    An unreadable store returns ``{}``. That is now explicit UNKNOWN evidence for a scoped row
+    (never a confirmed-empty book), so the projection can say "position unknown" instead of READY.
     """
     try:
         from lib.portfolio_positions import load_store  # type: ignore
@@ -807,9 +830,10 @@ def reentry_projection(
     criteria = payload.get("criteria") or {}
     stale_hours = float(criteria.get("stale_hours") or 6.0)
     holdings_doc = _holdings_for_scope()
+    # Always pass the store result, including an unreadable {}: dropping it here would let the
+    # row's symbol-wide flag stand in for account-scoped evidence (cx-openai-3 CX3-S-F4).
     out = [
         reentry_row_status(r, stale_hours=stale_hours, holdings_doc=holdings_doc)
-        if holdings_doc else reentry_row_status(r, stale_hours=stale_hours)
         for r in rows if isinstance(r, dict)
     ]
     counts: dict[str, int] = {}

@@ -159,6 +159,8 @@ def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dro
     verdict = packet.get("cio_verdict") or {}
     review = packet.get("cio_review") or {}
     sym = str(packet.get("symbol") or eq.get("symbol") or "").upper()
+    # FQ-096: one row per (symbol, account); the account is preserved for the reader.
+    acct = str(packet.get("account") or eq.get("account") or "").strip() or None
     price, lo, hi = _f(eq.get("price")), _f(eq.get("entry_low")), _f(eq.get("entry_high"))
     stop, target = _f(eq.get("stop")), _f(eq.get("target"))
     zp = zone_position(price, lo, hi)
@@ -169,6 +171,7 @@ def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dro
     oa_verdict = options_verdict(packet, now=now)   # not `verdict`: that name is the CIO verdict block above
     return {
         "symbol": sym,
+        "account": acct,
         "state": str(eq.get("state") or packet.get("state") or "").upper() or None,
         "plan_source": eq.get("plan_source"),
         "saved_at": packet.get("saved_at"),

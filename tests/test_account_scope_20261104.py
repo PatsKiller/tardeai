@@ -17,7 +17,19 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib.account_scope import SCOPE_UNSCOPED, account_of, held_accounts, held_for, held_in  # noqa: E402
+from lib.account_scope import (  # noqa: E402
+    HELD_CONFIRMED,
+    HELD_SCOPE_UNKNOWN,
+    HELD_UNKNOWN,
+    SCOPE_UNSCOPED,
+    account_identity_unknown,
+    account_of,
+    held_accounts,
+    held_for,
+    held_in,
+    holdings_document_known,
+    resolve_held,
+)
 from lib.canonical_observation import ObservationEnvelope, observe_state_file  # noqa: E402
 
 HOLDINGS = {
@@ -89,8 +101,40 @@ def test_the_entry_state_runner_uses_the_per_account_view():
     # tests/test_account_scope_runner_20261104.py, which calls gather() with a scripted cursor; that
     # file is what fails if the wiring regresses, and it is what a reviewer should read.
     src = (ROOT / "scripts" / "cio_entry_state_runner.py").read_text()
-    assert "held_for(held, sym, _acct or None)" in src, "the runner still blocks on a symbol-wide held set"
+    assert "resolve_held(" in src, "the runner still ORs an inherited symbol-wide held into a scoped row"
+    assert 'e["held_evidence"]' in src, "the runner does not record how sure the held answer is"
     assert 'e["held_accounts"]' in src, "the runner does not record which accounts hold the symbol"
+
+
+def test_holdings_evidence_distinguishes_confirmed_empty_from_unknown():
+    """cx-openai-3 CX3-S-F4: a metadata-only or null document is unknown, not an empty portfolio."""
+    assert holdings_document_known({"holdings": []}) is True
+    assert holdings_document_known({"holdings": [{"symbol": "SPCX", "account": "a"}]}) is True
+    assert holdings_document_known({}) is False                  # metadata only
+    assert holdings_document_known({"holdings": None}) is False  # explicit null
+    assert holdings_document_known(None) is False                 # failed read
+    assert holdings_document_known([]) is False                   # wrong shape
+
+
+def test_a_named_account_is_decided_by_validated_evidence_alone():
+    """cx-openai-3 CX3-S-F1 / cx-openai-2 F1: inheritance must not defeat the scoped lookup."""
+    held = held_accounts(HOLDINGS)
+    # The inherited symbol-wide flag says held; the only holding is Individual. The IRA row is free.
+    assert resolve_held(held, "SPCX", "schwab_ira", inherited=True) == (False, HELD_CONFIRMED)
+    assert resolve_held(held, "SPCX", "schwab_individual", inherited=False) == (True, HELD_CONFIRMED)
+    # Unscoped keeps the conservative held-somewhere answer.
+    assert resolve_held(held, "SPCX", None, inherited=False) == (True, HELD_CONFIRMED)
+
+
+def test_unknown_or_account_less_evidence_is_never_affirmative_absence():
+    held = held_accounts(HOLDINGS)
+    assert resolve_held(held, "SPCX", "schwab_ira", inherited=True, evidence_known=False) == (True, HELD_UNKNOWN)
+    assert resolve_held(held, "SPCX", "schwab_ira", inherited=False, evidence_known=False) == (False, HELD_UNKNOWN)
+    # A holding row with no account: the symbol is in the book, but not attributable to this account.
+    unknown = held_accounts({"holdings": [{"symbol": "SPCX", "shares": 3}]})
+    assert account_identity_unknown(unknown, "SPCX") is True
+    assert resolve_held(unknown, "SPCX", "schwab_ira", inherited=True) == (True, HELD_SCOPE_UNKNOWN)
+    assert resolve_held(unknown, "SPCX", "schwab_ira", inherited=False) == (False, HELD_SCOPE_UNKNOWN)
 
 
 def test_the_canonical_observation_module_no_longer_defaults_to_all_accounts():

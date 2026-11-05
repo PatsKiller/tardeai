@@ -334,16 +334,24 @@ def review_packet(packet: dict[str, Any], *, llm_fn: Optional[Callable[..., dict
     return {**base, "status": "OK", "review": review, "model": meta}
 
 
-def decision_row(result: dict[str, Any], now: Optional[datetime] = None) -> Optional[tuple]:
-    """cio_decisions row (action_class='entry_review') for an OK review, else None."""
+def decision_row(result: dict[str, Any], now: Optional[datetime] = None, *,
+                 account: Optional[str] = None) -> Optional[tuple]:
+    """cio_decisions row (action_class='entry_review') for an OK review, else None.
+
+    FQ-096 / cx-openai-2 F2: the review id carried only the symbol, so two accounts reviewed in the
+    same second collided on ``cio_decisions_pkey`` and one account's review was lost. A stated
+    account becomes part of the id and the metadata; an unscoped review keeps the legacy id verbatim.
+    """
     if result.get("status") != "OK":
         return None
     now = now or datetime.now(timezone.utc)
     r = result["review"]
-    did = f"cio-entry-review-{str(result['symbol']).lower()}-{now.strftime('%Y%m%d%H%M%S')}"
+    acct = str(account or "").strip()
+    suffix = "" if (not acct or acct.upper() == "UNSCOPED") else f"-{acct.lower()}"
+    did = f"cio-entry-review-{str(result['symbol']).lower()}{suffix}-{now.strftime('%Y%m%d%H%M%S')}"
     rationale = f"{r['verdict']}: {str(r.get('reason') or r.get('equity_view') or '')[:400]}"
     meta = json.dumps({"review": r, "model": result.get("model"), "job_key": result.get("job_key"),
-                       "schema": SCHEMA}, default=str)
+                       "account": acct or None, "schema": SCHEMA}, default=str)
     return (did, result["symbol"], r["verdict"], rationale, meta)
 
 
