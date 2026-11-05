@@ -331,3 +331,145 @@ def test_it_reads_nothing_but_gh_pr_list():
     assert "subprocess.run(argv" in src
     assert "requests" not in src and "urllib" not in src
     assert '"gh", "pr", "list"' in src or "'gh', 'pr', 'list'" in src
+
+
+# ── #2640 B1 (cc-deepseek-5 P2): negation is scoped to the row it governs, not the whole line ───────────────────
+# "Closes FQ-022; not closing FQ-033." used to drop the line, so FQ-022 was never claimed and a queued row stayed
+# dispatchable — the duplicate-work failure the tool exists to prevent. Rule 3 tells authors to name rows they are
+# not closing, so mixed claim/disclaimer lines are a natural authoring form.
+
+
+@pytest.mark.parametrize("body, claimed, named", [
+    ("Closes FQ-022; not closing FQ-033.", {"FQ-022"}, {"FQ-022"}),
+    ("Closes FQ-022 and is not touching FQ-033.", {"FQ-022"}, {"FQ-022"}),
+    ("Closes FQ-058. Does not close FQ-002 (the `MISSING MARKET` label) — that is #2637.",
+     {"FQ-058"}, {"FQ-058"}),
+    # a negation binds the first verb after it; it must not bleed onto a later claim in the same sentence
+    ("Not closing FQ-033 but closes FQ-022.", {"FQ-022"}, {"FQ-022"}),
+])
+def test_a_negation_only_removes_the_row_it_governs(body, claimed, named):
+    cand = pr(2622, branch="wt/elsewhere", body=body)
+    assert S.rows_claimed_by(cand) == claimed
+    assert S.rows_named_by(cand) == named
+
+
+def test_a_claim_on_a_mixed_line_still_moves_its_queued_row():
+    rep = S.sync(queue(row("FQ-022")), [pr(2622, body="Closes FQ-022; not closing FQ-033.")], now=NOW)
+    assert rep["changed"] == 1, rep["changes"]
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+
+
+def test_the_live_2622_mixed_line_claims_fq058_and_not_fq002():
+    """The corpus instance from the review: a real dropped claim, not a synthetic shape."""
+    body = "Closes FQ-058. Does not close FQ-002 (the `MISSING MARKET` label) — that is #2637."
+    cand = pr(2622, branch="wt/elsewhere", body=body)
+    assert S.rows_claimed_by(cand) == {"FQ-058"}
+    assert "FQ-002" not in S.rows_named_by(cand)
+
+
+# ── #2640 B2 (cc-deepseek-5 P2): a full window is not the whole PR universe ─────────────────────────────────────
+
+
+def _rest_pr(number, *, state="open", merged_at=None, merge_sha=None, branch="wt/unrelated", body=""):
+    return {"number": number, "state": state, "merged_at": merged_at, "merge_commit_sha": merge_sha,
+            "head": {"ref": branch, "sha": "b" * 40}, "body": body}
+
+
+def test_a_full_gh_window_is_paged_through_the_rest_census():
+    window = [pr(2600 + i) for i in range(3)]
+    calls = []
+
+    def runner(argv):
+        calls.append(argv)
+        if argv[:3] == ["gh", "pr", "list"]:
+            return json.dumps(window)
+        return json.dumps([_rest_pr(2200, state="closed", merged_at="2026-11-01T00:00:00Z", merge_sha="c" * 40)])
+
+    rows = S.gh_pr_list(runner, limit=3)
+    assert calls[1][:2] == ["gh", "api"], calls
+    assert {r["number"] for r in rows} == {2600, 2601, 2602, 2200}, "the older PR outside the window was lost"
+    older = next(r for r in rows if r["number"] == 2200)
+    assert older["state"] == "MERGED" and older["mergeCommit"] == {"oid": "c" * 40}
+
+
+def test_a_census_that_exceeds_the_pagination_cap_is_refused_not_truncated():
+    window = [pr(2600 + i) for i in range(3)]
+    full_page = [_rest_pr(4000 + i) for i in range(S.REST_PAGE_SIZE)]
+
+    def runner(argv):
+        return json.dumps(window if argv[:3] == ["gh", "pr", "list"] else full_page)
+
+    with pytest.raises(S.FetchIncomplete):
+        S.gh_pr_list(runner, limit=3)
+
+
+def test_an_incomplete_census_refuses_apply_without_writing(tmp_path, monkeypatch):
+    p = tmp_path / "q.json"
+    p.write_text(json.dumps(queue(row("FQ-021"))), encoding="utf-8")
+
+    def boom(*_a, **_k):
+        raise S.FetchIncomplete("truncated census")
+
+    monkeypatch.setattr(S, "gh_pr_list", boom)
+    assert S.main(["--queue", str(p), "--apply"]) == 2
+    assert json.loads(p.read_text(encoding="utf-8"))["items"][0]["status"] == "queued"
+
+
+# ── #2640 N2 (cc-deepseek-5 P3): a non-list payload is unknown, not "0 change(s)" ────────────────────────────────
+
+
+def test_a_non_list_gh_payload_is_unknown_not_zero_changes():
+    with pytest.raises(S.FetchIncomplete):
+        S.gh_pr_list(lambda argv: json.dumps({"message": "API rate limit exceeded"}))
+
+
+# ── #2640 QS4 residual / N1 (cx-openai-5 P1, cx-openai-2, cc-deepseek-5 P3): a peer write after the comparison ──
+# The pre-backup comparison is not enough on its own: a writer landing between it and the replacement used to be
+# overwritten. The write boundary now re-checks after the backup I/O and replaces atomically under an exclusive lock.
+
+
+def test_an_apply_refuses_a_peer_write_between_the_comparison_and_the_write(tmp_path, monkeypatch):
+    p = tmp_path / "q.json"
+    p.write_text(json.dumps(queue(row("FQ-021"), row("FQ-099", status="queued"))), encoding="utf-8")
+    real_backup = S._backup
+    injected = {"done": False}
+
+    def injecting_backup(path):
+        if not injected["done"]:
+            injected["done"] = True
+            doc = json.loads(Path(path).read_text(encoding="utf-8"))
+            for item in doc["items"]:
+                if item["id"] == "FQ-099":
+                    item["status"] = "HELD_operator_decision"
+            Path(path).write_text(json.dumps(doc), encoding="utf-8")
+        return real_backup(path)
+
+    monkeypatch.setattr(S, "_backup", injecting_backup)
+    monkeypatch.setattr(S, "gh_pr_list",
+                        lambda *a, **k: [pr(2700, branch="wt/fq021-example", body="Closes FQ-021.")])
+    assert S.main(["--queue", str(p), "--apply"]) == 2
+    after = {i["id"]: i["status"] for i in json.loads(p.read_text(encoding="utf-8"))["items"]}
+    assert after["FQ-099"] == "HELD_operator_decision", "a peer write during the write boundary was overwritten"
+    assert after["FQ-021"] == "queued", "the refused run must not have applied its own change either"
+
+
+# ── #2640 N4 (cc-deepseek-5 P3): a refused --json --apply must not print a report ───────────────────────────────
+
+
+def test_a_refused_json_apply_prints_no_report(tmp_path, monkeypatch, capsys):
+    p = tmp_path / "q.json"
+    p.write_text(json.dumps(queue(row("FQ-021"), row("FQ-099", status="queued"))), encoding="utf-8")
+
+    def concurrent_collector(*_a, **_k):
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        for item in doc["items"]:
+            if item["id"] == "FQ-099":
+                item["status"] = "HELD_operator_decision"
+        p.write_text(json.dumps(doc), encoding="utf-8")
+        return [pr(2700, branch="wt/fq021-example", body="Closes FQ-021.")]
+
+    monkeypatch.setattr(S, "gh_pr_list", concurrent_collector)
+    assert S.main(["--queue", str(p), "--apply", "--json"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == "", "a stdout-only consumer must not see a report for a write that did not happen"
+    assert "REFUSED" in captured.err
