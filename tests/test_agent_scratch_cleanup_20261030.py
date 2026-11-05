@@ -710,9 +710,20 @@ def test_d52_unfinished_or_unbound_task_scratch_is_refused(tmp_path, capsys, pro
 
 
 @pytest.mark.parametrize("completion", ["merged", "abandoned-closed"])
-def test_d52_canonical_completed_task_has_a_real_dry_apply_firing_control(tmp_path, capsys, completion):
+@pytest.mark.parametrize("namespace", ["flat", "session-task"])
+def test_d52_canonical_completed_task_has_a_real_dry_apply_firing_control(tmp_path, capsys, completion, namespace):
     mod = _load()
     candidate, args = _fixture_run(mod, tmp_path, completion=False)
+    sibling = None
+    if namespace == "session-task":
+        parent = candidate.parent / "fixture-session"
+        parent.mkdir()
+        nested = parent / "own-task"
+        candidate.rename(nested)
+        candidate = nested
+        sibling = parent / "unfinished-task"
+        sibling.mkdir()
+        (sibling / "keep.txt").write_text("unfinished synthetic work")
     _completed_task(
         args["claims_dir"],
         status="done" if completion == "merged" else "abandoned",
@@ -725,6 +736,8 @@ def test_d52_canonical_completed_task_has_a_real_dry_apply_firing_control(tmp_pa
     mod.run(**args)
     report = json.loads(capsys.readouterr().out)
     assert not candidate.exists() and report["removed_count"] == 1, report
+    if sibling is not None:
+        assert sibling.parent.exists() and (sibling / "keep.txt").read_text() == "unfinished synthetic work"
 
 
 def test_d52_completion_is_revalidated_immediately_before_removal(tmp_path, monkeypatch, capsys):

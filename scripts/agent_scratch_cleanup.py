@@ -132,6 +132,8 @@ def default_scratch_roots(home: Path) -> list[Path]:
 def auto_candidates(home: Path, task_slug: Optional[str], session_slug: Optional[str]) -> list[Path]:
     out: list[Path] = []
     base = home / ".cache" / "agent-tmp"
+    if task_slug and session_slug:
+        out.append(base / session_slug / task_slug)
     for name in (task_slug, session_slug):
         if name:
             out.append(base / name)
@@ -501,8 +503,9 @@ def completion_evidence(
     """
     if not task or not session:
         return [], "task_completion_identity_unresolved"
-    task_root = home / ".cache" / "agent-tmp" / slug(task)
-    if not is_within(path, task_root):
+    base = home / ".cache" / "agent-tmp"
+    task_roots = (base / slug(task), base / slug(session) / slug(task))
+    if not any(is_within(path, root) for root in task_roots):
         return [], "task_completion_namespace_mismatch"
     try:
         from scripts.lib import agent_claim_board as B
