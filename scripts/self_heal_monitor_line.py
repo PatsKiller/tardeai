@@ -18,104 +18,300 @@ Definitions (stable; do not "improve" silently):
   fixed         records whose closed_at / fixed_at / resolved_at is inside the last 60 minutes
   blocked       records with status blocked; unresolved = the index summary's unresolved count
 Verdict rules:
-  DETECT alive       watcher receipt fresh (<= 15 min) and every watcher has no gap; else stale/gapped
-  DECIDE starved     every skip in the supervisor's last cycle is "daily model-call cap"; else working
+  DETECT alive       watcher receipt fresh (0 <= age <= 15 min) and every watcher has no gap; else stale/gapped
+  DECIDE working     supervisor receipt fresh (0 <= age <= 30 min; the timer runs every 10 min) and
+                     not every skip in the last cycle is "daily model-call cap"; else stale/starved
   FIX not scheduled  fix_requested jobs waiting in the fixer state (no schedule exists; 24.5 still gates the PR)
-  LIVE / NOT LIVE    the literal verdict: LIVE only when detect and decide are OK and no fix queue is waiting;
-                     NOT LIVE otherwise (dully, the hourly email can grep one token)
+  unknown            a store that could not be read or does not have its documented shape renders as
+                     "unknown (reason)", never as 0/default; the verdict is then NOT LIVE, because a
+                     measurement that was not made must never be presented as one that was
+  LIVE / NOT LIVE    the literal verdict: LIVE only when every stage is positively verified and every
+                     input was read; NOT LIVE otherwise (dully, the hourly email can grep one token)
+
+The state root is ``$TRADEAI_STATE_ROOT`` when set (the incident timers set it), default unchanged.
 """
+
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-STATE = Path("/home/johnclaw/trade-ai-releases/persistent-state")
-INCIDENTS = STATE / "data" / "coordination" / "incidents"
-RUNTIME = STATE / "data" / "runtime"
+DEFAULT_STATE = Path.home() / "trade-ai-releases" / "persistent-state"
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "incident_runbook_actions.json"
 CAP_SKIP = "daily model-call cap"
 WATCHER_FRESH_MIN = 15.0
+# The supervisor timer is *:2/10 (config/systemd/incidents/tradeai-incident-supervisor.timer),
+# so three missed cycles is stale. A long fixer dispatch can legitimately outlive one tick; the
+# direction of that error is NOT LIVE, never a false LIVE.
+SUPERVISOR_FRESH_MIN = 30.0
+
+SOURCE_FILES = {
+    "index": "index.json",
+    "supervisor": "supervisor_last.json",
+    "watchers": "watchers_last.json",
+    "calls": "supervisor_calls.json",
+    "policy": "incident_runbook_actions.json",
+    "fixer": "self_heal_fixer_state.json",
+}
 
 
 def _ts(value):
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
 
-def _load(path: Path, default):
+def _read(path: Path) -> tuple[dict | None, str | None]:
+    """(document, reason-it-could-not-be-read). Never flattens a failure into ``{}``."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return default
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, f"{path.name} unreadable: {type(exc).__name__}"
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        return None, f"{path.name} unreadable: invalid JSON"
+    if not isinstance(doc, dict):
+        return None, f"{path.name} unreadable: not a JSON object"
+    return doc, None
 
 
-def build_block(*, index: dict, supervisor: dict, watchers: dict, calls: dict, policy: dict,
-                fixer: dict, now: datetime) -> list[str]:
-    """The four pasted lines. Pure: every input is a parsed document, no I/O."""
-    records = index.get("incidents") or []
-    hour = now - timedelta(hours=1)
-    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
-    detected = [r for r in records if (_ts(r.get("opened_at")) or epoch) > hour]
-    fixed = [r for r in records
-             if any((_ts(r.get(k)) or epoch) > hour for k in ("closed_at", "fixed_at", "resolved_at"))]
-    summary = index.get("summary") or {}
-    counts = summary.get("counts") or {}
-    blocked = counts.get("blocked", sum(1 for r in records if r.get("status") == "blocked"))
-    unresolved = summary.get("unresolved", sum(1 for r in records if r.get("status") == "open"))
+def _unread_reason(name, doc, required, unread):
+    """Why ``doc`` is not a usable document, or None. A missing key is not an empty measurement."""
+    if name in unread:
+        return unread[name]
+    fname = SOURCE_FILES[name]
+    if not isinstance(doc, dict):
+        return f"{fname} unreadable"
+    for key in required:
+        if key not in doc:
+            return f"{fname} unreadable: missing {key!r}"
+    return None
 
-    watcher_rows = watchers.get("watchers") or {}
-    gaps = [name for name, row in watcher_rows.items() if row.get("gap")]
-    findings = {name: row.get("findings", 0) for name, row in watcher_rows.items() if row.get("findings")}
-    watcher_at = _ts(watchers.get("as_of"))
-    watcher_age = (now - watcher_at).total_seconds() / 60 if watcher_at else None
-    detect_ok = bool(watcher_rows) and not gaps and watcher_age is not None and watcher_age <= WATCHER_FRESH_MIN
 
-    skipped = supervisor.get("skipped") or []
-    cap_skips = sum(1 for s in skipped if s.get("why") == CAP_SKIP)
-    decide_ok = bool(supervisor) and not (skipped and cap_skips == len(skipped))
+def _age_minutes(stamp, now):
+    at = _ts(stamp)
+    return None if at is None else (now - at).total_seconds() / 60.0
 
-    queued = sum(1 for job in (fixer.get("jobs") or {}).values() if job.get("state") == "fix_requested")
-    day_cap = int((policy.get("policy") or {}).get("max_model_calls_per_day") or 40)
 
-    alive = detect_ok and decide_ok and not queued
-    parts = [
-        "DETECT alive" if detect_ok else "DETECT stale/gapped",
-        "DECIDE working" if decide_ok else f"DECIDE starved by the {CAP_SKIP}",
-        f"FIX not scheduled ({queued} requests queued)" if queued else "FIX no queue",
-    ]
-    # The literal verdict the hourly email relies on: LIVE only when detection is fresh, the
-    # decision cycle actually calls the model, and nothing is queued for an unscheduled fixer.
+def _int_or_none(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _state_root() -> Path:
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or DEFAULT_STATE)
+
+
+def build_block(
+    *,
+    index: dict,
+    supervisor: dict,
+    watchers: dict,
+    calls: dict,
+    policy: dict,
+    fixer: dict,
+    now: datetime,
+    unread: dict[str, str] | None = None,
+) -> list[str]:
+    """The four pasted lines. Pure: every input is a parsed document, no I/O.
+
+    ``unread`` optionally carries the reader's reason per source; a source whose document is
+    missing or malformed without a reason is still rendered unknown, never as a zero.
+    """
+    unread = unread or {}
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+
+    index_reason = _unread_reason("index", index, ("incidents",), unread)
+    if index_reason is None and not isinstance(index.get("incidents"), list):
+        index_reason = "index.json unreadable: 'incidents' is not a list"
+    supervisor_reason = _unread_reason("supervisor", supervisor, ("as_of",), unread)
+    watchers_reason = _unread_reason("watchers", watchers, ("watchers", "as_of"), unread)
+    if watchers_reason is None and not isinstance(watchers.get("watchers"), dict):
+        watchers_reason = "watchers_last.json unreadable: 'watchers' is not an object"
+    calls_reason = _unread_reason("calls", calls, ("count",), unread)
+    policy_reason = _unread_reason("policy", policy, ("policy",), unread)
+    if policy_reason is None and not isinstance(policy.get("policy"), dict):
+        policy_reason = "incident_runbook_actions.json unreadable: 'policy' is not an object"
+    fixer_reason = _unread_reason("fixer", fixer, ("jobs",), unread)
+    if fixer_reason is None and not isinstance(fixer.get("jobs"), dict):
+        fixer_reason = "self_heal_fixer_state.json unreadable: 'jobs' is not an object"
+
+    # ── counts ────────────────────────────────────────────────────────────────────────────────
+    if supervisor_reason:
+        dispatch_text = "unknown"
+    else:
+        dispatch_text = str(len(supervisor.get("dispatched") or []))
+
+    if index_reason:
+        counts_line = (
+            f"detected unknown · dispatched {dispatch_text} · fixed unknown · "
+            f"still blocked unknown · unresolved unknown ({index_reason})"
+        )
+    else:
+        records = index.get("incidents") or []
+        hour = now - timedelta(hours=1)
+        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        detected = [r for r in records if (_ts(r.get("opened_at")) or epoch) > hour]
+        fixed = [
+            r for r in records if any((_ts(r.get(k)) or epoch) > hour for k in ("closed_at", "fixed_at", "resolved_at"))
+        ]
+        summary = index.get("summary")
+        summary = summary if isinstance(summary, dict) else {}
+        counts = summary.get("counts")
+        counts = counts if isinstance(counts, dict) else {}
+        blocked = counts.get("blocked", sum(1 for r in records if r.get("status") == "blocked"))
+        unresolved = summary.get("unresolved", sum(1 for r in records if r.get("status") == "open"))
+        counts_line = (
+            f"detected {len(detected)} (last hour) · dispatched {dispatch_text} · "
+            f"fixed {len(fixed)} (last hour) · still blocked {blocked} · unresolved {unresolved}"
+        )
+
+    # ── DETECT ───────────────────────────────────────────────────────────────────────────────
+    detect_ok = False
+    findings_text = "unknown"
+    watcher_at_text = "?"
+    if watchers_reason:
+        detect_part = f"DETECT unknown ({watchers_reason})"
+        watchers_line = f"watchers unknown ({watchers_reason})"
+    else:
+        watcher_rows = watchers.get("watchers") or {}
+        watcher_at_text = watchers.get("as_of", "?")
+        gaps = [name for name, row in watcher_rows.items() if isinstance(row, dict) and row.get("gap")]
+        findings = {
+            name: row.get("findings", 0)
+            for name, row in watcher_rows.items()
+            if isinstance(row, dict) and row.get("findings")
+        }
+        findings_text = ", ".join(f"{k} {v}" for k, v in sorted(findings.items(), key=lambda kv: -kv[1])) or "none"
+        watchers_line = (
+            f"watchers {watcher_at_text}: {len(watcher_rows) - len(gaps)}/{len(watcher_rows)} "
+            f"without a gap; findings {findings_text}"
+        )
+        age = _age_minutes(watchers.get("as_of"), now)
+        if age is None:
+            detect_part = "DETECT unknown (watchers_last.json unreadable: 'as_of' is not a timestamp)"
+        elif age < 0:
+            detect_part = f"DETECT future-dated (watcher receipt {abs(age):.0f} min ahead — clock skew)"
+        elif age > WATCHER_FRESH_MIN:
+            detect_part = f"DETECT stale (watcher receipt {age:.0f} min old)"
+        elif not watcher_rows:
+            detect_part = "DETECT unknown (watchers_last.json has no watchers)"
+        elif gaps:
+            detect_part = f"DETECT gapped ({len(gaps)} watcher(s) with a gap)"
+        else:
+            detect_ok = True
+            detect_part = "DETECT alive"
+
+    # ── DECIDE ───────────────────────────────────────────────────────────────────────────────
+    decide_ok = False
+    skipped = [] if supervisor_reason else (supervisor.get("skipped") or [])
+    cap_skips = sum(1 for s in skipped if isinstance(s, dict) and s.get("why") == CAP_SKIP)
+    if supervisor_reason:
+        decide_part = f"DECIDE unknown ({supervisor_reason})"
+        supervisor_line = None
+    else:
+        age = _age_minutes(supervisor.get("as_of"), now)
+        if age is None:
+            decide_part = "DECIDE unknown (supervisor_last.json unreadable: 'as_of' is not a timestamp)"
+        elif age < 0:
+            decide_part = f"DECIDE future-dated (supervisor receipt {abs(age):.0f} min ahead — clock skew)"
+        elif age > SUPERVISOR_FRESH_MIN:
+            decide_part = f"DECIDE stale (supervisor receipt {age:.0f} min old)"
+        elif skipped and cap_skips == len(skipped):
+            decide_part = f"DECIDE starved by the {CAP_SKIP}"
+        else:
+            decide_ok = True
+            decide_part = "DECIDE working"
+        supervisor_line = (
+            f"supervisor {supervisor.get('as_of', '?')}: "
+            f"considered {len(supervisor.get('considered') or [])}, "
+            f"actions {len(supervisor.get('actions') or [])}, "
+            f"dispatched {len(supervisor.get('dispatched') or [])}, "
+            f"skipped {len(skipped)} ({cap_skips} on {CAP_SKIP})"
+        )
+
+    # ── model-call cap (display; an unread config is never replaced by the literal 40) ──────
+    calls_text = "unknown"
+    day_cap_text = "unknown"
+    if calls_reason is None:
+        count = _int_or_none(calls.get("count"))
+        if count is None:
+            calls_reason = "supervisor_calls.json unreadable: 'count' is not an integer"
+        else:
+            calls_text = str(count)
+    if policy_reason is None:
+        cap = _int_or_none((policy.get("policy") or {}).get("max_model_calls_per_day"))
+        if cap is None:
+            policy_reason = "incident_runbook_actions.json unreadable: missing policy.max_model_calls_per_day"
+        else:
+            day_cap_text = str(cap)
+
+    # ── FIX ─────────────────────────────────────────────────────────────────────────────────
+    fix_ok = False
+    if fixer_reason:
+        fix_part = f"FIX unknown ({fixer_reason})"
+    else:
+        queued = sum(
+            1
+            for job in (fixer.get("jobs") or {}).values()
+            if isinstance(job, dict) and job.get("state") == "fix_requested"
+        )
+        fix_ok = queued == 0
+        fix_part = "FIX no queue" if queued == 0 else f"FIX not scheduled ({queued} requests queued)"
+
+    if supervisor_line is None:
+        tail_reasons = [r for r in (calls_reason, policy_reason) if r]
+        tail = f" ({'; '.join(tail_reasons)})" if tail_reasons else ""
+        supervisor_line = (
+            f"supervisor unknown ({supervisor_reason}); model calls today {calls_text}/{day_cap_text}{tail}"
+        )
+    else:
+        tail_reasons = [r for r in (calls_reason, policy_reason) if r]
+        tail = f" ({'; '.join(tail_reasons)})" if tail_reasons else ""
+        supervisor_line += f"; model calls today {calls_text}/{day_cap_text}{tail}"
+
+    # ── verdict ─────────────────────────────────────────────────────────────────────────────
+    # The index, the call counter and the runbook config are not stage predicates, but a store
+    # that was not read is still an unknown measurement: it appears as a DATA component and
+    # keeps the verdict off LIVE.
+    data_reasons = [r for r in (index_reason, calls_reason, policy_reason) if r]
+    parts = [detect_part, decide_part, fix_part]
+    if data_reasons:
+        parts.append(f"DATA unknown ({'; '.join(data_reasons)})")
+    alive = detect_ok and decide_ok and fix_ok and not data_reasons
     verdict = ("LIVE" if alive else "NOT LIVE") + " — " + " · ".join(parts)
 
-    findings_text = ", ".join(f"{k} {v}" for k, v in sorted(findings.items(), key=lambda kv: -kv[1])) or "none"
     return [
         f"SELF-HEAL · {now:%H:%M} UTC",
-        f"detected {len(detected)} (last hour) · dispatched {len(supervisor.get('dispatched') or [])} · "
-        f"fixed {len(fixed)} (last hour) · still blocked {blocked} · unresolved {unresolved}",
-        f"supervisor {supervisor.get('as_of', '?')}: considered {len(supervisor.get('considered') or [])}, "
-        f"actions {len(supervisor.get('actions') or [])}, dispatched {len(supervisor.get('dispatched') or [])}, "
-        f"skipped {len(skipped)} ({cap_skips} on {CAP_SKIP}); model calls today {calls.get('count', '?')}/{day_cap}",
-        f"watchers {watchers.get('as_of', '?')}: {len(watcher_rows) - len(gaps)}/{len(watcher_rows)} without a gap; "
-        f"findings {findings_text}",
+        counts_line,
+        supervisor_line,
+        watchers_line,
         f"verdict: {verdict}",
     ]
 
 
 def main(argv=None) -> int:
     now = datetime.now(timezone.utc)
-    block = build_block(
-        index=_load(INCIDENTS / "index.json", {}),
-        supervisor=_load(INCIDENTS / "supervisor_last.json", {}),
-        watchers=_load(INCIDENTS / "watchers_last.json", {}),
-        calls=_load(INCIDENTS / "supervisor_calls.json", {}),
-        policy=_load(CONFIG, {}),
-        fixer=_load(RUNTIME / "self_heal_fixer_state.json", {}),
-        now=now,
-    )
+    root = _state_root()
+    incidents = root / "data" / "coordination" / "incidents"
+    runtime = root / "data" / "runtime"
+    sources = {
+        "index": _read(incidents / "index.json"),
+        "supervisor": _read(incidents / "supervisor_last.json"),
+        "watchers": _read(incidents / "watchers_last.json"),
+        "calls": _read(incidents / "supervisor_calls.json"),
+        "policy": _read(CONFIG),
+        "fixer": _read(runtime / "self_heal_fixer_state.json"),
+    }
+    documents = {name: doc for name, (doc, _reason) in sources.items()}
+    unread = {name: reason for name, (_doc, reason) in sources.items() if reason}
+    block = build_block(**documents, now=now, unread=unread)
     print("\n".join(block))
     return 0
 

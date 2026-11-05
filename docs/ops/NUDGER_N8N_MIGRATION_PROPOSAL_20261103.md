@@ -2,6 +2,13 @@
 
 **Status:** PROPOSED. Nothing here is armed. No live file, timer, n8n workflow or allowlist entry is changed
 by this document. Operator decision required at §7.
+
+**Progress (2026-11-04):** P1 is PR #2522 — the repo-owned `scripts/agent_nudger.py`, its config and tests, source
+only. P2-T1 is this branch: the `agent_nudge` lane is registered in `config/n8n_run_allowlist.json` and
+`config/lane_registry.json` as an n8n dispatcher row at `scheduler.stage: shadow` with `dispatch.mode: dry_run`,
+which the stage clamp enforces — a requested LIVE run of this lane becomes a dry run (`stage_shadow`). **The live
+host timer is untouched and still types.** P2-T2 (the n8n workflow) and P2-T3 (the parity report over a week of
+shadow receipts) are not built, so §7.2's evidence does not exist yet and nothing here should be flipped.
 **Owner:** cc-deepseek-6 (board item 16). **Reviewer:** lead (codex) → operator.
 **Rule it obeys:** "n8n first" for scheduled pipelines (operator, 2026-10-09 dispatch-class ruling), shadow
 first, and never route around a native denial.
@@ -23,6 +30,27 @@ Properties worth keeping: fixed prompt text; no Ctrl-C/Ctrl-U; screen-only detec
 one ledger line per nudge. Properties that argue for the migration: it lives outside the repo (no claim, no
 review, no CI, no receipts beyond its own ledger), its schedule is a host timer rather than the scheduler of
 record, and a typo or an edited copy is invisible to every rail we have.
+
+## 1a. Two implementations, one of them live (recorded 2026-11-04, FQ-093)
+
+FQ-093 made the nudger name a session's next queue row instead of a generic heartbeat. Doing it exposed a fact
+that will bite the next person, so it is written down here rather than left in a commit message:
+
+| | live copy | repo copy |
+|---|---|---|
+| path | `persistent-state/data/coordination/coordinator/agent_nudger.py` | `scripts/agent_nudger.py` |
+| runs? | **yes** — crontab `*/5 * * * * … --apply` | no; the `agent_nudge` lane is shadow/dry-run only |
+| size | ~140 lines, no tests | ~330 lines, 41 tests |
+| safety rails | none beyond tmux send | refusal list, config file, `--state`/`--ledger` redirection for shadow runs, capture-failure (BLIND) handling, `send()` return-code check |
+
+They are **not supersets of each other**. **The live copy is canonical for behaviour** (its keystrokes are the only
+ones that reach a session); **the repo copy is canonical for the intended contract** (it is the only one with tests
+and rails). Editing one does not change the other. Any behaviour change must be made in **both** until the migration
+lands — FQ-093 was made twice for exactly this reason, and both copies now carry the queue-row prompt by different
+code.
+
+The way out is §2's promotion: point the schedule at the repo copy, retire the coordinator-side file, and from then on
+the repo file is the only implementation. That moves a scheduled job, so it stays an operator decision (§7).
 
 ## 2. Target shape
 
