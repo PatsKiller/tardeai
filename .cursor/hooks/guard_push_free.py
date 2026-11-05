@@ -32,8 +32,9 @@ Conditions for ``push`` (``check`` is the same minus the pusher-session binding 
  5. The tracked pre-push and everything it executes from the worktree (``PREPUSH_CLOSURE``) are byte-identical to
     remote main's, and no module in its import path shadows the stdlib; the push runs it (``core.hooksPath``
     pinned), so the budget count and the secrets scan happen.
- 6. Fast-forward: remote branch absent or its ls-remote sha is an ancestor of the local sha; confirmed by a
-    ``--dry-run --porcelain`` push that must report exactly one ref, new or fast-forward.
+ 6. Fast-forward: remote branch absent or its ls-remote sha is an ancestor of the local sha. Check is a read-only
+    metadata preview, never a dry-run push or a transport/hook success claim. Only push invokes Git push, once,
+    with the verified pre-push hook enabled; its porcelain reports the actual single-ref result.
  7. No path in ``merge-base(main)..head`` matches the train's ``broker_active_trader`` globs.
  8. Budget: ``count_for(branch) < budget_for(branch)`` (``scripts/lib/tradeai_push_budget.py`` of the guard tree).
  9. Approved plan, either:
@@ -102,6 +103,9 @@ TRUSTED_ROOT = HOOKS_DIR.parents[1]
 TEST_CONFIG: Optional[Path] = None
 GIT = "/usr/bin/git"
 SAFE_PATH = "/usr/bin:/bin"
+#: Metadata reads (status/diff) must never run repo-controlled code or write the index: a repo can point
+#: core.fsmonitor at an arbitrary program that `git status` would execute, and status refreshes (rewrites) the index.
+METADATA_PINS = ("-c", "core.fsmonitor=false")
 
 #: One prefix segment, one name segment. The shell guard and bin/agent-push use the same pattern.
 BRANCH_RE = re.compile(r"^[a-z][a-z0-9-]{1,19}/[A-Za-z0-9][A-Za-z0-9._-]{2,120}$")
@@ -203,7 +207,9 @@ def refuse_dirty_env(environ: Optional[dict[str, str]] = None) -> None:
 
 
 def _clean_env(extra: Optional[dict[str, str]] = None) -> dict[str, str]:
-    env = {"PATH": SAFE_PATH, "HOME": str(passwd_home()), "LANG": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0"}
+    # GIT_OPTIONAL_LOCKS=0: a metadata read (git status) must not refresh and rewrite .git/index.
+    env = {"PATH": SAFE_PATH, "HOME": str(passwd_home()), "LANG": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0",
+           "GIT_OPTIONAL_LOCKS": "0"}
     env.update(extra or {})
     return env
 
@@ -288,9 +294,11 @@ def _declares_standing_push(text: str) -> bool:
 # --------------------------------------------------------------------------- repo checks
 
 
+#: A local clean/smudge/process filter is repo-controlled code that `git status` executes while it compares the
+#: worktree (it is named from .gitattributes, so no pin can neutralise it by known name) — refuse it outright.
 _HIJACK_LOCAL = re.compile(
-    r"^(remote\.origin\.(push|mirror|receivepack|uploadpack|pushurl|proxy|vcs|pushoption)|include\.|includeif\."
-    r"|credential\.|http\.|core\.sshcommand|core\.gitproxy|core\.askpass|push\.)"
+    r"^(filter\.|remote\.origin\.(push|mirror|receivepack|uploadpack|pushurl|proxy|vcs|pushoption)|include\.|"
+    r"includeif\.|credential\.|http\.|core\.sshcommand|core\.gitproxy|core\.askpass|push\.)"
 )
 
 
@@ -309,6 +317,9 @@ def check_remote_config(repo: Path, canonical: str) -> None:
         val = parts[2] if len(parts) > 2 else ""
         if key.startswith("url.") and key.endswith(("insteadof", "pushinsteadof")):
             raise Refused(f"{scope} config {key} rewrites remote URLs")
+        if scope in ("local", "worktree", "command") and key.startswith("filter."):
+            raise Refused(f"{scope} config {key} runs a repo-controlled filter during a metadata read; "
+                          f"`git status` must never execute repo code")
         if scope in ("local", "worktree", "command") and _HIJACK_LOCAL.search(key):
             raise Refused(f"{scope} config {key} can redirect or alter a push")
         if scope in ("local", "worktree", "command") and key == "core.hookspath" and val not in (
@@ -369,6 +380,15 @@ def _main_blob(repo: Path, main_sha: str, rel: str) -> Optional[str]:
     return _out(repo, "rev-parse", "--verify", "--quiet", f"{main_sha}:{rel}")
 
 
+def _main_mode(repo: Path, main_sha: str, rel: str) -> Optional[str]:
+    """The mode remote main records for ``rel`` (100755/100644/120000/...), or None if unreadable."""
+    line = _out(repo, "ls-tree", main_sha, "--", rel)
+    if not line:
+        return None
+    fields = line.split("\t", 1)[0].split()
+    return fields[0] if len(fields) >= 3 else None
+
+
 def check_prepush(repo: Path, main_sha: str) -> None:
     for rel in PREPUSH_CLOSURE:
         p = repo / rel
@@ -381,6 +401,27 @@ def check_prepush(repo: Path, main_sha: str) -> None:
         if want != have:
             raise Refused(f"{rel} differs from remote main's; the pre-push budget count and secrets scan must run "
                           f"unmodified")
+        if rel == ".githooks/pre-push":
+            # The blob hash is not enough: git SILENTLY SKIPS a non-executable hook, so the budget count and
+            # secrets scan never run. Main's recorded mode is the trusted mode; the worktree file's filesystem
+            # mode is the effective one (push_pins forces core.hooksPath=<repo>/.githooks).
+            mode = _main_mode(repo, main_sha, rel)
+            if mode != "100755":
+                raise Refused(f"{rel} is recorded on remote main with mode {mode or 'unknown'}, not 100755; a "
+                              f"non-executable hook is silently skipped, so the pre-push budget count and secrets "
+                              f"scan would not run")
+            try:
+                st = p.stat()
+            except OSError as exc:
+                raise Refused(f"{rel} cannot be stat'ed ({type(exc).__name__}); its effective mode is unproven") \
+                    from None
+            if not stat.S_ISREG(st.st_mode):
+                raise Refused(f"{rel} is not a regular file in this worktree; git silently skips it, so the "
+                              f"pre-push budget count and secrets scan would not run")
+            if not st.st_mode & 0o111 or not os.access(p, os.X_OK):
+                raise Refused(f"{rel} is not executable in this worktree (mode {stat.S_IMODE(st.st_mode):o}); "
+                              f"git silently skips a non-executable hook, so the pre-push budget count and secrets "
+                              f"scan would not run")
     stdlib = set(getattr(sys, "stdlib_module_names", ())) | _SHADOW_EXTRA
     for d in SHADOW_DIRS:
         base = repo / d if d else repo
@@ -1231,6 +1272,11 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     if not top:
         raise Refused(f"{repo_arg} is not a git work tree")
     repo = Path(top)
+    # Refuse a repo whose own config can execute code during a metadata read BEFORE the first such read: `git status`
+    # runs a repo-configured clean filter (via .gitattributes `filter=<name>`), which no pin can neutralise because the
+    # driver names are arbitrary. This check is a pure `config`/`remote get-url` read.
+    canonical = str(cfg["canonical_url"])
+    check_remote_config(repo, canonical)
     local_sha = _out(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}")
     if not local_sha or not SHA_RE.match(local_sha):
         raise Refused(f"no local branch {branch}")
@@ -1238,14 +1284,12 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     # modified tracked files; otherwise the scan would vouch for different content than the commit pushed.
     if _out(repo, "symbolic-ref", "--quiet", "HEAD") != f"refs/heads/{branch}":
         raise Refused(f"{branch} is not the checked-out HEAD of {repo}; check it out before pushing")
-    dirty = _out(repo, "status", "--porcelain", "--untracked-files=no")
+    dirty = _out(repo, "status", "--porcelain", "--untracked-files=no", pins=METADATA_PINS)
     if dirty is None:
         raise Refused("git status failed")
     if dirty:
-        names = (_out(repo, "diff", "--name-only", "HEAD") or "").splitlines()[:5]
+        names = (_out(repo, "diff", "--name-only", "HEAD", pins=METADATA_PINS) or "").splitlines()[:5]
         raise Refused(f"the worktree has uncommitted changes to tracked files ({', '.join(names)}); commit or stash")
-    canonical = str(cfg["canonical_url"])
-    check_remote_config(repo, canonical)
     pins = push_pins(repo, canonical, cfg)
     refs = ls_remote(repo, canonical, branch, float(cfg["ls_remote_timeout"]), pins)
     main_sha = refs.get("refs/heads/main")
@@ -1260,15 +1304,18 @@ def evaluate(repo_arg: str, branch: str, session: Optional[str], *, bind_session
     budget = check_budget(repo, branch, cfg)
     plan = find_plan(branch, session, cfg, bind_session=bind_session)
     refspec = f"{local_sha}:refs/heads/{branch}"
-    dry = _git(repo, "push", "--dry-run", "--porcelain", "--no-verify", "--no-follow-tags", "--no-signed",
-               "--recurse-submodules=no", canonical, refspec, pins=pins, timeout=float(cfg["ls_remote_timeout"]))
-    if dry.returncode != 0:
-        raise Refused(f"dry-run push failed rc={dry.returncode}: {dry.stderr.strip()[:200]}")
-    dry_line = _porcelain(dry.stdout, branch)
+    # A preflight reads the same authority/scope/budget evidence as push, but
+    # never invokes push (even --dry-run), executes hooks or appends an audit.
+    # This is metadata evidence, not a server transport or hook success claim.
+    preview = {"schema": "GuardPushPreview@v1", "kind": "metadata-preflight",
+               "transport_checked": False, "pre_push_executed": False,
+               "remote_write_attempted": False}
     return {"schema": SCHEMA, "allow": True, "cfg": cfg, "repo": str(repo), "branch": branch, "head": local_sha,
             "remote_head": remote_sha or "", "ff": ff, "refspec": refspec, "canonical": canonical,
             "policy": {"version": st["version"], "main": main_sha}, "budget": budget, "plan": plan,
-            "approval_ref": plan["approval_ref"], "dry_run": dry_line["line"], "pins": pins}
+            "approval_ref": plan["approval_ref"], "preview": preview,
+            "dry_run": "metadata-only preview; no Git push, transport validation or pre-push hook execution",
+            "pins": pins}
 
 
 def do_push(ev: dict[str, Any], session: Optional[str], cwd: str) -> dict[str, Any]:
@@ -1282,10 +1329,11 @@ def do_push(ev: dict[str, Any], session: Optional[str], cwd: str) -> dict[str, A
             "head": ev["head"], "remote_head": ev["remote_head"], "ff": ev["ff"], "refspec": ev["refspec"],
             "remote": ev["canonical"], "repo": ev["repo"], "cwd": cwd, "pusher_session": session or "",
             "pusher_uid": os.getuid(), "approval_ref": ev["approval_ref"], "plan": ev["plan"],
-            "budget": ev["budget"], "policy": ev["policy"], "dry_run": ev["dry_run"],
+            "budget": ev["budget"], "policy": ev["policy"],
             "command": f"bin/agent-push {ev['branch']}",
             "standing_approval_url": ev["plan"]["approval_ref"] if ev["plan"].get("source") == "claim+standing" else ""}
-    intent = audit(dict(base, event="grant-free-push-intent"), cfg)  # refuses on failure (M2)
+    intent = audit(dict(base, event="grant-free-push-intent", dry_run=ev["dry_run"],
+                        preview=ev["preview"]), cfg)  # refuses on failure (M2)
     if ev["plan"].get("source") in {"claim+standing", "claim+ratified-policy", "handoff+ratified-policy"}:
         if standing_policy_module().revoked_marker():
             raise Refused("standing authority revoked before push")

@@ -1,0 +1,13 @@
+[Unit]
+Description=Trigger the TradeAI holdings export on the positions-sync cadence (*/15)
+# The positions sync cron runs at 9,24,39,54 past the hour (Mon-Fri). This timer fires at 0/15/30/45, a few
+# minutes after each sync, so the export always follows a fresh DB write. It re-renders from the DB, so a
+# tick with no new sync is harmless (and retention keeps the backup set bounded).
+# NOT INSTALLED. Enabling it is operator-only (AGENTS.md §17).
+[Timer]
+OnCalendar=*:0/15
+Persistent=false
+Unit=tradeai-holdings-export.service
+
+[Install]
+WantedBy=timers.target

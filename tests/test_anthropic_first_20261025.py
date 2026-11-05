@@ -146,7 +146,8 @@ def test_pricing_source_is_config_and_requested_model_ids_are_current():
     # operator 2026-11-01: "sonnet for search" — cio_ask_web_search joins the mid tier (hosted web_search only)
     assert [k for k, t in p["process_tiers"].items() if t == "mid"] == [
         "prospectus_cio_news_note", "cio_ask_web_search"]
-    assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {"incident_supervisor": "mid"}
+    # operator 2026-11-02: emergency triage runs Haiku first (tier bulk); Sonnet only if insufficient
+    assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {"incident_supervisor": "bulk"}
     assert [t for t, m in p["models"].items() if m == "claude-fable-5-1"] == ["premium"]  # operator 2026-10-26
     assert p["expires_at"] == "2026-11-16T00:00:00Z"
 

@@ -193,10 +193,12 @@
       "scripts/self_heal_fixer.py",
       "scripts/lib/self_heal_fixer.py",
       "scripts/lib/self_heal_egress.py",
+      "scripts/lib/self_heal_deepseek_launch.py",
       "scripts/lib/self_heal_fixer_claims.py",
       "scripts/lib/self_heal_fix_evaluator.py",
       "tests/fixtures/self_heal_fixer/*",
       "tests/test_self_heal_fixer_*",
+      "tests/test_self_heal_deepseek_*",
       "scripts/check_*.py",
       "scripts/lib/guard_*.py",
       "scripts/lib/tradeai_push_budget.py",
@@ -238,7 +240,19 @@
       "pytest.ini",
       "pyproject.toml",
       "setup.cfg",
-      "tox.ini"
+      "tox.ini",
+      "*siem*",
+      "*ledger*",
+      "scripts/lib/incidents.py",
+      "scripts/incident_requeue.py",
+      "scripts/lib/incident_supervisor.py",
+      "config/incident_runbook_actions.json",
+      "scripts/incident_supervisor.py",
+      "tests/test_incident_requeue_20261103.py",
+      "tests/test_incident_dispatch_evidence_20261103.py",
+      "tests/test_incident_supervisor_noop_evidence_20261103.py",
+      "scripts/risk_stop_manager.py",
+      "scripts/n8n_coordination_ledger.py"
     ],
     "append_only_paths": [
       "scripts/run_cio_hardening_ci.py"
@@ -266,7 +280,11 @@
       "*stop*",
       "*execution*",
       "*options-lifecycle*",
-      "*defense-execution*"
+      "*defense-execution*",
+      "*credential*",
+      "*secret*",
+      "*siem*",
+      "*ledger*"
     ],
     "retry_cooldown_hours": 72,
     "contract_schema": "N8nCodeDefect@v1",
