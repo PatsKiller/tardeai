@@ -95,7 +95,11 @@ check('the clocks are a closed disclosure on a phone, and still on the page', ()
   const html = render(true)
   const details = html.match(/<details[^>]*data-testid="desk-source-clocks"[\s\S]*?<\/details>/)
   assert.ok(details, 'no disclosure around the source clocks')
-  assert.ok(!/<details[^>]*data-testid="desk-source-clocks"[^>]*\bopen\b/.test(details[0]), 'the disclosure is open by default')
+  const openingTag = details[0].match(/^<details\b(?:[^"'<>]|"[^"]*"|'[^']*')*>/)?.[0]
+  assert.ok(openingTag, 'no opening tag for the source clocks disclosure')
+  // Attribute values can say "open" without opening the disclosure; attribute order cannot change its state.
+  const attributes = openingTag.replace(/"[^"]*"|'[^']*'/g, '')
+  assert.doesNotMatch(attributes, /\sopen(?=[\s=/>])/i, 'the disclosure is open by default')
   assert.match(text(details[0]), /Sector posture/, 'the clock content was removed instead of collapsed')
 })
 
