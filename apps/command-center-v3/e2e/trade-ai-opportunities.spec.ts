@@ -131,6 +131,12 @@ for (const width of [1440, 412]) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
     })
     await page.goto('/v3/trading?tab=Trade+AI')
+    // FQ-071: a phone now STARTS in the labelled card view, so the table is a deliberate choice here.
+    // The default is asserted on purpose: the audit's phone fix must not silently revert.
+    if (width <= 820) {
+      await expect(page.getByTestId('ta-view-cards')).toHaveAttribute('aria-pressed', 'true')
+      await page.getByTestId('ta-view-table').click()
+    }
     const row = page.locator('[data-testid="ta-row"][data-symbol="SAIQ"]')
     await expect(row).toBeVisible({ timeout: 60_000 })
     await expect(row.getByTestId('ta-catalyst-verdict')).toHaveAttribute('data-status', 'UNVERIFIED_HEADLINE')
