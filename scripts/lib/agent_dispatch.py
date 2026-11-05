@@ -163,6 +163,18 @@ def row_workable(row: dict[str, Any], session: str, claims: Sequence[Claim], *, 
     """Is this queue row the session's to work right now? Returns (ok, reason-when-not)."""
     if str(row.get("owner") or "") != session:
         return False, "not owned by this session"
+    return row_hold(row, claims, now=now, own_session=session)
+
+
+def row_hold(row: dict[str, Any], claims: Sequence[Claim], *, now: datetime | None = None,
+             own_session: str = "") -> tuple[bool, str]:
+    """The row's own eligibility — status, a future ``takeable_at``, and any LIVE claim on its paths.
+
+    R7 (codex at fffe2c9cb): the unowned-row branch checked only owner, status and the per-cycle target count, so a
+    row held until 2099, or one whose exact path another session was already working under a live claim, was offered
+    to an idle session anyway. Leaving ``owner`` blank must not bypass a recorded hold, so the hold checks live here
+    and both branches — owned rows and unowned rows — go through them.
+    """
     if str(row.get("status") or "") not in WORK_STATUSES:
         return False, f"status {row.get('status')!r} is silence"
     takeable = row.get("takeable_at")
@@ -174,9 +186,12 @@ def row_workable(row: dict[str, Any], session: str, claims: Sequence[Claim], *, 
         except ValueError:
             return False, "takeable_at unparseable"
     wanted = set(row_paths(row))
-    for claim in claims:
-        if claim.session != session and claim.live and wanted & set(claim.paths):
-            return False, f"{sorted(wanted & set(claim.paths))[0]} held by {claim.session} ({claim.claim_id})"
+    if wanted:
+        for claim in claims:
+            if own_session and claim.session == own_session:
+                continue  # a session's own live claim on its own row is the normal case, not a hold
+            if claim.live and wanted & set(claim.paths):
+                return False, f"{sorted(wanted & set(claim.paths))[0]} held by {claim.session} ({claim.claim_id})"
     return True, ""
 
 
@@ -283,9 +298,15 @@ def merge_ready(prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list
         reviewers = {e["reviewer"] for e in merges}
         claim = by_branch.get(pr.head_ref)
         claim_current = bool(claim and claim.head_sha and claim.head_sha in pr.shas)
+        author = author_of.get(pr.number, "")
         base = {"pr": pr.number, "head": pr.head_sha, "branch": pr.head_ref,
-                "author": author_of.get(pr.number, ""), "merge_state": pr.merge_state}
-        if blocks:
+                "author": author, "merge_state": pr.merge_state}
+        if not author:
+            # R5 (codex at fffe2c9cb): an unresolved author made independence unprovable and could still render a
+            # ready entry with author="". "Ready to merge" is a claim about custody; without the author it is a guess.
+            one_step.append({**base, "step": "author unknown — independence cannot be shown, so readiness cannot be "
+                                             "claimed", "verdicts": sorted(reviewers)})
+        elif blocks:
             one_step.append({**base, "step": "a BLOCK verdict stands at this head — resolve it, then re-review",
                              "verdicts": [e["reviewer"] for e in blocks]})
         elif reviewers and len(reviewers) < need:
@@ -295,7 +316,11 @@ def merge_ready(prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list
         elif merges and claim_current:
             ready.append({**base, "verdicts": [e["reviewer"] for e in merges]})
         elif merges and not claim_current:
-            one_step.append({**base, "step": "author must re-stamp the claim's head_sha to this head",
+            # A DONE claim cannot be re-stamped (the CLI has no such move); the author creates a claim AT this head.
+            step = ("the author claim is not active at this head — create a claim at the head and release it, then "
+                    "the evidence names that claim" if claim is None else
+                    "author must re-stamp the claim's head_sha to this head")
+            one_step.append({**base, "step": step,
                              "claim_head": claim.head_sha if claim else None,
                              "verdicts": [e["reviewer"] for e in merges]})
         elif claim_current:
@@ -368,8 +393,9 @@ def _row_instruction(session: str, row: dict[str, Any], coord: str) -> str:
 def _review_instruction(session: str, pr: PullRequest, coord: str) -> str:
     return (f"Dispatcher: review PR #{pr.number} whole-head now — head {pr.head_sha}, branch {pr.head_ref}, "
             f"mergeState {pr.merge_state}. You did not author it. Read the diff, run its tests, mutate the fix back to "
-            f"show the tests fail without it, then file MERGE or BLOCK with findings at this exact head in {coord}/inbox/<lead>/ "
-            f"(the canonical line is 'Adversarial-review: MERGE reviewer={session} head={pr.head_sha}') and the companion JSON. "
+            f"show the tests fail without it, then file MERGE or BLOCK with findings at this exact head in "
+            f"{coord}/review-evidence/ as .md + .machine.json (the canonical line is 'Adversarial-review: MERGE "
+            f"reviewer={session} head={pr.head_sha}'), and report the verdict to {coord}/inbox/<lead>/. "
             f"Do not push, do not merge, do not edit the author's branch.")
 
 
@@ -381,10 +407,20 @@ def _merge_prep_instruction(session: str, pr: PullRequest, claim: Claim | None, 
             f"(branch {pr.head_ref}), then report the claim id and head to {coord}/inbox/<lead>/. Do not push or merge.")
 
 
-def _chore_instruction(session: str, claim: Claim, coord: str) -> str:
+def _chore_instruction(session: str, claim: Claim, coord: str, *, open_pr: bool = False) -> str:
+    if open_pr:
+        # R1 (cc-deepseek-2 at fffe2c9cb): "release --status done" on a claim whose branch still has an OPEN PR is the
+        # move that permanently unmerges it — the merge gate needs a live claim at the PR head and a done claim cannot
+        # be re-stamped. A chore on an open-PR branch is a resume-or-hand-off, never a release.
+        return (f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
+                f"{claim.age_h:.1f}h, and its branch has an OPEN PR. Do NOT release it as done or abandoned: the merge "
+                f"gate needs a live claim at the PR head, and a done claim cannot be re-stamped. Heartbeat it from the "
+                f"worktree whose HEAD is the PR head, or hand it off with agent_claim.py handoff naming the exact next "
+                f"step, then report to {coord}/inbox/<lead>/.")
     return (f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
-            f"{claim.age_h:.1f}h. Either resume it (heartbeat from its worktree) or close it with agent_claim.py "
-            f"release --status done|abandoned and a summary, then report to {coord}/inbox/<lead>/ so the board is honest.")
+            f"{claim.age_h:.1f}h and no open PR depends on it. Either resume it (heartbeat from its worktree) or close "
+            f"it with agent_claim.py release --status abandoned and a summary, then report to {coord}/inbox/<lead>/ so "
+            f"the board is honest.")
 
 
 def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequence[Claim],
@@ -466,7 +502,8 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
     for row in queue:
         if row.get("owner"):
             continue
-        if str(row.get("status") or "") not in WORK_STATUSES:
+        ok, _why = row_hold(row, claims, now=ref)  # R7: a blank owner does not bypass a hold or a live claim
+        if not ok:
             continue
         if not free("unowned_queue", str(row.get("id"))):
             continue
@@ -481,7 +518,8 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
         claim = next((c for c in sorted(stale, key=lambda c: -c.age_h) if free("chore", c.claim_id)), None)
         if claim is None:
             return None
-        return Assignment(session, "chore", claim.claim_id, _chore_instruction(session, claim, coord),
+        open_pr = any(p.head_ref == claim.branch for p in prs)
+        return Assignment(session, "chore", claim.claim_id, _chore_instruction(session, claim, coord, open_pr=open_pr),
                           f"claim is {claim.age_h:.1f}h stale")
     return None
 
@@ -557,7 +595,58 @@ def safe_output_path(target: Path, *, coord: Path, protected: Sequence[Path] = (
     parent = real.parent
     if parent.exists() and parent.is_symlink():
         raise DispatchError(f"refusing to write {target}: its directory is a symlink out of the tree")
+    if _tracked(real):
+        # R1 (codex at fffe2c9cb): `--ledger` was otherwise unrestricted, and pointing it at a source file appended
+        # to source. An output of this lane is never a tracked file of the repository.
+        raise DispatchError(f"refusing to write {target}: it is a file tracked by git")
     return real
+
+
+def _tracked(path: Path) -> bool:
+    """True when ``path`` exists and git in its repository tracks it. Any failure means "not tracked" (fail open is
+    safe here: the link-count and symlink checks above still stand)."""
+    if not path.exists():
+        return False
+    top = subprocess.run(["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"],
+                         capture_output=True, text=True)
+    if top.returncode != 0:
+        return False
+    try:
+        rel = path.resolve().relative_to(Path(top.stdout.strip()).resolve()).as_posix()
+    except ValueError:
+        return False
+    ls = subprocess.run(["git", "-C", str(top.stdout.strip()), "ls-files", "--error-unmatch", "--", rel],
+                        capture_output=True, text=True)
+    return ls.returncode == 0
+
+
+def open_output(target: Path, *, append: bool = False):
+    """Open one of this lane's own outputs through an identity-checked handle (R1, codex at fffe2c9cb).
+
+    ``safe_output_path`` is a precheck, and a precheck is not a fence: the file can be replaced between the check and
+    the write (codex swapped MERGE_READY.md for a symlink into the queue during the first send and the report truncated
+    the queue). The write therefore opens without following symlinks, and a file with more than one link is refused
+    outright — that catches a hardlink alias at ANY depth, where the precheck only walks two.
+
+    Callers get a text handle; the checks happened on the very inode that will be written.
+    """
+    # No O_TRUNC: truncation is a WRITE, and the whole point is to inspect the handle before any byte changes. A
+    # hardlink alias opened with O_TRUNC would empty the protected file first and refuse afterwards.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | (os.O_APPEND if append else 0)
+    try:
+        fd = os.open(str(target), flags, 0o644)
+    except OSError as exc:
+        raise DispatchError(f"refusing to write {target}: {exc}") from exc
+    try:
+        st = os.fstat(fd)
+        if st.st_nlink != 1:
+            raise DispatchError(f"refusing to write {target}: it has {st.st_nlink} links (an alias of another file)")
+        if not append:
+            os.ftruncate(fd, 0)  # now that the inode is known to be ours alone
+        return os.fdopen(fd, "a" if append else "w", encoding="utf-8")
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def _tail(screen: str, limit: int = 1200) -> str:
@@ -598,9 +687,19 @@ def submit(
     """
     buffer_name = "dispatch-" + hashlib.sha256(f"{session}:{text}:{time.time()}".encode()).hexdigest()[:12]
 
+    def _call(argv: list[str], **kwargs: Any) -> Any:
+        """One transport call. A timeout or an OSError is a RESULT, never an exception that loses the receipt.
+
+        R6 (codex at fffe2c9cb): ``subprocess.run(timeout=...)`` raises ``TimeoutExpired`` on expiry, and an
+        uncaught raise escaped ``submit`` with no ``SubmitResult`` to ledger. Every call goes through here.
+        """
+        try:
+            return run(argv, capture_output=True, text=True, **kwargs)
+        except (subprocess.TimeoutExpired, OSError):
+            return None
+
     def _capture(timeout: float = RUN_TIMEOUT_S) -> str | None:
-        proc = run(["tmux", "capture-pane", "-p", "-t", session], capture_output=True, text=True,
-                   timeout=max(0.05, timeout))
+        proc = _call(["tmux", "capture-pane", "-p", "-t", session], timeout=max(0.05, timeout))
         return (proc.stdout or "") if getattr(proc, "returncode", 1) == 0 else None
 
     def _paste_and_enter(deadline: float) -> bool:
@@ -610,19 +709,16 @@ def submit(
 
         if deadline - monotonic() <= 0:
             return False
-        load = run(["tmux", "load-buffer", "-b", buffer_name, "-"], input=text, capture_output=True, text=True,
-                   timeout=_left())
+        load = _call(["tmux", "load-buffer", "-b", buffer_name, "-"], input=text, timeout=_left())
         if getattr(load, "returncode", 1) != 0:
             return False
-        paste = run(["tmux", "paste-buffer", "-b", buffer_name, "-t", session, "-d"],
-                    capture_output=True, text=True, timeout=_left())
+        paste = _call(["tmux", "paste-buffer", "-b", buffer_name, "-t", session, "-d"], timeout=_left())
         if getattr(paste, "returncode", 1) != 0:
             return False
         sleep(0.6)  # let the compositor register the paste before Enter
         if deadline - monotonic() <= 0:
             return False
-        enter = run(["tmux", "send-keys", "-t", session, "Enter"], capture_output=True, text=True,
-                    timeout=_left())
+        enter = _call(["tmux", "send-keys", "-t", session, "Enter"], timeout=_left())
         return getattr(enter, "returncode", 1) == 0
 
     attempts = 0
@@ -633,6 +729,15 @@ def submit(
         # the budget too — not just the confirm polls (F3 round 2, the letter of it).
         deadline = monotonic() + busy_confirm_seconds
         before = _capture(max(0.05, min(RUN_TIMEOUT_S, deadline - monotonic())))
+        # R2 (codex at fffe2c9cb): the admission check happens HERE, at send time, not only at the first scan. A
+        # failed capture is a refusal, not an empty baseline — sending blind is how an instruction lands in an
+        # operator's unsent draft. A pane that picked up input or started working since the scan is refused too.
+        if before is None:
+            return SubmitResult(False, False, attempt, "pre-paste capture failed: refusing to send to a pane I cannot see")
+        admitted = classify_pane(session, before)
+        if admitted.state != "idle":
+            return SubmitResult(False, False, attempt,
+                                f"refusing to send: pane is {admitted.state} at send time ({admitted.evidence})")
         if not _paste_and_enter(deadline):
             continue
         entered = True  # an Enter was delivered for a paste that succeeded

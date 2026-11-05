@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -166,10 +167,38 @@ def test_d_oldest_unowned_row_when_nothing_of_its_own():
     assert a.kind == "unowned_queue" and a.target == "FQ-1"
 
 
+def test_d_an_unowned_row_does_not_bypass_a_hold_or_a_live_claim():
+    """R7 (codex at fffe2c9cb): the unowned branch checked owner, status and the target count — nothing else.
+
+    A row held until 2099, and a row whose exact path another session was already working under a live claim, were
+    both handed to an idle session because `owner` was blank. The hold checks now live in `row_hold` and both branches
+    use them; a blank owner is not an exemption.
+    """
+    future = iso(NOW + timedelta(hours=1))
+    held = D.select_work("cc-8", queue=[row(owner="", takeable_at=future)], claims=[], prs=[], verdicts={},
+                         author_of={}, coord="/c", now=NOW)
+    assert held is None, "a future takeable_at holds the row whoever looks at it"
+    taken = D.select_work("cc-8", queue=[row(owner="", paths=("src/page.tsx",))],
+                          claims=[claim(session="cc-4", paths=("src/page.tsx",))], prs=[], verdicts={},
+                          author_of={}, coord="/c", now=NOW)
+    assert taken is None, "another session's live claim on the row's path holds it even with no owner"
+
+
 def test_e_chore_for_a_stale_claim():
     a = D.select_work("cc-8", queue=[], claims=[claim(session="cc-4", age=6.0)], prs=[], verdicts={}, author_of={},
                       coord="/c", now=NOW)
     assert a.kind == "chore" and "has not been heartbeated for 6.0h" in a.instruction
+
+
+def test_e_a_chore_on_an_open_pr_branch_never_tells_the_session_to_release_it():
+    """R1 (cc-deepseek-2 at fffe2c9cb): `release --status done` on a claim whose PR is open is the move that
+    permanently unmerges it — the merge gate needs a live claim at the head and a done claim cannot be re-stamped."""
+    pr = D.PullRequest(21, "h" * 40, "wt/x", "DIRTY", False, commit_shas=("h" * 40,))
+    a = D.select_work("cc-8", queue=[], claims=[claim(session="cc-4", branch="wt/x", age=6.0)], prs=[pr],
+                      verdicts={}, author_of={21: "cc-4"}, coord="/c", now=NOW)
+    assert a.kind == "chore"
+    assert "release --status done" not in a.instruction and "--status abandoned" not in a.instruction
+    assert "OPEN PR" in a.instruction and "cannot be re-stamped" in a.instruction
 
 
 def test_nothing_to_do_returns_none():
@@ -204,6 +233,26 @@ def test_a_held_pr_with_one_merge_verdict_is_one_step_away_never_ready():
     out = D.merge_ready([pr], v, claims, {12: "cc-4"})
     assert out["ready"] == [], "a held path needs two independent MERGEs"
     assert out["one_step"] and "needs 2 independent MERGE verdicts" in out["one_step"][0]["step"]
+
+
+def test_an_unknown_author_is_never_reported_ready():
+    """R5 (codex at fffe2c9cb): with an unresolved author map, independence cannot be shown and `author` rendered as
+    `""` inside a READY entry. Readiness is a claim about custody; without the author it is a guess."""
+    pr = D.PullRequest(13, "h" * 40, "wt/z", "CLEAN", False, commit_shas=("h" * 40,), files=("src/x.ts",))
+    claims = [claim(session="cc-4", branch="wt/z", head="h" * 40)]
+    v = {(13, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
+    out = D.merge_ready([pr], v, claims, {})
+    assert out["ready"] == [], "an unknown author cannot be rendered as ready"
+    assert "author unknown" in out["one_step"][0]["step"]
+
+
+def test_a_done_claim_is_not_told_to_restamp():
+    """R5: the fleet's own rule is that a done claim cannot be re-stamped — the author creates a claim AT the head."""
+    pr = D.PullRequest(14, "h" * 40, "wt/q", "CLEAN", False, commit_shas=("h" * 40,), files=("src/x.ts",))
+    v = {(14, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
+    out = D.merge_ready([pr], v, [], {14: "cc-4"})   # the author's claim was completed and is gone from the active set
+    step = out["one_step"][0]["step"]
+    assert "create a claim at the head" in step and "re-stamp" not in step
 
 
 def test_a_merge_verdict_from_the_author_is_not_independent():
@@ -274,8 +323,15 @@ def test_submit_pastes_then_enters_and_proves_busy():
     assert "after the paste" in r.detail
 
 
-def test_a_pane_that_was_already_busy_is_not_evidence_of_this_dispatch():
-    """F3: busy must be NEW. A stale spinner that never changes must not confirm a dispatch."""
+def test_a_pane_that_is_already_busy_is_never_sent_to():
+    """R2 (codex at fffe2c9cb): the admission check is at SEND time, not only at the first scan.
+
+    This test used to assert `attempts == 2` — that a pane stuck on an old spinner was still pasted into, and only
+    the *confirmation* refused to credit it. Codex reproduced the dangerous consequence: a pre-paste capture showing
+    `❯ operator unsent draft` (or a failed capture) still loaded, pasted and pressed Enter. The requirement is now
+    stricter and this fixture is no longer reachable through the confirm loop: a non-idle pane at send time is
+    refused before any keystroke, and the refusal is one attempt, not two.
+    """
     class StuckBusy(FakeTmux):
         def __call__(self, cmd, **kw):
             p = super().__call__(cmd, **kw)
@@ -285,7 +341,38 @@ def test_a_pane_that_was_already_busy_is_not_evidence_of_this_dispatch():
     clock = FakeClock()
     r = D.submit("cc-1", "do it", run=StuckBusy(), sleep=clock.sleep, poll_every=3.0, busy_confirm_seconds=6.0,
                  monotonic=clock)
-    assert not r.busy_after and r.attempts == 2
+    assert r.submitted is False and not r.busy_after and r.attempts == 1
+    assert "busy at send time" in r.detail
+
+
+def test_a_failed_pre_paste_capture_refuses_to_send_blind():
+    """R2: a capture failure is a refusal, not an empty baseline — the lane never types into a pane it cannot see."""
+    clock = FakeClock()
+
+    class Blind(FakeTmux):
+        def __call__(self, cmd, **kw):
+            p = super().__call__(cmd, **kw)
+            if cmd[:2] == ["tmux", "capture-pane"]:
+                p.returncode = 1
+            return p
+
+    r = D.submit("cc-1", "do it", run=Blind(), sleep=clock.sleep, busy_confirm_seconds=6.0, monotonic=clock)
+    assert r.submitted is False and r.attempts == 1 and "cannot see" in r.detail
+
+
+def test_a_pane_showing_an_operators_unsent_draft_is_refused():
+    """R2, the reproduced case: `❯ operator unsent draft` must not receive a pasted instruction."""
+    clock = FakeClock()
+
+    class Draft(FakeTmux):
+        def __call__(self, cmd, **kw):
+            p = super().__call__(cmd, **kw)
+            if cmd[:2] == ["tmux", "capture-pane"]:
+                p.stdout = "❯ operator unsent draft"
+            return p
+
+    r = D.submit("cc-1", "do it", run=Draft(), sleep=clock.sleep, busy_confirm_seconds=6.0, monotonic=clock)
+    assert r.submitted is False and r.attempts == 1 and "input_pending" in r.detail
 
 
 def test_submit_retries_once_then_reports_dispatch_failed():
@@ -393,6 +480,27 @@ def test_apply_writes_the_ledger_and_merge_ready_only(tmp_path):
                        "dispatch_idle_state.json"}, written
 
 
+def test_a_raising_transport_still_writes_a_dispatch_failed_receipt(tmp_path, monkeypatch):
+    """R6 (codex at fffe2c9cb): the ledger buffered every line until the last submission returned, so one exception
+    discarded the receipts of everything already delivered. Each receipt is written as it exists, and a raise becomes
+    a recorded failure rather than a lost cycle."""
+    paths = make_tree(tmp_path, panes={"cc-deepseek-8": "❯ \n idle"},
+                      queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p",
+                              "acceptance": "acc"}])
+
+    def boom(*_a, **_kw):
+        raise RuntimeError("tmux died mid-cycle")
+
+    monkeypatch.setattr(CLI.D, "submit", boom)
+    out = CLI.run_cycle(apply=True, coord=paths["coord"], queue_path=paths["queue"], claims_dir=paths["claims"],
+                        ledger_path=paths["ledger"], run=fake_runner({"cc-deepseek-8": "❯ \n idle"}, []),
+                        sleep=lambda _s: None)
+    assert out["ledger"] and out["ledger"][0]["outcome"] == "dispatch_failed"
+    assert "dispatch raised" in out["ledger"][0]["detail"]
+    on_disk = paths["ledger"].read_text(encoding="utf-8").strip().splitlines()
+    assert len(on_disk) == 1 and json.loads(on_disk[0])["outcome"] == "dispatch_failed"
+
+
 def test_busy_sessions_are_not_touched(tmp_path):
     paths = make_tree(tmp_path, panes={"cc-deepseek-8": "· Working (3s · esc to interrupt)"}, queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p"}])
     out = CLI.run_cycle(apply=False, coord=paths["coord"], queue_path=paths["queue"], claims_dir=paths["claims"],
@@ -411,8 +519,10 @@ def test_the_module_writes_only_its_own_two_files():
     assert named == {"MERGE_READY.md", "DISPATCH_IDLE_ALERT.md"}, named
     assert src.count("D.safe_output_path(") >= 3, "every write target must pass through the guard"
     assert "pr_merge_delegation" not in src and "gh pr merge" not in src and "git push" not in src
-    ledger_targets = re.findall(r"ledger_target[^\n]*open\(\"a\"", src)
-    assert ledger_targets, "the ledger append must be visible in the source"
+    # R1 (codex at fffe2c9cb): the write itself goes through the identity-checked handle, not a bare open("a").
+    assert re.search(r"open_output\(ledger_target, append=True\)", src), "the ledger append must be visible in the source"
+    for name in ("idle_state_target", "merge_ready_target", "alert_target", "ledger_target"):
+        assert re.search(rf"open_output\({name}[,)]", src), f"{name} must be written through open_output"
     for forbidden in ("pr_merge_delegation", "git push", "gh pr merge", "setex", "write_text" ):
         if forbidden == "write_text":
             continue
@@ -674,6 +784,49 @@ def test_an_unsafe_output_is_refused_before_a_single_keystroke(tmp_path, monkeyp
     assert sent == [], f"the refusal must come before any keystroke, but these were sent: {sent}"
 
 
+def test_open_output_refuses_a_symlink_swapped_in_after_the_precheck(tmp_path):
+    """R1 (codex at fffe2c9cb): the precheck is not a fence. Codex swapped MERGE_READY.md for a symlink into the queue
+    between the check and the write, and the report truncated the queue. O_NOFOLLOW refuses at the open itself."""
+    queue = tmp_path / "AUDIT_FIX_QUEUE.json"
+    queue.write_text('{"items": [1, 2, 3]}\n', encoding="utf-8")
+    report = tmp_path / "MERGE_READY.md"
+    checked = D.safe_output_path(report, coord=tmp_path, protected=[queue])   # the path is clean at check time
+    report.unlink(missing_ok=True)
+    report.symlink_to(queue)                                                  # …and swapped before the write
+    with pytest.raises(D.DispatchError):
+        D.open_output(checked)
+    assert queue.read_text(encoding="utf-8") == '{"items": [1, 2, 3]}\n', "the queue must be untouched"
+
+
+def test_open_output_refuses_a_hardlink_alias_at_any_depth(tmp_path):
+    """R1: the precheck walks two levels of the protected tree; a depth-3 hardlink slipped past it. The link count on
+    the handle's own inode does not care about depth."""
+    deep = tmp_path / "a" / "b" / "c"
+    deep.mkdir(parents=True)
+    source = deep / "review.md"
+    source.write_text("a protected review\n", encoding="utf-8")
+    out = tmp_path / "MERGE_READY.md"
+    os.link(source, out)
+    with pytest.raises(D.DispatchError) as exc:
+        D.open_output(out)
+    assert "links" in str(exc.value)
+    assert source.read_text(encoding="utf-8") == "a protected review\n"
+
+
+def test_an_output_pointed_at_a_tracked_file_is_refused(tmp_path):
+    """R1: `--ledger` was unrestricted — codex pointed it at a source file and the lane appended to source."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    src = repo / "source.py"
+    src.write_text("print('hi')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "source.py"], cwd=repo, check=True)
+    with pytest.raises(D.DispatchError) as exc:
+        D.safe_output_path(src, coord=tmp_path / "coord", protected=[])
+    assert "tracked by git" in str(exc.value)
+    assert src.read_text(encoding="utf-8") == "print('hi')\n"
+
+
 def test_a_slow_capture_cannot_confirm_busy_after_the_deadline():
     """F3 round 2: two 14.9s captures used to "confirm" busy at 36.4s inside a 30s window, because each capture got
     a fresh RUN_TIMEOUT_S and a result that arrived after the deadline was still believed."""
@@ -716,6 +869,33 @@ def test_a_busy_marker_that_predates_the_paste_is_not_evidence():
 
     r = D.submit("cc-1", "go", run=Drift(), sleep=clock.sleep, monotonic=clock, busy_confirm_seconds=10.0)
     assert r.busy_after is False, "an old marker plus unrelated tail drift is not evidence of this dispatch"
+
+
+def test_a_transport_timeout_is_a_result_not_a_crash():
+    """R6 (codex at fffe2c9cb): `subprocess.run(timeout=...)` raises TimeoutExpired, and an uncaught raise escaped
+    submit with no SubmitResult for the ledger. The raise is now the result."""
+    import subprocess as sp
+
+    class Slow(FakeTmux):
+        def __call__(self, cmd, **kw):
+            if cmd[:2] == ["tmux", "capture-pane"]:
+                raise sp.TimeoutExpired(cmd="tmux capture-pane", timeout=1.0)
+            return super().__call__(cmd, **kw)
+
+    r = D.submit("cc-1", "go", run=Slow(), sleep=lambda _s: None, monotonic=FakeClock(), busy_confirm_seconds=5.0)
+    assert r.submitted is False and "cannot see" in r.detail
+
+
+def test_an_oserror_on_the_paste_path_is_a_failed_dispatch_not_an_exception():
+    """R6: a tmux that vanished mid-attempt is `dispatch_failed`, never a traceback that loses the cycle."""
+    class Gone(FakeTmux):
+        def __call__(self, cmd, **kw):
+            if cmd[:2] == ["tmux", "load-buffer"]:
+                raise FileNotFoundError("tmux")
+            return super().__call__(cmd, **kw)
+
+    r = D.submit("cc-1", "go", run=Gone(), sleep=lambda _s: None, monotonic=FakeClock(), busy_confirm_seconds=5.0)
+    assert r.submitted is False and r.attempts == 2 and not r.busy_after
 
 
 def test_a_failed_paste_is_not_a_submission():

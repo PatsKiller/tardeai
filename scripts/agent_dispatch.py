@@ -276,27 +276,34 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
     merge_ready_target = D.safe_output_path(coord / "MERGE_READY.md", coord=coord, protected=[queue_path, claims_dir])
     alert_target = D.safe_output_path(coord / "DISPATCH_IDLE_ALERT.md", coord=coord, protected=[queue_path, claims_dir])
 
+    # R6 (codex at fffe2c9cb): a receipt is written as soon as it exists. Buffering every line until the last
+    # submission returned meant one failing session discarded the already-delivered receipts, which is the opposite of
+    # what an audit trail is for. An exception from a transport is recorded as a failed dispatch, never propagated.
     lines: list[str] = []
-    for a in assignments:
-        r = D.submit(a.session, a.instruction, run=run, sleep=sleep)
-        head = ""
-        if a.kind in ("review", "merge_prep"):
-            head = next((p.head_sha for p in prs if str(p.number) == a.target), "")
-        line = D.ledger_line(session=a.session, assignment=a, result=r, cycle_id=cycle_id, target_head=head)
-        lines.append(line)
-        result["ledger"].append(json.loads(line))
-    if lines:
-        ledger_target.parent.mkdir(parents=True, exist_ok=True)
-        with ledger_target.open("a", encoding="utf-8") as fh:
-            for line in lines:
-                fh.write(line + "\n")
+    ledger_target.parent.mkdir(parents=True, exist_ok=True)
+    with D.open_output(ledger_target, append=True) as ledger_fh:
+        for a in assignments:
+            try:
+                r = D.submit(a.session, a.instruction, run=run, sleep=sleep)
+            except Exception as exc:  # noqa: BLE001 — a lane that dies mid-cycle loses the receipt of what it sent
+                r = D.SubmitResult(False, False, 0, f"dispatch raised {type(exc).__name__}: {exc}")
+            head = ""
+            if a.kind in ("review", "merge_prep"):
+                head = next((p.head_sha for p in prs if str(p.number) == a.target), "")
+            line = D.ledger_line(session=a.session, assignment=a, result=r, cycle_id=cycle_id, target_head=head)
+            lines.append(line)
+            result["ledger"].append(json.loads(line))
+            ledger_fh.write(line + "\n")
+            ledger_fh.flush()
 
     idle_state_target = D.safe_output_path(coord / IDLE_STATE_NAME, coord=coord, protected=[queue_path, claims_dir])
-    idle_state_target.write_text(json.dumps(getattr(idle_minutes_from_state, "last", {}), indent=1, sort_keys=True) + "\n",
-                                 encoding="utf-8")
-    merge_ready_target.write_text(D.render_merge_ready(ready, generated_at=generated_at), encoding="utf-8")
+    with D.open_output(idle_state_target) as fh:
+        fh.write(json.dumps(getattr(idle_minutes_from_state, "last", {}), indent=1, sort_keys=True) + "\n")
+    with D.open_output(merge_ready_target) as fh:
+        fh.write(D.render_merge_ready(ready, generated_at=generated_at))
     if alerts:
-        alert_target.write_text(alerts, encoding="utf-8")
+        with D.open_output(alert_target) as fh:
+            fh.write(alerts)
     return result
 
 
