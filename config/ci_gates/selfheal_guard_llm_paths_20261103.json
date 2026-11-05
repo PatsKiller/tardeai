@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "selfheal_guard_llm_paths_20261103",
+  "files": [
+    "tests/test_selfheal_guard_llm_paths_20261103.py"
+  ],
+  "anchor": "SELFHEAL_GUARD_LLM_PATHS_20261103",
+  "comment": [
+    "ANCHOR: SELFHEAL_GUARD_LLM_PATHS_20261103 — cc2's #2509 Ground 1b: the fixer's diff guard must refuse the three LLM policy configs (process registry, Anthropic credit policy, routing policy) and the four enforcement modules (governed_cloud_generation, llm_consumption, anthropic_routing, telegram_alert) the supervisor obeys, before any fixer arming. Proves refusal with the real matcher plus a negative control; hermetic (two repo files)."
+  ]
+}
