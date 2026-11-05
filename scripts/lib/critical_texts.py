@@ -155,12 +155,21 @@ def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
             body = body[:room].rstrip(" ,.;")
             body = body.rsplit(" ", 1)[0].rstrip(" ,.;") + "…"
         return f"{body}{tail}"
-    body = f"{body} CC Risk"
-    if len(body) <= MAX_TEXT_CHARS:
-        return body
-    room = MAX_TEXT_CHARS - len("… CC Risk")
-    cut = body[:room].rsplit(" ", 1)[0].rstrip(" ,.;")
-    return f"{cut}… CC Risk"
+    tail = " CC Risk"
+    if len(body) + len(tail) <= MAX_TEXT_CHARS:
+        return body + tail
+    # The action is what tells the operator what to do, so it survives; the trigger is what gets shortened.
+    # A trigger with no spaces cannot be cut on a word boundary, so it is cut hard rather than leaving the
+    # text as "ACT NOW SPCX… CC Risk" with neither the number nor the action in it (review, 2026-11-05).
+    fixed = f"{head}. Suggest {action}."
+    room = MAX_TEXT_CHARS - len(tail) - len(fixed) - 2
+    if room < 4:
+        return (fixed + tail)[:MAX_TEXT_CHARS]
+    piece = trigger if len(trigger) <= room else trigger[:room]
+    if len(trigger) > room and " " in piece:
+        piece = piece.rsplit(" ", 1)[0]
+    cut = piece.rstrip(" ,.;") + ("…" if len(trigger) > room else "")
+    return f"{head} {cut}. Suggest {action}." + tail
 
 
 def _load_state(path: Path) -> dict[str, Any]:
@@ -235,8 +244,11 @@ def send_critical_text(
                 recent += 1
         except ValueError:
             continue
-    if recent >= cap:
-        return {"sent": False, "reason": f"hourly cap reached ({recent}/{cap})"}
+    # The cap is on TEXTS, not events: one event fans out to every verified Fi line, so counting events would
+    # report 10/10 while 20 texts left the building (review, 2026-11-05).
+    texts_in_hour = recent * len(gateways)
+    if texts_in_hour + len(gateways) > cap:
+        return {"sent": False, "reason": f"hourly text cap reached ({texts_in_hour}/{cap} texts in the last hour)"}
 
     send = sender
     if send is None:

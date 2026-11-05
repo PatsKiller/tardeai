@@ -86,7 +86,21 @@ def test_a_long_trigger_is_truncated_not_cut_mid_word(paths):
     ct.send_critical_text(ev, sender=send, contact_path=contact, config_path=config, state_path=state, now=NOW)
     text = calls[0]["body"]
     assert len(text) <= ct.MAX_TEXT_CHARS
-    assert text.endswith("… CC Risk")
+    assert text.endswith("act. CC Risk")          # the action survives the shortening
+    assert "ACT NOW SPCX" in text
+
+
+def test_a_trigger_with_no_spaces_keeps_the_action_and_the_number(paths):
+    """A 300-character token used to collapse the text to 'ACT NOW SPCX… CC Risk' — no trigger, no action."""
+    contact, config, state = paths
+    send, calls = recorder()
+    ev = event(trigger="x" * 300, action="EXT limit sell 130.90")
+    ct.send_critical_text(ev, sender=send, contact_path=contact, config_path=config, state_path=state, now=NOW)
+    text = calls[0]["body"]
+    assert len(text) <= ct.MAX_TEXT_CHARS
+    assert "Suggest EXT limit sell 130.90" in text
+    assert "ACT NOW SPCX" in text
+    assert text.endswith("CC Risk")
 
 
 def test_the_same_event_never_texts_twice(paths):
@@ -137,15 +151,18 @@ def test_a_missing_allowlist_file_texts_nothing(tmp_path):
     assert result["sent"] is False and calls == []
 
 
-def test_the_hourly_cap_holds(paths):
+def test_the_hourly_cap_counts_texts_not_events(paths):
+    """One event fans out to every verified Fi line, so a cap of 2 is one event on two lines, not two events."""
     contact, config, state = paths
     send, calls = recorder()
-    for i in range(2):  # cap is 2
-        ct.send_critical_text(event(event_id=f"e{i}"), sender=send, contact_path=contact, config_path=config,
-                              state_path=state, now=NOW + timedelta(minutes=i))
-    blocked = ct.send_critical_text(event(event_id="e9"), sender=send, contact_path=contact, config_path=config,
+    first = ct.send_critical_text(event(event_id="e0"), sender=send, contact_path=contact, config_path=config,
+                                  state_path=state, now=NOW)
+    assert first["sent"] is True and len(calls) == 2          # two lines, two texts
+    blocked = ct.send_critical_text(event(event_id="e1"), sender=send, contact_path=contact, config_path=config,
                                     state_path=state, now=NOW + timedelta(minutes=10))
     assert blocked["sent"] is False and "cap" in blocked["reason"]
+    assert "2/2 texts" in blocked["reason"]
+    assert len(calls) == 2                                    # nothing left the building after the cap
 
 
 def test_one_failing_line_does_not_silence_the_other(paths):
