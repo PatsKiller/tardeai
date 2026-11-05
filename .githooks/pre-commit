@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Trade AI tracked pre-commit: secrets, then existing hygiene if present.
+# Trade AI tracked pre-commit: secrets, integrity rails, then existing hygiene if present.
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 python3 "$ROOT/scripts/check_no_secrets.py"
+# PII on staged added lines and line-ending churn in the staged diff (PLAN_COLLISION_AUTOREMEDIATION
+# items B and C: both used to surface only on hosted CI, minutes and ~40 minutes after the push).
+bash "$ROOT/scripts/precommit_pii_eol.sh" || exit 1
 bash "$ROOT/scripts/agent_claim_precommit.sh" || exit 1   # claim board: AGENTS 20.0.0 §28.3
 if [[ -x "$ROOT/scripts/githooks/pre-commit" ]]; then
   exec "$ROOT/scripts/githooks/pre-commit"
