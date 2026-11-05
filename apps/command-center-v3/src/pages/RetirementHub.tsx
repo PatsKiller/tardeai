@@ -139,7 +139,7 @@ export default function RetirementHub({ onDrill }: Props) {
                     page audit). The producer sends "" for an unset ceiling, not null, so both shapes mean "not set". */}
                 <Metric label="Bracket ceiling" value={golden.bracket_ceiling}
                   note={golden.bracket_ceiling === '' || golden.bracket_ceiling == null
-                    ? 'No bracket ceiling is set for this window, so a conversion has no upper limit to work to — set one in the plan or the conversion is unbounded.'
+                    ? 'No bracket ceiling has been recorded for this window, so the conversion shown here has not been checked against one. Set a ceiling in the plan to enable that check.'
                     : undefined} />
               </div>
             ) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No window configured.</div>}
