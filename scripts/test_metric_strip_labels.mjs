@@ -7,17 +7,26 @@
 // not reporting. #825 shipped with tsc + a TypeScript unit test, neither of
 // which looks at the rendered label.
 //
-// LIMITATION, stated rather than glossed: this app has no jsdom/render harness,
-// so this is a SOURCE-SHAPE assertion, not proof of what renders. It catches a
+// Most of this file is a SOURCE-SHAPE assertion: it matches code, not rendering, and catches a
 // regression of this exact defect and nothing more.
+//
+// The TODAY stale label is the exception, and it is the one that matters most: a source assertion
+// cannot tell "prints the condition" from "contains the string that would print it".
+// `{Boolean(0) && t.staleLabel || 'STALE'}` keeps the substring and puts a bare STALE on the face
+// while this source guard, both runtime suites and tsc stay green (cx-openai-5, PR 2499 BLOCK,
+// 2026-11-05). That one property is therefore proved by rendering the real component and reading
+// the tile's visible label.
 //
 // Comments are stripped before matching: a substring search cannot otherwise
 // tell code from a comment quoting it (AGENTS.md 7, detector shape).
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
+const appDir = path.join(here, '..', 'apps', 'command-center-v3')
+const tscFile = path.join(appDir, 'src', 'components', 'MetricStrip.tsx')
 const target = path.join(here, '..', 'apps', 'command-center-v3', 'src', 'components', 'MetricStrip.tsx')
 
 const raw = fs.readFileSync(target, 'utf8')
@@ -25,7 +34,9 @@ const code = raw
   .replace(/\/\*[\s\S]*?\*\//g, '')   // block comments
   .replace(/^\s*\/\/.*$/gm, '')       // whole-line // comments
 const todayStateLib = fs.readFileSync(
-  path.join(here, '..', 'apps', 'command-center-v3', 'src', 'lib', 'todayPnlState.ts'), 'utf8')
+  path.join(appDir, 'src', 'lib', 'todayPnlState.ts'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')   // block comments: a quoted label in a comment must not satisfy a check
+  .replace(/^\s*\/\/.*$/gm, '')
 
 let pass = 0, fail = 0
 const check = (name, cond) => {
@@ -220,8 +231,10 @@ check('TODAY tone, colour and chip come from the P&L/census helper',
   /tone: todayState\.tone/.test(todayBlock) &&
   /color: todayState\.tone === 'warn'/.test(todayBlock) &&
   /staleLabel: todayState\.label/.test(todayBlock))
-check('the renderer prints the tile condition name, never a bare STALE',
-  code.includes("(t as any).staleLabel || 'STALE'"))
+// The renderer's label property is asserted by RENDERING it — see the "what the tile face says"
+// section at the end of this file. It used to be
+//   code.includes("(t as any).staleLabel || 'STALE'")
+// which is exactly the assertion a comment, or a dead branch, can satisfy.
 check('the helper keeps INCOMPLETE COVERAGE and AGED SOURCE as distinct names',
   todayStateLib.includes("'INCOMPLETE COVERAGE'") &&
   todayStateLib.includes("'AGED SOURCE'"))
@@ -291,4 +304,112 @@ check('the short price stamp keeps quote coverage on the face',
 check('a date-only clock on a tile face is shown as its date', code.includes('dateOnlyPart(asOfRaw) ??'))
 
 console.log(`\nmetric_strip_header_truth: ${pass} passed, ${fail} failed`)
+if (fail) process.exit(1)
+
+// ── what the tile FACE says ───────────────────────────────────────────────────
+//
+// Renders the real MetricStrip (real helpers, only the API receipts injected) and reads the TODAY
+// tile's visible stale span. The property: the operator sees the CONDITION (ECONOMIC UNKNOWN,
+// INCOMPLETE COVERAGE, AGED SOURCE), never a bare STALE. It fails on the executable mutant
+// `{Boolean(0) && t.staleLabel || 'STALE'}` that every source and unit guard passes.
+const requireApp = createRequire(path.join(appDir, 'package.json'))
+const ts = requireApp('typescript')
+const React = requireApp('react')
+const { renderToStaticMarkup } = requireApp('react-dom/server')
+const { MemoryRouter } = requireApp('react-router-dom')
+
+// The SSR renderer emits one `useLayoutEffect does nothing on the server` warning per component, and
+// each stack line embeds a multi-megabyte data: URL. Drop exactly that; anything else still prints.
+const realConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  realConsoleError(...args)
+}
+
+globalThis.window = globalThis.window ?? {
+  matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }),
+  innerWidth: 1400, scrollTo() {}, location: { search: '' }, localStorage: { getItem: () => null, setItem() {} },
+}
+
+const memo = new Map()
+function compile(file) {
+  if (memo.has(file)) return memo.get(file)
+  let source = fs.readFileSync(file, 'utf8')
+    .replace(/^\s*import\s+['"][^'"]+\.(css|svg|png)['"];?\s*$/gm, '')
+    .replace(/import \{([^}]*)\} from (['"][^'"]+['"])/g, (whole, names, spec) => {
+      const list = names.split(',').map(s => s.trim()).filter(Boolean)
+      const stubs = []
+      if (list.includes('useApi')) stubs.push('const useApi = (...a) => globalThis.__apiFixture(String(a[0] ?? ""))')
+      const kept = list.filter(n => n !== 'useApi')
+      const imp = kept.length ? `import { ${kept.join(', ')} } from ${spec}` : ''
+      return [imp, ...stubs].filter(Boolean).join('\n')
+    })
+  const jsx = file.endsWith('.tsx') ? ts.JsxEmit.ReactJSX : ts.JsxEmit.None
+  let js = ts.transpileModule(source, {
+    compilerOptions: { jsx, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, removeComments: true },
+  }).outputText
+  js = js.replace(/from ["']([^"']+)["']/g, (whole, spec) => {
+    if (!spec.startsWith('.')) return `from ${JSON.stringify(pathToFileURL(requireApp.resolve(spec)).href)}`
+    let next = path.resolve(path.dirname(file), spec)
+    if (!fs.existsSync(next)) next = ['.ts', '.tsx', '.js'].map(s => next + s).find(p => fs.existsSync(p))
+    if (!next) throw new Error(`Missing render dependency ${spec} from ${file}`)
+    if (fs.statSync(next).isDirectory()) {
+      next = ['.ts', '.tsx', '.js'].map(s => path.join(next, 'index' + s)).find(p => fs.existsSync(p))
+      if (!next) throw new Error(`Missing render dependency index for ${spec}`)
+    }
+    return `from ${JSON.stringify(compile(next))}`
+  })
+  const url = `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`
+  memo.set(file, url)
+  return url
+}
+
+const session = (todayPnl) => ({ today_pnl: todayPnl })
+globalThis.__apiFixture = (url) => ({
+  data: url.includes('/api/v2/overview') ? globalThis.__overview ?? null : null,
+  loading: false, error: null, stale: false, refetch: () => {},
+})
+
+/** The visible stale text on the named tile's face — or null when that tile shows no stale mark.
+ *  Searches the full strip's tiles only: the compact phone strip renders a bare glyph by design, and
+ *  it is not the face this property is about. */
+function faceStaleLabel(markup, label) {
+  const chunk = markup.split('metric-strip-tile').slice(1)
+    .find(c => new RegExp(`class="ms-label"[^>]*>\\s*${label}\\b`).test(c))
+  if (!chunk) return null
+  const m = chunk.match(/data-surface-stale(?:="true")?[^>]*>([^<]*)</)
+  return m ? m[1].replace(/\s+/g, ' ').trim() : null
+}
+
+const { default: MetricStrip } = await import(compile(tscFile))
+const render = (todayPnl) => {
+  globalThis.__overview = session(todayPnl)
+  const markup = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(MetricStrip, { onDrill: () => {} })))
+  return { markup, today: faceStaleLabel(markup, 'TODAY') }
+}
+
+const faceCases = [
+  ['economic unknown', { status: 'UNKNOWN', complete: false }, 'ECONOMIC UNKNOWN'],
+  ['incomplete coverage', { status: 'KNOWN', complete: true, session_date: '2026-11-04',
+    market_session: { status: 'KNOWN', latest_open_session: '2026-11-04' }, missing_accounts: ['Schwab'] },
+    'INCOMPLETE COVERAGE'],
+  ['aged source', { status: 'KNOWN', complete: true, session_date: '2026-10-30',
+    market_session: { status: 'KNOWN', latest_open_session: '2026-11-04' } }, 'AGED SOURCE'],
+]
+for (const [name, pnl, expected] of faceCases) {
+  const { markup, today } = render(pnl)
+  check(`TODAY face states "${expected}" for ${name}`, today != null && today.includes(expected),
+    `face rendered ${JSON.stringify(today)}`)
+  check(`TODAY face is not a bare STALE for ${name}`,
+    today != null && !/^⚠? ?STALE$/.test(today), `face rendered ${JSON.stringify(today)}`)
+  // The control: the mark belongs to the tile that has the condition, not to every tile.
+  check(`the PORTFOLIO tile is not marked by a ${name} P&L condition`,
+    faceStaleLabel(markup, 'PORTFOLIO')?.includes(expected) !== true, 'the condition leaked onto another tile')
+}
+const healthy = render({ status: 'KNOWN', complete: true, session_date: '2026-11-04',
+  market_session: { status: 'KNOWN', latest_open_session: '2026-11-04' } })
+check('a fully known TODAY tile carries no stale mark at all', healthy.today == null,
+  `face rendered ${JSON.stringify(healthy.today)}`)
+
+console.log(`\nmetric_strip_face: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
