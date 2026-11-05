@@ -8,6 +8,7 @@ fail-soft opportunity source and an in-memory wake store.
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -93,7 +94,9 @@ def test_build_queue_dedupes_same_key():
         {"surfaced_by": "advisory", "symbol": "NVDA", "directive_label": "ADD NVDA", "verdict": "ADD", "surfaced_at": "2026-08-13T00:00:00Z"},
         {"surfaced_by": "advisory", "symbol": "NVDA", "directive_label": "ADD NVDA", "verdict": "ADD", "surfaced_at": "2026-08-13T01:00:00Z"},
     ]
-    q = oq.build_opportunity_queue(rows)
+    # The freshness gate (Board row 33 piece E) reads the observation clock; pin it to the fixture day
+    # so this test still measures DEDUPE, not age.
+    q = oq.build_opportunity_queue(rows, now=datetime(2026, 8, 13, 2, tzinfo=timezone.utc))
     assert q["count"] == 1
 
 
@@ -140,7 +143,7 @@ def test_fetch_desk_suggestions_shape():
 
     rows = oq.fetch_desk_suggestions(fake_exec)
     assert len(rows) >= 2
-    q = oq.build_opportunity_queue(rows)
+    q = oq.build_opportunity_queue(rows, now=datetime(2026, 8, 13, 2, tzinfo=timezone.utc))
     assert q["count"] == 2
     assert q["by_source"]["advisory"] == 1
     assert q["by_source"]["rotation"] == 1
