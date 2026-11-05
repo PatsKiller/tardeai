@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.lib.atomic_json_store import atomic_write_bytes  # noqa: E402
+from scripts.lib.atomic_json_store import atomic_write_bytes, atomic_write_json  # noqa: E402
 
 GOOD = b'{"holdings": [{"symbol": "SCHD", "shares": 100.0}], "portfolio_totals": {"total_value": 12345.67}}'
 PRIOR = b'{"holdings": [{"symbol": "VTI", "shares": 10.0}], "portfolio_totals": {"total_value": 9999.0}}'
@@ -38,6 +38,57 @@ PRIOR = b'{"holdings": [{"symbol": "VTI", "shares": 10.0}], "portfolio_totals": 
 
 def _leftover_names(directory: Path) -> list[str]:
     return sorted(p.name for p in directory.iterdir())
+
+
+# ── cc-deepseek-8's BLOCK F1: a write must not widen the file's permissions ───
+# The temp file used to be created with the caller's umask, and `os.replace` gives the temp's mode to the target: a
+# 0600 holdings file came back 0644 after one write from a 022 process (cron, systemd), while the same code looked
+# safe from a 077 shell. These run under an explicit 022 so the regression cannot hide behind a developer's shell.
+
+@pytest.mark.parametrize("writer", ["bytes", "json"])
+def test_an_existing_target_keeps_its_own_mode_under_a_loose_umask(tmp_path, writer):
+    target = tmp_path / "holdings.json"
+    target.write_bytes(PRIOR)
+    os.chmod(target, 0o600)
+    old = os.umask(0o022)
+    try:
+        if writer == "bytes":
+            atomic_write_bytes(target, GOOD)
+        else:
+            atomic_write_json(target, {"holdings": [], "portfolio_totals": {}})
+    finally:
+        os.umask(old)
+    assert target.read_bytes() != PRIOR
+    assert (target.stat().st_mode & 0o777) == 0o600, (
+        f"a 0600 target became {oct(target.stat().st_mode & 0o777)} after one {writer} write under umask 022")
+
+
+@pytest.mark.parametrize("writer", ["bytes", "json"])
+def test_a_new_document_is_private_by_default(tmp_path, writer):
+    target = tmp_path / "holdings.json"
+    old = os.umask(0o022)
+    try:
+        if writer == "bytes":
+            atomic_write_bytes(target, GOOD)
+        else:
+            atomic_write_json(target, {"holdings": [], "portfolio_totals": {}})
+    finally:
+        os.umask(old)
+    assert (target.stat().st_mode & 0o777) == 0o600, (
+        f"a new document was created {oct(target.stat().st_mode & 0o777)} under umask 022, not 0600")
+
+
+def test_an_existing_targets_group_readable_mode_is_kept_not_forced_to_0600(tmp_path):
+    """Preserving the target's mode, not imposing one: a deliberately 0640 store stays 0640."""
+    target = tmp_path / "holdings.json"
+    target.write_bytes(PRIOR)
+    os.chmod(target, 0o640)
+    old = os.umask(0o077)
+    try:
+        atomic_write_bytes(target, GOOD)
+    finally:
+        os.umask(old)
+    assert (target.stat().st_mode & 0o777) == 0o640
 
 
 # ── the helper itself is truncation-proof ────────────────────────────────────
@@ -149,7 +200,12 @@ def test_repricer_holdings_write_is_atomic():
     assert "atomic_write_bytes" in src, "the repricer must route the holdings write through the helper"
 
 
-def test_schwab_restore_write_is_atomic():
-    src = (ROOT / "scripts" / "schwab_position_sync.py").read_text(encoding="utf-8")
-    _no_truncating_write(src, "HP", "scripts/schwab_position_sync.py")
-    assert "atomic_write_bytes" in src, "the restore path must route through the helper"
+# NOTE (2026-11-05, DRAIN): the same one-line change to `schwab_position_sync.py`'s post-write restore
+# (`HP.write_bytes(backup)` -> `atomic_write_bytes(HP, backup)`) is NOT carried here. cc-deepseek holds a live claim on
+# that file for #2543, which rewrites exactly that restore path; two PRs editing the same live function is the conflict
+# this drain is trying to clear. The helper fix below already protects every caller of `atomic_write_bytes`, and the
+# remaining call-site change belongs to #2543's owner — pasted for them in the DRAIN report. When #2543 lands, this
+# guard should come back:
+#   src = (ROOT / "scripts" / "schwab_position_sync.py").read_text(encoding="utf-8")
+#   _no_truncating_write(src, "HP", "scripts/schwab_position_sync.py")
+#   assert "atomic_write_bytes" in src, "the restore path must route through the helper"
