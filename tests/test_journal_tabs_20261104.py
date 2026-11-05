@@ -1,36 +1,34 @@
-"""FQ-041: at phone width the journal tab row wraps instead of scrolling its last tab off-screen.
+"""JOURNAL_TABS_20261104: source contracts; actual SSR/browser checks live in the Node view test.
 
-Registered as the CI gate's file so the shard runner (pytest) executes it; a `.mjs` file cannot be collected.
-``apps/command-center-v3/src/lib/journalTabs.view.test.mjs`` mirrors it for a node run.
-
-Hermetic: reads the stylesheet and the page source. No browser, no network, no data.
-
-ANCHOR: JOURNAL_TABS_20261104
+Browser geometry is run explicitly with `node src/lib/journalTabs.view.test.mjs --browser`.
+These cheap shard checks make no claim about browser layout.
 """
+import ast
+import json
 import re
 from pathlib import Path
 
-APP = Path(__file__).resolve().parents[1] / "apps/command-center-v3/src"
-CSS = (APP / "index.css").read_text(encoding="utf-8")
-HUB = (APP / "pages/JournalHub.tsx").read_text(encoding="utf-8")
+ROOT = Path(__file__).resolve().parents[1]
+APP = ROOT / "apps/command-center-v3"
 
 
-def _phone_block() -> str:
-    match = re.search(r"@media[^{]*max-width:\s*4[0-9]{2}px[^{]*\{([\s\S]*?)\n\}", CSS)
-    assert match, "no phone-width media query found in index.css"
-    return match.group(1)
+def test_phone_rule_targets_the_actual_route_layout_owner():
+    css = (APP / "src/components/tradeinview/TradeInViewLayout.css").read_text(encoding="utf-8")
+    phone = re.search(r"@media\s*\(max-width:\s*420px\)\s*\{([\s\S]*?)\n\}", css)
+    assert phone
+    assert re.search(r"\.tradeinview-tabs\s*\{[^}]*flex-wrap:\s*wrap;[^}]*overflow-x:\s*visible;", phone[1])
+    assert "TradeInViewPage" in (APP / "src/App.tsx").read_text(encoding="utf-8")
 
 
-def test_the_phone_rule_makes_the_tab_row_wrap():
-    block = _phone_block()
-    rule = re.search(r"\.hub-tabs\s*\{([\s\S]*?)\}", block)
-    assert rule, "the phone media query does not address .hub-tabs"
-    body = rule.group(1)
-    assert re.search(r"flex-wrap:\s*wrap", body), "phone .hub-tabs does not wrap"
-    assert re.search(r"overflow-x:\s*visible", body), "phone .hub-tabs still creates a horizontal scroller"
+def test_route_navigation_keeps_all_five_sections():
+    source = (APP / "src/lib/tradeInViewModel.ts").read_text(encoding="utf-8")
+    literal = source.split("export const TRADE_TABS =", 1)[1].split("] as const", 1)[0] + "]"
+    assert ast.literal_eval(literal.strip()) == [
+        ["journeys", "Journeys"], ["calendar", "Calendar"], ["replay", "Replay"],
+        ["history", "Holding history"], ["classic", "Journal (classic tabs)"],
+    ]
 
 
-def test_all_fifteen_tab_labels_are_still_rendered():
-    tabs = re.search(r"const TABS = \[([\s\S]*?)\] as const", HUB)
-    assert tabs, "TABS list not found — did the page change shape?"
-    assert tabs.group(1).count("'") / 2 == 15, "expected 15 journal tabs, labels changed"
+def test_real_render_check_is_in_the_frontend_build():
+    package = json.loads((APP / "package.json").read_text(encoding="utf-8"))
+    assert package["scripts"]["build"].count("node src/lib/journalTabs.view.test.mjs") == 1
