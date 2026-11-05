@@ -78,8 +78,8 @@ check('detail carries the process id for diagnosis', detail.includes('local_llm_
 check('detail keeps the raw key the reader no longer sees', detail.includes('agent_narrative'), detail)
 check('a row with no process id still yields a detail string', callDetailText(log(1, true, { process_id: '' })).length > 0)
 
-console.log(`\n${pass} passed, ${fail} failed`)
-if (fail) process.exit(1)
+// (the single pass/fail guard is at the end of this file — cc8's re-review, 16:24Z: an appended
+// block after the old guard could print [FAIL] and still exit 0)
 
 // --- cc-deepseek-8's F2/F3 on PR 2676 (driven on the live table) -------------------------
 eq('a control directive plus a prompt is request text, not a summary',
@@ -93,3 +93,6 @@ eq('a slash-led task key is not mistaken for a summary',
 check('a manual trigger says so', callPrimaryText(log(1, true, { trigger_mode: 'manual' })).includes('started by you'))
 check('an automated trigger says so', callPrimaryText(log(2, true)).includes('ran automatically'))
 check('an unknown trigger asserts nothing', callPrimaryText(log(3, true, { trigger_mode: 'retry' })).includes('trigger not recorded'))
+
+console.log(`\n${pass} passed, ${fail} failed`)
+if (fail) process.exit(1)
