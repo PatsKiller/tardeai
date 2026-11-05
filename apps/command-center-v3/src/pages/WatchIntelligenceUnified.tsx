@@ -121,21 +121,13 @@ function stateColor(s?: string) {
   return BB.red
 }
 
-/**
- * FQ-076 (cx-openai-5 F1 at 35c32e7d0): absence of the three flat next-review fields is NOT evidence that nothing is
- * scheduled. A deferred or blocked decision can leave all three null while the producer still holds evidence elsewhere
- * (a policy window, a defer reason) — describing that as "not scheduled" turns missing projection data into a claim
- * about the schedule. Only an explicit NOT_SCHEDULED reason earns the sentence; anything else says the value was not
- * provided, which is true and claims nothing.
+/** The generic line renders the producer's flat projection; individual reviewer states remain in their own boxes.
+ * A CIO NOT_SCHEDULED can coexist with Maria QUEUED or deferred, so it is not a card-wide scheduling observation.
+ * Missing flat fields stay explicitly unavailable; policy windows are never promoted into promised execution times.
  */
 function nextReviewLine(c: Card): string {
   const flat = (c as any).next_review_at || (c as any).next_review_condition || c.next_review_time
-  if (flat) return String(flat)
-  const reason = String(
-    (c as any).next_review_reason || (c as any).review_reason_code || (c as any).cio_review?.reason_code || '',
-  ).trim().toUpperCase()
-  if (reason === 'NOT_SCHEDULED') return 'not scheduled — no review time has been set for this name'
-  return 'not provided — the producer has not reported a review time for this name'
+  return flat ? String(flat) : 'not provided — the producer has not reported a review time for this name'
 }
 
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {

@@ -72,7 +72,7 @@ if (typeof globalThis.matchMedia !== 'function') {
 const { default: Unified } = await import(compile(join(app, 'src/pages/WatchIntelligenceUnified.tsx')))
 
 // One card, and the three next-review fields are all absent — the state the operator sees for a name
-// nobody has scheduled a review for. That is the case the sentence exists to explain.
+// whose generic projection is absent. Individual NOT_SCHEDULED reasons do not establish a card-wide negative.
 const card = {
   symbol: 'BBB', company: 'Fixture Watch Corp', street_rating: 'BUY', trade_ai_state: 'READY',
   quote_freshness: 'AFTER_HOURS_CURRENT', review_freshness: 'STALE',
@@ -141,8 +141,8 @@ ok(JSON.stringify(typedUnavailable) === JSON.stringify([...NAMED].sort()),
   `the page marks [${typedUnavailable.join(', ')}] as typed-unavailable, but the sentence names four: catalyst and earnings windows, relative-strength band and valuation band`)
 
 // 3. an unknown next-review time renders the sentence, never a bare dash.
-ok(text.includes('not scheduled — no review time has been set for this name'),
-  'an absent next_review_at did not render its explanation')
+ok(text.includes('not provided — the producer has not reported a review time for this name'),
+  'absent flat fields must stay neutral even when individual reviewers are NOT_SCHEDULED')
 ok(!/Next review: *—/.test(text),
   'the next-review line fell back to a bare dash instead of saying why')
 
@@ -151,6 +151,41 @@ ok(deferredText.includes('not provided — the producer has not reported a revie
   'a card with no NOT_SCHEDULED reason did not render the neutral not-provided line')
 ok(!deferredText.includes('not scheduled — no review time has been set for this name'),
   'missing projection data was converted into the claim that nothing is scheduled')
+
+
+// F1 residual (cx-openai-2/cx-openai-5 at 46542b1c): _compose_card keeps reviewer display evidence while
+// its decision projection may leave all flat review fields null. These fields mirror enrich_review_display's ABI;
+// the author-side controls separately regenerate the complete cards with the actual Python formatter/composer.
+const nextAt = '2026-11-06T14:00:00Z'
+const scheduledMaria = { status: 'NOT_RUN', reason_code: 'SCHEDULED', display: {
+  label: 'MARIA REVIEW: SCHEDULED', reason: 'SCHEDULED', next_review: nextAt,
+  next_policy_window: nextAt, next_execution_at: nextAt, execution_status: 'QUEUED',
+} }
+const deferredMaria = { status: 'NOT_RUN', reason_code: 'COST_DEFERRED', display: {
+  label: 'MARIA REVIEW: DEFERRED', reason: 'COST_DEFERRED', next_policy_window: nextAt,
+} }
+const nextReviewCases = [
+  { name: 'CIO default negative with executable Maria', value: { ...card, maria_review: scheduledMaria },
+    line: 'not provided — the producer has not reported a review time for this name', mariaLabel: 'MARIA REVIEW: SCHEDULED' },
+  { name: 'CIO default negative with deferred Maria', value: { ...card, maria_review: deferredMaria },
+    line: 'not provided — the producer has not reported a review time for this name', mariaLabel: 'MARIA REVIEW: DEFERRED' },
+  { name: 'explicit flat time', value: { ...card, maria_review: scheduledMaria, next_review_at: nextAt }, line: nextAt },
+  { name: 'explicit flat condition', value: { ...card, next_review_condition: 'After new earnings evidence' },
+    line: 'After new earnings evidence' },
+  { name: 'legacy flat time', value: { ...card, next_review_time: nextAt }, line: nextAt },
+  { name: 'producer-projected generic negative', value: { ...card,
+      next_review_condition: 'not scheduled — no review time has been set for this name' },
+    line: 'not scheduled — no review time has been set for this name' },
+]
+for (const test of nextReviewCases) {
+  const value = test.value
+  globalThis.__watchlistFixture = { data: { cards: [value], items: [{ card: value }], summary: {},
+    views: { top_ideas: {} }, projections: {} }, loading: false, error: null }
+  const rendered = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Unified)))
+  const content = rendered.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  ok(content.includes('Next review: ' + test.line), `${test.name}: wrong generic next-review line`)
+  if (test.mariaLabel) ok(content.includes(test.mariaLabel), `${test.name}: native reviewer evidence disappeared`)
+}
 
 // 4. the retirement is enforced, not just stated: the live surface is Unified, not the shadow board.
 function sourceFiles(dir) {
@@ -173,4 +208,4 @@ if (failures.length) {
   console.error('rendered text: ' + text.slice(0, 900))
   process.exit(1)
 }
-console.log('FQ-076 ok: the rendered page explains its four disabled filters and an unscheduled next review')
+console.log('FQ-076 ok: disabled filters and generic next-review evidence render honestly')

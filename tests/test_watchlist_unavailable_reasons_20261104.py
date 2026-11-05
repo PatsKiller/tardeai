@@ -10,14 +10,15 @@ So the render runs where the packages are — the frontend ``build`` chain in ``
 gate fails, and the page loses its proof. That is the pattern #2611 landed for the same reason.
 
 What the render asserts (``apps/command-center-v3/src/lib/watchlistUnavailableReasons.view.test.mjs``): the four-filter
-reason and the four named controls on the RENDERED page, and ``Next review: not scheduled — no review time has been set
-for this name`` for an absent ``next_review_at``. It is RED under two mutations of the component (reason span removed;
-fallback restored to a bare dash) and GREEN on the commit.
+reason and four named controls on the actual page. Missing generic next-review fields say the producer has not provided
+a review time, even when CIO defaults to NOT_SCHEDULED while Maria is queued or deferred. Explicit flat times,
+conditions and a producer-projected generic negative are preserved. Restoring the CIO-only inference is RED.
 
 Hermetic: node, the committed component and its packages, a synthetic fixture. No browser, no network, no API, no data.
 
 ANCHOR: WATCHLIST_UNAVAILABLE_REASONS_20261104
 """
+
 import json
 from pathlib import Path
 
