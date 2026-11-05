@@ -178,6 +178,35 @@ def test_the_default_telegram_sender_goes_through_the_communications_chokepoint(
     assert seen["priority"] == "P1", "an actionable Critical alert is a P1 notification, never an ordinary held message"
     assert seen["message_class"] == "operator_alert"
     assert seen["producer"] == "critical_channels"
+    assert seen["dedupe_minutes"] == 0, (
+        "the router's ordinary default window would report a NEW actionable recurrence as DEDUPED and never reach "
+        "the operator; the producer keeps its own ledger, so the router's dedupe must be off"
+    )
+
+
+def test_a_repeated_critical_body_still_reaches_the_operator_through_the_real_router():
+    """cx-openai D52 triage on #2680, executed against the real router rather than a stub.
+
+    Same body twice inside the router's default window: with the default (no `dedupe_minutes`) the second send is
+    DEDUPED and never reaches the transport; with `dedupe_minutes=0` — what the Critical sender now passes — both
+    route to delivery, because a recurrence of a live Critical condition is actionable.
+    """
+    from scripts import telegram_alert_router as router
+
+    router._intent_sent.clear()
+    body = "CRITICAL — synthetic: the disk lane stopped reporting"
+    default_route = router.route_intent(body, "P1", producer="critical_channels")
+    assert default_route["deliver"] is True
+    router._intent_sent[default_route["dedupe_key"]] = __import__("time").time()
+    again_default = router.route_intent(body, "P1", producer="critical_channels")
+    assert again_default["decision"] == "DEDUPED" and again_default["deliver"] is False, again_default
+
+    router._intent_sent.clear()
+    first = router.route_intent(body, "P1", producer="critical_channels", dedupe_minutes=0)
+    assert first["deliver"] is True
+    router._intent_sent[first["dedupe_key"]] = __import__("time").time()
+    again_critical = router.route_intent(body, "P1", producer="critical_channels", dedupe_minutes=0)
+    assert again_critical["decision"] == "DELIVER" and again_critical["deliver"] is True, again_critical
 
 
 def test_the_default_telegram_sender_refuses_without_a_token(monkeypatch):

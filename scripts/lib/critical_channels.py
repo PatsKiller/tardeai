@@ -153,6 +153,12 @@ def _default_telegram_sender(chat_id: str, text: str) -> str | None:
         message_class="operator_alert",
         priority="P1",
         producer="critical_channels",
+        # cx-openai D52 triage on #2680: without this the router applies its ordinary default window
+        # (DEFAULT_INTENT_DEDUPE_MINUTES), so a NEW actionable recurrence of the same Critical condition inside that
+        # window is reported DEDUPED and never reaches the operator. `critical_channels` keeps its own delivery record
+        # and decides repeats itself; `dedupe_minutes=0` is the router's documented "the producer has its own ledger"
+        # setting, so the router cannot silently swallow an escalation.
+        dedupe_minutes=0,
     )
     status = str(outcome.get("status") or "").upper()
     ids = [str(mid) for mid in (outcome.get("message_ids") or []) if str(mid).strip()]
