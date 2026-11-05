@@ -101,11 +101,14 @@ def test_dry_run_covers_every_enabled_class_with_fakes(monkeypatch, tmp_path):
     assert "/v3/system/schwab-reauth" in b4["action"]
 
 
-def test_dry_run_fails_loudly_when_a_class_is_disabled():
+def test_dry_run_reports_a_disabled_class_without_failing_the_run():
+    """cc-deepseek F6: a class the operator turned OFF is a chosen configuration. A red light that always fires for it
+    is how real failures get ignored, so the row says "disabled by configuration" and the run stays ok."""
     report = P.dry_run(policy={"classes": {"B5_trading_halt": {"enabled": False}}},
                        contact={"schema": "OperatorContact@v1"})
-    assert report["ok"] is False
-    assert report["classes"][0]["reason"] == "class_disabled"
+    assert report["ok"] is True
+    assert report["classes"][0]["reason"] == "class_disabled_by_configuration"
+    assert report["classes"][0]["disabled"] is True
 
 
 ALLOWLIST = ROOT / "config" / "critical_text_classes.json"

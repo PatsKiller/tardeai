@@ -183,7 +183,8 @@ def test_a_missing_channel_is_reported_and_the_others_still_go(monkeypatch):
     doc = contact()
     doc.pop("critical_email_to")
     plan = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", doc, policy(B2_stop_cancelled_expired_rejected=True))
-    assert plan["channels"] == ["telegram_critical", "email", "text_gateway"]  # the plan names the tier's channels
+    # cc-deepseek F7: the list a reviewer reads first is the configured-and-permitted one, never a channel with no target
+    assert plan["channels"] == ["text_gateway"], plan["channels"]
     assert set(plan["missing"]) == {"critical_chat_not_configured", "critical_email_not_configured"}
     assert plan["email_configured"] is False
 
@@ -195,17 +196,29 @@ def test_the_plan_refuses_a_non_critical_class_before_it_names_a_channel(monkeyp
 
 
 def test_the_plan_says_which_channels_it_will_actually_attempt(monkeypatch):
-    """cc-deepseek-8 F4: `channels` is the tier's intent; `attempted` is what a dry run can trust."""
+    """cc-deepseek F7: `channels` is what a dry run and a reviewer trust, so it is the attempted list itself."""
     monkeypatch.delenv(cd.CRITICAL_CHAT_ENV, raising=False)
     doc = contact()
     doc.pop("critical_email_to")
     plan = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", doc, policy(B2_stop_cancelled_expired_rejected=True))
     assert plan["attempted"] == ["text_gateway"], plan["attempted"]
-    assert plan["channels"] == ["telegram_critical", "email", "text_gateway"], "the intent list is unchanged"
+    assert plan["channels"] == plan["attempted"], "a channel it will not attempt must not be listed"
 
     monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
     full = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", contact(), policy(B2_stop_cancelled_expired_rejected=True))
     assert full["attempted"] == ["telegram_critical", "email", "text_gateway"], full["attempted"]
+    assert full["channels"] == full["attempted"]
 
     off = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", contact(), policy(B2_stop_cancelled_expired_rejected=False))
     assert "text_gateway" not in off["attempted"], "a class the allowlist does not enable is not attempted"
+
+
+def test_a_malformed_gateway_is_reported_against_the_text_channel_only(monkeypatch):
+    """codex P2: one bad gateway line must not raise out of the plan and take the valid email and chat with it."""
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    doc = contact(critical_sms_email_gateways=[{"address": "555-0100"}])
+    plan = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", doc,
+                           policy(B2_stop_cancelled_expired_rejected=True))
+    assert plan["gateway_error"] == "text_gateway_not_an_address"
+    assert plan["channels"] == ["telegram_critical", "email"], plan["channels"]
+    assert plan["gateway_count"] == 0

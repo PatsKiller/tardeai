@@ -153,8 +153,10 @@ def dry_run(*, policy: Mapping[str, Any], contact: Mapping[str, Any], channels: 
     ok = True
     for alert_class, entry in sorted((policy.get("classes") or {}).items()):
         if not isinstance(entry, dict) or entry.get("enabled") is not True:
-            out.append({"alert_class": alert_class, "ok": False, "reason": "class_disabled"})
-            ok = False
+            # cc-deepseek F6: a class the operator turned OFF is a chosen configuration, not a failed run. Reporting
+            # it as a red light every time trains the reader to ignore the dry run; the row says what it is instead.
+            out.append({"alert_class": alert_class, "ok": True, "disabled": True,
+                        "reason": "class_disabled_by_configuration"})
             continue
         finding = {"symbol": "ZZTEST", "account": "Test", "trigger": f"dry run for {alert_class}",
                    "suggested_action": "No action — dry run", "evidence": {"dry_run": True}}

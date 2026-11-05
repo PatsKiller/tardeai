@@ -68,11 +68,33 @@ def test_one_event_reaches_all_three_channels(monkeypatch):
     assert len(calls["email"]) == 1 and len(calls["telegram"]) == 1 and len(calls["text"]) == 1
 
 
-def test_the_email_subject_starts_with_the_prefix_and_the_first_line_is_the_what(monkeypatch):
+def test_the_email_subject_starts_with_the_prefix_and_the_body_carries_the_what(monkeypatch):
     _delivery, calls = run(monkeypatch)
     to, subject, body = calls["email"][0]
     assert subject.startswith("CRITICAL —") and subject.endswith("SPCX stop rejected by the broker")
     assert body.startswith("SPCX stop rejected by the broker")
+
+
+def test_the_event_action_and_link_reach_both_the_email_and_the_telegram_text(monkeypatch):
+    """codex P1: `what` is only the trigger. B4 puts its re-authorisation URL exclusively in action/link, so both
+    fallback bodies must carry the action and the link or the operator cannot act from the message."""
+    url = "https://cc-host.example.invalid/v3/system/schwab-reauth"
+    event = dict(EVENT, what="Schwab refresh token expires in 2 days",
+                 action=f"Schwab login expiring — renew it: {url}", link=url)
+    calls = {"email": [], "telegram": []}
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    delivery = cc.deliver(event, contact=contact(), policy=policy(),
+                          email_sender=lambda to, s, b: (calls["email"].append((to, s, b)), "smtp-ok")[1],
+                          telegram_sender=lambda c, t: (calls["telegram"].append(t), "tg-42")[1],
+                          text_sender=lambda e: {"sent": True})
+    assert all(r.status == "sent" for r in delivery.receipts), [r.as_dict() for r in delivery.receipts]
+    email_body = calls["email"][0][2]
+    telegram_text = calls["telegram"][0]
+    for body in (email_body, telegram_text):
+        assert "renew it" in body and url in body, body
+    # the trigger is stated once, not repeated by the subject prefix and again in the body
+    assert telegram_text.count("Schwab refresh token expires in 2 days") == 1, telegram_text
+    assert telegram_text.startswith("CRITICAL — "), telegram_text
 
 
 def test_a_failed_email_does_not_stop_telegram_or_the_text(monkeypatch):
@@ -81,7 +103,8 @@ def test_a_failed_email_does_not_stop_telegram_or_the_text(monkeypatch):
 
     delivery, calls = run(monkeypatch, email_sender=boom)
     by = {r.channel: r for r in delivery.receipts}
-    assert by["email"].status == "failed" and by["email"].reason == "RuntimeError"
+    # cc-deepseek F5: the exception's own safe reason, not its class name, is what the Home page shows.
+    assert by["email"].status == "failed" and by["email"].reason == "smtp refused"
     assert by["telegram_critical"].status == "sent"
     assert by["text_gateway"].status == "sent"
     assert delivery.delivered is True
@@ -152,6 +175,38 @@ def test_the_default_telegram_sender_refuses_without_a_token(monkeypatch):
     assert str(exc.value) == "telegram_token_not_configured"
 
 
+def _fake_transport(monkeypatch, result):
+    mod = type(sys)("telegram_transport")
+    mod.send_message = lambda **kwargs: result
+    monkeypatch.setitem(sys.modules, "telegram_transport", mod)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "token-fixture")
+
+
+def test_the_default_telegram_sender_reads_the_transports_top_level_message_id(monkeypatch):
+    """The real transport returns `message_id` at the top level, not under `result`; reading only `result` turned every
+    real success into the bare string "ok" (no id) and every hold into a false success."""
+    _fake_transport(monkeypatch, {"ok": True, "status_code": 200, "response": {"result": {"message_id": 77}},
+                                  "edited": False, "message_id": 77})
+    assert cc._default_telegram_sender("chat-fixture", "hello") == "77"
+
+
+def test_the_default_telegram_sender_refuses_a_hold_instead_of_returning_ok(monkeypatch):
+    _fake_transport(monkeypatch, {"ok": True, "status_code": 200, "response": {}, "edited": False,
+                                  "message_id": None, "suppressed": "duplicate"})
+    with pytest.raises(cc.ChannelSuppressed) as exc:
+        cc._default_telegram_sender("chat-fixture", "hello")
+    assert str(exc.value) == "telegram_suppressed:duplicate"
+
+
+def test_the_default_telegram_sender_refuses_an_ok_with_no_message_id(monkeypatch):
+    """ok is not a receipt. Without a message id there is no evidence anything was sent, so it is a failure."""
+    _fake_transport(monkeypatch, {"ok": True, "status_code": 200, "response": {}, "edited": False,
+                                  "message_id": None})
+    with pytest.raises(RuntimeError) as exc:
+        cc._default_telegram_sender("chat-fixture", "hello")
+    assert str(exc.value) == "telegram_message_id_missing"
+
+
 def test_the_default_email_sender_gives_the_recipient_to_the_adapter_that_takes_one(monkeypatch):
     """`alerting.send_email` has no recipient parameter; using it would put the address in the subject line."""
     seen = {}
@@ -195,6 +250,23 @@ def test_a_sender_that_returns_no_receipt_is_not_recorded_as_sent(monkeypatch):
     assert delivery.delivered is False, "an unconfirmed send must never publish the event as delivered"
 
 
+def test_a_held_or_deduplicated_telegram_message_is_not_a_delivery(monkeypatch):
+    """codex P1: the transport's hold shape is `ok=True, message_id=None, suppressed=...` — it sent nothing. The
+    truthy `ok` must not become a `sent` receipt, and DELIVERED must stay false when nothing else confirmed."""
+    hold = {"ok": True, "status_code": 200, "response": {}, "edited": False,
+            "message_id": None, "suppressed": "duplicate"}
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    delivery = cc.deliver(EVENT, contact=contact(), policy=policy(),
+                          email_sender=lambda *a: None,
+                          telegram_sender=lambda *a: dict(hold),
+                          text_sender=lambda e: {"sent": False, "reason": "capped"})
+    by = {r.channel: r for r in delivery.receipts}
+    assert by["telegram_critical"].status == "skipped", by["telegram_critical"].as_dict()
+    assert by["telegram_critical"].reason == "telegram_suppressed:duplicate", by["telegram_critical"].as_dict()
+    assert delivery.delivered is False, "a held message reached nobody and must never publish DELIVERED"
+    assert "message body" not in repr(delivery.as_dict())
+
+
 def test_a_truthy_receipt_is_still_a_delivery(monkeypatch):
     """The fix must not make every send look failed: the default adapters return a message id / accepted marker."""
     delivery, _calls = run(monkeypatch)
@@ -217,22 +289,65 @@ def test_a_text_result_without_an_explicit_sent_true_is_not_sent(monkeypatch):
     assert text.status == "skipped" and text.reason == "capped"
 
 
-def test_a_missing_text_allowlist_does_not_stop_email_and_telegram(monkeypatch):
-    """cc-deepseek-8 F3: the text config is the TEXT channel's; its absence must not silence the other two."""
+def test_a_missing_allowlist_refuses_the_event_instead_of_inventing_a_taxonomy(monkeypatch):
+    """cc-deepseek F3: `config/critical_text_classes.json` is BOTH the text setting and the CRITICAL taxonomy. When it
+    cannot be read the taxonomy is unknown, so no caller-supplied class may be promoted to CRITICAL; refuse with the
+    named reason (the honest reading of "a class absent from the file is refused everywhere")."""
     def missing(*_a, **_k):
         raise cd.CriticalDeliveryRefused("text_allowlist_missing")
 
     monkeypatch.setattr(cd, "load_text_allowlist", missing)
-    delivery, calls = run(monkeypatch)  # run() passes the fixture policy, so drop it to exercise the loader
-    assert delivery.delivered is True
-
     monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
-    calls = {"email": [], "telegram": [], "text": []}
-    delivery = cc.deliver(EVENT, contact=contact(),
-                          email_sender=lambda *a: (calls["email"].append(a), "smtp-ok")[1],
-                          telegram_sender=lambda *a: (calls["telegram"].append(a), "tg-42")[1],
+    sent = []
+    with pytest.raises(cd.CriticalDeliveryRefused) as exc:
+        cc.deliver({"alert_class": "digest", "what": "x"}, contact=contact(),
+                   email_sender=lambda *a: sent.append(a), telegram_sender=lambda *a: sent.append(a),
+                   text_sender=lambda e: sent.append(e))
+    assert str(exc.value) == "text_allowlist_missing"
+    assert sent == [], "nothing may be sent under a taxonomy the module could not read"
+    with pytest.raises(cd.CriticalDeliveryRefused):
+        cc.deliver(EVENT, contact=contact(), email_sender=lambda *a: sent.append(a),
+                   telegram_sender=lambda *a: sent.append(a), text_sender=lambda e: sent.append(e))
+    assert sent == []
+
+
+# ── configuration failures are each channel's own receipt (codex P2) ──────────────────────────────────────
+
+def test_an_unreadable_contact_file_does_not_stop_the_critical_chat(monkeypatch):
+    """The Critical chat is configured independently (`TRADEAI_CRITICAL_ALERT_CHAT_ID`) and needs no contact file.
+    A missing private contact file must fail email and text only."""
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+
+    def unreadable(*_a, **_k):
+        raise cd.CriticalDeliveryRefused("operator_contact_missing")
+
+    monkeypatch.setattr(cd, "load_operator_contact", unreadable)
+    calls = {"telegram": []}
+    delivery = cc.deliver(EVENT, policy=policy(),
+                          email_sender=lambda *a: "smtp-ok",
+                          telegram_sender=lambda c, t: (calls["telegram"].append(t), "tg-42")[1],
                           text_sender=lambda e: {"sent": True})
     by = {r.channel: r for r in delivery.receipts}
-    assert len(calls["email"]) == 1 and len(calls["telegram"]) == 1, "the other two channels were still attempted"
+    assert len(calls["telegram"]) == 1, "the independently configured chat was still attempted"
+    assert by["telegram_critical"].status == "sent"
+    assert by["email"].status == "failed" and by["email"].reason == "operator_contact_missing"
+    assert by["text_gateway"].status == "failed" and by["text_gateway"].reason == "operator_contact_missing"
+    assert delivery.delivered is True
+
+
+def test_a_malformed_gateway_address_does_not_stop_email_or_telegram(monkeypatch):
+    """One bad line in the contact file is the text channel's configuration error; the valid email and chat still go."""
+    monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
+    doc = contact()
+    doc["critical_sms_email_gateways"] = [{"address": "555-0100", "label": "bad line"}]
+    doc.pop("critical_sms_email_gateway", None)
+    calls = {"email": [], "telegram": []}
+    delivery = cc.deliver(EVENT, contact=doc, policy=policy(),
+                          email_sender=lambda to, s, b: (calls["email"].append((to, s, b)), "smtp-ok")[1],
+                          telegram_sender=lambda c, t: (calls["telegram"].append(t), "tg-42")[1],
+                          text_sender=lambda e: {"sent": True})
+    by = {r.channel: r for r in delivery.receipts}
+    assert len(calls["email"]) == 1 and len(calls["telegram"]) == 1
     assert by["email"].status == "sent" and by["telegram_critical"].status == "sent"
-    assert by["text_gateway"].status == "skipped" and by["text_gateway"].reason == "text_allowlist_missing"
+    assert by["text_gateway"].status == "skipped" and by["text_gateway"].reason == "text_gateway_not_an_address"
+    assert delivery.delivered is True

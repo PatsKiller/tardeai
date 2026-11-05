@@ -9,7 +9,10 @@ Rules this module keeps:
 
   * nothing is sent that the allowlist does not enable; a class the operator turned off is reported, not quietly dropped;
   * a missing or failed channel never stops the others — the spec says so explicitly, and a degraded channel is a receipt,
-    not an exception;
+    not an exception. That includes a *configuration* failure: an unreadable contact file or one malformed gateway address
+    is a receipt against the channel that needed it, never a reason to skip the channels that were configured correctly;
+  * a Telegram message counts only when the transport returns a message id; a Communications Editor hold or duplicate is
+    recorded as skipped, because it reached nobody;
   * every send returns a per-channel receipt, including the ones that did not send, and no receipt carries an address;
   * senders are injected, so the tests exercise the fan-out without a network, a token or a mailbox.
 
@@ -26,6 +29,33 @@ from scripts.lib import critical_delivery as cd
 #: Channels in the order the plan reports them. The order is also the order they are attempted, so the cheapest failure
 #: (no chat configured) is discovered before the text, which is the one that interrupts the operator.
 CHANNELS = ("telegram_critical", "email", "text_gateway")
+
+
+class ChannelSuppressed(RuntimeError):
+    """A channel held the message deliberately (Communications Editor hold or duplicate).
+
+    Not a delivery and not a failure to retry: the receipt vocabulary already has the word ``skipped`` for this. The
+    reason is a fixed token, never the message body, so it is safe to write into ``delivery_reason``.
+    """
+
+
+def _safe_token(value: Any, fallback: str = "held") -> str:
+    """A short identifier from transport-supplied text, or ``fallback`` when it is not one."""
+    text = str(value or "").strip()
+    return text if text and len(text) <= 60 and all(c.isalnum() or c in "_-." for c in text) else fallback
+
+
+def _safe_reason(exc: BaseException) -> str:
+    """The exception's own reason when it is safe to persist, else its class name.
+
+    The default senders raise fixed reasons (``telegram_token_not_configured``, ``email_send_refused``) that the operator
+    can act on; a class name alone is a dead end on the Home page. A third-party exception's message may embed a
+    recipient address, and no receipt may carry one, so anything with an ``@`` or an implausible length falls back.
+    """
+    text = str(exc).strip()
+    if text and "@" not in text and len(text) <= 200:
+        return text
+    return type(exc).__name__
 
 
 @dataclass
@@ -88,8 +118,16 @@ def _default_telegram_sender(chat_id: str, text: str) -> str | None:
     if isinstance(result, dict):
         if result.get("ok") is False:
             raise RuntimeError("telegram_send_refused")
-        message_id = (result.get("result") or {}).get("message_id") if isinstance(result.get("result"), dict) else None
-        return str(message_id) if message_id is not None else ("ok" if result.get("ok") else None)
+        # The transport's success shape carries `message_id` at the top level. A held or deduplicated message is
+        # `{"ok": True, "message_id": None, "suppressed": ...}` — ok and nothing sent — so ok alone is never a receipt.
+        message_id = result.get("message_id")
+        if message_id in (None, "", 0) and isinstance(result.get("result"), dict):
+            message_id = result["result"].get("message_id")
+        if message_id in (None, "", 0):
+            if result.get("suppressed") is not None or "suppressed" in result:
+                raise ChannelSuppressed(f"telegram_suppressed:{_safe_token(result.get('suppressed'))}")
+            raise RuntimeError("telegram_message_id_missing")
+        return str(message_id)
     return str(result) if result is not None else None
 
 
@@ -98,6 +136,29 @@ def _confirms(provider: Any) -> bool:
     if isinstance(provider, dict):
         return provider.get("sent") is True or provider.get("ok") is True
     return bool(provider)
+
+
+def _telegram_outcome(provider: Any) -> tuple[str, str | None]:
+    """Classify a Telegram sender's answer. Only a message id proves something was sent.
+
+    ``telegram_transport.deliver_text`` returns ``ok=True, message_id=None, suppressed=...`` when the Communications
+    Editor holds or de-duplicates a message: it reached nobody, and the truthy ``ok`` must not become a sent receipt. A
+    hold maps to ``skipped`` (the receipt vocabulary's word for "deliberately not sent") with the suppression reason.
+    """
+    if isinstance(provider, dict):
+        message_id = provider.get("message_id")
+        if message_id in (None, "", 0) and isinstance(provider.get("result"), dict):
+            message_id = provider["result"].get("message_id")
+        if message_id not in (None, "", 0):
+            return "sent", None
+        if provider.get("suppressed") is not None or "suppressed" in provider:
+            return "skipped", f"telegram_suppressed:{_safe_token(provider.get('suppressed'))}"
+        if provider.get("sent") is True:
+            return "sent", None
+        return "failed", "sender_returned_no_receipt"
+    if _confirms(provider):
+        return "sent", None
+    return "failed", "sender_returned_no_receipt"
 
 
 def deliver(
@@ -110,63 +171,86 @@ def deliver(
     text_sender: Callable[..., Any] | None = None,
     now: Any = None,
 ) -> Delivery:
-    """Fan one CRITICAL event to every channel that can carry it. Never raises for a channel that cannot."""
+    """Fan one CRITICAL event to every channel that can carry it. Never raises for a channel that cannot.
+
+    The one refusal is the event itself: when the CRITICAL taxonomy cannot be read, nothing is fanned out, because a
+    class nobody can verify must not be labelled CRITICAL. That is the same posture as a class outside the allowlist.
+    """
     alert_class = str(event.get("alert_class") or "").strip()
-    doc = contact if contact is not None else cd.load_operator_contact()
-    # cc-deepseek-8 F3: the allowlist is the TEXT channel's config. If it cannot be read, text is refused and the
-    # other two channels still carry the event — a missing text allowlist must never stop email and the Critical chat.
-    allow = policy
-    allow_error: str | None = None
-    if allow is None:
+    # F4/codex P2: the private contact file is email's and the text gateways' configuration. The Critical chat is
+    # configured independently, so a broken contact file is recorded against those two channels and the chat still
+    # sends; otherwise one unreadable file silently removes the one channel the operator asked for.
+    doc: dict[str, Any] = {}
+    contact_error: str | None = None
+    if contact is not None:
+        doc = contact
+    else:
         try:
-            allow = cd.load_text_allowlist()
+            doc = cd.load_operator_contact()
         except cd.CriticalDeliveryRefused as exc:
-            allow = None
-            allow_error = str(exc) or "text_allowlist_missing"
-    plan = cd.fan_out_plan(alert_class, doc,
-                           allow if allow is not None else {"classes": {alert_class: {"enabled": False}}})
+            contact_error = str(exc) or "operator_contact_unreadable"
+    # cc-deepseek F3: this file is BOTH the text-channel config and the CRITICAL taxonomy. If it cannot be read the
+    # taxonomy is unknown, and inventing it from the caller's own argument would let any class be labelled CRITICAL.
+    # The honest, safe reading of "a class absent from the file is refused everywhere" is to refuse the event.
+    allow = policy if policy is not None else cd.load_text_allowlist()
+    plan = cd.fan_out_plan(alert_class, doc, allow)
     out = Delivery(alert_class=alert_class)
 
     what = str(event.get("what") or event.get("trigger") or alert_class)
+    # codex P2: `what` is only the trigger. The suggested action, and B4's re-authorisation link, live in
+    # `event["action"]` / `event["link"]`; without them both fallbacks drop the one thing the operator must do.
+    action = " ".join(str(event.get("action") or "").split()).strip()
+    link = str(event.get("link") or "").strip()
+    body_lines = [what]
+    if action and action not in what:
+        body_lines.append(action)
+    if link and link not in "\n".join(body_lines):
+        body_lines.append(link)
+    body_text = "\n".join(body_lines)
     subject = cd.subject(alert_class, what)
     mail = ""
-    try:
-        mail = cd.email_target(doc)
-    except cd.CriticalDeliveryRefused:
-        mail = ""
+    if contact_error is None:
+        try:
+            mail = cd.email_target(doc)
+        except cd.CriticalDeliveryRefused:
+            mail = ""
 
-    # Telegram Critical chat
+    # Telegram Critical chat — independent of the contact file, so it is attempted even when that file is unreadable.
     if "critical_chat_not_configured" in plan["missing"]:
         out.receipts.append(Receipt("telegram_critical", "skipped", "critical_chat_not_configured"))
     else:
         chat = os.environ.get(cd.CRITICAL_CHAT_ENV, "").strip()
         try:
-            provider = (telegram_sender or _default_telegram_sender)(chat, f"{subject}\n{what}")
-            # cc-deepseek-2 F1: "returned without raising" is not "delivered". A sender that returns no receipt
-            # (a capped or suppressed send, a gateway that did nothing) is recorded as unconfirmed, so
-            # Delivery.delivered cannot publish it as a success on the channel that exists to assure the operator.
-            status = "sent" if _confirms(provider) else "failed"
-            out.receipts.append(Receipt("telegram_critical", status,
-                                        None if status == "sent" else "sender_returned_no_receipt",
+            provider = (telegram_sender or _default_telegram_sender)(chat, f"{cd.SUBJECT_PREFIX} {body_text}")
+            # cc-deepseek-2 F1 / codex P1: "returned without raising" is not "delivered". A held or deduplicated
+            # message returns ok=True with no message id; it reached nobody and is recorded as skipped.
+            status, reason = _telegram_outcome(provider)
+            out.receipts.append(Receipt("telegram_critical", status, reason,
                                         provider_receipt=str(provider) if provider else None))
+        except ChannelSuppressed as exc:
+            out.receipts.append(Receipt("telegram_critical", "skipped", _safe_reason(exc)))
         except Exception as exc:  # noqa: BLE001 — a channel failure is a receipt, never a lost event
-            out.receipts.append(Receipt("telegram_critical", "failed", type(exc).__name__))
+            out.receipts.append(Receipt("telegram_critical", "failed", _safe_reason(exc)))
 
     # Email
-    if not mail:
+    if contact_error is not None:
+        out.receipts.append(Receipt("email", "failed", contact_error))
+    elif not mail:
         out.receipts.append(Receipt("email", "skipped", "critical_email_not_configured"))
     else:
         try:
-            provider = (email_sender or _default_email_sender)(mail, subject, what)
+            provider = (email_sender or _default_email_sender)(mail, subject, body_text)
             status = "sent" if _confirms(provider) else "failed"
             out.receipts.append(Receipt("email", status, None if status == "sent" else "sender_returned_no_receipt",
                                         provider_receipt=str(provider) if provider else None))
         except Exception as exc:  # noqa: BLE001
-            out.receipts.append(Receipt("email", "failed", type(exc).__name__))
+            out.receipts.append(Receipt("email", "failed", _safe_reason(exc)))
 
     # Text gateway — the primitive owns the allowlist, the cap and the dedupe, so this module only hands it the event.
-    if allow_error is not None:
-        out.receipts.append(Receipt("text_gateway", "skipped", allow_error))
+    if contact_error is not None:
+        out.receipts.append(Receipt("text_gateway", "failed", contact_error))
+    elif plan.get("gateway_error"):
+        out.receipts.append(Receipt("text_gateway", "skipped", str(plan["gateway_error"])))
     elif "text_gateway_not_configured" in plan["missing"]:
         out.receipts.append(Receipt("text_gateway", "skipped", "text_gateway_not_configured"))
     elif not cd.text_class_allowed(alert_class, allow):
@@ -192,6 +276,6 @@ def deliver(
             # The primitive is not on this branch yet. Refusing is the safe direction: no text, and the receipt says why.
             out.receipts.append(Receipt("text_gateway", "skipped", "text_primitive_not_available"))
         except Exception as exc:  # noqa: BLE001
-            out.receipts.append(Receipt("text_gateway", "failed", type(exc).__name__))
+            out.receipts.append(Receipt("text_gateway", "failed", _safe_reason(exc)))
 
     return out

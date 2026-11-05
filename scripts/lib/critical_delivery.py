@@ -7,7 +7,7 @@ Twilio, no new SMS vendor — the text goes to the operator's Google Fi email-to
 Three channels, one event:
 
   telegram_critical   the Critical chat, its own notification sound, so it stands out from the flood
-  email               subject starts "CRITICAL —", first line is the action
+  email               subject starts "CRITICAL —"; the body carries what happened, then the action and link
   text_gateway        every verified email-to-text address on file
 
 This module owns the parts that must not be got wrong twice: which alerts may use the text channel at all, where the
@@ -210,8 +210,15 @@ def fan_out_plan(alert_class: str, contact: dict, policy: dict | None = None) ->
     assert_critical_class(alert_class, policy)
     text_enabled = text_class_allowed(alert_class, policy)
     missing: list[str] = []
-    gateways = text_targets(contact)
-    if not gateways:
+    # F4/codex P2: a malformed gateway address is the TEXT channel's configuration error. It must be recorded against
+    # the text channel, not raised out of the plan and take the valid email and Critical-chat targets with it.
+    gateway_error: str | None = None
+    try:
+        gateways = text_targets(contact)
+    except CriticalDeliveryRefused as exc:
+        gateways = []
+        gateway_error = str(exc) or "text_gateway_invalid"
+    if not gateways and gateway_error is None:
         missing.append("text_gateway_not_configured")
     try:
         mail = email_target(contact)
@@ -220,9 +227,9 @@ def fan_out_plan(alert_class: str, contact: dict, policy: dict | None = None) ->
         missing.append("critical_email_not_configured")
     if not critical_chat_configured():
         missing.append("critical_chat_not_configured")
-    # cc-deepseek-8 F4: ``channels`` is the tier's intent and stays that — it names what a CRITICAL event goes to even
-    # when a target is missing. ``attempted`` is the part a dry run needs: only the channels that will actually be
-    # called, so a reader cannot mistake a listed channel for a working one.
+    # cc-deepseek F7: ``channels`` is what a dry run and a reviewer read first, so it must be the configured-and-
+    # permitted list — the same channels that will actually be attempted — never a tier wish-list that names a channel
+    # with no target. ``attempted`` is kept as the explicit spelling of the same list.
     attempted: list[str] = []
     if critical_chat_configured():
         attempted.append("telegram_critical")
@@ -231,9 +238,10 @@ def fan_out_plan(alert_class: str, contact: dict, policy: dict | None = None) ->
     if gateways and text_enabled:
         attempted.append("text_gateway")
     return {
-        "channels": ["telegram_critical", "email"] + (["text_gateway"] if gateways else []),
+        "channels": list(attempted),
         "attempted": attempted,
         "gateway_count": len(gateways),
+        "gateway_error": gateway_error,
         "email_configured": bool(mail),
         "text_enabled": text_enabled,
         "missing": missing,
