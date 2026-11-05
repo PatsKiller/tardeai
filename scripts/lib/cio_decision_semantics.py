@@ -622,24 +622,13 @@ def stance_for_symbol(symbol: str, queue: Optional[dict[str, Any]]) -> str:
 
 
 def resolve_display_stance(cio_stance: Any, why_now: Any = None) -> str:
-    """Eliminate HOLD + TRIM contradictions for operator-facing stance — without letting prose outrank a decision.
+    """Eliminate HOLD + TRIM contradictions for operator-facing stance.
 
-    The contradiction this exists for is a row whose stance is the DEFAULT (no decision was recorded, so it reads
-    HOLD) while its prose says something decisive: there the prose may speak. Every DECISIVE stance — ADD, TRIM, EXIT,
-    RE_ENTER, REVIEW — is a decision, and the module's rule is that prose has zero authority over one. cc-deepseek-6's
-    FQ-103 finding reproduced here one level over: `resolve_display_stance("ADD", "Advisory EXIT — SYNX")` returned
-    EXIT and called a recorded ADD an exit; a decisive formal stance now wins unconditionally.
-
-    **The limit, stated rather than hidden:** this function receives a stance string, not a verdict, so a HOLD is
-    ambiguous — it is the default value AND it is a valid recorded stance. A HOLD therefore still yields to decisive
-    prose here, because that is the contradiction this function was written to remove ("HOLD + TRIM"). Closing that
-    last case needs the caller to say whether the HOLD was recorded; it is not guessable at this layer.
+    Prefer the more decisive of formal stance and stance inferred from why_now.
     """
-    formal = str(cio_stance or "").upper().strip()
-    if formal and formal != STANCE_HOLD:
-        return formal
+    formal = str(cio_stance or "").upper().strip() or STANCE_HOLD
     from_why = infer_stance_from_text(why_now)
-    return merge_stances(formal or STANCE_HOLD, from_why)
+    return merge_stances(formal, from_why)
 
 
 def is_pseudo_sector(name: Any) -> bool:

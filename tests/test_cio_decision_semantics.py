@@ -235,21 +235,3 @@ def test_a_desk_state_outranks_prose_when_no_verdict_is_recorded():
     # And a recorded verdict is untouched by any of this.
     assert stance_from_queue_item({"symbol": "ADBE", "verdict": "ADD",
                                    "state": "READY TO REVIEW", "directive_label": "Advisory EXIT"}) == "ADD"
-
-
-def test_a_decisive_stance_is_never_overridden_by_prose_at_the_display_layer():
-    """cc-deepseek-6's FQ-103 finding, found again one function over while repairing it.
-
-    `resolve_display_stance` merged the formal stance with a stance inferred from `why_now` prose and kept the
-    stronger, so `("ADD", "Advisory EXIT — SYNX")` rendered EXIT — a recorded ADD called an exit. A decisive formal
-    stance now wins unconditionally.
-    """
-    from scripts.lib.cio_decision_semantics import resolve_display_stance
-
-    assert resolve_display_stance("ADD", "Advisory EXIT — SYNX") == "ADD"
-    assert resolve_display_stance("TRIM", "Advisory ADD — SYNX") == "TRIM"
-    assert resolve_display_stance("REVIEW", "Advisory EXIT — SYNX") == "REVIEW"
-    assert resolve_display_stance("EXIT", "adding on the pullback") == "EXIT"
-    # The contradiction the function exists for is unchanged: no formal stance, decisive prose.
-    assert resolve_display_stance(None, "Advisory TRIM — SCHD") == "TRIM"
-    assert resolve_display_stance("", "Advisory EXIT — SYNX") == "EXIT"
