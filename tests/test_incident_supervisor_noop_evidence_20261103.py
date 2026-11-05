@@ -59,7 +59,7 @@ def test_at_the_cap_a_noop_runbook_dispatches_the_fixer(tmp_path, monkeypatch):
                     "anthropic")
         def run(_argv, _cwd, _env, _timeout):
             return 0, json.dumps({"acted": []})          # the runbook ran and acted on nothing
-        def notify(_t, _p):
+        def notify(_t, _p, priority="P2"):
             return True
         def fixer(req, apply):
             fixes.append(json.loads(Path(req).read_text()))
