@@ -1,0 +1,20 @@
+{
+  "schema": "AppTestsDormantBaseline@v1",
+  "note": "The SET of paths allowed to be dormant. check-test-set.mjs refuses any dormant entry absent here, so marking a running test dormant is a deliberate two-file diff (this file + tests.dormant.json), visible in review, and a new dormant entry fails by default. Removing a path from tests.dormant.json (wiring a test) needs no change here: this is a ceiling, not an exact match.",
+  "files": [
+    "src/lib/agentRuntimeDetailAdapter.test.ts",
+    "src/lib/agentRuntimeReadAdapter.test.ts",
+    "src/lib/brokerReconSummary.test.ts",
+    "src/lib/cioLabels.test.ts",
+    "src/lib/commsDeliveryHealth.browser.test.cjs",
+    "src/lib/exportBrokerProposalsCsv.test.ts",
+    "src/lib/exportExecutionQualityCsv.test.ts",
+    "src/lib/exportOpenTradesCsv.test.ts",
+    "src/lib/pipelinePlainText.view.test.mjs",
+    "src/lib/reentryDecisionScorecard.test.ts",
+    "src/lib/rotationRetainedError.browser.test.mjs",
+    "src/lib/scannerSelection.test.ts",
+    "src/lib/watchMarketFactsPresentation.test.ts",
+    "src/lib/watchRecordCardModel.test.ts"
+  ]
+}
