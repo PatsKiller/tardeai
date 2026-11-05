@@ -30,7 +30,7 @@ import subprocess
 import time
 from .agent_claim_board import AUXILIARY_CLAIM_DIR_SCHEMAS, ClaimView, overlapping_pairs, patterns_overlap
 from . import merge_hold_paths
-from .pr_merge_delegation import Refused as EvidenceRefused, collect_held_classes, effective_claim_states
+from .pr_merge_delegation import Refused as EvidenceRefused, collect_held_classes, effective_claim_states, text_id
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -310,6 +310,68 @@ class PullRequest:
         return tuple(dict.fromkeys([self.head_sha, *self.commit_shas]))
 
 
+def registration_authorship(art: dict[str, Any]) -> dict[str, Any]:
+    """Keep the canonical registration's source sessions, never Git display names.
+
+    This is a conservative read-only projection, not the merger's custody evaluator.
+    A malformed latest registration replaces older qualification rather than borrowing it.
+    """
+    raw = art.get("authors")
+    sessions: set[str] = set()
+    valid = isinstance(raw, list) and bool(raw)
+    for row in raw if isinstance(raw, list) else []:
+        if not isinstance(row, dict):
+            valid = False
+            continue
+        session = row.get("session")
+        if not text_id(row.get("actor")) or not text_id(session) or not text_id(row.get("claim_id")):
+            valid = False
+            continue
+        if session in sessions:
+            valid = False
+        sessions.add(session)
+    registrar = art.get("registered_by")
+    commits = art.get("source_commit_shas")
+    valid = (
+        valid
+        and art.get("authors_and_coauthors_complete") is True
+        and art.get("identity_provenance") == "manual_coordinator_claim_and_source_check"
+        and isinstance(registrar, dict)
+        and text_id(registrar.get("actor"))
+        and text_id(registrar.get("session"))
+        and isinstance(art.get("source_authorship_sha256"), str)
+        and re.fullmatch(r"[0-9a-f]{64}", art["source_authorship_sha256"]) is not None
+        and isinstance(commits, list)
+        and bool(commits)
+        and all(isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha) for sha in commits)
+    )
+    return {
+        "authorship_completion_head": art.get("head_sha"),
+        "registered_author_sessions": tuple(sorted(sessions)),
+        "registered_authorship_valid": bool(valid),
+    }
+
+
+def source_author_sessions(pr: PullRequest, here: Sequence[dict[str, Any]], branch_authors=None) -> set[str]:
+    """Both claim ancestry and this exact head's latest registered coauthors are excluded."""
+    authors = author_set(branch_authors)
+    for entry in here:
+        if entry.get("authorship_completion_head") == pr.head_sha:
+            authors.update(entry.get("registered_author_sessions", ()))
+    return authors
+
+
+def registered_authorship_status(pr: PullRequest, here: Sequence[dict[str, Any]]) -> bool | None:
+    """None permits a first draft review; existing malformed registrations fail closed."""
+    registered = [e for e in here if "authorship_completion_head" in e]
+    if not registered:
+        return None
+    return all(
+        e.get("authorship_completion_head") == pr.head_sha and e.get("registered_authorship_valid") is True
+        for e in registered
+    )
+
+
 def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str], list[dict[str, Any]]]:
     """Index the latest verdict per reviewer/head in supplied observation order."""
     index: dict[tuple[int, str], dict[str, dict[str, Any]]] = {}
@@ -328,6 +390,7 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
             # The latest canonical registration owns this HEAD's completion evidence. Missing/false values
             # replace prior true values; another head or a standalone review cannot lend an attestation.
             completion[(pr, head)] = {
+                **registration_authorship(art),
                 "engineering_completion_head": head,
                 "section17_completion_head": head,
                 "section17_review_completed": art.get("section17_review_completed") is True,
@@ -486,7 +549,7 @@ def merge_ready(
         if not pr.clean:
             continue
         here = verdicts.get((pr.number, pr.head_sha), [])
-        authors = author_set(author_of.get(pr.number))
+        authors = source_author_sessions(pr, verdicts.get((pr.number, pr.head_sha), []), author_of.get(pr.number))
         blocks = [e for e in here if e["verdict"] == "BLOCK" and e["reviewer"] and e["reviewer"] not in authors]
         merges = [e for e in here if e["verdict"] == "MERGE" and e["reviewer"] and e["reviewer"] not in authors]
         need, held = required_reviews(pr.scope_files, requirements)
@@ -577,6 +640,8 @@ def merge_ready(
                 for e in merges
             ):
                 step = "section-17 review unproven — register completed authority-boundary review at this exact head"
+            elif registered_authorship_status(pr, here) is not True:
+                step = "registered source authorship unproven — qualify all authors and coauthors at this exact head"
             elif type(shared.get("shared_infra")) is not bool:
                 step = "shared-infrastructure classification or metadata unavailable — readiness cannot be established"
             elif shared["shared_infra"] and (
@@ -801,7 +866,9 @@ def select_work(
         need, held = required_reviews(pr.scope_files, requirements)
         if not held:
             continue  # D51: cloud owns ordinary reviews; leads route exceptional P0/P1 work explicitly.
-        authors = author_set(author_of.get(pr.number))
+        authors = source_author_sessions(pr, verdicts.get((pr.number, pr.head_sha), []), author_of.get(pr.number))
+        if registered_authorship_status(pr, verdicts.get((pr.number, pr.head_sha), [])) is False:
+            continue  # Existing invalid author evidence cannot establish independent review eligibility.
         if not authors:
             continue  # F5: an unknown author means independence cannot be shown — fail closed, assign nobody
         if session in authors:
@@ -841,7 +908,7 @@ def select_work(
 
     # (c) merge-prep: a CLEAN PR with a MERGE verdict whose author claim is stale on the head
     for pr in sorted(prs, key=lambda p: p.number):
-        authors = author_set(author_of.get(pr.number))
+        authors = source_author_sessions(pr, verdicts.get((pr.number, pr.head_sha), []), author_of.get(pr.number))
         if (
             not pr.clean
             or session not in authors

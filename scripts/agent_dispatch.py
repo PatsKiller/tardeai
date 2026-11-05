@@ -360,7 +360,11 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
     return out
 
 
-def author_sessions(prs: Sequence[D.PullRequest], claims: Sequence[D.Claim]) -> dict[int, str | frozenset[str]]:
+def author_sessions(
+    prs: Sequence[D.PullRequest],
+    claims: Sequence[D.Claim],
+    verdicts: dict[tuple[int, str], list[dict[str, Any]]] | None = None,
+) -> dict[int, str | frozenset[str]]:
     """Authorship survives release, adoption and predecessor claim compaction."""
     by_branch: dict[str, set[str]] = {}
     for claim in claims:
@@ -369,7 +373,11 @@ def author_sessions(prs: Sequence[D.PullRequest], claims: Sequence[D.Claim]) -> 
     return {
         pr.number: (next(iter(authors)) if len(authors) == 1 else frozenset(authors))
         for pr in prs
-        for authors in [by_branch.get(pr.head_ref, set())]
+        for authors in [
+            D.source_author_sessions(
+                pr, (verdicts or {}).get((pr.number, pr.head_sha), []), by_branch.get(pr.head_ref, set())
+            )
+        ]
     }
 
 
@@ -437,7 +445,7 @@ def run_cycle(
     claims = D.load_claims(claims_dir)
     prs = open_prs(run)
     verdicts = D.verdicts_at_head(load_review_artifacts(coord))
-    authors = author_sessions(prs, claims)
+    authors = author_sessions(prs, claims, verdicts)
 
     assignments: list[D.Assignment] = []
     reviewed: set[tuple[int, str]] = set()

@@ -55,7 +55,15 @@ def _assert_only_pure_delegation_imports(source):
     import ast
 
     tree = compile(source, "<dispatch-import-rail>", "exec", flags=ast.PyCF_ONLY_AST)
-    allowed = {"Refused", "collect_held_classes", "path_ok", "reviewer_artifact", "safe_read", "effective_claim_states"}
+    allowed = {
+        "Refused",
+        "collect_held_classes",
+        "path_ok",
+        "reviewer_artifact",
+        "safe_read",
+        "effective_claim_states",
+        "text_id",
+    }
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             assert not any(alias.name.endswith("pr_merge_delegation") for alias in node.names)
@@ -339,6 +347,9 @@ def test_merge_pump_separates_ready_from_one_step_and_never_merges():
                 "reviewer": "cc-9",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -1758,6 +1769,9 @@ def test_d49_green_complete_ordinary_pr_is_ready_with_cloud_review():
                 "reviewer": "independent",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2003,6 +2017,9 @@ def test_d51_cx4_registered_reference_is_loaded_without_guessed_sibling(tmp_path
             "engineering_completion_head": "a" * 40,
             "section17_completion_head": "a" * 40,
             "section17_review_completed": True,
+            "authorship_completion_head": "a" * 40,
+            "registered_author_sessions": ("author",),
+            "registered_authorship_valid": True,
             "shared_infra_completion_head": "a" * 40,
             "shared_infra_isolated_reviewed": True,
             "engineering_tests_completed": False,
@@ -2046,6 +2063,9 @@ def test_d51_cx5_released_author_coverage_is_ready_and_active_is_not(status):
                 "reviewer": "independent",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2380,6 +2400,9 @@ def test_cloud3_cx4_incomplete_rename_evidence_refuses_review_and_readiness(faul
                     "verdict": "MERGE",
                     "section17_completion_head": pr.head_sha,
                     "section17_review_completed": True,
+                    "authorship_completion_head": pr.head_sha,
+                    "registered_author_sessions": ("author",),
+                    "registered_authorship_valid": True,
                 }
             ]
         },
@@ -2403,6 +2426,9 @@ def test_cloud3_cx4_rename_requires_both_custody_and_engineering_completion():
                 "verdict": "MERGE",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
             for r in ("peer", "second")
         ]
@@ -2485,6 +2511,9 @@ def test_cloud3_cx5_age_alone_never_releases_overlapping_active_custody(age):
                 "verdict": "MERGE",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2507,6 +2536,9 @@ def test_cloud3_cx5_validly_superseded_predecessor_is_nonblocking():
                 "verdict": "MERGE",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2530,6 +2562,9 @@ def test_cloud3_cx5_invalid_or_live_predecessor_never_releases_custody(fault):
                 "verdict": "MERGE",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2599,6 +2634,9 @@ def test_cloud3_cx5_original_takeover_links_survive_disk_loading(tmp_path):
                 "verdict": "MERGE",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2624,6 +2662,9 @@ def test_cloud3_cx5_released_successor_cannot_resolve_conflicting_live_siblings(
                 "verdict": "MERGE",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2652,6 +2693,9 @@ def test_cloud3_cx5_duplicate_snapshot_identity_fails_closed():
                 "verdict": "MERGE",
                 "section17_completion_head": pr.head_sha,
                 "section17_review_completed": True,
+                "authorship_completion_head": pr.head_sha,
+                "registered_author_sessions": ("author",),
+                "registered_authorship_valid": True,
             }
         ]
     }
@@ -2939,3 +2983,299 @@ def test_shared_infra_unavailable_registry_never_reports_ready(tmp_path, monkeyp
     out, _pr, _calls, _doc, _paths = _shared_infra_cycle(tmp_path)
     assert not out["merge_ready"]["ready"]
     assert "shared-infrastructure" in out["merge_ready"]["one_step"][0]["step"]
+
+
+# D52: a registered source coauthor is never an independent reviewer.
+def _coauthor_cycle(
+    tmp_path, *, reviewer="coauthor", authors="valid", held=False, panes=None, prior=(), review_verdict="MERGE"
+):
+    import hashlib
+
+    panes = panes or {}
+    source = ".githooks/pre-push" if held else "src/synthetic.py"
+    paths = make_tree(
+        tmp_path,
+        panes=panes,
+        queue=[],
+        claims=[
+            {
+                "claim_id": "source",
+                "session": "author",
+                "branch": "wt/synthetic",
+                "status": "done",
+                "heartbeat_at": iso(NOW),
+                "head_sha": "a" * 40,
+                "paths": [source],
+            }
+        ],
+    )
+    doc = _d51_registered_review(paths["coord"])
+    doc.update(engineering_tests_completed=True, engineering_docs_completed=True)
+    doc["authors"].append({"actor": "codex", "session": "coauthor", "claim_id": "coauthor-source"})
+    if authors != "valid":
+        if authors == "missing":
+            doc.pop("authors")
+        elif authors == "incomplete":
+            doc["authors_and_coauthors_complete"] = False
+        elif authors == "truthy_complete":
+            doc["authors_and_coauthors_complete"] = "true"
+        elif authors == "bad_provenance":
+            doc["identity_provenance"] = "git_display_names"
+        else:
+            doc["authors"] = authors
+    raw = f"Adversarial-review: MERGE reviewer={reviewer} head={'a' * 40}\n".encode()
+    proof = paths["coord"] / "proofs" / "coauthor-control.artifact"
+    proof.write_bytes(raw)
+    doc["reviews"] = [
+        {
+            "reviewer_session": reviewer,
+            "verdict": "MERGE",
+            "head_sha": "a" * 40,
+            "artifact": "proofs/coauthor-control.artifact",
+            "artifact_sha256": hashlib.sha256(raw).hexdigest(),
+        }
+    ]
+    (paths["coord"] / "review-evidence" / f"7-{'a' * 40}.json").write_text(json.dumps(doc))
+    if review_verdict == "BLOCK":
+        # Canonical registrations contain MERGEs; a later genuine standalone BLOCK replaces that review.
+        evidence = paths["coord"] / "review-evidence"
+        (evidence / "zz-later-block.md").write_text(f"Adversarial-review: BLOCK reviewer={reviewer} head={'a' * 40}\n")
+        (evidence / "zz-later-block.machine.json").write_text(
+            json.dumps({"pr": 7, "head_sha": "a" * 40, "reviewer_session": reviewer, "verdict": "BLOCK"})
+        )
+    if prior:
+        paths["ledger"].write_text(
+            "\n".join(
+                json.dumps(
+                    {
+                        "kind": "review",
+                        "target": "7",
+                        "target_head": "a" * 40,
+                        "session": session,
+                        "outcome": "dispatched",
+                        "busy_after_30s": True,
+                    }
+                )
+                for session in prior
+            )
+            + "\n"
+        )
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "a" * 40,
+            "mergeStateStatus": "CLEAN",
+            "isDraft": held,
+            "changedFiles": 1,
+            "files": [{"path": source}],
+            "statusCheckRollup": _d51_checks(),
+        }
+    ]
+    before = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    calls = []
+    base = fake_runner(panes, rows)
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        assert cmd[0] in {"gh", "tmux"}
+        assert cmd[:2] not in (["tmux", "load-buffer"], ["tmux", "paste-buffer"], ["tmux", "send-keys"])
+        return base(cmd, **kw)
+
+    try:
+        result = CLI.run_cycle(
+            apply=False,
+            coord=paths["coord"],
+            queue_path=paths["queue"],
+            claims_dir=paths["claims"],
+            ledger_path=paths["ledger"],
+            run=run,
+        )
+    finally:
+        assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    return result, doc, paths
+
+
+def test_registered_coauthor_real_collector_self_merge_never_ready(tmp_path):
+    out, _, _ = _coauthor_cycle(tmp_path)
+    assert not out["merge_ready"]["ready"]
+    assert "## Ready to merge (0)" in out["merge_ready_md"]
+
+
+def test_registered_coauthor_real_collector_independent_merge_still_ready(tmp_path):
+    out, _, _ = _coauthor_cycle(tmp_path, reviewer="independent")
+    assert [r["pr"] for r in out["merge_ready"]["ready"]] == [7]
+    assert out["merge_ready"]["ready"][0]["author"] == "author, coauthor"
+
+
+@pytest.mark.parametrize(
+    "authors",
+    [
+        "missing",
+        None,
+        [],
+        {},
+        "coauthor",
+        ["coauthor"],
+        [{"actor": "codex", "session": 7, "claim_id": "source"}],
+        [{"actor": "codex", "session": "coauthor"}],
+        [{"actor": "codex", "session": "coauthor", "claim_id": "source"}] * 2,
+        "incomplete",
+        "truthy_complete",
+        "bad_provenance",
+    ],
+)
+def test_registered_coauthor_real_collector_bad_authorship_fails_closed(tmp_path, authors):
+    out, _, _ = _coauthor_cycle(tmp_path, reviewer="independent", authors=authors)
+    assert not out["merge_ready"]["ready"]
+
+
+def test_registered_coauthor_cannot_receive_own_held_review(tmp_path):
+    out, _, _ = _coauthor_cycle(
+        tmp_path,
+        held=True,
+        reviewer="independent",
+        panes={"cc-deepseek-coauthor": "❯ \n idle"},
+        authors=[
+            {"actor": "codex", "session": "author", "claim_id": "source"},
+            {"actor": "codex", "session": "cc-deepseek-coauthor", "claim_id": "coauthor-source"},
+        ],
+    )
+    assert not any(a["kind"] == "review" for a in out["assignments"])
+
+
+@pytest.mark.parametrize("review_verdict", ["MERGE", "BLOCK"])
+def test_registered_coauthor_prior_dispatch_does_not_spend_independent_capacity(tmp_path, review_verdict):
+    out, _, _ = _coauthor_cycle(
+        tmp_path,
+        held=True,
+        panes={"cc-deepseek-fresh": "❯ \n idle"},
+        prior=("coauthor", "independent"),
+        review_verdict=review_verdict,
+    )
+    assert [(a["kind"], a["session"]) for a in out["assignments"]] == [("review", "cc-deepseek-fresh")]
+
+
+def test_registered_coauthor_latest_registration_replaces_registered_subset(tmp_path):
+    _, doc, _ = _coauthor_cycle(tmp_path, reviewer="independent")
+    latest = {**doc, "authors": [{"actor": "codex", "session": "corrected", "claim_id": "corrected-source"}]}
+    pr = _held_pr(7, "a" * 40, "wt/synthetic", "DIRTY", True)
+    common = dict(queue=[], claims=[], prs=[pr], author_of={7: "author"}, coord="/synthetic", now=NOW)
+    current = D.verdicts_at_head([doc, latest])
+    assert D.select_work("corrected", verdicts=current, **common) is None
+    assert D.select_work("coauthor", verdicts=current, **common) is not None
+    assert D.select_work("author", verdicts=current, **common) is None
+
+
+def test_registered_coauthor_other_head_does_not_lend_authorship(tmp_path):
+    _, doc, _ = _coauthor_cycle(tmp_path)
+    doc["head_sha"] = "b" * 40
+    doc["reviews"][0]["head_sha"] = "b" * 40
+    pr = _held_pr(7, "a" * 40, "wt/synthetic", "DIRTY", True)
+    task = D.select_work(
+        "coauthor",
+        queue=[],
+        claims=[],
+        prs=[pr],
+        verdicts=D.verdicts_at_head([doc]),
+        author_of={7: "author"},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert task is not None and task.kind == "review"
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("registered_by", None),
+        ("registered_by", {"actor": "codex", "session": 7}),
+        ("source_authorship_sha256", None),
+        ("source_authorship_sha256", "not-a-hash"),
+        ("source_commit_shas", []),
+        ("source_commit_shas", [7]),
+        ("authors", [{"actor": None, "session": "coauthor", "claim_id": "source"}]),
+        ("authors", [{"actor": "codex", "session": "coauthor", "claim_id": 7}]),
+    ],
+)
+def test_registered_coauthor_latest_malformed_provenance_replaces_true(tmp_path, field, value):
+    out, doc, _ = _coauthor_cycle(tmp_path, reviewer="independent")
+    assert out["merge_ready"]["ready"]
+    pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False)
+    claims = [
+        claim(cid="source", session="author", branch="wt/synthetic", status="done", head=pr.head_sha, paths=pr.files)
+    ]
+    latest = {**doc, field: value}
+    indexed = D.verdicts_at_head([doc, latest])
+    assert not D.merge_ready([pr], indexed, claims, {7: "author"})["ready"]
+    held = _held_pr(7, pr.head_sha, pr.head_ref, "DIRTY", True)
+    assert (
+        D.select_work(
+            "fresh",
+            queue=[],
+            claims=[],
+            prs=[held],
+            verdicts=indexed,
+            author_of={7: "author"},
+            coord="/synthetic",
+            now=NOW,
+        )
+        is None
+    )
+
+
+def test_registered_coauthor_multiple_sessions_and_actual_authority_vocabulary(tmp_path):
+    rows = [
+        {"actor": "codex", "session": who, "claim_id": who + "-source"}
+        for who in ("author", "second-author", "third-author")
+    ]
+    out, doc, _ = _coauthor_cycle(tmp_path, authors=rows, reviewer="third-author")
+    assert not out["merge_ready"]["ready"]
+    pr = _held_pr(7, "a" * 40, "wt/synthetic", "DIRTY", True)
+    indexed = D.verdicts_at_head([doc])
+    assert D.source_author_sessions(pr, indexed[(7, pr.head_sha)], {"branch-predecessor"}) == {
+        "branch-predecessor",
+        "author",
+        "second-author",
+        "third-author",
+    }
+    for session in ("author", "second-author", "third-author", "branch-predecessor"):
+        assert (
+            D.select_work(
+                session,
+                queue=[],
+                claims=[],
+                prs=[pr],
+                verdicts=indexed,
+                author_of={7: "branch-predecessor"},
+                coord="/synthetic",
+                now=NOW,
+            )
+            is None
+        )
+    assert (
+        D.select_work(
+            "genuine-peer",
+            queue=[],
+            claims=[],
+            prs=[pr],
+            verdicts=indexed,
+            author_of={7: "branch-predecessor"},
+            coord="/synthetic",
+            now=NOW,
+        ).kind
+        == "review"
+    )
+
+
+def test_registered_coauthor_old_head_cannot_supply_current_registration(tmp_path):
+    _, doc, _ = _coauthor_cycle(tmp_path, reviewer="independent")
+    old = {**doc, "head_sha": "b" * 40}
+    current = {"pr": 7, "head_sha": "a" * 40, "reviews": doc["reviews"]}
+    indexed = D.verdicts_at_head([old, current])
+    pr = _complete_pr(7, "a" * 40, "wt/synthetic", "CLEAN", False)
+    claims = [
+        claim(cid="source", session="author", branch="wt/synthetic", status="done", head=pr.head_sha, paths=pr.files)
+    ]
+    assert D.source_author_sessions(pr, indexed[(7, pr.head_sha)], "author") == {"author"}
+    assert not D.merge_ready([pr], indexed, claims, {7: "author"})["ready"]
