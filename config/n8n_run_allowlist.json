@@ -720,39 +720,6 @@
       "output_signal": "data/runtime/backup_verify_last.json"
     },
     {
-      "lane_id": "system-rollup-snapshot",
-      "env_names": [
-        "DB_CONN_TRACE",
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "PROJECT_ROOT",
-        "TRADEAI_N8N_COORDINATION_LEDGER",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "TRADEAI_SYSTEM_ROLLUP_RECEIPTS"
-      ],
-      "env_allowlist_mode": "report",
-      "env_evidence": "system_rollup_snapshot.py reads TRADEAI_SYSTEM_ROLLUP_RECEIPTS literally (RECEIPTS_ENV, :45) and imports db_adapter._get_conn lazily (:193) and telegram_alert (:254); --dry-run computes the rollup and the stored payload, measures it against the cap, skips the write and skips the digest.",
-      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file (tmpfs or disk) into the child, so the import closure (~1,090 modules via db_adapter/lane_registry) is not bounded by literal reads; report until that loader is bounded.",
-      "source": "40 20 * * *; cd portfolio-server/CURRENT && flock -n /tmp/system_rollup_snapshot.lock bash -c 'set -a; . ./.env; set +a; $PY scripts/system_rollup_snapshot.py' (crontab L770)",
-      "command": [
-        "$PY",
-        "scripts/system_rollup_snapshot.py"
-      ],
-      "lock": "/tmp/system_rollup_snapshot.lock",
-      "lock_kind": "flock",
-      "timeout_s": 900,
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": [],
-      "market_gate": false,
-      "output_signal": "data/runtime/system_rollup_receipts.jsonl"
-    },
-    {
       "lane_id": "trade-ai-restore-drill",
       "env_names": [
         "DB_HOST",
@@ -4805,6 +4772,7 @@
       "material-change-digest",
       "alert-daily-digest",
       "ops-daily-digest",
+      "system-rollup-snapshot",
       "ops-weekly-learning-report",
       "generate-weekly-docx"
     ],
