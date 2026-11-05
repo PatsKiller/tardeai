@@ -293,3 +293,31 @@ def test_R7_an_abort_stops_the_whole_sweep_not_just_one_route():
     loop = body[:end]
     assert "aborted = True" in loop, "an unhealthy server must set the abort flag"
     assert "if aborted:" in loop and loop.count("break") >= 2, loop
+
+
+# ── R3 (cx-openai-4): completeness must include the CIO clock, in the function that decides completeness ──────
+def _complete_card(**extra):
+    """A card that satisfies every required symbol field, so only the CIO clock can make it incomplete."""
+    from site_audit.completeness import REQUIRED_SYMBOL_FIELDS
+
+    card = {name: 1.0 for name in REQUIRED_SYMBOL_FIELDS}
+    card.update({"symbol": "AAA", "trend": "up", "cio_stance": "ADD"})
+    card.update(extra)
+    return card
+
+
+def test_R3_an_undated_cio_stance_is_not_a_complete_card():
+    from site_audit.completeness import card_severity, thesis_as_of_missing
+
+    card = _complete_card()
+    assert thesis_as_of_missing(card) is True
+    severity, gaps = card_severity(card, top_list=False)
+    assert severity is not None, "an undated stance read as a complete card"
+    assert [g["field"] for g in gaps] == ["cio_as_of"], gaps
+
+
+def test_R3_a_dated_cio_stance_is_still_complete():
+    from site_audit.completeness import card_severity
+
+    severity, gaps = card_severity(_complete_card(cio_as_of="2026-11-05T14:00:00Z"), top_list=False)
+    assert severity is None and gaps == [], (severity, gaps)

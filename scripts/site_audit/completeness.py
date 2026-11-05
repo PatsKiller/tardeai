@@ -61,6 +61,12 @@ def card_severity(card: dict[str, Any], *, top_list: bool) -> tuple[str | None, 
     an unexplained one is P1 because the operator cannot tell a gap from a bug.
     """
     gaps = symbol_card_gaps(card)
+    # cx-openai-4 R3 on #2648: a CIO stance or thesis with no as_of is a CLAIM, not evidence — the module already
+    # said so in thesis_as_of_missing(), but the function whose docstring says "None means complete" did not ask.
+    # A card could therefore be graded complete by card_severity and flagged by the sibling check in the same pass.
+    # The clock is part of completeness now, in the one function that decides it.
+    if thesis_as_of_missing(card):
+        gaps = gaps + [{"field": "cio_as_of", "reason": "the CIO stance or thesis carries no as_of"}]
     if not gaps:
         return None, []
     if top_list:
