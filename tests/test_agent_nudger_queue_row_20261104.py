@@ -149,3 +149,85 @@ def test_send_types_a_single_line_into_tmux():
 def test_a_row_without_a_check_or_severity_still_renders():
     text = N.row_prompt(row("FQ-097", "x", "queued", check="", severity=""), COORD)
     assert "FQ-097" in text and "check" not in text.split("Acceptance:")[0].replace("/health", "")
+
+
+# ── the MAIN caller dispatches the row prompt (CX2, codex-cloud 2026-11-05) ─────────────────────────────────────
+#
+# The tests above exercise selection and formatting directly. None drove `main()` with a queue fixture, and the other
+# caller tests (P1/P2) never passed a matching row, so reverting the send site to the generic heartbeat would have left
+# every one of them green. These drive the caller itself (AGENTS.md §8A: "Test the caller, not only the helper").
+
+IDLE_SCREEN = "❯ \n  ? for shortcuts"
+
+
+def seed_idle_state(tmp_path: Path, session: str, screen: str = IDLE_SCREEN) -> Path:
+    """A state record whose hash matches the screen, so decide() votes NUDGE instead of 'first seen'."""
+    import hashlib
+    import time
+
+    now = time.time()
+    rec = {"hash": hashlib.sha256(N.tail_of(screen).encode()).hexdigest(),
+           "changed_at": now - 30 * 60,   # idle 30 min: past the 4-minute idle_minutes
+           "nudged_at": now - 60 * 60}    # last nudge 60 min ago: past the 10-minute min_gap
+    path = tmp_path / "state.json"
+    path.write_text(json.dumps({session: rec}), encoding="utf-8")
+    return path
+
+
+def run_main(monkeypatch, tmp_path: Path, queue_path: Path, *, apply: bool, session="cc-deepseek-8"):
+    """Invoke the real main() with a working, captured transport; returns (rc, [(session, text), ...])."""
+    calls = []
+
+    def fake_send(session_name, text, **_kwargs):
+        calls.append((session_name, text))
+        return True
+
+    monkeypatch.setattr(N, "list_sessions", lambda cfg: ([session], True))
+    monkeypatch.setattr(N, "capture", lambda name: (IDLE_SCREEN, True))
+    monkeypatch.setattr(N, "send", fake_send)
+    # A live main() writes a LaneRunReceipt; point it at the test's own tree so this caller test writes nothing durable.
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    rc = N.main(["--apply" if apply else "--dry-run",
+                 "--state", str(tmp_path / "state.json"),
+                 "--ledger", str(tmp_path / "ledger.jsonl"),
+                 "--coord-dir", COORD,
+                 "--queue", str(queue_path)])
+    return rc, calls
+
+
+def test_main_sends_the_queue_row_prompt_to_an_idle_session(tmp_path, monkeypatch):
+    """CX2: the caller must dispatch the row prompt. Reverting the send site to `PROMPT.format(...)` turns this red."""
+    path = write_queue(tmp_path, [row("FQ-042", "cc-deepseek-8", "queued")])
+    seed_idle_state(tmp_path, "cc-deepseek-8")
+    rc, calls = run_main(monkeypatch, tmp_path, path, apply=True)
+    assert rc == 0
+    assert len(calls) == 1, calls
+    session_name, text = calls[0]
+    assert session_name == "cc-deepseek-8"
+    assert "Your next queue row is FQ-042" in text, text
+    assert "no sideways scroll at 390" in text, "the row's ACCEPTANCE must reach the caller's send()"
+    assert "re-read /coord/WORKERS.md" not in text, "a queue row must replace the generic heartbeat, not join it"
+
+
+def test_main_falls_back_to_the_generic_heartbeat_when_no_row_matches(tmp_path, monkeypatch):
+    """The floor: no queued row for the session means the old heartbeat, exactly, and it still types."""
+    path = write_queue(tmp_path, [row("FQ-001", "someone-else", "queued"),
+                                  row("FQ-002", "cc-deepseek-8", "done")])
+    seed_idle_state(tmp_path, "cc-deepseek-8")
+    rc, calls = run_main(monkeypatch, tmp_path, path, apply=True)
+    assert rc == 0
+    assert len(calls) == 1, calls
+    assert calls[0][1] == N.PROMPT.format(coord=COORD), "no matching row must fall back to the generic prompt"
+
+
+def test_dry_run_prints_the_constructed_queue_prompt(tmp_path, monkeypatch, capsys):
+    """CX1: the acceptance lives only in the message; a dry-run preview that omits it cannot be reviewed."""
+    path = write_queue(tmp_path, [row("FQ-043", "cc-deepseek-8", "queued",
+                                      acceptance={"what": "wording that only the message carries"})])
+    seed_idle_state(tmp_path, "cc-deepseek-8")
+    rc, calls = run_main(monkeypatch, tmp_path, path, apply=False)
+    out = capsys.readouterr().out
+    assert rc == 0 and calls == [], "a dry run must type nothing"
+    assert "FQ-043" in out
+    assert "wording that only the message carries" in out, (
+        "the dry-run plan must print the constructed prompt (AGENTS.md §6), not only the row id and page")
