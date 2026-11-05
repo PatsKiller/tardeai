@@ -1,6 +1,6 @@
 # Mergify — merge actor for Trade AI (AGENTS.md §25.10 / 24.0.0).
 # Mergify merges to main inside ET windows; the host deploy_on_main poller promotes CURRENT.
-# Agents never merge. Installing / re-permissioning the Mergify GitHub App is §17.
+# Standing coordinator exact-head merges are separate (§25.10.4). Installing / re-permissioning Mergify is §17.
 #
 # Go signal: one Telegram digest tap ("Approve all", scripts/pr_merge_digest.py) → host adds label
 # ``operator-merge`` to each approved PR, bound to its head SHA (no GitHub Approve UI). A shared-infra /
@@ -85,6 +85,14 @@ pull_request_rules:
           - files~=^config/systemd/user/tradeai\-pr\-merge\-[^/]*$
           - files~=^\.github/.*$
           - files~=^scripts/lib/release_control\.py$
+          - files~=^config/agent_standing_authority\.json$
+          - files~=^scripts/lib/pr_merge_delegation\.py$
+          - files~=^scripts/lib/pr_all_checks_green\.py$
+          - files~=^tests/test_pr_merge_delegation_20261102\.py$
+          - files~=^tests/test_pr_all_checks_standing_20261102\.py$
+          - files~=^config/ci_gates/agents_policy_30_0_0\.json$
+          - files~=^config/ci_gates/guard_item8_grant_free_push_20261025\.json$
+          - files~=^tests/test_agents_policy_30_0_0\.py$
     actions:
       label:
         add:
@@ -119,10 +127,12 @@ pull_request_rules:
       - "-check-failure~=^(?!Mergify Merge Queue$|Rule: ).*"
       - "-check-pending~=^(?!Mergify Merge Queue$|Rule: ).*"
       - label!=shared-infra
-      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
-      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
-      # operator naming the PR (the per-PR path is unchanged).
-      - schedule=Mon-Fri 17:30-18:30[America/New_York]
+      # Operator 2026-11-02: merges batch in TWO weekday windows, noon and after the close.
+      # Approved PRs queue all day and land in one of them; urgent fixes merge by the operator
+      # naming the PR (the per-PR path is unchanged).
+      - or:
+          - schedule=Mon-Fri 12:00-12:30[America/New_York]
+          - schedule=Mon-Fri 17:30-18:30[America/New_York]
     actions:
       queue:
         name: default
@@ -154,10 +164,12 @@ pull_request_rules:
       # for regular expressions matching"), and the optional minus prefix negates the condition.
       - "-check-failure~=^(?!Mergify Merge Queue$|Rule: ).*"
       - "-check-pending~=^(?!Mergify Merge Queue$|Rule: ).*"
-      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
-      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
-      # operator naming the PR (the per-PR path is unchanged).
-      - schedule=Mon-Fri 17:30-18:30[America/New_York]
+      # Operator 2026-11-02: merges batch in TWO weekday windows, noon and after the close.
+      # Approved PRs queue all day and land in one of them; urgent fixes merge by the operator
+      # naming the PR (the per-PR path is unchanged).
+      - or:
+          - schedule=Mon-Fri 12:00-12:30[America/New_York]
+          - schedule=Mon-Fri 17:30-18:30[America/New_York]
     actions:
       queue:
         name: solo
@@ -215,10 +227,12 @@ queue_rules:
       - "-check-failure~=^(?!Mergify Merge Queue$|Rule: ).*"
       - "-check-pending~=^(?!Mergify Merge Queue$|Rule: ).*"
       - label=operator-merge
-      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
-      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
-      # operator naming the PR (the per-PR path is unchanged).
-      - schedule=Mon-Fri 17:30-18:30[America/New_York]
+      # Operator 2026-11-02: merges batch in TWO weekday windows, noon and after the close.
+      # Approved PRs queue all day and land in one of them; urgent fixes merge by the operator
+      # naming the PR (the per-PR path is unchanged).
+      - or:
+          - schedule=Mon-Fri 12:00-12:30[America/New_York]
+          - schedule=Mon-Fri 17:30-18:30[America/New_York]
 
   - name: solo
     batch_size: 1
@@ -256,7 +270,9 @@ queue_rules:
       - "-check-failure~=^(?!Mergify Merge Queue$|Rule: ).*"
       - "-check-pending~=^(?!Mergify Merge Queue$|Rule: ).*"
       - label=operator-merge
-      # DSN-20261031-ci-load-reduction §4.4 (operator 2026-11-01): ONE weekday merge window.
-      # Approved PRs queue all day and land together at 17:30-18:30 ET; urgent fixes merge by the
-      # operator naming the PR (the per-PR path is unchanged).
-      - schedule=Mon-Fri 17:30-18:30[America/New_York]
+      # Operator 2026-11-02: merges batch in TWO weekday windows, noon and after the close.
+      # Approved PRs queue all day and land in one of them; urgent fixes merge by the operator
+      # naming the PR (the per-PR path is unchanged).
+      - or:
+          - schedule=Mon-Fri 12:00-12:30[America/New_York]
+          - schedule=Mon-Fri 17:30-18:30[America/New_York]

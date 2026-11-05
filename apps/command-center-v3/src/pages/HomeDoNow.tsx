@@ -13,6 +13,7 @@
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
@@ -49,11 +50,11 @@ function useNow(ms: number): number {
 const card = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 0 }
 const label = { fontSize: TYPE.xs, color: TOKENS.text[2], textTransform: 'uppercase' as const, letterSpacing: '0.06em' }
 
-function CardHead({ title, to, linkText }: { title: string; to: string; linkText: string }) {
+function CardHead({ title, to, linkText, touchTarget = false }: { title: string; to: string; linkText: string; touchTarget?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
       <h2 style={{ margin: 0, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{title}</h2>
-      <Link to={to} style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none' }}>{linkText} ›</Link>
+      <Link to={to} aria-label={touchTarget ? `View ${title.toLowerCase()}` : undefined} style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', ...(touchTarget ? { minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' } : {}) }}>{linkText} ›</Link>
     </div>
   )
 }
@@ -132,7 +133,7 @@ export default function HomeDoNow() {
   const mr = unwrapMarketRisk(mrResp)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
-  const { data: oppTop } = useApi<any>('/api/v3/opportunities?preset=top5', 300_000)
+  const { data: oppTop } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
   const platformApi = useApi<any>('/api/v2/system/platform-health', 60_000)
   const dpApi = useApi<DeploysStatusWire>(DEPLOYS_PATHS.status, 120_000)
   const { data: command } = useApi<any>('/api/v2/command', 300_000)
@@ -333,7 +334,7 @@ export default function HomeDoNow() {
       {/* Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         <section style={card} data-testid="home-opportunities" aria-label="Best opportunities">
-          <CardHead title="Best opportunities" to="/watch?tab=opportunities&preset=top5" linkText="All" />
+          <CardHead title="Best opportunities" to={BEST_OPPORTUNITIES_PATH} linkText="View top 5" touchTarget />
           {opps.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppTop ? 'Nothing clears the bar right now.' : 'Loading…'}</div>}
           {opps.map((o: any) => (
             <button key={o.symbol} type="button" onClick={() => openSymbol(o.symbol)}

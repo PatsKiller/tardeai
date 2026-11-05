@@ -13,6 +13,7 @@ import OpsAutonomyDashboard from './OpsAutonomyDashboard'
 import { AutonomyLoopPanel, DailyIntelligencePanel, MemoryPanel } from './MaturityPanels'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
+import { humanizeCode } from '../lib/displayLabels'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
@@ -365,9 +366,11 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
             const rem = f.remediation || {}
             const sc = STATUS_COLOR[rem.status] || 'var(--text3)'
             const when = rem.at || f.detected_at || ''
+            // Raw producer identifiers, not sentence text (BOARD row 38). The raw pair stays recoverable in a title.
+            const whoRaw = rem.by ? `${f.detected_by || 'health_agent'} → ${rem.by}` : (f.detected_by || 'health_agent')
             const who = rem.by
-              ? `${f.detected_by || 'health_agent'} → ${rem.by}`
-              : (f.detected_by || 'health_agent')
+              ? `${humanizeCode(f.detected_by || 'health_agent')} → ${humanizeCode(rem.by)}`
+              : humanizeCode(f.detected_by || 'health_agent')
             const lab: CSSProperties = {
               fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase',
               letterSpacing: 0.3, marginBottom: 2,
@@ -388,7 +391,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
                   cursor: onDrill ? 'pointer' : 'default' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity] }}>{f.severity}</span>
-                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{CAT_LABEL[f.category] || f.category}</span>
+                  <span style={{ fontSize: 10, color: 'var(--text3)' }} title={f.category}>{CAT_LABEL[f.category] || humanizeCode(f.category)}</span>
                   <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
                     color: sc, background: 'var(--bg2)', padding: '2px 8px', borderRadius: 9 }}>{rem.status || 'detected'}</span>
                 </div>
@@ -403,7 +406,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
                   </div>
                   <div>
                     <div style={lab}>Who</div>
-                    <div style={{ fontSize: 11, color: 'var(--text1)', fontFamily: 'ui-monospace, monospace' }}>{who}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text1)' }} title={whoRaw}>{who}</div>
                   </div>
                   <div>
                     <div style={lab}>When</div>
@@ -464,7 +467,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
               <div key={kind} title={`Preference: ${(r.preference || []).join(' → ')}`}
                 style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11, padding: '5px 10px',
                   background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 3 }}>
-                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }}>{kind.replace(/_/g, ' ')}</span>
+                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }} title={kind}>{humanizeCode(kind)}</span>
                 <span style={{ color: 'var(--text3)' }}>→</span>
                 <span style={{ color: r.active ? 'var(--green)' : 'var(--red)', fontWeight: 700, width: 150, flexShrink: 0 }}>
                   {r.active || 'none available'}

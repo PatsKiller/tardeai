@@ -14,7 +14,7 @@ What it may cancel — nothing else:
 
 What it never touches:
   * any run that is not a pull_request run: push (main), schedule, workflow_dispatch, dynamic
-    (CodeQL). A cancelled main run counts as red (main-red-alert opens a ci-main-red issue), and
+    (a long scanner, formerly CodeQL). A cancelled main run counts as red (main-red-alert opens a ci-main-red issue), and
     the deploy poller's promote needs every main workflow green;
   * any run whose head SHA is main's current head;
   * Mergify merge-queue branches (mergify/...);
