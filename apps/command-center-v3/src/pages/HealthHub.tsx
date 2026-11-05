@@ -367,6 +367,9 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
             const rem = f.remediation || {}
             const sc = STATUS_COLOR[rem.status] || 'var(--text3)'
             const when = rem.at || f.detected_at || ''
+            const whoRaw = rem.by
+              ? `${f.detected_by || 'health_agent'} → ${rem.by}`
+              : (f.detected_by || 'health_agent')
             const who = rem.by
               ? `${componentLabel(f.detected_by || 'health_agent')} → ${componentLabel(rem.by)}`
               : componentLabel(f.detected_by || 'health_agent')
@@ -408,7 +411,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
                   </div>
                   <div>
                     <div style={lab}>Who</div>
-                    <div style={{ fontSize: 11, color: 'var(--text1)', fontFamily: 'ui-monospace, monospace' }}>{who}</div>
+                    <div title={whoRaw} style={{ fontSize: 11, color: 'var(--text1)', fontFamily: 'ui-monospace, monospace' }}>{who}</div>
                   </div>
                   <div>
                     <div style={lab}>When</div>
