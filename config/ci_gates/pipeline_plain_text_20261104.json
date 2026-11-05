@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pipeline_plain_text_20261104",
+  "files": [
+    "tests/test_pipeline_plain_text_20261104.py"
+  ],
+  "anchor": "PIPELINE_PLAIN_TEXT_20261104",
+  "comment": [
+    "ANCHOR: PIPELINE_PLAIN_TEXT_20261104 — FQ-033: the work pipeline leads in words. The raw checkout path, the census shell error and a refused action's service text are rendered under a closed Technical disclosure instead of inline, the plain sentences name what happened, and every value is still rendered (nothing removed). Pytest-collectable so the CI shard runner executes it (a .mjs file cannot be collected); apps/command-center-v3/src/lib/pipelinePlainText.view.test.mjs mirrors it for a node run."
+  ]
+}
