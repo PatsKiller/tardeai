@@ -121,6 +121,24 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
     return False
 
 
+def deep_counters(detail: dict, indices: list[int]) -> dict:
+    """The row's deep-crawl facts, counted against the SHARED outcome constant.
+
+    cx-openai-4 R6 on #2648: this compared each link's outcome to the string "OK" while deep_crawl's outcomes are
+    lowercase, so every successful link was counted dead (links_followed=1, links_dead=1 for one good 200).
+    """
+    from site_audit.deep_crawl import OK
+
+    links = detail.get("links") or []
+    return {
+        "details_sampled": len(indices),
+        "details_opened": sum(1 for x in detail.get("details") or [] if x.get("opened")),
+        "details_refused": [x.get("selector") or x.get("label") for x in detail.get("refused") or []],
+        "links_followed": len(links),
+        "links_dead": sum(1 for x in links if x.get("outcome") not in (None, OK)),
+    }
+
+
 def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: list[str], *, deep: bool = True) -> dict:
     api, failed, console = [], [], []
     starts = {}
@@ -192,7 +210,9 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     row["failed_requests"] = failed[:30]
     row["api_calls"] = api[:80]
     row["slow_api"] = [a for a in api if (a.get("ms") or 0) > 3000]
-    assert_leaf_inside_root(d / f"{vp}.json", out).write_text(json.dumps(row, indent=1))
+    # cx-openai-4 R6 on #2648: the viewport JSON used to be written HERE, before the deep crawl ran, so the
+    # persisted receipt carried none of the details_*/links_* counters while the row in memory did. The receipt is
+    # written at the end of the function now, after the deep facts are attached.
     # codex R3 (2026-11-04): the CLI captured screenshots and never invoked the deep crawl, so no detail
     # was ever opened and no completeness check ever ran. The crawl and its evidence are now part of the
     # capture, on the same page and viewport, under the pinned detail budget.
@@ -204,11 +224,8 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
         detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
                                          out_dir=d, openers=openers)
         assert_leaf_inside_root(d / f"{vp}-details.json", out).write_text(json.dumps(detail, indent=1))
-        row["details_sampled"] = len(indices)
-        row["details_opened"] = sum(1 for x in detail["details"] if x.get("opened"))
-        row["details_refused"] = [x.get("selector") or x.get("label") for x in detail["refused"]]
-        row["links_followed"] = len(detail["links"])
-        row["links_dead"] = sum(1 for x in detail["links"] if x.get("outcome") not in (None, "OK"))
+        row.update(deep_counters(detail, indices))
+    assert_leaf_inside_root(d / f"{vp}.json", out).write_text(json.dumps(row, indent=1))
     return row
 
 

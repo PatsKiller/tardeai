@@ -321,3 +321,21 @@ def test_R3_a_dated_cio_stance_is_still_complete():
 
     severity, gaps = card_severity(_complete_card(cio_as_of="2026-11-05T14:00:00Z"), top_list=False)
     assert severity is None and gaps == [], (severity, gaps)
+
+
+# ── R6 (cx-openai-4): a successful link is not dead, and the receipt carries the deep facts ───────────────────
+def test_R6_a_successful_link_is_not_counted_dead():
+    from site_audit.page_audit_capture import deep_counters
+
+    detail = {"details": [{"opened": True}], "refused": [], "links": [{"outcome": "ok"}, {"outcome": "dead"}]}
+    c = deep_counters(detail, [0])
+    assert c["links_followed"] == 2
+    assert c["links_dead"] == 1, c          # the one 'ok' must NOT be dead
+    assert c["details_opened"] == 1 and c["details_sampled"] == 1
+
+
+def test_R6_the_viewport_receipt_is_written_after_the_deep_facts():
+    src = (ROOT / "scripts/site_audit/page_audit_capture.py").read_text()
+    deep_at = src.index("if deep:")
+    receipt_at = src.index('f"{vp}.json"')
+    assert receipt_at > deep_at, "the viewport receipt is written before the deep crawl runs"
