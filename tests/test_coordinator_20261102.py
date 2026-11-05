@@ -919,3 +919,95 @@ def test_an_inbox_item_that_vanishes_before_the_move_does_not_crash(tmp_path, mo
         assert run(tmp_path, "inbox", "read", "--id", "codex-a") == 0
     finally:
         monkeypatch.setattr(C.os, "replace", real_replace)
+
+
+# ── D49 repair 2026-11-05: the codex-cloud BLOCK at a9668e01c (CX1, CX2, CX3) ─────────────────────────
+
+BAD_REGISTRY = '{"schema": "CoordinatorRegistry@v1", "coordinators": ['
+
+
+def test_appoint_refuses_a_territory_another_coordinator_holds(tmp_path):
+    """CX1 @ a9668e01c: appointing both alpha and beta over release wrote a divergent registry."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert run(tmp_path, "add", "codex-a", "--vendor", "codex", "--quote", "add codex") == 0
+    before = registry(tmp_path)
+    assert run(tmp_path, "appoint", "--id", "codex-a", "--vendor", "codex", "--role", "member",
+               "--territories", "release", "--quote", "q") == 2
+    assert registry(tmp_path) == before
+    # The registry stayed coherent: an assignment (and a self re-appointment) still works.
+    assert run(tmp_path, "assign", "pr:2492", "release") == 0
+    assert appoint(tmp_path, "claude-lead", "lead", "release", quote="re-affirm the holder") == 0
+
+
+def test_appoint_still_accepts_a_territory_nobody_holds(tmp_path):
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    assert run(tmp_path, "assign", "pr:2492", "agents") == 0
+
+
+@pytest.mark.parametrize("verb", [
+    ["assign", "pr:1", "release"],
+    ["appoint", "--id", "codex-a", "--vendor", "codex", "--role", "member",
+     "--territories", "agents", "--quote", "q"],
+    ["give", "codex-a", "release", "--quote", "q"],
+    ["lead", "codex-a", "--quote", "q"],
+    ["take-back", "codex-a", "--quote", "q"],
+    ["add", "codex-b", "--vendor", "codex", "--quote", "q"],
+    ["ack", "codex-a"],
+    ["timeouts", "--apply"],
+    ["handoff", "--from", "codex-a", "--to", "codex-b", "--quote", "q"],
+    ["heartbeat", "--id", "codex-a"],
+    ["stand-down", "--id", "codex-a", "--quote", "q"],
+    ["event", "note", "--subject", "x"],
+    ["check", "request", "pr:1", "--by", "codex-a"],
+    ["board"],
+])
+def test_a_malformed_registry_refuses_every_mutation_and_keeps_its_bytes(tmp_path, verb):
+    """CX2 @ a9668e01c: malformed JSON used to read as a new store and be overwritten."""
+    d = _fixture_dir(tmp_path)
+    d.mkdir(parents=True)
+    p = d / "coordinators.json"
+    p.write_text(BAD_REGISTRY, encoding="utf-8")
+    assert run(tmp_path, *verb) == 2
+    assert p.read_text(encoding="utf-8") == BAD_REGISTRY  # bytes preserved, nothing reset
+
+
+def test_a_registry_that_is_not_a_json_object_is_refused(tmp_path):
+    d = _fixture_dir(tmp_path)
+    d.mkdir(parents=True)
+    p = d / "coordinators.json"
+    p.write_text("[]", encoding="utf-8")
+    assert run(tmp_path, "assign", "pr:1", "release") == 2
+    assert p.read_text(encoding="utf-8") == "[]"
+
+
+def test_an_absent_registry_still_bootstraps(tmp_path):
+    """The refusal is for a present-but-undecodable file, never for a new store."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert registry(tmp_path)["lead"] == "claude-lead"
+
+
+def test_status_distinguishes_an_unreadable_registry_from_an_absent_one(tmp_path, capsys):
+    assert run(tmp_path, "status", "--json") == 0
+    absent = json.loads(capsys.readouterr().out)
+    assert absent["registry_present"] is False and absent["registry_error"] is None
+    d = _fixture_dir(tmp_path)
+    d.mkdir(parents=True)
+    (d / "coordinators.json").write_text(BAD_REGISTRY, encoding="utf-8")
+    assert run(tmp_path, "status", "--json") == 0
+    present = json.loads(capsys.readouterr().out)
+    assert present["registry_present"] is True and "cannot be decoded" in present["registry_error"]
+
+
+def test_a_handoff_to_the_same_coordinator_is_refused(tmp_path):
+    """CX3 @ a9668e01c: --from X --to X cleared X's own territories and returned 0."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    before, events_before = registry(tmp_path), ledger(tmp_path)
+    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "claude-lead",
+               "--quote", "q") == 2
+    assert run(tmp_path, "handoff", "--from", "claude-lead", "--to", "claude-lead",
+               "--quote", "q", "--dry-run") == 2
+    assert registry(tmp_path) == before and ledger(tmp_path) == events_before
+    assert registry(tmp_path)["coordinators"][0]["territories"] == ["release"]
+    handoffs = _fixture_dir(tmp_path) / "handoffs"
+    assert not handoffs.exists() or not list(handoffs.iterdir())

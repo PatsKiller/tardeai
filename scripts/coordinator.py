@@ -196,13 +196,52 @@ def append_event(root: Path, event: dict[str, Any]) -> None:
 # ── tolerant reads ────────────────────────────────────────────────────────────────────────────────────
 
 
-def read_registry(root: Path) -> dict[str, Any]:
-    p = registry_path(root)
+class RegistryUnreadable(RuntimeError):
+    """An existing registry that cannot be decoded. Mutators refuse; its bytes are never rewritten."""
+
+
+def _decode_registry(p: Path) -> dict[str, Any]:
+    """Decode a registry that exists. Raises instead of returning a reset document (CX2 @ a9668e01c)."""
     try:
         doc = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        doc = {}
+    except (OSError, ValueError) as exc:
+        raise RegistryUnreadable(
+            f"registry {p} exists but cannot be decoded ({exc}); refusing to overwrite it — "
+            "fix the file by hand (its bytes are preserved)") from exc
     if not isinstance(doc, dict):
+        raise RegistryUnreadable(
+            f"registry {p} exists but its top-level JSON is not an object; refusing to overwrite it")
+    return doc
+
+
+def registry_problem(root: Path) -> str | None:
+    """Why an EXISTING registry cannot be read, or None when it is absent or decodable. Never writes."""
+    p = registry_path(root)
+    if not p.exists():
+        return None
+    try:
+        _decode_registry(p)
+    except RegistryUnreadable as exc:
+        return str(exc)
+    return None
+
+
+def read_registry(root: Path, *, strict: bool = False) -> dict[str, Any]:
+    """Load the registry. An absent store bootstraps; a present one that will not decode does not.
+
+    ``strict`` is for every mutator: it raises ``RegistryUnreadable`` so a damaged store can never be
+    mistaken for a new one and overwritten, losing the ownership and acknowledgement records.
+    """
+    p = registry_path(root)
+    doc: dict[str, Any]
+    if p.exists():
+        try:
+            doc = _decode_registry(p)
+        except RegistryUnreadable:
+            if strict:
+                raise
+            doc = {}
+    else:
         doc = {}
     doc.setdefault("schema", SCHEMA_REGISTRY)
     # The hand-written seed's top-level fields survive every normalisation (the banner reads `lead` and `updated_at`).
@@ -733,7 +772,7 @@ def _transfer(root: Path, reg: dict[str, Any], *, kind: str, to: str, territorie
 def cmd_give(args) -> int:
     root = state_root(args.state_root)
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         err = coherence_error(reg)
         if err:
             print(f"error: {err}", file=sys.stderr)
@@ -756,7 +795,7 @@ def cmd_give(args) -> int:
 def cmd_lead(args) -> int:
     root = state_root(args.state_root)
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         err = coherence_error(reg, allow_absent_lead=True)
         if err:
             print(f"error: {err}", file=sys.stderr)
@@ -775,7 +814,7 @@ def cmd_lead(args) -> int:
 def cmd_take_back(args) -> int:
     root = state_root(args.state_root)
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         err = coherence_error(reg)
         if err:
             print(f"error: {err}", file=sys.stderr)
@@ -811,7 +850,7 @@ def cmd_take_back(args) -> int:
 def cmd_add(args) -> int:
     root = state_root(args.state_root)
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         err = coherence_error(reg)
         if err:
             print(f"error: {err}", file=sys.stderr)
@@ -869,7 +908,7 @@ def join_line(root: Path, cid: str, vendor: str) -> str | None:
 def cmd_ack(args) -> int:
     root = state_root(args.state_root)
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         err = coherence_error(reg)
         if err:
             print(f"error: {err}", file=sys.stderr)
@@ -911,7 +950,7 @@ def cmd_timeouts(args) -> int:
         return 2
     if args.apply:
         with locked(root):
-            reg = read_registry(root)
+            reg = read_registry(root, strict=True)
             err = coherence_error(reg)
             if err:
                 print(f"error: {err}", file=sys.stderr)
@@ -921,7 +960,7 @@ def cmd_timeouts(args) -> int:
                 _atomic_write(registry_path(root), json.dumps(reg, indent=1, sort_keys=True) + "\n")
                 _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     else:
-        fired = sweep_acks(root, read_registry(root), apply=False)
+        fired = sweep_acks(root, read_registry(root, strict=True), apply=False)
     print(json.dumps({"schema": "CoordinatorTimeouts@v1", "dry_run": not args.apply, "expired": fired}, indent=1))
     return 0
 
@@ -938,6 +977,8 @@ def cmd_status(args) -> int:
     doc = {
         "schema": "CoordinatorStatus@v1", "as_of": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "registry_present": registry_path(root).exists(),
+        # An existing store that will not decode is NOT the same as an absent one: mutators refuse it.
+        "registry_error": registry_problem(root),
         "lead": next((c.get("id") for c in reg["coordinators"] if str(c.get("role")) == "lead"), None),
         "coordinators": [{**c, "state": coordinator_state(c, stale, now)} for c in reg["coordinators"]],
         "assignments": reg["assignments"],
@@ -951,6 +992,8 @@ def cmd_status(args) -> int:
     if args.json:
         print(json.dumps(doc, indent=1))
         return 0
+    if doc["registry_error"]:
+        print(f"REGISTRY UNREADABLE (mutations refuse): {doc['registry_error']}")
     print(f"lead: {doc['lead'] or '(none appointed)'}   store: {doc['store']}")
     for c in doc["coordinators"]:
         print(f"  {c.get('id'):20s} {str(c.get('vendor') or ''):7s} {str(c.get('role') or ''):7s} "
@@ -972,7 +1015,7 @@ def cmd_appoint(args) -> int:
         return 2
     root = state_root(args.state_root)
     with locked(root):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         err = coherence_error(reg, allow_absent_lead=True)
         if err:
             print(f"error: {err}", file=sys.stderr)
@@ -981,6 +1024,14 @@ def cmd_appoint(args) -> int:
         territories = [t.strip() for t in (args.territories or "").split(",") if t.strip()]
         if not territories:
             print("error: --territories is required (comma-separated)", file=sys.stderr)
+            return 2
+        # CX1 @ a9668e01c: an appointment must not duplicate a territory another coordinator holds —
+        # that wrote a divergent registry which then refused every transfer and reappointment.
+        taken = {t: [h for h in _holders(reg, t) if h != tid] for t in territories}
+        taken = {t: hs for t, hs in taken.items() if hs}
+        if taken:
+            print(f"error: territory already held ({taken}); use `coord give {tid} <territory>` "
+                  "to transfer it", file=sys.stderr)
             return 2
         existing = find(reg, tid)
         if existing and str(existing.get("role")) == "lead" and args.role != "lead":
@@ -1023,7 +1074,7 @@ def cmd_stand_down(args) -> int:
         print("error: refused: an operator transfer needs --quote with the operator's own words", file=sys.stderr)
         return 2
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         c = find(reg, _safe(args.id))
         if not c:
             print(f"error: no coordinator {args.id}", file=sys.stderr)
@@ -1053,7 +1104,7 @@ def cmd_stand_down(args) -> int:
 def cmd_heartbeat(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         c = find(reg, _safe(args.id))
         if not c:
             print(f"error: no coordinator {args.id}", file=sys.stderr)
@@ -1075,7 +1126,7 @@ def cmd_heartbeat(args) -> int:
 def cmd_assign(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         tid = _safe(args.territory)
         known = set(reg["territories"]) | {t for c in reg["coordinators"] for t in (c.get("territories") or [])}
         if tid not in known:
@@ -1112,10 +1163,11 @@ def cmd_event(args) -> int:
               file=sys.stderr)
         return 2
     with locked(root):
+        reg = read_registry(root, strict=True)  # refuse before appending to a store we cannot read
         append_event(root, {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.coordinator,
                             "territory": args.territory, "kind": str(args.kind), "subject": args.subject,
                             "detail": args.detail, "operator_quote": args.quote})
-        _atomic_write(board_path(root), render_board(root, read_registry(root), read_events(root)))
+        _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     print(f"event {args.kind} recorded")
     return 0
 
@@ -1123,7 +1175,7 @@ def cmd_event(args) -> int:
 def cmd_check(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         events = read_events(root)
         subject, sha = str(args.subject), str(args.sha or "")
         if args.action == "request":
@@ -1216,11 +1268,16 @@ def cmd_inbox(args) -> int:
 def cmd_handoff(args) -> int:
     root = state_root(args.state_root)
     src, dst = _safe(args.from_), _safe(args.to)
+    # CX3 @ a9668e01c: a handoff to the same id emptied its own territories and returned 0.
+    if src == dst:
+        print(f"error: refused: --from and --to are the same coordinator ({src}); "
+              "a handoff must move work to a different coordinator", file=sys.stderr)
+        return 2
     if not str(args.quote or "").strip():
         print("error: refused: an operator transfer needs --quote with the operator's own words", file=sys.stderr)
         return 2
     with (nullcontext() if getattr(args, "dry_run", False) else locked(root)):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         a, b = find(reg, src), find(reg, dst)
         if not a or not b:
             print(f"error: both coordinators must exist ({src}, {dst})", file=sys.stderr)
@@ -1258,7 +1315,7 @@ def cmd_handoff(args) -> int:
 def cmd_board(args) -> int:
     root = state_root(args.state_root)
     with locked(root):
-        reg = read_registry(root)
+        reg = read_registry(root, strict=True)
         _atomic_write(board_path(root), render_board(root, reg, read_events(root)))
     p = board_path(root)
     if args.json:
@@ -1453,7 +1510,12 @@ def main(argv: list[str] | None = None) -> int:
             continue
         cleaned.append(a)
     args.argv = cleaned
-    return COMMANDS[args.cmd](args)
+    try:
+        return COMMANDS[args.cmd](args)
+    except RegistryUnreadable as exc:
+        # Every mutator reads strictly; a damaged registry is refused, never reset (CX2 @ a9668e01c).
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

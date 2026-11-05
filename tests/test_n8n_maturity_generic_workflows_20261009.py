@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -331,3 +333,131 @@ def test_index_lists_six_with_shas(rendered):
     for r in rows:
         assert r["sha256"] == hashlib.sha256((rendered / r["file"]).read_bytes()).hexdigest()
         assert r["active"] is False and r["triggers"] and "POST /run" in r["relay_calls"]
+
+
+# ── FQ-129: an overlap skip is data, not a failed execution ──────────────────────────────────────
+#
+# tradeai-dispatcher failed 172 of 178 runs in seven days and tradeai-heartbeat-watcher 69 of 70,
+# every one of them NodeOperationError "<lane>=RUNNING". The relay answers a replayed slot key with
+# the stored row's state and HTTP 403, and the Assert node read the status code first, so an overlap
+# replay and a lock skip both became a thrown error. These tests run the generated Code nodes rather
+# than reading them.
+
+NODE_BIN = shutil.which("node")
+_needs_node = pytest.mark.skipif(NODE_BIN is None, reason="node is not installed")
+
+
+def _run_code_node(wf: dict, name: str, *, due: list[dict], res: list[dict], source: str = "schedule") -> dict:
+    """Execute one generated Code node in node with the two variables it reads, nothing else."""
+    node = next(n for n in wf["nodes"] if n["name"] == name)
+    js = "const fs = require('node:fs'); const fixture = JSON.parse(fs.readFileSync(0, 'utf8'));\n"
+    js += "const $input = {first: () => ({json: fixture.first}), all: () => fixture.res.map((json) => ({json}))};\n"
+    js += "const $ = () => ({first: () => ({json: fixture.first}), all: () => fixture.due.map((json) => ({json}))});\n"
+    js += "try { const run = () => {\n" + node["parameters"]["jsCode"]
+    js += "\n}; process.stdout.write(JSON.stringify({ok: true, items: run()})); } "
+    js += "catch (e) { process.stdout.write(JSON.stringify({ok: false, reason: e.message})); }"
+    envelope = {"schema": gen.DUE_SCHEMA, "ok": True, "source": source, "items": due}
+    out = subprocess.run(
+        [NODE_BIN, "-e", js],
+        input=json.dumps({"due": due, "res": res, "first": envelope}),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=20,
+    )
+    return json.loads(out.stdout)
+
+
+def _assert_node(wf: dict, *, due: list[dict], res: list[dict]) -> dict:
+    out = _run_code_node(wf, gen.GN_ASSERT, due=due, res=res)
+    assert out["ok"] is True, out
+    return out["items"][0]["json"]
+
+
+def _item(lane: str) -> dict:
+    return {"lane_id": lane, "mode": "live", "idempotency_key": f"d:{lane}:live:20261105T0100"}
+
+
+@_needs_node
+def test_a_replayed_running_slot_is_a_skip_not_a_refusal():
+    """The exact production shape: HTTP 403, state RUNNING, duplicate true. It failed 172 runs."""
+    wf = gen.build_generic("dispatcher")
+    counts = _assert_node(
+        wf,
+        due=[_item("active-trader-motion-watchdog")],
+        res=[{"statusCode": 403, "body": {"state": "RUNNING", "duplicate": True, "lane_id": "active-trader-motion-watchdog"}}],
+    )
+    assert counts["refused"] == [] and counts["unreachable"] == []
+    assert counts["duplicate"] == 1
+
+
+@_needs_node
+def test_a_still_running_state_without_the_duplicate_flag_is_skipped_not_refused():
+    wf = gen.build_generic("heartbeat-watcher")
+    counts = _assert_node(
+        wf,
+        due=[_item(gen.HEARTBEAT_LANE)],
+        res=[{"statusCode": 200, "body": {"state": "RUNNING", "lane_id": gen.HEARTBEAT_LANE}}],
+    )
+    assert counts["refused"] == [] and counts["unreachable"] == []
+    assert counts["skipped"] == [{"lane_id": gen.HEARTBEAT_LANE, "state": "RUNNING"}]
+
+
+@_needs_node
+@pytest.mark.parametrize("state", ["RUN_DONE", "RUN_TIMEOUT", "RUN_SKIPPED_LOCK"])
+def test_a_slot_the_ledger_already_settled_is_skipped_not_refused(state):
+    counts = _assert_node(
+        gen.build_generic("dispatcher"),
+        due=[_item("disk-usage-monitor")],
+        res=[{"statusCode": 403, "body": {"state": state, "lane_id": "disk-usage-monitor"}}],
+    )
+    assert counts["refused"] == []
+    assert counts["skipped"] == [{"lane_id": "disk-usage-monitor", "state": state}]
+
+
+@_needs_node
+def test_a_real_refusal_still_names_its_reason_and_still_throws():
+    counts = _assert_node(
+        gen.build_generic("dispatcher"),
+        due=[_item("disk-usage-monitor")],
+        res=[{"statusCode": 403, "body": {"state": "REFUSED", "reason": "relay_live_not_enabled"}}],
+    )
+    assert counts["skipped"] == []
+    assert counts["refused"] == [{"lane_id": "disk-usage-monitor", "reason": "relay_live_not_enabled"}]
+
+
+@_needs_node
+def test_an_accepted_request_and_an_unreachable_relay_keep_their_own_buckets():
+    counts = _assert_node(
+        gen.build_generic("dispatcher"),
+        due=[_item("disk-usage-monitor"), _item("disk-hygiene")],
+        res=[{"statusCode": 200, "body": {"state": "REQUESTED", "duplicate": False}}, {"error": "ECONNREFUSED"}],
+    )
+    assert counts["posted"] == 1
+    assert counts["unreachable"] == [{"lane_id": "disk-hygiene", "reason": "no response"}]
+    assert counts["refused"] == []
+
+
+@_needs_node
+def test_the_dispatcher_never_requests_a_lane_another_workflow_schedules():
+    """heartbeat-watch is scheduled by tradeai-heartbeat-watcher (*/5). The every-minute dispatcher
+    requesting the same slot made the loser record run_idempotency_conflict (66 failures)."""
+    assert gen.GENERIC_KINDS["dispatcher"]["exclude_lanes"] == [gen.HEARTBEAT_LANE]
+    due = [_item(gen.HEARTBEAT_LANE), _item("disk-usage-monitor")]
+    out = _run_code_node(gen.build_generic("dispatcher"), gen.GN_VALIDATE, due=due, res=[])
+    assert out["ok"] is True, out
+    lanes = [i["json"]["lane_id"] for i in out["items"]]
+    assert lanes == ["disk-usage-monitor"]
+
+    # The lane's own workflow still requests it (its /due is lane-filtered, so it is handed only that lane).
+    own = _run_code_node(gen.build_generic("heartbeat-watcher"), gen.GN_VALIDATE, due=[_item(gen.HEARTBEAT_LANE)], res=[])
+    assert own["ok"] is True, own
+    assert [i["json"]["lane_id"] for i in own["items"]] == [gen.HEARTBEAT_LANE]
+
+
+def test_only_the_dispatcher_carries_an_exclusion():
+    assert gen.GENERIC_KINDS["dispatcher"].get("exclude_lanes") == [gen.HEARTBEAT_LANE]
+    for kind, spec in gen.GENERIC_KINDS.items():
+        if kind == "dispatcher":
+            continue
+        assert not spec.get("exclude_lanes"), (kind, spec.get("exclude_lanes"))

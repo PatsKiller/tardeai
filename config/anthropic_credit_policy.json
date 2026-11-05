@@ -249,6 +249,17 @@
     "topic_curator"
   ],
   "activation_approved_by": "operator 2026-10-25: \"what disable enable and test call\"",
+  "emergency_process_caps": {
+    "_why": "Operator 2026-11-02 (verbatim): emergency incident clearing may use Anthropic credits on CHEAP models ('We can use Haiku, or lower model'; 'mid' = Sonnet 5.5 only when Haiku is not enough; NEVER Opus or Fable). Raise per-process caps ONLY for the incident/self-heal process, ONLY on those cheap tiers. This is NOT a global budget increase: total_cap_usd, daily_cap_usd and every other process cap are unchanged.",
+    "approved_by": "operator 2026-11-02 emergency-fix-models decision, points 1-4 (coordinator inbox 20261103T020403Z-OPERATOR-DECISION-emergency-fix-models.md)",
+    "per_process": {
+      "incident_supervisor": {
+        "bulk": "3.00",
+        "mid": "3.00"
+      }
+    },
+    "note": "Effective cap = max(the registry daily_cost_cap_usd, the value here) for the named process on that cheap tier only. Only bulk and mid may appear here; any other tier (standard/high/highest/long_form/premium) or a cheap tier remapped to an Opus/Fable model makes the policy invalid. The self-heal end of the loop runs headless Claude Code on DeepSeek (not this ledger), so it needs no entry."
+  },
   "ops_process_tiers": {
     "_why": "Operations processes pinned to a credit tier, read by anthropic_routing.tier_for after process_tiers. incident_supervisor: operator 2026-11-02 ~22:10 ET (verbatim): \"We have Anthropic credits... in an emergency like this, to clear up real errors, we can use more Anthropic, but we don't need to use Fable or Opus. We can use Haiku, or lower model, to do this.\" So triage uses tier bulk (claude-haiku-5-5); mid (claude-sonnet-5-5) only when Haiku is not sufficient; never Opus or Fable for this work. Daily model-call cap 240 in config/incident_runbook_actions.json (5 incidents/cycle x 2 calls/hour x 24h); process soft cap 240 and cost cap 2.0 USD/day in config/llm_process_registry.json (240 x ~0.00085 USD/call at Haiku list price is ~0.20 USD/day, so 2.0 is ~10x headroom and still far under the 10 USD daily credit cap).",
     "incident_supervisor": "bulk"
