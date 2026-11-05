@@ -57,8 +57,11 @@ def test_the_payload_counts_and_ranks_and_never_invents_a_delta():
     stats = M.run_stats([ex("1", "error", NOW - HOUR, NOW - HOUR + timedelta(seconds=2)),
                          ex("1", "error", NOW - 2 * HOUR),
                          ex("2", "success", NOW - HOUR, NOW - HOUR + timedelta(seconds=4))], NOW)
+    # cx-openai-5's F5 at 25b3348e: a crontab line is a JOB only when it has five schedule fields. An assignment
+    # (`CRON_TZ=…`, `PATH=…`) is environment, not a job — one job plus one assignment is 1, not 2.
     out = M.summarize(workflows, stats, {"1": {"kind": "relay_refused", "one_line": "relay 403"}},
-                      now=NOW, cron_lines=["a", "b"], drafts=1)
+                      now=NOW, cron_lines=["CRON_TZ=America/New_York", "*/5 * * * * /usr/bin/true",
+                                           "0 9 * * 1-5 cd /x && ./y"], drafts=1)
     assert out["counts"] == {"workflows": 2, "live": 1, "shadow": 0, "off": 1, "failing": 1}
     assert out["workflows"][0]["name"] == "failing" and out["workflows"][0]["fail"] == 2
     # cc-deepseek's F1 at 79ca2ac7e: this store keeps failures only, so 2 failed of 3 SAVED rows is not a failure rate.
@@ -128,6 +131,65 @@ def test_a_single_select_with_one_trailing_semicolon_is_still_allowed(monkeypatc
     assert rows == [{"raw": ["1", "2"]}]
     assert captured["cmd"][-1] == "select workflow_id, name from workflow_entity"
     assert "-e" in captured["cmd"] and any("default_transaction_read_only=on" in x for x in captured["cmd"])
+
+
+def test_a_skipped_execution_is_counted_as_skipped_and_a_real_error_still_counts():
+    """cx-openai-3's F1 / cx-openai-5's F1 at 25b3348e. Classifying the newest message is not a count repair: n8n
+    records a lock skip as status='error', so the aggregation itself must know each execution's kind."""
+    t1, t2, t3 = NOW - 3 * HOUR, NOW - 2 * HOUR, NOW - HOUR
+    rows = [ex("1", "error", t1), ex("1", "error", t2), ex("1", "error", t3)]
+    kinds = {("1", str(t2)): "skipped", ("1", str(t3)): "skipped", ("1", str(t1)): "failed"}
+    stats = M.run_stats(rows, NOW, kinds=kinds)
+    assert stats["per_workflow"]["1"]["failed"] == 1
+    assert stats["per_workflow"]["1"]["skipped"] == 2
+    assert stats["fleet"]["failed"] == 1 and stats["fleet"]["skipped"] == 2
+    # one skip alone: no failure anywhere the page reads
+    only = M.run_stats([ex("2", "error", t1)], NOW, kinds={("2", str(t1)): "skipped"})
+    assert only["per_workflow"]["2"]["failed"] == 0
+    out = M.summarize(M.workflow_rows([wf("2", "w2")]), only, {}, now=NOW, cron_lines=[], drafts=0)
+    assert out["workflows"][0]["fail"] == 0 and out["counts"]["failing"] == 0
+    assert out["workflows"][0]["skipped"] == 1 and out["kpi"]["skipped"] == 1
+
+
+def test_the_producer_classifies_every_error_execution_not_only_the_newest():
+    """The end-to-end path: get_automations reads each error execution's message, so a workflow whose newest error is
+    a skip and whose older one is a real error still reports one failure."""
+    t1, t2 = NOW - 2 * HOUR, NOW - HOUR
+
+    def q(sql):
+        if "from workflow_entity" in sql:
+            return [wf("1", "w1")]
+        if "from execution_entity e" in sql:
+            # newest first: the skip is the newest
+            return [{"raw": ["1", t2, blob("previous execution is still running (within SLA)")]},
+                    {"raw": ["1", t1, blob("Assert REQUESTED failed")]}]
+        return [ex("1", "error", t1), ex("1", "error", t2)]
+
+    out = M.get_automations(query=q, now=NOW, cron=lambda: [], drafts=0)
+    assert out["kpi"]["failed"] == 1 and out["kpi"]["skipped"] == 1
+    assert out["workflows"][0]["fail"] == 1 and out["workflows"][0]["skipped"] == 1
+    assert out["workflows"][0]["last_error_kind"] == "skipped"   # the row still shows the newest message and its kind
+
+
+def test_a_credential_shaped_error_never_reaches_the_payload():
+    """cx-openai-3's F1 at 25b3348e: an HTTP node's failure can echo the request headers it was handed."""
+    message = "Request failed: Authorization: Bearer SYNTHETIC_REVIEW_ONLY_CREDENTIAL"
+    assert M.redact_secrets(message) == "Request failed: Authorization: Bearer [redacted]"
+    assert "SYNTHETIC_REVIEW_ONLY_CREDENTIAL" not in (M.one_line(message) or "")
+    assert "Request failed" in (M.one_line(message) or "")
+    scrubbed = M.parse_error(blob(message))
+    assert scrubbed is not None and "SYNTHETIC_REVIEW_ONLY_CREDENTIAL" not in scrubbed
+    assert M.classify(scrubbed) == "failed"   # redaction does not change the classification
+    assert M.redact_secrets("api_key=abcdef123456 and token: zzz999") == "api_key=[redacted] and token: [redacted]"
+
+
+def test_cron_entries_counts_jobs_not_assignments_or_macros():
+    """cx-openai-5's F5 at 25b3348e: CRON_TZ=/PATH= lines are environment; @reboot is one job."""
+    assert M.cron_entries(None) is None
+    assert M.cron_entries(["CRON_TZ=America/New_York", "PATH=/usr/local/bin:/usr/bin"]) == []
+    lines = ["CRON_TZ=America/New_York", "*/15 * * * * cd /x && ./run.sh", "@reboot sleep 30 && /usr/bin/true",
+             "PATH=/usr/bin", "0 9 * * 1-5 /usr/bin/true"]
+    assert len(M.cron_entries(lines)) == 3
 
 
 def test_a_source_that_cannot_be_read_is_null_not_zero():

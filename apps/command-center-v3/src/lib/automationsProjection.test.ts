@@ -99,4 +99,25 @@ assert.match(String(fmtEt('2026-11-05T16:30:00Z')), /ET/)
 assert.equal(fmtEt('not-a-date'), null)
 assert.equal(fmtEt(null), null)
 
+// cx-openai-5's F2 at 25b3348e: an unaccepted schema must not leak the numbers it carried. A payload whose rows are
+// withheld rendered UNAVAILABLE while runs/failed/workflows still showed 17 beside it — absence reading as a measured
+// fleet. Every derived figure is null when the input was not accepted.
+{
+  const bad = projectAutomations(payload({ schema: 'Unsupported@999' }), { nowMs: NOW })
+  assert.equal(bad.status, 'UNAVAILABLE')
+  assert.equal(bad.kpi.runs, null); assert.equal(bad.kpi.failed, null); assert.equal(bad.kpi.skipped, null)
+  assert.equal(bad.kpi.avgRunS, null); assert.equal(bad.kpi.cronLeft, null)
+  assert.equal(bad.counts.workflows, null); assert.equal(bad.counts.failing, null)
+  // ...and it must not claim anything about the prior snapshot it could not read either.
+  assert.equal(bad.kpi.deltasUnavailable, null)
+}
+
+// cx-openai-3's F6 at 25b3348e: the same object projected later must age. A 304 keeps the payload, not the clock.
+{
+  const p = payload({ as_of: at(STALE_AFTER_MS - 1_000) })
+  assert.equal(projectAutomations(p, { nowMs: NOW }).status, 'OK')
+  assert.equal(projectAutomations(p, { nowMs: NOW + 2_000 }).status, 'STALE')
+  assert.equal(projectAutomations(p, { nowMs: NOW + 241_000 }).status, 'STALE')
+}
+
 console.log('automationsProjection: banner threshold and cause, stale/unavailable, delta honesty, filters, search, row failure text and ET fallback passed')

@@ -37,6 +37,31 @@ _LOCK_SKIP = re.compile(r"previous (?:execution|run).{0,40}still (?:running|goin
 #: The relay refusing a lane because it is not on the live list (FQ-128). Named, because it is the top cause today.
 _RELAY_REFUSED = re.compile(r"relay_live_not_enabled|relay returned HTTP 403", re.IGNORECASE)
 
+#: Credential shapes that must never leave this module (cx-openai-3's F1 at 25b3348e): an n8n HTTP node's failure
+#: message can echo the request headers it was handed, and this payload is rendered on a page and returned by a route.
+#: Redact the VALUE and keep the sentence — "Authorization: Bearer [redacted]" still says what failed.
+_SECRET_SHAPES = (
+    re.compile(r"(?i)\b(authorization\s*:\s*bearer\s+)[^\s'\"<>,;]+"),
+    re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(r"(?i)\b(x-api-key\s*[:=]\s*)[^\s'\"<>,;]+"),
+    re.compile(r"(?i)\b(api[_-]?key\s*[:=]\s*)[^\s'\"<>,;&]+"),
+    re.compile(r"(?i)\b(password\s*[:=]\s*)[^\s'\"<>,;&]+"),
+    re.compile(r"(?i)\b(token\s*[:=]\s*)[^\s'\"<>,;&]+"),
+    re.compile(r"(?i)\b(secret\s*[:=]\s*)[^\s'\"<>,;&]+"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{16,}"),
+)
+
+
+def redact_secrets(text: str | None) -> str | None:
+    """Replace credential-shaped values with ``[redacted]``. Idempotent; the rest of the sentence survives."""
+    if not text:
+        return text
+    out = text
+    for shape in _SECRET_SHAPES:
+        out = shape.sub(lambda m: (m.group(1) + "[redacted]") if m.groups() else "[redacted]", out)
+    return out
+
+
 Query = Callable[[str], list[dict[str, Any]]]
 
 
@@ -75,7 +100,9 @@ def parse_error(blob: Any) -> str | None:
         return None
     message = deref(err.get("message"))
     if isinstance(message, str) and message.strip():
-        return message.strip()[:400]
+        # cx-openai-3's F1 at 25b3348e: redact at the parse boundary, so no downstream field can carry a credential
+        # back into the payload, the DOM or a route's error detail.
+        return redact_secrets(message.strip()[:400])
     return None
 
 
@@ -91,10 +118,10 @@ def classify(message: str | None) -> str:
 
 
 def one_line(message: str | None, limit: int = 160) -> str | None:
-    """The sentence a failing row shows: one line, no stack, no newlines."""
+    """The sentence a failing row shows: one line, no stack, no newlines, no credential value."""
     if not message:
         return None
-    first = message.splitlines()[0].strip()
+    first = (redact_secrets(message) or "").splitlines()[0].strip()
     return (first[: limit - 1] + "…") if len(first) > limit else first
 
 
@@ -145,6 +172,37 @@ def crontab_lines(*, timeout: int = 15) -> list[str] | None:
     return [ln for ln in (out.stdout or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
 
 
+#: One crontab schedule field: a number, ``*``, a list/range/step, a month or weekday name.
+_CRON_FIELD = re.compile(r"^[0-9A-Za-z*/,\-]+$")
+
+
+def cron_entries(lines: Sequence[str] | None) -> list[str] | None:
+    """The lines that actually RUN something (cx-openai-5's F5 at 25b3348e).
+
+    ``crontab -l`` also contains ``CRON_TZ=…`` and ``PATH=…`` assignments and ``@reboot`` macros. The first two are
+    environment, not jobs: a crontab of one job and two assignments is ``1``, not ``3``. ``None`` stays ``None`` — an
+    unreadable crontab is unknown, not zero.
+    """
+    if lines is None:
+        return None
+    out: list[str] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("@"):
+            # @reboot / @daily … — one schedule field then the command.
+            if len(line.split(None, 1)) == 2:
+                out.append(line)
+            continue
+        parts = line.split(None, 5)
+        if len(parts) < 6:
+            continue  # an assignment (NAME=value) or a fragment, not a job
+        if all(_CRON_FIELD.match(p) for p in parts[:5]):
+            out.append(line)
+    return out
+
+
 # ── the pure half ────────────────────────────────────────────────────────────────────────────────────────────
 def _bool(value: Any) -> bool:
     """psql renders booleans as `t`/`f` under -A; JSON-ish callers may hand `true`/`false`. Accept both, never guess."""
@@ -172,9 +230,18 @@ def workflow_rows(raw: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def run_stats(raw: Sequence[dict[str, Any]], now: datetime, *, days: int = WINDOW_DAYS) -> dict[str, Any]:
-    """7-day per-workflow and fleet counts from ``execution_entity`` rows: workflowId, status, startedAt, stoppedAt."""
+def run_stats(raw: Sequence[dict[str, Any]], now: datetime, *, days: int = WINDOW_DAYS,
+              kinds: dict[tuple[str, str], str] | None = None) -> dict[str, Any]:
+    """7-day per-workflow and fleet counts from ``execution_entity`` rows: workflowId, status, startedAt, stoppedAt.
+
+    ``kinds`` carries the classification of EVERY retained error execution, keyed ``(workflowId, startedAt)`` — not
+    just the newest (cx-openai-3's F1 / cx-openai-5's F1 at 25b3348e). n8n records a lock skip as ``status='error'``;
+    counting it before the message is read is what made one skip render as ``failed: 1``, a red row and "FAILED RUNS
+    1". A skipped execution is counted in ``skipped`` and never in ``failed``; a real error in the same workflow still
+    counts, because the classification is per execution.
+    """
     since = now - timedelta(days=days)
+    marks = kinds or {}
     per: dict[str, dict[str, Any]] = {}
     fleet = {"runs": 0, "ok": 0, "failed": 0, "skipped": 0, "running": 0,
              "duration_s_sum": 0.0, "duration_s_n": 0, "last_error": None, "last_error_at": None}
@@ -184,7 +251,7 @@ def run_stats(raw: Sequence[dict[str, Any]], now: datetime, *, days: int = WINDO
             continue
         wid, status, started, stopped = cell[:4]
         status = (status or "").lower()
-        per.setdefault(wid, {"runs": 0, "ok": 0, "failed": 0, "running": 0, "last_run_at": None})
+        per.setdefault(wid, {"runs": 0, "ok": 0, "failed": 0, "skipped": 0, "running": 0, "last_run_at": None})
         per[wid]["runs"] += 1
         # cx-openai-3's F4 at a1aa3bd3a: the page reads `last_run_at`, which nothing emitted, so "Last run" was
         # permanently an em dash. The rows already carry startedAt; keep the newest one.
@@ -198,8 +265,12 @@ def run_stats(raw: Sequence[dict[str, Any]], now: datetime, *, days: int = WINDO
             per[wid]["running"] += 1
             fleet["running"] += 1
         elif status == "error":
-            per[wid]["failed"] += 1
-            fleet["failed"] += 1
+            if marks.get((wid, str(started))) == "skipped":
+                per[wid]["skipped"] += 1
+                fleet["skipped"] += 1
+            else:
+                per[wid]["failed"] += 1
+                fleet["failed"] += 1
         if started and stopped and status in ("success", "error"):
             try:
                 a = datetime.fromisoformat(str(started)); b = datetime.fromisoformat(str(stopped))
@@ -222,6 +293,7 @@ def summarize(workflows: Sequence[dict[str, Any]], stats: dict[str, Any], errors
         total = int(s.get("runs") or 0)
         ok = int(s.get("ok") or 0)
         failed = int(s.get("failed") or 0)
+        skipped = int(s.get("skipped") or 0)
         err = errors.get(w["id"]) or {}
         state = "live" if w["active"] else "off"
         if w["name"].endswith("-shadow"):
@@ -229,7 +301,7 @@ def summarize(workflows: Sequence[dict[str, Any]], stats: dict[str, Any], errors
         rows.append({**w, "workflow_id": w["id"], "folder": w.get("area"),
                      "last_run_at": (s.get("last_run_at").isoformat() if hasattr(s.get("last_run_at"), "isoformat")
                                      else s.get("last_run_at")),
-                     "state": state, "runs": total, "ok": ok, "fail": failed,
+                     "state": state, "runs": total, "ok": ok, "fail": failed, "skipped": skipped,
                      # cc-deepseek's F1 at 79ca2ac7e: a percentage over SAVED rows is not a failure rate on this n8n,
                      # which saves failures only (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none). The absolute counts are the
                      # honest figures; the ratio is withheld with the same reason the deltas carry.
@@ -255,11 +327,13 @@ def summarize(workflows: Sequence[dict[str, Any]], stats: dict[str, Any], errors
         "as_of": now.isoformat(timespec="seconds"),
         "window_days": WINDOW_DAYS,
         "kpi": {
-            "runs": fleet["runs"], "ok": fleet["ok"], "failed": fleet["failed"], "running": fleet["running"],
+            "runs": fleet["runs"], "ok": fleet["ok"], "failed": fleet["failed"], "skipped": fleet["skipped"],
+            "running": fleet["running"],
             "fail_rate_pct": fail_rate,
             "fail_rate_unavailable_reason": failures_only_reason,
             "avg_run_s": round(avg_s, 2) if avg_s is not None else None,
-            "cron_left": len(cron_lines) if cron_lines is not None else None,
+            # cx-openai-5's F5 at 25b3348e: assignments are not jobs. `None` still means the crontab could not be read.
+            "cron_left": (len(e) if (e := cron_entries(cron_lines)) is not None else None),
             "cron_left_has_draft": drafts,
             "deltas": deltas, "deltas_unavailable_reason": delta_reason,
         },
@@ -301,11 +375,15 @@ def get_automations(*, query: Query | None = None, now: datetime | None = None,
     workflows = workflow_rows(wf_raw)
     ex_raw = q("select \"workflowId\", status, \"startedAt\", \"stoppedAt\" from execution_entity "  # noqa: S608 — WINDOW_DAYS is an int module constant, never caller input
                f"where \"startedAt\" > now() - interval '{WINDOW_DAYS} days'")
-    stats = run_stats(ex_raw, at)
+    # First pass: which workflows have ANY retained error execution. It is the candidate set for the message read —
+    # every one of those executions is classified below, not only the newest, so a lock skip is never counted as a
+    # failure (cx-openai-3's F1 / cx-openai-5's F1 at 25b3348e).
+    prelim = run_stats(ex_raw, at)
+    error_wids = [wid for wid, s in prelim["per_workflow"].items() if (s.get("failed") or 0) + (s.get("skipped") or 0)]
     errors: dict[str, dict[str, Any]] = {}
-    failing = [w["id"] for w in workflows if (stats["per_workflow"].get(w["id"], {}).get("failed") or 0) > 0]
-    if failing:
-        ids = ", ".join("'" + i.replace("'", "''") + "'" for i in failing[:60])
+    kinds: dict[tuple[str, str], str] = {}
+    if error_wids:
+        ids = ", ".join("'" + i.replace("'", "''") + "'" for i in error_wids[:60])
         err_rows = q("select e.\"workflowId\", e.\"startedAt\", d.data from execution_entity e "  # noqa: S608 — ids are this module's own workflow ids, quote-escaped
                      "join execution_data d on d.\"executionId\" = e.id "
                      f"where e.status = 'error' and e.\"workflowId\" in ({ids}) "
@@ -315,9 +393,13 @@ def get_automations(*, query: Query | None = None, now: datetime | None = None,
             if len(cell) < 3:
                 continue
             wid, started, blob = cell[:3]
-            if wid in errors:
-                continue  # newest first: keep the latest error per workflow
             message = parse_error(blob)
-            errors[wid] = {"kind": classify(message), "one_line": one_line(message), "at": started or None,
-                           "message": message}
+            kind = classify(message)
+            # Every execution gets its kind; the row keeps the NEWEST message (rows arrive newest first).
+            kinds[(wid, str(started))] = kind
+            if wid not in errors:
+                errors[wid] = {"kind": kind, "one_line": one_line(message), "at": started or None,
+                               "message": message}
+    # Second pass with the per-execution kinds: a skip is counted as a skip, a real error still as a failure.
+    stats = run_stats(ex_raw, at, kinds=kinds)
     return summarize(workflows, stats, errors, now=at, cron_lines=(cron or crontab_lines)(), drafts=drafts)

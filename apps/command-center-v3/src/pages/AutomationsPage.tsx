@@ -1,6 +1,6 @@
 // Automations (n8n) page — design automations/v001, APPROVED 2026-11-04 (D36). Read-only: renders
 // GET /api/v2/n8n/automations (scripts/lib/data_broker/n8n_automations.py). No number is computed here.
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
 import { projectionReadPath } from '../lib/projectionReadProtocol'
 import { Chip, ChipRow } from '../components/primitives'
@@ -42,12 +42,27 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
   const api = useApi<AutomationsPayload>(projectionReadPath('automations'), 60_000, { enabled: active })
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<AutomationsFilter>('all')
-  const [open, setOpen] = useState<WorkflowRow | null>(null)
+  const [openSnapshot, setOpenSnapshot] = useState<WorkflowRow | null>(null)
+  // cx-openai-3's F6 at 25b3348e: a 304 keeps the same payload object, so a view projected once never aged. The clock
+  // ticks on its own, and the projection is re-derived from it — an unchanged payload still becomes STALE when the
+  // observation it carries gets old. Nothing here moves the producer's as_of.
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
   const view = useMemo(
-    () => projectAutomations(api.data ?? null, { error: !!api.error }),
-    [api.data, api.error],
+    () => projectAutomations(api.data ?? null, { error: !!api.error, nowMs }),
+    [api.data, api.error, nowMs],
   )
   const rows = useMemo(() => searchRows(view.rows.filter(r => matchesFilter(r, filter)), query), [view.rows, filter, query])
+  // cx-openai-3's F5 at 25b3348e: the sheet follows the CURRENT row by its stable id, so a refresh that changes or
+  // removes the workflow is reflected instead of leaving yesterday's object on screen. A removed row keeps its sheet
+  // only as an explicitly historical view.
+  const rowKey = (r: WorkflowRow) => String(r.workflow_id ?? r.name ?? '')
+  const liveOpen = openSnapshot === null ? null : (view.rows.find(r => rowKey(r) === rowKey(openSnapshot)) ?? null)
+  const open = liveOpen ?? openSnapshot
+  const removed = openSnapshot !== null && liveOpen === null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -84,6 +99,14 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
           <span style={tileLabel}>Failed runs</span>
           <span style={tileValue}>{displayCount(view.kpi.failed)}<span style={muted}>{deltaText(view.kpi.deltas, 'failed')}</span></span>
         </div>
+        {/* A lock skip is n8n recording "the previous run was still going" as an error. It is counted, and it is not a
+            failure — the broker classifies every execution (cx-openai-3's / cx-openai-5's F1 at 25b3348e). */}
+        <div style={tile}>
+          <span style={tileLabel}>Lock skips</span>
+          <span style={tileValue} title="Runs n8n refused because the previous run was still going. Never counted as failures.">
+            {displayCount(view.kpi.skipped)}
+          </span>
+        </div>
         <div style={tile}>
           <span style={tileLabel}>Failure rate</span>
           <span style={tileValue} title={view.kpi.failRate === null ? (view.kpi.failRateUnavailable || 'rate unavailable') : undefined}>
@@ -91,8 +114,9 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
           </span>
         </div>
         <div style={tile}>
-          <span style={tileLabel}>Avg run time</span>
-          <span style={tileValue}>{view.kpi.avgRunS === null ? '—' : `${view.kpi.avgRunS}s`}</span>
+          {/* cx-openai-3's F3 remainder / cx-openai-5's F4: this is the mean of the SAVED executions, no more. */}
+          <span style={tileLabel}>Avg recorded run time</span>
+          <span style={tileValue} title="Mean duration of the runs that were saved, not of every scheduled run.">{view.kpi.avgRunS === null ? '—' : `${view.kpi.avgRunS}s`}</span>
         </div>
         <div style={tile}>
           <span style={tileLabel}>Cron jobs left</span>
@@ -104,6 +128,14 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
         </div>
       </div>
       {view.kpi.deltasUnavailable ? <div style={muted}>Change vs the prior 7 days: {view.kpi.deltasUnavailable}.</div> : null}
+      {/* cx-openai-3's F3 remainder: the sampling limitation was only a tooltip. It is on the page itself, at phone
+          width, and it names the cohort every number above belongs to. */}
+      {view.status !== 'UNAVAILABLE' ? (
+        <div style={muted}>
+          n8n keeps failed runs only; a successful run is not saved. Every count and average here is over the runs that
+          were <strong>recorded</strong>, not over every run the schedules fired.
+        </div>
+      ) : null}
 
       <div style={panel}>
         <ChipRow>
@@ -143,7 +175,7 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
           <div style={{ overflowX: 'auto' }}>
             <table aria-label="Automations workflows" style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>{['Workflow', 'Last run', 'Area', 'Steps', 'OK / total', 'Fail %', 'State'].map(h =>
+                <tr>{['Workflow', 'Last saved run', 'Area', 'Steps', 'OK of recorded', 'Fail %', 'State'].map(h =>
                   <th key={h} style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}>{h}</th>)}</tr>
               </thead>
               <tbody>
@@ -152,7 +184,7 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
                   const name = String(r.name ?? 'unnamed workflow')
                   return (
                     <tr key={String(r.workflow_id ?? name)} className="automations-row" tabIndex={0}
-                        onClick={() => setOpen(r)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(r) } }}
+                        onClick={() => setOpenSnapshot(r)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenSnapshot(r) } }}
                         style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, borderLeft: failing ? `3px solid ${TOKENS.danger}` : '3px solid transparent' }}>
                       <td style={cell}>
                         <div style={{ color: TOKENS.text[0] }}>{name}</div>
@@ -175,17 +207,31 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
 
       {open ? (
         <div className="automations-sheet" role="dialog" aria-modal="true" aria-label={`${open.name ?? 'Workflow'} details`}>
-          <button type="button" onClick={() => setOpen(null)}
+          <button type="button" onClick={() => setOpenSnapshot(null)}
                   style={{ minHeight: 44, padding: '8px 12px', marginBottom: 12, fontSize: TYPE.sm, color: TOKENS.text[0],
                            background: TOKENS.bg[0], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, cursor: 'pointer' }}>
             ← Back
           </button>
           <h2 style={h2}>{String(open.name ?? 'unnamed workflow')}</h2>
+          {/* cx-openai-3's F5 at 25b3348e: the sheet follows the current list. When the workflow is gone from it, the
+              numbers below are labelled as the snapshot they are instead of reading as today's. */}
+          {removed ? (
+            <div role="note" style={{ ...panel, borderLeft: `4px solid ${TOKENS.warning}`, marginBottom: 12 }}>
+              <strong>This workflow is not in the current list.</strong>{' '}
+              <span style={muted}>
+                {view.status === 'OK'
+                  ? 'It was removed or archived since this sheet was opened; the figures below are the last values read for it, not today’s.'
+                  : 'The current list could not be read, so these are the last values read for it, not today’s.'}
+              </span>
+            </div>
+          ) : null}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
             <div style={tile}><span style={tileLabel}>State</span><span style={tileValue}><StatePill state={open.state} /></span></div>
-            <div style={tile}><span style={tileLabel}>Runs (7d)</span><span style={tileValue}>{displayCount(open.runs ?? null)}</span></div>
+            <div style={tile}><span style={tileLabel}>Saved runs (7d)</span><span style={tileValue}>{displayCount(open.runs ?? null)}</span></div>
             <div style={tile}><span style={tileLabel}>Failures</span><span style={tileValue}>{displayCount(open.fail ?? null)}</span></div>
-            <div style={tile}><span style={tileLabel}>Last run</span><span style={tileValue}>{fmtEt(open.last_run_at) ?? '—'}</span></div>
+            <div style={tile} title="Runs n8n refused because the previous run was still going. Never counted as failures.">
+              <span style={tileLabel}>Lock skips</span><span style={tileValue}>{displayCount(open.skipped ?? null)}</span></div>
+            <div style={tile}><span style={tileLabel}>Last saved run</span><span style={tileValue}>{fmtEt(open.last_run_at) ?? '—'}</span></div>
           </div>
           {(() => {
             const { failing, reason } = rowFailure(open)

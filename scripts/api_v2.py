@@ -55991,11 +55991,13 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}
         try:
-            from lib.data_broker.n8n_automations import get_automations_cached as _n8n_automations
+            from lib.data_broker.n8n_automations import get_automations_cached as _n8n_automations, redact_secrets
 
             return 200, {"ok": True, "data": _n8n_automations()}
         except Exception as e:
-            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+            # cx-openai-3's F1 at 25b3348e: a psql or HTTP error can echo the command or headers it was given. The
+            # route reports the exception's facts, never a credential value.
+            return 500, {"ok": False, "error": type(e).__name__, "detail": (redact_secrets(str(e)) or "")[:200]}
 
     if base_path == "/api/v2/coordination/n8n-today":
         if method != "GET":

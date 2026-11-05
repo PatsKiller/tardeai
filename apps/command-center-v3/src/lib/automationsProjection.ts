@@ -3,7 +3,7 @@
 // unreadable source is UNAVAILABLE/STALE with a reason — never a zero that reads as "all quiet".
 export type WorkflowRow = {
   workflow_id?: string | number | null; name?: string | null; state?: string | null
-  runs?: number | null; ok?: number | null; fail?: number | null; fail_pct?: number | null
+  runs?: number | null; ok?: number | null; fail?: number | null; skipped?: number | null; fail_pct?: number | null
   last_error?: string | null; last_error_kind?: string | null; last_error_at?: string | null
   folder?: string | null; steps?: number | null; active?: boolean | null
   updated_at?: string | null; created_at?: string | null; last_run_at?: string | null
@@ -11,7 +11,7 @@ export type WorkflowRow = {
 export type AutomationsPayload = {
   schema?: string; as_of?: string; window_days?: number
   kpi?: {
-    runs?: number | null; ok?: number | null; failed?: number | null; running?: number | null
+    runs?: number | null; ok?: number | null; failed?: number | null; skipped?: number | null; running?: number | null
     fail_rate_pct?: number | null; fail_rate_unavailable_reason?: string | null
     avg_run_s?: number | null; cron_left?: number | null
     cron_left_has_draft?: number | null
@@ -93,23 +93,32 @@ export function projectAutomations(
   const stale = known && !opts.error && (ageMs === null || ageMs < 0 || ageMs > STALE_AFTER_MS)
   const status: 'OK' | 'STALE' | 'UNAVAILABLE' = !known || opts.error ? 'UNAVAILABLE' : stale ? 'STALE' : 'OK'
   const rows = known ? (data?.workflows ?? []) : []
-  const rate = num(data?.kpi?.fail_rate_pct)
+  // cx-openai-5's F2 at 25b3348e: every derived number is gated on ACCEPTED input, not only the rows. A payload with
+  // an unaccepted schema rendered UNAVAILABLE with runs=17/failed=17 beside it — an unreadable source read as a
+  // measured fleet. Unknown input now yields null here, and the page draws an em dash.
+  const k = known ? data?.kpi : undefined
+  const c = known ? data?.counts : undefined
+  const rate = num(k?.fail_rate_pct)
   const cause = topCause(rows)
   return {
     data: known ? data : null,
     status, asOf, stale,
     rows,
     counts: {
-      workflows: num(data?.counts?.workflows), live: num(data?.counts?.live), shadow: num(data?.counts?.shadow),
-      off: num(data?.counts?.off), failing: num(data?.counts?.failing),
+      workflows: num(c?.workflows), live: num(c?.live), shadow: num(c?.shadow),
+      off: num(c?.off), failing: num(c?.failing),
     },
     kpi: {
-      runs: num(data?.kpi?.runs), failed: num(data?.kpi?.failed), running: num(data?.kpi?.running),
-      failRate: rate, avgRunS: num(data?.kpi?.avg_run_s),
-      failRateUnavailable: data?.kpi?.fail_rate_unavailable_reason || null,
-      cronLeft: num(data?.kpi?.cron_left), cronLeftHasDraft: num(data?.kpi?.cron_left_has_draft),
-      deltas: data?.kpi?.deltas ?? null,
-      deltasUnavailable: data?.kpi?.deltas_unavailable_reason || (data?.kpi?.deltas ? null : 'no prior 7-day snapshot'),
+      runs: num(k?.runs), failed: num(k?.failed), skipped: num(k?.skipped), running: num(k?.running),
+      failRate: rate, avgRunS: num(k?.avg_run_s),
+      failRateUnavailable: k?.fail_rate_unavailable_reason || null,
+      cronLeft: num(k?.cron_left), cronLeftHasDraft: num(k?.cron_left_has_draft),
+      deltas: k?.deltas ?? null,
+      // Unreadable input is not "no snapshot yet": when the schema was not accepted there is no delta claim at all,
+      // and the page's own UNAVAILABLE line already says why (absence is not a fact about history).
+      deltasUnavailable: known
+        ? (k?.deltas_unavailable_reason || (k?.deltas ? null : 'no prior 7-day snapshot'))
+        : null,
     },
     // Only a measured rate can raise the banner; an unreadable rate must not read as "fine".
     banner: rate !== null && rate > FAIL_RATE_BANNER_PCT && cause
