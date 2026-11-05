@@ -129,10 +129,18 @@ def run_windows(events: list[dict], *, now: datetime) -> dict[str, list[tuple[da
 def fire_was_in_progress(fire: datetime, windows: list[tuple[datetime, datetime | None]], *,
                          now: datetime, limit_seconds: int = IN_PROGRESS_LIMIT_SECONDS,
                          launch_grace_seconds: int = LAUNCH_GRACE_SECONDS) -> bool:
-    """True when a wrapper run was executing at the fire (or started within the launch grace after it)."""
+    """True when a wrapper run is still executing and covers the fire (or started within the launch grace).
+
+    Only an OPEN window counts (claude-lead BLOCK on #2553, 2026-11-05): a closed run is over, whatever it did.
+    If it closed successfully, its success time is after the fire and the fire is not late at all; if it closed
+    with a non-zero exit, the lane did not do the work, so the fire is missed. Counting closed windows let a lane
+    failing every run report OK forever — each fire was covered by the very run it launched (two fires, each run
+    exiting 1 after a minute, gave missed_fires 0).
+    """
     for start, end in windows:
-        end_eff = end or now
-        if start - timedelta(seconds=launch_grace_seconds) <= fire <= end_eff and \
+        if end is not None:
+            continue                      # a closed run is not in progress: see the docstring
+        if start - timedelta(seconds=launch_grace_seconds) <= fire <= now and \
                 (fire - start) <= timedelta(seconds=limit_seconds):
             return True
     return False

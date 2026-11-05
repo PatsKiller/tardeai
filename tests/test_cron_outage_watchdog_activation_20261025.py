@@ -224,13 +224,50 @@ def test_a_launch_two_seconds_after_the_fire_still_covers_it():
     assert row["missed_fires"] == 1 and row["in_progress_fires"] == 1 and row["status"] == "OK"
 
 
+def failed(job, at):
+    return {"component": job, "job_id": job, "event_type": "completed", "exit_code": 1, "mode": "business", "ts": at}
+
+
 def test_a_run_older_than_the_limit_is_a_stall_and_does_not_cover_the_fire():
-    """A hung run must still alert: something started 62 minutes ago is not progress."""
-    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
-              started(JOB, "2026-10-24T22:05:00-04:00")]
+    """A hung run must still alert: something started more than 60 minutes before the fire is not progress.
+
+    The window must still be OPEN for this to exercise ``IN_PROGRESS_LIMIT_SECONDS``: a closed window never
+    covers a fire, so a closed one would pass whatever the limit says (claude-lead BLOCK on #2553).
+    """
+    events = [completed(JOB, "2026-10-24T21:30:00-04:00"),
+              started(JOB, "2026-10-24T21:45:00-04:00")]  # open at NOW; 67/82 min before the 22:52 and 23:07 fires
     row = assess_runs(events)["rows"][0]
 
     assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2 and row["in_progress_fires"] == 0
+
+
+def test_the_in_progress_limit_is_a_boundary_not_a_formality():
+    """One fire inside the 60-minute limit and one beyond it, from the same open run: 1 in progress, 1 missed."""
+    events = [completed(JOB, "2026-10-24T21:45:00-04:00"),
+              started(JOB, "2026-10-24T22:05:00-04:00")]  # 22:52 fire = 47 min in; 23:07 fire = 62 min in
+    row = assess_runs(events)["rows"][0]
+
+    assert row["missed_fires"] == 1 and row["in_progress_fires"] == 1 and row["status"] == "OK"
+
+
+def test_a_failed_run_cannot_cover_the_fire_that_launched_it():
+    """claude-lead BLOCK on #2553: two fires, each with its own run exiting 1 after a minute, used to give
+    status OK / missed_fires 0 — a lane failing every run would never alert."""
+    events = [completed(JOB, "2026-10-24T21:45:00-04:00"),
+              started(JOB, "2026-10-24T22:52:00-04:00"), failed(JOB, "2026-10-24T22:53:00-04:00"),
+              started(JOB, "2026-10-24T23:07:00-04:00"), failed(JOB, "2026-10-24T23:08:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2 and row["in_progress_fires"] == 0
+
+
+def test_a_successful_run_that_ends_after_the_fire_still_covers_it():
+    """The fire the run was serving is not late once that run has completed successfully."""
+    events = [completed(JOB, "2026-10-24T21:45:00-04:00"),
+              started(JOB, "2026-10-24T22:52:00-04:00"), completed(JOB, "2026-10-24T23:10:00-04:00")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["missed_fires"] == 0 and row["status"] == "OK"
 
 
 def test_another_job_s_run_window_never_covers_this_lane():
