@@ -35192,7 +35192,7 @@
         },
         {
           "check": "applied_nothing",
-          "text": "the dry cycle's counts show no attempt outcome: attempted is empty and no state, repair memory, PR or push is written (apply is false)"
+          "text": "every attempted entry is a PLANNING outcome, never a real apply: a real dry plan emits dry_run_planned, so an empty attempted list is normal but is NOT the healthy test (cx-openai-4 contract review 2026-11-05 measured all three real cases - new defect, existing pending, nothing due). mode is dry_run, apply is false, and no state, repair memory, PR or push is written. Any outcome that implies a real apply - fix_ready_local, fix_pr_opened, fix_deployed, output_recovered - is a failure of this contract, not a healthy variant."
         },
         {
           "check": "cron_twin_untouched",
@@ -35274,7 +35274,7 @@
           "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='self-heal-fixer-shadow' ORDER BY requested_at DESC LIMIT 10\""
         ],
         "never": "an n8n execution status: a green execution is process evidence, not proof. Prove work with the ledger row and the dry-cycle receipt.",
-        "expected_output_basis": "the shadow dry cycle is a report: it prints the plan and writes produced_count = repair-memory rows it would record; zero with empty_reason nothing_due is normal (no diagnosed defect). The allowlist carries no output_receipt v2, so the executor records the rule as declared_not_enforced until the promotion PR (which would add the per-attempt receipt)."
+        "expected_output_basis": "DECLARED, NOT ENFORCED at shadow. cx-openai-4 contract review 2026-11-05 measured three real dry cycles (new defect, existing pending, nothing due) and found the receipt carries neither produced_count nor empty_reason, so nothing in the expected_output rule can be verified from a fire today: repair_memory_rows is the number of memory rows the cycle WOULD record (no row is written at shadow), and zero does not prove nothing_due - it is a hypothetical count, not an empty-day verdict. The allowlist carries no output_receipt v2, so the executor records the rule as declared_not_enforced until the promotion PR adds the per-attempt receipt. The healthy and failed predicates above therefore rest only on fields a fire really writes (mode, attempted, counts, started_at, finished_at)."
       },
       "review_by": "2026-12-05",
       "review": {
@@ -35285,7 +35285,7 @@
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
-        "unit": "repair-memory rows the dry cycle recorded",
+        "unit": "repair-memory rows the dry cycle WOULD record (hypothetical at shadow: no memory row is written)",
         "rule": "empty_allowed",
         "min_produced": 0,
         "produced_field": "repair_memory_rows",

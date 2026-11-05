@@ -198,3 +198,28 @@ def test_health_is_not_orphaned_off_hours_when_every_scheduled_fire_succeeded(tm
         before = _evaluate(tmp_path / f"before-{i}", now, last, cadence=1.0)
         assert before["verdict"] == before_verdict, (name, before)
 
+
+
+def test_the_healthy_predicate_describes_a_real_dry_plan():
+    """cx-openai-4 contract review 2026-11-05: a real dry plan emits `dry_run_planned`, so "attempted is empty" was
+    the wrong test for health — the three measured cases (new defect, existing pending, nothing due) all planned, and
+    a contract that called an empty attempt list healthy would fail every lane that is actually doing its job."""
+    c = _contract()
+    applied = next(x for x in c["healthy"] if x["check"] == "applied_nothing")
+    text = applied["text"]
+    assert "dry_run_planned" in text, text
+    assert "attempted is empty" not in text, "the contract still treats an empty attempt list as the healthy shape"
+    assert "fix_pr_opened" in text and "not a healthy variant" in text, (
+        "an outcome that implies a real apply must be named as a failure of this contract, not a healthy variant"
+    )
+
+
+def test_the_expected_output_rule_is_declared_not_enforced():
+    """The receipt carries neither produced_count nor empty_reason, so the rule cannot be verified from a fire today.
+    Zero repair_memory_rows is a hypothetical count, not proof that nothing was due."""
+    c = _contract()
+    basis = c["evidence"]["expected_output_basis"]
+    assert "DECLARED, NOT ENFORCED" in basis, basis
+    assert "neither produced_count nor empty_reason" in basis, basis
+    assert "hypothetical" in basis, basis
+    assert "WOULD record" in c["expected_output"]["unit"], c["expected_output"]["unit"]
