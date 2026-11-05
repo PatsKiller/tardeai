@@ -253,7 +253,7 @@ def test_prompt_asks_for_a_choice_not_prose():
 def test_shipped_config_still_skips_every_tier_and_carries_the_reminder():
     cfg = curation.load_config()
     assert {"RED", "ORANGE", "YELLOW", "BLUE", "GREEN"} <= {str(t).upper() for t in cfg["skip_tiers"]}
-    assert cfg["disabled_until"]["review_by"].__str__() == "2026-11-07"
+    assert cfg["disabled_until"]["review_by"].__str__() == "2026-12-05"
     for tier in TIERS:
         r = curation.curate(CARD, dict(DOC, tier=tier), call_model=lambda p, to: pytest.fail("model called"), cfg=cfg)
         assert r["curated"] is False

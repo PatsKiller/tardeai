@@ -41,21 +41,21 @@ def _cfg(tmp_path: Path, name: str, blk: dict | None, *, json_file: bool = False
 
 def test_curation_config_carries_the_reminder():
     e = df.entry_for(df.CONFIG_DIR / "market_risk_curation.yaml", today=date(2026, 10, 31))
-    assert e and e["review_by"] == "2026-11-07" and e["owner"] == "coordinator" and not e.get("error")
+    assert e and e["review_by"] == "2026-12-05" and e["owner"] == "coordinator" and not e.get("error")
     assert "BLUE/YELLOW/GREEN" in e["reenable_plan"]
 
 
 def test_note_and_overdue_boundary():
-    e = df.entry_for(df.CONFIG_DIR / "market_risk_curation.yaml", today=date(2026, 11, 7))
-    assert df.note(e, "curation") == "curation: OFF — pending review, due 2026-11-07"
-    late = df.entry_for(df.CONFIG_DIR / "market_risk_curation.yaml", today=date(2026, 11, 8))
-    assert late["overdue"] and df.note(late, "curation").startswith("curation: OFF — OVERDUE since 2026-11-07")
+    e = df.entry_for(df.CONFIG_DIR / "market_risk_curation.yaml", today=date(2026, 12, 5))
+    assert df.note(e, "curation") == "curation: OFF — pending review, due 2026-12-05"
+    late = df.entry_for(df.CONFIG_DIR / "market_risk_curation.yaml", today=date(2026, 12, 6))
+    assert late["overdue"] and df.note(late, "curation").startswith("curation: OFF — OVERDUE since 2026-12-05")
     assert df.note(None, "curation") == "curation: ON"
 
 
 def test_projection_and_ask_facts_show_the_status():
     mr = proj.build(None, None)
-    assert mr["curation"]["state"] == "OFF" and "due 2026-11-07" in mr["curation"]["note"]
+    assert mr["curation"]["state"] == "OFF" and "due 2026-12-05" in mr["curation"]["note"]
     facts = cio_context.ask_facts(mr)
     assert facts["curation"]["note"] == mr["curation"]["note"]
 
@@ -149,7 +149,7 @@ def test_f11_status_comes_from_the_curation_config(tmp_path):
     d.mkdir()
     real = (Path(df.PROJECT_ROOT) / "config" / "market_risk_curation.yaml").read_text()
     (d / "market_risk_curation.yaml").write_text(real)
-    assert proj.curation_status(d)["note"] == "curation: OFF — pending review, due 2026-11-07"
+    assert proj.curation_status(d)["note"] == "curation: OFF — pending review, due 2026-12-05"
     on = real.replace("skip_tiers: [RED, ORANGE, YELLOW, BLUE, GREEN, NONE]", "skip_tiers: [ORANGE, RED]")
     (d / "market_risk_curation.yaml").write_text(on)
     st = proj.curation_status(d)
