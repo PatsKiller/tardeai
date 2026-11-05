@@ -178,3 +178,19 @@ def test_the_route_serves_the_projection_and_refuses_writes(monkeypatch):
     monkeypatch.setattr(real, "get_automations_cached", boom)
     status, body = api_v2.handle("/api/v2/n8n/automations", method="GET", body=None, query={})
     assert status == 500 and body["error"] == "RuntimeError" and "n8n db unreachable" in body["detail"]
+
+
+def test_a_produced_payload_carries_the_row_fields_the_page_reads():
+    """cx-openai-3's F4 at a1aa3bd3a: the producer emitted id/area/created/updated while the page reads
+    workflow_id/folder/last_run_at, so Area and Last run were permanently em dashes and the seam test passed on a
+    schema string. This drives the REAL producer output and asserts the fields the page consumes are present."""
+    from datetime import timedelta as _td
+    wf = M.workflow_rows([{"raw": ["wf-1", "Nightly job", "t", "[]", "2026-01-01", "2026-11-01", "f", "Risk"]}])[0]
+    rows = [ex("wf-1", "success", NOW - _td(hours=4), NOW - _td(hours=4)),
+            ex("wf-1", "error", NOW - _td(hours=1))]
+    out = M.summarize([wf], M.run_stats(rows, NOW), {}, now=NOW, cron_lines=[], drafts=0)
+    row = out["workflows"][0]
+    assert row["workflow_id"] == "wf-1"
+    assert row["folder"] == "Risk"
+    assert isinstance(row["last_run_at"], str) and row["last_run_at"].startswith(str(NOW.year))
+    assert row["last_run_at"] > (NOW - _td(hours=2)).isoformat()   # the newest execution, not the oldest

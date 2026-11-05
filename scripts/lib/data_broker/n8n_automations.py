@@ -184,8 +184,12 @@ def run_stats(raw: Sequence[dict[str, Any]], now: datetime, *, days: int = WINDO
             continue
         wid, status, started, stopped = cell[:4]
         status = (status or "").lower()
-        per.setdefault(wid, {"runs": 0, "ok": 0, "failed": 0, "running": 0})
+        per.setdefault(wid, {"runs": 0, "ok": 0, "failed": 0, "running": 0, "last_run_at": None})
         per[wid]["runs"] += 1
+        # cx-openai-3's F4 at a1aa3bd3a: the page reads `last_run_at`, which nothing emitted, so "Last run" was
+        # permanently an em dash. The rows already carry startedAt; keep the newest one.
+        if started and (per[wid]["last_run_at"] is None or str(started) > str(per[wid]["last_run_at"])):
+            per[wid]["last_run_at"] = started
         fleet["runs"] += 1
         if status == "success":
             per[wid]["ok"] += 1
@@ -222,7 +226,10 @@ def summarize(workflows: Sequence[dict[str, Any]], stats: dict[str, Any], errors
         state = "live" if w["active"] else "off"
         if w["name"].endswith("-shadow"):
             state = "shadow"
-        rows.append({**w, "state": state, "runs": total, "ok": ok, "fail": failed,
+        rows.append({**w, "workflow_id": w["id"], "folder": w.get("area"),
+                     "last_run_at": (s.get("last_run_at").isoformat() if hasattr(s.get("last_run_at"), "isoformat")
+                                     else s.get("last_run_at")),
+                     "state": state, "runs": total, "ok": ok, "fail": failed,
                      # cc-deepseek's F1 at 79ca2ac7e: a percentage over SAVED rows is not a failure rate on this n8n,
                      # which saves failures only (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none). The absolute counts are the
                      # honest figures; the ratio is withheld with the same reason the deltas carry.

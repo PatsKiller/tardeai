@@ -31,6 +31,20 @@ assert.equal(v.banner.cause?.reason, 'ETIMEDOUT calling relay')
 // At exactly the threshold it is quiet, and an unreadable rate never reads as "fine".
 assert.equal(projectAutomations(payload({ kpi: { ...payload().kpi, fail_rate_pct: FAIL_RATE_BANNER_PCT } }), { nowMs: NOW }).banner.show, false)
 assert.equal(projectAutomations(payload({ kpi: { ...payload().kpi, fail_rate_pct: null } }), { nowMs: NOW }).banner.show, false)
+// cx-openai-3's F4 at a1aa3bd3a: the producer emits id/area/created/updated while the page reads
+// workflow_id/folder/last_run_at — the Area and Last-run columns were permanently em dashes and the seam test passed on
+// a schema string. This feeds the PRODUCER's field names through the projection and asserts they survive, and that the
+// area is searchable.
+{
+  const produced = payload({ workflows: [{ workflow_id: 'wf-1', name: 'Nightly job', folder: 'Risk',
+    last_run_at: '2026-11-05T14:00:00+00:00', state: 'live', runs: 2, ok: 1, fail: 1, steps: 3 }] })
+  const v = projectAutomations(produced, { nowMs: NOW })
+  const row = v.rows[0] as Record<string, unknown>
+  assert.equal(row.folder, 'Risk')
+  assert.ok(row.lastRunAt || row.last_run_at, 'the last run must reach the view, not be dropped')
+  assert.ok(v.rows.some((r: Record<string, unknown>) => String(r.folder ?? '').toLowerCase().includes('risk')),
+    'an area search must find the row')
+}
 // cc-deepseek's F1 at 79ca2ac7e (BLOCK): production returns thousands of failures and almost no successes, because n8n
 // saves failed runs only. A payload with that shape must carry NO rate, and the view must not invent one.
 {

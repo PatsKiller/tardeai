@@ -75,7 +75,9 @@ export default function AutomationsPage({ active = true }: { active?: boolean } 
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
         <div style={tile}>
-          <span style={tileLabel}>Scheduled runs</span>
+          {/* cx-openai-3's F3 at a1aa3bd3a: n8n keeps failed runs only, so this is a count of RECORDED executions,
+              not of scheduled ones. Saying "scheduled" was the same untruth the rate carried. */}
+          <span style={tileLabel}>Recorded runs</span>
           <span style={tileValue}>{displayCount(view.kpi.runs)}<span style={muted}>{deltaText(view.kpi.deltas, 'runs')}</span></span>
         </div>
         <div style={tile}>
