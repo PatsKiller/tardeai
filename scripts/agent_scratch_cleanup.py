@@ -19,7 +19,9 @@ REMOVAL IS REFUSED unless EVERY check passes. A path is a candidate only when it
     ``config/disk_hygiene_rules.json`` (db_backups, persistent-state, models, .ssh, .config, .docker, .gnupg,
     .aws, .n8n, the dev repo, CURRENT; any .env / credential / cookie / token / key name);
   * not the recorded worktree of this session's live claim, and not referenced by any live claim's worktree;
-  * not the cwd or an open fd of any live process (``/proc/<pid>/cwd``, ``/proc/<pid>/fd``).
+  * not the cwd or an open fd of any live process (``/proc/<pid>/cwd``, ``/proc/<pid>/fd``);
+  * only when the claim board is readable — an unreadable board refuses every candidate, because the absence
+    of a recorded worktree is not proof that a path is unclaimed.
 A linked git worktree under a scratch root is removed with ``git worktree remove`` (never --force); a standalone
 clone is refused (a repo is not scratch).
 
@@ -192,9 +194,15 @@ def process_refs(proc_root: Path = Path("/proc")) -> set[str]:
 
 
 def in_use_by(path: Path, refs: Iterable[str]) -> Optional[str]:
+    """A live process reference INSIDE ``path``, else None.
+
+    Only a cwd/fd *inside* the candidate makes it in use. An ancestor reference (a shell sitting in ``$HOME``
+    or ``/tmp``) must not refuse every candidate below it: refusal is about what the process could lose, not
+    about what it can merely see.
+    """
     real = os.path.realpath(path)
     for c in refs:
-        if is_within(Path(c), Path(real)) or is_within(Path(real), Path(c)):
+        if is_within(Path(c), Path(real)):
             return c
     return None
 
@@ -386,8 +394,6 @@ def run(
 
     task_slug: Optional[str] = None
     session_slug = slug(session) if session else None
-    own_worktrees: list[Path] = []
-    live_worktrees: list[Path] = []
 
     if claim:
         matched = next((c for c in live if c["claim_id"] == claim), None)
@@ -395,22 +401,16 @@ def run(
             print(json.dumps({"ok": False, "error": f"claim {claim!r} not active on the board"}))
             return 1
         task_slug = slug(matched["task"])
-        if matched["worktree"]:
-            own_worktrees.append(Path(matched["worktree"]))
-        live_worktrees = own_worktrees[:]
         if not session:
             session = matched["session"]
             session_slug = slug(session)
-    else:
-        for c in live:
-            wt = c.get("worktree")
-            if wt:
-                wtp = Path(wt)
-                live_worktrees.append(wtp)
-                if session and c.get("session") == session:
-                    own_worktrees.append(wtp)
-        if task:
-            task_slug = slug(task)
+    elif task:
+        task_slug = slug(task)
+
+    # EVERY live claim's worktree is protected, whichever way the target was named. Naming --claim must not
+    # narrow this guard to that one claim: a session scratch dir can hold another live claim's worktree, and
+    # that worktree is never this agent's to remove (§0 rule 6(c), §24.13).
+    live_worktrees = [Path(c["worktree"]) for c in live if c.get("worktree")]
 
     candidates = auto_candidates(home, task_slug, session_slug)
     for s in scratch:
@@ -427,6 +427,16 @@ def run(
 
     would_remove = [r for r in rows if r["candidate"]]
     refused = [r for r in rows if not r["candidate"]]
+
+    if board_warn:
+        # An unreadable claim board is not proof that no claim references a path. Fail closed: no candidate
+        # may be reported removable (or removed) until the board can be read again.
+        for r in rows:
+            if r["candidate"]:
+                r["candidate"] = False
+                r["reasons"].append(f"claim_board_unavailable:{board_warn}")
+        would_remove = []
+        refused = rows
     result: dict[str, Any] = {
         "schema": SCHEMA,
         "mode": "apply" if apply else "dry_run",

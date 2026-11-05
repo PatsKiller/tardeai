@@ -1,3 +1,11 @@
+---
+id: DSN-20261030-disk-governance-process
+title: Repeatable disk governance on ms01-openclaw (design for approval)
+status: PROPOSED
+approval: operator (design for approval — nothing ratified, nothing scheduled, nothing deleted)
+source: operator 2026-10-30 — ENOSPC forensics below (§0 State as measured)
+---
+
 # DSN-20261030-disk-governance-process — repeatable disk governance on ms01-openclaw (design for approval)
 
 Status: PROPOSED (design for operator approval — nothing ratified, nothing scheduled, nothing deleted)

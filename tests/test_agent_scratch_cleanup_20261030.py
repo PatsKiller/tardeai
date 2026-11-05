@@ -151,3 +151,66 @@ def test_run_dry_run_never_deletes_when_in_use(tmp_path, monkeypatch):
     assert mod.run(home=home, claims_dir=tmp_path / "claims", proc_root=tmp_path / "proc",
                    task="busy", claim=None, session=None, scratch=[], apply=True) == 0
     assert scratch.exists()
+
+
+def test_run_with_claim_protects_every_live_claim_worktree(tmp_path, monkeypatch):
+    """Naming one --claim must not narrow the live-worktree guard.
+
+    A session scratch dir can hold ANOTHER live claim's worktree; rule 6(c) / §24.13 make that worktree
+    untouchable even when the target claim is named explicitly.
+    """
+    mod = _load()
+    home = tmp_path / "home"
+    base = home / ".cache" / "agent-tmp"
+    session_dir = base / "cc-deepseek"
+    other_wt = session_dir / "wt-other"
+    other_wt.mkdir(parents=True)
+    (other_wt / "work.txt").write_text("another claim's live worktree", encoding="utf-8")
+    matched_wt = tmp_path / "elsewhere-wt"
+    matched_wt.mkdir()
+    live = [
+        {"claim_id": "C1", "task": "cleanup me", "worktree": str(matched_wt), "session": "cc-deepseek", "paths": []},
+        {"claim_id": "C2", "task": "other", "worktree": str(other_wt), "session": "cc-deepseek", "paths": []},
+    ]
+    monkeypatch.setattr(mod, "live_claim_view", lambda claims_dir: (live, None))
+    monkeypatch.setattr(mod, "process_refs", lambda proc_root: set())
+    assert mod.run(home=home, claims_dir=tmp_path / "claims", proc_root=tmp_path / "proc", task=None,
+                   claim="C1", session=None, scratch=[], apply=True) == 0
+    assert other_wt.exists() and (other_wt / "work.txt").exists()
+    assert session_dir.exists()
+
+
+def test_run_fails_closed_when_claim_board_unreadable(tmp_path, monkeypatch):
+    """An unreadable claim board is not proof that a path is unclaimed: apply must remove nothing."""
+    mod = _load()
+    home = tmp_path / "home"
+    scratch = home / ".cache" / "agent-tmp" / "maybe-live"
+    scratch.mkdir(parents=True)
+    (scratch / "a.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(mod, "live_claim_view", lambda claims_dir: ([], "claim_board_read_failed:OSError"))
+    monkeypatch.setattr(mod, "process_refs", lambda proc_root: set())
+    assert mod.run(home=home, claims_dir=tmp_path / "claims", proc_root=tmp_path / "proc",
+                   task="maybe-live", claim=None, session=None, scratch=[], apply=True) == 0
+    assert scratch.exists()
+
+
+def test_in_use_by_ignores_ancestor_reference(tmp_path):
+    """cc-deepseek-9 F1 at #2302: only a process INSIDE the candidate makes it in use.
+
+    A shell sitting in $HOME (or /tmp) is an ancestor of every agent-tmp candidate and must not freeze the
+    feature; the old both-directions test refused everything under those roots.
+    """
+    mod = _load()
+    home = tmp_path / "home"
+    cand = home / ".cache" / "agent-tmp" / "x"
+    cand.mkdir(parents=True)
+    assert mod.in_use_by(cand, {str(home)}) is None  # ancestor cwd: not in use
+    assert mod.in_use_by(cand, {str(tmp_path)}) is None
+    sub = cand / "sub"
+    sub.mkdir()
+    assert mod.in_use_by(cand, {str(sub)}) == str(sub)  # a process inside still refuses
+    open_file = cand / "open.bin"
+    open_file.write_text("x", encoding="utf-8")
+    assert mod.in_use_by(cand, {str(open_file)}) == str(open_file)
+
+
