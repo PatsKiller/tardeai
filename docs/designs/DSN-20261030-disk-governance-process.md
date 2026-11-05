@@ -73,8 +73,7 @@ message is *accepted for interrupt delivery*, never *sent*).
 ## 2 · Agent self-cleanup — "if an agent writes caches, it cleans up afterwards" (enforced)
 
 **Contract.** The agent that created a scratch tree removes it when its task ends. Scratch is, by construction
-(`docs/ops/DELIVERY_LIFECYCLE.md` "Build"): `TMPDIR=$HOME/.cache/agent-tmp/<task>` plus any worktree scratch the agent
-names. This is the proposed AGENTS.md 27.0.0 §0 rule-6 exception (c) — the third "never delete" exception, alongside
+(`docs/ops/DELIVERY_LIFECYCLE.md` "Build"): `TMPDIR=$HOME/.cache/agent-tmp/<task>`. Explicit paths must remain within the named task/session's agent-tmp tree. Worktrees and other roots use their governed close/hygiene lanes. This is the proposed AGENTS.md 27.0.0 §0 rule-6 exception (c) — the third "never delete" exception, alongside
 the disk-hygiene lane and the `/tmp` hygiene lane.
 
 **Hook points** (where the contract fires):
@@ -88,12 +87,10 @@ the disk-hygiene lane and the `/tmp` hygiene lane.
 
 **Enforcement — implemented in this change (`scripts/agent_scratch_cleanup.py`, NEW).** Default-safe (dry-run):
 it prints exactly what it would delete and deletes nothing; `--apply` removes only after every check passes. A path
-is removed only when it is: inside an allowed scratch root (`~/.cache/agent-tmp`, `~/.cache/rtc`, `/tmp`) and not the
-root itself; not a symlink; not on the never-touch list (mirrored from `config/disk_hygiene_rules.json` — `db_backups`,
+is removed only when it is: inside the named task/session's `~/.cache/agent-tmp` tree and not the namespace root; not a symlink or a repository; free of protected descendants and unreadable entries, using the never-touch list (mirrored from `config/disk_hygiene_rules.json` — `db_backups`,
 `persistent-state`, models, `.ssh`, `.config`, `.docker`, `.gnupg`, `.aws`, `.n8n`, the dev repo, `CURRENT`, any
 `.env`/credential/cookie/token/key name); not this session's recorded claim worktree and not referenced by any live
-claim; not the cwd or an open fd of any live process (`/proc/<pid>/cwd`, `/proc/<pid>/fd`). A linked git worktree is
-removed with `git worktree remove` (never `--force`); a standalone clone is refused.
+claim's worktree, declared paths or active worklog; not the cwd or an open fd of any live process (`/proc/<pid>/cwd`, `/proc/<pid>/fd`). Missing/unreadable process or claim evidence refuses the plan. The complete tree and current references are checked again immediately before removal. All repositories and linked worktrees, including nested repositories, are refused and must use governed workspace close. Other roots, including `/tmp` and `~/.cache/rtc`, are outside this tool's authority.
 
 The claim-board hook call is wired in this change as **report-only** (dry-run) and clearly commented: it flips to
 `--apply` only after the operator ratifies rule-6 exception (c) — see §5.

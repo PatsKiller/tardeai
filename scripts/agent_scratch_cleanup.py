@@ -10,20 +10,20 @@ An agent's own scratch is, by construction (DELIVERY_LIFECYCLE.md "Build")::
 
     TMPDIR=$HOME/.cache/agent-tmp/<task>
 
-plus anything else the agent names with ``--scratch`` (its own review worktree under /tmp or ~/.cache).
+Explicit ``--scratch`` paths must also be inside that task/session namespace; they cannot name another task.
 
 REMOVAL IS REFUSED unless EVERY check passes. A path is a candidate only when it is:
-  * inside an allowed scratch root (default ``~/.cache/agent-tmp``, ``~/.cache/rtc``, ``/tmp``) and NOT the root
+  * inside the authorized ``~/.cache/agent-tmp`` task/session namespace and NOT the root
     itself, and NOT a symlink (symlinks are never followed and never removed);
-  * not on the never-touch list — the protected paths / names / globs mirrored from
+  * free of protected descendants, symlinks and unreadable entries — the protected names / globs mirror
     ``config/disk_hygiene_rules.json`` (db_backups, persistent-state, models, .ssh, .config, .docker, .gnupg,
     .aws, .n8n, the dev repo, CURRENT; any .env / credential / cookie / token / key name);
-  * not the recorded worktree of this session's live claim, and not referenced by any live claim's worktree;
+  * not referenced by any active claim worktree, path or active worklog;
   * not the cwd or an open fd of any live process (``/proc/<pid>/cwd``, ``/proc/<pid>/fd``);
   * only when the claim board is readable — an unreadable board refuses every candidate, because the absence
     of a recorded worktree is not proof that a path is unclaimed.
-A linked git worktree under a scratch root is removed with ``git worktree remove`` (never --force); a standalone
-clone is refused (a repo is not scratch).
+All git repositories and linked worktrees, including nested ones, are refused; governed workspace close handles them.
+Missing/unreadable process or claim evidence refuses deletion rather than reporting an empty reference set.
 
 Modes (the default is dry-run: it prints exactly what it would delete and deletes nothing):
     python3 scripts/agent_scratch_cleanup.py [--claim ID | --task T] [--scratch PATH ...]
@@ -32,7 +32,7 @@ Modes (the default is dry-run: it prints exactly what it would delete and delete
 Exit: 0 = plan printed / apply finished (a refused path is reported, not an error); 2 = usage.
 
 AUTHORITY: READ_ONLY_ADVISORY until AGENTS.md 27.0.0 is ACTIVE — no broker, no network, no send, no DB. The
-``--apply`` path removes only this agent's own scratch under the allowed roots, after the checks above.
+``--apply`` path removes only the named task/session's scratch in agent-tmp, after the checks above.
 MBI_BEHAVIOR = 0.
 """
 
@@ -44,6 +44,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -55,11 +56,11 @@ if str(ROOT) not in sys.path:
 
 SCHEMA = "AgentScratchCleanup@v1"
 #: Allowed scratch roots (never the root itself, never outside them). Mirrors the disk-governance namespace.
-SCRATCH_ROOTS = ("~/.cache/agent-tmp", "~/.cache/rtc", "/tmp")
+SCRATCH_ROOTS = ("~/.cache/agent-tmp",)
 #: Mirrors config/disk_hygiene_rules.json ``never_touch`` + ``protected_paths``. If that file changes, this list
 #: must be updated too — it must be at least as strict, never looser.
 NEVER_TOUCH_NAMES = {
-    "db_backups", "persistent-state", "llama-cpp-vulkan", ".ssh", ".config", ".docker",
+    ".git", ".hg", ".svn", "db_backups", "persistent-state", "llama-cpp-vulkan", ".ssh", ".config", ".docker",
     "docker", ".gnupg", ".aws", ".n8n", "n8n_data", "n8n-data",
 }
 NEVER_TOUCH_GLOBS = (
@@ -129,13 +130,19 @@ def is_within(child: Path, parent: Path) -> bool:
 
 
 def allowed_scratch_reason(path: Path, roots: Iterable[Path]) -> Optional[str]:
-    """Why ``path`` is NOT an allowed scratch candidate, else None. Symlinks are never allowed."""
-    if path.is_symlink():
-        return "symlink"
-    real = _real(path)
+    """Refuse aliases and anything outside the strict namespace; roots cannot authorize their parent."""
+    path = Path(os.path.abspath(path))
     for root in roots:
-        r = _real(root)
-        if is_within(real, r) and not is_within(r, real):  # strictly inside the root, never the root itself
+        root = Path(os.path.abspath(root))
+        if not is_within(path, root) or path == root:
+            continue
+        # An ancestor symlink is as unsafe as a candidate symlink. Never traverse it.
+        for ancestor in (path, *path.parents):
+            if ancestor.is_symlink():
+                return "symlink"
+            if ancestor == root.parent.parent:
+                break
+        if is_within(_real(path), _real(root)) and _real(path) != _real(root):
             return None
     return "outside_scratch_root"
 
@@ -166,30 +173,21 @@ def never_touch_reason(path: Path, home: Path) -> Optional[str]:
 
 
 def process_refs(proc_root: Path = Path("/proc")) -> set[str]:
-    """Realpaths of every live process cwd and every absolute open fd target. An unreadable process yields nothing
-    (it is not proof of absence — callers treat a refusal as unknown, never as clear)."""
+    """Return inspected references, or refuse when any process cannot be inspected."""
     out: set[str] = set()
     try:
         names = os.listdir(proc_root)
-    except OSError:
-        return out
-    for name in names:
-        if not name.isdigit():
-            continue
-        try:
-            out.add(os.path.realpath(os.readlink(proc_root / name / "cwd")))
-        except OSError:
-            pass
-        try:
-            for fd in os.listdir(proc_root / name / "fd"):
-                try:
-                    target = os.readlink(proc_root / name / "fd" / fd)
-                    if target.startswith("/"):
-                        out.add(os.path.realpath(target))
-                except OSError:
-                    continue
-        except OSError:
-            continue
+        for name in names:
+            if not name.isdigit():
+                continue
+            pid = proc_root / name
+            out.add(os.path.realpath(os.readlink(pid / "cwd")))
+            for fd in os.listdir(pid / "fd"):
+                target = os.readlink(pid / "fd" / fd)
+                if target.startswith("/"):
+                    out.add(os.path.realpath(target))
+    except OSError as exc:
+        raise CleanupError(f"process_inspection_failed:{type(exc).__name__}") from exc
     return out
 
 
@@ -253,6 +251,67 @@ def _git(path: Path, *args: str, timeout: float = 300) -> tuple[int, str]:
 # ── evaluate ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
+def protected_tree_reason(path: Path, home: Path) -> Optional[str]:
+    """Inspect names and lstat metadata only; never read a protected file or follow a symlink."""
+    pending = [path]
+    inspected = 0
+    try:
+        while pending:
+            item = pending.pop()
+            inspected += 1
+            if inspected > SIZE_CAP_ENTRIES:
+                return "tree_inspection_capped"
+            mode = item.lstat().st_mode
+            if stat.S_ISLNK(mode):
+                return "protected_descendant:symlink"
+            protected = never_touch_reason(item, home)
+            if protected:
+                return "protected_descendant:" + protected
+            if stat.S_ISDIR(mode):
+                with os.scandir(item) as entries:
+                    pending.extend(Path(entry.path) for entry in entries)
+            elif not stat.S_ISREG(mode):
+                return "protected_descendant:special_file"
+    except OSError as exc:
+        return f"tree_inspection_failed:{type(exc).__name__}"
+    return None
+
+
+def referenced_by_claim(path: Path, claims: Iterable[dict[str, Any]], home: Path) -> Optional[str]:
+    """Claim paths and canonical active worklogs can hold a directory or any descendant."""
+    for claim in claims:
+        values = list(claim.get("paths") or [])
+        text = claim.get("reference_text") or ""
+        # Markdown/backtick/quoted absolute and home-relative paths, including ancestor references.
+        values.extend(re.findall(r"(?:~/|/)[^\s`\"'<>()[\]{}]+", text))
+        for value in values:
+            if not isinstance(value, str) or not value.strip():
+                continue
+            value = value.rstrip(",;:.")
+            if value.startswith("~/"):
+                ref = home / value[2:]
+            else:
+                ref = Path(value)
+                if not ref.is_absolute():
+                    ref = Path(claim.get("worktree") or ROOT) / ref
+            # Globs conservatively hold their fixed prefix, never silently discard an unknown match.
+            prefix = re.split(r"[*?\[]", str(ref), maxsplit=1)[0].rstrip("/")
+            ref = Path(os.path.abspath(prefix or "/"))
+            try:
+                resolved = ref.resolve(strict=False)
+            except (OSError, RuntimeError) as exc:
+                raise CleanupError(f"claim_reference_unreadable:{type(exc).__name__}") from exc
+            if (is_within(path, ref) or is_within(ref, path)
+                    or is_within(path, resolved) or is_within(resolved, path)):
+                return str(claim.get("claim_id") or "unknown")
+        # Also protect exact candidate names containing spaces in prose.
+        relative = "~/" + str(path.relative_to(home)) if is_within(path, home) else str(path)
+        for spelling in (str(path), relative):
+            if re.search(re.escape(spelling) + r"(?=$|[/\s`\"'),;:.])", text):
+                return str(claim.get("claim_id") or "unknown")
+    return None
+
+
 def evaluate(
     path: Path,
     *,
@@ -260,6 +319,7 @@ def evaluate(
     roots: Iterable[Path],
     refs: Iterable[str],
     live_worktrees: Iterable[Path],
+    live_claims: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any]:
     """One scratch candidate against every check. Returns {path, kind, exists, reasons, candidate, how}."""
     reasons: list[str] = []
@@ -269,20 +329,23 @@ def evaluate(
         reasons.append("missing")
         return {"path": str(path), "kind": kind, "exists": False, "reasons": reasons,
                 "candidate": False, "how": how}
-    ar = allowed_scratch_reason(path, roots)
+    ar = allowed_scratch_reason(path, [home / ".cache" / "agent-tmp"]) or allowed_scratch_reason(path, roots)
     if ar:
         reasons.append(ar)
     nt = never_touch_reason(path, home)
     if nt:
         reasons.append(nt)
-    lay = git_layout(path)
+    tree_reason = protected_tree_reason(path, home) if not reasons else None
+    if tree_reason:
+        reasons.append(tree_reason)
+    lay = git_layout(path) if not reasons else None
     if lay is not None:
         if lay["kind"] == "git_clone":
             kind = "git_clone"
             reasons.append("standalone_git_clone")
         else:
             kind = "git_worktree"
-            how = f"git worktree remove (main {lay['main_repo']})"
+            reasons.append("registered_worktree_requires_governed_close")
     else:
         kind = "dir" if path.is_dir() else "file"
         how = "rmtree" if kind == "dir" else "unlink"
@@ -290,6 +353,12 @@ def evaluate(
         if is_within(path, wt) or is_within(wt, path):
             reasons.append(f"live_claim_worktree:{wt}")
             break
+    try:
+        holder = referenced_by_claim(path, live_claims, home)
+        if holder:
+            reasons.append(f"live_claim_reference:{holder}")
+    except CleanupError as exc:
+        reasons.append(str(exc))
     use = in_use_by(path, refs)
     if use:
         reasons.append(f"in_use_by_process:{use}")
@@ -324,16 +393,13 @@ def size_bytes(path: Path) -> Optional[int]:
 
 
 def remove_item(path: Path, kind: str, main_repo: Optional[Path]) -> tuple[bool, str]:
-    """Remove ONE item; (ok, how). A git worktree goes through ``git worktree remove`` (never --force)."""
+    """Remove one prevalidated plain scratch item; repositories require governed workspace close."""
     if not os.path.lexists(path):
         return False, "gone"
     if path.is_symlink():
         return False, "symlink"
-    if kind == "git_worktree" and main_repo is not None:
-        rc, _ = _git(main_repo, "worktree", "remove", str(path))
-        if rc != 0 or os.path.lexists(path):
-            return False, f"git_worktree_remove_rc:{rc}"
-        return True, "git worktree remove"
+    if kind == "git_worktree":
+        return False, "registered_worktree_requires_governed_close"
     if kind == "dir":
         shutil.rmtree(path)
         return True, "rmtree"
@@ -354,6 +420,10 @@ def live_claim_view(claims_dir: Optional[Path]) -> tuple[list[dict[str, Any]], O
         return [], "claim_board_unavailable"
     board = B.ClaimBoard(claims_dir)
     try:
+        if not board.dir.is_dir() or board.dir.is_symlink():
+            return [], "claim_directory_unavailable"
+        with os.scandir(board.dir) as entries:
+            list(entries)  # missing/unreadable is not an authoritative empty board
         views, bad = board.views()
     except Exception as exc:  # noqa: BLE001 - a board problem is reported, never fatal
         return [], f"claim_board_read_failed:{type(exc).__name__}"
@@ -361,8 +431,24 @@ def live_claim_view(claims_dir: Optional[Path]) -> tuple[list[dict[str, Any]], O
     for v in views:
         if v.doc.get("status") != "active":
             continue
+        paths = v.doc.get("paths") or []
+        if not isinstance(paths, list) or any(not isinstance(value, str) for value in paths):
+            return [], "claim_paths_unreadable"
+        log = B.WL.path_for(board.dir, v.claim_id)
+        try:
+            try:
+                mode = log.lstat().st_mode
+            except FileNotFoundError:
+                body = ""
+            else:
+                if stat.S_ISLNK(mode):
+                    return [], "worklog_symlink"
+                body = log.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            return [], f"worklog_read_failed:{type(exc).__name__}"
         live.append({"claim_id": v.claim_id, "task": v.doc.get("task"), "worktree": v.doc.get("worktree"),
-                     "session": v.doc.get("session"), "paths": v.doc.get("paths") or []})
+                     "session": v.doc.get("session"), "paths": paths,
+                     "reference_text": json.dumps(v.doc) + "\n" + body})
     warn = f"unreadable:{','.join(bad)}" if bad else None
     return live, warn
 
@@ -389,7 +475,11 @@ def run(
     apply: bool,
 ) -> int:
     roots = default_scratch_roots(home)
-    refs = process_refs(proc_root)
+    process_warn = None
+    try:
+        refs = process_refs(proc_root)
+    except CleanupError as exc:
+        refs, process_warn = set(), str(exc)
     live, board_warn = live_claim_view(claims_dir)
 
     task_slug: Optional[str] = None
@@ -401,6 +491,9 @@ def run(
             print(json.dumps({"ok": False, "error": f"claim {claim!r} not active on the board"}))
             return 1
         task_slug = slug(matched["task"])
+        if session and session != matched["session"]:
+            print(json.dumps({"ok": False, "error": "claim_session_mismatch"}))
+            return 1
         if not session:
             session = matched["session"]
             session_slug = slug(session)
@@ -412,15 +505,20 @@ def run(
     # that worktree is never this agent's to remove (§0 rule 6(c), §24.13).
     live_worktrees = [Path(c["worktree"]) for c in live if c.get("worktree")]
 
-    candidates = auto_candidates(home, task_slug, session_slug)
+    owned = auto_candidates(home, task_slug, session_slug)
+    candidates = list(owned)
     for s in scratch:
         for part in s.split(os.pathsep):
             if part.strip():
-                candidates.append(Path(os.path.expanduser(part.strip())))
+                value = part.strip()
+                candidates.append(home / value[2:] if value.startswith("~/") else Path(value))
 
     rows = []
-    for p in candidates:
-        r = evaluate(p, home=home, roots=roots, refs=refs, live_worktrees=live_worktrees)
+    for p in dict.fromkeys(candidates):
+        r = evaluate(p, home=home, roots=roots, refs=refs, live_worktrees=live_worktrees, live_claims=live)
+        if r["candidate"] and not any(is_within(p, owner) for owner in owned):
+            r["candidate"] = False
+            r["reasons"].append("task_or_session_ownership_unresolved")
         if r["candidate"]:
             r["size_bytes"] = size_bytes(p)
         rows.append(r)
@@ -428,13 +526,13 @@ def run(
     would_remove = [r for r in rows if r["candidate"]]
     refused = [r for r in rows if not r["candidate"]]
 
-    if board_warn:
+    if board_warn or process_warn:
         # An unreadable claim board is not proof that no claim references a path. Fail closed: no candidate
         # may be reported removable (or removed) until the board can be read again.
         for r in rows:
             if r["candidate"]:
                 r["candidate"] = False
-                r["reasons"].append(f"claim_board_unavailable:{board_warn}")
+                r["reasons"].append(f"claim_board_unavailable:{board_warn}" if board_warn else process_warn)
         would_remove = []
         refused = rows
     result: dict[str, Any] = {
@@ -448,20 +546,29 @@ def run(
         "would_remove": [r["path"] for r in would_remove],
         "refused": [{"path": r["path"], "reasons": r["reasons"]} for r in refused],
         "board_warning": board_warn,
+        "process_warning": process_warn,
     }
 
     if apply:
         removed: list[dict[str, Any]] = []
         for r in would_remove:
             p = Path(r["path"])
+            # Re-read both evidence sources and the whole candidate immediately before removal.
+            try:
+                latest_refs = process_refs(proc_root)
+                latest_claims, warning = live_claim_view(claims_dir)
+                if warning:
+                    raise CleanupError(warning)
+                check = evaluate(p, home=home, roots=roots, refs=latest_refs,
+                                 live_worktrees=[Path(c["worktree"]) for c in latest_claims if c.get("worktree")],
+                                 live_claims=latest_claims)
+            except CleanupError as exc:
+                removed.append({"path": r["path"], "how": f"skip:evidence_unavailable:{exc}"})
+                continue
+            if not check["candidate"]:
+                removed.append({"path": r["path"], "how": "skip:revalidation_refused", "reasons": check["reasons"]})
+                continue
             lay = git_layout(p)
-            # Re-validate immediately before removal: gone / symlink / never-touch / in-use all refuse.
-            if not os.path.lexists(p):
-                removed.append({"path": r["path"], "how": "skip:gone"})
-                continue
-            if p.is_symlink() or never_touch_reason(p, home) or in_use_by(p, refs):
-                removed.append({"path": r["path"], "how": "skip:revalidation_refused"})
-                continue
             kind = r["kind"]
             main_repo = Path(lay["main_repo"]) if lay and lay["kind"] == "git_worktree" else None
             ok, how = remove_item(p, kind, main_repo)
@@ -473,8 +580,8 @@ def run(
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
         print(f"agent_scratch_cleanup dry-run  home={home}")
-        if board_warn:
-            print(f"  WARN: {board_warn}")
+        if board_warn or process_warn:
+            print(f"  WARN: {board_warn or process_warn}")
         if not would_remove:
             print("  (no candidate scratch: nothing to remove)")
         for r in would_remove:

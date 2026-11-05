@@ -49,12 +49,21 @@ class Clock:
 
 
 @pytest.fixture(autouse=True)
-def _pin_real_clock(monkeypatch):
+def _pin_real_clock(monkeypatch, tmp_path):
     """Claims are stamped at T0; paths that build their own board (CLI.main, board_view) read the module clock.
     Pin it to T0 so the 2-hour staleness rule never ages a fixture claim with the wall clock (batch 9: these
     tests passed before 16:00Z on 2026-10-23 and failed after)."""
     monkeypatch.setattr(B, "utc_now", lambda: T0)
     monkeypatch.setattr(LC, "_utc_now", lambda: T0)
+    # Default readers used by CLI tests must not discover this host's release receipts.
+    # Explicit FakeReleases paths/callables still exercise the real release classification.
+    original_init = LC.ReleaseReader.__init__
+
+    def fixture_releases(self, releases_base=None, deploy_state_dir=None, **kwargs):
+        original_init(self, releases_base or tmp_path / "releases",
+                      deploy_state_dir or tmp_path / "deploy", **kwargs)
+
+    monkeypatch.setattr(LC.ReleaseReader, "__init__", fixture_releases)
 
 
 class FakeGH:
@@ -795,6 +804,7 @@ def test_release_reports_scratch_before_it_releases_the_claim(tmp_path, monkeypa
             return {"claim_id": "C1", "status": "done", "session": "s1", "task": "t", "paths": [], "ended_at": "2026-11-05T00:00:00Z"}
 
     monkeypatch.setattr(A, "_session", lambda a: "s1")
+    monkeypatch.setattr(A, "_incident_warning", lambda session: 0)
     monkeypatch.setattr(A, "_board", lambda a: _Board())
     monkeypatch.setattr(A, "_agent_scratch_cleanup_hook",
                         lambda claim_id=None, claims_dir=None: order.append("cleanup"))
@@ -817,6 +827,7 @@ def test_the_cleanup_hook_receives_the_claims_dir(tmp_path, monkeypatch):
             return {"claim_id": "C1", "status": "done", "session": "s1", "task": "t", "paths": [], "ended_at": "2026-11-05T00:00:00Z"}
 
     monkeypatch.setattr(A, "_session", lambda a: "s1")
+    monkeypatch.setattr(A, "_incident_warning", lambda session: 0)
     monkeypatch.setattr(A, "_board", lambda a: _Board())
     monkeypatch.setattr(A, "_agent_scratch_cleanup_hook",
                         lambda claim_id=None, claims_dir=None: seen.append(claims_dir))

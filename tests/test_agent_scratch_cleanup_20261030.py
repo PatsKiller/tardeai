@@ -16,6 +16,8 @@ def _load():
     spec = importlib.util.spec_from_file_location("agent_scratch_cleanup", path)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    import sys
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -214,3 +216,303 @@ def test_in_use_by_ignores_ancestor_reference(tmp_path):
     assert mod.in_use_by(cand, {str(open_file)}) == str(open_file)
 
 
+
+
+# Cloud2302: every filesystem and board is a synthetic fixture, including process inspection.
+import json
+import sys
+import pytest
+
+
+def _fixture_run(mod, tmp_path, *, task="own-task", claims=None, proc=None, scratch=None, apply=True):
+    home = tmp_path / "home"
+    candidate = home / ".cache" / "agent-tmp" / task
+    candidate.mkdir(parents=True, exist_ok=True)
+    (candidate / "synthetic.txt").write_text("synthetic disposable fixture")
+    board = claims if claims is not None else tmp_path / "claims"
+    if claims is None:
+        board.mkdir(exist_ok=True)
+    process = proc if proc is not None else tmp_path / "proc"
+    if proc is None:
+        process.mkdir(exist_ok=True)
+    return candidate, dict(
+        home=home,
+        claims_dir=board,
+        proc_root=process,
+        task=task,
+        claim=None,
+        session=None,
+        scratch=scratch or [],
+        apply=apply,
+    )
+
+
+@pytest.mark.parametrize("where", ["rtc", "outside", "other-task"])
+def test_cloud_namespace_and_owner_refusal(tmp_path, capsys, where):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    other = (
+        args["home"] / ".cache" / "rtc" / "own-task"
+        if where == "rtc"
+        else tmp_path / "outside"
+        if where == "outside"
+        else candidate.parent / "other-task"
+    )
+    other.mkdir(parents=True)
+    (other / "synthetic.txt").write_text("keep")
+    args["scratch"] = [str(other)]
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert other.exists(), report
+    assert str(other) not in [x["path"] for x in report["removed"] if x.get("ok")]
+
+
+@pytest.mark.parametrize("name", ["db_backups", "nested/.env.synthetic", "nested/private.key", "nested/repo/.git"])
+def test_cloud_protected_descendants_are_preserved(tmp_path, capsys, name):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    nested = candidate / name
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.mkdir() if name.endswith(".git") or name == "db_backups" else nested.write_text("synthetic")
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and nested.exists(), report
+    assert not report["removed_count"]
+
+
+def test_cloud_descendant_symlink_is_refused_without_following(tmp_path, capsys):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    target = tmp_path / "untouched"
+    target.mkdir()
+    (target / "a").write_text("synthetic")
+    (candidate / "link").symlink_to(target, target_is_directory=True)
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and (target / "a").exists() and not report["removed_count"]
+
+
+def test_cloud_unreadable_descendant_scan_refuses(tmp_path, monkeypatch, capsys):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    real = mod.os.scandir
+
+    def scan(path):
+        if Path(path) == candidate:
+            raise PermissionError("synthetic scan failure")
+        return real(path)
+
+    monkeypatch.setattr(mod.os, "scandir", scan)
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"]
+
+
+@pytest.mark.parametrize("reference", ["absolute-path", "home-relative-path", "worklog", "worklog-ancestor"])
+def test_cloud_live_claim_and_real_worklog_references(tmp_path, capsys, reference):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    board = args["claims_dir"]
+    cid = "fixture-claim"
+    paths = (
+        [str(candidate / "synthetic.txt")]
+        if reference == "absolute-path"
+        else ["~/.cache/agent-tmp/own-task/synthetic.txt"]
+        if reference == "home-relative-path"
+        else ["src/synthetic.py"]
+    )
+    doc = {
+        "schema": "AgentClaim@v1",
+        "claim_id": cid,
+        "status": "active",
+        "session": "peer",
+        "task": "peer task",
+        "heartbeat_at": "2030-01-01T00:00:00Z",
+        "started_at": "2030-01-01T00:00:00Z",
+        "paths": paths,
+        "worktree": str(tmp_path / "unrelated-project"),
+    }
+    (board / (cid + ".json")).write_text(json.dumps(doc))
+    mention = str(candidate) if reference == "worklog" else str(candidate.parent)
+    (board / (cid + ".worklog.md")).write_text(
+        "Active proof: `" + mention + "`" if reference.startswith("worklog") else "No scratch here"
+    )
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"], report
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["missing-proc", "permission-proc", "permission-pid", "missing-claims", "permission-claims", "worklog-unreadable"],
+)
+def test_cloud_unknown_evidence_never_means_unreferenced(tmp_path, monkeypatch, capsys, failure):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    if failure == "missing-proc":
+        args["proc_root"] = tmp_path / "absent-proc"
+    if failure == "missing-claims":
+        args["claims_dir"] = tmp_path / "absent-claims"
+    if failure == "permission-proc":
+        real = mod.os.listdir
+
+        def listing(path):
+            if Path(path) == args["proc_root"]:
+                raise PermissionError("synthetic proc failure")
+            return real(path)
+
+        monkeypatch.setattr(mod.os, "listdir", listing)
+    if failure == "permission-pid":
+        (args["proc_root"] / "99" / "fd").mkdir(parents=True)
+    if failure == "permission-claims":
+        real = mod.os.scandir
+
+        def scan(path):
+            if Path(path) == args["claims_dir"]:
+                raise PermissionError("synthetic claims failure")
+            return real(path)
+
+        monkeypatch.setattr(mod.os, "scandir", scan)
+    if failure == "worklog-unreadable":
+        cid = "fixture"
+        board = args["claims_dir"]
+        (board / (cid + ".json")).write_text(
+            json.dumps(
+                {
+                    "schema": "AgentClaim@v1",
+                    "claim_id": cid,
+                    "status": "active",
+                    "session": "peer",
+                    "paths": [],
+                    "worktree": str(tmp_path / "elsewhere"),
+                }
+            )
+        )
+        log = board / (cid + ".worklog.md")
+        log.mkdir()
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"], report
+
+
+def test_cloud_positive_dryrun_and_apply_with_real_empty_board(tmp_path, capsys):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path, apply=False)
+    mod.run(**args)
+    dry = capsys.readouterr().out
+    assert "would delete:" in dry and candidate.exists()
+    args["apply"] = True
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert report["removed_count"] == 1 and not candidate.exists(), report
+
+
+def test_cloud_default_namespace_has_no_tmp_or_rtc(tmp_path):
+    mod = _load()
+    home = tmp_path / "home"
+    assert mod.default_scratch_roots(home) == [home / ".cache" / "agent-tmp"]
+
+
+def test_cloud_revalidation_sees_new_protected_descendant(tmp_path, monkeypatch, capsys):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    calls = 0
+
+    def inspect(proc_root):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            (candidate / "db_backups").mkdir()
+        return set()
+
+    monkeypatch.setattr(mod, "process_refs", inspect)
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and (candidate / "db_backups").exists()
+    assert not report["removed_count"] and report["removed"][0]["how"] == "skip:revalidation_refused"
+
+
+def test_cloud_revalidation_refuses_new_evidence_failure(tmp_path, monkeypatch, capsys):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    calls = 0
+
+    def inspect(proc_root):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise mod.CleanupError("synthetic inspection failure")
+        return set()
+
+    monkeypatch.setattr(mod, "process_refs", inspect)
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"]
+
+
+def test_cloud_symlink_namespace_cannot_redirect_cleanup(tmp_path, capsys):
+    mod = _load()
+    home = tmp_path / "home"
+    cache = home / ".cache"
+    cache.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    candidate = outside / "own-task"
+    candidate.mkdir()
+    (candidate / "a").write_text("synthetic")
+    (cache / "agent-tmp").symlink_to(outside, target_is_directory=True)
+    board = tmp_path / "claims"
+    board.mkdir()
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    mod.run(
+        home=home, claims_dir=board, proc_root=proc, task="own-task", claim=None, session=None, scratch=[], apply=True
+    )
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"]
+
+
+def test_cloud_claim_reference_alias_preserves_real_target(tmp_path, capsys):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    alias = tmp_path / "live-alias"
+    alias.symlink_to(candidate, target_is_directory=True)
+    cid = "alias-claim"
+    (args["claims_dir"] / (cid + ".json")).write_text(
+        json.dumps(
+            {
+                "schema": "AgentClaim@v1",
+                "claim_id": cid,
+                "status": "active",
+                "session": "peer",
+                "paths": [str(alias / "synthetic.txt")],
+                "worktree": str(tmp_path / "project"),
+            }
+        )
+    )
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"], report
+
+
+def test_cloud_cli_dryrun_then_apply_uses_only_the_named_fixture(tmp_path, monkeypatch, capsys):
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    monkeypatch.setenv("AGENT_SCRATCH_DIRS", "")
+    options = [
+        "--home",
+        str(args["home"]),
+        "--proc-root",
+        str(args["proc_root"]),
+        "--claims-dir",
+        str(args["claims_dir"]),
+        "--task",
+        "own-task",
+        "--session",
+        "fixture-session",
+    ]
+    assert mod.main(options + ["--dry-run"]) == 0
+    assert "would delete:" in capsys.readouterr().out and candidate.exists()
+    assert mod.main(options + ["--apply"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["removed_count"] == 1 and not candidate.exists()
