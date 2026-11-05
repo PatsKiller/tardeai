@@ -14,7 +14,8 @@ This module is the pure reader that replaces it. It reads, and only reads:
     exactly as watch_domains.authorize_review_artifact (provenance fields + llm_consumption_log link)
   * desk synthesis: the latest non-superseded watchlist_final_synthesis row (raw, with its time: R1 judges age)
   * Trade AI: the latest live decision_packets row, projected by the pure rockville.decision_projection with the
-    packet's STORED action policy (no live re-evaluation), current holdings first
+    packet's STORED action policy (no live re-evaluation), current holdings first. A packet past its TTL has its
+    stored policy expired at read time (STALE/REFRESH/not allowed), never trusted as READY still
   * re-entry desk: the stored snapshot data/runtime/reentry_decision_desk_latest.json (never rebuilt here)
 Database access is an injected ``query(sql, params) -> rows`` callable; ``readonly_query`` opens a read-only
 session (default_transaction_read_only) with the DB_* names only. No broker, order, notifier or model import:
@@ -242,6 +243,18 @@ def cio_reviews(query, root, symbols, sources):
     return out
 
 
+def _expired_action_policy(policy):
+    """The stored policy, expired: a packet past its TTL may only refresh, never grant action.
+
+    ``decision_action_policy.evaluate_action`` returns exactly this shape for a stale packet (REFRESH, not allowed,
+    state STALE) and the live projection re-evaluates the policy on every read. This reader deliberately does not
+    import that module (its closure reaches live projections); it applies the same read-time expiry to the STORED
+    policy so an old READY packet cannot pass a Trade AI gate whose evidence has expired.
+    """
+    return {**(policy if isinstance(policy, dict) else {}), "state": "STALE", "allowed": False,
+            "action": "REFRESH", "reason": "packet is past its TTL — refresh before acting"}
+
+
 def trade_ai_states(query, symbols, *, held_symbols, held_known, now, sources):
     """Latest live packet -> stored action policy -> pure projection (current holdings win over the packet's flag)."""
     from scripts.decision_packet import materialize_packet
@@ -262,12 +275,14 @@ def trade_ai_states(query, symbols, *, held_symbols, held_known, now, sources):
         packet = json.loads(packet) if isinstance(packet, str) else dict(packet or {})
         generated = _get(row, "generated_at", 2)
         packet = materialize_packet(packet)
+        expired = packet_expired(packet, generated_at=generated, now=now)
         if held_known:
             held = symbol in held_symbols
         else:
-            held = bool((packet.get("ownership") or {}).get("held")) and not packet_expired(packet, generated_at=generated, now=now)
+            held = bool((packet.get("ownership") or {}).get("held")) and not expired
         packet["ownership"] = {**(packet.get("ownership") or {}), "held": held}
-        decision = project_watch_decision(packet, packet.get("action_policy"), symbol=symbol, current_held=held,
+        policy = _expired_action_policy(packet.get("action_policy")) if expired else packet.get("action_policy")
+        decision = project_watch_decision(packet, policy, symbol=symbol, current_held=held,
                                           generated_at=generated, now=now)
         out[symbol] = {"state": decision.get("primary_state") or "DATA_UNAVAILABLE", "as_of": _iso(generated),
                        "packet_id": _get(row, "packet_id", 1), "reason": None}

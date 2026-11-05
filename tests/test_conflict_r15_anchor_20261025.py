@@ -6,12 +6,16 @@ ConflictDecision@v1 at decision time; later runs compare against it. Matrix test
 one flag.
 """
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
+from scripts.lib.cio_ask_api import Ctx
 from scripts.lib.conflicts.adapters import evaluate_inputs, security_inputs
+from scripts.lib.conflicts.api import handle
 from scripts.lib.conflicts.engine import Input
 from scripts.lib.conflicts.hysteresis import SCHEMA, anchor_holds, record_anchor
 from scripts.lib.conflicts.ledger import KINDS, ConflictLedger, DECISION_SCHEMA, decision_inputs
 from scripts.lib.conflicts.profiles.vocabulary import ordinal
+from scripts.lib.conflicts.review import complete_review
 
 NOW = datetime(2026, 10, 22, 17, tzinfo=timezone.utc)       # Thursday, session open
 
@@ -164,3 +168,68 @@ def test_expired_decision_has_no_anchor(tmp_path):
         "expires_at": (NOW + timedelta(hours=1)).isoformat()})
     after, _ = runner.run(bundle(), NOW + timedelta(hours=2))
     assert [f.summary for f in after if f.rule == "R15"] != ["Recorded resolution still holds"]
+
+
+def operator_ctx():
+    return Ctx(principal=lambda: "tailnet:operator@example.com", listener=lambda: "serve_proxy",
+               csrf=lambda *_: (True, "fixture"), allowed_logins=frozenset({"operator@example.com"}))
+
+
+def test_operator_decision_anchors_the_decision_time_conviction(tmp_path):
+    """CX1: the conflict opened at conviction 70; the operator decides when the live conviction is 80.
+
+    ``ConflictLedger.reconcile()`` never rewrites the context of an unchanged finding, so the persisted record still
+    says 70. The deciding surface must pass the decision-time value through the real API caller; anchoring to the
+    stale persisted 70 would immediately re-flag NEEDS_OPERATOR:R11 on the next unchanged run.
+    """
+    runner = Runner(tmp_path)
+    conflict = confirmed_conflict(runner, bundle)
+    record = runner.ledger.records()[conflict.key]
+    assert record["subject"]["context"]["conviction"] == 70          # the persisted state is the opening state
+    at = NOW + timedelta(minutes=20)
+    status, result = handle("/api/v3/conflicts/" + quote(conflict.key, safe="") + "/decision", "POST",
+                            body={"expected_revision": record["revision"], "chosen_side": "WATCH",
+                                  "reason": "reviewed against the decision-time state",
+                                  "evidence_refs": ["fixture:review"],
+                                  "expires_at": (at + timedelta(days=7)).isoformat(), "anchor_conviction": 80},
+                            ctx=operator_ctx(), ledger=runner.ledger, write_enabled=True, now=at)
+    assert status == 200, result
+    anchor = runner.ledger.records()[conflict.key]["decision"]["anchor"]
+    assert anchor["conviction"] == 80 and anchor["conviction_source"] == "decision caller"
+    findings, _ = runner.run(bundle(conviction=80), at + timedelta(minutes=10))
+    assert flags(findings) == []
+    assert [f.summary for f in findings if f.rule == "R15"] == ["Recorded resolution still holds"]
+
+
+def test_operator_decision_refuses_without_the_decision_time_conviction(tmp_path):
+    runner = Runner(tmp_path)
+    conflict = confirmed_conflict(runner, bundle)
+    record = runner.ledger.records()[conflict.key]
+    at = NOW + timedelta(minutes=20)
+    status, result = handle("/api/v3/conflicts/" + quote(conflict.key, safe="") + "/decision", "POST",
+                            body={"expected_revision": record["revision"], "chosen_side": "WATCH",
+                                  "reason": "reviewed", "evidence_refs": ["fixture:review"],
+                                  "expires_at": (at + timedelta(days=7)).isoformat()},
+                            ctx=operator_ctx(), ledger=runner.ledger, write_enabled=True, now=at)
+    assert status == 400 and result["error"] == "ANCHOR_CONVICTION_REQUIRED"
+    assert runner.ledger.records()[conflict.key]["state"] == "OPEN"   # no decision was recorded
+
+
+def test_cio_review_anchors_the_decision_time_conviction(tmp_path):
+    """CX1: the CIO publication path supplies the current conviction rather than the persisted 70."""
+    runner = Runner(tmp_path)
+    conflict = confirmed_conflict(runner, bundle)
+    saved = {}
+    result = complete_review(runner.ledger, conflict.key, request_id="fixture-review",
+                             canonical={"security_guid": "g1", "stance": "WATCH",
+                                        "as_of": (NOW - timedelta(hours=1)).isoformat()},
+                             reason="CIO reviewed at the decision-time conviction", evidence_refs=["fixture:review"],
+                             producer_update=lambda patch: saved.update(patch) or True,
+                             producer_readback=lambda: saved, at=NOW + timedelta(minutes=20),
+                             expires_at=NOW + timedelta(days=7), conviction=80, apply=True)
+    assert result["resolution_proven"] is True
+    anchor = runner.ledger.records()[conflict.key]["decision"]["anchor"]
+    assert anchor["conviction"] == 80 and anchor["conviction_source"] == "decision caller"
+    findings, _ = runner.run(bundle(conviction=80), NOW + timedelta(minutes=30))
+    assert flags(findings) == []
+    assert [f.summary for f in findings if f.rule == "R15"] == ["Recorded resolution still holds"]

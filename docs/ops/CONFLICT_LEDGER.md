@@ -40,10 +40,22 @@ decision. The module handler is `scripts.lib.conflicts.api.handle`; the current
 route owner must register it. No v2 alias is needed.
 
 `POST /api/v3/conflicts/{encoded-key}/decision` accepts expected_revision,
-chosen_side, reason, evidence_refs and expires_at. It checks the authenticated
-operator tailnet identity, serve-proxy listener and same-origin CSRF. Agents,
-n8n and service tokens are refused. Writer activation defaults false; a body or
-claimed actor cannot activate it. No endpoint changes broker behavior.
+chosen_side, reason, evidence_refs, expires_at and anchor_conviction. It checks
+the authenticated operator tailnet identity, serve-proxy listener and
+same-origin CSRF. Agents, n8n and service tokens are refused. Writer activation
+defaults false; a body or claimed actor cannot activate it. No endpoint changes
+broker behavior.
+
+`anchor_conviction` is the R15 anchor's conviction at DECISION time. The
+persisted conflict context only holds the value from the last finding change —
+`ConflictLedger.reconcile()` does not rewrite an unchanged finding's context —
+so anchoring to it would record the opening conviction (say 70) for a decision
+taken at 80 and immediately re-flag `NEEDS_OPERATOR:R11` on the next unchanged
+evaluation. A conflict that carries a conviction is therefore refused with
+`ANCHOR_CONVICTION_REQUIRED` unless the caller supplies the decision-time value;
+`complete_review(..., conviction=...)` carries the same requirement for the CIO
+publication path. Conflicts with no persisted conviction remain decidable without
+it, and the anchor records `conviction_source: "decision caller"` when supplied.
 
 `records_section` and `data_error_section` own lifecycle filtering, paging,
 headline order, gaps and record conversion. Missing/corrupt ledgers remain gaps.

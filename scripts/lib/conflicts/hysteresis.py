@@ -5,7 +5,11 @@ flag needs 2 consecutive runs". The two-run rule lives in the security profile a
 This module owns the decision anchor:
 
   record_anchor(record, decision)   at decision time (ledger.transition): every side's ACTION as a position-aware
-                                    ordinal, the chosen side, holding state and the subject's conviction
+                                    ordinal, the chosen side, holding state and the subject's conviction. The
+                                    conviction is the DECISION-TIME value the decision caller supplies
+                                    (transition(anchor_conviction=...)); the persisted conflict context is only a
+                                    fallback for callers that legitimately have none, because reconcile never
+                                    rewrites the context of an unchanged finding.
   anchor_holds(anchor, sides, held) at evaluation time: no anchored side changed its action and no side that
                                     disagrees with the decision is new
 

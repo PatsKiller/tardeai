@@ -24,7 +24,7 @@ def record_review_queued(ledger, key, *, request_id, queue_readback, at, apply=F
 
 
 def complete_review(ledger, key, *, request_id, canonical, reason, evidence_refs, producer_update,
-                    producer_readback, at, expires_at, apply=False):
+                    producer_readback, at, expires_at, conviction=None, apply=False):
     record = ledger.records().get(key)
     if not record:
         raise KeyError(key)
@@ -37,6 +37,14 @@ def complete_review(ledger, key, *, request_id, canonical, reason, evidence_refs
     canonical_at = timestamp(canonical["as_of"])
     if canonical_at is None or canonical_at > at:
         raise ValueError("canonical publication timestamp unproven")
+    # R15: the anchor records the conviction at DECISION time. The persisted record only holds the conviction from
+    # the last finding change, so the caller supplies the current one; a conflict that carries a conviction but no
+    # decision-time value is refused rather than anchored to a value that may already be stale.
+    persisted = ((record.get("subject") or {}).get("context") or {}).get("conviction")
+    if persisted is not None and conviction is None:
+        raise ValueError("decision-time conviction required to anchor this conflict")
+    if conviction is not None and (isinstance(conviction, bool) or not isinstance(conviction, (int, float))):
+        raise ValueError("decision-time conviction must be a number")
     patch = {"verdict": canonical["stance"], "completed_at": canonical["as_of"], "request_id": request_id,
              "conflict_key": key, "reason": reason, "evidence_refs": list(evidence_refs)}
     decision = {"schema": DECISION_SCHEMA, "actor_kind": "cio", "actor": "cio", "chosen_side": canonical["stance"],
@@ -44,18 +52,19 @@ def complete_review(ledger, key, *, request_id, canonical, reason, evidence_refs
                 "expires_at": expires_at.isoformat(), "clears_when": record.get("clears_when"),
                 "key": key, "subject": record["subject"]}
     # Validate transition without effects before any producer mutation.
-    ledger.transition(key, "review_completed", at=at, decision=decision, apply=False)
+    ledger.transition(key, "review_completed", at=at, decision=decision, anchor_conviction=conviction, apply=False)
     if not apply:
         return {"decision": decision, "producer_patch": patch, "applied": False, "resolution_proven": False}
     prior = record.get("decision") or {}
     if prior.get("request_id") != request_id:
-        ledger.transition(key, "decided", at=at, decision=decision, expected_revision=record["revision"], apply=True)
+        ledger.transition(key, "decided", at=at, decision=decision, expected_revision=record["revision"],
+                          anchor_conviction=conviction, apply=True)
     if producer_update(patch) is not True:
         return {"applied": False, "resolution_proven": False, "reason": "superseded_input_update_failed"}
     saved = producer_readback() or {}
     if any(saved.get(k) != v for k, v in patch.items()):
         return {"applied": False, "resolution_proven": False, "reason": "superseded_input_readback_failed"}
     # The owner records the completion; only the next engine evaluation clears.
-    ledger.transition(key, "review_completed", at=at, decision=decision, apply=True)
+    ledger.transition(key, "review_completed", at=at, decision=decision, anchor_conviction=conviction, apply=True)
     return {"applied": True, "resolution_proven": True, "decision": decision, "producer_patch": patch,
             "cleared": False, "next": "re-evaluate canonical and updated producer input"}

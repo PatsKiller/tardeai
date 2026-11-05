@@ -7,9 +7,11 @@ too.
 The pre-existing set — fixtures already on ``origin/main`` — is DERIVED at test time from
 ``git ls-tree -r --name-only origin/main -- tests/fixtures``, never hand-listed. A hand-listed set cannot notice a
 fixture main gains from another branch, so it reports main's own fixtures as this branch's leak; a generated file the
-build refreshes has the same defect between refreshes. Derivation has one failure mode worth stating: if
-``origin/main`` cannot be resolved (shallow clone, no remote), the guard cannot tell a new fixture from an old one,
-so it FAILS CLOSED with that reason rather than silently treating every fixture — or no fixture — as new.
+build refreshes has the same defect between refreshes. The "added" set is ADDITIONS only (``--diff-filter=A``):
+editing or deleting a fixture main already has changes nothing this branch introduces, so ordinary fixture
+maintenance must not look like a leak. Derivation has one failure mode worth stating: if ``origin/main`` cannot be
+resolved (shallow clone, no remote), the guard cannot tell a new fixture from an old one, so it FAILS CLOSED with that
+reason rather than silently treating every fixture — or no fixture — as new.
 """
 import json
 import os
@@ -33,10 +35,10 @@ class BaseUnavailable(RuntimeError):
     """``origin/main`` could not be read, so the pre-existing fixture set cannot be derived."""
 
 
-def _git_paths(*args):
+def _git_paths(*args, root=ROOT):
     """Repo-relative paths printed by one git command, or BaseUnavailable with git's own reason."""
     try:
-        listing = subprocess.run(["git", "-C", str(ROOT), *args],
+        listing = subprocess.run(["git", "-C", str(root), *args],
                                  capture_output=True, text=True, check=True)
     except (OSError, subprocess.SubprocessError) as exc:
         detail = getattr(exc, "stderr", "") or getattr(exc, "stdout", "") or str(exc)
@@ -45,18 +47,23 @@ def _git_paths(*args):
     return {rel for rel in listing.stdout.splitlines() if rel}
 
 
-def preexisting_fixtures():
+def preexisting_fixtures(root=ROOT):
     """Fixtures already on origin/main. Derived from git, never hand-listed."""
-    return _git_paths("ls-tree", "-r", "--name-only", BASE_REF, "--", "tests/fixtures")
+    return _git_paths("ls-tree", "-r", "--name-only", BASE_REF, "--", "tests/fixtures", root=root)
 
 
-def branch_added_fixtures():
-    """Fixtures this branch adds relative to origin/main (empty once it has merged).
+def branch_added_fixtures(root=ROOT):
+    """Fixtures this branch ADDS relative to origin/main (empty once it has merged).
+
+    ``--diff-filter=A`` is load-bearing: plain ``--name-only`` lists modified and deleted paths too, so any branch
+    that edits or deletes a fixture main already has would intersect the pre-existing set and be rejected as a leak
+    it never introduced. Only paths that do not exist on main can be this branch's additions.
 
     The comparison ref is the literal main branch, not BASE_REF: a derivation pointed at the branch tree must not
     also move the yardstick it is checked against.
     """
-    return _git_paths("diff", "--name-only", "origin/main...HEAD", "--", "tests/fixtures")
+    return _git_paths("diff", "--name-only", "--diff-filter=A", "origin/main...HEAD", "--", "tests/fixtures",
+                      root=root)
 
 
 def _preexisting():
@@ -95,6 +102,38 @@ def test_preexisting_set_is_derived_from_main_and_nonempty():
     assert not (preexisting & added), (
         "fixtures this branch adds must never be in the pre-existing set, or the guard cannot bite: "
         f"{sorted(preexisting & added)[:5]}")
+
+
+def _git(repo, *args):
+    subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True)
+
+
+def test_added_fixture_set_counts_only_additions(tmp_path):
+    """Editing or deleting a fixture main already has is not a new fixture, so it cannot be a leak.
+
+    The guard's added set feeds a disjointness assertion against the pre-existing set; if it carried modifications
+    and deletions, ordinary fixture maintenance would always "intersect" main and be rejected. Measured on a real
+    repository: one modified, one deleted and one added path resolve to the added path alone.
+    """
+    repo = tmp_path / "fixture_repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "fixture-guard@example.invalid")
+    _git(repo, "config", "user.name", "fixture guard")
+    fixtures = repo / "tests/fixtures"
+    fixtures.mkdir(parents=True)
+    (fixtures / "kept.json").write_text('{"name": "kept"}\n', encoding="utf-8")
+    (fixtures / "removed.json").write_text('{"name": "removed"}\n', encoding="utf-8")
+    _git(repo, "add", "tests/fixtures")
+    _git(repo, "commit", "-q", "-m", "main fixtures")
+    _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "feature")
+    (fixtures / "kept.json").write_text('{"name": "kept", "edited": true}\n', encoding="utf-8")  # modified, not added
+    (fixtures / "removed.json").unlink()                                          # deleted, not added
+    (fixtures / "added.json").write_text('{"name": "added"}\n', encoding="utf-8")  # added
+    _git(repo, "add", "-A", "tests/fixtures")
+    _git(repo, "commit", "-q", "-m", "branch fixtures")
+    assert branch_added_fixtures(root=repo) == {"tests/fixtures/added.json"}
 
 
 def test_detector_catches_account_ids():

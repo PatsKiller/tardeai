@@ -133,6 +133,41 @@ def test_trade_ai_from_stored_packets_with_current_holdings_first(tmp_path):
     assert cards["AAA"]["decision"]["inputs"]["synthesis"] == "BUY"
 
 
+def ready_packet():
+    """A packet whose stored action policy says READY: ticket PASS, proposal allowed, no blockers."""
+    return {"symbol": "OLD", "data_state": "OK", "data_quality": {"state": "OK"},
+            "event_state": {"impact": "NONE"},
+            "ticket_review": {"reconciled": {"state": "PASS"}},
+            "current_actionable_plan": {"ticket_validation": {"state": "PASS"}, "trigger": "above 100"},
+            "plan_families": {"swing": {"state": "ELIGIBLE",
+                                        "structures": [{"state": "ELIGIBLE", "entry_zone": [100, 101]}]}},
+            "action_policy": {"state": "READY", "allowed": True, "action": "PROPOSE_ENTRY"}}
+
+
+def test_expired_stored_action_policy_never_projects_ready(tmp_path):
+    """CX2: an unheld security whose last packet was READY but has since expired must not project READY.
+
+    ``live_projection`` re-evaluates the action policy on every read; this reader trusts the STORED one, so a
+    two-day-old packet (past the 12h default TTL) would otherwise hand a passing Trade AI gate to the conflict
+    adapters from evidence that expired. Expiry is applied at read time; the card still says when the packet was
+    built (as_of), it just no longer claims the state is current.
+    """
+    old_at = NOW - timedelta(days=2)
+    def expired(params):
+        return [{"s": "OLD", "packet_id": "pk-OLD", "generated_at": old_at, "packet": json.dumps(ready_packet())}] \
+            if "OLD" in set(params[0]) else []
+    tables = database(**{"FROM decision_packets": expired,
+                         "LIMIT %s": [{"s": "AAA"}, {"s": "OLD"}, {"s": "543354104"}, {"s": "BBB"}]})
+    state = W.read_watch_state(FakeDB(tables), root=state_root(tmp_path), now=NOW, held_symbols={"HELD"})
+    card = state["cards"]["OLD"]
+    assert card["trade_ai_state"] == "STALE"          # not READY: the stored policy expired with the packet
+    assert card["trade_ai_as_of"] == old_at.isoformat()
+    # The same packet inside its TTL still projects READY: this is expiry, not suppression.
+    fresh = W.trade_ai_states(FakeDB(tables), ["OLD"], held_symbols={"HELD"}, held_known=True,
+                              now=old_at + timedelta(hours=1), sources={})
+    assert fresh["OLD"]["state"] == "READY"
+
+
 def test_review_authorization_matches_watch_domains(tmp_path, monkeypatch):
     from scripts.lib.data_broker import watch_domains as WD
     linked = {"req-AAA", "req-BBB", "req-QQQ", "req-MIS"}
