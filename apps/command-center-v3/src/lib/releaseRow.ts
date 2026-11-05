@@ -52,17 +52,29 @@ export function releaseRowModel(r: ReleaseRow, when: string): ReleaseRowModel {
   const purpose = r.mode === 'rollback'
     ? (name ? `Rollback — ${name}` : 'Rollback')
     : (name || 'Release recorded without a name')
-  const reason = clean(r.verify_reason) || clean(r.error)
+  // The reason a release failed can live in three places. `read_history()` nulls `verify_reason` when it attaches a deploy
+  // receipt and keeps the failure detail in `verify.readback_errors`, so falling back to the receipt's own errors is what
+  // stops the row saying "no reason was recorded" beside the exact error (cloud review P2, 2026-11-05).
+  const readback = (r.verify?.readback_errors ?? []).map(clean).filter(Boolean)
+  const reason = clean(r.verify_reason) || clean(r.error) || readback.join('; ')
+
+  // A rollback is an OPERATION, not a successful recovery: it can itself fail to verify, and then the previous version may
+  // not be running. Judge that before telling the operator there is nothing to do (cloud review P2, 2026-11-05).
+  const rollbackVerified = kind === 'rollback' && !!r.verify && r.verify.ok === true && !readback.length
 
   // A blocker is a fact the record states; when the record states none, the row says what it is waiting for instead.
   const blocker = kind === 'not_verified'
     ? `The deploy did not verify${reason ? `: ${reason}` : ', and no reason was recorded'}.`
-    : kind === 'rollback' ? 'This release was a rollback, not a promotion.'
+    : kind === 'rollback'
+      ? (rollbackVerified ? 'This release was a rollback, not a promotion.'
+        : `The rollback did not verify${reason ? `: ${reason}` : ', and no reason was recorded'}.`)
       : kind === 'not_recorded' ? 'No verification is retained for this release, so it cannot be called verified.'
         : null
   const nextAction = kind === 'verified' ? 'Nothing to do.'
     : kind === 'not_verified' ? 'Check the deploy receipt for this release before relying on it.'
-      : kind === 'rollback' ? 'Nothing to do — the previous version was restored deliberately.'
+      : kind === 'rollback'
+        ? (rollbackVerified ? 'Nothing to do — the previous version was restored deliberately.'
+          : 'Check the rollback receipt — the previous version may not be running.')
         : 'Nothing to do, but do not read this row as verified.'
 
   return {
@@ -78,7 +90,8 @@ export function releaseRowModel(r: ReleaseRow, when: string): ReleaseRowModel {
       { label: 'SHA basis', value: clean(r.sha_basis) || 'not recorded' },
       { label: 'Receipt', value: clean(r.receipt) || 'not recorded' },
       { label: 'Mode', value: clean(r.mode) || 'not recorded' },
-      { label: 'Verify reason', value: clean(r.verify_reason) || 'not recorded' },
+      { label: 'Verify reason', value: clean(r.verify_reason) || (readback.length ? 'not recorded; see readback errors' : 'not recorded') },
+      ...(readback.length ? [{ label: 'Readback errors', value: readback.join('; ') }] : []),
       ...(clean(r.error) ? [{ label: 'Recorded error', value: clean(r.error) }] : []),
     ],
   }

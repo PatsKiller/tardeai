@@ -19,6 +19,7 @@ import {
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import { releaseRowModel } from '../lib/releaseRow'
+import { ReleaseHistoryCard } from '../lib/releaseHistoryCard'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
@@ -89,26 +90,7 @@ function DeploysTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
         // FQ-069 + FQ-070: one card per release, readable at phone width. The hashes, the SHA basis, the receipt and the
         // raw verify reason are in the disclosure; the card says what was released, whether it verified and what is left.
         ? <div data-testid="rs-history-rows" style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-          {hist.releases.map((r, i) => {
-            const m = releaseRowModel(r, etDateTime(r.at))
-            return <div key={`${m.when}-${i}`} data-testid="rs-history-row" style={{ display: 'grid', gap: 4, padding: 10, minWidth: 0,
-              background: TOKENS.bg[2], border: `1px solid ${TOKENS.borderSubtle}`, borderRadius: RADIUS.sm }}>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
-                <span data-testid="rs-release-purpose" style={{ fontSize: TYPE.base, fontWeight: 800, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{m.purpose}</span>
-                <Pill tone={m.verdict.tone}>{m.verdict.label}</Pill>
-              </div>
-              <span style={{ ...muted, overflowWrap: 'anywhere' }}>{m.when} · {m.changes}</span>
-              {m.blocker ? <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{m.blocker}</span> : null}
-              <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{m.nextAction}</span>
-              <details data-testid="rs-release-diagnostics" style={{ minWidth: 0 }}>
-                <summary style={{ cursor: 'pointer', fontSize: TYPE.xs, color: TOKENS.text[2], minHeight: 44, display: 'flex', alignItems: 'center' }}>Diagnostics</summary>
-                <dl style={{ display: 'grid', gridTemplateColumns: 'minmax(88px, auto) 1fr', gap: '2px 8px', margin: '6px 0 0' }}>
-                  {m.diagnostics.map(d => [<dt key={`${d.label}-k`} style={{ fontSize: TYPE.xs, color: TOKENS.text[2], fontWeight: 800 }}>{d.label}</dt>,
-                    <dd key={`${d.label}-v`} style={{ ...mono, margin: 0, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{d.value}</dd>])}
-                </dl>
-              </details>
-            </div>
-          })}
+          {hist.releases.map((r, i) => <ReleaseHistoryCard key={`${r.at}-${i}`} r={r} when={etDateTime(r.at)} />)}
         </div>
         : <p style={muted}>No release pin receipts</p>) : null}
     </Section>

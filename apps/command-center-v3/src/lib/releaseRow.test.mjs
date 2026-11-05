@@ -35,5 +35,20 @@ const unnamed = releaseRowModel({ ...base, release_name: null }, 'x')
 check('an unnamed release admits it, rather than showing a receipt id as a name', /without a name/.test(unnamed.purpose), unnamed.purpose)
 const noPrs = releaseRowModel({ ...base, prs: null, prs_reason: 'receipt has no PR member' }, 'x')
 check('unrecorded PRs say why', /not recorded \(receipt has no PR member\)/.test(noPrs.changes), noPrs.changes)
+
+// Cloud review 2026-11-05 (P2): `read_history()` nulls verify_reason when it attaches a deploy receipt and keeps the failure
+// detail in verify.readback_errors, so the row must not say "no reason was recorded" beside the exact error.
+const receiptOnly = releaseRowModel({ ...base, verify: { ok: false, readback_errors: ['serving pin mismatch on /health'] }, verify_reason: null }, 'x')
+check('a failure held only in the receipt still names its reason', /serving pin mismatch on \/health/.test(receiptOnly.blocker ?? ''), String(receiptOnly.blocker))
+check('and never claims no reason was recorded', !/no reason was recorded/.test(receiptOnly.blocker ?? ''), String(receiptOnly.blocker))
+check('the readback errors are retained in Diagnostics', JSON.stringify(receiptOnly.diagnostics).includes('serving pin mismatch on /health'))
+
+// Cloud review 2026-11-05 (P2): a rollback is an operation, not a successful recovery — it can itself fail to verify.
+const rollFailed = releaseRowModel({ ...base, mode: 'rollback', verify: { ok: false, readback_errors: ['previous version did not come back'] }, verify_reason: null }, 'x')
+check('a rollback that did not verify never says the previous version is back', !/restored deliberately/.test(rollFailed.nextAction), rollFailed.nextAction)
+check('a failed rollback says it did not verify, and why', /did not verify/.test(rollFailed.blocker ?? '') && /previous version did not come back/.test(rollFailed.blocker ?? ''), String(rollFailed.blocker))
+check('a failed rollback points at the rollback receipt', /rollback receipt/.test(rollFailed.nextAction), rollFailed.nextAction)
+const rollOk = releaseRowModel({ ...base, mode: 'rollback', verify: { ok: true, rolled_back: true } }, 'x')
+check('a rollback that verified still says the previous version was restored', /restored deliberately/.test(rollOk.nextAction), rollOk.nextAction)
 console.log(`releaseRow: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
