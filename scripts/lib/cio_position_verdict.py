@@ -39,7 +39,20 @@ _AGGREGATE_ACCOUNTS = frozenset({"", "*", "all", "ALL", "ALL_ACCOUNTS", "all_acc
 REQUIRED_FIELDS = ("symbol", "account", "action", "state", "stage", "confidence", "trigger", "narrative",
                    "as_of", "evidence", "tax_constraint", "alternatives")
 
-DEFAULT_PATH = Path(__file__).resolve().parents[2] / "persistent-state" / "data" / "cio" / "position_verdicts.jsonl"
+def _default_path() -> Path:
+    """The live root, not this checkout.
+
+    cc-deepseek's F3: resolving from ``__file__`` writes into whichever tree the module sits in, which the served
+    surface never reads. ``overlay_data_source()`` is the house resolver and prefers the provisioned persistent root.
+    """
+    try:
+        from scripts.lib.persistent_overlay import overlay_data_source
+    except ImportError:  # imported as a bare ``lib.*`` module by the suite and by scripts/ on sys.path
+        from persistent_overlay import overlay_data_source
+    return Path(overlay_data_source()) / "data" / "cio" / "position_verdicts.jsonl"
+
+
+DEFAULT_PATH = _default_path()
 
 
 class NotCIOProducer(RuntimeError):
@@ -50,8 +63,35 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _missing(payload: Mapping[str, Any]) -> list[str]:
+    """Fields the record cannot do without. Presence, not truthiness.
+
+    cc-deepseek's F5: ``not payload.get(field)`` refused ``confidence = 0`` even though the DSN declares 0..1 — a
+    confident "no" was rejected as if it were absent. A number is present when it is not None; a string or container
+    is present when it carries something.
+    """
+    missing: list[str] = []
+    for field in REQUIRED_FIELDS:
+        if field not in payload or payload[field] is None:
+            missing.append(field)
+            continue
+        value = payload[field]
+        if isinstance(value, str) and not value.strip():
+            missing.append(field)
+        elif isinstance(value, (list, dict)) and not value:
+            missing.append(field)
+    return missing
+
+
 def _digest(payload: Mapping[str, Any]) -> str:
-    material = json.dumps({k: payload.get(k) for k in REQUIRED_FIELDS}, sort_keys=True, default=str)
+    """Every field of the record, including its place in the chain.
+
+    cc-deepseek's F4: digesting only ``REQUIRED_FIELDS`` meant re-recording the same decision produced the identical
+    ``verdict_id``, so ``previous_verdict_id`` could name an id carried by two lines and the history stopped being a
+    chain. ``known_at``, ``sequence`` and ``previous_verdict_id`` are part of the identity.
+    """
+    material = json.dumps({k: v for k, v in payload.items() if k != "verdict_id"},
+                          sort_keys=True, default=str)
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
@@ -65,6 +105,8 @@ class VerdictStore:
     def __init__(self, path: str | Path | None = None, *, producer: str) -> None:
         self.path = Path(path) if path is not None else DEFAULT_PATH
         self.producer = str(producer)
+        #: Unparseable lines the last read had to skip — a torn write is reported, never silently swallowed.
+        self.last_skipped = 0
 
     # ── reads ─────────────────────────────────────────────────────────────────────────────────────────────────
     def _rows(self) -> list[dict[str, Any]]:
@@ -73,10 +115,23 @@ class VerdictStore:
         except FileNotFoundError:
             return []
         rows: list[dict[str, Any]] = []
+        skipped = 0
         for line in text.splitlines():
             line = line.strip()
-            if line:
-                rows.append(json.loads(line))
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                # cc-deepseek's F6: a crash between write() and fsync() leaves a torn last line, and one torn line
+                # used to make every read — current(), history(), render_for_surface() and the next record() — raise.
+                skipped += 1
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+            else:
+                skipped += 1
+        self.last_skipped = skipped
         return rows
 
     def history(self, symbol: str, account: str) -> list[dict[str, Any]]:
@@ -95,7 +150,7 @@ class VerdictStore:
         if self.producer != CIO_PRODUCER:
             raise NotCIOProducer(f"only {CIO_PRODUCER!r} may produce a position verdict; {self.producer!r} may "
                                  "render it, never write it")
-        missing = [field for field in REQUIRED_FIELDS if not payload.get(field)]
+        missing = _missing(payload)
         if missing:
             raise ValueError(f"a position verdict needs {', '.join(missing)}")
         account = str(payload["account"])
@@ -137,7 +192,7 @@ def build_verdict(*, symbol, account, action, state, stage, confidence, trigger,
         "evidence": list(evidence or []), "tax_constraint": dict(tax_constraint or {}),
         "alternatives": list(alternatives or []),
     }
-    missing = [field for field in REQUIRED_FIELDS if not payload.get(field)]
+    missing = _missing(payload)
     if missing:
         raise ValueError(f"a position verdict needs {', '.join(missing)}")
     return payload
@@ -153,6 +208,13 @@ def render_for_surface(store: "VerdictStore", symbol: str, account: str) -> dict
     its own, which is how five surfaces came to disagree about the same position.
     """
     record = store.current(symbol, account)
+    skipped = getattr(store, "last_skipped", 0)
     if record is not None:
-        return {"available": True, "verdict": record}
-    return {"available": False, "reason": UNAVAILABLE, "symbol": symbol, "account": account}
+        out = {"available": True, "verdict": record}
+        if skipped:
+            out["unreadable_records"] = skipped
+        return out
+    out = {"available": False, "reason": UNAVAILABLE, "symbol": symbol, "account": account}
+    if skipped:
+        out["unreadable_records"] = skipped
+    return out

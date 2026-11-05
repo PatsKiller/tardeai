@@ -124,3 +124,43 @@ def test_a_surface_shows_the_record_or_says_unavailable_and_never_its_own(tmp_pa
     shown = V.render_for_surface(store, "SPCX", "schwab_individual")
     assert shown["available"] is True and shown["verdict"]["action"] == "HOLD"
     assert V.render_for_surface(store, "SPCX", "schwab_rollover_ira")["available"] is False
+
+
+# ── cc-deepseek's BLOCK at 2c24bfd38: F4, F5, F6 ────────────────────────────────────────────────────────────────
+
+def test_a_zero_confidence_is_present_not_missing(tmp_path):
+    """F5: the DSN declares confidence 0..1. ``0`` is a confident "no", not an absent field."""
+    store = V.VerdictStore(tmp_path / "v.jsonl", producer="cio_truth")
+    record = store.record(verdict(confidence=0))
+    assert record["confidence"] == 0
+    blank = verdict()
+    blank["narrative"] = "   "
+    with pytest.raises(ValueError, match="narrative"):
+        store.record(blank)
+
+
+def test_the_same_decision_recorded_twice_is_two_links_in_the_chain(tmp_path):
+    """F4: digesting only REQUIRED_FIELDS made both records carry the same id, so the chain named one id twice."""
+    store = V.VerdictStore(tmp_path / "v.jsonl", producer="cio_truth")
+    first = store.record(verdict())
+    second = store.record(verdict())
+    assert first["verdict_id"] != second["verdict_id"]
+    assert second["previous_verdict_id"] == first["verdict_id"]
+    ids = [h["verdict_id"] for h in store.history("SPCX", "schwab_individual")]
+    assert len(set(ids)) == 2
+
+
+def test_a_torn_last_line_is_skipped_and_reported_not_raised(tmp_path):
+    """F6: a crash between write() and fsync() left one torn line, and every read after it raised."""
+    path = tmp_path / "v.jsonl"
+    store = V.VerdictStore(path, producer="cio_truth")
+    first = store.record(verdict())
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write('{"symbol": "SPCX", "acc')
+
+    restarted = V.VerdictStore(path, producer="cio_truth")
+    assert restarted.current("SPCX", "schwab_individual")["verdict_id"] == first["verdict_id"]
+    assert restarted.last_skipped == 1
+    shown = V.render_for_surface(restarted, "SPCX", "schwab_individual")
+    assert shown["available"] is True and shown["unreadable_records"] == 1
+    assert restarted.record(verdict(action="WATCHING"))["sequence"] == 2
