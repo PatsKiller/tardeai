@@ -84,6 +84,32 @@ def _summary_line(label: str, portfolio: dict) -> str:
     totals = portfolio.get("portfolio_totals") or {}
     return (f"{label}: {_summary_amount(totals.get('total_value'))} | "
             f"Day: {_summary_amount(totals.get('day_change'), signed=True)}")
+class RepriceRefused(RuntimeError):
+    """This pass could not tell what the portfolio is worth, so nothing may be published.
+
+    cc-deepseek-8's F1/F2 on #2689: the first version set ``portfolio["_reprice_refused"]`` and only ``__main__``
+    honoured it. Three other in-repo callers write the returned document unconditionally, so on those paths a
+    refusal persisted the repriced marks, the stale total **and the marker**, and the marker then made every later
+    ``*/15`` run exit 3 on a healthy pass. A sentinel inside the payload is a footgun every future caller can trip.
+
+    The refusal is therefore an exception: the returned value of a refused pass is *nothing*, so no caller — present
+    or future — can write it. Every in-repo call site already writes **after** the call, so this makes them all safe
+    by construction. Callers that want to keep going catch this and keep their own last-good document.
+    """
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
+def _refuse_reprice(reason: str) -> None:
+    """Refuse the pass: raise, print, and hand back no document at all.
+
+    A missing input is UNKNOWN, and a guessed zero is worse than an unknown because every reader of the document
+    then believes the book is worth nothing.
+    """
+    print(f"  [repricer] ⛔ REFUSED: {reason}")
+    raise RepriceRefused(reason)
 
 
 def compute_data_as_of(holdings) -> dict:
@@ -842,9 +868,28 @@ def _annotate_canonical_quotes(holdings: List[Dict]) -> None:
 
 # ── Recalculate totals ─────────────────────────────────────────────────────────
 def _recalc_totals(portfolio: Dict) -> None:
-    """Recalculate account summaries and portfolio totals from updated holdings."""
+    """Recalculate account summaries and portfolio totals from updated holdings.
+
+    2026-11-05 (FQ-2532-R): a total this pass cannot compute is UNKNOWN, never zero. ``account_summaries`` is the
+    authority for the portfolio total; with none of them the sums below are 0 for want of input, not because the
+    book is worth nothing — and the drift guard further down could not see a zero, because it required ``gt > 0``.
+    The one collapse it could not catch was therefore the 100% one. Refusing here keeps the last good marks.
+    """
     holdings = portfolio.get("holdings", [])
     account_summaries = portfolio.get("account_summaries", {})
+    if not isinstance(account_summaries, dict) or not account_summaries:
+        _refuse_reprice("no account summaries: the portfolio total is unknown, not zero")
+        return
+    # FQ-2532-R release condition (cc-deepseek-8's F3): captured BEFORE the loop below overwrites these values with
+    # derived totals. A book that really went to zero — every account's own summary declares 0 and no holding claims a
+    # live quantity without a price — must be accepted, or the collapse guard would refuse it forever, because a
+    # refusal never rewrites and prev_total would stay positive by the guard's own act.
+    _declared_zero = all(
+        isinstance(a, dict) and isinstance(a.get("total_value"), (int, float)) and float(a.get("total_value")) == 0
+        for a in account_summaries.values()
+    ) and not any(
+        (h.get("shares") or 0) and h.get("market_value") is None for h in holdings
+    )
 
     def _choose_fund_anchor(ah):
         """401k proprietary fund codes — residual lands on largest plan holding."""
@@ -878,6 +923,11 @@ def _recalc_totals(portfolio: Dict) -> None:
 
     for acct_key, acct in account_summaries.items():
         ah = [h for h in holdings if h.get("account") == acct_key and not h.get("is_loan")]
+        # FQ-2532-R: holdings present but none of them priced is an UNPRICED account, not an account worth zero.
+        # Overwriting its total with the `or 0` sum below is how one missing market_value became a portfolio-wide 0.
+        if ah and all(h.get("market_value") is None for h in ah):
+            _refuse_reprice(f"account {acct_key}: every holding row is unpriced, so its total is unknown, not zero")
+            return
         derived_total = round(sum(h.get("market_value") or 0 for h in ah), 2)
         reported_total = float(acct.get("reported_total_value") or 0)
         source = str(acct.get("source", "")).lower()
@@ -973,7 +1023,23 @@ def _recalc_totals(portfolio: Dict) -> None:
 
     # Sanity: reject if total changed > 25% from previous (likely data corruption)
     prev_total = portfolio.get("portfolio_totals", {}).get("total_value", 0) or 0
-    if prev_total > 0 and gt > 0:
+    _liquidation_accepted = False
+    if prev_total > 0 and gt <= 0:
+        # FQ-2532-R: this is the guard's most important case, not the one it may skip. A fall from a positive total
+        # to zero is 100% drift, and the old `gt > 0` condition meant the only collapse it could never catch was the
+        # total one. Refuse the pass outright: keeping a stale total while rewriting repriced holdings would still
+        # publish a document whose numbers disagree with each other.
+        if _declared_zero:
+            # ...unless the book genuinely went to zero: every account's own summary declares 0 and nothing claims a
+            # live quantity without a price. Refusing that forever would leave prev_total positive by the guard's own
+            # act and the repricer would never publish again (cc-deepseek-8's F3). The release has to skip the >25%
+            # branch below as well, or it would be "accepted" and then immediately kept anyway.
+            print("  [repricer] total is zero and every account declares zero — accepting a real liquidation")
+            _liquidation_accepted = True
+        else:
+            _refuse_reprice(f"total collapsed to ${gt:,.0f} from ${prev_total:,.0f} (100% drift); refusing the write")
+            return
+    if prev_total > 0 and not _liquidation_accepted:
         drift_pct = abs(gt - prev_total) / prev_total * 100
         if drift_pct > 25:
             print(f"  [repricer] ⛔ TOTAL SANITY FAIL: ${prev_total:,.0f} → ${gt:,.0f} ({drift_pct:.1f}% drift)")
@@ -1061,12 +1127,29 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
       4. Optionally reprice Fidelity from Yahoo cache (after 8 PM)
     """
     root    = state_dir.parent.parent.parent  # data/portfolios/state -> project root
+    # FQ-2532-R (cc-deepseek-8's F1): work on a COPY. A refused pass then leaves the caller's document exactly as it
+    # was, so a caller that catches RepriceRefused and saves what it holds cannot save repriced marks under a stale
+    # total. `portfolio` is a JSON document; a deep copy is the honest way to make "nothing was published" true.
+    if isinstance(portfolio, dict):
+        import copy as _copy
+        portfolio = _copy.deepcopy(portfolio)
+        # Recovery (cc-deepseek-8's second-order question): an older build could persist `_reprice_refused` INTO the
+        # document. That key is a transient marker, never data, so a healthy pass must not inherit it — and since this
+        # build never writes it, the next successful pass heals the file. A stuck document is not stuck.
+        portfolio.pop("_reprice_refused", None)
     _load_env(root)
     now     = _et_now()
     now_str = now.strftime("%Y-%m-%d %H:%M:%S ET")
     now_min = now.hour * 60 + now.minute
 
     print(f"  [repricer] {now_str} ({_price_session(now)})")
+
+    # FQ-2532-R: account summaries are the authority for the portfolio total. Without them there is nothing to
+    # price into, and the totals pass would sum an empty map to 0 — an unknown published as a zero. Refuse before
+    # spending a single provider call, and name what is missing.
+    if not isinstance(portfolio.get("account_summaries"), dict) or not portfolio.get("account_summaries"):
+        _refuse_reprice("no account summaries: the portfolio total is unknown, not zero")
+        return portfolio
 
     sym_groups = _get_all_symbols(portfolio, root)
     finviz_syms  = sym_groups["finviz"]    # Schwab portfolio + watchlist
@@ -1110,14 +1193,29 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     # every Schwab holding at a days-old cached close with 0% day change — 22 of 25 rows at 10-02 prices on
     # 2026-10-06 (12:01, 13:01, 14:00 ET). Refuse instead: leave the holdings untouched so the last good marks
     # stand, and say so. config/portfolio_positions.yaml positions.reprice_min_live_coverage.
-    _schwab = sym_groups.get("schwab") or []
-    if _schwab:  # every session: an all-night run must not fall back to days-old closes either
-        _cov = len([s for s in _schwab if s in live_prices]) / len(_schwab)
+    # FQ-2532-R (2026-11-05): the refusal used to be gated on Schwab symbols existing, so an all-alpaca or all-moomoo
+    # book had no coverage guard at all and would be repriced from days-old closes. Measure every held tradeable
+    # equity instead — a book with no Schwab rows is exactly the book that needed this and never got it.
+    # ...measured over positions that actually carry a quantity: a zero-share row needs no live mark, and a book that is
+    # genuinely worth zero must still be able to price and write (a guard that refuses everything is not a guard).
+    _needs_quote: set = set()
+    for _h in portfolio.get("holdings") or []:
+        _sym = _tradeable_equity_symbol(_h)
+        if not _sym:
+            continue
+        try:
+            _shares = abs(float(_h.get("shares") or 0))
+        except (TypeError, ValueError):
+            _shares = 0.0
+        if _shares > 0:
+            _needs_quote.add(_sym)
+    _needs_quote = sorted(_needs_quote)
+    if _needs_quote:  # every session: an all-night run must not fall back to days-old closes either
+        _cov = len([s for s in _needs_quote if s in live_prices]) / len(_needs_quote)
         _min = _min_live_coverage(root)
         if _cov < _min:
-            portfolio["_reprice_refused"] = (f"live coverage {_cov:.0%} < {_min:.0%} of held symbols at {now_str}; "
-                                             "holdings left at their last good marks")
-            print(f"  [repricer] ⛔ REFUSED: {portfolio['_reprice_refused']}")
+            _refuse_reprice((f"live coverage {_cov:.0%} < {_min:.0%} of held symbols at {now_str}; "
+                              "holdings left at their last good marks"))
             return portfolio
 
     # ── 2. Delta-write to quote cache ──────────────────────────────────────────
@@ -1343,33 +1441,14 @@ def _sync_ticker_prices(portfolio, root):
               + "; ".join(f"{r['row'].get('symbol')}: {r['reason']}" for r in rc.rows_rejected[:10]))
 
 
-# ── Standalone ─────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    root = Path(__file__).resolve().parents[1]
-    # Make the repo ROOT importable so `from scripts.lib.X` resolves. Run as
-    # `python scripts/portfolio_repricer.py` (how cron invokes it) sys.path[0] is
-    # scripts/, not the repo root, so the scripts.-prefixed import raises
-    # "No module named 'scripts'". Same bootstrap as portfolio_server.py.
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
+def main(state_dirs) -> None:
+    """The CLI guarantee path: read, reprice, write — or write nothing at all.
 
-    # Resolve where the LIVE server reads from, not just this checkout. Every
-    # deployed release symlinks data/portfolios/state at the persistent root,
-    # so a checkout-relative write is invisible to the served surface.
-    try:
-        from scripts.lib.persistent_state_root import portfolio_state_write_targets
-        state_dirs = portfolio_state_write_targets(root)
-    except Exception as _e:  # helper genuinely unavailable
-        print(f"  [repricer] WARN persistent-root helper unavailable ({_e}) — checkout only")
-        state_dirs = [root / "data" / "portfolios" / "state"]
-
-    # Ops/CI probe: print the resolved write targets and exit. No quotes fetched,
-    # nothing written — safe to run against production at any time.
-    if "--print-targets" in sys.argv:
-        for _t in state_dirs:
-            print(f"{_t}\t{'exists' if (_t / 'holdings.json').exists() else 'absent'}")
-        raise SystemExit(0)
-
+    Pulled out of `if __name__ == "__main__"` so the no-write guarantee has an EXECUTION test (cc-deepseek-8
+    F5 and cc-deepseek-9 on #2689): the old test scanned this block's source text and broke the moment the
+    mechanism became an exception. Running this against a temporary state directory and asserting SystemExit(3)
+    plus a byte-identical file cannot go stale the same way.
+    """
     state_dir = state_dirs[0]
     hp        = state_dir / "holdings.json"
 
@@ -1393,11 +1472,14 @@ if __name__ == "__main__":
     print(f"Loaded {len(portfolio.get('holdings', []))} holdings")
     print(_summary_line("Before", portfolio))
 
-    portfolio = reprice_portfolio(portfolio, state_dir)
-    if portfolio.pop("_reprice_refused", None):
+    try:
+        portfolio = reprice_portfolio(portfolio, state_dir)
+    except RepriceRefused:
         # Nothing was repriced; do not rewrite the file (another writer may have landed since our read).
+        # FQ-2532-R: the refusal is an exception now (cc-deepseek-8's F1/F2), so no caller can receive a document
+        # from a refused pass and write it. The CLI keeps its long-standing exit 3 and its no-write guarantee.
         _holdings_lock.__exit__(None, None, None)
-        raise SystemExit(3)
+        raise SystemExit(3) from None
 
     _payload = json.dumps(portfolio, indent=2, default=str)
     _written, _skipped = [], []
@@ -1436,3 +1518,34 @@ if __name__ == "__main__":
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
         meta  = cache.get("_meta", {})
         print(f"Quote cache: {meta.get('symbols_cached',0)} symbols | updated {meta.get('last_updated','?')}")
+
+
+
+# ── Standalone ─────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    root = Path(__file__).resolve().parents[1]
+    # Make the repo ROOT importable so `from scripts.lib.X` resolves. Run as
+    # `python scripts/portfolio_repricer.py` (how cron invokes it) sys.path[0] is
+    # scripts/, not the repo root, so the scripts.-prefixed import raises
+    # "No module named 'scripts'". Same bootstrap as portfolio_server.py.
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    # Resolve where the LIVE server reads from, not just this checkout. Every
+    # deployed release symlinks data/portfolios/state at the persistent root,
+    # so a checkout-relative write is invisible to the served surface.
+    try:
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        state_dirs = portfolio_state_write_targets(root)
+    except Exception as _e:  # helper genuinely unavailable
+        print(f"  [repricer] WARN persistent-root helper unavailable ({_e}) — checkout only")
+        state_dirs = [root / "data" / "portfolios" / "state"]
+
+    # Ops/CI probe: print the resolved write targets and exit. No quotes fetched,
+    # nothing written — safe to run against production at any time.
+    if "--print-targets" in sys.argv:
+        for _t in state_dirs:
+            print(f"{_t}\t{'exists' if (_t / 'holdings.json').exists() else 'absent'}")
+        raise SystemExit(0)
+
+    main(state_dirs)
