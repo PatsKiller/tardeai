@@ -1409,8 +1409,8 @@ function AuditView({ terminalUi }: { terminalUi: boolean }) {
         <Card terminalUi={terminalUi} label="Audit events" value={String(d?.total ?? 0)} />
         <Card terminalUi={terminalUi} label="2FA stop requests" value={String(counts['2fa_stop_request'] ?? 0)} color={BLUE} />
         <Card terminalUi={terminalUi} label="Confirmations / pending" value={String(counts['confirmation'] ?? 0)} color={GREEN} />
-        <Card terminalUi={terminalUi} label="Stop-out reviews" value={String(rw?.total_reviews ?? 0)} color={AMBER} sub="advisory · journal lifecycle" />
-        <Card terminalUi={terminalUi} label="Re-entry watch" value={String(rw?.total_watch ?? 0)} color={PURPLE} sub="WAIT status" />
+        <Card terminalUi={terminalUi} label="Stop-out reviews" value={String(rw?.total_reviews ?? 0)} color={AMBER} sub="advisory · losing round trips (stops + manual sells)" />
+        <Card terminalUi={terminalUi} label="Re-entry watch" value={String(rw?.total_watch ?? 0)} color={PURPLE} sub="WAIT status · same losing round trips" />
       </div>
       <div style={{ overflowX: 'auto', ...(terminalUi ? hubPanel(terminalUi) : { border: '1px solid rgba(148,163,184,.18)', borderRadius: 9 }) }}>
         <table className={terminalUi ? 'cc-table-dense' : undefined} style={{ width: '100%', borderCollapse: 'collapse', fontSize: terminalUi ? 10 : 12.5 }}>
