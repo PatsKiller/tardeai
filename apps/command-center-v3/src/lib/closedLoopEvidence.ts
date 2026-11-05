@@ -12,7 +12,7 @@ export function closedLoopEvidenceText(evidence: Record<string, unknown> | null 
       ? ` · score ${Number(delta) > 0 ? 'up' : 'down'} ${Math.abs(Number(delta)).toFixed(3)}`
       : ' · score unchanged'
   const trigger = metrics?.trigger_rate != null
-    ? ` · fired on ${(Number(metrics.trigger_rate) * 100).toFixed(0)}% of those days`
+    ? ` · candidate trigger rate ${(Number(metrics.trigger_rate) * 100).toFixed(0)}% (scoring-window length not recorded)`
     : ''
   return sample + confidence + change + trigger
 }

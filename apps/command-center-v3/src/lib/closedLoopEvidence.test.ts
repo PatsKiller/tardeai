@@ -17,10 +17,15 @@ for (const zero of [0, '0']) {
   passed++
 }
 equal(closedLoopEvidenceText({ sample_days: 30, confidence: 'HIGH', score_delta: 0.042 }, { trigger_rate: 0.12 }),
-  'Based on 30 days of signals · confidence high · score up 0.042 · fired on 12% of those days')
+  'Based on 30 days of signals · confidence high · score up 0.042 · candidate trigger rate 12% (scoring-window length not recorded)')
 passed++
 equal(closedLoopEvidenceText({ score_delta: -0.5 }, {}), 'Based on the available signals · score down 0.500')
 passed++
 equal(closedLoopEvidenceText(null, null), 'Based on the available signals · score change not recorded')
 passed++
+for (const holdout of [undefined, { passed: true }, { skipped: true }]) {
+  const text = closedLoopEvidenceText({ sample_days: 30, score_delta: 0, holdout_validation: holdout }, { trigger_rate: 0.12 })
+  equal(text, 'Based on 30 days of signals · score unchanged · candidate trigger rate 12% (scoring-window length not recorded)')
+  passed++
+}
 console.log(`closedLoopEvidence: ${passed} passed`)

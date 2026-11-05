@@ -63,7 +63,7 @@ check('the surrounding sentence is intact', () => {
   const t = text({ sample_days: 30, confidence: 'HIGH', score_delta: 0 }, { trigger_rate: 0.12 })
   assert.match(t, /Based on 30 days of signals/)
   assert.match(t, /confidence high/)
-  assert.match(t, /fired on 12% of those days/)
+  assert.match(t, /candidate trigger rate 12%/)
 })
 
 
@@ -83,7 +83,7 @@ check('the proposal review caller renders its own constructed evidence', () => {
     assert.match(text, /Review threshold proposals/)
     assert.match(text, /Based on 30 days of signals/)
     assert.match(text, /confidence high/)
-    assert.match(text, /fired on 12% of those days/)
+    assert.match(text, /candidate trigger rate 12%/)
     assert.match(text, expected)
   }
 })
@@ -103,6 +103,18 @@ check('the proposal caller retains scoring evidence behind a closed disclosure',
   const details = markup.match(/<details([^>]*)>/)
   assert.ok(details, 'raw detail was removed')
   assert.doesNotMatch(details[1], /\bopen\b/, 'raw detail is open by default')
+})
+
+check('the full sample is not presented as the candidate scoring window', () => {
+  for (const holdout of [undefined, { passed: true, train_score: 0.4, holdout_score: 0.38 }, { skipped: true }]) {
+    const { text } = reviewText({ sample_days: 30, score_delta: 0, holdout_validation: holdout,
+      candidate_metrics: { trigger_rate: 0.12 }, counterfactual: { window_days: 14, trigger_rate: 0.5 } })
+    assert.match(text, /Based on 30 days of signals/)
+    assert.match(text, /candidate trigger rate 12%/)
+    assert.match(text, /scoring-window length not recorded/)
+    assert.doesNotMatch(text, /fired on 12% of those days/)
+    assert.doesNotMatch(text, /23 days|14 days|50%/)
+  }
 })
 
 // Privacy tripwire: operator captures are private evidence, never source-tree assets.
