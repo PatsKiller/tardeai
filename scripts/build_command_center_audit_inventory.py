@@ -47,10 +47,10 @@ ROOT = Path(__file__).resolve().parents[1]
 FROZEN_DIR = ROOT / "docs/audits/20261102-command-center-operations/inventory"
 DEFAULT_REGISTRY = ROOT / "config/lane_registry.json"
 REGISTRY_FIELDS = ("owner", "registry_state", "scheduler_kind")
-# Cloud at e3c4f7c84: a reschedule (same kind, new cron/cadence/timezone) reported clean because only the kind was
-# compared. The schedule fields are compared too; a row that predates them has no measured value and is skipped
-# rather than reported as drift it never measured.
-SCHEDULE_FIELDS = ("scheduler_expression", "schedule_timezone")
+# Cloud at 2968676ed: a reschedule (same kind, new cron/cadence/timezone) still reported clean, because the comparison
+# used `scheduler_expression` while every one of the 687 committed capture rows carries `schedule_expressions` (a list)
+# — the field was never present, so the comparison never ran. The projection now uses the capture's own field names.
+SCHEDULE_FIELDS = ("schedule_expressions", "schedule_timezone")
 ACTIVE_STATES = {"ACTIVE"}
 DISABLED_STATES = {"RETIRED", "NEVER_SCHEDULED", "PAUSED"}
 CSV_COLUMNS = (
@@ -90,14 +90,74 @@ def _capture_as_of(inventory: dict) -> str:
     return snapshot.get("captured_at") or summary.get("as_of")
 
 
+def _registry_fingerprint(registry: dict | None, registry_path) -> str | None:
+    """One definition for both modes: the source file's bytes when the file exists, else the registry's canonical JSON.
+
+    Cloud at 2968676ed: `refresh()` hashed a sorted compact serialization while `drift()` hashed the file's bytes, so the
+    same registry produced two fingerprints and the snapshot's could not be checked against its named source.
+    """
+    if registry_path is not None and Path(registry_path).exists():
+        return _sha256(Path(registry_path))
+    if registry is None:
+        return None
+    return hashlib.sha256(
+        json.dumps(registry, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _declared_expressions(lane: dict) -> list[str]:
+    """The lane's declared schedule expressions, in the shape the capture stores them: a list of schedule cores."""
+    scheduler = lane.get("scheduler") or {}
+    for key in ("cron", "cadence", "expression", "schedule"):
+        value = scheduler.get(key)
+        if isinstance(value, (list, tuple)):
+            items = [str(item) for item in value if str(item).strip()]
+        elif isinstance(value, str) and value.strip():
+            items = [value]
+        else:
+            continue
+        cores = []
+        for item in items:
+            for part in item.split(" + "):
+                core = _cron_core(part)
+                if core and core not in cores:
+                    cores.append(core)
+        if cores:
+            return cores
+    return []
+
+
+def _cron_core(expression, *, fold: bool = False) -> str:
+    """The schedule part of a declared expression. A crontab entry in the registry carries its command after the five
+    schedule fields ("5 7 * * * cd /…/CURRENT && …") and multi-schedule lanes join entries with " + "; the committed
+    capture keeps only the schedule. Comparing whole strings reported 43 phantom reschedules for formatting alone.
+    Cron is case-insensitive ("l" and "L" both mean last-day), so comparisons fold case; storage keeps what the
+    registry wrote.
+    """
+    text = str(expression).strip()
+    core = " ".join(text.split()[:1]) if text.startswith("@") else " ".join(text.split()[:5])
+    return core.casefold() if fold else core
+
+
+def _schedule_value(field: str, value):
+    if field == "schedule_expressions":
+        cores = set()
+        for item in value or []:
+            for part in str(item).split(" + "):
+                core = _cron_core(part, fold=True)
+                if core:
+                    cores.add(core)
+        return sorted(cores)
+    return value
+
+
 def _lane_projection(lane: dict) -> dict:
     scheduler = lane.get("scheduler") or {}
     return {
         "owner": lane.get("owner"),
         "registry_state": lane.get("state"),
         "scheduler_kind": scheduler.get("kind"),
-        "scheduler_expression": (scheduler.get("cron") or scheduler.get("cadence")
-                                 or scheduler.get("expression") or scheduler.get("schedule")),
+        "schedule_expressions": _declared_expressions(lane),
         "schedule_timezone": scheduler.get("timezone") or lane.get("timezone"),
     }
 
@@ -113,7 +173,10 @@ def drift(inventory: dict, registry: dict, *, registry_path: Path = DEFAULT_REGI
     added, removed, changed = [], [], []
     for lane_id, lane in lanes.items():
         row = rows.get(lane_id)
-        if row is None:
+        # Cloud at 2968676ed: a lane removed, acknowledged by a refresh, then restored with its previous owner/state/
+        # kind found its preserved historical row and reported no drift. A row the capture itself records as absent is
+        # not a measurement of the lane that is back.
+        if row is None or row.get("registry_presence") == "absent":
             added.append(
                 {"lane_id": lane_id, "registry_state": lane.get("state"), "owner": lane.get("owner")}
             )
@@ -125,9 +188,14 @@ def drift(inventory: dict, registry: dict, *, registry_path: Path = DEFAULT_REGI
             if row.get(field) != want[field]
         }
         for field in SCHEDULE_FIELDS:
-            if (field in row and row.get(field) is not None
-                    and want.get(field) is not None and row.get(field) != want.get(field)):
-                fields[field] = [row.get(field), want.get(field)]
+            old, new = _schedule_value(field, row.get(field)), _schedule_value(field, want.get(field))
+            # Compare only what BOTH sides state. The capture leaves schedule_expressions empty for the lanes it never
+            # recorded a declared schedule for (systemd unit names, event tokens), so an empty value means "not
+            # recorded", not "no schedule": treating it as a value produced 204 phantom changes against the committed
+            # capture.
+            if not old or not new or old == new:
+                continue
+            fields[field] = [row.get(field), want.get(field)]
         if fields:
             changed.append({"lane_id": lane_id, "fields": fields})
     for lane_id, row in rows.items():
@@ -141,7 +209,7 @@ def drift(inventory: dict, registry: dict, *, registry_path: Path = DEFAULT_REGI
         "schema": DRIFT_SCHEMA,
         "capture_as_of": _capture_as_of(inventory),
         "checked_at": _now(),
-        "registry_sha256": _sha256(registry_path) if registry_path.exists() else None,
+        "registry_sha256": _registry_fingerprint(registry, registry_path),
         "added": sorted(added, key=lambda item: item["lane_id"]),
         "removed": sorted(removed, key=lambda item: item["lane_id"]),
         "changed": sorted(changed, key=lambda item: item["lane_id"]),
@@ -168,8 +236,8 @@ def _blank_row(lane: dict, *, as_of: str) -> dict:
         "owner": projection["owner"],
         "registry_state": state,
         "scheduler_kind": projection["scheduler_kind"],
-        "schedule_expressions": [],
-        "schedule_timezone": (lane.get("scheduler") or {}).get("timezone") or "America/New_York",
+        "schedule_expressions": list(projection["schedule_expressions"]),
+        "schedule_timezone": projection["schedule_timezone"] or "America/New_York",
         "schedule_issue": None,
         "unit": None,
         "runtime_schedule_presence": None,
@@ -275,16 +343,25 @@ def refresh(inventory: dict, registry: dict, *, as_of: str, registry_path: str) 
     lanes = registry_index(registry)
     for lane_id, lane in lanes.items():
         row = rows.get(lane_id)
-        if row is None:
+        # Cloud at 2968676ed: a lane that returns after an acknowledged absence came back carrying its historical row —
+        # "Measured" coverage that predates the absence, beside a registry_presence of "present". Nothing measured the
+        # lane since it returned, so its row starts again as unmeasured.
+        returned = row is not None and row.get("registry_presence") == "absent"
+        if row is None or returned:
             row = _blank_row(lane, as_of=as_of)
+            if returned:
+                row["reason"] = (
+                    "Lane returned to the registry after an acknowledged absence; not measured since it returned"
+                )
+                row["classification"] = "returned after an absence; not measured"
             rows[lane_id] = row
         else:
-            row["owner"] = lane.get("owner")
-            row["registry_state"] = lane.get("state")
-            row["scheduler_kind"] = (lane.get("scheduler") or {}).get("kind")
             upd = _lane_projection(lane)
-            row["scheduler_expression"] = upd.get("scheduler_expression")
-            row["schedule_timezone"] = upd.get("schedule_timezone")
+            row["owner"] = upd["owner"]
+            row["registry_state"] = upd["registry_state"]
+            row["scheduler_kind"] = upd["scheduler_kind"]
+            row["schedule_expressions"] = upd["schedule_expressions"]
+            row["schedule_timezone"] = upd["schedule_timezone"]
             row["registry_presence"] = "present"
     for lane_id, row in rows.items():
         if lane_id not in lanes:
@@ -307,9 +384,9 @@ def refresh(inventory: dict, registry: dict, *, as_of: str, registry_path: str) 
         "captured_by": Path(__file__).name,
         "refresh_command": f"python3 scripts/{Path(__file__).name} --write --out <dir>",
         "registry_path": registry_path,
-        "registry_sha256": hashlib.sha256(
-            json.dumps(registry, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest(),
+        # Cloud at 2968676ed: the same fingerprint definition as drift(), so a snapshot can be checked against its named
+        # source file.
+        "registry_sha256": _registry_fingerprint(registry, registry_path),
         # Cloud finding 2: two refreshes relabelled unchanged runtime evidence with the later date. The original
         # stamp is carried forward; this tool never re-measures execution.
         "runtime_evidence_from": ((inventory.get("snapshot") or {}).get("runtime_evidence_from")

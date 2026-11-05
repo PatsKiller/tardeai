@@ -240,13 +240,99 @@ def test_an_acknowledged_absence_does_not_re_report_as_drift():
 
 
 def test_a_reschedule_with_the_same_kind_is_reported():
-    """Cloud at e3c4f7c84: cron/cadence/timezone changes were invisible because only the scheduler kind was compared."""
+    """Cloud at e3c4f7c84: cron/cadence/timezone changes were invisible because only the scheduler kind was compared.
+
+    Cloud at 2968676ed: the comparison then read `scheduler_expression`, a singular key that no committed capture row
+    carries — all 687 rows store `schedule_expressions`, a list — so it still never ran. This test uses the capture's
+    own shape.
+    """
     row = _row("a")
-    row.update({"scheduler_kind": "n8n", "scheduler_expression": "0 9 * * *", "schedule_timezone": "America/New_York"})
+    row.update({"owner": "x", "scheduler_kind": "cron", "schedule_expressions": ["0 9 * * *"],
+                "schedule_timezone": "America/New_York"})
     inv = {"rows": [row], "summary": {}, "snapshot": {"captured_at": "2026-11-05T00:00:00Z"}}
     reg = {"lanes": [{"lane_id": "a", "state": "ACTIVE", "owner": "x",
-                      "scheduler": {"kind": "n8n", "cron": "30 9 * * *", "timezone": "America/New_York"}}]}
+                      "scheduler": {"kind": "cron", "expression": "30 9 * * *", "timezone": "America/New_York"}}]}
     report = G.drift(inv, reg)
     assert report["removed"] == []
-    assert report["changed"] and report["changed"][0]["fields"]["scheduler_expression"] == ["0 9 * * *", "30 9 * * *"], report
+    assert report["changed"] and report["changed"][0]["fields"]["schedule_expressions"] == [
+        ["0 9 * * *"], ["30 9 * * *"]], report
     assert not G.is_clean(report)
+
+
+def test_a_declared_expression_carrying_its_command_is_compared_on_the_schedule_only():
+    """The registry writes the whole crontab entry ("5 7 * * * cd …"); the capture keeps the schedule. That is not a
+    reschedule, and reporting it would flood --check."""
+    row = _row("a")
+    row.update({"owner": "x", "scheduler_kind": "cron", "schedule_expressions": ["5 7 * * *"]})
+    inv = {"rows": [row], "summary": {}, "snapshot": {"captured_at": "2026-11-05T00:00:00Z"}}
+    reg = {"lanes": [{"lane_id": "a", "state": "ACTIVE", "owner": "x",
+                      "scheduler": {"kind": "cron",
+                                    "expression": "5 7 * * * cd /srv/app/CURRENT && flock -n /tmp/x.lock "
+                                                  "$(which python3) scripts/thing.py --apply"}}]}
+    assert G.is_clean(G.drift(inv, reg)), G.drift(inv, reg)
+    multi = {"lanes": [{"lane_id": "a", "state": "ACTIVE", "owner": "x",
+                        "scheduler": {"kind": "cron", "expression": "0 4-9 * * 1-5 + 30 4-15 * * 1-5"}}]}
+    row2 = _row("a")
+    row2.update({"owner": "x", "scheduler_kind": "cron",
+                 "schedule_expressions": ["0 4-9 * * 1-5", "30 4-15 * * 1-5"]})
+    inv2 = {"rows": [row2], "summary": {}, "snapshot": {"captured_at": "2026-11-05T00:00:00Z"}}
+    assert G.is_clean(G.drift(inv2, multi)), G.drift(inv2, multi)
+
+
+def test_a_timezone_change_with_the_same_kind_is_reported():
+    row = _row("a")
+    row.update({"owner": "x", "scheduler_kind": "cron", "schedule_expressions": ["0 9 * * *"],
+                "schedule_timezone": "America/New_York"})
+    inv = {"rows": [row], "summary": {}, "snapshot": {"captured_at": "2026-11-05T00:00:00Z"}}
+    reg = {"lanes": [{"lane_id": "a", "state": "ACTIVE", "owner": "x",
+                      "scheduler": {"kind": "cron", "expression": "0 9 * * *", "timezone": "Europe/London"}}]}
+    report = G.drift(inv, reg)
+    assert report["changed"] and report["changed"][0]["fields"]["schedule_timezone"] == [
+        "America/New_York", "Europe/London"], report
+
+
+def test_the_committed_capture_reports_no_phantom_schedule_drift():
+    """A captured row with no schedule is "not recorded", not "no schedule", so it must never be compared as one."""
+    inventory = json.loads((FROZEN / "inventory.json").read_text(encoding="utf-8"))
+    registry = json.loads(G.DEFAULT_REGISTRY.read_text(encoding="utf-8"))
+    report = G.drift(inventory, registry, registry_path=G.DEFAULT_REGISTRY)
+    rows = {row["lane_id"]: row for row in inventory["rows"]}
+    for item in report["changed"]:
+        if "schedule_expressions" in item["fields"]:
+            assert rows[item["lane_id"]]["schedule_expressions"], item
+
+
+def test_a_lane_restored_after_an_acknowledged_absence_is_reported_and_re_measured_as_unknown():
+    """Cloud at 2968676ed: remove a lane, acknowledge it with a refresh, restore it with the same owner/state/kind — the
+    preserved historical row matched the registry, so --check reported clean while the capture still recorded the lane
+    as absent, and its "Measured" coverage predated the absence."""
+    a = _row("a")
+    a["owner"] = "x"
+    gone = {"lane_id": "b", "registry_state": "RETIRED", "registry_presence": "absent", "coverage": "Measured"}
+    inv = {"rows": [a, gone], "summary": {}, "snapshot": {"captured_at": "2026-11-05T00:00:00Z"}}
+    reg = {"lanes": [
+        {"lane_id": "a", "state": "ACTIVE", "owner": "x", "scheduler": {"kind": "n8n"}},
+        {"lane_id": "b", "state": "RETIRED", "owner": None, "scheduler": {"kind": "n8n"}},
+    ]}
+    report = G.drift(inv, reg)
+    assert [item["lane_id"] for item in report["added"]] == ["b"], report
+    assert not G.is_clean(report)
+    refreshed = G.refresh(inv, reg, as_of="2026-11-05T04:00:00Z", registry_path="config/lane_registry.json")
+    restored = {row["lane_id"]: row for row in refreshed["rows"]}["b"]
+    assert restored["registry_presence"] == "present"
+    assert restored["coverage"] != "Measured", restored["coverage"]
+    assert "returned" in restored["classification"], restored["classification"]
+
+
+def test_both_modes_fingerprint_the_registry_identically(tmp_path):
+    """Cloud at 2968676ed: refresh() hashed a sorted compact JSON serialization while drift() hashed the file's bytes,
+    so the same registry produced two fingerprints and a snapshot's could not be checked against its named source."""
+    import hashlib
+
+    registry = _mini_registry()
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps(registry, indent=2), encoding="utf-8")  # deliberately not the compact form
+    refreshed = G.refresh(_mini_inventory(), registry, as_of="2026-11-05T05:00:00Z", registry_path=str(path))
+    report = G.drift(_mini_inventory(), registry, registry_path=path)
+    on_disk = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert refreshed["snapshot"]["registry_sha256"] == report["registry_sha256"] == on_disk
