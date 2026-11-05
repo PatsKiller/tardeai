@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import sys
+
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -41,16 +43,33 @@ def test_repricer_refuses_an_empty_live_fetch_in_market_hours(tmp_path, monkeypa
     state = tmp_path / "data" / "portfolios" / "state"
     state.mkdir(parents=True)
     book = _book()
-    before = json.dumps(book["holdings"], sort_keys=True)
-    out = pr.reprice_portfolio(book, state)
-    assert out.get("_reprice_refused")
-    assert json.dumps(out["holdings"], sort_keys=True) == before      # last good marks stand
+    # FQ-2532-R (cc-deepseek-8 F5 / cc-deepseek-9 on #2689): the refusal is an exception now, and the account
+    # summaries are supplied so this test still exercises the COVERAGE guard rather than the newer summaries
+    # precondition. The intent is unchanged: an empty live fetch in market hours must refuse, and the last good
+    # marks must stand.
+    book["account_summaries"] = {"schwab_rollover_ira": {"total_value": 1.0, "day_change": 1479.0}}
+    before = json.dumps(book, sort_keys=True)
+    with pytest.raises(pr.RepriceRefused):
+        pr.reprice_portfolio(book, state)
+    assert json.dumps(book, sort_keys=True) == before                 # the caller's book is untouched
 
 
-def test_repricer_main_does_not_rewrite_the_file_when_refused():
-    src = (ROOT / "scripts" / "portfolio_repricer.py").read_text()
-    blk = src[src.index("portfolio = reprice_portfolio(portfolio, state_dir)\n    if portfolio.pop"):]
-    assert blk.index("raise SystemExit(3)") < blk.index("_payload = json.dumps")
+def test_repricer_main_does_not_rewrite_the_file_when_refused(tmp_path):
+    """FQ-2532-R (cc-deepseek-8 F5 / cc-deepseek-9 on #2689): the old version of this test scanned the source for
+    `if portfolio.pop(_reprice_refused)`; that mechanism is gone, and a text scan cannot describe the guarantee it
+    was protecting. The intent is unchanged — a refused CLI pass writes nothing — so it is asserted by RUNNING the
+    CLI's guarantee path against a temporary state directory."""
+    import portfolio_repricer as pr
+    state = tmp_path / "data" / "portfolios" / "state"
+    state.mkdir(parents=True)
+    book = _book()                                   # no account_summaries -> the pass refuses
+    target = state / "holdings.json"
+    target.write_text(json.dumps(book))
+    before = target.read_bytes()
+    with pytest.raises(SystemExit) as exit_info:
+        pr.main([state])
+    assert exit_info.value.code == 3, "the CLI must exit 3 on a refusal"
+    assert target.read_bytes() == before, "a refused CLI pass must leave holdings.json byte-identical"
 
 
 def test_min_live_coverage_is_config():

@@ -19,6 +19,15 @@ const ts = require('typescript')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 const { MemoryRouter } = require('react-router-dom')
+// The server renderer emits one `useLayoutEffect does nothing on the server` warning per component — expected in SSR,
+// and each stack line embeds a multi-megabyte `data:` module URL. Unfiltered this file wrote 52 MB per build, which is
+// ~99% of the `npm run build` log the CI jobs stream (cc-deepseek and cc-deepseek-5 on PR 2620, 2026-11-05). Same four
+// lines as retirement.metric.view.test.mjs, health.labels.view.test.mjs and watchlist.labels.view.test.mjs.
+const __origConsoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __origConsoleError(...args)
+}
 const memo = new Map()
 // Render-only window stub: these components read matchMedia/innerWidth during render, which a
 // server-side render has no business depending on. Nothing here touches the network or storage.
