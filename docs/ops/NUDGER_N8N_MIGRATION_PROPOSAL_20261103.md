@@ -2,6 +2,13 @@
 
 **Status:** PROPOSED. Nothing here is armed. No live file, timer, n8n workflow or allowlist entry is changed
 by this document. Operator decision required at §7.
+
+**Progress (2026-11-04):** P1 is PR #2522 — the repo-owned `scripts/agent_nudger.py`, its config and tests, source
+only. P2-T1 is this branch: the `agent_nudge` lane is registered in `config/n8n_run_allowlist.json` and
+`config/lane_registry.json` as an n8n dispatcher row at `scheduler.stage: shadow` with `dispatch.mode: dry_run`,
+which the stage clamp enforces — a requested LIVE run of this lane becomes a dry run (`stage_shadow`). **The live
+host timer is untouched and still types.** P2-T2 (the n8n workflow) and P2-T3 (the parity report over a week of
+shadow receipts) are not built, so §7.2's evidence does not exist yet and nothing here should be flipped.
 **Owner:** cc-deepseek-6 (board item 16). **Reviewer:** lead (codex) → operator.
 **Rule it obeys:** "n8n first" for scheduled pipelines (operator, 2026-10-09 dispatch-class ruling), shadow
 first, and never route around a native denial.
