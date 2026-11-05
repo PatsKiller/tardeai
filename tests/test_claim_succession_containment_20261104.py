@@ -10,9 +10,11 @@ Every board here is a synthetic ``tmp_path``; no repo, coordination store, netwo
 ANCHOR: CLAIM_SUCCESSION_CONTAINMENT_20261104
 """
 from datetime import datetime, timedelta, timezone
+import json
 
 import pytest
 
+from scripts.lib import pr_merge_delegation as D
 from scripts.lib.agent_claim_board import ClaimBoard, ClaimError, claim_covers
 
 NOW = datetime(2030, 1, 7, 23, 45, tzinfo=timezone.utc)  # Monday 18:45 ET: outside the freeze.
@@ -44,6 +46,28 @@ def _claim_now(tmp_path, paths, *, session="session-new", takeover_ids=None):
         takeover_ids=takeover_ids,
     )
     return doc, board
+
+
+def _iso(at):
+    return at.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _write_claim(directory, claim_id, *, session, heartbeat_at, paths, takeover_of=None):
+    """Write a raw claim document.
+
+    Two LIVE rivals from different sessions cannot both be created through ``ClaimBoard.claim`` (the second would be a
+    conflict), so the merge-gate tests write the board's own on-disk shape directly.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    doc = {
+        "schema": "AgentClaim@v1", "claim_id": claim_id, "vendor": "codex", "session": session,
+        "agent": None, "task": "synthetic", "paths": list(paths), "branch": None, "pr": None,
+        "started_at": _iso(heartbeat_at), "heartbeat_at": _iso(heartbeat_at), "status": "active",
+        "note": None, "host": "synthetic", "takeover_of": list(takeover_of or []),
+    }
+    (directory / f"{claim_id}.json").write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n",
+                                                encoding="utf-8")
+    return doc
 
 
 # --------------------------------------------------------------------------------------------- the predicate
@@ -94,9 +118,27 @@ def test_full_containment_still_records_the_predecessor(tmp_path):
 
 
 def test_explicit_takeover_records_a_deliberate_partial_succession(tmp_path):
+    """Cross-session: the predecessor belongs to ``session-old``, the newcomer to ``session-new``.
+
+    The mechanical pass sees the stale predecessor first and would tag it ``overlap``; the declared ``--takeover``
+    must upgrade that link to ``explicit``. Asserting only the claim_id hid exactly that bug.
+    """
     predecessor = _stale_predecessor(tmp_path, [SHARED, OTHER])
     doc, _ = _claim_now(tmp_path, [SHARED], takeover_ids=[predecessor])
     assert [entry["claim_id"] for entry in doc["takeover_of"]] == [predecessor]
+    assert [entry["kind"] for entry in doc["takeover_of"]] == ["explicit"], (
+        "a cross-session --takeover was recorded as a mere overlap, not explicit succession"
+    )
+
+
+def test_explicit_takeover_upgrades_every_mechanical_link_without_duplicating_it(tmp_path):
+    """Each declared predecessor is recorded ONCE, and its mechanical ``overlap``/``containment`` becomes ``explicit``."""
+    first = _stale_predecessor(tmp_path, [SHARED, OTHER])
+    second = _stale_predecessor(tmp_path, [THIRD])
+    doc, _ = _claim_now(tmp_path, [SHARED, THIRD], takeover_ids=[first, second])
+    assert len(doc["takeover_of"]) == 2, "an upgraded link was duplicated"
+    assert sorted(entry["claim_id"] for entry in doc["takeover_of"]) == sorted([first, second])
+    assert [entry["kind"] for entry in doc["takeover_of"]] == ["explicit", "explicit"]
 
 
 def test_explicit_takeover_refuses_a_live_claim(tmp_path):
@@ -136,5 +178,38 @@ def test_two_claims_on_one_shared_file_are_siblings_not_a_chain(tmp_path):
     second = board.claim(vendor="claude", session="session-x", agent=None, task="second", paths=[SHARED])
     assert [e["kind"] for e in first["takeover_of"]] == ["overlap"]
     assert [e["kind"] for e in second["takeover_of"]] == ["overlap"]
-    from scripts.lib import pr_merge_delegation as D
     D.validate_takeover_graph(board.views()[0], board)   # siblings, not rivals: no refusal
+
+
+# --------------------------------------------------------------------------------------------- the merge gate
+
+
+def _two_rivals(tmp_path, predecessor_kind):
+    board = _board(tmp_path, lambda: NOW)
+    predecessor = "20300107T234500Z-pred-a-aaaaaaaa"
+    left = "20300107T234500Z-live-b-bbbbbbbb"
+    right = "20300107T234500Z-live-c-cccccccc"
+    _write_claim(board.dir, predecessor, session="session-old", heartbeat_at=T0, paths=[SHARED, OTHER])
+    for claim_id, session in ((left, "session-b"), (right, "session-c")):
+        _write_claim(board.dir, claim_id, session=session, heartbeat_at=NOW, paths=[SHARED],
+                     takeover_of=[{"claim_id": predecessor, "kind": predecessor_kind}])
+    views, unreadable = board.views()
+    assert not unreadable
+    return views, board
+
+
+def test_two_live_claims_declaring_the_same_predecessor_explicitly_are_refused(tmp_path):
+    """Two rivals each declaring the same stale predecessor are ambiguous succession, not siblings.
+
+    Before the F1/F2 repair a cross-session ``--takeover`` was written as ``overlap``, so both rivals looked like
+    harmless siblings and BOTH were allowed. Declared succession must make them rivals and refuse.
+    """
+    views, board = _two_rivals(tmp_path, "explicit")
+    with pytest.raises(D.Refused, match="claim_takeover_chain_invalid"):
+        D.validate_takeover_graph(views, board)
+
+
+def test_two_live_claims_overlapping_without_declared_succession_are_allowed(tmp_path):
+    """The control: ``overlap`` provenance says shared ancestry only, so the identical graph is not refused."""
+    views, board = _two_rivals(tmp_path, "overlap")
+    D.validate_takeover_graph(views, board)   # must not raise

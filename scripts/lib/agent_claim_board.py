@@ -813,8 +813,19 @@ class ClaimBoard:
             }
 
         by_id = {v.claim_id: v for v in views}
-        takeover = []
-        recorded: set[str] = set()
+        recorded: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+
+        def _link(v: "ClaimView", kind: str) -> None:
+            # Keep the first position of a link (an explicit upgrade must not reorder the list), but let the last
+            # provenance written win. The mechanical pass cannot see a declared --takeover for a CROSS-SESSION
+            # predecessor: it records that predecessor as ``overlap``/``containment`` and moves on, so without an
+            # upgrade the explicit declaration would silently never be recorded — and two live rivals declaring the
+            # same predecessor would both read as siblings and pass the merge gate.
+            if v.claim_id not in recorded:
+                order.append(v.claim_id)
+            recorded[v.claim_id] = _record(v, kind)
+
         for v in views:
             if v.state != "stale" or v.doc.get("session") == session:
                 continue
@@ -822,23 +833,24 @@ class ClaimBoard:
                 # Record every overlapping stale claim again — the state resolver depends on it — but say what the
                 # link IS. Two agents touching one shared file are siblings, not a chain.
                 kind = "containment" if claim_covers(canon, v.doc.get("paths") or []) else "overlap"
-                takeover.append(_record(v, kind))
-                recorded.add(v.claim_id)
+                _link(v, kind)
         for target_id in dict.fromkeys(takeover_ids or ()):
             target = by_id.get(str(target_id))
             if target is None:
                 raise ClaimError(f"takeover target {target_id} is not a claim on this board")
-            if target.claim_id in recorded:
-                continue
-            if target.state != "stale":
-                raise ClaimError(
-                    f"takeover target {target_id} is {target.state}, not stale; only a stale predecessor "
-                    "can be taken over"
-                )
-            if not overlapping_pairs(canon, target.doc.get("paths") or []):
-                raise ClaimError(f"takeover target {target_id} shares none of this claim's paths")
-            takeover.append(_record(target, "explicit"))
-            recorded.add(target.claim_id)
+            if target.claim_id not in recorded:
+                if target.state != "stale":
+                    raise ClaimError(
+                        f"takeover target {target_id} is {target.state}, not stale; only a stale predecessor "
+                        "can be taken over"
+                    )
+                if not overlapping_pairs(canon, target.doc.get("paths") or []):
+                    raise ClaimError(f"takeover target {target_id} shares none of this claim's paths")
+            # A declared --takeover is deliberate succession, whether or not the mechanical pass above already
+            # recorded the same stale predecessor (it does whenever that predecessor belongs to another session).
+            # Re-record it as ``explicit`` so the merge gate counts it instead of reading it as a shared file.
+            _link(target, "explicit")
+        takeover = [recorded[claim_id] for claim_id in order]
 
         now = self.now()
         vendor_s = slug(vendor or "unknown")
