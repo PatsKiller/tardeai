@@ -4,6 +4,7 @@ Hermetic: fake tmux/gh runners, temp directories, no network, no fleet. Every de
 function of the data handed in, and these tests exercise the order (a)…(e), the rails, the submit path and the
 "dry run writes nothing" promise.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,29 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib import agent_dispatch as D  # noqa: E402
-import agent_dispatch as CLI  # noqa: E402
+import importlib.util  # noqa: E402
+
+
+def _load_dispatch_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+D = _load_dispatch_module("lib.agent_dispatch", ROOT / "scripts/lib/agent_dispatch.py")
+CLI = _load_dispatch_module("agent_dispatch", ROOT / "scripts/agent_dispatch.py")
+CLI.D = D
+
+
+def _complete_pr(*args, **kwargs):
+    # These fixtures describe a complete ordinary change unless a case explicitly supplies different evidence.
+    kwargs.setdefault("files", ("src/synthetic.py",))
+    kwargs.setdefault("changed_files", len(kwargs["files"]))
+    kwargs.setdefault("checks_green", True)
+    return D.PullRequest(*args, **kwargs)
+
 
 NOW = datetime(2026, 11, 4, 18, 0, tzinfo=timezone.utc)
 
@@ -61,13 +83,22 @@ def test_refusal_list_keeps_broker_sessions_out():
 
 
 def claim(cid="c1", session="other", branch="wt/x", paths=("a.tsx",), head="", status="active", age=0.1):
-    return D.Claim(claim_id=cid, session=session, branch=branch, paths=list(paths), head_sha=head,
-                   status=status, age_h=age)
+    return D.Claim(
+        claim_id=cid, session=session, branch=branch, paths=list(paths), head_sha=head, status=status, age_h=age
+    )
 
 
 def row(rid="FQ-1", owner="cc-8", status="queued", paths=("a.tsx",), **kw):
-    return {"id": rid, "owner": owner, "status": status, "page": "/p", "severity": "P2", "paths": list(paths),
-            "acceptance": {"what": "w", "expected": "e", "actual": "a", "evidence": "ev"}, **kw}
+    return {
+        "id": rid,
+        "owner": owner,
+        "status": status,
+        "page": "/p",
+        "severity": "P2",
+        "paths": list(paths),
+        "acceptance": {"what": "w", "expected": "e", "actual": "a", "evidence": "ev"},
+        **kw,
+    }
 
 
 def test_only_queued_and_assigned_are_work():
@@ -87,7 +118,9 @@ def test_takeable_at_in_the_future_holds_the_row():
 
 
 def test_a_file_held_by_another_live_claim_blocks_the_row():
-    ok, why = D.row_workable(row(paths=("src/page.tsx",)), "cc-8", [claim(session="cc-4", paths=("src/page.tsx",))], now=NOW)
+    ok, why = D.row_workable(
+        row(paths=("src/page.tsx",)), "cc-8", [claim(session="cc-4", paths=("src/page.tsx",))], now=NOW
+    )
     assert not ok and "held by cc-4" in why
 
 
@@ -107,7 +140,7 @@ def test_a_own_row_beats_every_other_kind():
 
 
 def test_b_review_a_clean_pr_you_did_not_author():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     assert a.kind == "review" and a.target == "7"
     assert "review PR #7" in a.instruction and "Do not push, do not merge" in a.instruction
@@ -115,19 +148,26 @@ def test_b_review_a_clean_pr_you_did_not_author():
 
 
 def test_never_assigns_a_review_of_your_own_pr():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
-    assert D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-8"}, coord="/c", now=NOW) is None
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
+    assert (
+        D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-8"}, coord="/c", now=NOW)
+        is None
+    )
 
 
 def test_an_ordinary_pr_with_a_merge_verdict_at_head_needs_no_second_review():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False, files=("apps/command-center-v3/src/pages/Home.tsx",))
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False, files=("apps/command-center-v3/src/pages/Home.tsx",))
     v = {(7, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
-    assert D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c", now=NOW) is None
+    assert (
+        D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c", now=NOW)
+        is None
+    )
 
 
-def test_a_held_pr_with_one_merge_verdict_still_needs_its_second_reviewer():
+def test_a_held_pr_with_one_merge_verdict_still_needs_its_second_reviewer(monkeypatch):
     """claude-lead's F1 on #2650: the picker skipped any PR with a MERGE, so a held PR never got its second reviewer."""
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False, files=("AGENTS.md",))
+    monkeypatch.setattr(D, "review_requirements", lambda: (2, 2, ("AGENTS.md",)))
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False, files=("src/synthetic.py",))
     v = {(7, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c", now=NOW)
     assert a is not None and a.kind == "review" and a.target == "7"
@@ -135,18 +175,21 @@ def test_a_held_pr_with_one_merge_verdict_still_needs_its_second_reviewer():
 
 def test_an_unlisted_pr_fails_closed_and_needs_the_held_bar():
     """No file list means "cannot prove it is ordinary", so the higher bar applies."""
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False, files=(), changed_files=None)
     assert D.required_reviews(pr.files) == (2, True)
 
 
 def test_a_dirty_or_draft_pr_is_not_review_work():
-    draft = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", True)
-    dirty = D.PullRequest(8, "h" * 40, "wt/y", "BLOCKED", False)
-    assert D.select_work("cc-8", queue=[], claims=[], prs=[draft, dirty], verdicts={}, author_of={}, coord="/c", now=NOW) is None
+    draft = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", True)
+    dirty = _complete_pr(8, "h" * 40, "wt/y", "BLOCKED", False)
+    assert (
+        D.select_work("cc-8", queue=[], claims=[], prs=[draft, dirty], verdicts={}, author_of={}, coord="/c", now=NOW)
+        is None
+    )
 
 
 def test_c_merge_prep_when_the_author_claim_carries_another_head():
-    pr = D.PullRequest(9, "a" * 40, "wt/x", "CLEAN", False, commit_shas=("b" * 40, "c" * 40))
+    pr = _complete_pr(9, "a" * 40, "wt/x", "CLEAN", False, commit_shas=("b" * 40, "c" * 40))
     v = {(9, pr.head_sha): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     claims = [claim(session="cc-4", branch="wt/x", head="d" * 40)]  # not in [head] + commits
     a = D.select_work("cc-4", queue=[], claims=claims, prs=[pr], verdicts=v, author_of={9: "cc-4"}, coord="/c", now=NOW)
@@ -155,15 +198,26 @@ def test_c_merge_prep_when_the_author_claim_carries_another_head():
 
 
 def test_c_does_not_fire_when_the_claim_head_is_among_the_pr_commits():
-    pr = D.PullRequest(9, "new" + "h" * 37, "wt/x", "CLEAN", False, commit_shas=("old" + "h" * 37,))
+    pr = _complete_pr(9, "new" + "h" * 37, "wt/x", "CLEAN", False, commit_shas=("old" + "h" * 37,))
     v = {(9, pr.head_sha): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     claims = [claim(session="cc-4", branch="wt/x", head="old" + "h" * 37)]
-    assert D.select_work("cc-4", queue=[], claims=claims, prs=[pr], verdicts=v, author_of={9: "cc-4"}, coord="/c", now=NOW) is None
+    assert (
+        D.select_work("cc-4", queue=[], claims=claims, prs=[pr], verdicts=v, author_of={9: "cc-4"}, coord="/c", now=NOW)
+        is None
+    )
 
 
 def test_d_oldest_unowned_row_when_nothing_of_its_own():
-    a = D.select_work("cc-8", queue=[row(owner=""), row(rid="FQ-2", owner="cc-4")], claims=[], prs=[], verdicts={},
-                      author_of={}, coord="/c", now=NOW)
+    a = D.select_work(
+        "cc-8",
+        queue=[row(owner=""), row(rid="FQ-2", owner="cc-4")],
+        claims=[],
+        prs=[],
+        verdicts={},
+        author_of={},
+        coord="/c",
+        now=NOW,
+    )
     assert a.kind == "unowned_queue" and a.target == "FQ-1"
 
 
@@ -175,34 +229,68 @@ def test_d_an_unowned_row_does_not_bypass_a_hold_or_a_live_claim():
     use them; a blank owner is not an exemption.
     """
     future = iso(NOW + timedelta(hours=1))
-    held = D.select_work("cc-8", queue=[row(owner="", takeable_at=future)], claims=[], prs=[], verdicts={},
-                         author_of={}, coord="/c", now=NOW)
+    held = D.select_work(
+        "cc-8",
+        queue=[row(owner="", takeable_at=future)],
+        claims=[],
+        prs=[],
+        verdicts={},
+        author_of={},
+        coord="/c",
+        now=NOW,
+    )
     assert held is None, "a future takeable_at holds the row whoever looks at it"
-    taken = D.select_work("cc-8", queue=[row(owner="", paths=("src/page.tsx",))],
-                          claims=[claim(session="cc-4", paths=("src/page.tsx",))], prs=[], verdicts={},
-                          author_of={}, coord="/c", now=NOW)
+    taken = D.select_work(
+        "cc-8",
+        queue=[row(owner="", paths=("src/page.tsx",))],
+        claims=[claim(session="cc-4", paths=("src/page.tsx",))],
+        prs=[],
+        verdicts={},
+        author_of={},
+        coord="/c",
+        now=NOW,
+    )
     assert taken is None, "another session's live claim on the row's path holds it even with no owner"
 
 
 def test_e_chore_for_a_stale_claim():
-    a = D.select_work("cc-8", queue=[], claims=[claim(session="cc-4", age=6.0)], prs=[], verdicts={}, author_of={},
-                      coord="/c", now=NOW)
+    a = D.select_work(
+        "cc-8",
+        queue=[],
+        claims=[claim(session="cc-4", age=6.0)],
+        prs=[],
+        verdicts={},
+        author_of={},
+        coord="/c",
+        now=NOW,
+    )
     assert a.kind == "chore" and "has not been heartbeated for 6.0h" in a.instruction
 
 
 def test_e_a_chore_on_an_open_pr_branch_never_tells_the_session_to_release_it():
     """R1 (cc-deepseek-2 at fffe2c9cb): `release --status done` on a claim whose PR is open is the move that
     permanently unmerges it — the merge gate needs a live claim at the head and a done claim cannot be re-stamped."""
-    pr = D.PullRequest(21, "h" * 40, "wt/x", "DIRTY", False, commit_shas=("h" * 40,))
-    a = D.select_work("cc-8", queue=[], claims=[claim(session="cc-4", branch="wt/x", age=6.0)], prs=[pr],
-                      verdicts={}, author_of={21: "cc-4"}, coord="/c", now=NOW)
+    pr = _complete_pr(21, "h" * 40, "wt/x", "DIRTY", False, commit_shas=("h" * 40,))
+    a = D.select_work(
+        "cc-8",
+        queue=[],
+        claims=[claim(session="cc-4", branch="wt/x", age=6.0)],
+        prs=[pr],
+        verdicts={},
+        author_of={21: "cc-4"},
+        coord="/c",
+        now=NOW,
+    )
     assert a.kind == "chore"
     assert "release --status done" not in a.instruction and "--status abandoned" not in a.instruction
     assert "OPEN PR" in a.instruction and "cannot be re-stamped" in a.instruction
 
 
 def test_nothing_to_do_returns_none():
-    assert D.select_work("cc-8", queue=[], claims=[claim(age=0.2)], prs=[], verdicts={}, author_of={}, coord="/c", now=NOW) is None
+    assert (
+        D.select_work("cc-8", queue=[], claims=[claim(age=0.2)], prs=[], verdicts={}, author_of={}, coord="/c", now=NOW)
+        is None
+    )
 
 
 # ── 4. verdicts and the merge pump ─────────────────────────────────────────────────────────────────────────────
@@ -216,8 +304,15 @@ def test_verdicts_are_read_from_both_artifact_shapes():
 
 
 def test_merge_pump_separates_ready_from_one_step_and_never_merges():
-    pr = D.PullRequest(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,),
-                       files=("apps/command-center-v3/src/pages/Home.tsx",))
+    pr = _complete_pr(
+        11,
+        "h" * 40,
+        "wt/x",
+        "CLEAN",
+        False,
+        commit_shas=("h" * 40,),
+        files=("apps/command-center-v3/src/pages/Home.tsx",),
+    )
     claims = [claim(session="cc-4", branch="wt/x", head="h" * 40)]
     v = {(11, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     out = D.merge_ready([pr], v, claims, {11: "cc-4"})
@@ -227,7 +322,7 @@ def test_merge_pump_separates_ready_from_one_step_and_never_merges():
 
 
 def test_a_held_pr_with_one_merge_verdict_is_one_step_away_never_ready():
-    pr = D.PullRequest(12, "h" * 40, "wt/y", "CLEAN", False, commit_shas=("h" * 40,), files=("AGENTS.md",))
+    pr = _complete_pr(12, "h" * 40, "wt/y", "CLEAN", False, commit_shas=("h" * 40,), files=("AGENTS.md",))
     claims = [claim(session="cc-4", branch="wt/y", head="h" * 40)]
     v = {(12, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     out = D.merge_ready([pr], v, claims, {12: "cc-4"})
@@ -238,7 +333,7 @@ def test_a_held_pr_with_one_merge_verdict_is_one_step_away_never_ready():
 def test_an_unknown_author_is_never_reported_ready():
     """R5 (codex at fffe2c9cb): with an unresolved author map, independence cannot be shown and `author` rendered as
     `""` inside a READY entry. Readiness is a claim about custody; without the author it is a guess."""
-    pr = D.PullRequest(13, "h" * 40, "wt/z", "CLEAN", False, commit_shas=("h" * 40,), files=("src/x.ts",))
+    pr = _complete_pr(13, "h" * 40, "wt/z", "CLEAN", False, commit_shas=("h" * 40,), files=("src/x.ts",))
     claims = [claim(session="cc-4", branch="wt/z", head="h" * 40)]
     v = {(13, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
     out = D.merge_ready([pr], v, claims, {})
@@ -248,15 +343,15 @@ def test_an_unknown_author_is_never_reported_ready():
 
 def test_a_done_claim_is_not_told_to_restamp():
     """R5: the fleet's own rule is that a done claim cannot be re-stamped — the author creates a claim AT the head."""
-    pr = D.PullRequest(14, "h" * 40, "wt/q", "CLEAN", False, commit_shas=("h" * 40,), files=("src/x.ts",))
+    pr = _complete_pr(14, "h" * 40, "wt/q", "CLEAN", False, commit_shas=("h" * 40,), files=("src/x.ts",))
     v = {(14, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}]}
-    out = D.merge_ready([pr], v, [], {14: "cc-4"})   # the author's claim was completed and is gone from the active set
+    out = D.merge_ready([pr], v, [], {14: "cc-4"})  # the author's claim was completed and is gone from the active set
     step = out["one_step"][0]["step"]
     assert "create a claim at the head" in step and "re-stamp" not in step
 
 
 def test_a_merge_verdict_from_the_author_is_not_independent():
-    pr = D.PullRequest(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,))
+    pr = _complete_pr(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,))
     claims = [claim(session="cc-4", branch="wt/x", head="h" * 40)]
     v = {(11, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-4"}]}
     out = D.merge_ready([pr], v, claims, {11: "cc-4"})
@@ -264,7 +359,7 @@ def test_a_merge_verdict_from_the_author_is_not_independent():
 
 
 def test_merge_pump_names_the_one_step():
-    pr = D.PullRequest(12, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(12, "h" * 40, "wt/x", "CLEAN", False)
     out = D.merge_ready([pr], {}, [claim(session="cc-4", branch="wt/x", head="h" * 40)], {12: "cc-4"})
     assert out["one_step"][0]["step"] == "needs one independent MERGE verdict at this exact head"
 
@@ -286,10 +381,12 @@ class FakeTmux:
 
     def __call__(self, cmd, **kw):
         self.calls.append(list(cmd))
+
         class P:
             returncode = 0
             stdout = ""
             stderr = ""
+
         if cmd[:2] == ["tmux", "paste-buffer"]:
             self.pasted = True
         if cmd[:2] == ["tmux", "capture-pane"]:
@@ -318,7 +415,9 @@ def test_submit_pastes_then_enters_and_proves_busy():
     r = D.submit("cc-1", "line one\nline two", run=fake, sleep=clock.sleep, poll_every=3.0, monotonic=clock)
     assert any(c[:2] == ["tmux", "load-buffer"] for c in fake.calls)
     assert any(c[:2] == ["tmux", "paste-buffer"] for c in fake.calls), "text must be pasted, not send-keyed"
-    assert not any(c[:3] == ["tmux", "send-keys", "-l"] for c in fake.calls), "send-keys -l is the silent-no-submit trap"
+    assert not any(c[:3] == ["tmux", "send-keys", "-l"] for c in fake.calls), (
+        "send-keys -l is the silent-no-submit trap"
+    )
     assert r.submitted and r.busy_after and r.attempts == 1
     assert "after the paste" in r.detail
 
@@ -332,15 +431,18 @@ def test_a_pane_that_is_already_busy_is_never_sent_to():
     stricter and this fixture is no longer reachable through the confirm loop: a non-idle pane at send time is
     refused before any keystroke, and the refusal is one attempt, not two.
     """
+
     class StuckBusy(FakeTmux):
         def __call__(self, cmd, **kw):
             p = super().__call__(cmd, **kw)
             if cmd[:2] == ["tmux", "capture-pane"]:
-                p.stdout = "· Working (999s · esc to interrupt)"   # always busy, never changing
+                p.stdout = "· Working (999s · esc to interrupt)"  # always busy, never changing
             return p
+
     clock = FakeClock()
-    r = D.submit("cc-1", "do it", run=StuckBusy(), sleep=clock.sleep, poll_every=3.0, busy_confirm_seconds=6.0,
-                 monotonic=clock)
+    r = D.submit(
+        "cc-1", "do it", run=StuckBusy(), sleep=clock.sleep, poll_every=3.0, busy_confirm_seconds=6.0, monotonic=clock
+    )
     assert r.submitted is False and not r.busy_after and r.attempts == 1
     assert "busy at send time" in r.detail
 
@@ -376,19 +478,25 @@ def test_a_pane_showing_an_operators_unsent_draft_is_refused():
 
 
 def test_submit_retries_once_then_reports_dispatch_failed():
-    fake, clock = FakeTmux(busy_after_paste=False), FakeClock()   # never goes busy
-    r = D.submit("cc-1", "do the thing", run=fake, sleep=clock.sleep, busy_confirm_seconds=6.0, poll_every=3.0,
-                 monotonic=clock)
+    fake, clock = FakeTmux(busy_after_paste=False), FakeClock()  # never goes busy
+    r = D.submit(
+        "cc-1", "do the thing", run=fake, sleep=clock.sleep, busy_confirm_seconds=6.0, poll_every=3.0, monotonic=clock
+    )
     assert not r.busy_after and r.attempts == 2, "one retry, then stop — no third"
-    line = json.loads(D.ledger_line(session="cc-1", assignment=D.Assignment("cc-1", "queue", "FQ-1", "x", "w"),
-                                    result=r, cycle_id="cyc-1"))
+    line = json.loads(
+        D.ledger_line(
+            session="cc-1", assignment=D.Assignment("cc-1", "queue", "FQ-1", "x", "w"), result=r, cycle_id="cyc-1"
+        )
+    )
     assert line["outcome"] == "dispatch_failed" and line["submitted"] and not line["busy_after_30s"]
 
 
 def test_ledger_line_shape():
     a = D.Assignment("cc-1", "review", "42", "text", "why")
     r = D.SubmitResult(True, True, 1, "busy confirmed after 3s")
-    line = json.loads(D.ledger_line(session="cc-1", assignment=a, result=r, cycle_id="cyc-9", ts="2026-11-04T18:00:00Z"))
+    line = json.loads(
+        D.ledger_line(session="cc-1", assignment=a, result=r, cycle_id="cyc-9", ts="2026-11-04T18:00:00Z")
+    )
     assert set(line) >= {"ts", "session", "kind", "target", "sent_sha256", "submitted", "busy_after_30s", "cycle_id"}
     assert line["kind"] == "review" and line["target"] == "42" and line["sent_sha256"]
 
@@ -405,7 +513,9 @@ def test_idle_alert_only_past_fifteen_minutes():
 # ── 7. the cycle: dry run writes nothing, apply writes only its own files ──────────────────────────────────────
 
 
-def make_tree(tmp: Path, *, panes: dict[str, str], queue: list[dict], claims: list[dict] | None = None) -> dict[str, Path]:
+def make_tree(
+    tmp: Path, *, panes: dict[str, str], queue: list[dict], claims: list[dict] | None = None
+) -> dict[str, Path]:
     coord = tmp / "coordinator"
     (coord / "inbox" / "lead").mkdir(parents=True, exist_ok=True)
     (coord / "AUDIT_FIX_QUEUE.json").write_text(json.dumps({"items": queue}), encoding="utf-8")
@@ -413,8 +523,12 @@ def make_tree(tmp: Path, *, panes: dict[str, str], queue: list[dict], claims: li
     claims_dir.mkdir()
     for c in claims or []:
         (claims_dir / f"{c['claim_id']}.json").write_text(json.dumps(c), encoding="utf-8")
-    return {"coord": coord, "queue": coord / "AUDIT_FIX_QUEUE.json", "claims": claims_dir,
-            "ledger": coord / "dispatch_ledger.jsonl"}
+    return {
+        "coord": coord,
+        "queue": coord / "AUDIT_FIX_QUEUE.json",
+        "claims": claims_dir,
+        "ledger": coord / "dispatch_ledger.jsonl",
+    }
 
 
 def fake_runner(panes: dict[str, str], gh_rows: list[dict]):
@@ -423,6 +537,7 @@ def fake_runner(panes: dict[str, str], gh_rows: list[dict]):
             returncode = 0
             stdout = ""
             stderr = ""
+
         if cmd[:2] == ["tmux", "ls"]:
             P.stdout = "\n".join(panes)
         elif cmd[:3] == ["tmux", "capture-pane", "-p"]:
@@ -432,16 +547,26 @@ def fake_runner(panes: dict[str, str], gh_rows: list[dict]):
         elif cmd[:3] == ["gh", "pr", "view"]:
             P.stdout = json.dumps({"commits": []})
         return P
+
     return run
 
 
 def test_dry_run_writes_nothing_and_sends_nothing(tmp_path):
-    paths = make_tree(tmp_path, panes={"cc-deepseek-8": "❯ \n idle"},
-                      queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p", "acceptance": "acc"}])
+    paths = make_tree(
+        tmp_path,
+        panes={"cc-deepseek-8": "❯ \n idle"},
+        queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p", "acceptance": "acc"}],
+    )
     run = fake_runner({"cc-deepseek-8": "❯ \n idle"}, [])
     before = sorted(p.name for p in paths["coord"].rglob("*"))
-    out = CLI.run_cycle(apply=False, coord=paths["coord"], queue_path=paths["queue"],
-                        claims_dir=paths["claims"], ledger_path=paths["ledger"], run=run)
+    out = CLI.run_cycle(
+        apply=False,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=run,
+    )
     after = sorted(p.name for p in paths["coord"].rglob("*"))
     assert before == after, "a dry run must not create files"
     assert not paths["ledger"].exists()
@@ -450,8 +575,11 @@ def test_dry_run_writes_nothing_and_sends_nothing(tmp_path):
 
 
 def test_apply_writes_the_ledger_and_merge_ready_only(tmp_path):
-    paths = make_tree(tmp_path, panes={"cc-deepseek-8": "❯ \n idle"},
-                      queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p", "acceptance": "acc"}])
+    paths = make_tree(
+        tmp_path,
+        panes={"cc-deepseek-8": "❯ \n idle"},
+        queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p", "acceptance": "acc"}],
+    )
     base = fake_runner({"cc-deepseek-8": "❯ \n idle"}, [])
     sent: list[list[str]] = []
 
@@ -468,33 +596,49 @@ def test_apply_writes_the_ledger_and_merge_ready_only(tmp_path):
             p.stdout = "· Working (1s · esc to interrupt)"
         return p
 
-    out = CLI.run_cycle(apply=True, coord=paths["coord"], queue_path=paths["queue"],
-                        claims_dir=paths["claims"], ledger_path=paths["ledger"], run=run, sleep=lambda _s: None)
+    out = CLI.run_cycle(
+        apply=True,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=run,
+        sleep=lambda _s: None,
+    )
     assert paths["ledger"].exists() and out["ledger"][0]["outcome"] == "dispatched"
     assert (paths["coord"] / "MERGE_READY.md").exists()
     assert sent, "the instruction was pasted"
     # Rails: nothing else of the fleet's was written.
     written = {p.name for p in paths["coord"].rglob("*") if p.is_file()}
     # The idle streak is written so DISPATCH_IDLE_ALERT can fire on a later cycle (claude-lead's F1 on #2650).
-    assert written <= {"AUDIT_FIX_QUEUE.json", "dispatch_ledger.jsonl", "MERGE_READY.md",
-                       "dispatch_idle_state.json"}, written
+    assert written <= {"AUDIT_FIX_QUEUE.json", "dispatch_ledger.jsonl", "MERGE_READY.md", "dispatch_idle_state.json"}, (
+        written
+    )
 
 
 def test_a_raising_transport_still_writes_a_dispatch_failed_receipt(tmp_path, monkeypatch):
     """R6 (codex at fffe2c9cb): the ledger buffered every line until the last submission returned, so one exception
     discarded the receipts of everything already delivered. Each receipt is written as it exists, and a raise becomes
     a recorded failure rather than a lost cycle."""
-    paths = make_tree(tmp_path, panes={"cc-deepseek-8": "❯ \n idle"},
-                      queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p",
-                              "acceptance": "acc"}])
+    paths = make_tree(
+        tmp_path,
+        panes={"cc-deepseek-8": "❯ \n idle"},
+        queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p", "acceptance": "acc"}],
+    )
 
     def boom(*_a, **_kw):
         raise RuntimeError("tmux died mid-cycle")
 
     monkeypatch.setattr(CLI.D, "submit", boom)
-    out = CLI.run_cycle(apply=True, coord=paths["coord"], queue_path=paths["queue"], claims_dir=paths["claims"],
-                        ledger_path=paths["ledger"], run=fake_runner({"cc-deepseek-8": "❯ \n idle"}, []),
-                        sleep=lambda _s: None)
+    out = CLI.run_cycle(
+        apply=True,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=fake_runner({"cc-deepseek-8": "❯ \n idle"}, []),
+        sleep=lambda _s: None,
+    )
     assert out["ledger"] and out["ledger"][0]["outcome"] == "dispatch_failed"
     assert "dispatch raised" in out["ledger"][0]["detail"]
     on_disk = paths["ledger"].read_text(encoding="utf-8").strip().splitlines()
@@ -502,9 +646,19 @@ def test_a_raising_transport_still_writes_a_dispatch_failed_receipt(tmp_path, mo
 
 
 def test_busy_sessions_are_not_touched(tmp_path):
-    paths = make_tree(tmp_path, panes={"cc-deepseek-8": "· Working (3s · esc to interrupt)"}, queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p"}])
-    out = CLI.run_cycle(apply=False, coord=paths["coord"], queue_path=paths["queue"], claims_dir=paths["claims"],
-                        ledger_path=paths["ledger"], run=fake_runner({"cc-deepseek-8": "· Working (3s · esc to interrupt)"}, []))
+    paths = make_tree(
+        tmp_path,
+        panes={"cc-deepseek-8": "· Working (3s · esc to interrupt)"},
+        queue=[{"id": "FQ-1", "owner": "cc-deepseek-8", "status": "queued", "page": "/p"}],
+    )
+    out = CLI.run_cycle(
+        apply=False,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=fake_runner({"cc-deepseek-8": "· Working (3s · esc to interrupt)"}, []),
+    )
     assert out["assignments"] == []
 
 
@@ -522,10 +676,12 @@ def test_the_module_writes_only_its_own_two_files():
     assert "D.safe_output_path(" not in src, "the bare precheck must not be used as if it were a fence"
     assert "pr_merge_delegation" not in src and "gh pr merge" not in src and "git push" not in src
     # R1 (codex at fffe2c9cb): the write itself goes through the identity-checked handle, not a bare open("a").
-    assert re.search(r"open_output\(ledger_target, append=True\)", src), "the ledger append must be visible in the source"
+    assert re.search(r"open_output\(ledger_target, append=True\)", src), (
+        "the ledger append must be visible in the source"
+    )
     for name in ("idle_state_target", "merge_ready_target", "alert_target", "ledger_target"):
         assert re.search(rf"open_output\({name}[,)]", src), f"{name} must be written through open_output"
-    for forbidden in ("pr_merge_delegation", "git push", "gh pr merge", "setex", "write_text" ):
+    for forbidden in ("pr_merge_delegation", "git push", "gh pr merge", "setex", "write_text"):
         if forbidden == "write_text":
             continue
         assert forbidden not in src, f"the dispatcher must never contain {forbidden!r}"
@@ -535,7 +691,7 @@ def test_the_module_writes_only_its_own_two_files():
 
 
 def test_at_most_two_reviewers_per_pr():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     assert D.select_work("cc-8", review_counts={(7, "h" * 40): 2}, **common) is None, "a third reviewer is not work"
     a = D.select_work("cc-8", review_counts={(7, "h" * 40): 1}, **common)
@@ -543,43 +699,81 @@ def test_at_most_two_reviewers_per_pr():
 
 
 def test_existing_verdicts_count_towards_the_cap():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     # one BLOCK already filed at this head: that is one reviewer spent, so one slot remains
     v = {(7, "h" * 40): [{"verdict": "BLOCK", "reviewer": "cc-9"}]}
-    a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c",
-                      now=NOW, review_counts={(7, "h" * 40): 1})
+    a = D.select_work(
+        "cc-8",
+        queue=[],
+        claims=[],
+        prs=[pr],
+        verdicts=v,
+        author_of={7: "cc-4"},
+        coord="/c",
+        now=NOW,
+        review_counts={(7, "h" * 40): 1},
+    )
     assert a is not None
-    assert D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c",
-                         now=NOW, review_counts={(7, "h" * 40): 2}) is None
+    assert (
+        D.select_work(
+            "cc-8",
+            queue=[],
+            claims=[],
+            prs=[pr],
+            verdicts=v,
+            author_of={7: "cc-4"},
+            coord="/c",
+            now=NOW,
+            review_counts={(7, "h" * 40): 2},
+        )
+        is None
+    )
 
 
 def test_newest_pr_is_offered_before_an_ancient_one():
-    old = D.PullRequest(100, "a" * 40, "wt/old", "CLEAN", False, updated_at="2026-10-20T00:00:00Z")
-    new = D.PullRequest(200, "b" * 40, "wt/new", "CLEAN", False, updated_at="2026-11-04T17:00:00Z")
-    a = D.select_work("cc-8", queue=[], claims=[], prs=[old, new], verdicts={},
-                      author_of={100: "cc-1", 200: "cc-2"}, coord="/c", now=NOW)
+    old = _complete_pr(100, "a" * 40, "wt/old", "CLEAN", False, updated_at="2026-10-20T00:00:00Z")
+    new = _complete_pr(200, "b" * 40, "wt/new", "CLEAN", False, updated_at="2026-11-04T17:00:00Z")
+    a = D.select_work(
+        "cc-8",
+        queue=[],
+        claims=[],
+        prs=[old, new],
+        verdicts={},
+        author_of={100: "cc-1", 200: "cc-2"},
+        coord="/c",
+        now=NOW,
+    )
     assert a.target == "200", "a live PR is reviewed before the October triage list"
 
 
 def test_a_pr_with_an_unknown_author_is_never_assigned_a_reviewer():
     """F5: independence must be provable. No author resolved means nobody may review it."""
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={}, coord="/c", now=NOW)
     assert a is None
 
 
 def test_a_block_verdict_counts_towards_the_reviewer_cap():
     """F4: BLOCK is a verdict too — a PR with two blocks at this head is not given a third reviewer."""
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     v = {(7, "h" * 40): [{"verdict": "BLOCK", "reviewer": "cc-1"}, {"verdict": "BLOCK", "reviewer": "cc-2"}]}
-    a = D.select_work("cc-8", queue=[], claims=[], prs=[pr], verdicts=v, author_of={7: "cc-4"}, coord="/c",
-                      now=NOW, review_counts={(7, "h" * 40): 2})
+    a = D.select_work(
+        "cc-8",
+        queue=[],
+        claims=[],
+        prs=[pr],
+        verdicts=v,
+        author_of={7: "cc-4"},
+        coord="/c",
+        now=NOW,
+        review_counts={(7, "h" * 40): 2},
+    )
     assert a is None
 
 
 def test_an_exact_head_block_is_never_reported_ready():
     """F6: the pump must not call a blocked PR ready, even if a MERGE also sits at that head."""
-    pr = D.PullRequest(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,))
+    pr = _complete_pr(11, "h" * 40, "wt/x", "CLEAN", False, commit_shas=("h" * 40,))
     claims = [claim(session="cc-4", branch="wt/x", head="h" * 40)]
     v = {(11, "h" * 40): [{"verdict": "MERGE", "reviewer": "cc-9"}, {"verdict": "BLOCK", "reviewer": "cc-2"}]}
     out = D.merge_ready([pr], v, claims, {11: "cc-4"})
@@ -612,31 +806,62 @@ def test_an_unowned_row_goes_to_one_session_only():
 
 
 def test_a_review_is_not_re_sent_across_cycles():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     # cycle 2: the ledger says cycle 1 already sent cc-8 this PR and it went busy
-    a = D.select_work("cc-8", prior_review_sessions={(7, "h" * 40): {"cc-8"}}, review_counts={(7, "h" * 40): 1}, **common)
+    a = D.select_work(
+        "cc-8", prior_review_sessions={(7, "h" * 40): {"cc-8"}}, review_counts={(7, "h" * 40): 1}, **common
+    )
     assert a is None, "a reviewer already sent this PR must not be re-sent it every five minutes"
 
 
 def test_two_cycles_of_sending_cannot_exceed_the_two_reviewer_cap():
-    pr = D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
     # cycle 1 sent two reviewers who went busy; the cap is spent even though no verdict exists yet
-    a = D.select_work("cc-9", prior_review_sessions={(7, "h" * 40): {"cc-1", "cc-2"}}, review_counts={(7, "h" * 40): 2}, **common)
+    a = D.select_work(
+        "cc-9", prior_review_sessions={(7, "h" * 40): {"cc-1", "cc-2"}}, review_counts={(7, "h" * 40): 2}, **common
+    )
     assert a is None
 
 
 def test_prior_review_dispatches_reads_only_completed_review_lines(tmp_path):
     ledger = tmp_path / "dispatch_ledger.jsonl"
-    ledger.write_text("\n".join([
-        json.dumps({"kind": "review", "target": "7", "target_head": "h" * 40, "session": "cc-1", "busy_after_30s": True}),
-        json.dumps({"kind": "review", "target": "7", "target_head": "h" * 40, "session": "cc-2", "busy_after_30s": False}),  # never landed
-        json.dumps({"kind": "queue", "target": "7", "target_head": "h" * 40, "session": "cc-3", "busy_after_30s": True}),     # not a review
-        "{not json",
-    ]) + "\n", encoding="utf-8")
+    ledger.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "kind": "review",
+                        "target": "7",
+                        "target_head": "h" * 40,
+                        "session": "cc-1",
+                        "busy_after_30s": True,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "kind": "review",
+                        "target": "7",
+                        "target_head": "h" * 40,
+                        "session": "cc-2",
+                        "busy_after_30s": False,
+                    }
+                ),  # never landed
+                json.dumps(
+                    {"kind": "queue", "target": "7", "target_head": "h" * 40, "session": "cc-3", "busy_after_30s": True}
+                ),  # not a review
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     sessions, counts = CLI.prior_review_dispatches(ledger)
     assert sessions == {(7, "h" * 40): {"cc-1"}} and counts == {(7, "h" * 40): 1}
+    with ledger.open("a", encoding="utf-8") as stream:
+        stream.write("{not json\n")
+    with pytest.raises(D.DispatchError, match="ledger corrupt"):
+        CLI.prior_review_dispatches(ledger)
 
 
 # ── 11. cx-openai-3's six findings (F1–F6) — the regressions that would have caught them ──────────────────────
@@ -669,8 +894,7 @@ def test_the_real_submit_path_works_end_to_end_with_the_native_adapter(monkeypat
             pasted["done"] = True
         if cmd[:2] == ["tmux", "capture-pane"]:
             p = P()
-            p.stdout = ("· Working (1s · esc to interrupt)\n> dispatched" if pasted["done"]
-                        else "❯ \n  ? for shortcuts")
+            p.stdout = "· Working (1s · esc to interrupt)\n> dispatched" if pasted["done"] else "❯ \n  ? for shortcuts"
             return p
         return P()
 
@@ -717,12 +941,14 @@ def test_the_busy_confirmation_is_wall_clock_bounded():
 
 def test_an_author_who_released_their_claim_is_still_the_author():
     """F5 — authorship survives a released claim, so a finished author is never sent its own review."""
-    prs = [D.PullRequest(7, "h" * 40, "wt/x", "CLEAN", False)]
+    prs = [_complete_pr(7, "h" * 40, "wt/x", "CLEAN", False)]
     claims = [claim(cid="c-old", session="cc-4", branch="wt/x", status="done", age=3.0)]
     authors = CLI.author_sessions(prs, claims)
     assert authors == {7: "cc-4"}
-    assert D.select_work("cc-4", queue=[], claims=claims, prs=prs, verdicts={}, author_of=authors,
-                         coord="/c", now=NOW) is None
+    assert (
+        D.select_work("cc-4", queue=[], claims=claims, prs=prs, verdicts={}, author_of=authors, coord="/c", now=NOW)
+        is None
+    )
 
 
 # ── 12. cx-openai-3's round 2 (F2/F3/F4) — the regressions that would have caught them ────────────────────────
@@ -763,8 +989,9 @@ def test_an_unsafe_output_is_refused_before_a_single_keystroke(tmp_path, monkeyp
     (coord / "inbox").mkdir(parents=True)
     queue = coord / "AUDIT_FIX_QUEUE.json"
     queue.write_text('{"items": []}\n', encoding="utf-8")
-    monkeypatch.setattr(CLI.D, "select_work",
-                        lambda *a, **k: D.Assignment("cc-8", "review", "9999", "Dispatcher: do a thing", "forced"))
+    monkeypatch.setattr(
+        CLI.D, "select_work", lambda *a, **k: D.Assignment("cc-8", "review", "9999", "Dispatcher: do a thing", "forced")
+    )
 
     sent = []
 
@@ -772,6 +999,7 @@ def test_an_unsafe_output_is_refused_before_a_single_keystroke(tmp_path, monkeyp
         class P:
             returncode = 0
             stdout = ""
+
         if cmd[:2] == ["tmux", "ls"]:
             P.stdout = "cc-deepseek-8\n"
         if cmd[:2] == ["tmux", "capture-pane"]:
@@ -781,8 +1009,16 @@ def test_an_unsafe_output_is_refused_before_a_single_keystroke(tmp_path, monkeyp
         return P()
 
     with pytest.raises(D.DispatchError):
-        CLI.run_cycle(apply=True, coord=coord, queue_path=queue, claims_dir=coord / "claims",
-                      ledger_path=queue, limit=1, run=run, sleep=lambda s: None)
+        CLI.run_cycle(
+            apply=True,
+            coord=coord,
+            queue_path=queue,
+            claims_dir=coord / "claims",
+            ledger_path=queue,
+            limit=1,
+            run=run,
+            sleep=lambda s: None,
+        )
     assert sent == [], f"the refusal must come before any keystroke, but these were sent: {sent}"
 
 
@@ -792,9 +1028,9 @@ def test_open_output_refuses_a_symlink_swapped_in_after_the_precheck(tmp_path):
     queue = tmp_path / "AUDIT_FIX_QUEUE.json"
     queue.write_text('{"items": [1, 2, 3]}\n', encoding="utf-8")
     report = tmp_path / "MERGE_READY.md"
-    checked = D.safe_output_path(report, coord=tmp_path, protected=[queue])   # the path is clean at check time
+    checked = D.safe_output_path(report, coord=tmp_path, protected=[queue])  # the path is clean at check time
     report.unlink(missing_ok=True)
-    report.symlink_to(queue)                                                  # …and swapped before the write
+    report.symlink_to(queue)  # …and swapped before the write
     with pytest.raises(D.DispatchError):
         D.open_output(checked)
     assert queue.read_text(encoding="utf-8") == '{"items": [1, 2, 3]}\n', "the queue must be untouched"
@@ -825,10 +1061,12 @@ def test_open_output_refuses_a_file_replaced_after_the_check(tmp_path):
     out = coord / "MERGE_READY.md"
     out.write_text("old report\n", encoding="utf-8")
     checked = D.prepare_output(out, coord=coord)
-    out.unlink()
-    out.write_text("impostor\n", encoding="utf-8")      # a NEW inode at the same path
-    with pytest.raises(D.DispatchError) as exc:
-        D.open_output(checked)
+    with out.open("rb") as original_inode:
+        out.unlink()
+        out.write_text("impostor\n", encoding="utf-8")
+        assert os.fstat(original_inode.fileno()).st_ino != out.stat().st_ino
+        with pytest.raises(D.DispatchError) as exc:
+            D.open_output(checked)
     assert "replaced after the check" in str(exc.value)
     assert out.read_text(encoding="utf-8") == "impostor\n", "the replacement must not be truncated either"
 
@@ -876,7 +1114,7 @@ def test_a_slow_capture_cannot_confirm_busy_after_the_deadline():
             if cmd[:2] == ["tmux", "capture-pane"]:
                 seen["n"] += 1
                 if seen["n"] >= 3:
-                    clock.t += 20.0   # this capture returns after the deadline
+                    clock.t += 20.0  # this capture returns after the deadline
                     p.stdout = "· Working (2s · esc to interrupt)\na busy line"
                 else:
                     clock.t += 14.9
@@ -898,8 +1136,10 @@ def test_a_busy_marker_that_predates_the_paste_is_not_evidence():
             p = super().__call__(cmd, **kw)
             if cmd[:2] == ["tmux", "capture-pane"]:
                 state["n"] += 1
-                p.stdout = ("· Working (999s · esc to interrupt)\n"     # the SAME old spinner both times
-                            + ("status line " + str(state["n"])))
+                p.stdout = (
+                    "· Working (999s · esc to interrupt)\n"  # the SAME old spinner both times
+                    + ("status line " + str(state["n"]))
+                )
             return p
 
     r = D.submit("cc-1", "go", run=Drift(), sleep=clock.sleep, monotonic=clock, busy_confirm_seconds=10.0)
@@ -923,6 +1163,7 @@ def test_a_transport_timeout_is_a_result_not_a_crash():
 
 def test_an_oserror_on_the_paste_path_is_a_failed_dispatch_not_an_exception():
     """R6: a tmux that vanished mid-attempt is `dispatch_failed`, never a traceback that loses the cycle."""
+
     class Gone(FakeTmux):
         def __call__(self, cmd, **kw):
             if cmd[:2] == ["tmux", "load-buffer"]:
@@ -935,6 +1176,7 @@ def test_an_oserror_on_the_paste_path_is_a_failed_dispatch_not_an_exception():
 
 def test_a_failed_paste_is_not_a_submission():
     """F3 round 2: when both load-buffer calls fail, submitted was True because it was `attempts > 0`."""
+
     class Dead(FakeTmux):
         def __call__(self, cmd, **kw):
             p = super().__call__(cmd, **kw)
@@ -951,26 +1193,50 @@ def test_the_review_cap_is_head_specific():
     """F4 round 2: a dispatch recorded against an OLD head neither spends the new head's budget nor bars that
     reviewer from reviewing the new revision."""
     old_head, new_head = "a" * 40, "b" * 40
-    pr = D.PullRequest(7, new_head, "wt/x", "CLEAN", False)
+    pr = _complete_pr(7, new_head, "wt/x", "CLEAN", False)
     common = dict(queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "cc-4"}, coord="/c", now=NOW)
-    a = D.select_work("cc-8", prior_review_sessions={(7, old_head): {"cc-8", "cc-9"}},
-                      review_counts={(7, old_head): 2}, **common)
+    a = D.select_work(
+        "cc-8", prior_review_sessions={(7, old_head): {"cc-8", "cc-9"}}, review_counts={(7, old_head): 2}, **common
+    )
     assert a is not None and a.kind == "review", "the new head has its own two-reviewer budget"
-    b = D.select_work("cc-8", prior_review_sessions={(7, new_head): {"cc-8"}},
-                      review_counts={(7, new_head): 1}, **common)
+    b = D.select_work(
+        "cc-8", prior_review_sessions={(7, new_head): {"cc-8"}}, review_counts={(7, new_head): 1}, **common
+    )
     assert b is None, "the same reviewer is not re-sent the SAME head"
 
 
 def test_a_dispatch_recorded_at_an_old_head_does_not_spend_the_new_head_budget(tmp_path):
     """F4 round 2 at the ledger boundary: prior_review_dispatches keys by (pr, head)."""
     ledger = tmp_path / "dispatch_ledger.jsonl"
-    ledger.write_text("\n".join([
-        json.dumps({"kind": "review", "target": "7", "target_head": "a" * 40, "session": "cc-1",
-                    "busy_after_30s": True}),
-        json.dumps({"kind": "review", "target": "7", "target_head": "b" * 40, "session": "cc-2",
-                    "busy_after_30s": True}),
-        json.dumps({"kind": "review", "target": "7", "session": "cc-3", "busy_after_30s": True}),  # legacy: no head
-    ]) + "\n", encoding="utf-8")
+    ledger.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "kind": "review",
+                        "target": "7",
+                        "target_head": "a" * 40,
+                        "session": "cc-1",
+                        "busy_after_30s": True,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "kind": "review",
+                        "target": "7",
+                        "target_head": "b" * 40,
+                        "session": "cc-2",
+                        "busy_after_30s": True,
+                    }
+                ),
+                json.dumps(
+                    {"kind": "review", "target": "7", "session": "cc-3", "busy_after_30s": True}
+                ),  # legacy: no head
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     sessions, counts = CLI.prior_review_dispatches(ledger)
     assert counts == {("7", "a" * 40): 1} or counts.get((7, "a" * 40)) == 1
     assert (7, "a" * 40) in counts and counts[(7, "a" * 40)] == 1
@@ -999,3 +1265,528 @@ def test_the_whole_attempt_is_inside_its_window():
     # Two attempts, each opened with its own 20s window; the calls that would overrun it are cut at the timeout that
     # was left, and the Enter is refused rather than sent into a closed window.
     assert clock.t <= 2 * 20.0 + 2.0, f"attempts ran {clock.t:.1f}s well past two 20s windows"
+
+
+# D49/D50 complete current-head repair controls. All transports and stores are synthetic.
+
+
+def ordinary_pr(number=7, *, head="h" * 40, files=("src/synthetic.py",), **kwargs):
+    return _complete_pr(number, head, "wt/synthetic", "CLEAN", False, files=files, **kwargs)
+
+
+def test_d49_idle_state_alias_is_refused_before_any_submission(tmp_path):
+    paths = make_tree(
+        tmp_path, panes={"cc-deepseek-8": "❯ \n"}, queue=[row(owner="cc-deepseek-8", paths=("src/synthetic.py",))]
+    )
+    (paths["coord"] / CLI.IDLE_STATE_NAME).symlink_to(paths["queue"])
+    original = paths["queue"].read_bytes()
+    base = fake_runner({"cc-deepseek-8": "❯ \n"}, [])
+    sent = []
+    pasted = False
+
+    def run(cmd, **kw):
+        nonlocal pasted
+        if cmd[:2] in (["tmux", "load-buffer"], ["tmux", "paste-buffer"], ["tmux", "send-keys"]):
+            sent.append(list(cmd))
+        if cmd[:2] == ["tmux", "paste-buffer"]:
+            pasted = True
+        out = base(cmd, **kw)
+        if cmd[:2] == ["tmux", "capture-pane"] and pasted:
+            out.stdout = "Working (new dispatch · esc to interrupt)"
+        return out
+
+    with pytest.raises(D.DispatchError):
+        CLI.run_cycle(
+            apply=True,
+            coord=paths["coord"],
+            queue_path=paths["queue"],
+            claims_dir=paths["claims"],
+            ledger_path=paths["ledger"],
+            run=run,
+            sleep=lambda _: None,
+        )
+    assert not sent
+    assert paths["queue"].read_bytes() == original
+
+
+def test_d49_real_cycle_prior_reviewers_spend_cap_without_verdicts(tmp_path):
+    paths = make_tree(
+        tmp_path,
+        panes={"cc-deepseek-9": "❯ \n"},
+        queue=[],
+        claims=[
+            {
+                "claim_id": "author",
+                "session": "author",
+                "branch": "wt/synthetic",
+                "status": "done",
+                "heartbeat_at": iso(NOW),
+                "paths": ["src/synthetic.py"],
+            }
+        ],
+    )
+    lines = [
+        {"kind": "review", "target": "7", "target_head": "h" * 40, "session": session, "busy_after_30s": True}
+        for session in ("cc-deepseek-1", "cc-deepseek-2")
+    ]
+    paths["ledger"].write_text("".join(json.dumps(r) + "\n" for r in lines), encoding="utf-8")
+    prs = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "h" * 40,
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "changedFiles": 1,
+            "files": [{"path": "src/synthetic.py"}],
+        }
+    ]
+    out = CLI.run_cycle(
+        apply=False,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=fake_runner({"cc-deepseek-9": "❯ \n"}, prs),
+    )
+    assert out["assignments"] == []
+
+
+def test_d49_a_filed_merge_reviewer_is_not_assigned_the_same_head(monkeypatch):
+    monkeypatch.setattr(D, "review_requirements", lambda: (2, 2, ("AGENTS.md",)))
+    pr = ordinary_pr()
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "cc-8"}]}
+    common = dict(
+        queue=[], claims=[], prs=[pr], verdicts=verdicts, author_of={7: "author"}, coord="/synthetic", now=NOW
+    )
+    assert D.select_work("cc-8", **common) is None
+    assert D.select_work("cc-9", **common).kind == "review"
+
+
+def test_d49_an_author_merge_does_not_satisfy_picker_or_report():
+    pr = ordinary_pr()
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "author"}]}
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    assignment = D.select_work(
+        "cc-8",
+        queue=[],
+        claims=claims,
+        prs=[pr],
+        verdicts=verdicts,
+        author_of={7: "author"},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert assignment and assignment.kind == "review"
+    assert D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"] == []
+
+
+@pytest.mark.parametrize("owner", ["cc-8", ""])
+@pytest.mark.parametrize("held", ["scripts/lib/**", "scripts/lib", "**/synthetic.py"])
+def test_d49_claim_glob_and_directory_hold_descendants(owner, held):
+    assignment = D.select_work(
+        "cc-8",
+        queue=[row(owner=owner, paths=("scripts/lib/synthetic.py",))],
+        claims=[claim(session="other", paths=(held,))],
+        prs=[],
+        verdicts={},
+        author_of={},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert assignment is None
+
+
+@pytest.mark.parametrize("contents", [None, "{broken", "{}", '{"schema":"wrong"}'])
+def test_d49_unreadable_authority_keeps_all_paths_held(tmp_path, contents, monkeypatch):
+    path = tmp_path / "authority.json"
+    if contents is not None:
+        path.write_text(contents, encoding="utf-8")
+    requirements = D.review_requirements(path)
+    assert D.required_reviews(("src/synthetic.py",), requirements) == (2, True)
+    monkeypatch.setattr(D, "review_requirements", lambda: requirements)
+    pr = ordinary_pr()
+    assert (
+        D.select_work(
+            "cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "author"}, coord="/synthetic", now=NOW
+        )
+        is None
+    )
+
+
+def test_d49_adoption_keeps_original_and_new_author_exclusions():
+    pr = ordinary_pr()
+    claims = [
+        claim(cid="original", session="cc-old", branch=pr.head_ref, status="done", age=4),
+        claim(cid="adopter", session="cc-new", branch=pr.head_ref, head=pr.head_sha),
+    ]
+    authors = CLI.author_sessions([pr], claims)
+    for session in ("cc-old", "cc-new"):
+        assert (
+            D.select_work(
+                session, queue=[], claims=claims, prs=[pr], verdicts={}, author_of=authors, coord="/synthetic", now=NOW
+            )
+            is None
+        )
+    verdicts = {
+        (7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "cc-old"}, {"verdict": "MERGE", "reviewer": "cc-new"}]
+    }
+    assert D.merge_ready([pr], verdicts, claims, authors)["ready"] == []
+    assert (
+        D.select_work(
+            "cc-independent",
+            queue=[],
+            claims=claims,
+            prs=[pr],
+            verdicts={},
+            author_of=authors,
+            coord="/synthetic",
+            now=NOW,
+        ).kind
+        == "review"
+    )
+
+
+def test_d49_takeover_predecessor_survives_missing_original_claim_file(tmp_path):
+    path = tmp_path / "claims"
+    path.mkdir()
+    (path / "adopter.json").write_text(
+        json.dumps(
+            {
+                "claim_id": "adopter",
+                "session": "cc-new",
+                "branch": "wt/synthetic",
+                "status": "active",
+                "heartbeat_at": iso(NOW),
+                "paths": ["src/synthetic.py"],
+                "takeover_of": [{"session": "cc-old", "branch": "wt/synthetic"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    claims = D.load_claims(path, now=NOW)
+    pr = ordinary_pr()
+    assert (
+        D.select_work(
+            "cc-old",
+            queue=[],
+            claims=claims,
+            prs=[pr],
+            verdicts={},
+            author_of=CLI.author_sessions([pr], claims),
+            coord="/synthetic",
+            now=NOW,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("next_screen", [None, "Working (unrelated busy · esc to interrupt)", "❯ unsent draft"])
+def test_d49_retry_refusal_preserves_the_enter_already_delivered(next_screen):
+    clock = FakeClock()
+    fake = FakeTmux(busy_after_paste=False)
+    captures = 0
+
+    def run(cmd, **kw):
+        nonlocal captures
+        out = fake(cmd, **kw)
+        if cmd[:2] == ["tmux", "capture-pane"]:
+            captures += 1
+            if captures >= 3:
+                out.stdout = next_screen or ""
+                out.returncode = 1 if next_screen is None else 0
+        return out
+
+    result = D.submit(
+        "cc-8", "synthetic", run=run, sleep=clock.sleep, monotonic=clock, busy_confirm_seconds=3, poll_every=2
+    )
+    assert sum(cmd[:2] == ["tmux", "send-keys"] for cmd in fake.calls) == 1
+    assert result.submitted is True and result.busy_after is False and result.attempts == 2
+    line = json.loads(
+        D.ledger_line(
+            session="cc-8",
+            assignment=D.Assignment("cc-8", "queue", "Q", "x", "why"),
+            result=result,
+            cycle_id="synthetic",
+        )
+    )
+    assert line["submitted"] is True and line["outcome"] == "dispatch_failed"
+
+
+@pytest.mark.parametrize("owner", ["cc-8", ""])
+@pytest.mark.parametrize("field", ["page", "path", "file", "paths"])
+def test_d49_reserved_work_content_is_never_assigned(owner, field):
+    task = row(owner=owner, paths=())
+    task[field] = ["scripts/moomoo/synthetic.py"] if field == "paths" else "scripts/moomoo/synthetic.py"
+    assert (
+        D.select_work("cc-8", queue=[task], claims=[], prs=[], verdicts={}, author_of={}, coord="/synthetic", now=NOW)
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "path", ["scripts/lib/broker_execution.py", "AGENTS.md", "scripts/lib/pr_merge_delegation.py", ".env.synthetic"]
+)
+def test_d49_reserved_review_paths_are_not_autonomously_assigned(path):
+    pr = ordinary_pr(files=(path,))
+    assert (
+        D.select_work(
+            "cc-8", queue=[], claims=[], prs=[pr], verdicts={}, author_of={7: "author"}, coord="/synthetic", now=NOW
+        )
+        is None
+    )
+
+
+def test_d49_incomplete_file_list_is_not_ready_or_review_work():
+    pr = ordinary_pr()
+    pr.changed_files = 101
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    assert D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"] == []
+    assert (
+        D.select_work(
+            "cc-8", queue=[], claims=claims, prs=[pr], verdicts={}, author_of={7: "author"}, coord="/synthetic", now=NOW
+        )
+        is None
+    )
+
+
+def test_d49_open_prs_keeps_changed_file_completeness():
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "h" * 40,
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "changedFiles": 101,
+            "files": [{"path": "src/synthetic.py"}],
+        }
+    ]
+    pr = CLI.open_prs(fake_runner({}, rows), with_commits=False)[0]
+    assert getattr(pr, "changed_files", None) == 101
+
+
+@pytest.mark.parametrize("kind", ["absent", "corrupt"])
+def test_d49_unavailable_claim_board_cannot_authorize_work(tmp_path, kind):
+    claims_dir = tmp_path / "claims"
+    if kind == "corrupt":
+        claims_dir.mkdir()
+        (claims_dir / "claim.json").write_text("{broken", encoding="utf-8")
+    with pytest.raises(D.DispatchError, match="claim"):
+        D.load_claims(claims_dir, now=NOW)
+
+
+def test_d49_unavailable_evidence_directory_is_not_empty_evidence(tmp_path):
+    with pytest.raises(D.DispatchError, match="review"):
+        CLI.load_review_artifacts(tmp_path / "missing-coordinator")
+
+
+def test_d49_inbox_status_json_is_not_a_review_artifact(tmp_path):
+    coord = tmp_path / "coordinator"
+    inbox = coord / "inbox" / "lead"
+    inbox.mkdir(parents=True)
+    (inbox / "status.json").write_text(
+        json.dumps(
+            {
+                "pr": 7,
+                "head_sha": "h" * 40,
+                "reviewer_session": "cc-other",
+                "verdict": "MERGE",
+                "note": "status update, not a review artifact",
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert CLI.load_review_artifacts(coord) == []
+
+
+def test_d49_archived_original_author_is_still_excluded(tmp_path):
+    directory = tmp_path / "claims"
+    directory.mkdir()
+    current = {
+        "claim_id": "new",
+        "session": "new-author",
+        "branch": "wt/synthetic",
+        "status": "active",
+        "heartbeat_at": iso(NOW),
+        "paths": ["src/synthetic.py"],
+    }
+    old = {**current, "claim_id": "old", "session": "old-author", "status": "done"}
+    (directory / "new.json").write_text(json.dumps(current), encoding="utf-8")
+    (directory / "claims_history.jsonl").write_text(
+        json.dumps(
+            {
+                "schema": "AgentClaimArchive@v1",
+                "claim": old,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    claims = D.load_claims(directory, now=NOW)
+    pr = ordinary_pr()
+    authors = CLI.author_sessions([pr], claims)
+    assert (
+        D.select_work(
+            "old-author", queue=[], claims=claims, prs=[pr], verdicts={}, author_of=authors, coord="/synthetic", now=NOW
+        )
+        is None
+    )
+
+
+def test_d49_valid_review_prose_is_loaded_and_newer_verdict_supersedes(tmp_path):
+    coord = tmp_path / "coordinator"
+    evidence = coord / "review-evidence"
+    evidence.mkdir(parents=True)
+    for filename, verdict, mtime in [("later-filename", "BLOCK", 100), ("earlier-filename", "MERGE", 200)]:
+        doc = {"pr": 7, "head_sha": "h" * 40, "reviewer_session": "independent", "verdict": verdict}
+        prose = evidence / (filename + ".md")
+        prose.write_text(
+            "Adversarial-review: " + verdict + " reviewer=independent head=" + "h" * 40 + "\n", encoding="utf-8"
+        )
+        doc["evidence"] = {"prose_path": str(prose)}
+        machine = evidence / (filename + ".machine.json")
+        machine.write_text(json.dumps(doc), encoding="utf-8")
+        os.utime(machine, (mtime, mtime))
+    result = D.verdicts_at_head(CLI.load_review_artifacts(coord))
+    assert result[(7, "h" * 40)] == [{"verdict": "MERGE", "reviewer": "independent"}]
+
+
+@pytest.mark.parametrize(
+    "checks",
+    [
+        None,
+        [],
+        [{"__typename": "CheckRun", "status": "IN_PROGRESS"}],
+        [{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "FAILURE"}],
+    ],
+)
+def test_d49_ready_report_requires_measured_green_checks(checks):
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "h" * 40,
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "changedFiles": 1,
+            "files": [{"path": "src/synthetic.py"}],
+            "statusCheckRollup": checks,
+        }
+    ]
+    pr = CLI.open_prs(fake_runner({}, rows), with_commits=False)[0]
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    out = D.merge_ready([pr], verdicts, claims, {7: "author"})
+    assert out["ready"] == [] and "checks" in out["one_step"][0]["step"]
+
+
+def test_d49_green_complete_ordinary_pr_is_ready_and_can_get_review():
+    rows = [
+        {
+            "number": 7,
+            "headRefName": "wt/synthetic",
+            "headRefOid": "h" * 40,
+            "mergeStateStatus": "CLEAN",
+            "isDraft": False,
+            "changedFiles": 1,
+            "files": [{"path": "src/synthetic.py"}],
+            "statusCheckRollup": [{"__typename": "CheckRun", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+        }
+    ]
+    pr = CLI.open_prs(fake_runner({}, rows), with_commits=False)[0]
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    assert (
+        D.select_work(
+            "independent",
+            queue=[],
+            claims=claims,
+            prs=[pr],
+            verdicts={},
+            author_of={7: "author"},
+            coord="/synthetic",
+            now=NOW,
+        ).kind
+        == "review"
+    )
+    verdicts = {(7, pr.head_sha): [{"verdict": "MERGE", "reviewer": "independent"}]}
+    assert len(D.merge_ready([pr], verdicts, claims, {7: "author"})["ready"]) == 1
+
+
+def test_d49_row_with_explicit_safe_path_does_not_need_a_page():
+    assignment = D.select_work(
+        "cc-8",
+        queue=[{"id": "Q", "owner": "cc-8", "status": "queued", "path": "src/synthetic.py"}],
+        claims=[],
+        prs=[],
+        verdicts={},
+        author_of={},
+        coord="/synthetic",
+        now=NOW,
+    )
+    assert assignment and assignment.kind == "queue"
+
+
+def test_d49_unknown_authority_with_two_reviews_still_never_reports_ready(tmp_path, monkeypatch):
+    requirements = D.review_requirements(tmp_path / "missing.json")
+    monkeypatch.setattr(D, "review_requirements", lambda: requirements)
+    pr = ordinary_pr()
+    verdicts = {
+        (7, pr.head_sha): [
+            {"verdict": "MERGE", "reviewer": "independent-one"},
+            {"verdict": "MERGE", "reviewer": "independent-two"},
+        ]
+    }
+    claims = [claim(session="author", branch=pr.head_ref, head=pr.head_sha)]
+    out = D.merge_ready([pr], verdicts, claims, {7: "author"})
+    assert out["ready"] == [] and "authority unavailable" in out["one_step"][0]["step"]
+
+
+def test_d49_reserved_target_glob_is_refused_but_safe_source_stays_work():
+    for paths, expected in [(("scripts/**",), False), (("src/synthetic.py",), True)]:
+        task = row(paths=paths)
+        assignment = D.select_work(
+            "cc-8", queue=[task], claims=[], prs=[], verdicts={}, author_of={}, coord="/synthetic", now=NOW
+        )
+        assert bool(assignment) is expected
+
+
+def test_d49_missing_authority_refuses_the_real_cycle_before_transport(tmp_path, monkeypatch):
+    monkeypatch.setattr(D, "AUTHORITY_PATH", tmp_path / "missing-authority.json")
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        raise AssertionError("authority refusal must precede even the fleet read")
+
+    paths = make_tree(tmp_path, panes={}, queue=[])
+    with pytest.raises(D.DispatchError, match="authority unavailable"):
+        CLI.run_cycle(
+            apply=True,
+            coord=paths["coord"],
+            queue_path=paths["queue"],
+            claims_dir=paths["claims"],
+            ledger_path=paths["ledger"],
+            run=run,
+        )
+    assert calls == [] and not paths["ledger"].exists()
+
+
+def test_d49_known_auxiliary_claim_metadata_is_not_a_corrupt_claim(tmp_path):
+    directory = tmp_path / "claims"
+    directory.mkdir()
+    (directory / "broadcast.json").write_text(json.dumps({"schema": "PolicyBroadcastState@v1"}), encoding="utf-8")
+    assert D.load_claims(directory, now=NOW) == []
+
+
+@pytest.mark.parametrize("content", ["{broken", '{"kind":"review","busy_after_30s":true,"target":"invalid"}'])
+def test_d49_corrupt_prior_dispatch_ledger_cannot_reset_reviewer_cap(tmp_path, content):
+    ledger = tmp_path / "dispatch.jsonl"
+    ledger.write_text(content + "\n", encoding="utf-8")
+    with pytest.raises(D.DispatchError, match="ledger"):
+        CLI.prior_review_dispatches(ledger)
+
+
+def test_d49_absent_prior_ledger_is_a_first_cycle(tmp_path):
+    assert CLI.prior_review_dispatches(tmp_path / "absent.jsonl") == ({}, {})

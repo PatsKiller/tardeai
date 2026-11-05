@@ -10,6 +10,7 @@ Usage:
   python3 scripts/agent_dispatch.py --apply         # send to idle sessions, write ledger + MERGE_READY.md
   python3 scripts/agent_dispatch.py --limit 2       # cap how many sessions are dispatched this cycle
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,8 +30,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib import agent_dispatch as D  # noqa: E402
 
-COORD_DEFAULT = Path(os.environ.get("TRADEAI_COORD_DIR")
-                     or (Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "coordination" / "coordinator"))
+COORD_DEFAULT = Path(
+    os.environ.get("TRADEAI_COORD_DIR")
+    or (Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "coordination" / "coordinator")
+)
 
 
 # ── live providers (all injectable so tests never touch tmux, gh or the fleet) ────────────────────────────────────
@@ -86,19 +89,23 @@ def prior_review_dispatches(ledger_path: Path) -> tuple[dict[tuple[int, str], se
     counts: dict[tuple[int, str], int] = {}
     try:
         lines = Path(ledger_path).read_text(encoding="utf-8").splitlines()
-    except OSError:
+    except FileNotFoundError:
         return sessions, counts
+    except OSError as exc:
+        raise D.DispatchError("prior dispatch ledger unreadable") from exc
     for line in lines:
+        if not line.strip():
+            continue
         try:
             rec = json.loads(line)
-        except ValueError:
-            continue
+        except ValueError as exc:
+            raise D.DispatchError("prior dispatch ledger corrupt") from exc
         if not isinstance(rec, dict) or rec.get("kind") != "review" or not rec.get("busy_after_30s"):
             continue
         try:
             key = (int(rec.get("target")), str(rec.get("target_head") or ""))
-        except (TypeError, ValueError):
-            continue
+        except (TypeError, ValueError) as exc:
+            raise D.DispatchError("prior dispatch ledger review target corrupt") from exc
         sessions.setdefault(key, set()).add(str(rec.get("session") or ""))
         counts[key] = len(sessions[key])
     return sessions, counts
@@ -111,22 +118,89 @@ def load_queue(path: Path) -> list[dict[str, Any]]:
 
 
 def load_review_artifacts(coord: Path) -> list[dict[str, Any]]:
-    """Every review artifact on disk: registered evidence plus companions filed in the coordinator inbox."""
-    out: list[dict[str, Any]] = []
-    for folder, pattern in ((coord / "review-evidence", "*.json"), (coord / "inbox", "*/*.json")):
-        if not folder.is_dir():
-            continue
-        for path in folder.glob(pattern):
-            doc = load_json(path)
-            if isinstance(doc, dict) and doc.get("pr") and (doc.get("verdict") or doc.get("reviews")):
-                out.append(doc)
-    return out
+    """Read review companions only with their exact-head canonical prose line."""
+    coord = Path(coord)
+    try:
+        roots = [folder for folder in (coord / "review-evidence", coord / "inbox") if folder.is_dir()]
+        if not roots:
+            raise D.DispatchError("review evidence directories unavailable")
+        files: list[Path] = []
+        for folder in roots:
+            children = sorted(folder.iterdir())  # unreadable is not an empty evidence set
+            if folder.name == "review-evidence":
+                files.extend(p for p in children if p.is_file() and p.suffix == ".json")
+            else:
+                for child in children:
+                    if child.is_dir():
+                        files.extend(p for p in child.iterdir() if p.is_file() and p.name.endswith(".machine.json"))
+        out: list[dict[str, Any]] = []
+        for path in sorted(files, key=lambda p: (p.stat().st_mtime_ns, str(p))):
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(doc, dict) or not doc.get("pr") or not (doc.get("verdict") or doc.get("reviews")):
+                continue
+            entries = D.verdicts_at_head([doc])
+            if not entries:
+                continue
+            prose: list[Path] = [path.with_name(path.name.removesuffix(".machine.json") + ".md")]
+            evidence = doc.get("evidence")
+            if isinstance(evidence, dict) and evidence.get("prose_path"):
+                prose.append(Path(str(evidence["prose_path"])))
+            if doc.get("prose_path"):
+                prose.append(Path(str(doc["prose_path"])))
+            prose.extend(path.parent.glob(f"*{doc['pr']}*{doc.get('head_sha', '')}*.md"))
+            bodies = []
+            for candidate in dict.fromkeys(prose):
+                if candidate.resolve().is_relative_to(coord.resolve()) and candidate.is_file():
+                    bodies.append(candidate.read_text(encoding="utf-8"))
+            if not bodies:
+                raise D.DispatchError(f"review prose unavailable for {path.name}")
+            valid = all(
+                any(
+                    f"Adversarial-review: {entry['verdict']} reviewer={entry['reviewer']} head={head}"
+                    in {line.strip() for line in body.splitlines()}
+                    for body in bodies
+                )
+                for (_pr, head), rows in entries.items()
+                for entry in rows
+            )
+            if not valid:
+                raise D.DispatchError(f"review canonical prose mismatch for {path.name}")
+            out.append(doc)
+        return out
+    except (OSError, ValueError, TypeError) as exc:
+        raise D.DispatchError("review evidence unreadable") from exc
+
+
+def checks_passed(rows: Any) -> bool | None:
+    """A missing/unfinished/red exact-head check list never becomes a green report."""
+    if not isinstance(rows, list) or not rows:
+        return None
+    for check in rows:
+        if not isinstance(check, dict):
+            return False
+        if check.get("__typename") == "StatusContext":
+            if check.get("state") != "SUCCESS":
+                return False
+        elif check.get("status") != "COMPLETED" or check.get("conclusion") not in ("SUCCESS", "SKIPPED"):
+            return False
+    return True
 
 
 def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[D.PullRequest]:
     """Open PRs from `gh`. Commit SHAs are fetched only for CLEAN candidates (they are the merge-prep evidence)."""
-    proc = run(["gh", "pr", "list", "--state", "open", "--limit", "200", "--json",
-                "number,headRefName,headRefOid,mergeStateStatus,isDraft,updatedAt,files"])
+    proc = run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "200",
+            "--json",
+            "number,headRefName,headRefOid,mergeStateStatus,isDraft,updatedAt,files,changedFiles,statusCheckRollup",
+        ]
+    )
     if getattr(proc, "returncode", 1) != 0:
         return []
     try:
@@ -137,12 +211,17 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
     for r in rows:
         if not isinstance(r, dict):
             continue
-        pr = D.PullRequest(number=int(r["number"]), head_sha=str(r.get("headRefOid") or ""),
-                           head_ref=str(r.get("headRefName") or ""),
-                           merge_state=str(r.get("mergeStateStatus") or ""), draft=bool(r.get("isDraft")),
-                           updated_at=str(r.get("updatedAt") or ""),
-                           files=tuple(str(f.get("path")) for f in (r.get("files") or [])
-                                       if isinstance(f, dict) and f.get("path")))
+        pr = D.PullRequest(
+            number=int(r["number"]),
+            head_sha=str(r.get("headRefOid") or ""),
+            head_ref=str(r.get("headRefName") or ""),
+            merge_state=str(r.get("mergeStateStatus") or ""),
+            draft=bool(r.get("isDraft")),
+            updated_at=str(r.get("updatedAt") or ""),
+            files=tuple(str(f.get("path")) for f in (r.get("files") or []) if isinstance(f, dict) and f.get("path")),
+            changed_files=r.get("changedFiles") if type(r.get("changedFiles")) is int else None,
+            checks_green=checks_passed(r.get("statusCheckRollup")),
+        )
         if with_commits and pr.clean:
             c = run(["gh", "pr", "view", str(pr.number), "--json", "commits"])
             if getattr(c, "returncode", 1) == 0:
@@ -155,19 +234,17 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
     return out
 
 
-def author_sessions(prs: Sequence[D.PullRequest], claims: Sequence[D.Claim]) -> dict[int, str]:
-    """Who authored each PR: the session whose claim names its head branch — in ANY status.
-
-    F5 (cx-openai-3): limiting this to active claims meant a session that had *finished* and released its claim looked
-    like "no author", and the dispatcher would happily send it its own PR to review. A done or stale claim still
-    records authorship, so every status counts; the newest claim on the branch wins. When nothing resolves the author
-    stays empty and ``select_work`` refuses to assign a reviewer (fail closed).
-    """
-    by_branch: dict[str, str] = {}
-    for c in sorted(claims, key=lambda c: c.age_h):  # newest heartbeat first
-        if c.branch and c.session:
-            by_branch.setdefault(c.branch, c.session)
-    return {pr.number: by_branch.get(pr.head_ref, "") for pr in prs}
+def author_sessions(prs: Sequence[D.PullRequest], claims: Sequence[D.Claim]) -> dict[int, str | frozenset[str]]:
+    """Authorship survives release, adoption and predecessor claim compaction."""
+    by_branch: dict[str, set[str]] = {}
+    for claim in claims:
+        if claim.branch:
+            by_branch.setdefault(claim.branch, set()).update({claim.session, *claim.source_authors} - {""})
+    return {
+        pr.number: (next(iter(authors)) if len(authors) == 1 else frozenset(authors))
+        for pr in prs
+        for authors in [by_branch.get(pr.head_ref, set())]
+    }
 
 
 # ── the cycle ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -212,12 +289,22 @@ def idle_minutes_from_state(panes: Sequence[D.PaneState], path: Path, now_iso: s
 idle_minutes_from_state.last = {}  # type: ignore[attr-defined]
 
 
-def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, ledger_path: Path,
-              limit: int | None = None, run: Callable[..., Any] = _run,
-              sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
+def run_cycle(
+    *,
+    apply: bool,
+    coord: Path,
+    queue_path: Path,
+    claims_dir: Path,
+    ledger_path: Path,
+    limit: int | None = None,
+    run: Callable[..., Any] = _run,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
     cycle_id = "cyc-" + uuid.uuid4().hex[:12]
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
+    if D.review_requirements()[2] == ("**",):
+        raise D.DispatchError("standing authority unavailable: refusing all dispatch")
     sessions = tmux_sessions(run)
     panes = [D.classify_pane(s, tmux_screen(s, run)) for s in sessions]
     queue = load_queue(queue_path)
@@ -231,23 +318,35 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
     taken: dict[tuple[str, str], int] = {}
     prior_sessions, prior_counts = prior_review_dispatches(ledger_path)
     review_counts: dict[tuple[int, str], int] = {}
-    for (pr_no, head), entries in verdicts.items():
-        pr = next((p for p in prs if p.number == pr_no and p.head_sha == head), None)
-        if pr is None:
-            continue
-        # F4: BLOCK is a verdict too — a PR with two blocks already at this head does not get a third reviewer.
-        reviewers = {e["reviewer"] for e in entries
-                     if e["verdict"] in ("MERGE", "BLOCK") and e["reviewer"] and e["reviewer"] != authors.get(pr_no, "")}
-        # verdicts already filed + reviewers an earlier cycle already sent to THIS head both spend the cap
-        review_counts[(pr_no, head)] = len(reviewers | prior_sessions.get((pr_no, head), set()))
+    for pr in prs:
+        key = (pr.number, pr.head_sha)
+        excluded = D.author_set(authors.get(pr.number))
+        reviewers = {
+            e["reviewer"]
+            for e in verdicts.get(key, [])
+            if e["verdict"] in ("MERGE", "BLOCK") and e["reviewer"] and e["reviewer"] not in excluded
+        }
+        # A zero-verdict head still owns every successful earlier review dispatch.
+        prior_sessions[key] = prior_sessions.get(key, set()) - excluded
+        review_counts[key] = len(reviewers | prior_sessions[key])
     for pane in panes:
         if not pane.idle:
             continue
         if limit is not None and len(assignments) >= limit:
             break
-        a = D.select_work(pane.session, queue=queue, claims=claims, prs=prs, verdicts=verdicts,
-                          author_of=authors, coord=str(coord), reviewed_pairs=reviewed, review_counts=review_counts,
-                          taken=taken, prior_review_sessions=prior_sessions)
+        a = D.select_work(
+            pane.session,
+            queue=queue,
+            claims=claims,
+            prs=prs,
+            verdicts=verdicts,
+            author_of=authors,
+            coord=str(coord),
+            reviewed_pairs=reviewed,
+            review_counts=review_counts,
+            taken=taken,
+            prior_review_sessions=prior_sessions,
+        )
         if a:
             assignments.append(a)
             taken[(a.kind, a.target)] = taken.get((a.kind, a.target), 0) + 1
@@ -261,9 +360,17 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
     alerts = D.idle_alert(idle_minutes, generated_at=generated_at) if (not assignments and panes) else None
 
     plan = D.plan_lines(assignments, panes, dispatchable=False)
-    result: dict[str, Any] = {"cycle_id": cycle_id, "generated_at": generated_at, "sessions": len(sessions),
-                              "idle": sum(1 for p in panes if p.idle), "assignments": [a.as_dict() for a in assignments],
-                              "merge_ready": ready, "plan": plan, "ledger": [], "applied": apply}
+    result: dict[str, Any] = {
+        "cycle_id": cycle_id,
+        "generated_at": generated_at,
+        "sessions": len(sessions),
+        "idle": sum(1 for p in panes if p.idle),
+        "assignments": [a.as_dict() for a in assignments],
+        "merge_ready": ready,
+        "plan": plan,
+        "ledger": [],
+        "applied": apply,
+    }
 
     if not apply:
         result["merge_ready_md"] = D.render_merge_ready(ready, generated_at=generated_at)
@@ -275,6 +382,7 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
     ledger_target = D.prepare_output(ledger_path, coord=coord, protected=[queue_path, claims_dir])
     merge_ready_target = D.prepare_output(coord / "MERGE_READY.md", coord=coord, protected=[queue_path, claims_dir])
     alert_target = D.prepare_output(coord / "DISPATCH_IDLE_ALERT.md", coord=coord, protected=[queue_path, claims_dir])
+    idle_state_target = D.prepare_output(coord / IDLE_STATE_NAME, coord=coord, protected=[queue_path, claims_dir])
 
     # R6 (codex at fffe2c9cb): a receipt is written as soon as it exists. Buffering every line until the last
     # submission returned meant one failing session discarded the already-delivered receipts, which is the opposite of
@@ -296,7 +404,6 @@ def run_cycle(*, apply: bool, coord: Path, queue_path: Path, claims_dir: Path, l
             ledger_fh.write(line + "\n")
             ledger_fh.flush()
 
-    idle_state_target = D.prepare_output(coord / IDLE_STATE_NAME, coord=coord, protected=[queue_path, claims_dir])
     with D.open_output(idle_state_target) as fh:
         fh.write(json.dumps(getattr(idle_minutes_from_state, "last", {}), indent=1, sort_keys=True) + "\n")
     with D.open_output(merge_ready_target) as fh:
@@ -325,15 +432,23 @@ def main(argv: list[str] | None = None) -> int:
     claims_dir = Path(a.claims or (coord.parent / "claims"))
     ledger_path = Path(a.ledger or (coord / "dispatch_ledger.jsonl"))
 
-    out = run_cycle(apply=bool(a.apply), coord=coord, queue_path=queue_path, claims_dir=claims_dir,
-                    ledger_path=ledger_path, limit=a.limit)
+    out = run_cycle(
+        apply=bool(a.apply),
+        coord=coord,
+        queue_path=queue_path,
+        claims_dir=claims_dir,
+        ledger_path=ledger_path,
+        limit=a.limit,
+    )
     if a.json:
         print(json.dumps(out, indent=2, ensure_ascii=False))
     else:
         print(("APPLY" if a.apply else "DRY RUN") + f" @ {out['generated_at']}  cycle {out['cycle_id']}")
         print(f"sessions {out['sessions']} · idle {out['idle']} · assignments {len(out['assignments'])}")
         print("\n".join(out["plan"]))
-        print(f"\nmerge pump: ready {len(out['merge_ready']['ready'])} · one step away {len(out['merge_ready']['one_step'])}")
+        print(
+            f"\nmerge pump: ready {len(out['merge_ready']['ready'])} · one step away {len(out['merge_ready']['one_step'])}"
+        )
         if out.get("idle_alert_md"):
             print("ESCALATION: no work to hand out while sessions are idle — DISPATCH_IDLE_ALERT.md would be written")
         if a.apply:

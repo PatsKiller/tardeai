@@ -1,7 +1,6 @@
 # Automatic agent dispatch lane (`scripts/agent_dispatch.py`)
 
-**Status:** BUILT, not enabled. This lane starts nothing by itself — the operator enables it (an n8n lane every 5
-minutes or a host timer), and nothing in this PR touches cron, timers or `config/lane_registry.json` (§17).
+**Status:** BUILT, not enabled. This lane starts nothing by itself — the operator enables it (an approved n8n lane), and nothing in this PR touches cron, timers or `config/lane_registry.json` (§17).
 
 **Why it exists.** Operator, 2026-11-04 ~13:10 ET: *"Once again, why are agents idle? … with all of this being idle,
 I'm not for sure."* Ten of thirteen sessions sat idle for three hours after the no-idle mandate, because
@@ -14,7 +13,7 @@ tmux ls → every fleet session (broker/order/exec sessions are in the refusal l
   └─ capture-pane → state: busy | input_pending | idle | blind
        └─ for each IDLE session, one assignment, in this fixed order:
             (a) its own queue rows with status queued or assigned only
-            (b) a review: a CLEAN, non-draft PR it did not author, with no MERGE verdict at that exact head
+            (b) a review: a CLEAN, non-draft, permitted PR with complete changed-file evidence and a missing independent review
             (c) merge-prep: CLEAN + exact-head MERGE verdict, but the author's claim carries a different head
             (d) the oldest unowned queue row
             (e) a chore: a claim past heartbeat + 2 h
@@ -31,7 +30,7 @@ already mid-action.
 - **Never merge or push.** `pr_merge_delegation` is not imported and `gh pr merge` / `git push` appear nowhere; the
   lead's helper remains the only merger. `MERGE_READY.md` is a report.
 - **Never author a review or write a review artifact.** It *assigns* a review by naming the PR; the reviewer writes the
-  verdict. A PR's author session (the active claim on its head branch) is never offered its own PR, and every
+  verdict. Every known source-author session, including completed claims, archives and takeover predecessors, is excluded from its own PR, and every
   instruction repeats "you did not author it".
 - **Never change a queue row's status**, never write a claim, never touch a worktree. Rows are read-only input; the
   only statuses that count as work are `queued` and `assigned` — every other status is silence, per the queue's own
@@ -41,18 +40,18 @@ already mid-action.
 
 ## The rails are tested, not asserted
 
-`tests/test_agent_dispatch_20261104.py` (57 checks) covers: busy beats everything; unsent input is not idle; a failed
+`tests/test_agent_dispatch_20261104.py` covers: busy beats everything; unsent input is not idle; a failed
 capture is blind; only `queued`/`assigned` are work; `takeable_at` and another session's live claim hold a row; the
-selection order (a)…(e) including "never your own PR" and "a MERGE at head needs no second reviewer"; the merge pump
+selection order (a)…(e) including "never your own PR" and the configured independent-review bar; the merge pump
 separating ready from one-step and refusing an author's own MERGE; the submit path pasting (never `send-keys -l`),
 retrying once, and logging `dispatch_failed`; the idle alert threshold; the two-reviewer cap and the newest-PR-first order; and that **a dry run creates no files** while
-an apply writes only the ledger and its two report files.
+an apply writes only the ledger, report/alert files and idle-streak state.
 
 Four of those are written as invariants rather than as behaviour, because each was a real defect found by review at a
 later head:
 
 - **Identity, not spelling.** Every output path is checked twice — by resolved path *and* by inode — so a hardlink
-  (`ln MERGE_READY.md AUDIT_FIX_QUEUE.json`) is refused instead of truncating the queue. All three output identities
+  (`ln MERGE_READY.md AUDIT_FIX_QUEUE.json`) is refused instead of truncating the queue. All four output identities
   are settled *before the first keystroke*, so a misconfigured `--ledger` costs zero sends, not a fleet-wide paste
   followed by a refusal.
 - **New evidence only.** A busy marker must be absent from the pre-paste tail (or more frequent in the new one) and
@@ -60,6 +59,24 @@ later head:
 - **`submitted` means an Enter was delivered** after a paste that succeeded — never "an attempt was made".
 - **The reviewer cap is per head.** History is keyed by `(pr, head sha)`: verdicts and dispatches recorded against an
   older head neither spend the new head's budget nor bar that reviewer from reviewing the new revision.
+
+## Admission and evidence failures
+
+The queue, claim board, source paths and review evidence are inputs, not permission to widen authority.
+Autonomous queue, review, merge-prep and chore assignments refuse paths reserved by the active
+`config/agent_standing_authority.json`, including broker/order, policy, secrets and merge-control paths.
+This lane adds no grant exception. Wildcard and directory claim holds use the canonical claim board overlap rules.
+
+An unreadable authority or claim board stops a real cycle before dispatch. An unreadable review store is not an empty
+set of reviews. Review companions count only with matching exact-head prose; arbitrary inbox status JSON does not
+become a review. The latest file observation wins per reviewer and head. Dispatched reviewers and filed verdicts both
+spend the independent cap, including a head for which no verdict has arrived yet; a source author never spends that
+independent cap and an already-filed reviewer is not dispatched the same head again.
+
+The ready report also requires a complete `changedFiles`/file-list match and measured green exact-head checks.
+Missing authority, truncated paths or unmeasured/red checks leave an explicit next step rather than a ready row.
+A retry admission refusal preserves `submitted: true` if an earlier attempt already delivered Enter; it never claims
+that the earlier dispatch was busy-confirmed.
 
 ## How to read the ledger
 

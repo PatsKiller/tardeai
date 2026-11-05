@@ -18,6 +18,7 @@ It sends tmux keystrokes and writes exactly two kinds of file of its own: its le
 
 Pure where it matters: every decision below is a function of data handed in, so tests are hermetic.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -27,6 +28,7 @@ import os
 import re
 import subprocess
 import time
+from .agent_claim_board import AUXILIARY_CLAIM_DIR_SCHEMAS, overlapping_pairs, patterns_overlap
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -120,6 +122,7 @@ class Claim:
     head_sha: str
     status: str
     age_h: float
+    source_authors: tuple[str, ...] = ()
 
     @property
     def live(self) -> bool:
@@ -127,47 +130,98 @@ class Claim:
 
 
 def load_claims(claims_dir: Path, *, now: datetime | None = None) -> list[Claim]:
-    """Read claim JSON files. Unreadable files are skipped, never guessed at."""
+    """Read every claim status and predecessor; missing evidence cannot release holds."""
     ref = now or now_utc()
+    directory = Path(claims_dir)
+    try:
+        if not directory.is_dir():
+            raise DispatchError("claim board unavailable")
+        paths = sorted(p for p in directory.iterdir() if p.suffix == ".json")
+    except OSError as exc:
+        raise DispatchError("claim board unreadable") from exc
+    records = []
+    try:
+        records.extend((path.name, json.loads(path.read_text(encoding="utf-8"))) for path in paths)
+        history = directory / "claims_history.jsonl"
+        if history.exists():
+            with history.open(encoding="utf-8") as stream:
+                for number, line in enumerate(stream, 1):
+                    if not line.strip():
+                        continue
+                    archived = json.loads(line)
+                    if not isinstance(archived, dict):
+                        raise ValueError("invalid claim archive")
+                    if archived.get("schema") == "AgentClaimArchive@v1":
+                        records.append((f"claims_history.jsonl:{number}", archived.get("claim")))
+    except (OSError, ValueError, TypeError) as exc:
+        raise DispatchError("claim evidence or archive unreadable") from exc
     out: list[Claim] = []
-    for path in sorted(Path(claims_dir).glob("*.json")):
+    for label, d in records:
         try:
-            d = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if not isinstance(d, dict) or not d.get("claim_id"):
-            continue
-        hb = str(d.get("heartbeat_at") or d.get("started_at") or "")
-        try:
-            age = (ref - datetime.fromisoformat(hb.replace("Z", "+00:00"))).total_seconds() / 3600
-        except ValueError:
-            age = 1e9
-        out.append(Claim(
-            claim_id=str(d["claim_id"]), session=str(d.get("session") or ""),
-            branch=str(d.get("branch") or ""), paths=[str(p) for p in (d.get("paths") or [])],
-            head_sha=str(d.get("head_sha") or ""), status=str(d.get("status") or ""), age_h=age,
-        ))
+            if isinstance(d, dict) and d.get("schema") in AUXILIARY_CLAIM_DIR_SCHEMAS:
+                continue
+            if not isinstance(d, dict) or not d.get("claim_id"):
+                raise ValueError("invalid claim record")
+            hb = d.get("heartbeat_at") or d.get("started_at")
+            stamp = datetime.fromisoformat(str(hb).replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                raise ValueError("claim timestamp lacks timezone")
+            age = (ref - stamp).total_seconds() / 3600
+            raw_paths = d.get("paths") or []
+            if not isinstance(raw_paths, list) or any(not isinstance(p, str) for p in raw_paths):
+                raise ValueError("invalid claim paths")
+            authors = {str(d.get("session") or "")}
+
+            def predecessors(rows):
+                if not isinstance(rows, list):
+                    raise ValueError("invalid claim predecessors")
+                for row in rows:
+                    if not isinstance(row, dict):
+                        raise ValueError("invalid claim predecessor")
+                    if row.get("session"):
+                        authors.add(str(row["session"]))
+                    predecessors(row.get("takeover_of") or [])
+
+            predecessors(d.get("takeover_of") or [])
+            out.append(
+                Claim(
+                    claim_id=str(d["claim_id"]),
+                    session=str(d.get("session") or ""),
+                    branch=str(d.get("branch") or ""),
+                    paths=list(raw_paths),
+                    head_sha=str(d.get("head_sha") or ""),
+                    status=str(d.get("status") or ""),
+                    age_h=age,
+                    source_authors=tuple(sorted(authors - {""})),
+                )
+            )
+        except (OSError, ValueError, TypeError) as exc:
+            raise DispatchError(f"claim evidence unreadable: {label}") from exc
     return out
 
 
 def row_paths(row: dict[str, Any]) -> list[str]:
     """A queue row's file claims: `paths` when present, else the single `path`/`file` keys some rows carry."""
-    paths = [str(p) for p in (row.get("paths") or [])]
+    raw = row.get("paths") or []
+    paths = [raw] if isinstance(raw, str) else [str(p) for p in raw]
     for key in ("path", "file"):
         if row.get(key):
             paths.append(str(row[key]))
     return [p.strip() for p in paths if p and p.strip()]
 
 
-def row_workable(row: dict[str, Any], session: str, claims: Sequence[Claim], *, now: datetime | None = None) -> tuple[bool, str]:
+def row_workable(
+    row: dict[str, Any], session: str, claims: Sequence[Claim], *, now: datetime | None = None
+) -> tuple[bool, str]:
     """Is this queue row the session's to work right now? Returns (ok, reason-when-not)."""
     if str(row.get("owner") or "") != session:
         return False, "not owned by this session"
     return row_hold(row, claims, now=now, own_session=session)
 
 
-def row_hold(row: dict[str, Any], claims: Sequence[Claim], *, now: datetime | None = None,
-             own_session: str = "") -> tuple[bool, str]:
+def row_hold(
+    row: dict[str, Any], claims: Sequence[Claim], *, now: datetime | None = None, own_session: str = ""
+) -> tuple[bool, str]:
     """The row's own eligibility — status, a future ``takeable_at``, and any LIVE claim on its paths.
 
     R7 (codex at fffe2c9cb): the unowned-row branch checked only owner, status and the per-cycle target count, so a
@@ -190,8 +244,9 @@ def row_hold(row: dict[str, Any], claims: Sequence[Claim], *, now: datetime | No
         for claim in claims:
             if own_session and claim.session == own_session:
                 continue  # a session's own live claim on its own row is the normal case, not a hold
-            if claim.live and wanted & set(claim.paths):
-                return False, f"{sorted(wanted & set(claim.paths))[0]} held by {claim.session} ({claim.claim_id})"
+            matches = overlapping_pairs(wanted, claim.paths) if claim.live else []
+            if matches:
+                return False, f"{matches[0][0]} held by {claim.session} ({claim.claim_id})"
     return True, ""
 
 
@@ -208,6 +263,12 @@ class PullRequest:
     commit_shas: tuple[str, ...] = ()
     updated_at: str = ""
     files: tuple[str, ...] = ()
+    changed_files: int | None = None
+    checks_green: bool | None = None
+
+    @property
+    def files_complete(self) -> bool:
+        return type(self.changed_files) is int and self.changed_files >= 0 and self.changed_files == len(self.files)
 
     @property
     def clean(self) -> bool:
@@ -220,12 +281,8 @@ class PullRequest:
 
 
 def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str], list[dict[str, Any]]]:
-    """Index review artifacts by (pr, head_sha) keeping only MERGE/BLOCK verdicts, with the reviewer named.
-
-    Accepts both shapes in the tree: a companion file (``pr``, ``head_sha``, ``verdict``, ``reviewer_session``) and a
-    registered evidence file (``pr``, ``head_sha``, ``reviews``: [{``verdict``/``verdict``, ``reviewer_session``}]).
-    """
-    index: dict[tuple[int, str], list[dict[str, Any]]] = {}
+    """Index the latest verdict per reviewer/head in supplied observation order."""
+    index: dict[tuple[int, str], dict[str, dict[str, Any]]] = {}
     for art in artifacts:
         if not isinstance(art, dict):
             continue
@@ -236,43 +293,53 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
         head = str(art.get("head_sha") or "")
         if not head:
             continue
-        rows = art.get("reviews") if isinstance(art.get("reviews"), list) else []
-        entries = [{
-            "verdict": str(r.get("verdict") or "").upper(),
-            "reviewer": str(r.get("reviewer_session") or r.get("reviewer") or ""),
-        } for r in rows if isinstance(r, dict)]
-        if not entries and art.get("verdict"):
-            entries = [{"verdict": str(art.get("verdict")).upper(),
-                        "reviewer": str(art.get("reviewer_session") or art.get("reviewer") or "")}]
-        merged = [e for e in entries if e["verdict"] in ("MERGE", "BLOCK")]
-        if merged:
-            index.setdefault((pr, head), []).extend(merged)
-    return index
+        rows = art.get("reviews") if isinstance(art.get("reviews"), list) else [art]
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            verdict = str(row.get("verdict") or "").upper()
+            reviewer = str(row.get("reviewer_session") or row.get("reviewer") or "")
+            if verdict in ("MERGE", "BLOCK") and reviewer:
+                index.setdefault((pr, head), {})[reviewer] = {"verdict": verdict, "reviewer": reviewer}
+    return {key: list(rows.values()) for key, rows in index.items()}
 
 
 AUTHORITY_PATH = Path(__file__).resolve().parents[2] / "config" / "agent_standing_authority.json"
 
 
 def review_requirements(path: Path | None = None) -> tuple[int, int, tuple[str, ...]]:
-    """``(ordinary_reviews, held_reviews, excluded_globs)`` from the standing authority.
-
-    claude-lead's review of this head: ``merge_ready`` called a held PR Ready on ONE MERGE while the config says
-    ``held_reviews: 2``, and the review picker then skipped it because it already had a MERGE — so a held PR could never
-    collect its second reviewer. The numbers belong to the operator's file, not to this module: unreadable config falls
-    back to the published defaults rather than silently lowering the bar.
-    """
+    """Read the operator's bar; unknown authority holds every path and stops dispatch."""
     try:
         doc = json.loads(Path(path or AUTHORITY_PATH).read_text(encoding="utf-8"))
-        block = (doc.get("capabilities") or {}).get("coordinator_merge") or {}
-        ordinary = int(block.get("ordinary_reviews", 1))
-        held = int(block.get("held_reviews", 2))
-        globs = tuple(str(g) for g in (block.get("excluded_globs") or ()))
-        return max(1, ordinary), max(1, held), globs
-    except (OSError, ValueError, TypeError):
-        return 1, 2, ()
+        if (
+            not isinstance(doc, dict)
+            or doc.get("schema") != "AgentStandingAuthority@v1"
+            or doc.get("status") != "ACTIVE"
+        ):
+            raise ValueError("authority is not active")
+        block = doc["capabilities"]["coordinator_merge"]
+        ordinary, held = block["ordinary_reviews"], block["held_reviews"]
+        globs = block["excluded_globs"]
+        reserved = doc.get("reserved_paths") or []
+        if (
+            type(ordinary) is not int
+            or type(held) is not int
+            or ordinary < 1
+            or held < 2
+            or not isinstance(globs, list)
+            or not globs
+            or not isinstance(reserved, list)
+            or any(not isinstance(g, str) or not g.strip() for g in [*globs, *reserved])
+        ):
+            raise ValueError("authority requirements incomplete")
+        return ordinary, max(ordinary, held), tuple(dict.fromkeys([*globs, *reserved]))
+    except (OSError, ValueError, TypeError, KeyError):
+        return 1, 2, ("**",)
 
 
-def required_reviews(files: Sequence[str], requirements: tuple[int, int, tuple[str, ...]] | None = None) -> tuple[int, bool]:
+def required_reviews(
+    files: Sequence[str], requirements: tuple[int, int, tuple[str, ...]] | None = None
+) -> tuple[int, bool]:
     """``(how many independent MERGEs, is it held)`` for one change; an unreadable file list is HELD (fail closed)."""
     ordinary, held, globs = requirements or review_requirements()
     if not files:
@@ -281,54 +348,132 @@ def required_reviews(files: Sequence[str], requirements: tuple[int, int, tuple[s
     return (held, True) if touched else (ordinary, False)
 
 
-def merge_ready(prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list[dict[str, Any]]],
-                claims: Sequence[Claim], author_of: dict[int, str]) -> dict[str, list[dict[str, Any]]]:
+def author_set(value: str | Iterable[str] | None) -> set[str]:
+    """Accept legacy single-author inputs without discarding a transferred source's authors."""
+    if isinstance(value, str):
+        return {value} if value else set()
+    return {str(v) for v in value or () if v}
+
+
+def work_allowed(paths: Sequence[str], requirements=None) -> bool:
+    """Autonomous work never enters operator-reserved source. No grant is inferred here."""
+    _ordinary, _held, globs = requirements or review_requirements()
+    paths = [str(raw).strip().lstrip("/") for raw in paths if str(raw).strip()]
+    if globs == ("**",) or not paths:
+        return False
+    for path in paths:
+        if ".." in path.split("/") or REFUSED_RE.search(path):
+            return False
+        try:
+            # Concrete file/page names use path matching; conservative claim intersection is for target globs.
+            # Treating the concrete "a.tsx" as a directory beneath "*/AGENTS.md" otherwise refuses unrelated work.
+            if any(
+                fnmatch.fnmatchcase(path, g) or (any(c in path for c in "*?[") and patterns_overlap(path, g))
+                for g in globs
+            ):
+                return False
+        except ValueError:
+            return False
+    return True
+
+
+def merge_ready(
+    prs: Sequence[PullRequest],
+    verdicts: dict[tuple[int, str], list[dict[str, Any]]],
+    claims: Sequence[Claim],
+    author_of: dict[int, str | Iterable[str]],
+) -> dict[str, list[dict[str, Any]]]:
     """Split the open PRs into {ready, one_step}. Report only — the lead's helper remains the only merger."""
     ready: list[dict[str, Any]] = []
     one_step: list[dict[str, Any]] = []
-    by_branch = {c.branch: c for c in claims if c.status == "active"}
+    by_branch = {c.branch: c for c in sorted(claims, key=lambda c: -c.age_h) if c.status == "active"}
+    requirements = review_requirements()
     for pr in prs:
         if not pr.clean:
             continue
         here = verdicts.get((pr.number, pr.head_sha), [])
-        blocks = [e for e in here if e["verdict"] == "BLOCK" and e["reviewer"] and e["reviewer"] != author_of.get(pr.number, "")]
-        merges = [e for e in here if e["verdict"] == "MERGE"]
-        merges = [e for e in merges if e["reviewer"] and e["reviewer"] != author_of.get(pr.number, "")]
-        need, held = required_reviews(pr.files)
+        authors = author_set(author_of.get(pr.number))
+        blocks = [e for e in here if e["verdict"] == "BLOCK" and e["reviewer"] and e["reviewer"] not in authors]
+        merges = [e for e in here if e["verdict"] == "MERGE" and e["reviewer"] and e["reviewer"] not in authors]
+        need, held = required_reviews(pr.files, requirements)
         reviewers = {e["reviewer"] for e in merges}
         claim = by_branch.get(pr.head_ref)
         claim_current = bool(claim and claim.head_sha and claim.head_sha in pr.shas)
-        author = author_of.get(pr.number, "")
-        base = {"pr": pr.number, "head": pr.head_sha, "branch": pr.head_ref,
-                "author": author, "merge_state": pr.merge_state}
+        author = ", ".join(sorted(authors))
+        base = {
+            "pr": pr.number,
+            "head": pr.head_sha,
+            "branch": pr.head_ref,
+            "author": author,
+            "merge_state": pr.merge_state,
+        }
         if not author:
             # R5 (codex at fffe2c9cb): an unresolved author made independence unprovable and could still render a
             # ready entry with author="". "Ready to merge" is a claim about custody; without the author it is a guess.
-            one_step.append({**base, "step": "author unknown — independence cannot be shown, so readiness cannot be "
-                                             "claimed", "verdicts": sorted(reviewers)})
+            one_step.append(
+                {
+                    **base,
+                    "step": "author unknown — independence cannot be shown, so readiness cannot be claimed",
+                    "verdicts": sorted(reviewers),
+                }
+            )
         elif blocks:
-            one_step.append({**base, "step": "a BLOCK verdict stands at this head — resolve it, then re-review",
-                             "verdicts": [e["reviewer"] for e in blocks]})
+            one_step.append(
+                {
+                    **base,
+                    "step": "a BLOCK verdict stands at this head — resolve it, then re-review",
+                    "verdicts": [e["reviewer"] for e in blocks],
+                }
+            )
         elif reviewers and len(reviewers) < need:
-            one_step.append({**base, "step": f"needs {need} independent MERGE verdicts"
-                                              f"{' (held path)' if held else ''} — {len(reviewers)} at this head",
-                             "verdicts": sorted(reviewers), "held": held, "needed": need})
+            one_step.append(
+                {
+                    **base,
+                    "step": f"needs {need} independent MERGE verdicts"
+                    f"{' (held path)' if held else ''} — {len(reviewers)} at this head",
+                    "verdicts": sorted(reviewers),
+                    "held": held,
+                    "needed": need,
+                }
+            )
         elif merges and claim_current:
-            ready.append({**base, "verdicts": [e["reviewer"] for e in merges]})
+            if requirements[2] == ("**",):
+                step = "authority unavailable — readiness cannot be established"
+            elif not pr.files_complete:
+                step = "changed-file list incomplete — held paths cannot be ruled out"
+            elif pr.checks_green is not True:
+                step = "exact-head checks are not all measured green"
+            else:
+                ready.append({**base, "verdicts": sorted(reviewers)})
+                continue
+            one_step.append({**base, "step": step, "verdicts": sorted(reviewers)})
         elif merges and not claim_current:
             # A DONE claim cannot be re-stamped (the CLI has no such move); the author creates a claim AT this head.
-            step = ("the author claim is not active at this head — create a claim at the head and release it, then "
-                    "the evidence names that claim" if claim is None else
-                    "author must re-stamp the claim's head_sha to this head")
-            one_step.append({**base, "step": step,
-                             "claim_head": claim.head_sha if claim else None,
-                             "verdicts": [e["reviewer"] for e in merges]})
+            step = (
+                "the author claim is not active at this head — create a claim at the head and release it, then "
+                "the evidence names that claim"
+                if claim is None
+                else "author must re-stamp the claim's head_sha to this head"
+            )
+            one_step.append(
+                {
+                    **base,
+                    "step": step,
+                    "claim_head": claim.head_sha if claim else None,
+                    "verdicts": [e["reviewer"] for e in merges],
+                }
+            )
         elif claim_current:
-            one_step.append({**base, "step": "needs one independent MERGE verdict at this exact head",
-                             "verdicts": []})
+            one_step.append({**base, "step": "needs one independent MERGE verdict at this exact head", "verdicts": []})
         else:
-            one_step.append({**base, "step": "needs a current author claim and one independent MERGE verdict",
-                             "claim_head": claim.head_sha if claim else None, "verdicts": []})
+            one_step.append(
+                {
+                    **base,
+                    "step": "needs a current author claim and one independent MERGE verdict",
+                    "claim_head": claim.head_sha if claim else None,
+                    "verdicts": [],
+                }
+            )
     return {"ready": sorted(ready, key=lambda r: r["pr"]), "one_step": sorted(one_step, key=lambda r: r["pr"])}
 
 
@@ -344,15 +489,19 @@ def render_merge_ready(ready: dict[str, list[dict[str, Any]]], *, generated_at: 
     if not ready["ready"]:
         lines.append("_None: no CLEAN PR has both an exact-head MERGE verdict and a current author claim._")
     for r in ready["ready"]:
-        lines.append(f"- **#{r['pr']}** `{r['branch']}` head `{r['head'][:9]}` — MERGE at this head from "
-                     f"{', '.join(r['verdicts'])}; author claim is current.")
+        lines.append(
+            f"- **#{r['pr']}** `{r['branch']}` head `{r['head'][:9]}` — MERGE at this head from "
+            f"{', '.join(r['verdicts'])}; author claim is current."
+        )
     lines += ["", f"## One step away ({len(ready['one_step'])})", ""]
     if not ready["one_step"]:
         lines.append("_None._")
     for r in ready["one_step"]:
-        lines.append(f"- **#{r['pr']}** `{r['branch']}` head `{r['head'][:9]}` — {r['step']}"
-                     + (f" (claim head `{str(r.get('claim_head'))[:9]}`)" if r.get("claim_head") else "")
-                     + (f"; MERGE from {', '.join(r['verdicts'])}" if r["verdicts"] else ""))
+        lines.append(
+            f"- **#{r['pr']}** `{r['branch']}` head `{r['head'][:9]}` — {r['step']}"
+            + (f" (claim head `{str(r.get('claim_head'))[:9]}`)" if r.get("claim_head") else "")
+            + (f"; MERGE from {', '.join(r['verdicts'])}" if r["verdicts"] else "")
+        )
     lines.append("")
     return "\n".join(lines)
 
@@ -363,48 +512,61 @@ def render_merge_ready(ready: dict[str, list[dict[str, Any]]], *, generated_at: 
 @dataclass
 class Assignment:
     session: str
-    kind: str            # queue | review | merge_prep | unowned_queue | chore
-    target: str          # row id, PR number, claim id …
+    kind: str  # queue | review | merge_prep | unowned_queue | chore
+    target: str  # row id, PR number, claim id …
     instruction: str
     why: str
 
     def as_dict(self) -> dict[str, Any]:
-        return {"session": self.session, "kind": self.kind, "target": self.target,
-                "instruction": self.instruction, "why": self.why}
+        return {
+            "session": self.session,
+            "kind": self.kind,
+            "target": self.target,
+            "instruction": self.instruction,
+            "why": self.why,
+        }
 
 
 def _row_instruction(session: str, row: dict[str, Any], coord: str) -> str:
     acc = row.get("acceptance")
     if isinstance(acc, dict):
-        acceptance = " ".join(f"{k.capitalize()}: {str(acc.get(k) or '').strip()}"
-                              for k in ("what", "expected", "actual", "evidence") if acc.get(k))
+        acceptance = " ".join(
+            f"{k.capitalize()}: {str(acc.get(k) or '').strip()}"
+            for k in ("what", "expected", "actual", "evidence")
+            if acc.get(k)
+        )
     else:
         acceptance = str(acc or "").strip()
     acceptance = acceptance[:600] + (" …" if len(acceptance) > 600 else "")
-    return (f"Dispatcher: your next queue row is {row.get('id')} [{row.get('severity') or '?'}] — "
-            f"{row.get('page') or 'no page'}"
-            + (f" · check {row.get('check')}" if row.get("check") else "") + ". "
-            f"Acceptance: {acceptance or 'see the queue file'}. "
-            f"Work it now: claim the files, fix the root cause, produce red-then-green evidence, then report the head "
-            f"sha to {coord}/inbox/<lead>/ and take your next row. If it no longer reproduces at the current head, "
-            f"close it with the measurement that shows it gone.")
+    return (
+        f"Dispatcher: your next queue row is {row.get('id')} [{row.get('severity') or '?'}] — "
+        f"{row.get('page') or 'no page'}" + (f" · check {row.get('check')}" if row.get("check") else "") + ". "
+        f"Acceptance: {acceptance or 'see the queue file'}. "
+        f"Work it now: claim the files, fix the root cause, produce red-then-green evidence, then report the head "
+        f"sha to {coord}/inbox/<lead>/ and take your next row. If it no longer reproduces at the current head, "
+        f"close it with the measurement that shows it gone."
+    )
 
 
 def _review_instruction(session: str, pr: PullRequest, coord: str) -> str:
-    return (f"Dispatcher: review PR #{pr.number} whole-head now — head {pr.head_sha}, branch {pr.head_ref}, "
-            f"mergeState {pr.merge_state}. You did not author it. Read the diff, run its tests, mutate the fix back to "
-            f"show the tests fail without it, then file MERGE or BLOCK with findings at this exact head in "
-            f"{coord}/review-evidence/ as .md + .machine.json (the canonical line is 'Adversarial-review: MERGE "
-            f"reviewer={session} head={pr.head_sha}'), and report the verdict to {coord}/inbox/<lead>/. "
-            f"Do not push, do not merge, do not edit the author's branch.")
+    return (
+        f"Dispatcher: review PR #{pr.number} whole-head now — head {pr.head_sha}, branch {pr.head_ref}, "
+        f"mergeState {pr.merge_state}. You did not author it. Read the diff, run its tests, mutate the fix back to "
+        f"show the tests fail without it, then file MERGE or BLOCK with findings at this exact head in "
+        f"{coord}/review-evidence/ as .md + .machine.json (the canonical line is 'Adversarial-review: MERGE "
+        f"reviewer={session} head={pr.head_sha}'), and report the verdict to {coord}/inbox/<lead>/. "
+        f"Do not push, do not merge, do not edit the author's branch."
+    )
 
 
 def _merge_prep_instruction(session: str, pr: PullRequest, claim: Claim | None, coord: str) -> str:
     head = pr.head_sha
-    return (f"Dispatcher: PR #{pr.number} is CLEAN with an exact-head MERGE verdict but cannot merge — the author "
-            f"claim does not carry this head. Re-stamp the claim: run agent_claim.py heartbeat for claim "
-            f"{claim.claim_id if claim else '<none>'} from the worktree whose HEAD is {head} "
-            f"(branch {pr.head_ref}), then report the claim id and head to {coord}/inbox/<lead>/. Do not push or merge.")
+    return (
+        f"Dispatcher: PR #{pr.number} is CLEAN with an exact-head MERGE verdict but cannot merge — the author "
+        f"claim does not carry this head. Re-stamp the claim: run agent_claim.py heartbeat for claim "
+        f"{claim.claim_id if claim else '<none>'} from the worktree whose HEAD is {head} "
+        f"(branch {pr.head_ref}), then report the claim id and head to {coord}/inbox/<lead>/. Do not push or merge."
+    )
 
 
 def _chore_instruction(session: str, claim: Claim, coord: str, *, open_pr: bool = False) -> str:
@@ -412,24 +574,36 @@ def _chore_instruction(session: str, claim: Claim, coord: str, *, open_pr: bool 
         # R1 (cc-deepseek-2 at fffe2c9cb): "release --status done" on a claim whose branch still has an OPEN PR is the
         # move that permanently unmerges it — the merge gate needs a live claim at the PR head and a done claim cannot
         # be re-stamped. A chore on an open-PR branch is a resume-or-hand-off, never a release.
-        return (f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
-                f"{claim.age_h:.1f}h, and its branch has an OPEN PR. Do NOT release it as done or abandoned: the merge "
-                f"gate needs a live claim at the PR head, and a done claim cannot be re-stamped. Heartbeat it from the "
-                f"worktree whose HEAD is the PR head, or hand it off with agent_claim.py handoff naming the exact next "
-                f"step, then report to {coord}/inbox/<lead>/.")
-    return (f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
-            f"{claim.age_h:.1f}h and no open PR depends on it. Either resume it (heartbeat from its worktree) or close "
-            f"it with agent_claim.py release --status abandoned and a summary, then report to {coord}/inbox/<lead>/ so "
-            f"the board is honest.")
+        return (
+            f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
+            f"{claim.age_h:.1f}h, and its branch has an OPEN PR. Do NOT release it as done or abandoned: the merge "
+            f"gate needs a live claim at the PR head, and a done claim cannot be re-stamped. Heartbeat it from the "
+            f"worktree whose HEAD is the PR head, or hand it off with agent_claim.py handoff naming the exact next "
+            f"step, then report to {coord}/inbox/<lead>/."
+        )
+    return (
+        f"Dispatcher: chore — claim {claim.claim_id} on branch {claim.branch} has not been heartbeated for "
+        f"{claim.age_h:.1f}h and no open PR depends on it. Either resume it (heartbeat from its worktree) or close "
+        f"it with agent_claim.py release --status abandoned and a summary, then report to {coord}/inbox/<lead>/ so "
+        f"the board is honest."
+    )
 
 
-def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequence[Claim],
-                prs: Sequence[PullRequest], verdicts: dict[tuple[int, str], list[dict[str, Any]]],
-                author_of: dict[int, str], coord: str, now: datetime | None = None,
-                reviewed_pairs: set[tuple[int, str]] | None = None,
-                review_counts: dict[tuple[int, str], int] | None = None,
-                taken: dict[tuple[str, str], int] | None = None,
-                prior_review_sessions: dict[tuple[int, str], set[str]] | None = None) -> Assignment | None:
+def select_work(
+    session: str,
+    *,
+    queue: Sequence[dict[str, Any]],
+    claims: Sequence[Claim],
+    prs: Sequence[PullRequest],
+    verdicts: dict[tuple[int, str], list[dict[str, Any]]],
+    author_of: dict[int, str | Iterable[str]],
+    coord: str,
+    now: datetime | None = None,
+    reviewed_pairs: set[tuple[int, str]] | None = None,
+    review_counts: dict[tuple[int, str], int] | None = None,
+    taken: dict[tuple[str, str], int] | None = None,
+    prior_review_sessions: dict[tuple[int, str], set[str]] | None = None,
+) -> Assignment | None:
     """The one next thing for this session, in the operator's order (a)…(e). None means "nothing to do".
 
     `reviewed_pairs` is (pr number, reviewer session) pairs already dispatched this cycle, so two sessions are not
@@ -444,6 +618,7 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
     handed = taken if taken is not None else {}
     prior = prior_review_sessions or {}
     ref = now or now_utc()
+    requirements = review_requirements()
 
     def free(kind: str, target: str, *, allow: int = 1) -> bool:
         """Has this cycle already given this target away `allow` times?"""
@@ -452,75 +627,113 @@ def select_work(session: str, *, queue: Sequence[dict[str, Any]], claims: Sequen
     # (a) its own workable rows, in queue order (the queue lists them in priority order)
     for row in queue:
         ok, _why = row_workable(row, session, claims, now=ref)
-        if ok and free("queue", str(row.get("id"))):
-            return Assignment(session, "queue", str(row.get("id")),
-                              _row_instruction(session, row, coord), "own queued row")
+        if (
+            ok
+            and work_allowed([*row_paths(row), str(row.get("page") or "")], requirements)
+            and free("queue", str(row.get("id")))
+        ):
+            return Assignment(
+                session, "queue", str(row.get("id")), _row_instruction(session, row, coord), "own queued row"
+            )
 
     # (b) a review of a CLEAN PR it did not author and that has no MERGE verdict at its head yet.
     # Newest activity first: a live PR is the work, and an ancient CLEAN PR is the triage list (board row 26), not
     # somewhere to spend five sessions. At most MAX_REVIEWERS_PER_PR independent reviewers per head.
     for pr in sorted(prs, key=lambda p: (p.updated_at or "", p.number), reverse=True):
-        if not pr.clean:
+        if not pr.clean or not pr.files_complete or not work_allowed(pr.files, requirements):
             continue
-        author = author_of.get(pr.number) or ""
-        if not author:
+        authors = author_set(author_of.get(pr.number))
+        if not authors:
             continue  # F5: an unknown author means independence cannot be shown — fail closed, assign nobody
-        if author == session:
+        if session in authors:
             continue
         if (pr.number, session) in reviewed:
             continue
-        if counts.get((pr.number, pr.head_sha), 0) >= MAX_REVIEWERS_PER_PR:
+        verdicts_here = verdicts.get((pr.number, pr.head_sha), [])
+        filed = {v["reviewer"] for v in verdicts_here if v["reviewer"] and v["reviewer"] not in authors}
+        spent = filed | (prior.get((pr.number, pr.head_sha), set()) - authors)
+        if max(counts.get((pr.number, pr.head_sha), 0), len(spent)) >= MAX_REVIEWERS_PER_PR:
+            continue
+        if session in filed:
             continue
         if session in prior.get((pr.number, pr.head_sha), set()):
             continue  # an earlier cycle already sent this reviewer THIS head
         if not free("review", str(pr.number)):
             continue
-        verdicts_here = verdicts.get((pr.number, pr.head_sha), [])
-        need, _held = required_reviews(pr.files)
-        merges_here = {v["reviewer"] for v in verdicts_here if v["verdict"] == "MERGE" and v["reviewer"]}
+        need, _held = required_reviews(pr.files, requirements)
+        merges_here = {
+            v["reviewer"]
+            for v in verdicts_here
+            if v["verdict"] == "MERGE" and v["reviewer"] and v["reviewer"] not in authors
+        }
         if len(merges_here) >= need:
             continue  # the bar is met; a held PR with one MERGE still needs its second reviewer
         others = [v for v in verdicts_here if v["verdict"] == "BLOCK" and v["reviewer"] == session]
         if others:
             continue
-        return Assignment(session, "review", str(pr.number),
-                          _review_instruction(session, pr, coord), "PR is CLEAN and lacks an exact-head review")
+        return Assignment(
+            session,
+            "review",
+            str(pr.number),
+            _review_instruction(session, pr, coord),
+            "PR is CLEAN and lacks an exact-head review",
+        )
 
     # (c) merge-prep: a CLEAN PR with a MERGE verdict whose author claim is stale on the head
     for pr in sorted(prs, key=lambda p: p.number):
-        if not pr.clean or author_of.get(pr.number) != session:
+        authors = author_set(author_of.get(pr.number))
+        if not pr.clean or session not in authors or not pr.files_complete or not work_allowed(pr.files, requirements):
             continue
-        if not any(v["verdict"] == "MERGE" for v in verdicts.get((pr.number, pr.head_sha), [])):
+        if not any(
+            v["verdict"] == "MERGE" and v["reviewer"] and v["reviewer"] not in authors
+            for v in verdicts.get((pr.number, pr.head_sha), [])
+        ):
             continue
-        claim = next((c for c in claims if c.branch == pr.head_ref and c.status == "active"), None)
+        claim = next((c for c in claims if c.branch == pr.head_ref and c.live and c.session == session), None)
         if claim and claim.head_sha and claim.head_sha not in pr.shas and free("merge_prep", str(pr.number)):
-            return Assignment(session, "merge_prep", str(pr.number),
-                              _merge_prep_instruction(session, pr, claim, coord),
-                              "MERGE verdict at head but the author claim carries a different head")
+            return Assignment(
+                session,
+                "merge_prep",
+                str(pr.number),
+                _merge_prep_instruction(session, pr, claim, coord),
+                "MERGE verdict at head but the author claim carries a different head",
+            )
 
     # (d) the oldest unowned row — offered to whoever is idle first, by queue order
     for row in queue:
         if row.get("owner"):
             continue
         ok, _why = row_hold(row, claims, now=ref)  # R7: a blank owner does not bypass a hold or a live claim
-        if not ok:
+        if not ok or not work_allowed([*row_paths(row), str(row.get("page") or "")], requirements):
             continue
         if not free("unowned_queue", str(row.get("id"))):
             continue
-        return Assignment(session, "unowned_queue", str(row.get("id")),
-                          f"Dispatcher: unowned queue row {row.get('id')} — {row.get('page') or ''}. Claim it "
-                          f"(agent_claim.py claim, then set owner via your report), fix it with red-then-green "
-                          f"evidence, and report the head to {coord}/inbox/<lead>/.", "no owner on the row")
+        return Assignment(
+            session,
+            "unowned_queue",
+            str(row.get("id")),
+            f"Dispatcher: unowned queue row {row.get('id')} — {row.get('page') or ''}. Claim it "
+            f"(agent_claim.py claim, then set owner via your report), fix it with red-then-green "
+            f"evidence, and report the head to {coord}/inbox/<lead>/.",
+            "no owner on the row",
+        )
 
     # (e) a chore: a stale claim that no live session is progressing
-    stale = [c for c in claims if c.status == "active" and c.age_h > CLAIM_LIVE_HOURS]
+    stale = [
+        c for c in claims if c.status == "active" and c.age_h > CLAIM_LIVE_HOURS and work_allowed(c.paths, requirements)
+    ]
     if stale:
         claim = next((c for c in sorted(stale, key=lambda c: -c.age_h) if free("chore", c.claim_id)), None)
         if claim is None:
             return None
         open_pr = any(p.head_ref == claim.branch for p in prs)
-        return Assignment(session, "chore", claim.claim_id, _chore_instruction(session, claim, coord, open_pr=open_pr),
-                          f"claim is {claim.age_h:.1f}h stale")
+        return Assignment(
+            session,
+            "chore",
+            claim.claim_id,
+            _chore_instruction(session, claim, coord, open_pr=open_pr),
+            f"claim is {claim.age_h:.1f}h stale",
+        )
     return None
 
 
@@ -590,8 +803,10 @@ def safe_output_path(target: Path, *, coord: Path, protected: Sequence[Path] = (
     if have is not None:
         for candidate in _protected_files(inputs):
             if _inode(candidate) == have:
-                raise DispatchError(f"refusing to write {target}: it is the same file as the protected input "
-                                    f"{candidate} (hardlink alias)")
+                raise DispatchError(
+                    f"refusing to write {target}: it is the same file as the protected input "
+                    f"{candidate} (hardlink alias)"
+                )
     parent = real.parent
     if parent.exists() and parent.is_symlink():
         raise DispatchError(f"refusing to write {target}: its directory is a symlink out of the tree")
@@ -607,16 +822,18 @@ def _tracked(path: Path) -> bool:
     safe here: the link-count and symlink checks above still stand)."""
     if not path.exists():
         return False
-    top = subprocess.run(["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"],
-                         capture_output=True, text=True)
+    top = subprocess.run(
+        ["git", "-C", str(path.parent), "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    )
     if top.returncode != 0:
         return False
     try:
         rel = path.resolve().relative_to(Path(top.stdout.strip()).resolve()).as_posix()
     except ValueError:
         return False
-    ls = subprocess.run(["git", "-C", str(top.stdout.strip()), "ls-files", "--error-unmatch", "--", rel],
-                        capture_output=True, text=True)
+    ls = subprocess.run(
+        ["git", "-C", str(top.stdout.strip()), "ls-files", "--error-unmatch", "--", rel], capture_output=True, text=True
+    )
     return ls.returncode == 0
 
 
@@ -628,6 +845,7 @@ class CheckedOutput:
     the write resolves the file name inside the directory inode we validated, not inside whatever that path names a
     moment later.
     """
+
     path: Path
     parent_inode: tuple[int, int] | None
     file_inode: tuple[int, int] | None
@@ -748,6 +966,7 @@ def submit(
 
     def _paste_and_enter(deadline: float) -> bool:
         """Load, paste, Enter — each call bounded by the time left, so the attempt cannot outlive its window."""
+
         def _left() -> float:
             return max(0.05, min(RUN_TIMEOUT_S, deadline - monotonic()))
 
@@ -777,11 +996,17 @@ def submit(
         # failed capture is a refusal, not an empty baseline — sending blind is how an instruction lands in an
         # operator's unsent draft. A pane that picked up input or started working since the scan is refused too.
         if before is None:
-            return SubmitResult(False, False, attempt, "pre-paste capture failed: refusing to send to a pane I cannot see")
+            return SubmitResult(
+                entered, False, attempt, "pre-paste capture failed: refusing to send to a pane I cannot see"
+            )
         admitted = classify_pane(session, before)
         if admitted.state != "idle":
-            return SubmitResult(False, False, attempt,
-                                f"refusing to send: pane is {admitted.state} at send time ({admitted.evidence})")
+            return SubmitResult(
+                entered,
+                False,
+                attempt,
+                f"refusing to send: pane is {admitted.state} at send time ({admitted.evidence})",
+            )
         if not _paste_and_enter(deadline):
             continue
         entered = True  # an Enter was delivered for a paste that succeeded
@@ -807,8 +1032,15 @@ def submit(
     return SubmitResult(entered, False, attempts, "no new busy marker within the confirm window")
 
 
-def ledger_line(*, session: str, assignment: Assignment, result: SubmitResult, cycle_id: str, ts: str | None = None,
-                target_head: str = "") -> str:
+def ledger_line(
+    *,
+    session: str,
+    assignment: Assignment,
+    result: SubmitResult,
+    cycle_id: str,
+    ts: str | None = None,
+    target_head: str = "",
+) -> str:
     record = {
         "schema": SCHEMA + "#Dispatch",
         "ts": ts or _iso(),
@@ -839,14 +1071,21 @@ def idle_alert(sessions: Sequence[tuple[str, float]], *, generated_at: str) -> s
     over = sorted(((s, m) for s, m in sessions if m > IDLE_ESCALATE_MINUTES), key=lambda x: -x[1])
     if not over:
         return None
-    lines = ["# DISPATCH_IDLE_ALERT — nobody has work and sessions are waiting", "",
-             f"Generated {generated_at} by scripts/agent_dispatch.py. This file assigns nothing; it asks the lead for a decision.",
-             "",
-             "The dispatcher found no work to hand out in this cycle (no queued/assigned rows, no CLEAN PR needing a "
-             "review, no merge-prep, no unowned row, no chore) while these sessions were idle:", ""]
+    lines = [
+        "# DISPATCH_IDLE_ALERT — nobody has work and sessions are waiting",
+        "",
+        f"Generated {generated_at} by scripts/agent_dispatch.py. This file assigns nothing; it asks the lead for a decision.",
+        "",
+        "The dispatcher found no work to hand out in this cycle (no queued/assigned rows, no CLEAN PR needing a "
+        "review, no merge-prep, no unowned row, no chore) while these sessions were idle:",
+        "",
+    ]
     lines += [f"- **{s}** idle {m:.0f} min" for s, m in over]
-    lines += ["", "The lead must do one of: add work (a queue row, a review, a decision), or close the idle sessions. "
-                  "An idle session inside this window is not a worker fault — it is an empty worklist."]
+    lines += [
+        "",
+        "The lead must do one of: add work (a queue row, a review, a decision), or close the idle sessions. "
+        "An idle session inside this window is not a worker fault — it is an empty worklist.",
+    ]
     return "\n".join(lines) + "\n"
 
 
