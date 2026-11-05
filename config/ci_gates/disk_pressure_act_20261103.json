@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_pressure_act_20261103",
+  "files": [
+    "tests/test_disk_pressure_act_20261103.py",
+    "tests/test_incident_disk_dispatch_20261103.py"
+  ],
+  "anchor": "DISK_PRESSURE_ACT_20261103",
+  "comment": [
+    "ANCHOR: DISK_PRESSURE_ACT_20261103 — operator disk permanent-fix items 3 and 4 (2026-11-03): the 85% pressure guard triggers the reviewed cleaner only when the operator-armed switch is on (ships OFF), and a disk incident is dispatched to the fixer instead of being parked as needs_operator. Covers the four required behaviours: below threshold, disarmed, armed+eligible, armed+zero-eligible."
+  ]
+}
