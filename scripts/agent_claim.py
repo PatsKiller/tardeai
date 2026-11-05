@@ -515,13 +515,16 @@ def _incident_warning(session: str) -> int:
     return 3 if os.environ.get("INCIDENT_CHECK_ENFORCE") == "1" else 0
 
 
-def _agent_scratch_cleanup_hook(claim_id: str | None = None) -> None:
+def _agent_scratch_cleanup_hook(claim_id: str | None = None, claims_dir: str | None = None) -> None:
     """Agent self-cleanup at task end — REPORT-ONLY until AGENTS.md 27.0.0 is ACTIVE.
 
     Runs scripts/agent_scratch_cleanup.py --dry-run so the closing session sees what scratch it WOULD remove
-    and removes nothing. This is the §0 rule-6 exception (c) "agent self-delete" enforcement point
-    (design: docs/designs/DSN-20261030-disk-governance-process.md). To ARM the actual deletion — operator-only,
-    after APPROVE_AGENTS_POLICY_27_0_0 — change ``--dry-run`` to ``--apply`` in the command below.
+    and removes nothing. Call it while the claim is still active: the tool refuses a claim that is no longer on
+    the board. The plan is printed to stderr so "report-only" actually reports (and --json stdout stays clean).
+
+    This is the §0 rule-6 exception (c) "agent self-delete" enforcement point (design:
+    docs/designs/DSN-20261030-disk-governance-process.md). To ARM the actual deletion — operator-only, after
+    APPROVE_AGENTS_POLICY_27_0_0 — change ``--dry-run`` to ``--apply`` in the command below.
 
     Never raises and never blocks the claim operation: a cleanup problem must not fail release/takeover.
     """
@@ -531,10 +534,15 @@ def _agent_scratch_cleanup_hook(claim_id: str | None = None) -> None:
     cmd = [sys.executable, str(script), "--dry-run"]  # flip to --apply only after 27.0.0 is ACTIVE
     if claim_id:
         cmd += ["--claim", claim_id]
+    if claims_dir:
+        cmd += ["--claims-dir", claims_dir]
     try:
-        subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=30)
+        proc = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
-        pass
+        return
+    for stream in (proc.stdout, proc.stderr):
+        if stream and stream.strip():
+            print(stream.rstrip(), file=sys.stderr)
 
 
 def cmd_stage(a: argparse.Namespace) -> int:
@@ -774,7 +782,7 @@ def cmd_takeover(a: argparse.Namespace) -> int:
     except (OSError, B.WL.WorklogError) as exc:
         print(f"WARN: worklog carry-forward failed ({type(exc).__name__}: {exc})", file=sys.stderr)
     print(f"\n{doc['claim_id']}  ({line})")
-    _agent_scratch_cleanup_hook(a.claim_id)  # self-cleanup (report-only until AGENTS.md 27.0.0 ACTIVE)
+    _agent_scratch_cleanup_hook(a.claim_id, a.claims_dir)  # self-cleanup (report-only until AGENTS.md 27.0.0 ACTIVE)
     return 0
 
 
@@ -1142,6 +1150,9 @@ def cmd_next(a: argparse.Namespace) -> int:
 
 def cmd_release(a: argparse.Namespace) -> int:
     session = _session(a)
+    # Report-only cleanup plan BEFORE the release: the tool refuses a claim that is no longer on the board, so
+    # running it after release would compute nothing and report nothing (cc-deepseek-9 F2 at #2302).
+    _agent_scratch_cleanup_hook(a.claim_id, a.claims_dir)
     try:
         doc = _board(a).release(
             a.claim_id,
@@ -1161,7 +1172,6 @@ def cmd_release(a: argparse.Namespace) -> int:
         json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{doc['claim_id']} {doc['status']} {doc['ended_at']}"
     )
     rc = _incident_warning(session) if a.status == "done" else 0
-    _agent_scratch_cleanup_hook(a.claim_id)  # self-cleanup (report-only until AGENTS.md 27.0.0 ACTIVE)
     return rc
 
 

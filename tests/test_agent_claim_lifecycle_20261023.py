@@ -779,3 +779,49 @@ def test_ci_gate_registered():
 def test_ui_model_test_runs_in_build():
     pkg = json.loads((ROOT / "apps" / "command-center-v3" / "package.json").read_text())
     assert "src/lib/agentClaimLifecycle.test.ts" in pkg["scripts"]["build"]
+
+
+# ── cc-deepseek-9's F2 at #2302: the report-only cleanup must run BEFORE the release ───────────────────────
+def test_release_reports_scratch_before_it_releases_the_claim(tmp_path, monkeypatch):
+    """The tool refuses a claim that is no longer on the board, so a hook run after release reports nothing."""
+    import argparse
+    import agent_claim as A
+
+    order: list[str] = []
+
+    class _Board:
+        def release(self, *a, **k):
+            order.append("release")
+            return {"claim_id": "C1", "status": "done", "session": "s1", "task": "t", "paths": [], "ended_at": "2026-11-05T00:00:00Z"}
+
+    monkeypatch.setattr(A, "_session", lambda a: "s1")
+    monkeypatch.setattr(A, "_board", lambda a: _Board())
+    monkeypatch.setattr(A, "_agent_scratch_cleanup_hook",
+                        lambda claim_id=None, claims_dir=None: order.append("cleanup"))
+
+    ns = argparse.Namespace(claim_id="C1", status="done", note="", pr=None, summary="s", force=False,
+                            json=False, session="s1", vendor="v", agent=None, claims_dir=str(tmp_path))
+    A.cmd_release(ns)
+    assert order == ["cleanup", "release"], order
+
+
+def test_the_cleanup_hook_receives_the_claims_dir(tmp_path, monkeypatch):
+    """A custom board directory must reach the tool, or the plan is computed against the wrong board."""
+    import argparse
+    import agent_claim as A
+
+    seen: list[str | None] = []
+
+    class _Board:
+        def release(self, *a, **k):
+            return {"claim_id": "C1", "status": "done", "session": "s1", "task": "t", "paths": [], "ended_at": "2026-11-05T00:00:00Z"}
+
+    monkeypatch.setattr(A, "_session", lambda a: "s1")
+    monkeypatch.setattr(A, "_board", lambda a: _Board())
+    monkeypatch.setattr(A, "_agent_scratch_cleanup_hook",
+                        lambda claim_id=None, claims_dir=None: seen.append(claims_dir))
+
+    ns = argparse.Namespace(claim_id="C1", status="done", note="", pr=None, summary="s", force=False,
+                            json=False, session="s1", vendor="v", agent=None, claims_dir=str(tmp_path))
+    A.cmd_release(ns)
+    assert seen == [str(tmp_path)], seen
