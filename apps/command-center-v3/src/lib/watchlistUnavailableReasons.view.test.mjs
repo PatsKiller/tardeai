@@ -89,6 +89,25 @@ globalThis.__watchlistFixture = {
 const html = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Unified)))
 const text = html.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&#x2014;/g, '—').replace(/\s+/g, ' ')
 
+// cx-openai-5 F1 at 35c32e7d0: absence of the three flat next-review fields is not evidence that nothing is scheduled. A
+// deferred decision leaves them null while the producer still knows the review is deferred — the page must not convert
+// missing projection data into a claim about the schedule. No NOT_SCHEDULED reason on this card, so the honest line is
+// "not provided".
+const deferredCard = {
+  symbol: 'ZZZ', company: 'Deferred Co', street_rating: 'BUY', trade_ai_state: 'WAIT',
+  quote_freshness: 'CURRENT', review_freshness: 'CURRENT',
+  cio_review: { status: 'COST_DEFERRED', reason_code: 'COST_DEFERRED' },
+  maria_review: { status: 'NOT_RUN', reason_code: 'NOT_SCHEDULED' },
+  last: 4.2, day_change_pct: 0.1,
+}
+globalThis.__watchlistFixture = {
+  data: { cards: [deferredCard], items: [{ card: deferredCard }], summary: {}, views: { top_ideas: {} }, projections: {} },
+  loading: false,
+  error: null,
+}
+const deferredHtml = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Unified)))
+const deferredText = deferredHtml.replace(/<[^>]+>/g, ' ').replace(/&#x27;/g, "'").replace(/&#x2014;/g, '—').replace(/\s+/g, ' ')
+
 const failures = []
 const ok = (c, m) => { if (!c) failures.push(m) }
 
@@ -126,6 +145,12 @@ ok(text.includes('not scheduled — no review time has been set for this name'),
   'an absent next_review_at did not render its explanation')
 ok(!/Next review: *—/.test(text),
   'the next-review line fell back to a bare dash instead of saying why')
+
+// 3b. cx-openai-5 F1: the SAME three absent fields on a card whose review is DEFERRED must not claim "not scheduled".
+ok(deferredText.includes('not provided — the producer has not reported a review time for this name'),
+  'a card with no NOT_SCHEDULED reason did not render the neutral not-provided line')
+ok(!deferredText.includes('not scheduled — no review time has been set for this name'),
+  'missing projection data was converted into the claim that nothing is scheduled')
 
 // 4. the retirement is enforced, not just stated: the live surface is Unified, not the shadow board.
 function sourceFiles(dir) {
