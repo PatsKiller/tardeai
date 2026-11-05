@@ -384,6 +384,27 @@ def test_provenance_different_account_clocks_stay_separate_and_the_oldest_drives
     assert "Schwab Individual: HOLD" in why and "Moomoo: HOLD" in why, why
 
 
+def test_d52_each_account_verdict_renders_under_its_own_evidence_clock():
+    """cx-openai D52 triage on #2612: one account's as_of must never be stamped across the others' verdicts."""
+    older, newer = "2026-11-02T15:25:00+00:00", "2026-11-04T14:00:00+00:00"
+    plan = _real_plan_with_member_clocks({"schwab_taxable": older, "moomoo": newer})
+    risk = _risk(_pos("SYN", account="schwab_taxable"), _pos("SYN", value=4_000.0, account="moomoo"))
+    why = _why(_build(risk, plan), "stop:SYN")
+    assert f"Schwab Individual: HOLD ({older})" in why, why
+    assert f"Moomoo: HOLD ({newer})" in why, why
+    # the old shape stamped ONE clock on the header; that is the defect, so the header keeps no date it cannot attribute
+    assert "CIO verdict (" not in why, why
+
+
+def test_d52_a_member_with_no_clock_says_so_under_its_own_name():
+    """A clockless member opinion reads "decision time not recorded" beside ITS name, not another account's clock."""
+    plan = _real_plan_with_member_clocks({"moomoo": "2026-11-04T14:00:00+00:00"})
+    risk = _risk(_pos("SYN", account="schwab_taxable"), _pos("SYN", value=4_000.0, account="moomoo"))
+    why = _why(_build(risk, plan), "stop:SYN")
+    assert "Schwab Individual: HOLD (decision time not recorded)" in why, why
+    assert f"Moomoo: HOLD (2026-11-04T14:00:00+00:00)" in why, why
+
+
 def test_provenance_missing_member_clock_is_unknown_not_the_aggregate_clock():
     """A member opinion with no clock says "decision time not recorded"; the aggregate clock does not leak onto it."""
     plan = _real_plan_with_member_clocks({"moomoo": "2026-11-04T14:00:00+00:00"})
@@ -397,8 +418,9 @@ def test_provenance_missing_member_clock_is_unknown_not_the_aggregate_clock():
     out = _build(_risk(_pos("SYN", account="schwab_taxable")), plan)
     why = _why(out, "stop:SYN")
     assert "Schwab Individual: HOLD" in why, why
-    assert "CIO verdict (decision time not recorded)" in why, why
-    assert f"CIO verdict ({agg_clock})" not in why, why  # the aggregate clock is NOT this member's clock
+    # D52: the clock now travels with the member it belongs to, so the header carries no date at all.
+    assert "Schwab Individual: HOLD (decision time not recorded)" in why, why
+    assert f": HOLD ({agg_clock})" not in why, why  # the aggregate clock is NOT this member's clock
     assert f"aggregate HOLD ({agg_clock})" in why, why   # still named, as the aggregate only
 
 

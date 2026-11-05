@@ -346,11 +346,14 @@ def cio_clause(index: Optional[dict], symbol: str, accounts: Any, as_of: Optiona
         v = by_account.get((sym, str(a))) if a else None
         label = _acct_name(a) if a else "account unknown"
         if v and v.get("stance"):
-            seen.append(f"{label}: {v['stance']}")
-            when = when or str(v.get("as_of") or "")
+            # Each verdict carries its OWN clock (cx-openai D52 triage on #2612): one account's as_of must never be
+            # stamped across verdicts taken at other times or at no recorded time, which made older or clockless
+            # opinions look current.
+            clock = str(v.get("as_of") or "").strip() or "decision time not recorded"
+            seen.append(f"{label}: {v['stance']} ({clock})")
         else:
             seen.append(f"{label}: no per-account CIO verdict on record")
-    text = "CIO verdict" + (f" ({when})" if when else " (decision time not recorded)") + " — " + "; ".join(seen) + "."
+    text = "CIO verdict — " + "; ".join(seen) + "."
     covered = {str(a) for a in accts if a and by_account.get((sym, str(a)))}
     agg_accounts = {str(a) for a in (aggregate.get("accounts") or []) if a} if aggregate else set()
     # The aggregate is still named whenever it speaks for an account not shown above (including the case where no
