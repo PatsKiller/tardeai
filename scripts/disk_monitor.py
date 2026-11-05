@@ -136,7 +136,7 @@ def measure_mount(mount: str) -> Optional[dict[str, Any]]:
 def du_bytes(path: Path, timeout_s: float) -> Optional[int]:
     """Disk usage (bytes) like ``du -sB1 -x``; None when du fails or times out. Mirrors scripts/disk_hygiene.du_bytes."""
     try:
-        proc = subprocess.run(["du", "-s", "-B1", "-x", str(path)], capture_output=True, text=True, timeout=timeout_s)
+        proc = subprocess.run(["du", "-s", "-B1", "-x", str(path)], capture_output=True, text=True, timeout=timeout_s)  # noqa: S603, S607  (fixed argv, the `du` on PATH)
     except (OSError, subprocess.SubprocessError):
         return None
     try:
@@ -337,7 +337,7 @@ def hygiene_dry_run(mon: Mapping[str, Any]) -> str:
     rules = ROOT / mon.get("hygiene_rules_rel", "config/disk_hygiene_rules.json")
     cmd = [sys.executable, str(ROOT / "scripts" / "disk_hygiene.py"), "--dry-run", "--report", "--rules", str(rules)]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=float(mon.get("du_timeout_s") or 600))
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=float(mon.get("du_timeout_s") or 600))  # noqa: S603  (argv built in this function; S607 anchors on the argv line above)
     except (OSError, subprocess.SubprocessError) as exc:
         return f"hygiene_dry_run_unavailable:{type(exc).__name__}"
     out = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
