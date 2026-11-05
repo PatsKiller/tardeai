@@ -64,6 +64,10 @@ function preview(text: string, limit = 90): string {
 export function readableSummary(l: { task_summary?: string }): string {
   const raw = (l.task_summary || '').trim()
   if (!raw) return 'No summary recorded'
+  // An opaque identifier is not a description of the work. A hex digest or a UUID used to survive as the primary
+  // line — the bare-key branch humanised it into "0123456789abcdef…" and the prose branch printed the UUID verbatim
+  // (cx-openai-3's CX3-F2 on PR 2676). The raw value is still in Technical detail; the face says what it is.
+  if (isOpaqueId(raw)) return 'No summary recorded — an identifier only'
   // A size breakdown of the prompt, not a description of the work.
   if (/^((system|user|assistant):\d+chars;?\s*)+$/i.test(raw)) return 'No summary recorded — request text only'
   // A prompt rather than a summary: 3,744 live rows (2.2% of the table) start with a control directive the model reads
@@ -108,4 +112,42 @@ export function callPrimaryText(l: ConsumptionLog): string {
 export function callDetailText(l: ConsumptionLog): string {
   const id = l.process_id ? `Process id: ${l.process_id}` : 'Process id: not recorded'
   return `${id}\nRequest: ${l.task_summary || 'not recorded'}`
+}
+
+/** A hex digest or a UUID: an identifier, never a description of work. */
+export function isOpaqueId(v: string): boolean {
+  const s = String(v || '').trim()
+  if (!s) return false
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return true
+  // A long all-hex token that mixes letters and digits; a long run of pure digits is a number, not a digest.
+  return /^[0-9a-f]{16,}$/i.test(s) && /[a-f]/i.test(s) && /\d/.test(s)
+}
+
+export type ActivityCensus =
+  | { state: 'current'; reason: null }
+  | { state: 'retained'; reason: string }
+  | { state: 'unavailable'; reason: string }
+
+/**
+ * Whether the activity log read is a census the page may count from.
+ *
+ * The banner used to be gated on `logRead.data` alone, so an empty object (the log was not in the response) and a
+ * refusal (`{ok: false}`) both rendered "No failed calls in the last 0" — an affirmative healthy window invented from
+ * an absence (cx-openai-3's CX3-F1 on PR 2676). A `current` census needs an accepted object that CARRIES a logs
+ * array; a failing refresh over retained rows is `retained`; anything else is `unavailable`.
+ */
+export function activityCensus(read: { data?: unknown; error?: unknown; stale?: unknown } | null | undefined): ActivityCensus {
+  const d = read?.data
+  const isObj = d != null && typeof d === 'object'
+  const row = (isObj ? d : {}) as { ok?: unknown; logs?: unknown; error?: unknown }
+  const refused = isObj && row.ok === false
+  const err = String(read?.error || '')
+  if (refused) {
+    return { state: 'unavailable', reason: String(row.error || err || 'the source refused the read') }
+  }
+  if (!isObj || !Array.isArray(row.logs)) {
+    return { state: 'unavailable', reason: err || 'the activity log was not in the response' }
+  }
+  if (read?.stale === true || err) return { state: 'retained', reason: err || 'the refresh is failing' }
+  return { state: 'current', reason: null }
 }

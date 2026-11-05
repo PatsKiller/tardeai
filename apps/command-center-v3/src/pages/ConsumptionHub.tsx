@@ -9,7 +9,7 @@ import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import { fmtAsOf } from '../lib/asOfDisplay'
 import {
   DESK_LOG_PREVIEW, DESK_PROCESS_PREVIEW, PHONE_LOG_PREVIEW, PHONE_PROCESS_PREVIEW,
-  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows,
+  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows, activityCensus,
 } from '../lib/consumptionPresentation'
 import SpendPanel from '../components/SpendPanel'
 import AnthropicCreditPanel from '../components/AnthropicCreditPanel'
@@ -155,6 +155,7 @@ export default function ConsumptionHub() {
 
   // FQ-030: lead with the failures, then collapse the two long lists behind a control that
   // says how much it is holding back. Collapsing hides rows; it never removes them.
+  const census = useMemo(() => activityCensus(logRead as any), [logRead])
   const failures = useMemo(() => failedCalls(logs), [logs])
   const orderedLogs = useMemo(() => [...failures, ...logs.filter(l => l.success)], [failures, logs])
   const processView = previewRows(processes, processesExpanded, phone ? PHONE_PROCESS_PREVIEW : DESK_PROCESS_PREVIEW)
@@ -197,17 +198,26 @@ export default function ConsumptionHub() {
 
       {/* FQ-030: spend and failure are the two things a reader comes here for, so they lead.
           A clean window still says so out loud rather than leaving the reader to scroll for it. */}
-      {logRead.data && (
-        <div role={failures.length ? 'alert' : undefined}
+      <div role={census.state === 'unavailable' || failures.length ? 'alert' : undefined}
+             data-testid="failure-census"
              style={{ borderRadius: RADIUS.md, padding: '9px 12px', marginBottom: 12, fontSize: 12, lineHeight: 1.45,
-                      background: failures.length ? 'color-mix(in srgb, var(--danger-color) 9%, transparent)' : 'var(--bg1)',
-                      border: `1px solid color-mix(in srgb, ${failures.length ? RED : 'var(--border)'} 40%, transparent)`,
-                      color: failures.length ? RED : MUTED }}>
-          {failures.length
-            ? <><b>{failures.length} failed {failures.length === 1 ? 'call' : 'calls'}</b> in the last {logs.length}. They are listed first below.</>
-            : <>No failed calls in the last {logs.length}. Paid spend is in the Spend panel just below.</>}
-        </div>
-      )}
+                      background: failures.length && census.state === 'current' ? 'color-mix(in srgb, var(--danger-color) 9%, transparent)' : 'var(--bg1)',
+                      border: `1px solid color-mix(in srgb, ${census.state === 'unavailable' || (failures.length && census.state === 'current') ? RED : 'var(--border)'} 40%, transparent)`,
+                      color: census.state === 'unavailable' ? AMBER : failures.length ? RED : MUTED }}>
+          {/* cx-openai-3's CX3-F1 (PR 2676): an unread or refused source is not a clean window, and a failing
+              refresh over retained rows is not the current one. Only an accepted read that carries a logs array
+              may say "no failed calls". */}
+          {census.state === 'unavailable'
+            ? <>Activity is <b>unavailable</b> — {census.reason}. That is not the same as no failed calls; nothing was counted.</>
+            : census.state === 'retained'
+              ? <>{failures.length
+                    ? <><b>{failures.length} failed {failures.length === 1 ? 'call' : 'calls'}</b> in the {logs.length} rows retained from an earlier read.</>
+                    : <>No failed calls in the {logs.length} rows retained from an earlier read.</>}
+                  {' '}The refresh is failing ({census.reason}), so this is not the current window.</>
+              : failures.length
+                ? <><b>{failures.length} failed {failures.length === 1 ? 'call' : 'calls'}</b> in the last {logs.length}. They are listed first below.</>
+                : <>No failed calls in the last {logs.length}. Paid spend is in the Spend panel just below.</>}
+      </div>
 
       {/* Real paid spend: provider · model · process · peak/off-peak (operator ask 2026-09-14) */}
       <AnthropicCreditPanel status={overview?.anthropic} />

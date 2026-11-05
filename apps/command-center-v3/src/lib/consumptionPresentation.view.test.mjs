@@ -79,7 +79,7 @@ globalThis.__apiFixture = (url) => {
   if (url.includes('/api/v2/consumption/overview')) return { ...empty, data: { overview: null } }
   if (url.includes('/api/v2/consumption/processes')) return { ...empty, data: { processes: PROCESSES } }
   if (url.includes('/api/v2/consumption/lane-registry')) return { ...empty, data: { processes: {}, policy_labels: {} } }
-  if (url.includes('/api/v2/consumption/logs')) return { ...empty, data: { logs: LOGS } }
+  if (url.includes('/api/v2/consumption/logs')) return globalThis.__logsFixture ?? { ...empty, data: { logs: LOGS } }
   return { ...empty, data: null }
 }
 
@@ -121,6 +121,32 @@ for (const [mode, phone] of [['desk', false], ['phone', true]]) {
   check(label('the detail disclosure is a 44px touch target'), summaries.every(s => MIN_44.test(s)),
     summaries.filter(s => !MIN_44.test(s)).slice(0, 2).join(' | '))
 }
+
+// ── cx-openai-3's CX3-F1: the census must not invent a clean window from an unread source ─────────────
+// Rendered through the real page with only the log read changed. The three states the finding named, plus the two
+// positive controls that prove the probe is not simply suppressing every result.
+const censusOf = (fx) => {
+  globalThis.__logsFixture = fx
+  const m = renderAs(false)
+  globalThis.__logsFixture = undefined
+  return m.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+const missing = censusOf({ ...empty, data: {} })
+check('missing logs do not read as a clean window',
+  /Activity is unavailable/.test(missing) && !/No failed calls/.test(missing), missing.slice(0, 220))
+const refused = censusOf({ ...empty, data: { ok: false, error: 'Synthetic source refused' } })
+check('a refused read says unavailable and names the refusal',
+  /Activity is unavailable/.test(refused) && /Synthetic source refused/.test(refused) && !/No failed calls/.test(refused),
+  refused.slice(0, 220))
+const retained = censusOf({ ...empty, data: { logs: LOGS }, stale: true })
+check('retained rows are labelled retained, not current',
+  /retained from an earlier read/.test(retained) && /not the current window/.test(retained), retained.slice(0, 260))
+const observedEmpty = censusOf({ ...empty, data: { logs: [] } })
+check('an OBSERVED empty window still says so (positive control)',
+  /No failed calls in the last 0/.test(observedEmpty), observedEmpty.slice(0, 220))
+const measured = censusOf({ ...empty, data: { logs: LOGS } })
+check('a measured window still counts its failures (positive control)',
+  /failed calls?\b/.test(measured) && /in the last 12/.test(measured), measured.slice(0, 260))
 
 const out = { schema: 'ConsumptionView@v1', cases, passed: cases.filter(c => c.passed).length, failed: cases.filter(c => !c.passed).length }
 console.log(JSON.stringify(out, null, 1))

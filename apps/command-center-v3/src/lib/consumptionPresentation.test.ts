@@ -3,7 +3,7 @@
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/consumptionPresentation.test.ts
 import {
   DESK_LOG_PREVIEW, DESK_PROCESS_PREVIEW, PHONE_LOG_PREVIEW, PHONE_PROCESS_PREVIEW,
-  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows, readableSummary,
+  activityCensus, callDetailText, callPrimaryText, failedCalls, hiddenLabel, isOpaqueId, previewRows, readableSummary,
 } from './consumptionPresentation.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -93,6 +93,29 @@ eq('a slash-led task key is not mistaken for a summary',
 check('a manual trigger says so', callPrimaryText(log(1, true, { trigger_mode: 'manual' })).includes('started by you'))
 check('an automated trigger says so', callPrimaryText(log(2, true)).includes('ran automatically'))
 check('an unknown trigger asserts nothing', callPrimaryText(log(3, true, { trigger_mode: 'retry' })).includes('trigger not recorded'))
+
+// ── cx-openai-3's CX3-F1: a census is only a census when the source was read ─────────────────────────
+check('no data at all is not a clean window', activityCensus({ data: undefined }).state === 'unavailable')
+check('an empty object is not a clean window', activityCensus({ data: {} }).state === 'unavailable')
+check('a refused read is unavailable, and says why',
+  activityCensus({ data: { ok: false, error: 'Synthetic source refused' } }).state === 'unavailable' &&
+  String((activityCensus({ data: { ok: false, error: 'Synthetic source refused' } }) as any).reason).includes('refused'))
+check('an accepted empty list IS a clean window', activityCensus({ data: { logs: [] } }).state === 'current')
+check('a failing refresh over retained rows is retained, not current',
+  activityCensus({ data: { logs: [{}] }, stale: true }).state === 'retained' &&
+  activityCensus({ data: { logs: [{}] }, error: 'network' }).state === 'retained')
+check('a healthy read with rows is current', activityCensus({ data: { logs: [{}, {}] } }).state === 'current')
+
+// ── cx-openai-3's CX3-F2: an opaque id is an id, not a description ───────────────────────────────────
+const HASH = '0123456789abcdef0123456789abcdef'
+const UUID = '01234567-89ab-cdef-0123-456789abcdef'
+check('a hex digest is recognised', isOpaqueId(HASH) && !isOpaqueId('Synthetic task 1'))
+check('a UUID is recognised', isOpaqueId(UUID) && !isOpaqueId('Analyze the catalyst'))
+check('a digest alone is not shown as a summary', readableSummary({ task_summary: HASH }) === 'No summary recorded — an identifier only')
+check('a UUID alone is not shown as a summary', readableSummary({ task_summary: UUID }) === 'No summary recorded — an identifier only')
+check('ordinary prose is untouched', readableSummary({ task_summary: 'Analyze the catalyst for NVDA' }).startsWith('Analyze the catalyst'))
+check('a note about the 32 chars of a sentence is not mistaken for a digest',
+  readableSummary({ task_summary: 'Rebuilt the watchlist and checked the 55 tickers' }).startsWith('Rebuilt the watchlist'))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
