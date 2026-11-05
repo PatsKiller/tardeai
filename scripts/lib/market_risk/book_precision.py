@@ -11,8 +11,10 @@ memory for the wash-sale note and dropped.
 from __future__ import annotations
 
 import re
+import math
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from scripts.lib.market_risk import contract as c
@@ -738,6 +740,21 @@ def _opaque(acct: Any) -> str:
     return opaque_account(acct)
 
 
+def reentry_display_quote(quote: dict[str, Any] | None, *, exit_price: Any, sma20: Any) -> dict[str, Any]:
+    """Display-only deltas for one canonical quote; never mutate confirmed stage evidence."""
+    out = dict(quote or {"status": "unavailable", "price": None, "source": "market_quotes:alpaca",
+                         "session": "regular", "as_of": None, "reason": "CURRENT_QUOTE_READER_UNAVAILABLE"})
+    def positive(value: Any) -> float | None:
+        if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+            return None
+        return float(value) if math.isfinite(float(value)) and value > 0 else None
+    price = positive(out.get("price")) if out.get("status") == "available" else None
+    for field, reference in (("pct_vs_exit", exit_price), ("pct_vs_sma20", sma20)):
+        denominator = positive(reference)
+        out[field] = (price / denominator - 1.0) * 100.0 if price is not None and denominator else None
+    return out
+
+
 def reentry_watch_block(
     a: Any,
     *,
@@ -835,6 +852,11 @@ def reentry_watch_block(
     }
     bench_sym = str((block.get("benchmark") or {}).get("symbol") or "SPY")
     cards = {}
+    quote_reader = getattr(reader, "regular_session_quotes", None)
+    try:
+        current_quotes = quote_reader(sorted(exits), end=now) if callable(quote_reader) else {}
+    except Exception:  # noqa: BLE001 — price failure cannot change a confirmed stage verdict
+        current_quotes = {}
     for sym, e in exits.items():
         bars = [r for r in (reader.daily_bars([sym], sessions=400, end=now) or []) if r.get("close") is not None]
         closes = [float(r["close"]) for r in bars]
@@ -912,6 +934,8 @@ def reentry_watch_block(
                                        float((policy.get("reentry_watch") or {}).get("stop_fill_max_slippage_pct", 3.0)),
                                        float((policy.get("reentry_watch") or {}).get("stop_fill_max_above_pct", 0.5))),
                 stages=st,
+                current_quote=reentry_display_quote(current_quotes.get(sym), exit_price=e.get("exit_price"),
+                                                     sma20=st.get("sma20")),
             )
             c.assert_no_behavior_fields(cards[sym])
         except Exception as exc:  # noqa: BLE001 — one symbol failing is reported, the rest still render

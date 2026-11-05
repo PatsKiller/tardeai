@@ -156,12 +156,12 @@ def main():
     priority = _determine_priority(stale_screeners, total_active)
 
     # ── Router gate ──────────────────────────────────────────────────────────
-    from telegram_alert_router import classify_alert, should_send_telegram
+    from telegram_alert_router import classify_alert, peek_should_send
 
     # Use classify_alert for the message, but override with our OPS-HYGIENE-1 logic
     router_level = classify_alert(message)
     effective_level = priority  # our OPS-HYGIENE-1 classification takes precedence
-    should_send = should_send_telegram(message) if effective_level != "P3_LOG_ONLY" else False
+    should_send = peek_should_send(message) if effective_level != "P3_LOG_ONLY" else False
 
     # For P0, always allow send (override router dedupe)
     if effective_level == "P0_INTERRUPT":

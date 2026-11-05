@@ -339,6 +339,9 @@ Ordinary PRs need one independent exact-head MERGE review; held PRs need two. Re
 separate §17 decision remain operator-owned. Drafts never merge. Readiness requires finished work and review.
 A merge is neither deployment nor financial authority.
 
+A standing merge is one invocation plus one canonical-checkout refresh per PR; no schedule invokes it, and the
+ET freeze is a boundary rather than an automated window.
+
 ---
 
 # 12. DOCS-ONLY WORK
