@@ -77,3 +77,25 @@ def test_a_source_that_cannot_be_read_is_null_not_zero():
     """cron unreadable → None in the payload; the page must render 'not read', never 'no cron left'."""
     out = M.summarize(M.workflow_rows([wf("1", "a")]), M.run_stats([], NOW), {}, now=NOW, cron_lines=None, drafts=None)
     assert out["kpi"]["cron_left"] is None and out["kpi"]["fail_rate_pct"] is None
+
+
+def test_the_cache_asks_the_database_once_per_ttl_and_never_leaks_its_clock(monkeypatch):
+    """The page polls; the database must not be asked on every render. The timestamp stays inside the module."""
+    calls = []
+
+    def counted(**kwargs):
+        calls.append(1)
+        return {"generated_at": "2026-11-05T12:00:00Z", "workflows": [], "n": len(calls)}
+
+    monkeypatch.setattr(M, "get_automations", counted)
+    M._CACHE.clear()
+    first = M.get_automations_cached(ttl_s=60)
+    second = M.get_automations_cached(ttl_s=60)
+    assert len(calls) == 1, "a hit inside the TTL must not reach the source"
+    assert first == second
+    assert "_at" not in second and "_at" not in first, "the monotonic stamp is internal"
+    # an expired entry asks again, and the fresh payload is what comes back
+    M._CACHE["payload"]["_at"] -= 61
+    third = M.get_automations_cached(ttl_s=60)
+    assert len(calls) == 2 and third["n"] == 2
+    M._CACHE.clear()
