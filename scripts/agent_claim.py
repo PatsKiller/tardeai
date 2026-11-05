@@ -210,6 +210,83 @@ def _head(cwd: str | Path | None = None) -> str | None:
     return _git(["rev-parse", "HEAD"], cwd)
 
 
+#: FQ-152 (claude-lead, 2026-11-05). A heartbeat used to stamp whatever commit the caller's tree happened to be on.
+#: Measured across the board that night: of 152 live claims heartbeated in 24 h, 61 sat at their branch tip, 81 were
+#: on the branch but behind it -- 67 of those claiming paths that had changed since, so they no longer describe what is
+#: being pushed -- and 9 carried a head from another branch entirely. A claim that is not at the pushed head cannot
+#: satisfy a claim-at-head gate, and the refusal reads downstream as "no claim exists" rather than "wrong commit".
+#: Warn by default: nineteen sessions share this tool, and a hard refusal mid-task would block work that is otherwise
+#: correct. Set AGENT_CLAIM_STRICT_HEAD=1 (or pass --strict-head) to turn the off-branch case into a refusal.
+HEAD_STRICT_ENV = "AGENT_CLAIM_STRICT_HEAD"
+
+
+def _branch_tip(branch: str | None, cwd: str | Path | None = None) -> str | None:
+    if not branch:
+        return None
+    return _git(["rev-parse", "--verify", "-q", f"refs/heads/{branch}"], cwd)
+
+
+def head_position(branch: str | None, head_sha: str | None, paths, cwd: str | Path | None = None) -> dict:
+    """Where a claim's recorded head sits relative to its own branch (FQ-152).
+
+    ``position`` is one of ``at_tip``, ``behind_tip``, ``not_on_branch`` or ``unresolved``. ``paths_changed`` counts
+    the claim's own claimed paths that differ between the recorded head and the branch tip -- the difference between
+    "behind, harmless" and "behind, and no longer covers what is being pushed".
+    """
+    out = {"position": "unresolved", "branch_tip": None, "commits_behind": None, "paths_changed": None}
+    if not branch or not head_sha:
+        return out
+    tip = _branch_tip(branch, cwd)
+    if not tip:
+        return out
+    out["branch_tip"] = tip
+    if head_sha == tip:
+        out.update(position="at_tip", commits_behind=0, paths_changed=0)
+        return out
+    # _git returns None only on a non-zero exit, so "some string (even empty)" means the ancestor test passed.
+    if _git(["merge-base", "--is-ancestor", head_sha, branch], cwd) is None:
+        out["position"] = "not_on_branch"
+        return out
+    out["position"] = "behind_tip"
+    count = _git(["rev-list", "--count", f"{head_sha}..{branch}"], cwd)
+    out["commits_behind"] = int(count) if count and count.isdigit() else None
+    changed = (_git(["diff", "--name-only", head_sha, branch], cwd) or "").splitlines()
+    claimed = set(paths or [])
+    out["paths_changed"] = sum(1 for p in changed if p and p in claimed)
+    return out
+
+
+def heartbeat_head_guard(branch: str | None, head_sha: str | None, paths, cwd: str | Path | None = None,
+                         *, claim_id: str = "this claim", strict: bool = False) -> dict:
+    """What a heartbeat may stamp, and what it must say (FQ-152 a/b).
+
+    ``stamp`` is the head to record: the caller's HEAD when it belongs to the claim's branch, ``None`` when it does
+    not -- a heartbeat must never replace a claim's head with a commit from another branch's tree. ``refuse`` is True
+    only under ``strict`` (``AGENT_CLAIM_STRICT_HEAD=1`` or ``--strict-head``), because nineteen sessions share this
+    tool and a hard refusal mid-task would block work that is otherwise correct.
+    """
+    pos = head_position(branch, head_sha, paths, cwd)
+    warnings: list[str] = []
+    stamp = head_sha
+    refuse = False
+    if pos["position"] == "not_on_branch":
+        msg = (
+            f"this tree is at {str(head_sha)[:12]}, which is not on claim {claim_id}'s branch {branch}; the claim keeps "
+            f"its recorded head so it is not stamped with an unrelated commit. "
+            f"Run the heartbeat from the claim's own worktree."
+        )
+        warnings.append(msg)
+        stamp = None
+        refuse = bool(strict)
+    elif pos["position"] == "behind_tip" and pos["paths_changed"]:
+        warnings.append(
+            f"claim {claim_id} is {pos['commits_behind']} commit(s) behind {branch} and {pos['paths_changed']} of its "
+            f"claimed path(s) changed since {str(head_sha)[:12]}; it no longer covers the branch. "
+            f"Commit or re-claim before a push that needs a claim at the head."
+        )
+    return {"position": pos["position"], "stamp": stamp, "warnings": warnings, "refuse": refuse, **pos}
+
+
 def _commits_since(base: str | None, head: str, cwd: str | Path | None) -> list[tuple[str, str]]:
     """(sha, subject) of commits in base..head, oldest first (max 50). Just head when base is unknown/unrelated."""
     if base == head:
@@ -326,24 +403,39 @@ def cmd_claim(a: argparse.Namespace) -> int:
 def cmd_heartbeat(a: argparse.Namespace) -> int:
     board = _board(a, observe=False)
     head, top = _head(), _toplevel()
+    warnings: list[str] = []
     try:
         prev = board.get(a.claim_id).doc
+        # FQ-152: only a HEAD that belongs to the claim's own branch may be stamped. A tree left on a review head or
+        # another branch's worktree used to overwrite the claim with an unrelated commit, silently, which is why 9 of
+        # 152 live claims could never satisfy a claim-at-head gate.
+        branch = a.branch or prev.get("branch")
+        guard = heartbeat_head_guard(
+            prev.get("branch"), head, prev.get("paths") or [], top, claim_id=a.claim_id,
+            strict=bool(getattr(a, "strict_head", False)) or os.environ.get(HEAD_STRICT_ENV) == "1",
+        )
+        stamp = guard["stamp"]
+        warnings = list(guard["warnings"])
+        if guard["refuse"]:
+            print(f"refused: {warnings[0] if warnings else 'head is not on the claim branch'} ({HEAD_STRICT_ENV}=1)",
+                  file=sys.stderr)
+            return 2
         doc = board.heartbeat(
             a.claim_id,
             session=_session(a),
             pr=a.pr,
             note=a.note,
-            branch=a.branch,
-            head_sha=head,
+            branch=branch,
+            head_sha=stamp,
             worktree=top,
             policy=_local_policy_fields(),
         )
-        if head and head != prev.get("logged_sha"):  # commits since the last logged SHA go to the worklog
+        if stamp and stamp != prev.get("logged_sha"):  # commits since the last logged SHA go to the worklog
             wl = board.worklog(a.claim_id)
             if wl.exists():
-                for sha, subj in _commits_since(prev.get("logged_sha"), head, top):
+                for sha, subj in _commits_since(prev.get("logged_sha"), stamp, top):
                     wl.change(f"commit {sha[:12]} {subj}")
-            board.heartbeat(a.claim_id, session=_session(a), logged_sha=head)
+            board.heartbeat(a.claim_id, session=_session(a), logged_sha=stamp)
     except B.ClaimConflict as exc:
         _print_conflicts(exc.conflicts)
         print(f"refused: {exc}", file=sys.stderr)
@@ -351,7 +443,15 @@ def cmd_heartbeat(a: argparse.Namespace) -> int:
     except (B.ClaimError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{doc['claim_id']} heartbeat {doc['heartbeat_at']}")
+    for w in warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    if a.json:
+        out = dict(doc)
+        if warnings:
+            out["head_warnings"] = warnings
+        print(json.dumps(out, indent=2, sort_keys=True))
+    else:
+        print(f"{doc['claim_id']} heartbeat {doc['heartbeat_at']}")
     return 0
 
 
@@ -708,6 +808,24 @@ def cmd_status(a: argparse.Namespace) -> int:
 
     for r in in_flight + takeable:
         r["live_head_sha"] = live_head(r)
+
+    # FQ-152 (c): the board's head coverage, so the decay stays visible without anyone re-measuring by hand. A claim
+    # that is merely behind is not wrong; the number that matters is how many of those no longer claim a path that
+    # changed under them, because those look healthy and still cannot cover a push.
+    counts = {"at_tip": 0, "behind_tip": 0, "not_on_branch": 0, "unresolved": 0}
+    stale_coverage = 0
+    for r in in_flight:
+        try:
+            doc = board.get(r["claim_id"]).doc
+        except Exception:  # noqa: BLE001 — an unreadable claim is counted as unresolved, never fatal to status
+            counts["unresolved"] += 1
+            continue
+        pos = head_position(doc.get("branch"), doc.get("head_sha"), doc.get("paths") or [], cwd=cwd)
+        r["head_position"] = pos
+        counts[pos["position"]] = counts.get(pos["position"], 0) + 1
+        if pos["position"] == "behind_tip" and (pos.get("paths_changed") or 0) > 0:
+            stale_coverage += 1
+    head_coverage = {**counts, "behind_tip_no_longer_covering": stale_coverage, "live_claims": len(in_flight)}
     out = {
         "schema": "AgentClaimStatus@v1",
         "at": view["as_of"],
@@ -717,6 +835,7 @@ def cmd_status(a: argparse.Namespace) -> int:
         "local_only_at_risk": at_risk,
         "local_only_scanned_days": a.days,
         "github_warning": warn or view["lifecycle"].get("warning"),
+        "head_coverage": head_coverage,
     }
     if a.json:
         print(json.dumps(out, indent=2, sort_keys=True, default=str))
@@ -747,6 +866,17 @@ def cmd_status(a: argparse.Namespace) -> int:
         print(f"\n!! {len(changed)} open claim(s) were made under an older AGENTS.md — see POLICY CHANGED below")
     print(f"\n## In flight ({len(in_flight)})")
     print("\n".join(line(r) for r in in_flight) or "(none)")
+    hc = out["head_coverage"]
+    print(
+        f"\n   head coverage: {hc['at_tip']}/{hc['live_claims']} at their branch tip"
+        f" · {hc['behind_tip']} behind ({hc['behind_tip_no_longer_covering']} no longer claim a path that changed)"
+        f" · {hc['not_on_branch']} off-branch · {hc['unresolved']} unresolved"
+    )
+    if hc["not_on_branch"] or hc["behind_tip_no_longer_covering"]:
+        print(
+            "   -> those claims cannot satisfy a claim-at-head gate; heartbeat again from the branch's own worktree "
+            "after committing (FQ-152)"
+        )
     print(f"\n## Stale or can be taken over ({len(takeable)})  -> agent_claim.py takeover <claim_id>")
     print("\n".join(line(r) + f"\n    why: {r['state']}" for r in takeable) or "(none)")
     print(f"\n## Local-only work at risk ({len(at_risk)}): commits on no remote and no open PR, last {a.days} d")
@@ -1205,6 +1335,8 @@ def build_parser() -> argparse.ArgumentParser:
     h.add_argument("--note", default=None)
     h.add_argument("--branch", default=None)
     h.add_argument("--json", action="store_true")
+    h.add_argument("--strict-head", action="store_true",
+                   help="refuse instead of warn when this tree's HEAD is not on the claim's branch (FQ-152)")
     h.set_defaults(fn=cmd_heartbeat)
 
     for name, fn, arg, hlp in (
