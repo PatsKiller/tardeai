@@ -239,6 +239,14 @@ def get_list(query: dict | None = None) -> dict[str, Any]:
     from lib.data_broker.opportunity_eligibility import qualify, sort_qualified, technical_candidates
 
     top = str((query or {}).get("preset") or "").lower() == "top5"
+    # Capture identity, not eligibility: only this exact request is Home's uncustomized top-five view.
+    home_scope = top and all(
+        key in ("preset", "_")
+        or (key == "sort" and str(value) == "conviction")
+        or (key == "limit" and str(value) == "5")
+        or (key == "page" and str(value) == "1")
+        for key, value in (query or {}).items()
+    )
     q = op.apply_preset(dict(query or {}))
     proj = _store().read_projection()
     raw = list((proj.get("items") or {}).values())
@@ -274,6 +282,7 @@ def get_list(query: dict | None = None) -> dict[str, Any]:
         "curated_by": None,
         "ranked_by": "Automated factor score; CIO research required for top status",
         "top_list": ranking,
+        "selection_scope": "home_top5" if home_scope else "research",
         "research_candidates": research[:5] if top else [],
         "store": STORE,
         "universe": len(items),

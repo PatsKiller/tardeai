@@ -367,15 +367,164 @@ def test_builder_assembles_one_prospect_per_guid_and_shows_the_nvda_conflicts(tm
         ir.prospect_row(p)                                           # every row is a valid table row
 
 
-def test_home_preset_matches_the_opportunity_api_rule():
-    from lib.data_broker import opportunity as op
-    items = {s: {"symbol": s, "conviction": c, "coverage": cov, "risk_reward": {"rr": rr}}
-             for s, c, cov, rr in (("A", 91, 1.0, 2.5), ("B", 85, 0.9, 1.9), ("C", 82, 0.7, 3.0), ("D", 88, 1.0, None),
-                                   ("E", 80, 0.8, 2.0), ("F", 79.9, 1.0, 5.0), ("G", 95, 1.0, 2.1), ("H", 84, 1.0, 2.2),
-                                   ("I", 86, 1.0, 4.0))}
-    q = op.apply_preset({"preset": "top5"})
-    want = [a["symbol"] for a in op.sort_items([a for a in items.values() if op.passes(a, q)], q["sort"])][: q["limit"]]
-    assert [a["symbol"] for a in B.home_best_opportunities(items)] == want == ["G", "A", "I", "H", "E"]
+def _home_capture_api(monkeypatch, *, case="ready", query=None):
+    """Real list entry point, synthetic projection/context; no reader or provider is called."""
+    import importlib.util
+
+    modules = {}
+    for name, rel in (
+        ("lib.data_broker.opportunity_eligibility", "scripts/lib/data_broker/opportunity_eligibility.py"),
+        ("scripts.api_v3_opportunities", "scripts/api_v3_opportunities.py"),
+    ):
+        spec = importlib.util.spec_from_file_location(name, ROOT / rel)
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, module)
+        spec.loader.exec_module(module)
+        modules[name] = module
+    api = modules["scripts.api_v3_opportunities"]
+
+    at = datetime.now(timezone.utc).isoformat()
+    raw = {"symbol": "SYNQ", "conviction": 90, "coverage": 1.0,
+           "risk_reward": {"rr": 3.0}, "stance": "ADD", "type": "new_position", "rank": 77}
+    context = {
+        "technical": {"SYNQ": {"rsi": 55, "macd_signal": "bullish", "sma_20": 100,
+                               "sma_50": 99, "sma_200": 95}},
+        "theses": {"SYNQ": {"summary": "Synthetic CIO thesis", "stance": "WATCH", "status": "active",
+                             "published_ts": at}},
+        "market_risk": {"state": "evaluated", "tier": case if case in ("RED", "ORANGE") else "GREEN",
+                        "as_of": at},
+    }
+    if case == "no_thesis":
+        context["theses"] = {}
+    if case == "no_technicals":
+        context["technical"] = {}
+    if case == "partial_coverage":
+        raw["coverage"] = 0.79
+
+    class Store:
+        def read_projection(self):
+            return {"as_of": at, "items": {"SYNQ": raw}}
+
+    monkeypatch.setattr(api, "_store", Store)
+    monkeypatch.setattr(api, "_ranking_context", lambda *args, **kwargs: context)
+    return api.get_list({"preset": "top5"} if query is None else query), raw
+
+
+@pytest.mark.parametrize("case", ["ready", "no_thesis", "no_technicals", "RED", "ORANGE", "partial_coverage"])
+def test_shadow_home_consumes_the_actual_qualified_selection(monkeypatch, case):
+    capture, raw = _home_capture_api(monkeypatch, case=case)
+    rows = B.home_best_opportunities(capture)
+    assert capture["selection_scope"] == "home_top5"
+    assert rows is not None
+    assert [r["symbol"] for r in rows] == (["SYNQ"] if case == "ready" else [])
+    assert [r["symbol"] for r in rows] == [r["symbol"] for r in capture["items"]]
+    assert B.home_best_opportunities({"SYNQ": raw}) is None, "curator scores cannot qualify Home membership"
+
+
+@pytest.mark.parametrize("case", ["default", "equivalent", "not_top5", "sector", "page2", "small_limit",
+                                  "other_sort", "coverage_override", "empty_override", "null_override", "cache_bust"])
+def test_home_capture_scope_is_the_exact_uncustomized_request(monkeypatch, case):
+    queries = {
+        "default": {"preset": "top5"},
+        "equivalent": {"preset": "top5", "sort": "conviction", "limit": "5", "page": "1"},
+        "not_top5": {},
+        "sector": {"preset": "top5", "sector": "Technology"},
+        "page2": {"preset": "top5", "page": "2"},
+        "small_limit": {"preset": "top5", "limit": "1"},
+        "other_sort": {"preset": "top5", "sort": "rr"},
+        "coverage_override": {"preset": "top5", "min_coverage": "0.1"},
+        "empty_override": {"preset": "top5", "min_conviction": ""},
+        "null_override": {"preset": "top5", "min_conviction": None},
+        "cache_bust": {"preset": "top5", "_": "synthetic-cache-key"},
+    }
+    capture, _ = _home_capture_api(monkeypatch, query=queries[case])
+    is_home = case in ("default", "equivalent", "cache_bust")
+    assert capture["selection_scope"] == ("home_top5" if is_home else "research")
+    assert (B.home_best_opportunities(capture) is not None) is is_home
+
+
+@pytest.mark.parametrize("case", ["none", "empty_object", "wrong_schema", "wrong_scope", "items_none",
+                                  "row_text", "missing_clock", "naive_clock", "unqualified", "missing_review",
+                                  "bad_rank", "duplicate_symbol", "unreviewed", "no_stance", "bad_review_clock"])
+def test_malformed_or_wrong_selection_stays_unknown_not_empty(monkeypatch, case):
+    from copy import deepcopy
+
+    original, _ = _home_capture_api(monkeypatch)
+    capture = deepcopy(original)
+    if case == "none":
+        capture = None
+    elif case == "empty_object":
+        capture = {}
+    elif case == "wrong_schema":
+        capture["schema"] = "Unsupported@999"
+    elif case == "wrong_scope":
+        capture["selection_scope"] = "research"
+    elif case == "items_none":
+        capture["items"] = None
+    elif case == "row_text":
+        capture["items"] = ["synthetic malformed row"]
+    elif case == "missing_clock":
+        capture.pop("as_of")
+    elif case == "naive_clock":
+        capture["as_of"] = "2026-11-05T12:00:00"
+    elif case == "unqualified":
+        capture["items"][0]["top_eligibility"]["eligible"] = False
+    elif case == "missing_review":
+        capture["items"][0].pop("cio_review")
+    elif case == "bad_rank":
+        capture["items"][0]["rank"] = None
+    elif case == "duplicate_symbol":
+        capture["items"].append(deepcopy(capture["items"][0]))
+    elif case == "unreviewed":
+        capture["items"][0]["cio_review"]["reviewed"] = False
+    elif case == "no_stance":
+        capture["items"][0]["cio_review"]["stance"] = None
+    elif case == "bad_review_clock":
+        capture["items"][0]["cio_review"]["as_of"] = "not a timestamp"
+    assert B.home_best_opportunities(capture) is None
+
+
+def _home_compare_fixture(monkeypatch, capture):
+    # Deliberately stale/incompatible curator facts: none may be published as canonical Home facts.
+    raw = {"symbol": "SYNQ", "conviction": 17, "rank": 77, "stance": "SELL"}
+    monkeypatch.setattr(B, "load_file_inputs", lambda _: {"opportunity": {
+        "rows": {"SYNQ": raw}, "as_of": datetime.now(timezone.utc).isoformat()}})
+    doc = {"prospects": [{"symbol": "SYNQ", "stage": "watching", "stance": "WATCH", "conviction": 90,
+                          "conflicts": [], "shadow_rank": 1}]}
+    return B.compare(doc, Path("/synthetic-not-read"), home_opportunities=capture)
+
+
+@pytest.mark.parametrize("case", ["unknown", "empty"])
+def test_home_comparison_keeps_missing_capture_distinct_from_measured_empty(monkeypatch, case):
+    capture = None if case == "unknown" else _home_capture_api(monkeypatch, case="no_thesis")[0]
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    known = case == "empty"
+    assert comparison["surfaces"]["home"]["state"] == ("available" if known else "unavailable")
+    assert comparison["summary"]["home_best_opportunities"] == ([] if known else None)
+    assert comparison["summary"]["shadow_top_vs_home_top_overlap"] == (0 if known else None)
+    assert comparison["rows"][0]["home"] is None
+    assert comparison["rows"][0]["home_membership"] == (False if known else None)
+    assert comparison["rows"][0]["agrees"] is (True if known else None)
+    assert comparison["summary"]["agree"] == (1 if known else 0)
+    assert comparison["summary"]["unverified"] == (0 if known else 1)
+
+
+def test_home_rank_stance_and_overlap_use_captured_canonical_facts(monkeypatch):
+    capture, _ = _home_capture_api(monkeypatch)
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    home = comparison["rows"][0]["home"]
+    assert home == {"rank": 1, "conviction": 90, "stance": "WATCH", "in_best_opportunities": True}
+    assert comparison["rows"][0]["home_membership"] is True
+    assert comparison["summary"]["shadow_top_vs_home_top_overlap"] == 1
+    assert comparison["surfaces"]["home"]["as_of"] == capture["as_of"]
+    assert comparison["rows"][0]["telegram"]["conviction_line"].startswith("Conviction 17/100 · #77 · SELL")
+    assert not any(d.startswith(("stance:", "conviction:")) for d in comparison["rows"][0]["differences"])
+
+
+def test_raw_reweighted_curator_score_does_not_qualify_home():
+    raw = {"symbol": "SYNQ", "conviction": 99, "coverage": 1.0, "risk_reward": {"rr": 3.0}, "rank": 1}
+    assert B.home_best_opportunities({"SYNQ": raw}) is None
+
 
 
 def test_stance_disagreement_rule():
@@ -690,3 +839,22 @@ def test_lifecycle_events_append_idempotently_on_the_cluster(cluster, tmp_path):
     assert out == "exit:exit_review:internal", out
     rc, out = psql("cpx_admin", "cpx_life", "SELECT count(*) FROM cio_prospect_events WHERE event_type = 'stop_change'")
     assert out == "7"
+
+
+def test_home_missing_capture_is_explicit_in_markdown_report(tmp_path):
+    import importlib.util
+
+    root = _state(tmp_path)
+    doc = _build(root)
+    comparison = B.compare(doc, root, now=NOW)
+    spec = importlib.util.spec_from_file_location("shadow_report_home_test", ROOT / "scripts/cio_prospect_shadow_build.py")
+    report = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = report
+    spec.loader.exec_module(report)
+    text = report.render_md(doc, comparison)
+    assert f"unverified {comparison['summary']['unverified']}" in text
+    assert "not measured" in text and "Home selection not captured" in text
+    for row in comparison["rows"]:
+        if row["agrees"] is None:
+            rendered = next(line for line in text.splitlines() if line.startswith(f"| {row['symbol']} |"))
+            assert rendered.endswith("| Home comparison unavailable |")

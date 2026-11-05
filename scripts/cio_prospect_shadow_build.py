@@ -136,12 +136,15 @@ def render_md(doc: dict, cmp: dict) -> str:
         "",
         f"## Comparison — top {cmp['top_n']} shadow prospects + Home best opportunities + Watch top ideas",
         "",
-        f"- subjects compared: {s['subjects']} — **agree {s['agree']}, differ {s['differ']}**",
+        f"- subjects compared: {s['subjects']} — **agree {s['agree']}, differ {s['differ']}, "
+        f"unverified {s.get('unverified', 0)}**",
         f"- stance differences {s['stance_differences']}; conviction differences (≥10 pts) "
         f"{s['conviction_differences']}; subjects whose inputs disagree {s['with_input_conflicts']}",
-        f"- shadow top {cmp['top_n']} ∩ Home (opportunity rank) top {cmp['top_n']}: {s['shadow_top_vs_home_top_overlap']}",
-        f"- Home best opportunities (preset top5): {s['home_best_opportunities']} — in shadow top: "
-        f"{s['home_best_in_shadow_top']}",
+        f"- shadow top {cmp['top_n']} ∩ Home (opportunity rank) top {cmp['top_n']}: "
+        f"{s['shadow_top_vs_home_top_overlap'] if s['shadow_top_vs_home_top_overlap'] is not None else 'not measured'}",
+        f"- Home best opportunities (preset top5): "
+        f"{s['home_best_opportunities'] if s['home_best_opportunities'] is not None else 'Home selection not captured'}"
+        f" — in shadow top: {s['home_best_in_shadow_top'] if s['home_best_in_shadow_top'] is not None else 'not measured'}",
         f"- Watch top ideas ({cmp['surfaces']['watch']['source']}): {s['watch_top_ideas']} — in shadow top: "
         f"{s['watch_in_shadow_top']}",
         f"- Telegram conviction line: {cmp['surfaces']['telegram']['source']} "
@@ -160,7 +163,8 @@ def render_md(doc: dict, cmp: dict) -> str:
         w = r["watch"]
         w_s = "n/c" if w is None else (f"#{w['top_idea_rank']}" if w["top_idea_rank"] else "—")
         t_s = r["telegram"].get("conviction_line") or f"none ({r['telegram'].get('why')})"
-        v = "agree" if r["agrees"] else "; ".join(r["differences"])
+        v = ("Home comparison unavailable" if r["agrees"] is None
+             else "agree" if r["agrees"] else "; ".join(r["differences"]))
         L.append(f"| {r['symbol']} | {sh_s} | {h_s} | {w_s} | {t_s} | {v} |")
     L += position_sections(doc)
     L += ["", "MBI_BEHAVIOR = 0: stance is posture and priority; reference levels are information, never orders.", ""]
