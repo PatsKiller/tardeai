@@ -175,7 +175,7 @@ function HomeClassic({ onDrill }: Props) {
   // FQ-087: the money number in the subtitle carries its own qualifier, so a failed or retained
   // refresh can never leave a bare dollar figure reading as fresh.
   const moneyNote = moneyQualifier(freshnessEnvelope.transport,
-    observationAgeHours(freshnessEnvelope, Date.now()), 24)
+    observationAgeHours(freshnessEnvelope, Date.now()), 24, freshnessEnvelope.freshness)
 
   const tiles = [
     { label: 'PORTFOLIO', value: pv != null ? fmt$(pv, 0) : '—', sub: todayChg != null ? `${todayChg >= 0 ? '+' : ''}${fmt$(todayChg, 0)} today` : '', color: 'var(--text0)',

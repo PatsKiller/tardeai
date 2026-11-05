@@ -56,45 +56,71 @@ function compile(path) {
   return url
 }
 
-const now = new Date().toISOString()
-const overview = {
-  portfolio_value: 1253532.64, today_change: -1499.89, today_pct: -0.12, position_count: 31,
-  last_repriced: now,
-  observation: { envelopes: { holdings: { observed_at: now, freshness: { status: 'FRESH', observed_at_utc: now } } } },
-}
-globalThis.__homeFixture = (path) => {
-  if (String(path) === '/api/v2/overview') {
-    return { data: overview, loading: false, stale: false, error: null, transport: globalThis.__transport ?? 'OK', refetch: () => {} }
-  }
-  return { data: null, loading: false, stale: false, error: null, transport: 'OK', refetch: () => {} }
-}
-
+// All amounts/counts below are independently chosen synthetic fixture data.
+const NOW = Date.parse('2030-01-07T15:00:00Z')
+Date.now = () => NOW
+const freshClock = '2030-01-07T14:59:00Z'
+globalThis.fetch = () => { throw new Error('Network forbidden in synthetic Home rendering') }
+let overview
+const fixture = () => ({
+  portfolio_value: 18473.25, today_change: -18.75, today_pct: -0.1, position_count: 7,
+  pipeline_status: 'fresh', pipeline_completed: freshClock, last_repriced: freshClock,
+  observation: { surface_status: 'FRESH', envelopes: { holdings: {
+    observed_at: freshClock, freshness: { status: 'FRESH', observed_at_utc: freshClock },
+  } } },
+})
+globalThis.__homeFixture = (path) => ({
+  data: String(path) === '/api/v2/overview' ? overview : null,
+  loading: false, stale: false, error: null, transport: globalThis.__transport ?? 'OK', refetch() {},
+})
 const { default: HomeDoNow } = await import(compile(join(app, 'src/pages/HomeDoNow.tsx')))
+const { default: HomeHub } = await import(compile(join(app, 'src/pages/HomeHub.tsx')))
 const { positionsFreshness } = await import(compile(join(app, 'src/lib/homeDoNow.ts')))
-const render = (transport) => {
-  globalThis.__transport = transport
-  return renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(HomeDoNow, {})))
-}
-
 let failed = 0
-const check = (ok, msg) => { if (!ok) { failed++; console.error('FAIL ' + msg) } }
-
-const retained = render('RETAINED')
-check(/home-money-qualifier/.test(retained), 'the DEFAULT Home page renders no money qualifier at all')
-check(/last known value|not refreshed/i.test(retained), 'the retained transport does not say the value is last-known')
-check(/1,253,5/.test(retained), 'the portfolio value itself is missing from the default page')
-
-const clean = render('OK')
-check(!/home-money-qualifier/.test(clean), 'a clean, fresh transport is still being flagged on the default page')
-
-// The pure function takes the transport as an input now, so a retained refresh is stale by construction.
-const retainedPos = positionsFreshness(overview, Date.now(), 'RETAINED')
-check(retainedPos.stale === true, 'positionsFreshness ignores a retained transport')
-check(retainedPos.qualifier !== null, 'positionsFreshness returns no qualifier for a retained transport')
-check(/did not complete cleanly/i.test(retainedPos.tip), 'the positions tip does not say the refresh failed')
-const cleanPos = positionsFreshness(overview, Date.now(), 'OK')
-check(cleanPos.stale === false, 'a clean, fresh positions read is called stale')
-check(cleanPos.qualifier === null, 'a clean, fresh positions read carries a qualifier')
-
-if (failed) { console.error(`homeDoNowMoney.render: ${failed} failure(s)`); process.exit(1) }
-console.log('homeDoNowMoney.render: ok')
+let passed = 0
+const check = (ok, msg) => { if (!ok) { failed++; console.error('FAIL ' + msg) } else passed++ }
+for (const mode of ['fresh', 'retained', 'old', 'missing', 'malformed', 'future',
+  'source-stale', 'source-unavailable', 'surface-only-unavailable', 'holdings-only-stale']) {
+  overview = fixture()
+  globalThis.__transport = mode === 'retained' ? 'RETAINED' : 'OK'
+  const env = overview.observation.envelopes.holdings
+  const stamp = mode === 'old' ? '2030-01-06T14:00:00Z'
+    : mode === 'future' ? '2030-01-07T16:00:00Z' : mode === 'malformed' ? 'invalid-clock' : freshClock
+  overview.last_repriced = overview.pipeline_completed = env.observed_at = env.freshness.observed_at_utc = stamp
+  if (mode === 'missing') {
+    delete overview.last_repriced; delete overview.pipeline_completed
+    delete env.observed_at; delete env.freshness.observed_at_utc
+  }
+  if (mode === 'source-stale') overview.observation.surface_status = env.freshness.status = 'STALE'
+  if (mode === 'source-unavailable') overview.observation.surface_status = env.freshness.status = 'UNAVAILABLE'
+  if (mode === 'surface-only-unavailable') overview.observation.surface_status = 'UNAVAILABLE'
+  if (mode === 'holdings-only-stale') env.freshness.status = 'STALE'
+  for (const surface of ['primary', 'classic']) {
+    const Comp = surface === 'primary' ? HomeDoNow : HomeHub
+    const html = renderToStaticMarkup(React.createElement(MemoryRouter,
+      { initialEntries: [surface === 'primary' ? '/' : '/?view=classic'] },
+      React.createElement(Comp, { onDrill() {} })))
+    check(html.includes('18,473'), `${surface}/${mode}: synthetic amount did not render`)
+    const qualifier = html.match(/data-testid="home-money-qualifier"[^>]*>([^<]*)<\/span>/)?.[1] ?? null
+    check(mode === 'fresh' ? qualifier === null : !!qualifier,
+      `${surface}/${mode}: ${mode === 'fresh' ? 'fresh control unexpectedly qualified' : 'unusable observation left bare money'}`)
+    if (mode === 'retained') check(/last known|not refreshed/i.test(qualifier ?? ''), `${surface}: retained value must say last known`)
+  }
+  const state = positionsFreshness(overview, NOW, globalThis.__transport)
+  check(mode === 'fresh' ? !state.stale && state.qualifier === null : state.stale && !!state.qualifier,
+    `${mode}: positions state and money qualifier disagree`)
+  if (mode === 'retained') check(/did not complete cleanly/i.test(state.tip), 'retained source tip lost its reason')
+}
+// The same existing 24 h file threshold applies when the market is closed.
+for (const old of [false, true]) {
+  const closedNow = Date.parse('2030-01-12T15:00:00Z')
+  const stamp = new Date(closedNow - (old ? 25 : 0.25) * 3600000).toISOString()
+  const value = fixture()
+  value.last_repriced = stamp
+  value.observation.envelopes.holdings.observed_at = stamp
+  value.observation.envelopes.holdings.freshness.observed_at_utc = stamp
+  const state = positionsFreshness(value, closedNow, 'OK')
+  check(state.stale === old && !!state.qualifier === old, `closed-market old=${old}: state and money qualifier disagree`)
+}
+console.log(JSON.stringify({ suite: 'homeDoNowMoney.render', passed, failed }))
+if (failed) process.exit(1)

@@ -18,7 +18,9 @@ check(transportQualifier('OK') === null, 'a clean transport with fresh data is b
 check(moneyQualifier('OK', 0.5) === null, 'fresh data on a clean transport is being flagged')
 check(/stale/.test(moneyQualifier('OK', 30) || ''), 'aged data on a clean transport does not say stale')
 check(/stale/.test(ageQualifier(72, 24) || ''), 'ageQualifier does not report a 3-day-old value')
-check(ageQualifier(null, 24) === null, 'an undatable value is being called stale rather than unknown')
+check(/unknown|unavailable/i.test(ageQualifier(null, 24) || ''), 'an undatable value must say its time is unavailable')
+for (const age of [NaN, Infinity, -1]) check(!!ageQualifier(age, 24), 'an unusable clock must not read fresh')
+for (const state of ['STALE', 'UNKNOWN']) check(!!moneyQualifier('OK', 0.1, 24, state), 'source refusal cannot be hidden by a recent clock')
 
 const home = readFileSync(join(HERE, '../pages/HomeHub.tsx'), 'utf8')
 check(/moneyQualifier\(/.test(home), 'HomeHub does not qualify its money value with transport + age')
