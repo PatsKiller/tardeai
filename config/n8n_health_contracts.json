@@ -3086,9 +3086,9 @@
       "id": "crontab-snapshot-for-health-agent",
       "kind": "lane",
       "workflow_id": "c0d4c7845e5c4fcc",
-      "status": "DRAFT",
-      "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "status": "REVIEWED",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "n8n-scheduled (*/20) live crontab snapshot for the health agent (NoNewPrivileges strips crontab setgid inside the unit).",
         "business_function": "governance",
@@ -3270,7 +3270,7 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
         "expected_output_basis": "expected_output derived 2026-10-15 from No script in repo (script=None; n8n-scheduled */20, cad 0.34h): decided from purpose/writes only \u2014 each run dumps the live crontab to data/runtime/crontab_snapshot.txt, which always has content, so every run must produce it; file output so no durable_evidence item. produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
       },
-      "review_by": "2026-10-25",
+      "review_by": "2027-05-05",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "snapshot file data/runtime/crontab_snapshot.txt rewritten",
@@ -10694,9 +10694,9 @@
       "id": "n8n-incident-fanin",
       "kind": "lane",
       "workflow_id": "722fac0e043ea5c4",
-      "status": "DRAFT",
-      "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "status": "REVIEWED",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "n8n-scheduled (*/5) live run of n8n_incident_fanin.py: one list of open incidents from existing receipts as coordination events.",
         "business_function": "alerts-ops",
@@ -10873,7 +10873,7 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
         "expected_output_basis": "expected_output derived 2026-10-15 from Read-only advisory fan-in that writes data/runtime/n8n_incident_fanin_last.json each apply run (n8n_incident_fanin.py:1558-1563) and posts gateway events only for open findings; zero open incidents is the healthy state (receipt open count line 1549); n8n */5. produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
       },
-      "review_by": "2026-10-25",
+      "review_by": "2027-05-05",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "open incidents posted/walked on the n8n coordination gateway",
@@ -10907,9 +10907,9 @@
       "id": "n8n-pilot-dispatch",
       "kind": "lane",
       "workflow_id": "078e8fcbea0c5020",
-      "status": "DRAFT",
-      "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "status": "REVIEWED",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "n8n-scheduled (*/15) live run of n8n_pilot_dispatch.py: mirror five pilots' durable receipts into gateway coordination events.",
         "business_function": "monitoring",
@@ -11085,7 +11085,7 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
         "expected_output_basis": "expected_output derived 2026-10-15 from Mirrors five daily pilots' receipts (scripts/lib/n8n_pilot_contracts.py:20-26) into gateway events, fired=False when a pilot has no receipt (n8n_pilot_dispatch.py:81-108); receipt file data/runtime/n8n_pilot_dispatch_last.json written each apply (line 302-307) with fired count (line 297); n8n */15, 72h spans a weekend. produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
       },
-      "review_by": "2026-10-25",
+      "review_by": "2027-05-05",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "pilot events fired into the n8n coordination gateway ledger",
@@ -11119,9 +11119,9 @@
       "id": "n8n-research-intake-consumer",
       "kind": "lane",
       "workflow_id": "21fd15d5f8a4c4da",
-      "status": "DRAFT",
-      "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "status": "REVIEWED",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "n8n-scheduled (*/15) live run of n8n_research_intake_consumer.py: turn research_request/v1 gateway events into enqueued research work.",
         "business_function": "research",
@@ -11297,7 +11297,7 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
         "expected_output_basis": "expected_output derived 2026-10-15 from Consumes a sparse gateway queue of research_request/v1 events (n8n_research_intake_consumer.py:136-147); with nothing listed it enqueues nothing; receipt file data/runtime/n8n_research_intake_last.json has enqueued_today/listed, no per-run count (line 177-184); n8n */15. produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
       },
-      "review_by": "2026-10-25",
+      "review_by": "2027-05-05",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "research_request events enqueued into ri_research_queue",
