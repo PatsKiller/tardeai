@@ -147,6 +147,48 @@ def _detail_is_open(page: Any) -> bool:
 OPENER_NAME = re.compile(r"^\s*(open|show|view|expand|see|review)\b|\bdetails?\b", re.I)
 
 
+def _capture_detail(page: Any, *, out_dir: Any = None, prefix: str = "", ordinal: int = 0) -> dict[str, Any] | None:
+    """Persist what the opened detail actually says, BEFORE it is closed.
+
+    cx-openai-4 R3 on #2648. The crawl clicked an opener, saw that a detail had appeared, pressed Escape and recorded
+    only `opened: true`. The detail's text — the whole reason for opening it, and the input to the pass-2 checks —
+    existed in the DOM for 400 ms and nowhere else; the reviewer drove a detail whose text was a unique marker and
+    found that marker in no saved artifact. The text (and a screenshot, when there is somewhere to put it) is written
+    now while the detail is open, and its sha256 goes into the record, so a later pass can prove which text it graded
+    without trusting the crawl's own account of itself.
+    """
+    import hashlib
+
+    for sel in DETAIL_SELECTORS:
+        try:
+            loc = page.locator(sel).first
+            if not loc.is_visible(timeout=500):
+                continue
+            text = loc.inner_text() or ""
+        except Exception as exc:  # noqa: BLE001 — an unreadable detail is reported, not silently "opened"
+            _log.debug("could not read the opened detail (%s): %s", sel, exc)
+            continue
+        record: dict[str, Any] = {"detail_selector": sel, "chars": len(text),
+                                  "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(), "text": text}
+        if out_dir is not None:
+            from pathlib import Path as _Path
+
+            from site_audit.capture_root import assert_leaf_inside_root
+            stem = f"{prefix}detail-{ordinal}"
+            leaf = assert_leaf_inside_root(_Path(out_dir) / f"{stem}.txt", out_dir)
+            leaf.write_text(text)
+            record["file"] = leaf.name
+            record.pop("text")  # the file is the evidence; the record names it and its digest
+            try:
+                shot = assert_leaf_inside_root(_Path(out_dir) / f"{stem}.png", out_dir)
+                page.screenshot(path=str(shot), full_page=True)
+                record["screenshot"] = shot.name
+            except Exception as exc:  # noqa: BLE001 — a screenshot is extra evidence, not the contract
+                _log.debug("could not screenshot the opened detail: %s", exc)
+        return record
+    return None
+
+
 def _safe_detail_child(target: Any) -> tuple[Any, str, str] | None:
     """The container's own detail button, when the container itself is not something the crawler may press.
 
@@ -193,16 +235,18 @@ def crawl_plan(openers: Iterable[dict[str, Any]], indices: Iterable[int]) -> tup
 
 
 def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int], out_dir: Any,
-                 openers: Iterable[dict[str, Any]] | None = None, max_links: int = 40) -> dict[str, Any]:
+                 openers: Iterable[dict[str, Any]] | None = None, max_links: int = 40,
+                 prefix: str = "") -> dict[str, Any]:
     """Open the sampled details, then follow in-page links one level.
 
     `page` is a Playwright page. Opener discovery is passed in when the caller already has it (tests, or a component
     that knows its own rows); otherwise rows and cards carrying a button/role are collected from the document.
+    `prefix` names this viewport's evidence files (several viewports share one page directory).
     """
     items = list(openers) if openers is not None else _discover_openers(page)
     allowed, refused = crawl_plan(items, indices)
     details: list[DetailRecord] = []
-    for item in allowed:
+    for ordinal, item in enumerate(allowed):
         rec = DetailRecord(opener=str(item.get("selector") or item.get("label") or ""), label=str(item.get("label") or ""), opened=False)
         try:
             locator = page.locator(str(item.get("selector") or ""))
@@ -235,8 +279,10 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
             pressed.click(timeout=5000)
             page.wait_for_timeout(400)
             opened = _detail_is_open(page)
+            # cx-openai-4 R3 on #2648: the evidence is taken while the detail is open — after Escape it is gone.
+            evidence = _capture_detail(page, out_dir=out_dir, prefix=prefix, ordinal=ordinal) if opened else None
             details.append(DetailRecord(**{**rec.__dict__, "label": pressed_label or rec.label, "opened": opened,
-                                           "pressed": via,
+                                           "pressed": via, "fields": [evidence] if evidence else [],
                                            "skipped_reason": None if opened else "clicked but no detail appeared"}))
         except Exception as exc:  # noqa: BLE001 — an opener that does not open is a finding, not a crash
             details.append(DetailRecord(**{**rec.__dict__, "skipped_reason": f"{type(exc).__name__}"}))

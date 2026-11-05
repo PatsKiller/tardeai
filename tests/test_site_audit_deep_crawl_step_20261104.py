@@ -289,3 +289,89 @@ def test_a_row_whose_children_are_not_openers_is_still_refused():
     assert row.clicks == 0 and all(k.clicks == 0 for k in row._kids), "a non-opener child was pressed"
     assert out["details"][0]["opened"] is False
     assert out["refused"] and "will not press" in out["refused"][0]["reason"]
+
+
+class _Detail:
+    """The opened detail: visible, and saying something unique that must survive the close."""
+
+    def __init__(self, text):
+        self.text = text
+
+    def is_visible(self, timeout=None):
+        return True
+
+    def inner_text(self):
+        return self.text
+
+
+class _Opener:
+    def __init__(self, label):
+        self.label = label
+        self.clicks = 0
+
+    def get_attribute(self, name):
+        return self.label if name == "aria-label" else None
+
+    def inner_text(self):
+        return ""
+
+    def evaluate(self, _js):
+        return "button"
+
+    def click(self, timeout=None):
+        self.clicks += 1
+
+
+class DetailPage:
+    """One safe opener; the detail selectors resolve to a visible node carrying a unique marker."""
+
+    def __init__(self, opener_label, detail_text):
+        self.opener = _Opener(opener_label)
+        self.detail = _Detail(detail_text)
+        self.screenshots = []
+
+    def locator(self, sel):
+        node = self.detail if (sel.startswith("[role='dialog']") or sel.startswith("[data-testid$=")) else self.opener
+
+        class _L:
+            @property
+            def first(self):
+                return node
+
+        return _L()
+
+    def wait_for_timeout(self, _ms):
+        return None
+
+    class keyboard:
+        @staticmethod
+        def press(_key):
+            return None
+
+    def query_selector_all(self, _sel):
+        return []
+
+    def screenshot(self, path=None, full_page=False):
+        self.screenshots.append(path)
+
+
+def test_the_opened_detail_is_persisted_before_it_is_closed(tmp_path):
+    """cx-openai-4 R3 on #2648: `opened: true` was recorded, and the detail's own text was saved nowhere."""
+    import hashlib
+
+    marker = "NVDA credit put — theta 41.2 — unique marker 7f3c9e"
+    page = DetailPage("Open NVDA", marker)
+    openers = [{"label": "Open NVDA", "role": "button", "selector": "#open-nvda"}]
+
+    out = capture_page(page, route="/options", page_url=PAGE_URL, indices=[0], out_dir=tmp_path,
+                       openers=openers, prefix="desktop-")
+
+    rec = out["details"][0]
+    assert rec["opened"] is True
+    assert page.opener.clicks == 1
+    evidence = rec["fields"][0]
+    assert evidence["sha256"] == hashlib.sha256(marker.encode("utf-8")).hexdigest()
+    assert evidence["chars"] == len(marker)
+    saved = tmp_path / "desktop-detail-0.txt"
+    assert saved.read_text() == marker, "the opened detail's text was not written before Escape"
+    assert page.screenshots == [str(tmp_path / "desktop-detail-0.png")]

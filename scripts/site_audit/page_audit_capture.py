@@ -224,7 +224,7 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
         run_index = lane.run_slot(datetime.now(timezone.utc))
         indices = detail_budget.selected_indices(len(openers), page=route, run_index=run_index)
         detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
-                                         out_dir=d, openers=openers)
+                                         out_dir=d, openers=openers, prefix=f"{vp}-")
         assert_leaf_inside_root(d / f"{vp}-details.json", out).write_text(json.dumps(detail, indent=1))
         row.update(deep_counters(detail, indices))
     assert_leaf_inside_root(d / f"{vp}.json", out).write_text(json.dumps(row, indent=1))
