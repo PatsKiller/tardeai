@@ -204,7 +204,15 @@ function RotationDescriptivePanel({ data }: { data: unknown }) {
       Parts of this response could not be read: {d.gaps.join('; ')}.
     </div> : null}
     {d.blocks.map(b => <div key={b.key} data-testid={`rotation-descriptive-${b.key}`} style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)' }}>{b.title}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)' }}>{b.title}</div>
+        <span data-testid={`rotation-descriptive-${b.key}-provenance`}
+          title={`Provenance class ${b.provenance.class}: ${b.provenance.label}. Classes: D deterministic · T template · M model-assisted, gated · A agent-originated · S snapshot-derived`}
+          style={{ fontSize: 8.5, fontWeight: 800, padding: '1px 6px', borderRadius: 4, letterSpacing: 0.3,
+            background: 'rgba(255,255,255,.05)', color: 'var(--text2)', border: '1px solid var(--border-subtle)', whiteSpace: 'nowrap' }}>
+          {b.provenance.class} · {b.provenance.label}
+        </span>
+      </div>
       <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 4 }}>{b.note}</div>
       {b.rows.length
         ? b.rows.map((r, i) => <div key={i} style={row}>

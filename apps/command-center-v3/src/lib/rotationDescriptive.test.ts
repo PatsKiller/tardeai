@@ -26,8 +26,9 @@ eq('overweight value shows target', d.blocks[0].rows[0].value, '+12.4% vs +10.0%
 check('overweight detail carries excess and top holdings', /excess \$21,000/.test(d.blocks[0].rows[0].detail ?? '') && /AAA, BBB/.test(d.blocks[0].rows[0].detail ?? ''))
 eq('underweight row', d.blocks[1].rows[0].value, '+4.1% vs +6.0% floor')
 eq('underweight gap', d.blocks[1].rows[0].detail, 'gap -1.9%')
-check('degraded count ignores non-objects', d.blocks[2].empty === '2 holding(s) flagged', d.blocks[2].empty)
-eq('no gaps', d.gaps.length, 0)
+check('degraded count excludes unreadable rows and says so', d.blocks[2].empty === '2 holding(s) flagged; 1 unreadable entry not counted', d.blocks[2].empty)
+eq('one gap names the unreadable degraded row', d.gaps.length, 1)
+check('the unreadable row is named in the gap', /degraded holdings: 1 unreadable entry out of 3/.test(d.gaps[0]), d.gaps)
 
 const empty = rotationDescriptive({ sector_overweights: [], sector_underweights: [], degraded_holdings: [] })
 eq('empty has no rows', empty.hasAny, false)
@@ -37,6 +38,30 @@ eq('empty total unknown', empty.portfolioTotal, null)
 const bad = rotationDescriptive({ sector_overweights: 'nope', sector_underweights: {}, degraded_holdings: 7 })
 eq('non-list fields are gaps, not crashes', bad.gaps.length, 3)
 eq('and nothing is invented', bad.hasAny, false)
+
+// A list that carries unreadable entries is malformed evidence, not a measured "none" (CX1).
+const malformed = rotationDescriptive({ publication: { status: 'READY', reasons: [] },
+  sector_overweights: [null], sector_underweights: [7], degraded_holdings: ['bad-row'] })
+const mBlock = (k: string) => malformed.blocks.find(b => b.key === k)?.empty ?? ''
+check('malformed overweight says unreadable, never "No overweight"', /could not be read/.test(mBlock('overweight')) && !/No overweight/.test(mBlock('overweight')), mBlock('overweight'))
+check('malformed underweight says unreadable, never "No underweight"', /could not be read/.test(mBlock('underweight')) && !/No underweight/.test(mBlock('underweight')), mBlock('underweight'))
+check('malformed flagged holdings says unreadable, never "none flagged"', /could not be read/.test(mBlock('degraded')) && !/none flagged/.test(mBlock('degraded')), mBlock('degraded'))
+eq('malformed entries become three gaps', malformed.gaps.filter(g => /unreadable/.test(g)).length, 3)
+eq('nothing invented from malformed lists', malformed.hasAny, false)
+
+// Readable rows beside an unreadable entry still render; the loss is stated as a gap.
+const partial = rotationDescriptive({ sector_overweights: [null, { theme: 'Y', pct: 2 }], sector_underweights: [] })
+eq('readable rows survive an unreadable sibling', partial.blocks[0].rows.length, 1)
+check('the unreadable sibling is a stated gap', partial.gaps.some(g => /sector overweights: 1 unreadable entry out of 2/.test(g)), partial.gaps)
+
+// Provenance class at the point of display (AGENTS §9.5) — CX2.
+const PROVENANCE = ['D', 'T', 'M', 'A', 'S']
+check('every block declares a provenance class', d.blocks.every(b => PROVENANCE.includes(b.provenance.class)), d.blocks.map(b => b.provenance))
+check('every provenance class has a label', d.blocks.every(b => b.provenance.label.trim().length > 0))
+eq('sector exposure is deterministic', d.blocks[0].provenance.class, 'D')
+eq('underweight is deterministic', d.blocks[1].provenance.class, 'D')
+eq('flagged count is deterministic', d.blocks[2].provenance.class, 'D')
+eq('deterministic label', d.blocks[0].provenance.label, 'deterministic')
 
 eq('no summary at all', rotationDescriptive(null).gaps[0], 'no rotation summary in the response')
 eq('array summary is not a record', rotationDescriptive([]).hasAny, false)
@@ -73,6 +98,9 @@ eq('returns labelled 1m/3m/6m', m.blocks.find(b => b.key === 'market-sectors')?.
 eq('rs line from evidence', m.blocks.find(b => b.key === 'market-sectors')?.rows[0].detail, 'raw 1.42 · score 87')
 eq('industry row', m.blocks.find(b => b.key === 'market-industries')?.rows[0].label, 'Materials · Chemicals')
 eq('market counts as data', m.hasAny, true)
+eq('market sectors are snapshot-derived', m.blocks.find(b => b.key === 'market-sectors')?.provenance.class, 'S')
+eq('market industries are snapshot-derived', m.blocks.find(b => b.key === 'market-industries')?.provenance.class, 'S')
+eq('snapshot-derived label', m.blocks.find(b => b.key === 'market-sectors')?.provenance.label, 'snapshot-derived')
 // A default score without return evidence is not proven strength.
 const mrDefault = { available: true, computed_at: '2026-11-02T21:52:00Z',
   sectors: [{ name: 'Ghost', return_1m: null, return_3m: null, return_6m: null, rs_score: 50, data_quality: 1 }] }
