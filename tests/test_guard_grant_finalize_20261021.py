@@ -28,6 +28,18 @@ for p in (str(HOOKS), str(ROOT), str(ROOT / "scripts")):
         sys.path.insert(0, p)
 
 import guard_ledger as gl  # noqa: E402
+
+#: Runs a CLI script with ``time.time`` pinned, so a subprocess can be driven from a test that seeded its data
+#: on a fixed clock. argv: ``<epoch seconds> <script> [args...]``. Keeping the freeze here, rather than adding a
+#: clock flag to the script, is deliberate: ``.cursor/hooks/guard_ledger.py`` is in the push guard's
+#: PREPUSH_CLOSURE and must stay byte-identical to main (a branch that changes it cannot be pushed at all).
+_FROZEN_CLOCK_CLI = (
+    "import runpy, sys, time\n"
+    "_epoch, _script, _rest = float(sys.argv[1]), sys.argv[2], sys.argv[3:]\n"
+    "time.time = lambda: _epoch\n"
+    "sys.argv = [_script] + _rest\n"
+    "runpy.run_path(_script, run_name='__main__')\n"
+)
 from scripts.lib import guard_remote_approval as gra  # noqa: E402
 
 DAY = 86400
@@ -225,14 +237,22 @@ def test_crash_between_append_and_ledger_rewrite_recovers_without_duplicates(adi
         "GUARD_AUDIT_LOG": str(tmp_path / "a.jsonl"),
         "GUARD_LEDGER_CRASH": "archive_after_append",
     }
-    p = subprocess.run([sys.executable, str(LEDGER_PY), "archive"], env=env, capture_output=True, text=True)
+    # FQ-100: the subprocess must run on the SAME seeded clock as this test. It reads the wall clock, and a
+    # 90-day boundary crossing between the seed and the run made the boundary row due in one half only
+    # (0 == 0 and 4 == 5) — failed #2541 shard 6 on 2026-11-03 and #2594 shard 6 on 2026-11-04. The clock is
+    # frozen from the TEST side deliberately: guard_ledger.py is in the push guard's PREPUSH_CLOSURE and must
+    # stay byte-identical to main, so the fix cannot be a new flag on it.
+    p = subprocess.run([sys.executable, "-c", _FROZEN_CLOCK_CLI, str(now), str(LEDGER_PY), "archive"],
+                       env=env, capture_output=True, text=True)
     assert p.returncode == 90
     assert (adir / "grants.json").read_bytes() == before  # ledger untouched
     lines_after_crash = (adir / gl.ARCHIVE_NAME).read_text().count("\n")
     assert len(gl.read_archive(adir)[0]) == lines_after_crash >= 4  # appended before the crash
     # Rows are now in both places: doctor says so, nothing is lost, the next run finishes the move.
     assert gl.doctor(adir)["archive_pending_removal"] == lines_after_crash
-    out = gl.ledger_archive_closed(adir, now=int(time.time()))
+    # Both halves now use the seeded clock (the subprocess via _FROZEN_CLOCK_CLI), so no wall-clock
+    # boundary can move a row between them.
+    out = gl.ledger_archive_closed(adir, now=now)
     assert out["appended"] == 0 and out["removed_from_ledger"] == lines_after_crash
     assert (adir / gl.ARCHIVE_NAME).read_text().count("\n") == lines_after_crash
     assert gl.doctor(adir)["archive_pending_removal"] == 0

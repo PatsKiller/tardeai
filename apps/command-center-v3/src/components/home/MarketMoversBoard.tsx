@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useApi } from '../../hooks/useApi'
+import { captureLine, captureStamp } from '../../lib/marketMoversCapture'
 import { BB, T, TYPE, numStyle } from '../../lib/watchTokens'
 
 // Home v2 WS-A: the Finviz signal board. Data: /api/v2/market-movers (throttled Elite export
@@ -44,7 +45,8 @@ function emptyStateMessage(data: any): { title: string; detail: string } {
   const errKeys = Object.keys(errors)
   const sigs: Record<string, any> = data?.signals || {}
   const rowCount = Object.values(sigs).reduce((n: number, s: any) => n + ((s?.rows || []).length), 0)
-  const capAt = data?.captured_at ? String(data.captured_at) : ''
+  // FQ-092: the empty-state sentences give the recorded date, not a raw ISO string or a bare clock time.
+  const capAt = captureStamp(data?.captured_at).at
 
   if (errKeys.length && rowCount === 0) {
     return {
@@ -82,7 +84,10 @@ export default function MarketMoversBoard({ pullbackSymbols }: { pullbackSymbols
   const errors: Record<string, string> = data.errors || {}
   const keys = Object.keys(sigs)
   const active = filter && sigs[filter] ? [filter] : keys
-  const capAt = (data.captured_at || '').slice(11, 16)
+  // FQ-092: full date + age from the source clock, and a stale flag. `capAt` (a bare HH:MM) is gone: it made a
+  // days-old capture and a twelve-minute-old one read identically.
+  const stamp = captureStamp(data.captured_at)
+  const cap = captureLine(data.captured_at)
   const rows: any[] = active.flatMap(k => (sigs[k].rows || []).map((r: any) => ({ ...r, _sig: k, _label: sigs[k].label })))
   const shown = filter ? rows : rows.filter((_, i) => true).slice(0, 60)
   const empty = emptyStateMessage(data)
@@ -97,7 +102,12 @@ export default function MarketMoversBoard({ pullbackSymbols }: { pullbackSymbols
     <div style={{ background: BB.bg, border: `1px solid ${BB.border}`, borderLeft: `3px solid ${T.link}`, borderRadius: 2, padding: '10px 12px', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 6 }}>
         <span style={{ fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.06em', color: BB.text2 }}>MARKET MOVERS</span>
-        <span style={{ fontSize: 8.5, fontWeight: 700, color: BB.text3, textTransform: 'uppercase' }}>· finviz elite capture {capAt || '—'}Z · ~12min RTH</span>
+        {/* FQ-092: the date and age of the capture, never a bare clock time. Stale captures are marked. */}
+        <span data-testid="market-movers-capture" data-capture-stale={String(cap.stale)}
+          title={`capture recorded ${stamp.at}`}
+          style={{ fontSize: 8.5, fontWeight: 700, color: cap.stale ? BB.amber : BB.text3, textTransform: 'uppercase' }}>
+          · {cap.text}{cap.stale ? ' · STALE' : ''} · ~12min RTH
+        </span>
         <span style={{ flex: 1 }} />
         {filter && <button onClick={() => setFilter('')} style={{ fontSize: TYPE.xs, color: BB.text3, background: 'transparent', border: 'none', cursor: 'pointer' }}>clear ✕</button>}
       </div>

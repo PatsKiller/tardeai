@@ -60,6 +60,7 @@ def snapshot(mod, *, held=False, reviews=1):
             "coordinators": {"schema": "CoordinatorRegistry@v1", "lead": "codex", "coordinators": [
                 {"id": "codex", "vendor": "codex", "role": "lead", "territories": ["release"]}]},
             "claims": [{"schema": "AgentClaim@v1", "claim_id": "synthetic-coordinator", "session": ACTOR, "vendor": "codex", "status": "active",
+                        "started_at": "2030-01-07T23:30:00Z", "heartbeat_at": "2030-01-07T23:30:00Z",
                         "paths": ["persistent-state/data/coordination/coordinator/coordinators.json"]},
                        {"schema": "AgentClaim@v1", "claim_id": "synthetic-source", "session": "author-synthetic", "vendor": "claude", "status": "done",
                         "head_sha": HEAD, "paths": ["scripts/synthetic_change.py"]}],
@@ -412,7 +413,7 @@ def actual_collector_fixture(mod,tmp_path,*,new_class=None,class_kind=None,label
     (coord/"review-evidence").mkdir(parents=True);claims.mkdir()
     (coord/"coordinators.json").write_text(json.dumps(data["coordinators"]))
     (coord/"review-evidence"/f"9999-{HEAD}.json").write_text(json.dumps(data["evidence"]))
-    for index,claim in enumerate(data["claims"]):(claims/f"synthetic-{index}.json").write_text(json.dumps(claim))
+    for claim in data["claims"]:(claims/f"{claim['claim_id']}.json").write_text(json.dumps(claim))
     for name,raw in data["review_artifacts"].items():
         path=coord/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
     hold=load("delegation_actual_hold_classes","scripts/lib/merge_hold_paths.py")
@@ -709,7 +710,7 @@ def test_actual_collector_multi_page_files_and_released_claim_coverage(mod,tmp_p
         elif args[1]=="repos/PatsKiller/tardeai/pulls/9999":value["changed_files"]=len(paths)
         return value
     host.gh=gh
-    claim=host.state/"claims/synthetic-1.json";row=json.loads(claim.read_bytes());row["paths"]=["apps/synthetic"]
+    claim=host.state/"claims/synthetic-source.json";row=json.loads(claim.read_bytes());row["paths"]=["apps/synthetic"]
     claim.write_text(json.dumps(row))
     collected=host.collect(9999,ACTOR)
     assert len(collected["pr"]["files"])==201 and mod.evaluate(collected,now=NOW)["ok"]
