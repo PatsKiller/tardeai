@@ -55,14 +55,15 @@ const book = {
 
 function render(b = book, extra = {}) {
   globalThis.__bookFixture = (url) => {
-    if (String(url).includes('book-map')) return { data: b, loading: false, error: null }
+    // extra.book lets a case say what the read's transport state was (fresh vs retained-after-failure).
+    if (String(url).includes('book-map')) return { data: b, loading: false, error: null, ...(extra.book || {}) }
     if (String(url).includes('headline-counts')) return { data: { counts: {} }, loading: false, error: null }
     return { data: extra.news ?? null, loading: false, error: null }
   }
   return renderToStaticMarkup(React.createElement(Grid))
 }
 
-const { default: Grid } = await import(compile(join(app, 'src/components/home/MajorNewsGrid.tsx')))
+const { default: Grid, MajorNewsModalBody } = await import(compile(join(app, 'src/components/home/MajorNewsGrid.tsx')))
 
 const cases = []
 function check(name, fn) { cases.push({ name, fn }) }
@@ -97,9 +98,46 @@ check('a payload with no as_of says so instead of showing nothing', () => {
 })
 
 check('the modal refuses to invent a percent too', () => {
-  const markup = render()
-  const modal = (markup.match(/data-day-pct="not-reported"[^>]*>[^<]*</) || [''])[0]
-  assert.ok(modal.length > 0)
+  // The modal renders only when `sym` is set, which SSR cannot click. Render its own body
+  // directly so the dash and the sentence are exercised, not the grid cell again.
+  const row = book.rows.find(r => r.symbol === 'NVDA')
+  const markup = renderToStaticMarkup(React.createElement(MajorNewsModalBody, {
+    symbol: 'NVDA', row, news: null, ingest: null, onClose: () => {},
+  }))
+  const t = readingText(markup)
+  assert.match(markup, /data-day-pct="not-reported"/, 'the modal did not mark the percent as not reported')
+  assert.match(t, /NVDA\s+—/, `the modal printed a number for a missing percent: ${t}`)
+  assert.match(t, /day change not reported/, 'the modal did not say the day change was not reported')
+  assert.doesNotMatch(t, /\+0\.00%/, 'the modal invented +0.00%')
+})
+
+check('a retained read after a failed refresh cannot render as fresh', () => {
+  const fresh = readingText(render())
+  const retained = readingText(render(book, { book: { stale: true, transport: 'RETAINED', receivedAt: '2026-11-04T15:30:00Z' } }))
+  assert.doesNotMatch(fresh, /quote read failed/, 'a healthy read claims its quote read failed')
+  assert.match(retained, /quote read failed, showing the last good read/, 'a retained read rendered as fresh')
+  assert.match(retained, /15:30:00Z/, 'the retained read did not say when the last good read arrived')
+})
+
+check('the tooltip never invents a dollar move, and never contradicts the percent', () => {
+  const b = {
+    ok: true, as_of: '2026-11-04',
+    rows: [
+      { symbol: 'ZPOS', account: 'a', value: 1, day_change: null, day_change_pct: 3.25, stop: 1 },
+      { symbol: 'ZNEG', account: 'a', value: 1, day_change: null, day_change_pct: -2.5, stop: 1 },
+      { symbol: 'ZOK', account: 'a', value: 1, day_change: 42, day_change_pct: 1.1, stop: 1 },
+    ],
+  }
+  const titles = [...render(b).matchAll(/title="([^"]*)"/g)].map(m => m[1])
+  const bySym = (s) => titles.find(t => t.startsWith(s))
+  const pos = bySym('ZPOS'); const neg = bySym('ZNEG'); const ok = bySym('ZOK')
+  assert.ok(pos && neg && ok, `missing tooltip(s): ${titles.join(' | ')}`)
+  assert.match(pos, /\+3\.25%/, pos)
+  assert.doesNotMatch(pos, /\+\$0/, `a missing dollar move became +$0: ${pos}`)
+  assert.match(neg, /-2\.50%/, neg)
+  assert.doesNotMatch(neg, /\+\$0/, `a stock down 2.5% got a +$0 tooltip: ${neg}`)
+  assert.match(neg, /dollar move not reported/, neg)
+  assert.match(ok, /\+\$42/, ok)
 })
 
 const results = []
