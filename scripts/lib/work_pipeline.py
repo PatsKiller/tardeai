@@ -551,7 +551,8 @@ def _gh_runner(argv: list[str]) -> tuple[str | None, str | None]:
         return None, f"gh failed ({type(exc).__name__})"
     if proc.returncode != 0:
         err = (proc.stderr or "").strip().splitlines()
-        return None, f"gh exited {proc.returncode}: {(err[0] if err else 'no stderr')[:120]}"
+        return None, (f"gh exited {proc.returncode} ({' '.join(argv[:6])}): "
+                      f"{(err[0] if err else 'no stderr')[:120]}")
     if len(proc.stdout or "") > MAX_GH_OUTPUT_BYTES:
         return None, f"gh output over {MAX_GH_OUTPUT_BYTES} bytes refused"
     return proc.stdout, None
@@ -1325,15 +1326,149 @@ def build_items(
 
 def summarize(items: list[Mapping[str, Any]]) -> dict[str, Any]:
     live = [i for i in items if not i.get("finished")]
+    queued = [i for i in live if i["stage"] == "queued"]
+    kinds = [(i.get("who") or {}).get("kind") for i in queued]
     return {
         "counts": {s: sum(1 for i in live if i["stage"] == s) for s in STAGES},
         "red": sum(1 for i in live if i["rag"] == "red"),
         "amber": sum(1 for i in live if i["rag"] == "amber"),
         "needs_me": sum(1 for i in live if (i.get("next") or {}).get("owner") == "operator"),
         "waiting_for_batch": sum(1 for i in live if i.get("waiting_for_batch")),
+        # "231 queued" is three different facts (operator 2026-11-04): the operator's own to-dos, work an agent has
+        # claimed but not started, and work nobody has taken. The count is split so the page cannot print one number
+        # and imply one owner.
+        "queued_by_owner": {
+            "operator": sum(1 for k in kinds if k == "operator"),
+            "agent": sum(1 for k in kinds if k == "agent"),
+            "nobody": sum(1 for k in kinds if k not in ("operator", "agent")),
+        },
         "finished": len(items) - len(live),
         "total": len(items),
     }
+
+
+# --------------------------------------------------------------------------------------------- coordination sources
+#
+# The pipeline's spine besides the PR census: the BOARD, the operator's decision list and the audit fix queue. Each is
+# read with its OWN as_of, and a failure names the file and the time it last succeeded (BOARD row 78, operator P0
+# 2026-11-04): a source that cannot be read must never render as a fresh clock.
+
+COORD_DIR_REL = Path("data") / "coordination" / "coordinator"
+SOURCE_FILES = {
+    "board": "BOARD.md",
+    "operator_decisions": "pending_operator_decisions.json",
+    "audit_queue": "AUDIT_FIX_QUEUE.json",
+}
+SOURCE_AS_OF_KEYS = {
+    "operator_decisions": ("updated_at", "as_of"),
+    "audit_queue": ("as_of", "generated_at"),
+}
+SOURCE_LABEL = {"board": "Board", "operator_decisions": "Operator decisions", "audit_queue": "Audit fix queue"}
+
+
+def _default_coord_dir() -> Path:
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+    except ImportError:
+        from lib.persistent_state_root import good_persistent_root  # type: ignore[no-redef]
+    return Path(good_persistent_root()) / COORD_DIR_REL
+
+
+def _mtime_iso(path: Path) -> str | None:
+    try:
+        return _iso(datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc))
+    except OSError:
+        return None
+
+
+def read_coordination_sources(*, coord_dir: Path | None = None, last_success: Mapping[str, Any] | None = None,
+                              now: datetime | None = None) -> dict[str, dict[str, Any]]:
+    """{name: {label, path, ok, as_of, last_success_at, error}} for BOARD, operator decisions and the audit queue.
+
+    A source is OK only when it was READ and, for JSON, PARSED into the shape this reader expects. A corrupt, truncated,
+    empty, wrong-shaped or read-denied file is ``ok: False`` with an error that names the file, and its ``as_of`` stays
+    None — mtime is a clock for a source that was read, never a substitute for one that could not be (review R1,
+    2026-11-04: a corrupt file with a fresh mtime rendered "as of now").
+
+    ``last_success`` is the caller's persisted, unwrapped map (name -> iso) so a failure says WHEN it last worked.
+    """
+    now = now or _utc_now()
+    base = Path(coord_dir) if coord_dir is not None else _default_coord_dir()
+    prior = dict(last_success or {})
+    out: dict[str, dict[str, Any]] = {}
+    for name, filename in SOURCE_FILES.items():
+        path = base / filename
+        row: dict[str, Any] = {"label": SOURCE_LABEL[name], "path": str(path), "ok": False, "as_of": None,
+                               "last_success_at": prior.get(name), "error": None}
+        try:
+            raw = path.read_bytes()
+        except FileNotFoundError:
+            row["error"] = f"{filename} not found"
+            out[name] = row
+            continue
+        except PermissionError:
+            row["error"] = f"{filename} read denied"
+            out[name] = row
+            continue
+        except OSError as exc:
+            row["error"] = f"{filename} unreadable ({exc.strerror or exc})"
+            out[name] = row
+            continue
+        if not raw.strip():
+            row["error"] = f"{filename} is empty"
+            out[name] = row
+            continue
+        as_of: str | None = None
+        if path.suffix == ".json":
+            try:
+                doc = json.loads(raw.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                row["error"] = f"{filename} is not valid JSON"
+                out[name] = row
+                continue
+            if not isinstance(doc, dict):
+                row["error"] = f"{filename} has the wrong shape (expected an object)"
+                out[name] = row
+                continue
+            for key in SOURCE_AS_OF_KEYS.get(name, ()):
+                got = LC._norm_iso(doc.get(key))
+                if got:
+                    as_of = got
+                    break
+        row["ok"] = True
+        row["as_of"] = as_of or _mtime_iso(path)
+        row["last_success_at"] = row["as_of"]
+        out[name] = row
+    return out
+
+
+def _load_source_state(path: Path) -> dict[str, Any]:
+    """The persisted name -> last-success map. The file is an envelope (``{"schema", "last_success", "updated_at"}``);
+    reading it without unwrapping returned the envelope itself, so the first failure lost the history it exists to show
+    (review R2, 2026-11-04). A legacy flat map is still accepted."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(doc, dict):
+        return {}
+    inner = doc.get("last_success")
+    if isinstance(inner, dict):
+        return {k: v for k, v in inner.items() if isinstance(v, str) and v}
+    return {k: v for k, v in doc.items() if isinstance(v, str) and v}
+
+
+def _save_source_state(path: Path, readers: Mapping[str, Mapping[str, Any]]) -> None:
+    """Best-effort: remember the last successful as_of per source so the next failure can name it."""
+    data = {name: row.get("last_success_at") for name, row in readers.items() if row.get("last_success_at")}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"schema": "WorkPipelineSources@v1", "last_success": data,
+                                   "updated_at": _iso(_utc_now())}, indent=1), encoding="utf-8")
+        tmp.replace(path)
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------------------------------- service
@@ -1368,6 +1503,16 @@ class WorkPipeline:
         self.sources = sources or self._read_sources
         self.health = health or release_health
         self.now = now
+        # where the per-source last-success map lives (survives restarts, so a failure can name when it last worked)
+        self.coord_dir: Path | None = None
+        try:
+            from scripts.lib.lane_last_receipt import runtime_dir as _runtime_dir
+        except ImportError:
+            from lib.lane_last_receipt import runtime_dir as _runtime_dir  # type: ignore[no-redef]
+        try:
+            self.source_state_path = Path(_runtime_dir()) / "work_pipeline_sources.json"
+        except Exception:  # noqa: BLE001 - the state file is an aid, never a dependency
+            self.source_state_path = Path.home() / ".local" / "state" / "tradeai" / "work_pipeline_sources.json"
         try:
             from scripts.lib.design_registry import _Cached
         except ImportError:
@@ -1432,6 +1577,10 @@ class WorkPipeline:
         census, meta = self.census.snapshot()
         health = {**self.health(), "served_sha": ((census or {}).get("serving") or {}).get("sha")}
         now = self.now()  # acquisition may finish after source building began
+        state_path = self.source_state_path
+        readers = read_coordination_sources(coord_dir=self.coord_dir, last_success=_load_source_state(state_path),
+                                            now=now)
+        _save_source_state(state_path, readers)
         from scripts.lib import work_pipeline_sources as shared_sources
         prs = [*((census or {}).get("open") or []), *((census or {}).get("merged") or [])]
         try:
@@ -1566,6 +1715,8 @@ class WorkPipeline:
             "coordination": coordination,
             "waiting_on_you": waiting,
             "sources": {
+                "readers": {name: {k: row.get(k) for k in ("label", "path", "ok", "as_of", "last_success_at", "error")}
+                            for name, row in readers.items()},
                 "census": meta,
                 "census_age_s": None
                 if not meta.get("refreshed_at")
