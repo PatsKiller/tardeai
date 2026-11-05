@@ -114,15 +114,20 @@ function BuildMarker() {
     }
   }, [])
   const comparison = compareServedBuild(LOADED_BUILD, served)
-  // BOARD row 36, rule 7: this line is a fact about the BUNDLE, never about the page's data. A page whose data did
-  // not load must not sit under a bare "matches served artifact" — that reads as "everything is fine".
+  // Shell identity does not attest to this route's data. Keep technical identifiers in Diagnostics (FQ-081).
   const surface = useContext(SurfaceReportContext)
   const qualifier = footerQualifier(surface)
   return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'} data-surface-loaded={surface ? String(surface.dataLoaded) : 'unknown'}>
-    App shell: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
-    {' · '}{comparison === 'SAME' ? `shell matches served artifact (page data is separate)${qualifier}` : comparison === 'UNAVAILABLE' ? 'served shell comparison UNAVAILABLE' : <>
+    {comparison === 'SAME' ? 'Running the artifact the server serves (page data is separate)' : comparison === 'UNAVAILABLE' ? 'Served shell comparison UNAVAILABLE' : <>
       newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
     </>}
+    {qualifier}
+    {' · '}<details data-testid="build-diagnostics" style={{ display: 'inline-block' }}>
+      <summary style={{ cursor: 'pointer', display: 'inline' }}>Diagnostics</summary>
+      <span style={{ display: 'block' }}>
+        Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
+      </span>
+    </details>
   </span>
 }
 

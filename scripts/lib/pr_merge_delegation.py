@@ -255,6 +255,39 @@ def claim_is_live(view, board):
 ARCHIVE_SCHEMA = "AgentClaimArchive@v1"
 #: The archive also carries operator overrides; they are not claims and never resolve a takeover target.
 ARCHIVE_NONCLAIM_SCHEMAS = frozenset({"AgentClaimOverride@v1"})
+#: FQ-136 / D39 (operator 2026-11-05). A takeover target that is in neither the live views nor the canonical archive is
+#: still a hard refusal — EXCEPT when the target's own claim id dates it before this cutoff, i.e. 2026-10-26 exclusive.
+#: The archive has no coverage for 2026-10-23..2026-10-25 (70 distinct targets, measured 2026-11-05), so those documents
+#: are gone rather than lost; a missing target dated on or after the cutoff may still exist and is still refused.
+#: Deliberately a narrow, dated exception: it does not relax cycles, malformed links, live-claimant overlap, archive
+#: validation, review counts, claims, holds or checks, and it never resolves a target to a claim — the target stays
+#: unknown and unverified, which is why the release is logged rather than silent.
+UNKNOWN_TAKEOVER_CUTOFF = datetime(2026, 10, 26, tzinfo=timezone.utc)
+#: ``YYYYMMDDThhmmssZ-<vendor>-<hex>`` is the only claim-id shape this repository writes. Anything else is not datable
+#: and therefore cannot earn the exception.
+CLAIM_ID_STAMP = re.compile(r"^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-")
+
+
+def claim_id_datetime(claim_id: str) -> datetime | None:
+    """The UTC instant encoded in a claim id, or ``None`` when the id is not in the canonical dated form."""
+    match = CLAIM_ID_STAMP.match(claim_id)
+    if match is None:
+        return None
+    try:
+        year, month, day, hour, minute, second = (int(part) for part in match.groups())
+        return datetime(year, month, day, hour, minute, second, tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def takeover_target_unknown_is_acceptable(target: str) -> bool:
+    """True when a target nobody can account for predates the archive's coverage (FQ-136).
+
+    Only a datable target strictly before ``UNKNOWN_TAKEOVER_CUTOFF`` qualifies. An undatable id, or one dated on/after
+    the cutoff, is not acceptable and the caller keeps refusing it.
+    """
+    stamp = claim_id_datetime(target)
+    return stamp is not None and stamp < UNKNOWN_TAKEOVER_CUTOFF
 #: What ``ClaimBoard.compact()`` can actually write, paired with the raw status it archives. ``live`` is deliberately
 #: absent: compaction must never remove a live holder, so a record that says so is inconsistent or forged. Anything
 #: outside these pairs — a missing, unknown or impossible ``state_at_archive``, or a mismatched status — refuses.
@@ -353,13 +386,19 @@ def validate_takeover_graph(views, board, shared_config=None):
         if targets:
             edges[view.claim_id] = targets
     archived: dict[str, dict[str, object]] | None = None
-    for targets in edges.values():
+    unknown_takeover_targets: list[tuple[str, str]] = []
+    for source, targets in edges.items():
         for target in targets:
             if target in by_id:
                 continue
             if archived is None:
                 archived = archived_claims(board)
             if target not in archived:
+                # FQ-136 / D39: a target dated before the archive's coverage is UNKNOWN, not invalid. It is never
+                # resolved to a claim — the edge stays unverifiable — so the release is recorded, attributably.
+                if takeover_target_unknown_is_acceptable(target):
+                    unknown_takeover_targets.append((source, target))
+                    continue
                 raise Refused("claim_takeover_chain_invalid")
     colour = {}
 
@@ -375,6 +414,14 @@ def validate_takeover_graph(views, board, shared_config=None):
     for node in edges:
         if colour.get(node) is None:
             visit(node)
+    # FQ-136: released, but never silent. One line per unknown edge, on stderr so the CLI's JSON stdout stays parseable.
+    for source, target in unknown_takeover_targets:
+        print(
+            f"pr_merge_delegation: warning: takeover target {target} (named by {source}) is in neither the live board "
+            f"nor the archive and predates {UNKNOWN_TAKEOVER_CUTOFF.date().isoformat()}; treated as UNKNOWN, not invalid "
+            "(FQ-136/D39)",
+            file=sys.stderr,
+        )
     live = {view.claim_id: claim_is_live(view, board) for view in views}
     claimants = {}
     for source, targets in edges.items():
