@@ -1,7 +1,9 @@
 """The automatic pre-upload check (operator D50 item 4): one refusal per readiness property.
 
-Every test is hermetic. ``git`` runs against a brand-new temporary repository; ``gh_run`` and
-``test_runner`` are replaced in-process, so no test reaches GitHub or starts pytest. The module is
+Every test is hermetic. ``git`` runs against a brand-new temporary repository; ``gh_run`` is
+replaced in-process, so no test reaches GitHub. Most tests also replace ``test_runner``; the
+receipt/recorder controls for the per-file evidence and clean-source rules deliberately run the
+real recorder and real ``pytest`` subprocesses inside their own temporary repository. The module is
 loaded from ``scripts/preflight_upload.py`` exactly as an agent runs it.
 
 Each test names the production mutation that makes it go red (the three-state proof is recorded in
@@ -61,8 +63,13 @@ def _write(root: Path, rel: str, text: str = "") -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def _repo(tmp_path: Path, branch_files: dict[str, str], base_files: dict[str, str] | None = None) -> Path:
-    """A real git repo on ``wt/test`` with ``origin/main`` at its base commit."""
+def _repo(
+    tmp_path: Path,
+    branch_files: dict[str, str],
+    base_files: dict[str, str] | None = None,
+    branch: str = "wt/test",
+) -> Path:
+    """A real git repo on ``wt/test`` (or ``branch``) with ``origin/main`` at its base commit."""
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
@@ -76,7 +83,7 @@ def _repo(tmp_path: Path, branch_files: dict[str, str], base_files: dict[str, st
         _write(root, rel, text)
     _commit(root, "base")
     _git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
-    _git(root, "checkout", "-qb", "wt/test")
+    _git(root, "checkout", "-qb", branch)
     for rel, text in branch_files.items():
         _write(root, rel, text)
     _commit(root, "branch")
@@ -334,57 +341,167 @@ def test_refuses_a_binary_file_added_under_evidence(tmp_path, monkeypatch, capsy
     assert "readable" in out
 
 
-# ── (f) three open non-draft PRs on this session's branches ────────────────────────────
+# ── (f) the WIP cap: drafts count, stale ownership counts, repairs are allowed ──────────
 
 
 def _prs(numbers, draft=False):
     return [{"number": number, "isDraft": draft} for number in numbers]
 
 
-def test_refuses_at_three_open_non_draft_prs(tmp_path, monkeypatch, capsys):
-    """Mutation: change the own-count threshold from >= to > -> this test goes red."""
-    root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    own = _prs((1, 2, 3))
-    mod = _mod()
-    _install(monkeypatch, mod, root, gh=_fake_gh(account_prs=own, branch_prs={"wt/test": own}))
-    rc = mod.main([])
-    out = capsys.readouterr().out
-    assert rc == 1
-    assert "3 open non-draft pull requests" in out
-    assert "the limit is 3" in out
+def _three_owned(prefix=""):
+    """Three claimed branches, each with one open PR (draft unless asked otherwise)."""
+    return {branch: _prs((number,)) for number, branch in enumerate(("wt/a", "wt/b", "wt/c"), 1)}
 
 
-def test_refuses_three_non_draft_prs_on_this_sessions_branches(tmp_path, monkeypatch, capsys):
-    """Mutation: change the own-count threshold from >= to > -> this test goes red."""
+def _all_rows(by_branch: dict[str, list]) -> list:
+    return [row for rows in by_branch.values() for row in rows]
+
+
+def _claim_script(board: dict) -> str:
+    """A real ``scripts/agent_claim.py`` stand-in that prints exactly this status JSON."""
+    return "import json\nprint(json.dumps(%s))\n" % json.dumps(board)
+
+
+def test_three_owned_drafts_and_a_new_branch_refuse(tmp_path, monkeypatch, capsys):
+    """Mutation: filter drafts out of this session's count -> the drafts read as zero, red."""
     root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    fleet = _prs(range(10, 18))  # 8 non-draft PRs across the shared account
-    own = _prs((1, 2, 3))
+    own = {branch: _prs((number,), draft=True) for number, branch in enumerate(("wt/a", "wt/b", "wt/c"), 1)}
     mod = _mod()
     _install(
         monkeypatch,
         mod,
         root,
-        gh=_fake_gh(account_prs=fleet, branch_prs={"wt/mine": own}),
-        claims=({"wt/mine"}, ""),
+        gh=_fake_gh(account_prs=_all_rows(own), branch_prs=own),
+        claims=(set(own), ""),
+    )
+    rc = mod.main([])  # current branch wt/test would be a fourth
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "would make 4 open pull requests" in out
+    assert "drafts and stale-owned claims included" in out
+
+
+def test_two_owned_drafts_plus_a_new_third_pass(tmp_path, monkeypatch, capsys):
+    """Mutation: refuse at two own PRs -> this legitimate third upload goes red."""
+    root = _repo(tmp_path, {"docs/note.md": "note\n"})
+    own = {branch: _prs((number,), draft=True) for number, branch in enumerate(("wt/a", "wt/b"), 1)}
+    mod = _mod()
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=_all_rows(own), branch_prs=own),
+        claims=(set(own), ""),
+    )
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out == ""
+
+
+def test_repairing_the_third_open_pr_is_allowed(tmp_path, monkeypatch, capsys):
+    """Mutation: count the candidate's own PR -> repairing the third is refused, red."""
+    root = _repo(tmp_path, {"docs/note.md": "note\n"}, branch="wt/a")
+    own = _three_owned()
+    mod = _mod()
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=_all_rows(own), branch_prs=own),
+        claims=(set(own), ""),
+    )
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out == ""
+
+
+def test_a_new_fourth_open_pr_is_refused(tmp_path, monkeypatch, capsys):
+    """Mutation: change the limit from > to >= -> the fourth passes, red."""
+    root = _repo(tmp_path, {"docs/note.md": "note\n"}, branch="wt/fourth")
+    own = _three_owned()
+    mod = _mod()
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=_all_rows(own), branch_prs=own),
+        claims=(set(own), ""),
     )
     rc = mod.main([])
     out = capsys.readouterr().out
     assert rc == 1
-    assert "this account has 8 open non-draft pull requests" in out
-    assert "3 of them on this session's claimed branches" in out
-    assert "#1, #2, #3" in out
+    assert "would make 4 open pull requests" in out
+    assert "the limit is 3" in out
+
+
+def test_stale_takeover_candidates_count_as_owned(tmp_path, monkeypatch, capsys):
+    """Mutation: read only in_flight -> the stale-owned rows become zero, red.
+
+    The claim reader is the real ``_read_claim_branches``; its subprocess prints a real
+    ``AgentClaimStatus@v1`` document from a tracked stand-in script.
+    """
+    board = {
+        "schema": "AgentClaimStatus@v1",
+        "in_flight": [],
+        "takeover_candidates": [
+            {"session": "cc-test", "branch": branch, "state": "stale"} for branch in ("wt/a", "wt/b", "wt/c")
+        ],
+    }
+    root = _repo(
+        tmp_path,
+        {"docs/note.md": "note\n"},
+        base_files={"scripts/agent_claim.py": _claim_script(board)},
+    )
+    own = _three_owned()
+    mod = _mod()
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("AGENT_CLAIM_SESSION", "cc-test")
+    monkeypatch.setattr(mod, "gh_run", _fake_gh(account_prs=_all_rows(own), branch_prs=own))
+    monkeypatch.setattr(mod, "claim_board_reader", mod._read_claim_branches)
+    assert mod._read_claim_branches(root, "cc-test") == ({"wt/a", "wt/b", "wt/c"}, "")
+    rc = mod.main([])  # current branch wt/test would be a fourth
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "would make 4 open pull requests" in out
+
+
+def test_an_incomplete_claim_board_falls_back_instead_of_reading_zero(tmp_path, monkeypatch, capsys):
+    """Mutation: treat a missing takeover_candidates list as empty -> zero ownership, red."""
+    board = {"schema": "AgentClaimStatus@v1", "in_flight": []}  # no takeover_candidates
+    root = _repo(
+        tmp_path,
+        {"docs/note.md": "note\n"},
+        base_files={"scripts/agent_claim.py": _claim_script(board)},
+    )
+    fleet = _prs(range(100, 103))  # 3 open PRs, ownership unknown
+    mod = _mod()
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("AGENT_CLAIM_SESSION", "cc-test")
+    monkeypatch.setattr(mod, "gh_run", _fake_gh(account_prs=fleet))
+    monkeypatch.setattr(mod, "claim_board_reader", mod._read_claim_branches)
+    branches, note = mod._read_claim_branches(root, "cc-test")
+    assert branches is None
+    assert "takeover_candidates" in note
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "could not be read completely" in out
+    assert "this account has 3 open pull requests" in out
+    assert "unknown" in out
 
 
 def test_passes_when_the_account_has_many_but_none_are_this_sessions(tmp_path, monkeypatch, capsys):
     """Mutation: count the whole account instead of this session's branches -> this test goes red."""
     root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    fleet = _prs(range(100, 110))  # 10 non-draft PRs across the shared account
+    fleet = _prs(range(100, 110))  # 10 open PRs across the shared account
     mod = _mod()
     _install(
         monkeypatch,
         mod,
         root,
-        gh=_fake_gh(account_prs=fleet, branch_prs={"wt/mine": _prs((1,), draft=True)}),
+        gh=_fake_gh(account_prs=fleet, branch_prs={"wt/mine": []}),
         claims=({"wt/mine"}, ""),
     )
     rc = mod.main([])
@@ -396,7 +513,7 @@ def test_passes_when_the_account_has_many_but_none_are_this_sessions(tmp_path, m
 def test_unreadable_claim_board_falls_back_to_the_account_and_says_so(tmp_path, monkeypatch, capsys):
     """Mutation: pass when the claim board is unreadable instead of counting the account -> red."""
     root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    fleet = _prs(range(100, 110))  # 10 non-draft PRs across the shared account
+    fleet = _prs(range(100, 110))  # 10 open PRs across the shared account
     mod = _mod()
     _install(
         monkeypatch,
@@ -410,16 +527,22 @@ def test_unreadable_claim_board_falls_back_to_the_account_and_says_so(tmp_path, 
     assert rc == 1
     assert "the claim board could not be read (test)" in out
     assert "counts the whole account" in out
-    assert "this account has 10 open non-draft pull requests" in out
+    assert "this account has 10 open pull requests" in out
     assert "unknown" in out
 
 
 def test_skip_wip_cap_passes_with_a_printed_warning(tmp_path, monkeypatch, capsys):
     """Mutation: send the warning to stdout -> the warning assertion goes red (the pass still holds)."""
-    root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    own = _prs((1, 2, 3))
+    root = _repo(tmp_path, {"docs/note.md": "note\n"}, branch="wt/fourth")
+    own = _three_owned()
     mod = _mod()
-    _install(monkeypatch, mod, root, gh=_fake_gh(account_prs=own, branch_prs={"wt/test": own}))
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=_all_rows(own), branch_prs=own),
+        claims=(set(own), ""),
+    )
     rc = mod.main(["--skip-wip-cap"])
     captured = capsys.readouterr()
     assert rc == 0
@@ -427,15 +550,288 @@ def test_skip_wip_cap_passes_with_a_printed_warning(tmp_path, monkeypatch, capsy
     assert "WARNING: --skip-wip-cap was used" in captured.err
 
 
+# ── F1: a genuine app-relative UI build registration is recognised ──────────────────────
+
+UI_TEST = "apps/command-center-v3/src/lib/zz.test.ts"
+
+
+def _ui_pkg(build: str) -> dict:
+    return {"name": "command-center-v3", "scripts": {"build": build}}
+
+
+def test_a_genuine_app_relative_ui_build_registration_passes(tmp_path, monkeypatch, capsys):
+    """CX3-F1 mutation: search the repo-relative path in the app-relative build -> red.
+
+    The build string runs from the app directory and names ``src/lib/zz.test.ts``; the module's own
+    ``test_command`` uses that same form. A correctly registered UI change must not be refused.
+    """
+    root = _repo(
+        tmp_path,
+        {UI_TEST: "// ui test\n"},
+        base_files={"apps/command-center-v3/package.json": json.dumps(_ui_pkg("tsc && node src/lib/zz.test.ts"))},
+    )
+    mod = _mod()
+    _install(monkeypatch, mod, root)
+    _record(mod, monkeypatch, root)
+    capsys.readouterr()
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out == ""
+    assert mod.test_command(root, UI_TEST) == (["node", "src/lib/zz.test.ts"], root / "apps/command-center-v3")
+
+
+def test_a_dot_slash_app_relative_ui_registration_passes(tmp_path, monkeypatch, capsys):
+    """CX3-F1 mutation: compare raw tokens instead of normalising a leading ./ -> red."""
+    root = _repo(
+        tmp_path,
+        {UI_TEST: "// ui test\n"},
+        base_files={"apps/command-center-v3/package.json": json.dumps(_ui_pkg("node ./src/lib/zz.test.ts"))},
+    )
+    mod = _mod()
+    _install(monkeypatch, mod, root)
+    _record(mod, monkeypatch, root)
+    capsys.readouterr()
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out == ""
+
+
+def test_ui_registration_ignores_a_substring_of_unrelated_text(tmp_path, monkeypatch, capsys):
+    """CX3-F1 mutation: use a substring test -> prose/a longer token registers the test, red."""
+    build = "tsc && echo " + UI_TEST + " && node src/lib/zz.test.ts.bak"
+    root = _repo(
+        tmp_path,
+        {UI_TEST: "// ui test\n"},
+        base_files={"apps/command-center-v3/package.json": json.dumps(_ui_pkg(build))},
+    )
+    mod = _mod()
+    _install(monkeypatch, mod, root)
+    _record(mod, monkeypatch, root)
+    capsys.readouterr()
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "is not run by any 'node ...' step" in out
+    assert "src/lib/zz.test.ts" in out
+
+
+def test_ui_registration_requires_the_test_in_a_node_step(tmp_path, monkeypatch, capsys):
+    """CX3-F1 mutation: accept the path in any step -> a typecheck-only mention registers it, red."""
+    root = _repo(
+        tmp_path,
+        {UI_TEST: "// ui test\n"},
+        base_files={"apps/command-center-v3/package.json": json.dumps(_ui_pkg("tsc src/lib/zz.test.ts && vite build"))},
+    )
+    mod = _mod()
+    _install(monkeypatch, mod, root)
+    _record(mod, monkeypatch, root)
+    capsys.readouterr()
+    rc = mod.main([])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "is not run by any 'node ...' step" in out
+
+
+# ── F2: a receipt must carry per-file successful execution evidence ─────────────────────
+
+PASSING_TEST = "def test_ok():\n    assert True\n"
+SKIPPED_TEST = (
+    "import pytest\n\n"
+    "@pytest.mark.skip(reason='intentionally skipped in this environment')\n"
+    "def test_skipped():\n"
+    "    assert True\n"
+)
+
+
+def _read_receipt(mod, root: Path) -> dict:
+    return json.loads(mod.receipt_path(root, mod.head_sha(root)).read_text(encoding="utf-8"))
+
+
+def test_a_real_passing_pytest_file_gets_a_validated_receipt(tmp_path):
+    """CX3-F2 positive control: the real recorder writes a receipt the checker accepts."""
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 0
+    receipt = _read_receipt(mod, root)
+    assert receipt["schema"] == "PreflightTestReceipt@v1"
+    assert receipt["source_clean"] is True
+    assert receipt["files"] == ["tests/test_demo.py"]
+    row = receipt["results"][0]
+    assert row["path"] == "tests/test_demo.py"
+    assert row["exit_code"] == 0
+    assert row["ran"] is True
+    assert "1 passed" in row["output_tail"]
+    assert mod.check_tests(root) == []
+
+
+def test_a_real_all_skipped_pytest_file_is_refused(tmp_path):
+    """CX3-F2 mutation: trust the exit code only -> an all-skipped file is certified, red."""
+    root = _repo(tmp_path, {"tests/test_skip.py": SKIPPED_TEST})
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+    refusals = mod.check_tests(root)
+    assert refusals
+    assert refusals[0]["code"] == "tests-not-run"
+
+
+def test_all_skipped_is_accepted_only_with_an_explicit_skip_tolerant_contract(tmp_path):
+    """CX3-F2 mutation: drop the skip-tolerant contract check -> a forged receipt passes, red."""
+    root = _repo(tmp_path, {"tests/test_skip.py": SKIPPED_TEST})
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False, allow_skip_only={"tests/test_skip.py"}) == 0
+    receipt = _read_receipt(mod, root)
+    assert receipt["skip_tolerant"] == ["tests/test_skip.py"]
+    assert receipt["results"][0]["ran"] is False
+    assert mod.check_tests(root) == []
+    receipt.pop("skip_tolerant")
+    mod.receipt_path(root, mod.head_sha(root)).write_text(json.dumps(receipt), encoding="utf-8")
+    refusals = mod.check_tests(root)
+    assert refusals
+    assert "no test executed" in refusals[0]["message"]
+
+
+def test_a_receipt_without_a_successful_row_for_every_touched_file_is_refused(tmp_path):
+    """CX3-F2 mutation: only look for a nonzero among whatever rows exist -> every variant passes, red."""
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 0
+    path = mod.receipt_path(root, mod.head_sha(root))
+    genuine = json.loads(path.read_text(encoding="utf-8"))
+    row = genuine["results"][0]
+    variants: dict[str, dict] = {}
+    missing = dict(genuine)
+    missing.pop("results")
+    variants["missing results"] = missing
+    empty = dict(genuine)
+    empty["results"] = []
+    variants["empty results"] = empty
+    unrelated = dict(genuine)
+    unrelated["results"] = [{"path": "tests/test_other.py", "exit_code": 0, "ran": True}]
+    variants["unrelated result"] = unrelated
+    nothing_ran = dict(genuine)
+    nothing_ran["results"] = [dict(row, ran=False)]
+    variants["nothing ran"] = nothing_ran
+    nonzero = dict(genuine)
+    nonzero["results"] = [dict(row, exit_code=1)]
+    variants["nonzero result"] = nonzero
+    no_ran_field = dict(genuine)
+    no_ran_field["results"] = [{k: v for k, v in row.items() if k != "ran"}]
+    variants["no ran field"] = no_ran_field
+    for name, doc in variants.items():
+        path.write_text(json.dumps(doc), encoding="utf-8")
+        refusals = mod.check_tests(root)
+        assert refusals, name
+        assert refusals[0]["code"] == "tests-not-run", name
+    path.write_text(json.dumps(genuine), encoding="utf-8")
+    assert mod.check_tests(root) == []
+
+
+def test_a_receipt_that_skips_one_of_two_touched_files_is_refused(tmp_path):
+    """CX3-F2 mutation: accept a receipt that covers only some touched files -> red."""
+    root = _repo(
+        tmp_path,
+        {"tests/test_a.py": PASSING_TEST, "tests/test_b.py": PASSING_TEST},
+    )
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 0
+    path = mod.receipt_path(root, mod.head_sha(root))
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    # Keep the files list complete; only the per-file execution row is missing.
+    doc["results"] = [r for r in doc["results"] if r["path"] == "tests/test_a.py"]
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    refusals = mod.check_tests(root)
+    assert refusals
+    assert "tests/test_b.py" in refusals[0]["message"]
+
+
+# ── F3: the recorder binds evidence to the committed source it actually tested ──────────
+
+
+def test_committed_failing_source_cannot_be_certified_by_a_dirty_passing_edit(tmp_path):
+    """CX3-F3 mutation: snapshot HEAD but run the mutable working tree -> a green receipt, red."""
+    root = _repo(tmp_path, {"tests/test_demo.py": "def test_ok():\n    assert False\n"})
+    mod = _mod()
+    head = mod.head_sha(root)
+    assert mod.record_tests(root, verbose=False) == 1  # the committed test really fails
+    assert not mod.receipt_path(root, head).exists()
+    (root / "tests/test_demo.py").write_text(PASSING_TEST, encoding="utf-8")
+    assert mod.head_sha(root) == head  # only the working tree changed
+    assert mod.record_tests(root, verbose=False) == 1  # must refuse the dirty source
+    assert not mod.receipt_path(root, head).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
+
+
+def test_head_movement_during_the_run_cannot_create_a_bound_receipt(tmp_path, monkeypatch):
+    """CX3-F3 mutation: stamp the pre-run HEAD without re-reading it -> a misbound receipt, red."""
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    mod = _mod()
+    head_before = mod.head_sha(root)
+
+    def moving_runner(cmd, cwd):
+        _git(
+            root,
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "move head during the run",
+        )
+        return mod.RunResult(0, "1 passed in 0.01s\n")
+
+    monkeypatch.setattr(mod, "test_runner", moving_runner)
+    assert mod.record_tests(root, verbose=False) == 1
+    head_after = mod.head_sha(root)
+    assert head_after != head_before
+    assert not mod.receipt_path(root, head_before).exists()
+    assert not mod.receipt_path(root, head_after).exists()
+
+
+def test_a_run_that_dirties_tracked_source_is_refused(tmp_path, monkeypatch):
+    """CX3-F3 mutation: check only before the run -> a mid-run source change is certified, red."""
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    mod = _mod()
+
+    def dirtying_runner(cmd, cwd):
+        (root / "README.md").write_text("changed during the run\n", encoding="utf-8")
+        return mod.RunResult(0, "1 passed in 0.01s\n")
+
+    monkeypatch.setattr(mod, "test_runner", dirtying_runner)
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+
+
+def test_untracked_test_artifacts_do_not_block_recording(tmp_path):
+    """CX3-F3 mutation: refuse on any untracked file -> a normal pytest artifact, red."""
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    (root / "tests" / "__pycache__").mkdir(parents=True)
+    (root / "tests" / "__pycache__" / "x.pyc").write_bytes(b"\x00\x01")
+    (root / "pytest.log").write_text("log\n", encoding="utf-8")
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 0
+    assert mod.check_tests(root) == []
+
+
 # ── machine-readable mode ──────────────────────────────────────────────────────────────
 
 
 def test_json_mode_is_machine_readable(tmp_path, monkeypatch, capsys):
     """Mutation: omit 'refusals' from the JSON document -> the key assertion goes red."""
-    root = _repo(tmp_path, {"docs/note.md": "note\n"})
-    own = _prs((1, 2, 3))
+    root = _repo(tmp_path, {"docs/note.md": "note\n"}, branch="wt/fourth")
+    own = _three_owned()
     mod = _mod()
-    _install(monkeypatch, mod, root, gh=_fake_gh(account_prs=own, branch_prs={"wt/test": own}))
+    _install(
+        monkeypatch,
+        mod,
+        root,
+        gh=_fake_gh(account_prs=_all_rows(own), branch_prs=own),
+        claims=(set(own), ""),
+    )
     rc = mod.main(["--json"])
     doc = json.loads(capsys.readouterr().out)
     assert rc == 1  # --json still exits 1 on a refusal

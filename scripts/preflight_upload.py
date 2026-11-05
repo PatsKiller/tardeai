@@ -8,13 +8,17 @@ upload is refused locally instead of failing in review or in CI.
 What it refuses, in operator language:
 
 * **tests-not-run** — the test files this branch adds or changes were not run green at this exact
-  commit in this exact checkout. ``--record-tests`` runs them and writes a receipt under the
-  worktree's git dir (``preflight/<full-head-sha>.json``). The default mode accepts only a receipt
-  for the current head that covers every touched test file; a receipt for another head is named
-  and refused.
+  commit in this exact checkout. ``--record-tests`` runs them against the committed source and
+  writes a receipt under the worktree's git dir (``preflight/<full-head-sha>.json``). The default
+  mode accepts only a validated receipt for the current head that carries a successful execution
+  row for every touched test file; a receipt for another head, a missing or empty result list, an
+  unrelated result, a nonzero exit, or a run where nothing executed (all skipped / no tests ran)
+  is refused. Recording refuses a dirty tracked source tree or a head that moves during the run, so
+  the receipt can never bind the committed head to different working files.
 * **test-not-registered** — a new or renamed test would never run. A Python test must be named in
-  some ``config/ci_gates/*.json``; a UI test must be named in ``apps/command-center-v3``'s
-  ``package.json`` ``scripts.build``.
+  some ``config/ci_gates/*.json``; a UI test must be named as an app-relative command token in a
+  ``node ...`` step of ``apps/command-center-v3``'s ``package.json`` ``scripts.build`` (the string
+  runs from the app directory, so it names ``src/lib/x.test.ts``, not the repository path).
 * **plain-english** — the pull request description lacks its plain-English answers. This reuses the
   repository's own ``scripts/check_pr_plain_english.py`` (the six answers under
   ``## In plain English``); a draft is not exempt here because this runs before upload.
@@ -22,11 +26,14 @@ What it refuses, in operator language:
   files are named.
 * **binary-evidence** — a binary file was added under ``docs/evidence/``. Evidence must stay
   readable (text, JSON, Markdown, CSV).
-* **wip-cap** — this session already has three open non-draft pull requests. The session's branches
-  come from the claim board (``agent_claim.py status --json``, matched by ``AGENT_CLAIM_SESSION``);
-  the whole-account count is reported alongside so fleet noise is visible. If the claim board cannot
-  be read, the check falls back to the whole account and says so. The threshold is
-  ``MAX_OPEN_NON_DRAFT_PRS``; ``--skip-wip-cap`` overrides it once and prints a warning.
+* **wip-cap** — this upload would make a fourth open pull request for this session, counting drafts
+  and stale-but-owned claims too (operator D50: at most three PRs at a time, sub-agents included).
+  The session's branches come from the claim board (``agent_claim.py status --json``, both the
+  ``in_flight`` and ``takeover_candidates`` rows, matched by ``AGENT_CLAIM_SESSION``); the
+  candidate's own open PR is excluded, so repairing the third PR is allowed while a fourth new one
+  is refused. The whole-account count is reported alongside so fleet noise is visible. If the claim
+  board cannot be read completely, the check falls back to the whole account and says so. The
+  threshold is ``MAX_OPEN_PRS``; ``--skip-wip-cap`` overrides it once and prints a warning.
 
 Inputs are read with ``git``, the ``gh`` CLI and the claim board only. ``--json`` prints a
 machine-readable result. Hermetic tests replace ``gh_run``, ``test_runner`` and
@@ -41,21 +48,33 @@ import argparse
 import importlib.util
 import json
 import os
+import posixpath
 import re
 import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 BASE_REF = "origin/main"
 UI_APP = "apps/command-center-v3"
 EVIDENCE_PREFIX = "docs/evidence/"
-MAX_OPEN_NON_DRAFT_PRS = 3
+MAX_OPEN_PRS = 3
 RECEIPT_SCHEMA = "PreflightTestReceipt@v1"
 RESULT_SCHEMA = "PreflightUpload@v1"
 
 UI_TEST_RE = re.compile(r"\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$")
+
+# Pytest's own summary, used to tell "one test executed" from "the run exited 0 without running a
+# test" (all skipped, or no tests collected). Any command that prints no recognisable summary (a
+# UI test run by node) is treated as having executed; the per-file receipt still has to say so.
+_PYTEST_NO_TESTS_RE = re.compile(r"\bno tests ran\b", re.IGNORECASE)
+_PYTEST_COLLECTED_ZERO_RE = re.compile(r"\bcollected 0 items\b", re.IGNORECASE)
+_PYTEST_PASSED_RE = re.compile(r"\b(\d+) passed\b")
+_PYTEST_FAILED_RE = re.compile(r"\b(\d+) failed\b")
+_PYTEST_ERROR_RE = re.compile(r"\b(\d+) errors?\b")
+_PYTEST_SKIPPED_RE = re.compile(r"\b(\d+) skipped\b")
 
 HELP_TEXT = """\
 Each refusal is one plain-English line and exit code 1; a clean run prints nothing and exits 0.
@@ -63,11 +82,14 @@ Each refusal is one plain-English line and exit code 1; a clean run prints nothi
   tests-not-run        The test files this branch adds or changes were not run green at this
                        exact commit. Fix: run
                        `python3 scripts/preflight_upload.py --record-tests`
-                       from this worktree at this head. A receipt for another head is refused by
-                       name and is never accepted.
+                       from this worktree at this head. The receipt must carry a successful
+                       execution row for every touched file; a receipt for another head is refused
+                       by name and is never accepted. Recording refuses a dirty tracked source
+                       tree or a head that moves during the run.
   test-not-registered  A new or renamed test would never run in CI. Fix: name a Python test in a
-                       config/ci_gates/<gate>.json file, or add a UI test to the
-                       apps/command-center-v3 package.json "scripts.build" string.
+                       config/ci_gates/<gate>.json file, or add a UI test as an app-relative path
+                       (src/lib/x.test.ts) to a `node ...` step in the apps/command-center-v3
+                       package.json "scripts.build" string.
   plain-english        The pull request lacks its plain-English answers. Fix: fill the six answers
                        under "## In plain English" in the PR description (the same rule as
                        scripts/check_pr_plain_english.py). A draft is not exempt.
@@ -75,10 +97,11 @@ Each refusal is one plain-English line and exit code 1; a clean run prints nothi
                        Fix: `git merge origin/main`, resolve the named files, and commit.
   binary-evidence      A binary file was added under docs/evidence/. Fix: add readable text
                        (JSON, Markdown, CSV) instead.
-  wip-cap              This session already has MAX_OPEN_NON_DRAFT_PRS (3) open non-draft pull
-                       requests on its claimed branches. Fix: finish or close one. The message
-                       also names the whole-account count so fleet noise is visible. If the claim
-                       board cannot be read, the whole account is counted and the message says so.
+  wip-cap              This upload would make a fourth open pull request for this session.
+                       Drafts and stale-but-owned claims count; repairing one of the existing
+                       three is allowed. Fix: finish or close one. The message also names the
+                       whole-account count so fleet noise is visible. If the claim board cannot be
+                       read completely, the whole account is counted and the message says so.
                        --skip-wip-cap overrides this one check and prints a warning; it is for the
                        check's own PR.
 """
@@ -119,16 +142,63 @@ def gh_run(args: list[str], cwd: Path | None = None):
         return subprocess.CompletedProcess(["gh", *args], 127, "", str(exc))
 
 
-def _run_test(cmd: list[str], cwd: Path) -> int:
+class RunResult(NamedTuple):
+    """One executed test command: its exit code and the output that proves something ran."""
+
+    exit_code: int
+    output: str
+
+
+def _run_test(cmd: list[str], cwd: Path) -> RunResult:
     """The one test runner. Tests replace this function; the receipt is still real."""
     try:
-        return _run(cmd, cwd).returncode
-    except (OSError, subprocess.TimeoutExpired):
-        return 127
+        proc = _run(cmd, cwd)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return RunResult(127, f"could not run: {exc}")
+    output = (proc.stdout or "") + (proc.stderr or "")
+    return RunResult(int(proc.returncode), output)
 
 
-# Injectable boundaries (tests replace these two names only).
+# Injectable boundary (tests replace this name only). It may return a RunResult, an exit-code int,
+# a mapping with exit_code/returncode and output, or an object carrying those attributes.
 test_runner = _run_test
+
+
+def _normalise_run(raw) -> tuple[int, str]:
+    """Read a runner answer from the real runner or one of the test doubles."""
+    if isinstance(raw, bool):
+        return int(raw), ""
+    if isinstance(raw, int):
+        return raw, ""
+    if isinstance(raw, RunResult):
+        return int(raw.exit_code), str(raw.output)
+    if isinstance(raw, dict):
+        code = raw.get("exit_code", raw.get("returncode", 1))
+        return int(code), str(raw.get("output", ""))
+    code = getattr(raw, "exit_code", getattr(raw, "returncode", raw))
+    return int(code), str(getattr(raw, "output", ""))
+
+
+def _executed_at_least_one(output: str) -> bool:
+    """False when the command exited 0 without executing a single test.
+
+    Pytest reports an all-skipped file as ``1 skipped in 0.02s`` and an empty collection as
+    ``no tests ran`` — both exit 0. A command that prints no pytest-style summary at all (a node
+    UI test) is treated as having executed: the evidence rule is per-file and the receipt must
+    still claim so explicitly.
+    """
+    text = output or ""
+    if _PYTEST_NO_TESTS_RE.search(text) or _PYTEST_COLLECTED_ZERO_RE.search(text):
+        return False
+    passed = sum(int(n) for n in _PYTEST_PASSED_RE.findall(text))
+    failed = sum(int(n) for n in _PYTEST_FAILED_RE.findall(text))
+    errors = sum(int(n) for n in _PYTEST_ERROR_RE.findall(text))
+    skipped = sum(int(n) for n in _PYTEST_SKIPPED_RE.findall(text))
+    if passed or failed or errors:
+        return True
+    if skipped:
+        return False
+    return True
 
 
 def repo_root() -> Path:
@@ -170,6 +240,14 @@ def is_ui_test(path: str) -> bool:
 
 def is_test_file(path: str) -> bool:
     return is_python_test(path) or is_ui_test(path)
+
+
+def _normalise_test_path(value) -> str:
+    """The one comparison form for a repository-relative path (exact after normalisation)."""
+    text = str(value).replace("\\", "/").strip()
+    while text.startswith("./"):
+        text = text[2:]
+    return posixpath.normpath(text) if text else ""
 
 
 def touched_test_files(root: Path) -> list[str]:
@@ -241,6 +319,22 @@ def _refusal(code: str, message: str) -> dict:
     return {"code": code, "message": " ".join(message.split())}
 
 
+def _receipt_results(receipt: dict) -> tuple[dict[str, list[dict]], str]:
+    """Rows keyed by normalised path, or a plain-English reason the receipt is unvalidated."""
+    results = receipt.get("results")
+    if not isinstance(results, list) or not results:
+        return {}, "it has no per-file results list"
+    rows: dict[str, list[dict]] = {}
+    for row in results:
+        if not isinstance(row, dict):
+            return {}, "a result row is not an object"
+        path = row.get("path")
+        if not isinstance(path, str) or not path.strip():
+            return {}, "a result row names no path"
+        rows.setdefault(_normalise_test_path(path), []).append(row)
+    return rows, ""
+
+
 def check_tests(root: Path) -> list[dict]:
     head = head_sha(root)
     touched = touched_test_files(root)
@@ -275,9 +369,25 @@ def check_tests(root: Path) -> list[dict]:
                 f"a receipt for a different head is worthless",
             )
         ]
-    ran = receipt.get("files")
-    ran_set = set(ran) if isinstance(ran, list) else set()
-    missing = [p for p in touched if p not in ran_set]
+    if receipt.get("schema") != RECEIPT_SCHEMA:
+        return [
+            _refusal(
+                "tests-not-run",
+                f"the test receipt {receipt_file} is not a validated {RECEIPT_SCHEMA} receipt; "
+                f"re-run --record-tests at this head",
+            )
+        ]
+    listed = receipt.get("files")
+    if not isinstance(listed, list):
+        return [
+            _refusal(
+                "tests-not-run",
+                f"the test receipt {receipt_file} has no files list, so it cannot be validated; "
+                f"re-run --record-tests at this head",
+            )
+        ]
+    listed_set = {_normalise_test_path(p) for p in listed if isinstance(p, str)}
+    missing = [p for p in touched if _normalise_test_path(p) not in listed_set]
     if missing:
         return [
             _refusal(
@@ -286,35 +396,92 @@ def check_tests(root: Path) -> list[dict]:
                 f"{', '.join(missing)}; re-run --record-tests at this head",
             )
         ]
-    results = receipt.get("results")
-    failed = [
-        str(row.get("path"))
-        for row in (results if isinstance(results, list) else [])
-        if isinstance(row, dict) and row.get("exit_code") != 0
-    ]
-    if failed:
+    rows, invalid = _receipt_results(receipt)
+    if invalid:
         return [
             _refusal(
                 "tests-not-run",
-                f"the test receipt {receipt_file} records a non-zero exit for: {', '.join(failed)}",
+                f"the test receipt {receipt_file} cannot be validated: {invalid}; "
+                f"re-run --record-tests at this head",
+            )
+        ]
+    tolerant = receipt.get("skip_tolerant")
+    tolerant_set = (
+        {_normalise_test_path(p) for p in tolerant if isinstance(p, str)}
+        if isinstance(tolerant, list)
+        else set()
+    )
+    problems: list[str] = []
+    for path in touched:
+        key = _normalise_test_path(path)
+        entries = rows.get(key)
+        if not entries:
+            problems.append(f"{path} (no execution row)")
+            continue
+        if len(entries) != 1:
+            problems.append(f"{path} ({len(entries)} execution rows)")
+            continue
+        row = entries[0]
+        if row.get("exit_code") != 0:
+            problems.append(f"{path} (exit {row.get('exit_code')})")
+            continue
+        allowed_skip = key in tolerant_set
+        ran_flag = row.get("ran")
+        tail = row.get("output_tail")
+        derived = _executed_at_least_one(tail) if isinstance(tail, str) and tail else None
+        if ran_flag is not True and not (ran_flag is False and allowed_skip):
+            problems.append(f"{path} (no test executed)")
+            continue
+        if derived is False and not allowed_skip:
+            problems.append(f"{path} (no test executed: all skipped or no tests ran)")
+            continue
+        if derived is False and allowed_skip and ran_flag is not False:
+            problems.append(f"{path} (execution flag contradicts its output)")
+    if problems:
+        return [
+            _refusal(
+                "tests-not-run",
+                f"the test receipt {receipt_file} lacks successful execution evidence for: "
+                f"{'; '.join(problems)}; re-run --record-tests at this head",
             )
         ]
     return []
 
 
+def ui_build_command(root: Path, path: str) -> list[str] | None:
+    """The ``node ...`` build step that runs this UI test, or ``None``.
+
+    ``scripts.build`` runs from ``apps/command-center-v3`` and names its files app-relatively
+    (``src/lib/x.test.ts``). Match that exact command token — after normalising a leading ``./`` —
+    never a substring of another token or of prose.
+    """
+    rel = _normalise_test_path(path[len(UI_APP) + 1 :])
+    for segment in ui_build_string(root).split(" && "):
+        try:
+            tokens = shlex.split(segment.strip())
+        except ValueError:
+            continue
+        if not tokens or Path(tokens[0]).name != "node":
+            continue
+        if any(_normalise_test_path(token) == rel for token in tokens[1:]):
+            return tokens
+    return None
+
+
 def check_registered(root: Path) -> list[dict]:
     refusals: list[dict] = []
-    build = ui_build_string(root)
     for path in new_or_renamed(root):
         if not is_test_file(path):
             continue
         if is_ui_test(path):
-            if path not in build:
+            if ui_build_command(root, path) is None:
+                rel = path[len(UI_APP) + 1 :]
                 refusals.append(
                     _refusal(
                         "test-not-registered",
-                        f"new UI test {path} is not in the {UI_APP}/package.json scripts.build string; "
-                        f"add it to that build gate (the UI test registration) or it never runs",
+                        f"new UI test {path} is not run by any 'node ...' step in the {UI_APP}/"
+                        f"package.json scripts.build string; add its app-relative path ({rel}) to "
+                        f"that build gate (the UI test registration) or it never runs",
                     )
                 )
         elif not registered_in_gate(root, path):
@@ -423,7 +590,13 @@ def check_evidence(root: Path) -> list[dict]:
 
 
 def _read_claim_branches(root: Path, session: str) -> tuple[set[str] | None, str]:
-    """The branches this session claims, from the claim board. ``None`` means unreadable."""
+    """The branches this session owns, from the claim board. ``None`` means incomplete/unreadable.
+
+    The board keeps live claims in ``in_flight`` and stale-but-owned (or done) claims in
+    ``takeover_candidates``; a session's active work spans both. Both arrays must be present and
+    every row of this session must name a branch, otherwise ownership is incomplete and this
+    returns ``None`` so the caller falls back explicitly instead of reading an authoritative zero.
+    """
     if not session:
         return None, "AGENT_CLAIM_SESSION is not set, so this session's claims cannot be identified"
     script = root / "scripts" / "agent_claim.py"
@@ -441,23 +614,29 @@ def _read_claim_branches(root: Path, session: str) -> tuple[set[str] | None, str
         doc = json.loads(proc.stdout or "{}")
     except ValueError:
         return None, "the claim board returned unreadable JSON"
-    rows = doc.get("in_flight") if isinstance(doc, dict) else None
-    if not isinstance(rows, list):
-        return None, "the claim board JSON has no in_flight list"
-    branches = {
-        str(row.get("branch"))
-        for row in rows
-        if isinstance(row, dict) and row.get("session") == session and row.get("branch")
-    }
+    if not isinstance(doc, dict):
+        return None, "the claim board returned no readable status object"
+    rows: list = []
+    for key in ("in_flight", "takeover_candidates"):
+        value = doc.get(key)
+        if not isinstance(value, list):
+            return None, f"the claim board JSON has no {key} list, so this session's claims are incomplete"
+        rows.extend(value)
+    branches: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            return None, "the claim board JSON has a malformed claim row"
+        if row.get("session") != session:
+            continue
+        branch = row.get("branch")
+        if not isinstance(branch, str) or not branch.strip():
+            return None, f"a claim for {session} names no branch, so this session's ownership is incomplete"
+        branches.add(branch.strip())
     return branches, ""
 
 
 # Injectable boundary (tests replace this name; no test reads the real claim board).
 claim_board_reader = _read_claim_branches
-
-
-def _non_draft(rows: list) -> list[dict]:
-    return [row for row in rows if isinstance(row, dict) and not row.get("isDraft")]
 
 
 def _pr_rows(proc) -> list | None:
@@ -468,13 +647,30 @@ def _pr_rows(proc) -> list | None:
     return rows if isinstance(rows, list) else None
 
 
+def _pr_objects(rows: list) -> list[dict]:
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _current_branch(root: Path) -> str:
+    """The branch this upload updates, or "" when the checkout is detached/unknown."""
+    try:
+        name = _git(["rev-parse", "--abbrev-ref", "HEAD"], root, what="git rev-parse --abbrev-ref HEAD")
+    except PreflightError:
+        return ""
+    name = name.stdout.strip()
+    return "" if name == "HEAD" else name
+
+
 def check_wip_cap(root: Path, skip: bool) -> list[dict]:
-    """Count only this session's non-draft PRs; report the account count for context.
+    """Refuse a fourth open PR for this session; report the account count for context.
 
     Every agent on this host shares one GitHub account, so ``gh pr list --author @me`` is the whole
-    fleet. The session's branches come from the claim board; a PR is "this session's" when its head
-    branch is one of those claims. If the claim board cannot be read, the whole account is counted
-    and the refusal says so, so a reader can never mistake fleet noise for their own work.
+    fleet. The session's branches come from the claim board (live and stale-but-owned rows); a PR is
+    "this session's" when its head branch is one of those claims. Drafts count (D50 says at most
+    three PRs, sub-agents included). The candidate's own open PR is excluded from the count so
+    repairing the third existing PR is allowed; starting a fourth is not. If the claim board cannot
+    be read completely, the whole account is counted and the refusal says so, so a reader can never
+    mistake fleet noise or an unknown owner for their own work.
     """
     if skip:
         return []
@@ -486,45 +682,54 @@ def check_wip_cap(root: Path, skip: bool) -> list[dict]:
     account_rows = _pr_rows(proc)
     if account_rows is None:
         return [_refusal("wip-cap", "GitHub returned an unreadable answer for your open pull requests")]
-    account_count = len(_non_draft(account_rows))
+    account_count = len(_pr_objects(account_rows))
 
     session = os.environ.get("AGENT_CLAIM_SESSION", "").strip()
     branches, note = claim_board_reader(root, session)
     if branches is not None:
         own: dict[object, dict] = {}
+        candidate_numbers: set[object] = set()
+        current = _current_branch(root)
+        complete = True
         for branch in sorted(branches):
             branch_proc = gh_run(["pr", "list", "--head", branch, "--state", "open", "--json", "number,isDraft"], root)
             rows = _pr_rows(branch_proc) if branch_proc.returncode == 0 else None
             if rows is None:
-                branches, note = None, f"could not read open pull requests for claimed branch {branch}"
+                note = f"could not read open pull requests for claimed branch {branch}"
+                complete = False
                 break
-            for row in _non_draft(rows):
+            for row in _pr_objects(rows):
                 own[row.get("number")] = row
-        if branches is not None:
-            own_count = len(own)
-            if own_count >= MAX_OPEN_NON_DRAFT_PRS:
+                if current and branch == current:
+                    candidate_numbers.add(row.get("number"))
+        if complete:
+            other_count = len(set(own) - candidate_numbers)
+            resulting = other_count + 1  # this upload creates exactly one PR, or updates the candidate
+            if resulting > MAX_OPEN_PRS:
                 numbers = ", ".join(f"#{row.get('number')}" for row in own.values())
-                branch_list = ", ".join(sorted(branches))
+                branch_list = ", ".join(sorted(branches)) or "(none)"
                 return [
                     _refusal(
                         "wip-cap",
-                        f"this account has {account_count} open non-draft pull requests, {own_count} of them "
-                        f"on this session's claimed branches ({branch_list}: {numbers}); the limit is "
-                        f"{MAX_OPEN_NON_DRAFT_PRS} for this session; finish or close one "
-                        f"(--skip-wip-cap overrides this check with a warning)",
+                        f"this upload would make {resulting} open pull requests for this session on its "
+                        f"claimed branches ({branch_list}: {numbers}); the limit is {MAX_OPEN_PRS} at a "
+                        f"time, drafts and stale-owned claims included (repairing one of the existing "
+                        f"three is allowed); the whole account has {account_count} open pull requests; "
+                        f"finish or close one (--skip-wip-cap overrides this check with a warning)",
                     )
                 ]
             return []
 
-    # The claim board (or a per-branch read) failed: fall back to the whole account, and say so.
-    if account_count >= MAX_OPEN_NON_DRAFT_PRS:
+    # The claim board (or a per-branch read) was incomplete: count the whole account and say so.
+    if account_count >= MAX_OPEN_PRS:
         return [
             _refusal(
                 "wip-cap",
-                f"the claim board could not be read ({note}), so this counts the whole account: this "
-                f"account has {account_count} open non-draft pull requests, and the number on this "
-                f"session's claimed branches is unknown; the limit is {MAX_OPEN_NON_DRAFT_PRS}; finish "
-                f"or close one (--skip-wip-cap overrides this check with a warning)",
+                f"the claim board could not be read completely ({note}), so this counts the whole "
+                f"account: this account has {account_count} open pull requests (drafts included), and "
+                f"the number on this session's claimed branches is unknown; the limit is "
+                f"{MAX_OPEN_PRS}; finish or close one (--skip-wip-cap overrides this check with a "
+                f"warning)",
             )
         ]
     return []
@@ -534,44 +739,114 @@ def test_command(root: Path, path: str) -> tuple[list[str], Path]:
     """The command that runs one touched test file, and the directory it runs in."""
     if is_ui_test(path):
         rel = path[len(UI_APP) + 1 :]
-        for segment in ui_build_string(root).split(" && "):
-            try:
-                tokens = shlex.split(segment.strip())
-            except ValueError:
-                continue
-            if rel in tokens:
-                return tokens, root / UI_APP
+        tokens = ui_build_command(root, path)
+        if tokens is not None:
+            return tokens, root / UI_APP
         return ["node", rel], root / UI_APP
     return [sys.executable, "-m", "pytest", "-q", path], root
 
 
-def record_tests(root: Path, *, verbose: bool = True) -> int:
+def _tracked_source_changes(root: Path) -> list[str]:
+    """Modified, staged or deleted *tracked* files. Untracked/ignored test artifacts are allowed."""
+    out = _git(
+        ["status", "--porcelain", "--untracked-files=no"],
+        root,
+        what="git status --porcelain --untracked-files=no",
+    ).stdout
+    return [line for line in out.splitlines() if line.strip()]
+
+
+def _no_receipt_drift(root: Path, head: str, *, before: bool) -> int | None:
+    """Refuse to write a receipt when the tested source is not the committed source."""
+    label = "before" if before else "after"
+    dirty = _tracked_source_changes(root)
+    if dirty:
+        print(
+            f"preflight: refusing to record tests — tracked source is dirty {label} the run, so the "
+            f"receipt would bind the committed head to different working files. Commit or stash these:"
+        )
+        for line in dirty:
+            print(f"  {line}")
+        return 1
+    if not before:
+        now = head_sha(root)
+        if now != head:
+            print(
+                f"preflight: refusing to record tests — HEAD moved during the run ({head} -> {now}); "
+                f"the evidence would be bound to the wrong commit. Re-run at the new head."
+            )
+            return 1
+    return None
+
+
+def record_tests(
+    root: Path,
+    *,
+    verbose: bool = True,
+    allow_skip_only: set[str] | None = None,
+) -> int:
+    allowed = {_normalise_test_path(p) for p in (allow_skip_only or set())}
     head = head_sha(root)
     touched = touched_test_files(root)
     if not touched:
         if verbose:
             print("preflight: this branch changes no test files; no receipt needed")
         return 0
+    refused = _no_receipt_drift(root, head, before=True)
+    if refused is not None:
+        return refused
     results = []
     failed = []
+    nothing_ran = []
+    tolerated: set[str] = set()
     for path in touched:
         cmd, cwd = test_command(root, path)
-        code = int(test_runner(cmd, cwd))
-        results.append({"path": path, "command": cmd, "exit_code": code})
+        code, output = _normalise_run(test_runner(cmd, cwd))
+        executed = _executed_at_least_one(output)
+        key = _normalise_test_path(path)
+        results.append(
+            {
+                "path": path,
+                "command": cmd,
+                "exit_code": code,
+                "ran": executed,
+                "output_tail": output[-4000:],
+            }
+        )
         if code != 0:
             failed.append((path, code))
+        elif not executed:
+            if key in allowed:
+                tolerated.add(key)
+            else:
+                nothing_ran.append(path)
+    refused = _no_receipt_drift(root, head, before=False)
+    if refused is not None:
+        return refused
     if failed:
         for path, code in failed:
             print(f"NOT GREEN (exit {code}): {path}")
         print("preflight: no receipt written because tests did not pass")
         return 1
+    if nothing_ran:
+        for path in nothing_ran:
+            print(f"NOT RUN (no test executed, e.g. all skipped or no tests ran): {path}")
+        print(
+            "preflight: no receipt written because a touched test file did not execute a test; if it "
+            "is intentionally skipped in this environment, re-run with --allow-skip-only <path> "
+            "(recorded in the receipt as an explicit skip-tolerant contract)"
+        )
+        return 1
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "head_sha": head,
+        "tree_sha": _git(["rev-parse", "HEAD^{tree}"], root, what="git rev-parse HEAD^{tree}").stdout.strip(),
         "base_ref": BASE_REF,
         "recorded_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source_clean": True,
         "files": [row["path"] for row in results],
         "results": results,
+        "skip_tolerant": sorted(tolerated),
     }
     target = receipt_path(root, head)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -607,7 +882,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--skip-wip-cap",
         action="store_true",
-        help="skip the open-non-draft-PR limit (prints a warning; for this check's own PR)",
+        help="skip the open-PR limit (prints a warning; for this check's own PR)",
+    )
+    parser.add_argument(
+        "--allow-skip-only",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help=(
+            "with --record-tests, accept this touched test file when it executes nothing (all skipped) "
+            "as an explicit skip-tolerant contract; repeatable, recorded in the receipt"
+        ),
     )
     parser.add_argument(
         "--pr-body-file",
@@ -619,7 +904,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = repo_root()
         if args.record_tests:
-            code = record_tests(root, verbose=not args.json)
+            code = record_tests(
+                root,
+                verbose=not args.json,
+                allow_skip_only=set(args.allow_skip_only),
+            )
             if args.json:
                 doc = {
                     "schema": RECEIPT_SCHEMA,
@@ -632,8 +921,8 @@ def main(argv: list[str] | None = None) -> int:
         head = head_sha(root)
         if args.skip_wip_cap:
             print(
-                "WARNING: --skip-wip-cap was used; the open-non-draft-PR limit "
-                f"({MAX_OPEN_NON_DRAFT_PRS}) was not checked",
+                "WARNING: --skip-wip-cap was used; the open-PR limit "
+                f"({MAX_OPEN_PRS}) was not checked",
                 file=sys.stderr,
             )
         refusals = run_checks(root, args)
