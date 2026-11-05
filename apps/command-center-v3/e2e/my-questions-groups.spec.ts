@@ -21,7 +21,7 @@ test.beforeAll(async () => {
   js = b.outputFiles.find(f => f.path.endsWith('.js'))!.text.replace(/<\/script/gi, '<\\/script'); css = b.outputFiles.find(f => f.path.endsWith('.css'))?.text || ''
   if (shots) mkdirSync(shots, { recursive: true })
 })
-async function serve(page: Page, opts: { empty?: boolean } = {}) {
+async function serve(page: Page, opts: { empty?: boolean; refusal?: { code: string; status?: number; detail?: string } } = {}) {
   const traffic = { forbidden: [] as string[], writes: [] as { path: string; body: unknown }[] }
   await page.routeWebSocket('**/*', ws => { traffic.forbidden.push('WS:' + ws.url()); ws.close() })
   await page.route('**/*', async route => {
@@ -35,6 +35,7 @@ async function serve(page: Page, opts: { empty?: boolean } = {}) {
       return json({ ok: true, data: { override: { kind: 'ask.group_override' } } })
     }
     if (u.pathname === '/api/v2/cio/asks') {
+      if (opts.refusal) return route.fulfill({ status: opts.refusal.status ?? 403, contentType: 'application/json', body: JSON.stringify({ ok: false, error: opts.refusal.code, detail: opts.refusal.detail }) })
       if (opts.empty) return json(fx.empty)
       const gb = u.searchParams.get('group_by'), ch = u.searchParams.get('channel')
       if (!gb) return json({ ok: true, data: { threads: fx.grouped.none.data.threads, as_of: fx.clock } })
@@ -138,6 +139,55 @@ test('screenshots: every grouping at 1440 and 412', async ({ page }) => {
       await snap(page, 'thread-related', width)
     }
     await page.unrouteAll({ behavior: 'ignoreErrors' })
+    expect(traffic.forbidden).toEqual([])
+  }
+})
+
+// FQ-005: real page + useApi + JSON refusal; no live server or authenticated identity.
+for (const width of [1440, 390, 412]) {
+  test(`caller refusal explains recovery without an impossible selection prompt ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    const detail = "Ask the CIO answers only the operator's tailnet identity"
+    const opts: { refusal?: { code: string; detail?: string } } = { refusal: { code: 'AGENT_CALLER_REFUSED', detail } }
+    const traffic = await serve(page, opts)
+    await page.goto(origin + '/v3/cio/questions')
+    const panel = page.getByTestId('my-questions')
+    await expect(panel.getByText('Could not load questions:', { exact: false })).toBeVisible()
+    await snap(page, 'caller-refused', width)
+    await expect(panel.getByText('Could not load questions:', { exact: false })).toContainText('Tailscale')
+    await expect(panel.getByTestId('outcome-detail')).toHaveText(detail)
+    await expect(panel).not.toContainText('this operator is not permitted')
+    await expect(panel).not.toContainText('Pick a question')
+    await expect(panel).not.toContainText('No questions yet')
+    await expect(panel.getByTestId('mq-access-recovery')).toContainText('Command Center address')
+    await expect(panel.getByTestId('mq-access-recovery')).toContainText('access help')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+    const retry = panel.getByRole('button', { name: 'Check access again' })
+    const bounds = await retry.boundingBox()
+    expect(bounds && bounds.width >= 44 && bounds.height >= 44).toBe(true)
+    // Same mounted page: a successful read after the operator checks access must clear the refusal.
+    opts.refusal = undefined
+    await retry.click()
+    await expect(panel.getByTestId('mq-group')).not.toHaveCount(0)
+    await expect(panel.getByTestId('mq-access-recovery')).toHaveCount(0)
+    await expect(panel).not.toContainText('Could not load questions')
+    await expect(panel).toContainText('Pick a question')
+    expect(traffic.forbidden).toEqual([])
+    expect(traffic.writes).toEqual([])
+  })
+}
+
+test('permission denial and 401 stay distinct and actionable', async ({ page }) => {
+  for (const [status, code, kind] of [[403, 'SCOPE_REQUIRED', 'FORBIDDEN'], [401, 'UNAUTHENTICATED', 'UNAUTHORIZED']] as const) {
+    const traffic = await serve(page, { refusal: { status, code } })
+    await page.goto(origin + '/v3/cio/questions')
+    const panel = page.getByTestId('my-questions')
+    await expect(panel.locator(`[data-outcome="${kind}"]`)).toBeVisible()
+    await expect(panel).not.toContainText('Pick a question')
+    await expect(panel).not.toContainText('No questions yet')
+    await expect(panel.getByTestId('mq-access-recovery')).toContainText('access help')
+    await panel.getByText('Technical details', { exact: true }).click()
+    await expect(panel.getByTestId('mq-access-recovery')).toContainText(`HTTP ${status}`)
     expect(traffic.forbidden).toEqual([])
   }
 })

@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { OutcomeNotice } from '../components/OutcomeNotice'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import {
   ASK_PATHS, CHANNEL_LABEL, TOOLTIPS, currentVersion, entityLabel, filterSummaries, isPending, relativeAge,
@@ -55,6 +56,7 @@ export default function MyQuestions() {
     window.addEventListener(ASK_UPDATED_EVENT, refresh)
     return () => window.removeEventListener(ASK_UPDATED_EVENT, refresh)
   }, [groupedApi.refetch])
+  const accessBlocked = list.authState === 'IDENTITY_REQUIRED' || list.authState === 'FORBIDDEN' || list.authState === 'UNAUTHORIZED'
   const shown = filterSummaries(rows, filter).filter(r => !channel || r.channels.includes(channel as never))
   const options = grouped?.group_bys ?? GROUP_BYS.map(id => ({ id, available: true, reason: null }))
   const themeGap = options.find(o => o.id === 'theme' && !o.available)
@@ -95,7 +97,18 @@ export default function MyQuestions() {
         </div>
         {themeGap && <div data-testid="mq-theme-gap" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], marginBottom: 6 }}>Theme grouping unavailable — {themeGap.reason}</div>}
         {list.loading && !rows.length && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Loading…</div>}
-        {list.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load questions: {list.error}</div>}
+        {list.error && (list.outcome
+          ? <OutcomeNotice outcome={list.outcome} prefix="Could not load questions" />
+          : <div style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load questions: {list.error}</div>)}
+        {accessBlocked && <div data-testid="mq-access-recovery" style={{ fontSize: TYPE.sm, marginTop: 12, overflowWrap: 'anywhere' }}>
+          <p>Questions are blocked in this session. Open your usual Command Center address while signed in to Tailscale with your operator account.
+            If access is still refused, request access help and include the technical details below.</p>
+          <button type="button" style={btn} disabled={list.refreshing} onClick={() => { list.refetch(); groupedApi.refetch() }}>Check access again</button>
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ minHeight: 44, paddingTop: 12, boxSizing: 'border-box', cursor: 'pointer' }}>Technical details</summary>
+            <div>HTTP {list.outcome?.status ?? 'unknown'} · {list.outcome?.errorCode ?? list.authState}</div>
+          </details>
+        </div>}
         {list.stale && <div role="status" style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>Questions refresh unavailable — showing saved questions.</div>}
         {!list.loading && !rows.length && !list.error && (
           <div data-testid="mq-empty" style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No questions yet. Use the Ask the CIO bar above (⌘K), or message the CIO bot on Telegram.</div>
@@ -126,7 +139,9 @@ export default function MyQuestions() {
       </section>
       <section style={{ flex: '3 1 520px', minWidth: 0 }}>
         {threadId ? <ThreadView key={threadId} threadId={threadId} groupBy={gb} grouped={grouped} refreshes={refreshes} onRefresh={refreshResearch} onChanged={() => { list.refetch(); groupedApi.refetch() }} /> : (
-          <div style={{ ...card, fontSize: TYPE.base, color: TOKENS.text[2] }}>Pick a question to see its thread, answers, sources and what it is tracking.</div>
+          <div style={{ ...card, fontSize: TYPE.base, color: TOKENS.text[2] }}>{list.error && !rows.length
+            ? 'Questions could not be loaded. Follow the guidance above, then check again.'
+            : 'Pick a question to see its thread, answers, sources and what it is tracking.'}</div>
         )}
       </section>
     </div>

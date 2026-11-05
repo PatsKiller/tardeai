@@ -22,6 +22,7 @@ export type OutcomeClass =
   | 'NOT_MODIFIED'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
+  | 'IDENTITY_REQUIRED'
   | 'CLIENT_ERROR'
   | 'RATE_LIMITED'
   | 'TIMEOUT'
@@ -32,6 +33,9 @@ export type OutcomeClass =
 export type Outcome = {
   kind: OutcomeClass
   status: number | null
+  /** Refusal explanation from the API, preserved for the operator. */
+  detail?: string
+  errorCode?: string
   /** True when no amount of retrying can change the answer without operator action. */
   terminal: boolean
   /** True only when a later identical request could plausibly succeed. */
@@ -68,13 +72,22 @@ export function parseRetryAfter(value: string | null | undefined, nowMs: number 
 }
 
 /** Classify an HTTP status. `headers` is optional so this stays testable. */
+/** Caller identity refusals need a different explanation from scope denials.
+ * AGENT_CALLER_REFUSED also covers authenticated agents; it does not prove the operator lacks access. */
+const IDENTITY_CODES = new Set(['AGENT_CALLER_REFUSED', 'UNAUTHENTICATED', 'IDENTITY_NOT_PRESENTED'])
+
 export function classifyStatus(
   status: number,
   headers?: { get(name: string): string | null } | null,
   nowMs: number = Date.now(),
+  errorCode?: string | null,
+  detail?: string | null,
 ): Outcome {
   const retryAfterMs = parseRetryAfter(headers?.get('Retry-After') ?? null, nowMs)
-  const base = { status, retryAfterMs }
+  const base = { status, retryAfterMs,
+    ...(typeof errorCode === 'string' && errorCode.trim() ? { errorCode } : {}),
+    ...(typeof detail === 'string' && detail.trim() ? { detail } : {}),
+  }
 
   if (status === 304) {
     return { ...base, kind: 'NOT_MODIFIED', terminal: false, retryable: false,
@@ -89,6 +102,17 @@ export function classifyStatus(
       keepLastGood: true }
   }
   if (status === 403) {
+    // A 403 has TWO meanings and the status line cannot tell them apart. The refusal code can.
+    const code = String(errorCode ?? '').trim().toUpperCase()
+    if (IDENTITY_CODES.has(code)) {
+      return { ...base, kind: 'IDENTITY_REQUIRED', terminal: true, retryable: false,
+        // AGENT_CALLER_REFUSED is a POLICY refusal, not proof that nobody signed in: the serve proxy allows the
+        // operator's tailnet identity and refuses agents, n8n and the service token whatever they present. Saying
+        // "your identity was not presented" would be a true-looking instruction the caller cannot act on (cc2).
+        message: 'This page requires your operator sign-in through Tailscale. Sign in as the operator, '
+          + 'then reload. If you are already signed in, this connection is not accepted for operator access.',
+        keepLastGood: true }
+    }
     return { ...base, kind: 'FORBIDDEN', terminal: true, retryable: false,
       message: 'forbidden — this operator is not permitted this surface; this will not resolve by waiting',
       keepLastGood: true }
