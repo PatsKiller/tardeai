@@ -1,4 +1,5 @@
 import './W9Mobile.css'
+import { defaultResearchView, isPhoneViewport, secondaryFiltersOpen, wireRows } from '../lib/researchPhone'
 /**
  * Research Intelligence v2.7 — stage trades, cross-theme, concentration banner.
  */
@@ -303,6 +304,24 @@ function SoftChip({ label, color, active, onClick }: {
     >
       {label}
     </button>
+  )
+}
+
+/** FQ-058 secondary filters. A phone folds them behind one summary line; a desktop gets a plain
+    container. An unwrapped <details> on desktop is not inert: the browser inserts a default summary,
+    so the controls could be collapsed with one click while the copy says every control stays
+    visible (review P2622 P3, verified: the filter strip fell from 93px to 18px). */
+export function SecondaryFiltersShell({ phone, open, summary, children }: {
+  phone: boolean; open: boolean; summary: ReactNode; children: ReactNode
+}) {
+  if (!phone) {
+    return <div data-testid="ri-secondary-filters" style={{ marginBottom: 12 }}>{children}</div>
+  }
+  return (
+    <details open={open} data-testid="ri-secondary-filters" style={{ marginBottom: 12 }}>
+      <summary style={{ cursor: 'pointer', fontSize: 12.5, fontWeight: 750, color: C.ink, padding: '4px 0' }}>{summary}</summary>
+      {children}
+    </details>
   )
 }
 
@@ -863,7 +882,7 @@ function ActionStrip({
   )
 }
 
-function ArticleCard({
+export function ArticleCard({
   item, catMeta, featured, view, onOpen, onFeedback, onStage, onThemeClick, staging,
 }: {
   item: Item
@@ -920,13 +939,14 @@ function ArticleCard({
   if (view === 'compact') {
     return (
       <div
+        className="ri-wire-row"
         onClick={onOpen}
         role="button"
         tabIndex={0}
         onKeyDown={e => { if (e.key === 'Enter') onOpen() }}
         style={{
           display: 'grid',
-          gridTemplateColumns: '28px 1fr auto auto',
+          gridTemplateColumns: '28px minmax(0, 1fr) auto',
           gap: 12, alignItems: 'center',
           padding: '11px 14px',
           borderBottom: `1px solid ${C.line}`,
@@ -937,8 +957,8 @@ function ArticleCard({
         <button type="button" onClick={toggleStar} style={iconBtn(item.starred ? C.star : C.soft)}>
           {item.starred ? '★' : '☆'}
         </button>
-        <div style={{ minWidth: 0 }}>
-          <div style={{
+        <div className="ri-wire-title" style={{ minWidth: 0 }}>
+          <div className="ri-wire-headline" style={{
             fontSize: 13, fontWeight: 700, color: C.ink,
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
@@ -946,7 +966,7 @@ function ArticleCard({
             {item.title}
           </div>
           {item.lede && (
-            <div style={{
+            <div className="ri-wire-lede" style={{
               fontSize: 11.5, color: C.muted, marginTop: 2,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
@@ -954,8 +974,10 @@ function ArticleCard({
             </div>
           )}
         </div>
-        <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
-        <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} asOf={item.created_at} />
+        <div className="ri-wire-meta" style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <Tag color={catColor}>{catMeta[primary]?.label || primary}</Tag>
+          <FreshnessDot tier={item.freshness_tier} label={item.freshness_label} asOf={item.created_at} />
+        </div>
       </div>
     )
   }
@@ -1354,7 +1376,9 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [freshness, setFreshness] = useState<string | null>(null)
   const [sentiment, setSentiment] = useState<string | null>(null)
   const [lane, setLane] = useState<'all' | 'retirement' | 'dividends' | 'macro_sector'>('all')
-  const [view, setView] = useState<'cards' | 'list' | 'compact'>('list')
+  const [view, setView] = useState<'cards' | 'list' | 'compact'>(() => defaultResearchView(isPhoneViewport()))
+  const phone = usePhoneWidth()
+  const [showAllWire, setShowAllWire] = useState(false)
   const [localPatch, setLocalPatch] = useState<Record<string, Partial<Item>>>({})
   const [stagedIdeas, setStagedIdeas] = useState<StagedIdea[]>([])
   const [showStaged, setShowStaged] = useState(false)
@@ -1587,6 +1611,10 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     // view. Locally-hidden cards (B2) drop out immediately.
     return items.filter(i => !i.hidden)
   }, [items])
+
+  // FQ-058: a phone gets a short prioritized wire first (12 rows), never the whole desk at once;
+  // Show all opens the rest without a reload. Desktop is unchanged.
+  const wireItems = wireRows(displayItems, phone, showAllWire)
 
   const featured = useMemo(() => {
     // Prefer real Hermes/LLM briefs — never feature empty topic_monitor stubs
@@ -1949,6 +1977,11 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           </div>
         </div>
 
+        {/* FQ-058: on a phone the secondary filters fold behind one summary line, so the prioritized
+            list is reachable without several screens of chips. Desktop keeps every control visible. */}
+        <SecondaryFiltersShell phone={phone} open={secondaryFiltersOpen(phone)} summary={
+          <>Filters{hasActiveFilters ? ' · active' : ''} — topics, search, freshness{stats.matched != null ? ` · ${stats.matched} stories` : ''}</>
+        }>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
           <SoftChip label="All topics" active={!category} onClick={() => setCategory(null)} />
           {cats.map(c => (
@@ -2021,6 +2054,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
             )}
           </div>
         )}
+        </SecondaryFiltersShell>
       </section>
 
       {/* Filtered strip — always visible when not full desk */}
@@ -2201,13 +2235,23 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               </div>
 
               {view === 'compact' ? (
+                <>
                 <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, overflow: 'hidden' }}>
-                  {displayItems.map(item => (
+                  {wireItems.map(item => (
                     <ArticleCard key={item.id} item={item} catMeta={catMeta} view="compact"
                       onOpen={() => openItem(item)} onFeedback={onFeedback}
                       onStage={handleStage} onThemeClick={handleThemeClick} staging={staging} />
                   ))}
                 </div>
+                {wireItems.length < displayItems.length && (
+                  <button type="button" onClick={() => setShowAllWire(true)} style={{
+                    marginTop: 10, minHeight: 44, width: '100%', fontSize: 12.5, fontWeight: 750, cursor: 'pointer',
+                    border: `1px solid ${C.lineStrong}`, background: 'transparent', color: C.ink,
+                  }}>
+                    Show all {displayItems.length} stories
+                  </button>
+                )}
+                </>
               ) : view === 'cards' ? (
                 <div style={{
                   display: 'grid',
@@ -2544,8 +2588,21 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
   )
 }
 
-function RailCard({ title, accent, children }: { title: string; accent: string; children: ReactNode }) {
-  return (
+/** True below the app's phone breakpoint (820px); re-evaluates on resize. */
+function usePhoneWidth(): boolean {
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 820px)').matches : false)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(max-width: 820px)')
+    const update = () => setPhone(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return phone
+}
+
+function RailCard({ title, accent, children }: { title: string; accent: string; children: ReactNode }) {  return (
     <div style={{
       background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: 14,
       borderTop: `2px solid color-mix(in srgb, ${accent} 40%, transparent)`,
