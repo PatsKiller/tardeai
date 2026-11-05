@@ -21,11 +21,13 @@ standalone */2 validation runner remains the backup — this is the immediate, c
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -83,6 +85,54 @@ TERM_GRACE_S = 5
 #: A call whose clamped timeout is below this cannot finish; it is skipped, not spawned
 #: (the 07:20 run on 10-21 spawned a 1-second call that only manufactured a zombie row).
 MIN_CALL_TIMEOUT_S = 10
+
+
+def refresh_resume_path() -> Path:
+    return refresh_receipt_path().with_suffix(".resume.json")
+
+
+def refresh_lock_path() -> Path:
+    # Share the scheduled full-run lock; the subset callers have different outer
+    # locks. An explicit receipt namespace also isolates replay/test state.
+    if os.environ.get(REFRESH_RECEIPT_ENV, "").strip():
+        return refresh_receipt_path().with_suffix(".lock")
+    return Path("/tmp/finviz_screener.lock")
+
+
+def _read_pending_screeners() -> list[str]:
+    try:
+        rec = json.loads(refresh_resume_path().read_text())
+    except FileNotFoundError:
+        return []
+    pending = rec.get("pending_screener_ids") if isinstance(rec, dict) else None
+    if (not isinstance(rec, dict) or rec.get("schema") != "FinvizRefreshResume@v1" or not isinstance(pending, list)
+            or any(not isinstance(sid, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", sid)
+                   for sid in pending)):
+        raise ValueError("invalid Finviz resume state; preserved for inspection")
+    return list(dict.fromkeys(pending))
+
+
+def _write_pending_screeners(pending: list[str]) -> None:
+    """Atomic cursor, always while the shared refresh lock is held.
+
+    Persist before each child starts, so an outer kill preserves the unfinished
+    screener. Never remove/replace pending IDs belonging to another subset.
+    """
+    path = refresh_resume_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rec = {"schema": "FinvizRefreshResume@v1", "pending_screener_ids": pending,
+           "updated_at": datetime.now().astimezone().isoformat()}
+    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=path.name + ".", delete=False) as fh:
+        json.dump(rec, fh)
+        fh.flush()
+        os.fsync(fh.fileno())
+        tmp = fh.name
+    os.replace(tmp, path)
+    parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(parent_fd)
+    finally:
+        os.close(parent_fd)
 
 
 def _run(cmd: list, timeout: int = STAGE_TIMEOUT) -> dict:
@@ -228,32 +278,89 @@ def stage_finviz_scan(dry_run: bool, deadline_s: float | None = None, started_mo
     if dry_run:
         s.update(ok=True, reason="dry_run_no_refresh")
         return s
+    # One deadline for the whole batch, including launch and resume bookkeeping.
+    started_monotonic = time.monotonic() if started_monotonic is None else started_monotonic
     ids = refresh_screener_ids() if screener_ids is None else list(screener_ids)
-    write_refresh_receipt("STARTED", screener_ids=ids, deadline_s=deadline_s)
+    ids = list(dict.fromkeys(ids))
+    t_out = stage_timeout(FINVIZ_TIMEOUT, deadline_s, started_monotonic)
+    if deadline_s is not None and t_out < MIN_CALL_TIMEOUT_S:
+        results = [{"cmd": ["--screener", sid] if sid else ["--run"], "rc": 124,
+                    "latency_ms": 0, "timeout_s": t_out, "skipped": "outer_deadline_exhausted",
+                    "stderr": f"skipped: {t_out}s left of the outer deadline"} for sid in (ids or [None])]
+        return {**s, "ok": False, "rc": 124, "calls": results, "latency_ms": 0, "rows": 0,
+                "pending_screener_ids": ids, "reason": "outer_deadline_exhausted"}
+
+    lock = refresh_lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    with lock.open("a+") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            # Do not overwrite the owner's receipt or its cursor without the lock.
+            return {**s, "ok": False, "rc": 124, "calls": [], "latency_ms": 0, "rows": 0,
+                    "pending_screener_ids": ids, "reason": "refresh_locked_deferred"}
+        try:
+            return _stage_finviz_locked(s, ids, deadline_s, started_monotonic)
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def _stage_finviz_locked(s: dict, ids: list[str], deadline_s, started_monotonic) -> dict:
+    try:
+        pending = list(dict.fromkeys(_read_pending_screeners() + ids))
+        _write_pending_screeners(pending)
+    except (OSError, ValueError, TypeError) as exc:
+        write_refresh_receipt("FAILED", rc=1, screener_ids=ids, error="resume_state_unavailable")
+        return {**s, "ok": False, "rc": 1, "calls": [], "latency_ms": 0, "rows": 0,
+                "reason": "resume_state_unavailable", "stderr": str(exc)}
+    # Foreign pending IDs survive a narrower caller, but are executed only when
+    # requested by their configured owner. No completed prefix can starve the tail.
+    ordered = [sid for sid in pending if sid in ids]
+    write_refresh_receipt("STARTED", screener_ids=ids, deadline_s=deadline_s,
+                          pending_screener_ids=pending)
     results, rows_total, rc_worst = [], 0, 0
     runner = str(SCRIPTS / "finviz_screener_runner.py")
-    calls = [[_py(), runner, "--screener", sid] for sid in ids] or [[_py(), runner, "--run"]]
-    for cmd in calls:
+    calls = ordered or [None]
+    for sid in calls:
+        args = ["--screener", sid] if sid is not None else ["--run"]
+        cmd = [_py(), runner]
         t_out = stage_timeout(FINVIZ_TIMEOUT, deadline_s, started_monotonic)
         if deadline_s is not None and t_out < MIN_CALL_TIMEOUT_S:
             # Outer deadline exhausted: record the call as not run (still a failed refresh,
             # rc 124) instead of spawning a process that is killed before it can finish.
             rc_worst = max(rc_worst, 124)
-            results.append({"cmd": cmd[-2:], "rc": 124, "latency_ms": 0, "timeout_s": t_out,
+            results.append({"cmd": args, "rc": 124, "latency_ms": 0, "timeout_s": t_out,
                             "skipped": "outer_deadline_exhausted",
                             "stderr": f"skipped: {t_out}s left of the outer deadline"})
             continue
+        # The child cooperates before the unchanged hard timeout / TERM grace.
+        cmd += ["--deadline-seconds", str(max(0.1, t_out - TERM_GRACE_S)), *args]
         r = _run(cmd, timeout=t_out)
         rc_worst = max(rc_worst, int(r["rc"]))
         rows_total += sum(int(x) for x in _ROWS_RE.findall(r.get("stdout_tail") or ""))
-        results.append({"cmd": cmd[-2:], "rc": r["rc"], "latency_ms": r["latency_ms"], "timeout_s": t_out,
+        results.append({"cmd": args, "rc": r["rc"], "latency_ms": r["latency_ms"], "timeout_s": t_out,
                         "stderr": r["stderr_tail"]})
+        if r["rc"] == 0 and sid in pending:
+            pending.remove(sid)
+            try:
+                _write_pending_screeners(pending)
+            except OSError as exc:
+                rc_worst = max(rc_worst, 1)
+                results[-1]["resume_error"] = str(exc)
+                break
+        if r["rc"] == 124:
+            # Deadline deferral: do not spend the remaining headroom on more work.
+            break
+    # Both subset owners use this one freshness receipt. A narrow DONE must not
+    # hide the hot-list tail and make its next invocation skip the unfinished IDs.
+    if pending:
+        rc_worst = max(rc_worst, 124)
     ok = rc_worst == 0
     write_refresh_receipt("DONE" if ok else "FAILED", rc=rc_worst, rows=rows_total, screener_ids=ids,
-                          calls=len(calls))
+                          calls=len(results), pending_screener_ids=pending)
     s.update(ok=ok, rc=rc_worst, latency_ms=sum(x["latency_ms"] for x in results), rows=rows_total,
              reason=("finviz_screener_runner --screener x%d" % len(ids)) if ids else "finviz_screener_runner --run",
-             calls=results)
+             calls=results, pending_screener_ids=pending)
     return s
 
 

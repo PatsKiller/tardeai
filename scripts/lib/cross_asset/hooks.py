@@ -349,6 +349,14 @@ def overlay_thesis_fields_from_spine(
         return fields
     if not view.get("found"):
         return fields
+    # Ticker Prospectus memory (2026-10-26): every thesis reader (Watch, options, desk) sees the latest
+    # prospectus reference, whether or not the house thesis tip is populated. Reference only — never a stance.
+    lp = view.get("latest_prospectus") if isinstance(view.get("latest_prospectus"), dict) else None
+    if lp:
+        fields = dict(fields)
+        fields["latest_prospectus"] = {k: lp.get(k) for k in (
+            "version", "written_at", "model_label", "status", "verdict", "one_line", "cio_conviction", "link")}
+        fields["latest_prospectus"]["thesis_breakers"] = list(lp.get("thesis_breakers") or [])[:3]
     th = view.get("thesis") or {}
     if th.get("state") != "POPULATED" and not th.get("summary"):
         return fields

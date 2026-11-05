@@ -23,6 +23,7 @@ categories:
   watchlist_candidate:         {label: "Watchlist Candidate", ttl_hours: 168}
   threat:                      {label: "Threat", ttl_hours: 96}
   market_event:                {label: "Market Event", ttl_hours: 96}
+  market_risk:                 {label: "Market Risk", ttl_hours: 48}
   news:                        {label: "News", ttl_hours: 96}
   security_alert:              {label: "Security Alert", ttl_hours: 96}
   system_alert:                {label: "System Alert", ttl_hours: 72}
@@ -48,6 +49,16 @@ rules:
      supersede_by_topic: false}
   - {id: credential, match: "credential|secret|token (revoked|expired)|reauth|2fa|api credits depleted", category: security_alert,
      priority: high, confidence: 0.9, risk: 0.6, reward: 0.0, time: 0.8, actionable: true, action: "Check credentials"}
+
+  # ── Market risk: the Market Risk Engine's tiers and the options-flow / regime pages behind them (operator
+  #    2026-10-31, DSN-20261031-market-risk-engine P3-T1). Orange/Red are critical; Yellow/Blue high. Before the
+  #    threat rules so a market-level card never classifies as a per-position stop item. ──
+  - {id: market_risk_critical, match: "MARKET RISK (ORANGE|RED)|RED ALERT ACTIVE|OPTIONS FLOW STRESS", category: market_risk,
+     priority: critical, confidence: 0.9, risk: 1.0, reward: 0.0, time: 1.0, actionable: true,
+     action: "Review stops, hedge and cash deployment; acknowledge on Home or Risk"}
+  - {id: market_risk, match: "MARKET RISK (BLUE|YELLOW|GREEN)|MARKET RISK \\d|OPTIONS FLOW (WARN|ELEVATED)|Market Regime Changed|regime .*risk[_ ]off",
+     category: market_risk, priority: high, confidence: 0.8, risk: 0.7, reward: 0.2, time: 0.8, actionable: true,
+     action: "Review exposure against the market-risk tier"}
 
   # ── Threats: what can hurt a held position now ──
   - {id: stop_health, match: "stop[ _]health|stop_triggered|orphaned|stop crossed|stop triggered|protective-stop|unprotected|stop placement reminder|critical stop alert|stop warning",

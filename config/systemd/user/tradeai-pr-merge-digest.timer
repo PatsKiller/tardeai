@@ -1,0 +1,17 @@
+# PR merge digest schedule (America/New_York, DST-aware): weekdays 08:00, 12:00, 16:30; weekends every 3h.
+# Mirror in config/pr_merge_digest.json next_digest_times. Mergify still merges only outside Mon–Fri 09:30–16:15 ET.
+[Unit]
+Description=Trade AI — PR merge digest (weekdays 08:00/12:00/16:30 ET, weekends every 3h)
+Documentation=docs/ops/AGENT_MERGIFY_HANDOFF.md
+
+[Timer]
+OnCalendar=Mon..Fri 08:00 America/New_York
+OnCalendar=Mon..Fri 12:00 America/New_York
+OnCalendar=Mon..Fri 16:30 America/New_York
+OnCalendar=Sat,Sun 00/3:00 America/New_York
+AccuracySec=1min
+Persistent=false
+Unit=tradeai-pr-merge-digest.service
+
+[Install]
+WantedBy=timers.target

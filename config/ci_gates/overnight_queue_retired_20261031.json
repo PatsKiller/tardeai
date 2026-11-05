@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_queue_retired_20261031",
+  "files": [
+    "tests/test_overnight_queue_retired_20261031.py"
+  ],
+  "anchor": "OVERNIGHT_QUEUE_RETIRED_20261031",
+  "comment": [
+    "ANCHOR: OVERNIGHT_QUEUE_RETIRED_20261031 — the RETIRED deep-overnight-llm lane's frozen KEEP_FOREVER backlog",
+    "raises no Do-now item; a live queue keeps its P1; an unreadable queue stays SourceUnavailable. Hermetic."
+  ]
+}

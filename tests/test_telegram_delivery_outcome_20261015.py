@@ -99,7 +99,7 @@ def test_editor_hold_keeps_the_bool_but_is_not_a_delivery(shadow, monkeypatch):
 def test_router_digest_stays_accepted_and_reports_routed(shadow, monkeypatch):
     import telegram_alert_router as R
 
-    monkeypatch.setattr(R, "should_send_telegram", lambda _m: False)
+    monkeypatch.setattr(R, "should_send_telegram", lambda *a, **k: False)
     monkeypatch.setattr(R, "classify_alert", lambda _m: "P1_DIGEST")
     sent: list = []
     monkeypatch.setattr(TA, "send_message", lambda **kw: sent.append(kw) or {"ok": True, "message_id": 1})

@@ -273,6 +273,10 @@ def server_mod(monkeypatch):
         fake_eb.load_env = lambda *a, **k: None  # never load host credentials into the test process
         monkeypatch.setitem(sys.modules, "env_bootstrap", fake_eb)
     import scripts.portfolio_server as server
+    from lib import request_coalesce
+
+    # A previous fixture's cached response must not bypass this fixture's fake handler.
+    monkeypatch.setattr(request_coalesce, "_DEFAULT", request_coalesce.Coalescer())
     calls: list[tuple[str, str]] = []
 
     principals: list[str] = []

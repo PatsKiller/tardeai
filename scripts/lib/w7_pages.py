@@ -191,7 +191,10 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
     result["portfolio"] = {k: v for k, v in result["portfolio"].items() if k not in ("holdings", "stored_totals")}
     display_keys = {"symbol", "account_id", "account_label", "shares", "quantity", "price", "current_price", "market_value",
                     "stop_price", "stop_source", "stop_state", "stop_captured_at", "stop_evidence", "broker_protected",
-                    "distance_to_stop_pct", "loss_at_stop_usd", "risk_usd"}
+                    "distance_to_stop_pct", "loss_at_stop_usd", "risk_usd",
+                    # #2141 stop categories: Risk/Defense need these to show resting stops and hide dust rows.
+                    "counted", "stop_category", "resting_stop_distance_pct", "loss_at_resting_stop_usd",
+                    "planned_stop_distance_pct"}
     result["positions"] = {**result["positions"], "rows": [
         {k: v for k, v in row.items() if k in display_keys} for row in result["positions"].get("rows") or []]}
     return result

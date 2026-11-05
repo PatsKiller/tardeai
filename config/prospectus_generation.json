@@ -1,0 +1,21 @@
+{
+  "schema": "ProspectusGeneration@v1",
+  "approved_by": "operator 2026-10-26: \"implement this cost savings right now; we don't need it immediately\" (Watch reports: batch, medium effort, ~5k tokens)",
+  "generation": {
+    "holding": {"effort": "high", "max_output_tokens": 16000, "batch": false, "section_words": "120-260",
+                "expected_output_tokens": 9000},
+    "watch": {"effort": "medium", "max_output_tokens": 5000, "batch": true, "section_words": "50-110",
+              "expected_output_tokens": 4000}
+  },
+  "batch": {
+    "min_items": 10,
+    "max_wait_hours": 6,
+    "credit_tier": "long_form",
+    "max_submit_per_run": 40,
+    "max_attempts": 3,
+    "collect_deadline_s": 90,
+    "lost_after_hours": 30,
+    "price_multiplier": 0.5,
+    "note": "Watch rows accumulate in the queue; a submit happens when >= min_items are queued or the oldest has waited max_wait_hours. Holdings and operator 'Rewrite now' / --symbols stay synchronous. The data-quality gate and the web planning turn run before submit."
+  }
+}

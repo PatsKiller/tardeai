@@ -1,0 +1,14 @@
+# RETIRED 2026-10-27: per-PR prompts replaced by tradeai-pr-merge-digest.timer. Do not install.
+[Unit]
+Description=Trade AI — every 5 min: notify operator of merge-ready PRs via Telegram
+Documentation=docs/ops/AGENT_MERGIFY_HANDOFF.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=tradeai-pr-merge-notify.service
+
+[Install]
+WantedBy=timers.target

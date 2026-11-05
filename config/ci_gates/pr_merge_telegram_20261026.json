@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_merge_telegram_20261026",
+  "files": [
+    "tests/test_pr_merge_telegram_20261026.py"
+  ],
+  "comment": [
+    "Telegram Approve → operator-merge label is the Mergify go-signal.",
+    "No GitHub Approve UI. Pins mint/settle/chat allowlist and .mergify.yml."
+  ]
+}

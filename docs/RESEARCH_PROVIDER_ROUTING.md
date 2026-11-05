@@ -160,3 +160,41 @@ provider limit, and a different number again. Its twin at
 was missed because it sits at the repo root, and the guard test at
 `tests/test_overnight_f1_f2_search_bound.py:138-139` points only at the `scripts/`
 path.
+
+<!-- moved from AGENTS.md 25.0.1 lines 2927-2958 -->
+## Moved from AGENTS.md (25.0.1 lines 2927-2958)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+### The engine pool — measured 2026-09-05/06, not assumed
+
+The pool reached 2026-09-05 with six declared engines and **one that worked**. Four were behind
+anti-bot walls and one did not exist in the image at all.
+
+| engine | state | why |
+|---|---|---|
+| `brave` | disabled | scrapes search.brave.com — "too many requests", raises |
+| `duckduckgo` / `startpage` | disabled | CAPTCHA, raises |
+| `google` | disabled | **0 results, no error** — a consent page that parses empty |
+| `yahoo news` | disabled | measured 0 results with an HTTP error |
+| `yahoo_finance` | removed | no such engine module; failed at every container start |
+| `braveapi` | ENABLED, keyed — disable approved 2026-10-10, apply pending | api.search.brave.com, the paid API. `[VERIFIED]` 2026-10-10: in SearXNG's `general` category it made **2,357 calls 10-01..10-10 that `lib/search_budget` never counted, every one HTTP 422** (billing UNKNOWN). The operator approved disabling it ~18:40 ET; packet `searxng-braveapi-off` dry run done, apply pending a `config-write` grant. See §24.2 |
+| `seznam` / `yep` / `yandex` | enabled | verified by query, then ranked on a finance query |
+
+- **`brave` and `braveapi` are different engines.** The first scrapes and is rate-limited to
+  nothing; the second is the paid API, measured at 50 req/s with an **unmetered** monthly window.
+  A reported monthly limit of `0` means unmetered, not a ceiling of zero — reading it as a ceiling
+  once declared a working key over-limit.
+- **`inactive:` is a gate separate from `disabled:`.** SearXNG ships `braveapi` and `yahoo news`
+  `inactive: true`, meaning *never registered*. Clearing only `disabled` leaves the engine a ghost:
+  configured, absent from `/config`, no error, no log line.
+- **Rank on a real query, not on a non-empty response.** `bing` returns results and answered
+  "federal reserve policy" with an ammunition retailer.
+- **Change the pool only through `scripts/install_searxng_config.sh`.** It injects the key from the
+  environment (never argv), carries forward the instance `secret_key`, validates the YAML *before*
+  replacing anything, restores `977:977 / 0644`, rolls back on a non-200, then verifies each engine
+  actually **registered** and reports per-engine attribution. `chown`-ing the config to the human is
+  what took SearXNG down on 2026-09-05: it came back mode 600 and the worker, which is not uid 977,
+  could not read it.
+- **`braveapi` bypasses `lib/search_budget`** — it calls the provider directly, so those calls are
+  not counted. Enabling it silently reopens the unbudgeted-caller problem the ledger exists to close.
