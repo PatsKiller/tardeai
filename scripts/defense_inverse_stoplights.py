@@ -549,9 +549,101 @@ def record_transition(cur, conn, instrument, benchmark, light, old, new, label,
     return inserted
 
 
-def evaluate_all(cur, conn, notify: bool = False) -> dict:
+# ── Dry run: nothing reaches the database or the snapshot file ────────────────
+# Live verification 2026-10-31 (#2322 row): `--dry-run` only suppressed the Telegram send. record_transition still
+# INSERTed into inverse_stoplight_transitions and committed, and the snapshot file was rewritten, so a dry run
+# CONSUMED the transition and the next real 17:55 run saw prev == state_key and sent no card. In dry run every
+# statement that writes is not executed (it is recorded as "would"), commit() is a no-op, the session is rolled back
+# at the end (which also releases any SELECT ... FOR UPDATE lock), and the snapshot file is left untouched.
+_WRITE_VERBS = ("INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "TRUNCATE", "UPSERT", "MERGE")
+
+
+class _DryRunCursor:
+    def __init__(self, cur, conn_proxy):
+        self._cur, self.connection, self._synthetic = cur, conn_proxy, None
+        self.rowcount = 0
+        self.would: list[str] = conn_proxy.would
+
+    def execute(self, sql, params=None):
+        verb = (sql or "").lstrip().split(None, 1)[0].upper() if (sql or "").strip() else ""
+        if verb in _WRITE_VERBS:
+            self.would.append(" ".join(sql.split())[:160])
+            self._synthetic = None
+            self.rowcount = 1
+            if "inverse_stoplight_transitions" in sql and verb == "INSERT" and params:
+                # Mirror ON CONFLICT DO NOTHING: would this row be new?
+                as_of = (json.loads(params[6]) if isinstance(params[6], str) else params[6] or {}).get("as_of")
+                self._cur.execute(
+                    """SELECT 1 FROM inverse_stoplight_transitions WHERE instrument=%s AND light=%s
+                       AND new_state=%s AND (factors->>'as_of') IS NOT DISTINCT FROM %s LIMIT 1""",
+                    (params[0], params[2], params[4], as_of),
+                )
+                self.rowcount = 0 if self._cur.fetchone() else 1
+            if "RETURNING" in sql.upper():
+                self._synthetic = (None,)
+            return None
+        self._synthetic = None
+        self._cur.execute(sql, params)
+        self.rowcount = self._cur.rowcount
+        return None
+
+    def fetchone(self):
+        if self._synthetic is not None:
+            row, self._synthetic = self._synthetic, None
+            return row
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
+class _DryRunConn:
+    def __init__(self, conn):
+        self._conn, self.would = conn, []
+
+    def commit(self):
+        return None
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def cursor(self, *a, **k):
+        return _DryRunCursor(self._conn.cursor(*a, **k), self)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def evaluate_all(cur, conn, notify: bool = False, dry_run: bool = False) -> dict:
     """Nightly/refresh evaluation for the whole lane; persists transitions,
-    dedupes alerts (only meaningful transitions fire)."""
+    dedupes alerts (only meaningful transitions fire).
+
+    notify: send the transitions listed in config/defense_stoplight_notify.json
+    (operator promoted the desk out of SHADOW 2026-10-31, P0-T7). dry_run: render
+    the cards and send nothing, write no row and leave the snapshot file untouched (see _DryRunConn); the result
+    carries ``would_write`` instead. Sends go only through lib.market_risk.stoplight_notify."""
+    if dry_run:
+        real_conn = conn
+        conn = _DryRunConn(real_conn)
+        cur = _DryRunCursor(cur, conn)
+        try:
+            out = _evaluate_all(cur, conn, notify=notify, dry_run=True)
+        finally:
+            real_conn.rollback()
+        out["would_write"] = list(conn.would)
+        return out
+    return _evaluate_all(cur, conn, notify=notify, dry_run=False)
+
+
+def _write_snapshot(out: dict, dry_run: bool) -> None:
+    if not dry_run:
+        SNAP.write_text(json.dumps(out, default=str))
+
+
+def _evaluate_all(cur, conn, notify: bool, dry_run: bool) -> dict:
     ensure_stoplight_tables(cur, conn)
     try:
         _cfg()
@@ -564,7 +656,7 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
                "candidates": [{**inst, "lights": {"THESIS": err, "ENTRY": err,
                                                   "MANAGE": err, "EXIT": err}} for inst in LANE],
                "locked": LOCKED, "path_warning": PATH_WARNING}
-        SNAP.write_text(json.dumps(out, default=str))
+        _write_snapshot(out, dry_run)
         return out
     # book context from the defense snapshot (labeled data with timestamps)
     # THESIS truth comes from the DESK's own hedge computation: a rendered
@@ -591,7 +683,11 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
     out = {"generated_at": datetime.now(timezone.utc).isoformat(),
            "policy_version": POLICY_VERSION, "candidates": [], "locked": LOCKED,
            "path_warning": PATH_WARNING}
-    from options_lifecycle_alerts import _telegram
+    from lib.market_risk.stoplight_notify import emit as _notify_emit
+    from lib.market_risk.stoplight_notify import load_config as _notify_config
+    from lib.market_risk.stoplight_notify import should_notify as _should_notify
+    ncfg = _notify_config() if notify else None  # a bad policy file fails loudly before any evaluation
+    out["notifications"] = []
     for inst in LANE:
         bench, inv = inst["bench"], inst["inverse"]
         bars = _bars(cur, bench, 80)
@@ -639,20 +735,29 @@ def evaluate_all(cur, conn, notify: bool = False) -> dict:
                     cur, conn, inv, bench, light, prev, st["state_key"], st["label"],
                     {**st.get("arithmetic", {}), "as_of": bars[-1]["d"] if bars else None},
                     st["reason"], closes=st.get("arithmetic", {}).get("closes"))
-                if notify and fresh_insert and (
-                        (light == "ENTRY" and st["state"] == "GREEN") or
-                        (light == "EXIT" and st["state"] == "RED") or
-                        (light == "ENTRY" and "DAY 1 OF 2" in state_key)):
-                    _telegram(f"🚦 INVERSE HEDGE {inv}/{bench} — {light} {st['state']}: "
-                              f"{st['label']}\n{st['reason'][:300]}")
-    SNAP.write_text(json.dumps(out, default=str))
+                if notify and fresh_insert and _should_notify(light, st["state"], ncfg):
+                    out["notifications"].append(_notify_emit(
+                        {"inverse": inv, "bench": bench, "light": light, "state": st["state"],
+                         "label": st["label"], "reason": st["reason"],
+                         "as_of": bars[-1]["d"] if bars else None},
+                        cfg=ncfg, dry_run=dry_run))
+    _write_snapshot(out, dry_run)
     return out
 
 
 if __name__ == "__main__":
+    # --dry-run: evaluate and print what WOULD be sent; nothing reaches Telegram.
     from db_adapter import _get_conn
+    from lib.market_risk.stoplight_notify import load_config as _notify_config
+    _dry = "--dry-run" in sys.argv[1:]
     conn = _get_conn(); cur = conn.cursor()
-    r = evaluate_all(cur, conn, notify=False)
+    r = evaluate_all(cur, conn, notify=bool(_notify_config().get("enabled")), dry_run=_dry)
+    for n in r.get("notifications") or []:
+        print(f"notify {n['light']} {n['state']}: sent={n['sent']} accepted={n['accepted']} error={n['error']}")
+    if _dry:
+        for w in r.get("would_write") or []:
+            print(f"DRY RUN — would write: {w}")
+        print("DRY RUN — no row written, snapshot file untouched, nothing sent")
     for c in r["candidates"]:
         L = c["lights"]
         print(f"{c['inverse']}/{c['bench']}: THESIS {L['THESIS']['state']} · ENTRY {L['ENTRY']['state']} "

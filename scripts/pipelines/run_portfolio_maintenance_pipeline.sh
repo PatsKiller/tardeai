@@ -77,6 +77,16 @@ pm_step() {
 pm_excluded() { echo "  ---- EXCLUDED_NOT_RUN: $1 ($2) ----"
   STEP_NAMES+=("$1"); STEP_STATUS+=("EXCLUDED_NOT_RUN"); STEP_MS+=(0); STEP_LABEL+=("EXCLUDED"); }
 
+# Preserve the previous valid receipt if parsing, writing or fsync fails. The
+# October 30 ENOSPC incident must not turn a current document into an empty file.
+write_portfolio_summary() {
+  python3 -c 'import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from scripts.lib.atomic_json_store import atomic_write_json
+atomic_write_json(Path(sys.argv[2]), json.load(sys.stdin))' "$PROJ" "$SUMMARY"
+}
+
 # Fail-closed guard for advisory-draft / report steps: a review-only step must NOT invoke a broker/order
 # EXECUTION call-site or a protection/stop mutation. Static scan of the launcher chain; if any is found
 # the step is BLOCKED (recorded, overall=degraded) and NOT run. (Drafts stay drafts; nothing executes.)
@@ -132,8 +142,12 @@ run_backup() {
   # ops state (crontab + systemd user units) — tiny, regenerated daily (scope audit 2026-07-17)
   pm_step "ops_state_backup"   "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" ops
   run_weekly_gated "secrets_backup_data" "$SECRETS_DATA_STAMP" data
-  # DB dump OFFSITE weekly (dumps were local-only — same-disk loss took DB history) + other apps
-  run_weekly_gated "db_offsite_backup"   "$DB_OFFSITE_STAMP"   db
+  # DB dump OFFSITE daily (2026-10-31, AGENTS.md §24.15: one dump on host, N+1 on Drive — backup_enforcer.py
+  # removes the older host dump only after the newest is verified on Drive, so the upload must follow every dump)
+  pm_step "db_offsite_backup"  "BACKUP_DAILY" bash "$PROJ/scripts/backup_secrets_state.sh" db
+  if [ "${STEP_STATUS[${#STEP_STATUS[@]}-1]}" = "ok" ]; then
+    mkdir -p "$(dirname "$DB_OFFSITE_STAMP")"; touch "$DB_OFFSITE_STAMP"
+  fi
   run_weekly_gated "apps_backup"         "$APPS_BACKUP_STAMP"  apps
 }
 run_daily()      {
@@ -188,7 +202,7 @@ pm_excluded "db_retention" "destructive DB deletes — prohibited, future deleti
   done
   echo "  ], \"log\": \"$RUN_LOG\""
   echo "}"
-} > "$SUMMARY"
+} | write_portfolio_summary
 echo "[summary] wrote $SUMMARY"
 echo "[$(_ts)] END portfolio-maintenance cadence=$CADENCE overall=$([ $overall = 0 ] && echo ok || echo degraded)"
 exit 0

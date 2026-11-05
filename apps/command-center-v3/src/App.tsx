@@ -29,6 +29,7 @@ import ReportsHub from './pages/ReportsHub'
 import SystemHub from './pages/SystemHub'
 import RotationIntelligence from './pages/RotationIntelligence'
 import RecommendationIntelligence from './pages/RecommendationIntelligence'
+import ProspectusPage from './pages/ProspectusPage'
 import ResearchIntelligenceHub from './pages/ResearchIntelligenceHub'
 import RedeployDeskIntegrated from './pages/RedeployDeskIntegrated'
 import HealthHub from './pages/HealthHub'
@@ -40,6 +41,7 @@ import BrokerAccessPage from './pages/BrokerAccessPage'
 import ReleasesSchedules from './pages/ReleasesSchedules'
 import OpsControlsPage from './pages/OpsControls'
 import JobsPage from './pages/JobsPage'
+import OpsIncidents from './pages/OpsIncidents'
 import OpsDeskFrame from './components/OpsDeskFrame'
 import JobsHealth from './components/JobsHealth'
 import AskCioBar from './components/AskCioBar'
@@ -110,11 +112,19 @@ function BuildMarker() {
     }
   }, [])
   const comparison = compareServedBuild(LOADED_BUILD, served)
+  // FQ-081: the bundle id, build date and source revision are technical identifiers, not something an operator reads
+  // in the footer. The one operator-facing fact stays visible — whether this tab is running the artifact the server is
+  // serving — and the identifiers move one tap away. data-source-sha stays on the element: it is machine-read.
   return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
-    Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
-    {' · '}{comparison === 'SAME' ? 'matches served artifact' : comparison === 'UNAVAILABLE' ? 'served build comparison UNAVAILABLE' : <>
+    {comparison === 'SAME' ? 'Running the artifact the server serves' : comparison === 'UNAVAILABLE' ? 'Served build comparison UNAVAILABLE' : <>
       newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
     </>}
+    {' · '}<details data-testid="build-diagnostics" style={{ display: 'inline-block' }}>
+      <summary style={{ cursor: 'pointer', display: 'inline' }}>Diagnostics</summary>
+      <span style={{ display: 'block' }}>
+        Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
+      </span>
+    </details>
   </span>
 }
 
@@ -275,6 +285,8 @@ function Shell() {
             <Route path="rotation" element={<RouteErrorBoundary route="/v3/rotation"><RotationIntelligence /></RouteErrorBoundary>} />
             <Route path="redeploy" element={<RouteErrorBoundary route="/v3/redeploy"><RedeployDeskIntegrated /></RouteErrorBoundary>} />
             <Route path="advisor-changes" element={<RouteErrorBoundary route="/v3/advisor-changes"><Navigate to="/rotation?tab=advisor-guide" replace /></RouteErrorBoundary>} />
+            <Route path="prospectus" element={<RouteErrorBoundary route="/v3/prospectus"><ProspectusPage /></RouteErrorBoundary>} />
+            <Route path="prospectus/:symbol" element={<RouteErrorBoundary route="/v3/prospectus/:symbol"><ProspectusPage /></RouteErrorBoundary>} />
             <Route path="rec-intel" element={<RouteErrorBoundary route="/v3/rec-intel"><RecommendationIntelligence /></RouteErrorBoundary>} />
             <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="cio" element={<RouteErrorBoundary route="/v3/cio"><CioHub onDrill={setDrill} /></RouteErrorBoundary>} />
@@ -282,6 +294,7 @@ function Shell() {
             <Route path="cio/questions/:threadId" element={<RouteErrorBoundary route="/v3/cio/questions/:threadId"><MyQuestions /></RouteErrorBoundary>} />
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="ops/jobs" element={<RouteErrorBoundary route="/v3/ops/jobs"><JobsPage /></RouteErrorBoundary>} />
+            <Route path="ops/incidents" element={<RouteErrorBoundary route="/v3/ops/incidents"><OpsIncidents /></RouteErrorBoundary>} />
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
           <Route path="coordination" element={<RouteErrorBoundary route="/v3/coordination"><OpsDeskFrame page="coordination"><CoordinationPage jobsHealth={<JobsHealth />} /></OpsDeskFrame></RouteErrorBoundary>} />

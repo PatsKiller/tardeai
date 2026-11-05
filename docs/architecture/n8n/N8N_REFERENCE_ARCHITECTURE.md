@@ -591,3 +591,29 @@ is canary mode with caller authentication in report mode. Provider usability, au
 live failover remain unproven. No LLM or approval relay route is opened by these changes. CC reachability was
 verified through the tailnet TLS hostname using the known tailnet address; it establishes reachability and served
 UI only. Real session/MFA and SPCX threat-model acceptance remain separate open requirements.
+
+<!-- moved from AGENTS.md 25.0.1 lines 5080-5085 -->
+## Moved from AGENTS.md (25.0.1 lines 5080-5085)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **Preconditions before any money-touching flow.** No workflow that can lead to a broker account read, a broker
+  write, an arm or an unlock is activated until each of these is measured true with a receipt: Command Center auth
+  (WebAuthn session, CSRF); the read-only trading lock merged and served; uid separation for execution (the broker
+  gateway and the execution service under their own uids); the DB role split (reader / app / audit-writer / exec);
+  signed guard grants; and the signed unlock of the trading lock. *Cause (§20): WS4-01, WS4-08, WS9-02, WS9-05 — one
+  uid that is effectively root, forgeable grants, an unauthenticated CC, an unlock file anyone can write.*
+
+<!-- moved from AGENTS.md 25.0.1 lines 5086-5093 -->
+## Moved from AGENTS.md (25.0.1 lines 5086-5093)
+
+*Moved here by AGENTS.md 26.0.0, which keeps the binding rule and a pointer; the 25.0.1 text is preserved at `tests/fixtures/agents_pre_26_0_0/AGENTS.md`. This is reference, not instruction: where it mentions Telegram `/approve`, `bin/guard request`, a push budget of 5 or a coordinator override, `gh pr merge`, a `release-write` grant for a deploy, or shipping with no operator input, those paths are retired or not implemented, and AGENTS.md governs.*
+
+- **Controls before new powers (WS9 C1–C10).** C1 (workflows from git, drift → P1), C2 (approval = request, authority
+  = host record) and C3 (closed-schema LLM steps, no side-effect tool reachable from an LLM node) are measured true
+  before the first approval Wait, LLM step or event webhook is activated. C4 (gateway HMAC claim on every inbound
+  event; bridge network or loopback only) holds before the first event webhook. C5 (no broker credential in n8n, no
+  agent-readable `N8N_ENCRYPTION_KEY`), C6 (P0/P1 independence), C9 (stamped projections) and C10 (supply chain) bind
+  throughout; C7 binds any hosted-n8n move (§24.9) and C8 the broker gateway (§23.22). *Cause (§20): WS9-13 — n8n
+  is low-risk today because it is inert, and the target makes it a control plane without these controls;
+  `DECISIONS_FOR_OPERATOR.md` decision 1 makes C1–C3 mandatory before the first approval, LLM node or webhook.*

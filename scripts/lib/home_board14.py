@@ -285,6 +285,37 @@ def shape_do_now(section: dict) -> dict:
     return {**section, "items": output}
 
 
+DO_NOW_LIMIT = 7
+
+
+def _is_approval(item: Any) -> bool:
+    return isinstance(item, dict) and str(item.get("id") or "").startswith("approvals")
+
+
+def cap_do_now(section: dict, limit: int = DO_NOW_LIMIT) -> dict:
+    """Shape the full ranked list, then keep the top ``limit`` rows for the panel.
+
+    Nothing is dropped silently: ``all_items`` keeps every shaped row and ``hidden_count``
+    says how many the panel does not show. A waiting-approvals row always stays visible
+    (Board 14): when the ranking puts it below the cap it takes the last visible slot.
+    """
+    if not isinstance(section, dict):
+        return section
+    source = section.get("all_items") if isinstance(section.get("all_items"), list) else section.get("items")
+    if not isinstance(source, list):
+        return section
+    shaped = shape_do_now({**section, "items": source})
+    full = shaped.get("items") or []
+    visible = full[:limit]
+    if not any(_is_approval(i) for i in visible):
+        approval = next((i for i in full if _is_approval(i)), None)
+        if approval is not None and limit > 0:
+            visible = visible[:limit - 1] + [approval]
+    hidden = len(full) - len(visible)
+    return {**shaped, "items": visible, "all_items": full, "total": len(full), "limit": limit,
+            "hidden_count": hidden}
+
+
 def regime_since(history: list[dict] | None) -> tuple[str | None, str | None]:
     """ISO start of the current label when history shows a prior different label.
 

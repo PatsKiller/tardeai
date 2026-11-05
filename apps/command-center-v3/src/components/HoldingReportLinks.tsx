@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { requestAnalystReportMapRefetch, type AnalystReportEntry } from '../hooks/useAnalystReportMap'
 import './HoldingReportLinks.css'
+import ProspectusLink from './prospectus/ProspectusLink'
 
 type Props = {
   symbol: string
@@ -116,6 +117,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
           <span aria-hidden="true">📄</span><span className="hrl-generate-label" style={{ fontSize: 11 }}>{genBusy ? 'Generating…' : 'Analyst report'}</span>
         </button>
         {confirming && <GenerateConfirmSheet symbol={sym} onCancel={() => setConfirming(false)} onConfirm={runInlineGenerate} />}
+        <ProspectusLink symbol={sym} compact={compact} />
       </span>
     )
   }
@@ -173,6 +175,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
       {!compact && (
         <span style={{ fontSize: 9.5, color: '#64748b', whiteSpace: 'nowrap' }}>{relTime(entry.generated_at)}</span>
       )}
+      <ProspectusLink symbol={sym} compact={compact} />
     </span>
   )
 }

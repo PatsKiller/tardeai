@@ -1,7 +1,7 @@
 // Ops → Controls (feat/ops-controls-20261022): change how the system runs without touching files.
 // Builds against docs/ops/OPS_CONTROLS_API.md (GET/POST /api/v2/ops/controls/*). Operator-only: the server refuses
 // agent callers on every route. The server decides each change kind's direction:
-//   safe  (release-train STOP/pause, kill-switch engage) — one click: POST /requests {one_click:true}, poll to terminal;
+//   safe  (deploy STOP, kill-switch engage) — one click: POST /requests {one_click:true}, poll to terminal;
 //   risky (everything else) — 3 steps: (1) preview (dry run) → (2) passkey (WebAuthn) + typed phrase → (3) approve, poll.
 // Telegram is notification only; nothing here waits on it. While AGENTS.md 19.0.0 is not ACTIVE every action is
 // disabled (the server also answers 409 POLICY_NOT_ACTIVE); data still renders. Missing data is UNAVAILABLE, never 0.
@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { useApi } from '../hooks/useApi'
 import CountTile from '../components/CountTile'
 import { dataApprovalTiles } from '../lib/measuredCount'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import JobsHealth from '../components/JobsHealth'
 import './OpsEvidencePages.css'
 import { Chip, ChipRow, Tooltip } from '../components/primitives'
@@ -316,27 +316,30 @@ const count = (sec: { state?: string } | undefined, n: number | undefined) => (s
 
 function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const [reason, setReason] = useState('')
-  const rt = d?.release_train
+  const rt = d?.deploy
   const safeParams = reason.trim() ? { reason: reason.trim() } : {}
   const relParams = { reason: reason.trim().length >= 4 ? reason.trim() : 'operator, Ops Controls' }
   const jobs = d?.jobs
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <JobsHealth />
-    <Panel title="Release train & kill switch">
-      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume and Arm need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n”) and are applied by the host applier; clearing the kill switch stays host terminal only.</p>
+    <Panel title="Deploys & kill switch">
+      <p style={muted} data-testid="ops-deploys-explainer">Mergify merges; the host poller promotes. Safe direction (deploy STOP, Engage kill switch): one click, no passkey. Resume (clear the deploy STOP): passkey and the typed phrase. Emergency promote is host CLI only. Clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
-      <Table label="Release train and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
-        ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
-          <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP the release train" run={run} />
-            <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
-          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
-            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} /></ChipRow>],
+      <Table label="Deploys and kill switch" heads={['Control', 'State', 'Safe direction', 'Risky direction']} rows={[
+        ['Deploys', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
+          <ChipRow><ActionButton state={d} kind="deploy.stop" text="STOP" params={safeParams} title="STOP host promote (deploy STOP)" run={run} /></ChipRow>,
+          <ChipRow><ActionButton state={d} kind="deploy.resume" text="Resume" params={relParams} title="Clear the deploy STOP / resume promote" run={run} /></ChipRow>],
         ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
+      <p style={muted} data-testid="ops-deploys-help">
+        Serving pin and last promote receipt:{' '}
+        <Link to="/system/releases" data-testid="ops-coord-link" style={{ color: TOKENS.primary, fontWeight: 700 }}>System → Releases &amp; schedules</Link>
+        . Mergify queue lives on the Mergify dashboard. Emergency promote: host CLI under release-write naming the SHA.
+      </p>
     </Panel>
     <JobsSchedules d={d} run={run} />
   </div>

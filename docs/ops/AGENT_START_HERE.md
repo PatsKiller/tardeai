@@ -19,6 +19,17 @@ export AGENT_CLAIM_AGENT=<short name>
 
 Work only in your own git worktree under `$HOME`, never in the canonical checkout.
 
+**First, check you are reading the current AGENTS.md** (operator 2026-10-28):
+
+```bash
+python3 scripts/lib/policy_freshness.py --gate session   # OK | STALE_POLICY (exit 1) | UNKNOWN (exit 3, a warning)
+```
+
+`STALE_POLICY: your AGENTS.md is X, origin/main is Y` means your copy is old: work from fresh origin/main
+(`scripts/new-worktree.sh`) and re-read §0. `claim`, `next`, `take`, `takeover --claim`, the pre-commit and pre-push hooks and the
+`agent-governance` CI job all refuse a stale copy; `status` marks an open claim `POLICY CHANGED` when a new version
+reaches main mid-task (heartbeat from a fresh worktree clears it). Details: `docs/ops/AGENT_CLAIM_BOARD.md` §16.
+
 ## The 5 commands
 
 ```bash
@@ -60,6 +71,21 @@ Steps:
    `task release <task-id> --handoff "<exact next step>"`. The task goes back on the board with its history, and
    the next picker's worklog continues yours. If a **free** task's work already shipped (its PR merged, its batch released), close it
    without taking it: `task done <task-id> --evidence-only --summary "<what shipped>" --evidence <PR or receipt link>`.
+
+**When something breaks, log it — never drop it** (operator 2026-10-27: agents "can't just drop and leave it. They
+need to fix it and report it somewhere in a log that you could come back in as a coordinator and look at it"). An
+error you hit and do not fix in the same step becomes an incident in the ledger (`docs/ops/INCIDENT_LEDGER.md`):
+
+```bash
+python3 scripts/incident.py open --title "<what failed>" --where <file/job> --evidence <receipt/log/PR> # uses $AGENT_CLAIM_SESSION
+python3 scripts/incident.py update <INC-id> --status fixing --note "<what you are trying>"
+python3 scripts/incident.py fix <INC-id> --ref pr:<N> [--ref commit:<sha>]          # fixed: name what fixed it
+python3 scripts/incident.py block <INC-id> --reason "<why you cannot>" --handoff "<exact next step, for whom>"
+python3 scripts/check_open_incidents.py --session "$AGENT_CLAIM_SESSION"            # exit 1 = you left one open
+```
+
+`stage … pr_open` and `release` print a warning while your session has an incident `open` or `fixing`
+(`INCIDENT_CHECK_ENFORCE=1` will make it a refusal). `blocked` with a handoff is a valid way to stop.
 
 **Shared files never block you.** `docs/INDEX.md`, `docs/DOCUMENTATION_INDEX.md`,
 `apps/command-center-v3/package.json` and the docs/AGENTS update backlog are *shared-additive*

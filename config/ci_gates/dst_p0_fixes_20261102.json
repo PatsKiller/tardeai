@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "dst_p0_fixes_20261102",
+  "files": [
+    "tests/test_dst_p0_fixes_20261102.py"
+  ],
+  "anchor": "DST_P0_FIXES_20261102",
+  "comment": [
+    "ANCHOR: DST_P0_FIXES_20261102 — session labels resolved in America/New_York, never a fixed -04:00 offset or raw UTC hour bands. Asserts identical labels in an EST and an EDT instant. Fixtures only."
+  ]
+}

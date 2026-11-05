@@ -634,7 +634,7 @@ def test_coalesce_only_allowlisted_reads(monkeypatch):
 
     assert rc.request_key("/api/v2/watchlist/items/", {"_": "1", "a": ["x", "y"]}) == "|/api/v2/watchlist/items?a=x,y"
     assert rc.request_key("/api/v2/watchlist/items", {}, "tailnet:a") != rc.request_key("/api/v2/watchlist/items", {}, "service-token")
-    assert rc.request_key("/api/v2/coordination/release-train/stop", {}) is None
+    assert rc.request_key("/api/v2/ops/deploys/stop", {}) is None
     assert rc.request_key("/api/v2/inference/ensemble", {"target_id": "1"}) is None
     co = rc.Coalescer(ttl=10)
     n = []

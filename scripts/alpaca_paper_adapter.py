@@ -839,7 +839,8 @@ class AlpacaPaperAdapter:
             'last_success': None,
             'last_error': None,
             'trading_blocked': False,
-            'api_key_masked': (self.api_key[:4] + '***' + self.api_key[-4:]) if len(self.api_key) > 8 else '***',
+            # presence only: never any character of the key (page audit 2026-10-25)
+            'api_key_masked': 'set' if self.api_key else None,
         }
         if not self.api_key or not self.secret_key:
             return status

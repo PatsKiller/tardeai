@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_quality_gate_20261026",
+  "files": [
+    "tests/test_prospectus_quality_gate_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_QUALITY_GATE_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_QUALITY_GATE_20261026 — Ticker Prospectus data-quality gate (operator 2026-10-26: \"build this and execute it immediately\"): layer 1 deterministic checks before any paid call (price-series defects, units/ranges, house vs Finviz, peer junk, transcript/filing sanity, minimum coverage) with HARD_FAIL → blocked_data + data-gap repair and SOFT_FAIL → partial with unreliable facts hidden from the writer and blocks; layer 2 Haiku 5.5 packet read (anthropic-only, Grok OAuth fallback, never DeepSeek); layer 3 post-write numbers vs cited facts; --gate-only over stored reports. Synthetic tickers; writer, Haiku and the gap queue stubbed."
+  ]
+}

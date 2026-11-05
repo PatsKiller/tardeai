@@ -1,0 +1,13 @@
+# Incident supervisor every 10 minutes: governed triage (<= $1/day), allowlisted runbook actions, section 28.14 fixer dispatch (PR only), one P1 per incident. Never merges or promotes.
+
+[Unit]
+Description=Trade AI incident supervisor (governed triage, allowlisted actions) timer
+
+[Timer]
+OnCalendar=*:2/10
+AccuracySec=30s
+Persistent=false
+Unit=tradeai-incident-supervisor.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_25_0_0",
+  "files": [
+    "tests/test_agents_policy_25_0_0.py"
+  ],
+  "anchor": "AGENTS_POLICY_25_0_0",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_25_0_0 — AGENTS.md 25.0.0 (MAJOR, PROPOSED until the operator's token): owner clause,",
+    "one-tap digest + held classes, deploy delegation without a per-SHA grant, §0 rules 3-4 in every adapter, no self-review,",
+    "§29 run discipline, release train removed, version-bump rule in check_agents_policy_state.py. Hermetic text pins;",
+    "older version tests read tests/fixtures/agents_pre_25_0_0 via tests/support/agents_policy_frozen.py."
+  ]
+}

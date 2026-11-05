@@ -149,7 +149,7 @@ def test():
         print("Then add: FRED_API_KEY=your_key_here to .env")
         return
 
-    print(f"API Key: {api_key[:4]}...{api_key[-4:]}")
+    print("API Key: set")  # never any character of the key
     print(f"Series to fetch: {len(FRED_SERIES)}")
     for sid, name in FRED_SERIES.items():
         print(f"  {sid}: {name}")

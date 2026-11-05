@@ -161,6 +161,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayRepresented = todayPnl?.represented_account_count ?? todayAccountCount
   const todayMissing: string[] = todayPnl?.missing_accounts ?? []
   const todayEmpty: string[] = todayPnl?.empty_accounts ?? []
+  // Partial is a real sum of the known rows, shown with what it leaves out --
+  // never blanked to "—" because one holding has no day change (2026-10-26).
+  const todayPartial: string[] = todayPnl?.partial_accounts ?? []
+  const todayUnknownRows: number = todayPnl?.unknown_rows ?? 0
   // Account census for TODAY lives on hover, not the face (operator 2026-09-04).
   // True missing funded accounts still raise the face STALE chip via `todayMissing`.
   const todayHoverAccounts = (() => {
@@ -448,7 +452,8 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       // A P&L is stamped with its OWN session, never the position clock.
-      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report` : null,
+      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report`
+        : todayPartial.length ? ` · partial: ${todayUnknownRows} row(s) without a day change` : null,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
       asOfNote: null,
@@ -459,7 +464,7 @@ export default function MetricStrip({ onDrill }: Props) {
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
+          { today_change: overview.today_change, today_pct: overview.today_pct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
