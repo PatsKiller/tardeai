@@ -84,7 +84,13 @@ def test_duplicate_in_run_deduped():
 
 # ── run_discovery: shadow-first (writes nothing while disabled) ──────────────
 
-def test_run_discovery_shadow_first(monkeypatch):
+def test_run_discovery_shadow_first(monkeypatch, tmp_path):
+    # Explicit disabled config, like the enabled sibling below. The repo default flipped to
+    # industry_novelty_enabled=true on 2026-08-04, and this test then tried to write and failed
+    # with a misleading "must not write while disabled" (row-12 ticket 1, 2026-11-03). The test
+    # must prove the shadow-first rule itself, not the mutable state of the checked-in schedule.
+    cfg = tmp_path / "sched.json"
+    cfg.write_text('{"industry_novelty_enabled": false}')
     monkeypatch.setattr(N, "collect_observed_sectors",
                         lambda *a, **k: [_obs("space economy", n=6, n_sources=4)])
     monkeypatch.setattr(N, "covered_sector_keys", lambda *a, **k: COVERED)
@@ -93,7 +99,7 @@ def test_run_discovery_shadow_first(monkeypatch):
         raise AssertionError("must not write while disabled")
     monkeypatch.setattr(N.inbox, "upsert_candidate", _boom)
 
-    rep = N.run_discovery(dry_run=False)   # config default: disabled
+    rep = N.run_discovery(dry_run=False, config_path=cfg)
     assert rep["effective_dry_run"] is True
     assert rep["upserted"] == 0
     assert rep["would_upsert"] == 1

@@ -32,13 +32,17 @@ def test_the_checkout_path_is_not_inline():
     ), "the checkout path is not rendered under Technical"
 
 
-def test_the_census_banner_leads_with_a_sentence():
-    assert "PR census could not refresh — the last good copy is shown" in SRC, (
-        "the census banner does not say, in words, that it could not refresh"
+def test_the_census_banner_state_decides_the_sentence():
+    """cc-deepseek-8 R1 at 75251580: the old sentence said "could not refresh — the last good copy is shown" for ANY
+    truthy warning, including the producer's "first refresh pending" (there is no copy at all) and partial warnings
+    after a SUCCEEDING refresh. A presence assertion could not see that, so the sentence is a tested function now."""
+    assert "could not refresh — the last good copy is shown" not in SRC, (
+        "the panel still asserts a failed refresh for any warning, including before the first one"
     )
+    assert "censusView.text" in SRC, "the panel does not render the state-chosen census sentence"
     assert re.search(
-        r'<Technical label="Technical: why the census could not refresh">\{census\.warning\}</Technical>', SRC
-    ), "the census shell error is not rendered under Technical"
+        r'<Technical label="Technical: the census report">\{census\.warning\}</Technical>', SRC
+    ), "the census report is not rendered under Technical"
 
 
 def test_a_refused_action_leads_with_a_sentence():

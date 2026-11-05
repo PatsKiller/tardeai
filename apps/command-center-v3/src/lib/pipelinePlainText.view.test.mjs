@@ -23,11 +23,26 @@ ok(!/· \{it\.where\.worktree\}/.test(src), 'the raw checkout path is still prin
 ok(/<Technical label="Technical: where the work is checked out">\{it\.where\.worktree\}<\/Technical>/.test(src),
    'the checkout path is not rendered under Technical')
 
-// 2. The census banner leads with a sentence; the shell error is under Technical.
-ok(/PR census could not refresh — the last good copy is shown/.test(src),
-   'the census banner does not say, in words, that it could not refresh')
-ok(/<Technical label="Technical: why the census could not refresh">\{census\.warning\}<\/Technical>/.test(src),
-   'the census shell error is not rendered under Technical')
+// 2. The census banner leads with a sentence chosen from the state, and the producer's own words are under Technical.
+// cc-deepseek-8 R1 at 75251580: the old sentence said "could not refresh — the last good copy is shown" for EVERY
+// truthy warning, including the producer's "first refresh pending" (no copy exists) and partial warnings after a
+// SUCCESSFUL refresh. A presence assertion could never see that, so the sentence is now a tested function.
+ok(!/could not refresh — the last good copy is shown/.test(src),
+   'the panel still asserts a failed refresh for any warning, including before the first one')
+ok(/censusView\.text/.test(src), 'the panel does not render the state-chosen census sentence')
+ok(/<Technical label="Technical: the census report">\{census\.warning\}<\/Technical>/.test(src),
+   'the census report is not rendered under Technical')
+const { censusSituation } = await import('./pipelineCensusText.ts')
+const pendingWarned = censusSituation({ refreshedAt: null, warning: 'PR census: first refresh pending' })
+ok(pendingWarned.pending === true && !/last good copy/.test(pendingWarned.text) && /no census copy/.test(pendingWarned.text),
+   `before the first refresh the panel must not claim a copy: ${JSON.stringify(pendingWarned)}`)
+const pendingQuiet = censusSituation({ refreshedAt: null, warning: null })
+ok(pendingQuiet.text === '', `with nothing to say the banner is silent: ${JSON.stringify(pendingQuiet)}`)
+const partial = censusSituation({ refreshedAt: '2026-11-04T20:00:00Z', warning: 'release detection degraded' })
+ok(partial.pending === false && !/could not refresh|failed/i.test(partial.text) && /problem/.test(partial.text),
+   `a partial warning after a successful refresh is not a failure: ${JSON.stringify(partial)}`)
+const healthy = censusSituation({ refreshedAt: '2026-11-04T20:00:00Z', warning: null })
+ok(healthy.text === '', `a healthy census says nothing: ${JSON.stringify(healthy)}`)
 
 // 3. A refused action leads with a sentence and keeps the service text in `technical`.
 ok(/That action did not go through\. The service's exact message is under Technical\./.test(src),
