@@ -418,17 +418,23 @@ def test_runbook_config_never_names_a_forbidden_tool():
     assert "deepseek" in cfg["policy"]["never_providers"]
 
 
-def test_process_registration_sonnet_dollar_cap_no_deepseek():
+def test_process_registration_haiku_first_dollar_cap_no_deepseek():
+    """Operator 2026-11-02 (emergency-model decision): Haiku first, Sonnet only if insufficient, never Opus/Fable.
+
+    The caps moved with it: the supervisor skipped every incident on 'daily model-call cap' at 40/day, so the
+    self-heal lane never called a model. 240/day is the pace this config itself allows (5 per cycle x 2 per hour
+    x 24h); the cost cap is 10x the Haiku estimate for that volume."""
     reg = json.loads((ROOT / "config" / "llm_process_registry.json").read_text())
     row = next(p for p in reg["processes"] if p["id"] == "incident_supervisor")
-    assert row["daily_cost_cap_usd"] == 1.0 and row["anthropic_first"] is True and "deepseek" not in row["allowed_lanes"]
+    assert row["daily_cost_cap_usd"] == 2.0 and row["anthropic_first"] is True and "deepseek" not in row["allowed_lanes"]
+    assert row["daily_soft_cap"] == 240
     pol = json.loads((ROOT / "config" / "llm_routing_policy.json").read_text())
     prow = pol["policies"]["default"]["processes"]["incident_supervisor"]
     assert "deepseek" not in json.dumps(prow)
     credit = json.loads((ROOT / "config" / "anthropic_credit_policy.json").read_text())
     from scripts.lib import anthropic_routing
     tier = anthropic_routing.tier_for("FAST", process_id="incident_supervisor", policy=credit)
-    assert credit["models"][tier] == "claude-sonnet-5-5" and credit["per_call_caps_usd"][tier]
+    assert tier == "bulk" and credit["models"][tier] == "claude-haiku-5-5" and credit["per_call_caps_usd"][tier]
 
 
 # ---------------------------------------------------------------- API
