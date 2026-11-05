@@ -180,6 +180,31 @@ function HoldoutBadge({ holdout }: { holdout?: { passed?: boolean; skipped?: boo
   )
 }
 
+
+// FQ-026 (cc-deepseek-6 at c9638963): the sentence used to assert "score unchanged" whenever `score_delta` was absent
+// (null, undefined or '') — an absent measurement rendered as a confident one, the same class as a failed refresh shown
+// as a fresh number. Exported so the rendered test asserts the sentence the operator reads, not a source grepx.
+export function EvidenceSentence({ evidence, metrics }: { evidence: any; metrics: any }) {
+  const delta = evidence?.score_delta
+  const absent = delta == null || String(delta).trim() === ''
+  return (
+    <div style={{ marginTop: 4 }}>
+      {evidence?.sample_days != null
+        ? `Based on ${evidence.sample_days} days of signals`
+        : 'Based on the available signals'}
+      {evidence?.confidence ? ` · confidence ${String(evidence.confidence).toLowerCase()}` : ''}
+      {absent
+        ? ' · score change not recorded'
+        : Number(delta) !== 0
+          ? ` · score ${Number(delta) > 0 ? 'up' : 'down'} ${Math.abs(Number(delta)).toFixed(3)}`
+          : ' · score unchanged'}
+      {metrics?.trigger_rate != null
+        ? ` · fired on ${(Number(metrics.trigger_rate) * 100).toFixed(0)}% of those days`
+        : ''}
+    </div>
+  )
+}
+
 function CandidateTable({ rows, tid }: { rows: any[]; tid?: string }) {
   if (!rows?.length) return null
   return (
@@ -308,18 +333,7 @@ function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction 
                 {/* FQ-026: the engine's internals read as a raw ledger ("sample 30 days · Δ score 0.0312 ·
                     Contributions: rsi=0.42 · …"). The operator gets the sentence; every value stays, one
                     click away, in the detail block. Nothing is removed or rounded away. */}
-                <div style={{ marginTop: 4 }}>
-                  {evidence.sample_days != null
-                    ? `Based on ${evidence.sample_days} days of signals`
-                    : 'Based on the available signals'}
-                  {evidence.confidence ? ` · confidence ${String(evidence.confidence).toLowerCase()}` : ''}
-                  {evidence.score_delta != null && Number(evidence.score_delta) !== 0
-                    ? ` · score ${Number(evidence.score_delta) > 0 ? 'up' : 'down'} ${Math.abs(Number(evidence.score_delta)).toFixed(3)}`
-                    : ' · score unchanged'}
-                  {metrics.trigger_rate != null
-                    ? ` · fired on ${(Number(metrics.trigger_rate) * 100).toFixed(0)}% of those days`
-                    : ''}
-                </div>
+                <EvidenceSentence evidence={evidence} metrics={metrics} />
                 <details style={{ marginTop: 6 }}>
                   <summary style={{ fontSize: 11, color: 'var(--text3)', cursor: 'pointer' }}>How this was scored</summary>
                   <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
