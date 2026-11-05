@@ -66,5 +66,13 @@ check('the surrounding sentence is intact', () => {
   assert.match(t, /fired on 12% of those days/)
 })
 
+// Privacy tripwire: operator captures are private evidence, never source-tree assets.
+for (const width of [390, 412]) {
+  check(`operator capture ${width} stays outside the published source tree`, () => {
+    const capture = resolve(app, '../../docs/evidence/fq025', `fq025-before-105df180e-phone${width}.png`)
+    assert.equal(existsSync(capture), false, 'Private operator captures must remain outside the source tree')
+  })
+}
+
 console.log(`closedLoopSentence.view: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
