@@ -28,6 +28,22 @@ console.error = (...args) => {
 
 const { MemoryRouter } = require('react-router-dom')
 
+// Wiring proof without grepping source: the page's JSX compiles to react/jsx-runtime calls, so a thin wrapper
+// forwards to the real runtime and records the element the real page hands React. The Page and
+// IntelImplicationRow are the real modules; nothing is stubbed. A commented-out row produces no element.
+const REAL_JSX_RUNTIME = pathToFileURL(require.resolve('react/jsx-runtime')).href
+const JSX_PROBE_URL = `data:text/javascript;base64,${Buffer.from([
+  `import { jsx as realJsx, jsxs as realJsxs, Fragment } from ${JSON.stringify(REAL_JSX_RUNTIME)}`,
+  'const forward = (fn) => function (type, props, key) {',
+  '  try { if (globalThis.__jsxProbe) globalThis.__jsxProbe(type, props) } catch {}',
+  '  return fn(type, props, key)',
+  '}',
+  'export const jsx = forward(realJsx)',
+  'export const jsxs = forward(realJsxs)',
+  'export const jsxDEV = forward(realJsx)',
+  'export { Fragment }',
+].join('\n')).toString('base64')}`
+
 // A server render has no window; the browser this page runs in does, so the harness supplies the minimal shape.
 globalThis.window = globalThis.window ?? {
   matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }),
@@ -52,6 +68,7 @@ function compile(path) {
   const jsx = path.endsWith('.tsx') ? ts.JsxEmit.ReactJSX : ts.JsxEmit.None
   let js = ts.transpileModule(source, { compilerOptions: { jsx, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, removeComments: true } }).outputText
   js = js.replace(/from ["']([^"']+)["']/g, (whole, spec) => {
+    if (spec === 'react/jsx-runtime') return `from ${JSON.stringify(JSX_PROBE_URL)}`
     if (!spec.startsWith('.')) return `from ${JSON.stringify(pathToFileURL(require.resolve(spec)).href)}`
     let target = resolve(dirname(path), spec)
     if (!existsSync(target)) target = ['.ts', '.tsx', '.js'].map(s => target + s).find(existsSync)
@@ -70,14 +87,26 @@ const FIXED_NOW = Date.parse('2026-11-05T17:00:00Z')
 Date.now = () => FIXED_NOW
 globalThis.fetch = () => { throw new Error('this rendering test refuses network calls') }
 
-function renderWithTopNews(raw) {
+function renderPage(raw, { onDrill = () => {}, probe = false } = {}) {
   globalThis.__apiFixture = (url) => {
     if (url.includes('/api/v2/command')) return { data: { top_news: [raw] }, loading: false, error: null }
     return { data: null, loading: false, error: null }
   }
-  return renderToStaticMarkup(React.createElement(MemoryRouter, null,
-    React.createElement(Page, { mode: 'command', onDrill() {} })))
+  const captured = []
+  if (probe) {
+    globalThis.__jsxProbe = (type, props) => {
+      if (props && Object.prototype.hasOwnProperty.call(props, 'nextStep')) captured.push({ type, props })
+    }
+  }
+  try {
+    const markup = renderToStaticMarkup(React.createElement(MemoryRouter, null,
+      React.createElement(Page, { mode: 'command', onDrill })))
+    return { markup, captured }
+  } finally {
+    if (probe) delete globalThis.__jsxProbe
+  }
 }
+const renderWithTopNews = (raw) => renderPage(raw).markup
 
 const uncertaintyTexts = (markup) =>
   [...markup.matchAll(/data-testid="intel-implication-uncertainty"[^>]*>([^<]*)</g)].map(x => x[1])
@@ -124,6 +153,56 @@ for (const [name, when, expected] of TIMES) {
   const got = uncertaintyTexts(markup)
   check('time', name, got.length === 1 && got[0] === expected, `got ${JSON.stringify(got)}; expected ${JSON.stringify([expected])}`, got.join(' | '))
   check('time', `${name}: never says fresh`, !got.some(t => /just now|fresh/i.test(t)), JSON.stringify(got), got.join(' | '))
+}
+
+// ---- Wiring: proven by the real render, not by grepping source ------------------------------------------------
+// Reviewer P1: the old source-scraping wiring test still passed when the real <IntelImplicationRow …> block was
+// commented out. These assertions read the ACTUAL element the real page hands React, and invoke the ACTUAL
+// callback it passed, so a comment cannot satisfy them.
+//
+// What this proves: the real page renders the row, passes it the page's own next step, and passes a live onOpen
+// whose invocation opens the source record through the page's onDrill with the expected payload.
+// What this does NOT prove: that the row's own `onClick={onOpen}` DOM binding fires on a real click — this
+// harness is react-dom/server (no DOM), so that binding stays a comment-stripped source assertion in
+// intelImplicationWiring.test.mjs.
+const PAGE_NEXT_STEP = 'Open source record and verify freshness, source, and portfolio impact.'
+const ROW_TYPE = (x) => typeof x?.type === 'function' && x.type.name === 'IntelImplicationRow'
+const renderedNextStep = (markup) =>
+  [...markup.matchAll(/data-testid="intel-implication-next"[^>]*>([^<]*)</g)].map(x => x[1])
+
+{
+  const { markup, captured } = renderPage(row({ confidence: 0.62 }), { probe: true })
+  const rows = captured.filter(ROW_TYPE)
+  const nexts = renderedNextStep(markup)
+  check('wiring', 'the real page renders the row and its own next step',
+    rows.length === 1 && nexts.length === 1 && nexts[0] === PAGE_NEXT_STEP,
+    `elements=${rows.length}; next=${JSON.stringify(nexts)}; expected=${JSON.stringify([PAGE_NEXT_STEP])}`,
+    `${rows.length} element(s), next ${JSON.stringify(nexts)}`)
+  check('wiring', 'the row receives the page\'s own next step as a prop',
+    rows.length === 1 && rows[0].props.nextStep === PAGE_NEXT_STEP,
+    `nextStep=${JSON.stringify(rows[0]?.props.nextStep)}; expected=${JSON.stringify(PAGE_NEXT_STEP)}`,
+    JSON.stringify(rows[0]?.props.nextStep))
+}
+
+{
+  const drills = []
+  const { markup, captured } = renderPage(row({ confidence: 0.62 }), { onDrill: ctx => drills.push(ctx), probe: true })
+  const rows = captured.filter(ROW_TYPE)
+  const rowProps = rows[0]?.props ?? {}
+  const control = /Open the source record/.test(markup)
+  check('wiring', 'the real row receives a live onOpen drill-down callback',
+    rows.length === 1 && typeof rowProps.onOpen === 'function' && control,
+    `onOpen=${typeof rowProps.onOpen}; drill control rendered=${control}`,
+    `onOpen=${typeof rowProps.onOpen}, control rendered=${control}`)
+  const before = drills.length
+  if (typeof rowProps.onOpen === 'function') rowProps.onOpen()
+  const d = drills[drills.length - 1]
+  check('wiring', 'invoking the drill-down opens the source record through the page\'s onDrill',
+    drills.length === before + 1 && d?.title === BASE.title && d?.subtitle === 'portfolio-news · /api/v2/command' &&
+      d?.endpoint === '/api/v2/intelligence' && d?.rows?.[0]?.symbol === 'SYN' &&
+      d?.rows?.[0]?.type === 'portfolio-news' && d?.rows?.[0]?.confidence === 0.62 &&
+      d?.rows?.[0]?.freshness_h === 1,
+    `drill=${JSON.stringify(d)}`, JSON.stringify(d))
 }
 
 const out = {
