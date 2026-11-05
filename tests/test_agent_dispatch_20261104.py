@@ -572,7 +572,8 @@ def fake_runner(panes: dict[str, str], gh_rows: list[dict]):
         elif cmd[:3] == ["tmux", "capture-pane", "-p"]:
             P.stdout = panes[cmd[cmd.index("-t") + 1]]
         elif cmd[:3] == ["gh", "pr", "list"]:
-            P.stdout = json.dumps(gh_rows)
+            # These legacy synthetic rows describe available metadata unless explicitly malformed.
+            P.stdout = json.dumps([{"title": "Synthetic PR", "body": "", "labels": [], **row} for row in gh_rows])
         elif cmd[:3] == ["gh", "pr", "view"]:
             P.stdout = json.dumps({"commits": []})
         elif cmd[:2] == ["gh", "api"]:
@@ -2002,6 +2003,8 @@ def test_d51_cx4_registered_reference_is_loaded_without_guessed_sibling(tmp_path
             "engineering_completion_head": "a" * 40,
             "section17_completion_head": "a" * 40,
             "section17_review_completed": True,
+            "shared_infra_completion_head": "a" * 40,
+            "shared_infra_isolated_reviewed": True,
             "engineering_tests_completed": False,
             "engineering_docs_completed": False,
         }
@@ -2747,3 +2750,192 @@ def test_section17_latest_exact_head_false_replaces_true(tmp_path):
     assert D.merge_ready([pr], true_index, claims, {7: "author"})["ready"]
     out = D.merge_ready([pr], false_index, claims, {7: "author"})
     assert not out["ready"] and "section-17" in out["one_step"][0]["step"]
+
+
+# D52 named shared-infrastructure contract, exercised through actual metadata collection and reporting.
+def _shared_infra_cycle(tmp_path, *, fault=None, label="shared-infra", ordinary=False, rename=False):
+    import hashlib
+
+    path = "src/synthetic.py" if ordinary or rename else "scripts/safe_flock.sh"
+    scope = [path] + (["scripts/safe_flock.sh"] if rename else [])
+    paths = make_tree(
+        tmp_path,
+        panes={},
+        queue=[],
+        claims=[
+            {
+                "claim_id": "source",
+                "session": "author",
+                "branch": "wt/synthetic",
+                "status": "done",
+                "heartbeat_at": iso(NOW),
+                "head_sha": "a" * 40,
+                "paths": scope,
+            }
+        ],
+    )
+    doc = _d51_registered_review(paths["coord"])
+    if fault == "isolated_missing":
+        doc.pop("shared_infra_isolated_reviewed")
+    elif fault == "isolated_false":
+        doc["shared_infra_isolated_reviewed"] = False
+    elif fault == "isolated_string":
+        doc["shared_infra_isolated_reviewed"] = "true"
+    elif fault == "isolated_integer":
+        doc["shared_infra_isolated_reviewed"] = 1
+    elif fault == "isolated_other_head":
+        old = json.loads(json.dumps(doc))
+        old["head_sha"] = "b" * 40
+        raw = f"Adversarial-review: MERGE reviewer=independent head={'b' * 40}\n".encode()
+        (paths["coord"] / "proofs" / "old-shared.artifact").write_bytes(raw)
+        old["reviews"][0].update(
+            head_sha="b" * 40, artifact="proofs/old-shared.artifact", artifact_sha256=hashlib.sha256(raw).hexdigest()
+        )
+        (paths["coord"] / "review-evidence" / f"7-{'b' * 40}.json").write_text(json.dumps(old))
+        doc.pop("shared_infra_isolated_reviewed")
+    (paths["coord"] / "review-evidence" / f"7-{'a' * 40}.json").write_text(json.dumps(doc))
+    check = {"__typename": "CheckRun", "name": "shared-infra-review", "status": "COMPLETED", "conclusion": "SUCCESS"}
+    row = {
+        "number": 7,
+        "headRefName": "wt/synthetic",
+        "headRefOid": "a" * 40,
+        "mergeStateStatus": "CLEAN",
+        "isDraft": False,
+        "changedFiles": 1,
+        "files": [{"path": path}],
+        "title": "[shared-infra] Synthetic wrapper proof",
+        "body": "Real-layout proof: synthetic fixture artifact and exact command",
+        "labels": [{"name": label}],
+        "statusCheckRollup": [*_d51_checks(), check],
+    }
+    if fault == "title":
+        row["title"] = "Ordinary-looking change"
+    elif fault == "body":
+        row["body"] = "No proof here"
+    elif fault == "title_missing":
+        row.pop("title")
+    elif fault == "body_missing":
+        row.pop("body")
+    elif fault == "title_shape":
+        row["title"] = {"wrong": "shape"}
+    elif fault == "body_shape":
+        row["body"] = []
+    elif fault == "label":
+        row["labels"] = []
+    elif fault == "labels_missing":
+        row.pop("labels")
+    elif fault == "labels_shape":
+        row["labels"] = [{"wrong": "name"}]
+    elif fault == "labels_scalar":
+        row["labels"] = "shared-infra"
+    elif fault == "check_missing":
+        row["statusCheckRollup"] = _d51_checks()
+    elif fault == "check_failure":
+        check["conclusion"] = "FAILURE"
+    elif fault == "check_skipped":
+        check["conclusion"] = "SKIPPED"
+    elif fault == "check_pending":
+        check["status"] = "IN_PROGRESS"
+    base = fake_runner({}, [row])
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        out = base(cmd, **kw)
+        if cmd[:3] == ["gh", "pr", "list"]:
+            out.stdout = json.dumps([row])
+        if rename and cmd[:2] == ["gh", "api"] and "/files?" in cmd[2]:
+            out.stdout = json.dumps(
+                [{"filename": path, "status": "renamed", "previous_filename": "scripts/safe_flock.sh"}]
+            )
+        return out
+
+    before = {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    out = CLI.run_cycle(
+        apply=False,
+        coord=paths["coord"],
+        queue_path=paths["queue"],
+        claims_dir=paths["claims"],
+        ledger_path=paths["ledger"],
+        run=run,
+    )
+    assert before == {str(p): p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    assert not out["assignments"] and not out["ledger"]
+    return out, CLI.open_prs(run=run)[0], calls, doc, paths
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "title",
+        "body",
+        "title_missing",
+        "body_missing",
+        "title_shape",
+        "body_shape",
+        "label",
+        "labels_missing",
+        "labels_shape",
+        "labels_scalar",
+        "check_missing",
+        "check_failure",
+        "check_skipped",
+        "check_pending",
+        "isolated_missing",
+        "isolated_false",
+        "isolated_string",
+        "isolated_integer",
+        "isolated_other_head",
+    ],
+)
+def test_shared_infra_real_collector_and_report_refuse_unqualified_input(tmp_path, fault):
+    out, _pr, _calls, _doc, _paths = _shared_infra_cycle(tmp_path, fault=fault)
+    assert not out["merge_ready"]["ready"]
+    expected = "checks" if fault in {"check_failure", "check_pending"} else "shared-infrastructure"
+    assert expected in out["merge_ready"]["one_step"][0]["step"]
+
+
+@pytest.mark.parametrize("label", ["shared-infra", "solo"])
+def test_shared_infra_valid_real_collector_report_matches_canonical_assessor(tmp_path, label):
+    out, pr, calls, _doc, _paths = _shared_infra_cycle(tmp_path, label=label)
+    assert [r["pr"] for r in out["merge_ready"]["ready"]] == [7]
+    assert pr.title == "[shared-infra] Synthetic wrapper proof"
+    assert pr.body.startswith("Real-layout proof:") and pr.labels == (label,)
+    fields = next(c[c.index("--json") + 1] for c in calls if c[:3] == ["gh", "pr", "list"])
+    assert {"title", "body", "labels"} <= set(fields.split(","))
+    from scripts.check_shared_infra_pr import assess
+
+    assert assess(list(pr.scope_files), pr.title, pr.body, [])["ok"] is True
+
+
+def test_shared_infra_ordinary_positive_does_not_need_shared_label_or_check(tmp_path):
+    out, _pr, _calls, _doc, _paths = _shared_infra_cycle(
+        tmp_path, ordinary=True, fault="check_missing", label="ordinary"
+    )
+    assert out["merge_ready"]["ready"]
+
+
+def test_shared_infra_rename_original_path_keeps_shared_requirements(tmp_path):
+    out, _pr, _calls, _doc, _paths = _shared_infra_cycle(tmp_path, rename=True, fault="isolated_false")
+    assert not out["merge_ready"]["ready"]
+    assert "shared-infrastructure" in out["merge_ready"]["one_step"][0]["step"]
+
+
+def test_shared_infra_latest_exact_head_false_replaces_true(tmp_path):
+    out, pr, _calls, doc, paths = _shared_infra_cycle(tmp_path)
+    assert out["merge_ready"]["ready"]
+    latest = {**doc, "shared_infra_isolated_reviewed": False}
+    claims = D.load_claims(paths["claims"], now=NOW)
+    verdicts = D.verdicts_at_head([doc, latest])
+    result = D.merge_ready([pr], verdicts, claims, {7: "author"})
+    assert not result["ready"] and "shared-infrastructure" in result["one_step"][0]["step"]
+
+
+@pytest.mark.parametrize("contents", ["{", "null", "[]", '{"paths":"wrong"}', '{"paths":[null]}'])
+def test_shared_infra_unavailable_registry_never_reports_ready(tmp_path, monkeypatch, contents):
+    registry = tmp_path / "base-shared-infra.json"
+    registry.write_text(contents)
+    monkeypatch.setattr(D, "SHARED_INFRA_PATH", registry)
+    out, _pr, _calls, _doc, _paths = _shared_infra_cycle(tmp_path)
+    assert not out["merge_ready"]["ready"]
+    assert "shared-infrastructure" in out["merge_ready"]["one_step"][0]["step"]

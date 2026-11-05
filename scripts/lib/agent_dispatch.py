@@ -34,6 +34,7 @@ from .pr_merge_delegation import Refused as EvidenceRefused, collect_held_classe
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from scripts.check_shared_infra_pr import assess as assess_shared_infra
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
@@ -274,6 +275,11 @@ class PullRequest:
     checks_green: bool | None = None
     prior_paths: tuple[str, ...] = ()
     rename_evidence_complete: bool = True
+    title: str = ""
+    body: str = ""
+    labels: tuple[str, ...] = ()
+    metadata_complete: bool = True
+    shared_checks_green: bool | None = None
 
     @property
     def scope_files(self) -> tuple[str, ...]:
@@ -325,6 +331,8 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
                 "engineering_completion_head": head,
                 "section17_completion_head": head,
                 "section17_review_completed": art.get("section17_review_completed") is True,
+                "shared_infra_completion_head": head,
+                "shared_infra_isolated_reviewed": art.get("shared_infra_isolated_reviewed") is True,
                 "engineering_tests_completed": art.get("engineering_tests_completed") is True,
                 "engineering_docs_completed": art.get("engineering_docs_completed") is True,
             }
@@ -346,6 +354,7 @@ def verdicts_at_head(artifacts: Iterable[dict[str, Any]]) -> dict[tuple[int, str
 
 
 AUTHORITY_PATH = Path(__file__).resolve().parents[2] / "config" / "agent_standing_authority.json"
+SHARED_INFRA_PATH = AUTHORITY_PATH.with_name("shared_infra_paths.json")
 
 
 def review_requirements(path: Path | None = None) -> tuple[int, int, tuple[str, ...]]:
@@ -421,6 +430,25 @@ def work_allowed(paths: Sequence[str], requirements=None) -> bool:
     return True
 
 
+def shared_infra_status(pr: PullRequest) -> dict[str, Any]:
+    """The canonical pure assessor over the running release's base registry and both rename names."""
+    try:
+        patterns = json.loads(SHARED_INFRA_PATH.read_text(encoding="utf-8"))["paths"]
+        if (
+            not isinstance(patterns, list)
+            or any(not isinstance(p, str) for p in patterns)
+            or not pr.metadata_complete
+            or not isinstance(pr.title, str)
+            or not isinstance(pr.body, str)
+            or not isinstance(pr.labels, (tuple, list))
+            or any(not isinstance(label, str) or not label for label in pr.labels)
+        ):
+            raise ValueError("shared infrastructure metadata unavailable")
+        return assess_shared_infra(list(pr.scope_files), pr.title, pr.body, patterns)
+    except (OSError, ValueError, TypeError, KeyError):
+        return {"shared_infra": None, "ok": False}
+
+
 def _custody_states(claims: Sequence[Claim]) -> tuple[dict[str, str], bool]:
     """Canonical lifecycle resolution over this read-only snapshot, never age-based release.
 
@@ -462,6 +490,7 @@ def merge_ready(
         blocks = [e for e in here if e["verdict"] == "BLOCK" and e["reviewer"] and e["reviewer"] not in authors]
         merges = [e for e in here if e["verdict"] == "MERGE" and e["reviewer"] and e["reviewer"] not in authors]
         need, held = required_reviews(pr.scope_files, requirements)
+        shared = shared_infra_status(pr)
         reviewers = {e["reviewer"] for e in merges}
         claim = by_branch.get(pr.head_ref)
         released = [
@@ -548,6 +577,19 @@ def merge_ready(
                 for e in merges
             ):
                 step = "section-17 review unproven — register completed authority-boundary review at this exact head"
+            elif type(shared.get("shared_infra")) is not bool:
+                step = "shared-infrastructure classification or metadata unavailable — readiness cannot be established"
+            elif shared["shared_infra"] and (
+                shared.get("ok") is not True
+                or pr.shared_checks_green is not True
+                or not ({"shared-infra", "solo"} & {label.lower() for label in pr.labels})
+                or not any(
+                    e.get("shared_infra_completion_head") == pr.head_sha
+                    and e.get("shared_infra_isolated_reviewed") is True
+                    for e in merges
+                )
+            ):
+                step = "shared-infrastructure evidence unproven — qualify metadata, label, check and isolated review at this exact head"
             else:
                 ready.append({**base, "verdicts": sorted(reviewers)})
                 continue

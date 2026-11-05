@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib import agent_dispatch as D  # noqa: E402
-from lib.pr_all_checks_green import evaluate_merge_rollup  # noqa: E402
+from lib.pr_all_checks_green import MERGE_REQUIRED_CHECKS, evaluate_merge_rollup  # noqa: E402
 from lib.pr_merge_delegation import (  # noqa: E402 - read-only evidence helpers, no merge entrypoint
     Refused as EvidenceRefused,
     path_ok,
@@ -302,7 +302,7 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
             "--limit",
             "200",
             "--json",
-            "number,headRefName,headRefOid,mergeStateStatus,isDraft,updatedAt,files,changedFiles,statusCheckRollup",
+            "number,headRefName,headRefOid,mergeStateStatus,isDraft,updatedAt,files,changedFiles,statusCheckRollup,title,body,labels",
         ]
     )
     if getattr(proc, "returncode", 1) != 0:
@@ -325,6 +325,27 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
             files=tuple(str(f.get("path")) for f in (r.get("files") or []) if isinstance(f, dict) and f.get("path")),
             changed_files=r.get("changedFiles") if type(r.get("changedFiles")) is int else None,
             checks_green=checks_passed(r.get("statusCheckRollup")),
+            title=r.get("title") if isinstance(r.get("title"), str) else "",
+            body=r.get("body") if isinstance(r.get("body"), str) else "",
+            labels=tuple(
+                label["name"]
+                for label in r.get("labels", [])
+                if isinstance(label, dict) and isinstance(label.get("name"), str)
+            )
+            if isinstance(r.get("labels"), list)
+            else (),
+            metadata_complete=(
+                isinstance(r.get("title"), str)
+                and isinstance(r.get("body"), str)
+                and isinstance(r.get("labels"), list)
+                and all(
+                    isinstance(label, dict) and isinstance(label.get("name"), str) and bool(label["name"])
+                    for label in r["labels"]
+                )
+            ),
+            shared_checks_green=evaluate_merge_rollup(
+                r.get("statusCheckRollup"), required=(*MERGE_REQUIRED_CHECKS, "shared-infra-review")
+            )["ok"],
         )
         _rename_scope(pr, run)
         if with_commits and pr.clean:
