@@ -902,18 +902,18 @@
   },
   {
    "id": "disk_pressure_guard",
-   "name": "Disk pressure guard (reclaim at >=85%)",
+   "name": "Disk pressure guard (pages at >=85%; acts through the reviewed cleaner when armed)",
    "category": "disk_recovery",
    "code": "scripts/disk_pressure_guard.py",
    "evidence_source": {
     "kind": "journal",
     "unit": "tradeai-disk-pressure-guard.service",
     "window_hours": 168,
-    "line_regex": "\\\"action\\\""
+    "line_regex": "\\\"decision\\\""
    },
    "success_predicate": {
-    "description": "disk space reclaimed (action deleted/recovered)",
-    "regex": "\\\"action\\\": \\\"(deleted|recovered)\\\"",
+    "description": "the guard triggered the reviewed cleaner and it applied a removal. Only possible when the operator arms pressure_act in config/disk_hygiene_rules.json; disarmed (shipped today) this lane reports and the n8n disk-hygiene lane owns reclaim (AGENTS.md section 24.12).",
+    "regex": "\\\"decision\\\": \\\"applied\\\"",
     "min_count": 1
    },
    "expected": "PROVEN",
