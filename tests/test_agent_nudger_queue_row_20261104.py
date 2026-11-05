@@ -112,10 +112,37 @@ def test_acceptance_dict_with_partial_fields_does_not_print_none(tmp_path):
     assert "w only" in text and "None" not in text
 
 
-def test_prompt_is_single_line_per_paragraph_so_send_keys_submits_it():
+def test_prompt_contains_no_newline_so_send_keys_submits_it():
     text = N.row_prompt(row("FQ-037", "cc-deepseek-8", "queued"), COORD)
-    assert "\r" not in text
-    assert all(len(part) > 0 for part in text.split("\n"))
+    assert "\n" not in text and "\r" not in text, "send-keys -l types a newline as a separate line event"
+
+
+def test_interpolated_values_cannot_reintroduce_a_newline():
+    """F3 (cc-deepseek-5): page/check/acceptance values are data and may carry a line break; the prompt must not."""
+    r = row("FQ-050", "cc-deepseek-8", "queued", page="/health\noverflow", check="D\nE",
+            acceptance={"what": "two lines\nin one value", "expected": "one\nline"})
+    text = N.row_prompt(r, COORD)
+    assert "\n" not in text and "\r" not in text, "a value's line break must be collapsed, not templated away"
+
+
+def test_send_types_a_single_line_into_tmux():
+    """F2 (cc-deepseek-6/cc-deepseek-9): what reaches `send-keys -l` must carry no newline, even from a row prompt."""
+    calls = []
+
+    class _Proc:
+        returncode = 0
+        stdout = ""
+
+    def fake_run(argv, **_kwargs):
+        calls.append(argv)
+        return _Proc()
+
+    # Drive the guard with text that is ALREADY multi-line: `send()` must flatten it before `send-keys -l`, whatever
+    # the caller hands it (the F2 defect was the send path, not only the row template). Nothing else collapses it.
+    assert N.send("some-session", "line one\nline two\rline three", run=fake_run, sleep=lambda _s: None) is True
+    assert calls[0][:4] == ["tmux", "send-keys", "-t", "some-session"], calls[0]
+    typed = calls[0][-1]
+    assert "\n" not in typed and "\r" not in typed, "the argv handed to send-keys -l must be one line"
 
 
 def test_a_row_without_a_check_or_severity_still_renders():

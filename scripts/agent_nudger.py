@@ -67,8 +67,11 @@ PROMPT = ("Heartbeat (automatic, operator mandate): re-read {coord}/WORKERS.md (
 QUEUE_DEFAULT = str(Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "coordination"
                     / "coordinator" / "AUDIT_FIX_QUEUE.json")
 
-ROW_PROMPT = ("Heartbeat (automatic, operator mandate). Your next queue row is {id}{sev} — {page}{check}.\n"
-              "Acceptance: {acceptance}\n"
+#: One line, no ``\n``: ``send()`` types this with ``tmux send-keys -l`` and then a separate ``Enter``. An embedded
+#: newline is a separate tmux line event, so a multi-line prompt would type without submitting (the repository's own
+#: recorded multi-line trap). The sentence breaks below are source formatting only.
+ROW_PROMPT = ("Heartbeat (automatic, operator mandate). Your next queue row is {id}{sev} — {page}{check}. "
+              "Acceptance: {acceptance} "
               "Work it now: claim the files, fix the root cause, produce red-then-green evidence, then report the head "
               "sha to {coord}/inbox/<lead>/ and take your next row. If it no longer reproduces at the current head, "
               "close it as no_longer_reproduces with the measurement that shows it gone. Only if there is truly "
@@ -135,11 +138,13 @@ def acceptance_text(row: dict | None) -> str:
     if isinstance(acceptance, dict):
         parts = []
         for key in ("what", "expected", "actual", "evidence"):
-            value = str(acceptance.get(key) or "").strip()
+            # The queue is data another process writes: a value may carry a line break. Collapse it here so an
+            # interpolated value can never reintroduce the newline the single-line send path forbids (F3, cc5).
+            value = " ".join(str(acceptance.get(key) or "").split())
             if value:
                 parts.append(f"{key.capitalize()}: {value}")
         return " ".join(parts)
-    return str(acceptance or "").strip()
+    return " ".join(str(acceptance or "").split())
 
 
 def _cap(text: str, limit: int = 600) -> str:
@@ -148,17 +153,24 @@ def _cap(text: str, limit: int = 600) -> str:
 
 
 def row_prompt(row: dict, coord: str) -> str:
-    """The nudge text for one queue row. Single line breaks only: `send()` types it then presses Enter."""
-    rid = str(row.get("id") or "row")
-    severity = str(row.get("severity") or "").strip()
-    return ROW_PROMPT.format(
+    """The nudge text for one queue row, as ONE line: `send()` types it then presses Enter.
+
+    The row is data from another process, so every interpolated field is whitespace-collapsed here as well as in
+    ``acceptance_text``: a repair that flattened only the template would let a newline back in through the values.
+    """
+    rid = " ".join(str(row.get("id") or "row").split())
+    severity = " ".join(str(row.get("severity") or "").split())
+    page = " ".join(str(row.get("page") or "no page").split())
+    check = " ".join(str(row.get("check") or "").split())
+    text = ROW_PROMPT.format(
         id=rid,
         sev=f" [{severity}]" if severity else "",
-        page=str(row.get("page") or "no page"),
-        check=f" · check {row['check']}" if row.get("check") else "",
+        page=page,
+        check=f" · check {check}" if check else "",
         acceptance=_cap(acceptance_text(row)) or "the row's expected result (see AUDIT_FIX_QUEUE.json)",
         coord=coord,
     )
+    return " ".join(text.split())
 
 
 
@@ -209,7 +221,13 @@ def send(session: str, text: str, run=subprocess.run, sleep=time.sleep) -> bool:
     """Type text then Enter. Returns True ONLY when both `tmux` calls exited 0 (F3 review, 2026-11-04).
 
     A non-zero rc used to be discarded, so a dead tmux pane produced a ledger line and an inflated produced_count —
-    a nudge that never happened, counted as one that did."""
+    a nudge that never happened, counted as one that did.
+
+    The text is flattened to one line first: ``send-keys -l`` treats an embedded newline as a separate tmux line
+    event, so the following ``Enter`` would submit only one line of a multi-line prompt (the repository's recorded
+    multi-line trap). Flattening here is defence in depth for every caller, including a malformed row (F2, cc6/cc9).
+    """
+    text = " ".join(str(text).split())
     typed = run(["tmux", "send-keys", "-t", session, "-l", text], capture_output=True, text=True)
     if getattr(typed, "returncode", 1) != 0:
         return False
