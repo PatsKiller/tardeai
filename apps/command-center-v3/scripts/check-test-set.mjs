@@ -30,28 +30,55 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.vite', 'coverage',
 // extensions, so `foo.test.cjs` (or .cts/.mts) was invisible to the walker AND to the gate: a failing one exited 0
 // because nothing ever ran and nothing ever noticed. Now every *.test.* file must be run or explicitly dormant, and a
 // file the runner cannot execute is a build failure until someone decides about it.
-const ANY_TEST = /\.test\.[^.]+$/
-const RUNNABLE = /\.test\.(ts|mjs|js|tsx|jsx)$/
+export const ANY_TEST = /\.test\.[^.]+$/
+export const RUNNABLE = /\.test\.(ts|mjs|js|tsx|jsx)$/
 
 function walk(dir, out = [], base = app, predicate = ANY_TEST) {
+  // R3 (codex): an unreadable directory is an ERROR, never an empty set. `catch { return out }` made a permission
+  // failure look like "no tests here" — the same silence-is-a-pass class that shipped the PII binary-skip bug. A
+  // check that cannot read a thing must never report it clean.
   let entries
-  try { entries = readdirSync(dir) } catch { return out }
+  try {
+    entries = readdirSync(dir)
+  } catch (err) {
+    throw new Error(`check-test-set: cannot read directory ${dir} (${err.code || err.message}) — an unreadable inventory is not an empty one`)
+  }
   for (const name of entries) {
     if (SKIP_DIRS.has(name)) continue
     const full = join(dir, name)
     let st
-    try { st = statSync(full) } catch { continue }
+    try {
+      st = statSync(full)
+    } catch (err) {
+      throw new Error(`check-test-set: cannot stat ${full} (${err.code || err.message}) — refusing to skip an entry it cannot read`)
+    }
     if (st.isDirectory()) walk(full, out, base, predicate)
     else if (predicate.test(name)) out.push(relative(base, full))
   }
   return out
 }
 
+/** R2 (codex): a dormant entry must carry BOTH a reason and an explicit attribution. A bare string is a default,
+ *  not a decision — moving an ACTIVE test into dormant is how a running test stops running without anyone noticing
+ *  it. `justified_by` is the thing a reviewer has to add; it cannot be inferred, and the gate refuses without it. */
+export function loadDormant(doc) {
+  const files = (doc && doc.files) || {}
+  const paths = []
+  const unjustified = []
+  for (const [path, entry] of Object.entries(files)) {
+    paths.push(path)
+    const reason = typeof entry === 'string' ? entry : entry && entry.reason
+    const by = entry && typeof entry === 'object' ? entry.justified_by : undefined
+    if (!reason || !by) unjustified.push(path)
+  }
+  return { paths, unjustified }
+}
+
 /** The runner's own two lists: what it executes, and what the dormant file explains. */
 export function runnerLists() {
   const dormantPath = join(app, 'scripts', 'tests.dormant.json')
   const doc = existsSync(dormantPath) ? JSON.parse(readFileSync(dormantPath, 'utf8')) : {}
-  const dormant = Object.keys(doc.files || {})
+  const { paths: dormant, unjustified } = loadDormant(doc)
   const listFile = join(app, 'scripts', 'run-tests.mjs')
   // Executed = what the runner actually runs: under src/, an extension it can execute, minus the dormant set.
   const srcDir = join(app, 'src')
@@ -71,14 +98,14 @@ export function checkSet({ run, dormant, all }) {
 export function checkSetAt(root) {
   const dormantPath = join(root, 'scripts', 'tests.dormant.json')
   const doc = existsSync(dormantPath) ? JSON.parse(readFileSync(dormantPath, 'utf8')) : {}
-  const dormant = Object.keys(doc.files || {})
+  const { paths: dormant, unjustified } = loadDormant(doc)
   const srcDir = join(root, 'src')
   // run = what the runner can actually execute; all = every file that IS a test by the total predicate above.
   const discovered = walk(srcDir, [], root, RUNNABLE).map(p => p.split('\\').join('/'))
   const dormantSet = new Set(dormant)
   const run = discovered.filter(f => !dormantSet.has(f))
   const all = walk(root, [], root, ANY_TEST).map(p => p.split('\\').join('/'))
-  return checkSet({ run, dormant, all })
+  return { ...checkSet({ run, dormant, all }), unjustified }
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
@@ -92,8 +119,11 @@ if (isMain) {
     console.error('check-test-set: dormant entry names a file that does not exist:')
     for (const f of result.dangling) console.error(`  ✗ ${f}`)
   }
-  if (result.uncovered.length || result.dangling.length) {
-    console.error('check-test-set: add the file to src/ so the runner discovers it, or list it in scripts/tests.dormant.json with a reason.')
+  for (const f of result.unjustified || []) {
+    console.error(`  \u2717 dormant without justification (needs reason + justified_by): ${f}`)
+  }
+  if (result.uncovered.length || result.dangling.length || (result.unjustified || []).length) {
+    console.error('check-test-set: add the file to src/ so the runner discovers it, or list it in scripts/tests.dormant.json with BOTH a reason and a justified_by attribution.')
     process.exit(1)
   }
   console.log(`check-test-set: ${result.covered}/${result.total} test file(s) accounted for (run or dormant)`)

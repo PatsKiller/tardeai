@@ -17,7 +17,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkSetAt } from './check-test-set.mjs'
+import { checkSetAt, RUNNABLE } from './check-test-set.mjs'
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DORMANT = join(app, 'scripts', 'tests.dormant.json')
@@ -27,7 +27,7 @@ function walk(dir, out = []) {
     const full = join(dir, name)
     const st = statSync(full)
     if (st.isDirectory()) walk(full, out)
-    else if (/\.test\.(ts|mjs)$/.test(name)) out.push(relative(app, full))
+    else if (RUNNABLE.test(name)) out.push(relative(app, full))
   }
   return out
 }
@@ -57,7 +57,8 @@ if (listOnly) {
 // nobody has decided to skip (cc9's block on #2686 — discovery walked src/ only, so a file elsewhere was invisible).
 // Asserting the SET rather than a count is what lets a legitimate new test under src/ pass untouched.
 const setResult = checkSetAt(app)
-if (setResult.uncovered.length || setResult.dangling.length) {
+if (setResult.uncovered.length || setResult.dangling.length || (setResult.unjustified || []).length) {
+  for (const f of setResult.unjustified || []) console.error(`  \u2717 dormant without justification: ${f}`)
   for (const f of setResult.uncovered) console.error(`  ✗ not run and not dormant: ${f}`)
   for (const f of setResult.dangling) console.error(`  ✗ dormant entry with no file: ${f}`)
   console.error(`run-tests: test-set gate failed — ${setResult.uncovered.length} uncovered, ${setResult.dangling.length} dangling`)

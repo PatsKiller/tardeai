@@ -2,19 +2,61 @@
   "schema": "AppTestsDormant@v1",
   "note": "Files this runner deliberately does not run. Every entry was dormant before 2026-11-05 as well: it existed but no build command named it. Listing them here keeps the runner's set identical to the old explicit chain - nothing new turns red, nothing existing is dropped. Delete an entry to wire that test.",
   "files": {
-    "src/lib/commsDeliveryHealth.browser.test.cjs": "a manual browser harness, not a node suite: it throws unless COMMS_REVIEW_ROOT is an absolute path, then bundles with esbuild and launches Chromium via @playwright/test. Nothing in CI has ever run it. It was INVISIBLE until 2026-11-05 — the runner matched only .test.(ts|mjs|js|tsx|jsx), so this file was in neither the run list nor this one, and a failing version of it would have exited 0 because nothing executed and nothing noticed (codex's block at c8c346c35). Listing it here IS the decision; wiring it means giving it a Playwright lane and the env it demands, which is a separate change.",
-    "src/lib/agentRuntimeDetailAdapter.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/agentRuntimeReadAdapter.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/brokerReconSummary.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/cioLabels.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/exportBrokerProposalsCsv.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/exportExecutionQualityCsv.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/exportOpenTradesCsv.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/pipelinePlainText.view.test.mjs": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/reentryDecisionScorecard.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/rotationRetainedError.browser.test.mjs": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/scannerSelection.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/watchMarketFactsPresentation.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
-    "src/lib/watchRecordCardModel.test.ts": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI"
+    "src/lib/commsDeliveryHealth.browser.test.cjs": {
+      "reason": "a manual browser harness, not a node suite: it throws unless COMMS_REVIEW_ROOT is an absolute path, then bundles with esbuild and launches Chromium via @playwright/test. Nothing in CI has ever run it. It was INVISIBLE until 2026-11-05 \u2014 the runner matched only .test.(ts|mjs|js|tsx|jsx), so this file was in neither the run list nor this one, and a failing version of it would have exited 0 because nothing executed and nothing noticed (codex's block at c8c346c35). Listing it here IS the decision; wiring it means giving it a Playwright lane and the env it demands, which is a separate change.",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/agentRuntimeDetailAdapter.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/agentRuntimeReadAdapter.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/brokerReconSummary.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/cioLabels.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/exportBrokerProposalsCsv.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/exportExecutionQualityCsv.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/exportOpenTradesCsv.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/pipelinePlainText.view.test.mjs": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/reentryDecisionScorecard.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/rotationRetainedError.browser.test.mjs": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/scannerSelection.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/watchMarketFactsPresentation.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    },
+    "src/lib/watchRecordCardModel.test.ts": {
+      "reason": "exists on disk but was never named in the build chain before 2026-11-05; wiring it is a separate decision because it has never run in CI",
+      "justified_by": "cc-deepseek-2 2026-11-05 (#2686): entry carries the reason recorded when the discovery runner was introduced; all 14 predate the runner and ran nowhere before it"
+    }
   }
 }
