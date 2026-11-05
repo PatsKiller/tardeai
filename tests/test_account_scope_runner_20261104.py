@@ -557,3 +557,96 @@ def test_T_a_packet_account_joining_a_scoped_desk_row_keeps_one_row(state):
     ev = runner.gather(cur)
     assert sorted(k for k in ev if k.startswith("SPCX")) == ["SPCX|schwab_ira"], list(ev)
     assert ev["SPCX|schwab_ira"]["account"] == "schwab_ira"
+
+
+# ── codex-cloud BLOCK at a843e9485 (P2 whole-book exposure, P2 persisted prior state) ─────────────────
+
+
+def test_U_whole_book_exposure_survives_account_scoping(tmp_path):
+    """codex-cloud P2 (buy_ready_portfolio_facts:96): ownership is scoped, exposure is whole-book.
+
+    The account's own shares decide `held`, but the numerator of pct_of_total_book,
+    pct_of_invested_capital and the IPS concentration checks must remain the whole book: scoping it
+    made an account that owns none of the name report 0% exposure while another account held 76% of
+    the book, and the CIO review then lost the concentration warning.
+    """
+    from lib import buy_ready_portfolio_facts as bpf
+    from lib.buy_ready_cio_review import build_facts
+
+    paths = _book_paths(tmp_path)
+    paths["holdings"].write_text(json.dumps({"holdings": [
+        {"symbol": "SPCX", "account": "schwab_individual", "shares": 12, "market_value": 1200.0},
+        {"symbol": "SPCX", "account": "schwab_ira", "shares": 4, "market_value": 400.0},
+        {"symbol": "CASH", "account": "schwab_ira", "is_cash": True, "market_value": 500.0},
+    ]}))
+    whole_book_pct, invested_pct = round(100.0 * 1600.0 / 2100.0, 2), 100.0
+
+    ira = bpf.build_portfolio_facts("SPCX", account="schwab_ira", paths=paths)
+    assert ira["held"] is True and ira["held_units_total"] == 4.0, "ownership must stay account-scoped"
+    assert ira["pct_of_total_book"] == pytest.approx(whole_book_pct), (
+        f"the numerator was scoped to one account: {ira['pct_of_total_book']}")
+    assert ira["pct_of_invested_capital"] == pytest.approx(invested_pct)
+    # The IPS check is fed the same whole-book weight, not this account's stake.
+    assert ira["concentration_policy"]["weight_pct"] == pytest.approx(whole_book_pct, abs=0.01)
+
+    # An account that owns none of the name: held stays False, but the book's exposure is not erased.
+    empty = bpf.build_portfolio_facts("SPCX", account="schwab_roth_ira", paths=paths)
+    assert empty["held"] is False and empty["held_units_total"] == 0.0
+    assert empty["pct_of_total_book"] == pytest.approx(whole_book_pct), (
+        f"an account holding none of SPCX reported {empty['pct_of_total_book']}% exposure")
+    assert empty["pct_of_invested_capital"] == pytest.approx(invested_pct)
+
+    # The CIO review receives those figures unqualified as portfolio concentration.
+    facts = build_facts({"portfolio_risk": empty, "equity": {}, "structure_indicators": {},
+                         "options_alternatives": {}, "thesis_indicators": {}})
+    assert facts["portfolio"]["pct_of_book"] == pytest.approx(whole_book_pct)
+    assert facts["portfolio"]["pct_of_invested_capital"] == pytest.approx(invested_pct)
+    assert facts["portfolio"]["held"] is False
+
+
+def test_V_the_persisted_prior_state_is_account_scoped(tmp_path, monkeypatch):
+    """codex-cloud P2 (runner:789): the INSERT must persist the SAME scoped prior state it compared.
+
+    `last_states()` returns SYMBOL|ACCOUNT keys, so `prior.get(sym)` recorded NULL or an unrelated
+    legacy bare-symbol state; trade_journey renders that value in the transition timeline.
+    """
+    sink: list[tuple[str, tuple]] = []
+
+    class _Cur:
+        def execute(self, sql, params=None):
+            sink.append((" ".join(str(sql).split()), params))
+
+        def fetchall(self):
+            return []
+
+    class _Conn:
+        def cursor(self):
+            return _Cur()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+    monkeypatch.setattr(runner, "_conn", lambda: _Conn())
+    monkeypatch.setattr(runner, "gather", lambda cur: {"SPCX|schwab_ira": _evidence("schwab_ira")})
+    monkeypatch.setattr(runner, "last_states",
+                        lambda cur: {"SPCX|schwab_ira": "NOT_YET", "SPCX": "BUY_READY"})
+    monkeypatch.setattr(runner, "alerted_today", lambda cur, keys: set())
+    monkeypatch.setattr(runner, "starred_symbols", lambda cur: set())
+    monkeypatch.setattr(runner, "prepare_packet_inputs", lambda r, ev, apply: {"status": "OK"})
+    monkeypatch.setattr(runner, "record_review", lambda cur, review, result: None)
+    monkeypatch.setattr(runner, "send_alerts", lambda r, ev: {})
+    monkeypatch.setattr(runner, "save_packet", lambda r, ev: None)
+    monkeypatch.setattr(runner, "follow_up_pending_reviews", lambda cur, ev: [])
+    monkeypatch.setattr(runner, "write_cio_prospects", lambda changed: {})
+    monkeypatch.setattr(runner, "RECEIPT", tmp_path / "receipt.json")
+    monkeypatch.setattr(sys, "argv", ["cio_entry_state_runner", "--apply"])
+
+    assert runner.main() == 0
+    inserts = [p for sql, p in sink if sql.startswith("INSERT INTO cio_entry_states")]
+    assert inserts, "no cio_entry_states row was attempted"
+    # (symbol, state, prior_state, alerted, details)
+    assert inserts[0][2] == "NOT_YET", (
+        f"prior_state came from the wrong scope: {inserts[0][:3]!r}")

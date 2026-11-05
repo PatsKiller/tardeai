@@ -790,7 +790,7 @@ def main() -> int:
                 alert = r in to_alert
                 cur.execute("""INSERT INTO cio_entry_states (symbol, state, prior_state, alerted, details)
                                VALUES (%s,%s,%s,%s,%s::jsonb)""",
-                            (sym, r["state"], prior.get(sym), alert,
+                            (sym, r["state"], prior.get(identity_key(r)), alert,
                              json.dumps({**r, "transition_key": ces.transition_key(r)}, default=str)))
         for r in to_alert:
             if prior.get(identity_key(r)) == r["state"]:

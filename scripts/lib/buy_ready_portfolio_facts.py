@@ -75,8 +75,10 @@ def build_portfolio_facts(symbol: str, *, account: Optional[str] = None,
 
     FQ-096 / SPEC §1b rule 3: ownership is a fact about (symbol, account). A symbol-wide ``mine``
     made an Individual residual read as an IRA position — the packet then said "add decision
-    required" for an account that owns none of it (codex-cloud P2, 2026-11-05). Concentration
-    figures follow the same scoped holding; the whole-book denominator is unchanged.
+    required" for an account that owns none of it (codex-cloud P2, 2026-11-05). Ownership (``held``,
+    held units, market value) is therefore account-scoped, but EXPOSURE stays whole-book: the
+    numerator of the book percentages and the IPS checks counts every account holding the symbol,
+    because the denominators are whole-book totals (codex-cloud P2, buy_ready_portfolio_facts:96).
     """
     sym = str(symbol or "").upper().strip()
     acct = _canonical_account(account)
@@ -93,7 +95,9 @@ def build_portfolio_facts(symbol: str, *, account: Optional[str] = None,
     all_mine = [h for h in rows if str(h.get("symbol") or "").upper() == sym and not h.get("is_cash")]
     mine = [h for h in all_mine
             if not acct or _canonical_account(h.get("account")) == acct]
+    # Ownership is the account's stake; exposure is the whole book's stake in the name.
     name_mv = sum(_f(h.get("market_value")) or 0.0 for h in mine)
+    book_name_mv = sum(_f(h.get("market_value")) or 0.0 for h in all_mine)
     held_units = sum(_f(h.get("shares")) or 0.0 for h in mine)
     by_account = [{"account": h.get("account"), "held_units": _f(h.get("shares")),
                    "market_value": _f(h.get("market_value"))} for h in all_mine]
@@ -103,20 +107,20 @@ def build_portfolio_facts(symbol: str, *, account: Optional[str] = None,
     ips = (_load(p["ips"]) or {}).get("constraints") or {}
     from scripts.lib.ips_policy import ips_max_position_pct, concentration_policy, concentration_for_position
     policy = concentration_policy(Path(p["ips"]))
-    instrument = dict(mine[0]) if mine else {}
-    if len({(r.get("asset_type"), r.get("is_fund")) for r in mine}) > 1:
+    instrument = dict(all_mine[0]) if all_mine else {}
+    if len({(r.get("asset_type"), r.get("is_fund")) for r in all_mine}) > 1:
         instrument = {}
-    if any(r.get("fund_holdings_evidence") != instrument.get("fund_holdings_evidence") for r in mine):
+    if any(r.get("fund_holdings_evidence") != instrument.get("fund_holdings_evidence") for r in all_mine):
         instrument.pop("fund_holdings_evidence", None)
     position_policy = concentration_for_position(instrument,
-        weight_pct=100.0 * name_mv / total_mv if total_mv > 0 else None, config_dir=Path(p["ips"]))
+        weight_pct=100.0 * book_name_mv / total_mv if total_mv > 0 else None, config_dir=Path(p["ips"]))
     max_single = position_policy["limit_pct"] if not policy["gap"] else ips_max_position_pct(Path(p["ips"]))
     max_sector = policy["lookthrough_sector_limit_pct"] if not policy["gap"] else _f(ips.get("max_sector_concentration_pct"))
     if max_single is None:
         unknowns.append("IPS instrument-class concentration limit unavailable")
 
-    pct_total = round(100.0 * name_mv / total_mv, 2) if total_mv > 0 else None
-    pct_invested = round(100.0 * name_mv / invested_mv, 2) if invested_mv > 0 else None
+    pct_total = round(100.0 * book_name_mv / total_mv, 2) if total_mv > 0 else None
+    pct_invested = round(100.0 * book_name_mv / invested_mv, 2) if invested_mv > 0 else None
     held = bool(mine)
     if held:
         flags.append("ADD_TO_EXISTING_POSITION")
