@@ -13,7 +13,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  API_LIST, EXIT_TONE, FILTERS, TIMELINE_LABEL, TOOLTIPS, alertIntel, apiDetail, chartGeom, drawers,
+  API_LIST, EXIT_TONE, FILTERS, TIMELINE_LABEL, TOOLTIPS, alertIntel, apiDetail, chartGeom, compactWhenLabel, drawers,
   etShort, exitText, filterJourneys, originBadge, pct, plText, plTone, px, spreadLabels, stopSegments, timelineTone, unwrap,
   unwrapDetail, type Chart, type FilterId, type Journey, type JourneysPayload,
 } from '../lib/tradeJourneyModel'
@@ -37,7 +37,8 @@ function Chip({ tone, children, tip, testId, size = 'md' }: { tone: Tone; childr
   )
 }
 
-function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected: boolean; onSelect: () => void; compact?: boolean }) {
+// FQ-042: exported so the node view test can render the real compact Row, not a source pattern.
+export function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected: boolean; onSelect: () => void; compact?: boolean }) {
   const ob = originBadge(j.origin)
   const exitTone = EXIT_TONE[j.exit_cause.kind]
   const end = j.status === 'closed' ? j.exit : j.mark
@@ -86,7 +87,9 @@ function Row({ j, selected, onSelect, compact = false }: { j: Journey; selected:
           style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 44, minWidth: 44 }}>
           {j.symbol}
         </button>
-        <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{j.entry.at ? etShort(j.entry.at).slice(0, 10) : 'date unavailable'} · {j.account_label || 'Unlabelled account'}</span>
+        {/* FQ-042: the dated line is rendered intact — an ET timestamp keeps its minutes, a date keeps its
+            `· date only` provenance. Never slice the formatter (BLOCK 2026-11-05: "11-05 10:3", "11-05 · da"). */}
+        <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{compactWhenLabel(j.entry.at)} · {j.account_label || 'Unlabelled account'}</span>
         <span style={{ marginLeft: 'auto', ...numStyle, fontSize: TYPE.base, color: toneVars(plTone(j.pl.amount ?? j.pl.pct)).color }}>{plText(j)}</span>
       </summary>
       {grid}

@@ -24,6 +24,13 @@ def test_the_compact_row_is_a_dated_summary_with_details_on_demand():
         "the compact row is not a details/summary (no details-on-demand)"
     )
     assert "<summary" in SRC, "no summary line in the compact row"
+    # FQ-042 BLOCK 2026-11-05: the dated line renders intact. Slicing the formatter truncated the
+    # minutes ("10:39" became "10:3") and the date-only provenance ("· date only" became "· da").
+    summary = re.search(r"<summary[\s\S]*?</summary>", SRC)
+    assert summary and "compactWhenLabel(j.entry.at)" in summary.group(0), (
+        "the compact summary does not render the intact when-label"
+    )
+    assert summary and ".slice(" not in summary.group(0), "the compact summary slices a formatted label"
 
 
 def test_the_compact_summary_keeps_a_real_tappable_primary_action():
