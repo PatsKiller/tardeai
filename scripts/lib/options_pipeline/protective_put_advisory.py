@@ -41,6 +41,11 @@ broker stop does not defend the stop). And the premium is gated against the posi
 more than ``max_cost_pct_of_position`` of the position value is refused (``cost_exceeds_position_value``)
 rather than shown with a plausible floor, while a premium at or above the floor withholds
 ``floor_after_cost`` and labels why instead of printing a negative protected level.
+
+Coverage is stated, not blended. When a contract count does not reach every held share (``cover:
+partial``), ``floor_after_cost`` is the floor under the COVERED shares only, ``coverage`` names how many
+held shares carry no floor, and ``worst_case_per_share`` is the position's minimum recovery per held share
+if the stock goes to zero. A premium averaged over unprotected shares is never given the floor's name.
 """
 from __future__ import annotations
 
@@ -312,7 +317,20 @@ def suggest_for_position(
     else:
         floor_relation = "above"
     floor_far = floor_distance > abs(floor_target) * float(cfg["max_floor_distance_pct_of_target"]) / 100.0
-    floor_after = round(floor_price - (cost_usd / held_shares), 2)
+    # cc-deepseek-8 second review (2026-11-05, P1): a PARTIAL cover has shares with NO floor, and dividing the premium
+    # over every held share averaged protected and unprotected shares into one number that read as a floor (178.32 for
+    # a position whose minimum recovery is 142.32). Rule: ``floor_after_cost`` is the floor under the COVERED shares
+    # only, the payload states how many held shares carry no floor, and the position-wide worst case travels beside it
+    # as ``worst_case_per_share``. A blended figure never takes the floor's name.
+    partial = cover == "partial" and covered_shares < held_shares
+    if partial:
+        floor_after = round(floor_price - (cost_usd / covered_shares), 2)
+        uncovered_shares = int(round(held_shares - covered_shares))
+        worst_case_per_share = round((floor_price * covered_shares - cost_usd) / held_shares, 2)
+    else:
+        floor_after = round(floor_price - (cost_usd / held_shares), 2)
+        uncovered_shares = 0
+        worst_case_per_share = floor_after
 
     suggestion: dict[str, Any] = {
         "schema": SCHEMA,
@@ -333,6 +351,8 @@ def suggest_for_position(
         "floor_target_relation": floor_relation,
         "floor_strike_far_from_target": floor_far,
         "floor_after_cost": floor_after if floor_after > 0 else None,
+        "floor_after_cost_basis": "covered_shares" if partial else "held_shares",
+        "worst_case_per_share": worst_case_per_share,
         "floor_strike_source": strike_source,
         "expiry": expiry_label,
         "contracts": contracts,
@@ -353,6 +373,17 @@ def suggest_for_position(
             f"target of ${floor_target:,.2f} ({floor_basis}). This put only pays if the stock gaps through that "
             "level; it does not defend the level the basis names."
         )
+    if partial:
+        suggestion["coverage"] = {
+            "cover": cover,
+            "covered_shares": int(round(covered_shares)),
+            "uncovered_shares": uncovered_shares,
+            "note": (
+                f"{uncovered_shares} of {int(round(held_shares))} held shares carry no floor. floor_after_cost is the "
+                f"floor under the {int(round(covered_shares))} covered shares; worst_case_per_share is this position's "
+                "minimum recovery per held share if the stock goes to zero."
+            ),
+        }
     if suggestion["floor_after_cost"] is None:
         suggestion["floor_after_cost_negative"] = True
         suggestion["floor_after_cost_note"] = (

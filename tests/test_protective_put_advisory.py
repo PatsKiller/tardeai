@@ -162,16 +162,44 @@ def test_cost_and_floor_are_per_held_share_not_per_covered_contract():
     assert got["floor_after_cost"] == 2_198.75        # 2,250 − 51.25, not 2,229.50
 
 
-def test_partial_coverage_divides_by_all_held_shares():
+def test_partial_coverage_never_averages_uncovered_shares_into_the_floor():
+    """cc-deepseek-8 second review (2026-11-05, P1): 250 shares, 2 contracts (200 covered), a 180 put at 2.10.
+
+    `floor_after_cost` used to divide the premium by all 250 held shares and report 178.32 — a number that reads as a
+    floor under shares that have none. Fifty of them are uncovered, and if the stock goes to zero the position
+    recovers (180 × 200 − 420) / 250 = 142.32 a share. `floor_after_cost` is now the floor under the COVERED shares
+    (180 − 420/200 = 177.90), `coverage` states the split, and `worst_case_per_share` carries the position-wide minimum.
+    """
     row = position(quantity=250, price=200.0, market_value=50_000.0)
     got, why = adv.suggest_for_position(row, book_value=1_000_000.0, event={"days_to_event": 7}, chain=chain(),
                                         cfg=CFG, now=NOW)
     assert why is None
     assert got["contracts"] == 2 and got["cover"] == "partial"
     assert got["cost_usd"] == 420.0                   # 2.10 ask × 100 × 2 contracts
-    assert got["cost_per_share"] == 1.68              # across all 250 held shares
-    assert got["cost_per_covered_share"] == 2.1       # across the 200 covered shares
-    assert got["floor_after_cost"] == 178.32          # 180 − 1.68
+    assert got["floor_after_cost"] == 177.90 and got["floor_after_cost_basis"] == "covered_shares"
+    assert got["worst_case_per_share"] == 142.32      # (180 × 200 − 420) / 250
+    assert got["floor_after_cost"] != 178.32, "the premium must not be averaged over the uncovered shares"
+    assert got["coverage"]["covered_shares"] == 200 and got["coverage"]["uncovered_shares"] == 50
+    assert "50 of 250" in got["coverage"]["note"]
+    assert got["cost_per_share"] == 1.68              # the premium each held share bears (a cost, not a floor)
+    assert got["cost_per_covered_share"] == 2.1
+
+
+def test_partial_coverage_second_case_forty_shares_without_a_floor():
+    """cc8's other case: 140 shares, 1 contract (100 covered), a 90 put at 1.80.
+
+    88.71 was the premium averaged over 140 shares; the covered shares' floor is 88.20, and the position recovers
+    (90 × 100 − 180) / 140 = 63.00 a share if the stock goes to zero.
+    """
+    row = position(quantity=140, price=100.0, market_value=14_000.0)
+    got, why = adv.suggest_for_position(
+        row, book_value=500_000.0, event={"days_to_event": 7},
+        chain=chain(spot=100.0, put=(1.7, 1.8), put_strike=90.0, call=None), cfg=CFG, now=NOW)
+    assert why is None
+    assert got["contracts"] == 1 and got["cover"] == "partial"
+    assert got["floor_after_cost"] == 88.20 and got["worst_case_per_share"] == 63.0
+    assert got["floor_after_cost"] != 88.71
+    assert got["coverage"]["covered_shares"] == 100 and got["coverage"]["uncovered_shares"] == 40
 
 
 def test_full_coverage_keeps_the_two_per_share_figures_equal():
@@ -179,7 +207,9 @@ def test_full_coverage_keeps_the_two_per_share_figures_equal():
                                       chain=chain(), cfg=CFG, now=NOW)
     assert got["cover"] == "full"
     assert got["cost_per_share"] == got["cost_per_covered_share"] == 2.1
-    assert got["floor_after_cost"] == 177.9
+    assert got["floor_after_cost"] == 177.9 and got["floor_after_cost_basis"] == "held_shares"
+    assert got["worst_case_per_share"] == got["floor_after_cost"]
+    assert "coverage" not in got
 
 
 # ── cc-deepseek-5 second review (2026-11-05): the strike vs the target, and the premium vs the position ──────────

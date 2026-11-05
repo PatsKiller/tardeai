@@ -75,9 +75,12 @@ operator's mockup approval first, per the SPEC's build note.
 - cash rows and option legs are never covered;
 - **only a long position is advised**: a short or flat row (`quantity` ≤ 0) is skipped as `not_a_long_position`,
   because a put on a short adds the exposure it claims to remove and `position_value` erases the sign;
-- **per-share figures are on the held shares**: `cost_per_share` and `floor_after_cost` divide by the shares the
-  position holds (a contract may cover more — `over` — or fewer — `partial` — shares than it holds), and the quoted
-  premium per covered share is reported beside them as `cost_per_covered_share`;
+- **per-share figures say what they cover**: `cost_per_share` divides the premium by the shares the position holds,
+  and `cost_per_covered_share` by the shares a contract covers. For a **partial cover** (a contract count that does
+  not reach every held share) `floor_after_cost` is the floor under the COVERED shares only — `coverage` names the
+  covered/uncovered split — and `worst_case_per_share` is the position's minimum recovery per held share if the
+  stock goes to zero. The premium averaged over uncovered shares is never labelled a floor (250 shares, 2
+  contracts: 177.90 under the covered 200, 142.32 per held share if the stock goes to zero — never 178.32);
 - no event, or an event outside the window, is skipped with a named reason (the window is inclusive at
   both ends, and negative days mean after the event);
 - a broker stop sets the floor basis; otherwise the configured distance does;

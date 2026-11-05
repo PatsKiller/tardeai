@@ -22,7 +22,8 @@
     "cost": "With an option chain the premium is the quoted ask; without one the cost is a LABELED estimate (estimated_cost_pct_of_position of the position value) and cost_is_estimate is true. A floor price from a quote is only reported when a real strike was chosen.",
     "cost_gate": "A quoted premium above max_cost_pct_of_position of the position value is refused (cost_exceeds_position_value): a hedge that costs more than a quarter of what it protects is not a hedge, and the operator must not read a plausible-looking floor for it.",
     "floor_distance": "The chosen strike is compared to the floor the basis names. More than max_floor_distance_pct_of_target away and the suggestion carries floor_target, floor_distance, floor_target_relation, floor_strike_far_from_target and a floor_warning: a 150 put under a 235 broker stop does not defend the stop.",
-    "floor_after_cost": "The protected level after premium. When the premium is at or above the floor there is no positive protected level left, so floor_after_cost is null with floor_after_cost_negative and a note — never a negative number presented as a floor.",
-    "never_placed": "No configuration value can make this lane place, size or cancel anything; the module has no broker import path and every suggestion carries placed_by_system: false."
+    "floor_after_cost": "The protected level after premium. When the premium is at or above the floor there is no positive protected level left, so floor_after_cost is null with floor_after_cost_negative and a note \u2014 never a negative number presented as a floor.",
+    "never_placed": "No configuration value can make this lane place, size or cancel anything; the module has no broker import path and every suggestion carries placed_by_system: false.",
+    "partial_coverage": "A contract count that does not reach every held share is stated, not blended: floor_after_cost is the floor under the COVERED shares, coverage names the uncovered shares, and worst_case_per_share is the position's minimum recovery per held share if the stock goes to zero. A premium averaged over unprotected shares is never given the floor's name."
   }
 }

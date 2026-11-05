@@ -108,6 +108,14 @@ def main(argv: list[str] | None = None) -> int:
         if row.get("floor_target") is not None and row["floor_target"] != row["floor_price"]:
             print(f"    Floor target: ${row['floor_target']:,.2f} ({row['floor_basis']}); the strike is "
                   f"${row['floor_distance']:,.2f} {row['floor_target_relation']} it")
+        # The protected level the operator keeps, and — when only part of the position is covered — the position-wide
+        # worst case beside it. A blended figure is never printed as if it were a floor.
+        if row.get("floor_after_cost") is not None:
+            basis = "covered shares" if row.get("floor_after_cost_basis") == "covered_shares" else "held shares"
+            print(f"    Floor after premium: ${row['floor_after_cost']:,.2f} per share ({basis})")
+        if (row.get("coverage") or {}).get("uncovered_shares"):
+            print(f"    ⚠ {(row.get('coverage') or {}).get('note', '')}")
+            print(f"    Worst case (stock to zero): ${row['worst_case_per_share']:,.2f} per held share")
         if row.get("floor_warning"):
             print(f"    ⚠ {row['floor_warning']}")
         if row.get("floor_after_cost") is None and row.get("floor_after_cost_note"):
