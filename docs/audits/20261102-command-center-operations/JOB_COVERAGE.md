@@ -1,5 +1,9 @@
 # Job coverage report
 
+> **Frozen capture: 2026-11-02T18:45:27Z — a snapshot, not current state.** Registry drift is
+> reported by `python3 scripts/build_command_center_audit_inventory.py --check`; refresh and
+> the snapshot's limits are documented in [inventory/README.md](inventory/README.md).
+
 The exhaustive frozen report is [inventory/coverage.md](inventory/coverage.md).
 [687JSON records](inventory/inventory.json), [CSV](inventory/inventory.csv),
 [summary/definitions](inventory/summary.json), [five runtime orphans](inventory/runtime_orphans.csv)

@@ -748,6 +748,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/20261102-command-center-operations/SUBSYSTEM_COVERAGE.md` | Monitoring coverage by subsystem |
 | `docs/audits/20261102-command-center-operations/UX_REVIEW.md` | Command Center operations UX and information architecture review |
 | `docs/audits/20261102-command-center-operations/inventory/coverage.md` | Command Center v3 — complete job coverage inventory |
+| `docs/audits/20261102-command-center-operations/inventory/README.md` | Command Center inventory — frozen capture (2026-11-02T18:45:27Z) |
 | `docs/audits/20261102-command-center-operations/tickets/CC-ALERT-CHANNELS.md` | CC-ALERT-CHANNELS: Qualify alert channels and independent monitoring |
 | `docs/audits/20261102-command-center-operations/tickets/CC-ALERT-REPEAT.md` | CC-ALERT-REPEAT: Restore watchdog reminder delivery semantics |
 | `docs/audits/20261102-command-center-operations/tickets/CC-DASH-FRESHNESS.md` | CC-DASH-FRESHNESS: Correct dashboard source clocks and missing-data states |

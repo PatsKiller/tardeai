@@ -16,3 +16,8 @@ Source implementation, review, publication, deployment and runtime recovery are 
 The immutable capture accounts for687registered lanes and5separate runtime timers. Every frozen
 UNKNOWN row is bound to repository tickets; GitHub Issues is disabled, so no external issue is claimed.
 The operator's full operational acceptance criteria are not met by this checkpoint.
+
+**Snapshot and refresh.** The [inventory](inventory/) is frozen at 2026-11-02T18:45:27Z, not
+current state. Run `python3 scripts/build_command_center_audit_inventory.py --check` to see
+every lane added, removed, re-owned or re-scheduled since the capture (exit 2 on drift), and
+`--write --out <dir>` to produce a new date-stamped capture. See [inventory/README.md](inventory/README.md).
