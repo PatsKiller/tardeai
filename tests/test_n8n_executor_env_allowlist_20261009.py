@@ -682,4 +682,7 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-23 (ops/jsonl-retention-20261023, tests/test_jsonl_archive_rotate_20261023.py): + jsonl-archive-rotate,
     # enforced from its first entry (no env-file loader, no DB; literal reads declared). 18 + 1 = 19.
     assert LANES["jsonl-archive-rotate"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 19 and modes.count("report") == len(LANES) - 19
+    # 2026-11-03 (board item 16, nudger P2, tests/test_agent_nudger_p2_20261103.py): + agent_nudge, enforced from its
+    # first entry (no .env loader, no DB; five literal reads declared). 19 + 1 = 20.
+    assert LANES["agent_nudge"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 20 and modes.count("report") == len(LANES) - 20
