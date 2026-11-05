@@ -660,3 +660,13 @@ def test_the_registry_follows_the_configured_persistent_root(tmp_path, monkeypat
     assert pr.state_root() == tmp_path / "ps"
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "sr"))
     assert pr.state_root() == tmp_path / "sr"
+
+
+def test_the_hook_resolves_plan_roots_the_same_way_the_registry_does(tmp_path, monkeypatch):
+    """A configured persistent root is where the registry writes; the hook must accept a path under it."""
+    import plan_registry_hook as hook
+
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path / "ps"))
+    roots = hook.plan_file_roots()
+    assert (tmp_path / "ps" / "data" / "coordination" / "plans").resolve() in roots, roots

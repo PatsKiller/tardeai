@@ -40,8 +40,10 @@ def plan_file_roots() -> list[Path]:
     Deliberately NOT the whole state root, all of ``~/.claude`` (credential files live there) or the
     temp dir (review 2, B1). A path outside these roots is never plan input.
     """
-    state = Path(os.environ.get("TRADEAI_STATE_ROOT")
-                 or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    # The registry's own resolver, so the hook and the registry cannot disagree about where plans live:
+    # honouring TRADEAI_STATE_ROOT alone made a payload under a configured TRADEAI_PERSISTENT_STATE_ROOT
+    # look like it came from outside the store, and the hook exited 0 without registering the plan.
+    state = pr.state_root()
     out = []
     for r in (state / "data" / "coordination" / "plans", Path.home() / ".claude" / "plans"):
         try:
