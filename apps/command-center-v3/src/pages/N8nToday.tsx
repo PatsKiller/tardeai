@@ -44,6 +44,7 @@ export default function N8nToday({ active = true }: { active?: boolean }) {
   return <section data-testid="n8n-today" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={panel}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>What n8n did today</h1>
+      <p style={muted}><a href="/v3/automations" style={{ color: TOKENS.primary }}>Every workflow, its failures and what it replaces → Automations</a></p>
       <p style={muted}>Executor receipts, relay log and failure diagnoses for {s(d?.day)} (ET). Read-only; messages sent by an n8n run end with “· via n8n &lt;lane&gt; &lt;HH:MM&gt;”.</p>
       <ChipRow>
         <Chip tone={api.error ? 'warning' : 'neutral'}>{api.loading && !d ? 'Loading' : model.status}</Chip>

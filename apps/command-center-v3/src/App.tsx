@@ -36,6 +36,7 @@ import HealthHub from './pages/HealthHub'
 import CommunicationsHub from './pages/CommunicationsHub'
 import ConsumptionHub from './pages/ConsumptionHub'
 import CoordinationPage from './pages/CoordinationPage'
+import AutomationsPage from './pages/AutomationsPage'
 import SchwabReauthHub from './pages/SchwabReauthHub'
 import BrokerAccessPage from './pages/BrokerAccessPage'
 import ReleasesSchedules from './pages/ReleasesSchedules'
@@ -298,6 +299,7 @@ function Shell() {
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
           <Route path="coordination" element={<RouteErrorBoundary route="/v3/coordination"><OpsDeskFrame page="coordination"><CoordinationPage jobsHealth={<JobsHealth />} /></OpsDeskFrame></RouteErrorBoundary>} />
+          <Route path="automations" element={<RouteErrorBoundary route="/v3/automations"><AutomationsPage /></RouteErrorBoundary>} />
             <Route path="system" element={<RouteErrorBoundary route="/v3/system"><SystemHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="system/schwab-reauth" element={<RouteErrorBoundary route="/v3/system/schwab-reauth"><SchwabReauthHub /></RouteErrorBoundary>} />
             <Route path="system/broker-access" element={<RouteErrorBoundary route="/v3/system/broker-access"><BrokerAccessPage /></RouteErrorBoundary>} />
