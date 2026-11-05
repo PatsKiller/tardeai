@@ -12,14 +12,17 @@ What this file pins (claude-lead's scope, in order):
 1. a fall to zero from a positive previous total is 100% drift and must be refused;
 2. "no accounts" is unknown, not zero — and a genuine zero is NOT refused (a fix that refuses everything is not a fix);
 3. the live-coverage refusal no longer depends on Schwab symbols existing;
-4. the refusal uses the existing mechanism (`_reprice_refused`), so `portfolio_repricer.__main__` takes its SystemExit(3)
-   path and does not rewrite the document;
+4. the refusal is an exception, so every caller — `__main__` (AND the module executed as a real script, which is the
+   only check that can see load order), the SnapTrade sync, the reprice-only launcher and the orchestrator — is driven
+   and shown to write nothing on a refused pass;
 5. the writer: see the module note — the repricer keeps its raw write only because the totals are refused *before* the
    write; a document-level sanity pass belongs to `protected_holdings_write`, which the aggregate publisher in the same
    module already uses.
 
 Hermetic: every provider entry point is stubbed, the state dir is a temporary directory, and no real portfolio value is
 read or asserted on.
+
+ANCHOR: REPRICE_ZERO_TOTAL_GUARD_20261105
 """
 from __future__ import annotations
 
@@ -228,6 +231,7 @@ def test_the_reprice_only_launcher_writes_nothing_on_a_refusal(monkeypatch, tmp_
         raise R.RepriceRefused("no account summaries: the portfolio total is unknown, not zero")
 
     repricer.reprice_portfolio = refuse
+    repricer.RepriceRefused = R.RepriceRefused   # the heredoc imports the class now (cc8 F6)
     monkeypatch.setitem(sys.modules, "portfolio_loader", loader)
     monkeypatch.setitem(sys.modules, "portfolio_repricer", repricer)
 
@@ -237,3 +241,82 @@ def test_the_reprice_only_launcher_writes_nothing_on_a_refusal(monkeypatch, tmp_
     assert exit_info.value.code == 3, "the launcher must stop with exit 3, not save"
     assert saves == [], "the launcher must not call save_state after a refusal"
     assert target.read_bytes() == before
+
+
+def test_the_orchestrator_writes_nothing_on_a_refusal(monkeypatch, tmp_path):
+    """The fourth caller (cc-deepseek-8 F7 / cc-deepseek-9 P2): run_portfolio_pipeline's step 1 refuses.
+
+    Driven through the real function with only its imports stubbed, because the guarantee is about what the
+    pipeline does *after* the reprice — steps 2-10 and :279 save_state must never run on a refused book.
+    """
+    import types as _types
+    import scripts.portfolio_orchestrator as O
+
+    root = tmp_path / "root"
+    (root / "data" / "portfolios" / "state").mkdir(parents=True)
+    writes = []
+
+    loader = _types.ModuleType("portfolio_loader")
+    loader.load_all_portfolios = lambda r: {"holdings": [], "account_summaries": {}, "portfolio_totals": {}}
+    loader.save_state = lambda portfolio, r: writes.append(("save_state", r))
+
+    repricer = _types.ModuleType("portfolio_repricer")
+    repricer.RepriceRefused = R.RepriceRefused
+
+    def refuse(document, state_dir):
+        raise R.RepriceRefused("no account summaries: the portfolio total is unknown, not zero")
+
+    repricer.reprice_portfolio = refuse
+
+    reports = _types.ModuleType("lib.portfolio_reports_root")
+    reports.portfolio_reports_root = lambda: tmp_path / "reports"
+    lib = _types.ModuleType("lib"); lib.portfolio_reports_root = reports
+    morning = _types.ModuleType("morning_command_digest")
+    morning.bundle_enabled = lambda run_type: False
+    for _n in ("append_section", "send_morning_command_bundle", "fetch_hermes_movers"):
+        setattr(morning, _n, lambda *a, **k: None)
+
+    for name, mod in (("portfolio_loader", loader), ("portfolio_repricer", repricer),
+                      ("lib", lib), ("lib.portfolio_reports_root", reports),
+                      ("morning_command_digest", morning)):
+        monkeypatch.setitem(sys.modules, name, mod)
+
+    with contextlib.redirect_stdout(io.StringIO()):
+        with pytest.raises(R.RepriceRefused):
+            O.run_portfolio_pipeline(root, run_label="test", generate_report=False)
+
+    assert writes == [], "a refused reprice must stop the pipeline before save_state"
+    assert not (tmp_path / "reports").exists() or not any((tmp_path / "reports").iterdir()), \
+        "a refused reprice must not publish a report"
+
+
+def test_the_cli_entry_point_reaches_its_guarantee_path_as_a_real_script(tmp_path):
+    """The module's own `__main__` block, executed by a real interpreter in a throwaway tree.
+
+    This exists because the import-based tests cannot see module LOAD ORDER: `main(state_dirs)` sits inside the
+    `if __name__ == "__main__"` block, so if `def main` were ever placed below that block the suite would stay
+    green while `python scripts/portfolio_repricer.py` died with NameError — which is exactly the shape of the
+    break this refactor risked. Nothing here touches a live path: the tree is copied into tmp_path, HOME points
+    into tmp_path, and the book has no account summaries, so the pass refuses before any quote is fetched.
+    """
+    import shutil
+    import subprocess
+
+    root = tmp_path / "root"
+    (root / "scripts").mkdir(parents=True)
+    (root / "data" / "portfolios" / "state").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts" / "portfolio_repricer.py", root / "scripts" / "portfolio_repricer.py")
+    # `lib` is the module's own helper package (resolved from the script's directory); link the real one
+    # read-only rather than copying 29 MB, so the subprocess imports exactly the helpers the CLI imports.
+    (root / "scripts" / "lib").symlink_to(ROOT / "scripts" / "lib", target_is_directory=True)
+    target = root / "data" / "portfolios" / "state" / "holdings.json"
+    target.write_text(json.dumps({"holdings": [], "portfolio_totals": {"total_value": 0.0, "day_change": 0.0}}))
+    before = target.read_bytes()
+
+    env = {"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "home"), "PYTHONPATH": ""}
+    proc = subprocess.run([sys.executable, str(root / "scripts" / "portfolio_repricer.py")],
+                          cwd=str(root), env=env, capture_output=True, text=True, timeout=120)
+
+    assert proc.returncode == 3, f"expected the refusal exit; got {proc.returncode}: {proc.stderr[-600:]}"
+    assert "NameError" not in proc.stderr
+    assert target.read_bytes() == before, "a refused CLI pass must leave holdings.json byte-identical"

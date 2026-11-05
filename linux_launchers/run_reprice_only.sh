@@ -49,7 +49,7 @@ root = Path(sys.argv[1]).resolve()
 project_root = Path(sys.argv[2]).resolve()
 sys.path.insert(0, str(root / 'scripts'))
 from portfolio_loader import load_all_portfolios, save_state
-from portfolio_repricer import reprice_portfolio
+from portfolio_repricer import reprice_portfolio, RepriceRefused
 portfolio = load_all_portfolios(str(root))
 state_dir = root / 'data' / 'portfolios' / 'state'
 # FQ-2532-R: reprice BEFORE the save, and save once. A refused pass raises RepriceRefused and returns nothing, so
@@ -57,7 +57,7 @@ state_dir = root / 'data' / 'portfolios' / 'state'
 # second save would have written a refused one (cc-deepseek-8's F1 on #2689).
 try:
     portfolio = reprice_portfolio(portfolio, state_dir)
-except Exception as _refused:
+except RepriceRefused as _refused:   # a refusal is data; any other exception is a bug and must say so
     import sys as _sys
     print(f"[REPRICE] reprice refused: {_refused} — holdings.json left untouched", file=_sys.stderr)
     _sys.exit(3)

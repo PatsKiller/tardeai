@@ -1347,33 +1347,14 @@ def _sync_ticker_prices(portfolio, root):
               + "; ".join(f"{r['row'].get('symbol')}: {r['reason']}" for r in rc.rows_rejected[:10]))
 
 
-# ── Standalone ─────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    root = Path(__file__).resolve().parents[1]
-    # Make the repo ROOT importable so `from scripts.lib.X` resolves. Run as
-    # `python scripts/portfolio_repricer.py` (how cron invokes it) sys.path[0] is
-    # scripts/, not the repo root, so the scripts.-prefixed import raises
-    # "No module named 'scripts'". Same bootstrap as portfolio_server.py.
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
+def main(state_dirs) -> None:
+    """The CLI guarantee path: read, reprice, write — or write nothing at all.
 
-    # Resolve where the LIVE server reads from, not just this checkout. Every
-    # deployed release symlinks data/portfolios/state at the persistent root,
-    # so a checkout-relative write is invisible to the served surface.
-    try:
-        from scripts.lib.persistent_state_root import portfolio_state_write_targets
-        state_dirs = portfolio_state_write_targets(root)
-    except Exception as _e:  # helper genuinely unavailable
-        print(f"  [repricer] WARN persistent-root helper unavailable ({_e}) — checkout only")
-        state_dirs = [root / "data" / "portfolios" / "state"]
-
-    # Ops/CI probe: print the resolved write targets and exit. No quotes fetched,
-    # nothing written — safe to run against production at any time.
-    if "--print-targets" in sys.argv:
-        for _t in state_dirs:
-            print(f"{_t}\t{'exists' if (_t / 'holdings.json').exists() else 'absent'}")
-        raise SystemExit(0)
-
+    Pulled out of `if __name__ == "__main__"` so the no-write guarantee has an EXECUTION test (cc-deepseek-8
+    F5 and cc-deepseek-9 on #2689): the old test scanned this block's source text and broke the moment the
+    mechanism became an exception. Running this against a temporary state directory and asserting SystemExit(3)
+    plus a byte-identical file cannot go stale the same way.
+    """
     state_dir = state_dirs[0]
     hp        = state_dir / "holdings.json"
 
@@ -1445,3 +1426,34 @@ if __name__ == "__main__":
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
         meta  = cache.get("_meta", {})
         print(f"Quote cache: {meta.get('symbols_cached',0)} symbols | updated {meta.get('last_updated','?')}")
+
+
+
+# ── Standalone ─────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    root = Path(__file__).resolve().parents[1]
+    # Make the repo ROOT importable so `from scripts.lib.X` resolves. Run as
+    # `python scripts/portfolio_repricer.py` (how cron invokes it) sys.path[0] is
+    # scripts/, not the repo root, so the scripts.-prefixed import raises
+    # "No module named 'scripts'". Same bootstrap as portfolio_server.py.
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    # Resolve where the LIVE server reads from, not just this checkout. Every
+    # deployed release symlinks data/portfolios/state at the persistent root,
+    # so a checkout-relative write is invisible to the served surface.
+    try:
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        state_dirs = portfolio_state_write_targets(root)
+    except Exception as _e:  # helper genuinely unavailable
+        print(f"  [repricer] WARN persistent-root helper unavailable ({_e}) — checkout only")
+        state_dirs = [root / "data" / "portfolios" / "state"]
+
+    # Ops/CI probe: print the resolved write targets and exit. No quotes fetched,
+    # nothing written — safe to run against production at any time.
+    if "--print-targets" in sys.argv:
+        for _t in state_dirs:
+            print(f"{_t}\t{'exists' if (_t / 'holdings.json').exists() else 'absent'}")
+        raise SystemExit(0)
+
+    main(state_dirs)
