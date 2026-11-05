@@ -1482,13 +1482,20 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
                 item["reasons"].append("not_scratch_directory")
             if not entry_re.fullmatch(path.name):
                 item["reasons"].append("scratch_name_not_declared")
+            # Measure activity BEFORE inspecting the nested repos (main red, 2026-11-03). `nested_repos`
+            # runs `git status` in each nested repo; even with --no-optional-locks a git invocation can
+            # refresh/write `.git/index`, and the activity scan counts that write as fresh (future mtime ->
+            # ctime). The gate then excluded an otherwise-eligible scratch dir intermittently: on CI,
+            # tests/test_disk_standing_apply_20261024.py:1053 raised StopIteration because the gate's own
+            # inspection changed the verdict it was computing. Measuring first makes the candidate set
+            # independent of the inspection; the fingerprint carries this measured value.
+            activity, why = SR.activity(path, protected=lambda p, root=path: scratch_protected(p, root, rules),
+                                        now=ctx["now"].timestamp())
             bundles, nested_why = nested_repos(path, ref_repo) if path.is_dir() and not path.is_symlink() else ([], None)
             if nested_why:
                 item["reasons"].append(nested_why)
             item["bundles"], item["bundle_dir"] = bundles, str(bundle_dir)
             item["archive_ns"] = (cfg.get("abandoned_worktree") or {}).get("archive_ns", "refs/archive/closeout")
-            activity, why = SR.activity(path, protected=lambda p, root=path: scratch_protected(p, root, rules),
-                                        now=ctx["now"].timestamp())
             if why:
                 item["reasons"].append(why)
             if activity is None or ctx["now"].timestamp() - activity <= idle_days * 86400:

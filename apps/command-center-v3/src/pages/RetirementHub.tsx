@@ -46,6 +46,20 @@ const CATS: { key: string; label: string; rx: RegExp | null }[] = [
 ]
 const catMatch = (key: string, blob: string) => { const c = CATS.find(x => x.key === key); return !c?.rx || c.rx.test(blob) }
 
+// FQ-083: the key-date summary printed raw keys — "fra", "rmd age" — with no explanation. These are the operator
+// words for the same milestones; the raw key stays in the title so nothing is lost (operator page audit, FQ-083).
+const KEY_DATE_LABELS: Record<string, string> = {
+  fra: 'Full Retirement Age (Social Security)',
+  rmd: 'Required Minimum Distribution age',
+  rmd_age: 'Required Minimum Distribution age',
+  medicare: 'Medicare eligibility',
+  irmaa_lookback: 'IRMAA two-year MAGI lookback',
+  ssdi: 'SSDI review',
+  mapt: 'MAPT (Medicaid planning trust) lookback',
+}
+const keyDateLabel = (key: string) => KEY_DATE_LABELS[key.toLowerCase()]
+  || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+
 export default function RetirementHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const panel = terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }
@@ -121,9 +135,10 @@ export default function RetirementHub({ onDrill }: Props) {
               <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
                 <Metric label="Window" value={`${golden.start_year}–${golden.end_year}`} />
                 <Metric label="Annual conversion" value={fmt$(golden.annual_conversion ?? 0, 0)} color="#f59e0b" />
-                {/* FQ-082: a bare '—' stood in for an unknown bracket ceiling with no explanation (operator page audit). */}
-                <Metric label="Bracket ceiling" value={golden.bracket_ceiling ?? 'Not set'}
-                  note={golden.bracket_ceiling == null
+                {/* FQ-082: a bare placeholder stood in for an unknown bracket ceiling with no explanation (operator
+                    page audit). The producer sends "" for an unset ceiling, not null, so both shapes mean "not set". */}
+                <Metric label="Bracket ceiling" value={golden.bracket_ceiling}
+                  note={golden.bracket_ceiling === '' || golden.bracket_ceiling == null
                     ? 'No bracket ceiling is set for this window, so a conversion has no upper limit to work to — set one in the plan or the conversion is unbounded.'
                     : undefined} />
               </div>
@@ -150,7 +165,7 @@ export default function RetirementHub({ onDrill }: Props) {
               <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)', marginBottom: 10 }}>Key Dates</div>
               {Object.entries(ret.key_dates).map(([k, v]: [string, any]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 6px', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-                  <span style={{ color: 'var(--text2)' }}>{k.replace(/_/g, ' ')}</span>
+                  <span style={{ color: 'var(--text2)' }} title={k}>{keyDateLabel(k)}</span>
                   <span style={{ color: 'var(--text0)', fontFamily: 'monospace' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
                 </div>
               ))}
@@ -242,10 +257,14 @@ export default function RetirementHub({ onDrill }: Props) {
 }
 
 function Metric({ label, value, color = 'var(--text0)', note }: { label: string; value: any; color?: string; note?: string }) {
+  // A bare em-dash says nothing (BOARD row 38): is it unknown, zero, or not applicable? Say which, and never collapse a
+  // real 0 into the missing case — `value || '—'` turned a zero yield into "no data".
+  const missing = value === null || value === undefined || value === ''
   return (
     <div>
       <div style={{ fontSize: 8.5, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 800 }}>{label}</div>
-      <div style={{ fontSize: 15, fontWeight: 900, color, marginTop: 2 }}>{value || '—'}</div>
+      <div style={{ fontSize: missing ? 11 : 15, fontWeight: missing ? 600 : 900, fontStyle: missing ? 'italic' : 'normal',
+        color: missing ? 'var(--text3)' : color, marginTop: 2 }}>{missing ? 'not reported' : value}</div>
       {/* FQ-082: an unexplained placeholder is a silence; the note says what the value means when it is absent. */}
       {note && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, maxWidth: 260, lineHeight: 1.4 }}>{note}</div>}
     </div>
