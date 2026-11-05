@@ -119,6 +119,33 @@ function stateColor(s?: string) {
   return BB.red
 }
 
+// FQ-075 / FQ-078: codes are for logs and data-* attrs; the operator sees words.
+const PLAIN_REASON: Record<string, string> = {
+  NOT_SCHEDULED: 'not scheduled',
+  NO_CALL: 'no external call',
+  NOT_RUN: 'not run yet',
+  NO_PROVIDER: 'no provider assigned',
+  NO_MODEL: 'no model assigned',
+  PENDING: 'waiting to run',
+}
+function plainReason(code: string): string {
+  const key = String(code || '').trim().toUpperCase()
+  if (!key) return ''
+  return PLAIN_REASON[key] ?? key.toLowerCase().replace(/_/g, ' ')
+}
+const FRESHNESS_WORDS: Record<string, string> = {
+  CURRENT: 'up to date',
+  AFTER_HOURS_CURRENT: 'up to date after the close',
+  PREMARKET_CURRENT: 'up to date before the open',
+  STALE: 'not current — the last successful read is older than the window',
+  DATA_UNAVAILABLE: 'unavailable — no recent read succeeded',
+}
+function freshnessWords(state?: string | null): string {
+  const key = String(state || '').trim().toUpperCase()
+  if (!key) return FRESHNESS_WORDS.DATA_UNAVAILABLE
+  return FRESHNESS_WORDS[key] ?? key.toLowerCase().replace(/_/g, ' ')
+}
+
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
   const complete = rev?.status === 'COMPLETE'
   const reason = rev?.reason_code || rev?.display?.reason || null
@@ -144,12 +171,12 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
       ) : (
         <>
           <div style={{ fontSize: TYPE.sm, color: BB.amber, marginTop: 3, fontWeight: 800 }}>
-            {rev?.display?.label || `${title}: NOT RUN`}
+            {rev?.display?.label || `${title}: not run yet`}
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
-            Provider NONE · Model NONE · Policy NO_CALL · Cost $0
-            {reason ? ` · ${reason}` : ''}
-            {disposition ? ` · ${disposition}` : ''}
+            No provider or model assigned · no external call · no cost yet
+            {reason ? ` · ${plainReason(String(reason))}` : ''}
+            {disposition ? ` · ${plainReason(String(disposition))}` : ''}
           </div>
         </>
       )}
@@ -173,9 +200,10 @@ function FreshnessChips({ c }: { c: Card }) {
             key={d.k}
             data-freshness-dim={d.k.toLowerCase()}
             data-freshness-value={d.v}
+            title={String(d.v)}
             style={{ border: `1px solid ${BB.border}`, borderRadius: 999, padding: '3px 8px', fontSize: TYPE.xs, color: BB.text3 }}
           >
-            {d.k}: {d.v}
+            {d.k}: {freshnessWords(d.v)}
           </span>
         ) : null,
       )}
@@ -509,7 +537,7 @@ export default function WatchIntelligenceUnified() {
         <select value={freshness} onChange={e => setParam('freshness', e.target.value)} style={inputStyle}>
           <option value="">Quote freshness</option>
           {['CURRENT', 'PREMARKET_CURRENT', 'AFTER_HOURS_CURRENT', 'STALE', 'DATA_UNAVAILABLE'].map(r => (
-            <option key={r} value={r}>{r}</option>
+            <option key={r} value={r}>{freshnessWords(r)}</option>
           ))}
         </select>
         <select value={materialChange} onChange={e => setParam('material_change', e.target.value)} style={inputStyle}>
