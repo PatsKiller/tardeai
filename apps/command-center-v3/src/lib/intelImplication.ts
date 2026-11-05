@@ -99,6 +99,9 @@ export function firstSentence(text: string | null | undefined): string {
 
 function ageWords(hours: number | null | undefined): string {
   if (hours == null || !Number.isFinite(hours)) return 'age not recorded'
+  // A timestamp ahead of the caller's clock is not a fresh observation. The age is unknown, and saying
+  // "just now" would state something untrue; name the clock mismatch instead of clamping it to zero.
+  if (hours < 0) return 'source timestamp is in the future'
   if (hours < 1) return 'just now'
   if (hours < 48) return `${Math.round(hours)} h old`
   return `${Math.round(hours / 24)} d old`

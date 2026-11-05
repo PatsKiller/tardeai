@@ -72,6 +72,8 @@ check('no identifiers are claimed when the source gave none', bare.identifiers.l
 check('62 is not read as 62%', uncertaintyText(62, 1) === 'confidence not recorded · 1 h old', uncertaintyText(62, 1))
 check('0 is a real confidence', uncertaintyText(0, null) === '0% confidence · age not recorded')
 check('1 is a real confidence', uncertaintyText(1, 30) === '100% confidence · 30 h old')
+// F2: a timestamp ahead of the caller's clock is a clock mismatch, never a fresh observation.
+check('a future timestamp is not called fresh', uncertaintyText(0.62, -1) === '62% confidence · source timestamp is in the future', uncertaintyText(0.62, -1))
 
 // ---- the visible title -----------------------------------------------------------------------------------------
 check('the symbol labels the row', rowTitle(m, 'NVDA') === 'NVDA: review')

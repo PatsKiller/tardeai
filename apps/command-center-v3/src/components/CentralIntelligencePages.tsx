@@ -26,12 +26,42 @@ type Mode = 'command' | 'quality'
 type Special = 'all' | 'actionable' | 'highError' | 'stale'
 type ViewPreset = 'priority' | 'all'
 interface Props { mode: Mode; onDrill: (ctx: DrillContext) => void }
-type IntelItem = { id: string; source: string; type: string; symbol?: string; title: string; summary?: string; severity: 'critical' | 'warning' | 'info' | 'positive'; confidence: number; freshnessH: number | null; model?: string; lane?: string; action?: string; raw: any }
+type IntelItem = {
+  id: string; source: string; type: string; symbol?: string; title: string; summary?: string
+  severity: 'critical' | 'warning' | 'info' | 'positive'
+  /** the page's normalized quality score, used by qscore/estError; never published as source confidence */
+  confidence: number
+  /** age used by the legacy scoring path; a future timestamp is clamped to zero there */
+  freshnessH: number | null
+  /** what the source itself recorded in its declared 0..1 confidence domain, or null when it recorded none */
+  recordedConfidence: number | null
+  /** the source timestamp's age, un-clamped: negative means the source claims to be ahead of this clock */
+  sourceAgeH: number | null
+  model?: string; lane?: string; action?: string; raw: any
+}
 
 function first(...xs: any[]) { return xs.find(x => x !== undefined && x !== null && x !== '') }
 function ago(v: any): { label: string; hours: number | null } { if (!v) return { label: 'unknown', hours: null }; const t = new Date(v).getTime(); if (!Number.isFinite(t)) return { label: 'unknown', hours: null }; const h = Math.max(0, (Date.now() - t) / 36e5); if (h < 1) return { label: 'just now', hours: h }; if (h < 48) return { label: `${Math.round(h)}h ago`, hours: h }; return { label: `${Math.round(h / 24)}d ago`, hours: h } }
 function sevColor(sev: string) { return sev === 'critical' ? RED : sev === 'warning' ? AMBER : sev === 'positive' ? GREEN : BLUE }
 function confidenceFrom(x: any, fallback = 0.65) { const v = first(x.confidence, x.research_confidence, x.eval_confidence, x.score != null ? Number(x.score) / 100 : null); const y = Number(v); if (!Number.isFinite(y)) return fallback; return y > 1 ? Math.min(1, y / 100) : Math.min(1, Math.max(0, y)) }
+// Source-truth provenance for the new implication row (F1). `confidenceFrom` above is a browser-side
+// estimate for the legacy quality score: it invents a fallback, rescales >1 and clamps negatives, so it must
+// never be published as what the source recorded. Only a literal confidence field (confidence /
+// research_confidence / eval_confidence) in the declared 0..1 domain counts; absent, out-of-domain or
+// differently-unit values stay unknown. A `score` (0..100 ranking score) is not a declared confidence.
+function recordedConfidenceFrom(x: any): number | null {
+  const raw = first(x?.confidence, x?.research_confidence, x?.eval_confidence)
+  if (raw == null) return null
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null
+}
+// Source-truth age (F2): un-clamped, so a timestamp ahead of this clock stays negative instead of becoming
+// "just now". The legacy `ago()` result below keeps its clamped value for qscore/estError.
+function ageHoursFrom(v: any): number | null {
+  if (!v) return null
+  const t = new Date(v).getTime()
+  return Number.isFinite(t) ? (Date.now() - t) / 36e5 : null
+}
 function severityFrom(x: any): IntelItem['severity'] { const s = String(first(x.severity, x.priority, x.operator_priority, x.advisory_flag, x.status, x.decision, x.recommendation, '')).toLowerCase(); if (/critical|urgent|triggered|blocked|stop|risk|avoid|sell|unprotected|failed/.test(s)) return 'critical'; if (/caution|stale|warn|wait|hold|pending|review|neutral|partial/.test(s)) return 'warning'; if (/positive|buy|go|bullish|fresh|protected|completed|ok|pass/.test(s)) return 'positive'; return 'info' }
 // Structural signals are FACTS (price vs stop, position state) — their quality is data completeness +
 // signal clarity (encoded in `confidence` at build time), NOT news-freshness or LM review. Opinion/research
@@ -174,7 +204,21 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
 
   const items = useMemo<IntelItem[]>(() => {
     const out: IntelItem[] = []
-    const add = (x: Partial<IntelItem> & { raw?: any }) => { if (!x.title) return; const a = ago((x.raw as any)?.at ?? (x.raw as any)?.updated_at ?? (x.raw as any)?.last_enriched_at ?? (x.raw as any)?.created_at ?? (x.raw as any)?.generated_at); out.push({ id: `${x.source}-${out.length}`, source: x.source || 'unknown', type: x.type || 'intelligence', symbol: x.symbol, title: String(x.title), summary: x.summary, severity: x.severity || severityFrom(x.raw ?? x), confidence: x.confidence ?? confidenceFrom(x.raw ?? x), freshnessH: x.freshnessH ?? a.hours, model: x.model, lane: x.lane, action: x.action, raw: x.raw ?? x }) }
+    const add = (x: Partial<IntelItem> & { raw?: any }) => {
+      if (!x.title) return
+      const src: any = x.raw ?? x
+      const when = src?.at ?? src?.updated_at ?? src?.last_enriched_at ?? src?.created_at ?? src?.generated_at
+      const a = ago(when)
+      out.push({
+        id: `${x.source}-${out.length}`, source: x.source || 'unknown', type: x.type || 'intelligence', symbol: x.symbol,
+        title: String(x.title), summary: x.summary, severity: x.severity || severityFrom(x.raw ?? x),
+        // Legacy scoring fields (unchanged behaviour): a normalized estimate and a clamped age.
+        confidence: x.confidence ?? confidenceFrom(x.raw ?? x), freshnessH: x.freshnessH ?? a.hours,
+        // The new row's uncertainty sentence reads ONLY these source-truth fields.
+        recordedConfidence: recordedConfidenceFrom(src), sourceAgeH: ageHoursFrom(when),
+        model: x.model, lane: x.lane, action: x.action, raw: x.raw ?? x,
+      })
+    }
     // Current price by symbol from the risk feed — the /api/v2/command feed omits current price, so without
     // this the command items can't compute breach and all collapse to a flat 0.66. seenStop dedups the same
     // triggered stop showing as both a risk item AND a command item.
@@ -348,8 +392,14 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={panel}>
           <div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Decision implications</div>
-          {displayFiltered.slice(0, 8).map(it => <IntelImplicationRow key={it.id} item={it} nextStep={nextStep(it)}
-            onOpen={onDrill ? () => onDrill({ title: it.title, subtitle: `${it.type} · ${it.source}`, endpoint: '/api/v2/intelligence', rows: [{ source: it.source, type: it.type, symbol: it.symbol, confidence: it.confidence, freshness_h: it.freshnessH, model: it.model, lane: it.lane, action: it.action, summary: it.summary, record: it.raw }] }) : undefined} />)}
+          {displayFiltered.slice(0, 8).map(it => {
+            // F1/F2: the uncertainty sentence states SOURCE truth only. `it.confidence` and `it.freshnessH`
+            // are the page's normalized estimate and clamped age for the legacy quality score; they are not
+            // what the source recorded, so they never reach this sentence.
+            const rowItem = { ...it, confidence: it.recordedConfidence, freshnessH: it.sourceAgeH }
+            return <IntelImplicationRow key={it.id} item={rowItem} nextStep={nextStep(it)}
+              onOpen={onDrill ? () => onDrill({ title: it.title, subtitle: `${it.type} · ${it.source}`, endpoint: '/api/v2/intelligence', rows: [{ source: it.source, type: it.type, symbol: it.symbol, confidence: it.recordedConfidence, freshness_h: it.sourceAgeH, model: it.model, lane: it.lane, action: it.action, summary: it.summary, record: it.raw }] }) : undefined} />
+          })}
         </div>
         <div style={panel}>
           <div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Source health</div>
