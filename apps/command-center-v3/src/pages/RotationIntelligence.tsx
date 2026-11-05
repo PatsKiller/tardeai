@@ -177,7 +177,7 @@ function DegBadge({ d }: { d?: { thesis_status?: string; deterministic?: boolean
  * readable (operator bug 2026-11-02: the page went blank). Every advisory section and action stays gated
  * on `publication.ready`; this panel is descriptive only — no recommendation, order, size or stop.
  */
-function RotationDescriptivePanel({ data }: { data: unknown }) {
+export function RotationDescriptivePanel({ data }: { data: unknown }) {
   const d: RotationDescriptive = rotationDescriptive(data)
   const row: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'baseline', padding: '4px 0', borderTop: '1px solid var(--border-subtle)', fontSize: 11 }
   return <section data-testid="rotation-descriptive" style={{ ...card, marginBottom: 20 }}>
