@@ -17,7 +17,15 @@ eq('active stored stop', [s?.symbol, s?.stop_price, s?.order_id, s?.source, s?.b
 eq('pending is not protection', storedStopFor({ ...active, stop_state: 'pending_activation' }), undefined)
 eq('filled is not protection', storedStopFor({ ...active, stop_state: 'filled' }), undefined)
 eq('planned level is not a broker stop', storedStopFor({ ...active, stop_source: 'planned' }), undefined)
-eq('no price is not protection', storedStopFor({ ...active, stop_price: null }), undefined)
+eq('a priced order is not flagged unknown', s?.price_unknown, false)
+// An ACTIVE broker order whose trigger price was not recorded (e.g. a trailing stop) stays in the stored page
+// model with an honest unknown price — it is not silently dropped, and no advisory level is substituted.
+const unpriced = storedStopFor({ ...active, stop_price: null, stop_order_type: 'TRAILING_STOP' })
+eq('unpriced active order is preserved',
+  [unpriced?.symbol, unpriced?.stop_price, unpriced?.price_unknown, unpriced?.order_type, unpriced?.order_id],
+  ['FIXA', null, true, 'TRAILING_STOP', 'fixture-order-1'])
+eq('an unpriced stop never reports a protection level',
+  storedStopFor({ ...active, stop_price: 'not-a-number' })?.stop_price, null)
 eq('no row', storedStopFor(undefined), undefined)
 eq('oldest capture', storedStopsAsOf([active, { ...active, stop_captured_at: '2026-10-23T20:00:00Z' }, { ...active, stop_state: 'filled', stop_captured_at: '2026-10-01T00:00:00Z' }]),
   '2026-10-23T20:00:00Z')
