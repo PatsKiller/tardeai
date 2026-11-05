@@ -109,3 +109,45 @@ def test_cio_truth_stop_rows_carry_the_stored_order_id():
     from scripts.lib import cio_truth
     src = Path(cio_truth.__file__).read_text()
     assert '"stop_order_id": p.get("order_id")' in src
+
+
+def test_cio_truth_stop_rows_carry_the_stored_order_kind():
+    from scripts.lib import cio_truth
+    src = Path(cio_truth.__file__).read_text()
+    assert '"stop_history", "stop_order_type")}' in src
+
+
+def test_an_active_trailing_observation_keeps_its_kind_and_never_invents_a_price():
+    """A trailing stop has no fixed trigger price. Its stored observation stays ACTIVE with the price UNKNOWN and
+    the broker order KIND intact, so a page view can show the order without inventing a level or dropping it."""
+    from datetime import datetime, timezone
+
+    from scripts.lib import cio_truth
+
+    now = datetime(2026, 10, 24, 22, 0, tzinfo=timezone.utc)
+    rows = [{"account": "schwab_roth", "symbol": "SPCX", "order_id": "fixture-order",
+             "order_type": "TRAILING_STOP", "stop_price": None, "status": "WORKING",
+             "captured_at": "2026-10-24T20:00:00Z"}]
+    stop = cio_truth.stop_for("schwab_roth", "SPCX", broker_rows=rows, now=now)
+    assert (stop["stop_state"], stop["stop_price"], stop["stop_order_type"]) == ("active", None, "TRAILING_STOP")
+    # No fixed level was recorded, so priced protection is not claimed — the level stays unknown, never zero.
+    assert stop["broker_protected"] is False
+
+
+def test_a_terminal_snapshot_stop_is_never_promoted_to_protection(api):
+    """A cancelled/filled persisted row cannot fire; treating it as protection hides the missing-stop action."""
+    row = {"account": "schwab_fixture", "symbol": "FIXA", "broker": "schwab", "status": "WORKING",
+           "order_type": "STOP", "stop_price": 40, "qty": 10, "coverage": "full"}
+    for status in ("CANCELED", "cancelled", "FILLED", "expired", "rejected", "replaced", "not_in_read", "triggered"):
+        assert api._stored_lifecycle_stop({**row, "status": status}) is None, status
+    working = api._stored_lifecycle_stop(row)
+    assert working is not None and working["stop_source"] == "broker_snapshot"
+
+
+def test_a_stored_snapshot_stop_carries_its_order_size(api):
+    """Without qty the downstream coverage check keeps the snapshot's stale 'full' after a size-up."""
+    row = {"account": "schwab_fixture", "symbol": "FIXA", "broker": "schwab", "status": "WORKING",
+           "order_type": "STOP", "stop_price": 40, "qty": 10, "coverage": "full"}
+    entry = api._stored_lifecycle_stop(row)
+    assert entry["stop_qty"] == 10
+    assert api._stored_lifecycle_stop({**row, "qty": "bad"})["stop_qty"] is None

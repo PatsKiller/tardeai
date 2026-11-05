@@ -644,25 +644,16 @@ def _stops_management_api_build(query=None, *, stored_only=False):
         for s in _stops_lifecycle_db_snapshot().get("stops") or []:
             sym = str(s.get("symbol", "")).upper()
             acct = str(s.get("account", ""))
-            sp = _f(s.get("stop_price"))
-            ot = str(s.get("order_type") or "").upper()
             if (sym, acct) in live_stops:
                 continue
             if acct.startswith("schwab") and _live_read_ok:
                 continue  # broker authoritative — don't resurrect a stale snapshot it doesn't show
-            if sp is None and "TRAIL" not in ot:
+            entry = _stored_lifecycle_stop(s)
+            if entry is None:
+                continue  # a finished order is not protection
+            if entry["stop_price"] is None and "TRAIL" not in entry["order_type"]:
                 continue
-            live_stops[(sym, acct)] = {
-                "stop_price": sp,
-                "order_type": ot,
-                "is_trailing": bool(s.get("is_trailing")) or "TRAIL" in ot,
-                "broker": s.get("broker") or ("schwab" if acct.startswith("schwab") else ""),
-                "coverage": s.get("coverage"),
-                "lifecycle": s.get("lifecycle"),
-                "health": s.get("health"),
-                "flags": s.get("flags"),
-                "stop_source": "broker_snapshot",
-            }
+            live_stops[(sym, acct)] = entry
     except Exception:
         pass
     # operator-confirmed live stops (stop_confirmations) — persists after-hours when the live Schwab read is
@@ -2097,6 +2088,47 @@ def _stops_lifecycle_db_snapshot():
         row["is_trailing"] = "TRAIL" in ot
         stops.append(row)
     return {"stops": stops, "source": "db_snapshot"}
+
+
+#: A persisted stop_lifecycle row in one of these states is a FINISHED order: it can never fire, so a page view
+#: must not count it as protection (that hides the missing-stop action for an unprotected position).
+_TERMINAL_STOP_STATES = frozenset({"canceled", "cancelled", "filled", "rejected", "expired", "replaced",
+                                   "not_in_read", "triggered"})
+
+
+def _stored_lifecycle_stop(s):
+    """One persisted stop_lifecycle row -> the live_stops entry a page view may use as protection, or None.
+
+    Only a RESTING order qualifies. The stored-only path used to promote a cancelled or filled snapshot row to
+    active protection, so the page reported protection for an order that cannot fire and suppressed the
+    missing-stop action (codex review of PR 2180 at 51ae0a68f). The ORDER SIZE rides along as ``stop_qty`` so the
+    downstream coverage check recomputes partial/oversized against current holdings instead of trusting the
+    snapshot's own ``coverage``, which lags a size-up.
+    """
+    acct = str(s.get("account") or "")
+    status = str(s.get("status") or s.get("lifecycle") or "").strip().lower()
+    if status in _TERMINAL_STOP_STATES:
+        return None
+
+    def _num(v):
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    ot = str(s.get("order_type") or "").upper()
+    return {
+        "stop_price": _num(s.get("stop_price")),
+        "order_type": ot,
+        "is_trailing": bool(s.get("is_trailing")) or "TRAIL" in ot,
+        "broker": s.get("broker") or ("schwab" if acct.startswith("schwab") else ""),
+        "stop_qty": _num(s.get("qty")),
+        "coverage": s.get("coverage"),
+        "lifecycle": s.get("lifecycle"),
+        "health": s.get("health"),
+        "flags": s.get("flags"),
+        "stop_source": "broker_snapshot",
+    }
 
 
 def _stops_lifecycle_api():
