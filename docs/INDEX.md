@@ -2008,6 +2008,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
 | `docs/ops/DISK_HYGIENE.md` | Disk Hygiene |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
+| `docs/ops/DISK_HOLDER_SAFETY_20261104.md` | Disk hygiene — why rule R reports releases instead of deleting them (2026-11-04) |
 | `docs/ops/DISK_RECOVERY_20261030.md` | Disk recovery investigation, October 30 |
 | `docs/ops/DISK_STANDING_APPLY_20261024.md` | WP-33: standing disk-hygiene source preparation |
 | `docs/ops/DISK_STANDING_CI_FOLLOWUP_20261024.md` | Disabled disk hygiene: CI follow-up |
@@ -2255,6 +2256,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SECURITY_AND_AUTHORITY_REVIEW.md` | Security and authority review — DeepSeek V4 mainline |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results |
+| `docs/ops/home_v008_needs_you_approvals.md` | Home v008 "Needs you" — operator approvals (backend A) |
 | `docs/ops/holdings_export_backup.md` | holdings.json is a generated backup (Step 1) |
 | `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident |
 | `docs/ops/incidents/INCIDENT_20261023_SAFE_FLOCK_CRON_OUTAGE.md` | 2026-10-23 safe_flock cron outage |

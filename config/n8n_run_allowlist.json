@@ -4615,6 +4615,36 @@
       "output_receipt": "v2"
     },
     {
+      "lane_id": "agent_nudge",
+      "env_names": [
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_COORD_DIR",
+        "TRADEAI_NUDGER_LEDGER",
+        "TRADEAI_NUDGER_STATE",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/agent_nudger.py: the literal reads are TRADEAI_STATE_ROOT (state default), TRADEAI_NUDGER_STATE and TRADEAI_NUDGER_LEDGER (per-file overrides) and TRADEAI_COORD_DIR (the coordinator dir named in the prompt); the safe_flock wrapper adds PROJECT_ROOT and SAFE_FLOCK_LOG_DIR, and HOME/PATH come from the executor's base set. Standard library only, no .env loader, no DB, no network. Five declared names, all literals at module scope. A LIVE run also writes its LaneRunReceipt@v2 through scripts/lib/lane_last_receipt.py, whose state-root resolution reads TRADEAI_PERSISTENT_STATE_ROOT.",
+      "source": "Board item 16 / P2 of docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md (2026-11-03). output_receipt v2: a LIVE run writes LaneRunReceipt@v2 and the immutable per-attempt receipt, which is what scripts/n8n_run_executor.py::apply_output_verdict evaluates — without this key the declared rule is skipped as declared_not_enforced. SHADOW ONLY: scheduler.stage shadow in config/lane_registry.json, dispatch.mode dry_run, live_arg is null: while the row is shadow there is NO live argv at all, so no fire can type even if the stage clamp were bypassed; the stage-flip PR sets live_arg to --apply and its own test (the stage clamp in scripts/lib/lane_stage_clamp.py forces dry_run whatever is requested). The live host timer keeps doing the real work throughout P2; this lane only records what it would have done. The script's own default is dry run and --dry-run names it explicitly, because the dispatcher's shadow step requires a non-empty dry_run_arg.",
+      "command": [
+        "$PY",
+        "scripts/agent_nudger.py",
+        "--config",
+        "$CODE_ROOT/config/agent_nudger.json"
+      ],
+      "lock": "/tmp/agent_nudge.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 120,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/coordination/agent_nudger/state.json",
+      "output_receipt": "v2"
+    },
+    {
       "lane_id": "self-heal-fixer-shadow",
       "command": [
         "$PY",
@@ -4640,7 +4670,7 @@
       "env_evidence": "scripts/self_heal_fixer.py: state_root() reads TRADEAI_STATE_ROOT (default under HOME); provider key_file and {home} substitution read HOME. The D1 package executed the dry cycle with rc=0 and no model call.",
       "source": "Operator decision 2026-11-04 (D11 shadow): n8n runs the fixer's dry cycle only; live execution remains the host lane self-heal-fixer (PAUSED, KEEP_ON_CRON). AGENTS \u00a724.5: no push, PR or remote write from a scheduled job."
     }
-  ],
+],
   "blocked_reasons": {
     "n8n-activation-grants": "AGENTS 3.0.0 §23.10 P16 read-only checker (scripts/check_n8n_activation_grants.py). Blocked 2026-10-09 by the allowlist's own safety test: the command path, the receipt name n8n_activation_grants_last.json and any natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant'. The check is read-only, but renaming the entrypoint to dodge the token or exempting it is an operator decision, not an agent's. Registry row NEVER_SCHEDULED; no workflow generated.",
     "dof-run-pipeline": "AGENTS 23.3 forbids a DOF SQL path; the six-stage runner contains SQL writers and a model-scoring stage. No foreign cwd/interpreter contract, shared cron lock, nonzero aggregate failure exit, dry-run or stable receipt. Keep outside runnable lanes until supervisor/operator resolves authority and producer contracts.",
