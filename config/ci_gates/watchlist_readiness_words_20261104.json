@@ -6,6 +6,6 @@
   ],
   "anchor": "WATCHLIST_READINESS_WORDS_20261104",
   "comment": [
-    "ANCHOR: WATCHLIST_READINESS_WORDS_20261104 — FQ-078: a research card's freshness reads in plain words (\"up to date\", \"up to date after the close\", \"unavailable — no recent read succeeded\") instead of the raw enum, while the provenance panel keeps the exact code for a developer. Pytest-collectable so the CI shard runner executes it (a .mjs file cannot be collected); apps/command-center-v3/src/lib/watchlistReadinessWords.view.test.mjs mirrors it for a node run."
+    "ANCHOR: WATCHLIST_READINESS_WORDS_20261104 — FQ-078: a research card's readiness reads in plain words (\"No provider or model assigned\", \"Not scheduled\", \"Future code\") instead of the raw codes. Two entries run it: this pytest file (the rollback WatchCardV2 component's mapping, collectable by the shard runner), and `node --experimental-strip-types src/lib/watchlistReadinessWords.view.test.mjs`, invoked from apps/command-center-v3's `build` script, which renders the live WatchIntelligenceUnified page and fails when its three live-page expressions are reverted. cx-openai-4 R2 on #2611: the pytest file alone stayed green on a reverted live page, so it is not the live-page gate and must not be described as one."
   ]
 }
