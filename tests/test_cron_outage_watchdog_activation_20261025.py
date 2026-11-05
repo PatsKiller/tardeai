@@ -182,8 +182,9 @@ def test_ack_refuses_unknown_key_or_missing_reason(tmp_path, monkeypatch, extra)
 
 
 # ── a fire during the lane's own run is IN PROGRESS, not missed (2026-11-03, ingest false positive) ──────
-def started(job, at):
-    return {"component": job, "job_id": job, "event_type": "started", "exit_code": None, "ts": at}
+def started(job, at, **extra):
+    return {"component": job, "job_id": job, "event_type": "started", "exit_code": None,
+            "mode": "business", "ts": at, **extra}
 
 
 WRAPPED = lane(scheduler={"kind": "cron", "expression": "7,22,37,52 * * * *",
@@ -277,3 +278,41 @@ def test_another_job_s_run_window_never_covers_this_lane():
     row = assess_runs(events)["rows"][0]
 
     assert row["status"] == "MISSED_RUNS"
+
+
+def test_a_dry_run_window_cannot_cover_the_fire():
+    """cc-deepseek-5 BLOCK on #2553: a dry run does no lane work, so an open dry-run window must not make a
+    dead lane report OK. Cutovers run dry runs routinely, which is when that lie would be worst."""
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T22:50:00-04:00", mode="dry_run")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["missed_fires"] == 2 and row["in_progress_fires"] == 0
+
+
+def test_a_preflight_window_cannot_cover_the_fire():
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              started(JOB, "2026-10-24T22:50:00-04:00", mode="preflight")]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["in_progress_fires"] == 0
+
+
+def test_a_legacy_dry_run_command_cannot_cover_the_fire():
+    """Legacy events carry no mode; the command is then the only evidence, exactly as ``business_success`` reads it."""
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              {**started(JOB, "2026-10-24T22:50:00-04:00"), "mode": None,
+               "command": "bash scripts/safe_flock.sh /tmp/options_tick.lock python x.py --dry-run"}]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "MISSED_RUNS" and row["in_progress_fires"] == 0
+
+
+def test_a_legacy_business_command_still_covers_the_fire():
+    """The legacy form that proves business execution keeps working: no mode, a command with no dry-run flag."""
+    events = [completed(JOB, "2026-10-24T22:45:00-04:00"),
+              {**started(JOB, "2026-10-24T22:50:00-04:00"), "mode": None,
+               "command": "bash scripts/safe_flock.sh /tmp/options_tick.lock python x.py --apply"}]
+    row = assess_runs(events)["rows"][0]
+
+    assert row["status"] == "OK" and row["in_progress_fires"] == 2 and row["missed_fires"] == 0

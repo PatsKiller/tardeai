@@ -90,11 +90,16 @@ LAUNCH_GRACE_SECONDS = 120
 
 
 def run_windows(events: list[dict], *, now: datetime) -> dict[str, list[tuple[datetime, datetime | None]]]:
-    """``{job: [(start, end_or_None)]}`` — when each wrapper job was actually executing.
+    """``{job: [(start, end_or_None)]}`` — when each wrapper job was actually executing BUSINESS work.
 
     Built from ``safe_flock`` events: a ``started`` opens a window and the next ``completed`` for the same
     job closes it; a window still open at ``now`` means the job is running right now. Future events are
     ignored, as everywhere in this module: an observation is never backdated.
+
+    Only business-mode events open or close a window (cc-deepseek-5 BLOCK on #2553, 2026-11-05): a dry run,
+    plan or wrapper preflight starts and finishes without doing the lane's work, so letting one cover a fire
+    would report a dead lane as OK — and cutovers run dry runs and preflights routinely, which is exactly
+    when that lie is worst. The test is the one :func:`business_success` already applies to successes.
     """
     by_job: dict[str, list[tuple[datetime, str]]] = {}
     for event in events:
@@ -103,6 +108,8 @@ def run_windows(events: list[dict], *, now: datetime) -> dict[str, list[tuple[da
             continue
         kind = str(event.get("event_type") or "")
         if kind not in {"started", "completed"}:
+            continue
+        if not business_mode(event):
             continue
         job = job_key(event.get("job_id") or event.get("component"))
         if job:
@@ -146,22 +153,34 @@ def fire_was_in_progress(fire: datetime, windows: list[tuple[datetime, datetime 
     return False
 
 
-def business_success(event: dict) -> bool:
-    """New events declare mode; legacy commands can prove an explicit dry run only.
+_NON_BUSINESS_COMMAND = re.compile(r"(?:--dry[-_]run|--plan(?:\s|$)|--wrapper-preflight|\.dryrun(?:\s|$))")
 
-    Legacy events without mode remain usable as wrapper-execution evidence when
-    their command is present and contains no dry-run flag. They do not prove
-    business output correctness. Missing command/mode is unmeasured.
+
+def business_mode(event: dict) -> bool:
+    """Whether this event belongs to a BUSINESS execution of the lane, not a dry run, plan or preflight.
+
+    New events declare ``mode``. Legacy events can prove an explicit dry run only through their command, so a
+    legacy event is business evidence when its command is present and carries no dry-run flag. Missing
+    mode and command is unmeasured, and an unmeasured event is never business evidence. One predicate, used
+    by :func:`business_success` for successes and by :func:`run_windows` for in-progress windows: the window
+    and the receipt must agree on what counts as the lane actually working (cc-deepseek-5 BLOCK on #2553).
     """
-    if event.get("event_type") != "completed" or event.get("exit_code") != 0:
-        return False
     mode = event.get("mode")
     if mode is not None:
         return mode == "business"
     command = event.get("command")
     if not isinstance(command, str) or not command.strip():
         return False
-    return not re.search(r"(?:--dry[-_]run|--plan(?:\s|$)|--wrapper-preflight|\.dryrun(?:\s|$))", command)
+    return not _NON_BUSINESS_COMMAND.search(command)
+
+
+def business_success(event: dict) -> bool:
+    """A completed, zero-exit BUSINESS execution. Legacy events without mode are judged by their command;
+    they do not prove business output correctness. Missing command/mode is unmeasured.
+    """
+    if event.get("event_type") != "completed" or event.get("exit_code") != 0:
+        return False
+    return business_mode(event)
 
 
 def evaluate(
