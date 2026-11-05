@@ -11,8 +11,10 @@ Implements AuditFixQueueStatusRules@v1 (authored cc-deepseek-3, adopted by cc-de
 
 A row is NAMED by `FQ-0NN` anywhere in the PR body, or by the branch name (`wt/fq022-…` → FQ-022). Naming only makes
 the PR a candidate; a row is CLAIMED by the branch name or by a first-class declaration ("closes/fixes FQ-0NN") in a
-clause that does not negate it. Negation is scoped to the row it governs, not the line, so one line may claim one row
-and disclaim another. A passing mention decides nothing (#2640 QS3). A row whose status is HELD_*, delivered, parked or
+clause that does not negate it. One declaration governs every row after its verb in the clause ("Closes FQ-021 and
+FQ-022." claims both). Negation is scoped to the row it governs, not the line, so one line may claim one row
+and disclaim another. A row's recorded `pr` remains evidence even when that PR's current wording no longer names it.
+A passing mention decides nothing (#2640 QS3). A row whose status is HELD_*, delivered, parked or
 closed_* is never touched: those are decisions, not observations.
 
 Dry run by default. `--apply` writes the queue under an exclusive lock, after a timestamped backup beside it, and only
@@ -146,7 +148,17 @@ def gh_pr_list(runner: Callable[[list[str]], str] | None = None, *, limit: int =
 #: "Closes FQ-022; not closing FQ-033." claims FQ-022 and disclaims FQ-033.
 _CLAUSE_SPLIT = re.compile(r"[\n;]+|(?<=[.!?])\s+")
 _NEGATION = re.compile(r"\b(?:not|never|no longer|cannot|isn't|aren't|won't|doesn't|don't)\b", re.IGNORECASE)
-#: Every action verb a negation may govern. Kept a superset of `_DECLARES` so "not touching FQ-033" is read too.
+#: The verbs that make a naming a first-class declaration rather than a passing mention. A declaration governs EVERY
+#: row after it in the same clause, until the next verb takes over: "Closes FQ-021 and FQ-022." declares both (#2640
+#: CX1). A row named in prose ("this supersedes the old FQ-045 approach") has no declaration verb before it, so it is
+#: a MENTION and may not move a row that already has a PR — the 2026-11-05 review (#2640 F1) found a passing mention
+#: parking a row whose real PR was open.
+_DECLARES_VERB = re.compile(
+    r"\b(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|implement(?:s|ed|ing)?|address(?:es|ed|ing)?"
+    r"|deliver(?:s|ed|ing)?|does|owns?)\b",
+    re.IGNORECASE,
+)
+#: Every action verb a negation may govern. Kept a superset of `_DECLARES_VERB` so "not touching FQ-033" is read too.
 _ACTION = re.compile(
     r"\b(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|implement(?:s|ed|ing)?"
     r"|address(?:es|ed|ing)?|deliver(?:s|ed|ing)?|touch(?:es|ed|ing)?|includ(?:e|es|ed|ing)?|does|owns?)\b",
@@ -154,15 +166,6 @@ _ACTION = re.compile(
 )
 #: How far before a verb a negation still governs it ("does not <40 chars> close").
 _NEGATION_WINDOW = 40
-
-#: A first-class declaration: the verb that says this PR does the work, in the same clause as the row. A row named in
-#: prose ("this supersedes the old FQ-045 approach") is a MENTION and may not move a row that already has a PR — the
-#: 2026-11-05 review (#2640 F1) found a passing mention parking a row whose real PR was open.
-_DECLARES = re.compile(
-    r"\b(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|implement(?:s|ed|ing)?|address(?:es|ed|ing)?"
-    r"|deliver(?:s|ed|ing)?|does|owns?)\b[^\n]{0,80}?\bFQ-(\d{3})\b",
-    re.IGNORECASE,
-)
 
 
 def _clauses(body: str) -> list[str]:
@@ -226,15 +229,24 @@ def rows_named_by(pr: dict[str, Any]) -> set[str]:
 def rows_claimed_by(pr: dict[str, Any]) -> set[str]:
     """Which rows a PR CLAIMS — by branch name or by a non-negated first-class "closes/fixes FQ-0NN" declaration.
 
+    A declaration governs every row in its clause after the verb, until the next verb takes over: "Closes FQ-021 and
+    FQ-022." claims both (#2640 CX1), while each row's own governing verb still decides negation ("Closes FQ-021 and
+    is not touching FQ-033" claims only FQ-021). A row with no verb before it in its clause is a mention, not a claim.
+
     A weaker match than :func:`rows_named_by`: it is the set allowed to retake a row that already has a PR.
     """
     out: set[str] = set()
     for clause in _clauses(str(pr.get("body") or "")):
-        negated = _negated_rows(clause)
-        for m in _DECLARES.finditer(clause):
-            row = f"FQ-{m.group(1)}"
-            if row not in negated:
-                out.add(row)
+        verbs = list(_ACTION.finditer(clause))
+        negated = _negated_verbs(clause, verbs)
+        for m in _ROW_IN_BODY.finditer(clause):
+            governing = [i for i, v in enumerate(verbs) if v.start() < m.start()]
+            if not governing:
+                continue  # no verb before the row: this is a mention, not a declaration
+            i = governing[-1]
+            if negated[i] or not _DECLARES_VERB.fullmatch(verbs[i].group(0)):
+                continue
+            out.add(f"FQ-{m.group(1)}")
     for m in _ROW_IN_BRANCH.finditer(str(pr.get("headRefName") or "")):
         out.add(f"FQ-{m.group(1)}")
     return out
@@ -279,6 +291,15 @@ def plan(item: dict[str, Any], pr: dict[str, Any] | None, now: str) -> dict[str,
     return None
 
 
+def _as_pr_number(value: Any) -> int | None:
+    """A PR number from a census row or a queue item, or None when it is absent or unreadable."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number or None
+
+
 def choose_pr(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Which of a row's candidate PRs decides its status.
 
@@ -294,33 +315,38 @@ def choose_pr(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[st
         return None
     row = str(item.get("id"))
     claimed = [p for p in candidates if row in rows_claimed_by(p)]
-    pool = claimed or candidates
-    owned = item.get("pr")
+    owned = _as_pr_number(item.get("pr"))
+
+    # QS3 / CX3 (#2640, codex-cloud): a mere mention is not evidence. When NO candidate claims the row, only the
+    # row's own recorded PR is allowed to rank. Leaving mention-only rows in the pool let an unrelated OPEN mention
+    # outrank the recorded PR and then be rejected, returning None instead of falling back to the association.
+    if claimed:
+        pool = claimed
+    elif owned is not None:
+        pool = [p for p in candidates if _as_pr_number(p.get("number")) == owned]
+    else:
+        return None
+    if not pool:
+        return None
 
     def rank(pr: dict[str, Any]) -> tuple[int, int, int]:
-        number = int(pr.get("number") or 0)
+        number = _as_pr_number(pr.get("number")) or 0
         return (1 if str(pr.get("state") or "").upper() == "OPEN" else 0,
-                1 if owned is not None and number == int(owned) else 0,
+                1 if number == owned else 0,
                 number)
 
-    chosen = max(pool, key=rank)
-    if owned is not None and int(chosen.get("number") or 0) != int(owned) and row not in rows_claimed_by(chosen):
-        return None
-    # QS3 (cx-openai-2/cx-openai-5 at 0c2614145): a mere mention is not evidence. When NO candidate claims the row, only
-    # the row's own existing association may decide its status — otherwise an unrelated PR that says "FQ-021 came up in
-    # passing" would deliver, park or re-assign a row it has nothing to do with.
-    if not claimed:
-        if owned is not None and int(chosen.get("number") or 0) == int(owned):
-            return chosen
-        return None
-    return chosen
+    return max(pool, key=rank)
 
 
 def sync(queue: dict[str, Any], prs: Iterable[dict[str, Any]], *, now: str | None = None) -> dict[str, Any]:
     """Apply the rules to a queue document in memory. Returns a report; mutates a copy, never the input."""
     now = now or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     by_row: dict[str, list[dict[str, Any]]] = {}
+    by_number: dict[int, dict[str, Any]] = {}
     for pr in prs:
+        number = _as_pr_number(pr.get("number"))
+        if number is not None:
+            by_number.setdefault(number, pr)
         for row in rows_named_by(pr):
             by_row.setdefault(row, []).append(pr)
 
@@ -329,7 +355,17 @@ def sync(queue: dict[str, Any], prs: Iterable[dict[str, Any]], *, now: str | Non
     for item in doc.get("items") or []:
         if not isinstance(item, dict):
             continue
-        pr = choose_pr(item, by_row.get(str(item.get("id"))) or [])
+        candidates = list(by_row.get(str(item.get("id"))) or [])
+        # CX2 (#2640, codex-cloud): a row's recorded association is evidence in its own right. The census is built
+        # from current body/branch wording, so a PR whose text no longer names the row was dropped from its own row's
+        # candidates — leaving a merged PR's row queued (dispatchable) or a closed PR's row never parked. Index the
+        # census by number and add the recorded PR independently of the wording.
+        recorded = _as_pr_number(item.get("pr"))
+        if recorded is not None and recorded not in {_as_pr_number(p.get("number")) for p in candidates}:
+            recorded_pr = by_number.get(recorded)
+            if recorded_pr is not None:
+                candidates.append(recorded_pr)
+        pr = choose_pr(item, candidates)
         delta = plan(item, pr, now)
         if not delta:
             continue

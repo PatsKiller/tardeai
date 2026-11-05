@@ -473,3 +473,51 @@ def test_a_refused_json_apply_prints_no_report(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == "", "a stdout-only consumer must not see a report for a write that did not happen"
     assert "REFUSED" in captured.err
+
+
+# ── #2640 CX1..CX3 (codex-cloud BLOCK at 7a0d5a0f7): declaration reach, recorded association, mention ranking ───
+
+
+def test_a_multi_row_closing_declaration_claims_every_row_it_governs():
+    """CX1: 'Closes FQ-021 and FQ-022.' declares both rows, not only the first one the regex touches."""
+    cand = pr(2622, branch="wt/elsewhere", body="Closes FQ-021 and FQ-022.")
+    assert S.rows_claimed_by(cand) == {"FQ-021", "FQ-022"}
+    rep = S.sync(queue(row("FQ-021"), row("FQ-022")),
+                 [pr(2622, state="MERGED", branch="wt/elsewhere", body="Closes FQ-021 and FQ-022.",
+                     merge="e" * 40)], now=NOW)
+    status = {i["id"]: i["status"] for i in rep["queue"]["items"]}
+    assert status == {"FQ-021": "delivered", "FQ-022": "delivered"}, rep["changes"]
+
+
+def test_a_multi_row_declaration_still_negates_the_row_it_disclaims():
+    """CX1 remedy: the later rows are claimed without losing the per-row negation check."""
+    cand = pr(2622, branch="wt/elsewhere", body="Closes FQ-021 and FQ-022; not closing FQ-033.")
+    assert S.rows_claimed_by(cand) == {"FQ-021", "FQ-022"}
+    assert "FQ-033" not in S.rows_named_by(cand)
+
+
+def test_a_recorded_pr_decides_after_its_body_stops_naming_the_row():
+    """CX2: the queue's recorded association is evidence even when the PR body/branch no longer name the row."""
+    rep = S.sync(queue(row("FQ-021", status="queued", pr=100)),
+                 [pr(100, state="MERGED", branch="wt/generic-cleanup", body="Refactor only.", merge="e" * 40)],
+                 now=NOW)
+    item = rep["queue"]["items"][0]
+    assert item["status"] == "delivered" and item["pr"] == 100, rep["changes"]
+
+
+def test_a_recorded_pr_closed_without_merge_parks_the_row_after_its_body_changes():
+    """CX2: the same recorded association carries rule 4, not only rule 3."""
+    rep = S.sync(queue(row("FQ-031", status="fix_in_review", pr=100)),
+                 [pr(100, state="CLOSED", branch="wt/generic-cleanup", body="Refactor only.")], now=NOW)
+    item = rep["queue"]["items"][0]
+    assert item["status"] == "parked" and item["pr"] == 100, rep["changes"]
+
+
+def test_an_open_mention_does_not_outrank_the_recorded_pr():
+    """CX3: with no claimant, filter mention-only rows to the recorded association before ranking."""
+    rep = S.sync(queue(row("FQ-021", status="fix_in_review", pr=100)),
+                 [pr(100, state="MERGED", branch="wt/generic-cleanup", body="FQ-021", merge="e" * 40),
+                  pr(101, state="OPEN", branch="wt/unrelated-cleanup", body="FQ-021 came up in passing.")],
+                 now=NOW)
+    item = rep["queue"]["items"][0]
+    assert item["status"] == "delivered" and item["pr"] == 100, rep["changes"]
