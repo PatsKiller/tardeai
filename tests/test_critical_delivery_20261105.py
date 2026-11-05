@@ -35,13 +35,50 @@ def contact(**overrides):
 
 # ── the class guard, which is the whole point of HOUSE RULE E ────────────────────────────────────────────────
 
-def test_only_critical_classes_may_use_the_text_channel():
-    for alert_class in cd.CRITICAL_CLASSES:
-        cd.assert_text_allowed(alert_class)  # must not raise
-    for alert_class in ("digest", "status", "fyi", "test", "approval_request", "", "CRITICAL"):
+def policy(**classes):
+    return {"schema": "CriticalTextClasses@v1", "classes": {k: {"enabled": v} for k, v in classes.items()}}
+
+
+def test_only_enabled_classes_may_use_the_text_channel():
+    p = policy(A1_extended_hours_near_stop=True, B2_stop_cancelled=False)
+    cd.assert_text_allowed("A1_extended_hours_near_stop", p)  # must not raise
+    with pytest.raises(cd.CriticalDeliveryRefused) as exc:
+        cd.assert_text_allowed("B2_stop_cancelled", p)
+    assert str(exc.value) == "text_channel_reserved_for_critical"
+    for alert_class in ("digest", "status", "test", ""):
         with pytest.raises(cd.CriticalDeliveryRefused) as exc:
-            cd.assert_text_allowed(alert_class)
-        assert str(exc.value) == "text_channel_reserved_for_critical", alert_class
+            cd.assert_text_allowed(alert_class, p)
+        assert str(exc.value) == "not_a_critical_class", alert_class
+
+
+def test_a_disabled_class_is_still_a_critical_class():
+    """Turning a class off stops its texts and nothing else, so it stays in the taxonomy."""
+    p = policy(B2_stop_cancelled=False)
+    assert cd.is_critical_class("B2_stop_cancelled", p) is True
+    assert cd.text_class_allowed("B2_stop_cancelled", p) is False
+
+
+def test_an_absent_allowlist_refuses_rather_than_reading_open(tmp_path):
+    with pytest.raises(cd.CriticalDeliveryRefused) as exc:
+        cd.load_text_allowlist(tmp_path / "absent.json")
+    assert str(exc.value) == "text_allowlist_missing"
+
+
+def test_the_repo_allowlist_is_the_single_vocabulary(tmp_path):
+    """No second class list in code: the module reads the operator's file, and keeps no copy that could drift from it.
+
+    The operator's file (`config/critical_text_classes.json`) lands with the critical-text primitive. Until it is on main
+    the loader must refuse, which is the safe direction: no allowlist means no text, never an open channel.
+    """
+    assert not hasattr(cd, "CRITICAL_CLASSES")
+    fixture = tmp_path / "critical_text_classes.json"
+    fixture.write_text(json.dumps({"schema": "CriticalTextClasses@v1", "classes": {"A1_x": {"enabled": True}}}))
+    doc = cd.load_text_allowlist(fixture)
+    assert list(doc["classes"]) == ["A1_x"]
+
+
+def test_the_default_allowlist_path_is_the_repo_config_file():
+    assert cd.ALLOWLIST_REL == ("config", "critical_text_classes.json")
 
 
 def test_the_guard_has_no_override_argument():
@@ -49,14 +86,7 @@ def test_the_guard_has_no_override_argument():
     import inspect
 
     params = inspect.signature(cd.assert_text_allowed).parameters
-    assert list(params) == ["alert_class"], list(params)
-
-
-def test_the_configured_classes_are_the_six_the_operator_named():
-    assert cd.CRITICAL_CLASSES == frozenset({
-        "after_hours_get_out", "broker_stop_filled", "position_through_stop",
-        "market_risk_red", "t1_recovery", "p0_trading_data_incident",
-    })
+    assert list(params) == ["alert_class", "policy"], list(params)
 
 
 # ── targets ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -143,7 +173,7 @@ def test_a_long_message_is_cut_at_a_word_boundary_not_mid_word():
 
 def test_a_full_configuration_names_all_three_channels(monkeypatch):
     monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
-    plan = cd.fan_out_plan("broker_stop_filled", contact())
+    plan = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", contact(), policy(B2_stop_cancelled_expired_rejected=True))
     assert plan["channels"] == ["telegram_critical", "email", "text_gateway"]
     assert plan["missing"] == []
 
@@ -152,7 +182,7 @@ def test_a_missing_channel_is_reported_and_the_others_still_go(monkeypatch):
     monkeypatch.delenv(cd.CRITICAL_CHAT_ENV, raising=False)
     doc = contact()
     doc.pop("critical_email_to")
-    plan = cd.fan_out_plan("market_risk_red", doc)
+    plan = cd.fan_out_plan("B2_stop_cancelled_expired_rejected", doc, policy(B2_stop_cancelled_expired_rejected=True))
     assert plan["channels"] == ["telegram_critical", "email", "text_gateway"]  # the plan names the tier's channels
     assert set(plan["missing"]) == {"critical_chat_not_configured", "critical_email_not_configured"}
     assert plan["email_configured"] is False
@@ -161,4 +191,4 @@ def test_a_missing_channel_is_reported_and_the_others_still_go(monkeypatch):
 def test_the_plan_refuses_a_non_critical_class_before_it_names_a_channel(monkeypatch):
     monkeypatch.setenv(cd.CRITICAL_CHAT_ENV, "chat-fixture")
     with pytest.raises(cd.CriticalDeliveryRefused):
-        cd.fan_out_plan("digest", contact())
+        cd.fan_out_plan("digest", contact(), policy(B2_stop_cancelled_expired_rejected=True))

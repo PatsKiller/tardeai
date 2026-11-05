@@ -25,16 +25,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-#: The only alert classes allowed on the operator's text channel (D32 §6 list, D33 transport). A class added here is an
-#: operator decision, not an engineering one: it decides what interrupts the operator's phone.
-CRITICAL_CLASSES = frozenset({
-    "after_hours_get_out",       # extended-hours "get out" alert
-    "broker_stop_filled",        # a broker stop filled
-    "position_through_stop",     # a position through its stop during market hours
-    "market_risk_red",           # a market-risk escalation to RED
-    "t1_recovery",               # a T1 recovery or re-entry trigger
-    "p0_trading_data_incident",  # a P0 system incident that stops trading data
-})
+#: The operator's allowlist — which classes may use the TEXT channel — lives in ONE file, `config/critical_text_classes.json`
+#: (A1, A2, B1–B10), owned by the critical-text primitive. This module does not keep a second copy of that list: two
+#: vocabularies for "may this interrupt the phone" is how a class silently stops being critical.
+ALLOWLIST_REL = ("config", "critical_text_classes.json")
 
 #: What the subject line starts with, so the operator can triage from a phone notification without opening anything.
 SUBJECT_PREFIX = "CRITICAL —"
@@ -128,12 +122,53 @@ def critical_chat_configured() -> bool:
     return bool(os.environ.get(CRITICAL_CHAT_ENV, "").strip())
 
 
-def assert_text_allowed(alert_class: str) -> None:
-    """HOUSE RULE E, in code. Everything that is not a CRITICAL class is refused the text channel.
+def load_text_allowlist(path: Path | str | None = None, *, repo_root: Path | str | None = None) -> dict:
+    """The operator's text-channel allowlist. Refuses rather than assuming an empty list means "nothing is critical"."""
+    target = Path(path) if path is not None else Path(repo_root or Path(__file__).resolve().parents[2]).joinpath(*ALLOWLIST_REL)
+    try:
+        doc = json.loads(target.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise CriticalDeliveryRefused("text_allowlist_missing") from None
+    except (OSError, ValueError):
+        raise CriticalDeliveryRefused("text_allowlist_unreadable") from None
+    if not isinstance(doc, dict) or not isinstance(doc.get("classes"), dict):
+        raise CriticalDeliveryRefused("text_allowlist_invalid")
+    return doc
+
+
+def text_class_allowed(alert_class: str, policy: dict) -> bool:
+    """True only when the allowlist entry exists AND is enabled. Absent is refused, not defaulted open."""
+    entry = (policy.get("classes") or {}).get(str(alert_class or ""))
+    return bool(isinstance(entry, dict) and entry.get("enabled") is True)
+
+
+def is_critical_class(alert_class: str, policy: dict) -> bool:
+    """Whether the class is in the operator's CRITICAL taxonomy at all — present in the allowlist file, enabled or not.
+
+    The file is the one place the class ids exist, so a class absent from it is not a critical class, and nothing is sent.
+    """
+    return isinstance((policy.get("classes") or {}).get(str(alert_class or "")), dict)
+
+
+def assert_critical_class(alert_class: str, policy: dict | None = None) -> None:
+    """Refuse an event that is not on the operator's critical taxonomy. Nothing is fanned out for it."""
+    effective = policy if policy is not None else load_text_allowlist()
+    if not is_critical_class(alert_class, effective):
+        raise CriticalDeliveryRefused("not_a_critical_class")
+
+
+def assert_text_allowed(alert_class: str, policy: dict | None = None) -> None:
+    """HOUSE RULE E, in code. Everything the operator's allowlist does not ENABLE is refused the text channel.
+
+    Disabling a class stops its texts and nothing else — email and the Critical chat still carry the event — which is what
+    the allowlist file's own header says. A class absent from the file is refused everywhere, by assert_critical_class.
 
     The refusal is unconditional: there is no ``override`` argument, and adding one would be a decision for the operator.
     """
-    if alert_class not in CRITICAL_CLASSES:
+    effective = policy if policy is not None else load_text_allowlist()
+    if not is_critical_class(alert_class, effective):
+        raise CriticalDeliveryRefused("not_a_critical_class")
+    if not text_class_allowed(alert_class, effective):
         raise CriticalDeliveryRefused("text_channel_reserved_for_critical")
 
 
@@ -166,13 +201,14 @@ def text_body(*, what: str, price: str | None = None, at: str | None = None,
     return (cut[:space] if space > 40 else cut).rstrip(" ·,") + "…"
 
 
-def fan_out_plan(alert_class: str, contact: dict) -> dict[str, object]:
+def fan_out_plan(alert_class: str, contact: dict, policy: dict | None = None) -> dict[str, object]:
     """The channels one CRITICAL event goes to, and what is missing. Never raises for a degraded channel.
 
     A missing channel is reported, not fatal: the spec is explicit that if one channel fails the others still carry the
     alert and the failure is flagged. Only a caller asking for the text channel with a non-critical class is refused.
     """
-    assert_text_allowed(alert_class)
+    assert_critical_class(alert_class, policy)
+    text_enabled = text_class_allowed(alert_class, policy)
     missing: list[str] = []
     gateways = text_targets(contact)
     if not gateways:
@@ -188,5 +224,6 @@ def fan_out_plan(alert_class: str, contact: dict) -> dict[str, object]:
         "channels": ["telegram_critical", "email"] + (["text_gateway"] if gateways else []),
         "gateway_count": len(gateways),
         "email_configured": bool(mail),
+        "text_enabled": text_enabled,
         "missing": missing,
     }
