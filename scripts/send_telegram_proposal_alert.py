@@ -260,8 +260,8 @@ def main():
         # ALERT-FATIGUE-1: Check central router before sending
         _router_ok = True
         try:
-            from telegram_alert_router import should_send_telegram
-            if not should_send_telegram(message):
+            from telegram_alert_router import peek_should_send
+            if not peek_should_send(message):
                 _router_ok = False
                 result["suppressed_by_router"] = True
         except ImportError:
