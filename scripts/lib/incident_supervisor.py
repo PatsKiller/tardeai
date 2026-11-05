@@ -59,7 +59,8 @@ CC_INCIDENT_URL = "https://ms01-openclaw.tail163d14.ts.net/v3/ops/incidents?deta
 
 ModelCall = Callable[[str], tuple[str, str]]
 Runner = Callable[[list, str, dict, float], tuple[int, str]]
-Notifier = Callable[[str, str], bool]
+#: ``notify(text, producer, priority="P1"|"P2")`` — the batch sends once per cycle (ONBOARDING §12 rule 3).
+Notifier = Callable[..., bool]
 
 #: The fixer states that prove it actually worked the job (scripts/lib/self_heal_fixer.py STATES).
 #: ``fix_requested`` is only an admission, and ``fix_failed`` / ``fix_refused`` / ``fix_interrupted``
@@ -116,12 +117,12 @@ def default_run(argv: list, cwd: str, env: dict, timeout: float) -> tuple[int, s
     return p.returncode, ((p.stdout or "") + ("\n" + p.stderr if p.stderr else ""))[-2000:]
 
 
-def default_notify(text: str, producer: str) -> bool:
+def default_notify(text: str, producer: str, priority: str = "P2") -> bool:
     try:
         from scripts.telegram_alert import send_telegram
     except ImportError:
         from telegram_alert import send_telegram  # type: ignore
-    return bool(send_telegram(text, priority="P1", dedupe_minutes=0, producer=producer))
+    return bool(send_telegram(text, priority=priority, dedupe_minutes=0, producer=producer))
 
 
 # ---------------------------------------------------------------- pure decisions
@@ -407,9 +408,24 @@ def fixer_request(rec: Mapping[str, Any], verdict: Mapping[str, Any], cfg: Mappi
 # ---------------------------------------------------------------- the cycle
 
 
-def _p1_text(rec: Mapping[str, Any], reason: str, ask: str) -> str:
-    return (f"[P1] Incident {rec['id']}: {rec.get('title', '')[:160]}\n"
-            f"Why: {reason[:200]}\nNext: {ask[:300]}\n{CC_INCIDENT_URL.format(id=rec['id'])}")
+def _batch_text(rows: list[dict], priority: str) -> str:
+    """ONE page for every escalation this run (ONBOARDING §12 rule 3), as a list.
+
+    Each entry names the incident, how long it has been unresolved and the exact next action. The
+    operator asked for one batched message per run, never six separate P1s; a batch pages P1 only
+    when it carries an operator-only decision or exhausted attempts (AGENTS §28.14); routine diagnostics stay P2.
+    """
+    lines = [f"[{priority}] Incident supervisor — {len(rows)} escalation(s) this run (batched once per run)", ""]
+    for row in rows:
+        age = row.get("age_min")
+        unresolved = "unresolved age unknown" if age is None else f"unresolved {int(age)} min"
+        lines.append(f"• {row['id']} — {str(row.get('title') or '')[:140]}")
+        lines.append(f"  {str(row.get('reason') or '')[:180]} · {unresolved}")
+        lines.append(f"  Next: {str(row.get('ask') or '')[:240]}")
+        lines.append(f"  {CC_INCIDENT_URL.format(id=row['id'])}")
+    if any(row.get("operator_only") for row in rows):
+        lines += ["", "This batch contains an operator-only decision; no agent may act on it."]
+    return "\n".join(lines)
 
 
 def _current_escalations(rec: Mapping[str, Any]) -> list[dict]:
@@ -444,40 +460,89 @@ def _current_escalations(rec: Mapping[str, Any]) -> list[dict]:
 
 
 def _pending_escalation(rec: Mapping[str, Any]) -> Optional[dict]:
-    """The latest current-episode escalation when it was NOT delivered (a page to retry)."""
+    """The latest undelivered reason in this episode; another reason's success cannot erase it."""
     rows = _current_escalations(rec)
-    if not rows:
-        return None
-    last = rows[-1]
-    return None if last.get("delivered") is True else dict(last)
+    delivered = {str(row.get("key") or row.get("reason")) for row in rows if row.get("delivered") is True}
+    for row in reversed(rows):
+        if str(row.get("key") or row.get("reason")) not in delivered:
+            return dict(row)
+    return None
 
 
 def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool, out: dict, now: datetime,
-              key: Optional[str] = None) -> None:
-    """Send ONE P1 for a reason class, at most once per DELIVERED page IN THIS EPISODE.
+              key: Optional[str] = None, *, operator_only: bool = False) -> None:
+    """Queue ONE escalation for a reason class, at most once per DELIVERED page IN THIS EPISODE.
 
     Causal rule (2026-11-03): suppress only an escalation that was delivered with the SAME key in the
     CURRENT episode (``reopen`` starts a new episode). An undelivered send (``delivered: False``)
     retries on the next evaluation, a different reason class (time box vs attempt cap vs refused
     scope) has its own key and still pages, and episode-1 history never hides an episode-2 page.
+
+    Batching (ONBOARDING §12 rule 3): nothing is sent here. An undelivered ledger row is persisted
+    before blocking, then ``_flush_escalations`` sends ONE message. Operator decisions and exhausted-attempt
+    keys page P1; notification urgency does not grant operator-only authority.
     """
     key = key or reason
     for e in _current_escalations(rec):
         # Rows written before keys existed carry no key: fall back to the exact reason text.
         if e.get("delivered") is True and (e.get("key") or e.get("reason")) == key:
             return
-    row = {"id": rec["id"], "reason": reason, "key": key}
+    opened = L.parse_ts(rec.get("opened_at"))
+    row = {"id": rec["id"], "reason": reason, "key": key, "ask": ask, "title": rec.get("title"),
+           "age_min": round((now - opened).total_seconds() / 60, 1) if opened else None,
+           "operator_only": bool(operator_only), "episode": int(rec.get("episode") or 1)}
     if not apply:
         out["would_escalate"].append(row)
         return
+    # The append is fsynced before this incident may become blocked. A later fault or process
+    # interruption must leave a retry obligation even when the single batch send never starts.
+    # Reuse an undelivered row for this episode/key; a retry must not invent another delivery.
+    if not any((e.get("key") or e.get("reason")) == key for e in _current_escalations(rec)):
+        L.escalate(row["id"], actor=ACTOR, reason=reason, delivered=False, key=key,
+                   episode=row["episode"], d=d, now=now)
+    out.setdefault("_pending_escalations", []).append(row)
+
+
+def _flush_escalations(d: Path, deps: Deps, out: dict, now: datetime) -> None:
+    """Send the run's escalations as ONE message; record each incident's delivered row.
+
+    One batch (ONBOARDING §12 rule 3): P1 for operator-only decisions or exhausted attempts
+    (AGENTS §28.14), P2 for routine diagnostics. Exhaustion does not change ``operator_only``.
+    Every queued reason already has a durable undelivered row. Success appends its delivery;
+    failure leaves that obligation for the delivery-only retry, without inventing a successful send.
+    """
+    pending = out.pop("_pending_escalations", [])
+    if not pending:
+        return
+    # Work later in the cycle may have closed, reopened or delivered an earlier obligation.
+    # Re-read the ledger before notification; an old episode must not page for the new one.
+    records = L.load_records(d)
+    current_pending = []
+    for row in pending:
+        rec = records.get(row["id"])
+        if (rec and rec.get("status") in (*L.UNRESOLVED, "blocked")
+                and int(rec.get("episode") or 1) == row["episode"]
+                and not any(e.get("delivered") is True and (e.get("key") or e.get("reason")) == row["key"]
+                            for e in _current_escalations(rec))):
+            current_pending.append(row)
+        else:
+            out["skipped"].append({"id": row["id"], "why": "escalation superseded"})
+    pending = current_pending
+    if not pending:
+        return
+    priority = "P1" if any(row.get("operator_only") or row.get("key") == "max_attempts" for row in pending) else "P2"
+    delivered = False
     try:
-        delivered = deps.notify(_p1_text(rec, reason, ask), f"incident_supervisor:{rec['id']}")
-    except Exception as exc:  # noqa: BLE001
-        delivered = False
-        reason = f"{reason} (send error {type(exc).__name__})"
-    L.escalate(rec["id"], actor=ACTOR, reason=reason, delivered=delivered, key=key,
-               episode=int(rec.get("episode") or 1), d=d, now=now)
-    out["escalated"].append({**row, "delivered": delivered})
+        delivered = bool(deps.notify(_batch_text(pending, priority), "incident_supervisor:batch", priority=priority))
+    except Exception as exc:  # noqa: BLE001 — the durable undelivered obligations remain retryable
+        out["notification_error"] = {"error_class": type(exc).__name__}
+    for row in pending:
+        if delivered:
+            L.escalate(row["id"], actor=ACTOR, reason=row["reason"], delivered=True, key=row["key"],
+                       episode=row["episode"], d=d, now=now)
+        out["escalated"].append({"id": row["id"], "reason": row["reason"], "key": row["key"],
+                                 "delivered": delivered, "operator_only": row["operator_only"],
+                                 "priority": priority})
 
 
 def _calls_today(d: Path, now: datetime) -> int:
@@ -535,6 +600,31 @@ def _call_fixer(deps: Deps, req: Path, apply: bool, timeout_s: float) -> dict:
 def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
           now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT,
           clock: Callable[[], float] = time.monotonic) -> dict:
+    """Flush one batch on every exit, including a failure in unrelated incident work."""
+    now = now or L.utcnow()
+    out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
+                           "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
+                           "would_escalate": [], "skipped": []}
+    completed = False
+    try:
+        result = _run_cycle(d=d, state_root=state_root, release_root=release_root, cfg=cfg, deps=deps,
+                            apply=apply, now=now, environ=environ, root=root, clock=clock, out=out)
+        completed = True
+        return result
+    finally:
+        if apply:
+            _flush_escalations(d, deps, out, now)
+            # Ops exposes only this receipt's as_of, not an error flag. Keep its last completed
+            # clock on a failed cycle; the original exception still propagates to the caller.
+            if completed:
+                d.mkdir(parents=True, exist_ok=True)
+                p = d / "supervisor_last.json"
+                p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
+
+
+def _run_cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
+          now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT,
+          clock: Callable[[], float] = time.monotonic, out: dict) -> dict:
     now = now or L.utcnow()
     pol = cfg["policy"]
     environ = os.environ if environ is None else environ
@@ -555,9 +645,6 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             return None, remaining
         return min(fixer_timeout_s, remaining), remaining
 
-    out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
-                           "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
-                           "would_escalate": [], "skipped": []}
     recs = L.load_records(d)
     max_n = int(pol.get("max_incidents_per_cycle", 5))
     queue = sorted((r for r in recs.values() if r["status"] in L.UNRESOLVED), key=lambda r: r["opened_at"])
@@ -568,6 +655,19 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
     retries = sorted((r for r in recs.values()
                       if r["status"] == "blocked" and _pending_escalation(r)),
                      key=lambda r: r["opened_at"])[:max_n]
+    # Stage already-durable delivery retries before fallible work. The public cycle's finally
+    # flushes this same batch if an unresolved incident fails, without running a model for the retry.
+    for rec in retries:
+        pending = _pending_escalation(rec)
+        if not pending:
+            continue
+        iid = rec["id"]
+        out["considered"].append(iid)
+        key = pending.get("key") or pending.get("reason")
+        reason = pending.get("reason") or "incident blocked"
+        ask = rec.get("handoff") or "A person must take this incident."
+        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key,
+                  operator_only=key in ("needs_operator", "refused_scope"))
     for rec in queue[:max_n]:
         iid = rec["id"]
         out["considered"].append(iid)
@@ -578,10 +678,12 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             ask = f"Refused scope ({hit!r}): AGENTS.md §0 / §28.14 item 4 — a person decides; no automated fix."
             if apply:
                 L.attempt(iid, actor=ACTOR, action="refused", result=ask, ok=None, sets_fixing=False, d=d, now=now)
+            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now, key="refused_scope",
+                     operator_only=True)
+            if apply:
                 rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: refused scope {hit!r}",
                               handoff="operator/coordinator: review the evidence; no agent may act on this scope", d=d, now=now)
             out["blocked"].append({"id": iid, "why": f"refused_scope:{hit}"})
-            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now, key="refused_scope")
             continue
         # 2. attempts cap (counted within THIS episode: attempts before the last reopen are history)
         if counted_attempts(rec) >= int(pol.get("max_attempts_per_incident", 3)):
@@ -622,12 +724,12 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             if _fresh_ok_dispatch(rec, pol, now):
                 out["skipped"].append({"id": iid, "why": "fixer job active"})
                 continue
+            _escalate(rec, why, "Supervisor attempts exhausted; a person must take it.", d, deps, apply, out, now,
+                      key="max_attempts")
             if apply:
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: read attempts[] and the evidence; fix by PR or record the operator decision", d=d, now=now)
             out["blocked"].append({"id": iid, "why": why})
-            _escalate(rec, why, "Supervisor attempts exhausted; a person must take it.", d, deps, apply, out, now,
-                      key="max_attempts")
             continue
         # 3. time box
         if age_min >= float(pol.get("escalate_after_minutes", 60)):
@@ -744,12 +846,12 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                 why = "prior fixer dispatch in this episode did not prove work; not redispatching"
                 L.attempt(iid, actor=ACTOR, action="triage", result=why, ok=False, sets_fixing=False,
                           detail={**detail, "fixer": "stale_or_failed_dispatch"}, d=d, now=now)
+                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
+                          d, deps, apply, out, now, key="fixer_dispatch_failed")
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: inspect the fixer job; a retry needs an operator requeue",
                               d=d, now=now)
                 out["blocked"].append({"id": iid, "why": why})
-                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
-                          d, deps, apply, out, now, key="fixer_dispatch_failed")
                 continue
             # Cycle budget (2026-11-03): the fixer timeout is capped at the remaining budget, and a
             # dispatch is deferred (triage row only) when too little remains. The incident stays
@@ -775,36 +877,20 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
             if not ok:
                 why = f"fixer dispatch did not prove work (rc={res.get('rc')})"
+                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
+                          d, deps, apply, out, now, key="fixer_dispatch_failed")
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: inspect the fixer job; a retry needs an operator requeue",
                               d=d, now=now)
                 out["blocked"].append({"id": iid, "why": why})
-                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
-                          d, deps, apply, out, now, key="fixer_dispatch_failed")
         else:  # needs_operator
             L.attempt(iid, actor=ACTOR, action="triage", result=f"needs_operator: {verdict['action']}", ok=None,
                       sets_fixing=False, detail=detail, d=d, now=now)
+            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator",
+                      operator_only=True)
             rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: {verdict['rationale'][:300]}",
                           handoff=verdict["action"] or "operator decision required", d=d, now=now)
             out["blocked"].append({"id": iid, "why": "needs_operator"})
-            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator")
-    # Delivery-only retry (2026-11-03) for blocked incidents whose latest current-episode page was
-    # not delivered. This runs AFTER the unresolved queue and does nothing else: no model call, no
-    # runbook action, no fixer dispatch and no new block. A successful retry makes the escalation
-    # delivered, so the next cycle no longer sees it; a failed one is retried again next cycle.
-    for rec in retries:
-        pending = _pending_escalation(rec)
-        if not pending:
-            continue
-        iid = rec["id"]
-        out["considered"].append(iid)
-        key = pending.get("key") or pending.get("reason")
-        reason = pending.get("reason") or "incident blocked"
-        ask = rec.get("handoff") or "A person must take this incident."
-        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key)
-    if apply:
-        p = d / "supervisor_last.json"
-        p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
     return out
 
 
