@@ -44,6 +44,9 @@ check(/not approval/i.test(desk), 'the legend does not say READY is not approval
 check(/\{expanded && <div/g.test(row) && (row.match(/\{expanded && <div/g) || []).length >= 2,
   'the sizing and action columns are not gated behind the expanded state')
 check(/entry-desk-details-toggle/.test(row), 'the row has no way to open its details')
+// F2 at abee631b: the label changes Show/Hide, which a screen reader already reads, but the state attribute is
+// the standard contract - aria-expanded must carry the same truth as the visible label.
+check(/aria-expanded=\{expanded\}/.test(row), 'the details toggle does not expose aria-expanded')
 check(/Copy setup/.test(row) && /Copy Schwab tickets/.test(row) && /Broker queue/.test(row),
   'a control was removed from the row instead of being moved behind the details toggle')
 check(/data-testid="manual-desk-scope-legend"/.test(desk), 'the compact desk lost the scope legend')

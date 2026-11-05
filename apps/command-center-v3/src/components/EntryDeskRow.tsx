@@ -217,7 +217,7 @@ export default function EntryDeskRow({
           {r.reason && <div style={{ marginTop: 4, fontSize: 9, color: C.dim, lineHeight: 1.4 }}>{String(r.reason).slice(0, 200)}</div>}
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
           {onToggle && (
-            <button type="button" onClick={onToggle} data-testid="entry-desk-details-toggle"
+            <button type="button" onClick={onToggle} data-testid="entry-desk-details-toggle" aria-expanded={expanded}
               style={{ marginTop: 6, fontSize: 10, padding: '3px 9px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'transparent', color: C.blue, cursor: 'pointer' }}>
               {expanded ? 'Hide details ▴' : 'Show details ▾ (sizing, diligence, copy, broker queue)'}
             </button>
