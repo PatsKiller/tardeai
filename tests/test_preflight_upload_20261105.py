@@ -129,8 +129,13 @@ def _install(monkeypatch, mod, root: Path, gh=None, test_rc: int = 0, claims=Non
 
 
 def _record(mod, monkeypatch, root: Path) -> None:
+    """Record through a runner double that supplies pytest's own final summary line.
+
+    Execution is derived from a structured/final runner result, so a bare ``0`` with no summary
+    is (correctly) not proof that a test ran.
+    """
     monkeypatch.chdir(root)
-    monkeypatch.setattr(mod, "test_runner", lambda cmd, cwd: 0)
+    monkeypatch.setattr(mod, "test_runner", lambda cmd, cwd: mod.RunResult(0, "1 passed in 0.01s\n"))
     assert mod.main(["--record-tests"]) == 0
 
 
@@ -220,9 +225,9 @@ def test_record_tests_writes_the_receipt_only_when_every_file_is_green(tmp_path,
     monkeypatch.chdir(root)
     monkeypatch.setattr(mod, "test_runner", lambda cmd, cwd: 1)
     rc = mod.main(["--record-tests"])
-    out = capsys.readouterr().out
+    err = capsys.readouterr().err
     assert rc == 1
-    assert "NOT GREEN (exit 1)" in out
+    assert "NOT GREEN (exit 1)" in err
     assert not (root / ".git" / "preflight").exists()
 
 
@@ -634,6 +639,73 @@ def test_ui_registration_requires_the_test_in_a_node_step(tmp_path, monkeypatch,
     assert "is not run by any 'node ...' step" in out
 
 
+UI_TEST_MJS = "apps/command-center-v3/src/lib/zz.test.mjs"
+DRIVER_CJS = "apps/command-center-v3/src/lib/driver.cjs"
+
+
+def test_a_test_named_only_as_a_node_argument_does_not_register_or_certify(tmp_path):
+    """CX3-F1 mutation: accept the target in any argv token -> the driver-only run certifies, red.
+
+    ``node driver.cjs zz.test.mjs`` never executes ``zz.test.mjs`` (the real file throws when run
+    directly), so the touched test must neither register nor obtain a receipt.
+    """
+    root = _repo(
+        tmp_path,
+        {
+            DRIVER_CJS: "console.log('driver only');\n",
+            UI_TEST_MJS: "throw new Error('this file must never be certified through the driver');\n",
+        },
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(
+                _ui_pkg("node src/lib/driver.cjs src/lib/zz.test.mjs")
+            )
+        },
+    )
+    mod = _mod()
+    refusals = mod.check_registered(root)
+    assert refusals and refusals[0]["code"] == "test-not-registered"
+    # The recorder falls back to running the test itself (which throws); it never runs the driver
+    # and calls that the test's evidence.
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+
+
+def test_a_node_option_value_is_not_the_executable_input(tmp_path):
+    """CX3-F1 mutation: treat any positional/value as the script -> a --require value registers, red."""
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: "console.log('ok');\n"},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(
+                _ui_pkg("node --require ./src/lib/zz.test.mjs src/lib/driver.cjs")
+            )
+        },
+    )
+    mod = _mod()
+    refusals = mod.check_registered(root)
+    assert refusals and refusals[0]["code"] == "test-not-registered"
+
+
+def test_a_directly_executed_node_test_registers_and_certifies(tmp_path):
+    """CX3-F1 mutation: refuse the genuine leading-./ node positive -> this test goes red.
+
+    Real node child: ``node ./src/lib/zz.test.mjs`` selects the file as its executable input.
+    """
+    root = _repo(
+        tmp_path,
+        {UI_TEST_MJS: "console.log('ok');\n"},
+        base_files={
+            "apps/command-center-v3/package.json": json.dumps(_ui_pkg("node ./src/lib/zz.test.mjs"))
+        },
+    )
+    mod = _mod()
+    assert mod.check_registered(root) == []
+    assert mod.record_tests(root, verbose=False) == 0
+    receipt = _read_receipt(mod, root)
+    assert receipt["results"][0]["path"] == UI_TEST_MJS
+    assert mod.check_tests(root) == []
+
+
 # ── F2: a receipt must carry per-file successful execution evidence ─────────────────────
 
 PASSING_TEST = "def test_ok():\n    assert True\n"
@@ -677,20 +749,124 @@ def test_a_real_all_skipped_pytest_file_is_refused(tmp_path):
     assert refusals[0]["code"] == "tests-not-run"
 
 
-def test_all_skipped_is_accepted_only_with_an_explicit_skip_tolerant_contract(tmp_path):
-    """CX3-F2 mutation: drop the skip-tolerant contract check -> a forged receipt passes, red."""
-    root = _repo(tmp_path, {"tests/test_skip.py": SKIPPED_TEST})
+SKIP_CONFIG_REL = "config/ci_skip_tolerant_units.json"
+
+
+def _skip_config(*paths: str) -> dict:
+    return {
+        "schema": "CiSkipTolerantFiles@v1",
+        "files": {
+            path: {"reason": "dependency-gated: measured all-skip in this synthetic environment"}
+            for path in paths
+        },
+    }
+
+
+def test_all_skipped_is_tolerated_only_by_the_reviewed_project_list(tmp_path):
+    """CX3-F2 mutation: ignore the committed skip-tolerant list -> the tolerated file is refused.
+
+    Tolerance is project provenance (config/ci_skip_tolerant_units.json at HEAD), not a caller
+    flag and not a receipt field.
+    """
+    root = _repo(
+        tmp_path,
+        {"tests/test_skip.py": SKIPPED_TEST},
+        base_files={SKIP_CONFIG_REL: json.dumps(_skip_config("tests/test_skip.py"))},
+    )
     mod = _mod()
-    assert mod.record_tests(root, verbose=False, allow_skip_only={"tests/test_skip.py"}) == 0
+    assert mod.record_tests(root, verbose=False) == 0
     receipt = _read_receipt(mod, root)
     assert receipt["skip_tolerant"] == ["tests/test_skip.py"]
     assert receipt["results"][0]["ran"] is False
     assert mod.check_tests(root) == []
-    receipt.pop("skip_tolerant")
-    mod.receipt_path(root, mod.head_sha(root)).write_text(json.dumps(receipt), encoding="utf-8")
+
+
+def test_a_receipt_cannot_declare_its_own_skip_tolerance(tmp_path):
+    """CX3-F2 mutation: trust receipt["skip_tolerant"] -> a self-declared waiver certifies zero tests.
+
+    The same receipt shape is accepted only when the file is in the committed project list.
+    """
+    root = _repo(tmp_path, {"tests/test_skip.py": SKIPPED_TEST})  # no project list entry
+    mod = _mod()
+    head = mod.head_sha(root)
+    forged = {
+        "schema": "PreflightTestReceipt@v1",
+        "head_sha": head,
+        "files": ["tests/test_skip.py"],
+        "skip_tolerant": ["tests/test_skip.py"],
+        "results": [
+            {
+                "path": "tests/test_skip.py",
+                "exit_code": 0,
+                "ran": False,
+                "counts": {"total": 1, "passed": 0, "failed": 0, "errors": 0, "skipped": 1},
+                "output_tail": "1 skipped in 0.01s\n",
+            }
+        ],
+    }
+    target = mod.receipt_path(root, head)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(forged), encoding="utf-8")
     refusals = mod.check_tests(root)
     assert refusals
+    assert refusals[0]["code"] == "tests-not-run"
     assert "no test executed" in refusals[0]["message"]
+
+
+def test_a_caller_skip_waiver_flag_no_longer_exists():
+    """CX3-F2 mutation: accept a caller-selected skip waiver -> argparse accepts the flag, red."""
+    import pytest
+
+    mod = _mod()
+    with pytest.raises(SystemExit):
+        mod.main(["--record-tests", "--allow-skip-only", "tests/test_skip.py"])
+
+
+def test_a_warning_line_that_quotes_a_passing_count_does_not_certify_an_all_skipped_file(tmp_path):
+    """CX3-F2 mutation: grep all output for passing counts -> this file is certified, red.
+
+    The real all-skipped file emits an ordinary import warning containing the prose "1 passed is
+    the historical comparison label"; pytest's actual final summary is "1 skipped, 1 warning".
+    """
+    warned_and_skipped = (
+        "import warnings\n"
+        "import pytest\n\n"
+        "warnings.warn('1 passed is the historical comparison label')\n\n"
+        "@pytest.mark.skip(reason='intentionally skipped in this environment')\n"
+        "def test_skipped():\n"
+        "    assert True\n"
+    )
+    root = _repo(tmp_path, {"tests/test_skip_warning.py": warned_and_skipped})
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 1
+    assert not mod.receipt_path(root, mod.head_sha(root)).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
+
+
+def test_a_receipt_row_cannot_alias_the_touched_file_through_a_parent(tmp_path):
+    """CX3-F2 mutation: collapse '..' lexically -> the symlink parent alias is accepted, red.
+
+    ``link/../tests/test_demo.py`` normalises lexically to the touched path, but ``link`` is a
+    real symlink, so the kernel resolves it to a different physical file.
+    """
+    import os
+
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    mod = _mod()
+    assert mod.record_tests(root, verbose=False) == 0
+    path = mod.receipt_path(root, mod.head_sha(root))
+    genuine = json.loads(path.read_text(encoding="utf-8"))
+    (root / "tests" / "sub" / "tests").mkdir(parents=True)
+    (root / "tests" / "sub" / "tests" / "test_demo.py").write_text(PASSING_TEST, encoding="utf-8")
+    os.symlink(root / "tests" / "sub", root / "link")
+    variant = dict(genuine)
+    variant["results"] = [dict(genuine["results"][0], path="link/../tests/test_demo.py")]
+    path.write_text(json.dumps(variant), encoding="utf-8")
+    refusals = mod.check_tests(root)
+    assert refusals
+    assert refusals[0]["code"] == "tests-not-run"
+    path.write_text(json.dumps(genuine), encoding="utf-8")
+    assert mod.check_tests(root) == []
 
 
 def test_a_receipt_without_a_successful_row_for_every_touched_file_is_refused(tmp_path):
@@ -812,9 +988,130 @@ def test_untracked_test_artifacts_do_not_block_recording(tmp_path):
     (root / "tests" / "__pycache__").mkdir(parents=True)
     (root / "tests" / "__pycache__" / "x.pyc").write_bytes(b"\x00\x01")
     (root / "pytest.log").write_text("log\n", encoding="utf-8")
+    (root / ".pytest_cache" / "v" / "cache").mkdir(parents=True)
+    (root / ".pytest_cache" / "v" / "cache" / "nodeids").write_text("[]\n", encoding="utf-8")
     mod = _mod()
     assert mod.record_tests(root, verbose=False) == 0
     assert mod.check_tests(root) == []
+
+
+def test_a_gitignored_helper_cannot_certify_a_committed_failing_test(tmp_path):
+    """CX3-F3 mutation: scan only non-ignored untracked files -> a gitignored helper certifies, red.
+
+    `.gitignore` is not an import boundary: Python imports the helper even though git ignores it.
+    """
+    committed = (
+        "import missing_helper\n\n\n"
+        "def test_ok():\n"
+        "    assert missing_helper.VALUE == 1\n"
+    )
+    root = _repo(
+        tmp_path,
+        {"tests/test_demo.py": committed, ".gitignore": "tests/missing_helper.py\n"},
+    )
+    mod = _mod()
+    head = mod.head_sha(root)
+    assert mod.record_tests(root, verbose=False) == 1  # ModuleNotFoundError: exit 2
+    (root / "tests" / "missing_helper.py").write_text("VALUE = 1\n", encoding="utf-8")
+    assert mod.record_tests(root, verbose=False) == 1  # gitignored source is still source
+    assert not mod.receipt_path(root, head).exists()
+
+
+def test_untracked_source_cannot_certify_a_committed_failing_test(tmp_path):
+    """CX3-F3 mutation: exclude ALL untracked files -> the helper makes the committed test green, red.
+
+    The committed test imports ``missing_helper``; the real pytest run fails collection with exit
+    2. Adding only the untracked helper must not let the recorder write a receipt.
+    """
+    committed = (
+        "import missing_helper\n\n\n"
+        "def test_ok():\n"
+        "    assert missing_helper.VALUE == 1\n"
+    )
+    root = _repo(tmp_path, {"tests/test_demo.py": committed})
+    mod = _mod()
+    head = mod.head_sha(root)
+    assert mod.record_tests(root, verbose=False) == 1  # ModuleNotFoundError: exit 2
+    assert not mod.receipt_path(root, head).exists()
+    (root / "tests" / "missing_helper.py").write_text("VALUE = 1\n", encoding="utf-8")
+    assert mod.record_tests(root, verbose=False) == 1  # untracked source is refused before the run
+    assert not mod.receipt_path(root, head).exists()
+    assert mod.check_tests(root)[0]["code"] == "tests-not-run"
+
+
+# ── F5: every test child runs in the required CI safety environment ────────────────────
+
+
+def test_the_test_runner_forces_ci_mode_for_unset_and_unsafe_parents(tmp_path, monkeypatch):
+    """CX3-F5 mutation: inherit the caller environment -> an unsafe parent reaches the child, red.
+
+    An inert observer replaces the child process; no real test process is created for this case.
+    """
+    import os
+
+    mod = _mod()
+    seen: list[dict] = []
+
+    def observer(cmd, cwd=None, *, timeout=120, text=True, env=None):
+        seen.append(env or {})
+        return subprocess.CompletedProcess(cmd, 0, "1 passed in 0.01s\n", "")
+
+    monkeypatch.setattr(mod, "_run", observer)
+
+    monkeypatch.delenv("TRADE_AI_CI", raising=False)
+    mod._run_test(["python3", "-m", "pytest", "tests/test_demo.py"], tmp_path)
+    assert seen[-1]["TRADE_AI_CI"] == "1"
+
+    monkeypatch.setenv("TRADE_AI_CI", "0")
+    mod._run_test(["python3", "-m", "pytest", "tests/test_demo.py"], tmp_path)
+    assert seen[-1]["TRADE_AI_CI"] == "1"
+    assert os.environ["TRADE_AI_CI"] == "0"  # the caller's own environment is not mutated
+
+
+def test_recording_spawns_every_test_child_in_ci_mode(tmp_path, monkeypatch):
+    """CX3-F5 mutation: call _run without the forced env -> the recorded child is unsafe, red."""
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    mod = _mod()
+    real_run = mod._run
+    seen: list[dict] = []
+
+    def observing_run(cmd, cwd=None, *, timeout=120, text=True, env=None):
+        if "pytest" in cmd:  # exact token: pytest.ini in a git pathspec is not the child
+            seen.append(env or {})
+            return subprocess.CompletedProcess(cmd, 0, "1 passed in 0.01s\n", "")
+        return real_run(cmd, cwd, timeout=timeout, text=text, env=env)
+
+    monkeypatch.setattr(mod, "_run", observing_run)
+    monkeypatch.setattr(mod, "test_runner", mod._run_test)  # the real runner, observed at _run
+    monkeypatch.setenv("TRADE_AI_CI", "0")
+    assert mod.record_tests(root, verbose=False) == 0
+    assert seen and all(env.get("TRADE_AI_CI") == "1" for env in seen)
+
+
+# ── F6: --record-tests --json keeps stdout to exactly one JSON document ─────────────────
+
+
+def test_record_json_stdout_is_exactly_one_document_on_every_path(tmp_path, monkeypatch, capsys):
+    """CX3-F6 mutation: print diagnostics to stdout before the JSON -> json.loads(stdout) fails, red."""
+    root = _repo(tmp_path, {"tests/test_demo.py": PASSING_TEST})
+    mod = _mod()
+    monkeypatch.chdir(root)
+
+    assert mod.main(["--record-tests", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+    monkeypatch.setattr(mod, "test_runner", lambda cmd, cwd: mod.RunResult(0, "1 skipped in 0.01s\n"))
+    assert mod.main(["--record-tests", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+    monkeypatch.setattr(mod, "test_runner", lambda cmd, cwd: mod.RunResult(1, "1 failed in 0.01s\n"))
+    assert mod.main(["--record-tests", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+    monkeypatch.setattr(mod, "test_runner", lambda cmd, cwd: mod.RunResult(0, "1 passed in 0.01s\n"))
+    (root / "tests" / "test_demo.py").write_text("def test_ok():\n    assert False\n", encoding="utf-8")
+    assert mod.main(["--record-tests", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["ok"] is False
 
 
 # ── machine-readable mode ──────────────────────────────────────────────────────────────

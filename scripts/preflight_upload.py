@@ -8,17 +8,23 @@ upload is refused locally instead of failing in review or in CI.
 What it refuses, in operator language:
 
 * **tests-not-run** — the test files this branch adds or changes were not run green at this exact
-  commit in this exact checkout. ``--record-tests`` runs them against the committed source and
-  writes a receipt under the worktree's git dir (``preflight/<full-head-sha>.json``). The default
-  mode accepts only a validated receipt for the current head that carries a successful execution
-  row for every touched test file; a receipt for another head, a missing or empty result list, an
-  unrelated result, a nonzero exit, or a run where nothing executed (all skipped / no tests ran)
-  is refused. Recording refuses a dirty tracked source tree or a head that moves during the run, so
-  the receipt can never bind the committed head to different working files.
+  commit in this exact checkout. ``--record-tests`` runs them with ``TRADE_AI_CI=1`` forced on
+  every test child, against the committed source, and writes a receipt under the worktree's git
+  dir (``preflight/<full-head-sha>.json``). The default mode accepts only a validated receipt for
+  the current head that carries a successful execution row for every touched test file. Execution
+  is read from a structured runner result (pytest's ``--junitxml`` report, else its final summary
+  line), never from prose. A receipt for another head, a missing or empty result list, an unsafe
+  path alias, an unrelated result, a nonzero exit, or a run where nothing executed (all skipped /
+  no tests ran) is refused. Recording refuses dirty tracked source, untracked source or config
+  that could change execution, and a head that moves during the run, so the receipt can never bind
+  the committed head to different working files. A zero-assertion run is tolerated only for a file
+  the reviewed project list ``config/ci_skip_tolerant_units.json`` names with a reason; there is
+  no caller-selected waiver.
 * **test-not-registered** — a new or renamed test would never run. A Python test must be named in
-  some ``config/ci_gates/*.json``; a UI test must be named as an app-relative command token in a
-  ``node ...`` step of ``apps/command-center-v3``'s ``package.json`` ``scripts.build`` (the string
-  runs from the app directory, so it names ``src/lib/x.test.ts``, not the repository path).
+  some ``config/ci_gates/*.json``; a UI test must be the executable input of a ``node ...`` step
+  of ``apps/command-center-v3``'s ``package.json`` ``scripts.build`` (the string runs from the app
+  directory, so it names ``src/lib/x.test.ts``, not the repository path). A test that appears only
+  as an argument to another script (``node driver.cjs x.test.ts``) is not registered.
 * **plain-english** — the pull request description lacks its plain-English answers. This reuses the
   repository's own ``scripts/check_pr_plain_english.py`` (the six answers under
   ``## In plain English``); a draft is not exempt here because this runs before upload.
@@ -53,6 +59,8 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -63,18 +71,24 @@ EVIDENCE_PREFIX = "docs/evidence/"
 MAX_OPEN_PRS = 3
 RECEIPT_SCHEMA = "PreflightTestReceipt@v1"
 RESULT_SCHEMA = "PreflightUpload@v1"
+SKIP_TOLERANT_REL = "config/ci_skip_tolerant_units.json"
+CI_ENV = {"TRADE_AI_CI": "1"}
 
 UI_TEST_RE = re.compile(r"\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$")
 
-# Pytest's own summary, used to tell "one test executed" from "the run exited 0 without running a
-# test" (all skipped, or no tests collected). Any command that prints no recognisable summary (a
-# UI test run by node) is treated as having executed; the per-file receipt still has to say so.
-_PYTEST_NO_TESTS_RE = re.compile(r"\bno tests ran\b", re.IGNORECASE)
-_PYTEST_COLLECTED_ZERO_RE = re.compile(r"\bcollected 0 items\b", re.IGNORECASE)
-_PYTEST_PASSED_RE = re.compile(r"\b(\d+) passed\b")
-_PYTEST_FAILED_RE = re.compile(r"\b(\d+) failed\b")
-_PYTEST_ERROR_RE = re.compile(r"\b(\d+) errors?\b")
-_PYTEST_SKIPPED_RE = re.compile(r"\b(\d+) skipped\b")
+# Pytest's OWN final summary line. Only the last non-empty line is parsed, so a warning or prose
+# line that happens to quote a passing count can never be read as a test outcome.
+_PYTEST_SUMMARY_LINE_RE = re.compile(r"\bin \d+(?:\.\d+)?s\b")
+_PYTEST_SUMMARY_COUNT_RE = re.compile(r"\b(\d+) (passed|failed|errors?|skipped|xfailed|xpassed|deselected)\b")
+
+# Untracked files that cannot change what a test execution does. Anything else untracked (a
+# module, conftest, pytest config or fixture) is refused: it can make a committed test pass.
+_INERT_UNTRACKED_RE = re.compile(
+    r"(^|/)(__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.hypothesis|htmlcov)(/|$)"
+    r"|\.(pyc|pyo|pyd|coverage|log)$"
+    r"|(^|/)coverage\.(xml|json)$"
+    r"|(^|/)\.coverage(\..*)?$"
+)
 
 HELP_TEXT = """\
 Each refusal is one plain-English line and exit code 1; a clean run prints nothing and exits 0.
@@ -82,10 +96,13 @@ Each refusal is one plain-English line and exit code 1; a clean run prints nothi
   tests-not-run        The test files this branch adds or changes were not run green at this
                        exact commit. Fix: run
                        `python3 scripts/preflight_upload.py --record-tests`
-                       from this worktree at this head. The receipt must carry a successful
-                       execution row for every touched file; a receipt for another head is refused
-                       by name and is never accepted. Recording refuses a dirty tracked source
-                       tree or a head that moves during the run.
+                       from this worktree at this head. Every test child runs with TRADE_AI_CI=1.
+                       The receipt must carry a successful execution row for every touched file;
+                       a receipt for another head is refused by name and is never accepted.
+                       Recording refuses dirty tracked source, untracked source or config that
+                       could change execution, and a head that moves during the run. An
+                       all-skipped run is tolerated only for a file listed with a reason in
+                       config/ci_skip_tolerant_units.json; there is no caller waiver.
   test-not-registered  A new or renamed test would never run in CI. Fix: name a Python test in a
                        config/ci_gates/<gate>.json file, or add a UI test as an app-relative path
                        (src/lib/x.test.ts) to a `node ...` step in the apps/command-center-v3
@@ -111,13 +128,21 @@ class PreflightError(RuntimeError):
     """A git/gh read failed in a way that makes the answer unknowable. Never a silent pass."""
 
 
-def _run(cmd: list[str], cwd: Path | None = None, *, timeout: int = 120, text: bool = True):
+def _run(
+    cmd: list[str],
+    cwd: Path | None = None,
+    *,
+    timeout: int = 120,
+    text: bool = True,
+    env: dict[str, str] | None = None,
+):
     return subprocess.run(
         cmd,
         cwd=str(cwd) if cwd is not None else None,
         capture_output=True,
         text=text,
         timeout=timeout,
+        env=env,
     )
 
 
@@ -150,9 +175,15 @@ class RunResult(NamedTuple):
 
 
 def _run_test(cmd: list[str], cwd: Path) -> RunResult:
-    """The one test runner. Tests replace this function; the receipt is still real."""
+    """The one test runner. Tests replace this function; the receipt is still real.
+
+    Every real test child is forced into the required CI safety mode (AGENTS.md §24.6,
+    ``TRADE_AI_CI=1``). The parent value is overridden, so an unset or explicitly unsafe caller
+    environment cannot reach a test that reads production state.
+    """
+    env = dict(os.environ, **CI_ENV)
     try:
-        proc = _run(cmd, cwd)
+        proc = _run(cmd, cwd, env=env)
     except (OSError, subprocess.TimeoutExpired) as exc:
         return RunResult(127, f"could not run: {exc}")
     output = (proc.stdout or "") + (proc.stderr or "")
@@ -179,26 +210,84 @@ def _normalise_run(raw) -> tuple[int, str]:
     return int(code), str(getattr(raw, "output", ""))
 
 
-def _executed_at_least_one(output: str) -> bool:
-    """False when the command exited 0 without executing a single test.
+def _pytest_summary_counts(output: str) -> dict[str, int] | None:
+    """Counts from pytest's final summary line, or ``None`` when there is no such line.
 
-    Pytest reports an all-skipped file as ``1 skipped in 0.02s`` and an empty collection as
-    ``no tests ran`` — both exit 0. A command that prints no pytest-style summary at all (a node
-    UI test) is treated as having executed: the evidence rule is per-file and the receipt must
-    still claim so explicitly.
+    Only the last non-empty line is considered. Pytest prints its summary last ("1 skipped, 1
+    warning in 0.02s"); an earlier warning or prose line that quotes a passing count is not a
+    runner result and must never be read as one.
     """
-    text = output or ""
-    if _PYTEST_NO_TESTS_RE.search(text) or _PYTEST_COLLECTED_ZERO_RE.search(text):
-        return False
-    passed = sum(int(n) for n in _PYTEST_PASSED_RE.findall(text))
-    failed = sum(int(n) for n in _PYTEST_FAILED_RE.findall(text))
-    errors = sum(int(n) for n in _PYTEST_ERROR_RE.findall(text))
-    skipped = sum(int(n) for n in _PYTEST_SKIPPED_RE.findall(text))
-    if passed or failed or errors:
-        return True
-    if skipped:
-        return False
-    return True
+    lines = [line for line in (output or "").strip().splitlines() if line.strip()]
+    if not lines:
+        return None
+    last = lines[-1]
+    if "no tests ran" in last.lower():
+        return {}
+    if not _PYTEST_SUMMARY_LINE_RE.search(last):
+        return None
+    counts: dict[str, int] = {}
+    for number, kind in _PYTEST_SUMMARY_COUNT_RE.findall(last):
+        kind = "errors" if kind.startswith("error") else kind
+        counts[kind] = counts.get(kind, 0) + int(number)
+    return counts or None
+
+
+def _counts_executed(counts: dict | None) -> bool | None:
+    """True when the structured result says at least one test executed; None when unknown."""
+    if not isinstance(counts, dict):
+        return None
+    ran = 0
+    for kind in ("passed", "failed", "errors", "xfailed", "xpassed"):
+        value = counts.get(kind, 0)
+        if isinstance(value, int):
+            ran += value
+    return ran > 0
+
+
+def _junit_counts(path: Path | None) -> dict[str, int] | None:
+    """Per-outcome counts from a pytest ``--junitxml`` report, or None when it is unusable."""
+    if path is None:
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+    total = skipped = failed = errors = 0
+    for case in root.iter("testcase"):
+        total += 1
+        if case.find("skipped") is not None:
+            skipped += 1
+        elif case.find("failure") is not None:
+            failed += 1
+        elif case.find("error") is not None:
+            errors += 1
+    return {
+        "total": total,
+        "passed": total - skipped - failed - errors,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors,
+    }
+
+
+def _execution_evidence(path: str, output: str, junit_path: Path | None) -> tuple[bool | None, dict | None]:
+    """Whether at least one test executed, from a structured result (never a prose match).
+
+    A UI test run by node has no pytest report; its exit code is the evidence and the per-file
+    receipt still has to claim it. A Python run is judged from its junit report, or, when the
+    injected runner wrote none, from pytest's own final summary line. ``(None, ...)`` means the
+    result could not prove execution and the recorder must refuse it.
+    """
+    if is_ui_test(path):
+        return True, None
+    counts = _junit_counts(junit_path) if junit_path is not None else None
+    if counts is None:
+        counts = _pytest_summary_counts(output)
+    return _counts_executed(counts), counts
 
 
 def repo_root() -> Path:
@@ -243,11 +332,22 @@ def is_test_file(path: str) -> bool:
 
 
 def _normalise_test_path(value) -> str:
-    """The one comparison form for a repository-relative path (exact after normalisation)."""
+    """The one comparison form for a repository-relative path.
+
+    A leading ``./`` is normalised (a valid positive). A ``..`` component is NOT collapsed
+    lexically: ``link/../tests/x.py`` looks like ``tests/x.py`` but the kernel resolves ``link``
+    (a symlink) first, so it can name a different physical file. Such an alias returns ``""`` and
+    can never match the intended repository file.
+    """
     text = str(value).replace("\\", "/").strip()
     while text.startswith("./"):
         text = text[2:]
-    return posixpath.normpath(text) if text else ""
+    if not text:
+        return ""
+    parts = [part for part in text.split("/") if part not in ("", ".")]
+    if not parts or ".." in parts:
+        return ""
+    return posixpath.normpath(text)
 
 
 def touched_test_files(root: Path) -> list[str]:
@@ -319,7 +419,51 @@ def _refusal(code: str, message: str) -> dict:
     return {"code": code, "message": " ".join(message.split())}
 
 
-def _receipt_results(receipt: dict) -> tuple[dict[str, list[dict]], str]:
+def load_skip_tolerant(root: Path) -> set[str]:
+    """Test files the reviewed project list tolerates running zero tests.
+
+    The list is ``config/ci_skip_tolerant_units.json`` read from the committed HEAD tree, never
+    from a caller argument and never from the receipt: a caller flag is not a project exception,
+    and a receipt cannot declare its own tolerance. Every entry must carry a non-empty reason; a
+    missing or malformed list tolerates nothing (fail closed).
+    """
+    try:
+        proc = _git(
+            ["show", f"HEAD:{SKIP_TOLERANT_REL}"],
+            root,
+            what=f"git show HEAD:{SKIP_TOLERANT_REL}",
+        )
+    except PreflightError:
+        return set()
+    try:
+        doc = json.loads(proc.stdout or "")
+    except ValueError:
+        return set()
+    if not isinstance(doc, dict) or doc.get("schema") != "CiSkipTolerantFiles@v1":
+        return set()
+    files = doc.get("files")
+    if not isinstance(files, dict):
+        return set()
+    tolerated: set[str] = set()
+    for path, entry in files.items():
+        reason = entry.get("reason") if isinstance(entry, dict) else None
+        if not isinstance(path, str) or not isinstance(reason, str) or not reason.strip():
+            return set()  # one malformed entry makes the whole list unusable
+        key = _normalise_test_path(path)
+        if key:
+            tolerated.add(key)
+    return tolerated
+
+
+def _same_repo_file(root: Path, first: str, second: str) -> bool:
+    """True when both repository-relative names resolve to the same physical file."""
+    try:
+        return (root / first).resolve() == (root / second).resolve()
+    except OSError:
+        return False
+
+
+def _receipt_results(receipt: dict, root: Path) -> tuple[dict[str, list[dict]], str]:
     """Rows keyed by normalised path, or a plain-English reason the receipt is unvalidated."""
     results = receipt.get("results")
     if not isinstance(results, list) or not results:
@@ -331,7 +475,10 @@ def _receipt_results(receipt: dict) -> tuple[dict[str, list[dict]], str]:
         path = row.get("path")
         if not isinstance(path, str) or not path.strip():
             return {}, "a result row names no path"
-        rows.setdefault(_normalise_test_path(path), []).append(row)
+        key = _normalise_test_path(path)
+        if not key:
+            return {}, f"a result row names an unsafe path alias ({path}); it must name the repository file itself"
+        rows.setdefault(key, []).append(row)
     return rows, ""
 
 
@@ -396,7 +543,7 @@ def check_tests(root: Path) -> list[dict]:
                 f"{', '.join(missing)}; re-run --record-tests at this head",
             )
         ]
-    rows, invalid = _receipt_results(receipt)
+    rows, invalid = _receipt_results(receipt, root)
     if invalid:
         return [
             _refusal(
@@ -405,12 +552,9 @@ def check_tests(root: Path) -> list[dict]:
                 f"re-run --record-tests at this head",
             )
         ]
-    tolerant = receipt.get("skip_tolerant")
-    tolerant_set = (
-        {_normalise_test_path(p) for p in tolerant if isinstance(p, str)}
-        if isinstance(tolerant, list)
-        else set()
-    )
+    # Tolerance comes from the reviewed project list at HEAD, never from the receipt. A receipt
+    # (or a caller) that declares its own skip tolerance proves nothing.
+    tolerant_set = load_skip_tolerant(root)
     problems: list[str] = []
     for path in touched:
         key = _normalise_test_path(path)
@@ -422,21 +566,36 @@ def check_tests(root: Path) -> list[dict]:
             problems.append(f"{path} ({len(entries)} execution rows)")
             continue
         row = entries[0]
+        raw_path = row.get("path")
+        if not isinstance(raw_path, str) or not _same_repo_file(root, path, raw_path):
+            problems.append(f"{path} (execution row does not resolve to the same repository file)")
+            continue
         if row.get("exit_code") != 0:
             problems.append(f"{path} (exit {row.get('exit_code')})")
             continue
-        allowed_skip = key in tolerant_set
         ran_flag = row.get("ran")
-        tail = row.get("output_tail")
-        derived = _executed_at_least_one(tail) if isinstance(tail, str) and tail else None
-        if ran_flag is not True and not (ran_flag is False and allowed_skip):
-            problems.append(f"{path} (no test executed)")
+        if not isinstance(ran_flag, bool):
+            problems.append(f"{path} (no execution flag in its result row)")
             continue
-        if derived is False and not allowed_skip:
+        if is_ui_test(path):
+            derived: bool | None = True
+        else:
+            counts = row.get("counts")
+            derived = _counts_executed(counts) if isinstance(counts, dict) else None
+            if derived is None:
+                tail = row.get("output_tail")
+                derived = _counts_executed(_pytest_summary_counts(tail)) if isinstance(tail, str) else None
+        if derived is None:
+            problems.append(f"{path} (no structured runner result proves a test ran)")
+            continue
+        allowed_skip = key in tolerant_set
+        if derived:
+            if ran_flag is not True:
+                problems.append(f"{path} (no test executed)")
+        elif not allowed_skip:
             problems.append(f"{path} (no test executed: all skipped or no tests ran)")
-            continue
-        if derived is False and allowed_skip and ran_flag is not False:
-            problems.append(f"{path} (execution flag contradicts its output)")
+        elif ran_flag is not False:
+            problems.append(f"{path} (execution flag contradicts its runner result)")
     if problems:
         return [
             _refusal(
@@ -448,14 +607,81 @@ def check_tests(root: Path) -> list[dict]:
     return []
 
 
+#: Node options that consume the following argument. Their value is never the executable input,
+#: so a test named as a required module or loader must not register.
+_NODE_ARG_OPTS = frozenset(
+    {
+        "-e",
+        "--eval",
+        "-p",
+        "--print",
+        "-r",
+        "--require",
+        "--loader",
+        "--experimental-loader",
+        "--import",
+        "--input-type",
+        "--inspect-port",
+        "--title",
+        "--test-reporter",
+        "--test-reporter-destination",
+        "--test-name-pattern",
+        "--test-skip-pattern",
+        "--conditions",
+        "-C",
+        "--openssl-config",
+        "--icu-data-dir",
+    }
+)
+#: Node options whose input is inline code, so no file is the executable.
+_NODE_INLINE_OPTS = frozenset({"-e", "--eval", "-p", "--print"})
+
+
+def _node_selection(tokens: list[str]) -> tuple[list[str], bool, bool]:
+    """``(positionals, inline_code, test_runner_mode)`` for a ``node`` argv.
+
+    ``node`` executes its FIRST positional as the script. ``--test`` makes every positional a test
+    input. ``--eval``/``--print`` execute inline code and give no file the script slot. An option
+    that takes a value is skipped with its value. A test that appears only as a later argument
+    (``node driver.cjs x.test.ts``) is therefore not selected and must not register.
+    """
+    args = tokens[1:]
+    positionals: list[str] = []
+    inline = False
+    test_mode = False
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--":
+            positionals.extend(args[index + 1 :])
+            break
+        if token.startswith("-") and token != "-":
+            name = token.split("=", 1)[0]
+            if name in _NODE_INLINE_OPTS:
+                inline = True
+            if name == "--test":
+                test_mode = True
+            if "=" not in token and token in _NODE_ARG_OPTS:
+                index += 2
+                continue
+            index += 1
+            continue
+        positionals.append(token)
+        index += 1
+    return positionals, inline, test_mode
+
+
 def ui_build_command(root: Path, path: str) -> list[str] | None:
-    """The ``node ...`` build step that runs this UI test, or ``None``.
+    """The ``node ...`` build step that actually selects this UI test, or ``None``.
 
     ``scripts.build`` runs from ``apps/command-center-v3`` and names its files app-relatively
-    (``src/lib/x.test.ts``). Match that exact command token — after normalising a leading ``./`` —
-    never a substring of another token or of prose.
+    (``src/lib/x.test.ts``). The test must be the command's executable input — the first
+    positional after node's own options, or a positional selected by ``--test`` — never a
+    substring, a later argument, an option value, or prose.
     """
     rel = _normalise_test_path(path[len(UI_APP) + 1 :])
+    if not rel:
+        return None
     for segment in ui_build_string(root).split(" && "):
         try:
             tokens = shlex.split(segment.strip())
@@ -463,7 +689,14 @@ def ui_build_command(root: Path, path: str) -> list[str] | None:
             continue
         if not tokens or Path(tokens[0]).name != "node":
             continue
-        if any(_normalise_test_path(token) == rel for token in tokens[1:]):
+        positionals, inline, test_mode = _node_selection(tokens)
+        if inline:
+            continue
+        selected = [_normalise_test_path(token) for token in positionals]
+        if test_mode:
+            if rel in selected:
+                return tokens
+        elif selected and selected[0] == rel:
             return tokens
     return None
 
@@ -735,19 +968,26 @@ def check_wip_cap(root: Path, skip: bool) -> list[dict]:
     return []
 
 
-def test_command(root: Path, path: str) -> tuple[list[str], Path]:
-    """The command that runs one touched test file, and the directory it runs in."""
+def test_command(root: Path, path: str, junit_path: Path | None = None) -> tuple[list[str], Path]:
+    """The command that runs one touched test file, and the directory it runs in.
+
+    A Python run is asked for a junit report when ``junit_path`` is given: that structured report
+    is what proves whether a test actually executed, rather than a match on log text.
+    """
     if is_ui_test(path):
         rel = path[len(UI_APP) + 1 :]
         tokens = ui_build_command(root, path)
         if tokens is not None:
             return tokens, root / UI_APP
         return ["node", rel], root / UI_APP
-    return [sys.executable, "-m", "pytest", "-q", path], root
+    cmd = [sys.executable, "-m", "pytest", "-q", path]
+    if junit_path is not None:
+        cmd.append(f"--junitxml={junit_path}")
+    return cmd, root
 
 
 def _tracked_source_changes(root: Path) -> list[str]:
-    """Modified, staged or deleted *tracked* files. Untracked/ignored test artifacts are allowed."""
+    """Modified, staged or deleted *tracked* files."""
     out = _git(
         ["status", "--porcelain", "--untracked-files=no"],
         root,
@@ -756,67 +996,117 @@ def _tracked_source_changes(root: Path) -> list[str]:
     return [line for line in out.splitlines() if line.strip()]
 
 
+#: Directories and files whose ignored (but untracked) contents can still change a test run.
+_SOURCE_SCAN_PATHS = ("tests", "scripts", "conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini", f"{UI_APP}/src")
+
+
+def _untracked_source_changes(root: Path) -> list[str]:
+    """Untracked files that could change what the tests do.
+
+    An untracked module, conftest, pytest config or fixture can make a committed test pass (or
+    fail) differently, so it is refused before the run. That includes a GITIGNORED helper: Python
+    and node imports do not consult `.gitignore`. Identified build/cache outputs (``__pycache__``,
+    ``.pytest_cache``, coverage files, logs) are inert and allowed.
+    """
+    paths: list[str] = []
+    proc = _git(
+        ["ls-files", "--others", "--exclude-standard", "-z"],
+        root,
+        what="git ls-files --others --exclude-standard",
+    )
+    paths.extend(part for part in proc.stdout.split("\0") if part.strip())
+    ignored = _git(
+        ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", *_SOURCE_SCAN_PATHS],
+        root,
+        what="git ls-files --others --ignored --exclude-standard",
+    )
+    paths.extend(part for part in ignored.stdout.split("\0") if part.strip())
+    return sorted({path for path in paths if not _INERT_UNTRACKED_RE.search(path)})
+
+
 def _no_receipt_drift(root: Path, head: str, *, before: bool) -> int | None:
-    """Refuse to write a receipt when the tested source is not the committed source."""
+    """Refuse to write a receipt when the tested source is not the committed source.
+
+    Tracked changes and untracked source/config both qualify: either can make the receipt bind the
+    committed head to code the upload does not contain. A test child may create inert artifacts
+    (``__pycache__``, ``.pytest_cache``, coverage files, logs); those are allowed.
+    """
     label = "before" if before else "after"
     dirty = _tracked_source_changes(root)
-    if dirty:
+    untracked = _untracked_source_changes(root)
+    if dirty or untracked:
         print(
-            f"preflight: refusing to record tests — tracked source is dirty {label} the run, so the "
-            f"receipt would bind the committed head to different working files. Commit or stash these:"
+            f"preflight: refusing to record tests — the source is not the committed tree {label} the "
+            f"run, so the receipt would bind the committed head to different files. Commit or stash "
+            f"these:",
+            file=sys.stderr,
         )
         for line in dirty:
-            print(f"  {line}")
+            print(f"  {line}", file=sys.stderr)
+        for path in untracked:
+            print(f"  untracked: {path}", file=sys.stderr)
+        if untracked:
+            print(
+                "preflight: an untracked file that is not a known inert artifact can change what the "
+                "tests do; commit it or remove it.",
+                file=sys.stderr,
+            )
         return 1
     if not before:
         now = head_sha(root)
         if now != head:
             print(
                 f"preflight: refusing to record tests — HEAD moved during the run ({head} -> {now}); "
-                f"the evidence would be bound to the wrong commit. Re-run at the new head."
+                f"the evidence would be bound to the wrong commit. Re-run at the new head.",
+                file=sys.stderr,
             )
             return 1
     return None
 
 
-def record_tests(
-    root: Path,
-    *,
-    verbose: bool = True,
-    allow_skip_only: set[str] | None = None,
-) -> int:
-    allowed = {_normalise_test_path(p) for p in (allow_skip_only or set())}
+def record_tests(root: Path, *, verbose: bool = True) -> int:
     head = head_sha(root)
     touched = touched_test_files(root)
     if not touched:
         if verbose:
-            print("preflight: this branch changes no test files; no receipt needed")
+            print("preflight: this branch changes no test files; no receipt needed", file=sys.stderr)
         return 0
     refused = _no_receipt_drift(root, head, before=True)
     if refused is not None:
         return refused
-    results = []
-    failed = []
-    nothing_ran = []
+    # Tolerance comes only from the reviewed project list at the committed head. There is no
+    # caller-selected waiver: an agent cannot certify a zero-assertion run by asking to.
+    tolerant = load_skip_tolerant(root)
+    results: list[dict] = []
+    failed: list[tuple[str, int]] = []
+    nothing_ran: list[str] = []
+    unprovable: list[str] = []
     tolerated: set[str] = set()
-    for path in touched:
-        cmd, cwd = test_command(root, path)
-        code, output = _normalise_run(test_runner(cmd, cwd))
-        executed = _executed_at_least_one(output)
-        key = _normalise_test_path(path)
-        results.append(
-            {
-                "path": path,
-                "command": cmd,
-                "exit_code": code,
-                "ran": executed,
-                "output_tail": output[-4000:],
-            }
-        )
-        if code != 0:
-            failed.append((path, code))
-        elif not executed:
-            if key in allowed:
+    with tempfile.TemporaryDirectory(prefix="preflight-junit-") as scratch:
+        for index, path in enumerate(touched):
+            junit_path = Path(scratch) / f"{index}.xml" if is_python_test(path) else None
+            cmd, cwd = test_command(root, path, junit_path=junit_path)
+            code, output = _normalise_run(test_runner(cmd, cwd))
+            executed, counts = _execution_evidence(path, output, junit_path)
+            key = _normalise_test_path(path)
+            results.append(
+                {
+                    "path": path,
+                    # The junit path is ephemeral; record the command a person can re-run.
+                    "command": [part for part in cmd if not part.startswith("--junitxml=")],
+                    "exit_code": code,
+                    "ran": executed is True,
+                    "counts": counts,
+                    "output_tail": output[-4000:],
+                }
+            )
+            if code != 0:
+                failed.append((path, code))
+            elif executed is None:
+                unprovable.append(path)
+            elif executed:
+                continue
+            elif key in tolerant:
                 tolerated.add(key)
             else:
                 nothing_ran.append(path)
@@ -825,16 +1115,24 @@ def record_tests(
         return refused
     if failed:
         for path, code in failed:
-            print(f"NOT GREEN (exit {code}): {path}")
-        print("preflight: no receipt written because tests did not pass")
+            print(f"NOT GREEN (exit {code}): {path}", file=sys.stderr)
+        print("preflight: no receipt written because tests did not pass", file=sys.stderr)
+        return 1
+    if unprovable:
+        for path in unprovable:
+            print(f"NOT PROVEN (no structured runner result): {path}", file=sys.stderr)
+        print(
+            "preflight: no receipt written because the runner result could not prove a test ran",
+            file=sys.stderr,
+        )
         return 1
     if nothing_ran:
         for path in nothing_ran:
-            print(f"NOT RUN (no test executed, e.g. all skipped or no tests ran): {path}")
+            print(f"NOT RUN (no test executed, e.g. all skipped or no tests ran): {path}", file=sys.stderr)
         print(
-            "preflight: no receipt written because a touched test file did not execute a test; if it "
-            "is intentionally skipped in this environment, re-run with --allow-skip-only <path> "
-            "(recorded in the receipt as an explicit skip-tolerant contract)"
+            "preflight: no receipt written because a touched test file executed no test. A zero-test "
+            f"run is tolerated only for a file listed with a reason in {SKIP_TOLERANT_REL}.",
+            file=sys.stderr,
         )
         return 1
     receipt = {
@@ -852,7 +1150,7 @@ def record_tests(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if verbose:
-        print(f"preflight: recorded {len(results)} test file(s) for {head} at {target}")
+        print(f"preflight: recorded {len(results)} test file(s) for {head} at {target}", file=sys.stderr)
     return 0
 
 
@@ -885,16 +1183,6 @@ def main(argv: list[str] | None = None) -> int:
         help="skip the open-PR limit (prints a warning; for this check's own PR)",
     )
     parser.add_argument(
-        "--allow-skip-only",
-        action="append",
-        default=[],
-        metavar="PATH",
-        help=(
-            "with --record-tests, accept this touched test file when it executes nothing (all skipped) "
-            "as an explicit skip-tolerant contract; repeatable, recorded in the receipt"
-        ),
-    )
-    parser.add_argument(
         "--pr-body-file",
         help="read the PR description from this file instead of asking GitHub (offline and tests)",
     )
@@ -904,11 +1192,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = repo_root()
         if args.record_tests:
-            code = record_tests(
-                root,
-                verbose=not args.json,
-                allow_skip_only=set(args.allow_skip_only),
-            )
+            code = record_tests(root, verbose=not args.json)
             if args.json:
                 doc = {
                     "schema": RECEIPT_SCHEMA,
