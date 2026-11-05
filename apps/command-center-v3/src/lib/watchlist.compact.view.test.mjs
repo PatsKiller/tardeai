@@ -65,14 +65,43 @@ const cards = [
     day_change_pct: -3.4, decision: { category: 'avoid', category_label: 'Avoid', status: 'active' } },
 ]
 
+// Pagination-aware, because the decisive interaction happens on page 2: Beta is only on page 2, Alpha only on page 1.
+// A constant fixture cannot show a selection that moved the operator to the wrong page — that was R2's whole point.
+const pageOne = [cards[0], { symbol: 'ZZZ', company: 'Zeta Labs', trade_ai_state: 'WAIT', last: 5.5, day_change_pct: 0.4,
+  decision: { category: 'review', category_label: 'Review', status: 'active' } }]
+const pageTwo = [cards[1], { symbol: 'CCC', company: 'Corvus Energy', trade_ai_state: 'AVOID', last: 8.75,
+  day_change_pct: -1.1, decision: { category: 'avoid', category_label: 'Avoid', status: 'active' } }]
+// FQ-132 F2: the exact card cx-openai-3 replayed — a "High Conviction Opportunity" whose own status is expired and
+// whose quote is STALE. Every number on it was true and the row still read as a live idea.
+const stateCards = {
+  3: [{ symbol: 'OLDY', company: 'Old Signal Corp', trade_ai_state: 'WAIT', last: 22.25, day_change_pct: -3.4,
+    quote_freshness: 'STALE',
+    decision: { category: 'high_conviction_opportunity', category_label: 'High Conviction Opportunity', status: 'expired' } }],
+  4: [{ symbol: 'NEED', company: 'Needs Data Ltd', trade_ai_state: 'WAIT', last: 12, day_change_pct: 0.2,
+    quote_freshness: 'CURRENT',
+    decision: { category: 'high_conviction_opportunity', category_label: 'High Conviction Opportunity', status: 'needs_data' } }],
+  5: [{ symbol: 'GONE', company: 'Invalidated Inc', trade_ai_state: 'AVOID', last: 9, day_change_pct: -2,
+    quote_freshness: 'CURRENT', decision: { category: 'avoid', category_label: 'Avoid', status: 'invalidated' } }],
+  6: [{ symbol: 'NOQT', company: 'No Quote Co', trade_ai_state: 'WAIT', last: 31, day_change_pct: 0.1,
+    quote_freshness: 'DATA_UNAVAILABLE',
+    decision: { category: 'review', category_label: 'Review', status: 'active' } }],
+}
+const requests = []
+
 globalThis.__apiFixture = (url) => {
-  if (url.includes('watch-intelligence')) return { data: { cards, summary: {}, counts: {}, data_quality: { status: 'OK' } }, loading: false, error: null }
+  if (url.includes('watch-intelligence')) {
+    requests.push(url)
+    const page = (url.match(/[?&]page=(\d+)/) || [])[1] || '1'
+    const list = stateCards[page] || (page === '2' ? pageTwo : pageOne)
+    return { data: { cards: list, summary: {}, counts: {}, data_quality: { status: 'OK' } }, loading: false, error: null }
+  }
   if (url.includes('watch-filters')) return { data: { views: {}, trade_ai_states: ['WAIT', 'AVOID'] }, loading: false, error: null }
   if (url.includes('data-broker')) return { data: { projections: {} }, loading: false, error: null }
   return { data: null, loading: false, error: null }
 }
 
 const { default: Page } = await import(compile(join(app, 'src/pages/WatchIntelligenceUnified.tsx')))
+const { withDetail } = await import(compile(join(app, 'src/lib/watchDetailEntry.ts')))
 
 function render(path) {
   globalThis.__entry = path
@@ -85,8 +114,8 @@ function check(name, fn) { cases.push({ name, fn }) }
 check('compact layout renders one scan row per name', () => {
   const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact')
   const rows = html.match(/data-compact-row/g) || []
-  assert.equal(rows.length, cards.length, `expected ${cards.length} compact rows, got ${rows.length}`)
-  for (const s of ['AAA', 'BBB']) assert.ok(html.includes(s), `missing ${s}`)
+  assert.equal(rows.length, pageOne.length, `expected ${pageOne.length} compact rows, got ${rows.length}`)
+  for (const c of pageOne) assert.ok(html.includes(c.symbol), `missing ${c.symbol}`)
 })
 
 check('the row carries the decision category and the money, not the long card sections', () => {
@@ -113,14 +142,90 @@ check('a compact row opens the reading view on the page', () => {
 })
 
 check('the reading view shows the chosen name, not the first card', () => {
-  const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact&detail=BBB')
+  const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact&detail=ZZZ')
   const panel = inspector(html)
-  assert.match(panel, /Beta Industrials/, 'the selected row did not fill the reading view')
+  assert.match(panel, /Zeta Labs/, 'the selected row did not fill the reading view')
   assert.doesNotMatch(panel, /Alpha Holdings/, 'the reading view kept the first card instead of the selected one')
 })
-// What this pair proves and what it does not: the page renders a reading view in compact, and the selection is the
-// URL-backed `detail` entry the row's click sets, so a chosen name fills it. It does not simulate the click itself —
-// that handler is one line (`setSelected` → the `detail` param) and the rendered contract above is what it produces.
+
+// FQ-132 R2 (cx-openai-3 at c3ea49812): selecting a row used the FILTER setter, which resets `page` to 1 for every key
+// but `page`. From page 2 that sent the page to `page=1&detail=BBB`, page 1 does not contain BBB, and the inspector fell
+// back to its first card: the operator clicked Beta and read Alpha. This runs the page's OWN callback, extracted from
+// the source and evaluated with the real rule for the filter setter, then renders the URL it produces.
+const pageSource = readFileSync(join(app, 'src/pages/WatchIntelligenceUnified.tsx'), 'utf8')
+function chooseRow(sp, symbol) {
+  const line = (pageSource.match(/const setSelected = [^\n]*/) || [])[0]
+  assert.ok(line, 'the selection callback is gone from the page')
+  const compiled = ts.transpileModule(line, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  }).outputText
+  const navigations = []
+  const setSp = (params) => navigations.push(new URLSearchParams(params))
+  const phone = { mobile: false, id: null, open() {}, close() {} }
+  // The real filter setter's rule, verbatim: change one key, and reset the page unless that key was `page`.
+  const setParam = (key, value) => {
+    const next = new URLSearchParams(sp)
+    if (!value) next.delete(key)
+    else next.set(key, value)
+    if (key !== 'page') next.set('page', '1')
+    setSp(next)
+  }
+  const run = new Function('phone', 'setSp', 'sp', 'withDetail', 'setParam', `${compiled}\nreturn setSelected`)
+  run(phone, setSp, sp, withDetail, setParam)(symbol)
+  assert.equal(navigations.length, 1, 'the row click did not navigate')
+  return navigations[0]
+}
+
+const startOnPageTwo = () => new URLSearchParams('tab=intelligence&view=top_ideas&layout=compact&page=2')
+
+check('choosing a row keeps the page the operator was on', () => {
+  const target = chooseRow(startOnPageTwo(), 'BBB')
+  assert.equal(target.get('page'), '2', 'selecting a name reset the page')
+  assert.equal(target.get('detail'), 'BBB')
+})
+
+check('the row the operator chose is the one that renders, on the page they were on', () => {
+  const target = chooseRow(startOnPageTwo(), 'BBB')
+  requests.length = 0
+  const html = render(`/watch?${target.toString()}`)
+  assert.ok(requests.some(u => /[?&]page=2(&|$)/.test(u)), `the page did not request page 2 after a selection: ${requests[0] || 'no request'}`)
+  const panel = inspector(html)
+  assert.match(panel, /Beta Industrials/, 'the reading view did not show the name the operator clicked')
+  assert.doesNotMatch(panel, /Alpha Holdings/, 'the reading view fell back to page 1\'s first card')
+})
+
+// FQ-132 F2 (cx-openai-3 at c3ea49812): the compact row rendered the historical CATEGORY and the money while the
+// decision's own status and the quote's state were invisible — and the opened sheet carried neither. These cases read
+// the visible words in the row and in the reading view, and the counter-case keeps a healthy row one line short.
+const rowOf = (html) => html.slice(html.indexOf('data-compact-row'), html.indexOf('data-intelligence-inspector'))
+
+check('an expired decision with a STALE quote says so, next to its category, in the row', () => {
+  const row = rowOf(render('/watch?tab=intelligence&view=top_ideas&layout=compact&page=3'))
+  assert.match(row, /Signal expired/, 'the row still hides an expired decision behind its category')
+  assert.match(row, /Quote stale/, 'the row still hides a stale quote')
+  assert.match(row, /High Conviction Opportunity/, 'the category was replaced instead of annotated')
+  assert.match(row, /\$22\.25/, 'the price disappeared')
+})
+
+for (const [page, words] of [['4', 'Needs fresh analysis'], ['5', 'Invalidated'], ['6', 'Quote unavailable']]) {
+  check(`a non-current state on page ${page} is spelled out: ${words}`, () => {
+    const row = rowOf(render(`/watch?tab=intelligence&view=top_ideas&layout=compact&page=${page}`))
+    assert.ok(row.includes(words), `the row does not say "${words}"`)
+  })
+}
+
+check('a current card keeps one short line and no warning text', () => {
+  const row = rowOf(render('/watch?tab=intelligence&view=top_ideas&layout=compact'))
+  assert.doesNotMatch(row, /data-compact-row-state/, 'a healthy row grew a warning line')
+  assert.doesNotMatch(row, /Signal expired|Quote stale|Needs fresh analysis|Invalidated/)
+})
+
+check('the reading view carries the same state the row does', () => {
+  const panel = inspector(render('/watch?tab=intelligence&view=top_ideas&layout=compact&page=3&detail=OLDY'))
+  assert.match(panel, /Old Signal Corp/, 'the selected name did not open')
+  assert.match(panel, /Signal expired/, 'the sheet/inspector hides an expired decision')
+  assert.match(panel, /Quote stale/, 'the sheet/inspector hides a stale quote')
+})
 
 check('the raw Trade AI code is not the row text — it is the tooltip', () => {
   const html = render('/watch?tab=intelligence&view=top_ideas&layout=compact')
