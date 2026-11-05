@@ -55,8 +55,23 @@ function allMachine(inner: string): boolean {
   return segments.length > 0 && segments.every(seg => MACHINE_SEGMENT.test(seg))
 }
 const MACHINE_PAREN = /\(([^()]*)\)/g
-/** A trailing run of `key=value` measurements — `, 24h=58,thesis_sustained=11` — is machine detail, not a sentence. */
+/** A trailing run of `key=value` measurements — `, 24h=58,thesis_sustained=11` — is machine detail, not a sentence.
+ *
+ *  cx-openai-4 F1 (third review of PR 2628): the value used to be `[^,;]+`, i.e. any prose at all, so a sentence that
+ *  QUALIFIED itself through an assignment — "Data service healthy, status=NOT VERIFIED" — lost its warning on the row
+ *  and rendered as a healthy claim the source never made. Another word list would not close that class (the previous
+ *  round proved it), so the test is structural, the same way the bracket rule is: a tail is lifted only when EVERY
+ *  segment's value is a NUMBER, optionally with a unit. That is what a measurement looks like; a word, a verdict or a
+ *  phrase stays in the sentence, whatever it says. */
 const METRIC_TAIL = /((?:[,;]\s*[A-Za-z0-9_.]+\s*=\s*[^,;]+)+)\s*$/
+const MEASUREMENT_VALUE = /^[+-]?\d+(?:\.\d+)?\s*(?:%|[A-Za-z]{1,6})?$/
+function allMeasurements(tail: string): boolean {
+  const segments = tail.split(/[,;]/).map(x => x.trim()).filter(Boolean)
+  return segments.length > 0 && segments.every(seg => {
+    const m = /^[A-Za-z0-9_.]+\s*=\s*(.+)$/.exec(seg)
+    return !!m && MEASUREMENT_VALUE.test(m[1].trim())
+  })
+}
 
 const MARKERS: Array<[RegExp, string]> = [
   [/\bDISABLED:/g, 'disabled — '], [/\bMISSING:/g, 'missing — '], [/\bENABLED:/g, 'enabled — '],
@@ -97,7 +112,9 @@ function closeBrackets(s: string): string {
 export function plainTitle(title: string | null | undefined): { headline: string; raw: string | null; rawDetail: string | null } {
   const original = words(String(title ?? ''))
   const lifted: string[] = []
-  const withoutMetrics = closeBrackets(original.replace(METRIC_TAIL, (_m, tail: string) => {
+  const withoutMetrics = closeBrackets(original.replace(METRIC_TAIL, (m, tail: string) => {
+    // A tail that is not made of measurements is prose, and prose that qualifies the sentence stays in it.
+    if (!allMeasurements(tail)) return m
     lifted.push(words(tail.replace(/^[,;]\s*/, '').replace(/[,;]/g, ', ')))
     return ''
   }))

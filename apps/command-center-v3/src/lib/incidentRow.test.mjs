@@ -239,5 +239,26 @@ if (phone) {
     desk.match(/.{0,40}watcher.{0,40}/)?.[0] ?? 'no source on the desktop row')
 }
 
+// ---- cx-openai-4 F1 (third review): an ASSIGNMENT tail is lifted only when it is made of numbers ---------------
+// The same qualification-loss class as the bracket rule, reached through a different syntax. A value that is a word,
+// a verdict or a phrase is prose, and prose that qualifies the sentence must stay in the sentence.
+const QUALIFYING_TAILS = [
+  'Data service healthy, status=NOT VERIFIED',
+  'Data service healthy, detail=unavailable',
+  'Service recovered, evidence=not checked',
+]
+for (const t of QUALIFYING_TAILS) {
+  const p = plainTitle(t)
+  const qualifier = t.slice(t.indexOf(',') + 1).trim()
+  check(`an assignment qualifier stays in the sentence: ${qualifier}`, p.headline.includes(qualifier), `${p.headline} | ${p.rawDetail}`)
+  check(`and is not lifted into the detail: ${qualifier}`, !(p.rawDetail ?? '').includes(qualifier), String(p.rawDetail))
+}
+// The positive control: a genuinely numeric measurement tail is still machine detail and is still lifted verbatim.
+const MEASURED = plainTitle('lane coverage-stall unhealthy: research_up_thesis_flat:deepseek_ok, 24h=58,thesis_sustained=11')
+check('a numeric measurement tail is still lifted', MEASURED.rawDetail === '24h=58, thesis_sustained=11', String(MEASURED.rawDetail))
+check('and does not stay in the sentence', !MEASURED.headline.includes('24h=58'), MEASURED.headline)
+const MIXED_TAIL = plainTitle('Disk pressure high, pct=99.7,note=check the volume')
+check('one prose value keeps the whole tail in the sentence', MIXED_TAIL.headline.includes('note=check the volume'), `${MIXED_TAIL.headline} | ${MIXED_TAIL.rawDetail}`)
+
 console.log(`incidentRow: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
