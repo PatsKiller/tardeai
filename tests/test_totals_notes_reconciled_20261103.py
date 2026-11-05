@@ -17,9 +17,15 @@ not compute a day change clears nothing.
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from scripts.portfolio_repricer import _recalc_totals, _reconcile_totals_notes
+
+#: AGENTS.md "Time discipline": every stored timestamp is UTC ISO-8601 with an explicit ``Z``.
+#: ``+00:00`` names the same instant but leaves the zone to be inferred from the format.
+_STORED_UTC_Z = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z")
 
 LIVE_NOTE = "rebuilt from positions_current run 638; day change not carried"
 LIVE_DAY_CHANGE_NOTE = ("seeded 0.0 on 2026-11-03 by lead: unknown until the next repricer pass "
@@ -106,7 +112,9 @@ def test_a_note_with_no_stale_text_is_not_rewritten(book):
 
 def test_the_clearing_is_recorded_when_it_happens(book):
     _recalc_totals(book)
-    assert book["portfolio_totals"]["notes_reconciled_at"]
+    stamp = book["portfolio_totals"]["notes_reconciled_at"]
+    assert isinstance(stamp, str) and _STORED_UTC_Z.fullmatch(stamp), (
+        f"a stored timestamp must be UTC ISO-8601 with an explicit Z, got {stamp!r}")
 
 
 @pytest.mark.parametrize("day_change", [None, "0.0", True])
@@ -183,10 +191,24 @@ def test_a_note_that_is_entirely_stale_is_removed_not_emptied(book):
     assert "note" not in book["portfolio_totals"], "an empty string is not a note"
 
 
-def test_the_reconciler_is_wired_into_the_totals_write():
-    """Structural guard: the call must sit in `_recalc_totals`, not in a caller somebody can skip."""
-    import inspect
+def test_the_reconciler_is_wired_into_the_totals_write(book, monkeypatch):
+    """Behavioural guard: the real `_recalc_totals` must EXECUTE the reconciler.
+
+    The first version of this guard asserted that ``"_reconcile_totals_notes("`` appeared in
+    ``inspect.getsource(_recalc_totals)``. ``getsource`` includes comments, so commenting the call
+    out left the assertion green while the wiring was gone (codex-cloud CX1). A spy on the real
+    module function proves the call is executed: comment the call out and this test goes red.
+    """
     from scripts import portfolio_repricer
 
-    source = inspect.getsource(portfolio_repricer._recalc_totals)
-    assert "_reconcile_totals_notes(" in source, "the totals write no longer reconciles its notes"
+    real = portfolio_repricer._reconcile_totals_notes
+    calls = []
+
+    def spy(totals, *, day_change_measured_rows):
+        calls.append(day_change_measured_rows)
+        return real(totals, day_change_measured_rows=day_change_measured_rows)
+
+    monkeypatch.setattr(portfolio_repricer, "_reconcile_totals_notes", spy)
+    _recalc_totals(book)
+
+    assert calls, "the totals write never executed the reconciler: a stale note would outlive the pass"

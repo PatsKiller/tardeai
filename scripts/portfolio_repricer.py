@@ -137,7 +137,9 @@ def _reconcile_totals_notes(totals: Dict[str, Any], *, day_change_measured_rows:
             totals.pop(key, None)
         changed.append(key)
     if changed:
-        totals["notes_reconciled_at"] = _utc_now_iso()
+        # AGENTS.md "Time discipline": a stored timestamp carries an explicit Z. ``_utc_now_iso``
+        # ends with ``+00:00``, which names the same instant but leaves the zone to be inferred.
+        totals["notes_reconciled_at"] = _utc_now_iso().replace("+00:00", "Z")
     return changed
 
 
