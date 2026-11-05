@@ -37,6 +37,31 @@ export function humanizeIdentifier(raw: unknown): string {
   }).join(' ')
 }
 
+// Words that must not become Title Case when an identifier or CODE is humanised.
+const KEEP_WORDS: Record<string, string> = {
+  cio: 'CIO', ai: 'AI', rsi: 'RSI', macd: 'MACD', hwm: 'HWM', pnl: 'P&L', rr: 'R:R', iv: 'IV', dte: 'DTE', pr: 'PR',
+}
+
+/**
+ * `health_agent` → "Health agent"; `CONTAINMENT_CHECK_FAILED` → "Containment check failed";
+ * `pipeline_freshness` → "Pipeline freshness". Unlike `humanizeIdentifier` this also accepts ALL-CAPS codes (the
+ * form raw internal identifiers reach the DOM in), never returns '' for a non-empty input, and is the shared
+ * humaniser for surfaces that must not print a raw identifier (BOARD row 38).
+ */
+export function humanizeCode(raw: unknown): string {
+  const s = String(raw ?? '').trim()
+  if (!s) return ''
+  return s
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((w, i) => {
+      const lw = w.toLowerCase()
+      if (KEEP_WORDS[lw]) return KEEP_WORDS[lw]
+      return i === 0 ? lw.charAt(0).toUpperCase() + lw.slice(1) : lw
+    })
+    .join(' ')
+}
+
 /**
  * Header TRADING tile value. "trades" was dropped from the face (the count is the second figure, and
  * the tooltip spells it out); the line may wrap to two lines inside the tile instead of being cut.

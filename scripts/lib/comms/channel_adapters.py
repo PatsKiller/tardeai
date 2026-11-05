@@ -27,7 +27,7 @@ from scripts.lib.comms.mode import MODE_ACTIVE, MODE_CANARY, get_gateway_mode
 from scripts.lib.comms.vocabulary import normalize_message_class
 
 SUPPORTED_CHANNELS = frozenset(
-    {"email", "slack", "whatsapp_twilio", "whatsapp_meta", "telegram"}
+    {"email", "slack", "whatsapp_twilio", "whatsapp_meta", "telegram", "sms"}
 )
 
 
@@ -83,6 +83,14 @@ def render_for_channel(
             "mrkdwn": True,
             "format": "slack",
         }
+    if ch == "sms":
+        # One plain line; scripts/alerting.send_sms caps it at 300 characters.
+        return {
+            "ok": True,
+            "channel": ch,
+            "text": " ".join(text.split())[:300],
+            "format": "sms",
+        }
     # whatsapp_*
     return {
         "ok": True,
@@ -97,6 +105,7 @@ ADAPTER_VERSIONS = {
     "whatsapp_twilio": "whatsapp_twilio@v1",
     "whatsapp_meta": "whatsapp_meta@v1",
     "telegram": "telegram@v1",
+    "sms": "sms@v1",
 }
 
 _DELIVERABLE_MODES = frozenset({MODE_CANARY, MODE_ACTIVE})
@@ -318,6 +327,14 @@ def _provider_send(
             "provider_message_id": result.get("message_id"),
             "provider_result": result,
         }
+
+    if channel == "sms":
+        from scripts.alerting import send_sms
+
+        res = send_sms(body)
+        if not res.get("ok"):
+            return {"ok": False, "error": str(res.get("error") or "sms_failed")}
+        return {"ok": True, "provider_message_id": res.get("message_id")}
 
     if channel == "telegram":
         return _provider_send_telegram(
