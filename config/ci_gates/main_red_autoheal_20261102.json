@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "main_red_autoheal_20261102",
+  "files": [
+    "tests/test_main_red_autoheal_20261102.py"
+  ],
+  "comment": [
+    "2026-11-02 (item 4 of PLAN_COLLISION_AUTOREMEDIATION_20261101): the main-red self-heal lane. When the newest origin/main run of a required workflow is red, re-run an INFRASTRUCTURE failure once, record a suspected flake when the re-run clears it, and otherwise page one P1 plus write one Claude Code fixer request. Hermetic: every gh call, the Telegram sender and the issue writer are injected fakes; state under tmp_path."
+  ]
+}

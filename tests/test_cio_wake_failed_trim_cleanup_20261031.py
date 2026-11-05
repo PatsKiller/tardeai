@@ -1,7 +1,9 @@
 """Follow-up to #2344 (2026-10-31 round-2 review, non-blocking findings).
 
-1. A trim of a corrupt tail that fails mid-write (ENOSPC) must leave no partial ``cio_wake_jobs.tmp`` (up to the
-   store size, ~100 MB live) and no ``.corrupt-tail-<ts>`` copy behind; the store is unchanged and the error raises.
+1. A trim of a corrupt tail that fails mid-write (ENOSPC) must leave no partial quarantine copy behind and must not
+   truncate the store; it reports ``ok=False`` and the store is unchanged. The trim truncates in place (#2420), so
+   there is no second full-size copy to leave behind. (2026-11-05: the union takes main's truncate-in-place trim —
+   the branch's full-store rewrite needed free space equal to the store on the very disk-full night that tore it.)
 2. ``run_once`` must stop after a ``wake_store_unavailable`` error instead of running the goal-wake / dispatch /
    situation tails, each of which writes the same store and can wait the full lock timeout.
 """
@@ -46,17 +48,15 @@ def test_failed_trim_leaves_no_tmp_or_quarantine_files(tmp_path):
             with open(path, "wb") as fh:  # a real ENOSPC leaves the bytes written so far
                 fh.write(data[: max(1, len(data) // 2)])
             raise OSError(errno.ENOSPC, "No space left on device")
-        m._write_fsync = enospc_after_partial
-        try:
-            store.quarantine_corrupt_trailing_events()
-            print("NO RAISE")
-        except OSError:
-            print("raised")
+        m._write_durable = enospc_after_partial
+        out = store.quarantine_corrupt_trailing_events()
+        print("failed", out["ok"] is False, out["removed"] == 0,
+              out["reason"].startswith("quarantine_write_failed:"))
         print("unchanged", store.event_store_path.read_bytes() == before)
         """,
     )
     assert r.returncode == 0, r.stderr
-    assert "raised" in r.stdout and "unchanged True" in r.stdout
+    assert "failed True True True" in r.stdout and "unchanged True" in r.stdout
     leftovers = sorted(
         p.name for p in tmp_path.iterdir() if p.name != "cio_wake_jobs.jsonl" and not p.name.endswith(".lock")
     )
@@ -64,7 +64,7 @@ def test_failed_trim_leaves_no_tmp_or_quarantine_files(tmp_path):
 
 
 def test_failed_store_replace_also_removes_tmp(tmp_path):
-    """The fsyncs succeed but the rename fails: the full-size .tmp must still go."""
+    """The fsync succeeds but the rename fails: the full-size partial copy must still go."""
     store_path = tmp_path / "cio_wake_jobs.jsonl"
     r = _run(
         store_path,
@@ -74,17 +74,17 @@ def test_failed_store_replace_also_removes_tmp(tmp_path):
         store.enqueue({"wake_job_id": "good-0", "trigger_type": "SCHEDULE_DUE"})
         with open(store.event_store_path, "a") as f:
             f.write('{"stream_id": "trunc')
+        before = store.event_store_path.read_bytes()
         def bad_replace(src, dst):
             raise OSError(errno.EIO, "I/O error")
         m.os.replace = bad_replace
-        try:
-            store.quarantine_corrupt_trailing_events()
-        except OSError:
-            print("raised")
+        out = store.quarantine_corrupt_trailing_events()
+        print("failed", out["ok"] is False)
+        print("unchanged", store.event_store_path.read_bytes() == before)
         """,
     )
     assert r.returncode == 0, r.stderr
-    assert "raised" in r.stdout
+    assert "failed True" in r.stdout and "unchanged True" in r.stdout
     leftovers = sorted(
         p.name for p in tmp_path.iterdir() if p.name != "cio_wake_jobs.jsonl" and not p.name.endswith(".lock")
     )

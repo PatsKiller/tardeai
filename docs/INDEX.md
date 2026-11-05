@@ -758,6 +758,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) |
+| `docs/audits/MARKET_RISK_ENGINE_BACKTEST_20261031.md` | Market Risk Engine backtest |
 | `docs/audits/MARKET_SELLOFF_ALERT_RCA_2026-10-30.md` | Why no warning preceded the 2026-10-30 selloff — root cause analysis |
 | `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 |
 | `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 |
@@ -1055,8 +1056,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261029-deploy-console.md` | Deploy console — design of record |
 | `docs/designs/DSN-20261030-disk-recovery.md` | DSN-20261030-disk-recovery.md |
 | `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md` | Rule 6 amendment — agents delete their own scratch, plus a scheduled purge |
+| `docs/designs/DSN-20261030-workspace-lifecycle.md` | Workspace lifecycle |
 | `docs/designs/DSN-20261031-market-risk-engine.md` | Market Risk Engine (MRE) |
 | `docs/designs/DSN-20261031-market-risk-ui.md` | Market risk on Home and the Risk page |
+| `docs/designs/DSN-20261101-issuer-segment-lookthrough.md` | Issuer segment look-through |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -2003,6 +2006,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer |
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
+| `docs/ops/DISK_HOLDER_SAFETY_20261104.md` | Disk hygiene — why rule R reports releases instead of deleting them (2026-11-04) |
 | `docs/ops/DISK_HYGIENE.md` | Disk Hygiene |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
 | `docs/ops/DISK_RECOVERY_20261030.md` | Disk recovery investigation, October 30 |
@@ -2062,6 +2066,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/N8N_MOMENTUM_SCALP_ACTIVATION_20261013.md` | n8n momentum-scalp activation — 2026-10-13 |
 | `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | n8n promotion readiness — 2026-10-22 |
 | `docs/ops/N8N_RELAY_LIVE_LANES_REGISTRY.md` | n8n relay live lanes — derived from the lane registry (AGENTS.md 20.4.0) |
+| `docs/ops/NIGHTLY_SECURITY_SCAN.md` | Free security scanning that replaces CodeQL |
+| `docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md` | Nudger → n8n migration — reviewed proposal (2026-11-03) |
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary |
 | `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED |
@@ -2095,6 +2101,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROSPECTUS_QUALITY_GATE.md` | Ticker Prospectus — data-quality gate |
 | `docs/ops/PROSPECTUS_SCHEDULE_DELIVERY.md` | Ticker Prospectus — run windows and delivery |
 | `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |
+| `docs/ops/PROTECTIVE_PUT_ADVISORY.md` | Protective put / collar unit economics (D32 section 5) — FQ-142 |
 | `docs/ops/PR_HYGIENE.md` | PR hygiene — the daily audit and the pre-build overlap check |
 | `docs/ops/PUSH_POLICY_V2_CI.md` | Push policy v2 — the CI half: draft PRs are cheap, ready PRs run everything |
 | `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed |
@@ -2250,6 +2257,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SECURITY_AND_AUTHORITY_REVIEW.md` | Security and authority review — DeepSeek V4 mainline |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results |
+| `docs/ops/holdings_export_backup.md` | holdings.json is a generated backup (Step 1) |
+| `docs/ops/home_v008_needs_you_approvals.md` | Home v008 "Needs you" — operator approvals (backend A) |
 | `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident |
 | `docs/ops/incidents/INCIDENT_20261023_SAFE_FLOCK_CRON_OUTAGE.md` | 2026-10-23 safe_flock cron outage |
 | `docs/ops/litmus/LITMUS_CC_ROUTES_2026-09-01.md` | Litmus slice C — Command Center routes (discovery only) |
@@ -2355,6 +2364,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — current provisional checkpoint 2026-10-22 21:40 UTC |
 | `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR |
+| `docs/ops/standing_agent_authority.md` | Standing agent authority — 30.0.0 |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping |
 | `docs/ops/telegram_channel_diligence_20260916/02_ROUTING_GOVERNANCE_PROPOSAL.md` | Phase 2 — Message Routing & Governance Proposal |
@@ -2620,6 +2630,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` | CODEX IMPLEMENTATION PROGRAM v1.2 |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate |
 | `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results |
+| `docs/proposals/MARKET_RISK_BROKER_DATA_SOURCES_20261031.md` | Proposal — broker market data for the Market Risk Engine (Schwab, moomoo) |
+| `docs/proposals/REGISTRY_ROW_index_constituent_caps_20261031.md` | Registry-row proposal: index constituent market caps (Market Risk Engine, event concentration) |
+| `docs/proposals/REGISTRY_ROW_youcom_search_20261031.md` | Proposal: you.com search as a registered provider (§7A), not built |
 | `docs/remediation-plan.md` | Remediation plan — 5-stage hardening, governance and bitemporal cutover |
 | `docs/reporting/REPORTING_ENGINE.md` | Reporting & Prospectus Generation Module |
 | `docs/risk_management/stop_management_v2_3_strategy_trailing_tiers/00_README.md` | Stop Management V2.3 — Strategy Trailing Tiers |
@@ -2642,6 +2655,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy |
+| `docs/runbooks/RELAY_LIVE_SET_GATE.md` | Relay live-set gate — operator runbook |
 | `docs/runbooks/TRADING_LOCK.md` | Trading lock (READ-ONLY toward brokers) — operator runbook |
 | `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | Post-Sale Redeploy Sync — 2026-07-14 |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | Protective Stop Integration Runbook — 2026-06-30 |

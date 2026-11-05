@@ -332,7 +332,14 @@ def merge_preconditions(hosts: Any, repo: str, pr: int, sha: str) -> dict[str, A
     bad = [n for n in req if (latest.get(n) or {}).get("conclusion") != OK_CONCLUSION]
     if bad:
         raise _err("CHECKS_NOT_SUCCESS", "not exactly success: " + ", ".join(bad)[:300])
-    return {"base": base, "required": req}
+    # Required is not enough: a red check outside the required list (e.g. `secret-scan` on
+    # 2026-11-01) slips through every gate that reads only the required set.
+    from scripts.lib import pr_all_checks_green as ACG
+
+    green = ACG.all_checks_green(lambda p: _gh_json(hosts, p), repo, sha)
+    if not green["ok"]:
+        raise _err("CHECKS_NOT_GREEN", ACG.describe(green))
+    return {"base": base, "required": req, "all_green": green}
 
 
 def apply(kind: str, plan_: Any, hosts: Any, store: Any, *, request_id: str, actor: str) -> dict[str, Any]:

@@ -1,6 +1,7 @@
 """Follow-up to #2360 (2026-10-31 round-3 review, LOW): two corrupt-tail trims inside one second shared the name
 ``.corrupt-tail-<int(time.time())>``; a failed second trim's cleanup could then delete the FIRST trim's quarantine copy.
-Names now carry ns + pid (plus a bump if a name is still taken), and cleanup only removes a file this call created."""
+Names now carry ns + pid (plus a bump if a name is still taken), and a failed trim only removes the ``.partial`` copy it
+wrote, never a completed quarantine (2026-11-05 union: the trim truncates in place, #2420)."""
 
 from __future__ import annotations
 
@@ -44,20 +45,15 @@ def test_failed_second_trim_never_removes_the_first_trims_copy_on_a_frozen_clock
         print("first", store.quarantine_corrupt_trailing_events()["removed"])
         with open(store.event_store_path, "a") as f:
             f.write('{"stream_id": "second-trunc')
-        real = m._write_fsync
-        def enospc_on_tmp(path, data):
-            if path.name.endswith(".tmp"):
-                raise OSError(errno.ENOSPC, "No space left on device")
-            real(path, data)
-        m._write_fsync = enospc_on_tmp
-        try:
-            store.quarantine_corrupt_trailing_events()
-        except OSError:
-            print("second raised")
+        def enospc(path, data):
+            raise OSError(errno.ENOSPC, "No space left on device")
+        m._write_durable = enospc
+        out = store.quarantine_corrupt_trailing_events()
+        print("second ok", out["ok"], "removed", out["removed"])
         """,
     )
     assert r.returncode == 0, r.stderr
-    assert "first 1" in r.stdout and "second raised" in r.stdout
+    assert "first 1" in r.stdout and "second ok False removed 0" in r.stdout
     q = _quarantines(tmp_path)
     assert len(q) == 1, [p.name for p in q]  # the first trim's copy survives; the failed second left nothing
     assert b"first-trunc" in q[0].read_bytes()

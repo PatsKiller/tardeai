@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "security_scans_20261102",
+  "files": [
+    "tests/test_security_scans_20261102.py"
+  ],
+  "anchor": "SECURITY_SCANS_20261102",
+  "comment": [
+    "ANCHOR: SECURITY_SCANS_20261102 — CodeQL replaced by free scanners: ruff flake8-bandit with a baseline per change, semgrep OSS + pip-audit + npm audit nightly with new-finding dedupe, install hints and versions in the receipt. Hermetic: fake runners, tmp state."
+  ]
+}

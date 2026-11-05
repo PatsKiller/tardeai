@@ -117,7 +117,11 @@ def test_close_far_from_the_live_quote_is_refused():
 # ── Alpaca previous close ────────────────────────────────────────────────────
 
 def _bar(day, close):
-    return {"t": f"{day}T04:00:00Z", "c": close}
+    # Alpaca stamps a daily bar at midnight New York time. Build that instant from the
+    # zone, not a fixed UTC hour: 04:00Z is midnight only under EDT, and under EST
+    # (after the first Sunday of November) it falls on the previous evening.
+    midnight = datetime.fromisoformat(day).replace(tzinfo=ZoneInfo("America/New_York"))
+    return {"t": midnight.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "c": close}
 
 
 def test_prev_close_before_todays_first_bar_is_the_last_session_close(monkeypatch):

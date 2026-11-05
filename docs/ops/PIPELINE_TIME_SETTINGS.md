@@ -166,10 +166,13 @@ sat "activating" and its timer stopped firing; every `*/5` wake dispatch timed o
 last successful dispatch was 10-30 00:45 ET.
 
 Now: the lock is re-entrant per process, thread and lock path, and every wait is bounded (`CIOWakeLockTimeout`,
-`CIO_WAKE_JOBS_LOCK_TIMEOUT_S`, 120 s). The write path refuses to append onto a partial line: it trims the damaged
-tail first (bytes split on `\n`, quarantine copy and rewrite fsynced) and raises if it cannot. The reactive cycle
-treats any wake-store write failure as a hard error (exit 1) and does not advance its bus cursor past the event, so
-nothing is lost and the next run retries. Regression tests: `tests/test_cio_wake_jobs_lock_reentrant_20261031.py`.
+`CIO_WAKE_JOBS_LOCK_TIMEOUT_S`, 120 s). The corrupt tail is trimmed in place — records are split on `\n` bytes only,
+the quarantine copy is fsynced and renamed to a name carrying ns + pid (with a bump if taken), and the store is
+truncated rather than rewritten, so a full disk needs no free space for a second copy (#2420). If even the quarantine
+copy cannot be written, the next append starts on its own line so a torn record is isolated for forensics instead of
+swallowing the new event. The reactive cycle treats a lock timeout or a disk error as a hard error (exit 1) and does
+not advance its bus cursor past the event, so nothing is lost and the next run retries. Regression tests:
+`tests/test_cio_wake_jobs_lock_reentrant_20261031.py` and `tests/test_cio_wake_jobs_torn_tail_deadlock_20261031.py`.
 
 Not done here, on purpose: process-reaper caps and a unit `TimeoutStartSec` for these three lanes. §28.1 needs the
 measured longest run, and no receipt history with durations exists for them yet (the lane receipts keep only the

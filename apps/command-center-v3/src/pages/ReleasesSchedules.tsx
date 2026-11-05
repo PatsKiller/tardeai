@@ -188,7 +188,9 @@ export default function ReleasesSchedules() {
       <ChipRow>
         {api.error && !api.data ? <Chip tone="warning">UNAVAILABLE · {api.error}</Chip> : api.loading && !api.data ? <Chip tone="neutral">Loading</Chip>
           : <Chip tone={api.data?.status === 'OK' && current ? 'neutral' : 'warning'}>{current ? (api.data?.status ?? 'UNKNOWN') : 'STALE'}</Chip>}
-        <Chip tone="neutral">generated {etDateTime(api.data?.generated_at)}</Chip>
+        {api.data?.generated_at
+          ? <Chip tone="neutral">captured {etDateTime(api.data.generated_at)}</Chip>
+          : <Chip tone="warning">capture time not stated</Chip>}
         {serving ? <Chip tone={serving.pins_agree ? 'neutral' : 'warning'} title={serving.release_name ?? ''}>pins {serving.pins_agree ? 'agree with CURRENT' : 'DISAGREE with CURRENT'}</Chip> : null}
         {api.data?.stop?.effective_stop ? <Chip tone="danger">deploy STOP {api.data.stop.state}</Chip> : null}
       </ChipRow>

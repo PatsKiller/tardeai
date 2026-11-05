@@ -509,10 +509,12 @@ def process_event_bus(
 
 
 def _is_wake_lock_timeout(exc: BaseException) -> bool:
-    """The wake store could not take this write (lock timeout, damaged tail it could not trim, disk error).
-    Unlike a duplicate or a bad payload, the event itself is fine and must be retried, not skipped."""
-    from scripts.lib.cio_wake_jobs import CIOWakeLockTimeout, CIOWakeStoreCorrupt  # root-only script (G2)
-    return isinstance(exc, (CIOWakeLockTimeout, CIOWakeStoreCorrupt, OSError))
+    """The wake store could not take this write (lock timeout or a disk error).
+    Unlike a duplicate or a bad payload, the event itself is fine and must be retried, not skipped.
+    A tail that cannot be trimmed does not land here: the store isolates the torn record on its own
+    line and the append still succeeds (#2420)."""
+    from scripts.lib.cio_wake_jobs import CIOWakeLockTimeout  # root-only script (G2)
+    return isinstance(exc, (CIOWakeLockTimeout, OSError))
 
 
 def _event_sort_key(ev: Any) -> tuple[str, str]:

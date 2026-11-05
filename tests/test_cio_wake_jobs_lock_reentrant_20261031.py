@@ -150,6 +150,7 @@ def test_reactive_cycle_stops_without_advancing_cursor_on_store_timeout(monkeypa
 
 
 def test_append_never_glues_onto_a_partial_line_when_trim_fails(tmp_path):
+    """The trim cannot write its quarantine copy; the append still starts on its own line (#2420)."""
     r = _run(
         tmp_path / "cio_wake_jobs.jsonl",
         """
@@ -158,25 +159,24 @@ def test_append_never_glues_onto_a_partial_line_when_trim_fails(tmp_path):
         store.enqueue({"wake_job_id": "good-0", "trigger_type": "SCHEDULE_DUE"})
         with open(store.event_store_path, "a") as f:
             f.write('{"stream_id": "trunc')
-        before = store.event_store_path.read_bytes()
-        real = m._write_fsync
+        real = m._write_durable
         def enospc(path, data):
             raise OSError(errno.ENOSPC, "No space left on device")
-        m._write_fsync = enospc
-        try:
-            store.enqueue({"wake_job_id": "acked-1", "trigger_type": "SCHEDULE_DUE"})
-            print("NO RAISE")
-        except OSError:
-            print("raised")
-        print("unchanged", store.event_store_path.read_bytes() == before)
-        m._write_fsync = real
+        m._write_durable = enospc
         store.enqueue({"wake_job_id": "acked-1", "trigger_type": "SCHEDULE_DUE"})
+        m._write_durable = real
         import json
-        print("ids", [json.loads(x)["stream_id"] for x in store.event_store_path.read_bytes().split(b"\\n") if x.strip()])
+        rows = [x for x in store.event_store_path.read_bytes().split(b"\\n") if x.strip()]
+        print("acked", store.get_wake_job("acked-1") is not None)
+        print("torn isolated", b'{"stream_id": "trunc' in rows)
+        print("ids", [json.loads(x)["stream_id"] for x in rows if not x.startswith(b'{"stream_id": "trunc')])
         """,
     )
     assert r.returncode == 0, r.stderr
-    assert "raised" in r.stdout and "unchanged True" in r.stdout
+    # The trim fails (ENOSPC on the quarantine copy), but the append is isolated on its own line
+    # and the new event is recorded: a torn record never swallows the next one (#2420).
+    assert "acked True" in r.stdout
+    assert "torn isolated True" in r.stdout
     assert "'good-0', 'acked-1'" in r.stdout
 
 

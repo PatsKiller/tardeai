@@ -200,20 +200,30 @@ GENESIS_PREV_HASH = "00000000000000000000000000000000000000000000000000000000000
 ALLOWED_ACTOR_TYPES = frozenset({"agent", "operator", "system"})
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CIO Wake Job Store
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class CIOWakeStoreCorrupt(RuntimeError):
-    """The store's tail could not be made whole; appending would lose the next record."""
-
-
-def _write_fsync(path: Path, data: bytes) -> None:
+def _write_durable(path: Path, data: bytes) -> None:
+    """Write bytes and fsync them before returning."""
     with open(path, "wb") as fh:
         fh.write(data)
         fh.flush()
         os.fsync(fh.fileno())
+
+
+def _ends_without_newline(path: Path) -> bool:
+    """True when the file is non-empty and its last byte is not a newline."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            if fh.tell() == 0:
+                return False
+            fh.seek(-1, os.SEEK_END)
+            return fh.read(1) != b"\n"
+    except OSError:
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CIO Wake Job Store
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class CIOWakeLockTimeout(TimeoutError):
@@ -227,7 +237,7 @@ _HELD_GUARD = threading.Lock()
 
 def _lock_timeout_s() -> float:
     """Bounded lock wait. Longest measured clean hold is well under a second (one append + fsync); the 120 s default
-    leaves room for a full-store quarantine rewrite. Override with CIO_WAKE_JOBS_LOCK_TIMEOUT_S."""
+    leaves room for a quarantine copy write. Override with CIO_WAKE_JOBS_LOCK_TIMEOUT_S."""
     try:
         return max(1.0, float(os.environ.get("CIO_WAKE_JOBS_LOCK_TIMEOUT_S", "120")))
     except ValueError:
@@ -341,104 +351,100 @@ class CIOWakeJobStore:
     def quarantine_corrupt_trailing_events(self) -> dict[str, Any]:
         """Drop trailing corrupt JSONL records (common after ENOSPC mid-write).
 
-        Rewrites the store under lock only when the final record(s) fail to parse.
-        Intact interior corruption is left for operator forensics — we only trim a
-        bad *suffix*, which is what blocks `_get_last_event` / enqueue.
+        Takes the store lock, then trims. Intact interior corruption is left for
+        operator forensics — we only trim a bad *suffix*, which is what blocks
+        `_get_last_event` / enqueue. Code that already holds the lock must call
+        `_quarantine_corrupt_tail_locked` instead (see its docstring).
 
-        Works on bytes split on b"\n" only (str.splitlines also breaks on U+2028/U+2029/U+0085, which can sit
-        inside a valid JSON string and would wrongly cut a good record). The quarantine copy and the rewritten
-        store are fsynced before the rename. Failures raise: on the write path a failed trim must stop the
-        append, never let it glue a new record onto a half-written one (2026-10-31 review).
+        Works on bytes split on b"\n" only (str.splitlines also breaks on
+        U+2028/U+2029/U+0085, which can sit inside a valid JSON string and would
+        wrongly cut a good record).
         """
         if not self.event_store_path.exists():
             return {"ok": True, "removed": 0, "reason": "missing"}
         lock_fd = self._acquire_lock()
         try:
-            raw = self.event_store_path.read_bytes()
-            lines = raw.split(b"\n")
-            trailing_newline = raw.endswith(b"\n")
-            if trailing_newline:
-                lines.pop()  # the empty segment after the final newline
-            removed: list[bytes] = []
-            while lines:
-                candidate = lines[-1]
-                if not candidate.strip():
-                    removed.append(candidate)
-                    lines.pop()
-                    continue
-                try:
-                    row = json.loads(candidate.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    removed.append(candidate)
-                    lines.pop()
-                    continue
-                if not isinstance(row, dict):
-                    removed.append(candidate)
-                    lines.pop()
-                    continue
-                break
-            kept = b"\n".join(lines) + (b"\n" if lines else b"")
-            if not removed and kept == raw:
-                return {"ok": True, "removed": 0, "reason": "clean"}
-            quarantine = self.event_store_path.with_suffix(
-                # ns + pid: unique per call, so a cleanup can never remove an earlier trim's copy (two trims
-                # inside one second used to share a name; 2026-10-31 round-3 review).
-                self.event_store_path.suffix + f".corrupt-tail-{time.time_ns()}-{os.getpid()}"
-            )
-            base_name = quarantine.name
-            bump = 0
-            while quarantine.exists():  # never overwrite an earlier trim's copy, even on a frozen clock
-                bump += 1
-                quarantine = quarantine.with_name(f"{base_name}-{bump}")
-            tmp = self.event_store_path.with_suffix(".tmp")
-            replaced = False
-            quarantine_created = False
-            try:
-                if removed:
-                    quarantine_created = not quarantine.exists()
-                    _write_fsync(quarantine, b"\n".join(reversed(removed)))
-                _write_fsync(tmp, kept)
-                os.replace(tmp, self.event_store_path)
-                replaced = True
-            finally:
-                if not replaced:
-                    # ENOSPC mid-write: never leave a partial .tmp (up to the store size) or a quarantine copy
-                    # of a trim that did not happen on a nearly full disk; the caller sees the original error.
-                    for leftover in (tmp, quarantine) if quarantine_created else (tmp,):
-                        try:
-                            leftover.unlink(missing_ok=True)
-                        except OSError as cleanup_exc:
-                            _log.warning("cio_wake_jobs: could not remove %s after failed trim: %s", leftover, cleanup_exc)
-            return {
-                "ok": True,
-                "removed": len(removed),
-                "quarantine": str(quarantine) if removed else None,
-                "bytes_removed": sum(len(x) for x in removed),
-            }
+            return self._quarantine_corrupt_tail_locked()
         finally:
             self._release_lock(lock_fd)
 
-    def _ensure_clean_tail(self) -> None:
-        """Write path: the store must end on a complete record before anything is appended. Trims a damaged tail
-        under the (re-entrant) lock and raises if it cannot -- never appends onto a partial line."""
+    def _quarantine_corrupt_tail_locked(self) -> dict[str, Any]:
+        """Trim a corrupt suffix. The caller already holds the store lock.
+
+        2026-10-30: this never takes the lock itself. flock(2) locks belong to an
+        open file description, so a second LOCK_EX from the same process on a new
+        descriptor blocks forever. `_append_event` used to reach the locking
+        variant through `_get_last_event`, and after the disk-full night tore the
+        last record every wake writer hung until its timeout killed it: no CIO
+        wake was recorded for 33 hours (10-30 04:48Z to 10-31 13:50Z).
+
+        The quarantine copy is written to a temp name, fsynced and renamed, so a
+        full disk leaves no 0-byte `.corrupt-tail-*` file behind (41 did), and the
+        store is truncated in place rather than rewritten through a second full
+        copy, so the trim itself needs no free space.
+
+        2026-11-05 union: records are split on b"\n" only. str.splitlines also
+        breaks on U+2028/U+2029/U+0085, which can sit inside a valid JSON string
+        and would wrongly cut a good record. The quarantine name carries
+        time_ns() and the pid, with a numeric bump if the name is still taken, so
+        a failed trim's cleanup can never remove an earlier trim's copy.
+        """
+        if not self.event_store_path.exists():
+            return {"ok": True, "removed": 0, "reason": "missing"}
+        data = self.event_store_path.read_bytes()
+        lines = data.split(b"\n")
+        if data.endswith(b"\n"):
+            lines.pop()  # the empty segment after the final newline
+        removed = 0
+        while lines:
+            candidate = lines[-1]
+            if candidate.strip():
+                try:
+                    row = json.loads(candidate.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    pass
+                else:
+                    if isinstance(row, dict):
+                        break
+            removed += 1
+            lines.pop()
+        kept = b"\n".join(lines) + (b"\n" if lines else b"")
+        keep_len = len(kept)
+        tail = data[keep_len:]
+        if not tail:
+            return {"ok": True, "removed": 0, "reason": "clean"}
+        quarantine = self.event_store_path.with_suffix(
+            # ns + pid: unique per call, so a cleanup can never remove an earlier trim's copy (two trims
+            # inside one second used to share a name; 2026-10-31 round-3 review).
+            self.event_store_path.suffix + f".corrupt-tail-{time.time_ns()}-{os.getpid()}"
+        )
+        base_name = quarantine.name
+        bump = 0
+        while quarantine.exists():  # never overwrite an earlier trim's copy, even on a frozen clock
+            bump += 1
+            quarantine = quarantine.with_name(f"{base_name}-{bump}")
+        partial = quarantine.with_name(quarantine.name + ".partial")
         try:
-            size = self.event_store_path.stat().st_size
-        except FileNotFoundError:
-            return
-        if size == 0:
-            return
-        with open(self.event_store_path, "rb") as f:
-            f.seek(-1, os.SEEK_END)
-            last = f.read(1)
-        if last == b"\n" and self._tail_last_event() is not None:
-            return
-        self.quarantine_corrupt_trailing_events()
-        size = self.event_store_path.stat().st_size
-        if size:
-            with open(self.event_store_path, "rb") as f:
-                f.seek(-1, os.SEEK_END)
-                if f.read(1) != b"\n":
-                    raise CIOWakeStoreCorrupt(f"{self.event_store_path}: tail still not newline-terminated after trim")
+            _write_durable(partial, tail)
+            os.replace(partial, quarantine)
+        except OSError as exc:
+            try:
+                partial.unlink()  # our own half-written copy; the store is untouched
+            except OSError:
+                pass
+            return {
+                "ok": False,
+                "removed": 0,
+                "reason": f"quarantine_write_failed:{exc.errno}",
+                "bytes_corrupt": len(tail),
+            }
+        os.truncate(self.event_store_path, keep_len)
+        return {
+            "ok": True,
+            "removed": removed,
+            "quarantine": str(quarantine),
+            "bytes_removed": len(tail),
+        }
 
     def _tail_last_event(self, chunk: int = 65536) -> Optional[dict[str, Any]]:
         """Last event from the end of the file, or None if the last record does
@@ -465,7 +471,7 @@ class CIOWakeJobStore:
         except OSError:
             return None
 
-    def _get_last_event(self) -> Optional[dict[str, Any]]:
+    def _get_last_event(self, *, lock_held: bool = False) -> Optional[dict[str, Any]]:
         if not self.event_store_path.exists():
             return None
         tail = self._tail_last_event()
@@ -481,17 +487,21 @@ class CIOWakeJobStore:
             last = row
             corrupt_suffix = False
         if corrupt_suffix:
-            # Best-effort auto-trim on the READ path so the next enqueue is not wedged. The write path does its
-            # own strict trim (_ensure_clean_tail) and never proceeds past a failure.
+            # Best-effort auto-trim so the next enqueue is not permanently wedged.
+            # Under the lock (from _append_event) the locking variant would block
+            # this process on its own flock forever.
             try:
-                self.quarantine_corrupt_trailing_events()
+                if lock_held:
+                    self._quarantine_corrupt_tail_locked()
+                else:
+                    self.quarantine_corrupt_trailing_events()
             except Exception as exc:
-                _log.warning("%s: corrupt-tail trim failed on read: %s: %s", self.event_store_path,
+                _log.warning("%s: corrupt-tail trim failed: %s: %s", self.event_store_path,
                              type(exc).__name__, exc)
         return last
 
-    def _get_last_event_hash(self) -> str:
-        last = self._get_last_event()
+    def _get_last_event_hash(self, *, lock_held: bool = False) -> str:
+        last = self._get_last_event(lock_held=lock_held)
         if last is None:
             return GENESIS_PREV_HASH
         return last["event_hash"]
@@ -499,14 +509,18 @@ class CIOWakeJobStore:
     def _append_event(self, event: dict[str, Any]) -> None:
         lock_fd = self._acquire_lock()
         try:
-            self._ensure_clean_tail()
-            current_head_hash = self._get_last_event_hash()
+            current_head_hash = self._get_last_event_hash(lock_held=True)
             event["prev_event_hash"] = current_head_hash
 
             event_without_hash = {k: v for k, v in event.items() if k != "event_hash"}
             event["event_hash"] = compute_event_hash(event_without_hash)
 
             line = json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n"
+
+            if _ends_without_newline(self.event_store_path):
+                # A torn record that could not be trimmed (full disk) must not
+                # swallow this event: start it on its own line.
+                line = "\n" + line
 
             with open(self.event_store_path, "a") as f:
                 f.write(line)
