@@ -18,6 +18,8 @@ REMOVAL IS REFUSED unless EVERY check passes. A path is a candidate only when it
   * free of protected descendants, symlinks and unreadable entries — the protected names / globs mirror
     ``config/disk_hygiene_rules.json`` (db_backups, persistent-state, models, .ssh, .config, .docker, .gnupg,
     .aws, .n8n, the dev repo, CURRENT; any .env / credential / cookie / token / key name);
+  * bound to its exact recorded task and session, with canonical observed MERGED or abandoned/CLOSED PR
+    completion (ending source custody alone is never completion; unknown/no-PR completion stays refused);
   * not referenced by any active claim worktree, path or active worklog;
   * not the cwd or an open fd of any live process (``/proc/<pid>/cwd``, ``/proc/<pid>/fd``);
   * only when the claim board is readable — an unreadable board refuses every candidate, because the absence
@@ -60,15 +62,37 @@ SCRATCH_ROOTS = ("~/.cache/agent-tmp",)
 #: Mirrors config/disk_hygiene_rules.json ``never_touch`` + ``protected_paths``. If that file changes, this list
 #: must be updated too — it must be at least as strict, never looser.
 NEVER_TOUCH_NAMES = {
-    ".git", ".hg", ".svn", "db_backups", "persistent-state", "llama-cpp-vulkan", ".ssh", ".config", ".docker",
-    "docker", ".gnupg", ".aws", ".n8n", "n8n_data", "n8n-data",
+    ".git",
+    ".hg",
+    ".svn",
+    "db_backups",
+    "persistent-state",
+    "llama-cpp-vulkan",
+    ".ssh",
+    ".config",
+    ".docker",
+    "docker",
+    ".gnupg",
+    ".aws",
+    ".n8n",
+    "n8n_data",
+    "n8n-data",
 }
 NEVER_TOUCH_GLOBS = (
-    ".env", ".env.*", "*.env", "*credential*", "*cookie*", "*token*", "*secret*",
-    "*.pem", "*.key", "id_rsa*", "id_ed25519*",
+    ".env",
+    ".env.*",
+    "*.env",
+    "*credential*",
+    "*cookie*",
+    "*token*",
+    "*secret*",
+    "*.pem",
+    "*.key",
+    "id_rsa*",
+    "id_ed25519*",
 )
 PROTECTED_SUFFIXES = (
-    "trade-ai-v12-rebuild",       # the dev repo (cron / units execute from it)
+    "trade-ai-v12-rebuild",  # the dev repo (cron / units execute from it)
     "tradeai-exact-main-20260827",  # release-prep clone
     "trade-ai-releases/train-checkout",
     "trade-ai-releases/portfolio-server/CURRENT",
@@ -241,7 +265,10 @@ def _git(path: Path, *args: str, timeout: float = 300) -> tuple[int, str]:
     try:
         p = subprocess.run(
             ["git", "--no-optional-locks", "-C", str(path), *args],
-            capture_output=True, text=True, timeout=timeout, env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return 127, ""
@@ -301,8 +328,7 @@ def referenced_by_claim(path: Path, claims: Iterable[dict[str, Any]], home: Path
                 resolved = ref.resolve(strict=False)
             except (OSError, RuntimeError) as exc:
                 raise CleanupError(f"claim_reference_unreadable:{type(exc).__name__}") from exc
-            if (is_within(path, ref) or is_within(ref, path)
-                    or is_within(path, resolved) or is_within(resolved, path)):
+            if is_within(path, ref) or is_within(ref, path) or is_within(path, resolved) or is_within(resolved, path):
                 return str(claim.get("claim_id") or "unknown")
         # Also protect exact candidate names containing spaces in prose.
         relative = "~/" + str(path.relative_to(home)) if is_within(path, home) else str(path)
@@ -327,8 +353,7 @@ def evaluate(
     how: Optional[str] = None
     if not os.path.lexists(path):
         reasons.append("missing")
-        return {"path": str(path), "kind": kind, "exists": False, "reasons": reasons,
-                "candidate": False, "how": how}
+        return {"path": str(path), "kind": kind, "exists": False, "reasons": reasons, "candidate": False, "how": how}
     ar = allowed_scratch_reason(path, [home / ".cache" / "agent-tmp"]) or allowed_scratch_reason(path, roots)
     if ar:
         reasons.append(ar)
@@ -362,8 +387,7 @@ def evaluate(
     use = in_use_by(path, refs)
     if use:
         reasons.append(f"in_use_by_process:{use}")
-    return {"path": str(path), "kind": kind, "exists": True, "reasons": reasons,
-            "candidate": not reasons, "how": how}
+    return {"path": str(path), "kind": kind, "exists": True, "reasons": reasons, "candidate": not reasons, "how": how}
 
 
 def size_bytes(path: Path) -> Optional[int]:
@@ -446,11 +470,105 @@ def live_claim_view(claims_dir: Optional[Path]) -> tuple[list[dict[str, Any]], O
                 body = log.read_text(encoding="utf-8")
         except (OSError, UnicodeError) as exc:
             return [], f"worklog_read_failed:{type(exc).__name__}"
-        live.append({"claim_id": v.claim_id, "task": v.doc.get("task"), "worktree": v.doc.get("worktree"),
-                     "session": v.doc.get("session"), "paths": paths,
-                     "reference_text": json.dumps(v.doc) + "\n" + body})
+        live.append(
+            {
+                "claim_id": v.claim_id,
+                "task": v.doc.get("task"),
+                "worktree": v.doc.get("worktree"),
+                "session": v.doc.get("session"),
+                "paths": paths,
+                "reference_text": json.dumps(v.doc) + "\n" + body,
+            }
+        )
     warn = f"unreadable:{','.join(bad)}" if bad else None
     return live, warn
+
+
+def completion_evidence(
+    path: Path,
+    *,
+    home: Path,
+    claims_dir: Optional[Path],
+    task: Optional[str],
+    session: Optional[str],
+    claim: Optional[str],
+) -> tuple[list[str], Optional[str]]:
+    """Read task completion from canonical claims and observed PR lifecycle records.
+
+    Releasing source custody (DONE/ABANDONED) is not feature completion. In particular,
+    abandoning a claim on an open PR cannot authorize removal of that PR's work.
+    No caller-supplied completion flag or declared lifecycle stage grants deletion.
+    """
+    if not task or not session:
+        return [], "task_completion_identity_unresolved"
+    task_root = home / ".cache" / "agent-tmp" / slug(task)
+    if not is_within(path, task_root):
+        return [], "task_completion_namespace_mismatch"
+    try:
+        from scripts.lib import agent_claim_board as B
+
+        board = B.ClaimBoard(claims_dir)
+        if not board.dir.is_dir() or board.dir.is_symlink():
+            return [], "task_completion_board_unavailable"
+        docs, bad = board.read_all()
+        if bad:
+            return [], "task_completion_board_unreadable"
+        matches = [
+            doc
+            for doc in docs
+            if doc.get("task") == task
+            and doc.get("session") == session
+            and (claim is None or doc.get("claim_id") == claim)
+        ]
+        if not matches:
+            return [], "task_completion_not_recorded"
+        completed = []
+        for doc in matches:
+            if doc.get("status") not in ("done", "abandoned") or B.parse_iso(doc.get("ended_at")) is None:
+                return [], "task_completion_not_recorded"
+            number = B.LC.pr_number(doc.get("pr"))
+            if not number or isinstance(doc.get("pr"), bool):
+                return [], "task_completion_pr_unresolved"
+            # A related live source holder means the task/feature is still being worked on,
+            # even when it did not explicitly list this scratch directory.
+            if any(
+                other.get("status") == "active"
+                and (other.get("branch") == doc.get("branch") or B.LC.pr_number(other.get("pr")) == number)
+                for other in docs
+            ):
+                return [], "task_completion_related_work_active"
+            directory = board.dir / B.LC.LIFECYCLE_DIRNAME
+            sidecar = directory / (str(doc["claim_id"]) + ".json")
+            if directory.is_symlink() or sidecar.is_symlink():
+                return [], "task_completion_observation_unavailable"
+            observation = json.loads(sidecar.read_text(encoding="utf-8"))
+            if not isinstance(observation, dict) or (
+                observation.get("schema") != B.LC.LIFECYCLE_SCHEMA
+                or observation.get("claim_id") != doc["claim_id"]
+                or B.LC.pr_number(observation.get("pr_number")) != number
+                or B.parse_iso(observation.get("observed_at")) is None
+                or re.fullmatch(r"[0-9a-f]{40}", str(doc.get("head_sha") or "")) is None
+                or re.fullmatch(r"[0-9a-f]{40}", str(observation.get("head_sha") or "")) is None
+                or observation.get("head_sha") != doc.get("head_sha")
+            ):
+                return [], "task_completion_observation_unbound"
+            merged = (
+                observation.get("pr_state") == "merged"
+                and re.fullmatch(r"[0-9a-f]{40}", str(observation.get("merge_sha") or "")) is not None
+                and B.parse_iso(observation.get("merged_at")) is not None
+            )
+            abandoned = (
+                doc.get("status") == "abandoned"
+                and observation.get("pr_state") == "closed"
+                and not observation.get("merge_sha")
+                and B.parse_iso(observation.get("closed_at")) is not None
+            )
+            if not (merged or abandoned):
+                return [], "task_completion_not_observed"
+            completed.append(str(doc["claim_id"]))
+        return completed, None
+    except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        return [], f"task_completion_evidence_unavailable:{type(exc).__name__}"
 
 
 def _fmt_size(n: Optional[int]) -> str:
@@ -482,6 +600,7 @@ def run(
         refs, process_warn = set(), str(exc)
     live, board_warn = live_claim_view(claims_dir)
 
+    task_name = task
     task_slug: Optional[str] = None
     session_slug = slug(session) if session else None
 
@@ -490,7 +609,8 @@ def run(
         if matched is None:
             print(json.dumps({"ok": False, "error": f"claim {claim!r} not active on the board"}))
             return 1
-        task_slug = slug(matched["task"])
+        task_name = matched["task"]
+        task_slug = slug(task_name)
         if session and session != matched["session"]:
             print(json.dumps({"ok": False, "error": "claim_session_mismatch"}))
             return 1
@@ -519,6 +639,19 @@ def run(
         if r["candidate"] and not any(is_within(p, owner) for owner in owned):
             r["candidate"] = False
             r["reasons"].append("task_or_session_ownership_unresolved")
+        if r["candidate"]:
+            completed, problem = completion_evidence(
+                p,
+                home=home,
+                claims_dir=claims_dir,
+                task=task_name,
+                session=session,
+                claim=claim,
+            )
+            r["completion_claims"] = completed
+            if problem:
+                r["candidate"] = False
+                r["reasons"].append(problem)
         if r["candidate"]:
             r["size_bytes"] = size_bytes(p)
         rows.append(r)
@@ -559,14 +692,30 @@ def run(
                 latest_claims, warning = live_claim_view(claims_dir)
                 if warning:
                     raise CleanupError(warning)
-                check = evaluate(p, home=home, roots=roots, refs=latest_refs,
-                                 live_worktrees=[Path(c["worktree"]) for c in latest_claims if c.get("worktree")],
-                                 live_claims=latest_claims)
+                check = evaluate(
+                    p,
+                    home=home,
+                    roots=roots,
+                    refs=latest_refs,
+                    live_worktrees=[Path(c["worktree"]) for c in latest_claims if c.get("worktree")],
+                    live_claims=latest_claims,
+                )
             except CleanupError as exc:
                 removed.append({"path": r["path"], "how": f"skip:evidence_unavailable:{exc}"})
                 continue
             if not check["candidate"]:
                 removed.append({"path": r["path"], "how": "skip:revalidation_refused", "reasons": check["reasons"]})
+                continue
+            completed, problem = completion_evidence(
+                p,
+                home=home,
+                claims_dir=claims_dir,
+                task=task_name,
+                session=session,
+                claim=claim,
+            )
+            if problem:
+                removed.append({"path": r["path"], "how": "skip:completion_revalidation_refused", "reasons": [problem]})
                 continue
             lay = git_layout(p)
             kind = r["kind"]
@@ -601,7 +750,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--claim", help="claim id (reads the task/worktree from the board)")
     ap.add_argument("--task", help="task slug/id used to derive the scratch dir name")
     ap.add_argument("--session", default=None, help="session id (default AGENT_CLAIM_SESSION)")
-    ap.add_argument("--scratch", action="append", default=None, help="explicit scratch path (repeatable, os.pathsep-separated)")
+    ap.add_argument(
+        "--scratch", action="append", default=None, help="explicit scratch path (repeatable, os.pathsep-separated)"
+    )
     ap.add_argument("--claims-dir", default=None)
     ap.add_argument("--home", help=argparse.SUPPRESS)  # tests
     ap.add_argument("--proc-root", help=argparse.SUPPRESS)  # tests
@@ -616,8 +767,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("error: give --claim, --task, --session (or AGENT_CLAIM_SESSION), or --scratch", file=sys.stderr)
         return 2
     return run(
-        home=home, claims_dir=claims_dir, proc_root=proc_root, task=a.task, claim=a.claim,
-        session=session, scratch=scratch, apply=bool(a.apply),
+        home=home,
+        claims_dir=claims_dir,
+        proc_root=proc_root,
+        task=a.task,
+        claim=a.claim,
+        session=session,
+        scratch=scratch,
+        apply=bool(a.apply),
     )
 
 
