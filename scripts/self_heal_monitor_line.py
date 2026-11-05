@@ -247,6 +247,14 @@ def build_block(
         a for a in (supervisor.get("actions") or [])
         if isinstance(a, dict) and _int_or_none(a.get("rc")) not in (None, 0)
     ]
+    # cx-openai D52 KEEP_BLOCK at 3e4091ca1 (the ONE remaining item): the supervisor also records the rc of each
+    # DISPATCH it handed to an agent (``dispatched[*].rc``), and DECIDE never read it. A fresh receipt with a failed
+    # dispatch, no skips, no actions and an empty fixer queue published "LIVE / FIX no queue" -- a failed repair
+    # reading as a healthy lane. An explicit non-zero rc is a failed dispatch; a missing rc is unknown, not zero.
+    failed_dispatches = [
+        d for d in (supervisor.get("dispatched") or [])
+        if isinstance(d, dict) and _int_or_none(d.get("rc")) not in (None, 0)
+    ]
     if supervisor_reason:
         decide_part = f"DECIDE unknown ({supervisor_reason})"
         supervisor_line = None
@@ -261,6 +269,9 @@ def build_block(
         elif failed_actions:
             decide_part = (f"DECIDE failing ({len(failed_actions)} of {len(supervisor.get('actions') or [])} "
                            f"action(s) exited non-zero)")
+        elif failed_dispatches:
+            decide_part = (f"DECIDE failing ({len(failed_dispatches)} of "
+                           f"{len(supervisor.get('dispatched') or [])} dispatch(es) exited non-zero)")
         elif failed_skips:
             decide_part = f"DECIDE failing ({failed_skips} of {len(skipped)} skipped on a failed triage)"
         elif skipped and cap_skips == len(skipped):

@@ -336,6 +336,28 @@ def test_actions_that_all_exit_zero_still_read_working():
     assert "DECIDE working" in block[4], block[4]
 
 
+def test_a_failed_dispatch_cannot_publish_live():
+    """cx-openai D52 KEEP_BLOCK at 3e4091ca1, the ONE item: a fresh receipt with dispatched=[{rc:1}], no skips, no
+    actions and an empty fixer queue still rendered LIVE / FIX no queue. The dispatched rc was never inspected, so a
+    repair the supervisor handed to an agent and that agent failed read as a healthy lane."""
+    sup = _supervisor(skips=(), dispatched=1, actions=0)
+    sup["dispatched"] = [{"id": "INC1", "rc": 1, "prs": []}]
+    block = _ok(supervisor=sup)
+    assert "DECIDE failing" in block[4], block[4]
+    assert "1 of 1 dispatch(es) exited non-zero" in block[4], block[4]
+    assert block[4].startswith("verdict: NOT LIVE"), block[4]
+
+
+def test_dispatches_that_all_exit_zero_still_read_working():
+    """The negative control: a successful dispatch must not turn a healthy cycle red. A dispatch with no rc at all
+    stays unknown, never a failure (`_ok`'s `[{}]` rows cover that shape)."""
+    sup = _supervisor(skips=(), dispatched=2, actions=0)
+    sup["dispatched"] = [{"id": "INC1", "rc": 0}, {"id": "INC2", "rc": 0}]
+    block = _ok(supervisor=sup)
+    assert "DECIDE working" in block[4], block[4]
+    assert block[4] == "verdict: LIVE — DETECT alive · DECIDE working · FIX no queue"
+
+
 def test_a_disabled_and_stale_watcher_reads_as_disabled_not_stale():
     """The two facts stay distinct: disabled wins over the freshness failure it would also cause."""
     watchers = _watchers(as_of=NOW - timedelta(hours=1))
