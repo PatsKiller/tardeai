@@ -177,3 +177,42 @@ def test_R1_the_out_argument_cannot_name_a_repository_path(tmp_path):
     outside = tmp_path / "captures"
     outside.mkdir()
     assert cr.assert_capture_root(outside, repo_root=repo) == outside.resolve()
+
+
+# ── R2 (cx-openai-4): a LEAF symlink is the same escape as a directory symlink ────────────────────────────────
+def test_a_leaf_symlink_cannot_smuggle_a_capture_into_the_repo(tmp_path):
+    """A pre-existing `<vp>.txt -> ../../repo/...` used to be followed by write_text; the repo got written."""
+    from site_audit.capture_root import CaptureRootRefused, assert_leaf_inside_root
+
+    root = tmp_path / "captures"
+    page_dir = root / "route"
+    page_dir.mkdir(parents=True)
+    repo_file = tmp_path / "repo" / "secret.txt"
+    repo_file.parent.mkdir()
+    repo_file.write_text("original\n")
+    (page_dir / "phone.txt").symlink_to(repo_file)
+
+    with pytest.raises(CaptureRootRefused) as exc:
+        assert_leaf_inside_root(page_dir / "phone.txt", root)
+    assert "symlink" in str(exc.value)
+    assert repo_file.read_text() == "original\n", "the refused write must not have touched the target"
+
+
+def test_a_normal_leaf_is_returned_and_written_inside_the_root(tmp_path):
+    from site_audit.capture_root import assert_leaf_inside_root
+
+    root = tmp_path / "captures"
+    page_dir = root / "route"
+    page_dir.mkdir(parents=True)
+    leaf = assert_leaf_inside_root(page_dir / "phone.txt", root)
+    leaf.write_text("body\n")
+    assert leaf.read_text() == "body\n" and page_dir.resolve().is_relative_to(root.resolve())
+
+
+def test_every_leaf_write_in_the_capture_module_goes_through_the_guard():
+    """A future write added beside the others must not skip the guard."""
+    src = (ROOT / "scripts/site_audit/page_audit_capture.py").read_text()
+    writes = [ln for ln in src.splitlines() if ".write_text(" in ln or "screenshot(" in ln]
+    assert writes, "no writes found — did the module move?"
+    unguarded = [ln.strip() for ln in writes if "assert_leaf_inside_root" not in ln]
+    assert not unguarded, unguarded

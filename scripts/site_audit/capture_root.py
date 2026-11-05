@@ -32,6 +32,27 @@ def assert_capture_root(path: Path | str, *, repo_root: Path | str) -> Path:
     return resolved
 
 
+
+def assert_leaf_inside_root(path: Path | str, root: Path | str) -> Path:
+    """Return the leaf path, or refuse when writing it could land outside the capture root.
+
+    cx-openai-4 R2 on #2648: the per-page DIRECTORY is resolved and checked, but a leaf inside it can itself be a
+    pre-existing symlink — ``<vp>.txt -> ../../repo/apps/...`` — and ``write_text``/``screenshot`` follow it, so a
+    capture walked into the checkout through a file name. Only refusing the directory was half the guarantee.
+
+    A leaf that exists as a symlink is refused (there is no legitimate reason for one in a capture directory); a
+    leaf whose PARENT resolves outside the root is refused too. The parent is the thing that can be a symlink
+    chain — the leaf itself does not exist yet in the normal case.
+    """
+    leaf = Path(path).expanduser()
+    base = Path(root).expanduser().resolve()
+    if leaf.is_symlink():
+        raise CaptureRootRefused(f"capture leaf {leaf} is a symlink; refusing to write through it")
+    parent = leaf.parent.resolve()
+    if parent != base and base not in parent.parents:
+        raise CaptureRootRefused(f"capture leaf {leaf} is outside the capture root {base}")
+    return leaf
+
 def looks_like_capture(path: Path | str) -> bool:
     text = str(path)
     return any(hint in text for hint in IN_REPO_CAPTURE_HINTS)

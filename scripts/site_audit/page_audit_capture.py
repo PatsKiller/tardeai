@@ -112,7 +112,7 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     page.on("console", lambda m: console.append(m.text[:200]) if m.type == "error" else None)
     page.on("pageerror", lambda e: console.append(f"PAGEERROR: {str(e)[:200]}"))
 
-    from site_audit.capture_root import assert_inside_root
+    from site_audit.capture_root import assert_inside_root, assert_leaf_inside_root
     d = out / slug(route)
     d.mkdir(parents=True, exist_ok=True)
     # codex R1 (2026-11-04): a pre-existing symlink here can point inside the checkout. Resolve the
@@ -132,14 +132,14 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
         row["load_ms"] = round((time.time() - t0) * 1000)
         main = page.locator("main").first
         text = main.inner_text() if main.count() else page.inner_text("body")
-        (d / f"{vp}.txt").write_text(text)
+        assert_leaf_inside_root(d / f"{vp}.txt", out).write_text(text)
         row["text_chars"] = len(text)
         row["blank_suspect"] = len(text.strip()) < 80
         low = text.lower()
         row["flags"] = sorted({w for w in ("loading", "unavailable", "stale", "unknown", "error", "failed", "withheld", "not found", "—")
                                if w in low})
         row["h_scroll"] = page.evaluate("document.documentElement.scrollWidth > window.innerWidth + 1")
-        page.screenshot(path=str(d / f"{vp}.png"), full_page=True)
+        page.screenshot(path=str(assert_leaf_inside_root(d / f"{vp}.png", out)), full_page=True)
         if vp == "desktop":
             for tab in tabs:
                 if ACTION_WORDS.search(tab):
@@ -154,8 +154,8 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
                         page.wait_for_timeout(1500)
                         tt = main.inner_text() if main.count() else page.inner_text("body")
                         tslug = re.sub(r"[^A-Za-z0-9]+", "-", tab)
-                        (d / f"tab-{tslug}.txt").write_text(tt)
-                        page.screenshot(path=str(d / f"tab-{tslug}.png"), full_page=True)
+                        assert_leaf_inside_root(d / f"tab-{tslug}.txt", out).write_text(tt)
+                        page.screenshot(path=str(assert_leaf_inside_root(d / f"tab-{tslug}.png", out)), full_page=True)
                         trow["text_chars"] = len(tt)
                         trow["blank_suspect"] = len(tt.strip()) < 60
                 except Exception as e:
@@ -167,7 +167,7 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
     row["failed_requests"] = failed[:30]
     row["api_calls"] = api[:80]
     row["slow_api"] = [a for a in api if (a.get("ms") or 0) > 3000]
-    (d / f"{vp}.json").write_text(json.dumps(row, indent=1))
+    assert_leaf_inside_root(d / f"{vp}.json", out).write_text(json.dumps(row, indent=1))
     # codex R3 (2026-11-04): the CLI captured screenshots and never invoked the deep crawl, so no detail
     # was ever opened and no completeness check ever ran. The crawl and its evidence are now part of the
     # capture, on the same page and viewport, under the pinned detail budget.
@@ -178,7 +178,7 @@ def capture(page, base: str, route: str, label: str, vp: str, out: Path, tabs: l
         indices = detail_budget.selected_indices(len(openers), page=route, week_index=week)
         detail = deep_crawl.capture_page(page, route=route, page_url=base + route, indices=indices,
                                          out_dir=d, openers=openers)
-        (d / f"{vp}-details.json").write_text(json.dumps(detail, indent=1))
+        assert_leaf_inside_root(d / f"{vp}-details.json", out).write_text(json.dumps(detail, indent=1))
         row["details_sampled"] = len(indices)
         row["details_opened"] = sum(1 for x in detail["details"] if x.get("opened"))
         row["details_refused"] = [x.get("selector") or x.get("label") for x in detail["refused"]]
@@ -257,7 +257,7 @@ def main() -> int:
                                                 "blank_suspect", "flags", "h_scroll", "error")}
                          | {"failed": len(r.get("failed_requests", [])), "console": len(r.get("console_errors", [])),
                             "slow_api": len(r.get("slow_api", []))} for r in rows]}
-    (out / "index.json").write_text(json.dumps(summary, indent=1))
+    assert_leaf_inside_root(out / "index.json", out).write_text(json.dumps(summary, indent=1))
     print(json.dumps({k: v for k, v in summary.items() if k != "index"}, indent=1))
     print(f"OUT {out}")
     return 0
