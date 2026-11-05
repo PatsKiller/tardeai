@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "check_no_pii_mergeup_20261105",
   "files": [
-    "tests/test_check_no_pii_mergeup_20261105.py"
+    "tests/test_check_no_pii_mergeup_20261105.py",
+    "tests/test_check_no_pii_context_suppression.py"
   ],
   "anchor": "FQ-154b",
   "comment": [
@@ -10,8 +11,9 @@
     "The pre-commit PII gate diffs the index against the branch's first parent, so every file a merge-up brings in",
     "from main read as added and its existing PII lines failed; baseline may only shrink, so a far-behind branch",
     "had no sanctioned way to merge (32 of the 40 oldest PRs). The suite pins the rule: in a merge commit, a",
-    "finding whose line is byte-identical at the same path and line in origin/main does not count; a differing",
-    "line still counts in full; an ordinary commit is judged exactly as before; an unresolvable origin/main",
-    "refuses rather than skips."
+    "finding whose VALUE line and identifying CONTEXT (the label line the match covers) are byte-identical at the",
+    "same path and line in origin/main does not count; a differing line or context line still counts in full; a new",
+    "label above a value main publishes bare is a new exposure; an ordinary commit is judged exactly as before; an",
+    "unresolvable origin/main refuses rather than skips."
   ]
 }

@@ -257,6 +257,10 @@ class Finding:
     line: int
     category: str
     detail: str = ""  # blocked_path: the rule that matched. Never any part of a found value.
+    #: 1-based (first, last) lines of the WHOLE match, label included — the identifying context. A finding's
+    #: ``line`` is the value's line; when the label sits on another line (ACCOUNT_RE/CHAT_ID_RE/DOB_RE accept
+    #: a newline between label and value) that label line is part of the exposure's identity. (0, 0): just ``line``.
+    context: tuple[int, int] = (0, 0)
 
 
 class ScanError(RuntimeError):
@@ -342,27 +346,30 @@ def load_deny_patterns(repo: Path, env: dict[str, str] | None = None) -> list[re
     return out
 
 
-def _account_numbers(text: str, low: str) -> list[tuple[int, str]]:
-    """(position, digits) for ACCOUNT_RE matches. Keyword-anchored on the lowercased text, which is ~10x
-    faster than ACCOUNT_RE over every digit; falls back to ACCOUNT_RE when lowercasing changed the length
-    (a few non-ASCII characters do), so positions always refer to ``text``."""
+def _account_numbers(text: str, low: str) -> list[tuple[int, str, tuple[int, int]]]:
+    """(value position, digits, identifying span) for ACCOUNT_RE matches. Keyword-anchored on the lowercased
+    text, which is ~10x faster than ACCOUNT_RE over every digit; falls back to ACCOUNT_RE when lowercasing
+    changed the length (a few non-ASCII characters do), so positions always refer to ``text``. The span covers
+    the label AND the value, so a label on another line is part of the finding's identity."""
     if len(low) != len(text):
         out = []
         for m in ACCOUNT_RE.finditer(text):
             g = 1 if m.group(1) else 2
-            out.append((m.start(g), m.group(g)))
+            span = (m.start(), m.end(1)) if g == 1 else (m.start(2), m.end())
+            out.append((m.start(g), m.group(g), span))
         return sorted(set(out))
-    found: dict[int, str] = {}
+    found: dict[int, tuple[str, tuple[int, int]]] = {}
     for kw in _ACCT_KW_RE.finditer(low):
         s = kw.start()
         fwd = _ACCT_FWD_RE.match(low, s) if s == 0 or low[s - 1] not in ASCII_ALNUM else None
         if fwd:
-            found[fwd.start(1)] = text[fwd.start(1) : fwd.end(1)]
-        if _ACCT_BACK_KW_RE.match(low, s):
+            found[fwd.start(1)] = (text[fwd.start(1) : fwd.end(1)], (s, fwd.end(1)))
+        back_kw = _ACCT_BACK_KW_RE.match(low, s)
+        if back_kw:
             back = _ACCT_BACK_NUM_RE.search(low, max(0, s - 32), s)
             if back:
-                found[back.start(1)] = text[back.start(1) : back.end(1)]
-    return sorted(found.items())
+                found[back.start(1)] = (text[back.start(1) : back.end(1)], (back.start(1), back_kw.end()))
+    return [(pos, digits, span) for pos, (digits, span) in sorted(found.items())]
 
 
 def scan_text(path: str, text: str, deny: list[re.Pattern[str]], lines: set[int] | None = None) -> list[Finding]:
@@ -372,40 +379,47 @@ def scan_text(path: str, text: str, deny: list[re.Pattern[str]], lines: set[int]
         starts.append(m.end())
     out: list[Finding] = []
 
-    def add(pos: int, category: str) -> None:
+    def add(pos: int, category: str, span: tuple[int, int] | None = None) -> None:
         ln = bisect.bisect_right(starts, pos)
         if lines is None or ln in lines:
-            out.append(Finding(path, ln, category))
+            if span is None:
+                context = (ln, ln)
+            else:
+                context = (
+                    min(ln, bisect.bisect_right(starts, span[0])),
+                    max(ln, bisect.bisect_right(starts, max(span[0], span[1] - 1))),
+                )
+            out.append(Finding(path, ln, category, context=context))
 
     if "@" in text:
         for m in EMAIL_RE.finditer(text):
             if not _email_allowed(m.group(1), m.group(2), m.group(3)):
-                add(m.start(), "email")
+                add(m.start(), "email", (m.start(), m.end()))
     for pat in deny:
         for m in pat.finditer(text):
             if m.group(0):
-                add(m.start(), "deny_pattern")
+                add(m.start(), "deny_pattern", (m.start(), m.end()))
     low = text.lower()
     if "dob" in low or "birth" in low:
         for m in DOB_RE.finditer(text):
             if _real_date(m.group(1)):
-                add(m.start(1), "date_of_birth")
-    for pos, digits in _account_numbers(text, low):
+                add(m.start(1), "date_of_birth", (m.start(), m.end(1)))
+    for pos, digits, span in _account_numbers(text, low):
         if sum(ch.isdigit() for ch in digits) >= 6 and not DATE_LIKE_RE.match(digits):
-            add(pos, "account_number")
+            add(pos, "account_number", span)
     for m in LETTER_ACCT_RE.finditer(text):
-        add(m.start(1), "account_number")
+        add(m.start(1), "account_number", (m.start(), m.end()))
     if "chat" in low:
         for m in CHAT_ID_RE.finditer(text):
-            add(m.start(1), "telegram_chat_id")
+            add(m.start(1), "telegram_chat_id", (m.start(), m.end(1)))
     for m in IPV4_RE.finditer(text):
         if _private_ip(*(int(x) for x in m.groups())):
-            add(m.start(), "private_ip")
+            add(m.start(), "private_ip", (m.start(), m.end()))
     if "/home/" in text or "users" in low:
         for rx in HOME_RES:
             for m in rx.finditer(text):
                 if m.group(1).lower() not in GENERIC_USERS:
-                    add(m.start(), "home_path")
+                    add(m.start(), "home_path", (m.start(), m.end()))
     return out
 
 
@@ -462,10 +476,13 @@ class MergeContext:
 
     FQ-154b (claude-lead 2026-11-05): the pre-commit gate diffs the index against the branch's first parent, so
     every file a merge-up brings in from main reads as "added" — and its existing PII lines fail. Baseline may
-    only shrink, so a far-behind branch had no sanctioned way to merge. The rule implemented here: a staged line
-    is NOT added when it is byte-identical at the same path and line in ``origin/main``. A merge-up cannot
-    introduce exposure main already publishes. A line that differs still counts in full, and if origin/main
-    cannot be read the scan REFUSES (never skips).
+    only shrink, so a far-behind branch had no sanctioned way to merge. The rule implemented here: a staged
+    finding is NOT added when the WHOLE matched span — the value line AND any label line that makes it
+    identifying — is byte-identical at the same path and line in ``origin/main``. A merge-up cannot introduce
+    exposure main already publishes. The defect this closes: main publishes a bare number and the merge
+    resolution labels it on the line above; the value line alone matched, so the exemption swallowed a NEW
+    exposure. A line or context line that differs still counts in full, and if origin/main cannot be read the
+    scan REFUSES (never skips).
     """
 
     def __init__(self, repo: Path):
@@ -494,15 +511,19 @@ class MergeContext:
         return self._cache[path]
 
     def keep(self, path: str, text: str, findings: list[Finding]) -> list[Finding]:
-        """Drop the findings whose line is byte-identical in the merge target at the same path and line."""
+        """Drop a finding only when its value line AND its identifying context are byte-identical in the merge
+        target at the same path and line. A label that is new in the resolution is a new exposure."""
         main_lines = self.lines(path)
         if main_lines is None:
             return findings  # the path is new in this merge: everything on it is genuinely added
         ours = text.split("\n")
         kept = []
         for f in findings:
-            n = f.line - 1
-            if 0 <= n < len(ours) and n < len(main_lines) and ours[n] == main_lines[n]:
+            first, last = f.context if f.context[0] else (f.line, f.line)
+            if all(
+                0 < n <= len(ours) and n <= len(main_lines) and ours[n - 1] == main_lines[n - 1]
+                for n in range(first, last + 1)
+            ):
                 self.exempt += 1
                 continue
             kept.append(f)
