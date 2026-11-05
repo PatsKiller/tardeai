@@ -65,7 +65,7 @@ class Sweeper:
         return self.rc, ""
 
 
-def _env(tmp_path, now, *, http=None, mem=None, sweeper=None, served=SHA):
+def _env(tmp_path, now, *, http=None, mem=600_000_000, sweeper=None, served=SHA):
     lay = _layout(tmp_path, served)
     calls = []
 
@@ -213,3 +213,50 @@ def test_a_failed_api_check_writes_a_durable_failed_receipt(tmp_path):
     assert receipt["schema"] == "PostReleaseTest@v1" and receipt["status"] == "FAILED"
     assert receipt["release_sha"] == SHA
     assert receipt["checks"] and any(c["ok"] is False for c in receipt["checks"])
+
+
+def test_a_sweeper_that_wrote_findings_then_died_is_not_a_pass(tmp_path):
+    """cc-deepseek-6's F1 on #2106. The branch returned PASSED whenever findings.json existed, so a run that wrote the
+    file and exited non-zero (0 routes, nothing tested) read as a pass. A non-zero exit is a partial run."""
+    sw = Sweeper(rc=1, findings=[], coverage=[])
+    env, _ = _env(tmp_path, SAT_NOON, sweeper=sw)
+    r = PRT.tick(env, live=True, force=["light"])
+    assert r["results"]["light"]["status"] == "FAILED", r["results"]["light"]
+    rec = json.loads((env.dir / "last_light.json").read_text())
+    assert "did not complete" in rec["reason"]
+
+
+def test_an_unreadable_memory_figure_defers_instead_of_running_blind(tmp_path):
+    """cc-deepseek-6's F4 on #2106: unknown memory used to pass the gate (fail open)."""
+    env, calls = _env(tmp_path, SAT_NOON, mem=None, sweeper=Sweeper())
+    r = PRT.tick(env, live=True, force=["light"])
+    assert r["results"]["light"]["status"] == "DEFERRED"
+    rec = json.loads(sorted((env.dir / "runs").glob("light-*.json"))[-1].read_text())
+    assert "could not be read" in rec["reason"]
+    assert "portfolio-server None" not in rec["reason"]
+
+
+def test_a_hung_sweeper_leaves_a_receipt_instead_of_raising(tmp_path):
+    """cc-deepseek-6's F5 on #2106: a TimeoutExpired used to escape tick() with no failed receipt."""
+    import subprocess as _sp
+    def hung(extra, timeout):
+        raise _sp.TimeoutExpired(cmd="site_sweep", timeout=timeout)
+    env, _ = _env(tmp_path, SAT_NOON, sweeper=hung)
+    r = PRT.tick(env, live=True, force=["light"])
+    assert r["results"]["light"]["status"] == "UNAVAILABLE"
+    rec = json.loads(sorted((env.dir / "runs").glob("light-*.json"))[-1].read_text())
+    assert "timed out" in rec["reason"]
+
+
+def test_a_preflight_that_cannot_run_is_a_recorded_failure_not_an_exception(tmp_path):
+    """cc-deepseek-6's F5 on #2106, the wrapper half."""
+    import subprocess as _sp
+    env, _ = _env(tmp_path, SAT_NOON)
+    cur = env.releases_base / "CURRENT"
+    (cur / "config").mkdir(parents=True, exist_ok=True)
+    (cur / "config" / "release_wrapper_preflight.json").write_text(json.dumps({"enabled": True}))
+    def stuck(c, out):
+        raise _sp.TimeoutExpired(cmd="preflight", timeout=120)
+    env.wrapper_runner = stuck
+    res = PRT.wrapper_check(env)
+    assert res["ok"] is False and "timed out" in res["detail"]

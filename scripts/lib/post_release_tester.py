@@ -160,9 +160,14 @@ def load_state(env: Env) -> dict[str, Any]:
 
 
 def memory_ok(env: Env) -> tuple[bool, Optional[int]]:
+    """Fail CLOSED on an unreadable memory figure (cc-deepseek-6's F4 on #2106).
+
+    "The server's memory could not be read" is not "there is room". A sweep started blind is the thing that can take
+    the host down, so an unknown figure defers the phase; the caller renders the two cases with different sentences.
+    """
     m = env.memory()
     limit = int(env.config.get("memory_abort_bytes", 1_300_000_000))
-    return (m is None or m <= limit), m
+    return (m is not None and m <= limit), m
 
 
 def api_checks(env: Env, release_sha: str) -> list[dict[str, Any]]:
@@ -231,7 +236,14 @@ def wrapper_check(env: Env) -> dict[str, Any]:
             )
             return p.returncode, (p.stderr or p.stdout)[-300:]
 
-    rc, tail = runner(current, env.dir / "wrapper_preflight.json")
+    # F5 (cc-deepseek-6 on #2106): the preflight has a 120 s timeout and two things that can raise; both become a
+    # recorded not-ok check instead of an exception that aborts the phase with no receipt.
+    try:
+        rc, tail = runner(current, env.dir / "wrapper_preflight.json")
+    except subprocess.TimeoutExpired:
+        return {"name": "wrapper_preflight", "ok": False, "detail": "preflight timed out; the wrapper check did not finish"}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"name": "wrapper_preflight", "ok": False, "detail": f"preflight could not run ({type(exc).__name__})"}
     return {"name": "wrapper_preflight", "ok": rc == 0, "detail": f"exit {rc} {tail.strip()[:160]}"}
 
 
@@ -294,7 +306,14 @@ def browser_sweep(env: Env, mode: str, run_id: str) -> dict[str, Any]:
     if cfg.get("viewports"):
         extra["SWEEP_VIEWPORTS"] = ",".join(cfg["viewports"])
     runner = env.sweep_runner or _default_sweep_runner(env.project_root)
-    rc, tail = runner(extra, float(cfg.get("timeout_s", 1500)))
+    # cc-deepseek-6's F5 on #2106: a hung or unstartable sweeper must leave a receipt, not an exception out of tick().
+    try:
+        rc, tail = runner(extra, float(cfg.get("timeout_s", 1500)))
+    except subprocess.TimeoutExpired:
+        return {"status": UNAVAILABLE, "reason": "sweeper timed out; no result was measured", "exit": None}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"status": UNAVAILABLE, "reason": f"sweeper could not run ({type(exc).__name__}); no result was measured",
+                "exit": None}
     try:
         runs = sorted(p for p in out_root.iterdir() if (p / "findings.json").exists())
     except OSError:
@@ -325,6 +344,17 @@ def browser_sweep(env: Env, mode: str, run_id: str) -> dict[str, Any]:
         return {
             "status": DEFERRED,
             "reason": f"sweep aborted: {doc.get('aborted')}",
+            "summary_path": summary,
+            "exit": rc,
+        }
+    # cc-deepseek-6's F1 on #2106: a non-zero exit is not a pass just because the sweeper managed to write a findings
+    # file first. "Zero broken among the routes it reached before it died" is a claim about a partial run, and reporting
+    # it as PASSED is the absence-as-fact defect this lane exists to avoid.
+    if rc != 0:
+        return {
+            "status": FAILED,
+            "reason": (f"sweeper exited {rc} after writing findings.json; the run did not complete, "
+                       f"so its {doc.get('routes')} route(s) and 0 broken finding(s) are not a pass"),
             "summary_path": summary,
             "exit": rc,
         }
@@ -393,15 +423,13 @@ def tick(env: Env, *, live: bool, force: Optional[list[str]] = None) -> dict[str
         run_id = f"{phase}-{env.now.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:6]}"
         mem_ok, mem = memory_ok(env)
         if not mem_ok:
-            rec = _receipt(
-                env,
-                phase,
-                run_id,
-                release,
-                DEFERRED,
+            reason = (
                 f"memory gate: portfolio-server {mem / 1e9:.2f} GB > "
-                f"{int(env.config.get('memory_abort_bytes', 1.3e9)) / 1e9:.2f} GB",
+                f"{int(env.config.get('memory_abort_bytes', 1.3e9)) / 1e9:.2f} GB"
+                if mem is not None
+                else "memory gate: portfolio-server memory could not be read; the phase is deferred rather than run blind"
             )
+            rec = _receipt(env, phase, run_id, release, DEFERRED, reason)
         elif phase == "api":
             checks = api_checks(env, str(release.get("sha") or ""))
             failed = [c for c in checks if c.get("ok") is False]
@@ -437,3 +465,44 @@ def tick(env: Env, *, live: bool, force: Optional[list[str]] = None) -> dict[str
     atomic_write_json(env.dir / "state.json", state)
     atomic_write_json(env.dir / "last_tick.json", report)
     return report
+
+
+# ── the host entry point the lane actually runs ────────────────────────────────────────────────────
+
+
+def host_memory() -> Optional[int]:
+    """portfolio-server's MemoryCurrent in bytes, or None when it cannot be read (never a guess)."""
+    try:
+        p = subprocess.run(  # noqa: S603,S607 — fixed argv, no caller input
+            ["systemctl", "--user", "show", "portfolio-server", "--property=MemoryCurrent"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in (p.stdout or "").splitlines():
+        key, _, value = line.partition("=")
+        if key.strip() == "MemoryCurrent":
+            value = value.strip()
+            return int(value) if value.isdigit() else None
+    return None
+
+
+def host_env(now: Optional[datetime] = None) -> Env:
+    """The real environment for one tick, built from the documented host roots.
+
+    cc-openai-6's F2 on #2106: the proposal's command ran main's thin host check and nothing imported this module
+    outside its test, so the lane would have shipped a feature no lane called. This builder — and `--lane` on
+    ``scripts/post_release_tester.py`` — is that wiring; it reads no credential and runs no write beyond the tick receipt.
+    """
+    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    releases = Path(os.environ.get("TRADEAI_PORTFOLIO_SERVER_ROOT")
+                   or (Path.home() / "trade-ai-releases" / "portfolio-server"))
+    return Env(
+        state_root=root,
+        deploy_state_dir=root / "data" / "runtime" / "deploy_on_main",
+        releases_base=releases,
+        project_root=Path(__file__).resolve().parents[2],
+        now=now or datetime.now(timezone.utc),
+        config=load_config(),
+        memory=host_memory,
+    )
