@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { rowDetailMode, SHEET_MAX_WIDTH } from './rowDetailMode.ts'
+import { rowDetailMode, nextDetailState, SHEET_MAX_WIDTH } from './rowDetailMode.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 let failed = 0
@@ -22,14 +22,17 @@ check(/role="dialog"/.test(desk), 'the detail sheet is not a dialog')
 check(/onSetField=\{setField\}/.test(desk), 'the sheet does not render the real row (field editing lost)')
 check(/keep the inline path|openRows/.test(desk), 'the inline path was removed instead of kept for wide screens')
 
-if (failed) { console.error(`rowDetailMode: ${failed} failure(s)`); process.exit(1) }
-console.log('rowDetailMode: ok')
-
 // codex B2 (2026-11-04): pressing the phone detail control on the OPEN sheet must CLOSE it.
-import { nextDetailState } from './rowDetailMode.ts'
 const closed = nextDetailState('sheet', 'WATCHLIST-1', 'WATCHLIST-1', {})
 check(closed.sheetKey === null, 'phone Hide details left the sheet open (it re-set the same key)')
 const opened = nextDetailState('sheet', null, 'WATCHLIST-2', {})
 check(opened.sheetKey === 'WATCHLIST-2', 'phone Show details did not open the row')
 const inline = nextDetailState('inline', null, 'WATCHLIST-1', { 'WATCHLIST-1': true })
 check(inline.openFlags['WATCHLIST-1'] === false, 'the inline control did not collapse the open row')
+
+// codex P1 at f5586fdd1 (PR 2599): the exit used to run BEFORE these toggle assertions, so a
+// nextDetailState regression printed FAIL and still exited 0 — scripts/run-tests.mjs reads the exit
+// status, so that regression would have passed the build. There is now exactly one summary/exit at
+// the end, after every check, so any failure here fails the run.
+if (failed) { console.error(`rowDetailMode: ${failed} failure(s)`); process.exit(1) }
+console.log('rowDetailMode: ok')

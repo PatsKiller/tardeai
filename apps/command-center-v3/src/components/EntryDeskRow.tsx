@@ -173,7 +173,14 @@ export default function EntryDeskRow({
         boxShadow: focused ? '0 0 0 1px rgba(96,165,250,.25)' : undefined,
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: expanded ? 'minmax(0,1.35fr) minmax(0,1fr) auto' : 'minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
+      {/* codex P2 at f5586fdd1 (PR 2599): a collapsed row has ONE grid child, so the page's mobile
+          stylesheet (W9Mobile.css, .w9-entry-desk) must exempt it from its two-equal-column !important
+          override; the component states the fact and the stylesheet selects it. */}
+      <div
+        data-testid="entry-desk-row-grid"
+        data-desk-collapsed={expanded ? undefined : 'true'}
+        style={{ display: 'grid', gridTemplateColumns: expanded ? 'minmax(0,1.35fr) minmax(0,1fr) auto' : 'minmax(0,1fr)', gap: 12, alignItems: 'start' }}
+      >
         <div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span>

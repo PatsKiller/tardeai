@@ -7,6 +7,9 @@
   .w9-page input { max-width: 100%; }
   .w9-page input[type="checkbox"] { min-height: 20px; min-width: 20px; width: 20px; height: 20px; }
   .w9-entry-desk [style*="grid-template-columns"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  /* codex P2 at f5586fdd1 (PR 2599): a collapsed row has exactly one grid child, so the two-column
+     override above would squeeze its summary into half the row. The row marks itself; exempt it. */
+  .w9-entry-desk [style*="grid-template-columns"][data-desk-collapsed="true"] { grid-template-columns: minmax(0, 1fr) !important; }
   .w9-entry-desk input, .w9-entry-desk select { min-width: 0; align-self: start; }
   .w9-entry-desk label { display: flex; align-items: center; min-height: 44px; gap: 8px; }
   .w9-entry-desk > div > div:first-child { min-width: 0; }
