@@ -25,6 +25,13 @@ Without a chain the cost is a **labeled estimate** from config
 (``estimated_cost_pct_of_position``) and ``cost_is_estimate`` is True. A floor price is
 reported only when a real strike was chosen; it is never invented from a chain that is
 not there (the estimate keeps the strike only if the caller supplied one).
+
+Only a LONG position is ever advised: a put on a short adds the exposure it claims to
+remove, and ``position_value`` erases the sign, so the side is a gate
+(``not_a_long_position``). ``cost_per_share`` and ``floor_after_cost`` are on the HELD
+shares — ``_contracts`` may cover more (``over``) or fewer (``partial``) shares than the
+position holds — and the quoted premium per covered share is reported beside them as
+``cost_per_covered_share``.
 """
 from __future__ import annotations
 
@@ -212,6 +219,12 @@ def suggest_for_position(
         return None, "advisory_disabled"
     if not is_single_stock(position, cfg):
         return None, "not_a_single_stock"
+    shares = _num(position.get("quantity", position.get("shares")))
+    if shares is not None and shares <= 0:
+        # cc-deepseek-3 second review (2026-11-05): a put on a SHORT adds the exposure it claims to remove, and
+        # ``position_value`` erases the sign, so -300 shares produced a "protective put" on the wrong side. Which
+        # side a position is on is a gate, not a detail: only a long can be advised.
+        return None, "not_a_long_position"
     value = position_value(position)
     if value is None:
         return None, "position_value_unknown"
@@ -230,7 +243,6 @@ def suggest_for_position(
     if spot is None and value and _num(position.get("quantity", position.get("shares"))):
         spot = value / abs(float(position.get("quantity", position.get("shares"))))
     stop = _num(position.get("stop_price", position.get("stop")))
-    shares = _num(position.get("quantity", position.get("shares")))
 
     # Floor target: the broker stop when one exists (the position is already defended there),
     # otherwise the configured distance below spot.
@@ -249,6 +261,12 @@ def suggest_for_position(
         call = _pick_strike(expiry, "call", spot * (1.0 + float(cfg["collar_cap_pct_above_spot"]) / 100.0))
 
     contracts, cover = _contracts(shares)
+    covered_shares = max(1.0, contracts * 100.0)
+    # cc-deepseek-3 second review (2026-11-05): ``_contracts`` deliberately labels over/partial coverage, so dividing
+    # cost and floor by the covered contracts' 100s showed $20.50 a share for a hedge costing $51.25 of each of the
+    # 40 held shares — and a floor $30.75 too high. The operator's per-share numbers are on the HELD shares; the
+    # covered-share figure is kept, named for what it is.
+    held_shares = shares if shares is not None and shares > 0 else covered_shares
     estimate_cost = round(value * float(cfg["estimated_cost_pct_of_position"]) / 100.0, 2)
     if put is not None:
         put_cost = round(float(put["ask"]) * 100.0 * contracts, 2)
@@ -276,14 +294,15 @@ def suggest_for_position(
         "structure": "protective_put",
         "floor_price": floor_price,
         "floor_basis": floor_basis,
-        "floor_after_cost": round(floor_price - (cost_usd / max(1.0, contracts * 100.0)), 2),
+        "floor_after_cost": round(floor_price - (cost_usd / held_shares), 2),
         "floor_strike_source": strike_source,
         "expiry": expiry_label,
         "contracts": contracts,
         "cover": cover,
         "cost_usd": cost_usd,
         "cost_is_estimate": cost_is_estimate,
-        "cost_per_share": round(cost_usd / max(1.0, contracts * 100.0), 2),
+        "cost_per_share": round(cost_usd / held_shares, 2),
+        "cost_per_covered_share": round(cost_usd / covered_shares, 2),
         "protection_per_share": round(max(0.0, (spot or value) - floor_price), 2) if spot else None,
         # The rails, restated in the payload so no consumer can mistake a suggestion for an order.
         "advisory_only": True,
