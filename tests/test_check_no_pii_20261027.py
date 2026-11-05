@@ -117,7 +117,10 @@ def test_account_fast_path_matches_the_reference_regex():
         for m in pii.ACCOUNT_RE.finditer(s):
             g = 1 if m.group(1) else 2
             ref.append((m.start(g), m.group(g)))
-        assert pii._account_numbers(s, s.lower()) == sorted(set(ref)), s
+        # _account_numbers also returns each match's identifying span; this pins the fast path's positions and
+        # digits against the reference regex, which is what "same matches" means.
+        got = [(pos, digits) for pos, digits, _ in pii._account_numbers(s, s.lower())]
+        assert got == sorted(set(ref)), s
 
 
 def test_telegram_chat_id():
