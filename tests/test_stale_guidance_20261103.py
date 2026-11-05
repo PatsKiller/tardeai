@@ -1,8 +1,11 @@
 """Stale-guidance hygiene (Board row 33 piece E, operator P0 2026-11-03).
 
-The operator was stopped out of SPCX at 137.19 on 2026-10-30 and sat at 141.65 on 2026-11-03 while Home
-still said "SPCX is below its stop" and the CIO home still carried an "Advisory TRIM — SPCX" label whose
-narrative dated from 2026-10-07.
+A held name stopped out, then traded back above that stop, while Home still said the name was below its
+stop and the CIO home carried an advisory label whose narrative predated the stop by weeks.
+
+The fixture symbol, prices and dates below are SYNTHETIC. The real incident's values are deliberately not
+recorded here: this is a public repository, and a symbol with a date and a fill price identifies a real
+operator execution.
 
 Review round 2 (cc-deepseek-5): the clock must be the OBSERVATION, not the directive's creation, and the
 gate must cover the staging rows the operator actually reads. Both are asserted at the real call paths here.
@@ -38,7 +41,7 @@ def _iso(days_ago: float) -> str:
 # ── the rule: the observation is the clock ──────────────────────────────────────────────────────────────────
 
 def test_an_old_observation_is_stale():
-    out = SG.advisory_freshness({"surfaced_at": _iso(27)}, NOW)   # SPCX: observed 2026-10-07
+    out = SG.advisory_freshness({"surfaced_at": _iso(27)}, NOW)   # AAA: observed 27 days ago
     assert out["stale"] is True and out["reason"] == "observation_older_than_14d"
     assert out["age_known"] is True and out["age_days"] == pytest.approx(27.0)
 
@@ -73,12 +76,12 @@ def _row(symbol, observed_days, *, source="advisory", key="surfaced_at", label=N
 
 
 def test_the_current_queue_cannot_render_a_stale_observation():
-    q = Q.build_opportunity_queue([_row("SPCX", 27), _row("NVDA", 1)], now=NOW)
+    q = Q.build_opportunity_queue([_row("AAA", 27), _row("NVDA", 1)], now=NOW)
     assert "NVDA" in [i["symbol"] for i in q["items"]]
-    assert "SPCX" not in [i["symbol"] for i in q["items"]], "a 27-day-old observation rendered as current"
+    assert "AAA" not in [i["symbol"] for i in q["items"]], "a 27-day-old observation rendered as current"
     assert q["count"] == 1 and q["stale_count"] == 1
     stale = {i["symbol"]: i for i in q["stale_items"]}
-    assert stale["SPCX"]["stale_reason"] == "observation_older_than_14d"
+    assert stale["AAA"]["stale_reason"] == "observation_older_than_14d"
     assert q["digest"] == Q.build_opportunity_queue([_row("NVDA", 1)], now=NOW)["digest"]
 
 
@@ -100,20 +103,20 @@ def test_a_fresh_hit_against_an_old_directive_still_renders():
 # ── the suppression is visible on the surface, not silent ──────────────────────────────────────────────────
 
 def test_the_cio_home_counts_the_guidance_it_held_back():
-    q = Q.build_opportunity_queue([_row("SPCX", 27), _row("NVDA", 1)], now=NOW)
+    q = Q.build_opportunity_queue([_row("AAA", 27), _row("NVDA", 1)], now=NOW)
     home = CC.build_office_home(opportunity_queue=q, now=NOW)
     assert home["stale_guidance"]["count"] == 1
-    assert home["stale_guidance"]["items"][0]["symbol"] == "SPCX"
+    assert home["stale_guidance"]["items"][0]["symbol"] == "AAA"
     assert home["stale_guidance"]["items"][0]["reason"] == "observation_older_than_14d"
 
 
 # ── the Home call path: the stop prompt ─────────────────────────────────────────────────────────────────────
 
 def test_a_recovered_price_does_not_render_below_its_stop():
-    """The operator's exact case: triggered at the 137.19 stop, price now 141.65 (+3.3% above it)."""
+    """A triggered stop whose price has come back above it (+3.3%) — synthetic values."""
     out = HARNESS.build(**HARNESS.base(risk=HARNESS._risk(
-        HARNESS._pos("SPCX", 200 * 141.65, account="schwab_taxable", stop=137.19, dist=3.3, triggered=True))))
-    assert "stop:SPCX" not in HARNESS.ids(out), "a recovered price still rendered 'below its stop'"
+        HARNESS._pos("AAA", 200 * 103.30, account="schwab_taxable", stop=100.00, dist=3.3, triggered=True))))
+    assert "stop:AAA" not in HARNESS.ids(out), "a recovered price still rendered 'below its stop'"
 
 
 def test_a_live_breach_still_renders():
