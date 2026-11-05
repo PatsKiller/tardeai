@@ -445,8 +445,11 @@ def test_system_ops_runner_fresh_source(monkeypatch):
                 "severity": "WARN", "failure_count": 3, "last_error": None, "updated_at": fresh}]
     monkeypatch.setattr(coverage, "_rows", FakeRows(health=failing, health_last=fresh))
     out = coverage_lanes.system_ops_runner(cfg, dry_run=True)
-    assert [p["label"] for p in out] == ["System health: alex_daily MISSING"]
+    # FQ-059: the candidate reads in plain English; the checker's own sentence and the component id are kept in meta.
+    assert [p["label"] for p in out] == ["Health check needs attention: alex daily"]
     assert out[0]["meta"]["research_domain"] == "system_ops"
+    assert out[0]["meta"]["component"] == "alex_daily"
+    assert "System health: alex_daily MISSING" in (out[0]["meta"].get("technical") or "")
 
 
 def test_custom_domain_runner_denylist_and_blocked_sources(monkeypatch):
