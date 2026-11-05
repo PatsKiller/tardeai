@@ -54,6 +54,17 @@ export function vixFreshness(
       label: `VIX ${value} — observation time not recorded, so its age is unknown${src ? ` (source ${src})` : ''}`,
     }
   }
+  // A stamp AHEAD of now is not a fresh reading; it is a clock we cannot read (cc-deepseek-6's F1 on PR 2654). The old
+  // Math.max(0, ...) clamp turned any future timestamp into zero age, and zero age is the definition of FRESH — so the
+  // most impossible clock on the page rendered as the most confident number. A small skew is tolerated; a real one is
+  // admitted as unreadable rather than silently relabelled as "1 min old".
+  const FUTURE_GRACE_MS = 5 * 60_000
+  if (t - nowMs > FUTURE_GRACE_MS) {
+    return {
+      state: 'UNDATED', value, age: null, current: false,
+      label: `VIX ${value} — observation time is in the future, so its age cannot be read${src ? ` (source ${src})` : ''}`,
+    }
+  }
   const ageMs = Math.max(0, nowMs - t)
   const age = ageWords(ageMs)
   const suffix = src ? ` · source ${src}` : ''

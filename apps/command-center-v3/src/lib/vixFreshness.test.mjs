@@ -29,6 +29,10 @@ check('0 is a real VIX, not a missing one', zero.state === 'FRESH' && zero.value
 const badTime = vixFreshness(18, 'cboe', 'not-a-time', NOW)
 check('an unparseable observation time is UNDATED, not fresh', badTime.state === 'UNDATED', badTime.state)
 const future = vixFreshness(18, 'cboe', new Date(NOW + 3600_000).toISOString(), NOW)
-check('a clock in the future does not become STALE by accident', future.state === 'FRESH' && future.age === '1 min old', `${future.state} ${future.age}`)
+const future2 = vixFreshness(18, 'cboe', new Date(NOW + 10 * 3600_000).toISOString(), NOW)
+check('a future-dated observation is not FRESH and not coloured current (PR 2654 F1)',
+  future2.state === 'UNDATED' && future2.current === false && /future/i.test(future2.label), `${future2.state} ${future2.label}`)
+const skew = vixFreshness(18, 'cboe', new Date(NOW + 60_000).toISOString(), NOW)
+check('a one-minute clock skew is tolerated as fresh', skew.state === 'FRESH' && skew.current === true, skew.state)
 console.log(`vixFreshness: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
