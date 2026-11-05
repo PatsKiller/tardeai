@@ -336,3 +336,57 @@ def test_a_nested_alias_is_still_the_same_bypass(store):
     out = S.protected_holdings_write(cand, source="test_nested_alias", target_path=str(store), baseline=nested)
     assert out["wrote"] is False and out["reason_code"] == "BASELINE_ALIAS", out
     assert store.read_bytes() == before
+
+
+# ── (c) the baseline substitute must be RECENT, and an absent store is still a bootstrap ─────────
+# claude-lead BLOCK on #2543 (2026-11-05): on this host the newest backup was two weeks old, so a
+# repeat of the 11-03 zero-byte store would have written every other account's 10-22 rows back into
+# the live book — with the relative guards comparing the candidate against that same stale document.
+
+import os  # noqa: E402
+import time  # noqa: E402
+
+
+def test_a_stale_backup_is_not_a_baseline_and_the_write_fails_closed(store, monkeypatch):
+    store.write_bytes(b"")
+    bak = _backup(store)
+    old = time.time() - 14 * 24 * 3600            # the 2-week-old backup the BLOCK measured on this host
+    os.utime(bak, (old, old))
+    before = store.read_bytes()
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert out["status"] == "rejected_no_baseline" and out["wrote"] is False, out
+    assert out["store_state"] == "empty"
+    assert "younger than 24h" in out["reason"], out
+    assert store.read_bytes() == before, "a stale baseline must never reach the store"
+
+
+def test_a_fresh_backup_is_still_used(store, monkeypatch):
+    """The age bound must not remove the recovery path it bounds."""
+    store.write_bytes(b"")
+    bak = _backup(store)
+    recent = time.time() - 3600                   # one hour old
+    os.utime(bak, (recent, recent))
+    monkeypatch.setattr(S, "_build_account_rows",
+                        lambda label, live, existing: ([_row("BBB", "schwab_roth", 100, 41000.0)], []))
+    monkeypatch.setattr(S, "_cash_rows_for_account",
+                        lambda label, hold, key, st: [_row("CASH", "schwab_roth", 12500, 12500.0, cash=True)])
+    out = S._sync_rows("schwab_roth_ira", "schwab_roth", [], object(), dry_run=False)
+    assert out["wrote"] is True and out["baseline_source"].startswith("backup:"), out
+
+
+def test_an_absent_store_is_still_a_bootstrap_for_sane_payload(tmp_path, monkeypatch):
+    """claude-lead BLOCK on #2543: the backup rule refused every first-time protected_holdings_write
+    caller (there is no store and no backup). An absent store has no book to protect, so it keeps
+    the pre-PR behaviour; a store that EXISTS but is damaged still fails closed."""
+    missing = tmp_path / "missing.json"
+    monkeypatch.setattr(S, "HOLDINGS_PATH", missing)
+    ok, why = S.sane_payload(_book())
+    assert ok is True, why
+
+
+def test_a_damaged_store_still_refuses_sane_payload_without_a_fresh_backup(store):
+    store.write_bytes(b"")
+    ok, why = S.sane_payload(_book())
+    assert ok is False and "NO_BASELINE" in why and "younger than 24h" in why, why

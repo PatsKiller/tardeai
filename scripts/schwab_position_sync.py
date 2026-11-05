@@ -193,16 +193,36 @@ def _backup_candidates(path=None):
         return []
 
 
-def _baseline_from_backups(path=None):
-    """Newest structurally usable backup as ``(doc, path)``, else ``(None, None)``.
+#: A backup older than this is not a baseline (claude-lead BLOCK on #2543, 2026-11-05). On 2026-11-05 this host's
+#: newest holdings backup was two weeks old: using it as the baseline for a damaged store would have written every
+#: other account's two-week-old rows back into the live book, and the relative guards would have compared the
+#: candidate against that same stale document, so they could not fire. A torn store is recovered from a backup only
+#: while it is genuinely recent; otherwise the sync fails closed and a person decides.
+BASELINE_BACKUP_MAX_AGE_HOURS = 24.0
+
+
+def _baseline_from_backups(path=None, *, max_age_hours=None):
+    """Newest structurally usable, sufficiently RECENT backup as ``(doc, path)``, else ``(None, None)``.
 
     2026-11-03 (operator execution-engineering grant): when the live store is empty/corrupt the
     WRITE path must still have a baseline — the restored candidate or a backup — so
     ``validate_payload`` runs WITH the coverage / cash / catastrophic-drop guards instead of
     ``last_good=None``. Read-only; never invents a book.
+
+    ``max_age_hours`` (default :data:`BASELINE_BACKUP_MAX_AGE_HOURS`) bounds how old that
+    substitute may be; ``None`` disables the bound and is for tests and deliberate operator
+    recovery only.
     """
+    limit = BASELINE_BACKUP_MAX_AGE_HOURS if max_age_hours is None else max_age_hours
+    now_ts = datetime.now(timezone.utc).timestamp()
     fallback = None
     for f in _backup_candidates(path):
+        try:
+            age_hours = (now_ts - f.stat().st_mtime) / 3600.0
+        except OSError:
+            continue
+        if limit is not None and age_hours > float(limit):
+            continue                      # too old to be a baseline: a stale book is not a recovery
         state, doc = _store_state(f)
         if state != "ok" or not _positions_of(doc):
             continue
@@ -217,17 +237,22 @@ def sane_payload(h, last_good=None):
     """PRE-WRITE SANITY — same contract as canonical_assert().
 
     With no explicit ``last_good``, a store that exists but is empty/corrupt is not a clean
-    slate: resolve the restored candidate or a backup as the baseline, and refuse only when
+    slate: resolve the restored candidate or a RECENT backup as the baseline, and refuse when
     none exists (never validate with every relative guard off).
+
+    An ABSENT store is the bootstrap case (claude-lead BLOCK on #2543, 2026-11-05): there is no
+    book to protect and nothing to compare against, so it keeps the pre-PR behaviour and validates
+    with ``last=None``. Refusing there refused every first-time ``protected_holdings_write`` caller.
     """
     if last_good is not None:
         last = last_good
     else:
         state, last = _store_state()
-        if last is None:
+        if last is None and state != "absent":
             last, _src = _baseline_from_backups()
-        if last is None:
-            return False, f"NO_BASELINE: holdings store is {state} and no usable backup was found"
+            if last is None:
+                return False, (f"NO_BASELINE: holdings store is {state} and no suitable backup "
+                               f"(younger than {BASELINE_BACKUP_MAX_AGE_HOURS:g}h) was found")
     v = validate_payload(h, last)
     return v.ok, f"{v.reason_code}: {v.reason}"
 
@@ -930,15 +955,19 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
             return {"status": "no_holdings_file" if state == "absent" else "no_snapshot",
                     "store_state": state, "broker_account": account_key,
                     "holdings_label": label, "wrote": False}
-        # Write path: empty/corrupt is NOT 'no baseline'. Use the restored candidate or a backup
-        # and go through protected_holdings_write so the coverage/cash/drop guards stay live; a
-        # write is refused only when no baseline exists at all (operator grant 43212811, 2026-11-03).
+        # Write path: empty/corrupt is NOT 'no baseline'. Use the restored candidate or a RECENT
+        # backup and go through protected_holdings_write so the coverage/cash/drop guards stay live.
+        # A stale backup is not a baseline (claude-lead BLOCK on #2543): it would write every other
+        # account's old rows back into the book and the relative guards would measure against that
+        # same stale document. No suitable backup -> fail closed, store untouched.
         baseline_doc, _src = _baseline_from_backups()
         if baseline_doc is None:
             _record(account_key, "rejected_no_baseline",
-                    f"[schwab_position_sync] holdings store {state} and no usable backup")
+                    f"[schwab_position_sync] holdings store {state} and no backup younger than "
+                    f"{BASELINE_BACKUP_MAX_AGE_HOURS:g}h")
             return {"status": "rejected_no_baseline", "store_state": state, "broker_account": account_key,
-                    "holdings_label": label, "wrote": False}
+                    "holdings_label": label, "wrote": False,
+                    "reason": f"no usable holdings backup younger than {BASELINE_BACKUP_MAX_AGE_HOURS:g}h"}
         cur = copy.deepcopy(baseline_doc)
         baseline_source = f"backup:{Path(_src).name}"
     else:
