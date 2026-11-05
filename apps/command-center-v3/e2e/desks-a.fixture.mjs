@@ -87,7 +87,14 @@ try {
     await expect(ready).toContainText('1 packet older than 48 h is hidden here and kept in history.')
     // The source-clock column now says "<lane name> is retired" (DeskPage.writerStateLabel), so the lane is named in
     // operator words instead of the raw "Writer RETIRED". This PR changed the wording; the assertion moves with it.
+    // On phones the source clocks are inside a closed disclosure. Open it before
+    // using its accessible region, and keep an already-open disclosure open.
+    const clocksDisclosure = page.getByTestId('desk-source-clocks')
+    if (await clocksDisclosure.count() && await clocksDisclosure.getAttribute('open') === null) {
+      await clocksDisclosure.locator('summary').click()
+    }
     const clocks = page.getByRole('region', { name: 'Source clocks' })
+    await expect(clocks).toBeVisible()
     await expect(clocks).toContainText('is retired')
     await expect(clocks).not.toContainText('Writer RETIRED')
     await shot('1', 'ready-now')
