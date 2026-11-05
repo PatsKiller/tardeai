@@ -67,7 +67,7 @@ scripts/proposal_alerter.py 3
 scripts/proposal_paper_submitter.py 3
 scripts/pullback_macd_screener.py 1
 scripts/rebalance_verifier.py 1
-scripts/recovery_watch_daily.py 2
+scripts/recovery_watch_daily.py 0
 scripts/rerun_cio_dual_consensus.py 1
 scripts/research_intelligence_queue.py 1
 scripts/rotation_rebalance_digest.py 1
