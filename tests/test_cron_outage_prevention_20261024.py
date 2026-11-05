@@ -55,11 +55,25 @@ def test_stop_supervisor_uses_actual_three_minute_fires_not_weekend_gap():
 
 
 @pytest.mark.parametrize("changes", [{"mode": "dry_run"}, {"mode": "preflight"},
-    {"event_type": "started"}, {"event_type": "lock_skip"}, {"exit_code": 1},
+    {"event_type": "lock_skip"}, {"exit_code": 1},
     {"mode": None, "command": "python job.py --dry-run"}, {"mode": None}])
 def test_non_success_cannot_mask_missed_runs(changes):
     result = assess(events=[event(), event("2026-10-23T12:18:30-04:00", **changes)])
     assert result["missed_lane_ids"] == ["unified-stop-supervisor"]
+
+
+def test_a_started_event_is_progress_not_a_success():
+    """A `started` is never a success (last_success_at does not move), but a fire it covers is IN PROGRESS.
+
+    Before 2026-11-03 a fire with no completion behind it counted as missed, so a lane whose runs are
+    longer than its cadence re-opened a "missed schedule" incident every cycle while it was working.
+    """
+    result = assess(events=[event(), event("2026-10-23T12:18:30-04:00", event_type="started")])
+
+    row = result["rows"][0]
+    assert row["last_success_at"] == "2026-10-23T16:06:02Z"       # the start is not a success
+    assert row["in_progress_fires"] == 1 and row["missed_fires"] == 1
+    assert result["missed_lane_ids"] == []                        # one miss is below the two-fire threshold
 
 
 def test_future_success_cannot_be_backdated_into_historical_replay():
