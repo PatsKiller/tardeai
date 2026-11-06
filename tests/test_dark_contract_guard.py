@@ -154,6 +154,9 @@ def test_reclassification_lands_in_declared_not_in_new():
     # report_slo_burn_rate.py declares SCHEDULED_ENTRYPOINT "unscheduled by
     # design"; that is a not-installed claim, so it belongs here, not in NEW.
     assert set(res["declared_not_installed"]) == {
+        # audit_queue_status.py (2026-11-04) is a coordinator/operator-run CLI: it declares "NONE - unscheduled by
+        # design" because nothing schedules it, and it writes only the coordination queue and only with --apply.
+        "scripts/audit_queue_status.py",
         # lib/site_audit/cross_checks.py is NOT here: its schema is referenced by the gate that runs its tests, so the
         # guard counts it consumed rather than dark. It keeps its SCHEDULED_ENTRYPOINT declaration regardless.
         "scripts/check_operator_answer_quality.py",
