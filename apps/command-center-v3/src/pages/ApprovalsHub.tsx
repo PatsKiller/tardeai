@@ -7,6 +7,7 @@ import '../styles/operatorApprovals.css'
 import ResolvedActivations, { type QueueWithResolved } from '../components/approvals/ResolvedActivations'
 import PrReviewSheet from './PrReviewSheet'
 import MergesTab from '../components/approvals/MergesTab'
+import NeedsYouCard from '../components/home/NeedsYouCard'
 import type { MergesSummary } from '../lib/prReview'
 
 // "Merges" (Design approvals-pr-review/v001): added after "Waiting on you"; nothing removed or moved.
@@ -41,6 +42,8 @@ function Queue({ defaultTab }: { defaultTab?: string }) {
       gap: data?.gaps.length ? 'Some approval sources are unavailable. The total is not yet known.' : undefined }]}
     decisionGap={data?.pending_count === null ? 'The total is unavailable until every source can be checked.' : data ? `${data.pending_count} waiting for review.` : 'Loading the latest queue.'}>
     {active => <div className="stack">
+      {/* Design home/v008 §1: the same "Needs you" list as Home, so the two surfaces never disagree. Additive. */}
+      {active === 'waiting' && <NeedsYouCard surface="approvals" />}
       {error && <DeskGap title="Queue unavailable" reason={error}><button onClick={refresh}>Try again</button></DeskGap>}
       {!data && !error && <p role="status">Loading approvals…</p>}
       {data && <>
