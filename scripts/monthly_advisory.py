@@ -9,6 +9,10 @@ from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
+    from lib.day_change_display import format_day_change as _format_day_change
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import format_day_change as _format_day_change
+try:
     from lib.ollama_ctx import canonical_num_ctx
 except ImportError:  # imported as scripts.<module>
     from scripts.lib.ollama_ctx import canonical_num_ctx
@@ -169,7 +173,7 @@ Golden Window: {kd.get('golden_window_start','Feb 2036')} to {kd.get('golden_win
 
 PORTFOLIO: ${tv:,.0f}
 All-Time Gain: ${totals.get('total_gain',0):+,.0f} (+{totals.get('total_gain_pct',0):.1f}%)
-Day Change: ${totals.get('day_change',0):+,.0f}
+Day Change: {_format_day_change(totals.get('day_change'))}
 Annual Dividends: ${div_total:,.0f} (target: $28,000)
 Portfolio Beta: {beta:.2f} (pipeline-derived)
 Rebalancing Needed: ${rebal_total:,.0f}

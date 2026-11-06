@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "unknown_day_change_renders_as_words_20261105",
+  "files": [
+    "tests/test_unknown_day_change_renders_as_words_20261105.py"
+  ],
+  "anchor": "UNKNOWN_DAY_CHANGE_RENDERS_AS_WORDS_20261105",
+  "comment": [
+    "ANCHOR: UNKNOWN_DAY_CHANGE_RENDERS_AS_WORDS_20261105 — an unmeasured day change is the word unknown, never 0 and never a crash.",
+    "2026-11-05 (codex-cloud P2 on PR #2588): a None day change from the Fidelity fund lane broke",
+    "llm_context_engine.get_portfolio_context(), and the same class of defect existed wherever a",
+    "producer seeded 0.0, or a consumer coerced None with 'or 0' or formatted it directly.",
+    "scripts/lib/day_change_display.py is now the single strict renderer; a genuine measured 0.00",
+    "still renders as zero, and every consumer renders unknown as a word."
+  ]
+}
