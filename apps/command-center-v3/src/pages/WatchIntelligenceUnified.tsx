@@ -175,10 +175,10 @@ function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
             {notRun
-              ? 'Provider NONE · Model NONE · Policy NO_CALL · Cost $0'
+              ? 'No provider or model assigned · no external call · no cost yet'
               : [rev?.provider, rev?.model, rev?.policy].filter(Boolean).join(' · ')}
-            {reason ? ` · ${reason}` : ''}
-            {disposition ? ` · ${disposition}` : ''}
+            {reason ? ` · ${humanizeCode(String(reason))}` : ''}
+            {disposition ? ` · ${humanizeCode(String(disposition))}` : ''}
           </div>
         </>
       )}

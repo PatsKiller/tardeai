@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_readiness_words_20261104",
+  "files": [
+    "tests/test_watchlist_readiness_words_20261104.py"
+  ],
+  "anchor": "WATCHLIST_READINESS_WORDS_20261104",
+  "comment": [
+    "ANCHOR: WATCHLIST_READINESS_WORDS_20261104 — FQ-078: a research card's readiness reads in plain words (\"No provider or model assigned\", \"Not scheduled\", \"Future code\") instead of the raw codes. Two entries run it: this pytest file (the rollback WatchCardV2 component's mapping, collectable by the shard runner), and `node --experimental-strip-types src/lib/watchlistReadinessWords.view.test.mjs`, invoked from apps/command-center-v3's `build` script, which renders the live WatchIntelligenceUnified page and fails when its three live-page expressions are reverted. cx-openai-4 R2 on #2611: the pytest file alone stayed green on a reverted live page, so it is not the live-page gate and must not be described as one."
+  ]
+}

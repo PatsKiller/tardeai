@@ -416,7 +416,9 @@ class TestWorkerDisabled(unittest.TestCase):
 class TestUiDoesNotHardcodeProviderWhenIncomplete(unittest.TestCase):
     def test_review_box_none_when_not_complete(self):
         ui = (ROOT / "apps/command-center-v3/src/pages/WatchIntelligenceUnified.tsx").read_text()
-        self.assertIn("Provider NONE · Model NONE · Policy NO_CALL", ui)
+        # FQ-078: the live page says this in words; the codes moved behind Diagnostics. The intent of this test is
+        # unchanged - an incomplete review never prints a real provider or model.
+        self.assertIn("No provider or model assigned · no external call · no cost yet", ui)
         self.assertIn("complete ? String(rev?.model", ui)
 
 
