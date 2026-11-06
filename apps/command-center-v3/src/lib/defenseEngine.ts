@@ -103,6 +103,16 @@ export function isProjection(x: unknown): x is DefenseProjection {
   return !!x && typeof x === 'object' && (x as { schema?: unknown }).schema === 'DefenseProjection@v1'
 }
 
+/** The endpoint serves a stale-aware envelope ({served_from, stale, data: projection}); accept it or a bare projection. */
+export function unwrapProjection(x: unknown): DefenseProjection | null {
+  if (isProjection(x)) return x
+  for (let i = 0, cur: unknown = x; i < 3 && cur && typeof cur === 'object'; i++) {
+    cur = (cur as { data?: unknown }).data
+    if (isProjection(cur)) return cur
+  }
+  return null
+}
+
 export function tierTone(tier: string | null | undefined): Tone {
   switch ((tier ?? '').toUpperCase()) {
     case 'RED': case 'ORANGE': return 'bad'

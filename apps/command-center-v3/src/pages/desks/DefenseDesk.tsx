@@ -5,7 +5,7 @@ import { DeskPanels, type DeskProjection } from '../../components/DeskBoard'
 import W7DetailSheet, { useW7Detail } from '../../components/W7DetailSheet'
 import DefenseEngineView, { EngineSheetBody, SHEET_TITLES } from '../../components/defense/engine/DefenseEngine'
 import { useApi } from '../../hooks/useApi'
-import { isProjection } from '../../lib/defenseEngine'
+import { unwrapProjection } from '../../lib/defenseEngine'
 
 /**
  * Approved board 3, redesigned per design defense/v001. Sector momentum is owned by Watch › Sectors
@@ -27,7 +27,7 @@ export default function DefenseDesk() {
   const engine = useApi<unknown>('/api/v2/defense/engine', 300_000)
   const { selected, open, close } = useW7Detail()
   const projection = desk.data && typeof desk.data === 'object' && 'tabs' in desk.data ? desk.data : null
-  const ep = isProjection(engine.data) ? engine.data : null
+  const ep = unwrapProjection(engine.data)
   const sources: DeskSource[] = [
     ...(ep ? [{ id: 'defense-engine', label: 'Defense engine', asOf: ep.generated_at, laneIds: ['defense-engine-build'], gap: ep.served?.stale ? ep.served.fallback_reason ?? 'served stale' : undefined }]
       : [{ id: 'defense-engine', label: 'Defense engine', gap: engine.loading ? 'Loading the defense projection.' : 'The defense projection has not answered.' }]),
