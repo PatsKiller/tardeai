@@ -1078,8 +1078,24 @@ def guard_diff(
     append_only = set(g.get("append_only_paths") or [])
     # 2026-10-21: gates are one file per gate (config/ci_gates/<name>.json). Registering a test
     # = ADDING one such file; modifying, renaming or deleting an existing one is a hard refusal.
+    #
+    # cx-openai-2 F2 (2026-11-03): §24.16's text says the diff guard "refuses" CI-gate paths, but this carve-out is
+    # what makes F12 registration possible at all, so it stays — and it is made EXACT instead of a prefix test. A
+    # registration is one JSON file DIRECTLY inside the gate directory, named for its gate. A nested path, a
+    # non-JSON file, a rename, a modification or a delete is not a registration and falls through to the refuse
+    # list (`config/ci_*`), where it is a hard `protected_path` refusal.
     add_only_dirs = tuple(g.get("append_only_dirs") or ())
-    added_in_dir = {p for s, p in changes if s == "A" and p.startswith(add_only_dirs)} if add_only_dirs else set()
+    gate_stem_re = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+    def _gate_registration(path: str) -> bool:
+        for d in add_only_dirs:
+            if path.startswith(d):
+                rel = path[len(d):]
+                return ("/" not in rel and rel.endswith(".json") and bool(gate_stem_re.match(rel[:-5]))
+                        and rel[:-5] not in (".", ".."))
+        return False
+
+    added_in_dir = {p for s, p in changes if s == "A" and _gate_registration(p)}
     paths = sorted({p for _s, p in changes} | set(stats))
     for p in paths:
         if p in append_only or p in added_in_dir:
@@ -1211,7 +1227,7 @@ def policy_verdict(agents_text: str, cfg: Mapping[str, Any]) -> dict:
                 "why": "amendment ACTIVE" if ok else "amendment present but not ACTIVE",
                 "heading": line[:200],
             }
-    return {"push_allowed": False, "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment 24.11 absent"}
+    return {"push_allowed": False, "why": "AGENTS.md 24.5: no push/PR from a scheduled job; amendment 24.16 absent"}
 
 
 def branch_name(job: Mapping[str, Any], cfg: Mapping[str, Any], now: datetime) -> str:
