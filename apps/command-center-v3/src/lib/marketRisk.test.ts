@@ -6,7 +6,7 @@ const assert = {
   deepEqual(a: unknown, b: unknown, m?: string) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) fail(m ?? `expected ${x} to deep-equal ${y}`) },
   match(s: string, re: RegExp, m?: string) { if (!re.test(s)) fail(m ?? `expected ${JSON.stringify(s)} to match ${re}`) },
 }
-import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
+import { plainEngineReason, unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
   summaryVisible, summaryDefaultOpen, summaryModel, fmtPoints, budgetLabel, SUMMARY_PHONE_MAX_PX,
   actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel, pointsToScore } from './marketRisk.ts'
 
@@ -96,7 +96,8 @@ assert.deepEqual(ml.contributors.map(c => c.points), ['+34.4', '+25.3'], 'points
 t(ml.contributors[0].detail.includes('QQQ P/C OI 3.97') && / ET$/.test(ml.contributors[0].detail), 'contributor line: the number behind it and its ET time')
 assert.match(ml.line, /^Options flow \+34\.4 · Technical \+25\.3 · 2 of 9 confirm · evaluated .* ET$/); n++
 assert.equal(ml.confirm, '2 of 9 categories confirm'); n++
-assert.match(ml.notMeasured, /^Not measured: extended hours\. /); n++
+assert.match(ml.notMeasured, /^Missing input: extended hours — the score may be understated\. /); n++
+assert.match(ml.missingDetail ?? '', /^Extended hours: /, 'each missing input named with its reason (the (i) detail)'); n++
 assert.match(ml.notMeasured, /Breadth and volatility add 0\.$/); n++
 assert.equal(ml.deescalates, 'YELLOW -> BLUE if score below 40 (now 60)'); n++
 assert.equal(ml.footer, 'YELLOW never pages and has nothing to acknowledge.', 'live: no shadow sentence'); n++
@@ -129,7 +130,7 @@ assert.equal(mst.links.length, 2, 'stale keeps the two links'); n++
 const me = summaryModel(yEmpty)!
 assert.match(me.line, /^no category above 0 points · 2 of 9 confirm · /); n++
 assert.equal(me.contributors.length, 0); n++
-t(me.notMeasured.startsWith('Not measured: extended hours.'), 'empty: only the not-measured line')
+t(me.notMeasured.startsWith('Missing input: extended hours — the score may be understated.'), 'empty: only the missing-input line')
 // helpers
 assert.equal(fmtPoints(34.42), '+34.4'); assert.equal(fmtPoints(-2), '-2.0'); assert.equal(fmtPoints(null), '—'); n += 3
 assert.equal(budgetLabel('unprotected_pct'), 'unprotected'); n++
@@ -161,6 +162,7 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(a.sectors[0].key, 'tech', 'stressed and held first')
   assert.equal(a.sectors[1].key, 'comm', 'then UNKNOWN groups you hold')
   assert.equal(a.sectors[1].chip, 'NOT MEAS.')
+  assert.equal(a.sectors[1].why, 'no SPY comparison for this group on this run', 'no reason sent: still says what is missing')
   assert.equal(a.topReview?.symbol, 'DEMOA')
   assert.equal(a.budgets[0].text, 'unprotected 46.6% ($300) vs 10% limit')
   assert.equal(a.budgets[0].drivers, 'X $200 · Y $50 · Z $30 · W $20', 'no config: nothing cut')
@@ -224,7 +226,19 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   // unmeasured stage is "not measured", never "0 of 5 — waiting: all met". The producer's verdict field is untouched.
   assert.equal(r.verdictShown, 'Still falling', 'below the exit, closes not up: the producer word stands')
   assert.equal(r.verdictNote, null)
-  assert.equal(r.vsExitKnown, false, 'no current quote: vs exit is not measured')
+  assert.equal(r.vsExitKnown, false, 'no current quote: vs exit needs a current price')
+  assert.equal(r.priceWhy, 'no price feed for this symbol on this run')
+  assert.match(r.lookThrough, /^No price feed for this symbol on this run · look-through: no fund or sector breakdown on file for this symbol/)
+  assert.equal(r.lookThroughMissing, true)
+  assert.equal(r.stagesPending, false)
+  const lastPx = quoteRow({ ...currentQuote, status: 'unavailable', session: 'premarket', as_of: '2031-03-10T13:05:00Z' }, '2031-03-10T15:00:00Z')
+  assert.match(lastPx.lookThrough, /^No current price — last price \$12\.34 at Mon 03\/10,? 09:05 ET · /)
+  const staleQ = quoteRow({ ...currentQuote, stale: true, as_of: '2031-03-10T14:05:00Z' }, '2031-03-10T15:00:00Z')
+  assert.match(staleQ.lookThrough, /^Price out of date — last price \$12\.34 at Mon 03\/10,? 10:05 ET · /)
+  const noPx = quoteRow({ status: 'unavailable', price: null, as_of: '2031-03-09T21:00:00Z' }, '2031-03-10T15:00:00Z')
+  assert.match(noPx.lookThrough, /^No price feed for this symbol since Sun 03\/09,? 17:00 ET · /)
+  assert.match(noPx.priceWhy!, /^no price feed for this symbol since Sun 03\/09,? 17:00 ET$/)
+  for (const row of [r, lastPx, staleQ, noPx]) assert.ok(!/not measured|canonical/i.test(row.lookThrough), 'no bare "not measured" in the price line')
   assert.equal(freshRow.verdictShown, 'Mixed', 'price above the exit contradicts "Still falling"')
   assert.equal(freshRow.verdictTone, 'warning')
   assert.match(freshRow.verdictNote!, /^Stage verdict from the closes is "Still falling", but the price now is \+23\.4% vs the exit\./)
@@ -239,12 +253,26 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   const noSession = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { symbol: 'NEWX', exit_date: '2031-03-07', exit_price: 10,
     stages: { verdict: 'Still falling', exit_price: 10, stage1: { met: 0, of: 5, conditions: [] }, stage2: { met: false, conditions: [] }, note: 'no session since the exit' } } } }))!.reentry[0]
   assert.equal(noSession.verdict, 'Still falling', 'producer field kept verbatim')
-  assert.equal(noSession.verdictShown, 'Not measured')
+  assert.equal(noSession.verdictShown, 'Check after close')
   assert.equal(noSession.verdictTone, 'neutral')
-  assert.match(noSession.verdictNote!, /no session since the exit/)
-  assert.equal(noSession.stage1, 'not measured', 'never "0 of 5"')
-  assert.equal(noSession.waiting, 'no session since the exit', 'never "all met" when nothing was evaluated')
-  assert.equal(noSession.stage2, 'not measured')
+  assert.equal(noSession.verdictNote, 'First re-entry check after the next stored daily close (exit Fri 03-07; no close stored since).')
+  assert.ok(!/fall-back|Still falling/.test(noSession.verdictNote!), 'the producer fall-back sentence is gone (operator 2026-11-06)')
+  assert.equal(noSession.stagesPending, true)
+  assert.equal(noSession.stage1, 'not checked yet', 'never "0 of 5"')
+  assert.equal(noSession.waiting, 'First re-entry check after the next stored daily close (exit Fri 03-07; no close stored since)', 'never "all met" when nothing was evaluated')
+  assert.equal(noSession.stage2, 'checked after stage 1 (no close stored since the exit)')
+  // exit on the evaluation day (ET): the operator's wording
+  const today = actionableModel(unwrapMarketRisk({ ...base, as_of: '2031-03-10T18:00:00Z', reentry_watch: { NEWX: { symbol: 'NEWX', exit_date: '2031-03-10', exit_price: 10,
+    stages: { verdict: 'Still falling', exit_price: 10, stage1: { met: 0, of: 5, conditions: [] }, stage2: { met: false, conditions: [] }, note: 'no session since the exit' } } } }))!.reentry[0]
+  assert.equal(today.verdictShown.toUpperCase(), 'CHECK AFTER CLOSE')
+  assert.equal(today.verdictNote, "First re-entry check after tonight's close (exit was today).")
+  assert.equal(today.waiting, "First re-entry check after tonight's close (exit was today)")
+  // another producer note is stated in plain words, never a bare "not measured"
+  const otherNote = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { symbol: 'NEWX', exit_date: '2031-03-07', exit_price: 10,
+    stages: { verdict: 'Still falling', stage1: { met: 0, of: 5, conditions: [] }, note: 'no basket bars' } } } }))!.reentry[0]
+  assert.equal(otherNote.verdictShown, 'Not checked yet')
+  assert.equal(otherNote.verdictNote, 'Re-entry stages not checked yet: no price history for this group.')
+  assert.equal(otherNote.stage2, 'checked after stage 1 (no close stored since the exit)')
   const allMet = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { ...base.reentry_watch.NEWX,
     stages: { ...base.reentry_watch.NEWX.stages, verdict: 'Early setup', stage1: { met: 2, of: 2, conditions: [{ key: 'a', met: true, text: 'x' }, { key: 'b', met: true, text: 'y' }] } } } } }))!.reentry[0]
   assert.equal(allMet.stage1, '2 of 2'); assert.equal(allMet.waiting, 'all met'); assert.equal(allMet.verdictShown, 'Early setup')
@@ -291,7 +319,8 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   const mr = unwrapMarketRisk({ ok: true, data })!
   const a = actionableModel(mr)!
   assert.deepEqual(a.sectors.map(r => r.key), ['tech', 'fin', 'ind'], 'folded groups leave the table')
-  assert.equal(a.foldLine, 'Also stressed, you hold under $100: AI basket ($28). Not measured, you hold under $100: Real estate ($1).')
+  assert.equal(a.foldLine, 'Also stressed, you hold under $100: AI basket ($28). No SPY comparison this run, you hold under $100: Real estate ($1).')
+  assert.equal(a.foldHasUnknown, true)
   assert.equal(a.sectors.find(r => r.key === 'fin')!.chip, 'RESILIENT')
   assert.equal(a.sectors.find(r => r.key === 'ind')!.chip, 'HOLDING')
   assert.equal(a.protect!.items[0].pct, '88% of account')
@@ -328,6 +357,16 @@ assert.equal(pointsToScore(4.6), '+5 pts to score')
 assert.equal(pointsToScore(-2.4), '-2 pts to score')
 assert.equal(pointsToScore(34.44, 1), '+34.4 pts to score')
 assert.equal(pointsToScore(0), '+0 pts to score')
-assert.equal(pointsToScore(null), 'points not measured')
+assert.equal(pointsToScore(null), 'no points sent by the engine')
+// operator 2026-11-06: an engine reason_unknown in plain words, never dropped
+assert.equal(plainEngineReason('insufficient history'), 'not enough price history yet to compare with SPY (needs 60 trading days)')
+assert.equal(plainEngineReason('insufficient history: 41 SPY sessions with a close (need 60)'), 'only 41 of the 60 trading days of prices needed to compare with SPY')
+assert.equal(plainEngineReason('stale: last close 2031-03-05, SPY 2031-03-07'), "prices are behind SPY's: last close Wed 03-05, SPY has Fri 03-07")
+assert.equal(plainEngineReason('gaps: 4 of the last 60 SPY sessions missing (limit 3)'), '4 of the last 60 trading days have no price (at most 3 allowed)')
+assert.equal(plainEngineReason('no bars for 0/3'), 'no price history for this group')
+assert.equal(plainEngineReason('carried across a closure'), 'last reading is from before the market closed, so it is not reused')
+assert.equal(plainEngineReason('ValueError: bad frame'), 'the check failed on its last run')
+assert.equal(plainEngineReason('something new'), 'something new', 'an unknown engine sentence is shown as written')
+assert.equal(plainEngineReason(null), 'the engine gave no reason')
 assert.equal(summaryModel(unwrapMarketRisk({ ok: true, data: yBase }))!.contributors[0].pointsLabel, `${summaryModel(unwrapMarketRisk({ ok: true, data: yBase }))!.contributors[0].points} pts to score`)
 console.log('marketRisk LIVEFIX-R ok')

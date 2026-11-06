@@ -63,7 +63,7 @@ for (const width of [412, 390]) {
     expect(pts.y).toBeLessThan(nm.y + 30)
     // "N of 9" once: in the evaluated line on phone, not repeated in the summary row
     await expect(page.getByTestId('home-market-risk-summary-confirm-wide')).toBeHidden()
-    await expect(page.getByTestId('home-market-risk-summary-not-measured')).toContainText('Not measured: extended hours.')
+    await expect(page.getByTestId('home-market-risk-summary-not-measured')).toContainText('Missing input: extended hours — the score may be understated.')
     await expect(page.getByTestId('home-market-risk-summary-book')).toContainText('Vulnerability 8/100')
     await expect(page.getByTestId('home-market-risk-summary-book')).toContainText('4 budget breaches')
     await expect(page.getByTestId('home-market-risk-summary-book')).toContainText('Near a stop: DEMOA stop 4.5% below')
@@ -145,7 +145,7 @@ test('Home 412: YELLOW with no contributor above 0 and no book', async ({ page }
   await expect(page.getByTestId('home-market-risk-summary-line')).toContainText('no category above 0 points')
   await page.getByTestId('home-market-risk-summary-toggle').tap()
   await expect(page.getByTestId('home-market-risk-summary-contributor')).toHaveCount(0)
-  await expect(page.getByTestId('home-market-risk-summary-not-measured')).toContainText('Not measured: extended hours.')
+  await expect(page.getByTestId('home-market-risk-summary-not-measured')).toContainText('Missing input: extended hours — the score may be understated.')
   await expect(page.getByTestId('home-market-risk-summary-book')).toHaveCount(0)
 })
 

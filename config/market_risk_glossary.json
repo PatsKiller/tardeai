@@ -20,7 +20,7 @@
     },
     "not_measured": {
       "label": "NOT MEAS.",
-      "text": "The engine does not have enough daily closes for this group yet, so it shows no state instead of guessing. The dollars you hold are still shown."
+      "text": "The engine shows no state for this group instead of guessing: too few daily closes, prices behind SPY's, or gaps in the history. The row names the reason; the dollars you hold are still shown."
     },
     "look_through": {
       "label": "look-through",
@@ -205,6 +205,34 @@
     "source_clock": {
       "label": "source and clock",
       "text": "The card states each fact's source, and its time or age in ET when the payload carries a clock, as plain text. There is no show-source control, and a stale value is written out as 'stale' with its age rather than an amber section."
+    },
+    "sector_unmeasured": {
+      "label": "No SPY comparison",
+      "text": "A group is compared with SPY only with 60 trading days of closes, up to date with SPY's last close and few missing days. When any of these fails, the row says which one and shows no 1d or 5d figure."
+    },
+    "reentry_check_timing": {
+      "label": "When re-entry stages are checked",
+      "text": "Stage 1 looks for a higher low and two green closes on normal volume; Stage 2 for a close above the 10-day or 20-day average or the exit price. Both are checked from each stored daily close after 4 PM ET, so an exit today has nothing to check until tonight's close."
+    },
+    "vs_exit_no_price": {
+      "label": "vs exit",
+      "text": "The change since you were stopped out needs a current regular-session price. With no current price, or only an older one, the card leaves vs exit blank rather than showing a stale figure."
+    },
+    "look_through_missing": {
+      "label": "No look-through",
+      "text": "No fund holdings or sector breakdown is on file for this symbol, so its dollars cannot be split across groups. It is counted by its sector once one is recorded."
+    },
+    "missing_inputs": {
+      "label": "Missing input",
+      "text": "The score adds points from each input it could read. An input with no reading this run adds 0 points, so the real score may be higher than shown."
+    },
+    "pts_to_score": {
+      "label": "pts to score",
+      "text": "How many points this input adds to the 0 to 100 market-risk score. The points of all inputs, plus any portfolio uplift, make up the score shown."
+    },
+    "correlation_no_value": {
+      "label": "Why no correlation value?",
+      "text": "A pair gets a value only when both symbols have at least 20 shared daily returns and neither price series is flat. A newer holding or a pair with gaps in its price history has no value yet."
     }
   }
 }

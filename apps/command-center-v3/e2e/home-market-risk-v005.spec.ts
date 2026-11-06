@@ -54,7 +54,16 @@ for (const width of [412, 390]) {
     // sector table: stressed-and-held first, UNKNOWN held flagged, no "% book" column on phone
     const rows = page.getByTestId('mr-sector-row')
     await expect(rows.first()).toHaveAttribute('data-key', 'tech')
-    await expect(page.locator('[data-testid=mr-sector-row][data-key=comm]')).toContainText('not measured')
+    // operator 2026-11-06: the reason is on the row in plain words (title= never shows on a phone) and its (i) opens on tap
+    const comm = page.locator('[data-testid=mr-sector-row][data-key=comm]')
+    await expect(comm.getByTestId('mr-sector-why')).toContainText('No SPY comparison: not enough price history yet to compare with SPY (needs 60 trading days)')
+    await expect(comm.getByTestId('mr-sector-why')).not.toHaveAttribute('title', /.*/)
+    await comm.locator('[data-testid=mr-sector-why] [data-testid=mr-explain]').tap()
+    await expect(page.getByTestId('mr-explain-sheet')).toBeVisible()
+    await expect(page.getByTestId('mr-explain-detail')).toHaveText('Engine reason: insufficient history')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy()
+    await page.getByTestId('mr-explain-close').tap()
+    await expect(page.getByTestId('mr-explain-sheet')).toHaveCount(0)
     // re-entry: the re-bought account is a holding; the wash sale has occurred (no forward warning)
     const rr = page.getByTestId('mr-reentry-row')
     await expect(rr).toHaveCount(2)

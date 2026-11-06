@@ -8,7 +8,7 @@ import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
 import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, pointsToScore, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
-import { ActionsTop } from './MarketRiskActions'
+import { ActionsTop, Explain, GlossaryProvider } from './MarketRiskActions'
 
 const tap = { minHeight: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' as const, textDecoration: 'none', fontWeight: 600, fontSize: TYPE.md, borderRadius: RADIUS.md, padding: '0 14px' }
 
@@ -109,11 +109,12 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
         </button>
       )}
       {a && open && <ActionableBody m={a} why={null} />}
+      <GlossaryProvider terms={mr.glossary ?? {}}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: TYPE.md, lineHeight: 1.35 }}>
         {mr.contributors.slice(0, 5).map((c, i) => (
           <div key={i} data-testid="home-market-risk-contributor" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8 }}>
             <span style={{ color: TOKENS.text[0] }}>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span>
-            <span style={{ ...numStyle, textAlign: 'right', color: tv.color }}>{pointsToScore(c.points)}</span>
+            <span style={{ ...numStyle, textAlign: 'right', color: tv.color, whiteSpace: 'nowrap' }}>{pointsToScore(c.points)} <Explain term="pts_to_score" /></span>
           </div>
         ))}
         {mr.uplift && (
@@ -126,6 +127,7 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
           <div style={{ fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {Math.round(sum)}, score is {Math.round(mr.score)} — the engine owes an explanation line.</div>
         )}
       </div>
+      </GlossaryProvider>
       {mr.book && !a && (
         <div data-testid="home-market-risk-book" style={{ fontSize: TYPE.base, lineHeight: 1.45, color: TOKENS.text[1], padding: 10, borderRadius: RADIUS.md, background: TOKENS.bg[0] }}>
           <b style={{ color: TOKENS.text[0] }}>Your book:</b>{' '}

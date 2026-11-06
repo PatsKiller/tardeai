@@ -7,16 +7,23 @@ import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
 import { toneVars } from '../lib/designTokens'
 import { ShadowTag } from './home/MarketRiskBanner'
+import { Explain, GlossaryProvider } from './home/MarketRiskActions'
 import { RecoveryListView } from './recovery/RecoveryViews'
 import { useCaseGates } from './recovery/RecoveryCaseCard'
 import { byImpact, recoveryProjection } from '../lib/recoveryCases'
-import { shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, pointsToScore, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
+import { plainEngineReason, shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, pointsToScore, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
 const toneColor = { good: TOKENS.success, warn: TOKENS.warning, bad: TOKENS.danger }
 const plural = (n: number) => `${n} ${n === 1 ? 'position' : 'positions'}`
 const money = (v: number | null) => v == null ? 'Not available' : usd(v)
+/** operator 2026-11-06: a missing percentage says why, never a bare "Not measured" (W7PagePanels.pct is shared, so the
+ *  reason is supplied here). */
+const pctWhy = (v: unknown, why: string) => typeof v === 'number' && Number.isFinite(v) ? pct(v) : why
+/** Correlation (i) when the API sent no glossary (this panel is outside the market-risk card). The 20-return floor is
+ *  scripts/portfolio_correlation.py's; the text names it so a blank cell is explained, not hidden. */
+const CORR_NO_VALUE = { label: 'Why no correlation value?', text: 'A pair gets a value only when both symbols have at least 20 shared daily returns and neither price series is flat. A newer holding or a pair with gaps in its price history has no value yet.' }
 const price = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `$${v.toLocaleString('en-US', { maximumFractionDigits: 4 })}` : 'Not available'
 
 /** Board 15: KPI row + one positions table with the stop source per position (CIO record only). */
@@ -43,12 +50,12 @@ export function W7RiskExposure({ data, onDrill: _onDrill }: { data: any, onDrill
   return <div style={{ display: 'grid', gap: 12 }}>
     <div style={grid} data-testid="risk-kpis">
       {restingLoss != null
-        ? <W7Metric label="Loss if every resting stop fills" value={usd(restingLoss)} detail={<span data-testid="risk-kpi-loss">{pct(summary.resting_heat_pct)} of book · {n('active')} active, {n('pending_activation')} pending activation · active stops only {usd(summary.loss_at_stop_usd)} · price gaps can increase losses</span>} />
-        : <W7Metric label="Loss if every active stop fills" value={usd(summary.loss_at_stop_usd)} detail={`${pct(summary.portfolio_heat_pct)} of portfolio · price gaps can increase losses`} />}
+        ? <W7Metric label="Loss if every resting stop fills" value={usd(restingLoss)} detail={<span data-testid="risk-kpi-loss">{pctWhy(summary.resting_heat_pct, 'share of book not sent')} of book · {n('active')} active, {n('pending_activation')} pending activation · active stops only {usd(summary.loss_at_stop_usd)} · price gaps can increase losses</span>} />
+        : <W7Metric label="Loss if every active stop fills" value={usd(summary.loss_at_stop_usd)} detail={`${pctWhy(summary.portfolio_heat_pct, 'share of portfolio not sent')} of portfolio · price gaps can increase losses`} />}
       {bd
         ? <W7Metric label="Value with no broker stop" value={money(noStopValue)} detail={<span data-testid="risk-kpi-nostop">{n('none') + n('planned')} positions{n('planned') ? ` · ${n('planned')} with a planned level only` : ''}</span>} />
         : <W7Metric label="Value without active protection" value={usd(summary.unprotected_value_usd)} detail={stops.unprotected_count == null ? 'Position count unavailable' : `${stops.unprotected_count} positions`} />}
-      <W7Metric label="Largest position" value={summary.largest_name ? `${summary.largest_name.symbol} ${pct(summary.largest_name.pct)}` : 'Not available'} detail={summary.largest_name?.classification_label && summary.largest_name?.limit_pct != null ? `${summary.largest_name.classification_label} · limit ${pct(summary.largest_name.limit_pct)}` : 'Classification and limit not published'} />
+      <W7Metric label="Largest position" value={summary.largest_name ? `${summary.largest_name.symbol} ${pctWhy(summary.largest_name.pct, '(weight not sent)')}` : 'Not available'} detail={summary.largest_name?.classification_label && summary.largest_name?.limit_pct != null ? `${summary.largest_name.classification_label} · limit ${pct(summary.largest_name.limit_pct)}` : 'Classification and limit not published'} />
       <W7Metric label="Awaiting fill" value={<span data-testid="risk-kpi-awaiting">{awaiting.length}</span>} detail={awaiting.length ? `${symbolList(awaiting)} · ${filledRows.length ? (filledRows.find((p: any) => p.reason)?.reason || 'stop filled · awaiting holdings sync') : 'mark at or below the stop · fill not confirmed'}` : 'No stop has filled or been crossed.'} />
     </div>
     {bd && <p data-testid="risk-stop-breakdown" style={{ margin: 0, color: TOKENS.text[2], fontSize: TYPE.base }}>
@@ -101,8 +108,8 @@ export function W7RiskConcentration({ data }: { data: any }) {
   const model = data.positions || {}, rows: any[] = model.concentration || []
   return <W7Panel title="Concentration">
     <W7PolicyLimits policy={data.concentration_policy} />
-    {rows.map((p, i) => <div key={p.symbol || i} style={line}><b style={mono}>{p.symbol}</b><span style={mono}>{usd(p.value_usd)} · {pct(p.pct)}</span>
-      {p.classification_label && p.limit_pct != null ? <span style={{ flexBasis: '100%' }}>{p.classification_label} · limit {pct(p.limit_pct)} · warning at {pct(p.near_limit_pct)}{p.status_label ? ` · ${p.status_label}` : ''}</span> : <W7Gap>{(typeof p.gap === 'string' ? p.gap : p.gap?.reason) || 'Classification and limit have not been published for this position.'}</W7Gap>}
+    {rows.map((p, i) => <div key={p.symbol || i} style={line}><b style={mono}>{p.symbol}</b><span style={mono}>{usd(p.value_usd)} · {pctWhy(p.pct, 'weight not sent')}</span>
+      {p.classification_label && p.limit_pct != null ? <span style={{ flexBasis: '100%' }}>{p.classification_label} · limit {pct(p.limit_pct)} · warning at {pctWhy(p.near_limit_pct, 'no warning level published')}{p.status_label ? ` · ${p.status_label}` : ''}</span> : <W7Gap>{(typeof p.gap === 'string' ? p.gap : p.gap?.reason) || 'Classification and limit have not been published for this position.'}</W7Gap>}
     </div>)}
     {!rows.length && <W7Gap>Concentration has not been published on the current portfolio basis.</W7Gap>}
     <Link to="/portfolio?tab=Look-through" style={linkStyle}>Underlying stocks, sectors and industries →</Link>
@@ -122,7 +129,7 @@ export function W7RiskCorrelation({ data, error }: { data: any, error?: unknown 
   const symbols = Object.keys(matrix)
   return <W7Panel title="Correlation">
     {data?.as_of && <p style={{ color: TOKENS.text[2] }}>Published {when(data.as_of)}</p>}
-    {symbols.map((a, i) => <div key={a} style={line}><b>{a}</b><div>{symbols.slice(i + 1).map(b => <div key={b}>{b} · {text(matrix[a]?.[b], 'Not measured')}</div>)}</div></div>)}
+    {symbols.map((a, i) => <div key={a} style={line}><b>{a}</b><div>{symbols.slice(i + 1).map(b => <div key={b}>{b} · {matrix[a]?.[b] == null ? <span data-testid="risk-corr-no-value">no value yet (under 20 shared trading days or a flat price) <Explain term="correlation_no_value" fallback={CORR_NO_VALUE} /></span> : String(matrix[a][b])}</div>)}</div></div>)}
     {!symbols.length && <W7Gap>{error ? 'Correlation could not be loaded.' : 'No correlation measurement has been published.'}</W7Gap>}
     <Link style={linkStyle} to="/strategy?tab=planner">Review in Strategy →</Link>
   </W7Panel>
@@ -169,7 +176,7 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
     } catch (e) { setAck(`Not recorded: ${String(e)}`) }
   }
   const row: CSSProperties = { display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'baseline', minHeight: 34, borderTop: `1px solid ${TOKENS.borderSubtle}`, fontSize: TYPE.base }
-  return <>
+  return <GlossaryProvider terms={mr?.glossary ?? {}}>
     <W7Panel title="Market risk" testId="risk-market-risk">
       {error ? <W7Gap>Market risk unavailable: {String(error)}</W7Gap> : null}
       {!mr && !error && <p style={{ color: TOKENS.text[2] }}>Loading…</p>}
@@ -194,7 +201,7 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
     </W7Panel>
 
     {mr && mr.contributors.length > 0 && <W7Panel title="Contributors" testId="risk-market-risk-contributors">
-      {mr.contributors.slice(0, 5).map((c, i) => <div key={i} style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span><span style={{ ...mono, color: tv.color, whiteSpace: 'nowrap' }}>{pointsToScore(c.points)}</span></div>)}
+      {mr.contributors.slice(0, 5).map((c, i) => <div key={i} style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span><span style={{ ...mono, color: tv.color, whiteSpace: 'nowrap' }}>{pointsToScore(c.points)} <Explain term="pts_to_score" /></span></div>)}
       {mr.uplift && <div style={{ ...row, color: TOKENS.text[2] }}><span>{mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`}</span><span style={{ ...mono, color: TOKENS.text[0] }}>= {mr.score != null ? Math.round(mr.score) : '—'}</span></div>}
       {!mr.uplift && pointsSum(mr) != null && mr.score != null && Math.round(pointsSum(mr)!) !== Math.round(mr.score) && <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {Math.round(pointsSum(mr)!)}, score is {Math.round(mr.score)} — the engine owes an explanation line.</p>}
     </W7Panel>}
@@ -210,7 +217,9 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
             <span style={{ fontWeight: 700 }}>{name}</span>{chip(c.state || 'UNKNOWN')}
           </div>
-          {c.detail && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base, overflowWrap: 'anywhere' }}>{c.detail}</div>}
+          {c.state === 'UNKNOWN'
+            ? <div data-testid="risk-market-risk-category-why" style={{ color: TOKENS.text[2], fontSize: TYPE.base, overflowWrap: 'anywhere' }}>No reading: {c.detail ? plainEngineReason(c.detail) : 'the engine gave no reason'} — adds 0 points <Explain term="missing_inputs" detail={c.detail ? `Engine reason: ${c.detail}` : null} /></div>
+            : c.detail && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base, overflowWrap: 'anywhere' }}>{c.detail}</div>}
           {score != null && <div style={{ color: TOKENS.text[3], fontSize: TYPE.sm }}>Category score {score}/100{c.state === 'CALM' && score > 0 ? ' — below this category’s warning level.' : ''}</div>}
           {c.weight != null && c.weight < 1 && c.state !== 'UNKNOWN' && <div style={{ color: TOKENS.text[3], fontSize: TYPE.sm }}>Weight {c.weight}</div>}
         </div>
@@ -265,5 +274,5 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
     </W7Panel>}
 
     <div data-testid="risk-market-risk-legacy-regime"><W7RiskRegime data={data} /></div>
-  </>
+  </GlossaryProvider>
 }

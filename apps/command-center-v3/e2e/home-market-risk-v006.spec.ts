@@ -82,7 +82,7 @@ for (const width of [412, 390]) {
     // folded groups and the chip split
     await expect(page.locator('[data-testid=mr-sector-row][data-key=ai_basket]')).toHaveCount(0)
     await expect(page.locator('[data-testid=mr-sector-row][data-key=real_estate]')).toHaveCount(0)
-    await expect(page.getByTestId('mr-sectors-folded')).toHaveText('Also stressed, you hold under $100: AI basket ($28). Not measured, you hold under $100: Real estate ($1).')
+    await expect(page.getByTestId('mr-sectors-folded')).toHaveText('Also stressed, you hold under $100: AI basket ($28). No SPY comparison this run, you hold under $100: Real estate ($1).')
     await expect(page.locator('[data-testid=mr-sector-row][data-key=healthcare]')).toHaveAttribute('data-chip', 'RESILIENT')
     // segments: approved split with its source
     await expect(page.getByTestId('mr-segment-row')).toHaveAttribute('data-status', 'approved')
@@ -132,7 +132,7 @@ test('v006 1440: expanded by default, three blocks side by side, every term has 
   expect(boxes[0]!.y).toBeLessThan((await page.getByTestId('mr-sectors-section').boundingBox())!.y)
   const terms = await page.locator('[data-testid=home-market-risk-summary] [data-testid=mr-explain]').evaluateAll(es => [...new Set(es.map(e => e.getAttribute('data-term')))].sort())
   for (const t of ['budget_breach', 'carried', 'hedge_verdict', 'invalidates_below', 'look_through', 'not_measured', 'pc_oi', 'pct_book', 'protect',
-    'resilient', 'rotate_rs', 'stage1', 'stage2', 'stress', 'stressed_pct', 'usd_exposed', 'vulnerability']) {
+    'pts_to_score', 'resilient', 'rotate_rs', 'sector_unmeasured', 'stage1', 'stage2', 'stress', 'stressed_pct', 'usd_exposed', 'vulnerability']) {
     if (t === 'carried') continue // the fixture card is SHADOW, not CARRIED
     expect(terms).toContain(t)
   }

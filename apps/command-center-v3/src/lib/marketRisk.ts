@@ -235,6 +235,16 @@ export function shortTime(iso: string | null | undefined): string {
   return d.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '') + ' ET'
 }
 
+/** The ET calendar date (YYYY-MM-DD) of a zoned ISO stamp; a bare date is returned as given; null when unreadable. */
+export function etDate(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(d).map(x => [x.type, x.value]))
+  return `${p.year}-${p.month}-${p.day}`
+}
+
 /* ── Design home/v004: the YELLOW summary card (calm, collapsible, no Acknowledge) ─────────────────────────────── */
 
 /** Phone width per design/README.md rule 5 (≤820 px): the card starts collapsed there and open on wider screens. */
@@ -267,7 +277,8 @@ export function fmtPoints(p: number | null | undefined): string {
  *  "+31 pts to score". Rounded to whole points, as the badge always was. */
 export function pointsToScore(p: number | null | undefined, digits = 0): string {
   const n = Number(p)
-  if (p == null || Number.isNaN(n)) return 'points not measured'
+  // operator 2026-11-06: never a bare "not measured" — say what is missing
+  if (p == null || Number.isNaN(n)) return 'no points sent by the engine'
   const v = digits > 0 ? n.toFixed(digits) : String(Math.round(n))
   return `${n >= 0 && !v.startsWith('-') ? '+' : ''}${v} pts to score`
 }
@@ -294,7 +305,10 @@ export interface SummaryModel {
   confirm: string
   contributors: { name: string; detail: string; points: string; pointsLabel: string }[]
   uplift: string | null
+  /** "Missing input: x, y — the score may be understated. …add 0." (field name kept for the test ids). */
   notMeasured: string
+  /** Per missing input, what it is and why it was not read — the (i) detail beside ``notMeasured``; null when none. */
+  missingDetail: string | null
   book: SummaryBook | null
   deescalates: string | null
   footer: string
@@ -347,7 +361,7 @@ export function summaryModel(mr: MarketRisk | null): SummaryModel | null {
     return {
       stale: true, score: null, evaluated, confirm: '',
       line: `stale — last evaluation ${shortTime(mr.as_of)}. Numbers hidden until the engine runs again.`,
-      contributors: [], uplift: null, notMeasured: '', book: null, deescalates: null,
+      contributors: [], uplift: null, notMeasured: '', missingDetail: null, book: null, deescalates: null,
       footer: 'The engine has not run since this evaluation, so the score, contributors and your book are hidden until it runs again.',
       links,
     }
@@ -362,23 +376,47 @@ export function summaryModel(mr: MarketRisk | null): SummaryModel | null {
   const lead = contributors.length ? contributors.map(c => `${c.name} ${c.points}`).join(' · ') : 'no category above 0 points'
   const line = [lead, mr.confirming ? `${mr.confirming.n} of ${mr.confirming.of} confirm` : '', evaluated].filter(Boolean).join(' · ')
   const scored = new Set(contributors.map(c => c.name.toLowerCase()))
-  const unknown = mr.categories.filter(c => c.state === 'UNKNOWN').map(c => c.name.toLowerCase())
+  const unknownCats = mr.categories.filter(c => c.state === 'UNKNOWN')
+  const unknown = unknownCats.map(c => c.name.toLowerCase())
   const zero = mr.categories.filter(c => c.state !== 'UNKNOWN' && !scored.has(c.name.toLowerCase())).map(c => c.name.toLowerCase())
   const parts: string[] = []
-  if (unknown.length) parts.push(`Not measured: ${unknown.join(', ')}.`)
+  // operator 2026-11-06: "Not measured: x" said nothing. A missing input adds 0 points, so the score can only be low.
+  if (unknown.length) parts.push(`Missing input: ${unknown.join(', ')} — the score may be understated.`)
+  const missingDetail = unknownCats.length
+    ? unknownCats.map(c => `${c.name}: ${c.detail ? plainEngineReason(c.detail) : 'no reading on this run'}`).join('. ') + '.'
+    : null
   if (zero.length) parts.push(`${zero.length > 1 ? `${zero.slice(0, -1).join(', ')} and ${zero[zero.length - 1]}` : zero[0]} add 0.`.replace(/^./, s => s.toUpperCase()))
   const uplift = mr.uplift ? (mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`) : null
   return {
     stale: false,
     score: mr.score != null ? String(Math.round(mr.score)) : null,
     line, evaluated, confirm, contributors, uplift,
-    notMeasured: parts.join(' '),
+    notMeasured: parts.join(' '), missingDetail,
     book: summaryBook(mr),
     deescalates: mr.deescalates_if ?? null,
     footer, links,
   }
 }
 
+
+/** An engine's ``reason_unknown`` in plain words (operator 2026-11-06: no bare "not measured" — say why). Known
+ *  producer phrasings (scripts/lib/market_risk/sectors.py, scoring.py, ai_concentration.py) are translated; anything
+ *  else is already a sentence from the engine and is passed through as written, never dropped. */
+export function plainEngineReason(raw: string | null | undefined): string {
+  const r = String(raw ?? '').trim()
+  if (!r) return 'the engine gave no reason'
+  let m: RegExpMatchArray | null
+  if ((m = r.match(/^insufficient history:\s*(\d+) SPY sessions with a close \(need (\d+)\)/i))) return `only ${m[1]} of the ${m[2]} trading days of prices needed to compare with SPY`
+  if (/^insufficient history$/i.test(r)) return 'not enough price history yet to compare with SPY (needs 60 trading days)'
+  if ((m = r.match(/^stale: last close (\S+), SPY (\S+)/i))) return `prices are behind SPY's: last close ${shortDay(m[1])}, SPY has ${shortDay(m[2])}`
+  if ((m = r.match(/^gaps: (\d+) of the last (\d+) SPY sessions missing \(limit (\d+)\)/i))) return `${m[1]} of the last ${m[2]} trading days have no price (at most ${m[3]} allowed)`
+  if (/^no (basket )?bars/i.test(r)) return 'no price history for this group'
+  if (/^index weights unavailable/i.test(r)) return 'index weights were not available'
+  if (/^carried across a closure$/i.test(r)) return 'last reading is from before the market closed, so it is not reused'
+  if (/^stale$/i.test(r)) return 'its source has not updated recently enough to trust'
+  if (/^[A-Z][A-Za-z]*(Error|Exception)\b/.test(r)) return 'the check failed on its last run'
+  return r
+}
 
 /* ── Design home/v005: the actionable card (verdict with dollars, sectors, positions, review, budgets, re-entry) ──── */
 
@@ -413,19 +451,27 @@ const SHOCK_WORDS: Record<string, string> = {
 const STRESSED = new Set(['STRESS', 'WEAK'])
 
 export type GroupChip = 'STRESS' | 'WEAK' | 'RESILIENT' | 'HOLDING' | 'NOT MEAS.'
-export interface SectorRowModel { key: string; label: string; theme: boolean; chip: GroupChip; tone: Tone; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; usd: string; pctBook: string; held: boolean; unknown: boolean; reason: string | null }
+/** ``reason`` is the engine's raw ``reason_unknown``; ``why`` the same in plain words, shown on the row (title= tooltips
+ *  do not work on a phone — operator 2026-11-06). */
+export interface SectorRowModel { key: string; label: string; theme: boolean; chip: GroupChip; tone: Tone; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; usd: string; pctBook: string; held: boolean; unknown: boolean; reason: string | null; why: string | null }
 export interface ReentryRowModel {
   symbol: string; head: string; now: string; vsExit: string; vsExitNeg: boolean
-  /** False when no current regular-session quote backs the "vs exit" figure: the card says "not measured", never "—". */
+  /** False when no current regular-session quote backs the "vs exit" figure: the card says it needs a current price, never "—". */
   vsExitKnown: boolean
   vsMa: string; trend: string
   /** The producer's stage verdict, verbatim (or FQ-094's "no CIO verdict on record"). Kept for data attributes and tests. */
   verdict: string
   /** What the chip shows. Equal to ``verdict`` unless the measured state contradicts it or nothing was measured. */
   verdictShown: string
-  /** Why ``verdictShown`` differs from ``verdict``: the contradicting measurement, or what was not measured. */
+  /** Why ``verdictShown`` differs from ``verdict``: the contradicting measurement, or why no stage was checked yet. */
   verdictNote: string | null
   verdictTone: Tone
+  /** True when no stage condition has been checked yet: the chip gets the "when stages run" (i). */
+  stagesPending: boolean
+  /** Why there is no current price (for the vs-exit (i)); null when a current price backs "vs exit". */
+  priceWhy: string | null
+  /** True when the symbol has no fund/sector breakdown on file: the look-through (i) is shown. */
+  lookThroughMissing: boolean
   stage1: string; waiting: string; invalidates: string; stage2: string; wash: { text: string; tone: 'info' | 'warning' } | null; earnings: string | null; lookThrough: string
 }
 export interface BudgetLine { account: string; text: string; drivers: string }
@@ -448,6 +494,8 @@ export interface ActionableModel {
   reentryMore: string
   /* design home/v006 */
   foldLine: string
+  /** The fold line names groups with no SPY comparison: it gets the not_measured (i). */
+  foldHasUnknown: boolean
   protect: { items: ProtectRowModel[]; more: string } | null
   hedge: HedgeModel | null
   rotate: RotateModel | null
@@ -504,16 +552,32 @@ export function rotateModel(r: RotateBlock | null | undefined): RotateModel | nu
   }
 }
 
-const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success', Mixed: 'warning', 'Not measured': 'neutral' }
+const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success', Mixed: 'warning', 'Check after close': 'neutral', 'Not checked yet': 'neutral' }
 
-/** Stage 1 as the card states it. A stage with no evaluated condition is "not measured" — it is never "0 of 5" with
- *  "waiting: all met" (the producer emits an empty condition list when no session has closed since the exit). */
-export function stage1Display(st: ReentryStages): { measured: boolean; count: string; waiting: string } {
+/** The producer's note when no bar exists on or after the exit date (scripts/lib/market_risk/reentry_stages.py). */
+const NO_SESSION_NOTE = /^no session since the exit$/i
+
+/** Why no stage condition was checked, in plain words. ``exitDate``/``asOfDate`` are YYYY-MM-DD (ET); an exit on the
+ *  evaluation day reads "after tonight's close" (operator 2026-11-06). */
+export function stagesPendingText(st: ReentryStages, ctx?: { exitDate?: string | null; asOfDate?: string | null }): { chip: string; text: string } {
+  const note = (st.note ?? '').trim()
+  if (!note || NO_SESSION_NOTE.test(note)) {
+    const exit = (ctx?.exitDate ?? '').slice(0, 10)
+    const asOf = (ctx?.asOfDate ?? '').slice(0, 10)
+    if (exit && asOf && exit === asOf) return { chip: 'Check after close', text: "First re-entry check after tonight's close (exit was today)" }
+    return { chip: 'Check after close', text: `First re-entry check after the next stored daily close${exit ? ` (exit ${shortDay(exit)}; no close stored since)` : ' (no close stored since the exit)'}` }
+  }
+  return { chip: 'Not checked yet', text: `Re-entry stages not checked yet: ${plainEngineReason(note)}` }
+}
+
+/** Stage 1 as the card states it. A stage with no evaluated condition is "not checked yet", with why — it is never
+ *  "0 of 5" with "waiting: all met" (the producer emits an empty condition list when no session has closed since the exit). */
+export function stage1Display(st: ReentryStages, ctx?: { exitDate?: string | null; asOfDate?: string | null }): { measured: boolean; count: string; waiting: string } {
   const conds = st.stage1?.conditions ?? []
   const met = st.stage1?.met ?? 0
   const of = st.stage1?.of ?? conds.length
   const measured = conds.length > 0 || met > 0
-  if (!measured) return { measured, count: 'not measured', waiting: st.note ? `${st.note}` : 'no condition was evaluated' }
+  if (!measured) return { measured, count: 'not checked yet', waiting: stagesPendingText(st, ctx).text }
   const unmet = conds.filter(x => !x.met).map(x => x.key === 'tier_ok' ? 'market tier ORANGE or worse' : x.text)
   const waiting = unmet.length ? unmet.join(', ') : conds.length && met >= of ? 'all met' : 'conditions not listed'
   return { measured, count: `${met} of ${of}`, waiting }
@@ -522,16 +586,17 @@ export function stage1Display(st: ReentryStages): { measured: boolean; count: st
 /** The chip a stopped-out row shows. The producer's verdict is kept verbatim (FQ-094: never invented), but the card
  *  must not print "Still falling" over a measurement that contradicts it (operator 2026-11-06: STILL FALLING beside
  *  "+2.6% vs exit"). "Still falling" is the producer's fall-through word, so:
- *  - no stage condition evaluated  → "Not measured", with what was missing;
+ *  - no stage condition evaluated  → "Check after close" (or "Not checked yet" with the producer's reason in plain words);
  *  - price now at/above the exit, a last close at/above the exit, or closes trending up → "Mixed", naming both sides.
  *  Every other verdict is shown as given. */
-export function reentryVerdictDisplay(st: ReentryStages, vsExitNow: number | null, exitPrice: number | null | undefined): { shown: string; note: string | null; tone: Tone } {
+export function reentryVerdictDisplay(st: ReentryStages, vsExitNow: number | null, exitPrice: number | null | undefined, ctx?: { exitDate?: string | null; asOfDate?: string | null }): { shown: string; note: string | null; tone: Tone } {
   const given = verdictText(st)
   const tone = (w: string): Tone => VERDICT_TONE[w] ?? 'neutral'
   if (given !== 'Still falling') return { shown: given, note: null, tone: tone(given) }
   const closes = st.last_date ? `closes through ${shortDay(st.last_date)}` : 'the closes'
   if (!stage1Display(st).measured) {
-    return { shown: 'Not measured', note: `Stage verdict not measured: ${st.note ?? 'no stage condition was evaluated'}. The producer's fall-back word was "Still falling".`, tone: tone('Not measured') }
+    const p = stagesPendingText(st, ctx)
+    return { shown: p.chip, note: `${p.text}.`, tone: tone(p.chip) }
   }
   const exit = typeof exitPrice === 'number' && Number.isFinite(exitPrice) ? exitPrice : null
   const lastClose = typeof st.last_close === 'number' && Number.isFinite(st.last_close) ? st.last_close : null
@@ -607,6 +672,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       rs1: fmtSignedPct(h.rs1), rs5: fmtSignedPct(h.rs5), rs1n: h.rs1 ?? null, rs5n: h.rs5 ?? null,
       usd: g ? fmtUsd(g.usd) : be ? '$0' : '—', pctBook: g?.pct_book != null ? `${g.pct_book.toFixed(2)}%` : be ? '0.00%' : '—',
       held: !!g && g.usd > 0, unknown, reason: h.reason_unknown ?? null,
+      why: unknown ? (h.reason_unknown ? plainEngineReason(h.reason_unknown) : 'no SPY comparison for this group on this run') : null,
     }
   })
   const foldedKeys = new Set((mr.sectors_folded ?? []).map(f => f.key))
@@ -615,7 +681,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
   const under = cfg.fold_below_usd != null ? `under ${fmtUsd(cfg.fold_below_usd)}` : 'little'
   const foldLine = [
     foldStressed.length ? `Also stressed, you hold ${under}: ${foldStressed.map(f => `${f.label} (${fmtUsd(f.usd)})`).join(', ')}.` : '',
-    foldUnknown.length ? `Not measured, you hold ${under}: ${foldUnknown.map(f => `${f.label} (${fmtUsd(f.usd)})`).join(', ')}.` : '',
+    foldUnknown.length ? `No SPY comparison this run, you hold ${under}: ${foldUnknown.map(f => `${f.label} (${fmtUsd(f.usd)})`).join(', ')}.` : '',
   ].filter(Boolean).join(' ')
   for (let i = rows.length - 1; i >= 0; i--) if (foldedKeys.has(rows[i].key)) rows.splice(i, 1)
   const rank = (r: SectorRowModel) => (r.chip === 'STRESS' || r.chip === 'WEAK') && r.held ? 0 : r.unknown && r.held ? 1 : r.held ? 2 : 3
@@ -660,7 +726,8 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const st = c.stages as ReentryStages
     const det = (mr.reentry_detail ?? {})[sym] ?? {}
     const held = det.held_elsewhere_labels?.length ? ` · still held in ${det.held_elsewhere_labels.join(', ')}` : ''
-    const s1 = stage1Display(st)
+    const stageCtx = { exitDate: c.exit_date, asOfDate: etDate(mr.as_of) ?? asOf }
+    const s1 = stage1Display(st, stageCtx)
     const unmet2 = (st.stage2?.conditions ?? []).filter(x => !x.met).map(x => x.text)
     const w = det.wash_sale ?? c.wash_sale ?? null
     let wash: ReentryRowModel['wash'] = null
@@ -678,7 +745,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const rest = Math.max(0, 1 - top3.reduce((a, [, v]) => a + v, 0))
     const ltLine = top3.length
       ? `look-through: ${top3.map(([k, v]) => `${heat.find(h => h.key === k)?.label ?? k} ${Math.round(v * 100)}%`).join(' · ')}${rest > 0.01 ? ` · other ${Math.round(rest * 100)}%` : ''}${c.look_through?.basis ? ` (${c.look_through.basis})` : ''}`
-      : 'look-through: not measured'
+      : 'look-through: no fund or sector breakdown on file for this symbol'
     const quote = c.current_quote
     const zoned = (value: unknown): number => typeof value === 'string' && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? Date.parse(value) : NaN
     const quoteAt = zoned(quote?.as_of), evaluatedAt = zoned(mr.as_of)
@@ -707,12 +774,21 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const vsExit = quoteKnown ? finite(quote!.pct_vs_exit) : null
     const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
     const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
-    const shown = reentryVerdictDisplay(st, vsExit, c.exit_price ?? st.exit_price)
+    const shown = reentryVerdictDisplay(st, vsExit, c.exit_price ?? st.exit_price, stageCtx)
+    const lastPx = finite(quote?.price)
+    const outOfDate = !!(quote?.stale || mr.stale || quote?.status === 'stale')
+    const priceWhy = quoteKnown ? null
+      : priorRegularQuote ? `the last stored price is from ${quote!.session_date}, not today's session`
+      : lastPx != null && lastPx > 0 && quote?.as_of ? `${outOfDate ? 'the price is out of date' : 'no current price'}: last price ${fmtPrice(lastPx)} at ${shortTime(quote.as_of)}`
+      : quote?.as_of ? `no price feed for this symbol since ${shortTime(quote.as_of)}`
+      : 'no price feed for this symbol on this run'
     const priceEvidence = quoteKnown
       ? `Stored regular-session observation · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
       : priorRegularQuote
         ? `Last stored regular-session observation ${fmtPrice(quote!.price)} · ${quote!.session_date} · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
-        : `${quote?.stale || mr.stale || quote?.status === 'stale' ? 'Price stale' : 'Price unavailable'} · canonical regular-session quote not measured`
+        : lastPx != null && lastPx > 0 && quote?.as_of
+          ? `${outOfDate ? 'Price out of date' : 'No current price'} — last price ${fmtPrice(lastPx)} at ${shortTime(quote.as_of)}`
+          : quote?.as_of ? `No price feed for this symbol since ${shortTime(quote.as_of)}` : 'No price feed for this symbol on this run'
     return {
       symbol: sym,
       head: `exit ${fmtPrice(c.exit_price ?? st.exit_price)} · ${shortDay(c.exit_date)} · ${det.exit_account_label ?? 'one account'}${held}`,
@@ -722,10 +798,11 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       // FQ-094: the CIO is the only producer of a position verdict. A missing one is stated as missing — it used to
       // become "Still falling" here, a bearish verdict the browser invented from nothing.
       verdict: verdictText(st), verdictShown: shown.shown, verdictNote: shown.note, verdictTone: shown.tone,
+      stagesPending: !s1.measured, priceWhy, lookThroughMissing: !top3.length,
       stage1: s1.count,
       waiting: s1.waiting,
       invalidates: fmtPrice(st.invalidation_level),
-      stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
+      stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : !s1.measured ? 'checked after stage 1 (no close stored since the exit)' : 'no stage-2 condition sent by the engine',
       wash, earnings, lookThrough: `${priceEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
     }
   })
@@ -765,7 +842,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     if (st?.status === 'pending') r.lookThrough = `segment weights pending approval — counted as ${profileSector(r.symbol)}`
   }
   return {
-    foldLine, protect, hedge: hedgeModel(mr.hedge), rotate: rotateModel(mr.rotate), segments, glossary: mr.glossary ?? {},
+    foldLine, foldHasUnknown: foldUnknown.length > 0, protect, hedge: hedgeModel(mr.hedge), rotate: rotateModel(mr.rotate), segments, glossary: mr.glossary ?? {},
     verdict, exposure, exposureNote, topReview: review[0] ?? null,
     sectors: rows, sectorsFoot: foot,
     positions: be?.rows ?? [], positionsMore,

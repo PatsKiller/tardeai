@@ -107,7 +107,8 @@ function Sectors({ m }: { m: ActionableModel }) {
               <tr key={r.key} data-testid="mr-sector-row" data-key={r.key} data-chip={r.chip} style={{ background: bg }}>
                 <td data-l="Group"><span data-testid="mr-sector-chip" style={{ ...chipStyle(r.tone, 'soft'), marginRight: 2 }}>{r.chip}</span><Explain term={CHIP_TERM[r.chip]} /> {r.label}{r.theme && <span style={{ color: TOKENS.text[3] }}> (theme)</span>}</td>
                 {r.unknown
-                  ? <td colSpan={2} title={r.reason ?? undefined} style={{ textAlign: 'left', color: toneVars('warning').color, fontWeight: 600, whiteSpace: 'normal' }}>not measured{r.held && <span className="mr-hide-phone"> — you hold {r.usd}</span>}</td>
+                  // operator 2026-11-06: the reason is on the row (a title= tooltip never shows on a phone) + a tappable (i)
+                  ? <td colSpan={2} data-testid="mr-sector-why" style={{ textAlign: 'left', color: toneVars('warning').color, fontWeight: 600, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>No SPY comparison: {r.why}<Explain term="sector_unmeasured" detail={r.reason ? `Engine reason: ${r.reason}` : null} />{r.held && <span className="mr-hide-phone"> — you hold {r.usd}</span>}</td>
                   : <><td data-l="1d vs SPY" style={signed(r.rs1n)}>{r.rs1}</td><td data-l="5d vs SPY" style={signed(r.rs5n)}>{r.rs5}</td></>}
                 <td data-l="You" style={numStyle}>{r.usd}</td>
                 <td data-l="% book" className="mr-hide-phone" style={numStyle}>{r.pctBook}</td>
@@ -116,7 +117,7 @@ function Sectors({ m }: { m: ActionableModel }) {
           })}
         </tbody>
       </table>
-      {m.foldLine && <div data-testid="mr-sectors-folded" style={{ fontSize: TYPE.base, color: TOKENS.text[2], padding: '6px 6px 0' }}>{m.foldLine}</div>}
+      {m.foldLine && <div data-testid="mr-sectors-folded" style={{ fontSize: TYPE.base, color: TOKENS.text[2], padding: '6px 6px 0' }}>{m.foldLine}{m.foldHasUnknown && <> <Explain term="sector_unmeasured" /></>}</div>}
       <div style={sub}>{m.sectorsFoot}</div>
     </div>
     </Section>
@@ -137,15 +138,15 @@ function Reentry({ m }: { m: ActionableModel }) {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'center' }}>
                 <span>now <b style={numStyle}>{r.now}</b> ({r.vsExitKnown
                   ? <><span style={signed(r.vsExitNeg ? -1 : 1)}>{r.vsExit}</span> vs exit</>
-                  : <span data-testid="mr-reentry-vsexit-unknown" style={{ color: TOKENS.text[3] }}>vs exit not measured</span>}){r.vsMa && <> · <span style={numStyle}>{r.vsMa}</span></>} {r.trend}</span>
-                <span data-testid="mr-reentry-verdict" style={{ ...chipStyle(r.verdictTone, 'soft'), color: vt.color }}>{r.verdictShown.toUpperCase()}</span>
+                  : <span data-testid="mr-reentry-vsexit-unknown" style={{ color: TOKENS.text[3] }}>vs exit needs a current price <Explain term="vs_exit_no_price" detail={r.priceWhy ? `This row: ${r.priceWhy}.` : null} /></span>}){r.vsMa && <> · <span style={numStyle}>{r.vsMa}</span></>} {r.trend}</span>
+                <span><span data-testid="mr-reentry-verdict" style={{ ...chipStyle(r.verdictTone, 'soft'), color: vt.color }}>{r.verdictShown.toUpperCase()}</span>{r.stagesPending && <Explain term="reentry_check_timing" />}</span>
               </div>
               {r.verdictNote && <div data-testid="mr-reentry-verdict-note" style={{ ...sub, marginTop: 0, color: TOKENS.text[2] }}>{r.verdictNote}</div>}
               <div><b>Stage 1 <Explain term="stage1" /> (early setup): {r.stage1}</b><span style={{ color: TOKENS.text[2] }}> — waiting: {r.waiting}</span></div>
               <div>Invalidates below <Explain term="invalidates_below" /> <b style={numStyle}>{r.invalidates}</b><span style={{ color: TOKENS.text[2] }}> (selloff low) · Stage 2 <Explain term="stage2" /> (confirmed): {r.stage2}</span></div>
               {r.wash && <div data-testid="mr-reentry-wash" data-tone={r.wash.tone} style={{ color: r.wash.tone === 'warning' ? toneVars('warning').color : TOKENS.text[2], fontWeight: r.wash.tone === 'warning' ? 600 : 400 }}>{r.wash.tone === 'warning' ? '⚠ ' : 'ⓘ '}{r.wash.text}</div>}
               {r.earnings && <div style={{ color: toneVars('warning').color, fontWeight: 600 }}>⚠ {r.earnings}</div>}
-              <div style={{ ...sub, marginTop: 0 }}>{r.lookThrough}</div>
+              <div style={{ ...sub, marginTop: 0, overflowWrap: 'anywhere' }}>{r.lookThrough}{r.lookThroughMissing && <> <Explain term="look_through_missing" /></>}</div>
             </div>
           )
         })}
