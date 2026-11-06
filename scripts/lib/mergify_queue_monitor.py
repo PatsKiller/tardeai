@@ -37,10 +37,7 @@ def _utc() -> str:
 
 
 def state_root() -> Path:
-    return Path(
-        os.environ.get("TRADEAI_STATE_ROOT")
-        or (Path.home() / "trade-ai-releases" / "persistent-state")
-    )
+    return Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
 
 
 def receipts_dir(root: Path | None = None) -> Path:
@@ -85,17 +82,41 @@ def classify_dequeue(
     reason_code: str,
     body: str,
     mergeable: str | None,
-    checks: dict[str, str] | None,
-    hotfix_on_main: bool,
+    rollup: list[dict[str, Any]] | None = None,
+    hotfix_on_main: bool = False,
+    checks: dict[str, Any] | None = None,
 ) -> ActionPlan:
     """Pure classifier — no I/O.
 
-    ``checks`` maps check name → conclusion on the *real* PR head (not the draft).
+    ``rollup`` is the PR head's raw ``statusCheckRollup`` (``None`` = unreadable, fail closed).
+    ``checks`` is a legacy ``name -> conclusion(s)`` mapping, converted to rollup rows.
     """
+    from scripts.lib import pr_all_checks_green as ACG
+
     reason = (reason_code or "UNKNOWN").upper()
     body = body or ""
-    checks = checks or {}
-
+    if rollup is None and checks is None:
+        return ActionPlan(
+            pr=0,
+            classification="UNMEASURED",
+            action="hold",
+            message="Could not read the head's checks; holding this PR (fail closed, no requeue).",
+            requeue=False,
+            page_p1=False,
+            wake_claim=False,
+            detail={"reason": reason},
+        )
+    running_states = {"", "PENDING", "IN_PROGRESS", "QUEUED", "WAITING", "REQUESTED"}
+    if rollup is None and checks is not None:
+        rollup = []
+        seq = 0
+        for name, states in (checks or {}).items():
+            for value in states if isinstance(states, (list, tuple)) else [states]:
+                seq += 1
+                state = str(value).upper()
+                rollup.append({"name": name, "conclusion": state,
+                               "status": "queued" if state in running_states else "COMPLETED",
+                               "started_at": f"2026-01-01T00:{seq // 60:02d}:{seq % 60:02d}"})
     # Only while still conflicting. A historical CONFLICTS dequeue with mergeable
     # MERGEABLE (rebase already pushed) must fall through to the requeue path —
     # otherwise Dequeued becomes a dead end after the conflict is fixed.
@@ -114,35 +135,59 @@ def classify_dequeue(
             detail={"reason": reason, "mergeable": mergeable},
         )
 
+    runs = [r for r in ACG.normalize_rollup(rollup) if not _own_check(str(r.get("name") or ""))]
+    if not runs:
+        return ActionPlan(
+            pr=0,
+            classification="UNMEASURED",
+            action="hold",
+            message="The head reports no checks; holding this PR (fail closed, no requeue).",
+            requeue=False,
+            page_p1=False,
+            wake_claim=False,
+            detail={"reason": reason},
+        )
+    finished = [r for r in runs if r.get("status") == "completed"]
+    running = [r for r in runs if r.get("status") != "completed"]
+    result = ACG.evaluate(finished)
+    # The shared helper's verdict, nothing else: skipped and neutral are NOT red (draft-quick is
+    # SKIPPED on nearly every PR; a local fallback that ignored that paged almost every dequeue).
+    real_red = list(result["failing"])
+    if real_red:
+        return ActionPlan(
+            pr=0,
+            classification="REAL_CI_FAIL",
+            action="real_ci_fail",
+            message=(
+                f"Real CI red on head: {', '.join(real_red)}. Fix tests, push, "
+                "wait for green, then `@mergifyio queue`. Do not stop until merged."
+            ),
+            requeue=False,
+            page_p1=True,
+            wake_claim=True,
+            detail={"red": real_red},
+        )
+    if running:
+        return ActionPlan(
+            pr=0,
+            classification="WAIT",
+            action="wait",
+            message="Checks are still running on the head; nothing to requeue or page yet.",
+            requeue=False,
+            page_p1=False,
+            wake_claim=False,
+            detail={"reason": reason, "running": [r.get("name") for r in running]},
+        )
+
+    passing = " ".join(result["passing"])
     draft_skip = bool(DRAFT_SKIP_HINT.search(body)) or (
         reason == "CHECKS_FAILED"
-        and any(checks.get(c) == "SUCCESS" for c in REQUIRED_CHECKS)
+        and any(c in passing for c in REQUIRED_CHECKS)
         and "draft #" in body.lower()
     )
-    # Cleared CONFLICTS dequeue (now MERGEABLE) is the same resubmit class as
-    # CHECKS_FAILED once the head is green — do not leave it on Dequeued.
     cleared_conflict = reason in {"CONFLICTS", "CONFLICT"} and (mergeable or "").upper() == "MERGEABLE"
 
     if draft_skip or reason == "CHECKS_FAILED" or cleared_conflict:
-        real_red = [
-            c
-            for c in REQUIRED_CHECKS
-            if checks.get(c) in {"FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"}
-        ]
-        if real_red:
-            return ActionPlan(
-                pr=0,
-                classification="REAL_CI_FAIL",
-                action="real_ci_fail",
-                message=(
-                    f"Real CI red on head: {', '.join(real_red)}. Fix tests, push, "
-                    "wait for green, then `@mergifyio queue`. Do not stop until merged."
-                ),
-                requeue=False,
-                page_p1=True,
-                wake_claim=True,
-                detail={"red": real_red},
-            )
         if hotfix_on_main:
             kind = "cleared conflict" if cleared_conflict else "speculative draft skip (false fail)"
             return ActionPlan(
@@ -227,7 +272,7 @@ def fetch_open_operator_merge_prs(repo: str = "PatsKiller/tardeai") -> list[dict
             "--label",
             "operator-merge",
             "--json",
-            "number,title,mergeable,isDraft,labels,headRefName,baseRefName,url",
+            "number,title,mergeable,isDraft,labels,headRefName,headRefOid,baseRefName,url",
             "--limit",
             "50",
         ]
@@ -261,31 +306,29 @@ def fetch_latest_dequeue_comment(pr: int, repo: str = "PatsKiller/tardeai") -> t
     return latest_body, latest_payload
 
 
-def fetch_head_check_conclusions(pr: int, repo: str = "PatsKiller/tardeai") -> dict[str, str]:
-    proc = _gh(
-        [
-            "pr",
-            "view",
-            str(pr),
-            "--repo",
-            repo,
-            "--json",
-            "statusCheckRollup",
-        ]
-    )
-    out: dict[str, str] = {}
+#: Mergify's own checks, by the same rule .mergify.yml uses: never grade them as CI.
+MERGIFY_OWN_EXACT = frozenset({"Mergify Merge Queue", "Summary"})
+
+
+def _own_check(name: str) -> bool:
+    return name in MERGIFY_OWN_EXACT or name.startswith("Rule: ")
+
+
+def fetch_head_check_rollup(pr: int, repo: str = "PatsKiller/tardeai") -> list[dict[str, Any]] | None:
+    """The PR head's raw ``statusCheckRollup``; ``None`` when it cannot be read (fail closed).
+
+    Normalization is NOT done here: ``classify_dequeue`` runs it through
+    ``pr_all_checks_green.normalize_rollup`` so grouping (name + check suite), case and
+    StatusContext rows behave exactly as every other merge path.
+    """
+    proc = _gh(["pr", "view", str(pr), "--repo", repo, "--json", "statusCheckRollup"])
     if proc.returncode != 0:
-        return out
+        return None
     try:
         data = json.loads(proc.stdout or "{}")
     except json.JSONDecodeError:
-        return out
-    for row in data.get("statusCheckRollup") or []:
-        name = row.get("name") or ""
-        conclusion = (row.get("conclusion") or row.get("state") or "").upper()
-        if name in REQUIRED_CHECKS:
-            out[name] = conclusion
-    return out
+        return None
+    return list(data.get("statusCheckRollup") or [])
 
 
 def fetch_main_mergify_yml(repo: str = "PatsKiller/tardeai") -> str:
@@ -402,6 +445,40 @@ def mark_acted(pr: int, classification: str, root: Path | None = None) -> None:
     (d / f"{pr}_{classification}_{stamp}.flag").write_text(_utc() + "\n", encoding="utf-8")
 
 
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "mergify_queue_monitor.json"
+
+
+def _config() -> dict[str, Any]:
+    try:
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"wait_max_minutes": 90}
+
+
+def _wait_ledger(root: Path | None) -> dict[str, Any]:
+    r = root or state_root()
+    try:
+        return json.loads((r / "mergify_wait_since.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_wait_ledger(root: Path | None, doc: dict[str, Any]) -> None:
+    r = root or state_root()
+    r.mkdir(parents=True, exist_ok=True)
+    (r / "mergify_wait_since.json").write_text(json.dumps(doc, sort_keys=True), encoding="utf-8")
+
+
+def _minutes_since(ts: str) -> float | None:
+    from datetime import datetime, timezone
+
+    try:
+        seen = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (datetime.now(timezone.utc) - seen).total_seconds() / 60.0
+
+
 def run_once(
     *,
     dry_run: bool = True,
@@ -426,16 +503,61 @@ def run_once(
         if payload:
             dr = payload.get("dequeue_reason") or {}
             reason = str(dr.get("code") or reason)
-        checks = fetch_head_check_conclusions(pr, repo=repo)
+        rollup = fetch_head_check_rollup(pr, repo=repo)
         plan = classify_dequeue(
             reason_code=reason,
             body=body,
             mergeable=pr_row.get("mergeable"),
-            checks=checks,
+            rollup=rollup,
             hotfix_on_main=hot,
         )
         plan.pr = pr
         plans.append(asdict(plan))
+
+        if plan.action == "wait":
+            # Keyed by (PR, head SHA): a new push starts its own clock, and the paged marker stays
+            # until that head's checks finish — one page per head, never every window.
+            head = str(pr_row.get("headRefOid") or "")
+            key = f"{pr}:{head}"
+            ledger = _wait_ledger(root)
+            entry = ledger.get(key) or {}
+            first = entry.get("first")
+            if not first:
+                first = _utc()
+                entry = {"first": first, "paged": False}
+                ledger[key] = entry
+                if not dry_run:
+                    _save_wait_ledger(root, ledger)
+                actions_taken.append({"pr": pr, "head": head[:9], "waiting": True})
+                continue
+            age = _minutes_since(first)
+            limit = float(_config().get("wait_max_minutes", 90))
+            if age is not None and age >= limit and not entry.get("paged"):
+                entry["paged"] = True
+                if not dry_run:
+                    _save_wait_ledger(root, ledger)
+                    try:
+                        from scripts.delivery_failure_alerts import page_p1
+
+                        page_p1(kind="mergify_wait_stuck",
+                                message=f"#{pr} checks still running after {age:.0f} min: {plan.message[:150]}",
+                                detail={"pr": pr, "waited_minutes": age})
+                    except Exception as exc:  # noqa: BLE001
+                        actions_taken.append({"pr": pr, "page_error": f"{type(exc).__name__}:{exc}"[:120]})
+                actions_taken.append({"pr": pr, "head": head[:9], "waiting": True,
+                                      "paged_stuck": True, "waited_minutes": age})
+            else:
+                actions_taken.append({"pr": pr, "head": head[:9], "waiting": True,
+                                      "waited_minutes": age, "paged": bool(entry.get("paged"))})
+            continue
+        # a non-WAIT plan (checks finished) clears this PR's clocks, whatever the head
+        ledger = _wait_ledger(root)
+        stale = [k for k in ledger if k.split(":", 1)[0] == str(pr)]
+        if stale:
+            for k in stale:
+                ledger.pop(k, None)
+            if not dry_run:
+                _save_wait_ledger(root, ledger)
 
         if already_acted(pr, plan.classification, root=root) and plan.action == "auto_requeue":
             actions_taken.append({"pr": pr, "skipped": "dedupe"})

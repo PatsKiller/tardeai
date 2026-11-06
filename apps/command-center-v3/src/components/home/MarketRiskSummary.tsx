@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars } from '../../lib/designTokens'
 import { SUMMARY_OPEN_KEY, SUMMARY_PHONE_MAX_PX, actionableModel, summaryDefaultOpen, summaryModel, type MarketRisk } from '../../lib/marketRisk'
 import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
+import { ActionsTop, Explain } from './MarketRiskActions'
 import { ShadowTag } from './MarketRiskBanner'
 
 function readStored(): boolean | null {
@@ -72,7 +73,7 @@ export function MarketRiskSummary({ mr }: { mr: MarketRisk | null }) {
           <span data-testid="home-market-risk-summary-line" style={{ fontSize: TYPE.base, lineHeight: 1.5, color: m.stale ? warn.color : TOKENS.text[1] }}>{m.line}</span>
         )}
       </button>
-      {a && <TopReview m={a} />}
+      {a && (a.protect || a.hedge || a.rotate ? <ActionsTop m={a} open={open} /> : <TopReview m={a} />)}
       <div id={bodyId} data-testid="home-market-risk-summary-body" hidden={!open} style={{ paddingBottom: 10 }}>
         {a ? (
           <ActionableBody m={a} why={(
@@ -81,14 +82,15 @@ export function MarketRiskSummary({ mr }: { mr: MarketRisk | null }) {
               <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{m.evaluated}{m.confirm ? ` · ${m.confirm}` : ''}</div>
               {m.contributors.map((c, i) => (
                 <div key={i} data-testid="home-market-risk-summary-contributor" style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: TYPE.md, lineHeight: 1.4 }}>
-                  <span style={{ flex: '1 1 0%', minWidth: 0, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}</span> : null}</span>
+                  <span style={{ flex: '1 1 0%', minWidth: 0, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}</span> : null}{/P\/C OI/.test(c.detail ?? '') && <> <Explain term="pc_oi" /></>}</span>
                   <span style={{ ...numStyle, flex: '0 0 auto', fontWeight: 700, color: TOKENS.text[1], textAlign: 'right' }}>{c.points}</span>
                 </div>
               ))}
+              {mr.book?.vulnerability != null && <div data-testid="mr-why-vulnerability" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>Portfolio vulnerability <Explain term="vulnerability" /> <span style={numStyle}>{mr.book.vulnerability}</span>/100</div>}
               {m.uplift && <div style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{m.uplift}</div>}
               {m.notMeasured && <div data-testid="home-market-risk-summary-not-measured" style={{ fontSize: TYPE.sm, color: TOKENS.text[3], lineHeight: 1.5 }}>{m.notMeasured}</div>}
               {m.deescalates && <div data-testid="home-market-risk-summary-deescalates" style={{ fontSize: TYPE.base, color: TOKENS.text[2], lineHeight: 1.5 }}><b style={{ color: TOKENS.text[0] }}>De-escalates if</b> {m.deescalates}</div>}
-              <div data-testid="home-market-risk-summary-footer" style={{ fontSize: TYPE.sm, color: TOKENS.text[3], lineHeight: 1.5 }}>{m.footer}</div>
+              <div data-testid="home-market-risk-summary-footer" style={{ fontSize: TYPE.sm, color: TOKENS.text[3], lineHeight: 1.5 }}>{m.footer}{mr.carried_only ? <> <Explain term="carried" /></> : mr.mode === 'shadow' ? <> <Explain term="shadow" /></> : null}</div>
               {links}
             </div>
           )} />

@@ -2572,11 +2572,12 @@
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5 + 10 16 * * 1-5",
+        "expression": "*/15 * * * 1-5 + */15 20-23 * * 0 + 10 16 * * 1-5",
         "command_text": "portfolio_repricer.py",
         "match": "portfolio_repricer.py",
         "schedules": [
-          "*/15 9-16 * * 1-5",
+          "*/15 * * * 1-5",
+          "*/15 20-23 * * 0",
           "10 16 * * 1-5"
         ]
       },
@@ -2586,14 +2587,15 @@
         1,
         2,
         3,
-        4
+        4,
+        6
       ],
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/portfolios/state/holdings.json"
       },
-      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence matches the installed */15 9-16 market-hours cron, not a fake 24h. Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 9-16, 5 9 open, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose — out of scope.",
+      "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence: every 15 min around the clock Mon-Fri plus Sunday 20:00-23:45 ET (24-hour session open); operator 2026-11-02 \"repricing needs to run 24 hours as we have 24-hour markets\" (was */15 9-16). reprice_source names the session (premarket/live/afterhours/overnight). Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 all day Mon-Fri, */15 20-23 Sunday, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose — out of scope.",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P01",
       "rationalization": {
@@ -4786,7 +4788,7 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/disk_pressure_guard_receipts.jsonl"
       },
-      "note": "Operator-requested 2026-09-21: act at >=85% used instead of waiting for Sunday's tradeai-weekly-disk-cleanup, after the disk hit 100% with 84MB free. Every 15 min; shells disk_hygiene_enforcer.py --apply, which owns ALL deletion and its CURRENT/EXPECTED_RELEASE protections -- this guard deletes nothing itself. Pages only on a transition via alert_condition_state (6h re-alert): a 15-min timer with no dedupe would add 96 messages/day. Threshold is read as df reads it, used/(used+avail); used/total left it silent at df 89%. ABSOLUTE path for the same reason as weekly-disk-cleanup.",
+      "note": "Operator-requested 2026-09-21: act at >=85% used instead of waiting for Sunday's tradeai-weekly-disk-cleanup, after the disk hit 100% with 84MB free. Every 15 min. Disarmed (the shipped state) it shells disk_hygiene_enforcer.py --dry-run for a plan and pages; when the operator arms pressure_act in config/disk_hygiene_rules.json it triggers scripts/disk_hygiene.py --standing (dry run -> quoted selection -> apply under its reviewed rules and per-run caps), which owns ALL deletion and its CURRENT/EXPECTED_RELEASE protections -- this guard deletes nothing itself. Pages only on a transition via alert_condition_state (6h re-alert): a 15-min timer with no dedupe would add 96 messages/day. Threshold is read as df reads it, used/(used+avail); used/total left it silent at df 89%. ABSOLUTE path for the same reason as weekly-disk-cleanup.",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
@@ -16967,14 +16969,14 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "match": "scripts/disk_hygiene.py",
-        "cadence": "0 4 * * 0",
+        "cadence": "17 * * * *",
         "stage": "canary",
         "wave": "W1"
       },
-      "expected_cadence_hours": 168.0,
+      "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
-      "state_since": "2026-10-18",
-      "state_reason": "Operator 2026-10-18: 'a script with rules that's repeatable, n8n should run this weekly.' n8n-native host lane fired by tradeai-dispatcher Sunday 04:00 ET. live_arg is --plan: rules G/R/C/never-touch from config/disk_hygiene_rules.json produce a DiskHygieneManifest@v1 (path, kind, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a manifest younger than apply.manifest_max_age_hours, per-item re-validation, item and byte caps) and refuses under the n8n executor (TRADEAI_RUN_ID): destructive retention never runs from n8n (allowlist never-list, AGENTS.md §23.14). Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "state_since": "2026-10-31",
+      "state_reason": "Operator 2026-10-31 (direct session, verbatim in config/disk_hygiene_rules.json standing_apply.approval.source): 'a repeatable process that's automated so we never get here again ... alerted ... with permissions to delete the same class of items you just deleted'. n8n-native host lane fired by tradeai-dispatcher hourly at :17 ET with --standing --apply --scheduled: the day's full run at the first fire at/after standing_apply.pressure.daily_hour_et (04 ET), otherwise only when used% > pressure.trigger_pct (80); both re-plan and re-apply until pressure.target_pct (75) or max_passes. Rules S/T/W/C/R only (AGENTS.md §0 rule 6 (a), §24.12-§24.14); ~/db_backups belongs to backup_enforcer.py (§24.15). Kill switch: standing_apply.enabled=false or drop disk-hygiene from TRADEAI_N8N_RELAY_LIVE_LANES. retry_policy none: no automatic destructive retry inside a fire; the next hourly fire re-plans from fresh evidence.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/disk-hygiene_last.json",
@@ -16983,18 +16985,18 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
       "review_by": "2026-10-25",
-      "note": "Writes only <state root>/data/runtime/disk_hygiene/disk_hygiene_manifest_<ts>.json + _latest.json and the LaneRunReceipt. Read-only git (GIT_OPTIONAL_LOCKS=0) and du over the configured roots. Sends nothing. The monitor quotes the latest manifest's reclaimable estimate. Exit 0 manifest written; 1 rules/home unreadable or write failure.",
+      "note": "Writes <state root>/data/runtime/disk_hygiene/ manifests, per-pass and per-run standing apply reports, disk_hygiene_daily_latest.json, the pressure check receipt and the LaneRunReceipt. Removes only what the reviewed standing rules select, after per-item re-validation (worktrees archived to refs/archive/closeout* first; agent scratch nested repos bundled, proof worktrees archived). Every run is digested to the operator by disk_usage_monitor (host/disk_hygiene_digest, P2: Telegram + email, quiet hours 22-07 ET); a refusal or >85% after the run is host/disk_hygiene_alert. Exit 0 ran (including below_threshold); 1 refused/failed.",
       "severity": "Low",
       "dispatch": {
         "mode": "live",
         "cron": [
-          "0 4 * * 0"
+          "17 * * * *"
         ],
         "tz": "America/New_York",
         "wave": "W1",
         "class": "hygiene",
         "priority": 3,
-        "retry_policy": "transient-2"
+        "retry_policy": "none"
       }
     },
     {
@@ -18933,18 +18935,155 @@
       "lane_id": "market-quotes-offhours-schwab",
       "owner": "platform",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "*/15 18-23 * * 0 + */15 * * * 1-4 + */15 0-9 * * 5",
+        "match": "scripts/market_quotes_offhours_schwab.py --apply",
+        "schedules": [
+          "*/15 18-23 * * 0",
+          "*/15 * * * 1-4",
+          "*/15 0-9 * * 5"
+        ],
+        "command_text": "cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
       },
-      "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
+      "expected_cadence_hours": 56.25,
+      "state": "ACTIVE",
       "state_since": "2026-11-01",
-      "state_reason": "Declared, not yet scheduled. Schwab off-hours market-data quotes for the Market Risk Engine (scripts/market_quotes_offhours_schwab.py, #2416/#2423): index futures, indices and the extended-hours universe in the overnight (20:00-04:00 ET), Sunday futures_open (18:00-20:00 ET), pre-market and after-hours sessions, into market_quotes_extended (feed schwab) through its single writer. Operator, in session 2026-11-01 ~13:45 ET (verbatim): \"enable schwab\", under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11). This PR sets schwab.enabled true and records the grant (config/data_source_authority.json providers.schwab.supply_grants); the crontab lines are installed after merge (§25.10.2) and this row then flips to ACTIVE.",
+      "state_reason": "Operator, in session 2026-11-01 ~13:45 ET (verbatim): \"enable schwab\", under the 2026-10-31 broker-market-data allowance (AGENTS.md 29.2.0 §24.11: read-only market data via host lanes; never orders, accounts, stops, 2FA, auth endpoints or credentials). #2454 set schwab.enabled true and recorded the grant (config/data_source_authority.json providers.schwab.supply_grants). The coordinator's session installed three host crontab lines (crontab -l L1092-L1094; backup persistent-state/archive/crontab/crontab.pre-schwab-offhours.20261101T161509.txt) running scripts/market_quotes_offhours_schwab.py --apply every 15 minutes from Sunday 18:00 to Friday 09:45 ET; the script's own window (Sunday 18:00 to Friday 09:30, regular session skipped) decides when Schwab is called.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "No crontab line or timer runs scripts/market_quotes_offhours_schwab.py. 2026-11-01 from release 4bc61bcdb: --probe reported enabled false (before this PR), store_domain_granted true, url_rail_ok true, live_call_made false; --dry-run --fixture tests/fixtures/offhours_quotes/schwab_quotes_overnight_20261102.json --now 2026-11-02T02:30-05:00 produced 5 rows, 2 skipped, 0 inserted.",
+      "reason_evidence": "crontab -l L1092 '*/15 18-23 * * 0', L1093 '*/15 * * * 1-4', L1094 '*/15 0-9 * * 5', each '... $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1' (ungated). Release a618e759b (CURRENT, carries #2454) --probe 2026-11-01 17:45 ET: enabled true, store_domain_granted true, url_rail_ok true, live_call_made false. First scheduled run 2026-11-01 18:00 ET: status ok, window futures_overnight, 30 symbols, inserted 4 (session futures_open, session_date 2026-11-02, feed schwab: /ESZ26 7638.25, /NQZ26 28677.0, /RTYZ26 2829.7, /YMZ26 52030.0, all level-only: no dated settlement in the payload), 26 skipped (25 stale_trade equities/indices last traded 2026-10-30, 1 not_a_quote 'errors' key). market_quotes_extended now holds feed schwab 4 rows, feed sip 23 rows.",
       "output_signal": {
-        "kind": "none"
+        "kind": "file_mtime",
+        "path": "logs/market_quotes_offhours_schwab.log",
+        "evidence": "CRON_LOG_REDIRECT"
       },
-      "note": "Proposed host crontab lines (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads."
+      "note": "Installed host crontab lines L1092-L1094 (host TZ America/New_York, no CRON_TZ, ungated: overnight and Sunday futures trade on NYSE holidays' eves): '*/15 18-23 * * 0', '*/15 * * * 1-4' and '*/15 0-9 * * 5', each 'cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1'. The script enforces its own window (config/market_risk_offhours_quotes.yaml schwab.window Sunday 18:00 to Friday 09:30 ET, skip_regular_session on trading days), so fires outside it exit outside_window without a Schwab call. Rail: GET https://api.schwabapi.com/marketdata/v1/quotes only (marketdata_url refuses any other URL); never imports schwab_transport; reads the stored access token only while the token manager's health() says it is fresh, and never refreshes; never reads a credential file; schwab_access_mode must allow reads. expected_cadence_hours 56.25 is the max gap of the union of the three expressions (Friday 09:45 to Sunday 18:00, reconcile_lane_registry.cron_cadence_hours_union); inside the window the cadence is 15 minutes.",
+      "adopted_on": "2026-11-01",
+      "adopted_reason": "2026-11-01: flipped NEVER_SCHEDULED -> ACTIVE after the operator-approved install of crontab L1092-L1094 (\"enable schwab\"); hand-maintained.",
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "schwab",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      }
+    },
+    {
+      "lane_id": "main-red-autoheal",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-main-red-autoheal.timer",
+        "match": "PROPOSED - NOT INSTALLED: no unit file, cron line or n8n workflow exists for this lane"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-02",
+      "state_reason": "Plan item 4, operator-approved in-session 2026-11-01: when the newest origin/main run of a required workflow is red, a host lane re-runs its failed jobs once (infrastructure failures only - AGENTS.md 28.14 says never a test failure), records a suspected flake when the re-run clears it, and otherwise pages one P1 and writes one Claude Code fixer request. PROPOSED, NOT INSTALLED: no unit file, cron line or n8n workflow exists; adding a new systemd entry is operator-only (AGENTS.md 17). Activation was approved conditional on the PR merging with every check green, an independent MERGE review, and a quoted dry-run receipt; the coordinator installs it.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "persistent-state/data/coordination/handoffs/PLAN_COLLISION_AUTOREMEDIATION_20261101.md item 4; scripts/main_red_autoheal.py; config/main_red_autoheal.json; tests/test_main_red_autoheal_20261102.py. No unit file, crontab line or n8n workflow references this lane (an install is the operator's act).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/main_red_autoheal/last.json",
+        "evidence": "MainRedAutohealReceipt@v1 last.json + receipts/<started_at>.json + append-only runs.jsonl"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "proposed_state": {
+        "state": "PROPOSED",
+        "state_since": "2026-11-02",
+        "reason_confidence": "PROPOSED",
+        "state_reason": "Plan item 4, operator-approved in-session 2026-11-01: when the newest origin/main run of a required workflow is red, a host lane re-runs its failed jobs once (infrastructure failures only - AGENTS.md 28.14 says never a test failure), records a suspected flake when the re-run clears it, and otherwise pages one P1 and writes one Claude Code fixer request. PROPOSED, NOT INSTALLED: adding any new systemd entry is operator-only (AGENTS.md 17); activation was approved conditional on the PR merging with every check green, an independent MERGE review, and a quoted dry-run receipt. The coordinator installs it.",
+        "reason_evidence": "persistent-state/data/coordination/handoffs/PLAN_COLLISION_AUTOREMEDIATION_20261101.md item 4; scripts/main_red_autoheal.py; config/main_red_autoheal.json; tests/test_main_red_autoheal_20261102.py",
+        "ruled": false
+      },
+      "operator_decision_pending": true,
+      "status": "PROPOSED_NOT_INSTALLED",
+      "service": "tradeai-main-red-autoheal.service (PROPOSED; no unit file)",
+      "cadence_basis": "PROPOSED: tradeai-main-red-autoheal.timer, OnCalendar every 30 min (uninstalled)",
+      "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/main_red_autoheal.py --apply"
+    },
+    {
+      "lane_id": "nightly-security-scan",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-nightly-security-scan.timer",
+        "match": "PROPOSED - NOT INSTALLED: no unit file, cron line or n8n workflow exists for this lane"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-02",
+      "state_reason": "Operator 2026-11-02: remove CodeQL completely; semgrep OSS (p/python, p/javascript) plus pip-audit and npm audit run nightly and message only on findings absent from the previous night's receipt. PROPOSED, NOT INSTALLED: adding a systemd entry is operator-only (AGENTS.md 17); the coordinator installs the timer after this merges.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/nightly_security_scan.py; config/nightly_security_scan.json; docs/ops/NIGHTLY_SECURITY_SCAN.md; tests/test_security_scans_20261102.py. No unit file, crontab line or n8n workflow references this lane.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/security_scan/last.json"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "proposed_state": {
+        "state": "PROPOSED",
+        "state_since": "2026-11-02",
+        "reason_confidence": "PROPOSED",
+        "state_reason": "PROPOSED, NOT INSTALLED: nightly free security scan replacing CodeQL; the operator installs the schedule after merge.",
+        "reason_evidence": "docs/ops/NIGHTLY_SECURITY_SCAN.md",
+        "ruled": false
+      },
+      "operator_decision_pending": true,
+      "status": "PROPOSED_NOT_INSTALLED",
+      "service": "tradeai-nightly-security-scan.service (PROPOSED; no unit file)",
+      "cadence_basis": "PROPOSED: daily, after the overnight window",
+      "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/nightly_security_scan.py --apply"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "owner": "coordination",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/agent_nudger.py",
+        "cadence": "*/5 * * * *",
+        "stage": "shadow",
+        "wave": "nudger-migration-P2",
+        "command_text": "*/5 * * * * /usr/bin/python3 $STATE_ROOT/data/coordination/coordinator/agent_nudger.py --apply >> $STATE_ROOT/data/coordination/coordinator/agent_nudger.log 2>&1"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "PAUSED",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "cc3 and cx-openai-2 both blocked 7df0f53ce on 2026-11-04 with the same proof: evaluate_lane against the real evaluator returns last_output_at null and verdict SILENT for this row, while creating the state file flips it to LIVE, so the state.json mtime is the only thing that can ever make it healthy; scripts/agent_nudger.py writes that file only under --apply and the lanes only runnable mode is --dry-run.",
+      "review_by": "2026-11-18",
+      "state_reason": "Shadow only. The dispatcher runs this lane with --dry-run, which writes no state, so an ACTIVE file_mtime signal on state.json could never advance: _scheduler_present would be true (the shadow run fires) while the output signal stayed null, and the SLA fallback would emit a false NO_OUTPUT every cycle (cc3/cx-openai-2, 2026-11-04). The signal below names the artifact a LIVE run advances; it does not advance in shadow, which is why the row is PAUSED rather than ACTIVE.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/coordination/agent_nudger/ledger.jsonl",
+        "note": "advances on a live (--apply) run only; the shadow lane cannot advance it"
+      },
+      "note": "Board item 16 (2026-11-03). The live nudger is a host crontab entry running a copy that lives OUTSIDE the repo (coordinator/agent_nudger.py, no claim, no review, no CI). P1 ported it to scripts/agent_nudger.py; this row is P2 and is SHADOW ONLY: the executor runs it dry, the host timer keeps typing, and nothing here can type into a session until the stage is flipped in a separate operator-approved PR. Screen-only BUSY/IDLE detection with a fixed prompt; the port keeps every refusal and cooldown of the live copy.",
+      "state_since": "2026-11-03",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "hygiene",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "command_text": "*/5 * * * * /usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.py --apply >> ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log 2>&1",
+        "note": "The live crontab entry as observed 2026-11-03. It is NOT stopped or edited by P2; rollback for P3 is 'stage back to shadow' plus this line re-enabled."
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -26193,22 +26332,6 @@
     }
   ],
   "pending_changes": {
-    "disk-hygiene-standing-apply-20261024": {
-      "status": "PENDING_OPERATOR_REVIEW_DISABLED",
-      "lane_id": "disk-hygiene",
-      "scheduler": {
-        "kind": "n8n",
-        "expression": "dispatcher",
-        "cadence": "0 4 * * 1,3,5,0",
-        "tz": "America/New_York",
-        "expected_cadence_hours": 48,
-        "minimum_gap_hours": 24,
-        "nominal_max_gap_local_hours": 48,
-        "maximum_elapsed_gap_hours": 49,
-        "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday→Monday24 nominal hours."
-      },
-      "requires": "Atomic contract/admission/enable review; current operative schedule remains plan-only"
-    },
     "w8-writer-restoration-20261024": {
       "status": "DRAFT_PENDING_OWNER_REVIEW",
       "operative": false,

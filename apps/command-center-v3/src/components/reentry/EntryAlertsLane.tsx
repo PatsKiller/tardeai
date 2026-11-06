@@ -1,3 +1,4 @@
+import { emptyText, LANE_TITLE, readinessSummary, readinessWords } from '../../lib/reentryReadiness'
 /** Entry alerts lane (2026-09-28) — the entry-state packets behind the Telegram BUY_READY /
  *  ENTRY_NEAR pages, on the Re-Entry page where the operator looks for them. Reads
  *  GET /api/v2/buy-ready/packets (BuyReadyPacketIndex@v1); every number and tone comes from
@@ -9,6 +10,8 @@ import { Chip, ChipRow, Collapsible, Metric, MetricRow, ShowMore } from '../prim
 import { optionsAltChip, type OptionsAltVerdict } from '../../lib/entryAlerts'
 
 type Row = {
+  // FQ-096: the packet index serves one row per (symbol, account); two accounts can hold the same symbol.
+  account?: string | null
   symbol: string; state: string | null; plan_source?: string | null; saved_at?: string | null; packet_age_h?: number | null
   price?: number | null; quote_age_h?: number | null; entry_low?: number | null; entry_high?: number | null; stop?: number | null; target?: number | null
   zone: { position: string; distance_pct: number | null }
@@ -67,7 +70,12 @@ function AlertCard({ r }: { r: Row }) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.lg, fontWeight: 900, color: TOKENS.text[0] }}><SymbolLink symbol={r.symbol}>{owned ? `${r.symbol} already owned` : r.symbol}</SymbolLink></span>
         <ChipRow>
-          <Chip tone={tone} guideKey="entry.state">{String(r.state || 'unknown').replace(/_/g, ' ')}</Chip>
+          {/* Chip drops `title` whenever `guideKey` is supplied, so the state value must live OUTSIDE the chip:
+              an unrecognised state rendered only "Unrecognised state" and the raw value appeared nowhere on the
+              page (cc-deepseek-9's block at 19e46db96). */}
+          <Chip tone={tone} guideKey="entry.state">{readinessWords(r.state)}</Chip>
+          <span data-testid="entry-packet-state" title={r.state ? `Packet state: ${r.state}` : undefined}
+            style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{r.state ?? 'state not recorded'}</span>
           <Chip tone={ZONE_TONE[r.zone.position] || 'neutral'} guideKey="entry.zone">{zoneLabel}</Chip>
           {r.cio_verdict?.verdict && <Chip tone={toneFromToken(r.cio_verdict.token)} variant="outline" title={r.cio_verdict.rationale || undefined}>CIO {String(r.cio_verdict.verdict).replace(/_/g, ' ').toLowerCase()}{r.cio_review?.mode === 'dry' ? ' · rule text, no model' : ''}</Chip>}
           {r.plan_source && <Chip tone="neutral" variant="outline">{String(r.plan_source).replace(/_/g, ' ')}</Chip>}
@@ -103,17 +111,20 @@ export default function EntryAlertsLane() {
   const data: Index | null = (idx.data?.data ?? idx.data) as Index | null
   const rows = data?.rows || []
   const counts = data?.counts || {}
-  const summary = data ? `${counts.BUY_READY || 0} buy-ready · ${counts.ENTRY_NEAR || 0} entry-near · ${rows.length - (counts.BUY_READY || 0) - (counts.ENTRY_NEAR || 0)} other${data.stale?.length ? ` · ${data.stale.length} older than ${data.max_age_h}h hidden` : ''}` : idx.error ? 'unavailable' : 'loading…'
+  const summary = data ? `${readinessSummary(counts, rows.length)}${data.stale?.length ? ` · ${data.stale.length} older than ${data.max_age_h}h hidden` : ''}` : idx.error ? 'unavailable' : 'loading…'
   return (
     <section data-testid="entry-alerts-lane" style={{ marginBottom: 14 }}>
-      <Collapsible title="Entry alerts (Telegram BUY_READY / ENTRY_NEAR)" summary={summary} count={rows.length} defaultOpen persistKey="reentry.entry-alerts">
+      <Collapsible title={LANE_TITLE} summary={summary} count={rows.length} defaultOpen persistKey="reentry.entry-alerts">
         <div style={{ fontSize: TYPE.xs, color: TOKENS.text[3], marginBottom: 8 }}>
           {data?.note || 'Entry-state packets saved by the runner; advisory only.'}{data?.as_of ? ` · as of ${String(data.as_of).slice(0, 16).replace('T', ' ')}Z` : ''}
         </div>
         {idx.error && <div role="alert" style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load entry alerts: {String(idx.error)}</div>}
-        {data && rows.length === 0 && !idx.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No entry-state packet in the last {data.max_age_h}h. The runner writes one per BUY_READY / ENTRY_NEAR symbol.</div>}
+        {data && rows.length === 0 && !idx.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{emptyText(data.max_age_h)}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 10 }}>
-          {rows.map(r => <AlertCard key={r.symbol} r={r} />)}
+          {/* The index serves one row per (symbol, account) since FQ-096, so the key must carry the account:
+              keyed on the symbol alone, React collapses two accounts into one card and the second account's
+              entry alert is simply not on the page (cc-deepseek's P1 at 5984baad3). */}
+          {rows.map(r => <AlertCard key={`${r.symbol}:${r.account ?? ''}`} r={r} />)}
         </div>
         {data?.errors?.length ? <div style={{ marginTop: 6, fontSize: TYPE.xs, color: TOKENS.warning }}>unreadable packets: {data.errors.join(', ')}</div> : null}
       </Collapsible>

@@ -8,7 +8,7 @@ const assert = {
 }
 import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
   summaryVisible, summaryDefaultOpen, summaryModel, fmtPoints, budgetLabel, SUMMARY_PHONE_MAX_PX,
-  actionableModel, verdictLine, fmtUsd, fmtSignedPct } from './marketRisk.ts'
+  actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel } from './marketRisk.ts'
 
 const notEval = unwrapMarketRisk({ ok: true, data: { state: 'not_evaluated', tier: 'NOT_EVALUATED', score: null, as_of: null, age_hours: null, stale: false,
   reason: 'engine not live', contributors: [], categories: [], sources: { options_flow: { findings: [{ symbol: 'QQQ', state: 'STRESS', pc_vol_ratio: 3.309 }] } } } })
@@ -187,6 +187,101 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   assert.equal(shadowMarker(carriedSent), 'CARRIED · informational card sent (P3), no page')
   const carriedNone = unwrapMarketRisk({ ok: true, data: { ...base, mode: 'live', carried_only: true, alerts: { sends: 0, priorities: [] } } })
   assert.equal(shadowMarker(carriedNone), CARRIED_MARKER)
+  assert.equal(r.now, 'unavailable', 'legacy confirmed Friday close never masquerades as Now')
+  assert.equal(r.vsExit, '—', 'missing current quote cannot borrow Friday percent')
+  const currentQuote = { status: 'available', price: 12.34, source: 'market_quotes:alpaca', session: 'regular',
+    session_date: '2031-03-10', expected_session_date: '2031-03-10', as_of: '2031-03-10T20:00:59.999999Z',
+    pct_vs_exit: 23.4, pct_vs_sma20: 10 }
+  const quoteRow = (quote: any, assessment = '2031-03-11T00:15:00Z') => actionableModel(unwrapMarketRisk({ ...base, as_of: assessment,
+    reentry_watch: { NEWX: { ...base.reentry_watch.NEWX, current_quote: quote } } }))!.reentry[0]
+  const freshRow = quoteRow(currentQuote)
+  assert.equal(freshRow.now, '$12.34', 'Monday after-close quote wins display over confirmed Friday9.50')
+  assert.equal(freshRow.vsExit, '+23.4%', 'current quote percent is kept coherent')
+  assert.equal(freshRow.verdict, 'Still falling', 'display quote never changes the confirmed stage verdict')
+  assert.match(freshRow.lookThrough, /Stored regular-session observation · fetched .*ET.*market_quotes:alpaca · trade time\/live freshness unverified/)
+  for (const quote of [null, { ...currentQuote, price: Infinity }, { ...currentQuote, price: '12.34' },
+    { ...currentQuote, session_date: '2031-03-07' }, { ...currentQuote, as_of: '2031-03-11T01:00:00Z' },
+    { ...currentQuote, as_of: '2031-03-10T16:00:00' }, { ...currentQuote, session: 'premarket' }]) {
+    assert.equal(quoteRow(quote).now, 'unavailable', 'invalid quote never falls back to Friday')
+    assert.equal(quoteRow(quote).vsExit, '—')
+  }
+  // A normal closed-market prior close is context, never Now or a system failure.
+  const fridayQuote = { ...currentQuote, price: 9.5, session_date: '2031-03-07', expected_session_date: '2031-03-07', as_of: '2031-03-07T21:00:59.999999Z' }
+  for (const assessment of ['2031-03-10T12:00:00Z', '2031-03-08T17:00:00Z', '2031-03-09T17:00:00Z']) {
+    const prior = quoteRow(fridayQuote, assessment)
+    assert.equal(prior.now, '—', 'pre-open/weekend prior close cannot be labeled Now')
+    assert.equal(prior.vsExit, '—', 'prior quote percent is not a current comparison')
+    assert.match(prior.lookThrough, /Last stored regular-session observation \$9\.50 · 2031-03-07 · fetched .*ET · market_quotes:alpaca · trade time\/live freshness unverified/)
+    assert.ok(!/Price unavailable|Price stale/.test(prior.lookThrough), 'normal prior close is not a system failure')
+    assert.equal(prior.verdict, 'Still falling')
+  }
+  for (const quote of [
+    { ...currentQuote, as_of: '2031-03-10T13:29:59Z' }, // before 09:30 after DST
+    { ...currentQuote, as_of: '2031-03-10T20:01:00Z' }, // after 16:00 closing minute
+    { ...currentQuote, as_of: '2031-03-09T17:00:00Z', session_date: '2031-03-09', expected_session_date: '2031-03-09' }, // Sunday
+    { ...currentQuote, as_of: '2031-03-07T21:00:00Z' }, // timestamp/session mismatch
+    { ...currentQuote, session_date: {} as any, expected_session_date: {} as any },
+  ]) {
+    assert.equal(quoteRow(quote).now, 'unavailable', 'nonregular or mismatched timestamp is not Now or prior-close context')
+    assert.ok(!/Last stored regular-session observation/.test(quoteRow(quote).lookThrough))
+  }
+  assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T13:30:00Z' }).now, '$12.34', '09:30 ET is inside regular session')
+  assert.equal(quoteRow({ ...currentQuote, as_of: '2031-03-10T16:00:59-04:00' }).now, '$12.34', 'explicit ET offset closing minute remains valid')
+  assert.equal(quoteRow({ ...currentQuote, status: 'stale' }).now, 'stale')
+  assert.equal(quoteRow({ ...currentQuote, stale: true }).now, 'stale')
   console.log('marketRisk.test v005 actionable: ok')
+}
+{
+  // design home/v006: Protect / Hedge / Rotate, folded groups, RESILIENT vs HOLDING, segment status, glossary
+  const hm = (key: string, label: string, kind: string, state: string, rs1: number | null = null) => ({ key, label, kind, state, rs1, rs5: rs1 })
+  const data: any = { state: 'evaluated', tier: 'YELLOW', score: 60, as_of: '2031-03-10T15:00:00Z', age_hours: 0.2, stale: false, contributors: [], categories: [],
+    shock_type: { class: 'SECTOR' }, sectors: { sectors_measured: 3 }, card_config: { fold_below_usd: 100 },
+    heatmap: [hm('tech', 'Technology', 'sector', 'STRESS', -3.1), hm('fin', 'Financials', 'sector', 'RESILIENT', 1), hm('ind', 'Industrials', 'sector', 'NEUTRAL', 0.2),
+      hm('re', 'Real estate', 'sector', 'UNKNOWN'), hm('ai', 'AI basket', 'theme', 'STRESS', -3)],
+    book_exposure: { total_usd: 1000, reconciles: true, cash_usd: 400, invested_usd: 600, stressed_groups: ['tech'], stressed_usd: 60, stressed_pct_book: 6, stressed_pct_invested: 10, cash_pct_book: 40,
+      groups: { fin: { usd: 400, pct_book: 40 }, tech: { usd: 60, pct_book: 6 } }, unmapped: [], rows: [], more: { count: 0, usd: 0 }, zero_exposure_symbols: [] },
+    review: [{ symbol: 'DEMOA', account_label: 'A', kinds: ['stop_near'], text: 'stop 3.6% below last', usd: 500, to: '/risk?tab=exposure&symbol=DEMOA' }],
+    protect: { items: [{ symbol: 'DEMOA', account_label: 'A', kinds: ['stop_near'], text: 'stop 3.6% below last', usd: 500, to: '/risk?tab=exposure&symbol=DEMOA', pct_account: 88.0,
+      consideration: 'stop 3.6% below last; one stock is 88% of the account, far above the 30% sector budget' }],
+      more: [{ symbol: 'DEMOB', account_label: 'B', short: 'no stop', to: '/x' }] },
+    hedge: { verdict: 'NOT_NOW', thesis_state: 'RED', candidates: ['SH', 'PSQ'], since: '2031-03-07', thresholds: { trigger_book_pct: 10, index_trigger_lagging_sectors: 4 },
+      largest_weakening: { label: 'Technology', pct_invested: 5.5 }, lagging_count: 1, stressed_usd: 12345, stressed_pct_book: 2.5, stressed_pct_invested: 4.0,
+      size_band: '2-5%', playbook: ['x'] },
+    rotate: { as_of: '2031-03-07', groups: [{ key: 'fin', label: 'Financials', rs1: 1.03, rs5: 1.63, desk_state: 'LEADING', usd: 400 }] },
+    sectors_folded: [{ key: 'ai', label: 'AI basket', state: 'STRESS', usd: 28 }, { key: 're', label: 'Real estate', state: 'UNKNOWN', usd: 1 }],
+    glossary: { stress: { label: 'STRESS', text: 'x' } },
+    segments_status: { DEMOS: { status: 'pending', groups: null }, DEMOT: { status: 'approved', groups: { ind: 0.6, tech: 0.4, ai: 0.8 }, source: 'DEMO 10-Q', as_of: '2031-01-31' } },
+  }
+  const mr = unwrapMarketRisk({ ok: true, data })!
+  const a = actionableModel(mr)!
+  assert.deepEqual(a.sectors.map(r => r.key), ['tech', 'fin', 'ind'], 'folded groups leave the table')
+  assert.equal(a.foldLine, 'Also stressed, you hold under $100: AI basket ($28). Not measured, you hold under $100: Real estate ($1).')
+  assert.equal(a.sectors.find(r => r.key === 'fin')!.chip, 'RESILIENT')
+  assert.equal(a.sectors.find(r => r.key === 'ind')!.chip, 'HOLDING')
+  assert.equal(a.protect!.items[0].pct, '88% of account')
+  assert.equal(a.protect!.items[0].linkLabel, 'Review stop →')
+  assert.equal(a.protect!.more, '+1 more: DEMOB · B (no stop)')
+  assert.equal(a.hedge!.verdict, 'Not now')
+  assert.equal(a.hedge!.line, '$12,345 (2.5% of book · 4.0% of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ 10% of invested, or 4+ sectors lag — now Technology 5.5%, 1 sector lagging.')
+  assert.match(a.hedge!.lane, /^Inverse lane SH · PSQ: no bearish thesis since /)
+  assert.ok(!/2-5%|size|band|playbook/i.test(JSON.stringify(a.hedge)), 'never a hedge size band or playbook')
+  assert.equal(a.rotate!.rows[0].rs1, '+1.0%'); assert.equal(a.rotate!.rows[0].desk, 'desk LEADING')
+  assert.match(a.rotate!.foot, /not a buy list/)
+  assert.equal(rotateModel({ groups: [], none_reason: null })!.none, 'No group is beating SPY on both 1 and 5 sessions today.')
+  assert.equal(hedgeModel({ verdict: 'UNKNOWN', reason: 'no stoplight evaluation yet' } as any)!.line, 'Defense stoplight no stoplight evaluation yet — no verdict until it runs again.')
+  const consider = hedgeModel({ verdict: 'CONSIDER', thesis_state: 'GREEN', candidates: ['PSQ'], thresholds: { trigger_book_pct: 10, bounce_day_pct: 0.75 },
+    largest_weakening: { label: 'Technology', pct_invested: 11.2 }, entry: { inverse: 'PSQ', bench: 'QQQ', label: 'WAIT FOR BOUNCE DAY' } } as any)!
+  assert.equal(consider.line, 'Technology is 11.2% of invested and weakening — above the 10% the Defense desk uses. PSQ: thesis green · entry wait for bounce day (bounce days of +0.75% on QQQ).')
+  const seg = Object.fromEntries(a.segments.map(x => [x.symbol, x]))
+  assert.match(seg.DEMOS.line, /^segment weights pending approval — counted as /)
+  assert.equal(seg.DEMOT.status, 'approved')
+  assert.deepEqual(seg.DEMOT.split.map(x => x.label), ['Industrials', 'Technology'], 'themes overlap and are not in the split')
+  assert.match(seg.DEMOT.line, /AI basket theme 80% \(overlaps\)/)
+  assert.equal(a.glossary.stress.label, 'STRESS')
+  for (const s of [...a.protect!.items.map(x => x.consideration), a.hedge!.line, a.hedge!.lane]) assert.ok(!/\b(buy|sell|trim) /i.test(s), 'advisory text only')
+  // a v005 projection (no v006 blocks) keeps working
+  const v5 = actionableModel(unwrapMarketRisk({ ok: true, data: { ...data, protect: undefined, hedge: undefined, rotate: undefined, sectors_folded: undefined } }))!
+  assert.equal(v5.protect, null); assert.equal(v5.hedge, null); assert.equal(v5.foldLine, '')
+  console.log('marketRisk.test v006 actions: ok')
 }
 console.log('marketRisk.test ok')

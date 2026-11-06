@@ -61,6 +61,57 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _summary_amount(value, *, signed: bool = False) -> str:
+    """Format a total for the Before/After lines, or ``unknown`` when it is not a number.
+
+    2026-11-03: the holdings rebuild wrote ``portfolio_totals.day_change = null`` (and refreshed
+    totals from the rebuild), and the ``:+,.0f`` format string then raised ``TypeError`` on the
+    *pre-reprice* summary -- every */15 run died before ``reprice_portfolio`` ran and before any
+    write. A writer must tolerate a missing/corrupt value (spec item C): print it as unknown and
+    keep going. Non-finite floats are treated the same way.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "unknown"
+    if v != v or v in (float("inf"), float("-inf")):
+        return "unknown"
+    return f"${v:+,.0f}" if signed else f"${v:,.0f}"
+
+
+def _summary_line(label: str, portfolio: dict) -> str:
+    """``Before: $total | Day: $change`` with every total safe to be missing."""
+    totals = portfolio.get("portfolio_totals") or {}
+    return (f"{label}: {_summary_amount(totals.get('total_value'))} | "
+            f"Day: {_summary_amount(totals.get('day_change'), signed=True)}")
+class RepriceRefused(RuntimeError):
+    """This pass could not tell what the portfolio is worth, so nothing may be published.
+
+    cc-deepseek-8's F1/F2 on #2689: the first version set ``portfolio["_reprice_refused"]`` and only ``__main__``
+    honoured it. Three other in-repo callers write the returned document unconditionally, so on those paths a
+    refusal persisted the repriced marks, the stale total **and the marker**, and the marker then made every later
+    ``*/15`` run exit 3 on a healthy pass. A sentinel inside the payload is a footgun every future caller can trip.
+
+    The refusal is therefore an exception: the returned value of a refused pass is *nothing*, so no caller — present
+    or future — can write it. Every in-repo call site already writes **after** the call, so this makes them all safe
+    by construction. Callers that want to keep going catch this and keep their own last-good document.
+    """
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
+def _refuse_reprice(reason: str) -> None:
+    """Refuse the pass: raise, print, and hand back no document at all.
+
+    A missing input is UNKNOWN, and a guessed zero is worse than an unknown because every reader of the document
+    then believes the book is worth nothing.
+    """
+    print(f"  [repricer] ⛔ REFUSED: {reason}")
+    raise RepriceRefused(reason)
+
+
 def compute_data_as_of(holdings) -> dict:
     """The OLDEST contributing row date -- the real freshness of the data.
 
@@ -135,7 +186,9 @@ def _et_now() -> datetime:
         from zoneinfo import ZoneInfo
         return datetime.now(ZoneInfo("America/New_York")).replace(tzinfo=None)
     except Exception:
-        return datetime.utcnow() - timedelta(hours=4)
+        # No fixed UTC offset: -4h is wrong for half the year (EST is -5h). The host clock
+        # runs America/New_York, so local time is the honest fallback.
+        return datetime.now()
 
 
 def _is_market_hours(now: Optional[datetime] = None) -> bool:
@@ -144,6 +197,66 @@ def _is_market_hours(now: Optional[datetime] = None) -> bool:
         return False
     mins = now.hour * 60 + now.minute
     return 570 <= mins <= 960  # 9:30 AM - 4:00 PM
+
+
+# reprice_source names the session the prices were taken in. Holdings reprice around the
+# clock on trading days (24-hour markets), so a two-way market/after-hours split mislabels
+# pre-market as after-hours. scripts/market_session.py owns the calendar (holidays, early closes).
+_SESSION_SOURCE = {
+    "premarket": "finviz_premarket",
+    "regular": "finviz_live",
+    "afterhours": "finviz_afterhours",
+}
+
+
+def _price_session(now: Optional[datetime] = None) -> str:
+    """premarket | regular | afterhours | overnight, for an ET-naive or aware `now`."""
+    now = now or _et_now()
+    try:
+        from zoneinfo import ZoneInfo
+        from market_session import current_market_session
+        aware = now if now.tzinfo else now.replace(tzinfo=ZoneInfo("America/New_York"))
+        session = current_market_session(aware)
+    except Exception:
+        session = "regular" if _is_market_hours(now) else "overnight"
+    return session if session in _SESSION_SOURCE else "overnight"
+
+
+def _reprice_source(now: Optional[datetime] = None) -> str:
+    return _SESSION_SOURCE.get(_price_session(now), "finviz_overnight")
+
+
+def _fills_trade_date(now: Optional[datetime] = None) -> str:
+    """The trade date whose fills match the prices being written (YYYY-MM-DD).
+
+    Overnight (20:00-04:00), on weekends and on holidays, Finviz's price, change_pct and
+    prev_close still describe the last regular session, so day change must use THAT
+    session's fills. Reading the new calendar day's (empty) fills would drop yesterday's
+    buys and sells from day P/L: a Monday buy re-measured from Friday's close at 00:15
+    Tuesday, and Monday's closed positions gone from closed_today.
+    """
+    now = now or _et_now()
+    today = now.date()
+    if _price_session(now) != "overnight":
+        return today.isoformat()
+    try:
+        from market_session import is_trading_day
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo("America/New_York")
+
+        def _trading(d):
+            return is_trading_day(datetime.combine(d, datetime.min.time()).replace(hour=12, tzinfo=tz))
+    except Exception:
+        def _trading(d):
+            return d.weekday() < 5
+    if now.hour >= 20 and _trading(today):
+        return today.isoformat()
+    d = today - timedelta(days=1)
+    for _ in range(10):
+        if _trading(d):
+            return d.isoformat()
+        d -= timedelta(days=1)
+    return today.isoformat()
 
 
 def _load_env(root: Path) -> None:
@@ -264,6 +377,65 @@ def _fetch_finviz(symbols: List[str], root: Path) -> Dict[str, Dict]:
     except Exception as e:
         print(f"  [repricer] Finviz fetch error: {e}")
     return results
+
+
+def _fetch_data_broker_quotes(symbols: List[str], root: Path, *, batch_reader=None) -> Dict[str, Dict]:
+    """Live quotes through the sanctioned data broker (2026-11-03 operator dispatch ruling).
+
+    Primary read is the ``market_quotes`` store (single writer, Alpaca-repriced) via
+    ``lib.data_broker.market_quote.get_price_batch``; its quote-only provider fallback is bounded by
+    the module itself (10 symbols per call, 5 s each). This is a read-only market-data path: no
+    order route, no credential, no account mutation.
+
+    ``batch_reader`` exists for tests. Returns the same record shape ``_fetch_finviz`` produces for
+    the fields the reprice uses, with ``prev_close`` derived from the day change exactly as the
+    Finviz adapter derives it.
+    """
+    if not symbols:
+        return {}
+    reader = batch_reader
+    if reader is None:
+        try:
+            from db_adapter import _execute, USE_DB  # noqa: PLC0415
+
+            if not USE_DB:
+                return {}
+
+            def db_query(sql, params=None, fetch="all"):
+                return _execute(sql, params, fetch=fetch)
+
+            from lib.data_broker.market_quote import get_price_batch  # noqa: PLC0415
+
+            reader = lambda syms: get_price_batch(db_query, syms, max_age_hours=0.5, skip_live=False)
+        except Exception as exc:  # noqa: BLE001 — a broker outage must not stop the strip
+            print(f"  [repricer] data-broker quotes unavailable: {exc}")
+            return {}
+    try:
+        batch = reader(symbols) or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [repricer] data-broker quotes error: {exc}")
+        return {}
+    out: Dict[str, Dict] = {}
+    for sym, quote in batch.items():
+        try:
+            price = float(quote.get("price"))
+        except (TypeError, ValueError):
+            continue
+        if price <= 0:
+            continue
+        try:
+            chg_pct = float(quote.get("chg_pct")) if quote.get("chg_pct") is not None else 0.0
+        except (TypeError, ValueError):
+            chg_pct = 0.0
+        prev_close = price / (1 + chg_pct / 100) if chg_pct != -100 else price
+        out[str(sym).upper()] = {
+            "price": round(price, 4),
+            "change_pct": round(chg_pct, 4),
+            "prev_close": round(prev_close, 4),
+            "volume": 0,
+            "source": str(quote.get("source") or "data_broker.market_quote"),
+        }
+    return out
 
 
 # ── Yahoo price cache fetch (Fidelity funds after 8 PM) ───────────────────────
@@ -696,9 +868,28 @@ def _annotate_canonical_quotes(holdings: List[Dict]) -> None:
 
 # ── Recalculate totals ─────────────────────────────────────────────────────────
 def _recalc_totals(portfolio: Dict) -> None:
-    """Recalculate account summaries and portfolio totals from updated holdings."""
+    """Recalculate account summaries and portfolio totals from updated holdings.
+
+    2026-11-05 (FQ-2532-R): a total this pass cannot compute is UNKNOWN, never zero. ``account_summaries`` is the
+    authority for the portfolio total; with none of them the sums below are 0 for want of input, not because the
+    book is worth nothing — and the drift guard further down could not see a zero, because it required ``gt > 0``.
+    The one collapse it could not catch was therefore the 100% one. Refusing here keeps the last good marks.
+    """
     holdings = portfolio.get("holdings", [])
     account_summaries = portfolio.get("account_summaries", {})
+    if not isinstance(account_summaries, dict) or not account_summaries:
+        _refuse_reprice("no account summaries: the portfolio total is unknown, not zero")
+        return
+    # FQ-2532-R release condition (cc-deepseek-8's F3): captured BEFORE the loop below overwrites these values with
+    # derived totals. A book that really went to zero — every account's own summary declares 0 and no holding claims a
+    # live quantity without a price — must be accepted, or the collapse guard would refuse it forever, because a
+    # refusal never rewrites and prev_total would stay positive by the guard's own act.
+    _declared_zero = all(
+        isinstance(a, dict) and isinstance(a.get("total_value"), (int, float)) and float(a.get("total_value")) == 0
+        for a in account_summaries.values()
+    ) and not any(
+        (h.get("shares") or 0) and h.get("market_value") is None for h in holdings
+    )
 
     def _choose_fund_anchor(ah):
         """401k proprietary fund codes — residual lands on largest plan holding."""
@@ -732,6 +923,11 @@ def _recalc_totals(portfolio: Dict) -> None:
 
     for acct_key, acct in account_summaries.items():
         ah = [h for h in holdings if h.get("account") == acct_key and not h.get("is_loan")]
+        # FQ-2532-R: holdings present but none of them priced is an UNPRICED account, not an account worth zero.
+        # Overwriting its total with the `or 0` sum below is how one missing market_value became a portfolio-wide 0.
+        if ah and all(h.get("market_value") is None for h in ah):
+            _refuse_reprice(f"account {acct_key}: every holding row is unpriced, so its total is unknown, not zero")
+            return
         derived_total = round(sum(h.get("market_value") or 0 for h in ah), 2)
         reported_total = float(acct.get("reported_total_value") or 0)
         source = str(acct.get("source", "")).lower()
@@ -827,7 +1023,23 @@ def _recalc_totals(portfolio: Dict) -> None:
 
     # Sanity: reject if total changed > 25% from previous (likely data corruption)
     prev_total = portfolio.get("portfolio_totals", {}).get("total_value", 0) or 0
-    if prev_total > 0 and gt > 0:
+    _liquidation_accepted = False
+    if prev_total > 0 and gt <= 0:
+        # FQ-2532-R: this is the guard's most important case, not the one it may skip. A fall from a positive total
+        # to zero is 100% drift, and the old `gt > 0` condition meant the only collapse it could never catch was the
+        # total one. Refuse the pass outright: keeping a stale total while rewriting repriced holdings would still
+        # publish a document whose numbers disagree with each other.
+        if _declared_zero:
+            # ...unless the book genuinely went to zero: every account's own summary declares 0 and nothing claims a
+            # live quantity without a price. Refusing that forever would leave prev_total positive by the guard's own
+            # act and the repricer would never publish again (cc-deepseek-8's F3). The release has to skip the >25%
+            # branch below as well, or it would be "accepted" and then immediately kept anyway.
+            print("  [repricer] total is zero and every account declares zero — accepting a real liquidation")
+            _liquidation_accepted = True
+        else:
+            _refuse_reprice(f"total collapsed to ${gt:,.0f} from ${prev_total:,.0f} (100% drift); refusing the write")
+            return
+    if prev_total > 0 and not _liquidation_accepted:
         drift_pct = abs(gt - prev_total) / prev_total * 100
         if drift_pct > 25:
             print(f"  [repricer] ⛔ TOTAL SANITY FAIL: ${prev_total:,.0f} → ${gt:,.0f} ({drift_pct:.1f}% drift)")
@@ -915,12 +1127,29 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
       4. Optionally reprice Fidelity from Yahoo cache (after 8 PM)
     """
     root    = state_dir.parent.parent.parent  # data/portfolios/state -> project root
+    # FQ-2532-R (cc-deepseek-8's F1): work on a COPY. A refused pass then leaves the caller's document exactly as it
+    # was, so a caller that catches RepriceRefused and saves what it holds cannot save repriced marks under a stale
+    # total. `portfolio` is a JSON document; a deep copy is the honest way to make "nothing was published" true.
+    if isinstance(portfolio, dict):
+        import copy as _copy
+        portfolio = _copy.deepcopy(portfolio)
+        # Recovery (cc-deepseek-8's second-order question): an older build could persist `_reprice_refused` INTO the
+        # document. That key is a transient marker, never data, so a healthy pass must not inherit it — and since this
+        # build never writes it, the next successful pass heals the file. A stuck document is not stuck.
+        portfolio.pop("_reprice_refused", None)
     _load_env(root)
     now     = _et_now()
     now_str = now.strftime("%Y-%m-%d %H:%M:%S ET")
     now_min = now.hour * 60 + now.minute
 
-    print(f"  [repricer] {now_str} ({'market' if _is_market_hours(now) else 'after-hours'})")
+    print(f"  [repricer] {now_str} ({_price_session(now)})")
+
+    # FQ-2532-R: account summaries are the authority for the portfolio total. Without them there is nothing to
+    # price into, and the totals pass would sum an empty map to 0 — an unknown published as a zero. Refuse before
+    # spending a single provider call, and name what is missing.
+    if not isinstance(portfolio.get("account_summaries"), dict) or not portfolio.get("account_summaries"):
+        _refuse_reprice("no account summaries: the portfolio total is unknown, not zero")
+        return portfolio
 
     sym_groups = _get_all_symbols(portfolio, root)
     finviz_syms  = sym_groups["finviz"]    # Schwab portfolio + watchlist
@@ -947,19 +1176,46 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
               f"fidelity_ira {priced_fid}/{len(sym_groups.get('fidelity_ira', []))}, "
               f"watchlist {len([s for s in sym_groups['watchlist'] if s in live_prices])}/{len(sym_groups['watchlist'])})")
 
+        # 1a. Data-broker supplement (operator dispatch ruling 2026-10-10/11-03): symbols the Finviz
+        # adapter could not price are read through the sanctioned broker path (market_quotes store,
+        # Alpaca-repriced, bounded quote-only fallback). Finviz stays the richer source; this only
+        # closes the gaps that used to fall through to days-old closes (or trip the coverage guard).
+        _missing_live = [s for s in finviz_syms if s not in live_prices]
+        if _missing_live:
+            _broker = _fetch_data_broker_quotes(_missing_live, root)
+            for _sym, _rec in _broker.items():
+                live_prices.setdefault(_sym, _rec)
+            print(f"  [repricer] Data broker: {len(_broker)}/{len(_missing_live)} Finviz gaps priced "
+                  f"(market_quotes/Alpaca, bounded)")
+
     # ── 1b. Coverage guard (2026-10-06) ───────────────────────────────────────
     # When the live fetch comes back (nearly) empty in market hours, the Yahoo/NAV fallback below would mark
     # every Schwab holding at a days-old cached close with 0% day change — 22 of 25 rows at 10-02 prices on
     # 2026-10-06 (12:01, 13:01, 14:00 ET). Refuse instead: leave the holdings untouched so the last good marks
     # stand, and say so. config/portfolio_positions.yaml positions.reprice_min_live_coverage.
-    _schwab = sym_groups.get("schwab") or []
-    if _schwab and _is_market_hours(now):
-        _cov = len([s for s in _schwab if s in live_prices]) / len(_schwab)
+    # FQ-2532-R (2026-11-05): the refusal used to be gated on Schwab symbols existing, so an all-alpaca or all-moomoo
+    # book had no coverage guard at all and would be repriced from days-old closes. Measure every held tradeable
+    # equity instead — a book with no Schwab rows is exactly the book that needed this and never got it.
+    # ...measured over positions that actually carry a quantity: a zero-share row needs no live mark, and a book that is
+    # genuinely worth zero must still be able to price and write (a guard that refuses everything is not a guard).
+    _needs_quote: set = set()
+    for _h in portfolio.get("holdings") or []:
+        _sym = _tradeable_equity_symbol(_h)
+        if not _sym:
+            continue
+        try:
+            _shares = abs(float(_h.get("shares") or 0))
+        except (TypeError, ValueError):
+            _shares = 0.0
+        if _shares > 0:
+            _needs_quote.add(_sym)
+    _needs_quote = sorted(_needs_quote)
+    if _needs_quote:  # every session: an all-night run must not fall back to days-old closes either
+        _cov = len([s for s in _needs_quote if s in live_prices]) / len(_needs_quote)
         _min = _min_live_coverage(root)
         if _cov < _min:
-            portfolio["_reprice_refused"] = (f"live coverage {_cov:.0%} < {_min:.0%} of held symbols at {now_str}; "
-                                             "holdings left at their last good marks")
-            print(f"  [repricer] ⛔ REFUSED: {portfolio['_reprice_refused']}")
+            _refuse_reprice((f"live coverage {_cov:.0%} < {_min:.0%} of held symbols at {now_str}; "
+                              "holdings left at their last good marks"))
             return portfolio
 
     # ── 2. Delta-write to quote cache ──────────────────────────────────────────
@@ -996,7 +1252,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
             print(f"  [repricer] Yahoo fallback: {len(yahoo_prices)} symbols "
                   f"({', '.join(yahoo_prices.keys())})")
 
-    intraday_fills = _load_intraday_fills()
+    intraday_fills = _load_intraday_fills(_fills_trade_date(now))
     n_holdings = _apply_to_holdings(portfolio.get("holdings", []), live_prices, fidelity_prices, intraday_fills)
     print(f"  [repricer] Holdings updated: {n_holdings}")
 
@@ -1022,7 +1278,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     _annotate_canonical_quotes(portfolio.get("holdings") or [])
 
     portfolio["last_repriced"]  = now_str
-    portfolio["reprice_source"] = "finviz_live" if _is_market_hours(now) else "finviz_afterhours"
+    portfolio["reprice_source"] = _reprice_source(now)
     # generated_at used to hold the date the POSITION LIST was built and was never
     # touched by repricing, so a file repriced seconds ago still advertised
     # generated_at from days earlier (observed 2026-07-20: generated_at
@@ -1185,6 +1441,87 @@ def _sync_ticker_prices(portfolio, root):
               + "; ".join(f"{r['row'].get('symbol')}: {r['reason']}" for r in rc.rows_rejected[:10]))
 
 
+def main(state_dirs) -> None:
+    """The CLI guarantee path: read, reprice, write — or write nothing at all.
+
+    Pulled out of `if __name__ == "__main__"` so the no-write guarantee has an EXECUTION test (cc-deepseek-8
+    F5 and cc-deepseek-9 on #2689): the old test scanned this block's source text and broke the moment the
+    mechanism became an exception. Running this against a temporary state directory and asserting SystemExit(3)
+    plus a byte-identical file cannot go stale the same way.
+    """
+    state_dir = state_dirs[0]
+    hp        = state_dir / "holdings.json"
+
+    if not hp.exists():
+        print("holdings.json not found — run run_portfolio.bat first")
+        raise SystemExit(1)
+
+    if len(state_dirs) > 1:
+        print(f"  [repricer] state targets: {', '.join(str(d) for d in state_dirs)}")
+
+    # Serialize with the other holdings.json writers (alpaca sync, schwab sync).
+    # Without a shared lock a slow reader (this repricer, ~60s of quote fetching
+    # between read and write) clobbers a faster writer's fresh rows. Manual
+    # enter/exit keeps this a minimal diff (a `with` block would re-indent ~30
+    # lines and trip the line-ending churn guard).
+    from scripts.lib.holdings_write_lock import holdings_write_lock
+    from scripts.lib.atomic_json_store import atomic_write_bytes
+    _holdings_lock = holdings_write_lock()
+    _holdings_lock.__enter__()
+
+    portfolio = json.loads(hp.read_text(encoding="utf-8"))
+    print(f"Loaded {len(portfolio.get('holdings', []))} holdings")
+    print(_summary_line("Before", portfolio))
+
+    try:
+        portfolio = reprice_portfolio(portfolio, state_dir)
+    except RepriceRefused:
+        # Nothing was repriced; do not rewrite the file (another writer may have landed since our read).
+        # FQ-2532-R: the refusal is an exception now (cc-deepseek-8's F1/F2), so no caller can receive a document
+        # from a refused pass and write it. The CLI keeps its long-standing exit 3 and its no-write guarantee.
+        _holdings_lock.__exit__(None, None, None)
+        raise SystemExit(3) from None
+
+    _payload = json.dumps(portfolio, indent=2, default=str)
+    _written, _skipped = [], []
+    for _d in state_dirs:
+        _target = _d / "holdings.json"
+        # Only refresh a copy that already exists: this writer reprices an
+        # existing book, it does not create a new one somewhere unexpected.
+        if not _target.exists():
+            _skipped.append(f"{_target} (absent)")
+            continue
+        try:
+            atomic_write_bytes(_target, _payload.encode("utf-8"))
+            _written.append(str(_target))
+        except OSError as _e:
+            # Never let a secondary copy failure lose the primary reprice.
+            _skipped.append(f"{_target} ({_e.__class__.__name__})")
+    print(_summary_line("After", portfolio))
+    if not _written:
+        print("ERROR: no holdings.json copy could be written")
+        raise SystemExit(1)
+    print(f"holdings.json updated ({len(_written)} copy/copies): {', '.join(_written)}")
+    for _s in _skipped:
+        print(f"  [repricer] WARN not updated: {_s}")
+
+    _holdings_lock.__exit__(None, None, None)
+    try:
+        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
+        _ms = sync_portfolio_watchlist_membership(portfolio)
+        if _ms.get("exited"):
+            print(f"portfolio watchlist membership: exited {_ms['exited']} sold symbols")
+    except Exception as _e:
+        print(f"portfolio watchlist membership sync failed: {_e}")
+
+    cache_path = state_dir / "finviz_quote_cache.json"
+    if cache_path.exists():
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        meta  = cache.get("_meta", {})
+        print(f"Quote cache: {meta.get('symbols_cached',0)} symbols | updated {meta.get('last_updated','?')}")
+
+
+
 # ── Standalone ─────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     root = Path(__file__).resolve().parents[1]
@@ -1212,72 +1549,4 @@ if __name__ == "__main__":
             print(f"{_t}\t{'exists' if (_t / 'holdings.json').exists() else 'absent'}")
         raise SystemExit(0)
 
-    state_dir = state_dirs[0]
-    hp        = state_dir / "holdings.json"
-
-    if not hp.exists():
-        print("holdings.json not found — run run_portfolio.bat first")
-        raise SystemExit(1)
-
-    if len(state_dirs) > 1:
-        print(f"  [repricer] state targets: {', '.join(str(d) for d in state_dirs)}")
-
-    # Serialize with the other holdings.json writers (alpaca sync, schwab sync).
-    # Without a shared lock a slow reader (this repricer, ~60s of quote fetching
-    # between read and write) clobbers a faster writer's fresh rows. Manual
-    # enter/exit keeps this a minimal diff (a `with` block would re-indent ~30
-    # lines and trip the line-ending churn guard).
-    from scripts.lib.holdings_write_lock import holdings_write_lock
-    from scripts.lib.atomic_json_store import atomic_write_bytes
-    _holdings_lock = holdings_write_lock()
-    _holdings_lock.__enter__()
-
-    portfolio = json.loads(hp.read_text(encoding="utf-8"))
-    print(f"Loaded {len(portfolio.get('holdings', []))} holdings")
-    print(f"Before: ${portfolio['portfolio_totals']['total_value']:,.0f} | "
-          f"Day: ${portfolio['portfolio_totals']['day_change']:+,.0f}")
-
-    portfolio = reprice_portfolio(portfolio, state_dir)
-    if portfolio.pop("_reprice_refused", None):
-        # Nothing was repriced; do not rewrite the file (another writer may have landed since our read).
-        _holdings_lock.__exit__(None, None, None)
-        raise SystemExit(3)
-
-    _payload = json.dumps(portfolio, indent=2, default=str)
-    _written, _skipped = [], []
-    for _d in state_dirs:
-        _target = _d / "holdings.json"
-        # Only refresh a copy that already exists: this writer reprices an
-        # existing book, it does not create a new one somewhere unexpected.
-        if not _target.exists():
-            _skipped.append(f"{_target} (absent)")
-            continue
-        try:
-            atomic_write_bytes(_target, _payload.encode("utf-8"))
-            _written.append(str(_target))
-        except OSError as _e:
-            # Never let a secondary copy failure lose the primary reprice.
-            _skipped.append(f"{_target} ({_e.__class__.__name__})")
-    print(f"After:  ${portfolio['portfolio_totals']['total_value']:,.0f} | "
-          f"Day: ${portfolio['portfolio_totals']['day_change']:+,.0f}")
-    if not _written:
-        print("ERROR: no holdings.json copy could be written")
-        raise SystemExit(1)
-    print(f"holdings.json updated ({len(_written)} copy/copies): {', '.join(_written)}")
-    for _s in _skipped:
-        print(f"  [repricer] WARN not updated: {_s}")
-
-    _holdings_lock.__exit__(None, None, None)
-    try:
-        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
-        _ms = sync_portfolio_watchlist_membership(portfolio)
-        if _ms.get("exited"):
-            print(f"portfolio watchlist membership: exited {_ms['exited']} sold symbols")
-    except Exception as _e:
-        print(f"portfolio watchlist membership sync failed: {_e}")
-
-    cache_path = state_dir / "finviz_quote_cache.json"
-    if cache_path.exists():
-        cache = json.loads(cache_path.read_text(encoding="utf-8"))
-        meta  = cache.get("_meta", {})
-        print(f"Quote cache: {meta.get('symbols_cached',0)} symbols | updated {meta.get('last_updated','?')}")
+    main(state_dirs)

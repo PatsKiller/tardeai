@@ -30,7 +30,11 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 
 SEC_TICKER_MAP_URL = "https://www.sec.gov/files/company_tickers.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
-USER_AGENT = "TradeAI Research (operator contact on file)"
+# User-Agent: scripts/lib/sec_edgar_client.py (config + local override; fails closed, DSN-20261101 P0-T2).
+try:
+    from scripts.lib import sec_edgar_client as _sec_client
+except ImportError:  # scripts/ on sys.path
+    from lib import sec_edgar_client as _sec_client  # type: ignore
 
 MAX_FETCHES = 1
 UNAVAILABLE = "UNAVAILABLE"
@@ -81,7 +85,8 @@ def resolve_issuer(symbol: str, ticker_map: dict[str, dict[str, Any]]
 def fetch_one_filing_header(cik: int, *, timeout: int = 20) -> dict[str, Any]:
     """Exactly one HTTP GET. Returns the latest 10-K/10-Q header, or an error."""
     url = SEC_SUBMISSIONS_URL.format(cik=int(cik))
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    req = urllib.request.Request(url, headers=_sec_client.headers("application/json"))
+    _sec_client.throttle()
     with urllib.request.urlopen(req, timeout=timeout) as resp:   # noqa: S310
         doc = json.loads(resp.read().decode("utf-8", errors="replace"))
     recent = (doc.get("filings") or {}).get("recent") or {}

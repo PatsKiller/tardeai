@@ -156,14 +156,53 @@ export function marketRiskV005(tier: 'YELLOW' | 'ORANGE' = 'YELLOW') {
   }
 }
 
+/** Design home/v006: the v005 projection plus the Protect / Hedge / Rotate join, folded groups, segment status and the
+ *  glossary (read from the committed config/market_risk_glossary.json). Synthetic DEMO symbols and accounts only. */
+export function marketRiskV006(tier: 'YELLOW' | 'ORANGE' = 'YELLOW', hedgeVerdict: 'NOT_NOW' | 'CONSIDER' | 'UNKNOWN' = 'NOT_NOW') {
+  const base: any = marketRiskV005(tier)
+  const raw = JSON.parse(readFileSync(`${process.cwd()}/../../config/market_risk_glossary.json`, 'utf-8')).terms as Record<string, { label: string; text: string }>
+  const glossary = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, { label: v.label, text: v.text.replace('{single_sector_pct}', '30').replace('{trigger_book_pct}', '10').replace('{index_trigger_lagging_sectors}', '4') }]))
+  const items = base.review.map((r: any) => ({ ...r, pct_account: r.symbol === 'DEMOA' && r.account_label === 'Demo Roth' ? 88.8 : 12.5 }))
+  items[0].consideration = 'stop 2.9% below last; one stock is 89% of the account, far above the 30% sector budget; with the Demo IRA position, $70,000 in DEMOA across 2 accounts'
+  items[1].consideration = 'no stop; with the Demo Roth position, $70,000 in DEMOA across 2 accounts'
+  items[2].consideration = 'no stop; trades overnight now; 41.2% of the account unprotected vs the 10% budget'
+  const hedge: Record<string, any> = {
+    NOT_NOW: { verdict: 'NOT_NOW', thesis_state: 'RED', candidates: ['SH', 'PSQ', 'DOG', 'RWM'], since: '2031-03-07', reason: null,
+      thresholds: { trigger_book_pct: 10, index_trigger_lagging_sectors: 4, materiality_exposure_pct: 8, bounce_day_pct: 0.75 },
+      largest_weakening: { label: 'Technology', pct_invested: 4.1 }, lagging_count: 1, stressed_usd: 12_400, stressed_pct_book: 2.48, stressed_pct_invested: 4.13, entry: null },
+    CONSIDER: { verdict: 'CONSIDER', thesis_state: 'GREEN', candidates: ['PSQ'], since: '2031-03-09', reason: null,
+      thresholds: { trigger_book_pct: 10, index_trigger_lagging_sectors: 4, materiality_exposure_pct: 8, bounce_day_pct: 0.75 },
+      largest_weakening: { label: 'Technology', pct_invested: 11.2 }, lagging_count: 2, stressed_usd: 40_000, stressed_pct_book: 8, stressed_pct_invested: 13.3,
+      entry: { inverse: 'PSQ', bench: 'QQQ', state: 'AMBER', label: 'WAIT FOR BOUNCE DAY' } },
+    UNKNOWN: { verdict: 'UNKNOWN', thesis_state: 'UNKNOWN', candidates: [], since: null, reason: 'stale', as_of: iso(86_400_000 * 6),
+      thresholds: { trigger_book_pct: 10, index_trigger_lagging_sectors: 4, materiality_exposure_pct: 8, bounce_day_pct: 0.75 }, largest_weakening: null, lagging_count: 0, entry: null },
+  }
+  return { ...base,
+    protect: { items: items.slice(0, 3), more: items.slice(3).map((x: any) => ({ symbol: x.symbol, account_label: x.account_label, short: x.text.split(' · ')[0], to: x.to })) },
+    hedge: hedge[hedgeVerdict],
+    rotate: { as_of: '2031-03-07', none_reason: null, groups: [
+      { key: 'healthcare', label: 'Healthcare', rs1: 2.25, rs5: 3.69, state: 'RESILIENT', leadership_class: 'UNKNOWN', desk_state: 'LEADING', usd: 0 },
+      { key: 'materials', label: 'Materials', rs1: 2.19, rs5: 3.33, state: 'RESILIENT', leadership_class: 'UNKNOWN', desk_state: 'LEADING', usd: 20_000 },
+      { key: 'energy', label: 'Energy', rs1: 3.66, rs5: 1.52, state: 'RESILIENT', leadership_class: 'UNKNOWN', desk_state: 'LEADING', usd: 0 } ] },
+    sectors_folded: [{ key: 'ai_basket', label: 'AI basket', state: 'STRESS', usd: 28 }, { key: 'real_estate', label: 'Real estate', state: 'UNKNOWN', usd: 1 }],
+    glossary,
+    segments_status: { DEMOY: { status: 'approved', groups: { industrials: 0.12, comm: 0.4, tech: 0.48, ai_basket: 0.84 }, as_of: '2031-01-31', source: 'DEMO 10-Q, Notes 3 and 18' } },
+    card_config: { ...base.card_config, fold_below_usd: 100 },
+  }
+}
+
 /** Route the market-risk endpoints on top of whatever page fixtures are already installed (later routes win). */
-export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow' | 'yellow_live' | 'yellow_shadow' | 'yellow_stale' | 'yellow_empty' | 'yellow_nobook' | 'orange' | 'v005_yellow' | 'v005_orange' | 'v005_unreconciled' | 'v005_nostops' | 'v005_file', writes: string[] = []) {
+export async function marketRiskRoutes(page: Page, variant: 'red' | 'green' | 'not_evaluated' | 'shadow_red' | 'shadow_yellow' | 'carried_yellow' | 'yellow_live' | 'yellow_shadow' | 'yellow_stale' | 'yellow_empty' | 'yellow_nobook' | 'orange' | 'v005_yellow' | 'v005_orange' | 'v005_unreconciled' | 'v005_nostops' | 'v005_file' | 'v006_yellow' | 'v006_orange' | 'v006_consider' | 'v006_unknown' | 'v006_rotate_none' | 'v006_pending', writes: string[] = []) {
   const v4: Record<string, unknown> = {
     yellow_live: marketRiskYellow('live'), yellow_shadow: marketRiskYellow('shadow'),
     yellow_stale: { ...marketRiskYellow('shadow'), state: 'stale', stale: true, age_hours: 3.2, as_of: iso(3.2 * 3_600_000) },
     yellow_empty: { ...marketRiskYellow('live'), contributors: [], book: null },
     yellow_nobook: { ...marketRiskYellow('live'), book: null },
     v005_yellow: marketRiskV005('YELLOW'), v005_orange: marketRiskV005('ORANGE'),
+    v006_yellow: marketRiskV006('YELLOW'), v006_orange: marketRiskV006('ORANGE'), v006_consider: marketRiskV006('YELLOW', 'CONSIDER'),
+    v006_unknown: marketRiskV006('YELLOW', 'UNKNOWN'),
+    v006_rotate_none: { ...marketRiskV006('YELLOW'), rotate: { as_of: '2031-03-07', groups: [], none_reason: 'No group is beating SPY on both 1 and 5 sessions today.' } },
+    v006_pending: { ...marketRiskV006('YELLOW'), segments_status: { DEMOY: { status: 'pending', groups: null, as_of: '2031-01-31', source: 'DEMO 10-Q' } } },
     v005_nostops: { ...marketRiskV005('YELLOW'), book_exposure: { ...marketRiskV005('YELLOW').book_exposure, stops_known: false },
       review: marketRiskV005('YELLOW').review.filter((r: any) => !r.kinds.includes('no_stop') && !r.kinds.includes('stop_near')), budgets_detail: [],
       book: { budgets: [{ budget: 'unprotected_pct', scope: 'account', breached: true }] } },

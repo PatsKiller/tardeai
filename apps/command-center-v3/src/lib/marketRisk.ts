@@ -52,10 +52,32 @@ export interface MarketRisk {
   reentry_card?: { recent_sessions?: number; max_rows?: number } | null
   card_config?: CardConfig | null
   alerts?: { sends: number; priorities: string[] } | null
+  /* ── design home/v006 (API-side join: scripts/lib/market_risk_home_actions.py) ── */
+  protect?: ProtectBlock | null
+  hedge?: HedgeBlock | null
+  rotate?: RotateBlock | null
+  sectors_folded?: FoldedGroup[]
+  glossary?: Record<string, GlossaryTerm> | null
+  segments_status?: Record<string, SegmentStatus> | null
 }
 
+export interface GlossaryTerm { label: string; text: string }
+export interface ProtectItem extends ReviewItem { pct_account?: number | null; consideration?: string | null; clauses?: { key: string; text: string }[] }
+export interface ProtectBlock { items: ProtectItem[]; more: { symbol: string; account_label?: string | null; short?: string | null; to?: string | null }[] }
+export interface HedgeBlock {
+  verdict: 'NOT_NOW' | 'WATCH' | 'CONSIDER' | 'UNKNOWN'; thesis_state?: string; candidates?: string[]; since?: string | null; as_of?: string | null; reason?: string | null
+  thresholds?: { trigger_book_pct?: number | null; index_trigger_lagging_sectors?: number | null; materiality_exposure_pct?: number | null; bounce_day_pct?: number | null }
+  largest_weakening?: { label?: string | null; pct_invested?: number | null } | null; lagging_count?: number | null
+  stressed_usd?: number | null; stressed_pct_book?: number | null; stressed_pct_invested?: number | null
+  entry?: { inverse?: string | null; bench?: string | null; state?: string | null; label?: string | null } | null
+}
+export interface RotateGroup { key: string; label: string; rs1: number | null; rs5: number | null; state?: string | null; leadership_class?: string | null; desk_state?: string | null; usd?: number | null }
+export interface RotateBlock { groups: RotateGroup[]; as_of?: string | null; none_reason?: string | null }
+export interface FoldedGroup { key: string; label: string; state: string; usd: number }
+export interface SegmentStatus { status: 'approved' | 'pending'; groups?: Record<string, number> | null; basis?: string | null; as_of?: string | null; source?: string | null }
+
 /** Display limits from config (home_review / reentry_watch.card), passed by the API — never literals in the UI. */
-export interface CardConfig { max_review_items?: number; max_reentry_rows?: number; recent_sessions?: number; lookthrough_top_groups?: number; budget_drivers_shown?: number }
+export interface CardConfig { fold_below_usd?: number; max_review_items?: number; max_reentry_rows?: number; recent_sessions?: number; lookthrough_top_groups?: number; budget_drivers_shown?: number }
 
 export interface ShockType { class?: string; label?: string; headline?: string }
 export interface HeatRow { key: string; label: string; kind: string; state: string; tier?: string; r1?: number | null; r5?: number | null; rs1?: number | null; rs5?: number | null; reason_unknown?: string | null; as_of?: string | null }
@@ -78,7 +100,12 @@ export interface ReentryStages {
   stage1?: { met: number; of: number; conditions: StageCond[] }; stage2?: { met: boolean; conditions: StageCond[] }; error?: string
 }
 export interface WashSale { state: 'occurred' | 'window_open'; loss_sale_date?: string; until?: string; rebuy_date?: string; rebuy_price?: number | null; account_label?: string; deferred_loss_usd?: number | null }
-export interface ReentryCard { symbol: string; exit_date: string; exit_price?: number | null; status?: string; conditions?: StageCond[]; stages?: ReentryStages | null; wash_sale?: WashSale | null; look_through?: { groups?: Record<string, number>; basis?: string | null } | null }
+export interface ReentryCurrentQuote {
+  status?: string; price?: number | null; source?: string; session?: string; session_date?: string
+  expected_session_date?: string; as_of?: string | null; basis?: string; reason?: string | null; stale?: boolean
+  pct_vs_exit?: number | null; pct_vs_sma20?: number | null
+}
+export interface ReentryCard { current_quote?: ReentryCurrentQuote | null; symbol: string; exit_date: string; exit_price?: number | null; status?: string; conditions?: StageCond[]; stages?: ReentryStages | null; wash_sale?: WashSale | null; look_through?: { groups?: Record<string, number>; basis?: string | null } | null }
 export interface ReentryDetail { exit_account_label?: string | null; held_elsewhere_labels?: string[]; wash_sale?: WashSale | null }
 
 export const ACTIONABLE: readonly Tier[] = ['ORANGE', 'RED'] as const
@@ -107,6 +134,12 @@ export function unwrapMarketRisk(resp: unknown): MarketRisk | null {
     reentry_card: raw.reentry_card ?? null,
     card_config: raw.card_config ?? null,
     alerts: raw.alerts && typeof raw.alerts.sends === 'number' ? { sends: raw.alerts.sends, priorities: Array.isArray(raw.alerts.priorities) ? raw.alerts.priorities : [] } : null,
+    protect: raw.protect && Array.isArray(raw.protect.items) ? { items: raw.protect.items, more: Array.isArray(raw.protect.more) ? raw.protect.more : [] } : null,
+    hedge: raw.hedge && typeof raw.hedge.verdict === 'string' ? raw.hedge : null,
+    rotate: raw.rotate && Array.isArray(raw.rotate.groups) ? raw.rotate : null,
+    sectors_folded: Array.isArray(raw.sectors_folded) ? raw.sectors_folded : [],
+    glossary: raw.glossary && typeof raw.glossary === 'object' ? raw.glossary : null,
+    segments_status: raw.segments_status && typeof raw.segments_status === 'object' ? raw.segments_status : null,
   }
 }
 
@@ -367,7 +400,7 @@ const SHOCK_WORDS: Record<string, string> = {
 }
 const STRESSED = new Set(['STRESS', 'WEAK'])
 
-export type GroupChip = 'STRESS' | 'WEAK' | 'HOLDING' | 'NOT MEAS.'
+export type GroupChip = 'STRESS' | 'WEAK' | 'RESILIENT' | 'HOLDING' | 'NOT MEAS.'
 export interface SectorRowModel { key: string; label: string; theme: boolean; chip: GroupChip; tone: Tone; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; usd: string; pctBook: string; held: boolean; unknown: boolean; reason: string | null }
 export interface ReentryRowModel {
   symbol: string; head: string; now: string; vsExit: string; vsExitNeg: boolean; vsMa: string; trend: string; verdict: string; verdictTone: Tone
@@ -391,6 +424,62 @@ export interface ActionableModel {
   stopsKnown: boolean
   reentry: ReentryRowModel[]
   reentryMore: string
+  /* design home/v006 */
+  foldLine: string
+  protect: { items: ProtectRowModel[]; more: string } | null
+  hedge: HedgeModel | null
+  rotate: RotateModel | null
+  segments: SegmentRowModel[]
+  glossary: Record<string, GlossaryTerm>
+}
+export interface ProtectRowModel { symbol: string; account: string; usd: string; pct: string; consideration: string; to: string; linkLabel: string }
+export interface HedgeModel { verdict: string; tone: Tone; line: string; lane: string; short: string }
+export interface RotateModel { rows: { key: string; label: string; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; desk: string; usd: string }[]; foot: string; none: string | null; short: string }
+export interface SegmentRowModel { symbol: string; status: 'approved' | 'pending'; line: string; split: { label: string; pct: number }[] }
+
+const HEDGE_WORD: Record<string, { word: string; tone: Tone }> = {
+  NOT_NOW: { word: 'Not now', tone: 'success' }, WATCH: { word: 'Watch', tone: 'warning' },
+  CONSIDER: { word: 'Consider', tone: 'elevated' }, UNKNOWN: { word: 'Unknown', tone: 'warning' },
+}
+const THESIS_WORDS: Record<string, string> = { RED: 'no bearish thesis', AMBER: 'deteriorating, not yet eligible', GREEN: 'thesis green' }
+
+/** design home/v006 Hedge block text: the Defense desk's stoplight verdict against its own config thresholds. */
+export function hedgeModel(h: HedgeBlock | null | undefined): HedgeModel | null {
+  if (!h) return null
+  const w = HEDGE_WORD[h.verdict] ?? HEDGE_WORD.UNKNOWN
+  const t = h.thresholds ?? {}
+  const lw = h.largest_weakening
+  const pct = (v: number | null | undefined) => v == null ? '—' : `${(+v).toFixed(1)}%`
+  const now = `now ${lw?.label ? `${lw.label} ${pct(lw.pct_invested)}` : 'no sector weakening'}, ${h.lagging_count ?? 0} sector${h.lagging_count === 1 ? '' : 's'} lagging`
+  let line: string
+  if (h.verdict === 'NOT_NOW') {
+    line = `${fmtUsd(h.stressed_usd ?? 0)} (${pct(h.stressed_pct_book)} of book · ${pct(h.stressed_pct_invested)} of invested) is in stressed groups. The Defense desk considers a hedge when one weakening sector is ≥ ${t.trigger_book_pct ?? '—'}% of invested, or ${t.index_trigger_lagging_sectors ?? '—'}+ sectors lag — ${now}.`
+  } else if (h.verdict === 'CONSIDER') {
+    const e = h.entry
+    line = `${lw?.label ?? 'A sector'} is ${pct(lw?.pct_invested)} of invested and weakening — above the ${t.trigger_book_pct ?? '—'}% the Defense desk uses.${e?.inverse ? ` ${e.inverse}: thesis green · entry ${String(e.label ?? e.state ?? 'not evaluated').toLowerCase()} (bounce days of +${t.bounce_day_pct ?? '—'}% on ${e.bench ?? 'the index'}).` : ''}`
+  } else if (h.verdict === 'WATCH') {
+    line = `A trigger is active but your mapped exposure is below the ${t.materiality_exposure_pct ?? '—'}% materiality the stoplight uses — ${now}.`
+  } else {
+    line = `Defense stoplight ${h.reason === 'stale' ? `last ran ${shortTime(h.as_of)}` : (h.reason ?? 'unavailable')} — no verdict until it runs again.`
+  }
+  const lane = h.thesis_state && THESIS_WORDS[h.thesis_state]
+    ? `Inverse lane ${(h.candidates ?? []).join(' · ')}: ${THESIS_WORDS[h.thesis_state]}${h.since ? ` since ${shortDay(h.since)}` : ''}.`
+    : ''
+  const short = h.verdict === 'NOT_NOW' ? `${pct(h.stressed_pct_book)} of book in stressed groups` : h.verdict === 'CONSIDER' ? `${lw?.label ?? 'a sector'} above the Defense desk threshold` : h.verdict === 'WATCH' ? 'deteriorating, below materiality' : 'stoplight not current'
+  return { verdict: w.word, tone: w.tone, line, lane, short }
+}
+
+export function rotateModel(r: RotateBlock | null | undefined): RotateModel | null {
+  if (!r) return null
+  const rows = (r.groups ?? []).map(g => ({
+    key: g.key, label: g.label, rs1: fmtSignedPct(g.rs1), rs5: fmtSignedPct(g.rs5), rs1n: g.rs1 ?? null, rs5n: g.rs5 ?? null,
+    desk: g.desk_state ? `desk ${g.desk_state}` : '', usd: g.usd != null ? fmtUsd(g.usd) : '—',
+  }))
+  return {
+    rows, none: rows.length ? null : (r.none_reason ?? 'No group is beating SPY on both 1 and 5 sessions today.'),
+    foot: `Relative strength vs SPY${r.as_of ? `, ${shortDay(r.as_of)} close` : ''}. Groups beating SPY on both 1 and 5 sessions — not a buy list.`,
+    short: rows.length ? rows.map(x => `${x.label} ${x.rs1}/${x.rs5}`).join(' · ') : 'no group leading on both horizons',
+  }
 }
 
 const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success' }
@@ -443,8 +532,9 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
   const groups = be?.groups ?? {}
   const rows: SectorRowModel[] = heat.map(h => {
     const unknown = h.state === 'UNKNOWN'
-    const chip: GroupChip = unknown ? 'NOT MEAS.' : h.state === 'STRESS' ? 'STRESS' : h.state === 'WEAK' ? 'WEAK' : 'HOLDING'
-    const tone: Tone = chip === 'STRESS' ? 'danger' : chip === 'WEAK' ? 'elevated' : chip === 'HOLDING' ? 'success' : 'warning'
+    // design home/v006: RESILIENT (beating SPY) and HOLDING (in line) are different chips; v005 showed HOLDING for both
+    const chip: GroupChip = unknown ? 'NOT MEAS.' : h.state === 'STRESS' ? 'STRESS' : h.state === 'WEAK' ? 'WEAK' : h.state === 'RESILIENT' ? 'RESILIENT' : 'HOLDING'
+    const tone: Tone = chip === 'STRESS' ? 'danger' : chip === 'WEAK' ? 'elevated' : chip === 'RESILIENT' ? 'success' : chip === 'HOLDING' ? 'neutral' : 'warning'
     const g = groups[h.key]
     return {
       key: h.key, label: h.label, theme: h.kind === 'theme', chip, tone,
@@ -453,6 +543,15 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       held: !!g && g.usd > 0, unknown, reason: h.reason_unknown ?? null,
     }
   })
+  const foldedKeys = new Set((mr.sectors_folded ?? []).map(f => f.key))
+  const foldStressed = (mr.sectors_folded ?? []).filter(f => f.state !== 'UNKNOWN')
+  const foldUnknown = (mr.sectors_folded ?? []).filter(f => f.state === 'UNKNOWN')
+  const under = cfg.fold_below_usd != null ? `under ${fmtUsd(cfg.fold_below_usd)}` : 'little'
+  const foldLine = [
+    foldStressed.length ? `Also stressed, you hold ${under}: ${foldStressed.map(f => `${f.label} (${fmtUsd(f.usd)})`).join(', ')}.` : '',
+    foldUnknown.length ? `Not measured, you hold ${under}: ${foldUnknown.map(f => `${f.label} (${fmtUsd(f.usd)})`).join(', ')}.` : '',
+  ].filter(Boolean).join(' ')
+  for (let i = rows.length - 1; i >= 0; i--) if (foldedKeys.has(rows[i].key)) rows.splice(i, 1)
   const rank = (r: SectorRowModel) => (r.chip === 'STRESS' || r.chip === 'WEAK') && r.held ? 0 : r.unknown && r.held ? 1 : r.held ? 2 : 3
   const usdOf = (r: SectorRowModel) => groups[r.key]?.usd ?? 0
   rows.sort((a, b) => rank(a) - rank(b) || usdOf(b) - usdOf(a))
@@ -514,18 +613,51 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const ltLine = top3.length
       ? `look-through: ${top3.map(([k, v]) => `${heat.find(h => h.key === k)?.label ?? k} ${Math.round(v * 100)}%`).join(' · ')}${rest > 0.01 ? ` · other ${Math.round(rest * 100)}%` : ''}${c.look_through?.basis ? ` (${c.look_through.basis})` : ''}`
       : 'look-through: not measured'
-    const ma = st.pct_vs_sma20 != null ? `${fmtSignedPct(st.pct_vs_sma20)} vs 20-day` : st.anchored_vwap != null ? 'short history: anchored VWAP' : ''
+    const quote = c.current_quote
+    const zoned = (value: unknown): number => typeof value === 'string' && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? Date.parse(value) : NaN
+    const quoteAt = zoned(quote?.as_of), evaluatedAt = zoned(mr.as_of)
+    const etClock = (stamp: number) => {
+      if (!Number.isFinite(stamp)) return null
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+      }).formatToParts(new Date(stamp)).map(part => [part.type, part.value]))
+      return { date: `${parts.year}-${parts.month}-${parts.day}`, weekday: parts.weekday,
+        seconds: Number(parts.hour) * 3600 + Number(parts.minute) * 60 + Number(parts.second) }
+    }
+    const quoteClock = etClock(quoteAt), evaluatedClock = etClock(evaluatedAt)
+    const quoteEvidenceKnown = quote?.status === 'available' && !quote.stale && !mr.stale
+      && typeof quote.price === 'number' && Number.isFinite(quote.price) && quote.price > 0
+      && quote.source === 'market_quotes:alpaca' && quote.session === 'regular'
+      && typeof quote.session_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(quote.session_date)
+      && quote.session_date === quote.expected_session_date && quoteClock?.date === quote.session_date
+      && ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(quoteClock?.weekday ?? '')
+      && quoteClock!.seconds >= 9.5 * 3600 && quoteClock!.seconds < 16 * 3600 + 60
+      && Number.isFinite(evaluatedAt) && quoteAt <= evaluatedAt
+    const quoteKnown = quoteEvidenceKnown && quoteClock!.date === evaluatedClock?.date
+    const priorRegularQuote = quoteEvidenceKnown && !!evaluatedClock && quoteClock!.date < evaluatedClock.date
+    const finite = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
+    const price = quoteKnown ? quote!.price : null
+    const vsExit = quoteKnown ? finite(quote!.pct_vs_exit) : null
+    const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
+    const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
+    const priceEvidence = quoteKnown
+      ? `Stored regular-session observation · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
+      : priorRegularQuote
+        ? `Last stored regular-session observation ${fmtPrice(quote!.price)} · ${quote!.session_date} · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
+        : `${quote?.stale || mr.stale || quote?.status === 'stale' ? 'Price stale' : 'Price unavailable'} · canonical regular-session quote not measured`
     return {
       symbol: sym,
       head: `exit ${fmtPrice(c.exit_price ?? st.exit_price)} · ${shortDay(c.exit_date)} · ${det.exit_account_label ?? 'one account'}${held}`,
-      now: fmtPrice(st.last_close), vsExit: fmtSignedPct(st.pct_vs_exit), vsExitNeg: (st.pct_vs_exit ?? 0) < 0, vsMa: ma,
+      now: quoteKnown ? fmtPrice(price) : priorRegularQuote ? '—' : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
+      vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
       verdict: st.verdict ?? 'Still falling', verdictTone: VERDICT_TONE[st.verdict ?? 'Still falling'] ?? 'neutral',
       stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
       waiting: unmet1.length ? unmet1.join(', ') : 'all met',
       invalidates: fmtPrice(st.invalidation_level),
       stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
-      wash, earnings, lookThrough: ltLine,
+      wash, earnings, lookThrough: `${priceEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
     }
   })
   const firstOld = cards.filter(([, c]) => !isRecent(c))
@@ -533,7 +665,38 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     ? `+${older} older exit${older === 1 ? '' : 's'} on watch (${shortDay(firstOld[firstOld.length - 1]?.[1].exit_date)} → ${shortDay(firstOld[0]?.[1].exit_date)})`
     : ''
   const review = (mr.review ?? []).slice(0, cfg.max_review_items ?? (mr.review ?? []).length)
+  const protect = mr.protect ? {
+    items: mr.protect.items.map(it => ({
+      symbol: it.symbol, account: it.account_label, usd: fmtUsd(it.usd),
+      pct: it.pct_account != null ? `${Math.round(it.pct_account)}% of account` : '',
+      consideration: it.consideration || it.text, to: it.to,
+      linkLabel: (it.kinds ?? []).some(k => k === 'stop_near' || k === 'no_stop') ? 'Review stop →' : 'Review →',
+    })),
+    more: mr.protect.more.length ? `+${mr.protect.more.length} more: ${mr.protect.more.map(x => `${x.symbol}${x.account_label ? ` · ${x.account_label}` : ''}${x.short ? ` (${x.short})` : ''}`).join(' · ')}` : '',
+  } : null
+  const segments: SegmentRowModel[] = Object.entries(mr.segments_status ?? {}).map(([sym, st]) => {
+    const split = Object.entries(st.groups ?? {}).filter(([k]) => !themeKeys.has(k) && k !== 'ai_basket').sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => ({ label: heat.find(h => h.key === k)?.label ?? k, pct: Math.round(v * 100) }))
+    const themes = Object.entries(st.groups ?? {}).filter(([k]) => themeKeys.has(k) || k === 'ai_basket')
+      .map(([k, v]) => `${heat.find(h => h.key === k)?.label ?? k} theme ${Math.round(v * 100)}% (overlaps)`)
+    return {
+      symbol: sym, status: st.status, split,
+      line: st.status === 'approved'
+        ? `${[...split.map(x => `${x.label} ${x.pct}%`), ...themes].join(' · ')} — weights approved, ${st.source ?? 'source on file'}, as of ${st.as_of ?? '—'}`
+        : 'segment weights pending approval — counted as its profile sector',
+    }
+  })
+  const profileSector = (sym: string): string => {
+    const g = Object.entries((mr.reentry_watch ?? {})[sym]?.look_through?.groups ?? {}).filter(([k]) => !themeKeys.has(k)).sort((a, b) => b[1] - a[1])[0]
+    return g ? (heat.find(h => h.key === g[0])?.label ?? g[0]) : 'its profile sector'
+  }
+  for (const sg of segments) if (sg.status === 'pending') sg.line = `segment weights pending approval — counted as ${profileSector(sg.symbol)}`
+  for (const r of reentry) {
+    const st = (mr.segments_status ?? {})[r.symbol]
+    if (st?.status === 'pending') r.lookThrough = `segment weights pending approval — counted as ${profileSector(r.symbol)}`
+  }
   return {
+    foldLine, protect, hedge: hedgeModel(mr.hedge), rotate: rotateModel(mr.rotate), segments, glossary: mr.glossary ?? {},
     verdict, exposure, exposureNote, topReview: review[0] ?? null,
     sectors: rows, sectorsFoot: foot,
     positions: be?.rows ?? [], positionsMore,
