@@ -224,14 +224,10 @@ def _run_escalation_tier1(*, background: bool = True) -> dict:
         if background:
             log_path.parent.mkdir(parents=True, exist_ok=True)
             logf = open(log_path, "a")
-            # Use shell flock so we don't double-run with cron
-            shell_cmd = (
-                f"flock -n {ESCALATION_LOCK} {py} "
-                f"{PROJECT_ROOT / 'scripts' / 'claude_escalation_handler.py'} --tier1-only"
-            )
-            subprocess.Popen(
-                shell_cmd,
-                shell=True,
+            # flock so we don't double-run with cron. Argument list, no shell (injection triage 2026-11-06).
+            subprocess.Popen(  # noqa: S603 -- fixed argv from module constants, no shell
+                ["flock", "-n", str(ESCALATION_LOCK), str(py),  # noqa: S607 -- flock from PATH, as the cron line runs it
+                 str(PROJECT_ROOT / "scripts" / "claude_escalation_handler.py"), "--tier1-only"],
                 cwd=str(PROJECT_ROOT),
                 stdout=logf,
                 stderr=logf,
