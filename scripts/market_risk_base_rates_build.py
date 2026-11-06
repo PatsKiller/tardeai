@@ -7,6 +7,11 @@
 Input: the committed public 10-year daily fixture (tests/fixtures/market_risk_scenarios/bars.csv.gz). 2026 is held
 out: only days dated 2016-2025 become rows, and a forward outcome is recorded only when its whole window ends by
 2025-12-31. Never hand-edit the table. No position data (public market prices only).
+
+Weekend rows (PKG-SELLOFF-INTEL-20261106 D): a row whose next session is the Monday three calendar days later carries
+``"wk": 1``; holiday weekends (Thursday->Monday, Friday->Tuesday) are left out so the measure is exactly Friday close to
+Monday. For SPY and QQQ every row also records ``o1``, the next session's OPEN against this close, so the weekend's
+Monday-open gap can be compared with an ordinary overnight gap under the same conditions. Measured, never assumed.
 """
 
 from __future__ import annotations
@@ -33,21 +38,34 @@ FIRST_ROW = date(2016, 1, 1)
 SYMBOLS = ("SPY", "QQQ", "SOXX", "SMH", "^VIX") + br.SECTOR_ETFS
 
 
-def load_closes(path: Path = BARS) -> tuple[list[date], dict[str, dict[date, float]]]:
+def load_closes(
+    path: Path = BARS,
+) -> tuple[list[date], dict[str, dict[date, float]], dict[str, dict[date, float]]]:
+    """Calendar, closes for every symbol, and opens for the indexes (``build(*load_closes())`` is the whole input)."""
     by: dict[str, dict[date, float]] = defaultdict(dict)
+    opens: dict[str, dict[date, float]] = defaultdict(dict)
     with gzip.open(path, "rt", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             if r["symbol"] in SYMBOLS and r.get("close"):
-                by[r["symbol"]][date.fromisoformat(r["date"])] = float(r["close"])
+                d = date.fromisoformat(r["date"])
+                by[r["symbol"]][d] = float(r["close"])
+                if r["symbol"] in br.INDEXES and r.get("open"):
+                    opens[r["symbol"]][d] = float(r["open"])
     cal = sorted(by["SPY"])
-    return cal, by
+    return cal, by, opens
 
 
 def _r(x: float | None, nd: int = 5) -> float | None:
     return None if x is None else round(x, nd)
 
 
-def build(cal: list[date], by: dict[str, dict[date, float]]) -> dict:
+def is_weekend_gap(d: date, nxt: date) -> bool:
+    """Friday close to the Monday three days later: a plain weekend, no holiday on either side."""
+    return d.weekday() == 4 and nxt.weekday() == 0 and (nxt - d).days == 3
+
+
+def build(cal: list[date], by: dict[str, dict[date, float]], opens: dict[str, dict[date, float]] | None = None) -> dict:
+    opens = opens or {}
     hist: dict[str, list[float]] = {s: [] for s in SYMBOLS}
     rows: list[dict] = []
     in_sample = [d for d in cal if d < HOLDOUT_START]
@@ -70,6 +88,8 @@ def build(cal: list[date], by: dict[str, dict[date, float]]) -> dict:
                 j = i + h
                 if j <= last_in and in_sample[j] in by[s]:
                     o[s][str(h)] = _r(by[s][in_sample[j]] / c0 - 1.0)
+            if s in br.INDEXES and i + 1 <= last_in and in_sample[i + 1] in opens.get(s, {}):
+                o[s]["o1"] = _r(opens[s][in_sample[i + 1]] / c0 - 1.0)
         spy0 = by["SPY"][d]
         fut = [by["SPY"][x] for x in in_sample[i + 1 : i + 121] if x in by["SPY"]]
         if i + 20 <= last_in:
@@ -83,9 +103,10 @@ def build(cal: list[date], by: dict[str, dict[date, float]]) -> dict:
             t = w.index(min(w))
             rec = next((k - t for k in range(t + 1, 120) if fut[k] >= spy0), None)
             o["SPY"]["recover120"] = rec
-        rows.append(
-            {"d": d.isoformat(), "f": {k: (_r(v) if isinstance(v, float) else v) for k, v in f.items()}, "o": o}
-        )
+        row = {"d": d.isoformat(), "f": {k: (_r(v) if isinstance(v, float) else v) for k, v in f.items()}, "o": o}
+        if i + 1 <= last_in and is_weekend_gap(d, in_sample[i + 1]):
+            row["wk"] = 1
+        rows.append(row)
     return {
         "schema": br.TABLE_SCHEMA,
         "generated_from": "tests/fixtures/market_risk_scenarios/bars.csv.gz (public daily closes)",
@@ -111,6 +132,14 @@ def summary(table: dict) -> str:
         lines.append(
             f"{pat} | {res['n_days']} | {s5['median_pct']} | {s20['median_pct']} | {s20['share_negative_pct']} | {p}"
         )
+    w = br.weekend({}, min_n=1, table=table)
+    for leg in ("close", "open"):
+        x, b = w["SPY"][leg], w["baseline"]["SPY"][leg]
+        lines.append(
+            f"weekend SPY Fri close -> Mon {leg}: n={x.get('n')} median {x.get('median_pct')}% "
+            f"lower {x.get('share_negative_pct')}% | other sessions n={b.get('n')} median {b.get('median_pct')}% "
+            f"lower {b.get('share_negative_pct')}% ({w['first_weekend']} .. {w['last_weekend']})"
+        )
     return "\n".join(lines)
 
 
@@ -118,8 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--write", action="store_true")
     a = ap.parse_args(argv)
-    cal, by = load_closes()
-    table = build(cal, by)
+    cal, by, opens = load_closes()
+    table = build(cal, by, opens)
     if a.write:
         raw = json.dumps(table, sort_keys=True, separators=(",", ":")).encode("utf-8")
         with open(br.TABLE_PATH, "wb") as out, gzip.GzipFile(filename="", mode="wb", fileobj=out, mtime=0) as fh:

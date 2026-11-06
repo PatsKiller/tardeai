@@ -206,6 +206,65 @@ def conditional(
     return out
 
 
+WEEKEND_LEGS = {"close": "1", "open": "o1"}  # Monday close / Monday open, each against the Friday close
+
+
+def weekend(feats: dict[str, Any], *, min_n: int = 20, table: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Friday close -> Monday close and Monday open, under today's conditions, beside every other session.
+
+    PKG-SELLOFF-INTEL-20261106 D: measured, never assumed. Weekend rows are the build's ``wk`` rows (plain weekends,
+    no holiday). The same condition backoff as ``conditional`` runs on weekend rows only; the baseline is every
+    non-weekend session matching the SAME conditions (next close, next open). Every figure carries its n; a leg
+    below ``min_n`` is marked ``insufficient_history`` and no condition set short of ``min_n`` is reported.
+    """
+    table = table or load_table()
+    rows = table["rows"]
+    wk = [r for r in rows if r.get("wk") == 1]
+    conds = tuple(c for c in CONDITION_ORDER if feats.get(c) is not None)
+    used: tuple[str, ...] = ()
+    matched: list[dict[str, Any]] = []
+    loosest = 0  # weekends matching the loosest condition set tried, so "too few" can say how few
+    for k in range(len(conds), 0, -1) if conds else (0,):
+        cand = [r for r in wk if _matches(r, feats, conds[:k])]
+        loosest = len(cand)
+        if len(cand) >= min_n:
+            used, matched = conds[:k], cand
+            break
+    out: dict[str, Any] = {
+        "schema": "MarketRiskWeekend@v1",
+        "table_as_of": table.get("generated_from"),
+        "holdout": table.get("holdout"),
+        "conditions": {c: feats.get(c) for c in used},
+        "dropped": [c for c in conds if c not in used],
+        "n_weekends": len(matched),
+        "weekends_in_table": len(wk),
+        "min_n": min_n,
+    }
+    if not matched:
+        out["insufficient_history"] = True
+        out["n_at_loosest"] = loosest
+        out["loosest_conditions"] = {c: feats.get(c) for c in conds[:1]}
+        return out
+    days = sorted(r["d"] for r in matched)
+    out["first_weekend"], out["last_weekend"] = days[0], days[-1]
+    base = [r for r in rows if r.get("wk") != 1 and _matches(r, feats, used)]
+
+    def legs(rs: list[dict[str, Any]], sym: str) -> dict[str, Any]:
+        res = {}
+        for leg, key in WEEKEND_LEGS.items():
+            d = _dist([r["o"][sym][key] for r in rs if r["o"].get(sym, {}).get(key) is not None])
+            if d["n"] < min_n:  # _dist always sets n (0 when empty)
+                d["insufficient_history"] = True
+            res[leg] = d
+        return res
+
+    out["baseline"] = {"sessions": len(base)}
+    for sym in INDEXES:
+        out[sym] = legs(matched, sym)
+        out["baseline"][sym] = legs(base, sym)
+    return out
+
+
 def analogs(feats: dict[str, Any], *, k: int = 3, min_gap_days: int = 30, table: Optional[dict] = None) -> list[dict]:
     """Nearest past dates by standardized feature distance — for EXPLANATION only, never scored."""
     table = table or load_table()
