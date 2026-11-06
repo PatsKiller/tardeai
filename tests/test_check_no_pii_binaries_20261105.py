@@ -16,6 +16,7 @@ pattern:
 
 Hermetic: temporary git repositories, no network, no real repository files.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -40,12 +41,34 @@ def _digest(paths) -> str:
     return hashlib.sha256("\n".join(sorted(paths)).encode("utf-8")).hexdigest()
 
 
-def _register(repo: Path, *, reviewed: dict | None = None, grandfathered=None, count=None, sha=None) -> None:
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _register(
+    repo: Path,
+    *,
+    reviewed: dict | None = None,
+    grandfathered=None,
+    count=None,
+    sha=None,
+    mutate=None,
+) -> None:
+    """Write the register in its canonical v2 shape. Each record's ``sha256`` is the digest of the file as it is in
+    the working tree right now, unless ``mutate`` changes the built records (for malformed-register tests)."""
     grand = sorted(grandfathered if grandfathered is not None else [])
+    files = {}
+    for p, rec in (reviewed or {}).items():
+        rec = dict(rec)
+        rec.setdefault("sha256", _sha((repo / p).read_bytes()))
+        files[p] = rec
+    entries = {p: {"reason": "grandfathered, unreviewed", "sha256": _sha((repo / p).read_bytes())} for p in grand}
+    if mutate:
+        mutate(entries)
     doc = {
         "schema": C.SCHEMA_BINARY_REVIEW,
-        "files": reviewed or {},
-        "grandfathered": {p: {"reason": "grandfathered, unreviewed"} for p in grand},
+        "files": files,
+        "grandfathered": entries,
         "grandfathered_count": len(grand) if count is None else count,
         "grandfathered_sha256": _digest(grand) if sha is None else sha,
     }
@@ -77,8 +100,13 @@ def _repo(tmp_path: Path, *, register=None, with_png: bool = True) -> Path:
     return repo
 
 
-REVIEWED = {TARGET: {"reason": "synthetic placeholder: no page, person or account", "reviewed_by": "cc-deepseek-3",
-                     "reviewed_at": "2026-11-05T14:00:00Z"}}
+REVIEWED = {
+    TARGET: {
+        "reason": "synthetic placeholder: no page, person or account",
+        "reviewed_by": "cc-deepseek-3",
+        "reviewed_at": "2026-11-05T14:00:00Z",
+    }
+}
 
 
 def test_an_unreadable_file_is_a_finding_not_a_pass(tmp_path):
@@ -132,7 +160,9 @@ def test_the_count_is_not_ratcheted(tmp_path):
 def _run(repo: Path, *extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--tree", *extra],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
 
 
@@ -167,7 +197,9 @@ def test_range_mode_sees_a_binary_added_by_the_change(tmp_path):
     _git(repo, "commit", "-q", "-m", "add another synthetic image")
     proc = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--range", "HEAD~1..HEAD"],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "assets/synthetic-second.png" in proc.stdout and "binary_unreadable" in proc.stdout
@@ -184,7 +216,9 @@ def test_range_mode_sees_a_text_file_replaced_with_binary(tmp_path):
     _git(repo, "commit", "-q", "-m", "replace it with binary content")
     proc = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--range", "HEAD~1..HEAD"],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "notes.txt" in proc.stdout and "binary_unreadable" in proc.stdout
@@ -197,7 +231,9 @@ def test_staged_mode_sees_a_modified_unregistered_binary(tmp_path):
     _git(repo, "add", "-A")
     proc = subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--staged"],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert TARGET in proc.stdout and "binary_unreadable" in proc.stdout
@@ -224,3 +260,174 @@ def test_the_register_is_its_canonical_rendering():
     assert path.read_text(encoding="utf-8") == render(doc), (
         "config/pii_binary_review.json is not its canonical rendering; write it with scripts/lib/ci_gates.render()"
     )
+
+
+# ── codex-cloud BLOCK at 73a3eccea: the register is evidence, not a path allowlist ────────────────
+#
+# CX1 the frozen enumeration is judged against a trusted ref (range base / HEAD / the gate-landing commit)
+# CX2 every record pins the reviewed blob's sha256; a different blob is a finding
+# CX3 a --staged scan reads the register from the index, never from the working tree
+
+
+def _run_staged(repo: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--staged"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def _run_range(repo: Path, rng: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "check_no_pii.py"), "--repo", str(repo), "--range", rng],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+
+def _head(repo: Path) -> str:
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+
+
+# ── CX1: a grandfathered addition must exist in the trusted ref ───────────────────────────────────
+
+
+def test_a_grandfathered_path_absent_from_the_gate_landing_commit_is_refused(tmp_path):
+    """codex-cloud P1 on #2691: adding a binary, its register record and an updated count/digest in one go must not
+    authorize itself. The frozen enumeration is judged against the commit that landed the register, not itself."""
+    repo = _repo(tmp_path, register=lambda r: _register(r, grandfathered=[TARGET]))
+    new = "assets/example-capture.png"  # never in the tree when the gate landed
+    (repo / new).write_bytes(PNG + b"a new capture")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add a capture")
+    # Re-enumerate with the new path and a recomputed count/digest: internally consistent, still unauthorized.
+    _register(repo, grandfathered=[TARGET, new])
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "enumerate it")
+    with pytest.raises(C.ScanError, match="cannot admit a path"):
+        C.scan_tree(repo, deny=[])
+    proc = _run(repo)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "cannot admit a path" in proc.stderr, proc.stderr
+
+
+def test_the_gate_landing_enumeration_is_still_green(tmp_path):
+    """Negative control for CX1: a path that WAS in the tree when the gate landed keeps its silence."""
+    repo = _repo(tmp_path, register=lambda r: _register(r, grandfathered=[TARGET]))
+    assert not [f for f in C.scan_tree(repo, deny=[]) if f.category.startswith("binary")]
+    proc = _run(repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_an_unresolvable_trusted_grandfather_ref_refuses(tmp_path):
+    """Fail closed: without the trusted ref the enumeration cannot be judged, so the scan is an error, not a pass."""
+    repo = _repo(tmp_path, register=lambda r: _register(r, grandfathered=[TARGET]))
+    with pytest.raises(C.ScanError, match="cannot be resolved"):
+        C.scan_tree(repo, deny=[], trusted_ref="refs/heads/no-such-ref")
+
+
+def test_range_mode_judges_grandfathering_against_the_range_base(tmp_path):
+    """The range base is the trusted ref in --range mode: a path added after it cannot join the enumeration."""
+    repo = _repo(tmp_path, register=lambda r: _register(r, grandfathered=[TARGET]))
+    landing = _head(repo)
+    new = "assets/example-capture.png"
+    (repo / new).write_bytes(PNG + b"a new capture")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add a capture")
+    _register(repo, grandfathered=[TARGET, new])
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "enumerate it")
+    with pytest.raises(C.ScanError, match="cannot admit a path"):
+        C.scan_range(repo, f"{landing}..HEAD", deny=[])
+
+
+# ── CX2: exemptions are bound to the blob, not the path ───────────────────────────────────────────
+
+
+def test_replacing_a_reviewed_binary_is_a_content_mismatch(tmp_path):
+    """codex-cloud P1 on #2691: a reviewed path is not a permanent allowlist; a different blob needs a review."""
+    repo = _repo(tmp_path, register=lambda r: _register(r, reviewed=REVIEWED))
+    (repo / TARGET).write_bytes(PNG + b"a live-page capture")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "replace the registered blob")
+    mism = [f for f in C.scan_tree(repo, deny=[]) if f.category == "binary_review_mismatch"]
+    assert [f.path for f in mism] == [TARGET], mism
+    proc = _run(repo)
+    assert proc.returncode == 1 and "content mismatch" in proc.stdout, proc.stdout + proc.stderr
+
+
+def test_replacing_a_grandfathered_binary_is_a_content_mismatch(tmp_path):
+    repo = _repo(tmp_path, register=lambda r: _register(r, grandfathered=[TARGET]))
+    (repo / TARGET).write_bytes(PNG + b"a live-page capture")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "replace the grandfathered blob")
+    mism = [f for f in C.scan_tree(repo, deny=[]) if f.category == "binary_review_mismatch"]
+    assert [f.path for f in mism] == [TARGET], mism
+
+
+def test_the_registered_blob_itself_stays_silent(tmp_path):
+    """Negative control for CX2: the exact bytes a person registered are still exempt."""
+    repo = _repo(tmp_path, register=lambda r: _register(r, reviewed=REVIEWED))
+    assert not [f for f in C.scan_tree(repo, deny=[]) if f.category.startswith("binary")]
+
+
+def test_a_register_record_without_a_digest_is_malformed(tmp_path):
+    repo = _repo(
+        tmp_path,
+        register=lambda r: _register(r, grandfathered=[TARGET], mutate=lambda entries: entries[TARGET].pop("sha256")),
+    )
+    with pytest.raises(C.ScanError, match="sha256"):
+        C.scan_tree(repo, deny=[])
+
+
+def test_range_mode_sees_a_registered_binary_replaced_by_different_content(tmp_path):
+    repo = _repo(tmp_path, register=lambda r: _register(r, grandfathered=[TARGET]))
+    (repo / TARGET).write_bytes(PNG + b"a live-page capture")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "replace the registered blob")
+    proc = _run_range(repo, "HEAD~1..HEAD")
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "binary_review_mismatch" in proc.stdout and TARGET in proc.stdout
+
+
+# ── CX3: a staged scan reads the register from the index ──────────────────────────────────────────
+
+
+def _staged_review(repo: Path, data: bytes) -> None:
+    _register(
+        repo,
+        reviewed={
+            TARGET: {
+                "reason": "synthetic placeholder; no page, person or account",
+                "reviewed_by": "cc-deepseek-4-pii",
+                "reviewed_at": "2026-11-05T22:00:00Z",
+                "sha256": _sha(data),
+            }
+        },
+    )
+
+
+def test_staged_scan_ignores_a_review_record_that_is_not_staged(tmp_path):
+    """codex-cloud P2 on #2691: exemptions for the staged snapshot come from the index. A review record left in the
+    working tree must not authorize a commit that does not contain it."""
+    repo = _repo(tmp_path)  # TARGET is committed, unregistered
+    replacement = PNG + b"staged replacement"
+    (repo / TARGET).write_bytes(replacement)
+    _staged_review(repo, replacement)  # matches the staged blob, but the register is NOT staged
+    _git(repo, "add", TARGET)  # stage only the binary
+    proc = _run_staged(repo)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "binary_unreadable" in proc.stdout and TARGET in proc.stdout
+
+
+def test_a_register_staged_with_the_binary_still_exempts_it(tmp_path):
+    """Negative control for CX3: the same record, staged together with the blob, is a valid staged exemption."""
+    repo = _repo(tmp_path)
+    replacement = PNG + b"staged replacement"
+    (repo / TARGET).write_bytes(replacement)
+    _staged_review(repo, replacement)
+    _git(repo, "add", "-A")
+    proc = _run_staged(repo)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
