@@ -68,7 +68,9 @@ def _discover_for(cur, spec):
     hri_text = ("(COALESCE(topic,'')||' '||COALESCE(summary,'')||' '||COALESCE(thesis,'')||' '||"
                 "COALESCE(array_to_string(tags,' '),'')||' '||COALESCE(array_to_string(strategy_tags,' '),''))")
     cond = " OR ".join([f"{hri_text} ILIKE %s" for _ in terms])
-    cur.execute(f"""SELECT symbol, topic, thesis, confidence_score, created_at
+    # cond: literal ILIKE fragments, one per term (terms are params); the window is the module constant
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- literal fragments + module constant; values are params
+        f"""SELECT symbol, topic, thesis, confidence_score, created_at
                     FROM hermes_research_intelligence
                     WHERE symbol IS NOT NULL AND created_at > now() - interval '{RESEARCH_WINDOW_DAYS} days'
                       AND ({cond})
@@ -82,7 +84,8 @@ def _discover_for(cur, spec):
     ie_text = ("(COALESCE(description,'')||' '||COALESCE(catalyst,'')||' '||COALESCE(sector,'')||' '||"
                "COALESCE(industry,'')||' '||COALESCE(array_to_string(tags,' '),''))")
     cond2 = " OR ".join([f"{ie_text} ILIKE %s" for _ in terms])
-    cur.execute(f"""SELECT display_name, catalyst, sector
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- cond2 is literal ILIKE fragments; terms are params
+        f"""SELECT display_name, catalyst, sector
                     FROM intelligence_entities
                     WHERE display_name ~ '^[A-Z]{{1,5}}$' AND ({cond2})
                     LIMIT 40""", [f"%{t}%" for t in terms])

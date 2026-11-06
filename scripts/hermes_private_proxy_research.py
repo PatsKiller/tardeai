@@ -169,7 +169,8 @@ def _ensure_table(cur):
         ("bucket", "text"), ("accepted", "boolean DEFAULT true"), ("rejected_reason", "text"),
         ("ticker_plan", "jsonb"),
     ]:
-        cur.execute(f"ALTER TABLE private_company_proxies ADD COLUMN IF NOT EXISTS {col} {typ}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- col/typ iterate the literal list in this loop
+            f"ALTER TABLE private_company_proxies ADD COLUMN IF NOT EXISTS {col} {typ}")
 
 
 def _parse(text):

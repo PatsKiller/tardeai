@@ -44,7 +44,8 @@ def run(apply=False):
     # Direct-table LATERAL (2026-06-11): the old CTE materialized all 217K snapshots and blocked the
     # (symbol, scored_at) index (130M cost, 48-min runs). Window bounded to 45 days; anchors sampled to one
     # snapshot per symbol per 6h bucket — calibration needs coverage, not every 30-min tick.
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- MIN_HOURS is a module constant int
+        f"""
         SELECT a.components, (b.price - a.price)/a.price AS fwd_return
         FROM (
             SELECT DISTINCT ON (symbol, date_trunc('hour', scored_at) )

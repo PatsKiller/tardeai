@@ -84,7 +84,8 @@ def main():
     order_clause = "CASE q.embedding_status WHEN 'pending' THEN 0 ELSE 1 END, q.created_at" if args.retry_failed else "q.created_at"
 
     # Read pending (and optionally failed) queue items
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- status/order clauses are one of two literals each
+        f"""
         SELECT q.id, q.source_research_id, q.title, q.content, q.source_type_target
         FROM hermes_embedding_queue q
         WHERE {status_clause}

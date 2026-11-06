@@ -64,8 +64,10 @@ def rec_direction(text: str | None) -> str:
 def refresh_close_cache(cur, cfg, backfill=False):
     """Upsert daily closes from market_quotes (last quote per symbol per day); SPY additionally
     from price_cache. Nightly touches only the last few days; --backfill-closes does history."""
-    window = "" if backfill else f"WHERE fetched_at >= NOW() - make_interval(days => {int(cfg['close_cache_refresh_days'])})"
-    cur.execute(f"""INSERT INTO daily_close_cache (symbol, price_date, close_price, source)
+    window = "" if backfill else "WHERE fetched_at >= NOW() - make_interval(days => %s)"
+    window_params = None if backfill else (int(cfg["close_cache_refresh_days"]),)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- window is one of two literal clauses; the day count is a param
+        f"""INSERT INTO daily_close_cache (symbol, price_date, close_price, source)
                     SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
                            UPPER(symbol), fetched_at::date, price, 'market_quotes'
                     FROM market_quotes
@@ -73,7 +75,7 @@ def refresh_close_cache(cur, cfg, backfill=False):
                     {"AND" if window else "WHERE"} price IS NOT NULL AND price > 0
                     ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
                     ON CONFLICT (symbol, price_date) DO UPDATE SET
-                      close_price = EXCLUDED.close_price, source = EXCLUDED.source""")
+                      close_price = EXCLUDED.close_price, source = EXCLUDED.source""", window_params)
     n_mq = cur.rowcount
     cur.execute("""INSERT INTO daily_close_cache (symbol, price_date, close_price, source)
                    SELECT UPPER(symbol), price_date, close_price, 'price_cache'
@@ -163,7 +165,7 @@ def grade(cur, cfg, max_rows=None) -> dict:
         return i if i >= 0 else None
 
     # pending verdicts + verdict-holding rows whose 20d context prices haven't filled yet
-    cur.execute(f"""SELECT id, subject_type, symbol, emitted_at::date, direction
+    cur.execute("""SELECT id, subject_type, symbol, emitted_at::date, direction
                     FROM hermes_outcome_ledger
                     WHERE verdict='pending' OR (price_20d IS NULL AND verdict IN ('hit','miss','neutral'))
                     ORDER BY emitted_at LIMIT %s""", (max_rows or int(cfg["max_rows_per_run"]),))
