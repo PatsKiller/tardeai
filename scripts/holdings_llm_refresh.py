@@ -36,6 +36,11 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 
 from cio_agent_contract import build_holdings_health_json_schema, parse_holdings_health_result
 
+try:
+    from lib.day_change_display import format_day_change as _format_day_change
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import format_day_change as _format_day_change
+
 os.environ.setdefault("DOTENV_LOADED", "0")
 if os.environ["DOTENV_LOADED"] == "0":
     try:
@@ -196,7 +201,7 @@ def build_holdings_prompt(holding, news, social, agents, technical):
     symbol = holding['symbol']
     shares = holding.get('shares', 0)
     value = holding.get('market_value', 0)
-    day_change = holding.get('day_change', 0)
+    day_change = _format_day_change(holding.get('day_change'))
     price = holding.get('price', 0)
     account = holding.get('account', '?')
 
@@ -231,7 +236,7 @@ def build_holdings_prompt(holding, news, social, agents, technical):
         tech_str = " ".join(parts) if parts else tech_str
 
     return f"""Holdings health check. You are reviewing a CURRENT portfolio position.
-{symbol} {shares}sh @${price} val=${value:,.0f} chg=${day_change:,.0f} acct={account}
+{symbol} {shares}sh @${price} val=${value:,.0f} chg={day_change} acct={account}
 Tech:{tech_str}
 News:{news_str[:200]}
 Social:{social_str[:150]}

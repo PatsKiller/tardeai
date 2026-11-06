@@ -1219,6 +1219,8 @@ def _parse_csv_to_import(body: dict) -> dict:
                     "symbol": "CASH", "name": "Cash & Cash Investments",
                     "company": "Cash & Cash Investments",
                     "shares": mv, "price": 1.0, "market_value": mv,
+                    # Cash is held at $1.00 and does not move: 0.0 here is a genuine measured
+                    # zero, not a seeded guess (the positive control for unknown-vs-zero).
                     "day_change": 0.0, "day_change_pct": 0.0,
                     "cost_basis": mv, "gain_loss": 0.0,
                     "account": account_key, "is_cash": True,
@@ -1232,7 +1234,11 @@ def _parse_csv_to_import(body: dict) -> dict:
         holdings.append({
             "symbol": sym, "name": name, "company": name,
             "shares": shares, "price": price, "market_value": mv,
-            "day_change": 0.0, "day_change_pct": 0.0,
+            # The CSV carries no day-change (or previous-close) column, so this row's change
+            # is UNKNOWN — not a measured zero. A seeded 0.0 was counted as a measurement by
+            # _day_change_coverage and suppressed the "day change not carried" note
+            # (codex-cloud P1 on #2588).
+            "day_change": None, "day_change_pct": None,
             "cost_basis": cb, "gain_loss": gl,
             "account": account_key, "is_cash": False,
         })
@@ -1425,6 +1431,7 @@ def handle_import(body: dict) -> tuple:
             h["is_cash"] = True
             h["price"] = 1
             h["market_value"] = round(float(h.get("shares") or h.get("market_value") or 0), 2)
+            # Cash at $1.00: a genuine measured zero (see the CSV parse above).
             h["day_change"] = 0.0
             h["day_change_pct"] = 0.0
 

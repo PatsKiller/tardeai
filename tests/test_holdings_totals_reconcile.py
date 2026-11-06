@@ -91,3 +91,54 @@ def test_bad_input_never_raises():
     for bad in ({}, {"holdings": None}, {"holdings": [{"symbol": "A"}]},
                 {"holdings": [{"market_value": "abc"}], "portfolio_totals": {}}):
         reconcile_totals(bad)
+
+
+# ── total_cash is the same defect one field later (2026-11-03 18:37:12Z) ───────────────────────────────
+def _cash_doc(rows, declared_cash, declared_value=None):
+    value = sum(v for _, _, v in rows) if declared_value is None else declared_value
+    return {"holdings": [{"symbol": s, "account": a, "market_value": v, **({"is_cash": True} if s == "CASH" else {})}
+                         for s, a, v in rows],
+            "portfolio_totals": {"total_value": value, "total_cash": declared_cash}}
+
+
+def test_a_writer_that_changes_cash_rows_gets_total_cash_reconciled():
+    """The live case: schwab_position_sync bought PFE, cash fell 30,450.00, total_cash stayed at the
+    figure the 18:30:43Z repricer had written. The store then read 847,552.75 against rows summing to
+    817,102.75 while total_value was correct to the cent."""
+    rows = [("CASH", "moomoo", 500.00), ("CASH", "alpaca", 5000.00), ("CASH", "schwab_taxable", 33583.83),
+            ("CASH", "schwab_roth", 628.31), ("CASH", "schwab_rollover", 777390.61)]
+    doc = _cash_doc(rows, declared_cash=847552.75)
+    c = reconcile_totals(doc, source="schwab_position_sync")
+
+    assert c["field"] == "total_cash" and c["delta"] == -30450.00
+    assert doc["portfolio_totals"]["total_cash"] == 817102.75
+    assert doc["portfolio_totals"]["total_cash_source"] == "position_rows"
+    assert doc["portfolio_totals"]["total_cash_recomputed_at_write"] is True
+    assert "total_value_recomputed_at_write" not in doc["portfolio_totals"]
+
+
+def test_cash_is_summed_across_accounts_not_by_symbol():
+    """CASH is one symbol in five accounts; a symbol-keyed sum would report a fifth of the truth."""
+    doc = _cash_doc([("CASH", "a", 500.0), ("CASH", "b", 5000.0), ("CASH", "c", 1000.0)], declared_cash=0.0)
+    reconcile_totals(doc)
+    assert doc["portfolio_totals"]["total_cash"] == 6500.0
+
+
+def test_a_consistent_cash_total_is_left_alone():
+    doc = _cash_doc([("CASH", "a", 500.0), ("X", "a", 1500.0)], declared_cash=500.0)
+    assert reconcile_totals(doc) is None
+    assert "total_cash_recomputed_at_write" not in doc["portfolio_totals"]
+
+
+def test_no_cash_rows_leaves_total_cash_untouched():
+    doc = _cash_doc([("A", "x", 1000.0)], declared_cash=999.0)
+    assert reconcile_totals(doc) is None
+    assert doc["portfolio_totals"]["total_cash"] == 999.0
+
+
+def test_both_totals_are_reconciled_in_one_write():
+    doc = _cash_doc([("CASH", "a", 500.0), ("A", "x", 900.0)], declared_cash=700.0, declared_value=1000.0)
+    c = reconcile_totals(doc)
+    assert c["delta"] == 400.0 and c["total_cash"]["delta"] == -200.0
+    assert doc["portfolio_totals"]["total_value"] == 1400.0
+    assert doc["portfolio_totals"]["total_cash"] == 500.0

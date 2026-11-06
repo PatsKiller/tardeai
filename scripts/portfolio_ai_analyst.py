@@ -20,6 +20,10 @@ from typing import Any, Dict, List, Optional
 import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+try:  # an unmeasured day change is the word unknown, never a crash or a seeded zero
+    from lib.day_change_display import format_day_change as _format_day_change
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import format_day_change as _format_day_change
 from cio_agent_contract import (
     build_portfolio_brief_json_schema,
     format_portfolio_brief_display,
@@ -788,7 +792,7 @@ Combined traditional-IRA rollover pool (Fidelity + Schwab): ~${(fidelity_mv + ro
 Total Value: ${totals.get('total_value',0):,.0f}
 Total All-Time Gain: ${totals.get('total_gain',0):,.0f} (+{totals.get('total_gain_pct',0):.1f}%)
 Annual Dividend Income: ${divs.get('total_annual_income',0):,.2f}/yr (${divs.get('total_monthly_income',0):,.2f}/mo)
-Day Change: ${totals.get('day_change',0):+,.0f}
+Day Change: {_format_day_change(totals.get('day_change'))}
 
 {_personal_context(personal)}
 

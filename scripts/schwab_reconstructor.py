@@ -36,16 +36,21 @@ def _parse_price(val: str) -> float:
     return float(re.sub(r"[^\d.]", "", val)) if val.strip() else 0.0
 
 
-def _get_cached_price(sym: str, cache: dict) -> tuple[float, float]:
-    """Return (latest_price, prev_price) from price cache."""
+def _get_cached_price(sym: str, cache: dict) -> tuple[float, "float | None"]:
+    """Return (latest_price, prev_price_or_None) from price cache.
+
+    ``prev`` is None — not a copy of the latest price — when the cache carries only one
+    dated price. A single date is not a previous close, and copying it here used to make
+    an unmeasured row look like a measured flat day (codex-cloud P1 on #2588).
+    """
     entry = cache.get(sym)
     if not entry or not isinstance(entry, dict):
-        return 0.0, 0.0
+        return 0.0, None
     dates = sorted(k for k in entry if re.match(r"^\d{4}-\d{2}-\d{2}$", k))
     if not dates:
-        return 0.0, 0.0
+        return 0.0, None
     latest = float(entry[dates[-1]] or 0)
-    prev   = float(entry[dates[-2]] or latest) if len(dates) >= 2 else latest
+    prev   = float(entry[dates[-2]] or latest) if len(dates) >= 2 else None
     return latest, prev
 
 
@@ -157,6 +162,7 @@ def reconstruct_schwab_positions(
     holdings = []
     total_value    = 0.0
     total_day_chg  = 0.0
+    measured_rows  = 0
     total_cost     = 0.0
 
     for sym, pos in positions.items():
@@ -167,10 +173,20 @@ def reconstruct_schwab_positions(
         cache_price, cache_prev = _get_cached_price(sym, price_cache)
         # Use cache price if available, else last transaction price
         price = cache_price if cache_price > 0 else pos["last_txn_price"]
-        prev  = cache_prev  if cache_price > 0 else price
+        # Only a dated pair from the cache is a previous close. The last transaction price is
+        # a mark, not yesterday's close, so the day change is UNKNOWN in that case — never a
+        # seeded 0.0 and never a fabricated move (codex-cloud P1 on #2588).
+        prev  = cache_prev if cache_price > 0 else None
 
         mv      = shares * price
-        day_chg = shares * (price - prev)
+        if prev is not None and prev > 0:
+            day_chg     = round(shares * (price - prev), 2)
+            day_chg_pct = round((price - prev) / prev * 100, 4)
+        else:
+            day_chg, day_chg_pct = None, None
+        if day_chg is not None:
+            total_day_chg += day_chg
+            measured_rows += 1
         # Cost basis = summed actual buy Amounts (average-cost). If any shares were transferred in
         # without cost data (Security Transfer / journal in), the basis is partial → report it as
         # unknown (None) rather than a misleading understated number.
@@ -201,8 +217,8 @@ def reconstruct_schwab_positions(
             "gain_loss_pct":   gain_pct_out,
             "basis_partial":   basis_partial,
             "cost_basis_source": "transactions_sum",
-            "day_change":      round(day_chg, 2),
-            "day_change_pct":  round((price - prev) / prev * 100, 4) if prev > 0 else 0.0,
+            "day_change":      day_chg,
+            "day_change_pct":  day_chg_pct,
             "portfolio_pct":   0.0,
             "account_pct":     0.0,
             "asset_type":      "Equity",
@@ -215,7 +231,6 @@ def reconstruct_schwab_positions(
         })
 
         total_value   += mv
-        total_day_chg += day_chg
         total_cost    += cost
 
     total_gain     = total_value - total_cost
@@ -229,8 +244,11 @@ def reconstruct_schwab_positions(
         "total_cost":      round(total_cost, 2),
         "total_gain":      round(total_gain, 2),
         "total_gain_pct":  round(total_gain_pct, 4),
-        "day_change":      round(total_day_chg, 2),
-        "day_change_pct":  round(total_day_chg / total_value * 100, 4) if total_value > 0 else 0.0,
+        # No row measured means the account's day change is UNKNOWN, not zero. A partial sum
+        # (some rows measured, some not) still adds only the measured rows; the repricer's
+        # coverage count is what tells a consumer the sum is incomplete.
+        "day_change":      round(total_day_chg, 2) if measured_rows else None,
+        "day_change_pct":  round(total_day_chg / total_value * 100, 4) if (measured_rows and total_value > 0) else None,
         "holding_count":   len(holdings),
         "loan_balance":    0,
         "reconstructed_from_transactions": True,

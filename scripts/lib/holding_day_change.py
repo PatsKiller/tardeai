@@ -11,7 +11,7 @@ def resolve_holding_day_change(
     price: float,
     stale_price: float,
     finviz_day_pct: Optional[float] = None,
-) -> tuple[float, Any]:
+) -> tuple[Optional[float], Any]:
     """Return (day_change, day_change_pct) aligned with portfolio_repricer when price unchanged."""
     if holding.get("is_cash") or (holding.get("symbol") or "").upper() == "CASH":
         return 0.0, 0.0
@@ -55,4 +55,6 @@ def resolve_holding_day_change(
         prev_mv = market_value / (1.0 + pct_num / 100.0) if (1.0 + pct_num / 100.0) != 0 else market_value
         return round(market_value - prev_mv, 2), day_pct
 
-    return float(h_day or 0), day_pct if day_pct is not None else h_day_pct
+    # Nothing measured and nothing to recompute from: UNKNOWN stays unknown. Returning
+    # 0.0 here rendered an unmeasured holding as a flat position (codex-cloud P1/P2, #2588).
+    return (float(h_day) if h_day is not None else None), day_pct if day_pct is not None else h_day_pct
