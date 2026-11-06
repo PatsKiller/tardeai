@@ -1096,6 +1096,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261028-ops-watchdogs.md` | Ops watchdogs — arm the three designed-but-unwired guards |
 | `docs/designs/DSN-20261029-deploy-console.md` | Deploy console — design of record |
 | `docs/designs/DSN-20261030-disk-governance-process.md` | DSN-20261030-disk-governance-process — repeatable disk governance on ms01-openclaw (design for approval) |
+| `docs/designs/DSN-20261030-disk-monitor-purge.md` | Disk-space growth monitor + reviewed purge mapping |
 | `docs/designs/DSN-20261030-disk-recovery.md` | DSN-20261030-disk-recovery.md |
 | `docs/designs/DSN-20261030-rule6-scratch-delete-amendment.md` | Rule 6 amendment — agents delete their own scratch, plus a scheduled purge |
 | `docs/designs/DSN-20261030-workspace-lifecycle.md` | Workspace lifecycle |
