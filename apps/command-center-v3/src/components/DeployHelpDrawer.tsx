@@ -28,7 +28,7 @@ const GLOSSARY: Array<{ term: string; def: string }> = [
   { term: 'Four tool gates', def: 'cio-hardening, agent-governance, release-readiness, ci-gate — all must be SUCCESS before Approve.' },
   { term: 'UNKNOWN mergeability', def: 'GitHub has not finished checking whether the branch can merge. Wait/refresh — not the same as a conflict.' },
   { term: 'deploy STOP', def: 'A latch that blocks putting new builds on the site. Clear it from Ops → Controls if you intend to promote.' },
-  { term: 'Mergify window', def: 'Merges are blocked Mon–Fri 09:30–16:15 ET even after Approve; evenings/weekends are the usual merge times.' },
+  { term: 'Mergify window', def: 'Approved merges land only in two weekday windows: 12:00–12:30 and 17:30–18:30 ET. Any other time — the rest of the trading day, the evening, the weekend — they wait in the queue; that is normal, not stuck.' },
 ]
 
 export default function DeployHelpDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -51,7 +51,7 @@ export default function DeployHelpDrawer({ open, onClose }: { open: boolean; onC
           Approve never updates the live site by itself.
         </p>
         <p style={muted}>
-          Flow: open PR → four checks green + plain English → you Approve → Mergify merges to main (outside market hours) →
+          Flow: open PR → four checks green + plain English → you Approve → Mergify merges to main (in the 12:00–12:30 or 17:30–18:30 ET weekday windows) →
           then prepare/promote puts that main build on the site.
         </p>
 

@@ -469,3 +469,17 @@ def test_build_bounds_its_own_file_views(monkeypatch):
     out = D.build(lister=lambda repo, limit: raw, coordination=lambda rows, now: {"work": {}})
     assert out["status"] == "OK" and seen, "the default file view was never called"
     assert seen[0] is not None and seen[0] <= D.FILE_VIEW_BUDGET_S
+
+
+def test_the_help_glossary_names_the_configured_merge_windows():
+    """The glossary must not promise evening/weekend merges: the windows are in .mergify.yml, Mon-Fri only."""
+    import re
+
+    cfg = (ROOT / ".mergify.yml").read_text()
+    windows = re.findall(r"schedule=Mon-Fri (\d\d:\d\d)-(\d\d:\d\d)\[America/New_York\]", cfg)
+    assert windows, "no weekday merge windows found in .mergify.yml"
+    drawer = (ROOT / "apps/command-center-v3/src/components/DeployHelpDrawer.tsx").read_text()
+    for start, end in windows:
+        assert f"{start}–{end}" in drawer, f"the help drawer does not name the {start}-{end} ET window"
+    assert "evenings/weekends are the usual merge times" not in drawer
+    assert "outside market hours" not in drawer
