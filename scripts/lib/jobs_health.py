@@ -174,6 +174,66 @@ def _schedule(lane, now, trading_day):
     return due, next_due, issue, gated, bool(today_fires)
 
 
+# Operator-facing wording for evidence codes (2026-10-25: the Ops Controls Jobs "Missed" explanation printed raw codes
+# and a script path). Codes and paths stay in the stores; the UI gets sentences.
+_GAP_TEXT = {
+    "journal_history_window_truncated": "the run journal is longer than the part that was read, so older runs are not counted",
+    "journal_malformed_line": "some run-journal lines could not be read",
+    "journal_unavailable": "the run journal could not be read",
+    "wrapper_journal_unavailable": "the run journal could not be read",
+    "lane registry unavailable": "the job list could not be read",
+    "run ledger unavailable": "the n8n run ledger could not be read",
+    "ledger absent": "the n8n run ledger could not be read",
+    "ledger unreadable": "the n8n run ledger could not be read",
+}
+_LANE_GAP_TEXT = {
+    "fallback_log_unavailable": "its log could not be read",
+    "receipt_path_not_admitted": "its run receipt is stored outside the allowed folders",
+    "receipt_unavailable": "its run receipt could not be read",
+}
+_REASON_TEXT = {
+    "output_unverifiable": "The run finished but its output could not be verified",
+    "empty_output": "The run finished but produced no output",
+    "run_timeout": "The run timed out",
+    "lock_skip": "The run was skipped because another copy was still running",
+}
+# A path-like token: anything with a slash and a file name, or a bare file name with a script/data extension.
+_PATH_RE = re.compile(r"(?:~|\.{1,2})?/?(?:[\w.@-]+/)+[\w.@-]+|\b[\w.-]+\.(?:sh|py|mjs|js|ts|json|jsonl|log|sqlite|db|env|yaml|yml|txt)\b")
+
+
+def _path_word(match: re.Match) -> str:
+    token = match.group(0)
+    low = token.lower()
+    if "secret" in low or low.endswith(".env") or "bws" in low:
+        return "the secrets loader"
+    if low.endswith((".sh", ".py", ".mjs", ".js", ".ts")):
+        return "a script"
+    if low.endswith(".log"):
+        return "a log file"
+    return "a file"
+
+
+def plain_reason(text) -> str | None:
+    """Plain-language version of an evidence code / diagnostic for the UI: known codes become sentences and no file
+    path is ever shown (it becomes "a script", "a log file", "the secrets loader", ...).
+
+    Only for evidence codes and diagnostics. Never pass operator-authored prose such as a lane's ``state_reason``:
+    it is already written for the operator and is rendered verbatim (#2178 F1)."""
+    if text is None:
+        return None
+    raw = str(text).strip()
+    if not raw:
+        return raw
+    if raw in _GAP_TEXT:
+        return _GAP_TEXT[raw]
+    if raw.lower() in _REASON_TEXT:
+        return _REASON_TEXT[raw.lower()]
+    lane, sep, code = raw.rpartition(":")
+    if sep and code in _LANE_GAP_TEXT and lane and " " not in lane:
+        return f"{lane}: {_LANE_GAP_TEXT[code]}"
+    return _PATH_RE.sub(_path_word, raw)
+
+
 def _measurement(unknown: int, collection_gaps: list) -> dict:
     """A count that cannot be measured is a gap, never 0 (operator design rule 2026-10-25).
 
@@ -186,7 +246,7 @@ def _measurement(unknown: int, collection_gaps: list) -> dict:
         reasons.append(f"{unknown} job{'s' if unknown != 1 else ''} not measured (no run receipt or no measurable "
                        "schedule), so missed runs among them cannot be counted")
     if collection_gaps:
-        reasons.append("execution evidence incomplete: " + "; ".join(str(g) for g in collection_gaps[:3]))
+        reasons.append("execution evidence incomplete: " + "; ".join(plain_reason(g) for g in collection_gaps[:3]))
     return {"not_measured": unknown, "missed_measured": not reasons,
             "gap_reasons": {"missed": " · ".join(reasons) or None,
                             "not_measured": "No run receipt or no measurable schedule" if unknown else None}}
@@ -288,8 +348,12 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         except (ValueError, TypeError, KeyError):
             due, upcoming, issue, gated, due_today = [], None, "schedule could not be measured", False, False
         outcome, reason = "unknown", "Successful execution is not yet measured"
+        # state_reason is operator-authored prose from the registry, not an evidence code: it is shown verbatim.
+        # Feeding it to plain_reason rewrites timezones and section references into "a file" (#2178 F1).
+        reason_is_prose = False
         if state in {"PAUSED", "RETIRED", "DISABLED"}:
             outcome, reason = ("retired" if state == "RETIRED" else "paused"), lane.get("state_reason") or f"Job is {state.lower()}"
+            reason_is_prose = True
             upcoming = None
         elif failure_at and (success is None or failure_at > success):
             outcome, reason = "failed", diagnostic
@@ -311,7 +375,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             "successful_run_id": successful[-1].get("run_id") if successful else None,
             "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": due_today,
             "missed_fires": check.get("missed_fires"), "market_hours_only": gated,
-            "cause": reason, "evidence": last.get("run_id") or ("wrapper event" if events else None)})
+            "cause": reason if reason_is_prose else plain_reason(reason),
+            "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
     seen = instant(watchdog.get("observed_at"))
     monitor_ok = bool(watchdog.get("schema") == W.SCHEMA and watchdog.get("mode") == "monitor"
