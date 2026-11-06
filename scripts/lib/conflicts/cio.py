@@ -61,10 +61,41 @@ def digest(root, *, now=None):
     except (OSError, ValueError):
         return {"waiting_on_operator": [], "decided": [], "groups": [],
                 "gap": {"reason": "conflict ledger unavailable or invalid"}}
-    return {"waiting_on_operator": [r for r in records if r.get("kind") == "NEEDS_OPERATOR" and r["state"] in ACTIVE],
+    return {"waiting_on_operator": _waiting_with_age(records, now),
             "decided": [r for r in records if r.get("decision") and timestamp(r["decision"].get("at")) and
                         timedelta(0) <= now - timestamp(r["decision"]["at"]) <= timedelta(days=1)],
             "groups": _groups([r for r in records if r["state"] in ACTIVE]), "gap": None}
+
+
+def _waiting_with_age(records, now) -> list[dict]:
+    """The items waiting on the CIO, each carrying how long it has been waiting.
+
+    The brief used to print "N waiting on you" with no clock, so an item opened nine days ago and one opened nine
+    minutes ago read the same. Age comes from the record's own ``opened_at`` (the ledger keeps the first open time
+    across re-reconciles), never from the read time. A record with no readable open time gets ``None`` — the brief
+    says "age unknown" rather than inventing zero.
+    """
+    out = []
+    for record in records:
+        if record.get("kind") != "NEEDS_OPERATOR" or record["state"] not in ACTIVE:
+            continue
+        opened = timestamp(record.get("opened_at"))
+        seconds = (now - opened).total_seconds() if opened else None
+        age = round(seconds / 3600, 1) if seconds is not None and seconds >= 0 else None
+        out.append({**record, "age_hours": age})
+    return out
+
+
+def age_text(hours) -> str:
+    """How long, in words short enough for a Telegram line. Never a fabricated zero."""
+    if hours is None:
+        return "age unknown"
+    if hours < 1:
+        return f"{int(hours * 60)}m"
+    if hours < 48:
+        return f"{round(hours)}h"
+    return f"{round(hours / 24)}d"
+
 
 
 def _groups(records):

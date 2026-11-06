@@ -1,5 +1,8 @@
 """Binding EXCEPTIONS_MATRIX fixtures; historical 24 tests are not acceptance."""
+import ast
 from datetime import datetime, timedelta, timezone
+import json
+from pathlib import Path
 
 import pytest
 
@@ -41,11 +44,66 @@ def test_e1_e22_position_aware_ordinal(a, b, held, relation):
 
 
 @pytest.mark.parametrize("label", ["ADD_ON_PULLBACK", "RESEARCH_MORE", "MORE_RESEARCH", "INSUFFICIENT_DATA",
-    "HOLD / MONITOR", "BUY_READY", "NO_ACTION", "DEFER", "SELL_TAXABLE"])
+    "BUY_READY", "NO_ACTION", "DEFER", "SELL_TAXABLE"])
 def test_unmapped_labels_are_visible_errors(label):
     fs = run("WATCH", Input("desk", label, NOW))
     assert [(f.kind, f.rule) for f in fs] == [("DATA_ERROR", "R8")]
     assert posture(label) is None
+
+
+@pytest.mark.parametrize("label,stance", [
+    ("MANAGING", "hold"), ("CURRENTLY_HELD", "hold"), ("HOLD / MONITOR", "hold"),
+    ("OVERBOUGHT_WAIT", "watch"), ("OVERSOLD_REVIEW", "watch"), ("READY_TO_REVIEW", "watch"),
+    ("WASH_BLOCK", "watch")])
+def test_observed_desk_labels_map_to_a_family_instead_of_a_data_error(label, stance):
+    # Operator spec 2026-11-02 Part 1: "extend the shared vocabulary for every observed label (config, reviewed)".
+    # Five of these are emitted by reentry_rules.derive_intel_state today (CURRENTLY HELD, WASH BLOCK, OVERBOUGHT WAIT,
+    # OVERSOLD REVIEW, READY TO REVIEW) and each one was arriving as unmapped vocabulary. MANAGING is a Trade AI state
+    # carried as a claim in some projections, and HOLD / MONITOR was a label the rulebook itself declared; both now
+    # carry a stance instead of raising. This does NOT move the live ledger: on 2026-11-02 its 1013 active items were
+    # 535 U1 + 457 T1 + 18 GATE + 3 NEEDS_OPERATOR, and zero R8. The 992 non-actionable items are an identity and
+    # ownership coverage gap (W1 data), not vocabulary. MISSING_MARKET and MISSING_PLAN deliberately stay unmapped
+    # because "we do not know" must not read as "no action". posture() returns the stance, not the family key:
+    # stand_aside maps to "watch".
+    fs = run("WATCH", Input("desk", label, NOW))
+    assert not [f for f in fs if f.rule == "R8"], f"{label} must not be a vocabulary error"
+    assert posture(label) == stance
+
+
+@pytest.mark.parametrize("label", ["MISSING_MARKET", "MISSING_PLAN", "STALE"])
+def test_missing_input_labels_stay_visible_errors(label):
+    # Deliberate: a missing or stale input is not a stance. Mapping it would tell the CIO "no action" when the truth
+    # is "not measured". If the operator wants these mapped, that is a rulebook decision, not a vocabulary patch.
+    assert posture(label) is None
+    fs = run("WATCH", Input("desk", label, NOW))
+    assert [(f.kind, f.rule) for f in fs] == [("DATA_ERROR", "R8")]
+
+
+def test_every_desk_state_is_mapped_or_declared_unmapped():
+    # Drift guard: a new state added to reentry_rules.derive_intel_state must be either given a family or declared in
+    # security_stance.unmapped_labels. Silently landing as an undeclared None is how 6 labels became 992-looking
+    # vocabulary noise in the first place.
+
+
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "lib" / "reentry_rules.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    states: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "derive_intel_state":
+            for inner in ast.walk(node):
+                if isinstance(inner, ast.Constant) and isinstance(inner.value, str):
+                    value = inner.value
+                    if 2 < len(value) <= 28 and value == value.strip() and "{" not in value \
+                            and value.replace(" ", "").replace("_", "").isalpha() \
+                            and value.upper() == value:
+                        states.add(value)
+    assert states, "no state literals found — the scan is broken, fix it rather than deleting this test"
+    rulebook = json.loads((Path(__file__).resolve().parents[1] / "config" / "conflict_rulebook.json")
+                          .read_text(encoding="utf-8"))
+    declared = {str(v).strip().upper().replace("-", "_").replace(" ", "_")
+                for v in rulebook["security_stance"].get("unmapped_labels", [])}
+    unmapped = sorted(s for s in states if posture(s) is None and s.replace(" ", "_").replace("-", "_") not in declared)
+    assert not unmapped, f"desk states neither mapped nor declared unmapped: {unmapped}"
 
 
 def test_missing_stance_blocks_go_and_queues_working_compared_input_producer():
@@ -178,3 +236,39 @@ def test_hysteresis_does_not_reuse_an_older_nonconsecutive_observation():
                {"key": "other", "signature": []}]
     rows = run("WATCH", Input("desk", "ADD", NOW), history=history)
     assert headline(rows) is None and rows[0].rule == "R15"
+
+
+@pytest.mark.parametrize("label,stance", [("REBALANCE_TRIM", "sell"), ("IGNORE", "watch")])
+def test_synthesis_enum_labels_are_mapped_not_vocabulary_errors(label, stance):
+    # run_watch_review_canary / process_watchlist_agent_jobs persist a free-form `recommendation` into
+    # watchlist_final_synthesis, and adapters.py:81 claims it. cio_agent_contract.py:364 documents the enum, which
+    # includes these two; both were in neither families nor unmapped_labels, so a synthesis that used one produced an
+    # R8 DATA_ERROR instead of a stance. Unbounded LLM verdicts remain unbounded - this covers the documented enum.
+    assert posture(label) == stance
+    assert not [f for f in run("WATCH", Input("desk", label, NOW)) if f.rule == "R8"]
+
+
+def test_review_pending_is_a_known_trade_gate_state():
+    # rockville.decision_projection.classify_primary_state returns REVIEW_PENDING, it becomes trade_ai_state, and the
+    # adapter validates against gate_known. It was missing, so the gate read as unknown vocabulary rather than as a
+    # pending review.
+    from scripts.lib.conflicts.profiles.rulebook import RULEBOOK
+    assert "REVIEW_PENDING" in RULEBOOK["security_stance"]["gate_known"]
+    fs = run("ADD", Input("trade_ai", "REVIEW_PENDING", NOW, role="gate"), held=True)
+    assert not [f for f in fs if f.kind == "DATA_ERROR"]
+    assert [(f.kind, f.rule) for f in fs] == [("GATE", "R3")]
+
+
+def test_every_documented_synthesis_recommendation_is_mapped_or_declared():
+    # Drift guard for the OTHER producer: cio_agent_contract documents the recommendation enum in its prompt text.
+    # Adding a value there must not silently become an R8 error.
+    import re
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "lib" / "cio_agent_contract.py").read_text(encoding="utf-8")
+    match = re.search(r'"recommendation": one of ([A-Z_,\s]+)\\n', src)
+    assert match, "the documented recommendation enum moved; fix this guard rather than deleting it"
+    labels = [v.strip() for v in match.group(1).split(",") if v.strip()]
+    assert labels, "enum parse produced nothing"
+    rulebook = json.loads((Path(__file__).resolve().parents[1] / "config" / "conflict_rulebook.json").read_text())
+    declared = {str(v).strip().upper().replace(" ", "_") for v in rulebook["security_stance"]["unmapped_labels"]}
+    missing = [v for v in labels if posture(v) is None and v not in declared]
+    assert not missing, f"documented recommendations neither mapped nor declared: {missing}"

@@ -104,6 +104,18 @@ def _git(root: Path, *args: str) -> str:
     return _raw_git(repository, *args)
 
 
+def _queue_card(item: dict) -> dict:
+    """One queue row: the item without its whole document, plus the two fields a card needs.
+
+    ``version`` prefers the item's own readable label (``core.item(version=...)``) and falls back to the bound
+    document version. The first spelling of this dict-union let the right-hand operand win, so every label a source
+    supplied was silently replaced by ``document.version`` — for a live conflict that is ``<sha256>:<sha256>``.
+    """
+    return {k: v for k, v in item.items() if k != "document"} | {
+        "document_sha": item["document"]["document_sha"],
+        "version": item.get("version") or item["document"]["version"]}
+
+
 def policy_source(root: Path) -> tuple[str, str]:
     # Anchor history to the artifact's commit even when the canonical checkout has moved ahead.
     sha = _git(root, "log", "-1", "--format=%H", source_revision(root), "--", "AGENTS.md").strip()
@@ -330,6 +342,12 @@ def _default_sources(root: Path) -> dict:
             rows.append(core.item(ident="conflict:" + core.digest(row["id"])[:32], kind="CONFLICT", title=row["title"],
                                   proposed_by=row.get("proposed_by"), created_at=row.get("created_at"), doc=doc,
                                   source="conflicts", governed_href="/watch?conflict=" + quote(str(row["id"]), safe=""),
+                                  # The bound version is the evidence digest twice over; the row label is the
+                                  # record's revision plus who must act on it, so the reader sees something it can
+                                  # act on. Owner comes from the record, outside the bound document text.
+                                  version=("open conflict · revision " + str(row["revision"])
+                                           if row.get("revision") is not None else "open conflict")
+                                          + (f" · owner: {row['owner']}" if row.get("owner") else ""),
                                   source_refs=["conflict_events:" + str(row["id"])]))
         return rows
 
@@ -349,13 +367,17 @@ def _default_sources(root: Path) -> dict:
                                                    "never_auto_implications", "proposed_resolution", "risks",
                                                    "machine_form", "created_at")}
             provider = (proposal.get("model") or {}).get("provider")
+            # Readable queue label: "revision 2 · T4" when both are known, never "revision None".
+            tier = proposal.get("tier") or "tier not supplied"
+            label = (f"revision {proposal['revision']} · {tier}" if proposal.get("revision") is not None
+                     else str(tier))
             out.append(core.item(ident="rule-proposal:" + ident, kind="CONFLICT",
                                  title="Proposed conflict rule: " + str(proposal.get("summary") or proposal.get("plain_rule") or ident),
                                  proposed_by=f"AI rule proposer ({provider})" if provider else "AI rule proposer",
                                  created_at=proposal.get("created_at"), source="conflict_rule_proposals",
+                                 version=label,
                                  doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, sort_keys=True),
-                                                   source_sha=code_sha,
-                                                   version=f"revision {proposal.get('revision')} · {proposal.get('tier') or 'tier not supplied'}"),
+                                                   source_sha=code_sha, version=label),
                                  governed_href="/conflicts/rules?proposal=" + quote(ident, safe=""),
                                  source_refs=["rule_proposals.jsonl:" + ident]))
         return out
@@ -504,12 +526,8 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 data["filtered_count"], data["offset"] = len(data["items"]), offset
                 data["items"] = data["items"][offset:offset + 50]
                 # Queue cards do not ship whole documents; the reader loads just the chosen item.
-                data["items"] = [{k: v for k, v in it.items() if k != "document"} | {
-                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
-                                 for it in data["items"]]
-                data["resolved"] = [{k: v for k, v in it.items() if k != "document"} | {
-                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
-                                    for it in data.get("resolved") or []]
+                data["items"] = [_queue_card(it) for it in data["items"]]
+                data["resolved"] = [_queue_card(it) for it in data.get("resolved") or []]
                 return 200, {"ok": True, "data": data}
             if sub == "/policy":
                 data = ctx.policy()
