@@ -371,7 +371,7 @@ async function shoot(page: Page, route: string, tab: string, vp: string, list: F
   try {
     await page.screenshot({ path: p, type: 'jpeg', quality: 60, fullPage: true, timeout: 15_000 })
     for (const f of list) f.screenshot = path.relative(OUT, p)
-  } catch { /* screenshot best-effort */ }
+  } catch (e) { console.warn(`[sweep] no screenshot for ${route} ${tab} ${vp}: ${(e as Error).message}`) }
 }
 
 // ---------------------------------------------------------------- tabs, detail, dead buttons
@@ -685,4 +685,4 @@ async function main() {
   console.log(`[sweep] done in ${((Date.now() - startedAt) / 60000).toFixed(1)} min; ${findings.length} findings → ${OUT}/summary.md`)
   if (aborted) process.exit(2) // partial sweep: never report success
 }
-main().catch(e => { console.error(e); try { writeReport([]) } catch { /* */ } process.exit(1) })
+main().catch(e => { console.error(e); try { writeReport([]) } catch (w) { console.error('[sweep] could not write the empty report:', w) } process.exit(1) })
