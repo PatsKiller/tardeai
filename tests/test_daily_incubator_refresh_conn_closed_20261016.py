@@ -36,6 +36,9 @@ class FakeCursor:
     def execute(self, sql, params=None):
         if self.conn.closed:
             raise InterfaceError("connection already closed")
+        if self.conn.dead:
+            # The server closed the socket; psycopg's closed flag stays 0.
+            raise RuntimeError("SSL connection has been closed unexpectedly")
         self.conn.sql.append(sql)
         if self.conn.raise_on_execute and "incubator_universe" in sql and "SELECT symbol" in sql:
             raise RuntimeError("original failure: catalyst query exploded")
@@ -47,6 +50,8 @@ class FakeCursor:
 class FakeConn:
     def __init__(self, rows=(), *, raise_on_execute=False):
         self.closed = 0
+        self.dead = 0                 # server-side socket drop; ``closed`` stays 0
+        self.die_after_commits = None
         self.rows = list(rows)
         self.sql: list[str] = []
         self.commits = 0
@@ -61,7 +66,11 @@ class FakeConn:
     def commit(self):
         if self.closed:
             raise InterfaceError("connection already closed")
+        if self.dead:
+            raise RuntimeError("SSL connection has been closed unexpectedly")
         self.commits += 1
+        if self.die_after_commits is not None and self.commits >= self.die_after_commits:
+            self.dead = 1
 
     def rollback(self):
         if self.closed:
@@ -128,3 +137,44 @@ def test_closed_before_scan_refresh_commit_reconnects(monkeypatch, caplog):
     assert first.commits == 0
     assert "uncommitted rows were lost" in caplog.text
     assert second.closed == 1
+
+
+# ── 2026-11-03: the server closes the socket while psycopg's closed flag stays 0 ──────────
+
+def test_dead_socket_with_closed_zero_is_not_trusted(monkeypatch):
+    first = FakeConn()
+    first.dead = 1                  # server dropped the socket; ``closed`` stays 0
+    second = FakeConn()
+    monkeypatch.setattr(R, "get_conn", lambda: second)
+    assert R._ensure_conn(first) is second
+
+
+def test_catalyst_updates_are_committed_per_symbol(monkeypatch):
+    conn = FakeConn(rows=[(10, "LNSR"), (11, "SGHT")])
+    monkeypatch.setattr(R, "get_conn", lambda: conn)
+    monkeypatch.setattr(R, "refresh_ticker", lambda c, inc, dry_run=False: "stayed_active")
+    monkeypatch.setitem(sys.modules, "catalyst_enrichment", type(sys)("catalyst_enrichment"))
+    sys.modules["catalyst_enrichment"].enrich_ticker = lambda sym: {
+        "has_fresh_catalyst": True, "catalyst_summary": "fresh"}
+    out = R._run(argparse.Namespace(dry_run=False, apply=True))
+    assert out["catalyst_refreshed"] == 2
+    # scan-refresh commit + one commit per catalyst symbol + the final no-op commit
+    assert conn.commits == 4
+    assert len([s for s in conn.sql if "UPDATE incubator_universe" in s]) == 2
+
+
+def test_catalyst_batch_survives_a_socket_drop_between_symbols(monkeypatch, caplog):
+    first = FakeConn(rows=[(10, "LNSR"), (11, "SGHT")])
+    first.die_after_commits = 2      # scan commit + symbol 1 commit land, then the socket dies
+    second = FakeConn(rows=[])
+    conns = iter([first, second])
+    monkeypatch.setattr(R, "get_conn", lambda: next(conns))
+    monkeypatch.setattr(R, "refresh_ticker", lambda c, inc, dry_run=False: "stayed_active")
+    monkeypatch.setitem(sys.modules, "catalyst_enrichment", type(sys)("catalyst_enrichment"))
+    sys.modules["catalyst_enrichment"].enrich_ticker = lambda sym: {
+        "has_fresh_catalyst": True, "catalyst_summary": "fresh"}
+    caplog.set_level(logging.INFO, logger="daily_incubator_refresh")
+    out = R._run(argparse.Namespace(dry_run=False, apply=True))
+    assert out["catalyst_refreshed"] == 2             # symbol 1 committed before the drop; symbol 2 on the new conn
+    assert first.commits == 2 and second.commits == 2  # symbol 2 + final commit on the reopened connection
+    assert "uncommitted rows were lost" not in caplog.text

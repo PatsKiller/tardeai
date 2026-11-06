@@ -17,6 +17,8 @@ open-item); without them sync_schwab_positions() is a degraded NO-OP. The PROTEC
 are fully functional and proven by simulation now.
 """
 from __future__ import annotations
+import copy
+import math
 import json, os, sys, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +36,7 @@ BASIS_DIVERGENCE_PCT = 2.0     # flag if API avg price differs from stored basis
 from lib.holdings_sanity import (  # noqa: E402
     CATASTROPHIC_DROP_FRACTION,
     REASON_VALID_COMPLETE,
+    positions_of as _validated_positions,
     validate_payload,
 )
 def _conn():
@@ -59,6 +62,180 @@ def _positions_of(h):
     return h.get("holdings") or h.get("positions") or []
 
 
+def _usable_text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _container_ids(obj) -> set[int]:
+    """id() of every dict/list/set reachable from obj. Mutable containers only: a bare `is` would
+    match small ints and interned strings, and refuse every baseline that shares "CASH" or 0.0.
+    JSON is acyclic, so the walk is complete; the seen-set only guards against a hand-built cycle."""
+    ids: set[int] = set()
+    stack = [obj]
+    while stack:
+        cur = stack.pop()
+        if not isinstance(cur, (dict, list, set)):
+            continue
+        if id(cur) in ids:
+            continue
+        ids.add(id(cur))
+        if isinstance(cur, dict):
+            stack.extend(cur.values())
+        else:
+            stack.extend(cur)
+    return ids
+
+
+def _shares_structure(a, b) -> bool:
+    """True when the baseline and the candidate reach the SAME mutable container anywhere.
+
+    cc3's fifth boundary (2026-11-03): the top-level check missed a nested alias —
+    `{"holdings": list(cand["holdings"])}` shares the row objects, so mutating a row in place
+    changed both sides and the relative guards compared the book with itself. The honest limit is
+    that a caller who deep-copies after mutating is indistinguishable from a legitimate equal book;
+    this closes the shared-object class that has actually occurred.
+    """
+    return bool(_container_ids(a) & _container_ids(b))
+
+
+def _plain_json_data(doc) -> bool:
+    """Candidate/reference data must have one finite JSON graph view, without custom accessors.
+
+    A dict subclass can expose candidate rows from a slot through get(), while values()
+    hides that alias from the graph walk. Check exact container/scalar types before any
+    accessor or alias traversal. Cycles are not JSON; repeated independent branches are OK.
+    """
+    active: set[int] = set()
+    stack = [(doc, False)]
+    while stack:
+        value, leaving = stack.pop()
+        kind = type(value)
+        if kind is float and not math.isfinite(value):
+            return False
+        if kind in (str, int, float, bool, type(None)):
+            continue
+        if kind not in (dict, list):
+            return False
+        identity = id(value)
+        if leaving:
+            active.remove(identity)
+            continue
+        if identity in active:
+            return False
+        active.add(identity)
+        stack.append((value, True))
+        if kind is dict:
+            if any(type(key) is not str for key in value):
+                return False
+            stack.extend((child, False) for child in value.values())
+        else:
+            stack.extend((child, False) for child in value)
+    return True
+
+
+def _reference_numbers_usable(doc, *, require_measurements=True) -> bool:
+    """Finite financial fields; reference mode also requires explicit measured row values.
+
+    Numeric strings remain accepted by the existing validator; booleans are not money or
+    quantities. Zero and legitimate signed values remain measurements, without a new floor.
+    """
+    if type(doc) is not dict:
+        return False
+    rows = _positions_of(doc) if require_measurements else _validated_positions(doc)
+    numbers = []
+    for row in rows:
+        measured = row.get("market_value")
+        if measured is None:
+            measured = row.get("value")
+        if measured is None:
+            if require_measurements:
+                return False
+        else:
+            numbers.append(measured)
+        numbers.extend(
+            row[key]
+            for key in ("market_value", "value", "price", "shares", "qty")
+            if key in row and row[key] is not None
+        )
+    totals = doc.get("portfolio_totals")
+    if totals is not None:
+        if type(totals) is not dict:
+            return False
+        if totals.get("total_value") is not None:
+            numbers.append(totals["total_value"])
+    if doc.get("total_value") is not None:
+        numbers.append(doc["total_value"])
+    for number in numbers:
+        if isinstance(number, bool):
+            return False
+        try:
+            if not math.isfinite(float(number)):
+                return False
+        except (TypeError, ValueError, OverflowError):
+            return False
+    if not require_measurements:
+        try:
+            measurement = validate_payload(doc, None)
+            if measurement.ok and not all(
+                math.isfinite(value)
+                for value in (
+                    measurement.total,
+                    measurement.cash_total,
+                    measurement.details.get("summed_market_value", 0.0),
+                )
+            ):
+                return False
+        except (TypeError, ValueError, OverflowError, AttributeError):
+            return False
+    return True
+def _baseline_usable(doc) -> tuple[bool, str]:
+    """A distinct object is not proof of a USABLE baseline.
+
+    2026-11-03 (cx-openai-2, third P0): {"holdings": []} passes identity and is accepted as a
+    baseline, but validate_payload then sees no last positions and skips the account-coverage, cash
+    and catastrophic-drop guards entirely. An unusable baseline must be replaced (backup) or refused,
+    never used to silence the relative guards.
+    """
+    if type(doc) is not dict:
+        return False, "baseline is not a plain JSON object"
+    if not _plain_json_data(doc):
+        return False, "baseline contains non-JSON containers or values"
+    rows = doc.get("holdings")
+    if rows is None:
+        rows = doc.get("positions")
+    if not isinstance(rows, list) or not rows:
+        return False, "baseline has no positions"
+    identified = [
+        row for row in rows
+        if isinstance(row, dict)
+        and _usable_text(row.get("symbol"))
+        and _usable_text(row.get("account") or row.get("account_id") or row.get("account_key"))
+    ]
+    if len(identified) != len(rows):
+        return False, "baseline contains positions without an account and symbol"
+    if not _reference_numbers_usable(doc):
+        return False, "baseline lacks finite numerical position evidence"
+    try:
+        verdict = validate_payload(doc, None)
+        if not verdict.ok:
+            return False, "baseline failed payload validation"
+        if not math.isfinite(verdict.total) or not math.isfinite(verdict.cash_total):
+            return False, "baseline aggregates are not finite"
+        summed = verdict.details.get("summed_market_value")
+        declared = [doc.get("total_value"), (doc.get("portfolio_totals") or {}).get("total_value")]
+        # Use the existing reconcile_totals two-decimal/one-cent criterion, without changing it.
+        coherent = math.isfinite(summed) and all(
+            abs(round(summed, 2) - float(value)) <= 0.01
+            for value in declared
+            if value is not None
+        )
+        if not coherent:
+            return False, "baseline measured aggregate is non-finite or its declared totals disagree"
+    except (TypeError, ValueError, OverflowError, AttributeError):
+        return False, "baseline numerical validation is unusable"
+    return True, ""
+
+
 def _total_of(h):
     try:
         return float((h.get("portfolio_totals") or {}).get("total_value") or h.get("total_value") or 0)
@@ -66,19 +243,186 @@ def _total_of(h):
         return 0.0
 
 
-def _last_good_doc(path=None):
+def _store_state(path=None):
+    """Classify the holdings store WITHOUT conflating 'absent' with 'exists but unreadable'.
+
+    2026-11-03: holdings.json was 0 bytes while `_freshness.json` still said FRESH. The failure
+    class is a store that exists but cannot serve as a baseline. Distinguish the states so:
+
+      • READ diff paths may treat absent/empty/corrupt as **no snapshot** — there is nothing to
+        diff against, and saying so is honest;
+      • WRITE paths must NEVER treat empty/corrupt as **no baseline**. `validate_payload(h, None)`
+        disables the relative-drop / coverage / cash guards, so a single-account sync over a broken
+        store would silently replace the whole book. Refuse instead.
+
+    Returns ``(state, doc)``; ``doc`` is the parsed document only when ``state == "ok"``.
+    """
+    p = Path(path) if path else HOLDINGS_PATH
+    if not p.exists():
+        return "absent", None
     try:
-        p = Path(path) if path else HOLDINGS_PATH
-        if p.exists():
-            return json.loads(p.read_text())
+        raw = p.read_bytes()
+    except OSError:
+        return "unreadable", None
+    if not raw.strip():
+        return "empty", None
+    try:
+        doc = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return "unparseable", None
+    if not isinstance(doc, dict):
+        return "unparseable", None
+    # A parseable document is still not a usable one when its shape is wrong. 2026-11-03 review
+    # (cx-openai-2, P1): {"holdings": null} raised TypeError and {"holdings": {"AAA": {}}} / [1]
+    # raised AttributeError out of the read path. Wrong shape is "no snapshot", never a crash, and
+    # it is forbidden as a write baseline for the same reason an empty file is.
+    if "holdings" in doc:
+        rows = doc.get("holdings")
+        if not isinstance(rows, list):
+            return "shape_invalid", None
+        if any(not isinstance(row, dict) for row in rows):
+            return "shape_invalid", None
+    elif "positions" in doc:  # the legacy key the rest of the module still accepts
+        rows = doc.get("positions")
+        if not isinstance(rows, list):
+            return "shape_invalid", None
+        if any(not isinstance(row, dict) for row in rows):
+            return "shape_invalid", None
+    else:
+        return "shape_invalid", None
+    return "ok", doc
+
+
+def _last_good_doc(path=None):
+    state, doc = _store_state(path)
+    return doc if state == "ok" else None
+
+
+def _backup_candidates(path=None):
+    """Sibling ``holdings.json.bak*`` files, newest first. Read-only."""
+    p = Path(path) if path else HOLDINGS_PATH
+    try:
+        return sorted(p.parent.glob(p.name + ".bak*"), key=lambda f: f.stat().st_mtime, reverse=True)
+    except OSError:
+        return []
+
+
+#: A backup older than this is not a baseline (claude-lead BLOCK on #2543, 2026-11-05).
+#:
+#: Why 24 h, from the repo rather than from taste: ``state_freshness_writer.EXPECTED_MAX_AGE_HOURS`` is the table every
+#: surface already reads for "is this store current", and it declares ``"holdings.json": 24``. The Schwab sync itself
+#: runs once each weekday morning (premarket step, 07:05 ET), so the last good book is one cycle old or younger; a
+#: backup past that is a historical document, not a recovery point. On 2026-11-05 this host's newest backup was two
+#: weeks old — a repeat of the 11-03 zero-byte store would have written every other account's two-week-old rows back
+#: into the live book, with the relative guards comparing the candidate against that same stale document, so they
+#: could not fire. Overridable as ``positions.baseline_max_age_hours`` in ``config/portfolio_positions.yaml``; this
+#: is the fallback when the file or key is absent, never a bound that silently disappears.
+try:  # the import only differs between "run as a script" and "imported by a test harness"
+    from state_freshness_writer import EXPECTED_MAX_AGE_HOURS as _FRESHNESS_CONTRACT
+except ImportError:  # pragma: no cover
+    _FRESHNESS_CONTRACT = {}
+BASELINE_BACKUP_MAX_AGE_HOURS = float(_FRESHNESS_CONTRACT.get("holdings.json", 24))
+
+
+def _baseline_max_age_hours(config_path=None):
+    """The configured ceiling: ``positions.baseline_max_age_hours``, else the freshness contract's 24 h.
+
+    Config, not code: a changed sync cadence (or an operator decision to tolerate a longer substitute) moves here
+    without editing this module. A missing, unusable or non-positive value keeps the conservative default rather than
+    disabling the bound — the failure direction that matters is "refuse a stale baseline", never "accept any".
+    """
+    try:
+        import yaml
+        path = (Path(config_path) if config_path
+                else Path(__file__).resolve().parent.parent / "config" / "portfolio_positions.yaml")
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        raw = (cfg.get("positions") or {}).get("baseline_max_age_hours")
+        if raw is None:
+            return BASELINE_BACKUP_MAX_AGE_HOURS
+        value = float(raw)
+        return value if value > 0 else BASELINE_BACKUP_MAX_AGE_HOURS
     except Exception:
-        pass
-    return None
+        return BASELINE_BACKUP_MAX_AGE_HOURS
+
+
+def _newest_backup_age_hours(path=None):
+    """How old the newest backup FILE is, usable or not — so a refusal can state it (claude-lead, #2543).
+
+    None when there is no backup file at all. A refusal that says only "no backup younger than 24h" leaves the
+    operator guessing whether a backup exists and how stale it is; the age is the fact that decides what to do next.
+    """
+    now_ts = datetime.now(timezone.utc).timestamp()
+    ages = []
+    for f in _backup_candidates(path):
+        try:
+            ages.append((now_ts - f.stat().st_mtime) / 3600.0)
+        except OSError:
+            continue
+    return min(ages) if ages else None
+
+
+def _no_baseline_reason(state, path=None):
+    """The refusal sentence, naming the ceiling and how old the newest backup actually is (claude-lead, #2543).
+
+    The age is the fact the operator acts on: "no backup younger than 24h" cannot distinguish a backup from last
+    evening (wait for the next good sync) from one a fortnight old (the store needs a restore decision), and those
+    two call for different next steps. Every refusal path uses this one sentence so they cannot drift apart.
+    """
+    limit = _baseline_max_age_hours()
+    age = _newest_backup_age_hours(path)
+    newest = f"the newest backup is {age:,.1f}h old" if age is not None else "there is no backup file at all"
+    return f"NO_BASELINE: holdings store is {state}; no usable backup younger than {limit:g}h ({newest})"
+
+
+def _baseline_from_backups(path=None, *, max_age_hours=None):
+    """Newest finite, validator-accepted, sufficiently RECENT reference as ``(doc, path)``, else ``(None, None)``.
+
+    2026-11-03 (operator execution-engineering grant): when the live store is empty/corrupt the
+    WRITE path must still have a baseline — the restored candidate or a backup — so
+    ``validate_payload`` runs WITH the coverage / cash / catastrophic-drop guards instead of
+    ``last_good=None``. Read-only; never invents a book.
+
+    ``max_age_hours`` bounds how old that substitute may be. Omitted (``None``) means "the configured
+    ceiling" (:func:`_baseline_max_age_hours`: ``positions.baseline_max_age_hours``, else 24 h); passing
+    ``float("inf")`` is the explicit, documented way to disable the bound, for tests and a deliberate
+    operator recovery only. There is no silent "bound off" path: a scheduled run that forgets the argument
+    gets the conservative ceiling, not no ceiling at all.
+    """
+    limit = _baseline_max_age_hours() if max_age_hours is None else float(max_age_hours)
+    now_ts = datetime.now(timezone.utc).timestamp()
+    for f in _backup_candidates(path):
+        try:
+            age_hours = (now_ts - f.stat().st_mtime) / 3600.0
+        except OSError:
+            continue
+        if age_hours > limit:
+            continue                      # too old to be a baseline: a stale book is not a recovery
+        state, doc = _store_state(f)
+        if state != "ok" or not _baseline_usable(doc)[0]:
+            continue
+        return doc, f
+    return None, None
 
 
 def sane_payload(h, last_good=None):
-    """PRE-WRITE SANITY — same contract as canonical_assert()."""
-    last = last_good if last_good is not None else _last_good_doc()
+    """PRE-WRITE SANITY — same contract as canonical_assert().
+
+    With no explicit ``last_good``, a store that exists but is empty/corrupt is not a clean
+    slate: resolve the restored candidate or a RECENT backup as the baseline, and refuse when
+    none exists (never validate with every relative guard off).
+
+    An ABSENT store is the bootstrap case (claude-lead BLOCK on #2543, 2026-11-05): there is no
+    book to protect and nothing to compare against, so it keeps the pre-PR behaviour and validates
+    with ``last=None``. Refusing there refused every first-time ``protected_holdings_write`` caller.
+    """
+    if last_good is not None:
+        last = last_good
+    else:
+        state, last = _store_state()
+        if last is None and state != "absent":
+            last, _src = _baseline_from_backups()
+            if last is None:
+                return False, _no_baseline_reason(state)
     v = validate_payload(h, last)
     return v.ok, f"{v.reason_code}: {v.reason}"
 
@@ -272,9 +616,68 @@ def reconcile_totals(doc, *, source="unknown"):
         return None
 
 
+def _is_durable_store_target(path) -> bool:
+    """True only for a real store the host serves (persistent state / checkout), never a temp path.
+
+    This is what keeps the live side effects off a test or one-off write: a probe pointed at a temp
+    file must not commit watchlist membership to production (2026-11-03 incident).
+    """
+    try:
+        from lib.persistent_state_root import portfolio_state_write_targets
+        durable = {(Path(d) / "holdings.json").resolve() for d in portfolio_state_write_targets(PROJECT_ROOT)}
+    except Exception:  # noqa: BLE001 — without the resolver, only the configured store counts
+        durable = {Path(HOLDINGS_PATH).resolve()}
+    return Path(path).resolve() in durable
+
+
+def _post_write_side_effects(new_holdings, *, source, skip_transfer_detect, prior_doc, target):
+    """The post-write hooks that reach outside this process — separated so they are injectable.
+
+    Called ONLY for the canonical store (protected_holdings_write enforces that). Keeping them in one
+    named function means a test stubs one symbol, and a future caller cannot forget one of three.
+    """
+    HP = target
+    # Held-state change → re-queue CIO synthesis for affected watchlist symbols (advisory, non-fatal).
+    try:
+        from holdings_change_trigger import check_and_enqueue
+        trig = check_and_enqueue(apply=True)
+        if trig.get("changed"):
+            print(f"  [holdings-change] {trig['summary']}")
+    except Exception as _e:
+        print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
+
+    # ROOT: sold names must not keep source='portfolio' rows (watchlist HELD badge /
+    # watchlist_symbol_master.in_portfolio = bool_or(source='portfolio')).
+    try:
+        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
+        _ms = sync_portfolio_watchlist_membership(new_holdings)
+        if _ms.get("exited") or _ms.get("ensured"):
+            print(f"  [portfolio-membership] exited={_ms.get('exited')} ensured={_ms.get('ensured')}")
+    except Exception as _e:
+        print(f"  [portfolio-membership] sync failed (non-fatal): {str(_e)[:120]}")
+
+    # Cross-account transfer detection + normalization (Fidelity→Schwab rollover, Trad→Roth ladder).
+    if not skip_transfer_detect and prior_doc is not None:
+        try:
+            from lib.cost_basis_transfer import process_holdings_change
+            xfer = process_holdings_change(prior_doc, new_holdings, sync_source=source, apply=True)
+            if xfer.get("events"):
+                print(f"  [transfer-normalize] {xfer.get('summary')}")
+                if xfer.get("stop_flags"):
+                    print(f"  [transfer-normalize] {len(xfer['stop_flags'])} stop(s) may need replace-mode resize")
+                tagged = xfer.get("holdings_doc")
+                if tagged and (xfer.get("applied_overrides") or xfer.get("normalized") or xfer.get("holdings_tagged")):
+                    fd2, tmp2 = tempfile.mkstemp(dir=str(HP.parent), suffix=".tmp")
+                    with os.fdopen(fd2, "w") as f:
+                        json.dump(tagged, f, indent=2, default=str)
+                    os.replace(tmp2, HP)
+        except Exception as _e:
+            print(f"  [transfer-normalize] detect failed (non-fatal): {str(_e)[:120]}")
+
+
 def protected_holdings_write(new_holdings, source="schwab_sync", account_key="schwab", protect_basis=False,
                             basis_label=None,
-                            target_path=None, skip_transfer_detect=False):
+                            target_path=None, skip_transfer_detect=False, baseline=None):
     """GATE B / mandatory holdings wipe-guard. Routes EVERY holdings/current-state write so a bad payload
     fails closed instead of zeroing holdings.json. NEVER overwrites a good snapshot with empty/zeroed/
     catastrophically-low data; backs up + writes atomically + post-asserts + restores on failure.
@@ -285,9 +688,66 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     a caller may pass its own resolved path (the guard operates entirely on that path).
     """
     HP = Path(target_path).resolve() if target_path else HOLDINGS_PATH
-    prior_doc = _last_good_doc(HP)
+    # Admission precedes alias traversal and all candidate mutation: both graph views must
+    # be non-overridable, finite JSON. A custom candidate can otherwise hide shared rows.
+    if not _plain_json_data(new_holdings):
+        reason = "SCHEMA_INVALID: candidate contains non-JSON containers, cycles or non-finite values"
+        _record(account_key, "rejected_sanity", f"[{source}] {reason}")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Target left unchanged.", source)
+        return {"wrote": False, "status": "rejected_sanity", "reason": reason,
+                "reason_code": "SCHEMA_INVALID", "missing_accounts": [], "baseline_source": None}
+    # A guard whose precondition can be violated by its caller is decorative (cc-deepseek-3 review,
+    # 2026-11-03). If the caller hands us the candidate as its own baseline, every relative check
+    # compares the new book with itself and the cash/drop guards can never fire. Refuse here, in the
+    # guard, so no present or future caller can disarm it — the call-site assertion stays as well.
+    # Identity OR shared substructure: `dict(candidate)` shares the very holdings list that is
+    # mutated below, so a shallow copy is the same bypass wearing a different name (cc3 residual,
+    # 2026-11-03). Deliberately identity, never equality: an equal but independent baseline is a
+    # legitimate no-change write and must not be refused.
+    if baseline is not None and (baseline is new_holdings or (
+            _plain_json_data(baseline) and _shares_structure(baseline, new_holdings))):
+        reason = ("BASELINE_ALIAS: the baseline shares the candidate's own objects, so the relative "
+                  "coverage/cash/drop guards would compare the new book with itself")
+        _record(account_key, "rejected_baseline_alias", f"[{source}] baseline is the candidate object")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
+        return {"wrote": False, "status": "rejected_baseline_alias", "reason": reason,
+                "reason_code": "BASELINE_ALIAS", "missing_accounts": [], "baseline_source": None}
+    prior_state, prior_doc = _store_state(HP)
+    baseline_source = "store" if prior_doc is not None else None
+    if prior_doc is not None and not _baseline_usable(prior_doc)[0]:
+        # An empty / identity-less store cannot be the reference for the relative guards.
+        prior_state, prior_doc, baseline_source = "store_unusable", None, None
+    if baseline is not None:
+        usable, why = _baseline_usable(baseline)
+        if not usable:
+            # A distinct object is not a usable baseline ({"holdings": []} skipped every guard).
+            # Do not use it; fall through to the store/backup resolution below.
+            _record(account_key, "baseline_unusable", f"[{source}] caller baseline ignored: {why}")
+        else:
+            # An explicit restored candidate / DB-derived book (Step 1) is the strongest baseline.
+            prior_doc, baseline_source = baseline, "caller"
+    if prior_doc is None:
+        # Store empty/corrupt: use the restored candidate or a backup so the relative guards stay
+        # live. Refuse only when no usable baseline exists — NEVER validate with last_good=None.
+        prior_doc, _src = _baseline_from_backups(HP)
+        if prior_doc is not None:
+            baseline_source = f"backup:{Path(_src).name}"
+    if prior_doc is None:
+        reason = _no_baseline_reason(prior_state, HP)
+        _record(account_key, "rejected_no_baseline", f"[{source}] {reason}")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Prior snapshot kept (no wipe).", source)
+        return {"wrote": False, "status": "rejected_no_baseline", "reason": reason,
+                "reason_code": "NO_BASELINE", "missing_accounts": [], "baseline_source": None}
     # Totals must describe the positions in THIS payload -- see reconcile_totals.
     reconcile_totals(new_holdings, source=source)
+    # Reconciliation may truthfully replace a bad nested declared total. Check the resulting
+    # financial fields, without treating arbitrary metadata strings/booleans as financial data.
+    if not _reference_numbers_usable(new_holdings, require_measurements=False):
+        reason = "SCHEMA_INVALID: candidate financial values and aggregates must be finite numbers, not booleans"
+        _record(account_key, "rejected_sanity", f"[{source}] {reason}")
+        _alert(f"🛑 holdings write BLOCKED ({source}): {reason}. Target left unchanged.", source)
+        return {"wrote": False, "status": "rejected_sanity", "reason": reason,
+                "reason_code": "SCHEMA_INVALID", "missing_accounts": [], "baseline_source": baseline_source}
     verdict = validate_payload(new_holdings, prior_doc)
     if not verdict.ok:
         status = "rejected_drop" if verdict.reason_code == "CATASTROPHIC_DROP" else "rejected_sanity"
@@ -402,47 +862,13 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
 
     _record(account_key, "ok", f"wrote {n} positions / ${v:,.0f}; basis_flags={len(flagged)}", n, v, True)
 
-    # Held-state change → re-queue CIO synthesis for affected watchlist symbols (advisory, non-fatal).
-    # This is the single write gate for both the Schwab sync and the SnapTrade merge, so hooking here
-    # covers every position-changing path — see scripts/holdings_change_trigger.py.
-    try:
-        from holdings_change_trigger import check_and_enqueue
-        trig = check_and_enqueue(apply=True)
-        if trig.get("changed"):
-            print(f"  [holdings-change] {trig['summary']}")
-    except Exception as _e:
-        print(f"  [holdings-change] trigger failed (non-fatal): {str(_e)[:120]}")
-
-    # ROOT: sold names must not keep source='portfolio' rows (watchlist HELD badge /
-    # watchlist_symbol_master.in_portfolio = bool_or(source='portfolio')).
-    try:
-        from sync_portfolio_watchlist_membership import sync_portfolio_watchlist_membership
-        _ms = sync_portfolio_watchlist_membership(new_holdings)
-        if _ms.get("exited") or _ms.get("ensured"):
-            print(f"  [portfolio-membership] exited={_ms.get('exited')} ensured={_ms.get('ensured')}")
-    except Exception as _e:
-        print(f"  [portfolio-membership] sync failed (non-fatal): {str(_e)[:120]}")
-
-    # Cross-account transfer detection + normalization (Fidelity→Schwab rollover, Trad→Roth ladder).
-    # Carry cost basis, stamp transfer_history / original_source_account, persist DB audit, and
-    # re-write holdings when any provenance/basis change was applied (never silent fabrication).
-    if not skip_transfer_detect and prior_doc is not None:
-        try:
-            from lib.cost_basis_transfer import process_holdings_change
-            xfer = process_holdings_change(prior_doc, new_holdings, sync_source=source, apply=True)
-            if xfer.get("events"):
-                print(f"  [transfer-normalize] {xfer.get('summary')}")
-                if xfer.get("stop_flags"):
-                    print(f"  [transfer-normalize] {len(xfer['stop_flags'])} stop(s) may need replace-mode resize")
-                tagged = xfer.get("holdings_doc")
-                # Rewrite when overrides applied OR positions were provenance-normalized
-                if tagged and (xfer.get("applied_overrides") or xfer.get("normalized") or xfer.get("holdings_tagged")):
-                    fd2, tmp2 = tempfile.mkstemp(dir=str(HP.parent), suffix=".tmp")
-                    with os.fdopen(fd2, "w") as f:
-                        json.dump(tagged, f, indent=2, default=str)
-                    os.replace(tmp2, HP)
-        except Exception as _e:
-            print(f"  [transfer-normalize] detect failed (non-fatal): {str(_e)[:120]}")
+    # Every hook below reaches OUTSIDE this process (CIO trigger, watchlist membership, transfer
+    # tables). They run only for the canonical store: a write to a temp or alternate target_path is a
+    # test or a one-off and must never touch the live database. 2026-11-03 incident: a probe writing
+    # to a temp path still committed 21 membership removals to production through this block.
+    if _is_durable_store_target(HP):
+        _post_write_side_effects(new_holdings, source=source,
+                                 skip_transfer_detect=skip_transfer_detect, prior_doc=prior_doc, target=HP)
 
     # G1 — resolution-layer dual-write. When the primary path is one of the
     # durable write targets (served/persistent + checkout), mirror the validated
@@ -478,7 +904,8 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
     except Exception as _e:
         print(f"  [holdings-guard] secondary mirror skipped (non-fatal): {str(_e)[:120]}")
 
-    return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged}
+    return {"wrote": True, "status": "ok", "total_value": v, "position_count": n, "basis_flags": flagged,
+            "baseline_source": baseline_source}
 
 
 def _looks_like_cusip(sym):
@@ -695,10 +1122,45 @@ def sync_schwab_positions(account_key, dry_run=True):
 
 
 def _sync_rows(account_key, label, live, st, *, dry_run):
-    """Read holdings.json, replace this account's rows from the live positions, write (caller holds the lock)."""
-    if not HOLDINGS_PATH.exists():
-        return {"status": "no_holdings_file", "wrote": False}
-    cur = json.loads(HOLDINGS_PATH.read_text())
+    """Read holdings.json, replace this account's rows from the live positions, write (caller holds the lock).
+
+    A read diff over no snapshot is honest and harmless; a write over no baseline is not.
+    2026-11-03: a 0-byte store must never be the starting document for a read-modify-write.
+    """
+    state, cur = _store_state()
+    baseline_doc = None
+    baseline_source = "store"
+    if state == "ok":
+        usable, _why = _baseline_usable(cur)
+        if not usable:
+            # An empty or identity-less live store is not a usable baseline: the relative guards
+            # would have nothing to compare against. Look for a genuine backup before writing.
+            state, cur = "store_unusable", None
+    if state != "ok":
+        if dry_run:
+            # Read path: absent/empty/corrupt simply means there is no snapshot to diff.
+            return {"status": "no_holdings_file" if state == "absent" else "no_snapshot",
+                    "store_state": state, "broker_account": account_key,
+                    "holdings_label": label, "wrote": False}
+        # Write path: empty/corrupt is NOT 'no baseline'. Use the restored candidate or a RECENT
+        # backup and go through protected_holdings_write so the coverage/cash/drop guards stay live.
+        # A stale backup is not a baseline (claude-lead BLOCK on #2543): it would write every other
+        # account's old rows back into the book and the relative guards would measure against that
+        # same stale document. No suitable backup -> fail closed, store untouched.
+        baseline_doc, _src = _baseline_from_backups()
+        if baseline_doc is None:
+            reason = _no_baseline_reason(state)
+            _record(account_key, "rejected_no_baseline", f"[schwab_position_sync] {reason}")
+            return {"status": "rejected_no_baseline", "store_state": state, "broker_account": account_key,
+                    "holdings_label": label, "wrote": False, "reason": reason,
+                    "reason_code": "NO_BASELINE"}
+        cur = copy.deepcopy(baseline_doc)
+        baseline_source = f"backup:{Path(_src).name}"
+    else:
+        # P0 (cx-openai-2, 2026-11-03): `cur` is mutated below, so the guard's baseline must be an
+        # INDEPENDENT snapshot taken before that mutation. When both names pointed at one document,
+        # the relative cash/drop guards compared the candidate with itself and could never fire.
+        baseline_doc = copy.deepcopy(cur)
     hold = cur.get("holdings", [])
     existing_by_key = {((r.get("symbol") or "").upper(), label): r
                        for r in hold if r.get("account") == label}
@@ -714,9 +1176,17 @@ def _sync_rows(account_key, label, live, st, *, dry_run):
                 "live_positions": len(equity_rows), "added": added, "removed": removed,
                 "share_drift_events": drift_events, "wrote": False}
     cur["holdings"] = [r for r in hold if r.get("account") != label] + new_rows
+    # Structural, not incidental: a later refactor must not be able to re-alias the two and disarm
+    # the relative guards invisibly. Same object here means there is no independent baseline, so the
+    # write is refused loudly BEFORE anything is written.
+    if baseline_doc is cur:
+        raise RuntimeError(
+            "schwab_position_sync: baseline and candidate are the same object; "
+            "the coverage/cash/drop guards would compare the new book with itself"
+        )
     res = protected_holdings_write(cur, source="schwab_position_sync", account_key=account_key, protect_basis=True,
-                                   basis_label=label)
-    res.update({"added": added, "removed": removed})
+                                   basis_label=label, baseline=baseline_doc)
+    res.update({"added": added, "removed": removed, "store_state": state, "baseline_source": baseline_source})
     # Open approval tasks for DRIP-like share drift (non-fatal)
     if drift_events:
         try:
