@@ -12,6 +12,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+# CI's plain shards do not install psycopg2; this line routes the file to the Postgres shard (scripts/lib/ci_shards.py).
+pytest.importorskip("psycopg2")
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
