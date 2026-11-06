@@ -9,6 +9,65 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+import logging
+
+try:
+    from . import ops_diagnostics
+except ImportError:  # pragma: no cover - flat import layout
+    import ops_diagnostics  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
+
+log = logging.getLogger(__name__)
+
+# Refusals that mean the credit book itself is broken (not an ordinary cap or pause). Each is logged on every call
+# and reported once per UTC day per reason: on 2026-10-30 a half-written journal line made every Anthropic call fall
+# back to grok with no log line and no alert for 30+ hours.
+_BROKEN_BOOK_CODES = frozenset({"CREDIT_UNAVAILABLE", "CREDIT_CONFIGURATION_INVALID", "COST_PERSISTENCE_UNAVAILABLE"})
+CHANNEL = "credit_refusal"
+_refusal_alerted: set[tuple[str, str]] = set()
+
+
+def _credit_refusal_diagnostic(code: str, *, where: str, now: datetime | None = None) -> dict:
+    """A structured operator diagnostic for one broken credit book (no sender, no side effects)."""
+    day = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+    return {
+        "schema": "CreditRefusalDiagnostic@v1",
+        "channel": CHANNEL,
+        "severity": "P2",
+        "priority": "P2",
+        "producer": "anthropic_routing",
+        "message_class": "ops_integrity",
+        "dedupe_minutes": 1440,
+        "code": str(code),
+        "where": str(where),
+        "day": day,
+        "message": (
+            f"⚠️ *ANTHROPIC LANE OFF* — {code}\n"
+            f"Every Anthropic call is refused by the credit book ({where}) and falls back to the next lane. "
+            "Check data/runtime/provider_cost/anthropic_credit.jsonl and the credit policy."
+        ),
+    }
+
+
+def _report_credit_refusal(code: str, *, where: str, notify=None) -> bool:
+    """Log every Anthropic credit refusal; emit a P2 diagnostic once per reason per UTC day.
+
+    Send authority (AGENTS.md §23.20): this module is inside the advisory planner lane's import reach, so
+    it must not send. The diagnostic goes to ``ops_diagnostics``; the already-authorised notification
+    owner delivers it. Returns True only when delivery is CONFIRMED, so a rejected/raising/absent
+    delivery leaves the refusal retryable.
+    """
+    if code not in _BROKEN_BOOK_CODES:
+        log.info("anthropic credit refusal %s (%s); falling back", code, where)
+        return False
+    log.warning("anthropic credit book unavailable: %s (%s); falling back to the next lane", code, where)
+    diagnostic = _credit_refusal_diagnostic(code, where=where)
+    key = (code, diagnostic["day"])
+    if key in _refusal_alerted:
+        return False
+    if not ops_diagnostics.deliver(CHANNEL, diagnostic, notify=notify):
+        return False
+    _refusal_alerted.add(key)
+    return True
 
 from .anthropic_credit import CreditBook, CreditDenied, amount
 from .anthropic_transport import AnthropicTransport, load_policy
@@ -280,8 +339,9 @@ class FundingContext:
         try:
             CreditBook(state_root(), load_policy()).record_fallback(
                 reason, now=datetime.now(timezone.utc), process_id=process_id)
-        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
-            pass  # Corrupt/unavailable credit must not prevent a governed free fallback.
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError) as exc:
+            # Corrupt/unavailable credit must not prevent a governed free fallback -- but it must be visible.
+            _report_credit_refusal(getattr(exc, "reason", None) or "CREDIT_UNAVAILABLE", where="record_fallback")
 
     def authorize_candidate(self, candidate: dict) -> None:
         if candidate["provider"] == "anthropic":
@@ -379,6 +439,7 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
             if getattr(exc, "code", "") in {"INPUT_LIMIT_EXCEEDED", "GOVERNANCE_UNAVAILABLE"}:
                 raise
             if provider == "anthropic":
+                _report_credit_refusal(getattr(exc, "code", "PROVIDER_UNAVAILABLE"), where="transport")
                 FundingContext.record_fallback(getattr(exc, "code", "PROVIDER_UNAVAILABLE"), process_id)
             last = exc
             receipts.append({"provider": provider, "outcome": getattr(exc, "code", "provider_failure")})
@@ -387,6 +448,7 @@ def generate_in_process(prompt: str, *, process_id: str, cfg: dict, options: dic
                     "CREDIT_", "COST_CAP_EXCEEDED", "COST_CEILING_EXCEEDED", "COST_CONFIGURATION_INVALID",
                     "COST_PERSISTENCE_UNAVAILABLE", "ANTHROPIC_"))):
                 code = getattr(exc, "reason", None) or str(exc).split(":", 1)[0]
+                _report_credit_refusal(code, where="route")
                 FundingContext.record_fallback(code, process_id)
                 last = exc
                 receipts.append({"provider": provider, "outcome": code})
