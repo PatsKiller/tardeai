@@ -523,6 +523,22 @@ def test_the_cache_serves_copies(tmp_path):
     assert second["holdings"] and len(db.queries) == n
 
 
+def test_the_cache_key_is_the_helper_not_a_transient_bound_method(tmp_path):
+    """CI shard 7 (2026-11-06): the key was id(db.query), a new object per access, so the cache missed
+    whenever the address was not reused. Hold the first bound method alive so the second cannot reuse it."""
+    hd = _hd()
+    store = _write_prior(tmp_path)
+    db = FakeDB()
+    held = db.query
+    hd.load_document(store, db_query=held, now=NOW)
+    n = len(db.queries)
+    other = db.query
+    assert other is not held and id(other) != id(held)
+    hd.load_document(store, db_query=other, now=NOW)
+    assert len(db.queries) == n, "the same helper must hit the cache whatever bound-method object carries it"
+    hd.load_document(store, db_query=FakeDB().query, now=NOW)  # a different helper is a different key
+
+
 def test_an_unresolvable_production_root_is_a_stated_fallback(tmp_path, monkeypatch):
     hd = _hd()
     store = _write_prior(tmp_path)

@@ -157,7 +157,7 @@ def load_document(store: Path | str | None = None, *, db_query: Optional[Callabl
         db_query = default_db_query()
         if db_query is None:
             return _file_document(store, "database disabled or its adapter is unavailable")
-    key = (os.path.realpath(store), id(db_query))
+    key = (os.path.realpath(store), _query_identity(db_query))
     if use_cache:
         with _CACHE_LOCK:
             hit = _CACHE.get(key)
@@ -186,6 +186,21 @@ def _render(store: Path, db_query: Callable[..., Any], *, now: Optional[datetime
     document["document_source"] = DOCUMENT_SOURCE_DB
     document["document_fallback_reason"] = None
     return document
+
+
+def _query_identity(db_query: Callable[..., Any]) -> Any:
+    """The cache identity of a query helper.
+
+    Not id(): `obj.query` builds a NEW bound-method object on every access, so id() of two accesses to the
+    same helper differs whenever the first object's address is not reused (CI shard 7, 2026-11-06: every load
+    missed the cache). Bound methods hash and compare by (__self__, __func__), so the callable itself is the key;
+    an unhashable callable falls back to its id.
+    """
+    try:
+        hash(db_query)
+    except TypeError:
+        return ("id", id(db_query))
+    return db_query
 
 
 def clear_cache() -> None:
