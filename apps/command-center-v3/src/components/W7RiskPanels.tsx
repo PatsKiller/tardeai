@@ -7,7 +7,7 @@ import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
 import { toneVars } from '../lib/designTokens'
 import { ShadowTag } from './home/MarketRiskBanner'
-import { shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
+import { shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, pointsToScore, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
@@ -180,7 +180,7 @@ export function W7RiskMarketRisk({ data, mr: resp, error }: { data: any, mr: any
     </W7Panel>
 
     {mr && mr.contributors.length > 0 && <W7Panel title="Contributors" testId="risk-market-risk-contributors">
-      {mr.contributors.slice(0, 5).map((c, i) => <div key={i} style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span><span style={{ ...mono, color: tv.color }}>{c.points >= 0 ? '+' : ''}{Math.round(c.points)}</span></div>)}
+      {mr.contributors.slice(0, 5).map((c, i) => <div key={i} style={row}><span>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span><span style={{ ...mono, color: tv.color, whiteSpace: 'nowrap' }}>{pointsToScore(c.points)}</span></div>)}
       {mr.uplift && <div style={{ ...row, color: TOKENS.text[2] }}><span>{mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`}</span><span style={{ ...mono, color: TOKENS.text[0] }}>= {mr.score != null ? Math.round(mr.score) : '—'}</span></div>}
       {!mr.uplift && pointsSum(mr) != null && mr.score != null && Math.round(pointsSum(mr)!) !== Math.round(mr.score) && <p style={{ margin: '6px 0 0', fontSize: TYPE.sm, color: toneVars('warning').color }}>Contributors sum to {Math.round(pointsSum(mr)!)}, score is {Math.round(mr.score)} — the engine owes an explanation line.</p>}
     </W7Panel>}

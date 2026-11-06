@@ -1,6 +1,6 @@
 // Home v007 additive context parser — display truth rules.
 //   node --experimental-strip-types src/lib/homeV007.test.ts
-import { categoryLine, conflictLine, headlineLine, hedgeLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
+import { categoryLine, compactPct, conflictLine, groupGaps, headlineLine, hedgeLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
 import { offersBudgetDecision } from './budgetIntent.ts'
 
 declare const process: { exit(code?: number): never }
@@ -422,6 +422,30 @@ const unknownMove = parseHomeV007({ hedge: { inverse_moves: { SH: { quote: { sta
   day_change: { state: 'unknown', reason: 'no bar', value: { pct: 0.58 } } } } } })
 eq('an unknown inverse move publishes no number', unknownMove.hedge.inverse[0].dayPct, null)
 eq('and keeps its unknown state', unknownMove.hedge.inverse[0].state, 'unknown')
+
+// LIVEFIX-R (operator 2026-11-06): identical gap reasons collapse to one line naming every symbol; nothing is dropped.
+{
+  const rem = { key: 'cio_store', action: 'Run the CIO review for the symbol' }
+  const g = parseHomeV007({ state: 'measured', symbols: [], gaps: [
+    ...['DEMA', 'DEMB', 'DEMC'].map(symbol => ({ symbol, field: 'cio', reason: 'no CIO record', remediation: rem })),
+    { symbol: 'DEMA', field: 'volume', reason: 'fewer than 20 sessions', remediation: { key: 'wait', action: 'wait for history' } },
+    { symbol: 'DEMD', field: 'cio', reason: 'store stale', remediation: rem },
+    { symbol: null, field: 'risk.categories.breadth', reason: 'not read', remediation: null },
+  ] })
+  eq('gap parse keeps the symbol', g.gaps[0].symbol, 'DEMA')
+  eq('gap parse keeps the field', g.gaps[0].field, 'cio')
+  const groups = groupGaps(g.gaps)
+  eq('identical (field, reason, remediation) collapse; different reasons stay apart', groups.length, 4)
+  eq('grouped CIO line names every symbol', groups[0].text, 'CIO stance unavailable for 3 symbols: DEMA, DEMB, DEMC — no CIO record')
+  eq('group counts its gaps', groups[0].count, 3)
+  eq('remediation kept once per group', groups[0].remediation, 'Run the CIO review for the symbol (cio_store)')
+  eq('a different reason is its own group', groups[2].text, 'CIO stance unavailable for 1 symbol: DEMD — store stale')
+  eq('a symbol-less gap keeps its field', groups[3].text, 'Risk · categories · breadth unavailable — not read')
+  eq('every input gap is counted', groups.reduce((n, x) => n + x.count, 0), g.gaps.length)
+  eq('compactPct says not measured for unknown', compactPct({ state: 'unknown', pct: 3, stale: false } as any), 'not measured')
+  eq('compactPct prints a measured value', compactPct({ state: 'measured', pct: 1.234, stale: false } as any), '+1.23%')
+  eq('compactPct keeps stale', compactPct({ state: 'measured', pct: -2, stale: true } as any), '-2.00% (stale)')
+}
 
 console.log(`homeV007: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

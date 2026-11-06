@@ -8,7 +8,7 @@ const assert = {
 }
 import { unwrapMarketRisk, bannerVisible, factLine, tierTone, contributorsLine, pointsSum, episodeLine, fmtPct, shadowMarker, SHADOW_MARKER, CARRIED_MARKER,
   summaryVisible, summaryDefaultOpen, summaryModel, fmtPoints, budgetLabel, SUMMARY_PHONE_MAX_PX,
-  actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel } from './marketRisk.ts'
+  actionableModel, verdictLine, fmtUsd, fmtSignedPct, hedgeModel, rotateModel, pointsToScore } from './marketRisk.ts'
 
 const notEval = unwrapMarketRisk({ ok: true, data: { state: 'not_evaluated', tier: 'NOT_EVALUATED', score: null, as_of: null, age_hours: null, stale: false,
   reason: 'engine not live', contributors: [], categories: [], sources: { options_flow: { findings: [{ symbol: 'QQQ', state: 'STRESS', pc_vol_ratio: 3.309 }] } } } })
@@ -220,6 +220,37 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     reentry_watch: { NEWX: { symbol: 'NEWX', exit_date: '2031-03-07', exit_price: 10, stages: { last_close: 9.5, pct_vs_exit: -5 } } } }))!.reentry[0]
   assert.equal(noVerdict.verdict, 'no CIO verdict on record', 'a missing verdict is stated, never inferred from the price series')
   assert.ok(noVerdict.verdictTone !== 'danger', 'an absent verdict is not coloured as a bearish one')
+  // LIVEFIX-R (operator 2026-11-06): the chip never says STILL FALLING over a measurement that contradicts it, and an
+  // unmeasured stage is "not measured", never "0 of 5 — waiting: all met". The producer's verdict field is untouched.
+  assert.equal(r.verdictShown, 'Still falling', 'below the exit, closes not up: the producer word stands')
+  assert.equal(r.verdictNote, null)
+  assert.equal(r.vsExitKnown, false, 'no current quote: vs exit is not measured')
+  assert.equal(freshRow.verdictShown, 'Mixed', 'price above the exit contradicts "Still falling"')
+  assert.equal(freshRow.verdictTone, 'warning')
+  assert.match(freshRow.verdictNote!, /^Stage verdict from the closes is "Still falling", but the price now is \+23\.4% vs the exit\./)
+  assert.equal(freshRow.vsExitKnown, true)
+  const closeAbove = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { ...base.reentry_watch.NEWX,
+    stages: { ...base.reentry_watch.NEWX.stages, last_close: 10.4, pct_vs_exit: 4 } } } }))!.reentry[0]
+  assert.equal(closeAbove.verdictShown, 'Mixed', 'a confirmed close above the exit also contradicts it')
+  assert.match(closeAbove.verdictNote!, /last close \$10\.40 is at or above the exit \$10\.00/)
+  const trendUp = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { ...base.reentry_watch.NEWX,
+    stages: { ...base.reentry_watch.NEWX.stages, trend: 'up' } } } }))!.reentry[0]
+  assert.equal(trendUp.verdictShown, 'Mixed'); assert.match(trendUp.verdictNote!, /the closes trend up/)
+  const noSession = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { symbol: 'NEWX', exit_date: '2031-03-07', exit_price: 10,
+    stages: { verdict: 'Still falling', exit_price: 10, stage1: { met: 0, of: 5, conditions: [] }, stage2: { met: false, conditions: [] }, note: 'no session since the exit' } } } }))!.reentry[0]
+  assert.equal(noSession.verdict, 'Still falling', 'producer field kept verbatim')
+  assert.equal(noSession.verdictShown, 'Not measured')
+  assert.equal(noSession.verdictTone, 'neutral')
+  assert.match(noSession.verdictNote!, /no session since the exit/)
+  assert.equal(noSession.stage1, 'not measured', 'never "0 of 5"')
+  assert.equal(noSession.waiting, 'no session since the exit', 'never "all met" when nothing was evaluated')
+  assert.equal(noSession.stage2, 'not measured')
+  const allMet = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { ...base.reentry_watch.NEWX,
+    stages: { ...base.reentry_watch.NEWX.stages, verdict: 'Early setup', stage1: { met: 2, of: 2, conditions: [{ key: 'a', met: true, text: 'x' }, { key: 'b', met: true, text: 'y' }] } } } } }))!.reentry[0]
+  assert.equal(allMet.stage1, '2 of 2'); assert.equal(allMet.waiting, 'all met'); assert.equal(allMet.verdictShown, 'Early setup')
+  const unlisted = actionableModel(unwrapMarketRisk({ ...base, reentry_watch: { NEWX: { ...base.reentry_watch.NEWX,
+    stages: { ...base.reentry_watch.NEWX.stages, verdict: 'Basing', stage1: { met: 3, of: 5, conditions: [] } } } } }))!.reentry[0]
+  assert.equal(unlisted.stage1, '3 of 5'); assert.equal(unlisted.waiting, 'conditions not listed', '3 of 5 with no list is never "all met"')
   for (const quote of [
     { ...currentQuote, as_of: '2031-03-10T13:29:59Z' }, // before 09:30 after DST
     { ...currentQuote, as_of: '2031-03-10T20:01:00Z' }, // after 16:00 closing minute
@@ -290,3 +321,13 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
   console.log('marketRisk.test v006 actions: ok')
 }
 console.log('marketRisk.test ok')
+
+// LIVEFIX-R problem 4: a contributor badge carries its unit — never a bare "+31".
+assert.equal(pointsToScore(31), '+31 pts to score')
+assert.equal(pointsToScore(4.6), '+5 pts to score')
+assert.equal(pointsToScore(-2.4), '-2 pts to score')
+assert.equal(pointsToScore(34.44, 1), '+34.4 pts to score')
+assert.equal(pointsToScore(0), '+0 pts to score')
+assert.equal(pointsToScore(null), 'points not measured')
+assert.equal(summaryModel(unwrapMarketRisk({ ok: true, data: yBase }))!.contributors[0].pointsLabel, `${summaryModel(unwrapMarketRisk({ ok: true, data: yBase }))!.contributors[0].points} pts to score`)
+console.log('marketRisk LIVEFIX-R ok')

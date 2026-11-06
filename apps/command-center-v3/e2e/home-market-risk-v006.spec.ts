@@ -96,7 +96,9 @@ for (const width of [412, 390]) {
     expect(await minTap(page, '[data-testid=home-market-risk-summary]')).toBeGreaterThanOrEqual(44)
     await shot(page, `v006-${width}-expanded`)
 
-    // tap-to-explain: the STRESS (i) opens a bottom sheet with the glossary text; Close (≥44 px) closes it
+    // tap-to-explain: the STRESS (i) opens a bottom sheet with the glossary text; Close (≥44 px) closes it.
+    // The sector table is collapsed by default (LIVEFIX-R): open it first.
+    await page.locator('[data-testid=mr-sectors-section] > summary').tap()
     const stressI = page.locator('[data-testid=mr-sector-row][data-key=tech] [data-testid=mr-explain]')
     expect((await stressI.boundingBox())!.height).toBeGreaterThanOrEqual(44)
     await stressI.tap()
@@ -127,7 +129,7 @@ test('v006 1440: expanded by default, three blocks side by side, every term has 
   expect(boxes[1]!.x).toBeLessThan(boxes[2]!.x)
   // the actions sit under the verdict and above the sections
   expect(boxes[0]!.y).toBeGreaterThan((await page.getByTestId('mr-verdict').boundingBox())!.y)
-  expect(boxes[0]!.y).toBeLessThan((await page.getByTestId('mr-sectors').boundingBox())!.y)
+  expect(boxes[0]!.y).toBeLessThan((await page.getByTestId('mr-sectors-section').boundingBox())!.y)
   const terms = await page.locator('[data-testid=home-market-risk-summary] [data-testid=mr-explain]').evaluateAll(es => [...new Set(es.map(e => e.getAttribute('data-term')))].sort())
   for (const t of ['budget_breach', 'carried', 'hedge_verdict', 'invalidates_below', 'look_through', 'not_measured', 'pc_oi', 'pct_book', 'protect',
     'resilient', 'rotate_rs', 'stage1', 'stage2', 'stress', 'stressed_pct', 'usd_exposed', 'vulnerability']) {

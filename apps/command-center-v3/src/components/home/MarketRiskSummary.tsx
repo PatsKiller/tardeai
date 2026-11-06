@@ -83,7 +83,7 @@ export function MarketRiskSummary({ mr }: { mr: MarketRisk | null }) {
               {m.contributors.map((c, i) => (
                 <div key={i} data-testid="home-market-risk-summary-contributor" style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: TYPE.md, lineHeight: 1.4 }}>
                   <span style={{ flex: '1 1 0%', minWidth: 0, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}</span> : null}{/P\/C OI/.test(c.detail ?? '') && <> <Explain term="pc_oi" /></>}</span>
-                  <span style={{ ...numStyle, flex: '0 0 auto', fontWeight: 700, color: TOKENS.text[1], textAlign: 'right' }}>{c.points}</span>
+                  <span style={{ ...numStyle, flex: '0 0 auto', fontWeight: 700, color: TOKENS.text[1], textAlign: 'right' }}>{c.pointsLabel}</span>
                 </div>
               ))}
               {mr.book?.vulnerability != null && <div data-testid="mr-why-vulnerability" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>Portfolio vulnerability <Explain term="vulnerability" /> <span style={numStyle}>{mr.book.vulnerability}</span>/100</div>}
@@ -106,7 +106,7 @@ export function MarketRiskSummary({ mr }: { mr: MarketRisk | null }) {
               {m.contributors.map((c, i) => (
                 <div key={i} data-testid="home-market-risk-summary-contributor" style={{ display: 'flex', alignItems: 'baseline', gap: 10, fontSize: TYPE.md, lineHeight: 1.4 }}>
                   <span style={{ flex: '1 1 0%', minWidth: 0, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}</span> : null}</span>
-                  <span style={{ ...numStyle, flex: '0 0 auto', fontWeight: 700, color: TOKENS.text[1], textAlign: 'right' }}>{c.points}</span>
+                  <span style={{ ...numStyle, flex: '0 0 auto', fontWeight: 700, color: TOKENS.text[1], textAlign: 'right' }}>{c.pointsLabel}</span>
                 </div>
               ))}
               {m.uplift && <div style={{ fontSize: TYPE.base, color: TOKENS.text[2], borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 6 }}>{m.uplift}</div>}

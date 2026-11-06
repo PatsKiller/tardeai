@@ -183,7 +183,7 @@ export function Segments({ m }: { m: ActionableModel }) {
   const tones = ['warning', 'success', 'info', 'elevated'] as const
   return (
     <div data-testid="mr-segments">
-      <h3 style={{ margin: '0 0 6px', fontSize: TYPE.base, color: TOKENS.text[2], textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Multi-segment issuer</h3>
+      {/* No heading here: the enclosing Section is titled "Multi-segment issuer" (it rendered twice — LIVEFIX-R). */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {m.segments.map(sg => (
           <div key={sg.symbol} data-testid="mr-segment-row" data-status={sg.status} style={{ ...blk, padding: '9px 12px', fontSize: TYPE.base + 1, lineHeight: 1.45 }}>

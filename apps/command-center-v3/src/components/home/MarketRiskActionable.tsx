@@ -56,9 +56,9 @@ const signed = (n: number | null): CSSProperties => ({ ...numStyle, color: n == 
 
 /** v007: one native collapsible per section. Nothing is removed; every section keeps its own text and clock,
  *  and the summary shows a one-line digest that disappears once the section is open (mockup behaviour). */
-function Section({ title, one, testId, children }: { title: string; one?: string | null; testId: string; children: React.ReactNode }) {
+function Section({ title, one, testId, children, defaultOpen = true }: { title: string; one?: string | null; testId: string; children: React.ReactNode; defaultOpen?: boolean }) {
   return (
-    <details className="mr-sec" data-testid={testId} open>
+    <details className="mr-sec" data-testid={testId} open={defaultOpen}>
       <summary><span role="heading" aria-level={3}>{title}</span>{one ? <span className="mr-sec-one">{one}</span> : null}</summary>
       <div className="mr-sec-body">{children}</div>
     </details>
@@ -92,7 +92,9 @@ export function TopReview({ m }: { m: ActionableModel }) {
 
 function Sectors({ m }: { m: ActionableModel }) {
   return (
-    <Section title="Sectors vs SPY · your money in each" one={m.sectorsFoot} testId="mr-sectors-section">
+    // LIVEFIX-R (operator 2026-11-06): the sector table is reference, not the headline — collapsed by default; its
+    // one-line digest stays visible and every row is one tap away.
+    <Section title="Sectors vs SPY · your money in each" one={m.sectorsFoot} testId="mr-sectors-section" defaultOpen={false}>
     <div data-testid="mr-sectors">
       <div style={{ ...sub, marginTop: 0, marginBottom: 6 }}>look-through <Explain term="look_through" /></div>
       <table className="mr-stack">
@@ -130,12 +132,15 @@ function Reentry({ m }: { m: ActionableModel }) {
         {m.reentry.map(r => {
           const vt = toneVars(r.verdictTone)
           return (
-            <div key={r.symbol} data-testid="mr-reentry-row" data-verdict={r.verdict} style={item}>
+            <div key={r.symbol} data-testid="mr-reentry-row" data-verdict={r.verdict} data-verdict-shown={r.verdictShown} style={item}>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'baseline' }}><b>{r.symbol}</b><span style={{ color: TOKENS.text[2] }}>{r.head}</span></div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', alignItems: 'center' }}>
-                <span>now <b style={numStyle}>{r.now}</b> (<span style={signed(r.vsExitNeg ? -1 : 1)}>{r.vsExit}</span> vs exit){r.vsMa && <> · <span style={numStyle}>{r.vsMa}</span></>} {r.trend}</span>
-                <span data-testid="mr-reentry-verdict" style={{ ...chipStyle(r.verdictTone, 'soft'), color: vt.color }}>{r.verdict.toUpperCase()}</span>
+                <span>now <b style={numStyle}>{r.now}</b> ({r.vsExitKnown
+                  ? <><span style={signed(r.vsExitNeg ? -1 : 1)}>{r.vsExit}</span> vs exit</>
+                  : <span data-testid="mr-reentry-vsexit-unknown" style={{ color: TOKENS.text[3] }}>vs exit not measured</span>}){r.vsMa && <> · <span style={numStyle}>{r.vsMa}</span></>} {r.trend}</span>
+                <span data-testid="mr-reentry-verdict" style={{ ...chipStyle(r.verdictTone, 'soft'), color: vt.color }}>{r.verdictShown.toUpperCase()}</span>
               </div>
+              {r.verdictNote && <div data-testid="mr-reentry-verdict-note" style={{ ...sub, marginTop: 0, color: TOKENS.text[2] }}>{r.verdictNote}</div>}
               <div><b>Stage 1 <Explain term="stage1" /> (early setup): {r.stage1}</b><span style={{ color: TOKENS.text[2] }}> — waiting: {r.waiting}</span></div>
               <div>Invalidates below <Explain term="invalidates_below" /> <b style={numStyle}>{r.invalidates}</b><span style={{ color: TOKENS.text[2] }}> (selloff low) · Stage 2 <Explain term="stage2" /> (confirmed): {r.stage2}</span></div>
               {r.wash && <div data-testid="mr-reentry-wash" data-tone={r.wash.tone} style={{ color: r.wash.tone === 'warning' ? toneVars('warning').color : TOKENS.text[2], fontWeight: r.wash.tone === 'warning' ? 600 : 400 }}>{r.wash.tone === 'warning' ? '⚠ ' : 'ⓘ '}{r.wash.text}</div>}
@@ -236,17 +241,22 @@ export function ActionableBody({ m, why }: { m: ActionableModel; why: React.Reac
     <GlossaryProvider terms={m.glossary}>
       <div data-mr-actionable="" data-testid="mr-actionable-body" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '16px 20px', alignItems: 'start', paddingTop: 8 }}>
         <style>{ACTIONABLE_CSS}</style>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}><Sectors m={m} /><Reentry m={m} /><HomeV007Context /></div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          <Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} />
+        {/* LIVEFIX-R order (operator 2026-11-06). Above this body: headline status → exposure → Protect / Hedge /
+            Rotate. Then, on a phone (columns stack): positions → sectors (collapsed) → issuer segments → why →
+            since-you-were-stopped-out → today's context → diagnostics (collapsed, last). On desktop the first column
+            is "what you hold", the second "what happened and why". */}
+        <div data-testid="mr-col-holdings" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+          <Positions m={m} />{!m.protect && <Review m={m} />}<Budgets m={m} /><Sectors m={m} />
           {/* This wrapper holds MarketRiskActions' Segments — the multi-segment ISSUER block. Protect, Hedge and
-              Rotate are NOT in here: ActionsTop renders them above the body (MarketRiskSummary / MarketRiskBanner),
-              so this heading and count name what the section actually contains, and the section is absent when the
-              issuer has no segments instead of showing an empty titled body. */}
+              Rotate are NOT in here: ActionsTop renders them above the body (MarketRiskSummary / MarketRiskBanner).
+              The Section title is the only "Multi-segment issuer" heading (Segments renders none of its own). */}
           {m.segments.length > 0 && (
             <Section title="Multi-segment issuer" one={`${m.segments.length} segment${m.segments.length === 1 ? '' : 's'}`} testId="mr-advisory-section"><Segments m={m} /></Section>
           )}
+        </div>
+        <div data-testid="mr-col-context" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           {why ? <Section title="Why this tier" one={m.verdict} testId="mr-why-section">{why}</Section> : null}
+          <Reentry m={m} /><HomeV007Context />
         </div>
       </div>
     </GlossaryProvider>

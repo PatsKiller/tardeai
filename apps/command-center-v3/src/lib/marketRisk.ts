@@ -98,6 +98,8 @@ export interface ReentryStages {
   verdict?: string; exit_price?: number | null; last_close?: number | null; last_date?: string | null; swing_low?: number | null; invalidation_level?: number | null
   sma10?: number | null; sma20?: number | null; anchored_vwap?: number | null; pct_vs_exit?: number | null; pct_vs_sma20?: number | null; trend?: 'up' | 'down' | 'flat' | null
   stage1?: { met: number; of: number; conditions: StageCond[] }; stage2?: { met: boolean; conditions: StageCond[] }; error?: string
+  /** The producer's own explanation when no stage could be measured ("no session since the exit"). */
+  note?: string | null
 }
 export interface WashSale { state: 'occurred' | 'window_open'; loss_sale_date?: string; until?: string; rebuy_date?: string; rebuy_price?: number | null; account_label?: string; deferred_loss_usd?: number | null }
 export interface ReentryCurrentQuote {
@@ -261,6 +263,15 @@ export function fmtPoints(p: number | null | undefined): string {
   return `${n >= 0 ? '+' : ''}${n.toFixed(1)}`
 }
 
+/** A contributor's points with their unit, so a badge never reads as a bare "+31" (operator 2026-11-06):
+ *  "+31 pts to score". Rounded to whole points, as the badge always was. */
+export function pointsToScore(p: number | null | undefined, digits = 0): string {
+  const n = Number(p)
+  if (p == null || Number.isNaN(n)) return 'points not measured'
+  const v = digits > 0 ? n.toFixed(digits) : String(Math.round(n))
+  return `${n >= 0 && !v.startsWith('-') ? '+' : ''}${v} pts to score`
+}
+
 /** "single_sector_pct" → "single sector". Labels from the engine stay as they are. */
 export function budgetLabel(name: string | null | undefined): string {
   return String(name || 'budget').replace(/_pct$/, '').replace(/_/g, ' ').trim()
@@ -281,7 +292,7 @@ export interface SummaryModel {
   line: string
   evaluated: string
   confirm: string
-  contributors: { name: string; detail: string; points: string }[]
+  contributors: { name: string; detail: string; points: string; pointsLabel: string }[]
   uplift: string | null
   notMeasured: string
   book: SummaryBook | null
@@ -345,6 +356,7 @@ export function summaryModel(mr: MarketRisk | null): SummaryModel | null {
     name: c.name,
     detail: [c.detail, c.as_of ? shortTime(c.as_of) : null].filter(Boolean).join(' · '),
     points: fmtPoints(c.points),
+    pointsLabel: pointsToScore(c.points, 1),
   }))
   const confirm = mr.confirming ? `${mr.confirming.n} of ${mr.confirming.of} categories confirm` : ''
   const lead = contributors.length ? contributors.map(c => `${c.name} ${c.points}`).join(' · ') : 'no category above 0 points'
@@ -403,7 +415,17 @@ const STRESSED = new Set(['STRESS', 'WEAK'])
 export type GroupChip = 'STRESS' | 'WEAK' | 'RESILIENT' | 'HOLDING' | 'NOT MEAS.'
 export interface SectorRowModel { key: string; label: string; theme: boolean; chip: GroupChip; tone: Tone; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; usd: string; pctBook: string; held: boolean; unknown: boolean; reason: string | null }
 export interface ReentryRowModel {
-  symbol: string; head: string; now: string; vsExit: string; vsExitNeg: boolean; vsMa: string; trend: string; verdict: string; verdictTone: Tone
+  symbol: string; head: string; now: string; vsExit: string; vsExitNeg: boolean
+  /** False when no current regular-session quote backs the "vs exit" figure: the card says "not measured", never "—". */
+  vsExitKnown: boolean
+  vsMa: string; trend: string
+  /** The producer's stage verdict, verbatim (or FQ-094's "no CIO verdict on record"). Kept for data attributes and tests. */
+  verdict: string
+  /** What the chip shows. Equal to ``verdict`` unless the measured state contradicts it or nothing was measured. */
+  verdictShown: string
+  /** Why ``verdictShown`` differs from ``verdict``: the contradicting measurement, or what was not measured. */
+  verdictNote: string | null
+  verdictTone: Tone
   stage1: string; waiting: string; invalidates: string; stage2: string; wash: { text: string; tone: 'info' | 'warning' } | null; earnings: string | null; lookThrough: string
 }
 export interface BudgetLine { account: string; text: string; drivers: string }
@@ -482,7 +504,44 @@ export function rotateModel(r: RotateBlock | null | undefined): RotateModel | nu
   }
 }
 
-const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success' }
+const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success', Mixed: 'warning', 'Not measured': 'neutral' }
+
+/** Stage 1 as the card states it. A stage with no evaluated condition is "not measured" — it is never "0 of 5" with
+ *  "waiting: all met" (the producer emits an empty condition list when no session has closed since the exit). */
+export function stage1Display(st: ReentryStages): { measured: boolean; count: string; waiting: string } {
+  const conds = st.stage1?.conditions ?? []
+  const met = st.stage1?.met ?? 0
+  const of = st.stage1?.of ?? conds.length
+  const measured = conds.length > 0 || met > 0
+  if (!measured) return { measured, count: 'not measured', waiting: st.note ? `${st.note}` : 'no condition was evaluated' }
+  const unmet = conds.filter(x => !x.met).map(x => x.key === 'tier_ok' ? 'market tier ORANGE or worse' : x.text)
+  const waiting = unmet.length ? unmet.join(', ') : conds.length && met >= of ? 'all met' : 'conditions not listed'
+  return { measured, count: `${met} of ${of}`, waiting }
+}
+
+/** The chip a stopped-out row shows. The producer's verdict is kept verbatim (FQ-094: never invented), but the card
+ *  must not print "Still falling" over a measurement that contradicts it (operator 2026-11-06: STILL FALLING beside
+ *  "+2.6% vs exit"). "Still falling" is the producer's fall-through word, so:
+ *  - no stage condition evaluated  → "Not measured", with what was missing;
+ *  - price now at/above the exit, a last close at/above the exit, or closes trending up → "Mixed", naming both sides.
+ *  Every other verdict is shown as given. */
+export function reentryVerdictDisplay(st: ReentryStages, vsExitNow: number | null, exitPrice: number | null | undefined): { shown: string; note: string | null; tone: Tone } {
+  const given = verdictText(st)
+  const tone = (w: string): Tone => VERDICT_TONE[w] ?? 'neutral'
+  if (given !== 'Still falling') return { shown: given, note: null, tone: tone(given) }
+  const closes = st.last_date ? `closes through ${shortDay(st.last_date)}` : 'the closes'
+  if (!stage1Display(st).measured) {
+    return { shown: 'Not measured', note: `Stage verdict not measured: ${st.note ?? 'no stage condition was evaluated'}. The producer's fall-back word was "Still falling".`, tone: tone('Not measured') }
+  }
+  const exit = typeof exitPrice === 'number' && Number.isFinite(exitPrice) ? exitPrice : null
+  const lastClose = typeof st.last_close === 'number' && Number.isFinite(st.last_close) ? st.last_close : null
+  const against: string[] = []
+  if (vsExitNow != null && vsExitNow >= 0) against.push(`the price now is ${fmtSignedPct(vsExitNow)} vs the exit`)
+  else if (exit != null && lastClose != null && lastClose >= exit) against.push(`the last close ${fmtPrice(lastClose)} is at or above the exit ${fmtPrice(exit)}`)
+  if (st.trend === 'up') against.push('the closes trend up')
+  if (!against.length) return { shown: given, note: null, tone: tone(given) }
+  return { shown: 'Mixed', note: `Stage verdict from ${closes} is "Still falling", but ${against.join(' and ')}. Not confirmed either way until a stage condition passes.`, tone: tone('Mixed') }
+}
 
 /** The verdict a stopped-out card may show: the one it was given, or an explicit statement that there is none.
  *  Never a default, never an inference from the price series (FQ-094). */
@@ -601,7 +660,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const st = c.stages as ReentryStages
     const det = (mr.reentry_detail ?? {})[sym] ?? {}
     const held = det.held_elsewhere_labels?.length ? ` · still held in ${det.held_elsewhere_labels.join(', ')}` : ''
-    const unmet1 = (st.stage1?.conditions ?? []).filter(x => !x.met).map(x => x.key === 'tier_ok' ? 'market tier ORANGE or worse' : x.text)
+    const s1 = stage1Display(st)
     const unmet2 = (st.stage2?.conditions ?? []).filter(x => !x.met).map(x => x.text)
     const w = det.wash_sale ?? c.wash_sale ?? null
     let wash: ReentryRowModel['wash'] = null
@@ -648,6 +707,7 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
     const vsExit = quoteKnown ? finite(quote!.pct_vs_exit) : null
     const vsMa = quoteKnown ? finite(quote!.pct_vs_sma20) : null
     const ma = vsMa != null ? `${fmtSignedPct(vsMa)} vs confirmed 20-day` : ''
+    const shown = reentryVerdictDisplay(st, vsExit, c.exit_price ?? st.exit_price)
     const priceEvidence = quoteKnown
       ? `Stored regular-session observation · fetched ${shortTime(quote!.as_of)} · ${quote!.source} · trade time/live freshness unverified`
       : priorRegularQuote
@@ -657,13 +717,13 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       symbol: sym,
       head: `exit ${fmtPrice(c.exit_price ?? st.exit_price)} · ${shortDay(c.exit_date)} · ${det.exit_account_label ?? 'one account'}${held}`,
       now: quoteKnown ? fmtPrice(price) : priorRegularQuote ? '—' : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
-      vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
+      vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsExitKnown: vsExit != null, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
       // FQ-094: the CIO is the only producer of a position verdict. A missing one is stated as missing — it used to
       // become "Still falling" here, a bearish verdict the browser invented from nothing.
-      verdict: verdictText(st), verdictTone: VERDICT_TONE[verdictText(st)] ?? 'neutral',
-      stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
-      waiting: unmet1.length ? unmet1.join(', ') : 'all met',
+      verdict: verdictText(st), verdictShown: shown.shown, verdictNote: shown.note, verdictTone: shown.tone,
+      stage1: s1.count,
+      waiting: s1.waiting,
       invalidates: fmtPrice(st.invalidation_level),
       stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
       wash, earnings, lookThrough: `${priceEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
