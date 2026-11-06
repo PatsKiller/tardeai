@@ -27,6 +27,7 @@ MIN_GOS = 3
 def run(apply=False):
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
+    # nosemgrep: tq-py-sql-fstring -- the only interpolation is WINDOW_DAYS, an int module constant
     cur.execute(f"""
         WITH scans AS (
             SELECT COALESCE(screener_label, '(unattributed)') src, symbol,

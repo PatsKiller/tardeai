@@ -120,6 +120,28 @@ def _db_env() -> dict:
     return env
 
 
+# Contract tables/columns are spliced into SQL as identifiers and the bounds as literals (a driver parameter
+# carries neither an identifier nor a value inside these pure, separately asserted predicates). A contract
+# is a reviewed file, still not trusted: identifiers must be plain lowercase names and bounds real numbers,
+# or the contract fails (CHECK_FAILED in measure()) before any SQL is built from it.
+_SQL_IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def _ident(name) -> str:
+    """The name unchanged when it is a plain lowercase SQL identifier; ValueError otherwise."""
+    if not isinstance(name, str) or not _SQL_IDENT.fullmatch(name):
+        raise ValueError(f"contract identifier {name!r} is not a plain SQL identifier")
+    return name
+
+
+def _bound(value):
+    """A contract bound unchanged when it is a real, finite number; ValueError otherwise."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value or value in (
+            float("inf"), float("-inf")):
+        raise ValueError(f"contract bound {value!r} is not a finite number")
+    return value
+
+
 def _violation_predicate(contract: dict) -> str:
     """SQL that is TRUE for a row violating the contract.
 
@@ -130,11 +152,11 @@ def _violation_predicate(contract: dict) -> str:
     rule = contract["rule"]
 
     if rule == "range":
-        return f"{col} IS NOT NULL AND NOT ({col} BETWEEN {contract['min']} AND {contract['max']})"
+        return f"{col} IS NOT NULL AND NOT ({col} BETWEEN {_bound(contract['min'])} AND {_bound(contract['max'])})"
     if rule == "min":
-        return f"{col} IS NOT NULL AND {col} < {contract['min']}"
+        return f"{col} IS NOT NULL AND {col} < {_bound(contract['min'])}"
     if rule == "max":
-        return f"{col} IS NOT NULL AND {col} > {contract['max']}"
+        return f"{col} IS NOT NULL AND {col} > {_bound(contract['max'])}"
     if rule == "finite":
         # NaN is not comparable, so test it by text. 'NaN'::float = 'NaN'::float
         # is false, which is exactly why these rows survive ordinary range checks.
@@ -259,7 +281,7 @@ def alert_policy(doc: dict | None) -> dict:
 
 def window_sql(column: str, days: int) -> str:
     """The row filter for a windowed rule. Separated so it can be asserted without a database."""
-    return f"\"{column}\" > now() - interval '{int(days)} days'"
+    return f"\"{_ident(column)}\" > now() - interval '{int(days)} days'"
 
 
 def _resolve_window(cur, contract: dict, policy: dict) -> dict | None:
@@ -322,8 +344,8 @@ def _check_retired_store(cur, contract: dict) -> dict:
 
 
 def _check(cur, contract: dict, policy: dict | None = None) -> dict | None:
-    table = contract["table"]
-    column = contract["column"]
+    table = _ident(contract["table"])
+    column = _ident(contract["column"])
     policy = policy if policy is not None else window_policy(None)
 
     cur.execute(
@@ -354,12 +376,15 @@ def _check(cur, contract: dict, policy: dict | None = None) -> dict | None:
         pred = _violation_predicate(contract)
         and_win = f" AND {win['sql']}" if win else ""
         where_win = f" WHERE {win['sql']}" if win else ""
+        # nosemgrep: tq-py-sql-fstring -- table/column passed _ident() above; pred holds _bound() numbers; win int days
         cur.execute(f"SELECT count(*) FROM {table} WHERE {pred}{and_win}")
         violations = cur.fetchone()[0]
+        # nosemgrep: tq-py-sql-fstring -- table passed _ident() above; the window is window_sql (_ident col, int days)
         cur.execute(f"SELECT count(*) FROM {table}{where_win}")
         total = cur.fetchone()[0]
         samples = []
         if violations:
+            # nosemgrep: tq-py-sql-fstring -- table/column passed _ident() above; pred holds _bound() numbers only
             cur.execute(f'SELECT "{column}"::text FROM {table} WHERE {pred}{and_win} LIMIT 3')
             samples = [r[0] for r in cur.fetchall()]
         result = {

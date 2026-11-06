@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """create_phase2e_qwen3_shadow_index.py — Create qwen3 global shadow embedding table.
 Does NOT alter production content_embeddings."""
-import argparse, sys
+import argparse, re, sys
 from pathlib import Path
 
 PROJ = Path(__file__).resolve().parent.parent
@@ -16,6 +16,9 @@ def get_conn():
     return psycopg2.connect(host=env.get("DB_HOST", "localhost"),
         dbname=env.get("DB_NAME", "trade_ai"), user=env.get("DB_USER", "trade_ai"),
         password=env.get("DB_PASSWORD", ""))
+
+# --table is spliced into DDL and a SELECT as an identifier: plain lowercase SQL identifiers only.
+TABLE_RE = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS {table} (
@@ -46,6 +49,8 @@ def main():
     g.add_argument("--apply", action="store_true")
     p.add_argument("--table", default="content_embeddings_qwen3_shadow")
     args = p.parse_args()
+    if not TABLE_RE.fullmatch(args.table):
+        p.error(f"--table must be a plain lowercase SQL identifier, got {args.table!r}")
 
     short = args.table.replace("content_embeddings_", "ce_")
     sql = SCHEMA.format(table=args.table, short=short)
@@ -58,7 +63,7 @@ def main():
     cur = conn.cursor()
     cur.execute(sql)
     conn.commit()
-    cur.execute(f"SELECT COUNT(*) FROM {args.table}")
+    cur.execute(f"SELECT COUNT(*) FROM {args.table}")  # nosemgrep: tq-py-sql-fstring -- table matched TABLE_RE in main
     print(f"Table {args.table} ready. Current rows: {cur.fetchone()[0]}")
     conn.close()
 

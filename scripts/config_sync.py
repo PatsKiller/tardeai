@@ -255,7 +255,8 @@ def show_status():
         ("agent_intelligence_rules", "Intelligence Rules"),
     ]:
         try:
-            cur.execute(f"SELECT count(*) as cnt FROM {table}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- table from the literal list above
+                f"SELECT count(*) as cnt FROM {table}")
             cnt = cur.fetchone()["cnt"]
             print(f"\n  {label}: {cnt} rows")
 

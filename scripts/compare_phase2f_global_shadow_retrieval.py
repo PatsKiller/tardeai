@@ -16,6 +16,17 @@ from pathlib import Path
 PROJ = Path(__file__).resolve().parent.parent
 OLLAMA_URL = "http://localhost:11434"
 
+# Table names arrive from --*-table and are spliced into SQL as identifiers (a driver parameter cannot
+# carry one): each is checked against this pattern in the function that uses it, before the query.
+_PLAIN_IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def _plain_ident(name):
+    """The name unchanged when it is a plain lowercase SQL identifier; ValueError otherwise."""
+    if not isinstance(name, str) or not _PLAIN_IDENT.fullmatch(name):
+        raise ValueError(f"not a plain SQL table name: {name!r}")
+    return name
+
 # ---------------------------------------------------------------------------
 # Utility functions (self-contained, adapted from compare_phase2b)
 # ---------------------------------------------------------------------------
@@ -99,6 +110,7 @@ def parse_queries_from_md(filepath):
 def search_table(conn, table, query_vec, top_k=10, fetch_limit=500):
     """Fetch embeddings from table, compute cosine sim in Python, return top-k.
     Tries indexed_at first, falls back to created_at for production tables."""
+    table = _plain_ident(table)
     cur = conn.cursor()
 
     # Determine ordering column
@@ -110,6 +122,7 @@ def search_table(conn, table, query_vec, top_k=10, fetch_limit=500):
     cols_available = [r[0] for r in cur.fetchall()]
     order_col = "indexed_at" if "indexed_at" in cols_available else "created_at"
 
+    # nosemgrep: tq-py-sql-fstring -- table passed _plain_ident() above; order_col is one of two literals
     cur.execute(f"""
         SELECT source_type, source_id, title, embedding
         FROM {table}
@@ -364,11 +377,15 @@ def main():
 
     # Verify tables
     cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*) FROM {args.production_table} WHERE embedding IS NOT NULL")
+    production_table = _plain_ident(args.production_table)
+    shadow_table = _plain_ident(args.shadow_table)
+    # nosemgrep: tq-py-sql-fstring -- production_table passed _plain_ident() above
+    cur.execute(f"SELECT COUNT(*) FROM {production_table} WHERE embedding IS NOT NULL")
     prod_count = cur.fetchone()[0]
     log(f"Production table has {prod_count} rows with embeddings")
 
-    cur.execute(f"SELECT COUNT(*) FROM {args.shadow_table} WHERE embedding IS NOT NULL")
+    # nosemgrep: tq-py-sql-fstring -- shadow_table passed _plain_ident() above
+    cur.execute(f"SELECT COUNT(*) FROM {shadow_table} WHERE embedding IS NOT NULL")
     shadow_count = cur.fetchone()[0]
     log(f"Shadow table has {shadow_count} rows with embeddings")
     cur.close()
