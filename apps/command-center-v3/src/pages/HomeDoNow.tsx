@@ -59,12 +59,12 @@ function CardHead({ title, to, linkText, touchTarget = false }: { title: string;
   )
 }
 
-function HeadFact({ name, value, color, tip, big, testId, note }: { name: string; value: ReactNode; color?: string; tip: string; big?: boolean; testId?: string; note?: ReactNode }) {
+function HeadFact({ name, value, color, tip, big, testId, note, noteTestId = 'home-money-qualifier' }: { name: string; value: ReactNode; color?: string; tip: string; big?: boolean; testId?: string; note?: ReactNode; noteTestId?: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, cursor: 'help' }} title={tip} data-testid={testId}>
       <span style={label}>{name}</span>
       <span style={{ ...numStyle, fontSize: big ? TYPE.xl : TYPE.lg, fontWeight: 600, color: color ?? TOKENS.text[0] }}>{value}</span>
-      {note && <span data-testid="home-money-qualifier" style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>{note}</span>}
+      {note && <span data-testid={noteTestId} style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>{note}</span>}
     </div>
   )
 }
@@ -204,7 +204,7 @@ export default function HomeDoNow() {
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" note={pos.qualifier} value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
           tip={`Total of all accounts, broker-reported and repriced (/api/v2/overview portfolio_value; holdings.json). ${overview?.position_count ?? '?'} positions.`} />
-        <HeadFact name="Today" testId="home-today" color={signTone(todayChg)} value={todayChg != null ? `${money(todayChg, true)} · ${pct(todayPct)}` : '—'}
+        <HeadFact name="Today" testId="home-today" note={pos.qualifier} noteTestId="home-today-money-qualifier" color={signTone(todayChg)} value={todayChg != null ? `${money(todayChg, true)} · ${pct(todayPct)}` : '—'}
           tip="Today's change across all accounts (/api/v2/overview today_change / today_pct: broker snapshot day change, repriced when missing)." />
         <HeadFact name="YTD" testId="home-ytd" color={signTone(ytdChg)} value={ytdChg != null ? `${money(ytdChg, true)}${ytdPct != null ? ` · ${pct(ytdPct)}` : ''}${ytdPreferDisp ? ' ≈' : ''}` : '—'}
           tip={`Year to date, all accounts (/api/v2/portfolio/performance periods.YTD).${ytdPreferDisp ? ' ≈ = market change excluding transfers (display_change), the same rule as Portfolio → Returns.' : ''}${ytd?.adjustment_note ? ` ${ytd.adjustment_note}` : ''}`} />

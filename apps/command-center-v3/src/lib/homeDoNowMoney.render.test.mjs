@@ -56,14 +56,15 @@ function compile(path) {
   return url
 }
 
-// All amounts/counts below are independently chosen synthetic fixture data.
+// All amounts/counts below are newly chosen synthetic fixture data for this test. They are deliberately
+// round placeholders (1,000,000.00 / -1,000.00 / 10) and are not copied from any account, holdings or BOARD record.
 const NOW = Date.parse('2030-01-07T15:00:00Z')
 Date.now = () => NOW
 const freshClock = '2030-01-07T14:59:00Z'
 globalThis.fetch = () => { throw new Error('Network forbidden in synthetic Home rendering') }
 let overview
 const fixture = () => ({
-  portfolio_value: 18473.25, today_change: -18.75, today_pct: -0.1, position_count: 7,
+  portfolio_value: 1000000, today_change: -1000, today_pct: -0.1, position_count: 10,
   pipeline_status: 'fresh', pipeline_completed: freshClock, last_repriced: freshClock,
   observation: { surface_status: 'FRESH', envelopes: { holdings: {
     observed_at: freshClock, freshness: { status: 'FRESH', observed_at_utc: freshClock, threshold_hours: 24 },
@@ -100,10 +101,15 @@ for (const mode of ['fresh', 'retained', 'old', 'missing', 'malformed', 'future'
     const html = renderToStaticMarkup(React.createElement(MemoryRouter,
       { initialEntries: [surface === 'primary' ? '/' : '/?view=classic'] },
       React.createElement(Comp, { onDrill() {} })))
-    check(html.includes('18,473'), `${surface}/${mode}: synthetic amount did not render`)
+    check(html.includes('1,000,000'), `${surface}/${mode}: synthetic amount did not render`)
     const qualifier = html.match(/data-testid="home-money-qualifier"[^>]*>([^<]*)<\/span>/)?.[1] ?? null
     check(mode === 'fresh' ? qualifier === null : !!qualifier,
       `${surface}/${mode}: ${mode === 'fresh' ? 'fresh control unexpectedly qualified' : 'unusable observation left bare money'}`)
+    if (surface === 'primary') {
+      const todayQualifier = html.match(/data-testid="home-today-money-qualifier"[^>]*>([^<]*)<\/span>/)?.[1] ?? null
+      check(mode === 'fresh' ? todayQualifier === null : !!todayQualifier,
+        `primary/${mode}: Today money must carry the same qualifier as Portfolio`)
+    }
     if (mode === 'retained') check(/last known|not refreshed/i.test(qualifier ?? ''), `${surface}: retained value must say last known`)
   }
   const state = positionsFreshness(overview, NOW, globalThis.__transport)
