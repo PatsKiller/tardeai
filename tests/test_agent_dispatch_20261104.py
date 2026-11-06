@@ -3320,3 +3320,20 @@ def test_a_pr_outside_the_refused_paths_is_still_ready():
     v = {(16, "h" * 40): [_fully_attested_merge(pr, "cc-9"), _fully_attested_merge(pr, "cc-5")]}
     out = D.merge_ready([pr], v, claims, {16: "cc-4"})
     assert [r["pr"] for r in out["ready"]] == [16]
+
+
+def test_the_gate_definition_refuses_itself():
+    """cc-deepseek-6 F1 on #2650: the refused path classes now live in `scripts/lib/merge_path_classes.py`, which used
+    to match nothing — an ordinary one-review PR could edit the lists that decide refusals and, because both callers
+    hold the same object, weaken the merge gate and the Ready-to-merge projection in one keystroke while keeping them
+    in agreement. The module must be operator-only like the file it came from."""
+    from scripts.lib import merge_path_classes as MPC
+
+    assert MPC.path_refusal(["scripts/lib/merge_path_classes.py"]) == MPC.OPERATOR_ONLY_REFUSAL
+    assert D.canonical_refusal_step(["scripts/lib/merge_path_classes.py"]) is not None, \
+        "the projection would call an edit to the gate's own definition ready"
+    # The evaluator itself must reach that code through the same predicate, not through a copy.
+    from scripts.lib import pr_merge_delegation as PMD
+
+    assert "scripts/lib/merge_path_classes.py" in PMD.RESERVED
+    assert PMD.path_refusal(["scripts/lib/merge_path_classes.py"]) == PMD.OPERATOR_ONLY_REFUSAL

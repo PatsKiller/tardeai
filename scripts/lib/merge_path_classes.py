@@ -20,6 +20,10 @@ import fnmatch
 # Ratification and the delegation verifier/classification controls stay operator-owned.
 # Other hook, CI and merge/deploy engineering uses the held two-review path.
 DELEGATION_CONTROL_PATHS = (
+    # This module IS the gate's definition now. It must refuse itself, or one ordinary one-review PR could edit the
+    # lists that decide refusals — weakening the merge gate and the Ready-to-merge projection in the same keystroke
+    # while keeping the two in agreement (cc-deepseek-6 F1 on #2650, 2026-11-06).
+    "scripts/lib/merge_path_classes.py",
     "scripts/lib/pr_merge_delegation.py",
     "scripts/lib/pr_all_checks_green.py",
     "scripts/lib/merge_hold_paths.py",
