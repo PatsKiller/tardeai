@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "work_pipeline_flow_facts_20261103",
+  "files": ["tests/test_work_pipeline_flow_facts_20261103.py"],
+  "anchor": "WORK_PIPELINE_FLOW_FACTS_20261103",
+  "comment": ["Pure current-stage, next-actor, exact-head checks/review quota, source-clock and canonical waiting member acceptance."]
+}
