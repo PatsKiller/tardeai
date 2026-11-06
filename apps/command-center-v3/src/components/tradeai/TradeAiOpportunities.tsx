@@ -9,16 +9,17 @@
  *  Gate 2 fields (catalyst type, grade, validation, action score, AI checks) show "—" with a tooltip until
  *  the CIO prospect record exists. Awareness only: no order, approval or 2FA control lives here.
  */
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../../lib/designTokens'
 import { initialOpportunityView } from '../../lib/opportunityViewport'
 import {
   applyFilters, buildTiles, chgText, filterChips, floatBand, floatText, GATE2_TIP, l2Brief, l2View, latestAlertFor,
-  NO_FILTERS, rvolText, sortOpportunities, stars, toOpportunity, volText,
+  NO_FILTERS, rvolText, sortOpportunities, stars, tileSymbols, toOpportunity, volText,
   type Decision, type Filters, type L2Chip, type Opportunity, type SortKey,
 } from '../../lib/tradeAiOpportunities'
+import { formatThinkorswimSymbols } from '../../lib/scannerSelection'
 import { tradeAiSurfaceFreshness } from '../../lib/surfaceFreshness'
 import { latestRunPhrase, payloadRunAge } from '../../lib/scanRunAge'
 import { classifyRunHealth, runHealthChipColor, runHealthReasonCodes } from '../../lib/runHealth'
@@ -94,6 +95,37 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
   const all = useMemo(() => (Array.isArray(tradeAi?.tickers) ? tradeAi.tickers : []).map(toOpportunity) as Opportunity[], [tradeAi])
   const rows = useMemo(() => sortOpportunities(applyFilters(all, f), sort), [all, f, sort])
   const tiles = useMemo(() => buildTiles(all, f), [all, f])
+  // Per-tile Thinkorswim copy (operator 2026-11-06): each tile copies the symbols its own filter selects.
+  const tileSyms = useMemo(() => Object.fromEntries(tiles.map(t => [t.key, tileSymbols(all, t, sort)])) as Record<string, string[]>, [all, tiles, sort])
+  const [copied, setCopied] = useState<{ key: string; n: number } | null>(null)
+  const [copyFallback, setCopyFallback] = useState<{ key: string; text: string; ok: boolean } | null>(null)
+  const fallbackRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (!copied) return
+    const id = window.setTimeout(() => setCopied(null), 2000)
+    return () => window.clearTimeout(id)
+  }, [copied])
+  useEffect(() => {
+    // Clipboard refused (http origin, permission, iOS): select the list in a readonly field so a
+    // long-press / Ctrl+C still copies it, and try the legacy copy command on that selection.
+    const el = fallbackRef.current
+    if (!copyFallback || copyFallback.ok || !el) return
+    el.focus(); el.select()
+    let ok = false
+    try { ok = document.execCommand('copy') } catch { ok = false }
+    if (ok) setCopyFallback(prev => (prev ? { ...prev, ok: true } : prev))
+  }, [copyFallback])
+  const copyTile = (key: string) => {
+    const syms = tileSyms[key] ?? []
+    if (!syms.length) return
+    const text = formatThinkorswimSymbols(syms)
+    const failed = () => { setCopied(null); setCopyFallback({ key, text, ok: false }) }
+    try {
+      // writeText runs inside the click handler: browsers only grant the clipboard to a user gesture.
+      if (!navigator.clipboard?.writeText) { failed(); return }
+      navigator.clipboard.writeText(text).then(() => { setCopyFallback(null); setCopied({ key, n: syms.length }) }, failed)
+    } catch { failed() }
+  }
   const chips = filterChips(f)
   const hasGate2 = all.some(r => r.catalystGrade != null || r.act != null)
   const selected = all.find(r => r.sym === sel) ?? rows[0] ?? null
@@ -184,17 +216,47 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
       </div>
 
       <div role="group" aria-label="Opportunity filters" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-        {tiles.map(t => (
-          <button key={t.key} type="button" data-testid={`ta-tile-${t.key}`} aria-pressed={t.active} disabled={t.disabled} title={t.tip}
-            onClick={() => patch(t.patch(t.active))}
-            style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', textAlign: 'left', cursor: t.disabled ? 'help' : 'pointer', borderRadius: RADIUS.md,
-              padding: '12px 14px', minHeight: 88, color: TOKENS.text[0], fontFamily: 'inherit',
-              background: t.active ? toneVars('info').bg : TOKENS.bg[1], border: `1px solid ${t.active ? tc(t.tone) : TOKENS.border}`, opacity: t.disabled ? 0.75 : 1 }}>
-            <span style={{ ...mono, fontSize: TYPE.xl + 2, fontWeight: 600, color: t.value == null ? TOKENS.text[3] : tc(t.tone) }}>{t.value == null ? '—' : t.value}</span>
-            <span style={{ fontSize: TYPE.base, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[1] }}>{t.label}</span>
-            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{t.hint}</span>
-          </button>
-        ))}
+        {tiles.map(t => {
+          const syms = tileSyms[t.key] ?? []
+          const canCopy = !t.disabled && t.value != null && t.value > 0 && syms.length > 0
+          const isCopied = copied?.key === t.key
+          const fb = copyFallback?.key === t.key ? copyFallback : null
+          return (
+            <div key={t.key} data-testid={`ta-tile-box-${t.key}`}
+              style={{ display: 'flex', flexDirection: 'column', minWidth: 0, borderRadius: RADIUS.md, overflow: 'hidden',
+                background: t.active ? toneVars('info').bg : TOKENS.bg[1], border: `1px solid ${t.active ? tc(t.tone) : TOKENS.border}`, opacity: t.disabled ? 0.75 : 1 }}>
+              <button type="button" data-testid={`ta-tile-${t.key}`} aria-pressed={t.active} disabled={t.disabled} title={t.tip}
+                onClick={() => patch(t.patch(t.active))}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start', textAlign: 'left', cursor: t.disabled ? 'help' : 'pointer',
+                  padding: '12px 14px', minHeight: 88, color: TOKENS.text[0], fontFamily: 'inherit', background: 'transparent', border: 'none' }}>
+                <span style={{ ...mono, fontSize: TYPE.xl + 2, fontWeight: 600, color: t.value == null ? TOKENS.text[3] : tc(t.tone) }}>{t.value == null ? '—' : t.value}</span>
+                <span style={{ fontSize: TYPE.base, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[1] }}>{t.label}</span>
+                <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{t.hint}</span>
+              </button>
+              <button type="button" data-testid={`ta-tile-copy-${t.key}`} disabled={!canCopy} onClick={() => copyTile(t.key)}
+                aria-label={canCopy ? `Copy ${syms.length} ${t.label} symbols for Thinkorswim` : `No ${t.label} symbols to copy`}
+                title={canCopy ? `Copy ${syms.length} symbol${syms.length === 1 ? '' : 's'} (comma-separated) to paste into a Thinkorswim watchlist` : 'Nothing to copy'}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 44, width: '100%', padding: '0 14px', fontFamily: 'inherit',
+                  fontSize: TYPE.base, fontWeight: 700, cursor: canCopy ? 'pointer' : 'default', border: 'none', borderTop: `1px solid ${TOKENS.borderSubtle}`,
+                  background: isCopied ? toneVars('success').bg : 'transparent', color: isCopied ? toneVars('success').color : canCopy ? TOKENS.text[1] : TOKENS.text[3] }}>
+                <span aria-live="polite">{isCopied ? `✓ Copied ${copied?.n}` : canCopy ? `Copy ${syms.length} for ToS` : 'Nothing to copy'}</span>
+              </button>
+              {fb && (
+                <div data-testid={`ta-tile-copy-fallback-${t.key}`} style={{ padding: '6px 10px 10px', display: 'flex', flexDirection: 'column', gap: 4, borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+                  <span style={{ fontSize: TYPE.xs, color: fb.ok ? toneVars('success').color : toneVars('warning').color }}>
+                    {fb.ok ? `✓ Copied ${syms.length}` : 'Clipboard blocked: the list is selected, copy it from here'}
+                  </span>
+                  <span style={{ display: 'flex', gap: 6 }}>
+                    <input ref={fallbackRef} readOnly value={fb.text} aria-label={`${t.label} symbols for Thinkorswim`} onFocus={e => e.currentTarget.select()}
+                      style={{ ...mono, flex: 1, minWidth: 0, minHeight: 36, fontSize: TYPE.sm, padding: '4px 6px', borderRadius: RADIUS.sm, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0] }} />
+                    <button type="button" onClick={() => setCopyFallback(null)} aria-label="Close copy field"
+                      style={{ minWidth: 44, minHeight: 36, background: 'none', border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, color: TOKENS.text[2], cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minHeight: 36 }}>

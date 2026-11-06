@@ -2,7 +2,7 @@
 //   node --experimental-strip-types src/lib/tradeAiOpportunities.test.ts
 import {
   applyFilters, buildTiles, chgText, filterChips, floatBand, floatText, l2View, latestAlertFor, NO_FILTERS,
-  normDecision, sortOpportunities, stars, toOpportunity, l2Brief, catalystVerdictOf, readinessOf,
+  normDecision, sortOpportunities, stars, toOpportunity, l2Brief, catalystVerdictOf, readinessOf, tileSymbols, tileTosText,
 } from './tradeAiOpportunities.ts'
 import { TRADE_AI_FIXTURE } from './tradeAiOpportunities.fixture.ts'
 
@@ -85,6 +85,34 @@ check('AT veto is named as AT, not as L2', b.text.startsWith('AT veto') && !/L2 
 check('lit count is over computed signals (2), not 5', b.text.includes('L2 1/2'))
 check('veto reasons in the tooltip', /below pm vwap, l2 ask heavy/.test(b.tip) && /08:55 ET/.test(b.tip))
 check('unwatched brief', l2Brief(null).text === 'AT · not watched')
+
+// Per-tile Thinkorswim copy (operator 2026-11-06). DEMO symbols only: the repo is public.
+{
+  const demo = [
+    { symbol: 'DEMOA', decision: 'GO', score: 50, float_m: 3.1, rvol: 12 },
+    { symbol: 'demob', decision: 'GO', score: 90, float_m: 40, rvol: 2 },
+    { symbol: 'DEMOA', decision: 'GO', score: 10, float_m: 3.1, rvol: 12 },
+    { symbol: 'DEMOC', decision: 'WAIT', score: 70, float_m: 4.0, rvol: 15, catalyst_grade: 4 },
+    { symbol: 'DEMOD', decision: 'MANUAL_REVIEW', score: 20, float_m: 0, rvol: null },
+    { symbol: 'DEMOE', decision: 'NO-GO', score: 99, float_m: 2, rvol: 30 },
+    { decision: 'GO', score: 1 },
+  ].map(toOpportunity)
+  const byKey = (f = NO_FILTERS) => Object.fromEntries(buildTiles(demo, f).map(t => [t.key, t]))
+  const t = byKey()
+  check('tile copy: GO symbols de-duplicated, page order (decision, then score), no placeholder symbol', tileSymbols(demo, t.go).join(',') === 'DEMOB,DEMOA')
+  check('tile copy: ToS text is comma-separated', tileTosText(demo, t.go) === 'DEMOB,DEMOA')
+  check('tile copy: WAIT', tileTosText(demo, t.wait) === 'DEMOC')
+  check('tile copy: MANUAL', tileTosText(demo, t.manual) === 'DEMOD')
+  check('tile copy: grade 4+', tileTosText(demo, t.grade) === 'DEMOC')
+  check('tile copy: float < 5M excludes unknown (0) float', tileTosText(demo, t.float) === 'DEMOA,DEMOC,DEMOE')
+  check('tile copy: RVOL ≥ 10×', tileTosText(demo, t.rvol) === 'DEMOA,DEMOC,DEMOE')
+  check('tile copy: follows the requested sort', tileTosText(demo, t.float, 'float') === 'DEMOE,DEMOA,DEMOC')
+  // An active tile (or another active filter) does not change what a tile copies: it copies what it counts.
+  const active = byKey({ ...NO_FILTERS, dec: 'GO', floatMax: 5 })
+  check('tile copy: ignores other active filters', tileTosText(demo, active.wait) === 'DEMOC' && tileTosText(demo, active.go) === 'DEMOB,DEMOA')
+  check('tile copy: copied count matches the tile value (unique symbols)', tileSymbols(demo, t.wait).length === t.wait.value)
+  check('tile copy: empty universe copies nothing', tileTosText([], buildTiles([], NO_FILTERS)[0]) === '')
+}
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
