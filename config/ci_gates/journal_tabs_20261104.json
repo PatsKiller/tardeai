@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "journal_tabs_20261104",
+  "files": [
+    "tests/test_journal_tabs_20261104.py"
+  ],
+  "anchor": "JOURNAL_TABS_20261104",
+  "comment": [
+    "ANCHOR: JOURNAL_TABS_20261104 — FQ-041: phone wrapping belongs to the actual /journal TradeInViewPage navigation (.tradeinview-tabs). Pytest checks the scoped CSS/model/build routing; the frontend build executes actual SSR label assertions in journalTabs.view.test.mjs. Explicit --browser mode measures all five route tabs at390/412 with real CSS, network refused, plus classic/Options adjacent-scope controls. Browser geometry is not claimed by the structural Python checks."
+  ]
+}
