@@ -79,6 +79,7 @@ def main() -> int:
     args = ap.parse_args()
 
     from db_adapter import _get_conn
+    from psycopg2 import sql
     cur = _get_conn().cursor()
     tables = real_tables(cur)
     readers, writers = scan()
@@ -90,7 +91,7 @@ def main() -> int:
         if len(rs) < args.min_readers or ws:
             continue
         try:
-            cur.execute(f'SELECT count(*) FROM "{t}"')
+            cur.execute(sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(t)))
             n = cur.fetchone()[0]
         except Exception:
             cur.connection.rollback()
