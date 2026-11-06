@@ -85,6 +85,7 @@ def main():
     cur.execute(TRADE_INSTANCES)
     cur.execute(TRADE_EDGE)
     for t in CONSUMERS:
+        # nosemgrep: tq-py-sql-fstring -- table name from the module constant CONSUMERS list
         cur.execute(f"ALTER TABLE {t} ADD COLUMN IF NOT EXISTS trade_instance_id BIGINT")
     c.commit()
     cur.execute("select count(*) from information_schema.columns where table_name='trade_instances'")

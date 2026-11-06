@@ -1038,7 +1038,9 @@ def build_intelligence():
                 if not miss:
                     break
                 try:
-                    cur.execute(f"SELECT DISTINCT ON (symbol) symbol, sector FROM {tbl} WHERE symbol = ANY(%s) AND sector IS NOT NULL ORDER BY symbol", (miss,))
+                    # nosemgrep: tq-py-sql-fstring -- tbl is a literal from the fixed three-table tuple above
+                    cur.execute(f"SELECT DISTINCT ON (symbol) symbol, sector FROM {tbl} "
+                                "WHERE symbol = ANY(%s) AND sector IS NOT NULL ORDER BY symbol", (miss,))
                     for r in cur.fetchall():
                         sector[r["symbol"]] = r["sector"]
                 except Exception:

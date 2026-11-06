@@ -141,6 +141,7 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
         params.append(single_symbol.upper().strip())
 
     # Find news articles with no linked catalyst event (by matching symbol + title)
+    # nosemgrep: tq-py-sql-fstring -- sym_filter is one of two literals; the symbol and LIMIT are parameters
     cur.execute(f"""
         SELECT n.id, n.symbol, n.strategy_type, n.title, n.summary,
                n.source, n.source_url, n.published_at
@@ -149,8 +150,8 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
             ON ce.symbol = n.symbol AND ce.headline = n.title
         WHERE ce.id IS NULL{sym_filter}
         ORDER BY n.published_at DESC NULLS LAST
-        LIMIT {50 if single_symbol else 500}
-    """, params)
+        LIMIT %s
+    """, [*params, 50 if single_symbol else 500])
     rows = cur.fetchall()
 
     # World-class hybrid classifier (deterministic + local-LLM residual, outcome-calibrated). LLM is budgeted

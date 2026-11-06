@@ -242,6 +242,7 @@ def universe(cur) -> dict[str, dict]:
         extra += OPTIONAL_SOURCE_PREDICATE.get(table, "")
         try:
             cur.execute("SAVEPOINT opt_src")
+            # nosemgrep: tq-py-sql-fstring -- table is a literal from the fixed source tuple above
             cur.execute(f"SELECT to_regclass('public.{table}')")
             if cur.fetchall()[0][0] is None:
                 cur.execute("RELEASE SAVEPOINT opt_src")
@@ -422,6 +423,7 @@ def resolve_sectors(cur, symbols: list[str]) -> tuple[dict[str, str], dict]:
             break
         try:
             cur.execute("SAVEPOINT sec_src")
+            # nosemgrep: tq-py-sql-fstring -- table is a literal from the module constant SECTOR_SOURCES
             cur.execute(f"SELECT to_regclass('public.{table}')")
             if cur.fetchall()[0][0] is None:
                 cur.execute("RELEASE SAVEPOINT sec_src")

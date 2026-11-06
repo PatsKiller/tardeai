@@ -116,10 +116,10 @@ def _gather(conn, days: int) -> dict:
                    EXTRACT(EPOCH FROM (p.created_at - s.scanned_at))/60.0 AS lat_min
             FROM paper_trade_proposals p
             JOIN trade_ai_scans s ON s.discovery_trace_id = p.discovery_trace_id
-            WHERE p.created_at > NOW() - INTERVAL '%s days'
+            WHERE p.created_at > NOW() - %s * INTERVAL '1 day'
               AND p.discovery_trace_id IS NOT NULL
               AND p.created_at >= s.scanned_at
-        """ % int(days))
+        """, (int(days),))
         for et_hr, lat in cur.fetchall():
             if et_hr is None or lat is None:
                 continue
