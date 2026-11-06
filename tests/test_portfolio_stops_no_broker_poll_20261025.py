@@ -89,8 +89,8 @@ def test_stops_management_operator_refresh_unchanged(api):
     # refresh=1 (the existing operator Refresh) keeps its live read, even with stops=stored
     try:
         api._stops_management_api({"refresh": ["1"], "stops": ["stored"]})
-    except Exception:
-        pass
+    except Exception:  # noqa: tq-py-except-pass -- this fixture's only guarantee is the broker tripwire; the synthetic
+        pass          # DB is empty, so any downstream projection error is expected and the assertion below is the claim
     assert api._broker_calls == ["broker"]
 
 
