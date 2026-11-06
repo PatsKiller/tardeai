@@ -22,10 +22,13 @@ _EXEMPT_ACCOUNTS = frozenset({
 })
 
 
-def _run(cmd: str, *, timeout: int = 180) -> dict[str, Any]:
+def _run(argv: list[str], *, timeout: int = 180) -> dict[str, Any]:
+    # Argument list, no shell (injection triage 2026-11-06): the protection-advisor refresh carries symbols read from
+    # the diagnosis (holdings/broker data), which must never reach a shell.
+    cmd = " ".join(argv)
     try:
         proc = subprocess.run(
-            cmd, shell=True, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=timeout,
+            argv, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=timeout,
         )
         return {
             "ok": proc.returncode == 0,
@@ -271,8 +274,9 @@ def remediate(diagnosis: dict[str, Any], conn, *, apply: bool = True) -> dict[st
     issues = diagnosis.get("issues") or []
     kinds = {i["kind"] for i in issues}
 
-    def _do(name: str, cmd: str, timeout: int = 180):
-        res = _run(cmd, timeout=timeout)
+    def _do(name: str, argv: list[str], timeout: int = 180):
+        cmd = " ".join(argv)
+        res = _run(argv, timeout=timeout)
         actions.append({"action": name, **res})
         _log_fix(conn, f"{name}: exit={res.get('exit')}", success=res.get("ok", False), action=cmd[:200])
         return res.get("ok")
@@ -281,11 +285,11 @@ def remediate(diagnosis: dict[str, Any], conn, *, apply: bool = True) -> dict[st
 
     # 1) Fidelity holdings stale → orphan false positives (e.g. DXCM pending fill)
     if diagnosis.get("fidelity_orphans") or "orphaned_stop" in kinds:
-        _do("snaptrade_sync", f"{py} scripts/snaptrade_sync.py --apply", timeout=240)
+        _do("snaptrade_sync", [py, "scripts/snaptrade_sync.py", "--apply"], timeout=240)
 
     # 2) Refresh lifecycle after holdings sync
     if kinds or diagnosis.get("snapshot_age_min"):
-        _do("stop_lifecycle_rescan", f"{py} scripts/stop_lifecycle_monitor.py", timeout=120)
+        _do("stop_lifecycle_rescan", [py, "scripts/stop_lifecycle_monitor.py"], timeout=120)
 
     # 3) Re-diagnose orphans; retire closed-position manual stops
     try:
@@ -328,12 +332,12 @@ def remediate(diagnosis: dict[str, Any], conn, *, apply: bool = True) -> dict[st
     refresh_syms = [s for s in refresh_syms if s][:6]
     if refresh_syms:
         sym_arg = ",".join(refresh_syms)
-        _do("protection_advisor", f"{py} scripts/holding_protection_advisor.py --symbols {sym_arg}",
+        _do("protection_advisor", [py, "scripts/holding_protection_advisor.py", "--symbols", sym_arg],
             timeout=600)
 
     # 5) Drift / lock-in pass (advisory Telegram — no broker writes)
     if _is_market_hours_et():
-        _do("stop_drift_alert", f"{py} scripts/stop_drift_alert.py --send", timeout=90)
+        _do("stop_drift_alert", [py, "scripts/stop_drift_alert.py", "--send"], timeout=90)
 
     return {"applied": True, "actions": actions, "refreshed_symbols": refresh_syms}
 

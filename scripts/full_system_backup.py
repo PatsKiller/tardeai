@@ -32,7 +32,9 @@ HOME = Path.home()
 
 def _run(cmd, capture=True):
     """Run a shell command and return output."""
-    r = subprocess.run(cmd, shell=True, capture_output=capture, text=True, timeout=120)
+    # Only caller passes the constant "crontab -l 2>/dev/null"; the shell is for the redirect.
+    r = subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- constant command only (one caller), no variable input
+        cmd, shell=True, capture_output=capture, text=True, timeout=120)
     return r.stdout.strip() if capture else ""
 
 
@@ -62,7 +64,7 @@ def create_backup(dry_run=False):
             # holdings, trades, journal, directives, accounts, configs, SOULs — is fully backed up.
             REGENERABLE = ("content_embeddings", "hermes_score_history", "market_quotes", "ticker_snapshot_daily")
             _excl = " ".join(f"--exclude-table-data='{t}'" for t in REGENERABLE)
-            r = subprocess.run(
+            r = subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- constants + a tempdir path; shell is for the pipe
                 f'pg_dump -h localhost -U trade_ai {_excl} trade_ai | gzip > "{db_dir}/trade_ai.sql.gz"',
                 shell=True, capture_output=True, text=True, timeout=600   # was 120 — too short as the DB grew
             )
