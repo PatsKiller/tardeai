@@ -19,6 +19,15 @@ positions:
   # Repricer coverage guard (2026-10-06): in market hours, if fewer than this share of held symbols get a live
   # quote, the repricer refuses and leaves the last good marks (no days-old cached prices at 0% day change).
   reprice_min_live_coverage: 0.5
+  # Schwab sync recovery baseline (claude-lead BLOCK on #2543, 2026-11-05): when the holdings store is
+  # damaged, the sync may rebuild the reference book from a backup — but only one this recent. Older than
+  # this is a historical document, not a recovery point: using it would rewrite the live book with stale
+  # rows while the relative guards compared the candidate against that same stale document. The default
+  # (key absent, or a non-positive value) is the freshness contract's own ceiling for this store, 24 h
+  # (scripts/state_freshness_writer.py, EXPECTED_MAX_AGE_HOURS["holdings.json"]) — the sync runs once each
+  # weekday morning, so a usable baseline is at most one cycle old. Beyond it the sync refuses, says how old
+  # the newest backup is and leaves the store untouched; a person decides.
+  baseline_max_age_hours: 24
 closed:
   # trade_closed rows written by health probes (2026-08-07), not trades — excluded from REALIZED/TRADING
   test_accounts: [health, journal_check]
