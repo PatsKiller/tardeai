@@ -65,7 +65,7 @@ def _query(conn: Any, sql: str, params: tuple = ()) -> tuple[list[tuple], Option
         cur = conn.cursor()
         cur.execute(text, params)
         return list(cur.fetchall()), None
-    except Exception as exc:  # noqa: BLE001 - reported as a gap by the caller
+    except Exception as exc:  # noqa: BLE001 -- reported as a gap by the caller
         return [], f"{type(exc).__name__}: {exc}"
 
 #: Every unresolved-identity reason written by this module carries this prefix. The reason travels in the case's own
@@ -636,7 +636,7 @@ def run(store: rc.CaseStore, conn: Any, *, today: Optional[date] = None,
             if case is None:
                 continue
             (refreshed if case.case_key in before else opened).append(case.case_key)
-        except Exception as exc:  # noqa: BLE001 - one case's failure is isolated and reported, never hidden
+        except Exception as exc:  # noqa: BLE001 -- one case's failure is isolated and reported, never hidden
             failed.append(f"{symbol}/{account}: {type(exc).__name__}: {exc}")
             gaps.append(f"{symbol}/{account}: the case could not be built ({type(exc).__name__}: {exc})")
     return {"opened": opened, "refreshed": refreshed, "failed": failed, "gaps": gaps,

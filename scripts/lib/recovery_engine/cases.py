@@ -244,7 +244,7 @@ def _refuse_execution_values(node: Any, path: str = "plan", depth: int = 0) -> N
                 raise ValueError(f"plan may not carry an execution value ({path}.{key}); the plan is proposal text "
                                  "and this engine never sizes, orders or stops (MBI_BEHAVIOR = 0)")
             _refuse_execution_values(value, f"{path}.{key}", depth + 1)
-    elif isinstance(node, (list, tuple)):  # noqa: E501
+    elif isinstance(node, (list, tuple)):
         for index, item in enumerate(node):
             _refuse_execution_values(item, f"{path}[{index}]", depth + 1)
 
