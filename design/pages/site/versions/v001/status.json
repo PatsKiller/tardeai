@@ -1,0 +1,200 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "site",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Site fix package (cross-cutting): approved 2026-10-24 boards (Site fix package (FINDINGS P1/P2/P3) — a fix package, not a layout board)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"fix EVERYTHING in FINDINGS.md (P1, P2, P3)\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/site-audit-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/site",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/evidence/impl-ops-broker-1440.png",
+        "sha256": "b44887f3b73211e00c95d626c49038da0825b6ae8faa99c274246c0adbe7110f",
+        "bytes": 178128,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-broker-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-ops-broker-390.png",
+        "sha256": "b910ff82d04b414b54937cd54ceabd42ca6f90229b2ace2a0d7063caaf835530",
+        "bytes": 73700,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-broker-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-ops-broker-412.png",
+        "sha256": "9a5a33f27b70a809e2156cf9eb05100747b53dd993d730916390523c4e396add",
+        "bytes": 80762,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-broker-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-ops-llm-1440.png",
+        "sha256": "f301f8968e6d7efc78d7db4a4657110c7501738a59a9b56d443ebeea1682a975",
+        "bytes": 180761,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-llm-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-ops-llm-390.png",
+        "sha256": "0b692a6d5cefc1954a4db903721ad8cc3751c4be86b6ff6c7532b55c07dbd1ef",
+        "bytes": 68022,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-llm-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-ops-llm-412.png",
+        "sha256": "e817bef3d0dc4775ff6f98b2c36dca5a490510bb483334fbfc95021ff7cf6223",
+        "bytes": 72689,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-ops-llm-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-detail-390.png",
+        "sha256": "27f3d43d20bcd690604a83d5d1191a7e47b2c2b02f20c76cf02f9944edf21490",
+        "bytes": 59759,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-detail-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-detail-412.png",
+        "sha256": "08a05e365c6b419f8919b3a43f1a700937bfbec1981c7a7d2c77c25c2bb96bf7",
+        "bytes": 60235,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-detail-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-empty-filter-1440.png",
+        "sha256": "4974dad21c16227677935efbd8d472841c42efd8f6128cb0e9fd84f66e6fad15",
+        "bytes": 142999,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-empty-filter-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-empty-filter-390.png",
+        "sha256": "b8b3bb28e9b0bbb4575c840334afd827a40d31053bb6b5c8d3385439c3e1f114",
+        "bytes": 138771,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-empty-filter-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-empty-filter-412.png",
+        "sha256": "72ccfc8b774ecf14acd5b5b903309b8a0490d29dc12e515f5c9556c23c716487",
+        "bytes": 138356,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-empty-filter-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-same-page-link-1440.png",
+        "sha256": "0f11980c771bbec91e94cb631f1c8979cff4dabbe9360540a2524826147352c0",
+        "bytes": 162308,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-same-page-link-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-same-page-link-390.png",
+        "sha256": "b41188dcbad3b1f087b2c2e2007dbf8d56ddd5a6578101cb4404ba20b54aa05b",
+        "bytes": 158964,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-same-page-link-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-research-same-page-link-412.png",
+        "sha256": "6a950b4b76573f47ade8ef5d4312fac86dbb970035baa0e016f6b47409a26d5f",
+        "bytes": 158370,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-research-same-page-link-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-trading-manual-entry-1440.png",
+        "sha256": "af6434caa777ffe61c5056dd39486a68d42fafef8a7edad17f3ba2344e2e6b4d",
+        "bytes": 98505,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-trading-manual-entry-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-trading-manual-entry-390.png",
+        "sha256": "2e2eb4f04c1119a988b11731d123c650ab8cbe5179ee5a5f52ec0388709a2dc9",
+        "bytes": 102981,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-trading-manual-entry-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-trading-manual-entry-412.png",
+        "sha256": "daa352fae853d580541e5d48367ded1dc564a6efa9fa494e2ec5b0f3682ffc95",
+        "bytes": 102901,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-trading-manual-entry-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-trading-proposals-1440.png",
+        "sha256": "d265ff3af835e7489456ccfd331439ca883952b9cbf71a57bb844dba684da279",
+        "bytes": 119237,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-trading-proposals-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-trading-proposals-390.png",
+        "sha256": "4514c01bcca7abb72a5f0a54f4e2c23e1c5860e97e3ddfaf460d38ba6149d411",
+        "bytes": 117138,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-trading-proposals-390.png"
+      },
+      {
+        "path": "v001/evidence/impl-w9-trading-proposals-412.png",
+        "sha256": "254d2689caf2fdad3ed249be01ee0cd60184ffa394d355e76d9a828a7bf1fb3d",
+        "bytes": 116058,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/mockups/impl-w9-trading-proposals-412.png"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-site-audit-20261024.md",
+        "sha256": "5244b09a8c26121fd2e3c0dcc790a48c80568bd458566c0112530b976f03ee93",
+        "bytes": 9146,
+        "role": "spec",
+        "source": "handoffs/site-audit-20261024/SPEC.md"
+      },
+      {
+        "path": "v001/spec/handoff-FINDINGS-site-audit-20261024.md",
+        "sha256": "804bf6266c65ea270e41d5dbeef4fa83695d4a37ffb24bcad1a8c89aa1fd6e19",
+        "bytes": 6880,
+        "role": "spec",
+        "source": "handoffs/site-audit-20261024/FINDINGS.md"
+      }
+    ]
+  },
+  "fingerprint": "4a183577156cd0d56c77fe6e436926565de018e952fcbd2e07707370146e41f5",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

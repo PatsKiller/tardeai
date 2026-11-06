@@ -1,0 +1,81 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "rulebook",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Rulebook: approved 2026-10-24 boards (Board 21 Rulebook)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/rulebook",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Policy.dc.html",
+        "sha256": "207192f285f5a19703d18f3b714cc80bcd489173130d0a6ae6a0271c11d121b7",
+        "bytes": 9626,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Policy.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-21-proposal-1440.png",
+        "sha256": "a19dc4710b03dcd2b557b4f7ac88a6894d5ef4f70321656473d2a7dd35429f78",
+        "bytes": 123818,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-21-proposal-1440.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-21-proposal-390.png",
+        "sha256": "7e5f3f417045c590df20ddbcb367773d05e9daee7cd1c8887549d4ec7154baeb",
+        "bytes": 118373,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-21-proposal-390.png"
+      },
+      {
+        "path": "v001/evidence/batch27/impl-21-proposal-412.png",
+        "sha256": "b16f2faa1bc065a4d60a0a0d4cbef1c4d067374d395066e3bd24f5d755cf1415",
+        "bytes": 118379,
+        "role": "evidence/batch27",
+        "source": "handoffs/desks-redesign-20261024/mockups/batch27/impl-21-proposal-412.png"
+      }
+    ]
+  },
+  "fingerprint": "ed451576ea48cbf33ef66507e56b9a603b4383583d27f3f8122c86aa9d7183ea",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

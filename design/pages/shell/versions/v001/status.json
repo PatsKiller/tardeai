@@ -1,0 +1,74 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "shell",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "App shell: nav rail, header strip, Ask bar, desk frame: approved 2026-10-24 boards (Board 0 Main (nav rail + shared page pattern), Board 13 Ownership)",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/shell",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Main.dc.html",
+        "sha256": "c03039ef06394598c6aa9250eb649a2615db428b7932af65879b58d20c3fa98b",
+        "bytes": 7007,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Main.dc.html"
+      },
+      {
+        "path": "v001/mockups/Ownership.dc.html",
+        "sha256": "cdd263db32de4cb542f480cc1984ae175a8903b87c353691544fa13d3b2ac3a1",
+        "bytes": 4402,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/Ownership.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      },
+      {
+        "path": "v001/evidence/desks-a-mobile-receipts-20261025.json",
+        "sha256": "712376f3b248637af920c888a5a0408e526f1211a343912817785545bf76a0e7",
+        "bytes": 9362,
+        "role": "evidence",
+        "source": "handoffs/desks-redesign-20261024/desks-a-mobile-receipts-20261025.json"
+      }
+    ]
+  },
+  "fingerprint": "a61f50c3b54b9ac9ff6affcf8630873e5088ac21bda83bd05b000fd2ddc0cc4f",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "rotation",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 2,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 925159424,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/rotation",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/rotation-default-1440.png",
+        "sha256": "74b2279f34f88f0d273cd3a5bdb5fcca9715cb540d833239ddb0f76507ac5b8e",
+        "bytes": 114056,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/rotation-default-390.png",
+        "sha256": "1babb2a9860fa4d6dcf81612bbf676233b16bb44f43eb0abc2838ca93b9ce481",
+        "bytes": 52175,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/rotation-default-412.png",
+        "sha256": "091daace318827d9f17de5911bb9c5e9dcd5f7bd65f9321c06128e1cbc4b1782",
+        "bytes": 52303,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/rotation-t01-1440.png",
+        "sha256": "20784bb868827f8bd3f9bdb678815da64af2a585a5e0439e9744f347df143853",
+        "bytes": 114061,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/rotation-t01-390.png",
+        "sha256": "08fa74ec72bcd77682f7d16c558abfe92820e25495535a8f56286c4dbddeac46",
+        "bytes": 52163,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/rotation-t01-412.png",
+        "sha256": "4da23cf258a149abff7f02b823a2aec93469050409891dd0e5d553d887d77dda",
+        "bytes": 52289,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/rotation-t02-1440.png",
+        "sha256": "cf043b5e6fe1f9d0d2e13bf63dc841150d768d9c14c8bb95264c06c84cd834d9",
+        "bytes": 218847,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/rotation-t02-390.png",
+        "sha256": "c15dc5e834cff242e7ba55469821e506b75bd4db9282a17960d94eae9148ee88",
+        "bytes": 78748,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/rotation-t02-412.png",
+        "sha256": "340fb743bad7760ffa0407bed25f6cdbadd2a5bff3ec67d7ec260578db8aba98",
+        "bytes": 84152,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

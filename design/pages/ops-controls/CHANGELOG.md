@@ -1,5 +1,9 @@
 # Ops Controls — changelog
 
+One line per version: date · version · state · what changed · approval ref.
+
+- 2026-10-24 · v001 · APPROVED · Board 16 Jobs & health (embedded) · operator "I approve the markups. Give it to Codex." (recorded in handoff, back-filled 2026-10-25)
+
 - 2026-10-27 OPERATOR-DIRECTED REMOVAL (no mockup required; the operator directed it): "Remove everything about the
   old train from the AGENTS.md, and from the Command Center and from the code." Changes on
   `/v3/system/ops-controls?tab=jobs` (`OpsControls.tsx`):

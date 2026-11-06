@@ -1,0 +1,454 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "intelligence",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 16,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 1186816000,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 9,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/intelligence",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/intelligence-default-1440.png",
+        "sha256": "1a479079c3763715961b02e8d604af57b8c1cd0be9431a38fda96f6d42e57c0a",
+        "bytes": 282004,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/intelligence-default-390.png",
+        "sha256": "9c514db4085be20279fc479a73b4d47552427201686282224647119acdd67667",
+        "bytes": 75158,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/intelligence-default-412.png",
+        "sha256": "6c7f62c7d6c9e026f7a00f34176e1ddfbbbf8dfebdbfff2e2cc36cf6c404e8d4",
+        "bytes": 78106,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/intelligence-t01-1440.png",
+        "sha256": "c0c141e9e6e033b67b97717e1c4e02cf0b08aac4c2a86373438bac48f547a37b",
+        "bytes": 286697,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/intelligence-t01-390.png",
+        "sha256": "a2de6160c7755bdce1f4dac2010e8f609d1798785246073ab9a6a05c1e1c3258",
+        "bytes": 102381,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/intelligence-t01-412.png",
+        "sha256": "fd68c6e690553beb6d51013743c28250439cedb70d3bcc3e605cbc21259fb440",
+        "bytes": 120628,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/intelligence-t02-1440.png",
+        "sha256": "17748713b3046724169d3dcaae5081cc8b8dcb1231a868ef639785451e79da29",
+        "bytes": 282103,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/intelligence-t02-390.png",
+        "sha256": "047782ecf5786ce76f371a1744426ddc670d5c858e67dd828d07e9e8f28fa2e6",
+        "bytes": 75124,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/intelligence-t02-412.png",
+        "sha256": "3162e6bd3104413f6573b977c02baf10b2efff69c093f097ebc592c0e9d9e63b",
+        "bytes": 78070,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/intelligence-t03-1440.png",
+        "sha256": "aed3d6550f1f63ccbcbe9133dff6792c45e244eac46f263fff12f2a436fca290",
+        "bytes": 186366,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/intelligence-t03-390.png",
+        "sha256": "57e3e1eecf7b77a369b36a986a803f8b505c42460d4aeefc89808a5a321fa079",
+        "bytes": 70205,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/intelligence-t03-412.png",
+        "sha256": "5c2b5c710d14a943dd1064994613d38414b41458557376b464598509233f63d6",
+        "bytes": 76992,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/intelligence-t04-1440.png",
+        "sha256": "8249ce67b15313509ab36d53c04dc50a74d36cde9202bad67258a0eb54065266",
+        "bytes": 189783,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/intelligence-t04-390.png",
+        "sha256": "d7fe44f324487ac346cdea3dcff273cfd41bdf591718ee3067e85fe321fb9cb8",
+        "bytes": 72425,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/intelligence-t04-412.png",
+        "sha256": "bf5f24e5c07694af7445057364bac0f32ec08e0223d61c864e680bcaf52c7fbf",
+        "bytes": 76157,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/intelligence-t05-1440.png",
+        "sha256": "fab35a56a4e595f089f0c324a0fe20d0fc9cd41a571a6d5ddf192f607059a4b9",
+        "bytes": 231671,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/intelligence-t05-390.png",
+        "sha256": "2bf638448545afb6f8fb9fcaff80e1f2e6d30c87288ed97118aabbaaa1d915e5",
+        "bytes": 60907,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/intelligence-t05-412.png",
+        "sha256": "cbfac38df56e22dbc8e8bdbc8bb5ba66b7bee441a71e72e42db458d1d79944ac",
+        "bytes": 71053,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/intelligence-t06-1440.png",
+        "sha256": "b7f96393488e78b2f36986436c393ca83aa7e0676f1cf304bdc1b9382152b0b8",
+        "bytes": 212438,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/intelligence-t06-390.png",
+        "sha256": "d36b48acae749dbdd3aa4b7cbea679a8d11faf98716e29e72cf52772b1fe848f",
+        "bytes": 80308,
+        "role": "capture",
+        "width": 390,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/intelligence-t06-412.png",
+        "sha256": "ef823048a37924021fbd70de7221b2b67a759cdc0552fa71ca0ff03fb7233f90",
+        "bytes": 87765,
+        "role": "capture",
+        "width": 412,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/intelligence-t07-1440.png",
+        "sha256": "785a454a700e044190bc40f50652ac7b644fbc0c22b4dde105221e05ecccf3f5",
+        "bytes": 205195,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/intelligence-t07-390.png",
+        "sha256": "c8f731345d8303abb91b56b3e931ab1872dbaf36e4e475978c690752acbcb257",
+        "bytes": 58168,
+        "role": "capture",
+        "width": 390,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/intelligence-t07-412.png",
+        "sha256": "1bab079b50272dff169b59970a84af8cbb6e3b33bcfa8fe68a9af82d4b135b37",
+        "bytes": 62225,
+        "role": "capture",
+        "width": 412,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/intelligence-t08-1440.png",
+        "sha256": "8f248ba244a3a41b2c89250a05d2411f27be7aa72cd58af21e04b617c9bbf4b1",
+        "bytes": 161254,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/intelligence-t08-390.png",
+        "sha256": "63a2f3949caf9016ddc8986fe452e23e17994c1cc919d6b6922d1b2c149d9008",
+        "bytes": 50567,
+        "role": "capture",
+        "width": 390,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/intelligence-t08-412.png",
+        "sha256": "66dec3f3dda1a823344dff1114156c42db52d8dceb3850231f984a2ae3a760cf",
+        "bytes": 52001,
+        "role": "capture",
+        "width": 412,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/intelligence-t09-1440.png",
+        "sha256": "d222dcf4a307e2a659226eb58d66e44c7e052a644e2e9869367de4148dbb504a",
+        "bytes": 207213,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/intelligence-t09-390.png",
+        "sha256": "7f7949096980912dd5019520bcf2fd5c6cdbc75a705c2253919f7ca25ca73f24",
+        "bytes": 88301,
+        "role": "capture",
+        "width": 390,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/intelligence-t09-412.png",
+        "sha256": "a1d6d07faff3bcc6be777ec212d6285f896c6e2e0e6a2ce329ef82852288c9d2",
+        "bytes": 103663,
+        "role": "capture",
+        "width": 412,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/intelligence-t10-1440.png",
+        "sha256": "4d004f844356a5b58d187bc75c1c1805c0f605ddbfee070dae18fea4f0733a4d",
+        "bytes": 181886,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/intelligence-t10-390.png",
+        "sha256": "060a9675546a26baf6bb3e265faa18ed51ae781f8c9cfedbf47f5a5ee5e5d30d",
+        "bytes": 84334,
+        "role": "capture",
+        "width": 390,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/intelligence-t10-412.png",
+        "sha256": "cda87310edddbeecbb9972bbd9c98d2785ce1a39805f935d442e58c3552653e7",
+        "bytes": 87812,
+        "role": "capture",
+        "width": 412,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/intelligence-t11-1440.png",
+        "sha256": "4d004f844356a5b58d187bc75c1c1805c0f605ddbfee070dae18fea4f0733a4d",
+        "bytes": 181886,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/intelligence-t11-390.png",
+        "sha256": "060a9675546a26baf6bb3e265faa18ed51ae781f8c9cfedbf47f5a5ee5e5d30d",
+        "bytes": 84334,
+        "role": "capture",
+        "width": 390,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/intelligence-t11-412.png",
+        "sha256": "cda87310edddbeecbb9972bbd9c98d2785ce1a39805f935d442e58c3552653e7",
+        "bytes": 87812,
+        "role": "capture",
+        "width": 412,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/intelligence-t12-1440.png",
+        "sha256": "4d004f844356a5b58d187bc75c1c1805c0f605ddbfee070dae18fea4f0733a4d",
+        "bytes": 181886,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/intelligence-t12-390.png",
+        "sha256": "060a9675546a26baf6bb3e265faa18ed51ae781f8c9cfedbf47f5a5ee5e5d30d",
+        "bytes": 84334,
+        "role": "capture",
+        "width": 390,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/intelligence-t12-412.png",
+        "sha256": "cda87310edddbeecbb9972bbd9c98d2785ce1a39805f935d442e58c3552653e7",
+        "bytes": 87812,
+        "role": "capture",
+        "width": 412,
+        "tab": "t12"
+      },
+      {
+        "path": "v000/capture/intelligence-t13-1440.png",
+        "sha256": "ab48a78bf6c86cc609a4b0d9f60ea8ddecd6b1bb3926d45501c7135e6c2317d9",
+        "bytes": 174674,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/intelligence-t13-390.png",
+        "sha256": "5e889c54ecf065b7c3339bf1e593c7fff709596b487e181aeb8703464503d490",
+        "bytes": 46229,
+        "role": "capture",
+        "width": 390,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/intelligence-t13-412.png",
+        "sha256": "f806dd2e8f4539e9ad4f4df499f106c83d04d8b739e48b806813534b26adb3f4",
+        "bytes": 53917,
+        "role": "capture",
+        "width": 412,
+        "tab": "t13"
+      },
+      {
+        "path": "v000/capture/intelligence-t14-1440.png",
+        "sha256": "aed52f67abd6d5ec2c035a9f90167d1d975e883023ee45de33d72aded70fe3c8",
+        "bytes": 360045,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/intelligence-t14-390.png",
+        "sha256": "8ef04c427167d69c04b40320b24a64b77d63aef798ce22387ca96cca761fe5a1",
+        "bytes": 46248,
+        "role": "capture",
+        "width": 390,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/intelligence-t14-412.png",
+        "sha256": "c487e40262e23c765e211d876e5e8ed180f34d154aca1f360ad4e0c8a8fd703c",
+        "bytes": 92542,
+        "role": "capture",
+        "width": 412,
+        "tab": "t14"
+      },
+      {
+        "path": "v000/capture/intelligence-t15-1440.png",
+        "sha256": "9c768ed936e943611ba1b33d94079731b5372c7a01f4c89a7202b8ad96c659a0",
+        "bytes": 233503,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/intelligence-t15-390.png",
+        "sha256": "018a24ab30ad1fb4809b2cdf899c9d1c87424a5cb3365484bba2507f9712b69b",
+        "bytes": 46244,
+        "role": "capture",
+        "width": 390,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/intelligence-t15-412.png",
+        "sha256": "ab07172a4d4313a0586c757f222210c995aac24eeeed363b5b750637464bbe6d",
+        "bytes": 89027,
+        "role": "capture",
+        "width": 412,
+        "tab": "t15"
+      },
+      {
+        "path": "v000/capture/intelligence-t16-1440.png",
+        "sha256": "9228933ae4964a27a1f7fbaa00571d41c55d912be3583f0210b437ad0dd86426",
+        "bytes": 225593,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/intelligence-t16-390.png",
+        "sha256": "13955cc4f1e29ceccddbd3aa7ac0711acd82e69d5c399564b821619ffe8621d4",
+        "bytes": 46240,
+        "role": "capture",
+        "width": 390,
+        "tab": "t16"
+      },
+      {
+        "path": "v000/capture/intelligence-t16-412.png",
+        "sha256": "2e6eb3bf2f991608bda4680a8fab3cad0871a4e96be7d7b1a6997b8a043890cd",
+        "bytes": 64965,
+        "role": "capture",
+        "width": 412,
+        "tab": "t16"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

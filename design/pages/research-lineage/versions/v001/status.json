@@ -1,0 +1,60 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "research-lineage",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "Research lineage: approved 2026-10-24 boards (Board 6 Closed Loop → \"Research lineage\" (own page))",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approve the markups. Give it to Codex.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/desks-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/research-lineage",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/ClosedLoop.dc.html",
+        "sha256": "fdd2747f94645c1dd0d20f99c086b0c5bb3ae0bd3757c43f7af9b59018d8d0b9",
+        "bytes": 5400,
+        "role": "mockups",
+        "source": "handoffs/desks-redesign-20261024/mockups/ClosedLoop.dc.html"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-desks-redesign-20261024.md",
+        "sha256": "7ceeb8790c118759ab374e155d5d3d263f217824863c518303799177a291a664",
+        "bytes": 6760,
+        "role": "spec",
+        "source": "handoffs/desks-redesign-20261024/SPEC.md"
+      }
+    ]
+  },
+  "fingerprint": "2304fcca5d4dac03674c10a7863d9c6e4eb40c0cc8cebf7b19202557fabbd832",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

@@ -1,0 +1,151 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "my-questions",
+  "version": "v001",
+  "state": "APPROVED",
+  "title": "My questions: approved 2026-10-24 boards (My questions grouped (Questions board))",
+  "created": "2026-10-24",
+  "approval": {
+    "by": "operator",
+    "at": "2026-10-24",
+    "ref": "\"I approved all of your markups. Please make sure that they're implemented per your design.\"",
+    "kind": "recorded in handoff, back-filled 2026-10-25",
+    "source": [
+      "handoffs/tradeinview-redesign-20261024/SPEC.md"
+    ],
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/my-questions",
+    "note": "Private, never committed: mockups, handoff specs and implementation evidence can show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v001/mockups/Questions.dc.html",
+        "sha256": "3a325f829d62202d408a115b76d65248864947367c122c7e8edd80d07c380538",
+        "bytes": 7417,
+        "role": "mockups",
+        "source": "handoffs/tradeinview-redesign-20261024/mockups/Questions.dc.html"
+      },
+      {
+        "path": "v001/evidence/impl-questions-empty-1440.png",
+        "sha256": "7143e52dc5b637042ea8c18fe985bc11c20cc3ebff4e28a7e5ecbc3c4d93c69a",
+        "bytes": 38887,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-empty-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-empty-412.png",
+        "sha256": "ae1a28fb4b63f20e30185a7a69cbffecb92e5fed8befeefb80aa746550ed0246",
+        "bytes": 35013,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-empty-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-date-1440.png",
+        "sha256": "d04e4019e6fa52f9271a7c56e66f622710c16c7ca6d8856c3a24734301c57f00",
+        "bytes": 63679,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-date-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-date-412.png",
+        "sha256": "3506fcca1939ea5882288cf45a35ad094a83843e462b966a501e73f0d999dd45",
+        "bytes": 59528,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-date-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-none-1440.png",
+        "sha256": "594acc65e30b720e3be53fec87724b3193e0a08e1c22f36c578002f417bb5983",
+        "bytes": 56416,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-none-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-none-412.png",
+        "sha256": "e38e151fbc27e2b699334028aa483eddbc5bfbc4a601a25052e3ea2dbf4687c6",
+        "bytes": 52687,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-none-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-sector-1440.png",
+        "sha256": "731a0ab306da4ec27ce10f84ace2c07b9cf8fbb89daea6595395d3dc9c370ed9",
+        "bytes": 90916,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-sector-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-sector-412.png",
+        "sha256": "9383c75f1af30be17a4cd64fa23bad77f226bd3dc3c9b88842daf881bf752669",
+        "bytes": 85843,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-sector-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-security-1440.png",
+        "sha256": "829c7c0011fc426a99c529110e98d085d1256879099fd62cc57cae3c74c8a9ad",
+        "bytes": 89621,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-security-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-security-412.png",
+        "sha256": "ecbdd21bdab64b0c4c334fd7ccc7e3785787b64c5b514989f7c8f4abc9694b42",
+        "bytes": 85058,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-security-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-theme-1440.png",
+        "sha256": "3d3c8ea05cadd5624053c1aa12c6ba1ce350f79fd934b1afa26fbf91b71761e0",
+        "bytes": 83914,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-theme-1440.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-group-theme-412.png",
+        "sha256": "536b93930edf8f4bd527aa80ba85fa817ab4d6edf96f70d9e84626bfc6958980",
+        "bytes": 78699,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-group-theme-412.png"
+      },
+      {
+        "path": "v001/evidence/impl-questions-thread-related-1440.png",
+        "sha256": "797cff3c7d791be8c596b8087409467ab9eab596e8f9b243cb31360f30f01419",
+        "bytes": 146955,
+        "role": "evidence",
+        "source": "handoffs/tradeinview-redesign-20261024/impl-questions-thread-related-1440.png"
+      },
+      {
+        "path": "v001/spec/handoff-SPEC-tradeinview-redesign-20261024.md",
+        "sha256": "08b9b06c7fa063e292c0744a3444b541ef4cf27628f9bcb2f21c3e4481b969a4",
+        "bytes": 9772,
+        "role": "spec",
+        "source": "handoffs/tradeinview-redesign-20261024/SPEC.md"
+      }
+    ]
+  },
+  "fingerprint": "14a7c802e55b94ff841bddb070d5d703d07bc1053a390dcff9a6a9c3f6b21037",
+  "implementation": {
+    "state": "UNVERIFIED",
+    "note": "Built ahead of or alongside the board; no visual verification recorded yet."
+  },
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "APPROVED",
+      "at": "2026-10-24",
+      "by": "operator",
+      "note": "approval recorded only in the handoff prose"
+    },
+    {
+      "state": "APPROVED",
+      "at": "2026-10-25",
+      "by": "agent:design-workflow",
+      "note": "back-filled into design/ from the handoff; private assets copied (cp -p) to the persistent-state design store"
+    }
+  ]
+}

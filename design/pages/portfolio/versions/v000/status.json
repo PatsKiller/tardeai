@@ -1,0 +1,334 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "portfolio",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 11,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 765927424,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/portfolio",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/portfolio-default-1440.png",
+        "sha256": "e0ee9bfdf83ac6401b21bd6222f5daa68ecc9751888aa4b6f4d4cc544556389b",
+        "bytes": 252320,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/portfolio-default-390.png",
+        "sha256": "0439459d8892900c3f128841be0815f56d18110b2c501b8979784adc6cf79f18",
+        "bytes": 70427,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/portfolio-default-412.png",
+        "sha256": "f7d70125318ddaf9fa51550d6a8966b848f636cb9920559b884277017e9feb14",
+        "bytes": 84043,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/portfolio-t01-1440.png",
+        "sha256": "b32263c0cdced85ed0676d64d1d5f53dc0405c0836bc84293c131400e6731797",
+        "bytes": 252327,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/portfolio-t01-390.png",
+        "sha256": "0439459d8892900c3f128841be0815f56d18110b2c501b8979784adc6cf79f18",
+        "bytes": 70427,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/portfolio-t01-412.png",
+        "sha256": "f7d70125318ddaf9fa51550d6a8966b848f636cb9920559b884277017e9feb14",
+        "bytes": 84043,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/portfolio-t02-1440.png",
+        "sha256": "c1f790551eecb2c58f122cda6fbd18a5ee764531c50c3cc7486c7f3f1c109907",
+        "bytes": 143987,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/portfolio-t02-390.png",
+        "sha256": "bfde6a823a1fe0b97a4a170d29c806584025a509bd0adbf6c62adfb5857c6f2e",
+        "bytes": 61141,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/portfolio-t02-412.png",
+        "sha256": "01609fef3cf43727473ebf8e5d90da89786eedd327ff91a38a25c277ea2bca7a",
+        "bytes": 67055,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/portfolio-t03-1440.png",
+        "sha256": "b03af08928b7c210b8d64874d17a2e2f9cd5bdf17e7106f3129bda5618b74150",
+        "bytes": 194037,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/portfolio-t03-390.png",
+        "sha256": "534df01063a49f8754c65c2b93584191b7f3bb206fd6bc1543a82f763da77bdd",
+        "bytes": 62008,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/portfolio-t03-412.png",
+        "sha256": "cefc26c5710bfc509c1f06dc14f8b4f55f07e390967b20c9c62c52f466c53841",
+        "bytes": 67108,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/portfolio-t04-1440.png",
+        "sha256": "3fd1a85e79400ab0419ec32b7a5205cfb5a05191423fc2c6ea59ff89be222476",
+        "bytes": 288077,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/portfolio-t04-390.png",
+        "sha256": "cda84baeee0e87bd25f1c0f752b9677e57dd4e61e18a177ffd5132948a162401",
+        "bytes": 67795,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/portfolio-t04-412.png",
+        "sha256": "3e35d88e42b9c6922d7a5426eb00966e6ed4893cf997e5f24d8e3a19f9b86ea5",
+        "bytes": 78678,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/portfolio-t05-1440.png",
+        "sha256": "57ee1c4d9f5fcf589c192e0ed79282b6c467bd3fee939a49bc1222137b7dd5ca",
+        "bytes": 181965,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/portfolio-t05-390.png",
+        "sha256": "61db9c832113ac9081da2d4b0efc894fa06f20b35b4fdc2d6e5d0f70dd836f54",
+        "bytes": 61431,
+        "role": "capture",
+        "width": 390,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/portfolio-t05-412.png",
+        "sha256": "f7f02f33e395dc66c895cf92c849407df348622f2f4c88f4532b176057687a3d",
+        "bytes": 65298,
+        "role": "capture",
+        "width": 412,
+        "tab": "t05"
+      },
+      {
+        "path": "v000/capture/portfolio-t06-1440.png",
+        "sha256": "cac093f530651d6596328bb6a9d4011f6023103fd5b8f9ff390d347e1302930f",
+        "bytes": 135128,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/portfolio-t06-390.png",
+        "sha256": "af3a89f6b4b106578c1235c51ddb95f202dca6c94dbfa3fc21232ebd4f1d4373",
+        "bytes": 49689,
+        "role": "capture",
+        "width": 390,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/portfolio-t06-412.png",
+        "sha256": "378c99bfb8740428fc3920e6d4239e2703c04be7e4043f4a335cb4f1db0f6e26",
+        "bytes": 52441,
+        "role": "capture",
+        "width": 412,
+        "tab": "t06"
+      },
+      {
+        "path": "v000/capture/portfolio-t07-1440.png",
+        "sha256": "acd3caa91621553936a963f5f71d9d97c402eb55880cf4d9becd704487766e51",
+        "bytes": 252624,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/portfolio-t07-390.png",
+        "sha256": "5d5a0eb3b24e0e7bb314d23f2708eefb702f142943a7c711ff57f0b41db91d33",
+        "bytes": 66188,
+        "role": "capture",
+        "width": 390,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/portfolio-t07-412.png",
+        "sha256": "aab5779cd74ddfbd5ffb0d9b7cbfbd5af406a009899e0303d028a6dc860557d0",
+        "bytes": 74901,
+        "role": "capture",
+        "width": 412,
+        "tab": "t07"
+      },
+      {
+        "path": "v000/capture/portfolio-t08-1440.png",
+        "sha256": "6d89b9564580fe5c5ca7d49df1938ad56c7600926f08158846169ae00b4d205a",
+        "bytes": 149656,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/portfolio-t08-390.png",
+        "sha256": "b75de45a2bca3a947cb420123090aada8b5ae329e0a788d7d4f31d5bc47e57ca",
+        "bytes": 53743,
+        "role": "capture",
+        "width": 390,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/portfolio-t08-412.png",
+        "sha256": "82a34f101f5a223948ee476f3ff3b2c439f8e6a8bdb23d9d8a0661281f274efc",
+        "bytes": 56888,
+        "role": "capture",
+        "width": 412,
+        "tab": "t08"
+      },
+      {
+        "path": "v000/capture/portfolio-t09-1440.png",
+        "sha256": "04eb4d8ac07a51da333949ff9daa8950a1f92f7d0b7519161230c1872a605c16",
+        "bytes": 252199,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/portfolio-t09-390.png",
+        "sha256": "920b7b251a642d7f533fcaebdead8abf3b41ee77f430f876fd2b949afa59c6f3",
+        "bytes": 67747,
+        "role": "capture",
+        "width": 390,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/portfolio-t09-412.png",
+        "sha256": "e11908f955b0ac0683d03c7cc2eaff82d9e70e8d7db986399abe2bbad5f1af96",
+        "bytes": 70370,
+        "role": "capture",
+        "width": 412,
+        "tab": "t09"
+      },
+      {
+        "path": "v000/capture/portfolio-t10-1440.png",
+        "sha256": "70dfdd2f2bba86f2c0978d42f1e1bc30e4fc1a67db50990cf5d377583ecd2c60",
+        "bytes": 262246,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/portfolio-t10-390.png",
+        "sha256": "93896a4cb007e175aaa7badd38a03aacc71d133f42eb88c9995a38f64cf89d11",
+        "bytes": 67802,
+        "role": "capture",
+        "width": 390,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/portfolio-t10-412.png",
+        "sha256": "5dd8d2f8cff0275e94da66d4c6039e14bd92c498f4e2508816984ab9eeceb840",
+        "bytes": 70485,
+        "role": "capture",
+        "width": 412,
+        "tab": "t10"
+      },
+      {
+        "path": "v000/capture/portfolio-t11-1440.png",
+        "sha256": "e0ee5b03f59be4ba558181a977d11c630083d956287a5afbcd1ac288c0be2dd0",
+        "bytes": 254593,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/portfolio-t11-390.png",
+        "sha256": "8cd9390f630b98cd6368dac06786aa04c45f28c81e0b9d64905b2f5e8b7972ae",
+        "bytes": 64323,
+        "role": "capture",
+        "width": 390,
+        "tab": "t11"
+      },
+      {
+        "path": "v000/capture/portfolio-t11-412.png",
+        "sha256": "bd60a2ebc3e4ef0e95547477ccf718f5fc4a79adb9ee03d9fec607834f2d596a",
+        "bytes": 67047,
+        "role": "capture",
+        "width": 412,
+        "tab": "t11"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

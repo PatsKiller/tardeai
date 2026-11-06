@@ -1,0 +1,166 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "defense",
+  "version": "v000",
+  "state": "BASELINE",
+  "title": "As built 2026-10-25: read-only live capture at 1440, 412, 390",
+  "created": "2026-10-25",
+  "approval": null,
+  "spec": null,
+  "capture": {
+    "base": "production (loopback)",
+    "started_at": "2026-10-25T19:03:28.481Z",
+    "finished_at": "2026-10-25T19:26:32.992Z",
+    "widths": [
+      1440,
+      412,
+      390
+    ],
+    "tab_count": 4,
+    "tab_labels": "private: capture/index.json in the page's private folder",
+    "reader_identity": "none",
+    "max_server_memory_bytes": 877899776,
+    "shell_refusals": [
+      "403 /api/v2/cio/asks/tracked AGENT_CALLER_REFUSED"
+    ],
+    "blocked_writes": 0,
+    "errors": 0
+  },
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/defense",
+    "note": "Private, never committed: live screenshots show real holdings. Paths are relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v000/capture/defense-default-1440.png",
+        "sha256": "55706b962c51086a29882b3a4cbc370be1da40ca5c1b9b983eb02b7e267f7cbb",
+        "bytes": 195039,
+        "role": "capture",
+        "width": 1440,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/defense-default-390.png",
+        "sha256": "12d311c8ddf0b3511a26688f4208e87e717e88a5f19fcf0d086200545b96dfdd",
+        "bytes": 60570,
+        "role": "capture",
+        "width": 390,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/defense-default-412.png",
+        "sha256": "85104fa02c32b35f4820321a0d40157cab18fb32875be026d2b9ae724f7e5938",
+        "bytes": 67572,
+        "role": "capture",
+        "width": 412,
+        "tab": "default"
+      },
+      {
+        "path": "v000/capture/defense-t01-1440.png",
+        "sha256": "55706b962c51086a29882b3a4cbc370be1da40ca5c1b9b983eb02b7e267f7cbb",
+        "bytes": 195039,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/defense-t01-390.png",
+        "sha256": "12d311c8ddf0b3511a26688f4208e87e717e88a5f19fcf0d086200545b96dfdd",
+        "bytes": 60570,
+        "role": "capture",
+        "width": 390,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/defense-t01-412.png",
+        "sha256": "85104fa02c32b35f4820321a0d40157cab18fb32875be026d2b9ae724f7e5938",
+        "bytes": 67572,
+        "role": "capture",
+        "width": 412,
+        "tab": "t01"
+      },
+      {
+        "path": "v000/capture/defense-t02-1440.png",
+        "sha256": "7a2c108c915153c9e05d8c1ca2406675f4a5f3b3caf1a650521290dbb18fbbf8",
+        "bytes": 181773,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/defense-t02-390.png",
+        "sha256": "1c896bee9216d4a820e99a505665898839268cb3ffc05616b5d96a504f338baf",
+        "bytes": 78771,
+        "role": "capture",
+        "width": 390,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/defense-t02-412.png",
+        "sha256": "c6a7300d4154d2381118d11250fbbefbe9b0bc8fb8d872d17694996120038407",
+        "bytes": 90074,
+        "role": "capture",
+        "width": 412,
+        "tab": "t02"
+      },
+      {
+        "path": "v000/capture/defense-t03-1440.png",
+        "sha256": "fc57c14248d6aa00c1dc33beb2e4d850b237ead8b483ba635addce20d911e4af",
+        "bytes": 226941,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/defense-t03-390.png",
+        "sha256": "59b60c2fd533e41d05321ac54ff2cc1b4f401de1fe8736622c32154a671f1afc",
+        "bytes": 84508,
+        "role": "capture",
+        "width": 390,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/defense-t03-412.png",
+        "sha256": "5c9f400297f0c32d54a761f5b28db6fe545244e2451fc9988892c7433ef1906c",
+        "bytes": 91344,
+        "role": "capture",
+        "width": 412,
+        "tab": "t03"
+      },
+      {
+        "path": "v000/capture/defense-t04-1440.png",
+        "sha256": "4e520a200088ddf9910782e4d25216b4954ba5b99bb053a974e2cdf88e8f7d24",
+        "bytes": 178835,
+        "role": "capture",
+        "width": 1440,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/defense-t04-390.png",
+        "sha256": "98cceaba41f6e8450f5f12146e339e39f1f6c1d5a73745f31b003db1c6dd5670",
+        "bytes": 65751,
+        "role": "capture",
+        "width": 390,
+        "tab": "t04"
+      },
+      {
+        "path": "v000/capture/defense-t04-412.png",
+        "sha256": "dabce458f6b96e599d1651943f4e162ce75bfdd079b4edc3ec9cee86efe13dae",
+        "bytes": 77936,
+        "role": "capture",
+        "width": 412,
+        "tab": "t04"
+      }
+    ]
+  },
+  "fingerprint": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "prs": [],
+  "verified": null,
+  "history": [
+    {
+      "state": "BASELINE",
+      "at": "2026-10-25",
+      "by": "agent:design-capture",
+      "note": "v000 as built: read-only capture, GET only"
+    }
+  ]
+}

@@ -1,5 +1,10 @@
 # Home — changelog
 
+One line per version: date · version · state · what changed · approval ref.
+
+- 2026-10-24 · v001 · APPROVED · Board 14 Home · operator "I approve the markups. Give it to Codex." (recorded in handoff, back-filled 2026-10-25)
+- 2026-10-25 · v000 · BASELINE · as built: read-only live capture, 3 screenshots at 1440, 412, 390 · no approval (a record)
+
 - 2026-10-27 OPERATOR-DIRECTED REMOVAL (no mockup required; the operator directed it): "Remove everything about the
   old train from the AGENTS.md, and from the Command Center and from the code." Changes on Home (`/v3/`, Do-now layout
   `HomeDoNow.tsx`; classic view `HomeHub.tsx`):
