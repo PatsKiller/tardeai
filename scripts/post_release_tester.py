@@ -81,12 +81,36 @@ def run(*, base: str = DEFAULT_BASE, skip_http: bool = False) -> dict:
     return row
 
 
+def _lane(*, json_out: bool, live: bool) -> int:
+    """One lane tick through scripts/lib/post_release_tester.py; the library writes its own receipts."""
+    from scripts.lib.atomic_json_store import atomic_write_json
+    from scripts.lib.post_release_tester import host_env, tick
+
+    env = host_env()
+    report = tick(env, live=live)
+    atomic_write_json(env.dir / "last_tick.json", report)
+    if json_out:
+        print(json.dumps(report, indent=2, sort_keys=True, default=str))
+    else:
+        planned = report.get("planned") or []
+        print(f"post_release_tester lane mode={report.get('mode')} release={(report.get('release') or {}).get('sha', '')[:12]}"
+              f" planned={len(planned)} results={len(report.get('results') or {})}")
+    failed = [p for p, r in (report.get("results") or {}).items() if r.get("status") == "FAILED"]
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Post-release verify CURRENT")
     ap.add_argument("--base", default=DEFAULT_BASE)
     ap.add_argument("--skip-http", action="store_true", help="pin-only check (hermetic / offline)")
     ap.add_argument("--json", action="store_true")
+    # cc-deepseek-6's F2 on #2106: the proposal's command pointed here, and this script never called the lane library,
+    # so the tested logic was reachable only from its test. `--lane` is that call; the default mode is unchanged.
+    ap.add_argument("--lane", action="store_true", help="run one post-release tester lane tick (lib/post_release_tester)")
+    ap.add_argument("--live", action="store_true", help="with --lane: run the phases instead of only printing the plan")
     args = ap.parse_args(argv)
+    if args.lane:
+        return _lane(json_out=bool(args.json), live=bool(args.live))
     row = run(base=args.base, skip_http=bool(args.skip_http))
     if args.json:
         print(json.dumps(row, indent=2, sort_keys=True))
