@@ -51,7 +51,7 @@ def deliver(message: str, sender=None) -> bool:
         if _harness():
             print("[disabled-features] test harness detected — real send refused", file=sys.stderr)
             return False
-        from scripts import telegram_alert as ta  # type: ignore
+        from scripts import telegram_alert as ta  # type: ignore -- package import with scripts/ on the path; the script is also run directly
 
         sender = ta.send_telegram
     return bool(sender(message, priority="P2", dedupe_minutes=1380, producer=PRODUCER, message_class="report"))

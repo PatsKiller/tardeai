@@ -32,9 +32,9 @@ import unicodedata
 from typing import Any, Callable, Optional
 
 try:
-    from scripts.lib.market_risk.curation_config import CONFIG_PATH, PROJECT_ROOT, load_config  # noqa: F401
+    from scripts.lib.market_risk.curation_config import CONFIG_PATH, PROJECT_ROOT, load_config  # noqa: F401 -- re-exported for callers of this module
 except ImportError:  # pragma: no cover — cron path with scripts/ on sys.path
-    from lib.market_risk.curation_config import CONFIG_PATH, PROJECT_ROOT, load_config  # type: ignore  # noqa: F401
+    from lib.market_risk.curation_config import CONFIG_PATH, PROJECT_ROOT, load_config  # type: ignore -- cron path import layout  # noqa: F401 -- re-exported for callers of this module
 
 SCHEMA = "MarketRiskCurationResult@v1"
 # The only tiers whose "why" may ever be curated. Code, not config: ORANGE, RED, NONE, an empty or unknown tier are
