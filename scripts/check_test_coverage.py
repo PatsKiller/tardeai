@@ -172,7 +172,6 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_alert_condition_state.py",
     "tests/test_alert_fatigue_1_routing.py",
     "tests/test_alpaca_credentials_factory_r2.py",
-    "tests/test_alpaca_live_read_client.py",
     "tests/test_alpaca_paper_host_lock.py",
     "tests/test_analyst_report_builder.py",
     "tests/test_api_v2_watch_defense_integration.py",

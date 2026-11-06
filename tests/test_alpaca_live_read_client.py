@@ -58,6 +58,10 @@ def test_merge_empty_noop_no_prior(tmp_path, monkeypatch):
     }
     hp.write_text(json.dumps(payload))
     monkeypatch.setattr(sync, "HOLDINGS_PATH", hp)
+    # The merge resolves its write target through _holdings_targets() (the served-copy
+    # dual-write, WAVE G1), not HOLDINGS_PATH. Patch the resolver the code actually uses,
+    # or this test reads a real store instead of the tmp file it seeded.
+    monkeypatch.setattr(sync, "_holdings_targets", lambda: [hp])
 
     with mock.patch("holdings_guard.protected_holdings_write") as phw:
         res = sync._merge_account_into_holdings("alpaca_taxable_live", [], dry_run=False)
@@ -82,6 +86,9 @@ def test_merge_replaces_only_target_account(tmp_path, monkeypatch):
     }
     hp.write_text(json.dumps(payload))
     monkeypatch.setattr(sync, "HOLDINGS_PATH", hp)
+    # Same reason as test_merge_empty_noop_no_prior: the merge uses _holdings_targets(),
+    # so an unpatched resolver makes this safety test run against a live store.
+    monkeypatch.setattr(sync, "_holdings_targets", lambda: [hp])
 
     new_rows = [{
         "symbol": "TSLA", "account": "alpaca_taxable_live",
@@ -124,3 +131,33 @@ def test_positions_to_holdings_rows_skips_zero_qty():
     assert rows[0]["symbol"] == "QQQ"
     assert rows[0]["account"] == "alpaca_ira_live"
     assert rows[0]["source"] == "alpaca_live_read"
+
+
+def test_positions_rows_derive_day_change_from_the_broker_prior_close():
+    # Alpaca's position object carries lastday_price; the day change is the broker's own prior
+    # close, not an invented value (2026-11-03: one zero-cost promo row had a price but no day
+    # change). The fixture below is synthetic: a different symbol and unrelated prices.
+    rows = sync._positions_to_holdings_rows("alpaca_taxable_live", [
+        {"symbol": "ZZTEST", "qty": "0.5", "current_price": "10.00", "lastday_price": "9.60"},
+    ])
+    row = rows[0]
+    assert row["prev_close"] == 9.60
+    assert row["day_change"] == round((10.00 - 9.60) * 0.5, 2)
+    assert row["day_change_pct"] == round((10.00 - 9.60) / 9.60 * 100, 4)
+
+
+def test_positions_rows_leave_day_change_unknown_without_a_prior_close():
+    rows = sync._positions_to_holdings_rows("alpaca_taxable_live", [
+        {"symbol": "ABC", "qty": "2", "current_price": "10"},
+    ])
+    assert rows[0]["prev_close"] is None
+    assert rows[0]["day_change"] is None
+
+
+def test_this_file_is_run_by_hardening_ci():
+    """A green suite no gate runs is not evidence. F2, 2026-11-05: this file was unregistered."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from scripts.lib import ci_gates
+
+    assert "tests/test_alpaca_live_read_client.py" in ci_gates.registry_text(ROOT)
