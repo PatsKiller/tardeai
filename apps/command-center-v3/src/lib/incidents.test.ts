@@ -1,7 +1,7 @@
 const assert = {
   equal(actual: unknown, expected: unknown, message = 'expected equality') { if (actual !== expected) throw new Error(`${message}: ${String(actual)} !== ${String(expected)}`) },
 }
-import { ageText, canAct, matchesFilter, refLink, sortIncidents, sourceText, statusLabel, type Incident } from './incidents.ts'
+import { ageText, canAct, escalationStatus, matchesFilter, refLink, severityLabel, sortIncidents, sourceText, statusLabel, type Incident } from './incidents.ts'
 
 const base: Incident = {
   schema: 'IncidentRecord@v1', id: 'INC-261027-kmpqrs', opened_at: '2026-10-27T10:00:00Z', updated_at: '2026-10-27T10:00:00Z',
@@ -24,4 +24,41 @@ assert.equal(canAct({ ...base, status: 'fixed' }).close, false)
 assert.equal(canAct({ ...base, acknowledged: { at: 'x', actor: 'op' } }).ack, false)
 const sorted = sortIncidents([{ ...base, id: 'b', status: 'fixed' }, { ...base, id: 'a', status: 'blocked' }, { ...base, id: 'c' }])
 assert.equal(sorted.map(r => r.id).join(','), 'c,a,b')
+assert.equal(escalationStatus(base), null)
+assert.equal(escalationStatus({ escalations: [] }), null)
+assert.equal(escalationStatus({ escalations: [{ at: 'x', delivered: false }] })?.label, 'Escalation delivery unconfirmed (1 attempt)')
+assert.equal(escalationStatus({ escalations: [{ at: 'x' }] })?.tone, 'warning')
+assert.equal(escalationStatus({ escalations: [{ at: 'x', delivered: 'true' as unknown as boolean }] })?.tone, 'warning')
+assert.equal(escalationStatus({ escalations: [{ at: 'x', delivered: true }] })?.label, '1 of 1 escalation deliveries confirmed')
+assert.equal(escalationStatus({ escalations: [{ at: 'x', delivered: true }, { at: 'y', delivered: false }] })?.label, '1 of 2 escalation deliveries confirmed')
+assert.equal(escalationStatus({ escalations: [{ at: 'x', delivered: true }, { at: 'y', delivered: false }] })?.tone, 'warning')
+assert.equal(severityLabel('P0').label, 'P0')
+assert.equal(severityLabel('P0').rank, 0)
+assert.equal(severityLabel('P3').rank, 3)
+assert.equal(severityLabel(' p0 ').label, 'Severity unknown (p0)')
+assert.equal(severityLabel(' p0 ').rank, 9)
+assert.equal(severityLabel('p1').label, 'Severity unknown (p1)')
+assert.equal(severityLabel('p1').rank, 9)
+assert.equal(severityLabel(undefined).label, 'Severity unknown')
+assert.equal(severityLabel('critical').label, 'Severity unknown (critical)')
+assert.equal(severityLabel('P4').label, 'Severity unknown (P4)')
+assert.equal(severityLabel('P4').rank, 9)
+const triaged = sortIncidents([
+  { ...base, id: 'old-p3', severity: 'P3' },
+  { ...base, id: 'closed-p0', status: 'closed', severity: 'P0' },
+  { ...base, id: 'blocked-p0', status: 'blocked', severity: 'P0' },
+  { ...base, id: 'open-p1', severity: 'P1' },
+  { ...base, id: 'unknown' },
+])
+assert.equal(triaged.map(r => r.id).join(','), 'blocked-p0,open-p1,old-p3,unknown,closed-p0')
+const samePriority = sortIncidents([
+  { ...base, id: 'new', severity: 'P1', opened_at: '2026-10-27T12:00:00Z' },
+  { ...base, id: 'old', severity: 'P1' },
+])
+assert.equal(samePriority.map(r => r.id).join(','), 'old,new')
+const malformedPriority = sortIncidents([
+  { ...base, id: 'smuggled-p0', severity: ' p0 ' },
+  { ...base, id: 'real-p1', severity: 'P1' },
+])
+assert.equal(malformedPriority.map(r => r.id).join(','), 'real-p1,smuggled-p0')
 console.log('incidents.test.ts ok')

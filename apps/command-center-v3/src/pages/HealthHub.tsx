@@ -7,7 +7,8 @@ import { StateCard } from '../components/StateCard'
 import { componentLabel, sentenceIdentifiers } from '../lib/operatorLanguage.ts'
 import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
-import RiskHealthStrip from '../components/risk/RiskHealthStrip'
+import RiskHealthStrip, { healthVerdictTone } from '../components/risk/RiskHealthStrip'
+import { TOKENS, toneVars } from '../lib/designTokens'
 import RemediationDashboard from './RemediationDashboard'
 import OpsAutonomyDashboard from './OpsAutonomyDashboard'
 import { AutonomyLoopPanel, DailyIntelligencePanel, MemoryPanel } from './MaturityPanels'
@@ -118,8 +119,9 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
 
   const chartMax = useMemo(() => Math.max(100, ...histRows.map(h => h.overall_score || 0)), [histRows])
 
-  const overall = health?.overall_score
+  const overall = typeof health?.overall_score === 'number' && Number.isFinite(health.overall_score) ? health.overall_score : null
   const status = health?.status || 'unknown'
+  const overallColor = overall == null ? TOKENS.text[2] : toneVars(healthVerdictTone(status)).color
   const cats = health?.category_scores || {}
   const findings: any[] = health?.findings || []
   const trends: any[] = health?.trends || []
@@ -156,18 +158,19 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
       {tab === 'overview' && health && (
         <>
           <RiskHealthStrip
-            heatPct={riskData?.portfolio_heat_pct ?? 0}
+            heatPct={riskData?.portfolio_heat_pct ?? null}
             healthScore={overall}
-            unprotected={(riskData?.positions || []).filter((p: any) => !p.has_stop).length}
-            brokerStale={propHealth?.broker?.stale_count ?? 0}
-            optionsAlerts={propHealth?.options?.needs_action ?? 0}
+            healthStatus={health?.status}
+            unprotected={Array.isArray(riskData?.positions) ? riskData.positions.filter((p: any) => !p.has_stop).length : null}
+            brokerStale={propHealth?.broker?.stale_count ?? null}
+            optionsAlerts={propHealth?.options?.needs_action ?? null}
           />
           {/* Score hero */}
           <div className={terminalUi ? 'cc-panel' : undefined} style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 16,
             ...(terminalUi ? hubPanel(terminalUi) : { padding: '16px 20px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }),
-            borderLeft: `4px solid ${scoreColor(overall)}` }}>
-            <div style={{ fontSize: 48, fontWeight: 800, color: scoreColor(overall), lineHeight: 1 }}>
-              {overall ?? '—'}<span style={{ fontSize: 18, color: 'var(--text3)' }}>/100</span>
+            borderLeft: `4px solid ${overallColor}` }}>
+            <div data-testid="health-overall-score" style={{ fontSize: 48, fontWeight: 800, color: overallColor, lineHeight: 1 }}>
+              {overall == null ? 'Unknown' : <>{overall}<span style={{ fontSize: 18, color: 'var(--text3)' }}>/100</span></>}
             </div>
             <div>
               <StatusBadge status={STATUS_TO_BADGE[status] || 'unknown'} label={status} size="md" />
