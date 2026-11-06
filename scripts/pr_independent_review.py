@@ -115,7 +115,7 @@ def default_post_status(repo: str, sha: str, payload: dict, token_env: str) -> d
                                  headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                                           "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - fixed https origin
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 -- fixed https origin
             return {"posted": resp.status == 201, "http": resp.status}
     except urllib.error.HTTPError as exc:
         return {"posted": False, "http": exc.code, "reason": "STATUS_POST_REFUSED"}
@@ -184,7 +184,7 @@ def candidate_state(pr: dict, now: datetime) -> Optional[str]:
 def _call(deps: Deps, process_id: str, prompt: str, max_tokens: int, lanes=None, response_json=True) -> tuple[Optional[str], dict]:
     try:
         return deps.model(process_id, prompt, max_tokens, lanes=lanes, response_json=response_json)
-    except Exception as exc:  # noqa: BLE001 - the caller turns a failure into a wait or CANNOT_REVIEW
+    except Exception as exc:  # noqa: BLE001 -- the caller turns a failure into a wait or CANNOT_REVIEW
         return None, {"error": str(exc)[:200]}
 
 
@@ -394,12 +394,12 @@ def cycle(*, repo: str, cfg: dict, store: R.Store, deps: Deps, apply: bool, only
             break
         try:
             review_one(repo=repo, pr_row=pr, cfg=cfg, store=store, deps=deps, apply=apply, out=out)
-        except Exception as exc:  # noqa: BLE001 - one PR's failure never stops the others; it is reported
+        except Exception as exc:  # noqa: BLE001 -- one PR's failure never stops the others; it is reported
             out["errors"].append({"pr": n, "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
         done = len(out["reviewed"])
     try:
         answer_questions(cfg=cfg, store=store, deps=deps, apply=apply, out=out)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- a failed question pass is reported in out["errors"], never silent
         out["errors"].append({"questions": f"{type(exc).__name__}: {str(exc)[:200]}"})
     return out
 

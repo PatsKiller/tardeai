@@ -7,6 +7,7 @@ changes what the ledger binds and cancels any earlier approval of the old head. 
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
@@ -116,8 +117,8 @@ def summary(*, state_root: Path, root: Path, items: list[dict], cfg: Mapping[str
         if sent:
             digest["last_sent_at"] = core.iso(datetime.fromtimestamp(float(sent[-1]["created_at"]), tz=timezone.utc))
         digest["next_at"] = pmd.next_digest_at(now)
-    except Exception:  # noqa: BLE001 - the strip says "unknown" rather than inventing a time
-        pass
+    except Exception as exc:  # noqa: BLE001 -- the strip says "unknown" rather than inventing a time; the cause is logged
+        logging.getLogger(__name__).warning("pr_review_view: digest times unavailable: %s: %s", type(exc).__name__, exc)
     b = cfg.get("budget") or {}
     return {"store_approved": store.approved(), "decisions_store_approved": bool(decisions_approved()),
             "label_applier_live": (root / APPLIER_MODULE).is_file(),

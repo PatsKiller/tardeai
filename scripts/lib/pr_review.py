@@ -346,7 +346,7 @@ def held_classes(paths: list[str], labels: Iterable[str]) -> list[str]:
     try:
         from scripts.lib import merge_hold_paths as mhp
     except ImportError:  # pragma: no cover
-        from lib import merge_hold_paths as mhp  # type: ignore
+        from lib import merge_hold_paths as mhp  # type: ignore -- flat lib/ layout when scripts/ is on the path
     out = sorted(mhp.held_classes(paths))
     if set(labels) & mhp.hold_labels():
         out.append("held_label")
@@ -358,7 +358,7 @@ def held_paths(paths: list[str]) -> dict[str, list[str]]:
     try:
         from scripts.lib import merge_hold_paths as mhp
     except ImportError:  # pragma: no cover
-        from lib import merge_hold_paths as mhp  # type: ignore
+        from lib import merge_hold_paths as mhp  # type: ignore -- flat lib/ layout when scripts/ is on the path
     return {k: sorted(v)[:5] for k, v in mhp.held_classes(paths).items()}
 
 
@@ -366,7 +366,7 @@ def required_checks() -> tuple[str, ...]:
     try:
         from scripts.lib import pr_merge_telegram as pmt
     except ImportError:  # pragma: no cover
-        from lib import pr_merge_telegram as pmt  # type: ignore
+        from lib import pr_merge_telegram as pmt  # type: ignore -- flat lib/ layout when scripts/ is on the path
     return tuple(pmt.REQUIRED_CHECKS)
 
 
@@ -620,7 +620,7 @@ def review_url(pr: int, head: str) -> Optional[str]:
     try:
         from scripts.lib.agent_gateway_adapter import command_center_url_for
         return command_center_url_for(f"/v3/approvals/pr:{int(pr)}?head={head[:9]}")
-    except Exception:  # noqa: BLE001 - the link is optional on the status
+    except Exception:  # noqa: BLE001 -- the link is optional on the status
         return None
 
 
@@ -652,7 +652,7 @@ def credit_snapshot(state_root: Path, now: datetime) -> dict:
         from scripts.lib.anthropic_credit import CreditBook
         from scripts.lib.anthropic_transport import load_policy
         return CreditBook(Path(state_root), load_policy()).snapshot(now=now)
-    except Exception as exc:  # noqa: BLE001 - an unreadable credit book is a wait, never a spend
+    except Exception as exc:  # noqa: BLE001 -- an unreadable credit book is a wait, never a spend
         return {"status": "UNAVAILABLE", "error": type(exc).__name__}
 
 
@@ -685,7 +685,7 @@ def preflight(*, kind: str, tier: str, pr: Optional[int], cfg: Mapping[str, Any]
     gcap_raw = env.get("LLM_GLOBAL_DAILY_USD_CAP")
     try:
         daily_left = float(Decimal(str(credit.get("daily_cap_usd"))) - Decimal(str(credit.get("today_used_usd"))) - Decimal(str(credit.get("reserved_today_usd") or 0)))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 -- an unreadable daily cap reads as nothing left, so the review waits (fails closed)
         daily_left = 0.0
     try:
         total_left = float(credit.get("remaining_budget_usd"))
@@ -724,7 +724,7 @@ def preflight(*, kind: str, tier: str, pr: Optional[int], cfg: Mapping[str, Any]
             if float(gcap_raw) <= 0:
                 reason = reason or "global daily provider cap is 0"
         except ValueError:
-            pass
+            reason = reason or "global daily provider cap is unreadable"  # fail closed: wait, never spend
     return {"ok": reason is None, "reason": reason, "next_try_at": iso(next_try) if next_try else None,
             "process_id": process_id, "limits": limits}
 
