@@ -388,6 +388,7 @@ def cmd_claim(a: argparse.Namespace) -> int:
             worktree=_toplevel(),
             head_sha=_head(),
             policy=policy,
+            takeover_ids=getattr(a, "takeover", None),
         )
     except B.ClaimConflict as exc:
         _print_conflicts(exc.conflicts)
@@ -1383,6 +1384,14 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--paths", nargs="+", default=None)
     c.add_argument("--add", nargs="+", default=None, help="extend this session's claim with more paths")
     c.add_argument("--claim", default=None, help="with --add: the claim to extend (default: this session's one)")
+    c.add_argument(
+        "--takeover",
+        action="append",
+        default=None,
+        metavar="CLAIM_ID",
+        help="record a deliberate succession of a STALE claim this claim covers only in part; repeatable. "
+        "Full succession (every predecessor path covered) is recorded without it; a bare shared file never is",
+    )
     c.add_argument("--branch", default=None)
     c.add_argument("--pr", default=None)
     c.add_argument("--note", default=None)
