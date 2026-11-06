@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_my_history_20261026",
+  "files": [
+    "tests/test_prospectus_my_history_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_MY_HISTORY_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_MY_HISTORY_20261026 — Ticker Prospectus personal history + ETF gaps (operator 2026-10-26: 'What is my average cost? Have I won or lost, P&L? What were the catalysts that hit? ... multiple round trips ... analyzed?' and XAR 'missing some data towards the bottom'): my_history block (open lots by account name, Rec Intelligence round trips reused per symbol, origin before entry, events while held with reactions, deterministic lessons, 61-day wash-sale and taxable/IRA flags, every number a cited fact, guarded writer note), fund category -> sector ETF + peer funds, fund profile, house volatility-band scenarios when no analyst target, measured macro effect. Synthetic tickers; readers, model and DB stubbed."
+  ]
+}

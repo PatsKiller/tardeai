@@ -164,8 +164,8 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
             if not t:
                 return _err(404, "NOT_FOUND")
             ask_id = str(b.get("ask_id") or (t["turns"][-1]["ask_id"] if t["turns"] else ""))
-            r = core.request_deep(tid, ask_id, deps=deps)
-            return (200, {"ok": True, "data": r}) if r.get("ok") else _err(404, str(r.get("error")))
+            r = core.request_deep(tid, ask_id, deps=deps, request_id=b.get("request_id"))
+            return (200, {"ok": True, "data": r}) if r.get("ok") else _err(400 if r.get("error") == "BAD_REQUEST_ID" else 404, str(r.get("error")))
     return _err(404, "NOT_FOUND")
 
 

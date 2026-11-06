@@ -89,6 +89,7 @@ def load_portfolio_state() -> dict[str, Any]:
 
 def load_market_context() -> dict[str, Any]:
     from scripts.lib.cio_market_context_state import (
+        load_market_risk_projection,
         build_market_context_state,
         connect_trade_ai_readonly,
         load_market_context_inputs,
@@ -100,7 +101,7 @@ def load_market_context() -> dict[str, Any]:
             regime, fred = load_market_context_inputs(conn)
         finally:
             conn.close()
-        return build_market_context_state(regime_snapshot=regime, fred_rows=fred)
+        return build_market_context_state(regime_snapshot=regime, fred_rows=fred, market_risk=load_market_risk_projection())
     except Exception as exc:  # noqa: BLE001 - same degraded state as the API getter
         state = build_market_context_state(regime_snapshot=None, fred_rows=[])
         state["load_error"] = type(exc).__name__

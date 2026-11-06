@@ -736,13 +736,32 @@ def eval_sandbox_prefix(
 def model_pytest_wrapper(*, python: str, env: Mapping[str, str], sandbox: list[str]) -> str:
     """The model's ONLY test command. Inside the agent sandbox (``sandbox`` empty) it runs pytest with a cleared env
     (no proxy, no auth, no CLAUDE_CONFIG_DIR): test code inherits nothing of the agent's. Without the agent sandbox
-    (test configs only) it runs pytest under the host-view test sandbox ``sandbox``."""
+    (test configs only) it runs pytest under the host-view test sandbox ``sandbox``.
+
+    Descriptor hygiene (2026-11-03): the DeepSeek provider hands the CLI its key as an inherited memfd named by
+    ``CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR``. A shell inherits every descriptor, and ``env -i`` clears only the
+    environment, so ``pytest`` — executing model-written code — would inherit the key and could read
+    ``/proc/self/fd``. This wrapper therefore starts a small launcher that closes every descriptor above stderr
+    and then execs the real command. ``os``/``sys`` are builtin or already loaded at interpreter start, so a
+    module planted in the candidate worktree cannot shadow them; the launcher imports nothing else. The CLI
+    contract is unchanged: ``{pytest} <args>`` still runs pytest with the cleared env and the caller's cwd.
+    """
     import shlex
 
     env_args = ["/usr/bin/env", "-i", *[f"{k}={v}" for k, v in sorted(env.items())]]
+    target = [*sandbox, python, "-m", "pytest", "-p", "no:cacheprovider"]
+    closer = (
+        "import os,sys\n"
+        "try:\n"
+        ' n=os.sysconf("SC_OPEN_MAX")\n'
+        "except (ValueError,OSError):\n"
+        " n=65536\n"
+        "os.closerange(3,n if isinstance(n,int) and n>3 else 65536)\n"
+        "os.execvp(sys.argv[1],sys.argv[1:])\n"
+    )
     return (
         "#!/bin/sh\nexec "
-        + shlex.join([*env_args, *sandbox, python, "-m", "pytest", "-p", "no:cacheprovider"])
+        + shlex.join([*env_args, python, "-c", closer, *target])
         + ' "$@"\n'
     )
 

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { formatPricingTime, pricingStampLine } from '../lib/pricingStamp'
 import { shortPriceStamp, tradingTileValue, vixProvenance } from '../lib/displayLabels'
+import { vixFreshness } from '../lib/vixFreshness'
 import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
@@ -161,6 +162,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayRepresented = todayPnl?.represented_account_count ?? todayAccountCount
   const todayMissing: string[] = todayPnl?.missing_accounts ?? []
   const todayEmpty: string[] = todayPnl?.empty_accounts ?? []
+  // Partial is a real sum of the known rows, shown with what it leaves out --
+  // never blanked to "—" because one holding has no day change (2026-10-26).
+  const todayPartial: string[] = todayPnl?.partial_accounts ?? []
+  const todayUnknownRows: number = todayPnl?.unknown_rows ?? 0
   // Account census for TODAY lives on hover, not the face (operator 2026-09-04).
   // True missing funded accounts still raise the face STALE chip via `todayMissing`.
   const todayHoverAccounts = (() => {
@@ -329,6 +334,19 @@ export default function MetricStrip({ onDrill }: Props) {
   const vix = tradeAi?.vix
   const vixSource = tradeAi?.vix_source
   const vixObsTime = tradeAi?.vix_observation_time
+  // FQ-086: the freshness sentence is shown to an operator, so it carries no raw table/run token (`vixFreshness`
+  // would append `· source trade_ai_run_summary`). The source is humanised for the face by `vixProvenance`, and the
+  // raw value stays where it always lived: the tooltip and the drill.
+  const vixReading = vixFreshness(vix, undefined, vixObsTime)
+  const vixProvenanceText = vixProvenance(vixSource, tradeAi?.run_label, vixObsTime ? fmtAsOf(vixObsTime, { timeOnly: true }) : null)
+  // Non-current readings join the header's existing fault contract (tone/stale/undated), so they reach the
+  // accessible attention list instead of only recolouring the number. FRESH stays exactly as quiet as before.
+  const vixTone: Tone = vixReading.current ? 'ok' : 'warn'
+  const vixNote = vixReading.current
+    ? vixProvenanceText
+    : vixReading.state === 'UNAVAILABLE'
+      ? vixReading.label
+      : `${vixProvenanceText} · ${vixReading.label}`
   const approvals = overview?.pending_approvals ?? overview?.approvals_count
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
   // Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B). The
@@ -448,7 +466,8 @@ export default function MetricStrip({ onDrill }: Props) {
     {
       label: 'TODAY', value: todayChange != null ? `${todayChange >= 0 ? '+' : ''}${fmt$(todayChange, 0)}${todayPct != null ? ` ${todayPct >= 0 ? '+' : ''}${todayPct}%` : ''}` : '—',
       // A P&L is stamped with its OWN session, never the position clock.
-      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report` : null,
+      stale: todayMissing.length ? ` · ${todayMissing.length} funded acct(s) did not report`
+        : todayPartial.length ? ` · partial: ${todayUnknownRows} row(s) without a day change` : null,
       asOf: todayPnl?.session_date ?? null,
       asOfLabel: 'P&L session',
       asOfNote: null,
@@ -459,7 +478,7 @@ export default function MetricStrip({ onDrill }: Props) {
       color: overviewFresh.stale ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
       drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_change: overview.today_change, today_pct: overview.today_pct, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
+          { today_change: overview.today_change, today_pct: overview.today_pct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: overviewFresh.stale },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
@@ -510,13 +529,21 @@ export default function MetricStrip({ onDrill }: Props) {
         rows: regime ? [{ regime_label: regime.regime_label, confidence: regime.confidence, volatility_state: regime.volatility_state, trend_state: regime.trend_state, breadth_state: regime.breadth_state, summary: regime.summary }] : [] },
     },
     {
-      label: 'VIX', value: vix != null ? Number(vix).toFixed(1) : '—',
-      // P3 2026-10-23: "trade_ai_run_summary · 02:21" (a UTC clock) → "scanner · 17:30 run". The raw
-      // source and the observation stamp stay in the tooltip and the drill.
-      asOfNote: showQuietProvenance ? vixProvenance(vixSource, tradeAi?.run_label, vixObsTime ? fmtAsOf(vixObsTime, { timeOnly: true }) : null) : null,
+      // FQ-086 / HQ-02: the colour follows the NUMBER only when the reading is FRESH. A value carried from a stale or
+      // failed transport, or one with no observation time at all, keeps its number but loses the confident colour and
+      // says why - the regime/SETUPS clock is not evidence about VIX. Non-current states use the SAME fault vocabulary
+      // as the other tiles (tone/stale/undated), so they join the attention list; their explanation is never gated on
+      // the cosmetic provenance flag.
+      label: 'VIX', value: vixReading.value ?? '—',
+      asOfLabel: 'observation',
+      asOfNote: vixReading.current ? (showQuietProvenance ? vixProvenanceText : null) : vixNote,
+      tone: vixTone,
+      stale: vixReading.state === 'STALE' ? ` · ${vixReading.age ?? 'stale'}` : null,
+      undated: vixReading.state === 'UNDATED',
       minWidth: 110, maxWidth: 160,
-      color: vix == null ? 'var(--text3)' : vix >= 25 ? BB.red : vix >= 18 ? BB.amber : BB.green,
-      tip: `CBOE Volatility Index. Green <18 (low fear), amber 18-25 (elevated), red ≥25 (high fear).${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
+      color: !vixReading.current ? 'var(--text3)'
+        : (Number(vixReading.value) >= 25 ? BB.red : Number(vixReading.value) >= 18 ? BB.amber : BB.green),
+      tip: `CBOE Volatility Index. Colour is shown only for a current reading (green <18, amber 18-25, red ≥25). ${vixReading.label}${vixSource ? ` · source ${vixSource}` : ''}${vixObsTime ? ` · observed ${String(vixObsTime).slice(0, 19).replace('T', ' ')}` : ''}`,
       drill: { title: 'VIX', subtitle: `Volatility index · source ${vixSource ?? 'unknown'}${vixObsTime ? ` · observed ${vixObsTime}` : ''}`, endpoint: '/api/v2/trade-ai',
         rows: tradeAi ? [{ vix: tradeAi.vix, vix_source: tradeAi.vix_source, vix_observation_time: tradeAi.vix_observation_time, market_regime: tradeAi.market_regime, run_label: tradeAi.run_label }] : [] },
     },
@@ -663,7 +690,9 @@ export default function MetricStrip({ onDrill }: Props) {
         const metaUndated = !asOfRaw && !!(t as any).undated
         const metaLabel = (t as any).asOfLabel || 'as_of'
         const metaText = metaUndated
-          ? `${metaLabel} UNDATED`
+          // An undated tile may still have something to say. Before this, the UNDATED mark replaced the whole line and
+          // a fault's explanation vanished with it (FQ-086 review, cx-openai-3 F1).
+          ? `${metaLabel} UNDATED${(t as any).asOfNote ? ` · ${(t as any).asOfNote}` : ''}`
           : asOfRaw
             // A date-only clock widened to UTC midnight is shown as its date, never as "00:00" (P3).
             ? `${metaLabel} ${dateOnlyPart(asOfRaw) ?? String(asOfRaw).slice(0, 16).replace('T', ' ')}` +

@@ -774,6 +774,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             stderr = ""
             t0 = _time_module.time()
             try:
+                from lib.watchlist_deadline import child_environment
                 proc = subprocess.Popen(
                     cmd,
                     shell=True,
@@ -782,6 +783,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                     text=True,
                     cwd=str(run_cwd),
                     start_new_session=True,
+                    env=child_environment(cmd, timeout),
                 )
                 try:
                     stdout, stderr = proc.communicate(timeout=timeout)
@@ -860,33 +862,38 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 "ineffective_streak": st.get("ineffective_streak", 0),
                 "trigger": f.get("message", "")[:200],
             }
-            # Parse iterative remediator JSON stdout for root_cause / how_to_fix.
-            # The old txt.find("{") + json.loads broke on trailing prose/log lines
-            # after the JSON object — iterate { positions from the END and raw_decode.
-            if ftype in ladder_types and stdout:
+            # Parse whole objects: a nested service receipt must not replace its
+            # enclosing PENDING result or manufacture a recovered outcome.
+            if (ftype in ladder_types or "process_watchlist_agent_jobs.py" in cmd) and stdout:
                 try:
-                    txt = stdout.strip()
-                    decoder = json.JSONDecoder()
-                    # Find the LAST valid JSON object (skip trailing log lines)
-                    for i in range(len(txt) - 1, -1, -1):
-                        if txt[i] == "{":
-                            try:
-                                parsed, _ = decoder.raw_decode(txt[i:])
-                                if isinstance(parsed, dict):
-                                    entry["root_cause"] = parsed.get("root_cause")
-                                    entry["how_to_fix"] = parsed.get("how_to_fix")
-                                    entry["strategy_id"] = parsed.get("strategy_id")
-                                    entry["held"] = parsed.get("held")
-                                    entry["outcome"] = parsed.get("outcome")
-                                    entry["hold_until"] = parsed.get("hold_until")
-                                    entry["operator_action_required"] = parsed.get("operator_action_required")
-                                    if parsed.get("note"):
-                                        entry["note"] = str(parsed.get("note"))[:300]
-                                break  # found and parsed — stop
-                            except json.JSONDecodeError:
-                                continue  # try next { from the end
+                    from lib.watchlist_deadline import last_json_object
+                    parsed = last_json_object(stdout) or {}
+                    for key in ("root_cause", "how_to_fix", "strategy_id", "held", "outcome", "hold_until",
+                                "operator_action_required", "accepted", "completed", "deferred"):
+                        entry[key] = parsed.get(key)
+                    entry["_handled_pending"] = (
+                        rc == 0 and parsed.get("ok") is False and parsed.get("accepted") is True
+                        and parsed.get("outcome") == "PENDING"
+                    ) or (
+                        rc == 75 and parsed.get("schema") == "WatchlistDrain@v1"
+                        and parsed.get("outcome") == "DEFERRED" and parsed.get("ok") is False
+                    )
+                    if parsed.get("note"):
+                        entry["note"] = str(parsed["note"])[:300]
                 except Exception:
                     pass
+            if entry.pop("_handled_pending", False):
+                entry["ok"] = False
+                entry["pending"] = True
+                st["fail_streak"] = previous_fail_streak
+                entry["fail_streak"] = previous_fail_streak
+                results.append(entry)
+                REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                with open(REMEDIATION_LOG, "a") as fh:
+                    fh.write(json.dumps({**entry, "record": "pending"}) + "\n")
+                state[ftype] = st
+                ran_cmds.add(cmd)
+                continue
             if rc in (69, 99):
                 entry["ok"] = False
                 entry["flock_contention"] = True
@@ -1079,7 +1086,9 @@ def collect_data_quality() -> list[dict]:
                 wk or 48,
                 True,
             ),
-            ("fred_data", _db_age_h("SELECT MAX(fetched_at) FROM fred_economic_series"), wk or 168, True),
+            # last_seen_at when the 2026_10_31 migration is applied, else fetched_at (review of #2383, N5: fetched_at is now
+            # the first-fetch time and would read every series as stale)
+            ("fred_data", _db_age_h("SELECT MAX(COALESCE((to_jsonb(f)->>'last_seen_at')::timestamptz, f.fetched_at)) FROM fred_economic_series f"), wk or 168, True),
             ("sec_data", _db_age_h("SELECT MAX(created_at) FROM sec_form4"), wk or 168, True),
             ("social_data", _db_age_h("SELECT MAX(observed_at) FROM social_sentiment_history"), wk or 48, True),
             ("youtube", _db_age_h("SELECT MAX(ingested_at) FROM youtube_transcripts"), wk or 168, True),
@@ -5191,6 +5200,32 @@ def collect_broker_token_health() -> list[dict]:
     return out
 
 
+def expected_setups_run_date(now: datetime | None = None) -> str:
+    """The SETUPS business run date that should be current at ``now`` (ET).
+
+    Today on a trading day once ``setups_session.first_full_scan_et`` has passed; otherwise the previous trading
+    day. Weekends and NYSE holidays therefore expect the last session, not the calendar date: the scanner does not
+    run then, and heal_trade_ai_session_cache.py deliberately never rewrites run_date (0b22fdfac), so a
+    calendar-date comparison could never clear (2026-10-31 stuck sweep: heal "ineffective" since 10-26).
+    """
+    from zoneinfo import ZoneInfo
+
+    from scripts.lib.cio_market_session import is_trading_day
+
+    tz = ZoneInfo("America/New_York")
+    now = (now or datetime.now(tz)).astimezone(tz)
+    cfg = (load_policy() or {}).get("setups_session") or {}
+    hh, mm = (int(x) for x in str(cfg.get("first_full_scan_et") or "00:00").split(":"))
+    day = now.date()
+    if is_trading_day(now) and (now.hour, now.minute) >= (hh, mm):
+        return day.isoformat()
+    for _ in range(14):
+        day = day - timedelta(days=1)
+        if is_trading_day(datetime(day.year, day.month, day.day, 12, tzinfo=tz)):
+            return day.isoformat()
+    return day.isoformat()
+
+
 def collect_trade_ai_session() -> list[dict]:
     """CC SETUPS session freshness (run_date), not cache mtime.
 
@@ -5240,15 +5275,17 @@ def collect_trade_ai_session() -> list[dict]:
                 )
             )
             return out
-        if run_date < today:
+        expected = expected_setups_run_date()
+        if run_date < expected:
             out.append(
                 _f(
                     "pipeline_freshness",
                     "trade_ai_session_stale",
                     "critical",
-                    f"SETUPS session stale: run_date={run_date} (today ET {today}) — "
-                    f"CC header will show STALE until cache is healed",
+                    f"SETUPS session stale: run_date={run_date} (expected {expected}, today ET {today}) — "
+                    f"CC header will show STALE until a scanner run lands",
                     run_date=run_date,
+                    expected_run_date=expected,
                     today_et=today,
                     cache=used,
                     surfaced="CC SETUPS header",

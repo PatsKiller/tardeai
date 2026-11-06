@@ -1,6 +1,7 @@
-"""Release-train step E (2026-10-22) refused because the contract probe sent the Release Train workflow's
-`GET /release-train-window?{{ $json.query }}` as the bare value `contract-probe-run-…` (no key), which the relay
-correctly refuses as relay_bad_query. A whole-query expression is now probed with a well-formed sample for its path.
+"""2026-10-22: the contract probe sent a whole-query expression (`GET /path?{{ $json.query }}`) as the bare value
+`contract-probe-run-…` (no key), which the relay correctly refuses as relay_bad_query. A whole-query expression is now
+probed with a well-formed sample for its path (WHOLE_QUERY_EXPR_SAMPLES; empty since the retired release-train
+workflow, its only user, was removed 2026-10-27).
 """
 from __future__ import annotations
 
@@ -28,8 +29,13 @@ def _probe(monkeypatch, path, query):
 
 
 def test_whole_query_expression_uses_the_path_sample(monkeypatch):
-    ok, sent = _probe(monkeypatch, "/release-train-window", "{{ $json.query }}")
-    assert ok and sent == "/release-train-window?run_id=" + C.PROBE_EXPR_VALUE
+    monkeypatch.setitem(C.WHOLE_QUERY_EXPR_SAMPLES, "/sample-path", "run_id=" + C.PROBE_EXPR_VALUE)
+    ok, sent = _probe(monkeypatch, "/sample-path", "{{ $json.query }}")
+    assert ok and sent == "/sample-path?run_id=" + C.PROBE_EXPR_VALUE
+
+
+def test_no_retired_release_train_sample():
+    assert "/release-train-window" not in C.WHOLE_QUERY_EXPR_SAMPLES
 
 
 def test_keyed_expression_still_substitutes_the_value(monkeypatch):

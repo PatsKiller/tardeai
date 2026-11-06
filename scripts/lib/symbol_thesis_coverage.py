@@ -41,33 +41,23 @@ COVERAGE_STATES = (
     "INSUFFICIENT_DATA",
 )
 
-STALE_DAYS_DEFAULT = 30
-MATERIAL_MEMBERSHIPS = frozenset({
-    "HELD", "FORMER_HOLDING", "REENTRY", "OPPORTUNITY",
-})
+from scripts.lib.cio_thesis_freshness import STALE_DAYS_DEFAULT as STALE_DAYS_DEFAULT
+from scripts.lib.cio_thesis_freshness import MATERIAL_MEMBERSHIPS as MATERIAL_MEMBERSHIPS
 
 # Class SLAs — policy-in-code (docs/ops/RESEARCH_LIFECYCLE_STANDARD.md).
 # Fallback remains STALE_DAYS_DEFAULT when a name is not in an actionable class.
-CLASS_SLA_DAYS = {
-    "held_income": 14,
-    "held_growth_core": 30,
-    "held_index_bond": 90,
-    "reentry_actionable": 14,
-    "watchlist_actionable": 45,
-}
+from scripts.lib.cio_thesis_freshness import CLASS_SLA_DAYS as CLASS_SLA_DAYS
 
 # Income / BDC-like names (held) — 14d. Not a parallel taxonomy; ticker set + INCOME role.
-INCOME_CRITICAL_TICKERS = frozenset({
-    "JEPI", "PFLT", "CSWC", "DIV", "DIVI", "SCHD",
-})
+from scripts.lib.cio_thesis_freshness import INCOME_CRITICAL_TICKERS as INCOME_CRITICAL_TICKERS
 # Bond / index ballast (held) — 90d. BND is the book ballast; do not use DEFENSIVE role
 # (that role also covers NOC/LDOS/RTX/BAH).
-INDEX_BOND_TICKERS = frozenset({"BND"})
+from scripts.lib.cio_thesis_freshness import INDEX_BOND_TICKERS as INDEX_BOND_TICKERS
 
 # Reentry desk intel.state → READY/NEAR. Matches reentry_decision_desk.normalize_reentry_s3_status
 # without importing that module (broker-backed, heavy).
-REENTRY_READY_STATES = frozenset({"READY", "READY TO REVIEW", "IN_ZONE"})
-REENTRY_NEAR_STATES = frozenset({"NEAR", "NEAR ENTRY", "OVERSOLD REVIEW"})
+from scripts.lib.cio_thesis_freshness import REENTRY_READY_STATES as REENTRY_READY_STATES
+from scripts.lib.cio_thesis_freshness import REENTRY_NEAR_STATES as REENTRY_NEAR_STATES
 
 AGE_GATE_SHORT_CIRCUIT_KEYS = (
     "catalyst",
@@ -115,8 +105,7 @@ def _age_days(ts: Any) -> Optional[float]:
     return (_now() - dt).total_seconds() / 86400.0
 
 
-def _sym(symbol: str) -> str:
-    return str(symbol or "").strip().upper()
+from scripts.lib.cio_thesis_freshness import _sym as _sym
 
 
 def _truthy_flag(val: Any) -> bool:
@@ -133,43 +122,13 @@ def _truthy_flag(val: Any) -> bool:
     return True
 
 
-def _is_held_rec(universe_rec: Optional[dict[str, Any]]) -> bool:
-    rec = universe_rec or {}
-    if rec.get("held"):
-        return True
-    return "HELD" in list(rec.get("memberships") or [])
+from scripts.lib.cio_thesis_freshness import _is_held_rec as _is_held_rec
 
 
-def _reentry_bucket_from_state(state: Any) -> Optional[str]:
-    s = str(state or "").strip().upper()
-    if not s:
-        return None
-    if s in REENTRY_READY_STATES:
-        return "READY"
-    if s in REENTRY_NEAR_STATES:
-        return "NEAR"
-    return None
+from scripts.lib.cio_thesis_freshness import _reentry_bucket_from_state as _reentry_bucket_from_state
 
 
-def reentry_actionable_bucket(
-    universe_rec: Optional[dict[str, Any]] = None,
-    extra: Optional[dict[str, Any]] = None,
-) -> Optional[str]:
-    """READY | NEAR | None. Held names are not reentry-actionable."""
-    rec = universe_rec or {}
-    if _is_held_rec(rec):
-        return None
-    extra = extra or {}
-    re = rec.get("reentry") if isinstance(rec.get("reentry"), dict) else {}
-    for blob in (re, rec, extra):
-        if not isinstance(blob, dict):
-            continue
-        bucket = _reentry_bucket_from_state(
-            blob.get("intel_state") or blob.get("state") or blob.get("reentry_state")
-        )
-        if bucket:
-            return bucket
-    return None
+from scripts.lib.cio_thesis_freshness import reentry_actionable_bucket as reentry_actionable_bucket
 
 
 def is_watchlist_actionable(universe_rec: Optional[dict[str, Any]] = None) -> bool:
@@ -194,68 +153,13 @@ def is_watchlist_actionable(universe_rec: Optional[dict[str, Any]] = None) -> bo
     return bool(intel)
 
 
-def _role_name(
-    symbol: str,
-    universe_rec: Optional[dict[str, Any]] = None,
-    extra: Optional[dict[str, Any]] = None,
-    *,
-    root: Path | None = None,
-) -> str:
-    extra = extra or {}
-    rec = universe_rec or {}
-    for blob in (extra, rec):
-        role = blob.get("portfolio_role")
-        if isinstance(role, dict):
-            role = role.get("portfolio_role")
-        if isinstance(role, str) and role.strip() and role.strip().upper() != "UNKNOWN":
-            return role.strip().upper()
-    try:
-        resolved = resolve_portfolio_role(symbol, universe_rec=rec, root=root)
-        return str(resolved.get("portfolio_role") or "UNKNOWN").upper()
-    except Exception:
-        return "UNKNOWN"
+from scripts.lib.cio_thesis_freshness import _role_name as _role_name
 
 
-def coverage_class_for(
-    symbol: str,
-    universe_rec: Optional[dict[str, Any]] = None,
-    extra: Optional[dict[str, Any]] = None,
-    *,
-    root: Path | None = None,
-) -> str:
-    """held_income | held_index_bond | held_growth_core | reentry_actionable | watchlist_actionable | default."""
-    s = _sym(symbol)
-    rec = universe_rec or {}
-    extra = extra or {}
-    forced = str(extra.get("coverage_class") or rec.get("coverage_class") or "").strip().lower()
-    if forced in CLASS_SLA_DAYS:
-        return forced
-    if _is_held_rec(rec):
-        if s in INDEX_BOND_TICKERS:
-            return "held_index_bond"
-        if s in INCOME_CRITICAL_TICKERS:
-            return "held_income"
-        role = _role_name(s, rec, extra, root=root)
-        if role == "INCOME":
-            return "held_income"
-        return "held_growth_core"
-    if reentry_actionable_bucket(rec, extra=extra):
-        return "reentry_actionable"
-    if "WATCHLIST" in list(rec.get("memberships") or []) or rec.get("watchlist"):
-        return "watchlist_actionable"
-    return "default"
+from scripts.lib.cio_thesis_freshness import coverage_class_for as coverage_class_for
 
 
-def stale_days_for(
-    symbol: str,
-    universe_rec: Optional[dict[str, Any]] = None,
-    extra: Optional[dict[str, Any]] = None,
-    *,
-    root: Path | None = None,
-) -> int:
-    """Class SLA days for a symbol. Fallback STALE_DAYS_DEFAULT."""
-    klass = coverage_class_for(symbol, universe_rec, extra, root=root)
-    return int(CLASS_SLA_DAYS.get(klass, STALE_DAYS_DEFAULT))
+from scripts.lib.cio_thesis_freshness import stale_days_for as stale_days_for
 
 
 def age_gate_short_circuit_reason(

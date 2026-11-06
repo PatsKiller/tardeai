@@ -25,6 +25,12 @@ ROOT = Path(__file__).resolve().parents[2]
 _CACHE = {}
 _LOCK = threading.Lock()
 _FAILURES = {"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED"}
+#: The generic text cause() returns when a failure carries no stderr and no specific reason.
+NO_DIAGNOSTIC = "Failure recorded; stderr diagnostic was not retained"
+#: A job log's last error line explains a wrapper failure only if the log was written this close to it.
+LOG_DIAGNOSTIC_SLACK = timedelta(minutes=5)
+_ERROR_LINE = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt)(?::|$)")
+_LINE_TIME = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?")
 
 
 def last_log_success(path: Path, *, now: datetime):
@@ -68,6 +74,70 @@ def last_log_success(path: Path, *, now: datetime):
         if at and at <= now:
             latest = max(latest, at) if latest else at
     return latest
+
+
+def _line_time(line: str):
+    """The timestamp printed on a log line, or None. A naive stamp is host time, America/New_York."""
+    match = _LINE_TIME.search(line)
+    if not match:
+        return None
+    try:
+        at = datetime.fromisoformat(match.group(0).replace(" ", "T", 1).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (at if at.tzinfo else at.replace(tzinfo=ZoneInfo("America/New_York"))).astimezone(timezone.utc)
+
+
+def last_log_error(path: Path):
+    """The last exception line in a job's own log tail, with the time that error was written.
+
+    Host cron lines send stderr into the job log (``>> logs/<job>.log 2>&1``), so the safe_flock
+    wrapper event records only ``exit_code: 1``. The traceback's final line is in this log.
+    2026-10-30: the stop supervisor failed 137 times on ``AssertionError: ALPACA_MODE must be paper``
+    and the Jobs page could only say the diagnostic was not retained.
+
+    The time belongs to the error, not to the file: the nearest timestamp printed in the error's own
+    block (after the previous error line), else the file's last write only when the error line is
+    the last thing in the log. An older error followed by later untimed output has no time and is
+    never attached to a newer failure. The line is returned raw; the caller shows it via ``cause()``,
+    which redacts it.
+    """
+    try:
+        mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        with path.open("rb") as stream:
+            stream.seek(0, 2)
+            start = max(0, stream.tell() - 64 * 1024)
+            stream.seek(start)
+            raw = stream.read(64 * 1024)
+        if start:
+            raw = raw.partition(b"\n")[2]
+    except OSError:
+        return None
+    lines = [line.strip() for line in raw.decode("utf-8", errors="replace").splitlines()]
+    lines = [line for line in lines if line]
+    found = None
+    for index, line in enumerate(lines):
+        if _ERROR_LINE.match(line):
+            found = index
+    if found is None:
+        return None
+    at = None
+    for index in range(found, -1, -1):
+        if index != found and _ERROR_LINE.match(lines[index]):
+            break
+        at = _line_time(lines[index])
+        if at:
+            break
+    if at is None and found == len(lines) - 1:
+        at = mtime
+    if at is None:
+        return None
+    line = lines[found]
+    if len(line) > 400:
+        # Cut at a word boundary: a cut through the middle of a token would leave a fragment that no
+        # redaction pattern recognises (review 2026-11-01).
+        line = line[:400].rsplit(" ", 1)[0] + " …"
+    return {"line": line, "at": at}
 
 
 def _json(path, limit=8 * 1024 * 1024):
@@ -169,6 +239,48 @@ def _measurement(unknown: int, collection_gaps: list) -> dict:
                             "not_measured": "No run receipt or no measurable schedule" if unknown else None}}
 
 
+#: The operations watchers surfaced by the Jobs & health stoplight strip (operator 2026-10-28: "a mode in the
+#: command center that shows stoplights when these along with the alerts"). Each is a guard that must actually run
+#: for "did it die and did anyone notice" to be answered honestly. An absent or unwired watcher renders red/amber,
+#: never silently green — the same "a component reporting success is not evidence" rule as the rows below.
+WATCHER_LANES = {
+    "self-heal-fixer": "Self-heal fixer",
+    "pr-merge-telegram-notify": "Merge notifier",
+    "delivery-failure-alerts": "Failure pager",
+}
+
+
+def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool) -> list[dict]:
+    """Deterministic read-only watcher lights from the registry, the run rows and the independent monitor.
+
+    ``status`` is one of ok / degraded / down / absent; the strip maps it to green / amber / red / red.
+    """
+    by_lane = {r["lane_id"]: r for r in rows}
+    out = [{"id": "missed-run-watchdog", "label": "Missed-run watchdog",
+            "status": "ok" if monitor_ok else "degraded", "cause": None if monitor_ok else monitor["cause"]}]
+    for lane_id, label in WATCHER_LANES.items():
+        row = by_lane.get(lane_id)
+        if row is None:
+            out.append({"id": lane_id, "label": label, "status": "absent",
+                        "cause": "Not a registered job — it cannot run, watch or page"})
+            continue
+        state, result = row["state"], row["result"]
+        if result == "failed":
+            status, cause = "down", row["cause"]
+        elif state in {"PAUSED", "DISABLED"}:
+            status, cause = "degraded", row["cause"] or f"{label} is {state.lower()}: designed, not running"
+        elif state == "NEVER_SCHEDULED":
+            status, cause = "degraded", f"{label} is never scheduled: its unit is not installed"
+        elif state == "RETIRED":
+            status, cause = "absent", f"{label} is retired"
+        elif result in {"succeeded", "due"}:
+            status, cause = "ok", None
+        else:
+            status, cause = "degraded", row["cause"] or f"{label} is not proven running"
+        out.append({"id": lane_id, "label": label, "status": status, "cause": cause})
+    return out
+
+
 def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
@@ -210,6 +322,11 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                 last_at = max(filter(None, [last_at, at]))
             if event.get("event_type") == "refused" or (event.get("event_type") == "completed" and event.get("exit_code") != 0):
                 failure_at, diagnostic = at, cause(event)
+        log_error = (captured.get("log_errors") or {}).get(lane_id)
+        if (diagnostic == NO_DIAGNOSTIC and failure_at and log_error
+                and abs(log_error["at"] - failure_at) <= LOG_DIAGNOSTIC_SLACK):
+            source = (lane.get("output_signal") or {}).get("path") or "the job log"
+            diagnostic = cause({}, f"{log_error['line']} (last error line in {source})")
         if last.get("state") in _FAILURES:
             if failure_at is None or last_at and last_at >= failure_at:
                 failure_at, diagnostic = instant(last.get("finished_at")), cause(RV.receipt_of(last), last.get("reason"))
@@ -260,7 +377,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         "summary": {"due_today": sum(r["due_today"] and r["state"] == "ACTIVE" for r in rows),
                     **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
                     **_measurement(counts["unknown"], captured.get("collection_gaps") or [])},
-        "monitor": monitor, "incidents": incidents, "incident_count": len(incidents),
+        "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok),
+        "incidents": incidents, "incident_count": len(incidents),
         # plain words only: the raw codes can carry a file path or lane id (page audit 2026-10-25)
         "coverage_gaps": plain_collection_gaps(captured.get("collection_gaps") or []),
         "note": "Execution evidence only. An enabled schedule, fresh log or dry run does not prove successful work."}
@@ -286,6 +404,9 @@ def _load(root: Path, registry_path: Path, now: datetime):
         at = last_log_success(path, now=now)
         if at:
             snapshot["successes"].setdefault(W.identity(lane), []).append({"at": W.iso(at), "validated_success": True})
+        error = last_log_error(path)
+        if error:
+            snapshot.setdefault("log_errors", {})[W.identity(lane)] = error
     runs, measured, why = read_run_ledger(root / "data/governance/n8n_coordination_ledger.sqlite")
     if not measured:
         snapshot.setdefault("collection_gaps", []).append(why or "run ledger unavailable")

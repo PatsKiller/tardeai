@@ -57,7 +57,8 @@ def test_hint_coverage_threshold(tmp_path, monkeypatch, hinted, ok):
 
 def test_hints_are_measured_from_a_named_run_and_sane():
     assert DOC["schema"] == "CiShardTimings@v1"
-    assert DOC["source_run"] == 39661659376
+    # Refreshed from the latest GREEN ci-gate run when the drain adds test files; see config/ci_shard_duration_hints.json
+    assert isinstance(DOC["source_run"], int) and DOC["source_run"] > 0
     assert len(DOC["source_sha"]) == 40
     assert all(isinstance(v, (int, float)) and 0 <= v < 3600 for v in DOC["files"].values())
     # the longest measured unit on main is the trading-lock pair; a 1 s default would hide it

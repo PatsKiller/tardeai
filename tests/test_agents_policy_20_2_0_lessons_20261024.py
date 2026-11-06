@@ -2,8 +2,14 @@
 import re
 from pathlib import Path
 
+import sys
+
 ROOT = Path(__file__).resolve().parents[1]
-AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+sys.path.insert(0, str(ROOT))
+from tests.support.agents_policy_frozen import read_pre_26  # noqa: E402
+
+# 26.0.0 rewrote §28.9 in the one-line *Cause:* format; these 20.2.0 pins read the frozen 25.0.1 copy.
+AGENTS = read_pre_26("AGENTS.md")
 
 
 def _section() -> str:

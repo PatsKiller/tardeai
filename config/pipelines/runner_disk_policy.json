@@ -1,0 +1,5 @@
+{
+  "schema": "RunnerDiskPolicy@v1",
+  "_comment": "2026-10-31 (DSN-20261031-market-risk-engine-P0-T5). On 2026-10-30 at 05:45 ET the premarket pipeline runner died at `exec > >(tee -a $RUN_LOG)` with 'No space left on device' before any step ran, and nothing paged (RCA finding 7). The manifest runner now checks free space on the log filesystem before it starts, pages P1 through scripts/pipelines/pipeline_disk_alert.py when it is below min_free_mb, keeps running the steps without a run log when the log cannot be written, and pages when the PipelineRun summary cannot be written. Read by scripts/pipelines/_manifest_runner.sh. Changed only by reviewed PR.",
+  "min_free_mb": 2048
+}

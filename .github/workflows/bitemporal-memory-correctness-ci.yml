@@ -24,6 +24,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Least privilege for GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions, 2026-10-27).
+permissions:
+  contents: read
+
 jobs:
   bitemporal-200:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false

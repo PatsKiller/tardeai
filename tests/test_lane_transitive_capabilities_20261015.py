@@ -55,6 +55,35 @@ OPERATOR_RULING_DD01_REASON = (
 #: Read-only monitors; no direct_sender (the n8n entry scripts never reference the chokepoint; the dispatcher sender
 #: gate tests/test_agents_policy_7_0_0_advisory_market_data.py stays green). Reviewed addition, not a ruling widening.
 DATA_INTEGRITY_MONITORS_20261018 = frozenset({"n8n-data-plausibility-audit", "n8n-gap-resolution-audit"})
+#: 2026-10-26 prospectus go-live PR (shared-infra, operator merge): the n8n lane prospectus-build
+#: (scripts/prospectus_window.py) reaches broker_module / order_placement only through the same LAZY shared chain
+#: llm_consumption -> db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport (at_import=false),
+#: via the governed credit path (prospectus batch + data-quality gate). No direct_sender; the lane writes an outbox
+#: and the host timer prospectus-deliver sends. Reviewed addition under the DD01 ruling, not a ruling widening.
+PROSPECTUS_BUILD_20261026 = frozenset({"prospectus-build"})
+
+#: 2026-10-26 yfinance snapshot owner lane (operator: "Yahoo Finance feed … switched on: yes"): the entry
+#: scripts/yfinance_info_snapshot_refresh.py reads the operator's My Watchlist through
+#: lib.data_broker.watch_domains.membership_operator, whose module holds a LAZY positions_sync import (inside
+#: _store_freshness, never called by membership_operator) -> schwab_transport. Ingest of market reference data; no
+#: broker call, no direct_sender. Reviewed addition, not a ruling widening.
+YFINANCE_SNAPSHOT_20261026 = frozenset({"yfinance-info-snapshot"})
+
+#: 2026-10-28 conflict-resolver admission (operator baseline approval in-session): the entry
+#: scripts/conflict_resolver.py reaches broker_module / order_placement only through the SAME lazy chain as
+#: yfinance-info-snapshot (watch_intelligence -> watch_domains -> positions_sync -> schwab_transport). The dry run
+#: is read-only evaluation of the conflict engine over canonical projections; no broker call, no direct_sender.
+#: Operator-approved baseline justification, not a ruling widening.
+CONFLICT_RESOLVER_20261028 = frozenset({"conflict-resolver"})
+
+#: 2026-10-29 conflict-rule-proposals admission (operator baseline approval in-session, Option A): the lane
+#: scripts/conflict_rule_proposals.py reaches broker_module / order_placement only through the SAME lazy chain as
+#: conflict-resolver, but via conflicts/producers.py's default query (from db_adapter import _execute, function-level
+#: lazy import) -> db_adapter -> holdings_guard -> schwab_position_sync -> schwab_transport. The lane is PAUSED
+#: (scheduler kind none, nothing fires) and, once activated, is READ_ONLY_ADVISORY: it proposes conflict rules for
+#: the operator's approval, never calls a broker, never sends. No direct_sender. The trading lock refuses every
+#: order placement regardless of caller. Operator-approved baseline justification (Option A), not a ruling widening.
+CONFLICT_RULE_PROPOSALS_20261029 = frozenset({"conflict-rule-proposals"})
 
 FROZEN_20261015 = {
     "broker_module": frozenset(
@@ -130,7 +159,11 @@ FROZEN_20261015 = {
         }
     )
     | OPERATOR_RULING_DD01_20261015
-    | DATA_INTEGRITY_MONITORS_20261018,
+    | DATA_INTEGRITY_MONITORS_20261018
+    | PROSPECTUS_BUILD_20261026
+    | YFINANCE_SNAPSHOT_20261026
+    | CONFLICT_RESOLVER_20261028
+    | CONFLICT_RULE_PROPOSALS_20261029,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -206,7 +239,11 @@ FROZEN_20261015 = {
         }
     )
     | OPERATOR_RULING_DD01_20261015
-    | DATA_INTEGRITY_MONITORS_20261018,
+    | DATA_INTEGRITY_MONITORS_20261018
+    | PROSPECTUS_BUILD_20261026
+    | YFINANCE_SNAPSHOT_20261026
+    | CONFLICT_RESOLVER_20261028
+    | CONFLICT_RULE_PROPOSALS_20261029,
 }
 
 

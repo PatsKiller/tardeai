@@ -342,6 +342,9 @@ class Source:
     url: Optional[str] = None
     store: Optional[str] = None
     security_guid: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    request_id: Optional[str] = None
 
 
 @dataclass
@@ -356,6 +359,8 @@ class ModelDissent:
     model: str
     view: str
     differs_on: str
+    provider: Optional[str] = None
+    role: Optional[str] = None
 
 
 @dataclass
@@ -749,6 +754,7 @@ class AskResearchContext:
     quick_answer: Optional[str] = None
     budget: ResearchBudget = field(default_factory=lambda: ResearchBudget(max_usd=0.0))
     schema: str = RESEARCH_CONTEXT_SCHEMA
+    provider_process_id: Optional[str] = None
 
 
 @runtime_checkable
@@ -765,6 +771,7 @@ class DeepResearchProvider(Protocol):
 _EGRESS_DROP_KEYS = frozenset(
     {
         "sizing_context",
+        "memory_retry_payload",
         "exposure_usd",
         "existing_exposure_usd",
         "portfolio_value_usd",

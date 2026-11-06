@@ -164,6 +164,10 @@ def _json_clean(obj):
 
 def _load_json(path: Path):
     try:
+        if path.exists() and path.stat().st_size == 0:
+            # 2026-10-30: the disk-full night left state files at 0 bytes; say so instead of silently reading nothing.
+            log.warning("%s is empty (0 bytes); treating it as missing", path)
+            return None
         return json.loads(path.read_text()) if path.exists() else None
     except Exception:
         return None
@@ -2990,12 +2994,29 @@ def _today_pnl_provenance(
             if _a:
                 held_by_acct[_a] = held_by_acct.get(_a, 0) + 1
 
+    # account_summaries carry holdings keys (schwab_roth); the day figures are
+    # keyed by the canonical account key (schwab_roth_ira). Look up by both, so
+    # an alias never reads as "no report" or picks up a 0.0 filler row.
+    try:
+        from lib.account_display import canonical_key as _ck
+    except Exception:  # noqa: BLE001 -- loaded standalone by tests
+
+        def _ck(k):
+            return k
+
+    _by_canon = {_ck(k): v for k, v in (today_by_account or {}).items()}
+
     contributing: list[str] = []
     zero_change: list[str] = []
     empty: list[str] = []
     missing: list[str] = []
     for acct in sorted(account_summaries or {}):
-        row = (today_by_account or {}).get(acct)
+        row = _by_canon.get(_ck(acct))
+        if row is None:
+            row = (today_by_account or {}).get(acct)
+        # A change of None is an UNKNOWN day, not a flat one.
+        if row is not None and row.get("change") is None:
+            row = None
         if row is None:
             summary = (account_summaries or {}).get(acct) or {}
             try:
@@ -3589,11 +3610,13 @@ def overview():
             today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change or 0) else 0
 
     # per-account breakdown — from broker snapshot, with per-account top-movers from holdings
+    from lib.account_display import canonical_key as _canon_acct
+
     today_by_account = {}
     for a, d in snap.get("by_account", {}).items():
         entry = {"change": d.get("change", 0), "value": d.get("value", 0), "pct": d.get("pct")}
         movers_a = sorted(
-            [p for p in holdings if (p.get("account") or "unknown") == a],
+            [p for p in holdings if (_canon_acct(p.get("account")) or "unknown") == a],
             key=lambda p: abs(p.get("day_change") or 0),
             reverse=True,
         )[:2]
@@ -3604,8 +3627,11 @@ def overview():
         )
         today_by_account[a] = entry
     # Ensure every known account gets an entry (snapshot may only cover accounts with activity)
+    # Snapshot rows are keyed canonically (schwab_roth_ira); holdings rows carry
+    # the raw key (schwab_roth). Comparing raw to canonical added a fake 0.0 row
+    # for every aliased account, which the census then counted as "flat".
     for p in holdings:
-        a = p.get("account") or "unknown"
+        a = _canon_acct(p.get("account")) or "unknown"
         if a not in today_by_account:
             today_by_account[a] = {"change": 0.0, "value": 0.0, "pct": None, "top_movers": ""}
 
@@ -6037,6 +6063,18 @@ def approval_decide(body: dict):
     return 200, {"ok": True, "action": decision, "queue_id": queue_id}
 
 
+def _admin_secrets_listing():
+    """GET /api/v2/admin/secrets — presence for every reader; age/config values only for the operator."""
+    try:
+        from lib.cc_auth import current_principal as _cc_current_principal
+    except ImportError:  # pragma: no cover - imported as scripts.api_v2
+        from scripts.lib.cc_auth import current_principal as _cc_current_principal
+    import importlib as _il
+
+    _sa = _il.reload(__import__("secrets_admin"))
+    return _sa.list_secrets(principal=_cc_current_principal())
+
+
 def _orchestration():
     """GET /api/v2/orchestration — system timers, services, skills, scripts."""
     import subprocess
@@ -6220,7 +6258,7 @@ def _orchestration():
             from telegram_alert import _token as _tg_token
 
             t = _tg_token() or ""
-            return (bool(t), f"Token: ...{t[-8:]}" if len(t) >= 8 else ("configured" if t else "missing"))
+            return (bool(t), "configured" if t else "missing")  # never any character of the token
         except Exception as e:
             return (False, str(e)[:80])
 
@@ -6231,7 +6269,7 @@ def _orchestration():
     )
     _env_check(
         "Finviz API",
-        lambda: (bool(os.getenv("FINVIZ_API_TOKEN")), f"Token: ...{os.getenv('FINVIZ_API_TOKEN', '')[-8:]}"),
+        lambda: (bool(os.getenv("FINVIZ_API_TOKEN")), "configured" if os.getenv("FINVIZ_API_TOKEN") else "missing"),
         "Add FINVIZ_API_TOKEN to .env",
     )
     _env_check(
@@ -7431,6 +7469,11 @@ def _ops_audit():
 
 def ops_summary():
     fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    # The manifest proves a producer ran; it does not prove the store it describes
+    # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
+    from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
+
+    _store_guard = _holdings_guard(STATE_DIR)
     health_rows = (
         _db_query(
             """
@@ -7446,7 +7489,8 @@ def ops_summary():
 
     return {
         "pipeline": {
-            "status": fresh.get("status", "unknown"),
+            "status": _effective_status(fresh.get("status", "unknown"), _store_guard),
+            "authoritative_store": _store_guard,
             "completed_at": fresh.get("completed_at", ""),
             "duration_seconds": fresh.get("pipeline_duration_seconds", 0),
             "steps": fresh.get("steps_completed", 0),
@@ -16546,17 +16590,19 @@ def _defense_posture(query=None):
                        WHERE intent_type='inverse_etf' AND status IN ('filled','armed_ticket','submitted_paper')
                        ORDER BY updated_at DESC LIMIT 1""")
         _hint = _hc.fetchone()
-        _hc.execute("""SELECT symbol, threshold, last_fired_at FROM watch_alerts
-                       WHERE created_by='defense_hedge' AND note LIKE '%%bounce%%' LIMIT 1""")
+        _hc.execute("""SELECT symbol, threshold, last_fired_at, created_at FROM watch_alerts
+                       WHERE created_by='defense_hedge' AND active AND note LIKE '%%bounce%%'
+                       ORDER BY id DESC LIMIT 1""")
         _bounce = _hc.fetchone()
+        # design home/v006 (review of #2460, B2): the newest THESIS -> GREEN transition; a bounce alert armed before it
+        # belongs to an earlier episode and is never shown as live
+        _hc.execute("""SELECT instrument, max(created_at) FROM inverse_stoplight_transitions
+                       WHERE light='THESIS' AND split_part(new_state, '|', 1)='GREEN' GROUP BY instrument""")
+        _green_since = {str(r[0]).upper(): r[1] for r in _hc.fetchall()}
         _rows = (out.get("momentum") or {}).get("rows") or []
         _tech = next((r for r in _rows if r.get("sector") == "Technology"), {})
-        if _tech.get("state") not in ("LAGGING", "WEAKENING", None) and _hint:
-            hs = {
-                "state": "stand_down",
-                "line": f"HEDGE: stand-down signaled — Technology recovered to {_tech.get('state')}",
-            }
-        elif _hint and _hint[0] == "filled":
+        _in_play_line, _close_meta = None, None
+        if _hint and _hint[0] == "filled":
             # Phase 4: last close via the daily_bars projection (ticker_prices), with its age.
             from lib.data_broker.daily_bars import get_last_close as _brk_last_close
 
@@ -16567,24 +16613,25 @@ def _defense_posture(query=None):
                 if _px is not None and _hint[1]
                 else None
             )
-            hs = {
-                "state": "in_play",
-                "line": f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else ""),
-                "close_as_of": _lc.get("as_of"),
-                "close_stale": _lc.get("stale"),
-            }
-        elif _bounce and _bounce[2] and str(_bounce[2])[:10] == datetime.now(timezone.utc).date().isoformat():
-            hs = {
-                "state": "entry_window_open",
-                "line": f"HEDGE: entry window OPEN — {_bounce[0]} bounce ≥ ${_bounce[1]}",
-            }
-        else:
-            hs = {
-                "state": "armed",
-                "line": f"HEDGE: waiting for a bounce day ({_bounce[0]} ≥ ${_bounce[1]})"
-                if _bounce
-                else "HEDGE: alerts arming tonight",
-            }
+            _in_play_line = f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else "")
+            _close_meta = {"close_as_of": _lc.get("as_of"), "close_stale": _lc.get("stale")}
+        # design home/v006: the inverse-hedge stoplight decides; a stale defense_hedge alert never reads as live
+        from lib.defense_hedge_state import hedge_state as _hedge_state
+
+        _sl_cfg = (_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json") or {}).get(
+            "inverse_stoplights"
+        ) or {}
+        hs = _hedge_state(
+            stoplights=_load_json(PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json"),
+            intent=_hint,
+            bounce=_bounce,
+            tech_state=_tech.get("state"),
+            today=datetime.now(timezone.utc).date(),
+            stale_days=int(_sl_cfg.get("stale_calendar_days", 4)),
+            in_play_line=_in_play_line,
+            close_meta=_close_meta,
+            green_since=_green_since,
+        )
         out["hedge_state"] = hs
     except Exception as e:
         import traceback
@@ -17872,8 +17919,6 @@ def _ticket_review_run(body):
     # Explicit single-lane metered Flash is allowed; Pro/policies needing confirmation are not.
     metered_flash = {"deepseek-flash", "fast", "fast_think"}
     blocked_paid = {
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
         "deepseek-pro",
         "deepseek-v4",
         "pro",
@@ -30692,6 +30737,17 @@ def _queue_summary():
         or {}
     ).get("cnt", 0)
     pending = by_status.get("pending", 0)
+    # The consumer lane's registry state: RETIRED means nothing drains this table by design (needs_action.rule_queue
+    # then raises no Do-now item, and the Jobs page labels the backlog retired instead of CRIT).
+    try:
+        from lib.lane_registry import load_registry as _qs_load
+
+        _qs_lanes = (_qs_load() or {}).get("lanes") or []
+        _qs_row = next((r for r in _qs_lanes if isinstance(r, dict) and r.get("lane_id") == "deep-overnight-llm"), {})
+        lane_state = _qs_row.get("state")
+    except Exception as exc:  # noqa: BLE001 — an unreadable registry is reported, never treated as retired
+        lane_state = None
+        print(f"[queue_summary] lane registry unreadable: {type(exc).__name__}", file=_sys_heal.stderr)
     cap = 100
     now = datetime.now()
     window_start = now.replace(hour=23, minute=0, second=0, microsecond=0)
@@ -30703,6 +30759,9 @@ def _queue_summary():
         # False when the queue table could not be read (db_adapter returns None): the zeros below are then not
         # measurements. GET /api/v2/needs-action reports the source unavailable instead (2026-10-21).
         "measured": raw_rows is not None,
+        "lane_id": "deep-overnight-llm",
+        "lane_state": lane_state,
+        "retired": lane_state == "RETIRED",
         "pending": pending,
         "done_today": done_today,
         "failed": by_status.get("failed", 0),
@@ -30787,10 +30846,13 @@ def _needs_action(query=None):
         "pr_hygiene": _na.probe_pr_hygiene,
         # 2026-10-22: the three desk-truth monitor lanes' receipts (read-only; scripts/desk_truth_monitor.py)
         "desk_truth": _na.probe_desk_truth,
-        # Release train 2026-10-21: a failed release window (STOP latch / last receipt) is an inbox item.
+        # 2026-10-21: a failed release window / the deploy STOP latch is an inbox item.
         "release_window": _na.read_release_window_state,
-        # 2026-10-21 macro calendar: a missing/stale calendar means the 08:00 window is skipped (P2; read-only).
+        # 2026-10-21 macro calendar: a missing/stale calendar is information (P3; read-only).
         "macro_calendar": _na.probe_macro_calendar,
+        # 2026-10-25 (#2134): a failed staged host-unit install at promote (StagedUnitsInstall@v1, read-only).
+        "staged_units": _na.probe_staged_units,
+        "anthropic": _na.probe_anthropic,
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)
@@ -30834,6 +30896,10 @@ def _home_do_now(query=None):
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
         # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
         "held": _home_held,
+        # FQ-097 (operator 2026-11-04): the CIO's own verdict per (symbol, account) — the same capital plan the
+        # CIO desk renders. Do-now stop items print it and add none of their own. Side-effect free: the read-only
+        # probe never records decisions from a GET (codex-cloud at 8802d4da9).
+        "cio": _cio_capital_plan_probe,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
@@ -36657,12 +36723,28 @@ def _cio_capital_plan(query=None):
     return _cio_capital_plan_build(query)
 
 
-def _cio_capital_plan_build(query=None):
+def _cio_capital_plan_probe():
+    """Side-effect-free capital-plan read for Home's Do-now queue.
+
+    The Do-now queue only DISPLAYS the plan. Its GET must never append to the
+    authoritative decision journal: a GET that writes durable state is forbidden
+    (AGENTS.md §28.9), and §28.11 forbids new side-effecting GET exceptions
+    (codex-cloud at 8802d4da9). Build the same plan with recording disabled — a
+    read-only projection never calls the recording handler.
+    """
+    return _request_memoized("cio_capital_plan_readonly", lambda: _cio_capital_plan_build(record=False))
+
+
+def _cio_capital_plan_build(query=None, *, record=True):
     """GET /api/v2/cio/capital-plan — Alex's Capital Plan + Position Decision table.
 
     READ_ONLY_ADVISORY. Deterministic sources-and-uses arithmetic composed from
     canonical state (holdings.json + redeploy capital book + opportunity queue +
     sector opportunities + thesis risk posture). Never promotes or executes.
+
+    ``record=False`` skips appending unseen position decisions to the
+    authoritative decision journal, for read-only consumers such as the Home
+    Do-now queue.
     """
     try:
         from scripts.lib.cio_capital_plan import build_capital_plan_from_sources
@@ -36689,12 +36771,13 @@ def _cio_capital_plan_build(query=None):
             risk_posture=posture,
             investment_policy=_ratified_investment_policy(),
         )
-        try:
-            from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
+        if record:
+            try:
+                from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
 
-            record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
-        except Exception:
-            pass
+                record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
+            except Exception:
+                pass
         return {"ok": True, **plan}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
@@ -36730,6 +36813,10 @@ def _capital_plan_compact():
                 {
                     "symbol": d.get("symbol"),
                     "stance": d.get("cio_stance"),
+                    # FQ-098 (cc-deepseek-9 F2 at b1b38341): the stance's own generation time travels WITH the stance, so
+                    # a board can say how old the call is. Without it every rendered stance read "no evidence date —
+                    # treat as unverified", a false claim in the opposite direction. Never a page-build clock.
+                    "stance_as_of": d.get("decision_generated_at") or d.get("as_of") or d.get("generated_at"),
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
                     "actionable": d.get("actionable"),
@@ -37482,7 +37569,13 @@ def _data_source_health(query=None):
         except Exception as e:
             out.append({"source": label, "category": cat, "status": "error", "error": str(e)[:80]})
 
-    _feed("FRED macro", "macro", "SELECT max(fetched_at), count(*) FROM fred_economic_series", 72)
+    _feed(  # last_seen_at (2026_10_31 migration) else fetched_at, which is now first-fetch only (review of #2383, N5)
+        "FRED macro",
+        "macro",
+        "SELECT MAX(COALESCE((to_jsonb(f)->>'last_seen_at')::timestamptz, f.fetched_at)), count(*) "
+        "FROM fred_economic_series f",
+        72,
+    )
     _feed(
         "Finviz screeners", "finviz", "SELECT max(last_run), count(*) FILTER (WHERE active) FROM finviz_screeners", 24
     )
@@ -49240,7 +49333,9 @@ ROUTES = {
     "/api/v2/system/broker-connectors": lambda: _system_broker_connectors(),
     "/api/v2/trade-integrity-audit": lambda: _trade_integrity_audit(),
     "/api/v2/admin/audit-log": lambda: _admin_audit_log_view(),
-    "/api/v2/admin/secrets": lambda: __import__("importlib").reload(__import__("secrets_admin")).list_secrets(),
+    # Presence only for agents/unauthenticated readers; the operator (tailnet principal) also gets ages.
+    # Never any character of a secret (page audit 2026-10-25).
+    "/api/v2/admin/secrets": lambda: _admin_secrets_listing(),
     "/api/v2/admin/strategy-enablement": lambda: {
         "rows": [
             {k: _json_clean(v) for k, v in r.items()}
@@ -49319,33 +49414,40 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Strip query string from path if present
     base_path = path.split("?")[0] if "?" in path else path
 
-    # Release Train v2 STOP (2026-10-21, Phase 2 pulled forward): GET reads the release-window STOP latch back;
-    # POST SETS it (scripts/lib/release_train_stop.py; the same STOP.json scripts/release_window.py obeys). Set-only:
-    # every other command under release-train is refused — resume is host-CLI-only (decision D3). Actor = the
-    # authenticated cc_auth principal, never the body; same-origin enforced here regardless of report_only; no
-    # step-up (declined). Separate from the trading kill switch, which this never touches.
-    _rt_base = base_path.rstrip("/")
-    if _rt_base == "/api/v2/coordination/release-train/stop" or (
-        method != "GET"
-        and (
-            _rt_base == "/api/v2/coordination/release-train"
-            or _rt_base.startswith("/api/v2/coordination/release-train/")
-        )
+    # Deploys (AGENTS.md §25.10; operator directive 2026-10-27 removed the retired release train): GET
+    # /api/v2/ops/deploys is the read-only status (latest DeployOnMainReceipt@v1 + the deploy STOP latch,
+    # scripts/lib/deploys_view.py). GET .../deploys/stop reads the latch back; POST .../deploys/stop SETS it
+    # (scripts/lib/deploy_stop.py; the same STOP.json the host deploy_on_main poller and emergency promote refuse on).
+    # Set-only: every other command under /api/v2/ops/deploys is refused -- resume is Ops -> Controls (passkey) or
+    # the host CLI. Actor = the authenticated cc_auth principal, never the body; same-origin enforced here regardless
+    # of report_only; no step-up (declined). Separate from the trading kill switch, which this never touches.
+    _dp_base = base_path.rstrip("/")
+    if _dp_base == "/api/v2/ops/deploys" and method == "GET":
+        try:
+            try:
+                from lib import deploys_view as _dpv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploys_view as _dpv
+            return _dpv.handle(base_path, method)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+    if _dp_base == "/api/v2/ops/deploys/stop" or (
+        method != "GET" and (_dp_base == "/api/v2/ops/deploys" or _dp_base.startswith("/api/v2/ops/deploys/"))
     ):
         try:
-            from lib import release_train_stop as _rts
+            from lib import deploy_stop as _rts
             from lib import cc_auth as _rt_auth
         except ImportError:  # pragma: no cover - imported as scripts.api_v2
-            from scripts.lib import release_train_stop as _rts
+            from scripts.lib import deploy_stop as _rts
             from scripts.lib import cc_auth as _rt_auth
-        if _rt_base == "/api/v2/coordination/release-train/stop" and method == "GET":
+        if _dp_base == "/api/v2/ops/deploys/stop" and method == "GET":
             try:
                 return 200, {"ok": True, "data": _rts.status()}
             except Exception as e:
                 return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
         _rt_actor = _rt_auth.current_principal()
         _rt_csrf_ok, _rt_csrf_why = _rt_auth.command_csrf_check(_rt_auth.load_config(), method, base_path)
-        if _rt_base != "/api/v2/coordination/release-train/stop" or method != "POST":
+        if _dp_base != "/api/v2/ops/deploys/stop" or method != "POST":
             # Any clear / resume / other command route: refused and audited. There is no resume endpoint.
             return _rts.request_stop(
                 actor=_rt_actor,
@@ -49371,7 +49473,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "outcome": "STOP_NOT_CONFIRMED",
                 "error": type(e).__name__,
                 "detail": str(e)[:200],
-                "fallback": "host: python3 scripts/lib/release_train_stop.py stop --reason TEXT",
+                "fallback": "host: python3 scripts/lib/deploy_stop.py stop --reason TEXT",
             }
 
     # Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED; docs/ops/OPS_CONTROLS_API.md). Every POST refuses
@@ -49419,27 +49521,10 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         # Future: auth + paper_trade_proposals insert only — never orders
         return 501, {"ok": False, "error": "tradingview ingress not implemented (stub)", "enabled": True}
 
-    # Release Train v2, Phase 1 (2026-10-21): read-only view. GET /api/v2/coordination/release-train (summary),
-    # /queue, /trains, /trains/{id}, /events — contract docs/ops/RELEASE_TRAIN_API.md. Every source is read in a
-    # worker pool with its own deadline (scripts/lib/release_train_view.py, the needs-action / platform-health
-    # pattern); missing data is null + UNAVAILABLE, never 0/green. GET only: non-GET and .../stop fall through
-    # (handle() returns None for them) to the STOP block, which owns them.
-    if method == "GET" and base_path.rstrip("/").startswith("/api/v2/coordination/release-train"):
-        try:
-            try:
-                from lib import release_train_view as _rtv
-            except ImportError:  # pragma: no cover - imported as scripts.api_v2
-                from scripts.lib import release_train_view as _rtv
-            _rtv_out = _rtv.handle(base_path, method, query or {}, _db_query)
-            if _rtv_out is not None:
-                return _rtv_out
-        except Exception as e:
-            return 500, {"ok": False, "error": type(e).__name__}
-
     # Releases & Schedules (operator-approved 2026-10-22): one read-only projection for System → Releases &
-    # schedules — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n today and
-    # the next 3 hours of cron + n8n. scripts/lib/releases_schedules_view.py (each source in a worker with its own
-    # deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
+    # schedules — serving release, main HEAD, shipped history, release errors, n8n today and the next 3 hours of
+    # cron + n8n (release-train sections removed 2026-10-27). scripts/lib/releases_schedules_view.py (each source
+    # in a worker with its own deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
     # docs/ops/RELEASES_SCHEDULES_PAGE.md.
     if base_path.rstrip("/") == "/api/v2/ops/releases-schedules":
         try:
@@ -49450,6 +49535,58 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _rsv_out = _rsv.handle(base_path, method, query or {}, _db_query)
             if _rsv_out is not None:
                 return _rsv_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Deploy console P1 (DSN-20261029-deploy-console, read-only): the "not live / in flight" open-PR board.
+    # scripts/lib/deploy_in_flight.py — lists open PRs to main through `gh pr list` (GitHub IS called here, unlike
+    # the releases-schedules request path). No label write, no merge, no push, no promote, no schedule. GET only.
+    if base_path.rstrip("/") == "/api/v2/ops/in-flight":
+        try:
+            try:
+                from lib import deploy_in_flight as _dif
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploy_in_flight as _dif
+            _dif_out = _dif.handle(base_path, method, query or {}, _db_query)
+            if _dif_out is not None:
+                return _dif_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Deploy console P2 (DSN-20261029-deploy-console, write path): POST /api/v2/ops/in-flight/action carries the four
+    # operator actions (approve / hold / refresh_hints / push). Actor = the authenticated cc_auth principal (never the
+    # body); same-origin CSRF re-checked here (cc_auth.command_csrf_check) and enforced even in report_only by the
+    # config/cc_auth.yaml csrf.hard_routes entry. Reuses existing authority: the operator-merge label write (the
+    # Telegram-tap side-effect) and the git-push guard ledger (bin/guard grant git-push). No new authority, no broker.
+    if base_path.rstrip("/") == "/api/v2/ops/in-flight/action":
+        try:
+            try:
+                from lib import deploy_console_actions as _dca
+                from lib import cc_auth as _dca_auth
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import deploy_console_actions as _dca
+                from scripts.lib import cc_auth as _dca_auth
+            _dca_actor = _dca_auth.current_principal()
+            _dca_csrf_ok, _dca_csrf_why = _dca_auth.command_csrf_check(_dca_auth.load_config(), method, base_path)
+            _dca_body = body if isinstance(body, dict) else {}
+            try:
+                return _dca.perform(_dca_body, actor=_dca_actor, csrf_ok=_dca_csrf_ok, csrf_reason=_dca_csrf_why)
+            except Exception as e:
+                return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Ops → Incidents (operator 2026-10-27): IncidentRecord@v1 ledger (data/coordination/incidents) — GET list/detail;
+    # POST <id>/ack | <id>/close (operator decision first, scripts/lib/operator_approvals.py). docs/ops/INCIDENT_LEDGER.md.
+    if base_path.rstrip("/") == "/api/v2/ops/incidents" or base_path.startswith("/api/v2/ops/incidents/"):
+        try:
+            try:
+                from lib import incidents_view as _incv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import incidents_view as _incv
+            _inc_out = _incv.handle(base_path, method, query or {}, body)
+            if _inc_out is not None:
+                return _inc_out
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
@@ -68238,6 +68375,63 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 conn.close()
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
+
+    # ── Market Risk Engine projection (DSN-20261031-market-risk-ui; design home/v002, risk/v002) ──────
+    # GET: the engine snapshot when it exists, else an honest not_evaluated with the P0 options-flow block.
+    # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
+    if base_path == "/api/v2/market-risk/latest" and method == "GET":
+        try:
+            from lib.market_risk_projection import build as _mr_build, load_snapshot as _mr_load
+
+            from lib.market_risk import escalation as _mr_esc
+
+            # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
+            _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
+            _ep_err = None
+            try:
+                _ep = _mr_esc.open_episode(_mr_esc.load())
+            except Exception as _e:  # noqa: BLE001 — a torn episode ledger never turns the honest answer into a 500
+                _ep, _ep_err = None, f"episode ledger unreadable: {type(_e).__name__}"
+            _proj = _mr_build(_snap, _radar, episode=_ep)
+            if _ep_err:
+                _proj["episode_error"] = _ep_err
+            # design home/v005: dollars and account labels are joined here, API side, from the holdings store — never
+            # in the engine assessment (it feeds the models; AGENTS.md §2A). Fails soft to the projection without them.
+            try:
+                from lib.market_risk_book_join import join as _mr_join
+
+                _proj = _mr_join(_proj)
+            except Exception as _e:  # noqa: BLE001
+                _proj["book_exposure_error"] = f"{type(_e).__name__}: {_e}"
+            return 200, {"ok": True, "data": _json_clean(_proj)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+    if base_path == "/api/v2/market-risk/ack" and method == "POST":
+        try:
+            from lib import cc_auth as _mr_auth
+            from lib.market_risk import escalation as _mr_esc
+            from lib.market_risk_projection import ack_outcome as _mr_ack, build as _mr_build
+
+            from lib.market_risk_projection import load_snapshot as _mr_load
+
+            # handler-side same-origin CSRF, enforced whatever enforce/report_only say — the deploy STOP pattern
+            # (cc_auth.command_csrf_check; review of #2383 round 3, M-C)
+            _mr_csrf_ok, _mr_csrf_why = _mr_auth.command_csrf_check(_mr_auth.load_config(), method, base_path)
+            if not _mr_csrf_ok:
+                return 403, {"ok": False, "error": "acknowledgment refused: cross-site request", "reason": _mr_csrf_why}
+
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
+            try:
+                _ep = _mr_esc.open_episode(_mr_esc.load())
+            except _mr_esc.EpisodeStoreCorrupt:
+                # a torn ledger: refuse the ack with the reason, never a 500 echoing a path (review of #2383, M2)
+                return 503, {"ok": False, "error": "episode ledger unreadable; the next evaluation recovers it"}
+            _proj = _mr_build(_snap, None, episode=_ep)
+            _code, _out = _mr_ack(_proj, body or {}, actor=_mr_auth.current_principal())
+            return _code, _json_clean(_out)
+        except Exception as e:
+            return 500, {"ok": False, "error": f"acknowledgment failed: {type(e).__name__}"}
 
     # ── Session 33: Risk Regime + Strategy Rotation ───────────────────────
     if base_path in ("/api/v2/risk-regime/status", "/api/v2/risk-regime/latest"):

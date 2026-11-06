@@ -1,4 +1,4 @@
-import { rotationAvailability, rotationAvailabilityMessage, rotationReasonChips } from '../lib/rotationPublication'
+import { rotationAvailability, rotationAvailabilityMessage, rotationBlockerExplanations, rotationReasonChips } from '../lib/rotationPublication'
 import { fmtAsOf } from '../lib/asOfDisplay'
 import { RADIUS, TYPE, toneVars } from '../lib/designTokens'
 
@@ -12,6 +12,7 @@ export default function RotationPublicationNotice({ summary, error }: { summary:
   const observation = rotationAvailability(summary, error)
   const tone = toneVars(observation.ready ? 'neutral' : 'warning')
   const chips = rotationReasonChips(observation)
+  const blockers = observation.ready ? [] : rotationBlockerExplanations(observation)
   const source = fmtAsOf(observation.sourceAsOf) ?? 'UNAVAILABLE'
   const generated = fmtAsOf(observation.generatedAt) ?? 'UNAVAILABLE'
   const checked = fmtAsOf(observation.validatedAt)
@@ -21,7 +22,6 @@ export default function RotationPublicationNotice({ summary, error }: { summary:
     `Source as of: ${observation.sourceAsOf ?? 'UNAVAILABLE'}`,
     `Generated: ${observation.generatedAt ?? 'UNAVAILABLE'}`,
     observation.validatedAt ? `Checked at: ${observation.validatedAt}` : null,
-    observation.reasons.length ? `Reason codes: ${observation.reasons.join(', ')}` : null,
   ].filter(Boolean).join('\n')
   return <div role="status" aria-label={`Rotation advisory ${observation.status}`} title={tip}
     data-testid="rotation-publication-notice" data-rotation-status={observation.status}
@@ -36,5 +36,15 @@ export default function RotationPublicationNotice({ summary, error }: { summary:
     <span style={{ color: 'var(--text3)' }}>
       Source as of {source}{checked ? ` · checked ${checked}` : ` · generated ${generated}`}
     </span>
+    {blockers.length > 0 && <div data-testid="rotation-blocker-next" style={{ flexBasis: '100%', display: 'grid', gap: 3, marginTop: 4, fontWeight: 400 }}>
+      {blockers.map(b => <div key={b.code} style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{b.label}</span>
+        <span style={{ color: 'var(--text2)', flex: '1 1 320px', minWidth: 0 }}>{b.what} <b style={{ color: 'inherit' }}>{b.next}</b></span>
+        <details style={{ color: 'var(--text3)', fontSize: '0.9em' }}>
+          <summary style={{ cursor: 'pointer' }}>technical detail</summary>
+          <span style={{ fontFamily: 'monospace' }}>{b.raw}</span>
+        </details>
+      </div>)}
+    </div>}
   </div>
 }

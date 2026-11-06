@@ -67,6 +67,13 @@ Default directory `~/trade-ai-releases/persistent-state/data/coordination/claims
 - **Stale = no heartbeat for 2 hours** (`--stale-hours`, `TRADEAI_AGENT_CLAIMS_STALE_HOURS`). A stale claim
   stops blocking. A new claim over it records `takeover_of`. The old owner's next `heartbeat` is refused
   ("taken over … stop and coordinate").
+- **Succession is containment, not overlap** (2026-11-04). A new claim records a stale predecessor mechanically
+  only when it holds **every** path that predecessor held; two agents touching one shared file are siblings, not
+  a chain. Deliberate partial succession is explicit: `claim --takeover <claim_id>` (repeatable), which refuses a
+  target that is not stale or shares none of the new claim's paths and must work across sessions too — a declared
+  takeover of a stale predecessor owned by another session records `explicit`, not `overlap`. Why: overlap-only
+  recording gave 397 claims 2,628 predecessors of which 98 (3.7 %) were real successions, and two live claims on
+  one file refused every merge (PR #2614).
 - **Shared-additive paths never conflict** (2026-10-23; §15). The files listed in
   `config/agent_claim_shared_paths.json` (docs/INDEX.md, docs/DOCUMENTATION_INDEX.md,
   apps/command-center-v3/package.json, the docs/AGENTS update backlog) can be claimed by any number of sessions.
@@ -389,7 +396,7 @@ it. Merging these files is mechanical, so they are now a **shared-additive** cla
   |---|---|---|
   | `docs/INDEX.md` | regenerate | `python3 scripts/report_docs_inventory.py --write-index` (CI runs `--check-index`) |
   | `docs/DOCUMENTATION_INDEX.md` | append rows | keep both sides' rows on a rebase conflict |
-  | `apps/command-center-v3/package.json` | union_build | the batch builder unions the `"build"` line entries |
+  | `apps/command-center-v3/package.json` | take_main_build | the `"build"` line names no test files (`scripts/run-tests.mjs` discovers them, #2686); on a conflict take main's `"build"` line exactly and never add a test name |
   | `DOCS_AND_AGENTS_UPDATE_BACKLOG.md` (also `~/n8n-maturity-verification/…`) | append rows | append one row; never rewrite another's |
 
 - **Semantics:**
@@ -408,3 +415,39 @@ it. Merging these files is mechanical, so they are now a **shared-additive** cla
   worktree is on a main that has this change, do not list shared paths in your claim; the new gate does not need
   them listed.
 - Tests: `tests/test_agent_claim_shared_paths_20261023.py` (CI gate `config/ci_gates/agent_claim_shared_paths_20261023.json`).
+
+## 16. Policy freshness: every agent works under the AGENTS.md on origin/main (2026-10-28)
+
+Operator, 2026-10-28: "How can we force every agent to, before they start, to look at the latest copy of the
+agents.md and not a cache copy? … How do the agents automatically know to check in to see if there's a new one?"
+
+- **One check, `scripts/lib/policy_freshness.py`.** It fetches origin/main (best effort, `TRADEAI_POLICY_FETCH_TIMEOUT_S`,
+  default 6 s) and compares the blob id of this worktree's `AGENTS.md` (or a pushed commit's) with
+  `origin/main:AGENTS.md`, and parses both `Policy-Version`s. No version is hard-coded.
+  - `OK`: same blob, or the branch edits AGENTS.md on top of main's current copy (its merge-base with origin/main holds
+    main's blob: ahead, not behind) with a Policy-Version not lower than main's.
+  - `STALE`: anything else, including a lower or unreadable version on such a branch (a downgrade is never exempt). Message: `STALE_POLICY: your AGENTS.md is X, origin/main is Y; work from fresh origin/main
+    (scripts/new-worktree.sh) and re-read §0`.
+  - `UNKNOWN`: no origin/main, no AGENTS.md on a side, git failed. **A warning, never a pass**: printed, and work
+    continues.
+  - Offline: the fetch failed, so it compares with the last-fetched origin/main and says when that was.
+- **Where it gates.** `agent_claim.py claim` / `claim --add` / `next` / `take` / `takeover --claim` refuse STALE (exit 1); the pre-commit
+  gate (`scripts/agent_claim_precommit.sh`) and `.githooks/pre-push` refuse STALE before any grant or budget use;
+  `scripts/check_agents_policy_state.py` (agent-governance CI) fails a PR whose head Policy-Version is behind the base
+  branch tip's (a PR that changes the version passes only upward; an unreadable version fails). Nothing overrides
+  STALE: `TRADEAI_CLAIM_OVERRIDE` bypasses only the claim-coverage check after the freshness check has passed, the
+  claim CLI's test skip is an in-process module attribute reachable only inside pytest, and
+  `TRADEAI_POLICY_FETCH_TIMEOUT_S` has a 3 s floor so it cannot force offline mode. The fix is a rebase or a fresh
+  worktree.
+- **What a claim records.** `policy_version`, `policy_blob` (the AGENTS.md blob id) and `policy_check` (OK, UNKNOWN or
+  `skipped_test`); `heartbeat` refreshes version and blob from the worktree.
+- **Version-change broadcast** (`scripts/lib/policy_version_broadcast.py`, run by `scripts/deploy_on_main_poll.py`
+  after each poll; live only on the host timer's `--apply`): when origin/main's Policy-Version changes, every open
+  claim that recorded another version gets `policy_changed/<claim_id>.json`, `status` prints `POLICY CHANGED`, and the
+  operator gets one Telegram line per version through the system send path:
+  `AGENTS.md X is live; N open claims were on Y and have been told`. The first run only records a baseline. State:
+  `policy_broadcast_state.json`. Dry run: `python3 scripts/lib/policy_version_broadcast.py --dry-run`.
+- **Session start (advisory).** `scripts/agent_session_start.sh` prints the freshness line first, STALE loudly; the
+  Cursor start rule (`docs/ops/agent_start/cursor-rule.md`) runs the same command.
+- Tests: `tests/test_policy_freshness_20261028.py`, `tests/test_policy_freshness_gates_20261028.py` (CI gate
+  `config/ci_gates/policy_freshness_20261028.json`).

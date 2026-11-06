@@ -9,6 +9,7 @@ from copy import deepcopy
 from datetime import datetime, timezone, timedelta
 import json
 import hashlib
+import re
 import math
 from pathlib import Path
 from typing import Any
@@ -80,11 +81,37 @@ def _holdings_clock(value, source_field) -> dict:
     return result
 
 
+def _worthless_delisted(row: dict) -> bool:
+    """A delisted holding carried at exactly $0 with no positive mark."""
+    if not row.get("delisted"):
+        return False
+    value, price = _number(row.get("market_value")), _number(row.get("price"))
+    return value == 0 and (price is None or price == 0)
+
+
+def _day_coverage(rows) -> dict:
+    """Sum of the KNOWN day changes plus what was left out, by row and value.
+
+    One holding without a day change used to make the whole figure None, so a
+    single unpriced line blanked TODAY for every account. The known part is a
+    real number; the unknown part is reported beside it, never guessed.
+    """
+    known = [r for r in rows if _number(r.get("day_change")) is not None]
+    unknown = [r for r in rows if _number(r.get("day_change")) is None]
+    return {"known_usd": round(sum(_number(r["day_change"]) for r in known), 2) if known else None,
+            "complete": bool(rows) and not unknown,
+            "known_rows": len(known), "unknown_rows": len(unknown),
+            "unknown_value_usd": round(sum(_number(r.get("market_value")) or 0 for r in unknown), 2),
+            "unknown_accounts": sorted({r.get("account_id") or "" for r in unknown} - {""})}
+
+
 def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     """One holdings aggregate for every display, including all account rows.
 
     Total/value/day P&L come from holdings rows, not stale account summaries or
-    another quote clock. A missing non-cash day change is unknown, not zero.
+    another quote clock. A missing non-cash day change is unknown, not zero:
+    the day figure is the sum of the known rows, flagged incomplete, with the
+    unknown rows and their value named (``day_pl_coverage``).
     Position count is distinct held account+symbol, non-cash, value >= $100.
     """
     from .portfolio_positions import is_cash
@@ -97,10 +124,18 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
         r["is_cash"] = is_cash(r)
         if r["is_cash"] and r.get("day_change") is None:
             r["day_change"] = 0.0
+        elif r.get("day_change") is None and _worthless_delisted(r):
+            # A delisted line carried at $0 with no mark cannot move: its day
+            # change is a known zero, not an unknown. A morning broker reload
+            # re-adds these rows without a day_change, and one of them used to
+            # blank TODAY for the whole book (2026-10-26).
+            r["day_change"] = 0.0
+            r["day_change_basis"] = "delisted_zero_value"
         rows.append(r)
     total = _sum_known(rows, "market_value") if rows else None
     cash = _sum_known([r for r in rows if r["is_cash"]], "market_value") if rows else None
-    day = _sum_known(rows, "day_change") if rows else None
+    day_cov = _day_coverage(rows)
+    day = day_cov["known_usd"]
     position_field = "positions_built_at" if holdings_doc.get("positions_built_at") else "data_as_of"
     clocks = {"positions": _holdings_clock(holdings_doc.get(position_field), position_field),
               "valuation": _holdings_clock(holdings_doc.get("generated_at"), "generated_at"),
@@ -120,16 +155,28 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
         dates = [_timestamp(_holdings_clock(r.get("broker_position_as_of_at") or r.get("broker_position_as_of") or r.get("as_of"),
                                            "broker_position_as_of_at/broker_position_as_of/as_of")["as_of"]) for r in group]
         dates = [d for d in dates if d]
+        acov = _day_coverage(group)
         accounts.append({"account_id": account, "account_label": account_label(account),
                          "total_usd": _sum_known(group, "market_value"),
                          "cash_usd": _sum_known([r for r in group if r["is_cash"]], "market_value"),
-                         "day_pl_usd": _sum_known(group, "day_change"),
+                         "day_pl_usd": acov["known_usd"],
+                         "day_pl_complete": acov["complete"],
+                         "day_pl_unknown_rows": acov["unknown_rows"],
+                         "day_pl_unknown_value_usd": acov["unknown_value_usd"],
                          "status": summary.get("state") or "UNCLASSIFIED",
                          "as_of": min(dates).isoformat() if dates else None})
     reason = "holdings unavailable" if not rows else (
-        "holding value or day P&L missing" if total is None or day is None else None)
+        "holding value or day P&L missing" if total is None or day is None else
+        (f"day P&L partial: {day_cov['unknown_rows']} holding row(s) without a day change "
+         f"(${day_cov['unknown_value_usd']:,.2f} of value) excluded" if not day_cov["complete"] else None))
     reason = reason or (aggregate_clock["gap"] or {}).get("reason")
     return {"total_usd": total, "cash_usd": cash, "day_pl_usd": day,
+            # Coverage travels with the day figure. Partial is shown as partial,
+            # never blanked and never silently called complete.
+            "day_pl_complete": day_cov["complete"],
+            "day_pl_coverage": {"known_rows": day_cov["known_rows"], "unknown_rows": day_cov["unknown_rows"],
+                                "unknown_value_usd": day_cov["unknown_value_usd"],
+                                "unknown_accounts": day_cov["unknown_accounts"]},
             "positions_as_of": clocks["positions"]["as_of"],
             "valuation_as_of": clocks["valuation"]["as_of"], "quote_as_of": clocks["quote"]["as_of"],
             "clock_provenance": clocks,
@@ -149,8 +196,10 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
 
 
 _ACTIVE_STOP_STATES = {"active", "working", "open", "new", "accepted", "partially_filled"}
+# Schwab reports a resting STOP order as AWAITING_STOP_CONDITION; brokers/order_lifecycle.py maps it to
+# pending_activation. Missing here, a resting stop showed as state "unknown" on Risk and in the prospectus stop plan.
 _PENDING_STOP_STATES = {"pending_activation", "pending", "awaiting_parent_order", "awaiting_condition",
-                        "pending_new", "queued", "awaiting_manual_review"}
+                        "awaiting_stop_condition", "pending_new", "queued", "awaiting_manual_review"}
 _DEAD_STOP_STATES = {"canceled", "cancelled", "rejected", "expired", "replaced", "not_in_read"}
 
 
@@ -186,26 +235,114 @@ def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) 
             "resting_heat_pct": round(loss / total_usd * 100, 3) if total_usd and loss is not None else None}
 
 
-def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=None) -> dict:
+_ORDER_ID_IN_DESCRIPTION = re.compile(r"\border\s+(\d{6,})", re.IGNORECASE)
+# On one broker read every observation shares captured_at; a working order outranks a filled one.
+_STATE_RANK = {"active": 3, "pending_activation": 2, "unknown": 1, "filled": 0}
+
+
+def _when(raw) -> datetime | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, datetime):
+        return raw if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
+    try:
+        at = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+
+
+def _norm_state(raw) -> str:
+    raw = str(raw or "").lower().replace(" ", "_")
+    return ("active" if raw in _ACTIVE_STOP_STATES else "pending_activation" if raw in _PENDING_STOP_STATES
+            else "filled" if raw == "filled" else "unknown")
+
+
+def fill_ledger(broker_rows, *, db_query=None, ledger_rows=None) -> dict | None:
+    """order_id -> {"sold_at", "rebought_at"} for every FILLED stop observation, from the trade ledger.
+
+    Schwab's order read keeps returning filled orders for weeks, so a filled observation alone does not say whether
+    the sale is history (already in the ledger, position since re-bought) or still waiting for the holdings sync.
+    The ledger names each fill's order id ("order <id>" in ``trade_transactions.description``). ``None`` means
+    the ledger is unreadable (callers then say so instead of asserting a state). Read-only.
+    """
+    filled = [r for r in (broker_rows or []) if str(r.get("status") or "").lower() == "filled" and r.get("order_id")]
+    if not filled:
+        return {}
+    if ledger_rows is None:
+        symbols = sorted({str(r.get("symbol") or "").upper() for r in filled})
+        ledger_rows = _query_rows(
+            db_query,
+            "SELECT trade_time, trade_date, action, symbol, account, description FROM trade_transactions "
+            "WHERE upper(symbol) = ANY(%s) AND action IN ('Buy', 'Sell') ORDER BY trade_time",
+            (symbols,))
+        if ledger_rows is None:
+            return None
+    sales, buys = {}, {}
+    for t in ledger_rows:
+        at = _when(t.get("trade_time")) or _when(t.get("trade_date"))
+        if at is None:
+            continue
+        key = (canonical_key(t.get("account")), str(t.get("symbol") or "").upper())
+        action = str(t.get("action") or "").lower()
+        if action == "buy":
+            buys.setdefault(key, []).append(at)
+        elif action == "sell":
+            m = _ORDER_ID_IN_DESCRIPTION.search(str(t.get("description") or ""))
+            if m:
+                sales[m.group(1)] = (key, at)
+    out = {}
+    for r in filled:
+        oid = str(r.get("order_id"))
+        if oid not in sales:
+            continue
+        key, sold_at = sales[oid]
+        later = [b for b in buys.get(key, []) if b > sold_at]
+        out[oid] = {"sold_at": sold_at.isoformat(), "rebought_at": min(later).isoformat() if later else None}
+    return out
+
+
+def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=None, fills=None,
+             holding_updated_at=None) -> dict:
     """Display-only stop precedence by canonical account+symbol, including state.
 
     ``broker_rows`` are persisted stop_last_known observations, never a broker
     request. Terminal observations cannot become active protection. A planned
     level is displayed but does not prove a resting broker order exists.
+
+    ``fills`` (from ``fill_ledger``) settles a FILLED observation: when the ledger holds its sale and the position
+    was re-bought, or holdings were refreshed after the sale, the fill is history and never "awaiting sync"
+    (2026-10-31: a stopped-out and re-bought name kept reading "awaiting holdings sync"). Without
+    ``fills`` a filled state says what it is waiting for and since when instead of asserting a stale state.
     """
     now = now or datetime.now(timezone.utc)
     account, symbol = canonical_key(account), str(symbol or "").upper()
     matches = [r for r in (broker_rows or []) if canonical_key(r.get("account")) == account
                and str(r.get("symbol") or "").upper() == symbol]
-    # The newest observation for each order wins. Retain a filled observation
-    # when no working or pending order remains, so awaiting sync stays visible.
+    # The newest observation for each order wins.
     latest = {}
     for r in matches:
         key = str(r.get("order_id") or "position")
         if key not in latest or str(r.get("captured_at") or "") > str(latest[key].get("captured_at") or ""):
             latest[key] = r
-    viable = [r for r in latest.values() if str(r.get("status") or "").lower() not in _DEAD_STOP_STATES]
-    row = max(viable, key=lambda r: str(r.get("captured_at") or ""), default={})
+    held_at = _when(holding_updated_at)
+    history = None
+    viable = []
+    for r in latest.values():
+        status = str(r.get("status") or "").lower()
+        if status in _DEAD_STOP_STATES:
+            continue
+        info = (fills or {}).get(str(r.get("order_id"))) if status == "filled" else None
+        if info:
+            sold_at, rebought_at = _when(info.get("sold_at")), _when(info.get("rebought_at"))
+            if sold_at and ((rebought_at and rebought_at > sold_at) or (held_at and held_at > sold_at)):
+                if history is None or sold_at > _when(history["filled_at"]):
+                    history = {"filled_at": sold_at.isoformat(),
+                               "rebought_at": rebought_at.isoformat() if rebought_at else None}
+                continue  # the sale is settled history; the current position is a new lot
+        viable.append(r)
+    row = max(viable, key=lambda r: (str(r.get("captured_at") or ""), _STATE_RANK.get(_norm_state(r.get("status")), 0)),
+              default={})
     raw_state = str(row.get("status") or "").lower().replace(" ", "_")
     state = ("active" if raw_state in _ACTIVE_STOP_STATES else "pending_activation" if raw_state in _PENDING_STOP_STATES
              else "filled" if raw_state == "filled" else "unknown" if row else "none")
@@ -226,11 +363,32 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
                 break
     meta = _evidence("stop_last_known" if row else "stops.json", at, now,
                      reason="stop state not recorded" if state == "unknown" else None)
+    note = None
+    if state == "filled":
+        seen = _when(row.get("captured_at"))
+        seen_label = _et_label(seen) if seen else "an unrecorded time"
+        info = (fills or {}).get(str(row.get("order_id")))
+        if fills is None:
+            note = f"stop filled (broker read {seen_label}) · sale not yet checked against the trade ledger"
+        elif not info:
+            note = f"stop filled (broker read {seen_label}) · waiting for the sale to reach the trade ledger"
+        elif held_at:
+            note = (f"stop filled {_et_label(_when(info['sold_at']))} · waiting for the holdings sync"
+                    f" (holdings last updated {_et_label(held_at)})")
+        else:  # no holding context (e.g. the live-stops route): state the recorded fact, claim no wait
+            note = f"stop filled {_et_label(_when(info['sold_at']))} · sale recorded in the trade ledger"
+    elif history:
+        filled_label = _et_label(_when(history["filled_at"]))
+        rebought = _when(history.get("rebought_at"))
+        note = (f"previous stop filled {filled_label}"
+                + (f" · re-bought {_et_label(rebought)}" if rebought else " · holdings refreshed since")
+                + ("" if state in ("active", "pending_activation") else " · no broker stop on the current position"))
     return {"account_id": account, "account_label": account_label(account), "symbol": symbol,
             "stop_price": sp, "stop_source": source, "stop_state": state,
             "stop_status_raw": row.get("status"), "stop_captured_at": meta["as_of"],
             "broker_protected": state == "active" and sp is not None and sp > 0,
-            "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"), **meta}
+            "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"),
+            "stop_note": note, "stop_history": history, **meta}
 
 
 _SOURCE_LABELS = {"cio_opportunity_projection": "CIO opportunity review", "cio_decisions": "CIO decision",
@@ -753,6 +911,49 @@ def risk_payload(*, root=None, now=None, db_query=None, inputs=None, document=No
                                                                                       ("source", "as_of", "stale", "gap")}}
 
 
+def _today_census(prior: dict, p: dict) -> dict:
+    """Recount TODAY's account census from the SAME rows the figure came from.
+
+    The legacy census was built before this overlay, from raw holdings keys
+    (schwab_roth) against a snapshot keyed canonically (schwab_roth_ira), and it
+    counted an unknown (None) day as "flat". After the overlay replaced the
+    figures, the header said "5/5 represented, all zero change" over a TODAY of
+    None (2026-10-26). Keys here are canonical; None is missing, never zero; an
+    account whose figure leaves rows out is named as partial.
+    """
+    linked = {canonical_key(a) for key in ("contributing_accounts", "zero_change_accounts",
+                                           "empty_accounts", "missing_accounts")
+              for a in (prior.get(key) or [])} - {""}
+    rows = {r["account_id"]: r for r in p.get("accounts") or []}
+    empty = sorted({canonical_key(a) for a in (prior.get("empty_accounts") or [])} - set(rows) - {""})
+    contributing, zero_change, missing, partial = [], [], [], []
+    for acct in sorted((linked | set(rows)) - set(empty)):
+        row = rows.get(acct)
+        change = _number((row or {}).get("day_pl_usd"))
+        if change is None:
+            missing.append(acct)
+            continue
+        (contributing if change != 0 else zero_change).append(acct)
+        if row.get("day_pl_complete") is False:
+            partial.append(acct)
+    cov = p.get("day_pl_coverage") or {}
+    funded = len(contributing) + len(zero_change) + len(missing)
+    represented = len(contributing) + len(zero_change)
+    unknown_rows = int(cov.get("unknown_rows") or 0)
+    return {"linked_account_count": funded + len(empty), "funded_account_count": funded,
+            "represented_account_count": represented, "contributing_accounts": contributing,
+            "zero_change_accounts": zero_change, "empty_accounts": empty, "missing_accounts": missing,
+            "partial_accounts": partial, "unknown_rows": unknown_rows,
+            "unknown_value_usd": cov.get("unknown_value_usd"),
+            "complete": not missing and p.get("day_pl_complete") is not False,
+            "coverage_reason": (
+                f"{represented}/{funded} funded account(s) represented"
+                + (f"; {len(empty)} empty ({', '.join(empty)})" if empty else "")
+                + (f"; MISSING {', '.join(missing)}" if missing else "")
+                + (f"; PARTIAL {', '.join(partial)}: {unknown_rows} holding row(s) without a day change excluded"
+                   if partial else ""))}
+
+
 def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
     """Preserve unrelated Overview fields, replace shared financial/display facts."""
     doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
@@ -771,10 +972,13 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     today_pnl.update(total_change=p["day_pl_usd"], calculated_at=p["valuation_as_of"],
                      session_date=str(p["quote_as_of"])[:10] if p["quote_as_of"] else None,
                      mark_source=p["quote_source"])
+    today_pnl.update(_today_census(today_pnl, p))
     out.setdefault("periods", {})["1D"] = {"change": p["day_pl_usd"], "change_pct": p["day_pl_pct"],
                                            "estimated": False, "source": p["source"]}
     out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": r["day_pl_usd"],
-                                                 "account_label": r["account_label"], "as_of": r["as_of"]}
+                                                 "account_label": r["account_label"], "as_of": r["as_of"],
+                                                 "complete": r.get("day_pl_complete"),
+                                                 "unknown_rows": r.get("day_pl_unknown_rows")}
                                for r in p["accounts"]}
     aggregate = out.setdefault("portfolio_aggregate", {})
     aggregate["aggregate_value"] = p["total_usd"]
@@ -1078,7 +1282,9 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
             continue
         state = p.get("stop_state")
         reason = ("Stop awaiting activation" if state == "pending_activation"
-                  else "Stop filled · awaiting holdings sync" if state == "filled" else "No active broker stop observed")
+                  else ((p.get("stop_note") or "stop filled · awaiting holdings sync")[:1].upper()
+                        + (p.get("stop_note") or "stop filled · awaiting holdings sync")[1:]) if state == "filled"
+                  else "No active broker stop observed")
         items.append(item(f"protection:{p['account_id']}:{p['symbol']}", "protect", "P1",
                           f"{p['symbol']} · {p['account_label']}", reason,
                           "Review protection", "/v3/risk", "cio_truth.stops",
@@ -1115,20 +1321,23 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")
+    fills = inputs.get("stop_fills") if "stop_fills" in inputs else fill_ledger(broker, db_query=db_query)
     positions = []
     for r in portfolio["holdings"]:
         if r["is_cash"] or r.get("is_loan") or (_number(r.get("shares", r.get("quantity"))) or 0) <= 0:
             continue
         p = deepcopy(r)
         p["basis_truth"] = basis_for(p, mark=_number(p.get("price")))
-        stop = stop_for(r["account_id"], r.get("symbol"), broker_rows=broker, planned=planned, now=now)
+        stop = stop_for(r["account_id"], r.get("symbol"), broker_rows=broker, planned=planned, now=now, fills=fills,
+                        holding_updated_at=r.get("updated_at"))
         p.update({k: v for k, v in stop.items() if k not in ("source", "as_of", "age_hours", "stale", "gap")})
         p["stop_evidence"] = {k: stop[k] for k in ("source", "as_of", "age_hours", "stale", "gap")}
         positions.append(p)
     counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= 100]
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
-                                      "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence")} for p in positions]
+                                      "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
+                                      "stop_history")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
              "position_count": portfolio["position_count"],
@@ -1191,7 +1400,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     stops["filled_awaiting_sync"] = [
         {"symbol": p["symbol"], "account_id": p["account_id"], "account_label": p.get("account_label"),
          "stop_price": p.get("stop_price"), "captured_at": p.get("stop_captured_at"),
-         "reason": "stop filled · awaiting holdings sync"}
+         "reason": p.get("stop_note") or "stop filled · awaiting holdings sync"}
         for p in counted_positions if p["stop_state"] == "filled"] if broker is not None else []
     stops["nearest"] = min(distances, key=lambda r: abs(r["distance_pct"]), default=None)
     stops["awaiting_fill_count"] = len(stops["awaiting_fill"])

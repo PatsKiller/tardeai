@@ -12,6 +12,8 @@ export type RulebookPolicy = Omit<Policy, 'counts' | 'audit' | 'rules'> & {
   counts_measured?: boolean
   section_counts?: Record<string, number>
   section_status?: Record<string, string>
+  policy_version?: string | null
+  last_reviewed?: string | null
   audit: RulebookAudit
 }
 
