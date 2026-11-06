@@ -424,8 +424,13 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-28 conflict-resolver: n8n-native learn dispatcher row (W8; no host line). 2026-10-29 live flip:
         # shadow -> canary, dispatch live, live_arg --shadow --state-root $STATE_ROOT (ledger-writing, no notification).
         "conflict-resolver",
+        # 2026-11-04 site-audit: n8n-native capture lane, NEVER_SCHEDULED, no n8n workflow installed yet and no
+        # host line ever existed (SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104 §2.1; tests/test_site_audit_lane_20261104.py).
+        # Its scheduler expression is the workflow name, not the dispatcher, so it is asserted separately below.
+        "site-audit",
     }
-    assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
+    assert all(native[lane]["scheduler"]["expression"] == "dispatcher"
+               for lane in n8n_native_lanes if lane != "site-audit")
     ask_native={"cio-ask-lifecycle": "0 * * * *", "cio-ask-material-events": "*/5 * * * *"}
     allow={entry["lane_id"]: entry for entry in json.loads((ROOT/"config/n8n_run_allowlist.json").read_text())["lanes"]}
     for lane,cadence in ask_native.items():
