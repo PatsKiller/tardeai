@@ -6,6 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubPanel, BB, T, TYPE, RAIL, numStyle, terminalButton, focusStyle } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
+import { humanizeIdentifier } from '../lib/displayLabels'
 
 // v3 Watchpool & Directives — operator watch directives (ticker/sector/trend) + the unified
 // strategy_watchpool, with the shared provenance pill row. Advisory; Hermes-firewall preserved.
@@ -21,6 +22,21 @@ const STATUS_LABELS: Record<string, { label: string; tip: string }> = {
   'monitored no qualify': { label: 'Monitored — not qualified', tip: 'Monitored — has not met qualification criteria yet' },
 }
 const humanStatus = (s?: string) => STATUS_LABELS[String(s || '').toLowerCase()] || { label: s || '—', tip: s || '' }
+
+// FQ-080: the Bucket column carries a freshness/loop code (MULTI_DAY, LONG_CYCLE, …). It reads as words like every
+// other cell, and the raw token stays in the chip's title so nothing is lost. An unknown code is humanised rather
+// than printed verbatim — a new bucket must not leak `SOME_NEW_CODE` onto the page.
+const BUCKET_LABELS: Record<string, string> = {
+  multi_day: 'Multi-day',
+  long_cycle: 'Long-term',
+  intraday: 'Intraday',
+  short_cycle: 'Short-term',
+}
+const bucketLabel = (b?: string): string => {
+  const s = String(b || '').trim()
+  if (!s) return '?'
+  return BUCKET_LABELS[s.toLowerCase()] || humanizeIdentifier(s.toLowerCase()) || s
+}
 
 const divTone = (d?: string): 'green' | 'amber' | 'red' | 'slate' =>
   (({ aligned: 'green', mixed: 'amber', divergent: 'red' } as any)[d || ''] || 'slate')
@@ -103,6 +119,25 @@ function DirectiveDrawer({ id, onClose }: { id: number; onClose: () => void }) {
       </div>
     </div>
   )
+}
+
+// FQ-080: the main list printed engine vocabulary — `cio` / `advisory` chips, lower-case filter buttons and a raw
+// CIRCULATING/COLD surface-health enum. These name the same facts in operator words; the raw value stays in the
+// title so nothing is lost (operator page audit, FQ-080).
+const DESK_LABEL: Record<string, string> = { cio: 'CIO desk', advisory: 'Advisory desk', defense: 'Defense desk' }
+const deskLabel = (v: unknown) => DESK_LABEL[String(v || '').toLowerCase()] || (v ? String(v) : 'Unattributed desk')
+// FQ-080 (lead ruling 2026-11-05): the pool's middle column printed the engine key verbatim
+// (`core_growth_compounder`). The cell now reads in operator words and the raw id moves to the title.
+const strategyLabel = (v: unknown) => humanizeIdentifier(v) || 'Unnamed strategy'
+const loopLabel = (v: unknown) => {
+  const s = String(v || '').toUpperCase()
+  // api_v2 emits four states (CIRCULATING / REVERSE_ONLY / FORWARD_ONLY / COLD); mapping two of them printed the
+  // engine key for the other half (cc-deepseek's re-check at 89d4c9b84). Wording: what is flowing, in operator words.
+  if (s === 'CIRCULATING') return 'Loop circulating'
+  if (s === 'REVERSE_ONLY') return 'Loop back only — no forward activity'
+  if (s === 'FORWARD_ONLY') return 'Loop forward only — no research returning'
+  if (s === 'COLD') return 'Loop cold'
+  return v ? `Loop: ${String(v)}` : 'Loop health unknown'
 }
 
 export default function WatchpoolHub({ onDrill, embedded }: Props) {
@@ -252,7 +287,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
           </Chip>
           {twHealth && (
             <Chip kind="state" tone={twHealth === 'CIRCULATING' ? 'green' : twHealth === 'COLD' ? 'slate' : 'amber'}
-              title="two-way loop health">{twHealth}</Chip>
+              title={`two-way loop health: ${String(twHealth)}`}>{loopLabel(twHealth)}</Chip>
           )}
           {twReverse && (
             <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
@@ -271,7 +306,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                 background: deskFilter === f ? BB.amberDim : BB.bgShift,
                 color: deskFilter === f ? BB.amber : BB.text2,
                 border: `1px solid ${deskFilter === f ? BB.amber : BB.border}`,
-              }}>{f}</button>
+              }}>{f === 'all' ? 'All desks' : deskLabel(f)}</button>
           ))}
         </div>
         {deskSuggestions.length === 0 ? (
@@ -294,7 +329,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                     endpoint: `/api/v2/watch/provenance/${h.symbol}`,
                     rows: [h],
                   })}>{h.symbol}</b>
-                <Chip kind="metric">{h.surfaced_by}</Chip>
+                <Chip kind="metric" title={`surfaced by ${String(h.surfaced_by || "unknown")}`}>{deskLabel(h.surfaced_by)}</Chip>
                 <span style={{ fontSize: TYPE.xs, color: BB.text2, flex: '1 1 160px' }}>
                   {h.label || h.directive_label || `directive #${h.directive_id}`}
                 </span>
@@ -390,7 +425,9 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                       <span key={i} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', fontSize: TYPE.xs, padding: '2px 6px', borderRadius: 2, background: BB.bgShift }}>
                         <b style={{ ...numStyle, color: BB.text0, cursor: 'pointer' }}
                           onClick={() => onDrill({ title: `${h.symbol} — provenance`, subtitle: d.label, endpoint: `/api/v2/watch/provenance/${h.symbol}`, rows: [h] })}>{h.symbol}</b>
-                        <Chip kind="metric">{h.surfaced_by}</Chip>
+                        {/* FQ-080 P3 (cc-deepseek-8, at head f84a04507): one field, one reading — the queue chip
+                            above renders deskLabel(h.surfaced_by), so the expanded hits render the same words. */}
+                        <Chip kind="metric" title={`surfaced by ${String(h.surfaced_by || "unknown")}`}>{deskLabel(h.surfaced_by)}</Chip>
                         {h.divergence && <Chip kind="state" tone={divTone(h.divergence)} title="internal vs Street">{h.divergence}</Chip>}
                         <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>{(h.promotion_status || '').replace(/_/g, ' ').toLowerCase()}</span>
                         {h.promotion_status === 'STAGED_FOR_REVIEW' && (
@@ -436,8 +473,10 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                        borderLeft: `3px solid ${poolRail(r.current_status)}`, cursor: 'pointer', fontSize: TYPE.sm,
                        ...(ri === focusIdx ? { background: BB.bgShift } : {}), ...focusStyle(ri === focusIdx) }}>
               <span style={{ ...numStyle, flex: '0 0 64px', fontWeight: 700, color: BB.text0 }}>{r.symbol}</span>
-              <span style={{ flex: '0 0 160px', color: BB.text2, fontSize: TYPE.xs }}>{r.strategy_id}</span>
-              <span style={{ flex: '0 0 96px' }}><Chip kind="metric">{r.bucket || '?'}</Chip></span>
+              {/* FQ-080 / FQ-132: the middle column is a strategy a person reads, not the engine's key. The raw id stays
+                  in the title (and in the drill subtitle) so nothing is lost. */}
+              <span title={`strategy ${String(r.strategy_id ?? 'unknown')}`} data-pool-strategy style={{ flex: '0 0 160px', color: BB.text2, fontSize: TYPE.xs }}>{strategyLabel(r.strategy_id)}</span>
+              <span style={{ flex: '0 0 96px' }}><Chip kind="metric" title={`bucket ${String(r.bucket || 'unknown')}`}>{bucketLabel(r.bucket)}</Chip></span>
               <span title={humanStatus(r.current_status).tip} style={{ flex: '0 0 110px', color: BB.text2, fontSize: TYPE.xs }}>{humanStatus(r.current_status).label}</span>
               <span style={{ flex: '1 1 auto', display: 'flex', gap: 5, alignItems: 'center' }}>
                 <Chip kind="metric">{r.origin_system || 'screener'}</Chip>
