@@ -558,30 +558,24 @@ def compute_period_returns(portfolio: Dict, state_dir: Path) -> Dict:
             return total if found and total > 0 else None
         return None
 
-    acct_summaries = portfolio.get("account_summaries", {})
-    # Build summaries from holdings if missing (common for fidelity_rollover)
-    if not acct_summaries:
-        acct_summaries = {}
+    # Per-account value = the sum of that account's holdings rows, the same rows that make
+    # portfolio_totals.total_value. FU-007: this used to start from portfolio["account_summaries"]
+    # (which already carries each account's total) and ADD every holding's market_value onto it,
+    # in place, so every per-account value and end_value was exactly 2x and the caller's
+    # account_summaries were corrupted for every later stage.
+    acct_values: Dict[str, float] = {}
     for h in portfolio.get("holdings", []) or []:
         ak = h.get("account") or ""
         if not ak:
             continue
-        acct_summaries.setdefault(ak, {"total_value": 0})
         try:
-            acct_summaries[ak]["total_value"] = float(acct_summaries[ak].get("total_value") or 0) + float(h.get("market_value") or 0)
+            acct_values[ak] = acct_values.get(ak, 0.0) + float(h.get("market_value") or 0)
         except (TypeError, ValueError):
-            pass
+            continue
 
     accounts_out = {}
     for acct_key, label in account_labels.items():
-        acct_cv = acct_summaries.get(acct_key, {}).get("total_value", 0) or 0
-        if acct_cv <= 0:
-            # Live holdings may use fidelity_rollover while summaries still say 401k
-            acct_cv = sum(
-                float(h.get("market_value") or 0)
-                for h in portfolio.get("holdings", []) or []
-                if h.get("account") == acct_key
-            )
+        acct_cv = round(acct_values.get(acct_key, 0.0), 2)
         if acct_cv <= 0:
             continue
         acct_holdings = [h for h in portfolio.get("holdings", [])
