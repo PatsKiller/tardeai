@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "dip_list_20261106",
+  "files": [
+    "tests/test_dip_list_20261106.py"
+  ],
+  "anchor": "DIP_LIST_20261106",
+  "comment": [
+    "ANCHOR: DIP_LIST_20261106 — the dip list ranks stressed-group members by drawdown from the 20-session high on",
+    "daily closes (never the sparse Yahoo capture), shows forward P/E at the high only where the analyst history reaches it",
+    "(and says why when not), counts every quality-filter exclusion with its reason, and carries no sizing. The deep brief's",
+    "analyst facts read yahoo_analyst_targets_history, whose targets exist (analyst_consensus_history has none)."
+  ]
+}

@@ -630,6 +630,22 @@ class PgReader:
             self.etf_holdings_note = f"etf_holdings_snapshot unavailable: {type(exc).__name__}"
             return []
 
+    def analyst_history(
+        self, *, start: datetime, end: datetime, symbols: Iterable[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Daily Yahoo analyst records (``yahoo_analyst_targets_history``) dated in [start, end] and written by ``end``:
+        price (captured ~06:10 ET, the prior close), consensus target and rating, analyst count, and only the three
+        ``data.extended`` lists the dip list reads (EPS trend, EPS revisions, earnings dates). Selloff E. Read through the
+        data-broker projection ``analyst_detail.history_window`` (AGENTS.md §7A rule 3), never ``FROM`` the store here."""
+        try:
+            from scripts.lib.data_broker.analyst_detail import history_window
+        except ImportError:  # pragma: no cover -- hub import path
+            from lib.data_broker.analyst_detail import history_window  # type: ignore -- hub path: scripts/ is on sys.path, same module
+        d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
+        return history_window(
+            self._rows, start_date=d0, end_date=d1, written_by=_aware(end), symbols=list(symbols) if symbols is not None else None
+        )
+
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
         events: list[dict[str, Any]] = []
