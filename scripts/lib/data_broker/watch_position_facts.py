@@ -331,8 +331,12 @@ def setup_value(row: dict[str, Any]) -> str:
 
 
 def blocked(row: dict[str, Any]) -> bool:
-    return bool(row.get("conflicts") or (row.get("next_action") or {}).get("kind") == "resolve_conflict"
-                or str(row.get("trade_ai_state") or "").upper() in {"DETERMINISTIC_FAIL", "BLOCK", "BLOCKED", "NOGO", "NO_GO", "AVOID"})
+    return bool(
+        any(c.get("resolved") is not True for c in row.get("conflicts") or [])
+        or (row.get("next_action") or {}).get("kind") == "resolve_conflict"
+        or str(row.get("trade_ai_state") or "").upper()
+        in {"DETERMINISTIC_FAIL", "BLOCK", "BLOCKED", "NOGO", "NO_GO", "AVOID"}
+    )
 
 
 def has_catalyst(row: dict[str, Any]) -> bool:

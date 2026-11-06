@@ -632,6 +632,11 @@ def run(
 
             request = pending_request(root, sym)
             blocker = request_blocker(root, request)
+            if not blocker:
+                try:
+                    published = published_for_request(root, request)
+                except (OSError, ValueError):
+                    blocker = "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
             if blocker:
                 rec = {
                     "schema": "SymbolThesisAcquisitionRun@v1",
@@ -644,10 +649,11 @@ def run(
                     "authority": AUTHORITY,
                     "financial_action": False,
                 }
+                if request.get("identity_binding"):
+                    rec["identity_binding"] = request["identity_binding"]
                 _append_ledger(root, rec)
                 results.append(rec)
                 continue
-            published = published_for_request(root, request)
         rec = (
             {**published, "as_of": _now(), "publication_link_retry": True}
             if published
@@ -666,6 +672,8 @@ def run(
         if apply:
             if request:
                 rec["request_id"], rec["security_guid"] = request.get("request_id"), request.get("security_guid")
+                if request.get("identity_binding"):
+                    rec["identity_binding"] = request["identity_binding"]
                 if rec.get("status") in {"PUBLISHED", "SYNTHESIZED_NO_MATERIAL_CHANGE"}:
                     from scripts.lib.watch_review_publication import link_publication
 

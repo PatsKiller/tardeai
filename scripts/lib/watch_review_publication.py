@@ -8,26 +8,104 @@ authority and concurrency checks. Readers never invoke this module.
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 
 
+def _request_attempts(root, request):
+    from scripts.lib import symbol_thesis_priority as queue
+
+    if not request.get("request_id"):
+        return []
+    return [
+        row
+        for row in queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH), strict=True)
+        if row.get("request_id") == request["request_id"]
+        and str(row.get("symbol") or "").upper() == str(request.get("symbol") or "").upper()
+    ]
+
+
 def pending_request(root, symbol):
     from scripts.lib import symbol_thesis_priority as queue
 
-    state = queue.review_states([symbol], root=root).get(symbol) or {}
+    rows = queue._rows(Path(root).joinpath(*queue.RELPATH))
+    try:
+        state = queue.review_states([symbol], root=root).get(symbol) or {}
+    except (OSError, ValueError):
+        request = next((r for r in reversed(rows) if r.get("symbol") == symbol and r.get("request_id")), None)
+        return {**request, "identity_history_unavailable": True} if request else None
     if not state.get("open") or not state.get("request_id"):
         return None
-    rows = queue._rows(Path(root).joinpath(*queue.RELPATH))
-    return next((r for r in reversed(rows) if r.get("request_id") == state["request_id"]), None)
+    request = next(
+        (r for r in reversed(rows) if r.get("request_id") == state["request_id"] and r.get("symbol") == symbol), None
+    )
+    # Pre-GUID requests contained only a symbol. Revalidate those through the existing
+    # registry at processing time; never rewrite their queue history or treat an
+    # explicitly unresolved/changed modern request as a legacy one (2026-10-27).
+    if not request or any(key in request for key in ("identity_status", "security_guid", "identity_binding")):
+        return request
+    from scripts.lib.identity_carriage import is_registry_guid, resolve_security_identity
+
+    # Once the existing ledger binds a request, a retry must retain that identity.
+    # Otherwise ticker reuse could silently move an old question/publication to a
+    # different security while still passing a fresh current-registry check.
+    known = []
+    try:
+        attempts = _request_attempts(root, request)
+    except (OSError, ValueError):
+        return {**request, "identity_history_unavailable": True}
+    for attempt in attempts:
+        guid = attempt.get("security_guid")
+        if guid is None and "identity_binding" not in attempt:
+            if attempt.get("status") in queue.DONE:
+                return request  # An identity-less publication cannot safely be linked or repurchased.
+            continue
+        binding = attempt.get("identity_binding")
+        if not is_registry_guid(guid) or (
+            "identity_binding" in attempt and (not isinstance(binding, dict) or binding.get("security_guid") != guid)
+        ):
+            return request
+        known.append(attempt)
+    if known:
+        if len({row["security_guid"] for row in known}) != 1:
+            return request
+        first = known[0]
+        guid = first["security_guid"]
+        return {
+            **request,
+            "identity_status": "CONFIRMED",
+            "security_guid": guid,
+            "identity_binding": deepcopy(first.get("identity_binding"))
+            or {
+                "basis": "prior_acquisition_request_identity",
+                "security_guid": guid,
+                "bound_at": first.get("as_of"),
+            },
+        }
+    identity = resolve_security_identity(symbol, root=root)
+    guid = identity.get("security_guid")
+    if identity.get("identity_status") != "CONFIRMED" or not is_registry_guid(guid):
+        return request
+    return {
+        **request,
+        "identity_status": "CONFIRMED",
+        "security_guid": guid,
+        "identity_binding": {
+            "basis": "current_registry_readback_for_legacy_request",
+            "security_guid": guid,
+            "bound_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
 
 
 def request_blocker(root, request, *, identity_resolver=None):
     """Identity quality gate before the owner can reach paid acquisition/synthesis."""
     if not request:
         return None
+    if request.get("identity_history_unavailable"):
+        return "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
     if request.get("identity_status") != "CONFIRMED" or not request.get("security_guid"):
         return "REQUEST_IDENTITY_UNCONFIRMED"
     if identity_resolver is None:
@@ -37,6 +115,17 @@ def request_blocker(root, request, *, identity_resolver=None):
     identity = identity_resolver(request["symbol"], root=root)
     if identity.get("identity_status") != "CONFIRMED" or identity.get("security_guid") != request["security_guid"]:
         return "REQUEST_IDENTITY_CHANGED"
+    try:
+        attempts = _request_attempts(root, request)
+    except (OSError, ValueError):
+        return "REQUEST_IDENTITY_HISTORY_UNAVAILABLE"
+    for attempt in attempts:
+        binding = attempt.get("identity_binding")
+        historical = [attempt.get("security_guid")]
+        if isinstance(binding, dict):
+            historical.append(binding.get("security_guid"))
+        if any(guid is not None and guid != request["security_guid"] for guid in historical):
+            return "REQUEST_IDENTITY_CHANGED"
     return None
 
 
@@ -46,9 +135,19 @@ def published_for_request(root, request):
         return None
     from scripts.lib import symbol_thesis_priority as queue
 
-    rows = queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH))
+    rows = queue._rows(Path(root).joinpath(*queue.LEDGER_RELPATH), strict=True)
     return next(
-        (r for r in reversed(rows) if r.get("request_id") == request["request_id"] and r.get("status") in queue.DONE),
+        (
+            r
+            for r in reversed(rows)
+            if r.get("request_id") == request["request_id"]
+            and r.get("symbol") == request.get("symbol")
+            and r.get("status") in queue.DONE
+            and (
+                r.get("security_guid") == request.get("security_guid")
+                or (r.get("security_guid") is None and not request.get("identity_binding"))
+            )
+        ),
         None,
     )
 
@@ -64,7 +163,6 @@ def _pg_review(guid, status):
 def link_publication(root, request, result, *, store=None, backend=None, registry=None, env=None, pg_reader=None):
     """Called only after the existing acquisition owner published and read back."""
     from scripts.lib import cio_instrument_record as ir
-    from scripts.lib.identity_carriage import resolve_security_identity
 
     root = Path(root)
     pending = {"ok": False, "reason": "canonical_link_pending"}
@@ -78,13 +176,16 @@ def link_publication(root, request, result, *, store=None, backend=None, registr
         return {**pending, "reason": "unchanged_review_not_proven"}
     guid = request.get("security_guid")
     symbol = request.get("symbol")
-    identity = resolve_security_identity(symbol, root=root)
     if (
-        not guid
-        or request.get("identity_status") != "CONFIRMED"
-        or identity.get("identity_status") != "CONFIRMED"
-        or identity.get("security_guid") != guid
+        result.get("symbol") not in (None, symbol)
+        or result.get("security_guid") not in (None, guid)
+        or (request.get("identity_binding") and result.get("security_guid") != guid)
     ):
+        return {**pending, "reason": "publication_identity_unconfirmed_or_changed"}
+    blocker = request_blocker(root, request)
+    if blocker == "REQUEST_IDENTITY_HISTORY_UNAVAILABLE":
+        return {**pending, "reason": "request_identity_history_unavailable"}
+    if not guid or blocker:
         return {**pending, "reason": "request_identity_unconfirmed_or_changed"}
     version = (result.get("review") or {}).get("new_version")
     try:

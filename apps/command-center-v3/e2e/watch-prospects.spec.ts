@@ -2,6 +2,9 @@
  *  the test records every non-GET and fails on any write other than the three existing operator flows it drives. */
 import { expect, test, type Page } from '@playwright/test'
 import { FIXTURE } from '../src/fixtures/watchProspects.fixture'
+import { spawnSync } from 'node:child_process'
+import path from 'node:path'
+import fs from 'node:fs'
 
 async function mockApi(page: Page, writes: string[]) {
   await page.route('**/api/**', async route => {
@@ -100,3 +103,88 @@ test('Classic view keeps the old Intelligence page for one release', async ({ pa
   await expect(page.getByTestId('watch-tab-intelligence')).toHaveText('Classic view')
   await expect(page.getByTestId('watch-prospects')).toHaveCount(0)
 })
+
+for (const width of [1440, 412, 390]) {
+  test(`canonical Watch readiness and factor provenance at ${width}px`, async ({ browser }, info) => {
+    // Compose synthetic source data through the production Python adapter, so the browser
+    // regression covers the actual ordering defect rather than a manually corrected response.
+    const sourceRoot = process.env.WATCH_CONSISTENCY_SOURCE_ROOT || path.resolve('../..')
+    const result = spawnSync(process.env.WATCH_CONSISTENCY_PYTHON || 'python3', ['-c', `
+import json,sys
+sys.path.insert(0,'scripts')
+from scripts.lib.site_payload_reads import canonical_rows
+clock='2026-10-27T20:30:00Z'
+row={
+ 'symbol':'ZZQA','company':'Fictional Instruments','security_guid':'synthetic-guid','identity_status':'CONFIRMED',
+ 'lane':'actionable','stage':'actionable','why':'Review re-entry now','summary':'Source setup conviction 79.',
+ 'conviction':79,'conviction_source':'cio_opportunity_projection','conviction_as_of':clock,'conviction_stale':False,
+ 'conviction_components':[{'key':'technical','label':'Technical','value':70}],'conviction_missing':[],
+ 'stance':'RE_ENTER','conflicts':[],'whats_missing':[],
+ 'next_action':{'kind':'propose','label':'Propose','reason':'Source setup ready'},
+ 'next_trigger':{'label':'Recorded source zone','inside':False},'levels_ref':{},
+ 'price':100,'price_as_of':clock,'rsi':50,'held':False,'surfaces':[],
+ 'evidence_at':clock,'expires_at':None,'stale':False,
+ 'mine':True,'starred':True,'membership':[],'position_state':'never_held',
+ 'conflict_section':{'headline':None,'findings':[],'gap':{'reason':'synthetic producer unavailable'}},
+ 'review_state':{'status':'blocked','label':'Blocked: waiting for stored evidence','open':True,
+                 'request_id':'rr_synthetic','next_run':'Synthetic scheduled run'},
+}
+truth={'stance':'BUY_SETUP','conviction':71,'as_of':clock,'stale':False,'conflicts':[]}
+print(json.dumps(canonical_rows([row],resolver=lambda *a,**kw:truth,projection={})[0]))
+`], { cwd: sourceRoot, encoding: 'utf8' })
+    expect(result.status, result.stderr || result.error?.message).toBe(0)
+    const composed = JSON.parse(result.stdout)
+    const baseURL = String(info.project.use.baseURL)
+    const origin = new URL(baseURL).origin
+    const context = await browser.newContext({ baseURL, viewport: { width, height: 915 }, hasTouch: width < 821 })
+    const page = await context.newPage()
+    const writes: string[] = [], external: string[] = [], errors: string[] = []
+    await page.clock.install({ time: new Date('2026-10-27T21:30:00Z') })
+    page.on('pageerror', error => errors.push(String(error)))
+    await page.routeWebSocket('**/*', ws => ws.close())
+    await page.route('**/*', async route => {
+      const req = route.request(), url = new URL(req.url())
+      if (url.origin !== origin) { external.push(url.href); return route.abort() }
+      if (!url.pathname.startsWith('/api/')) return route.continue()
+      if (req.method() !== 'GET') { writes.push(req.method() + ' ' + url.pathname); return route.abort() }
+      const body = url.pathname === '/api/v3/data-broker/watch-curation'
+        ? url.searchParams.get('review_status') === '1'
+          ? { ok: true, rows: { ZZQA: composed.review_state } }
+          : { ok: true, data: { my_watchlist: { rows: [composed], total: 1, starred: 1, kinds: {},
+            pagination: { total: 1, offset: 0, limit: 25, has_more: false } } } }
+        : url.pathname === '/api/v2/watch/alerts/list' ? { ok: true, data: { alerts: [] } } : { ok: true, data: {} }
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) })
+    })
+    try {
+      await page.goto('/v3/watch')
+      const row = page.getByTestId('watch-row').filter({ has: page.getByRole('button', { name: 'ZZQA', exact: true }) })
+      await expect(row).toHaveAttribute('data-lane', 'forming')
+      await expect(row.locator('.watch-card-setup')).toContainText('CIO review required')
+      await expect(row.locator('.watch-card-setup').getByText('Actionable', { exact: true })).toHaveCount(0)
+      await expect(row.getByTestId('watch-step')).toContainText('Ask the CIO')
+      await row.getByRole('button', { name: 'ZZQA', exact: true }).click()
+      const detail = page.getByTestId('watch-detail')
+      await expect(detail.getByTestId('watch-canonical-conviction')).toContainText('CIO conviction 71')
+      await expect(detail.getByTestId('watch-factor-heading')).toHaveText('Source factor scores · source conviction 79')
+      await expect(detail).toContainText('Source setup context: Source setup conviction 79.')
+      await expect(detail.getByTestId('watch-review-state')).toContainText('Blocked: waiting for stored evidence')
+      const output = process.env.WATCH_CONSISTENCY_PROOF_DIR || info.outputPath('consistency-proof')
+      fs.mkdirSync(output, { recursive: true })
+      await page.screenshot({ path: path.join(output, `watch-consistency-detail-${width}.png`), fullPage: width >= 821 })
+      if (width < 821) {
+        const sheet = page.getByRole('dialog', { name: 'ZZQA · watch record' })
+        const box = await sheet.boundingBox()
+        expect(box && box.y <= 1 && box.height >= 900).toBe(true)
+        const back = sheet.getByRole('button', { name: '← Back', exact: true })
+        const target = await back.boundingBox()
+        expect(target && target.width >= 44 && target.height >= 44).toBe(true)
+        await back.tap()
+        await expect(sheet).toHaveCount(0)
+      }
+      await page.screenshot({ path: path.join(output, `watch-consistency-${width}.png`), fullPage: true })
+      expect(writes).toEqual([])
+      expect(external).toEqual([])
+      expect(errors).toEqual([])
+    } finally { await context.close() }
+  })
+}
