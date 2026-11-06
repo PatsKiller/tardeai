@@ -1,4 +1,6 @@
-// Deploy console P1+P2 — the "not live / in flight" open-PR board (DSN-20261029-deploy-console).
+// Deploy console — in-flight open-PR board with operator clarity (DSN-20261029).
+// GET /api/v2/ops/in-flight + POST /api/v2/ops/in-flight/action. Approve matches Telegram READY.
+//
 // P1 (read-only): fetches GET /api/v2/ops/in-flight (scripts/lib/deploy_in_flight.py) and renders each open PR to
 // main with the same agent / task / PR / blocker facts as coordinator status: owner, current task, publication
 // state (local-only vs published vs merged vs live), review state and CI state bound to the EXACT head, blockers,
@@ -13,6 +15,7 @@
 import { useState, type CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow } from './primitives'
+import DeployGateChecklist from './DeployGateChecklist'
 import { RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import { ageText } from '../lib/releasesSchedules'
 import {
@@ -30,6 +33,7 @@ type Wire = {
   repo?: string
   prs?: Array<Record<string, unknown>> | null
   count?: number | null
+  ready_count?: number | null
   status?: string
   freshness?: 'OK' | 'STALE' | 'UNAVAILABLE'
   source?: string
@@ -37,12 +41,30 @@ type Wire = {
   coordination?: unknown
 }
 
+/** The wire shape this board reads. Re-exported because ReleasesSchedules fronts the same endpoint. */
+export type DeployInFlightWire = Wire
+
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
 const muted: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[2], margin: 0 }
 const tiny: CSSProperties = { fontSize: TYPE.xs, color: TOKENS.text[3], margin: 0 }
 const th: CSSProperties = { padding: '6px 6px', fontSize: TYPE.xs, color: TOKENS.text[3], whiteSpace: 'nowrap', textTransform: 'uppercase', textAlign: 'left', verticalAlign: 'top' }
 const td: CSSProperties = { padding: '6px 6px', fontSize: TYPE.sm, color: TOKENS.text[1], verticalAlign: 'top', textAlign: 'left' }
+
+const statusTone = (s: string | undefined): Tone => {
+  const u = String(s || '').toLowerCase()
+  if (u === 'ready') return 'success'
+  if (u === 'approved') return 'info'
+  if (u === 'conflict' || u === 'blocked') return 'danger'
+  if (u === 'waiting_ci' || u === 'not_described' || u === 'needs_operator' || u === 'draft') return 'warning'
+  if (u === 'files_unverified') return 'warning'
+  return 'neutral'
+}
+
+const prTooltip = (p: InFlightPr): string =>
+  `#${p.number} — ${p.title}\nhead ${p.head_sha}${p.branch ? `\nbranch ${p.branch}` : ''}\nmergeable: ${p.mergeable}` +
+  `${p.is_draft ? '\ndraft' : ''}${p.why_held ? `\nwhy held: ${p.why_held}` : ''}` +
+  `${p.digest_status ? `\nstatus: ${p.digest_status} (${p.digest_reason ?? ''})` : ''}`
 
 const stateTone = (s: string): Tone => {
   const u = String(s || '').toUpperCase()
@@ -159,7 +181,11 @@ function StatusCell({ p }: { p: InFlightPr }) {
       <Chip tone={stateTone(p.merge_state)}>{p.merge_state}</Chip>
       <Chip tone={f.draft.tone}>{f.draft.text}</Chip>
       <Chip tone={f.publication.tone}>{f.publication.text}</Chip>
+      {p.digest_status
+        ? <Chip tone={statusTone(p.digest_status)}>{p.digest_status}{p.is_draft ? ' · draft' : ''}</Chip>
+        : null}
     </ChipRow>
+    {p.next_plain ? <p style={{ ...muted, marginTop: 4 }}>{p.next_plain}</p> : null}
     {p.has_operator_merge ? <div style={tiny}>operator-merge set — approved for the queue</div> : null}
     {p.why_held ? <div style={tiny}>{p.why_held}</div> : null}
     {p.mergeable === 'UNKNOWN' ? <div style={{ ...tiny, color: toneVars('warning').color }}>mergeability not stated (not auto-rebase)</div> : null}
@@ -178,6 +204,9 @@ function ChecksCell({ p }: { p: InFlightPr }) {
       ? <div style={{ ...tiny, color: toneVars('danger').color }}>review head {shortSha(p.work.review.head_sha)} ≠ current</div> : null}
     {p.work.ci.head_sha && p.work.ci.head_sha !== p.head_sha
       ? <div style={{ ...tiny, color: toneVars('danger').color }}>CI head {shortSha(p.work.ci.head_sha)} ≠ current</div> : null}
+    <div style={{ marginTop: 6 }}>
+      <DeployGateChecklist checks={p.checks} mergeable={p.mergeable} />
+    </div>
   </>
 }
 
@@ -196,11 +225,48 @@ function BlockerCell({ p }: { p: InFlightPr }) {
   </>
 }
 
+function PlainEnglishCell({ p }: { p: InFlightPr }) {
+  const [open, setOpen] = useState(false)
+  const pe = p.plain_english
+  const what = pe?.['What changes']
+  const why = pe?.['Why']
+  if (!pe || p.plain_english_missing) {
+    return (
+      <div>
+        <span style={{ overflowWrap: 'anywhere' }}>{p.title}</span>
+        <p style={{ ...muted, color: toneVars('warning').color }}>Plain English missing — Approve stays off (same as Telegram).</p>
+      </div>
+    )
+  }
+  return (
+    <div style={{ display: 'grid', gap: 4, maxWidth: 420 }}>
+      <span style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{what || p.title}</span>
+      {why ? <span style={muted}>{why}</span> : null}
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ ...btn('neutral', false), justifySelf: 'start', fontWeight: 600 }}
+        title="Show the six plain-English answers from the PR">
+        {open ? 'Hide details' : 'More plain English'}
+      </button>
+      {open ? (
+        <dl style={{ margin: 0, display: 'grid', gap: 4 }}>
+          {Object.entries(pe).map(([k, v]) => (
+            <div key={k}>
+              <dt style={{ fontWeight: 700, fontSize: TYPE.xs, color: TOKENS.text[3] }}>{k}</dt>
+              <dd style={{ margin: 0, fontSize: TYPE.sm, overflowWrap: 'anywhere' }}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </div>
+  )
+}
+
 export default function DeployInFlightBoard() {
   const api = useApi<Wire>(IN_FLIGHT_PATH, 60_000)
   const [busy, setBusy] = useState<string | null>(null)   // "approve:2211" | "hold:2211" | "push:2211" | "refresh_hints"
   const [last, setLast] = useState<ActionOutcome | null>(null)
   const [overrideBudget, setOverrideBudget] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
   const data = api.data
   const known = !!data && (KNOWN_SCHEMAS as readonly string[]).includes(String(data.schema ?? ''))
   // A null member in `prs` must not take the board down: it is dropped and counted, the rest still render.
@@ -237,7 +303,6 @@ export default function DeployInFlightBoard() {
   const push = (p: InFlightPr) => post({ action: 'push', branch: p.branch, head_sha: p.head_sha, override: overrideBudget }, `push:${p.number}`)
   const refreshHints = () => post({ action: 'refresh_hints' }, 'refresh_hints')
 
-  // Unchanged authority: the actions' guards are the same as before; review/CI text never enables a button.
   // Row 05 (operator 2026-11-03): a button that is merely disabled still reads as 'this is on you'. A conflicted
   // 8-day-old PR showed an ENABLED Push (it was neither draft nor branch-less). Actions are now rendered only
   // where the operator could actually act, and a row with none says whose step it is instead of showing buttons.
@@ -245,15 +310,30 @@ export default function DeployInFlightBoard() {
   // only the fallback for an older payload that does not carry it.
   const eligible = (p: InFlightPr, a: 'approve' | 'hold' | 'push') => p.operator_actions
     ? (p.operator_actions.eligible ?? []).includes(a) : null
-  const canApprove = (p: InFlightPr) => eligible(p, 'approve') ?? (!p.is_draft && p.mergeable !== 'CONFLICTING' && !p.has_operator_merge)
+  // Operator clarity: Approve only when the digest says READY (can_approve, which now includes the changed-path
+  // hold gate). An ABSENT field is not permission: a backend that does not state the file-based verdict must not
+  // get the button, or the board is back to offering Approve on facts nobody checked (PR 2307 F1). The server's
+  // eligibility list can only take Approve away, never grant it past the READY verdict.
+  const canApprove = (p: InFlightPr) => p.can_approve === true && !p.has_operator_merge && (eligible(p, 'approve') ?? true)
   const canHold = (p: InFlightPr) => eligible(p, 'hold') ?? p.has_operator_merge
   const canPush = (p: InFlightPr) => eligible(p, 'push') ?? (!p.is_draft && p.branch !== '' && p.mergeable !== 'CONFLICTING' && p.next !== 'coordinator')
-  const hasAction = (p: InFlightPr) => canApprove(p) || canHold(p) || canPush(p)
+  // Update branch is an Advanced action: with Advanced off it is not an action the row offers.
+  const hasAction = (p: InFlightPr) => canApprove(p) || canHold(p) || (advanced && canPush(p))
+
+  const approveTitle = (p: InFlightPr) => {
+    if (p.has_operator_merge) return 'Already Approved — Hold to take it back. (operator-merge set)'
+    if (p.can_approve === true) return 'Safe to Approve — same READY rules as Telegram, including its changed-path hold check. Adds operator-merge so Mergify can queue the merge. Does not put this on the live site.'
+    if (p.can_approve !== false) return 'Approve disabled: this server did not state the readiness verdict, so it is unknown — not READY.'
+    return `Approve disabled: ${p.next_plain || p.digest_reason || p.why_held || 'not READY'}`
+  }
 
   return <section data-testid="deploy-in-flight" style={{ display: 'grid', gap: 10 }}>
     <div style={panel}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <h2 style={h2}>In flight · open PRs to main</h2>
+        <div>
+          <h2 style={h2}>In flight · open PRs to main</h2>
+          <p style={tiny}>Nothing in this table is on your live site yet — approving only queues the merge.</p>
+        </div>
         <ChipRow>
           {unavailable && !prs
             ? <Chip tone="warning">UNAVAILABLE</Chip>
@@ -261,20 +341,29 @@ export default function DeployInFlightBoard() {
               ? <Chip tone="neutral">Loading</Chip>
               : <Chip tone={staleHint ? 'warning' : 'neutral'}>{known && data!.freshness === 'UNAVAILABLE' ? 'UNAVAILABLE' : staleHint ? 'STALE' : text(data?.status)}</Chip>}
           {known && typeof data!.count === 'number' ? <Chip tone="neutral">{data!.count} open</Chip> : null}
+          {known && typeof data!.ready_count === 'number'
+            ? <Chip tone={data!.ready_count > 0 ? 'success' : 'neutral'}>{data!.ready_count} READY</Chip>
+            : null}
           {droppedRows > 0 ? <Chip tone="warning">{droppedRows} malformed row{droppedRows > 1 ? 's' : ''} dropped</Chip> : null}
           {data?.generated_at ? <Chip tone="neutral">captured {asOfText(data.generated_at)}</Chip> : <Chip tone="warning">capture time not stated</Chip>}
         </ChipRow>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <button type="button" data-testid="refresh-hints-button" onClick={refreshHints} disabled={busy !== null}
-          style={btn('info', busy !== null)} title="Re-runs scripts/run_cio_hardening_ci.py --write-duration-hints (the self-contained duration-hints refresh).">
-          Refresh hints
-        </button>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: TYPE.sm, color: TOKENS.text[1] }}>
-          <input type="checkbox" checked={overrideBudget} onChange={e => setOverrideBudget(e.target.checked)} />
-          lift push budget (“override”)
+          <input type="checkbox" checked={advanced} onChange={e => setAdvanced(e.target.checked)} data-testid="deploy-advanced-toggle" />
+          Advanced (branch push / hints)
         </label>
+        {advanced ? <>
+          <button type="button" data-testid="refresh-hints-button" onClick={refreshHints} disabled={busy !== null}
+            style={btn('info', busy !== null)} title="Re-runs duration-hints refresh (advanced CI shard tooling).">
+            Refresh hints
+          </button>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: TYPE.sm, color: TOKENS.text[1] }}>
+            <input type="checkbox" checked={overrideBudget} onChange={e => setOverrideBudget(e.target.checked)} />
+            lift push budget (“override”)
+          </label>
+        </> : null}
         {busy ? <Chip tone="info">working…</Chip> : null}
         {last ? <Chip tone={last.ok ? 'success' : 'danger'}>{last.ok ? text(last.outcome, 'done') : text(last.refusal ?? last.error, 'refused')}</Chip> : null}
       </div>
@@ -298,8 +387,8 @@ export default function DeployInFlightBoard() {
           <table className="ops-evidence-table" aria-label="Open pull requests not yet live" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
-                <th style={th}>PR</th><th style={th}>What it is</th><th style={th}>Owner · task</th><th style={th}>State</th>
-                <th style={th}>Review · CI</th><th style={th}>Blocker · next</th><th style={th}>Updated</th><th style={th}>Actions</th>
+                <th style={th}>PR</th><th style={th}>In plain English</th><th style={th}>Owner · task</th><th style={th}>State</th>
+                <th style={th}>Review · CI · gates</th><th style={th}>Blocker · next</th><th style={th}>Updated</th><th style={th}>Your move</th>
               </tr>
             </thead>
             <tbody>
@@ -307,36 +396,41 @@ export default function DeployInFlightBoard() {
                 const f = rowFacts(p)
                 return <tr key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
                   <td data-label="PR" style={td}>
-                    <a href={p.url} target="_blank" rel="noreferrer" style={{ color: TOKENS.primary }}>#{p.number}</a>
+                    <a href={p.url} target="_blank" rel="noreferrer" style={{ color: TOKENS.primary }} title={prTooltip(p)}>#{p.number}</a>{' '}
+                    <span role="img" aria-label="details" title={prTooltip(p)} style={{ cursor: 'help', color: TOKENS.text[3] }}>ⓘ</span>
                     <div style={tiny}>{p.branch || 'branch not stated'}</div>
                     <div style={tiny}>{p.head_sha ? shortSha(p.head_sha) : 'head not stated'}</div>
                   </td>
-                  <td data-label="What it is" style={td}><span style={{ overflowWrap: 'anywhere' }}>{p.title}</span></td>
+                  <td data-label="In plain English" style={td}><PlainEnglishCell p={p} /></td>
                   <td data-label="Owner · task" style={td}><WorkCell p={p} w={p.work} /></td>
                   <td data-label="State" style={td}><StatusCell p={p} /></td>
-                  <td data-label="Review · CI" style={td}><ChecksCell p={p} /></td>
+                  <td data-label="Review · CI · gates" style={td}><ChecksCell p={p} /></td>
                   <td data-label="Blocker · next" style={td}><BlockerCell p={p} /></td>
                   <td data-label="Updated" style={td}>
                     <div style={tiny}>{f.asOf ? asOfText(f.asOf) : 'source time not stated'}</div>
                     <div style={tiny}>{f.source ?? 'source not stated'}</div>
+                    <div style={tiny}>{p.updated_age ?? p.created_age ?? '—'}</div>
+                    {p.created_age && p.updated_age && p.created_age !== p.updated_age
+                      ? <div style={tiny}>opened {p.created_age}</div>
+                      : null}
                   </td>
-                  <td data-label="Actions" style={td}>
+                  <td data-label="Your move" style={td}>
                     {!hasAction(p) ? <span style={tiny}>not yours to act on — {f.next ?? 'the next step belongs to the agent or coordinator'}</span>
                       : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {canApprove(p) && <button type="button" data-testid={`approve-${p.number}`} onClick={() => approve(p)}
                         disabled={busy !== null} style={btn('success', busy !== null)}
-                        title="Adds operator-merge (bound to this head SHA) so Mergify queues the PR.">
+                        title={approveTitle(p)}>
                         Approve
                       </button>}
                       {canHold(p) && <button type="button" data-testid={`hold-${p.number}`} onClick={() => hold(p)}
                         disabled={busy !== null} style={btn('warning', busy !== null)}
-                        title="Removes operator-merge so Mergify will not queue the PR.">
+                        title="Removes Approve (operator-merge) so Mergify will not queue this PR.">
                         Hold
                       </button>}
-                      {canPush(p) && <button type="button" data-testid={`push-${p.number}`} onClick={() => push(p)}
+                      {advanced && canPush(p) && <button type="button" data-testid={`push-${p.number}`} onClick={() => push(p)}
                         disabled={busy !== null} style={btn('info', busy !== null)}
-                        title="Issues a git-push guard grant bound to this branch + head SHA and fast-forward pushes it. Force-push stays refused.">
-                        Push
+                        title="Advanced: issues a git-push guard grant bound to this branch + head SHA and fast-forwards it (force stays refused). Does NOT put the change on your live site.">
+                        Update branch
                       </button>}
                     </div>}
                   </td>
@@ -349,7 +443,10 @@ export default function DeployInFlightBoard() {
         <p style={muted}>
           Approve / Hold reuse the same operator-merge label the Telegram tap already sets; Push writes a bound git-push
           grant and fast-forwards (force stays refused). Every action is operator-session + same-origin CSRF protected and
-          writes a durable receipt. Review and CI text is display only — it never enables an action. {data?.source ? `Source: ${data.source}.` : ''}
+          writes a durable receipt. Review and CI text is display only — it never enables an action.
+          {' '}Approve is enabled only when the PR is READY by the same rules as the Telegram digest, including its
+          changed-path hold check — which this board now runs before offering the button.
+          {data?.source ? ` Source: ${data.source}.` : ''}
         </p>
       </section>
     )}

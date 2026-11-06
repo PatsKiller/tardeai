@@ -162,3 +162,178 @@ export function ciLabel(ci: MainCi | null | undefined): string {
   if (ci.state === 'UNAVAILABLE' || ci.age_s == null) return ci.state
   return `${ci.state} · ${ageText(ci.age_s)}${ci.stale ? ' (stale)' : ''}`
 }
+
+/**
+ * The deploy STOP latch as the page knows it. Tri-state on purpose: `false` means "a current response
+ * measured the latch off", not "the field was missing". An unreadable response, a response that does not
+ * state `effective_stop`, or a retained/stale read is `null` — unknown — and may never be rendered as "off,
+ * promote allowed" (cx-openai-4 R2 at 8cd7fee69).
+ */
+export type StopFacts = { effective: boolean | null; state: string | null; label: string; reason: string | null }
+
+export function stopFacts(wire: ReleasesSchedulesWire | null | undefined, opts: { error?: boolean; stale?: boolean } = {}): StopFacts {
+  const stop = wire?.stop
+  if (!wire || wire.schema !== RELEASES_SCHEDULES_SCHEMA) {
+    return { effective: null, state: stop?.state ?? null, label: 'STOP not read', reason: opts.error ? 'request failed' : 'loading' }
+  }
+  if (!stop || typeof stop.effective_stop !== 'boolean') {
+    return { effective: null, state: stop?.state ?? null, label: 'STOP state not stated', reason: 'the response did not state the STOP latch' }
+  }
+  if (opts.error || opts.stale) {
+    return { effective: null, state: stop.state ?? null, label: 'STOP state stale', reason: opts.error ? 'refresh failed; showing the last response' : 'response is older than 5 minutes' }
+  }
+  return { effective: stop.effective_stop, state: stop.state ?? null, label: stop.effective_stop ? `STOP ${stop.state ?? 'on'}` : 'STOP off', reason: null }
+}
+
+/**
+ * The coach strip's two facts, kept out of the JSX so they can be tested and so "unknown" cannot become a zero.
+ *
+ * A missing board (`inFlight` null) used to render "0 READY to Approve"; a missing next-release (`next` null) or an
+ * unstaked `commits_ahead` used to fall through to a GREEN "Site matches main". Both are affirmative operational
+ * conclusions drawn from an absence, on the strip that tells the operator what to do (codex-cloud F2 at 567486a98).
+ *
+ * Currentness is part of the fact, not decoration: a retained STALE board or a stale comparison is not present
+ * readiness (cx-openai-4 R3 at 8cd7fee69). The historical value may still be shown, but it never drives "ready"
+ * or "matches".
+ */
+export type CoachFacts = {
+  ready: number | null          // null = the board did not state it (not "zero") or the read is not current
+  open: number | null
+  ahead: number | null          // retained distance; may be historical when aheadCurrent is false
+  aheadCurrent: boolean         // the comparison is from a current OK section
+  matches: boolean              // true only when the distance is known CURRENT and zero
+  ciOk: boolean                 // current green, not a stale CI receipt
+  ciCurrent: boolean
+  stop: boolean | null          // null = the STOP latch was not read (not "off")
+  unknown: string | null        // a sentence naming what could not be read, or null when everything is known
+  recommend: string
+}
+
+export function coachFacts(args: {
+  inFlight: { ready_count?: number | null; count?: number | null; freshness?: string } | null
+  next: NextRelease | null
+  stopEffective: boolean | null
+  /** The next_release section state; defaults to OK so callers that only have the value stay honest. */
+  nextFreshness?: Freshness
+  /** The in-flight request state (useApi stale/error included); defaults to OK. */
+  inFlightFreshness?: Freshness
+}): CoachFacts {
+  const { inFlight, next, stopEffective } = args
+  const nextFresh: Freshness = args.nextFreshness ?? 'OK'
+  const inFlightFresh: Freshness = inFlight == null ? 'UNAVAILABLE'
+    : inFlight.freshness && inFlight.freshness !== 'OK' ? (inFlight.freshness === 'UNAVAILABLE' ? 'UNAVAILABLE' : 'STALE')
+    : args.inFlightFreshness && args.inFlightFreshness !== 'OK' ? args.inFlightFreshness : 'OK'
+  const inFlightCurrent = inFlight != null && inFlightFresh === 'OK'
+  const ready = inFlightCurrent && inFlight.ready_count != null ? inFlight.ready_count : null
+  const open = inFlightCurrent && inFlight.count != null ? inFlight.count : null
+  const ahead = next == null ? null : next.is_serving ? 0 : (next.commits_ahead ?? null)
+  const aheadCurrent = next != null && nextFresh === 'OK'
+  const ciCurrent = aheadCurrent && next?.ci?.stale !== true
+  const ciOk = ciCurrent && (next?.ci?.state === 'SUCCESS' || next?.ci?.state === 'OK')
+  const missing: string[] = []
+  if (inFlight == null) missing.push('the open-PR board')
+  else if (!inFlightCurrent) missing.push(`a current open-PR board (the last read is ${inFlightFresh === 'UNAVAILABLE' ? 'unavailable' : 'stale'})`)
+  else if (ready == null) missing.push('its READY count')
+  if (next == null) missing.push('the next-release comparison')
+  else if (!aheadCurrent) missing.push(`a current next-release comparison (the last read is ${nextFresh === 'UNAVAILABLE' ? 'unavailable' : 'stale'})`)
+  else if (ahead == null) missing.push('how far main is ahead of the site')
+  if (stopEffective == null) missing.push('the deploy STOP latch')
+  const unknown = missing.length
+    ? `Could not read ${missing.join(' or ')} — this strip is not saying "nothing needs you"; refresh before acting.`
+    : null
+
+  let recommend: string
+  if (ready == null) {
+    recommend = unknown ?? 'The READY count is not stated — refresh before approving anything.'
+  } else if (ready > 0) {
+    recommend = `${ready} change${ready === 1 ? '' : 's'} ready for your Approve (Job A). Approving queues a merge — it does not update the live site.`
+  } else if (stopEffective === true) {
+    recommend = 'Deploy STOP is on — Job B (put on site) is blocked until STOP is cleared in Ops → Controls.'
+  } else if (stopEffective == null) {
+    recommend = 'The deploy STOP state was not read — check Ops → Controls before Job B (put main on the site).'
+  } else if (!aheadCurrent) {
+    recommend = `The site-vs-main comparison is ${nextFresh === 'UNAVAILABLE' ? 'unavailable' : 'stale'} — refresh before promoting; this is not a "site matches main".`
+  } else if (ahead == null) {
+    recommend = unknown ?? 'Main-vs-site distance is not stated — the site may be behind main.'
+  } else if (ahead > 0 && ciOk) {
+    recommend = `main is ${ahead} commit${ahead === 1 ? '' : 's'} ahead of the site — Job B: promote when you are ready (or wait for auto-promote).`
+  } else if (ahead > 0) {
+    recommend = 'main is ahead of the site, but main CI is not green — wait for green before promote.'
+  } else {
+    recommend = 'Nothing needs you right now — the site is serving main and no PR is READY.'
+  }
+  return { ready, open, ahead, aheadCurrent, matches: ahead === 0 && aheadCurrent, ciOk, ciCurrent, stop: stopEffective, unknown, recommend }
+}
+
+/**
+ * Job B's promote-readiness facts. Kept pure so an unread comparison or an unread STOP latch cannot be
+ * rendered as green by a default in the JSX (cx-openai-4 R1/R2 at 8cd7fee69).
+ */
+export type PromoteFacts = {
+  ahead: number | null          // retained distance; may be historical when aheadCurrent is false
+  aheadCurrent: boolean
+  matches: boolean              // current, measured zero
+  ciGreen: boolean              // current green
+  ciCurrent: boolean
+  stop: boolean | null          // null = the STOP latch was not read (not "off")
+  promoteReady: boolean         // false unless every ingredient is CURRENT and STOP is measured off
+  headline: string
+  badge: string
+  badgeTone: Tone
+  unknown: string | null
+}
+
+export function promoteFacts(args: {
+  next: NextRelease | null
+  stopEffective: boolean | null
+  nextFreshness?: Freshness
+}): PromoteFacts {
+  const { next, stopEffective } = args
+  const fresh: Freshness = args.nextFreshness ?? 'OK'
+  const ahead = next == null ? null : next.is_serving ? 0 : (next.commits_ahead ?? null)
+  const aheadCurrent = next != null && fresh === 'OK'
+  const ciCurrent = aheadCurrent && next?.ci?.stale !== true
+  const ciGreen = ciCurrent && (next?.ci?.state === 'SUCCESS' || next?.ci?.state === 'OK')
+  const ciPending = ciCurrent && next?.ci?.state === 'PENDING'
+  const matches = ahead === 0 && aheadCurrent
+  const promoteReady = stopEffective === false && aheadCurrent && ahead != null && ahead > 0 && ciGreen
+  const missing: string[] = []
+  if (next == null) missing.push('the next-release comparison')
+  else if (!aheadCurrent) missing.push(`a current next-release comparison (the last read is ${fresh === 'UNAVAILABLE' ? 'unavailable' : 'stale'})`)
+  else if (ahead == null) missing.push('how far main is ahead of the site')
+  if (stopEffective == null) missing.push('the deploy STOP latch')
+  const unknown = missing.length
+    ? `Could not read ${missing.join(' or ')} — not saying the site is aligned; refresh before promoting.`
+    : null
+
+  let headline: string
+  if (stopEffective === true) {
+    headline = 'Deploy STOP is latched — promote to the live site is blocked.'
+  } else if (next == null) {
+    headline = 'The next-release comparison was not read — cannot say whether the site and main are aligned.'
+  } else if (!aheadCurrent) {
+    headline = `The site-vs-main comparison is ${fresh === 'UNAVAILABLE' ? 'unavailable' : 'stale'} — not saying they are aligned; refresh before promoting.`
+  } else if (ahead == null) {
+    headline = 'How far main is ahead of the site is not stated — the site may be behind main.'
+  } else if (ahead > 0 && ciGreen && stopEffective === false) {
+    headline = `${ahead} commit${ahead === 1 ? '' : 's'} on main are not on the site yet — ready to promote when you choose.`
+  } else if (ahead > 0 && ciGreen) {
+    headline = `main is ${ahead} commit${ahead === 1 ? '' : 's'} ahead and CI is green, but the deploy STOP state was not read — check Ops → Controls before promote.`
+  } else if (ahead > 0 && ciPending) {
+    headline = 'main is ahead of the site, but exact-SHA CI on main is still pending.'
+  } else if (ahead > 0) {
+    headline = 'main is ahead of the site, but main CI is not green yet — wait before promote.'
+  } else if (stopEffective == null) {
+    headline = 'The site is serving main, but the deploy STOP state was not read — check before trusting auto-promote.'
+  } else {
+    headline = 'Site and main look aligned — nothing waiting to promote.'
+  }
+
+  const badge = promoteReady ? 'promote candidate'
+    : stopEffective === true ? 'STOP'
+      : !aheadCurrent || ahead == null ? 'unknown'
+        : stopEffective == null ? 'STOP not read'
+          : ahead === 0 ? 'serving main' : 'waiting'
+  const badgeTone: Tone = promoteReady ? 'info' : stopEffective === true ? 'danger' : 'neutral'
+  return { ahead, aheadCurrent, matches, ciGreen, ciCurrent, stop: stopEffective, promoteReady, headline, badge, badgeTone, unknown }
+}
