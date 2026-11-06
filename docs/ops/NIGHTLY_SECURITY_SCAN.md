@@ -31,9 +31,21 @@ stores whatever `--version` reports. A tool that is not installed is recorded as
 its install command — never silently skipped.
 
 Receipt: `${TRADEAI_STATE_ROOT:-~/trade-ai-releases/persistent-state}/data/runtime/security_scan/last.json`.
-Alert path: the house Telegram chokepoint (`telegram_alert.send_telegram`, priority from config) —
-the same one every other operator page uses. Dedupe is by finding id against the previous receipt, so
-a known finding is messaged once.
+Alert path: the house Telegram chokepoint (`telegram_alert.send_telegram_outcome`, priority from
+config) — the same one every other operator page uses. Dedupe is by finding id against the previous
+receipt, so a known finding is messaged once.
+
+**Delivery is confirmed, not assumed.** `send_telegram_outcome` returns a structured outcome, and a
+finding is settled only when delivery is *confirmed* — `delivered: true` and no `partial_failure`. An
+accepted-but-unconfirmed send, a partial chunk failure, or a sender error leaves the ids in the
+receipt's `pending_alert_ids`; the next `--apply` retries them alongside any new findings. `--apply`
+exits `1` while any pending id remains, so a run that could not deliver is never reported as clean.
+
+**Bounded runs.** A scan uses `timeout_s` from config and, on timeout, kills the whole process group
+(descendants included) and records rc `124`; a cleanup that cannot be confirmed is named in the
+receipt. Tool `--version` queries are capped at 10 s so a hung tool cannot stall the receipt. A tool
+that exits outside `{0, 1}` — including one killed by a signal (negative rc) — is `tool_failed_or_empty_output`,
+not a clean scan.
 
 Run it by hand:
 
