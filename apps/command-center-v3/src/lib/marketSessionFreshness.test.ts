@@ -9,7 +9,7 @@ const assert = {
   ok: (c: unknown, m = 'assertion failed') => { if (!c) fail(m) },
 }
 const tableUrl = new URL('../../../../tests/fixtures/session_freshness/cases_20261025.json', import.meta.url).href
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- JSON fixture table, shape asserted by the cases below
 const table: any = (await import(tableUrl, { with: { type: 'json' } })).default
 
 for (const c of table.phrases) {
