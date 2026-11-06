@@ -27,6 +27,11 @@ Canonical opportunity envelope:
 """
 from __future__ import annotations
 
+try:  # stale-guidance gate (Board row 33 piece E); dual spelling, same as home_do_now
+    from lib.stale_guidance import advisory_freshness, limits_from_env
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.stale_guidance import advisory_freshness, limits_from_env
+
 import hashlib
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
@@ -160,7 +165,20 @@ def build_opportunity_queue(rows: list[dict[str, Any]], *,
         if existing is None or (opp.get("surfaced_at") or "") > (existing.get("surfaced_at") or ""):
             by_key[key] = opp
 
-    items = sorted(by_key.values(), key=_rank_score)
+    # Stale-guidance gate (Board row 33 piece E): a row whose OBSERVATION is provably old never enters
+    # the current queue or its digest. The clock is surfaced_at/proposed_at - never the directive's
+    # creation, which would suppress a fresh hit against an old directive. Stale rows are retained in
+    # stale_items with their reason so the suppression is visible rather than silent.
+    limits = limits_from_env()
+    fresh: list[dict[str, Any]] = []
+    stale: list[dict[str, Any]] = []
+    for opp in by_key.values():
+        verdict = advisory_freshness(opp, now, **limits)
+        if verdict["stale"]:
+            stale.append({**opp, "stale_reason": verdict["reason"], "age_days": verdict["age_days"]})
+        else:
+            fresh.append(opp)
+    items = sorted(fresh, key=_rank_score)
     by_source: dict[str, int] = {}
     for it in items:
         by_source[it["source"]] = by_source.get(it["source"], 0) + 1
@@ -181,6 +199,8 @@ def build_opportunity_queue(rows: list[dict[str, Any]], *,
         "by_source": by_source,
         "top": items[:12],
         "items": items,
+        "stale_count": len(stale),
+        "stale_items": sorted(stale, key=_rank_score),
     }
 
 

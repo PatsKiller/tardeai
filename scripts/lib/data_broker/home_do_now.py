@@ -46,6 +46,11 @@ try:  # account NAMES on every item (operator 2026-10-23), never an account numb
 except ImportError:  # pragma: no cover - imported as scripts.lib.*
     from scripts.lib.account_display import account_label as _acct_name
 
+try:  # stale-guidance gate (Board row 33 piece E)
+    from lib.stale_guidance import stop_prompt_is_stale
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.stale_guidance import stop_prompt_is_stale
+
 
 def _acct_names(accounts: Any) -> list[str]:
     return [_acct_name(a) for a in (accounts or []) if a]
@@ -398,6 +403,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                 "accounts": [],
                 "stop": True,
                 "triggered": False,
+                "triggered_live": False,
                 "near": None,
                 "max_loss": 0.0,
                 "day_pct": None,
@@ -417,6 +423,11 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
             row["stop"] = False
         if p.get("triggered"):
             row["triggered"] = True
+            # Stale-guidance gate (Board row 33 piece E, SPCX 2026-11-03): a stored trigger whose price is
+            # back above the stop is history, not a live breach. Only a still-breached (or unmeasured)
+            # trigger may render "below its stop" as a current action.
+            if not stop_prompt_is_stale(p):
+                row["triggered_live"] = True
         dist = _num(p.get("distance_to_stop_pct"))
         if dist is not None and 0 <= dist <= NEAR_STOP_PCT:
             row["near"] = dist if row["near"] is None else min(row["near"], dist)
@@ -427,7 +438,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
     out: list[dict] = []
     for sym, r in by_sym.items():
         accts = ", ".join(_acct_names(r["accounts"])) or "account unknown"
-        if r["triggered"]:
+        if r["triggered_live"]:
             out.append(
                 item(
                     f"stop:{sym}",
