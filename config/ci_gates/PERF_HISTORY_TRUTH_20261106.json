@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PERF_HISTORY_TRUTH_20261106",
+  "files": [
+    "tests/test_perf_history_truth_20261106.py"
+  ],
+  "anchor": "PERF_HISTORY_TRUTH_20261106",
+  "comment": [
+    "ANCHOR: PERF_HISTORY_TRUTH_20261106 — FU-007. A holdings row with asset_type null crashed the daily portfolio",
+    "pipeline at stage 1 from 2026-11-04, freezing performance_history.json; the per-account values it held were 2x",
+    "because compute_period_returns added holdings onto account_summaries in place; the Roth rendered UNCLASSIFIED",
+    "because the snapshot looked a raw-keyed state map up by canonical id. Synthetic fixtures only.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}

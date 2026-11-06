@@ -163,8 +163,14 @@ def build_portfolio_snapshot() -> dict[str, Any]:
         errors.append(f"account_states: {e}")
         account_states = {"accounts": {}, "excluded_accounts": [], "stale_accounts": [],
                           "unclassified_accounts": sorted((h.get("account_summaries") or {}).keys())}
+    # Keys differ by producer: cio_truth emits canonical ids (schwab_roth_ira), account_states
+    # keys raw holdings ids (schwab_roth). A plain .get() missed the Roth row, which then rendered
+    # UNCLASSIFIED (FU-007). Match both through the one alias table.
+    from lib.account_display import canonical_key
+
+    _states_by_canon = {canonical_key(k): v for k, v in (account_states.get("accounts") or {}).items()}
     for a, d in today_by_account.items():
-        st = (account_states.get("accounts") or {}).get(a) or {}
+        st = (account_states.get("accounts") or {}).get(a) or _states_by_canon.get(canonical_key(a)) or {}
         d["state"] = st.get("state", "UNCLASSIFIED")
         d["display_value"] = st.get("display_value", d.get("value"))
         d["display_value_as_of"] = st.get("display_value_as_of")
