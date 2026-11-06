@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "recovery_state_machine_20261103",
+  "files": [
+    "tests/test_recovery_state_machine_20261103.py"
+  ],
+  "anchor": "RECOVERY_STATE_MACHINE_20261103",
+  "comment": [
+    "ANCHOR: RECOVERY_STATE_MACHINE_20261103 — the recovery state machine (WATCHING/RECOVERING/RE_ENTRY_READY)",
+    "with reclaim triggers, annotated per-account gates and a readiness rule that missing eligibility is not",
+    "permission, wired into the 20-minute and 07:30 evaluators."
+  ]
+}
