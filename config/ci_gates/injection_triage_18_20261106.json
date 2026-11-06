@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_18_20261106",
+  "files": [
+    "tests/test_injection_triage_18_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_18_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_18_20261106 — tq-py-sql-fstring triage, batch 18. Values in stop_drift_alert,",
+    "sweep_stale_paper_proposals, social_scout_replay_report and symbol_volume_profile_builder reach SQL as driver",
+    "parameters (config identifiers via psycopg2.sql.Identifier); system_freshness_monitor and taxonomy_tagger check",
+    "identifiers against their fixed allowlists before use. Hermetic: a fake cursor records (sql, params)."
+  ]
+}

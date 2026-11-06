@@ -31,12 +31,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
+
+#: SQL identifiers (table/column names) interpolated below must match this before use.
+_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
 def retention_windows() -> dict[str, tuple[str, int]]:
@@ -78,7 +82,10 @@ def plan(conn) -> dict:
 
     for table, spec in SOURCES.items():
         idcol = spec["id"]
-        cur.execute(f"""SELECT count(*) FROM document_mentions m
+        if not (_IDENT.match(table) and _IDENT.match(idcol)):
+            raise ValueError(f"refusing unsafe identifier: {table!r}.{idcol!r}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- constant identifiers, regex-checked above
+            f"""SELECT count(*) FROM document_mentions m
                          WHERE m.source_table = %s
                            AND NOT EXISTS (SELECT 1 FROM {table} s
                                             WHERE s.{idcol} = m.source_id)""", (table,))
@@ -90,7 +97,10 @@ def plan(conn) -> dict:
             out["unwindowed"].append(table)
             continue
         tscol, days = windows[table]
-        cur.execute(f"""SELECT count(*) FROM document_mentions m
+        if not _IDENT.match(tscol):
+            raise ValueError(f"refusing unsafe identifier: {tscol!r}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- constant identifiers, regex-checked above
+            f"""SELECT count(*) FROM document_mentions m
                           JOIN {table} s ON s.{idcol} = m.source_id
                          WHERE m.source_table = %s
                            AND s.{tscol} < now() - make_interval(days => %s)""",
@@ -111,7 +121,10 @@ def prune(conn, *, apply: bool) -> dict:
     windows = retention_windows()
     for table, spec in SOURCES.items():
         idcol = spec["id"]
-        cur.execute(f"""DELETE FROM document_mentions m
+        if not (_IDENT.match(table) and _IDENT.match(idcol)):
+            raise ValueError(f"refusing unsafe identifier: {table!r}.{idcol!r}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- constant identifiers, regex-checked above
+            f"""DELETE FROM document_mentions m
                          WHERE m.source_table = %s
                            AND NOT EXISTS (SELECT 1 FROM {table} s
                                             WHERE s.{idcol} = m.source_id)""", (table,))
@@ -119,7 +132,10 @@ def prune(conn, *, apply: bool) -> dict:
         if table not in windows:
             continue
         tscol, days = windows[table]
-        cur.execute(f"""DELETE FROM document_mentions m
+        if not _IDENT.match(tscol):
+            raise ValueError(f"refusing unsafe identifier: {tscol!r}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- constant identifiers, regex-checked above
+            f"""DELETE FROM document_mentions m
                          USING {table} s
                          WHERE s.{idcol} = m.source_id
                            AND m.source_table = %s

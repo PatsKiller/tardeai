@@ -41,7 +41,8 @@ def process_batch(count: int = 2, fresh_only: bool = False) -> dict:
 
     # Priority: fresh (today) first, then by quality score
     date_filter = "AND ingested_at::date = CURRENT_DATE" if fresh_only else ""
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- date_filter is a literal clause or empty
+        f"""
         SELECT id, video_id, title, channel_name, transcript_text, quality_score,
                cleaned_text, summary, structured_json
         FROM youtube_transcripts

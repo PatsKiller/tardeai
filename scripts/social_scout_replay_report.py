@@ -93,12 +93,12 @@ def build(days: int = 30) -> dict:
                 "note": "Read-only Social Scout replay. No broker writes."}
 
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT symbol, mention_count, score, rvol, price, gap_pct, change_pct,
                    float_mm AS float_m, decision, catalyst_verified, catalyst_source, sources
             FROM scalp_scan_results
-            WHERE scanned_at > NOW() - INTERVAL '{int(days)} days'
-        """)
+            WHERE scanned_at > NOW() - %s * INTERVAL '1 day'
+        """, (int(days),))
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     except Exception as e:

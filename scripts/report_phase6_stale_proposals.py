@@ -38,12 +38,12 @@ def main():
     # Pending proposals with freshness classification
     sys.path.insert(0, str(PROJ / "scripts"))
     from phase6_proposal_staleness_policy import classify_proposal_staleness, TERMINAL_STATUSES
-    terminal_list = ",".join(f"'{s}'" for s in TERMINAL_STATUSES)
-    cur.execute(f"""
+    # `<> ALL(%s)` with a list is the parameterized form of the old NOT IN (...) literal list.
+    cur.execute("""
         SELECT id, symbol, strategy_id, status, created_at, expires_at, proposal_timeframe_class
-        FROM paper_trade_proposals WHERE status NOT IN ({terminal_list})
+        FROM paper_trade_proposals WHERE status <> ALL(%s)
         ORDER BY created_at DESC LIMIT %s
-    """, [args.limit])
+    """, [sorted(TERMINAL_STATUSES), args.limit])
     cols = [d[0] for d in cur.description]
     proposals = [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -64,7 +64,11 @@ def main():
                         "status": c["status"], "age_min": c["age_minutes"], "reason": c["reason"][:80]})
 
     # Sweep audit
-    cur.execute("SELECT COUNT(*), MAX(created_at) FROM paper_proposal_stale_sweep_audit WHERE created_at >= NOW() - INTERVAL '%s days'" % args.since_days)
+    cur.execute(
+        "SELECT COUNT(*), MAX(created_at) FROM paper_proposal_stale_sweep_audit"
+        " WHERE created_at >= NOW() - %s * INTERVAL '1 day'",
+        [args.since_days],
+    )
     sweep_row = cur.fetchone()
     conn.close()
 

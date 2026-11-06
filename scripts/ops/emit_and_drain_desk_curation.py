@@ -353,7 +353,7 @@ def _kpis() -> dict:
         ("rotation", "rotation_directive_hits_staging"),
         ("reentry", "reentry_directive_hits_staging"),
     ):
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- tbl comes from the fixed (src, tbl) literal tuple above
             f"SELECT count(*) total, count(*) FILTER (WHERE NOT drained) undrained FROM {tbl}"
         )
         r = cur.fetchone()

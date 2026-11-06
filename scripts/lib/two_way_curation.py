@@ -27,6 +27,7 @@ SAFETY INVARIANTS (mirror the existing firewall):
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable, Dict, List, Optional
 
 # The watch_directives store has ONE write module (One Source of Truth phase 9,
@@ -610,10 +611,22 @@ def mark_staging_drained(source: str, row_id: int,
     return res is not None
 
 
+_SAVEPOINT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _savepoint_name(sp: str) -> str:
+    """``sp`` unchanged when it is a plain SQL identifier (sp_<source>_<staging id>); ValueError otherwise.
+    A savepoint name cannot be a driver parameter, and the staging id comes from a DB row."""
+    if not isinstance(sp, str) or not _SAVEPOINT_RE.fullmatch(sp):
+        raise ValueError(f"savepoint name {sp!r} is not a plain SQL identifier")
+    return sp
+
+
 def _release_savepoint(cur, sp: str) -> None:
     """Release a savepoint, swallowing any error (e.g. transaction already aborted)."""
     try:
-        cur.execute(f"RELEASE SAVEPOINT {sp}")
+        # nosemgrep: tq-py-sql-fstring -- the name passed _savepoint_name() (plain identifier) on this line
+        cur.execute(f"RELEASE SAVEPOINT {_savepoint_name(sp)}")
     except Exception:
         pass
 
@@ -622,7 +635,8 @@ def _rollback_savepoint(cur, sp: str) -> None:
     """Roll back to a savepoint then release it. ROLLBACK TO SAVEPOINT clears an aborted
     transaction (lock_timeout contention) so the drainer keeps processing the batch."""
     try:
-        cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+        # nosemgrep: tq-py-sql-fstring -- the name passed _savepoint_name() (plain identifier) on this line
+        cur.execute(f"ROLLBACK TO SAVEPOINT {_savepoint_name(sp)}")
     except Exception:
         pass
     _release_savepoint(cur, sp)
@@ -702,6 +716,7 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
             row_terminal = True
             if kind not in ("ticker", "sector", "trend"):
                 if not dry:
+                    # nosemgrep: tq-py-sql-fstring -- tbl is STAGING_TABLE[source] for source in the SOURCES constant
                     cur.execute(f"UPDATE {tbl} SET drained=true, drained_at=now() WHERE id=%s", (hid,))
                 report.setdefault("curation_skipped_no_kind", 0)
                 report["curation_skipped_no_kind"] += 1
@@ -756,7 +771,8 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                     # this is what stops one contention error from poisoning the whole run.
                     sp = f"sp_{source}_{hid}"
                     try:
-                        cur.execute(f"SAVEPOINT {sp}")
+                        # nosemgrep: tq-py-sql-fstring -- the name passed _savepoint_name() (plain identifier) here
+                        cur.execute(f"SAVEPOINT {_savepoint_name(sp)}")
                         res = evaluate(
                             sym, did,
                             f"{source}:{(str(detail.get('thesis') or '')[:60])}",
@@ -800,6 +816,7 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                                              "directive": label, "dry": True})
             if not dry:
                 if row_terminal:
+                    # nosemgrep: tq-py-sql-fstring -- tbl is STAGING_TABLE[source] for source in the SOURCES constant
                     cur.execute(f"UPDATE {tbl} SET drained=true, drained_at=now() WHERE id=%s", (hid,))
                     report["curation_drained"] += 1
                     try:

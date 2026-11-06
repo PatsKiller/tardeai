@@ -29,6 +29,7 @@ def main():
     where_done = "AND s.models_agree IS NULL" if skip_done else ""
     limit_sql = "LIMIT %s" if n is not None else ""
     params = (n,) if n is not None else ()
+    # nosemgrep: tq-py-sql-fstring -- where_done/limit_sql are fixed literals chosen above; N travels as a param
     cur.execute(f"""SELECT s.symbol, s.recommendation, s.confidence,
                           COALESCE(s.synthesis_narrative,''), COALESCE(s.action,''), min(w.hermes_rank)
                    FROM watchlist_final_synthesis s

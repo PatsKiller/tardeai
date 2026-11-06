@@ -14,7 +14,8 @@ def reconcile_period(cur, date_from: str, date_to: str, account: str | None = No
     """One aggregation period: parsed eConfirm fills vs ledger transactions."""
     acct_sql = " AND account_suffix=%s" if account else ""
     args = [date_from, date_to] + ([account] if account else [])
-    cur.execute(f"""SELECT COALESCE(sum(principal),0), COALESCE(sum(charge_or_interest),0),
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- acct_sql is a fixed literal; account is a bound param
+        f"""SELECT COALESCE(sum(principal),0), COALESCE(sum(charge_or_interest),0),
                            COALESCE(sum(total_amount),0), count(*),
                            count(*) FILTER (WHERE recon_status IN ('ECONFIRM_ONLY','pending')),
                            count(*) FILTER (WHERE recon_status='MATCH_WITH_DATE_FALLBACK')

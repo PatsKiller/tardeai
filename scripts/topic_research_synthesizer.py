@@ -149,7 +149,8 @@ def run(apply=False, max_rows=20, reground=False, ids=None):
         GRADE_ORD = "(rag_status='approved') DESC, "
         articles = []
         if tmid:
-            cur.execute(f"""SELECT title, summary, source, source_url FROM news_articles
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- GRADE/GRADE_ORD literals; tmid bound
+                f"""SELECT title, summary, source, source_url FROM news_articles
                            WHERE symbol=%s AND title IS NOT NULL {GRADE}
                            ORDER BY {GRADE_ORD} published_at DESC NULLS LAST LIMIT 8""", (tmid,))
             articles = [{"title": a[0], "summary": a[1], "source": a[2], "source_url": a[3]}
@@ -160,7 +161,8 @@ def run(apply=False, max_rows=20, reground=False, ids=None):
             if kw:
                 # OR-match distinctive keywords (e.g. roth/medicaid/ssdi) so existing planning news is found
                 ors = " OR ".join(["title ILIKE %s"] * len(kw))
-                cur.execute(f"""SELECT title, summary, source, source_url FROM news_articles
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- literal ILIKE %s list + literals; kw bound
+                    f"""SELECT title, summary, source, source_url FROM news_articles
                                WHERE ({ors}) AND published_at > now()-interval '60 days' {GRADE}
                                ORDER BY {GRADE_ORD} published_at DESC LIMIT 6""", tuple(f"%{w}%" for w in kw))
                 articles = [{"title": a[0], "summary": a[1], "source": a[2], "source_url": a[3]}

@@ -49,19 +49,22 @@ def _db():
 def compute(cur):
     """Read-only: the per-source rollup rows (no write)."""
     # per (source, symbol) first mention + signal count
-    cur.execute(f"""SELECT source, symbol, MIN(published_at), COUNT(*)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the int module constants LOOKBACK_DAYS/ATTRIB_DAYS
+        f"""SELECT source, symbol, MIN(published_at), COUNT(*)
                     FROM news_articles
                     WHERE published_at > now() - interval '{LOOKBACK_DAYS} days'
                       AND symbol IS NOT NULL AND source IS NOT NULL
                     GROUP BY source, symbol""")
     mentions = cur.fetchall()  # (source, symbol, first_seen, signals)
     # GO/WAIT symbols (for go_signals)
-    cur.execute(f"""SELECT DISTINCT symbol FROM trade_ai_scans
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the int module constants LOOKBACK_DAYS/ATTRIB_DAYS
+        f"""SELECT DISTINCT symbol FROM trade_ai_scans
                     WHERE scanned_at > now() - interval '{LOOKBACK_DAYS} days' AND decision IN ('GO','WAIT')""")
     go_syms = {r[0] for r in cur.fetchall()}
     # CORRECT attribution: a source gets a trade if it published news on that symbol in the ATTRIB_DAYS
     # window immediately BEFORE entry (one row per source x trade).
-    cur.execute(f"""SELECT na.source, pt.id, lower(coalesce(pt.status,'')), pt.pnl, pt.pnl_pct
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the int module constants LOOKBACK_DAYS/ATTRIB_DAYS
+        f"""SELECT na.source, pt.id, lower(coalesce(pt.status,'')), pt.pnl, pt.pnl_pct
                     FROM paper_trades pt
                     JOIN news_articles na ON na.symbol = pt.symbol
                       AND na.published_at <= pt.entry_time

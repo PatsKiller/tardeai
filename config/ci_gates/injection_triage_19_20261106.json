@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_19_20261106",
+  "files": [
+    "tests/test_injection_triage_19_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_19_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_19_20261106 — SQL-injection triage batch 19 (tq-py-sql-fstring). The classification",
+    "validator binds each table name as a parameter instead of quoting it into the SQL; the strategy classifier's",
+    "symbol filter stays a literal ANY(%s) clause so a hostile symbol reaches params, never the SQL text.",
+    "Hermetic: a fake cursor records (sql, params); no database, no network."
+  ]
+}

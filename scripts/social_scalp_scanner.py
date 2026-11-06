@@ -701,14 +701,14 @@ def stamp_route_fields(conn, table: str, symbol: str, route: dict, catalyst_enri
                         else ("rag" if ce.get("rag_catalyst_confirmed") else ("news" if ce.get("catalysts") else None))
                     )
                 )
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SET list is only literal "col=%s" items; values bound
                 f"""UPDATE scalp_scan_results SET {", ".join(sets)}
                             WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
                                       ORDER BY scanned_at DESC LIMIT 1)""",
                 vals + [symbol],
             )
         elif table == "trade_ai_scans":
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SET list is only literal "col=%s" items; values bound
                 f"""UPDATE trade_ai_scans SET {", ".join(sets)}
                             WHERE symbol=%s AND run_date=CURRENT_DATE""",
                 vals + [symbol],
@@ -758,14 +758,14 @@ def stamp_scout_fields(conn, table: str, symbol: str, route: dict) -> None:
             bool(route.get("not_tradeable", True)),
         ]
         if table == "scalp_scan_results":
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SET list is only literal "col=%s" items; values bound
                 f"""UPDATE scalp_scan_results SET {", ".join(sets)}
                             WHERE id=(SELECT id FROM scalp_scan_results WHERE symbol=%s
                                       ORDER BY scanned_at DESC LIMIT 1)""",
                 vals + [symbol],
             )
         elif table == "trade_ai_scans":
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SET list is only literal "col=%s" items; values bound
                 f"""UPDATE trade_ai_scans SET {", ".join(sets)}
                             WHERE symbol=%s AND run_date=CURRENT_DATE""",
                 vals + [symbol],

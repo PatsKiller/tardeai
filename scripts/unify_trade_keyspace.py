@@ -47,7 +47,8 @@ def main():
 
     stats = {"mode": "apply" if apply else "dry-run"}
     for tbl in ("journal_trade_reviews", "trade_backtest_results"):
-        cur.execute(f"select id, trade_key from {tbl} where trade_key is not null")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- tbl from the fixed two-table tuple
+            f"select id, trade_key from {tbl} where trade_key is not null")
         rows = cur.fetchall()
         match = ambig = nomatch = 0
         for r in rows:
@@ -57,7 +58,9 @@ def main():
             elif len(ids) == 1:
                 match += 1
                 if apply:
-                    cur.execute(f"update {tbl} set paper_trade_id=%s where id=%s and paper_trade_id is null", (ids[0], r["id"]))
+                    cur.execute(  # nosemgrep: tq-py-sql-fstring -- tbl from the fixed two-table tuple
+                        f"update {tbl} set paper_trade_id=%s where id=%s and paper_trade_id is null",
+                        (ids[0], r["id"]))
             else:
                 ambig += 1
         stats[tbl] = {"rows": len(rows), "linked_1to1": match, "ambiguous": ambig, "no_paper_trade": nomatch}

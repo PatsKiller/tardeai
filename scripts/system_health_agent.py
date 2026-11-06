@@ -2214,7 +2214,8 @@ def run_health_check(dry_run=True, verbose=False, *, now=None):
             ("iris_run_log", "ran_at", "iris"),
         ]:
             try:
-                cur.execute(f"SELECT MAX({col}) FROM {tbl}")
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- tbl/col from the fixed literal tuple in this loop
+                    f"SELECT MAX({col}) FROM {tbl}")
                 r = cur.fetchone()
                 if r and r[0] and (agent_name not in agent_latest or r[0] > agent_latest.get(agent_name, now)):
                     agent_latest[agent_name] = r[0]

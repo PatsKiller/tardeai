@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 import os
 import statistics
 import sys
@@ -27,6 +28,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 _REPO = Path(__file__).resolve().parent.parent
+# A bare lower-case SQL identifier: what a config-supplied table or column name must look like.
+_SQL_IDENT_RE = re.compile(r"[a-z_][a-z0-9_]{0,62}")
 sys.path.insert(0, str(_REPO / "scripts"))
 
 import scalp_ignition_scorer as scorer          # noqa: E402
@@ -388,12 +391,16 @@ def resolve_universe_detail(conn, cfg: dict, *, float_lookup=None) -> tuple[list
     u = cfg["universe"]
     t, s, tc = u["source_table"], u["symbol_column"], u["time_column"]
     fc, pc = u["float_column"], u["price_column"]
+    # The identifiers come from the strategy config file, so they are checked before any SQL is built.
+    for ident in (t, s, tc, fc, pc):
+        if not isinstance(ident, str) or not _SQL_IDENT_RE.fullmatch(ident):
+            raise ValueError(f"universe config: unsafe SQL identifier {ident!r}")
 
     def latest(col, extra=""):
         return (f"(SELECT {col} FROM {t} x WHERE x.{s} = seen.{s} AND x.{col} IS NOT NULL{extra} "
                 f"ORDER BY x.{tc} DESC LIMIT 1)")
     with conn.cursor() as cur:
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- identifiers regex-checked above; day counts int()-cast inline
             f"""WITH seen AS (SELECT DISTINCT {s} FROM {t}
                     WHERE {tc} > now() - interval '{int(u['lookback_days'])} days' AND {s} IS NOT NULL)
                 SELECT seen.{s}, {latest(fc)},

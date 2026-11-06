@@ -82,8 +82,21 @@ def db():
                             password=os.environ["DB_PASSWORD"])
 
 
+# Identifiers the SQL helpers below may interpolate: exactly the names the REGISTRY literals declare.
+_REGISTRY_TABLES = frozenset(e[k] for e in REGISTRY for k in ("table", "input") if k in e)
+_REGISTRY_TS_COLS = frozenset({"created_at"} | {e["ts_col"] for e in REGISTRY if "ts_col" in e})
+
+
+def _checked_ident(name, allowed):
+    if name not in allowed:
+        raise ValueError(f"identifier not in the freshness REGISTRY: {name!r}")
+    return name
+
+
 def _count_since(cur, table, hours):
-    cur.execute(f"SELECT count(*) FROM {table} WHERE created_at > %s",
+    table = _checked_ident(table, _REGISTRY_TABLES)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked against REGISTRY allowlist above
+        f"SELECT count(*) FROM {table} WHERE created_at > %s",
                 (datetime.now(timezone.utc) - timedelta(hours=hours),))
     return cur.fetchone()[0]
 
@@ -93,7 +106,10 @@ def _age_hours(cur, table, ts_col="created_at", agg="max"):
     # (are ALL items fresh? — used for per-item tables like topic_monitor where one
     # fresh topic must not mask the rest being stale).
     agg = agg if agg in ("max", "min") else "max"
-    cur.execute(f"SELECT extract(epoch from (now()-{agg}({ts_col})))/3600.0 FROM {table}")
+    table = _checked_ident(table, _REGISTRY_TABLES)
+    ts_col = _checked_ident(ts_col, _REGISTRY_TS_COLS)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- agg is max/min; table, ts_col checked vs REGISTRY allowlists
+        f"SELECT extract(epoch from (now()-{agg}({ts_col})))/3600.0 FROM {table}")
     r = cur.fetchone()[0]
     return float(r) if r is not None else None
 

@@ -40,8 +40,8 @@ def main():
     cur = conn.cursor()
 
     # Build query
-    conditions = [f"created_at >= NOW() - INTERVAL '{args.since_days} days'"]
-    params = []
+    conditions = ["created_at >= NOW() - %s * INTERVAL '1 day'"]
+    params = [args.since_days]
     if args.proposal_id:
         conditions.append("proposal_id = %s")
         params.append(args.proposal_id)
@@ -55,7 +55,8 @@ def main():
     where = " AND ".join(conditions)
 
     # Summary counts
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- where joins literal fragments; values are params
+        f"""
         SELECT
             COUNT(*) AS total,
             COUNT(*) FILTER (WHERE approval_status = 'approved_paper_submitted') AS approved,
@@ -75,7 +76,8 @@ def main():
     summary = dict(zip(cols, row)) if row else {}
 
     # Top block reasons
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- where joins literal fragments; values are params
+        f"""
         SELECT block_reason, COUNT(*) AS cnt
         FROM paper_proposal_approval_audit WHERE {where} AND block_reason IS NOT NULL
         GROUP BY block_reason ORDER BY cnt DESC LIMIT 10
@@ -83,7 +85,8 @@ def main():
     block_reasons = [{"reason": r[0], "count": r[1]} for r in cur.fetchall()]
 
     # Recent attempts
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- where joins literal fragments; values are params
+        f"""
         SELECT id, created_at, proposal_id, symbol, approval_status, block_reason,
                live_price, rr_at_approval, spread_pct, gate_sequence,
                passed_session_gate, passed_market_revalidation, passed_risk_gate,
@@ -95,7 +98,8 @@ def main():
     recent = [dict(zip(recent_cols, r)) for r in cur.fetchall()]
 
     # Safety check
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- where joins literal fragments; values are params
+        f"""
         SELECT COUNT(*) FILTER (WHERE alpaca_mode != 'paper' OR alpaca_mode IS NULL) AS non_paper,
                COUNT(*) FILTER (WHERE live_trading_enabled = TRUE) AS live_enabled
         FROM paper_proposal_approval_audit WHERE {where}

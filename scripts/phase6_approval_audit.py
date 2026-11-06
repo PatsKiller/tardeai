@@ -200,7 +200,9 @@ def update_approval_audit(
 
         params.append(audit_id)
         cur = conn.cursor()
-        cur.execute(f"UPDATE paper_proposal_approval_audit SET {', '.join(sets)} WHERE id = %s", params)
+        # every SET clause is a literal above; k comes from the fixed numeric-field tuple; values are params
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- SET clauses are literals/fixed-tuple column names
+            f"UPDATE paper_proposal_approval_audit SET {', '.join(sets)} WHERE id = %s", params)
         conn.commit()
     except Exception as e:
         log.warning(f"Audit #{audit_id} update failed (non-critical): {e}")

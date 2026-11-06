@@ -117,7 +117,7 @@ def _role_exists(cur, role: str) -> bool:
 def _ensure_role_and_grants(cur, *, password: str | None, create: bool, set_password: bool) -> None:
     """CREATE ROLE if needed; apply 0002_roles-style grants. Password only when provided."""
     if create:
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- role is the module constant SHADOW_ROLE
             f"""
             CREATE ROLE {SHADOW_ROLE} LOGIN
                 NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
@@ -126,13 +126,19 @@ def _ensure_role_and_grants(cur, *, password: str | None, create: bool, set_pass
             (password,),
         )
     elif set_password and password:
-        cur.execute(f"ALTER ROLE {SHADOW_ROLE} PASSWORD %s", (password,))
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- role is the module constant SHADOW_ROLE
+            f"ALTER ROLE {SHADOW_ROLE} PASSWORD %s", (password,)
+        )
 
     # Grants match migrations/agentic_runtime/0002_roles.up.sql (idempotent)
     cur.execute("REVOKE ALL ON SCHEMA agentic_runtime FROM PUBLIC")
-    cur.execute(f"GRANT USAGE ON SCHEMA agentic_runtime TO {SHADOW_ROLE}")
-    cur.execute(f"REVOKE CREATE ON SCHEMA agentic_runtime FROM {SHADOW_ROLE}")
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- role is the module constant SHADOW_ROLE
+        f"GRANT USAGE ON SCHEMA agentic_runtime TO {SHADOW_ROLE}"
+    )
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- role is the module constant SHADOW_ROLE
+        f"REVOKE CREATE ON SCHEMA agentic_runtime FROM {SHADOW_ROLE}"
+    )
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- role is the module constant SHADOW_ROLE
         f"GRANT SELECT, INSERT, UPDATE ON agentic_runtime.agent_runs TO {SHADOW_ROLE}"
     )
     for table in (
@@ -144,10 +150,10 @@ def _ensure_role_and_grants(cur, *, password: str | None, create: bool, set_pass
         "kb_cases",
         "kb_chunks",
     ):
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- table from the literal tuple above; role is SHADOW_ROLE
             f"GRANT SELECT, INSERT ON agentic_runtime.{table} TO {SHADOW_ROLE}"
         )
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- role is the module constant SHADOW_ROLE
         f"""
         ALTER DEFAULT PRIVILEGES IN SCHEMA agentic_runtime
             GRANT SELECT, INSERT ON TABLES TO {SHADOW_ROLE}

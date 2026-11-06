@@ -31,7 +31,8 @@ def validate():
         "max_favorable_excursion", "max_adverse_excursion", "entry_price", "exit_price",
     ]
 
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- column names from the literal `fields` list above
+        f"""
         SELECT COUNT(*) as total,
             {', '.join(f"COUNT(*) FILTER (WHERE {f} IS NOT NULL AND CAST({f} AS TEXT) != '') as has_{f}" for f in fields)}
         FROM paper_trades WHERE status = 'closed'

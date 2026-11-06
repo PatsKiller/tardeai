@@ -305,7 +305,7 @@ def test():
     conn = _get_conn()
     cur = conn.cursor()
     for t in ["sec_form4", "sec_13f", "sec_xbrl"]:
-        cur.execute(f"SELECT count(*) FROM {t}")
+        cur.execute(f"SELECT count(*) FROM {t}")  # nosemgrep: tq-py-sql-fstring -- t from the literal table list above
         print(f"  {t}: {cur.fetchone()[0]} rows")
     conn.close()
 

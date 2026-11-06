@@ -34,8 +34,9 @@ def main():
     stats = {r[0]: r[1] for r in cur.fetchall()}
 
     # Stuck processing
-    cur.execute(f"""SELECT COUNT(*) FROM watchlist_agent_jobs
-        WHERE status='processing' AND started_at < NOW() - INTERVAL '{args.stuck_threshold_minutes} minutes'""")
+    cur.execute("""SELECT COUNT(*) FROM watchlist_agent_jobs
+        WHERE status='processing' AND started_at < NOW() - %s * INTERVAL '1 minute'""",
+                (args.stuck_threshold_minutes,))
     stuck_count = cur.fetchone()[0]
 
     # Throughput (last 24h)
@@ -65,8 +66,9 @@ def main():
     # Reset stuck if requested
     reset_count = 0
     if args.reset_stuck and stuck_count > 0:
-        cur.execute(f"""UPDATE watchlist_agent_jobs SET status='queued', started_at=NULL
-            WHERE status='processing' AND started_at < NOW() - INTERVAL '{args.stuck_threshold_minutes} minutes'""")
+        cur.execute("""UPDATE watchlist_agent_jobs SET status='queued', started_at=NULL
+            WHERE status='processing' AND started_at < NOW() - %s * INTERVAL '1 minute'""",
+                    (args.stuck_threshold_minutes,))
         reset_count = cur.rowcount
         conn.commit()
 

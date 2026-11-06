@@ -16,9 +16,17 @@ sys.path.insert(0, str(PROJ / "scripts"))
 from db_adapter import _get_conn
 
 
+_COUNT_COLUMNS = frozenset({
+    "strategy_id", "mistake_type", "action_priority", "lesson_category", "operator_review_status",
+})
+
+
 def _query_counts(cur, column, since_date):
-    """Query counts grouped by a column."""
-    cur.execute(f"""
+    """Query counts grouped by a column (column must be one of the fixed _COUNT_COLUMNS)."""
+    if column not in _COUNT_COLUMNS:
+        raise ValueError(f"unknown trade_lesson_memory count column: {column!r}")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- column checked against the fixed _COUNT_COLUMNS set above
+        f"""
         SELECT {column}, COUNT(*) as cnt
         FROM trade_lesson_memory
         WHERE created_at >= %s

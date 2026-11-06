@@ -115,11 +115,12 @@ def build(days: int = 30) -> dict:
         n, latest = cur.fetchone()
         metrics["sec_form4_rows"] = int(n or 0)
         metrics["latest_filing_date"] = str(latest) if latest else None
-        cur.execute("SELECT COUNT(*) FROM sec_form4 WHERE filing_date > CURRENT_DATE - INTERVAL '%s days'" % int(SOURCE_FRESH_DAYS))
+        cur.execute("SELECT COUNT(*) FROM sec_form4 WHERE filing_date > CURRENT_DATE - %s * INTERVAL '1 day'",
+                    (int(SOURCE_FRESH_DAYS),))
         metrics["recent_filings"] = int(cur.fetchone()[0] or 0)
         # coverage: distinct symbols with a recent buy
         cur.execute("SELECT COUNT(DISTINCT symbol) FROM sec_form4 "
-                    "WHERE filing_date > CURRENT_DATE - INTERVAL '%s days'" % int(CATALYST_RELEVANT_DAYS))
+                    "WHERE filing_date > CURRENT_DATE - %s * INTERVAL '1 day'", (int(CATALYST_RELEVANT_DAYS),))
         metrics["symbols_recent"] = int(cur.fetchone()[0] or 0)
     except Exception as e:
         metrics["warning"] = f"db unavailable: {str(e).splitlines()[0][:80]}"

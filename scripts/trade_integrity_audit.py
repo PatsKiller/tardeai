@@ -238,7 +238,8 @@ def run_audit(open_only=False, enqueue_hermes=False, write=True):
     else:
         where = ("WHERE COALESCE(status,'') NOT IN ('cancelled','canceled') "
                  "AND COALESCE(lifecycle_state,'') NOT IN ('cancelled','canceled')")
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- where is one of two literal WHERE clauses
+        f"""
         SELECT id, symbol, account, broker, shares, entry_price, stop_loss_price, planned_stop,
                target_1, status, lifecycle_state, broker_confirmed, broker_status, broker_order_id,
                pnl, outcome_verdict, close_reason, closed_via, current_price, last_synced_at,
