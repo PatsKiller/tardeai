@@ -123,6 +123,10 @@
       "path": "manual-execution"
     },
     {
+      "url": "/v3/plans",
+      "path": "plans"
+    },
+    {
       "url": "/v3/portfolio",
       "path": "portfolio"
     },
@@ -357,6 +361,9 @@
     },
     {
       "route": "/v3/manual-execution"
+    },
+    {
+      "route": "/v3/plans"
     },
     {
       "route": "/v3/portfolio"

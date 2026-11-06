@@ -1,0 +1,141 @@
+import {useEffect, useRef} from 'react'
+import {createPortal} from 'react-dom'
+import {Link} from 'react-router-dom'
+import DeskPage, {DeskGap} from '../components/DeskPage'
+import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
+import {useApi} from '../hooks/useApi'
+import { claimHref, detailGap, planFrom, plansFrom, plansGap, provenanceLabel, prUrl, stalledLine, statusWord, stepSummary, waitingDecision, type PlanRow, type PlansView, pickedUp } from '../lib/plansModel'
+import '../styles/plans.css'
+
+const INDEX = '/api/v2/plans'
+
+function DetailBody({plan}: {plan: PlanRow}) {
+  const pr = prUrl(plan)
+  const claim = claimHref(plan)
+  const stalled = stalledLine(plan)
+  return (
+    <div className="pl-detail">
+      <p className="pl-status">{statusWord(plan.status, plan)}</p>
+      <p className="pl-meta">
+        {plan.vendor ? `Registered by ${plan.vendor}` : 'Vendor unknown'}
+        {plan.status === 'approved' && plan.approved_at
+          ? ` · approved ${plan.approved_at.slice(0, 10)}`
+          : ''}
+        {plan.updated_at ? ` · updated ${plan.updated_at.slice(0, 16).replace('T', ' ')}` : ''}
+        {stalled ? ` · ${stalled}` : ''}
+      </p>
+      <p className="pl-provenance">{provenanceLabel(plan)}</p>
+      {plan.operator_quote && <blockquote className="pl-quote">“{plan.operator_quote}”</blockquote>}
+      <p className="pl-steps-summary">{stepSummary(plan)}</p>
+      {Array.isArray(plan.steps) && plan.steps.length > 0 && (
+        <ul className="pl-steps">
+          {plan.steps.map((s, i) => (
+            <li key={`${i}-${s.text}`} className={s.done ? 'pl-step done' : 'pl-step'}>
+              <span aria-hidden="true">{s.done ? '✓' : '·'}</span> {s.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="pl-links">
+        {claim && <Link to={claim}>Claim {plan.claim}</Link>}
+        {claim && pr ? ' · ' : ''}
+        {pr && <a href={pr} target="_blank" rel="noreferrer">Pull request #{plan.pr}</a>}
+        {!claim && !pr && <span>No claim or pull request yet.</span>}
+        {plan.branch && <> · <code>{plan.branch}</code></>}
+      </p>
+      {plan.body && <pre className="pl-body">{plan.body}</pre>}
+    </div>
+  )
+}
+
+export default function PlansPage() {
+  const index = useApi<PlansView>(INDEX, 30_000)
+  const detail = useMobilePageDetail('plan')
+  const selectedId = detail.id
+  const one = useApi<PlansView>(selectedId ? `${INDEX}?id=${encodeURIComponent(selectedId)}` : INDEX, 0,
+    {enabled: Boolean(selectedId)})
+  const rows = plansFrom(index.data)
+  const detailData = planFrom(one.data)
+  const plan = selectedId && detailData && detailData.id === selectedId ? detailData : null
+  // The desktop panel is a portal outside the card's focus order, so nothing focused it and its
+  // Escape handler never fired. Focus the panel when it opens, listen for Escape while it is open,
+  // and hand focus back to the card that opened it on close. The phone sheet owns its own focus
+  // and Escape handling (MobileDetailSheet), so this deliberately does nothing there.
+  const panelRef = useRef<HTMLElement | null>(null)
+  const closeRef = useRef(detail.close)
+  closeRef.current = detail.close
+  const planId = plan?.id ?? null
+  useEffect(() => {
+    if (!planId || detail.mobile) return
+    const previous = document.activeElement
+    panelRef.current?.focus()
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') closeRef.current() }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus()
+    }
+  }, [planId, detail.mobile])
+  // A wrong/missing schema or an `{ok:false}` body is a gap, not an empty registry. Hold the gap
+  // while the first read is still in flight so a loading page does not paint an error.
+  const listGap = index.error || (index.data || !index.loading ? plansGap(index.data) : null)
+  const detailGapReason = selectedId && !one.loading ? (one.error || detailGap(one.data, selectedId)) : null
+  const gap = listGap || detailGapReason || undefined
+  const listKnown = !index.loading && !listGap && Boolean(index.data)
+  const waiting = rows.filter(r => r.status === 'approved' && !pickedUp(r)).length
+  const decisionGap = waitingDecision(waiting, {loading: index.loading, known: listKnown})
+  // A successful empty read is a known-empty store with a receipt (`as_of`), not a freshness gap:
+  // otherwise the page would report "update time unavailable" for a store it just read. When the
+  // read failed there is no `listKnown`, so `asOf` stays undefined and the gap stands.
+  const asOf = listKnown && rows.length === 0
+    ? index.data?.as_of
+    : rows.reduce<string | undefined>(
+        (m, r) => (r.updated_at && (!m || String(r.updated_at) > m) ? String(r.updated_at) : m), undefined)
+
+  const sheet = plan ? (
+    detail.mobile
+      ? <MobileDetailSheet title={String(plan.title || plan.id)} onBack={detail.close}><DetailBody plan={plan} /></MobileDetailSheet>
+      : createPortal(
+          <aside ref={panelRef} tabIndex={-1} className="pl-panel" role="dialog" aria-modal="false" aria-label={String(plan.title || plan.id)}>
+            <button type="button" className="pl-back" onClick={detail.close}>← Back</button>
+            <h2>{plan.title || plan.id}</h2>
+            <DetailBody plan={plan} />
+          </aside>, document.body)
+  ) : null
+
+  return (
+    <>
+      <DeskPage
+        title="Plans"
+        purpose="Every registered plan on the server for every agent: who registered it, who picked it up, what is left. Claude Code registers a plan when you leave plan mode; Codex and Cursor use scripts/plan_registry.py."
+        sources={[{id: 'plans', label: 'Plan store', gap, asOf, clockOnly: true}]}
+        decisions={[]}
+        decisionGap={decisionGap}
+      >
+        <div className="pl-stack">
+          {gap && <DeskGap title="Plan registry" reason={String(gap)} />}
+          {index.loading && <p className="pl-empty">Loading plans…</p>}
+          {!index.loading && rows.length === 0 && !gap && <p className="pl-empty">No plans registered yet.</p>}
+          <ul className="pl-list">
+            {rows.map(row => (
+              <li key={row.id}>
+                <button type="button" className="pl-card" onClick={() => detail.open(row.id)}>
+                  <span className="pl-card-title">{row.title || row.id}</span>
+                  <span className="pl-card-line">
+                    {statusWord(row.status, row)} · {row.vendor || 'unknown vendor'} · {stepSummary(row)}
+                  </span>
+                  <span className="pl-card-line pl-card-links">
+                    {row.claim ? `claim ${row.claim}` : 'no claim'}
+                    {row.pr ? ` · PR #${row.pr}` : ''}
+                    {row.branch ? ` · ${row.branch}` : ''}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </DeskPage>
+      {sheet}
+    </>
+  )
+}

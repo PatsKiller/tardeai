@@ -2081,6 +2081,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PHONE_OPS_20261009.md` | Phone operations for the operator on ms01-openclaw (2026-10-09) |
 | `docs/ops/PIPELINE_SUPERVISION_20261029.md` | Pipeline supervisor failures — 2026-10-29 |
 | `docs/ops/PIPELINE_TIME_SETTINGS.md` | Pipeline time settings — measured, pinned, and why |
+| `docs/ops/PLAN_REGISTRY.md` | Plan registry — every registered plan persisted for every agent |
 | `docs/ops/POLICY_ENFORCEMENT_AUDIT_20261024.md` | Policy enforcement audit — source proposal, 2026-10-24 |
 | `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) |
 | `docs/ops/POSITIONS_FIXES_2026-10-06.md` | Positions fixes and phase 1 — 2026-10-06 |

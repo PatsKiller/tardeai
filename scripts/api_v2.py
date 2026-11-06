@@ -36317,6 +36317,28 @@ def _watch_alerts_post(body=None):
     }
 
 
+def _plans_registry(query=None):
+    """GET /api/v2/plans[?id=<plan-id>] — the read-only plan registry: every approved plan with
+    its provenance, lifecycle status, claim/branch/PR links and step counts. Detail includes the
+    body. Server reads the coordination plan store; it never writes it.
+
+    Refusals are fixed, status-bearing bodies: an invalid id is the caller's error (400) and a
+    valid id with no plan is absent (404). Neither echoes the id nor the exception text — the
+    generic dispatcher's 500 would otherwise publish both."""
+    try:
+        from scripts.plan_registry import Registry
+    except ImportError:
+        from plan_registry import Registry  # type: ignore -- flat scripts/ import when the server runs from scripts/
+    q = query or {}
+    pid = str((q.get("id") or [""])[0] if isinstance(q.get("id"), list) else q.get("id") or "").strip()
+    try:
+        return 200, {"ok": True, "data": Registry().view(pid or None)}
+    except KeyError:
+        return 404, {"ok": False, "error": "plan not found"}
+    except ValueError:
+        return 400, {"ok": False, "error": "invalid plan id"}
+
+
 def _ui_metric_guide(query=None):
     """GET /api/v2/ui/metric-guide — the metric guide (assets/ui_metric_guide.yaml): what each
     metric is, why it matters, how to read it, a benchmark. Server-supplied so the frontend
@@ -49162,6 +49184,7 @@ ROUTES = {
     "/api/v2/watch/alerts/list": _watch_alerts_list,
     "/api/v2/ui/prefs/get": _ui_prefs_get,
     "/api/v2/ui/metric-guide": _ui_metric_guide,
+    "/api/v2/plans": _plans_registry,
     "/api/v2/buy-ready/packets": _buy_ready_packets_index,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
@@ -55109,7 +55132,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             import inspect as _insp
 
             _np = len(_insp.signature(handler).parameters)
-            return 200, {"ok": True, "data": (handler(query) if _np >= 1 else handler())}
+            result = handler(query) if _np >= 1 else handler()
+            # A handler may answer with its own (status, body) — a caller error or a missing
+            # resource. Every other result is wrapped as data exactly as before. ``bool`` is a
+            # subclass of ``int``, so it is excluded explicitly: a handler returning ``(True, x)``
+            # must never emit status ``True``.
+            if (
+                isinstance(result, tuple)
+                and len(result) == 2
+                and isinstance(result[0], int)
+                and not isinstance(result[0], bool)
+            ):
+                return result
+            return 200, {"ok": True, "data": result}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

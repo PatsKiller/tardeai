@@ -1,0 +1,11 @@
+{
+  "schema": "PlanRegistryConfig@v1",
+  "as_of": "2026-11-02",
+  "_why": "Operator 2026-11-02: 'build the plan registry' — every approved plan persisted on the server for all agents. Claude Code registers through the ExitPlanMode PostToolUse hook documented in docs/ops/PLAN_REGISTRY.md; Codex, Cursor and others use scripts/plan_registry.py. Writes are flocked and atomic, the ledger is append-only.",
+  "plans_rel": "data/coordination/plans",
+  "inbox_rel": "data/coordination/coordinator/inbox/codex",
+  "stale_hours": 72,
+  "stale_lane_hours": 1,
+  "stalled_prefix": "[PLAN-STALLED]",
+  "_inbox_why": "The stale scan writes ONE dated notice file per run into this directory (<ts>-plan-stalled.md) - the inbox the lead actually reads. The previous value was a single inbox.md file with no reader (review 2026-11-03)."
+}

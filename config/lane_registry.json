@@ -19010,6 +19010,40 @@
       "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/main_red_autoheal.py --apply"
     },
     {
+      "lane_id": "plan-registry-stale",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-plan-registry-stale.timer",
+        "match": "PROPOSED - NOT INSTALLED: no unit file, cron line or n8n workflow exists for this lane"
+      },
+      "expected_cadence_hours": 1,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-02",
+      "state_reason": "Operator 2026-11-02: build the plan registry. Approved or in-progress plans with no claim, branch or PR and no activity for stale_hours are set stalled and flagged in the coordinator inbox. PROPOSED, NOT INSTALLED: adding a systemd entry is operator-only (AGENTS.md 17).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/plan_registry.py stale; config/plan_registry.json; docs/ops/PLAN_REGISTRY.md; tests/test_plan_registry_20261102.py. No unit file, crontab line or n8n workflow references this lane.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/coordination/plans/ledger.jsonl"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "KEEP_ON_CRON",
+      "proposed_state": {
+        "state": "PROPOSED",
+        "state_since": "2026-11-02",
+        "reason_confidence": "PROPOSED",
+        "state_reason": "PROPOSED, NOT INSTALLED: hourly stale-plan check; the operator installs the timer after merge.",
+        "reason_evidence": "docs/ops/PLAN_REGISTRY.md",
+        "ruled": false
+      },
+      "operator_decision_pending": true,
+      "status": "PROPOSED_NOT_INSTALLED",
+      "service": "tradeai-plan-registry-stale.service (PROPOSED; no unit file)",
+      "cadence_basis": "PROPOSED: hourly",
+      "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/plan_registry.py stale --apply"
+    },
+    {
       "lane_id": "nightly-security-scan",
       "owner": "platform",
       "scheduler": {

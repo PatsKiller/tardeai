@@ -36,6 +36,7 @@ import HealthHub from './pages/HealthHub'
 import CommunicationsHub from './pages/CommunicationsHub'
 import ConsumptionHub from './pages/ConsumptionHub'
 import CoordinationPage from './pages/CoordinationPage'
+import PlansPage from './pages/PlansPage'
 import SchwabReauthHub from './pages/SchwabReauthHub'
 import BrokerAccessPage from './pages/BrokerAccessPage'
 import ReleasesSchedules from './pages/ReleasesSchedules'
@@ -164,8 +165,8 @@ function ReconnectingBar() {
 
   if (!degraded) return null
   return (
-    <div style={{
-      background: 'rgba(245,158,11,0.10)', color: '#f5c76a', borderBottom: '1px solid rgba(245,158,11,0.28)',
+    <div data-testid="cc-reconnect-bar" style={{
+      background: 'var(--warning-bg)', color: 'var(--warning-color)', borderBottom: '1px solid var(--warning-border)',
       fontSize: 10.5, fontWeight: 650, textAlign: 'center', padding: '2px 8px', letterSpacing: .2,
     }}>
       showing last-good data · live refresh paused (server busy{failing > 1 ? ` · ${failing} feeds` : ''}) · retrying with backoff
@@ -173,7 +174,7 @@ function ReconnectingBar() {
       <button
         type="button"
         onClick={() => { void retryApiConnection() }}
-        style={{ background: 'transparent', border: 'none', color: '#f5c76a', fontWeight: 750, fontSize: 10.5, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+        style={{ background: 'transparent', border: 'none', color: 'var(--warning-color)', fontWeight: 750, fontSize: 10.5, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
       >
         retry now
       </button>
@@ -298,6 +299,7 @@ function Shell() {
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
           <Route path="coordination" element={<RouteErrorBoundary route="/v3/coordination"><OpsDeskFrame page="coordination"><CoordinationPage jobsHealth={<JobsHealth />} /></OpsDeskFrame></RouteErrorBoundary>} />
+          <Route path="plans" element={<RouteErrorBoundary route="/v3/plans"><PlansPage /></RouteErrorBoundary>} />
             <Route path="system" element={<RouteErrorBoundary route="/v3/system"><SystemHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="system/schwab-reauth" element={<RouteErrorBoundary route="/v3/system/schwab-reauth"><SchwabReauthHub /></RouteErrorBoundary>} />
             <Route path="system/broker-access" element={<RouteErrorBoundary route="/v3/system/broker-access"><BrokerAccessPage /></RouteErrorBoundary>} />

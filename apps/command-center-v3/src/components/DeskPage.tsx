@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
-import { BB, T, TYPE } from '../lib/watchTokens'
+import { T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
 import { writerStateWords } from '../lib/deskWriterState'
 import ReadableTime from './ReadableTime'
@@ -54,10 +54,12 @@ export function useDeskTab(tabs: readonly DeskTab[], defaultTab = tabs[0]?.id ??
   return [active, change]
 }
 
-const panel: CSSProperties = { background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: RADIUS.lg, padding: 16, minWidth: 0 }
+// Page chrome follows the active theme. A hardcoded dark palette here painted a white light-theme
+// page with near-white headings and dark panels, so every colour below is a CSS token.
+const panel: CSSProperties = { background: 'var(--bg-1)', border: '1px solid var(--border-color)', borderRadius: RADIUS.lg, padding: 16, minWidth: 0 }
 
 export function DeskGap({ title, reason, children }: { title: string; reason: string; children?: ReactNode }) {
-  return <aside role="note" style={{ ...panel, borderStyle: 'dashed', color: BB.amber }}>
+  return <aside role="note" style={{ ...panel, borderStyle: 'dashed', color: 'var(--warning-color)' }}>
     <strong>{title}</strong><div style={{ marginTop: 4, fontSize: TYPE.base }}>{reason}</div>{children}
   </aside>
 }
@@ -115,13 +117,13 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
   const sourceReadFailed = Boolean(data) && (('ok' in (data as object) && (data as { ok: boolean }).ok !== true) || !Array.isArray(payload?.writers))
   const writerRows = Array.isArray(payload?.writers) ? payload!.writers : []
   const writers = new Map(writerRows.filter(writer => writer && typeof writer.lane_id === 'string').map(writer => [writer.lane_id, writer]))
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, color: BB.text1 }}>
-    <header><h1 style={{ margin: 0, fontSize: TYPE.xl, color: BB.text0 }}>{title}</h1>
-      <p style={{ margin: '6px 0 0', color: BB.text3, fontSize: TYPE.md }}>{purpose}</p></header>
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, color: 'var(--text-1)' }}>
+    <header><h1 style={{ margin: 0, fontSize: TYPE.xl, color: 'var(--text-0)' }}>{title}</h1>
+      <p style={{ margin: '6px 0 0', color: 'var(--text-2)', fontSize: TYPE.md }}>{purpose}</p></header>
     {tabs.length > 0 && <nav aria-label={`${title} views`} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
       {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={active === tab.id} onClick={() => { tapped.current = tab.id !== active; setTab(tab.id) }} style={{
         minHeight: 44, minWidth: 44, padding: '8px 12px', borderRadius: RADIUS.md, cursor: 'pointer', fontSize: TYPE.base,
-        border: `1px solid ${active === tab.id ? T.link : BB.border}`, color: active === tab.id ? T.link : BB.text2, background: BB.bgPanel,
+        border: `1px solid ${active === tab.id ? T.link : 'var(--border-color)'}`, color: active === tab.id ? T.link : 'var(--text-2)', background: 'var(--bg-1)',
       }}>{tab.label}</button>)}
     </nav>}
     <section aria-label="Source clocks" style={panel}>
@@ -137,10 +139,10 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
           const gap = source.gap || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
-            <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
-            {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
-            {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
-            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
+            <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? 'var(--warning-color)' : 'var(--text-2)', marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
+            {source.asOf && <div style={{ fontSize: TYPE.sm, color: 'var(--text-3)' }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
+            {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: 'var(--text-2)', marginTop: 6 }}>{source.note}</div>}
+            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: 'var(--warning-color)', fontSize: TYPE.base }}>Writer not identified for this source.</p>}
             {sourceWriters.map((writer, index) => {
               // FQ-051: the operator needs one fact — is this source still being refreshed, and what it costs if not.
               // The writer's own state code, its last successful run and the execution-evidence capture are how that is
@@ -149,21 +151,21 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
               // Every declared state gets its own true sentence: PAUSED and NONE are read successfully, so neither may
               // be reported as "State unavailable". See lib/deskWriterState.ts and its test.
               const words = writerStateWords(st, loading)
-              return <div key={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
-                <div data-testid="source-writer-state" style={{ color: st === 'ACTIVE' ? BB.text2 : BB.amber }}>{words}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
+              return <div key={source.laneIds![index]} style={{ borderTop: `1px solid var(--border-color)`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
+                <div data-testid="source-writer-state" style={{ color: st === 'ACTIVE' ? 'var(--text-2)' : 'var(--warning-color)' }}>{words}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
                 <details data-testid="source-writer-diagnostics" style={{ marginTop: 4 }}>
-                  <summary style={{ cursor: 'pointer', fontSize: TYPE.sm, color: BB.text3, minHeight: 44, display: 'flex', alignItems: 'center' }}>Diagnostics</summary>
-                  <div style={{ color: BB.text3, fontSize: TYPE.sm, display: 'grid', gap: 2 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: TYPE.sm, color: 'var(--text-3)', minHeight: 44, display: 'flex', alignItems: 'center' }}>Diagnostics</summary>
+                  <div style={{ color: 'var(--text-3)', fontSize: TYPE.sm, display: 'grid', gap: 2 }}>
                     <div>Writer state: {st ?? (loading ? 'loading' : 'unavailable')}</div>
                     <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
                     {writer?.last_success_at && <div>At <ReadableTime value={writer.last_success_at} /></div>}
                     {writer?.evidence_as_of && <div>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
-                    {(writer?.reason || !writer) && <div style={{ color: BB.amber }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
+                    {(writer?.reason || !writer) && <div style={{ color: 'var(--warning-color)' }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
                   </div>
                 </details>
               </div>
             })}
-            {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
+            {gap && <div role="note" style={{ color: 'var(--warning-color)', borderTop: `1px dashed var(--border-color)`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
           </article>
         })}
       </div>
@@ -172,9 +174,9 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
       <h2 style={{ fontSize: TYPE.md, margin: '0 0 8px' }}>Decisions for you</h2>
       {decisions?.length ? <ul style={{ paddingLeft: 20, margin: 0 }}>{decisions.map(decision => <li key={decision.id} style={{ marginTop: 8 }}>
         {!decision.href && <strong>{decision.title}</strong>}
-        {decision.detail && <div style={{ fontSize: TYPE.base, color: BB.text3, marginTop: 4 }}>{decision.detail}</div>}
+        {decision.detail && <div style={{ fontSize: TYPE.base, color: 'var(--text-3)', marginTop: 4 }}>{decision.detail}</div>}
         {decision.href && <Link style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }} to={decision.href}>{decision.title}</Link>}
-      </li>)}</ul> : <p style={{ color: BB.text3, margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
+      </li>)}</ul> : <p style={{ color: 'var(--text-3)', margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
     </section>
     <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{homeData ? <HomeBoardMount data={homeData} /> : (typeof children === 'function' ? children(active) : children)}</div>
   </div>
