@@ -5266,8 +5266,9 @@
       "freshness_sla": "5 min in market hours",
       "refresh_lane": {
         "runner": "host",
-        "lane": "auto-proposal, paper-execution-sweep",
+        "lane": "auto-proposal",
         "never_list": true,
+        "retired_lanes": "paper-execution-sweep RETIRED 2026-11-06 (operator: \"retire alpaca, paper background\"; retire_batch retire-alpaca-paper-20261106)",
         "note": "paper lanes are on the n8n never-list (AGENTS.md \u00a723.14)"
       },
       "projection": null,
@@ -5342,14 +5343,15 @@
       "writer_target": "scripts/paper_execution_sweep.py",
       "writer_target_status": "exists",
       "_writer_note": "32 writer files measured 2026-10-22. Consolidation touches the paper adapter: only under an execution-engineering grant.",
-      "cadence": "paper-execution-sweep */5; alpaca paper sync hourly",
+      "cadence": "none: writer lanes RETIRED 2026-11-06 (was paper-execution-sweep */5; alpaca paper sync hourly)",
       "stale_after_hours": 0.1,
-      "freshness_sla": "5 min in market hours",
+      "freshness_sla": "none while retired (was 5 min in market hours)",
       "refresh_lane": {
         "runner": "host",
-        "lane": "paper-execution-sweep, alpaca-paper-reconciler",
+        "lane": "none (RETIRED: paper-execution-sweep, alpaca-paper-adapter, alpaca-paper-reconciler)",
         "never_list": true,
-        "note": "paper lanes are on the n8n never-list"
+        "retired_since": "2026-11-06",
+        "note": "operator decision 2026-11-06 \"retire alpaca, paper background\" (retire_batch retire-alpaca-paper-20261106): no lane refreshes this store, so it is not judged stale; data is kept. Paper lanes were on the n8n never-list"
       },
       "projection": null,
       "projection_status": "to_build",

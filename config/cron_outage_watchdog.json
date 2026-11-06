@@ -69,16 +69,6 @@
       "expression": "*/5 * * * *",
       "component": "hermes_event_feeder"
     },
-    "paper-execution-sweep": {
-      "scheduler_match": "scripts/paper_execution_sweep.py",
-      "expression": "*/5 9-16 * * 1-5",
-      "component": "paper_sweep"
-    },
-    "alpaca-paper-adapter": {
-      "scheduler_match": "scripts/alpaca_paper_adapter.py",
-      "expression": "0 10-16 * * 1-5",
-      "component": "alpaca_recon"
-    },
     "incubator-proposal-promoter": {
       "scheduler_match": "scripts/incubator_proposal_promoter.py",
       "expression": "0 7,8,9,10,11,12,13,14,15,16,17 * * 1-5",

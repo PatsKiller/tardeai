@@ -338,7 +338,13 @@ def measure_freshness(
         except Exception as exc:  # noqa: BLE001 — unreadable is UNAVAILABLE, never fresh
             fr = {"state": "UNAVAILABLE", "detail": f"{type(exc).__name__}: {str(exc)[:120]}"}
         fr["stale_after_hours"] = sla_h
-        if fr.get("state") == "MEASURED" and isinstance(sla_h, (int, float)) and fr.get("age_h") is not None:
+        retired_since = (row.get("refresh_lane") or {}).get("retired_since")
+        if retired_since:
+            # A domain whose refresh lanes are RETIRED (e.g. paper_trades, 2026-11-06) is expected to age:
+            # no lane writes it, so "stale" is not a finding.
+            fr["retired_since"] = str(retired_since)
+            fr["stale"] = None
+        elif fr.get("state") == "MEASURED" and isinstance(sla_h, (int, float)) and fr.get("age_h") is not None:
             fr["stale"] = fr["age_h"] > float(sla_h)
         else:
             fr["stale"] = None

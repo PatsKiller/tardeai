@@ -95,9 +95,7 @@
         "options-",
         "options_",
         "ensemble",
-        "inference-ensemble",
-        "reconcile-alpaca-paper-options",
-        "alpaca-stop-manager"
+        "inference-ensemble"
       ],
       "owners": [
         "options",
