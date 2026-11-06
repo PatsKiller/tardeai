@@ -260,7 +260,12 @@ def test_rule_r_keeps_current_previous_and_newest_n(world):
     rules = lifecycle(world)
     rel = releases(world[0])
     rows = [r for r in plan_rows(rules) if r["rule"] == "R"]
-    assert {r["path"] for r in rows if r["candidate"]} == {str(p) for p in rel[:3]}
+    # Report-only since 2026-11-04 (operator decision (a)): the three beyond CURRENT+previous+newest N are still
+    # SELECTED, and refused with the release reason instead of becoming candidates.
+    assert {r["path"] for r in rows if r["candidate"]} == set()
+    by_path = {r["path"]: r["reasons"] for r in rows}
+    for p in rel[:3]:
+        assert DH.RELEASE_REFUSAL in by_path[str(p)], by_path[str(p)]
     held = {r["path"]: r["reasons"] for r in rows if not r["candidate"]}
     assert "previous_served" in held[str(rel[3])]
     assert any(x.startswith("pointer_symlink") for x in held[str(rel[4])])
@@ -278,14 +283,14 @@ def test_rule_r_holds_lock_credential_copy_reference_and_missing_current(world):
     set_source(doc, "cron", f"0 1 * * * cd {rel[2]} && true\n")
     rows = {r["path"]: r for r in DH.standing_results(rules, SR.evidence_context(doc, NOW)) if r["rule"] == "R"}
     assert "release_holds_credential_file" in rows[str(rel[0])]["reasons"]
-    assert rows[str(rel[1])]["candidate"]
+    assert not rows[str(rel[1])]["candidate"] and DH.RELEASE_REFUSAL in rows[str(rel[1])]["reasons"]
     assert "referenced:cron" in rows[str(rel[2])]["reasons"]
     lock = DH._expand(R_CFG["lock_path"], home)
     lock.parent.mkdir(parents=True)
     with open(lock, "a+") as fh:
         fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
         assert all("release_lock_busy" in r["reasons"] for r in plan_rows(rules) if r["rule"] == "R")
-    assert row_for(plan_rows(rules), rel[1])["candidate"]
+    assert not row_for(plan_rows(rules), rel[1])["candidate"]
     (home / "trade-ai-releases" / "portfolio-server" / "CURRENT").unlink()
     assert "current_pointer_unresolved" in row_for(plan_rows(rules), rel[1])["reasons"]
 
@@ -293,7 +298,10 @@ def test_rule_r_holds_lock_credential_copy_reference_and_missing_current(world):
 def test_rule_r_keep_newest_comes_from_config(world):
     rules = lifecycle(world, release_reclaim={**R_CFG, "keep_newest": 5})
     rel = releases(world[0], current=6)
-    assert {r["path"] for r in plan_rows(rules) if r["rule"] == "R" and r["candidate"]} == {str(rel[0]), str(rel[1])}
+    by_path = {r["path"]: r["reasons"] for r in plan_rows(rules) if r["rule"] == "R"}
+    assert {r["path"] for r in plan_rows(rules) if r["rule"] == "R" and r["candidate"]} == set()
+    for p in rel[:2]:
+        assert DH.RELEASE_REFUSAL in by_path[str(p)], by_path[str(p)]
 
 
 # ── config validation ───────────────────────────────────────────────────────────────────────────────────────────────

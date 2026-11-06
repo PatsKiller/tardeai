@@ -273,7 +273,7 @@ class Stub:
             self.runs.append((argv, cwd, env))
             return 0, "ok"
 
-        def notify(text, producer):
+        def notify(text, producer, priority="P2"):
             self.sent.append(text)
             return True
 
@@ -418,17 +418,23 @@ def test_runbook_config_never_names_a_forbidden_tool():
     assert "deepseek" in cfg["policy"]["never_providers"]
 
 
-def test_process_registration_sonnet_dollar_cap_no_deepseek():
+def test_process_registration_haiku_first_dollar_cap_no_deepseek():
+    """Operator 2026-11-02 (emergency-model decision): Haiku first, Sonnet only if insufficient, never Opus/Fable.
+
+    The caps moved with it: the supervisor skipped every incident on 'daily model-call cap' at 40/day, so the
+    self-heal lane never called a model. 240/day is the pace this config itself allows (5 per cycle x 2 per hour
+    x 24h); the cost cap is 10x the Haiku estimate for that volume."""
     reg = json.loads((ROOT / "config" / "llm_process_registry.json").read_text())
     row = next(p for p in reg["processes"] if p["id"] == "incident_supervisor")
-    assert row["daily_cost_cap_usd"] == 1.0 and row["anthropic_first"] is True and "deepseek" not in row["allowed_lanes"]
+    assert row["daily_cost_cap_usd"] == 2.0 and row["anthropic_first"] is True and "deepseek" not in row["allowed_lanes"]
+    assert row["daily_soft_cap"] == 240
     pol = json.loads((ROOT / "config" / "llm_routing_policy.json").read_text())
     prow = pol["policies"]["default"]["processes"]["incident_supervisor"]
     assert "deepseek" not in json.dumps(prow)
     credit = json.loads((ROOT / "config" / "anthropic_credit_policy.json").read_text())
     from scripts.lib import anthropic_routing
     tier = anthropic_routing.tier_for("FAST", process_id="incident_supervisor", policy=credit)
-    assert credit["models"][tier] == "claude-sonnet-5-5" and credit["per_call_caps_usd"][tier]
+    assert tier == "bulk" and credit["models"][tier] == "claude-haiku-5-5" and credit["per_call_caps_usd"][tier]
 
 
 # ---------------------------------------------------------------- API
@@ -536,8 +542,10 @@ def test_p1_reaches_the_telegram_chokepoint_with_incident_id(tmp_path, monkeypat
     S.cycle(d=_d(tmp_path), state_root=tmp_path / "state", release_root=tmp_path, cfg=_scfg(), deps=deps, apply=True,
             now=T0, environ={}, root=ROOT)
     assert len(sent) == 1 and sent[0]["priority"] == "P1" and r["id"] in sent[0]["message"]
-    assert sent[0]["producer"] == f"incident_supervisor:{r['id']}"
-    assert L.load_records(_d(tmp_path))[r["id"]]["escalations"][0]["delivered"] is True
+    assert sent[0]["producer"] == "incident_supervisor:batch"  # one batched message per run (§12 rule 3)
+    rows = L.load_records(_d(tmp_path))[r["id"]]["escalations"]
+    assert [row["delivered"] for row in rows] == [False, True], rows
+    assert rows[0]["episode"] == rows[1]["episode"] == 1
 
 
 def test_daily_brief_reaches_the_telegram_chokepoint(tmp_path, monkeypatch):
