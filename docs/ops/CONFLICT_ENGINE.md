@@ -1,6 +1,6 @@
 # Conflict engine (W10 PR 1)
 
-Status: IMPLEMENTED, LOCAL VALIDATION; rulebook PROPOSED
+Status: IMPLEMENTED; rulebook APPROVED 2026-10-28 and live-enabled (see `config/conflict_rulebook.json`)
 
 Design-Task: DSN-20261024-conflicts-P1-T1
 
@@ -12,11 +12,11 @@ with SHA pins and a separately labelled historical baseline. Historical test
 results do not establish current matrix acceptance.
 
 Profile thresholds and vocabularies live in `config/conflict_rulebook.json`.
-Its status is PROPOSED, approval is null and live is disabled. The matrix and R13
-source instructions bind implementation; final rulebook ratification and live
-activation remain operator acts. No local test
-or implementation approval grants runtime authority. No producer or page is switched
-by this PR; AGENTS.md is unchanged.
+Its status and approval are recorded in that file (APPROVED, 2026-10-28, operator
+words quoted verbatim there); this document does not restate or extend them. The
+matrix and R13 source instructions bind implementation, and a rulebook change is
+still an operator act: no local test or implementation approval grants runtime
+authority. No producer or page is switched by this PR; AGENTS.md is unchanged.
 
 `adapters.security_inputs_from_truth` consumes W1's `security_inputs_for` envelope:
 canonical value/source/as_of/subject_id, context.held and persisted protection inputs.
@@ -58,6 +58,34 @@ the captured card inputs plus W1's confirmed identity/holdings snapshot.
 PR 2 owns ledger, lifecycle, operator API authentication, CIO memory/context and
 review-completion integration. W8 owns the separate inactive lane declaration;
 W9/W7/W4 own 412/390 actual-tap fixture proofs. This backend PR changes no UI.
+
+## Vocabulary: mapped, declared unmapped, or a data error
+
+`security_stance.families` and `security_stance.unmapped_labels` in
+`config/conflict_rulebook.json` are the whole vocabulary contract. A label that is in
+neither produces a visible R8 DATA_ERROR — that is the correct outcome for a genuinely
+unknown word, and the wrong outcome for a word the desk already emits.
+
+Two rules keep that distinction honest:
+
+- **Declared means decided.** A label that is deliberately unmapped is listed in
+  `unmapped_labels`. `MISSING_MARKET`, `MISSING_PLAN` and `STALE` are declared unmapped
+  because "we do not know" must not read as "no action". Absence from both lists is not a
+  third state; it is an oversight waiting to become noise.
+- **No silent drift.** `tests/test_conflict_rulebook.py::test_every_desk_state_is_mapped_or_declared_unmapped`
+  scans the string states in `reentry_rules.derive_intel_state`. A new desk state that is
+  neither mapped nor declared fails the suite, so the next label cannot quietly become
+  another unmapped error.
+
+Mapping a label does not make it a judgment: it only says which family the word belongs to.
+The conflict still has to be real, and safety, protection, policy and ownership findings stay
+`never_auto`.
+
+**What vocabulary work cannot fix.** On 2026-11-02 the live ledger held 1013 active conflict
+items: 535 U1 "holding state unknown", 457 T1 "Ownership is unknown", 18 GATE R16 and 3
+NEEDS_OPERATOR — and **zero R8**. The non-actionable mass is an identity/ownership coverage
+gap, cured by W1 data, not by this file. Cite the ledger before claiming a vocabulary change
+reduced the count.
 
 <!-- moved from AGENTS.md 25.0.1 lines 6185-6203 -->
 ## Moved from AGENTS.md (25.0.1 lines 6185-6203)

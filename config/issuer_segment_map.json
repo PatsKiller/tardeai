@@ -1,0 +1,141 @@
+{
+  "_comment": "Deterministic issuer-segment -> market-risk group table (DSN-20261101-issuer-segment-lookthrough §3.1). Reviewed config, git. Rules are tried in order and the first match wins: (1) issuer_rules (scoped by SEC CIK, never by ticker alone; the only place a theme overlay such as ai_basket may be assigned); (2) standard_member_rules (us-gaap/srt members); (3) label_patterns (case-insensitive regex on the member's standard label; a label that matches patterns of two different groups is AMBIGUOUS and is never auto-mapped). Unmatched or ambiguous lines go to the model-classified queue (P3; a stub today) and their share falls back to the issuer's profile sector with flag segment_unmapped_fallback. SHADOW ONLY until the operator grants the issuer_segments store: nothing in scripts/lib/market_risk/ reads this file; config/issuer_segments.json (APPROVED entries) stays the only live source.",
+  "extraction": {
+    "_comment": "Revenue concepts in preference order: the parser takes the first that appears WITH the segment axis in the filing's own period (§2.1). companyconcept is read for the same list to find the newest 10-K/10-Q.",
+    "revenue_concepts": [
+      "Revenues",
+      "RevenueFromContractWithCustomerExcludingAssessedTax",
+      "RevenueFromContractWithCustomerIncludingAssessedTax",
+      "SalesRevenueNet"
+    ],
+    "segment_axis": "us-gaap:StatementBusinessSegmentsAxis",
+    "drilldown_axes": [
+      "srt:ProductOrServiceAxis",
+      "us-gaap:SubsegmentsAxis"
+    ],
+    "consolidation_axis": "srt:ConsolidationItemsAxis",
+    "operating_segments_member": "us-gaap:OperatingSegmentsMember",
+    "reconciling_members": [
+      "us-gaap:CorporateAndOtherMember",
+      "us-gaap:CorporateNonSegmentMember",
+      "us-gaap:IntersegmentEliminationMember",
+      "us-gaap:SegmentReconcilingItemsMember",
+      "us-gaap:AllOtherSegmentsMember"
+    ],
+    "sum_tolerance": 0.01,
+    "share_decimals": 4
+  },
+  "sector_keys": [
+    "tech",
+    "comm",
+    "discretionary",
+    "staples",
+    "healthcare",
+    "utilities",
+    "energy",
+    "financials",
+    "industrials",
+    "materials",
+    "real_estate"
+  ],
+  "theme_keys": [
+    "ai_basket",
+    "semis"
+  ],
+  "issuer_rules": [
+    {
+      "id": "spcx-space",
+      "cik": "0001181412",
+      "symbol": "SPCX",
+      "member": "spcx:SpaceMember",
+      "group": "industrials",
+      "why": "launch services and launch development (10-Q 0001628280-26-066880 Note 18); 'Space' matches no keyword"
+    },
+    {
+      "id": "spcx-si-drilldown",
+      "cik": "0001181412",
+      "symbol": "SPCX",
+      "member": "spcx:SIMember",
+      "drilldown_axis": "srt:ProductOrServiceAxis",
+      "why": "SI mixes advertising (comm) with AI compute and software; split by its ProductOrService lines (operator-APPROVED option A)"
+    },
+    {
+      "id": "spcx-si-solutions",
+      "cik": "0001181412",
+      "symbol": "SPCX",
+      "member": "spcx:SISolutionsAndInfrastructureMember",
+      "group": "tech",
+      "themes": [
+        "ai_basket"
+      ],
+      "why": "AI compute, solutions and infrastructure; ai_basket overlay assigned here only (theme set is operator-owned, §3.1 rule 4)"
+    },
+    {
+      "id": "ibm-infrastructure",
+      "cik": "0000051143",
+      "symbol": "IBM",
+      "member": "ibm:InfrastructureMember",
+      "group": "tech",
+      "why": "IBM Infrastructure is hardware (Z, Power, storage); the word means buildings elsewhere"
+    },
+    {
+      "id": "ibm-financing",
+      "cik": "0000051143",
+      "symbol": "IBM",
+      "member": "ibm:FinancingMember",
+      "group": "financials",
+      "why": "IBM Financing: client and commercial financing"
+    },
+    {
+      "id": "t-legacy",
+      "cik": "0000732717",
+      "symbol": "T",
+      "member": "t:LegacySegmentMember",
+      "group": "comm",
+      "why": "legacy voice and data services (10-Q 0000732717-26-000372)"
+    },
+    {
+      "id": "t-latam",
+      "cik": "0000732717",
+      "symbol": "T",
+      "member": "t:LatinAmericaSegmentMember",
+      "group": "comm",
+      "why": "Mexico wireless"
+    }
+  ],
+  "standard_member_rules": [
+    {
+      "id": "std-advertising",
+      "member": "us-gaap:AdvertisingMember",
+      "group": "comm"
+    }
+  ],
+  "label_patterns": [
+    {
+      "id": "kw-comm",
+      "group": "comm",
+      "pattern": "wireless|mobility|broadband|wireline|connectivity|telecom|communications"
+    },
+    {
+      "id": "kw-tech",
+      "group": "tech",
+      "pattern": "software|cloud|consulting|data processing"
+    },
+    {
+      "id": "kw-industrials",
+      "group": "industrials",
+      "pattern": "aerospace|defen[cs]e|launch|automation|building"
+    },
+    {
+      "id": "kw-financials",
+      "group": "financials",
+      "pattern": "financ(ing|ial services)|insurance|bank"
+    }
+  ],
+  "classifier": {
+    "_comment": "Model-classified path (§3.2, P3). enabled stays false: P1 ships a stub that never calls a model. The acceptance gate below is deterministic and tested now.",
+    "enabled": false,
+    "min_confidence": 0.7,
+    "quote_whitespace_normalised": true
+  }
+}

@@ -188,6 +188,53 @@ render_relay_live_lanes() {
   else
     log "WARN relay live-lane render failed — relay keeps the host-file list (fallback)"
   fi
+  # 2026-10-31: say what this release would change in the EFFECTIVE live set (vs the served CURRENT), record every
+  # exclusion, and page once when it changes. Never fatal here; promote holds on it (relay_live_set_gate_step).
+  local gate="${dir}/scripts/relay_live_set_gate.py"
+  if [[ -f "$gate" ]]; then
+    (cd "$dir" && "$py" "$gate" diff --release "$dir" --served "$(current_release)" --write --notify) \
+      || log "WARN relay live-set diff could not be computed"
+  fi
+}
+
+# 2026-10-31: a promote that changes which lanes the n8n relay runs live is held until the operator acknowledges that
+# exact change with a guard grant (scripts/lib/relay_live_set_gate.py; diff_id binds the build sha and the lane delta).
+# A no-rule-text AGENTS.md PATCH moved the live set by 10 lanes (trade-ai-scalp-live among them) with no operator step.
+# After the gate passes, the host-state pin is latched (one-way), so no later rollback can unpin a release that reads it.
+relay_live_set_gate_step() {
+  local dir="$1"
+  local gate="${dir}/scripts/relay_live_set_gate.py"
+  if [[ ! -f "$gate" ]]; then
+    log "relay live-set gate skipped (script not present in release)"
+    return 0
+  fi
+  local py="$VENV_PYTHON"
+  [[ -x "$py" ]] || py="python3"
+  if ! (cd "$dir" && "$py" "$gate" gate --release "$dir" --served "$(current_release)"); then
+    write_deploy_receipt false promote blocked false "relay_live_set_unacknowledged"
+    die "relay live set would change and the operator has not acknowledged this diff_id — promote held (${dir}/N8N_RELAY_LIVE_SET_DIFF.json)"
+  fi
+  (cd "$dir" && "$py" "$gate" latch-pin --release "$dir") || log "WARN relay live-source host pin could not be latched"
+}
+
+# 2026-11-01: rollback runs no gate (it is the recovery path), but it must not change the relay live set silently:
+# rolling back to a release older than the pin (351c7df0b, 99bfa4abc, 7e9dc51a6 carry 27.0.0 PROPOSED) runs that
+# release's own resolver, which follows the header. Compute the diff with each release's own code, WARN and page once.
+relay_live_set_rollback_diff() {
+  local target="$1" from="$2"
+  local gate=""
+  local cand
+  for cand in "${from}/scripts/relay_live_set_gate.py" "${ROOT}/scripts/relay_live_set_gate.py"; do
+    if [[ -f "$cand" ]]; then gate="$cand"; break; fi
+  done
+  if [[ -z "$gate" ]]; then
+    log "WARN relay live-set rollback diff skipped (no gate script in ${from} or ${ROOT})"
+    return 0
+  fi
+  local py="$VENV_PYTHON"
+  [[ -x "$py" ]] || py="python3"
+  "$py" "$gate" rollback-diff --release "$target" --served "$from" --notify \
+    || log "WARN relay live-set rollback diff could not be computed"
 }
 
 health_check() {
@@ -528,6 +575,9 @@ overlay_main() {
     --exclude='data/' --exclude='state/' \
     --exclude='logs/' --exclude='exports/' \
     --exclude='.env' --exclude='config/broker_credentials.env' \
+    `# 2026-10-30: only '.env' was excluded, so every .env.* backup (real config and` \
+    `# secret copies) was cloned into each release. Tracked templates still ship.` \
+    --include='.env.example' --exclude='.env.*' \
     --exclude='__pycache__/' --exclude='*.pyc' \
     --exclude='.pytest_cache/' --exclude='.mypy_cache/' --exclude='.ruff_cache/' \
     `# 2026-09-21: .claude is 11,591 MB of Claude Code SESSION data and was` \
@@ -694,6 +744,12 @@ release_pin_step() {
   local key="TRADEAI_CURRENT_BOUND_UNITS" bound
   bound="${!key:-}"
   [[ -n "$bound" ]] || bound="$(declare -f restart_root_frozen_units | sed -n "s/.*${key}:-\([^}]*\)}.*/\1/p" | head -1)"
+  if [[ "$action" != "plan" && -n "${VENV_PYTHON:-}" && -x "${VENV_PYTHON}" && -f "${ROOT}/scripts/current_bound_units.py" ]]; then
+    # 28.1.0: pass exactly the units the restart will restart (filtered candidates), so they are not reported pending.
+    local derived
+    derived="$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$dir" --names 2>/dev/null || true)"
+    bound="$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" filter --units "$bound $derived" 2>/dev/null || printf '%s' "$bound")"
+  fi
   local out rc=0
   if [[ "$action" == "plan" || "$mode" == "warn" ]]; then
     out="$("$VENV_PYTHON" "$tool" plan --target "$dir" 2>&1)" || rc=$?
@@ -869,6 +925,8 @@ staged_units_step() {
 }
 
 cmd_promote() {
+  # A real deploy, never a test: the bound-unit verify strips leaked CI/harness variables only under this marker.
+  local +x CBU_DEPLOY_CONTEXT=1  # +x: a non-exported marker even if the env leaked an exported one
   load_state
   local dir="${1:-${NEW_RELEASE:-}}"
   [[ -n "$dir" ]] || die "no release — run prepare first"
@@ -882,6 +940,7 @@ cmd_promote() {
   # release-write use (2026-10-21: 71df62acc was refused by CI after its use was consumed).
   release_grant_preflight promote "$sha" --no-consume
   conformance_gate "$sha"
+  relay_live_set_gate_step "$dir"
   # Re-query immediately before activation. Pending, missing, failed or unavailable
   # push/main evidence cannot be substituted with PR CI or an old receipt.
   local promote_note="promote_ok"
@@ -914,7 +973,10 @@ cmd_promote() {
     die "promote health/wrapper gate failed — not claiming promote OK"
   fi
   release_pin_step apply "$dir"
-  restart_root_frozen_units "$dir"
+  if ! restart_root_frozen_units "$dir" promote; then
+    promote_note="${promote_note}_bound_units_stale"
+    log "WARN bound units not all on $dir — paged P1 by verify; promote continues (pins, receipt, ff)"
+  fi
   staged_units_step promote "$dir"
   write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "$promote_note"
@@ -1004,32 +1066,87 @@ write_expected_release_pin() {
 # the unit stays active across a promote precisely while being wrong, so
 # activeness is the one signal that cannot detect this.
 restart_root_frozen_units() {
-  local dir="$1"
+  local dir="$1" event="${2:-promote}"
+  # 28.1.0 (§25.10): candidates = this literal default (or an operator override) ∪ the units named in 28.1.0 that are
+  # running from CURRENT; EVERY candidate then passes the fail-closed filter in scripts/lib/current_bound_units.py
+  # (never-list, ops-applier, callback-poller in market hours, transient units, restart cap). Without the Python
+  # filter only names on this literal default are restarted. Tools parse the literal below; keep it on one line.
   local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service tradeai-telegram-callback-poller.service tradeai-n8n-coordination-gateway.service tradeai-n8n-run-relay.service tradeai-n8n-run-executor.service tradeai-phone-status.service}"
+  local defaults key="TRADEAI_CURRENT_BOUND_UNITS"
+  defaults="$(declare -f restart_root_frozen_units | sed -n "s/.*${key}:-\([^}]*\)}.*/\1/p" | head -1)"
+  local -a cand=() add=() keep=()
+  read -ra cand <<<"$units"
+  local filtered="" have_py=0
+  if [[ -n "${VENV_PYTHON:-}" && -n "${ROOT:-}" && -x "${VENV_PYTHON}" ]]; then
+    have_py=1
+    # An operator override REPLACES the list (still filtered below); only without one are the named units added.
+    if [[ -z "${!key:-}" ]]; then
+      read -ra add <<<"$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$dir" --names 2>/dev/null || true)"
+    fi
+    filtered="$("$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" filter --units "${cand[*]} ${add[*]}" 2>/dev/null)" \
+      || { log "  WARN current-bound filter failed — restarting only names on the literal default list"; have_py=0; }
+  fi
+  if [[ "$have_py" == "1" ]]; then
+    read -ra keep <<<"$filtered"
+  else
+    local c
+    for c in "${cand[@]}"; do
+      case " $defaults " in *" $c "*) keep+=("$c") ;; *) log "  refuse $c (not on the literal default list; filter unavailable)" ;; esac
+    done
+  fi
   local u pid cwd failures=0
-  for u in $units; do
+  local -a restarted=() restart_failed=()
+  for u in "${keep[@]}"; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
     systemctl --user is-active --quiet "$u" || { log "  skip $u (not running)"; continue; }
     if ! systemctl --user restart "$u" 2>/dev/null; then
       log "  FAIL $u restart failed — it may still serve the PREVIOUS release"
+      restart_failed+=("$u")
       failures=$((failures + 1))
       continue
     fi
+    restarted+=("$u")
     sleep 3
     pid="$(systemctl --user show -p MainPID --value "$u" 2>/dev/null || true)"
     cwd=""
     [[ -n "$pid" && "$pid" != "0" ]] && cwd="$(readlink "/proc/${pid}/cwd" 2>/dev/null || true)"
-    if [[ "$cwd" == "$dir" ]]; then
-      log "  $u re-resolved → $dir"
+    if [[ -n "$cwd" && ( "$cwd" == "$dir" || "$cwd" == "$dir"/* ) ]]; then
+      log "  $u re-resolved → $cwd"
     else
-      log "  FAIL $u cwd='$cwd' != '$dir' — still on a stale release"
+      log "  FAIL $u cwd='$cwd' not in '$dir' — still on a stale release"
       failures=$((failures + 1))
     fi
   done
+  # The single judge: receipt + P1 for failed restarts, stale restarted units and stale page-only units.
+  if [[ "$have_py" == "1" ]]; then
+    # Only inside a real promote/rollback (cmd_promote/cmd_rollback set CBU_DEPLOY_CONTEXT=1) are leaked CI/harness
+    # variables stripped, so a real P1 and receipt cannot be suppressed. A harness that sources this function keeps
+    # its guard; PYTEST_CURRENT_TEST is never stripped (only pytest sets it).
+    local vrc=0
+    local -a vpre=()
+    # Honoured only as a NON-exported shell variable: a harness that exports CBU_DEPLOY_CONTEXT cannot disable the guard.
+    if [[ "${CBU_DEPLOY_CONTEXT:-}" == "1" && "$(declare -p CBU_DEPLOY_CONTEXT 2>/dev/null)" != "declare -x"* ]]; then
+      vpre=(env -u TRADE_AI_CI -u TRADEAI_TEST_HARNESS)
+    fi
+    "${vpre[@]}" "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
+      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" || vrc=$?
+    case "$vrc" in
+      0) ;;
+      4) log "  ERROR current-bound verify REFUSED to page or write its receipt (harness guard) — check the deploy env" ;;
+      *) log "  WARN current-bound verify reported stale units rc=$vrc (receipt: data/runtime/current_bound_units_last.json)" ;;
+    esac
+  fi
   [[ "$failures" == "0" ]]
 }
 
+cmd_bound_units() {
+  # Read-only: which units a promote to CURRENT would restart, and which it would only page about.
+  "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" plan --current "$(current_release)" "$@"
+}
+
 cmd_rollback() {
+  # A real rollback, never a test (see cmd_promote).
+  local +x CBU_DEPLOY_CONTEXT=1  # +x: a non-exported marker even if the env leaked an exported one
   load_state
   local target="${1:-${PREV_RELEASE:-}}"
   [[ -n "$target" && -d "$target" ]] || die "rollback target missing"
@@ -1038,6 +1155,7 @@ cmd_rollback() {
   log "Rolling back to $target (sha=$sha)"
   local rolled_from
   rolled_from="$(current_release)"
+  relay_live_set_rollback_diff "$target" "$rolled_from"
   activate_release "$target" "$sha"
   if ! health_check "rollback"; then
     write_deploy_receipt false rollback fail true "rollback_health_failed" "$target" "$sha" "$target" "$sha" "$rolled_from"
@@ -1048,7 +1166,7 @@ cmd_rollback() {
   # release that was just rolled away. Same restart and pin write as promote.
   # Pins written by the promote being undone are restored from its receipt (archived drop-ins moved back).
   release_pin_step rollback "$target" "$rolled_from"
-  restart_root_frozen_units "$target"
+  restart_root_frozen_units "$target" rollback || log "WARN bound units not all on $target — paged P1 by verify; rollback continues"
   staged_units_step rollback "$target" "$rolled_from"
   write_expected_release_pin "$target"
   write_deploy_receipt true rollback ok true "rollback_ok" "$target" "$sha" "$target" "$sha" "$rolled_from"
@@ -1071,13 +1189,14 @@ case "$MODE" in
   status)   cmd_status ;;
   pins)     release_pin_step plan "${2:-$(current_release)}" ;;
   units)    TRADEAI_STAGED_UNITS_MODE=plan staged_units_step promote "${2:-$(current_release)}" ;;
+  bound-units) cmd_bound_units ;;
   venv-plan) release_venv_plan "${2:-$ROOT}" || die "release venv plan failed" ;;
   stamp)    [[ -n "${2:-}" && -n "${3:-}" ]] || die "usage: $0 stamp <release-dir> <full-40-char-sha>"
             stamp_build "$2" "$3"
             write_build_meta "$2" "$3"
             log "stamped provenance for $2 -> $3" ;;
   *)
-    echo "Usage: $0 {prepare|promote|rollback|status|pins|units|venv-plan|stamp} [path]"
+    echo "Usage: $0 {prepare|promote|rollback|status|pins|units|bound-units|venv-plan|stamp} [path]"
     exit 2
     ;;
 esac

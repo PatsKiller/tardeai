@@ -435,7 +435,8 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     def read(**kwargs):
         assert kwargs == {"limit": 200}  # code artifacts must not replace W10's canonical state root
         return {"gap": None, "total": 1, "rows": [{"id": key, "title": "Review source disagreement", "proposed_by": "conflict engine",
-            "created_at": NOW.isoformat(), "document": {"text": "Both source versions and their clear condition.", "version": "1", "source_sha": "d" * 64},
+            "created_at": NOW.isoformat(), "revision": 3, "owner": "the CIO",
+            "document": {"text": "Both source versions and their clear condition.", "version": "1", "source_sha": "d" * 64},
             "governed_href": "/v3/watch?conflict=" + key}]}
     module.approval_rows = read
     monkeypatch.setitem(sys.modules, "scripts.lib.conflicts", package)
@@ -445,6 +446,27 @@ def test_w10_adapter_uses_durable_default_and_opaque_ids_with_real_watch_link(mo
     assert row["decision_mode"] == "GOVERNED_PATH"
     assert urlparse(row["governed_href"]).path == "/watch"
     assert parse_qs(urlparse(row["governed_href"]).query)["conflict"] == [key]
+    # The queue row prints item.version; it used to be absent, so every row showed the placeholder. The bound
+    # version stays the evidence digest inside document_sha; the label is the record's revision.
+    assert row["version"] == "open conflict · revision 3 · owner: the CIO"
+    assert row["document"]["version"] == "1:" + "d" * 64
+
+
+def test_queue_card_shows_the_source_label_not_the_bound_digest():
+    """The queue renders item.version. The projection's dict-union used to let document.version win, so the label a
+    source supplied was replaced by the bound value - for a live conflict, a 64-hex sha twice - and the card said
+    "<sha>:<sha>" while the source said "open conflict · revision 3". Display only; the decision still binds
+    document_sha."""
+    doc = c.document("both sides", source_sha=SHA, version="2:" + "b" * 64)
+    labelled = c.item(ident="conflict:x", kind="CONFLICT", title="Review source disagreement", proposed_by=None,
+                      created_at=None, doc=doc, source="conflicts", version="open conflict · revision 3")
+    card = api._queue_card(labelled)
+    assert card["version"] == "open conflict · revision 3"
+    assert card["document_sha"] == doc["document_sha"] and "document" not in card
+    # An item whose source supplies no label keeps the bound version rather than losing the field.
+    plain = c.item(ident="policy:1", kind="POLICY", title="Policy amendment", proposed_by=None, created_at=None,
+                   doc=doc, source="fixture")
+    assert api._queue_card(plain)["version"] == "2:" + "b" * 64
 
 
 def test_encoded_item_ids_resolve_for_read_and_open(rig):
@@ -485,6 +507,8 @@ def test_pending_ai_rule_proposals_join_queue_as_governed_conflicts_linked_to_pr
     assert urlparse(row["governed_href"]).path == "/conflicts/rules"
     assert parse_qs(urlparse(row["governed_href"]).query)["proposal"] == ["rp-pending1"]
     assert row["proposed_by"] == "AI rule proposer (grok)" and "facts_sha256" not in row["document"]["text"]
+    # Readable, and never "revision None": the queue row renders this string instead of a placeholder.
+    assert row["version"] == "revision 1 · T4"
     queue = c.queue_projection({"conflict_rule_proposals": lambda: rows}, decisions=[], now=NOW)
     assert queue["pending_count"] == 1 and queue["items"][0]["requires_governed_action"]
 

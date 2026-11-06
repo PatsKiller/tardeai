@@ -70,7 +70,10 @@
       "hold": [
         "HOLD",
         "KEEP",
-        "MAINTAIN"
+        "MAINTAIN",
+        "MANAGING",
+        "CURRENTLY_HELD",
+        "HOLD_/_MONITOR"
       ],
       "stand_aside": [
         "WATCH",
@@ -81,7 +84,12 @@
         "WAIT",
         "MONITOR",
         "NEUTRAL",
-        "NOT_YET"
+        "NOT_YET",
+        "OVERBOUGHT_WAIT",
+        "OVERSOLD_REVIEW",
+        "READY_TO_REVIEW",
+        "WASH_BLOCK",
+        "IGNORE"
       ],
       "reduce": [
         "TRIM",
@@ -90,7 +98,8 @@
         "REDUCE",
         "TRIM_REVIEW",
         "EXIT_REVIEW",
-        "INVALIDATED"
+        "INVALIDATED",
+        "REBALANCE_TRIM"
       ]
     },
     "held_keep": [
@@ -143,7 +152,8 @@
       "UNKNOWN",
       "READY",
       "WAIT",
-      "MANAGING"
+      "MANAGING",
+      "REVIEW_PENDING"
     ],
     "canonical_max_age_trading_days": 2,
     "refresh_after_trading_days": 10,
@@ -152,11 +162,13 @@
       "RESEARCH_MORE",
       "MORE_RESEARCH",
       "INSUFFICIENT_DATA",
-      "HOLD / MONITOR",
       "BUY_READY",
       "NO_ACTION",
       "DEFER",
-      "SELL_TAXABLE"
+      "SELL_TAXABLE",
+      "MISSING_MARKET",
+      "MISSING_PLAN",
+      "STALE"
     ],
     "ordinal": {
       "ADD": 0,

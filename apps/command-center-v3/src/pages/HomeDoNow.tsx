@@ -13,6 +13,7 @@
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
@@ -34,7 +35,9 @@ import { useOpenSymbol } from '../components/opportunity/OpportunityContext'
 import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
 import { readableTime, readableTimesInText } from '../lib/readableTime'
 import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../components/home/MarketRiskBanner'
+import { MarketRiskSummary } from '../components/home/MarketRiskSummary'
 import { unwrapMarketRisk } from '../lib/marketRisk'
+import { vixFreshness } from '../lib/vixFreshness'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
@@ -48,11 +51,11 @@ function useNow(ms: number): number {
 const card = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 8, minWidth: 0 }
 const label = { fontSize: TYPE.xs, color: TOKENS.text[2], textTransform: 'uppercase' as const, letterSpacing: '0.06em' }
 
-function CardHead({ title, to, linkText }: { title: string; to: string; linkText: string }) {
+function CardHead({ title, to, linkText, touchTarget = false }: { title: string; to: string; linkText: string; touchTarget?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
       <h2 style={{ margin: 0, fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0] }}>{title}</h2>
-      <Link to={to} style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none' }}>{linkText} ›</Link>
+      <Link to={to} aria-label={touchTarget ? `View ${title.toLowerCase()}` : undefined} style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', ...(touchTarget ? { minHeight: 44, minWidth: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end' } : {}) }}>{linkText} ›</Link>
     </div>
   )
 }
@@ -131,7 +134,7 @@ export default function HomeDoNow() {
   const mr = unwrapMarketRisk(mrResp)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
-  const { data: oppTop } = useApi<any>('/api/v3/opportunities?preset=top5', 300_000)
+  const { data: oppTop } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
   const platformApi = useApi<any>('/api/v2/system/platform-health', 60_000)
   const dpApi = useApi<DeploysStatusWire>(DEPLOYS_PATHS.status, 120_000)
   const { data: command } = useApi<any>('/api/v2/command', 300_000)
@@ -149,7 +152,9 @@ export default function HomeDoNow() {
   const ytdPreferDisp = Boolean(ytd?.nav_is_not_market_only || ytd?.display_change != null)
   const ytdChg: number | null = (ytdPreferDisp && ytd?.display_change != null ? ytd.display_change : ytd?.change) ?? null
   const ytdPct: number | null = (ytdPreferDisp && ytd?.display_change_pct != null ? ytd.display_change_pct : ytd?.change_pct) ?? null
-  const vix = tradeAi?.vix
+  // FQ-086: the default Home route prints VIX beside the REGIME label, but the regime clock is not the VIX's clock.
+  // A stale, undated or future reading must not read as a confident current number here either.
+  const vixReading = vixFreshness(tradeAi?.vix, undefined, tradeAi?.vix_observation_time, now)
   const regimeLabel: string = String(regime?.regime_label ?? '').replace(/_/g, ' ')
   const postureRows: any[] = posture?.momentum?.rows || []
   const lagging = postureRows.filter((r: any) => r.state === 'LAGGING')
@@ -195,6 +200,8 @@ export default function HomeDoNow() {
       <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
       {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
       <MarketRiskBanner mr={mr} />
+      {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
+      <MarketRiskSummary mr={mr} />
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
@@ -326,7 +333,7 @@ export default function HomeDoNow() {
       {/* Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         <section style={card} data-testid="home-opportunities" aria-label="Best opportunities">
-          <CardHead title="Best opportunities" to="/watch?tab=opportunities&preset=top5" linkText="All" />
+          <CardHead title="Best opportunities" to={BEST_OPPORTUNITIES_PATH} linkText="View top 5" touchTarget />
           {opps.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppTop ? 'Nothing clears the bar right now.' : 'Loading…'}</div>}
           {opps.map((o: any) => (
             <button key={o.symbol} type="button" onClick={() => openSymbol(o.symbol)}
@@ -346,8 +353,8 @@ export default function HomeDoNow() {
           <MarketRiskCompact mr={mr} />
           <Link to="/risk?tab=market-risk" data-testid="home-market-risk-link" style={{ fontSize: TYPE.sm, color: TOKENS.info, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Market risk →</Link>
           <div style={{ fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1], borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}
-            title="Regime: /api/v2/risk-regime/latest. Sectors and hedge: /api/v2/defense/posture (momentum rows, hedge_state). 'You hold' is the sector's share of your book from the same posture rows.">
-            <span data-testid="home-market">Regime <b style={{ color: TOKENS.text[0] }}>{regimeLabel || 'unknown'}</b>{vix != null ? `, VIX ${vix}` : ''}.</span>
+            title={`Regime: /api/v2/risk-regime/latest. Sectors and hedge: /api/v2/defense/posture (momentum rows, hedge_state). 'You hold' is the sector's share of your book from the same posture rows. VIX: /api/v2/trade-ai/summary${tradeAi?.vix_source ? ` · source ${tradeAi.vix_source}` : ''}${tradeAi?.vix_observation_time ? ` · observed ${String(tradeAi.vix_observation_time).slice(0, 19).replace('T', ' ')}` : ''}`}>
+            <span data-testid="home-market" data-vix-state={vixReading.state}>Regime <b style={{ color: TOKENS.text[0] }}>{regimeLabel || 'unknown'}</b>{vixReading.state === 'UNAVAILABLE' ? '' : `, ${vixReading.current ? `VIX ${vixReading.value}` : vixReading.label}`}.</span>
             {postureRows.length > 0 && <> Sectors: {leading.length} leading, {lagging.length} lagging{lagging.length ? <> (<b>{lagging.map((r: any) => `${String(r.sector).toLowerCase()}${r.book_pct != null ? `, you hold ${r.book_pct}%` : ''}`).slice(0, 3).join('; ')}</b>)</> : ''}.</>}
             {posture?.hedge_state?.line ? <> Hedge: {posture.hedge_state.line}.</> : null}
             {posture?.inverse_stoplights?.line ? <> {posture.inverse_stoplights.line}.</> : null}

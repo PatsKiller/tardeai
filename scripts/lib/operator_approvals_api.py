@@ -35,6 +35,30 @@ class Ctx:
     can_read: Callable[[], bool] = field(default=lambda: False)
 
 
+def design_approval_href(design_id: str) -> str:
+    """The one place a design approval is recorded (fix 2026-10-31, DSN-20261031-market-risk-ui taps lost).
+
+    ``design_registry`` only reads ``<claims_dir>/designs/approvals.jsonl``, written only by Ops Controls kind
+    ``pipeline.approve_design`` (passkey + typed words, host applier). That button is on the work-pipeline card the
+    ``design`` filter opens."""
+    return "/coordination?design=" + quote(str(design_id), safe="")
+
+
+def design_registry_entry(row: dict, meta: dict, text: str, code_sha: str) -> dict:
+    """Approvals-queue row for a design-registry design or packet. Never a RECORD item: an APPROVE in the governance
+    ledger is RECORD_ONLY and ``design_registry`` never reads it, so the design would stay PROPOSED. The reader sends
+    the operator to the governed path instead, and ``DecisionLedger.decide`` refuses GOVERNED_ACTION_REQUIRED."""
+    packet = row["kind"] == "packet"
+    # Packets containing activations/policy edits cannot be approved as a generic design.
+    mode = "ACTIVATE" if packet else "DESIGN"
+    entry = core.item(ident="design:" + row["id"], kind=mode, title=meta["title"],
+                      proposed_by=meta["proposed_by"], created_at=meta["created_at"], source="design_registry",
+                      doc=core.document(text, source_sha=code_sha, version=row["id"]),
+                      governed_href="/coordination?tab=work" if packet else design_approval_href(row["id"]))
+    entry["decision_mode"] = "GOVERNED_PATH"
+    return entry
+
+
 def _raw_git(repository: Path, *args: str) -> str:
     # Never let git search a release's parents for an unrelated .git directory.
     if not (repository / ".git").exists():
@@ -78,6 +102,18 @@ def _git(root: Path, *args: str) -> str:
         return source_revision(root) + "\n"
     repository = root if (root / ".git").exists() else CANONICAL_REPOSITORY
     return _raw_git(repository, *args)
+
+
+def _queue_card(item: dict) -> dict:
+    """One queue row: the item without its whole document, plus the two fields a card needs.
+
+    ``version`` prefers the item's own readable label (``core.item(version=...)``) and falls back to the bound
+    document version. The first spelling of this dict-union let the right-hand operand win, so every label a source
+    supplied was silently replaced by ``document.version`` — for a live conflict that is ``<sha256>:<sha256>``.
+    """
+    return {k: v for k, v in item.items() if k != "document"} | {
+        "document_sha": item["document"]["document_sha"],
+        "version": item.get("version") or item["document"]["version"]}
 
 
 def policy_source(root: Path) -> tuple[str, str]:
@@ -240,12 +276,7 @@ def _default_sources(root: Path) -> dict:
             meta = reconcile.describe(kind=row["kind"], ident=row["id"], path=path, readme_text=text if packet else None,
                                       owner=None if packet else owners.get(row["id"]), target=target,
                                       added=added.get(path), claims=claims, title=row.get("title"))
-            # Packets containing activations/policy edits cannot be approved as a generic design.
-            mode = "ACTIVATE" if packet else "DESIGN"
-            entry = core.item(ident="design:" + row["id"], kind=mode, title=meta["title"],
-                              proposed_by=meta["proposed_by"], created_at=meta["created_at"], source="design_registry",
-                              doc=core.document(text, source_sha=code_sha, version=row["id"]),
-                              governed_href="/coordination?tab=work" if mode == "ACTIVATE" else None)
+            entry = design_registry_entry(row, meta, text, code_sha)
             entry["proposed_by_basis"], entry["created_at_basis"] = meta["proposed_by_basis"], meta["created_at_basis"]
             if packet:
                 state = reconcile.reconcile(target, facts)
@@ -311,6 +342,12 @@ def _default_sources(root: Path) -> dict:
             rows.append(core.item(ident="conflict:" + core.digest(row["id"])[:32], kind="CONFLICT", title=row["title"],
                                   proposed_by=row.get("proposed_by"), created_at=row.get("created_at"), doc=doc,
                                   source="conflicts", governed_href="/watch?conflict=" + quote(str(row["id"]), safe=""),
+                                  # The bound version is the evidence digest twice over; the row label is the
+                                  # record's revision plus who must act on it, so the reader sees something it can
+                                  # act on. Owner comes from the record, outside the bound document text.
+                                  version=("open conflict · revision " + str(row["revision"])
+                                           if row.get("revision") is not None else "open conflict")
+                                          + (f" · owner: {row['owner']}" if row.get("owner") else ""),
                                   source_refs=["conflict_events:" + str(row["id"])]))
         return rows
 
@@ -330,13 +367,17 @@ def _default_sources(root: Path) -> dict:
                                                    "never_auto_implications", "proposed_resolution", "risks",
                                                    "machine_form", "created_at")}
             provider = (proposal.get("model") or {}).get("provider")
+            # Readable queue label: "revision 2 · T4" when both are known, never "revision None".
+            tier = proposal.get("tier") or "tier not supplied"
+            label = (f"revision {proposal['revision']} · {tier}" if proposal.get("revision") is not None
+                     else str(tier))
             out.append(core.item(ident="rule-proposal:" + ident, kind="CONFLICT",
                                  title="Proposed conflict rule: " + str(proposal.get("summary") or proposal.get("plain_rule") or ident),
                                  proposed_by=f"AI rule proposer ({provider})" if provider else "AI rule proposer",
                                  created_at=proposal.get("created_at"), source="conflict_rule_proposals",
+                                 version=label,
                                  doc=core.document(json.dumps(public, indent=2, ensure_ascii=False, sort_keys=True),
-                                                   source_sha=code_sha,
-                                                   version=f"revision {proposal.get('revision')} · {proposal.get('tier') or 'tier not supplied'}"),
+                                                   source_sha=code_sha, version=label),
                                  governed_href="/conflicts/rules?proposal=" + quote(ident, safe=""),
                                  source_refs=["rule_proposals.jsonl:" + ident]))
         return out
@@ -473,12 +514,8 @@ def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = N
                 data["filtered_count"], data["offset"] = len(data["items"]), offset
                 data["items"] = data["items"][offset:offset + 50]
                 # Queue cards do not ship whole documents; the reader loads just the chosen item.
-                data["items"] = [{k: v for k, v in it.items() if k != "document"} | {
-                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
-                                 for it in data["items"]]
-                data["resolved"] = [{k: v for k, v in it.items() if k != "document"} | {
-                    "document_sha": it["document"]["document_sha"], "version": it["document"]["version"]}
-                                    for it in data.get("resolved") or []]
+                data["items"] = [_queue_card(it) for it in data["items"]]
+                data["resolved"] = [_queue_card(it) for it in data.get("resolved") or []]
                 return 200, {"ok": True, "data": data}
             if sub == "/policy":
                 data = ctx.policy()
