@@ -11,6 +11,7 @@
  * they render "—" with GATE2_TIP; nothing here invents a grade, a score or a verdict. Awareness only:
  * a scanner decision never grants approval.
  */
+import { dedupeSymbols, formatThinkorswimSymbols } from './scannerSelection.ts'
 
 export type Decision = 'GO' | 'WAIT' | 'MANUAL' | 'AVOID' | 'OTHER'
 export type SortKey = 'score' | 'float' | 'rvol' | 'chg' | 'grade' | 'act'
@@ -200,6 +201,19 @@ export function buildTiles(all: Opportunity[], f: Filters): Tile[] {
     { key: 'float', label: 'Float < 5M', value: count(r => r.float != null && r.float < 5), hint: 'micro float', tone: 'info', active: f.floatMax === 5, disabled: false, patch: a => ({ floatMax: a ? null : 5 }) },
     { key: 'rvol', label: 'RVOL ≥ 10×', value: count(r => r.rvol != null && r.rvol >= 10), hint: 'high attention', tone: 'info', active: f.rvolMin === 10, disabled: false, patch: a => ({ rvolMin: a ? null : 10 }) },
   ]
+}
+
+/** The rows a tile's own filter selects from today's universe, ignoring every other active filter: what the
+ *  tile's number counts is what its Copy button copies (operator 2026-11-06: "There used to be a copy button
+ *  in each one of these boxes … so I can copy and paste to tos"). Order follows the page sort; de-duplicated. */
+export function tileSymbols(all: Opportunity[], tile: Pick<Tile, 'patch'>, sort: SortKey = 'score'): string[] {
+  const own: Filters = { ...NO_FILTERS, ...tile.patch(false) }
+  return dedupeSymbols(sortOpportunities(applyFilters(all, own), sort).map(r => r.sym).filter(s => s !== '—'))
+}
+
+/** The tile's symbols in the Thinkorswim watchlist format the Scanner tools copy lists use (comma-separated). */
+export function tileTosText(all: Opportunity[], tile: Pick<Tile, 'patch'>, sort: SortKey = 'score'): string {
+  return formatThinkorswimSymbols(tileSymbols(all, tile, sort))
 }
 
 export function filterChips(f: Filters): Array<{ label: string; clear: Partial<Filters> }> {

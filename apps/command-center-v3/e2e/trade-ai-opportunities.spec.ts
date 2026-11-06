@@ -70,6 +70,41 @@ test('analysis panel shows served Level 2 entry signals; cards view works', asyn
   expect(writes).toEqual([])
 })
 
+test('every tile has a Thinkorswim copy button that copies what the tile counts (operator 2026-11-06)', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  const writes: string[] = []
+  await mockApi(page, writes)
+  await page.goto('/v3/trading?tab=Trade+AI')
+  await expect(page.getByTestId('trade-ai-opportunities')).toBeVisible({ timeout: 60_000 })
+  for (const k of ['go', 'wait', 'manual', 'grade', 'float', 'rvol']) await expect(page.getByTestId(`ta-tile-copy-${k}`)).toBeVisible()
+  // Grade is Gate 2 (no value): its copy is disabled, never a fake list.
+  await expect(page.getByTestId('ta-tile-copy-grade')).toBeDisabled()
+  const go = page.getByTestId('ta-tile-copy-go')
+  await expect(go).toHaveAttribute('aria-label', /^Copy 3 GO symbols for Thinkorswim$/)
+  const box = await go.boundingBox()
+  expect(box!.height).toBeGreaterThanOrEqual(44)
+  await go.click()
+  await expect(go).toContainText('Copied 3')
+  const clip = await page.evaluate(() => navigator.clipboard.readText())
+  expect(clip.split(',')).toHaveLength(3)
+  expect(clip).toMatch(/^[A-Z0-9.]+(,[A-Z0-9.]+)*$/)
+  // Copying does not filter: the table still shows every row.
+  await expect(page.getByTestId('ta-filter-chip')).toHaveCount(0)
+  expect(writes).toEqual([])
+})
+
+test('tile copy falls back to a selected readonly field when the clipboard is refused', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } })
+  })
+  await mockApi(page, [])
+  await page.goto('/v3/trading?tab=Trade+AI')
+  await page.getByTestId('ta-tile-copy-go').click({ timeout: 60_000 })
+  const field = page.getByTestId('ta-tile-copy-fallback-go').locator('input')
+  await expect(field).toBeVisible()
+  expect((await field.inputValue()).split(',')).toHaveLength(3)
+})
+
 test('narrow viewport: no horizontal page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await mockApi(page, [])
