@@ -675,6 +675,7 @@ def categories() -> dict:
         aw = _ae_where(c)
         if aw:
             try:
+                # nosemgrep: tq-py-sql-fstring -- WHERE text is a fixed literal clause from _ae_where; values are params
                 cur.execute(f"SELECT count(*), max(created_at) FROM alert_events WHERE {aw[0]}", aw[1])
                 n, l = cur.fetchone()
                 total += int(n or 0)
@@ -684,6 +685,7 @@ def categories() -> dict:
         ow = _ob_where(c)
         if ow:
             try:
+                # nosemgrep: tq-py-sql-fstring -- WHERE text is a fixed literal clause from _ob_where; values are params
                 cur.execute(f"SELECT count(*), max(sent_at) FROM telegram_outbox WHERE {ow[0]}", ow[1])
                 n, l = cur.fetchone()
                 total += int(n or 0)
@@ -693,6 +695,7 @@ def categories() -> dict:
         rw = _ar_where(c)
         if rw:
             try:
+                # nosemgrep: tq-py-sql-fstring -- WHERE text is a fixed literal clause from _ar_where; values are params
                 cur.execute(f"SELECT count(*), max(generated_at) FROM ai_reports WHERE {rw[0]}", rw[1])
                 n, l = cur.fetchone()
                 total += int(n or 0)
@@ -1062,6 +1065,8 @@ def purge(category: str | None = None, older_than_days: int = 90, apply: bool = 
     conn = _conn(); cur = conn.cursor()
     cut = f"created_at < NOW() - INTERVAL '{int(older_than_days)} days'"
     deleted = {"notification_log": 0, "alert_events": 0, "telegram_outbox": 0, "ai_reports": 0}
+    _PURGE_TABLES = {("notification_log", "created_at"), ("alert_events", "created_at"),
+                     ("telegram_outbox", "sent_at"), ("ai_reports", "generated_at")}
 
     def _do(table, where, params, ts_col):
         tcut = f"{ts_col} < NOW() - INTERVAL '{int(older_than_days)} days'"
@@ -1076,7 +1081,12 @@ def purge(category: str | None = None, older_than_days: int = 90, apply: bool = 
                               label=f"reports_portal_{int(older_than_days)}d", writer="reports_portal",
                               apply=True, archive=True)
             return int(r.get("deleted") or 0)
-        cur.execute(f"SELECT count(*) FROM {table} WHERE {where} AND {tcut}", params)
+        if (table, ts_col) not in _PURGE_TABLES:
+            raise ValueError(f"reports_portal purge: unknown table {table!r}")
+        # The age cutoff travels as a driver parameter; table/ts_col come from the fixed _PURGE_TABLES set above.
+        # nosemgrep: tq-py-sql-fstring -- table/ts_col checked against _PURGE_TABLES; WHERE is a fixed builder clause
+        cur.execute(f"SELECT count(*) FROM {table} WHERE {where} AND {ts_col} < NOW() - %s * INTERVAL '1 day'",
+                    [*params, int(older_than_days)])
         return cur.fetchone()[0]
 
     try:

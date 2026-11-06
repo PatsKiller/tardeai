@@ -35,68 +35,69 @@ def _one(cur, sql, params=None):
 def build_report(since_days: int = 5) -> dict:
     conn = get_conn()
     cur = conn.cursor()
-    interval = f"{since_days} days"
+    # The window travels as a driver parameter: NOW() - %s * INTERVAL '1 day'.
+    win = [since_days]
     now = datetime.now(timezone.utc).isoformat()
 
     universe = _one(cur, "SELECT COUNT(DISTINCT symbol) FROM symbol_profiles WHERE symbol IS NOT NULL")
-    scanned = _one(cur, f"""
+    scanned = _one(cur, """
         SELECT COUNT(*) FROM trade_ai_scans
-        WHERE scanned_at > NOW() - INTERVAL '{interval}'
-    """)
+        WHERE scanned_at > NOW() - %s * INTERVAL '1 day'
+    """, win)
     scored = scanned
-    go_count = _one(cur, f"""
+    go_count = _one(cur, """
         SELECT COUNT(*) FROM trade_ai_scans
-        WHERE scanned_at > NOW() - INTERVAL '{interval}' AND score >= 40
-    """)
-    wait_count = _one(cur, f"""
+        WHERE scanned_at > NOW() - %s * INTERVAL '1 day' AND score >= 40
+    """, win)
+    wait_count = _one(cur, """
         SELECT COUNT(*) FROM trade_ai_scans
-        WHERE scanned_at > NOW() - INTERVAL '{interval}' AND score >= 30 AND score < 40
-    """)
-    signals = _one(cur, f"""
+        WHERE scanned_at > NOW() - %s * INTERVAL '1 day' AND score >= 30 AND score < 40
+    """, win)
+    signals = _one(cur, """
         SELECT COUNT(*) FROM strategy_signals
-        WHERE fired_at > NOW() - INTERVAL '{interval}'
-    """)
-    auto_proposals = _one(cur, f"""
+        WHERE fired_at > NOW() - %s * INTERVAL '1 day'
+    """, win)
+    auto_proposals = _one(cur, """
         SELECT COUNT(*) FROM paper_trade_proposals
-        WHERE created_at > NOW() - INTERVAL '{interval}'
+        WHERE created_at > NOW() - %s * INTERVAL '1 day'
           AND proposed_by = 'auto_proposal_generator'
-    """)
-    incubator_promos = _one(cur, f"""
+    """, win)
+    incubator_promos = _one(cur, """
         SELECT COUNT(*) FROM paper_trade_proposals
-        WHERE created_at > NOW() - INTERVAL '{interval}'
+        WHERE created_at > NOW() - %s * INTERVAL '1 day'
           AND (origin ILIKE '%%incubator%%' OR discovery_source ILIKE '%%incubator%%')
-    """)
-    total_created = _one(cur, f"""
+    """, win)
+    total_created = _one(cur, """
         SELECT COUNT(*) FROM paper_trade_proposals
-        WHERE created_at > NOW() - INTERVAL '{interval}'
-    """)
-    blocked_created = _one(cur, f"""
+        WHERE created_at > NOW() - %s * INTERVAL '1 day'
+    """, win)
+    blocked_created = _one(cur, """
         SELECT COUNT(*) FROM auto_proposal_decisions
-        WHERE created_at > NOW() - INTERVAL '{interval}'
+        WHERE created_at > NOW() - %s * INTERVAL '1 day'
           AND decision IN ('BLOCKED', 'SKIPPED', 'REJECTED')
-    """)
+    """, win)
     pending = _one(cur, """
         SELECT COUNT(*) FROM paper_trade_proposals
         WHERE status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'APPROVED')
     """)
-    execution_ready = _one(cur, f"""
+    execution_ready = _one(cur, """
         SELECT COUNT(*) FROM paper_trade_proposals p
-        WHERE p.created_at > NOW() - INTERVAL '{interval}'
+        WHERE p.created_at > NOW() - %s * INTERVAL '1 day'
           AND p.status IN ('APPROVED_FOR_PAPER_TEST', 'APPROVED')
           AND p.paper_trade_id IS NOT NULL
-    """)
-    atm_approved = _one(cur, f"""
+    """, win)
+    atm_approved = _one(cur, """
         SELECT COUNT(*) FROM paper_trade_proposals
-        WHERE created_at > NOW() - INTERVAL '{interval}'
+        WHERE created_at > NOW() - %s * INTERVAL '1 day'
           AND status = 'APPROVED_FOR_PAPER_TEST'
-    """)
+    """, win)
     broker_pending = _one(cur, """
         SELECT COUNT(*) FROM paper_trade_proposals
         WHERE status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST')
           AND (intended_broker ILIKE 'schwab%%' OR intended_broker ILIKE 'fidelity%%')
     """)
 
-    cur.execute(f"""
+    cur.execute("""
         SELECT
           CASE
             WHEN score >= 40 THEN '40+ GO'
@@ -108,18 +109,18 @@ def build_report(since_days: int = 5) -> dict:
           END AS band,
           COUNT(*) AS c
         FROM trade_ai_scans
-        WHERE scanned_at > NOW() - INTERVAL '{interval}'
+        WHERE scanned_at > NOW() - %s * INTERVAL '1 day'
         GROUP BY 1 ORDER BY MIN(score) DESC
-    """)
+    """, win)
     score_bands = {r[0]: r[1] for r in cur.fetchall()}
 
-    cur.execute(f"""
+    cur.execute("""
         SELECT COALESCE(risk_gate_result, 'UNKNOWN') AS gate, COUNT(*) AS c
         FROM paper_trade_proposals
-        WHERE created_at > NOW() - INTERVAL '{interval}'
+        WHERE created_at > NOW() - %s * INTERVAL '1 day'
           AND risk_gate_result IS NOT NULL
         GROUP BY 1 ORDER BY c DESC LIMIT 12
-    """)
+    """, win)
     gate_blocks = {r[0]: r[1] for r in cur.fetchall()}
 
     days = max(since_days, 1)
