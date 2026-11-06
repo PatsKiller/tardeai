@@ -408,8 +408,8 @@ def scan_counts(window_days: int = 1) -> dict:
         cur = conn.cursor()
         cur.execute("""
             SELECT decision, scout_status FROM trade_ai_scans
-            WHERE run_date >= CURRENT_DATE - INTERVAL '%s day'
-        """ % int(window_days))
+            WHERE run_date >= CURRENT_DATE - %s * INTERVAL '1 day'
+        """, (int(window_days),))
         rows = cur.fetchall()
         go = sum(1 for d, _ in rows if d == "GO")
         wait = sum(1 for d, _ in rows if d == "WAIT")

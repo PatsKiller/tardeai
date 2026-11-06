@@ -42,18 +42,19 @@ def build(days: int = 30) -> dict:
         return {"ok": False, "status": "WARN", "generated_at": started,
                 "warnings": [f"no database: {e}"], "note": "Read-only SLA report. No broker writes."}
 
-    since = f"NOW() - INTERVAL '{int(days)} days'"
+    since = "NOW() - %s * INTERVAL '1 day'"
+    since_params = (int(days),)
 
     # Latency: proposal created_at → first ATM decision (decided_at).
     latencies = []
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT EXTRACT(EPOCH FROM (MIN(a.decided_at) - p.created_at))/60.0 AS latency_min
             FROM paper_trade_proposals p
             JOIN atm_decision_log a ON a.proposal_id = p.id
-            WHERE p.strategy_id='momentum_scalp' AND p.created_at > {since}
+            WHERE p.strategy_id='momentum_scalp' AND p.created_at > """ + since + """
             GROUP BY p.id, p.created_at
-        """)
+        """, since_params)
         latencies = [float(r[0]) for r in cur.fetchall() if r[0] is not None]
     except Exception as e:
         try:
@@ -65,9 +66,9 @@ def build(days: int = 30) -> dict:
     # Stale-quote failures vs TTL expiries (from failure-reason text / expiry reason).
     stale_quote_fails, ttl_expiries, quote_ages = 0, 0, []
     try:
-        cur.execute(f"""SELECT atm_last_failure_reason, atm_expiry_reason
+        cur.execute("""SELECT atm_last_failure_reason, atm_expiry_reason
                         FROM paper_trade_proposals
-                        WHERE strategy_id='momentum_scalp' AND created_at > {since}""")
+                        WHERE strategy_id='momentum_scalp' AND created_at > """ + since, since_params)
         for fr, er in cur.fetchall():
             fr = fr or ""
             if "quote" in fr.lower() and ("old" in fr.lower() or "stale" in fr.lower()):
