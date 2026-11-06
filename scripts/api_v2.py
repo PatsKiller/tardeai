@@ -2076,7 +2076,7 @@ def _stops_lifecycle_db_snapshot():
     rows = (
         _db_query(
             "SELECT account,symbol,broker,order_id,order_type,status,stop_price,qty,held_qty,"
-            "current_price,proximity_pct,coverage,lifecycle,health,flags,snapshot_at "
+            "current_price,proximity_pct,coverage,lifecycle,health,flags,trail_offset,snapshot_at "
             "FROM stop_lifecycle ORDER BY health DESC, symbol"
         )
         or []
@@ -2121,6 +2121,10 @@ def _stored_lifecycle_stop(s):
         "stop_price": _num(s.get("stop_price")),
         "order_type": ot,
         "is_trailing": bool(s.get("is_trailing")) or "TRAIL" in ot,
+        # A trailing order's protection IS its offset: without it the trigger cannot be derived and a working
+        # order falls into the No Stop bucket (codex review of PR 2180 at 17199ab97).
+        "trail_offset": _num(s.get("trail_offset")),
+        "order_id": s.get("order_id"),
         "broker": s.get("broker") or ("schwab" if acct.startswith("schwab") else ""),
         "stop_qty": _num(s.get("qty")),
         "coverage": s.get("coverage"),
@@ -2152,7 +2156,7 @@ def _stops_lifecycle_api():
         rows = (
             _db_query(
                 "SELECT account,symbol,broker,order_id,order_type,status,stop_price,qty,held_qty,"
-                "current_price,proximity_pct,coverage,lifecycle,health,flags,snapshot_at "
+                "current_price,proximity_pct,coverage,lifecycle,health,flags,trail_offset,snapshot_at "
                 "FROM stop_lifecycle ORDER BY health DESC, symbol"
             )
             or []

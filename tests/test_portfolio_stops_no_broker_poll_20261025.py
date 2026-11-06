@@ -151,3 +151,15 @@ def test_a_stored_snapshot_stop_carries_its_order_size(api):
     entry = api._stored_lifecycle_stop(row)
     assert entry["stop_qty"] == 10
     assert api._stored_lifecycle_stop({**row, "qty": "bad"})["stop_qty"] is None
+
+
+def test_a_stored_trailing_order_keeps_the_offset_that_is_its_protection(api):
+    """A working trailing order has no fixed price: its trail offset is the only thing that proves protection, so
+    the persisted snapshot must carry it (and the order id) or the stored page puts it in the No Stop bucket."""
+    row = {"account": "schwab_fixture", "symbol": "FIXA", "broker": "schwab", "status": "WORKING",
+           "order_type": "TRAILING_STOP", "stop_price": None, "trail_offset": 5.0, "qty": 10,
+           "order_id": "fixture-order-7", "coverage": "full"}
+    entry = api._stored_lifecycle_stop(row)
+    assert entry["is_trailing"] is True
+    assert entry["stop_price"] is None
+    assert (entry["trail_offset"], entry["order_id"], entry["stop_qty"]) == (5.0, "fixture-order-7", 10.0)
