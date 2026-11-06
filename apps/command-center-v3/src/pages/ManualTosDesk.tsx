@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useProAnalystMap } from '../components/ProAnalystPill'
 import { deriveTradeAiRating, normalizeAnalystRating, ratingLabel, ratingRank, type ManualTosRating } from '../lib/manualTosRating'
+import { currentRowDetailMode, nextDetailState } from '../lib/rowDetailMode'
+import { RADIUS } from '../lib/designTokens'
 import { cioBlocksEntry, diligenceFromWatchlistItem, hasAgentMaturity, isActionable } from '../lib/watchlistDiligence'
 import EntryDeskRow, { type TechGrade } from '../components/EntryDeskRow'
 import EntryDeskDiligenceStrip, { type WatchlistDiligence } from '../components/EntryDeskDiligenceStrip'
@@ -184,6 +186,11 @@ function rowState(r: SetupRow, local: LocalState, activity: any[]): SetupState {
 type DeskProps = { focusSymbol?: string }
 
 export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
+  // FQ-043: the phone page was 250k px tall because every candidate expanded in full.
+  // The desk lists a compact shortlist; the full ticket opens on demand and nothing is removed.
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>({})
+  // FQ-043 second pass: on a phone the full ticket opens as a full-screen sheet; wide screens keep inline.
+  const [sheetKey, setSheetKey] = useState<string | null>(null)
   const { data: draftsR, refetch } = useApi<any>('/api/v2/broker-orders/drafts?broker=schwab', 30_000)
   const { data: activityR } = useApi<any>('/api/v2/broker-orders/activity', 30_000)
   const { data: proposalsR } = useApi<any>('/api/v2/paper-proposals', 60_000)
@@ -428,10 +435,19 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
         </div>
       )}
 
+      {visible.length > 0 && (
+        <div data-testid="manual-desk-scope-legend" style={{ fontSize: 10, color: C.dim, margin: '0 0 8px', lineHeight: 1.4 }}>
+          <b>READY</b> means your draft is complete to review — <b>not approval</b>. <b>TECH</b> is the technical grade,
+          <b> DECISION</b> is the advisory verdict. Nothing on this desk places an order.
+        </div>
+      )}
+
       {visible.map(({ r, state, hit }) => {
         const street = num(paMap[r.symbol]?.target)
         const account = r.account === 'ANY' ? null : accountMap[r.account] ?? null
-        return (
+        const rowKey = `${r.source}-${r.id}`
+        const isSheet = sheetKey === rowKey
+        const row = (
           <EntryDeskRow
             key={`${r.source}-${r.id}`}
             r={r}
@@ -442,12 +458,34 @@ export default function ManualTosDesk({ focusSymbol }: DeskProps = {}) {
             tech={techGrades[r.symbol]}
             accounts={accountKeys}
             accountMap={accountMap}
+            expanded={!!openRows[`${r.source}-${r.id}`] || sheetKey === `${r.source}-${r.id}`}
+            onToggle={() => {
+              const key = `${r.source}-${r.id}`
+              // codex B2 (2026-11-04): the phone control said "Hide details" and set the SAME key, so it
+              // was a no-op and the sheet never closed. nextDetailState toggles instead of re-setting.
+              const mode = currentRowDetailMode()
+              if (mode === 'sheet') setSheetKey(prev => nextDetailState('sheet', prev, key, openRows).sheetKey)
+              else setOpenRows(o => nextDetailState('inline', sheetKey, key, o).openFlags)
+            }}
             onSetField={setField}
             onCopyMsg={setMsg}
             onPromote={handlePromote}
             promoteBusy={promoteBusy === r.id}
             focused={!!focusKey && r.symbol.toUpperCase() === focusKey}
           />
+        )
+        // FQ-043: on a phone the full ticket is a full-screen sheet, not an ever-growing list.
+        if (!isSheet) return <div key={rowKey}>{row}</div>
+        return (
+          <div key={rowKey} role="dialog" aria-modal="true" aria-label={`${r.symbol} ticket`}
+            data-testid="manual-desk-detail-sheet"
+            style={{ position: 'fixed', inset: 0, zIndex: 1500, background: 'var(--bg0)', overflowY: 'auto', padding: 12 }}>
+            <button type="button" onClick={() => setSheetKey(null)}
+              style={{ minHeight: 44, marginBottom: 8, padding: '8px 16px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'var(--bg1)', color: C.blue }}>
+              ← Back to the shortlist
+            </button>
+            {row}
+          </div>
         )
       })}
 
