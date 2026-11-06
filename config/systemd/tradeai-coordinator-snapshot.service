@@ -1,0 +1,14 @@
+[Unit]
+Description=Trade AI coordinator snapshot — each agent session's visible screen (co-coordinators)
+# PROPOSED by the co-coordinator build (plan PLAN_CO_COORDINATORS_20261102, operator 2026-11-02).
+# NOT installed or enabled here: the operator installs it after merge.
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=/usr/bin/python3 %h/trade-ai-releases/portfolio-server/CURRENT/scripts/coordinator.py snapshot --lines 40
+# Host lane only: tmux capture-pane of the configured sessions into
+# persistent-state/data/coordination/coordinator/agents/. No broker, order, stop or sizing path (MBI_BEHAVIOR = 0).
+
+[Install]
+WantedBy=default.target

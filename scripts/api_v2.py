@@ -55998,6 +55998,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # Co-coordinators by territory (operator 2026-11-02, PLAN_CO_COORDINATORS_20261102): the registry and the
+    # shared notebook, read-only. scripts/coordinator.py is the only writer; these GETs never create the store,
+    # never lock and never repair (a torn ledger tail is skipped). ?limit=N bounds the board's event tail.
+    if base_path in ("/api/v2/coordination/coordinators", "/api/v2/coordination/board",
+                     "/api/v2/coordination/join-command", "/api/v2/coordination/docs"):
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.coordination_view import handle as _coord_view
+
+            _cv = _coord_view(base_path, query or {}, body)
+            if _cv is not None:
+                return 200, {"ok": True, "data": _cv}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Agent claim board (operator-approved 2026-10-22): which agent session (Claude, Codex, Cursor -- equal
     # peers) holds which files, on which branch/PR, since when, last heartbeat. One JSON per claim under
     # persistent-state data/coordination/claims (scripts/lib/agent_claim_board.py). Read-only: never creates

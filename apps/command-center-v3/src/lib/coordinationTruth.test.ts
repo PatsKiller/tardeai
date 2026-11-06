@@ -4,6 +4,7 @@ const assert = {
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
 import { projectCoordination } from './coordinationEvents.ts'
+import { divergenceLine, joinLineForSelection, leadChip } from './coordinators.ts'
 const NOW = Date.parse('2026-10-18T16:00:00Z')
 const missing = projectCoordination(null, { nowMs: NOW, transport: 'ERROR' })
 assert.equal(missing.counts.waiting, null, 'missing backend cannot count zero waiting work')
@@ -31,3 +32,39 @@ for (const status of ['UNAVAILABLE', 'STALE', 'OK']) {
   assert.equal(projectCoordination(payload, { nowMs: NOW }).lastGoodAgeMinutes, null, `${status} explicit null is never a last-good capture`)
   assert.equal(projectCoordination(payload, { nowMs: NOW, error: true }).lastGoodAgeMinutes, null, `${status} explicit null is never retained last-good on API error`)
 }
+
+// CX6 @ 911fbac5b: useApi keeps the previous payload while the new path loads, so a line may only be shown when
+// the response names the currently selected id AND vendor.
+const joinPayload = { id: 'codex-a', vendor: 'codex', line: 'join codex-a' }
+assert.equal(joinLineForSelection(joinPayload, 'codex-a', 'codex'), 'join codex-a', 'the selected identity shows its line')
+assert.equal(joinLineForSelection(joinPayload, 'codex-b', 'codex'), '', 'another id never shows the previous line')
+assert.equal(joinLineForSelection(joinPayload, 'codex-a', 'cursor'), '', 'another vendor never shows the previous line')
+assert.equal(joinLineForSelection(null, 'codex-a', 'codex'), '', 'no response shows nothing')
+assert.equal(joinLineForSelection(undefined, 'codex-a', 'codex'), '', 'a missing response shows nothing')
+
+// codex-cloud P2 (CoordinatorsPanel): a registry that DECODES but disagrees with itself must say so on the panel.
+// It used to draw the coordinator cards and no warning, so a divergent registry looked exactly like a healthy one.
+assert.equal(divergenceLine({ divergent: true, registry_problems: ['more than one coordinator has role=lead'] }),
+  'The coordinator registry disagrees with itself: more than one coordinator has role=lead — nothing here repairs it.',
+  'a divergent registry names every problem it was given')
+assert.equal(divergenceLine({ divergent: true, registry_problems: ['a', 'b'] }),
+  'The coordinator registry disagrees with itself: a; b — nothing here repairs it.', 'every problem is listed')
+assert.match(String(divergenceLine({ divergent: true })), /disagrees with itself/, 'divergent with no detail still warns')
+assert.equal(divergenceLine({ divergent: true, registry_error: 'invalid JSON', registry_problems: ['x'] }), null,
+  'an unreadable registry keeps its own banner and is not reported twice')
+assert.equal(divergenceLine({ divergent: false, registry_problems: ['no coordinators'] }), null,
+  'a healthy (even empty) registry shows no divergence line')
+assert.equal(divergenceLine(null), null, 'no payload, no claim')
+
+// deputy F1 on PR 2492: an unreadable registry rendered "lead: none" one line under its own "registry unreadable" alert.
+// A failed read must read as unknown -- the confident-zero failure this fleet keeps closing.
+assert.equal(leadChip({ lead: 'claude-lead' }).text, 'lead: claude-lead', 'a readable registry names its lead')
+assert.equal(leadChip({ lead: 'claude-lead' }).tone, 'success', 'a named lead is the success tone')
+assert.equal(leadChip({ lead: null, registry_error: 'invalid JSON', registry_unreadable: true }).text, 'lead: unknown',
+  'an unreadable registry is unknown, never none')
+assert.equal(leadChip({ lead: null, registry_error: 'invalid JSON', registry_unreadable: true }).tone, 'neutral',
+  'an unknown lead is not a warning about a fact')
+assert.equal(leadChip({ lead: null, registry_unreadable: true }).text, 'lead: unknown', 'the unreadable flag alone is enough')
+assert.equal(leadChip({ lead: null, registry_error: null, registry_unreadable: false }).text, 'lead: none',
+  'a READABLE registry with no lead is genuinely none')
+assert.equal(leadChip({ lead: null }).tone, 'warning', 'no lead on a readable registry is the warning it always was')
