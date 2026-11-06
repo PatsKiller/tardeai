@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import CommsAnalyticsTab from '../components/reports/CommsAnalyticsTab'
 import { useSearchParams } from 'react-router-dom'
 import { BoardCards, FeedCard } from '../components/decision/FeedCards'
 import { useApi } from '../hooks/useApi'
@@ -10,7 +11,7 @@ import AdminConfirmModal, { type PendingAction } from '../components/AdminConfir
 import { MessageDrawer, MESSAGE_ACTIONS } from '../components/comms/MessageDrawer'
 import { CommsFilterModal, labelOf, CATEGORY_COLOR, PANEL_PRESET, REENTRY_COLOR, tint, type HubFilters } from '../components/comms/CommsHubParts'
 
-type Tab = 'events' | 'deliveries' | 'subjects' | 'retention' | 'agents'
+type Tab = 'events' | 'deliveries' | 'subjects' | 'retention' | 'agents' | 'analytics'
 
 const MUTED = 'var(--text3)'
 const TEXT = 'var(--text0)'
@@ -84,7 +85,7 @@ export default function CommunicationsHub() {
   const [terminalUi] = useTerminalUi()
   const [sp, setSp] = useSearchParams()
   const rawTab = (sp.get('tab') || 'events').toLowerCase()
-  const tab: Tab = (['events', 'deliveries', 'subjects', 'retention', 'agents'] as const).includes(rawTab as Tab) ? rawTab as Tab : 'events'
+  const tab: Tab = (['events', 'deliveries', 'subjects', 'retention', 'agents', 'analytics'] as const).includes(rawTab as Tab) ? rawTab as Tab : 'events'
   const setTab = (next: Tab) => setSp(p => { p.set('tab', next); return p })
   const selectedId = sp.get('event')
   const setSelectedId = (id: string | null) => setSp(p => { if (id) p.set('event', id); else p.delete('event'); return p })
@@ -229,6 +230,7 @@ export default function CommunicationsHub() {
               ['subjects', 'Subjects / Threads'],
               ['retention', 'Retention'],
               ['agents', 'Agent consumption'],
+              ['analytics', 'Analytics'],
             ] as const
           ).map(([id, label]) => (
             <button key={id} type="button" onClick={() => setTab(id)} style={hubTab(tab === id, terminalUi)}>
@@ -665,6 +667,11 @@ export default function CommunicationsHub() {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Reports redesign v001 (2026-11-06): alert analytics + severity/category bars moved here from Reports → Archive. */}
+      {tab === 'analytics' && (
+        <CommsAnalyticsTab onDrillType={(q) => { setTextFilter(q); setTab('events') }} />
       )}
 
       {tab === 'agents' && (

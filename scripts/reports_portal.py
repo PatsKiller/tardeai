@@ -24,7 +24,28 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 # ── Portal categories: friendly tab → (label, icon, member notification_types / alert filters) ──────
 # Order here is the tab order in the UI.
+# Reports redesign v001 (operator-approved 2026-11-06): market reports (selloff / market-move studies) are
+# their own category, listed first. Until the market-move-report lane writes report_type market_move /
+# market_selloff, an ai_reports row stored as 'weekly' whose title names a selloff / market move is mapped
+# here on the READ path (no migration, stored rows unchanged) and excluded from weekly_reviews.
+MARKET_AR_TYPES = ["market_move", "market_selloff"]
+MARKET_TITLE_RX = r"(selloff|sell-off|market[ -]move|market report)"
+
+
+def ar_category(report_type: str | None, title: str | None) -> str | None:
+    """Python mirror of the SQL mapping in _ar_where: which portal category an ai_reports row reads as."""
+    rt = (report_type or "").lower()
+    if rt in MARKET_AR_TYPES or (rt in ("weekly",) and _re.search(MARKET_TITLE_RX, title or "", _re.I)):
+        return "market_reports"
+    for c in CATEGORIES:
+        if rt in (c.get("ar_types") or []):
+            return c["key"]
+    return None
+
+
 CATEGORIES = [
+    {"key": "market_reports", "label": "Market Reports", "icon": "📉", "nl_types": [], "ae": None,
+     "ar_types": MARKET_AR_TYPES, "ar_title_types": ["weekly"], "ar_title_rx": MARKET_TITLE_RX},
     {"key": "morning_briefs", "label": "Morning Briefs", "icon": "🛡", "nl_types": ["aegis_morning_brief"], "ae": None,
      "ob_types": ["trade_ai_brief", "morning_command"]},
     {"key": "digests",        "label": "Digests",        "icon": "📰", "nl_types": ["daily_digest"], "ae": None,
@@ -36,7 +57,8 @@ CATEGORIES = [
     {"key": "monthly",        "label": "Monthly Reports", "icon": "🗓", "nl_types": [], "ae": None,
      "ar_types": ["monthly", "monthly_retirement"], "ob_types": ["monthly_report", "commanders_summary"]},
     {"key": "weekly_reviews", "label": "Weekly Reviews",  "icon": "📆", "nl_types": [], "ae": None,
-     "ar_types": ["weekly", "weekly_health"], "ob_types": ["strategy_weekly", "alex_review", "weekly_summary"]},
+     "ar_types": ["weekly", "weekly_health"], "ar_exclude_title_rx": MARKET_TITLE_RX,
+     "ob_types": ["strategy_weekly", "alex_review", "weekly_summary"]},
     {"key": "incubator",      "label": "Incubator Screen", "icon": "🧪", "nl_types": [], "ae": None,
      "ob_types": ["incubator_screen", "incubator_promoter"]},
     {"key": "research",       "label": "Research & Intel", "icon": "🔬", "nl_types": [], "ae": None,
@@ -136,46 +158,44 @@ def _item_date_token(it: dict) -> str | None:
 
 
 def _resolve_docx(it: dict) -> dict | None:
-    """Attach a same-day (or same-month) Word file when one exists on disk."""
+    """Attach the Word file for THIS report: same kind and the exact same date, never another day's file.
+
+    Reports redesign v001 (2026-11-06): the old resolver fell back to a same-month file, then a name match,
+    then the newest file of the kind — so a report with no Word export linked a different date's .docx.
+    Now: exact date only; a monthly report may match its own month (monthly exports are dated inside the
+    month they cover). No date, or no exact match → None, and the UI shows no Word link."""
     files = _scan_docx_files()
-    if not files:
+    day = _item_date_token(it)
+    if not files or not day:
         return None
     cat = it.get("category") or ""
     rtype = (it.get("type") or "").lower()
     title = (it.get("title") or "").lower()
-    day = _item_date_token(it)
 
-    def pick(kind: str | None = None, date: str | None = None, name_rx: str | None = None):
+    def pick(kind: str | None, month_ok: bool = False):
         pool = [f for f in files if (not kind or f["kind"] == kind)]
-        if date:
-            exact = [f for f in pool if f.get("date") == date]
-            if exact:
-                return exact[0]
-            # monthly: same YYYY-MM prefix
-            if len(date) >= 7:
-                pref = date[:7]
-                month = [f for f in pool if (f.get("date") or "").startswith(pref)]
-                if month:
-                    return month[0]
-        if name_rx:
-            for f in pool:
-                if _re.search(name_rx, f["filename"], _re.I):
-                    return f
-        return pool[0] if pool else None
+        exact = [f for f in pool if f.get("date") == day]
+        if exact:
+            return exact[0]
+        if month_ok:
+            month = [f for f in pool if (f.get("date") or "").startswith(day[:7])]
+            if month:
+                return month[0]
+        return None
 
+    if cat == "market_reports" or ar_category(rtype, it.get("title")) == "market_reports":
+        return None   # no Word export exists for market reports yet; a same-day weekly file is a different report
     hit = None
     if cat in ("weekly_reviews",) or rtype in ("strategy_weekly", "alex_review", "weekly_summary", "weekly", "weekly_health"):
-        hit = pick("weekly", day)
+        hit = pick("weekly")
     elif cat in ("monthly",) or rtype in ("monthly", "monthly_retirement", "monthly_report", "commanders_summary"):
-        hit = pick("monthly", day)
+        hit = pick("monthly", month_ok=True)
     elif cat in ("portfolio_briefs",) or rtype == "portfolio_brief":
-        hit = pick("portfolio", day, r"portfolio_brief")
-    elif "retirement" in title or rtype == "monthly_retirement":
-        hit = pick("monthly", day)
-    elif day and rtype in ("trade_ai_brief", "aegis_morning_brief", "daily_digest"):
-        hit = pick("trade_ai", day)
-    if not hit and day:
-        hit = pick(None, day)
+        hit = pick("portfolio")
+    elif "retirement" in title:
+        hit = pick("monthly", month_ok=True)
+    elif rtype in ("trade_ai_brief", "aegis_morning_brief", "daily_digest"):
+        hit = pick("trade_ai")
     if not hit:
         return None
     return {"filename": hit["filename"], "url": hit["url"], "size_kb": hit["size_kb"]}
@@ -639,6 +659,11 @@ def _ar_where(cat) -> tuple[str, list] | None:
     types = cat.get("ar_types") or []
     if not types:
         return None
+    if cat.get("ar_title_rx"):   # market_reports: own types OR a titled selloff/market-move row stored as weekly
+        return ("(report_type = ANY(%s) OR (report_type = ANY(%s) AND COALESCE(title, '') ~* %s))",
+                [types, cat.get("ar_title_types") or [], cat["ar_title_rx"]])
+    if cat.get("ar_exclude_title_rx"):   # weekly_reviews: minus the rows market_reports claims
+        return ("report_type = ANY(%s) AND NOT (COALESCE(title, '') ~* %s)", [types, cat["ar_exclude_title_rx"]])
     return ("report_type = ANY(%s)", [types])
 
 
@@ -1044,8 +1069,13 @@ def get_item(source: str, item_id) -> dict:
             if not r:
                 return {"error": "not found"}
             content = r[4] or ""
-            return {"source": "ar", "id": r[0], "created_at": str(r[1]), "type": r[2], "channel": r[5] or "local",
-                    "title": r[3], "summary": content, "status": "generated", "actions": _action_links(content)}
+            out = {"source": "ar", "id": r[0], "created_at": str(r[1]), "type": r[2], "channel": r[5] or "local",
+                   "title": r[3], "summary": content, "status": "generated", "actions": _action_links(content),
+                   "category": ar_category(r[2], r[3])}
+            docx = _resolve_docx({**out, "created_at": r[1]})
+            if docx:
+                out["docx_file"] = docx
+            return out
         else:
             cur.execute("SELECT id, created_at, alert_type, source_script, symbol, severity, raw_text, "
                         "parsed_payload, lifecycle_state, acknowledged_at FROM alert_events WHERE id=%s", (int(item_id),))
