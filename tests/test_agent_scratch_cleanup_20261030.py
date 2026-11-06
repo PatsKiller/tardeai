@@ -915,3 +915,19 @@ def test_dot_components_cannot_derive_ownership_outside_the_namespace():
     base = home / ".cache" / "agent-tmp"
     for candidate in mod.auto_candidates(home, mod.slug(".."), mod.slug("..")):
         assert candidate == base or base in candidate.parents, candidate
+
+
+def test_git_layout_unreadable_commondir_is_unknown_not_a_repo(tmp_path):
+    # A linked-worktree pointer whose commondir cannot be read must not be guessed at: the layout is unknown (None).
+    mod = _load()
+    gitdir = tmp_path / "main" / ".git" / "worktrees" / "w"
+    gitdir.mkdir(parents=True)
+    wt = tmp_path / "wt"
+    wt.mkdir()
+    (wt / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+    # commondir present but unreadable as a file: a directory with that name raises IsADirectoryError (an OSError)
+    (gitdir / "commondir").mkdir()
+    assert mod.git_layout(wt) is None
+    # absent commondir: the gitdir itself is the common dir, which is a known layout
+    (gitdir / "commondir").rmdir()
+    assert mod.git_layout(wt) == {"kind": "git_worktree", "main_repo": gitdir}

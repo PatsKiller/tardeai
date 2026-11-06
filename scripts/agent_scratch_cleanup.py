@@ -278,8 +278,10 @@ def git_layout(path: Path) -> Optional[dict[str, Any]]:
         try:
             rel = (gitdir / "commondir").read_text(encoding="utf-8").strip()
             common = (gitdir / rel).resolve()
+        except FileNotFoundError:
+            pass  # no commondir file: this gitdir is itself the common dir (a plain clone, not a linked worktree)
         except OSError:
-            pass
+            return None  # commondir exists but is unreadable: the owner is unknown, so the caller must not treat it as a repo
         main_repo = common.parent if common.name == ".git" else common
         return {"kind": "git_worktree", "main_repo": main_repo}
     return None
@@ -474,7 +476,7 @@ def live_claim_view(claims_dir: Optional[Path]) -> tuple[list[dict[str, Any]], O
         with os.scandir(board.dir) as entries:
             list(entries)  # missing/unreadable is not an authoritative empty board
         views, bad = board.views()
-    except Exception as exc:  # noqa: BLE001 - a board problem is reported, never fatal
+    except Exception as exc:  # noqa: BLE001 -- a board problem is reported, never fatal
         return [], f"claim_board_read_failed:{type(exc).__name__}"
     live = []
     for v in views:
