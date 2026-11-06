@@ -64,16 +64,21 @@ SECTOR_COLORS: Dict[str, str] = {
 
 
 def _get_sector(symbol: str, asset_type: str = "") -> str:
+    # holdings.json rows may carry "asset_type": null (the Schwab sync writes it), and
+    # h.get("asset_type", "") returns that None. Calling .upper() on it crashed the whole
+    # daily pipeline at stage 1 from 2026-11-04 (FU-007), freezing every later stage.
+    symbol = str(symbol or "")
+    at = str(asset_type or "").upper()
     if symbol == "CASH":
         return "Cash"
     s = STOCK_SECTORS.get(symbol.upper())
     if s:
         return s
-    if "ETF" in asset_type.upper():
+    if "ETF" in at:
         return "ETF/Fund"
-    if "MUTUAL" in asset_type.upper() or "FUND" in asset_type.upper():
+    if "MUTUAL" in at or "FUND" in at:
         return "ETF/Fund"
-    if "BOND" in asset_type.upper():
+    if "BOND" in at:
         return "Bonds"
     return "Other"
 
@@ -111,7 +116,7 @@ def compute_etf_lookathrough(holdings: List[Dict], config: Dict) -> Dict[str, fl
         if etf_sectors:
             for sector, pct in etf_sectors.items():
                 sector_exposure[sector] += mv * (pct / 100)
-        elif h.get("is_fund") or h.get("asset_type", "").startswith("Mutual"):
+        elif h.get("is_fund") or str(h.get("asset_type") or "").startswith("Mutual"):
             # 401k funds — classify by sector_type
             st = h.get("sector_type", "")
             if "intl" in st or "international" in st:

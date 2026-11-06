@@ -72,7 +72,7 @@ def _bucket(sym, asset_type=""):
     if sym == "CASH": return "Cash"
     b = SYMBOL_BUCKET.get(sym.upper())
     if b: return b
-    if "BOND" in asset_type.upper(): return "Bonds"
+    if "BOND" in str(asset_type or "").upper(): return "Bonds"  # asset_type may be null in holdings.json (FU-007)
     return "US Equity"
 
 def compute_drift(holdings, account_summaries, config):
