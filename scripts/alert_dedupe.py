@@ -19,6 +19,10 @@ Suppression is a function of the condition's state and the clock:
                   | the escalation deadline passed without acknowledgement
                   | the condition resolved and resolution is worth reporting
 
+...and stay quiet while the incident is acknowledged and none of those change signals has fired. An acknowledgement is
+the operator saying "seen": repeats of an unchanged condition are the noise they asked to stop, while a genuine
+escalation (a worse severity, a newly required action, a new state version, a recurrence after resolution) still pages.
+
 Every occurrence is retained; nothing is overwritten. `should_notify` never touches a
 database or a clock — callers pass `now`, which is what makes the tests deterministic.
 """
@@ -40,6 +44,7 @@ NOTIFY_RECURRED_AFTER_RESOLUTION = "recurred_after_resolution"
 NOTIFY_ESCALATION_DEADLINE = "escalation_deadline_passed"
 NOTIFY_RESOLUTION = "condition_resolved"
 SUPPRESS_WITHIN_WINDOW = "duplicate_within_dedupe_window"
+SUPPRESS_ACKNOWLEDGED = "acknowledged_condition_unchanged"
 
 
 def severity_rank(sev: str | None) -> int:
@@ -132,6 +137,13 @@ def should_notify(
 
     if state_version and prior.state_version and str(state_version) != str(prior.state_version):
         return DedupeDecision(True, NOTIFY_STATE_VERSION, seq)
+
+    # Acknowledged and unchanged. Every change signal above is an escalation and has already returned notify=True;
+    # this point is reached only when nothing material changed, so the operator has already seen this condition and
+    # asked for the repeats to stop. This is also where the unacknowledged-only escalation deadline is silenced
+    # (codex P2): without this, the window-elapsed branch below paged again on an acknowledged incident.
+    if acknowledged_at is not None:
+        return DedupeDecision(False, SUPPRESS_ACKNOWLEDGED, seq)
 
     # Unacknowledged past its escalation deadline: re-raise rather than let a live
     # problem age out in silence.
