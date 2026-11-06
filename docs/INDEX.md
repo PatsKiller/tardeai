@@ -2309,6 +2309,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/home_v007_data_contract.md` | Approved Home v007 additive data contract |
 | `docs/ops/home_v008_needs_you_approvals.md` | Home v008 "Needs you" — operator approvals (backend A) |
 | `docs/ops/holdings_export_backup.md` | holdings.json is a generated backup (Step 1) |
+| `docs/ops/holdings_export_backup.md` | holdings.json is generated from the database (Steps 1–3) |
 | `docs/ops/home_v008_needs_you_approvals.md` | Home v008 "Needs you" — operator approvals (backend A) |
 | `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident |
 | `docs/ops/incidents/INCIDENT_20261023_SAFE_FLOCK_CRON_OUTAGE.md` | 2026-10-23 safe_flock cron outage |

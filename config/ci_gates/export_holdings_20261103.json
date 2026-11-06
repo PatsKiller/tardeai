@@ -5,6 +5,6 @@
     "tests/test_holdings_export_20261103.py"
   ],
   "comment": [
-    "2026-11-03 (operator Step 1, SPEC_POSITIONS_DB_SOURCE_OF_TRUTH): holdings_export renders holdings.json FROM positions_current on every sync, atomically and mode 600, and never reads the existing file as input. Tests pin the accepted cases: 0-byte and corrupt stores regenerate without being read, a DB failure or zero rows refuses and leaves the last good file, retention keeps 48 hourly + 30 daily under a size cap, and the P1 fires only for an empty export, a stale one in market hours, or a totals delta over one dollar."
+    "2026-11-03 (operator Step 1, SPEC_POSITIONS_DB_SOURCE_OF_TRUTH): holdings_export renders holdings.json FROM positions_current, atomically and mode 600. Since 2026-11-06 it reads the previous document ONLY to carry fields other writers own (DB facts always win; see HOLDINGS_DB_FIRST_20261106). Tests pin the accepted cases: 0-byte and corrupt stores regenerate and carry nothing, a DB failure or zero rows refuses and leaves the last good file, retention keeps 48 hourly + 30 daily under a size cap, and the P1 fires only for an empty export, a stale one in market hours, or a broker-market-value delta over one dollar."
   ]
 }
