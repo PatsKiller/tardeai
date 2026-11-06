@@ -253,7 +253,7 @@ def weekend(feats: dict[str, Any], *, min_n: int = 20, table: Optional[dict[str,
         res = {}
         for leg, key in WEEKEND_LEGS.items():
             d = _dist([r["o"][sym][key] for r in rs if r["o"].get(sym, {}).get(key) is not None])
-            if int(d.get("n") or 0) < min_n:
+            if d["n"] < min_n:  # _dist always sets n (0 when empty)
                 d["insufficient_history"] = True
             res[leg] = d
         return res

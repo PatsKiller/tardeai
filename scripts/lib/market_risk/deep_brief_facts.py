@@ -339,7 +339,7 @@ def _weekend(p: Pack, feats: dict[str, Any], now: datetime, cfg: dict) -> None:
         p.miss(
             "next",
             "weekend effect",
-            f"only {w.get('n_at_loosest', 0)} plain weekends 2016-2025 match [{loose}] (n<{min_n}): "
+            f"only {w['n_at_loosest']} plain weekends 2016-2025 match [{loose}] (n<{min_n}): "
             "too few to state a Friday-to-Monday effect",
         )
         return
@@ -347,7 +347,7 @@ def _weekend(p: Pack, feats: dict[str, Any], now: datetime, cfg: dict) -> None:
     for leg in ("close", "open"):
         spy, qqq, base = w["SPY"][leg], w["QQQ"][leg], w["baseline"]["SPY"][leg]
         if spy.get("insufficient_history"):
-            p.miss("next", f"weekend Monday {leg}", f"only {spy.get('n', 0)} weekends carry a Monday {leg} (n<{min_n})")
+            p.miss("next", f"weekend Monday {leg}", f"only {spy['n']} weekends carry a Monday {leg} (n<{min_n})")
             continue
         text = (
             f"Friday close to Monday {leg}, {spy['n']} plain weekends {w['first_weekend']} to {w['last_weekend']} "
