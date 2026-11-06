@@ -40,7 +40,7 @@ SCHEMA = "HoldingsExport@v1"
 # The store's relative path is OWNED by lib.portfolio_positions (the one accessor the reader ratchet
 # points at); the fallback assembles the name so this file never carries the literal the ratchet scans for.
 try:  # pragma: no cover - the imported form is the production path
-    from lib.portfolio_positions import STORE_REL as _STORE_REL  # type: ignore
+    from lib.portfolio_positions import STORE_REL as _STORE_REL  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
 except Exception:  # noqa: BLE001 - loaded by path in tests without scripts/ on sys.path
     _STORE_REL = ("data", "portfolios", "state", "holdings" + ".json")
 STORE_REL = _STORE_REL
@@ -113,9 +113,9 @@ def account_aliases() -> dict[str, str]:
 def _canonical_account(raw: Any) -> str:
     """One identity for an account however a row spells it (schwab_roth == schwab_roth_ira)."""
     try:
-        from lib.account_display import canonical_key  # type: ignore
+        from lib.account_display import canonical_key  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     except ImportError:  # pragma: no cover - imported as scripts.<module>
-        from scripts.lib.account_display import canonical_key  # type: ignore
+        from scripts.lib.account_display import canonical_key  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     return canonical_key(raw)
 
 
@@ -124,11 +124,11 @@ def build_account_summaries(rows: list[dict[str, Any]], *, generated_at: datetim
     """Classified account_summaries through the EXISTING classifier, so the export is a usable Step 3 fallback."""
     aliases = aliases or {}
     try:
-        from lib.account_state import classify_account_state  # type: ignore
+        from lib.account_state import classify_account_state  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     except ImportError:  # pragma: no cover - imported as scripts.<module>
-        from scripts.lib.account_state import classify_account_state  # type: ignore
+        from scripts.lib.account_state import classify_account_state  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     try:
-        from lib.cio_domain_registry import CIODomainRegistry  # type: ignore
+        from lib.cio_domain_registry import CIODomainRegistry  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
         market_only = CIODomainRegistry.load().get("portfolio").freshness_market_hours_only is True
     except Exception:  # noqa: BLE001
         market_only = False
@@ -581,7 +581,7 @@ def _repricer():
     here = Path(__file__).resolve().parent
     if str(here) not in sys.path:
         sys.path.insert(0, str(here))
-    import portfolio_repricer  # type: ignore
+    import portfolio_repricer  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     return portfolio_repricer
 
 
@@ -807,9 +807,9 @@ def read_prior(store: Path | str) -> tuple[dict[str, Any] | None, str]:
     nothing: the render then stands on the DB alone and the next enricher run refills its fields.
     """
     try:
-        from lib.portfolio_positions import read_store_document  # type: ignore
+        from lib.portfolio_positions import read_store_document  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     except ImportError:  # pragma: no cover - imported as scripts.<module>
-        from scripts.lib.portfolio_positions import read_store_document  # type: ignore
+        from scripts.lib.portfolio_positions import read_store_document  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     doc, state = read_store_document(Path(store))
     if doc is None:
         return None, state
@@ -888,7 +888,7 @@ def in_market_hours(now: datetime) -> bool:
     """Official NYSE session bounds when the calendar is available; weekday/time only as a stated fallback."""
     et = now.astimezone(ET)
     with contextlib.suppress(Exception):  # fall back to weekday arithmetic and say so in the alert result
-        from lib.cio_market_session import get_session_service  # type: ignore
+        from lib.cio_market_session import get_session_service  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
         service = get_session_service()
         if not service.is_trading_day(et.date()):
             return False
@@ -985,9 +985,9 @@ def maybe_alert_stale(*, store: Path | str | None = None, state_root: Path | str
                 return {"status": "already_alerted", "age_minutes": age, "sent": False, "episode": episode}
     if send is None:
         try:
-            from telegram_alert import send_telegram_outcome as send  # type: ignore
+            from telegram_alert import send_telegram_outcome as send  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
         except ModuleNotFoundError:
-            from scripts.telegram_alert import send_telegram_outcome as send  # type: ignore
+            from scripts.telegram_alert import send_telegram_outcome as send  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     why = ("the export is empty or unreadable" if empty else
            f"{sync_failures} consecutive positions-sync runs failed" if sync_bad else
            f"totals differ from the DB by ${mismatch}" if mismatch is not None else
@@ -1071,9 +1071,9 @@ def main(argv: list[str] | None = None) -> int:
 def holdings_lock() -> Callable[[], Any]:
     """The ONE lock every holdings.json read-modify-write holds (lib/holdings_write_lock.py)."""
     try:
-        from lib.holdings_write_lock import holdings_write_lock  # type: ignore
+        from lib.holdings_write_lock import holdings_write_lock  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     except ImportError:  # pragma: no cover - imported as scripts.<module>
-        from scripts.lib.holdings_write_lock import holdings_write_lock  # type: ignore
+        from scripts.lib.holdings_write_lock import holdings_write_lock  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     return holdings_write_lock
 
 
@@ -1084,7 +1084,7 @@ def _connect():
     connect failure escapes the CLI uncaught and the freshness monitor never runs.
     """
     try:
-        from lib.cio_market_context_state import connect_trade_ai_readonly  # type: ignore
+        from lib.cio_market_context_state import connect_trade_ai_readonly  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
         conn = connect_trade_ai_readonly()
         conn.set_session(isolation_level="REPEATABLE READ", readonly=True, autocommit=False)
         return conn

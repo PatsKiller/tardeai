@@ -527,3 +527,13 @@ def test_the_cache_serves_copies(tmp_path):
     n = len(db.queries)
     second = hd.load_document(store, db_query=db.query, now=NOW)
     assert second["holdings"] and len(db.queries) == n
+
+
+def test_an_unresolvable_production_root_is_a_stated_fallback(tmp_path, monkeypatch):
+    hd = _hd()
+    store = _write_prior(tmp_path)
+    monkeypatch.setattr(hd, "_is_production_store", lambda path: None)
+    monkeypatch.setattr(hd, "default_db_query", lambda: pytest.fail("the DB was read without a resolved root"))
+    doc = hd.load_document(store, now=NOW, use_cache=False)
+    assert doc["document_source"] == "holdings_json_fallback"
+    assert "could not be resolved" in doc["document_fallback_reason"]

@@ -65,7 +65,7 @@ class _QueryCursor:
     def execute(self, sql: str, params: Any = None) -> None:
         try:
             result = self._db_query(sql, params, fetch="all")
-        except Exception as exc:  # noqa: BLE001 - a failing helper is an unreachable DB, stated by type
+        except Exception as exc:  # noqa: BLE001 -- a failing helper is an unreachable DB, stated by type
             raise QueryUnavailable(f"db_query raised {type(exc).__name__}") from exc
         if result is None:
             raise QueryUnavailable("db_query returned no result (database unreachable or disabled)")
@@ -108,29 +108,27 @@ class _TrackingCursor(_QueryCursor):
 def default_db_query() -> Optional[Callable[..., Any]]:
     """The served API's read-only query helper (db_adapter._execute), or None when the DB is disabled."""
     try:
-        from db_adapter import USE_DB, _execute  # type: ignore
-    except Exception:  # noqa: BLE001 - no adapter is no DB, stated as the fallback reason
+        from db_adapter import USE_DB, _execute  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
+    except Exception:  # noqa: BLE001 -- no adapter is no DB, stated as the fallback reason
         return None
     if not USE_DB:
         return None
     return _execute
 
 
-def _is_production_store(store: Path) -> bool:
+def _is_production_store(store: Path) -> Optional[bool]:
+    """True/False, or None when the production store cannot be resolved (stated, never guessed)."""
     try:
-        from lib.canonical_store_registry import production_state_root  # type: ignore
-        from lib.portfolio_positions import STORE_REL  # type: ignore
-    except Exception:  # noqa: BLE001
-        return False
-    try:
+        from lib.canonical_store_registry import production_state_root  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
+        from lib.portfolio_positions import STORE_REL  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
         live = Path(production_state_root()).joinpath(*STORE_REL)
         return os.path.realpath(store) == os.path.realpath(live)
-    except Exception:  # noqa: BLE001
-        return False
+    except Exception:  # noqa: BLE001 -- the caller turns None into a stated fallback reason
+        return None
 
 
 def _file_document(store: Path, reason: Optional[str], *, source: str = DOCUMENT_SOURCE_FILE) -> dict[str, Any]:
-    from lib.portfolio_positions import read_store_document  # type: ignore
+    from lib.portfolio_positions import read_store_document  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
 
     doc, state = read_store_document(store)
     out: dict[str, Any] = dict(doc) if isinstance(doc, dict) else {}
@@ -147,11 +145,14 @@ def load_document(store: Path | str | None = None, *, db_query: Optional[Callabl
     `store` defaults to the production store; `db_query` defaults to the served API's helper, and only for
     the production store.
     """
-    from lib.portfolio_positions import store_path  # type: ignore
+    from lib.portfolio_positions import store_path  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
 
     store = Path(store) if store is not None else store_path()
     if db_query is None:
-        if not _is_production_store(store):
+        production = _is_production_store(store)
+        if production is None:
+            return _file_document(store, "the production store could not be resolved; the database was not read")
+        if not production:
             return _file_document(store, None, source=DOCUMENT_SOURCE_OFFLINE)
         db_query = default_db_query()
         if db_query is None:
@@ -170,7 +171,7 @@ def load_document(store: Path | str | None = None, *, db_query: Optional[Callabl
 
 
 def _render(store: Path, db_query: Callable[..., Any], *, now: Optional[datetime]) -> dict[str, Any]:
-    import holdings_export as he  # type: ignore
+    import holdings_export as he  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
 
     conn = QueryConnection(db_query)
     prior, _prior_state = he.read_prior(store)
@@ -180,7 +181,7 @@ def _render(store: Path, db_query: Callable[..., Any], *, now: Optional[datetime
         why = (f"database unreachable: {conn.unreachable}" if conn.unreachable
                else f"database answered but the render refused: {exc}")
         return _file_document(store, why)
-    except Exception as exc:  # noqa: BLE001 - a reader never crashes a page; the reason is served
+    except Exception as exc:  # noqa: BLE001 -- a reader never crashes a page; the reason is served
         return _file_document(store, f"render failed: {type(exc).__name__}")
     document["document_source"] = DOCUMENT_SOURCE_DB
     document["document_fallback_reason"] = None
