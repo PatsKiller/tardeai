@@ -56,9 +56,10 @@ def main(argv=None) -> int:
     backup.write_text(json.dumps(rows, default=str, indent=1))
     cur.execute(ARCHIVE_DDL)
     cols = [c for c in rows[0].keys()]
-    collist = ", ".join(cols)
-    cur.execute(f"""INSERT INTO trade_closed_archived_probe ({collist}, archive_reason)
-                    SELECT {collist}, %s FROM trade_closed WHERE id = ANY(%s)""",
+    from psycopg2 import sql
+    collist = sql.SQL(", ").join(sql.Identifier(c) for c in cols)
+    cur.execute(sql.SQL("""INSERT INTO trade_closed_archived_probe ({collist}, archive_reason)
+                    SELECT {collist}, %s FROM trade_closed WHERE id = ANY(%s)""").format(collist=collist),
                 ("health probe row counted as a trade (reconciliation 2026-10-05)", plan["ids"]))
     cur.execute("SELECT count(*) FROM trade_closed_archived_probe WHERE id = ANY(%s)", (plan["ids"],))
     if cur.fetchone()[0] < len(rows):

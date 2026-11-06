@@ -457,13 +457,13 @@ def _screener_find_candidates(all_time: bool = True, days: int = 14) -> list:
             found[sym] = row
 
     # 1. auto_research intelligence events (screener finds + new discoveries)
-    time_clause = "" if all_time else f"AND created_at > NOW() - INTERVAL '{int(days)} days'"
-    cur.execute(f"""
+    cur.execute("""
         SELECT DISTINCT ON (symbol) symbol, payload, created_at
         FROM portfolio_intelligence_events
-        WHERE event_type = 'auto_research' {time_clause}
+        WHERE event_type = 'auto_research'
+          AND (%s OR created_at > NOW() - %s * INTERVAL '1 day')
         ORDER BY symbol, created_at DESC
-    """)
+    """, (bool(all_time), int(days)))
     for r in cur.fetchall():
         payload = r.get("payload") or {}
         if isinstance(payload, str):

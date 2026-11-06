@@ -37,7 +37,8 @@ def main():
                                 user=env.get("DB_USER", "trade_ai"), password=env.get("DB_PASSWORD", ""))
         cur = conn.cursor()
         for t in ["content_embeddings", "content_embeddings_qwen3_shadow"]:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list above
+                f"SELECT COUNT(*) FROM {t}")
             table_counts[t] = cur.fetchone()[0]
         conn.close()
     except Exception as e:
