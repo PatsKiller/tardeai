@@ -5202,7 +5202,9 @@ def portfolio_performance():
                 result["max_drawdown_pct_30d"] = min(p["drawdown"] for p in _recent)
         except Exception:
             pass
-    return result
+    # Preserve the existing performance monetary semantics and evidence. The
+    # read model adds honest UNKNOWN/coverage/clock metadata, never a new 1D sum.
+    return _cio_truth_readers().performance_payload(result, holdings_doc=holdings)
 
 
 def research_ticker(symbol: str):
