@@ -73,6 +73,7 @@ def find_or_create_trace(conn, symbol, strategy_id, source_stage, source_system=
             updates.append("current_stage=%s")
             params.append(source_stage)
             params.append(tid)
+            # nosemgrep: tq-py-sql-fstring -- updates holds only literal "col=..." fragments
             cur.execute(f"UPDATE lifecycle_trace SET {', '.join(updates)} WHERE trace_id=%s", params)
             conn.commit()
         return tid, False

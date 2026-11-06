@@ -356,7 +356,7 @@ def get_checkpoint_offset() -> int:
     if conn is not None:
         try:
             with conn.cursor() as cur:
-                cur.execute(
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- table name is the module constant _CHECKPOINT_TABLE
                     f"SELECT committed_update_id FROM {_CHECKPOINT_TABLE} WHERE id = 1"
                 )
                 row = cur.fetchone()
@@ -433,7 +433,7 @@ def commit_checkpoint(update_id: int) -> int:
     if conn is not None:
         try:
             with conn.cursor() as cur:
-                cur.execute(
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- table name is the module constant _CHECKPOINT_TABLE
                     f"""
                     INSERT INTO {_CHECKPOINT_TABLE} (id, committed_update_id, updated_at)
                     VALUES (1, %s, now())
@@ -532,7 +532,7 @@ def quarantine_callback(
     if conn is not None:
         try:
             with conn.cursor() as cur:
-                cur.execute(
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- table name is the module constant _QUARANTINE_TABLE
                     f"""
                     INSERT INTO {_QUARANTINE_TABLE} (
                         update_id, reason, callback_query_id, provider_coordinates

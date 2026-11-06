@@ -103,7 +103,7 @@ def list_deploy_events(cur, *, status: str | None = None, account: str | None = 
         params.append(source)
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     params.append(limit)
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- where joins only literal "col=%s" clauses; values are params
         f"""SELECT id, event_key, symbol, account, sold_at, proceeds_usd, shares_sold, realized_pnl,
                    instrument_type, proxy_symbol, proxy_sleeve, status, proceeds_settled,
                    cash_visible_usd, lookthrough_delta, redeploy_plan, source, txn_ref, txn_id,
