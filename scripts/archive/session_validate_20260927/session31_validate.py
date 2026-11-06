@@ -37,7 +37,8 @@ def run():
         conn = get_conn(); cur = conn.cursor()
         for t in ["backtest_datasets", "strategy_backtest_runs", "strategy_backtest_trades",
                    "challenger_definitions", "champion_challenger_results", "backtest_run_log"]:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list
+                f"SELECT COUNT(*) FROM {t}")
         test("Backtesting DB tables (6)", True)
         conn.close()
     except Exception as e: test("DB tables", False, str(e))

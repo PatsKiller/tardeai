@@ -304,7 +304,8 @@ def run(apply, json_path, md_path):
         for r in rows:
             vals = dict(r)
             vals["data_quality_notes"] = json.dumps(r["data_quality_notes"], default=str)
-            wc.execute(f"""INSERT INTO trade_profit_capture_analysis ({','.join(cols)})
+            wc.execute(  # nosemgrep: tq-py-sql-fstring -- names from the fixed cols list; values are params
+                f"""INSERT INTO trade_profit_capture_analysis ({','.join(cols)})
                 VALUES ({','.join('%('+c+')s' for c in cols)})
                 ON CONFLICT (trade_instance_id) DO UPDATE SET
                 {','.join(f'{c}=excluded.{c}' for c in cols if c!='trade_instance_id')}, updated_at=now()""", vals)

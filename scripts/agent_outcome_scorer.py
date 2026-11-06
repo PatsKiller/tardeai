@@ -234,28 +234,29 @@ def rebuild_calibration(conn):
     """
     cur = conn.cursor()
     for window in [30, 90, 365]:
-        cur.execute(f"""
+        cur.execute("""
             SELECT DISTINCT agent_name FROM agent_recommendation_outcomes
-            WHERE scored_at > NOW() - INTERVAL '{window} days'
-        """)
+            WHERE scored_at > NOW() - %s * INTERVAL '1 day'
+        """, [window])
         agents = [r[0] for r in cur.fetchall()]
 
         for agent in agents:
             # Overall (strategy_type=NULL) + per-strategy
             for strat in [None]:
-                strat_clause = "" if not strat else f"AND strategy_type = '{strat}'"
+                strat_clause = "" if not strat else "AND strategy_type = %s"
+                strat_params = [] if not strat else [strat]
                 # Exclude RELIST_NEUTRAL from accuracy denominator — they're
                 # market events, not failed recommendations
-                cur.execute(f"""
+                cur.execute("""
                     SELECT COUNT(*),
                            COUNT(CASE WHEN verdict='CORRECT' THEN 1 END),
                            COUNT(CASE WHEN verdict='WRONG' THEN 1 END),
                            COUNT(CASE WHEN verdict IN ('NEUTRAL', 'RELIST_NEUTRAL') THEN 1 END),
                            AVG(confidence), AVG(pnl_pct), SUM(realized_pnl)
                     FROM agent_recommendation_outcomes
-                    WHERE agent_name=%s AND scored_at > NOW() - INTERVAL '{window} days'
-                    {strat_clause}
-                """, [agent])
+                    WHERE agent_name=%s AND scored_at > NOW() - %s * INTERVAL '1 day'
+                    """ + strat_clause + """
+                """, [agent, window, *strat_params])
                 row = cur.fetchone()
                 if not row or not row[0]:
                     continue
