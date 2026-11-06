@@ -447,7 +447,8 @@ def _query_strategy_backtest_trades(cur, limit, symbols=None):
         symbol_filter = "AND sbt.symbol = ANY(%s)"
         params = [symbols, limit]
 
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- symbol_filter is a literal ANY(%s); values bound
+        f"""
         SELECT sbt.id AS trade_id, sbt.symbol,
                COALESCE(sbt.broker, 'schwab') AS broker,
                COALESCE(sbt.account, 'unknown') AS account,
@@ -500,7 +501,8 @@ def _query_trades_view(cur, limit, symbols=None):
         symbol_filter = "AND t.symbol = ANY(%s)"
         params = [symbols, limit]
 
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- symbol_filter is a literal ANY(%s); values bound
+        f"""
         SELECT t.trade_id, t.symbol, t.broker, t.account,
                t.entry_price, t.exit_price, t.pnl, t.pnl_pct,
                t.entry_date, t.exit_date,

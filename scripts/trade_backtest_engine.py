@@ -436,7 +436,8 @@ def upsert_result(conn, result):
     placeholders = ', '.join(['%s'] * len(cols))
     updates = ', '.join([f"{c}=EXCLUDED.{c}" for c in cols if c != 'trade_key'])
     cur = conn.cursor()
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- columns from the fixed cols list; values bound
+        f"""
         INSERT INTO trade_backtest_results ({', '.join(cols)})
         VALUES ({placeholders})
         ON CONFLICT (trade_key) DO UPDATE SET {updates}, computed_at=NOW()

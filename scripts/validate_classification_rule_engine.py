@@ -43,7 +43,7 @@ def main():
                   'strategy_group_caps', 'strategy_rule_sets', 'strategy_rule_evaluations',
                   'agent_classification_suggestions', 'agent_conflicts',
                   'marl_policy_versions', 'marl_suggestions', 'marl_training_episodes']:
-            cur.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_name='{t}'")
+            cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name=%s", (t,))
             exists = cur.fetchone()[0] > 0
             check(f"Table {t}", exists)
         cur.execute("SELECT COUNT(*) FROM strategy_registry")

@@ -41,7 +41,8 @@ def main():
         cur = conn.cursor()
         for t, min_rows in [("ticker_dividend_data", 20), ("portfolio_level_qa_history", 1),
                             ("decision_outcomes", 0), ("portfolio_intelligence_events", 1)]:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list
+                f"SELECT COUNT(*) FROM {t}")
             cnt = cur.fetchone()[0]
             check(f"Table {t}", cnt >= min_rows, f"{cnt} rows")
         conn.close()
