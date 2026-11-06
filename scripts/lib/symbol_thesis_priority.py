@@ -25,18 +25,28 @@ def _root(root: Any) -> Path:
     return Path(root) if root is not None else Path(__file__).resolve().parents[2]
 
 
-def _rows(path: Path) -> list[dict[str, Any]]:
+def _rows(path: Path, *, strict: bool = False) -> list[dict[str, Any]]:
+    """Surface readers stay tolerant; identity guards require intact existing history."""
     out = []
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
             try:
                 row = json.loads(line)
             except ValueError:
+                if strict:
+                    raise
                 continue
             if isinstance(row, dict):
                 out.append(row)
-    except OSError:
+            elif strict:
+                raise ValueError("JSONL row must be an object")
+    except FileNotFoundError:
         pass
+    except OSError:
+        if strict:
+            raise
     return out
 
 
@@ -192,6 +202,13 @@ def attempt_reason(attempt: dict[str, Any]) -> str:
     """One plain sentence for an acquisition outcome; the raw code stays alongside it."""
     status = attempt.get("status")
     if status == "BLOCKED":
+        identity_reason = {
+            "REQUEST_IDENTITY_UNCONFIRMED": "security identity needs confirmation",
+            "REQUEST_IDENTITY_CHANGED": "security identity changed — review needed",
+            "REQUEST_IDENTITY_HISTORY_UNAVAILABLE": "review history unavailable — processing paused",
+        }.get(attempt.get("block_reason"))
+        if identity_reason:
+            return identity_reason
         gaps = [GAP_WORDS.get(g, g.replace("_", " ")) for g in attempt.get("remaining_gaps") or []]
         text = "waiting for evidence" + (f" — {'; '.join(gaps)}" if gaps else "")
         pending = attempt.get("pending_curation_n")
