@@ -164,6 +164,10 @@ def _json_clean(obj):
 
 def _load_json(path: Path):
     try:
+        if path.exists() and path.stat().st_size == 0:
+            # 2026-10-30: the disk-full night left state files at 0 bytes; say so instead of silently reading nothing.
+            log.warning("%s is empty (0 bytes); treating it as missing", path)
+            return None
         return json.loads(path.read_text()) if path.exists() else None
     except Exception:
         return None
@@ -7465,6 +7469,11 @@ def _ops_audit():
 
 def ops_summary():
     fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    # The manifest proves a producer ran; it does not prove the store it describes
+    # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
+    from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
+
+    _store_guard = _holdings_guard(STATE_DIR)
     health_rows = (
         _db_query(
             """
@@ -7480,7 +7489,8 @@ def ops_summary():
 
     return {
         "pipeline": {
-            "status": fresh.get("status", "unknown"),
+            "status": _effective_status(fresh.get("status", "unknown"), _store_guard),
+            "authoritative_store": _store_guard,
             "completed_at": fresh.get("completed_at", ""),
             "duration_seconds": fresh.get("pipeline_duration_seconds", 0),
             "steps": fresh.get("steps_completed", 0),
@@ -16580,17 +16590,19 @@ def _defense_posture(query=None):
                        WHERE intent_type='inverse_etf' AND status IN ('filled','armed_ticket','submitted_paper')
                        ORDER BY updated_at DESC LIMIT 1""")
         _hint = _hc.fetchone()
-        _hc.execute("""SELECT symbol, threshold, last_fired_at FROM watch_alerts
-                       WHERE created_by='defense_hedge' AND note LIKE '%%bounce%%' LIMIT 1""")
+        _hc.execute("""SELECT symbol, threshold, last_fired_at, created_at FROM watch_alerts
+                       WHERE created_by='defense_hedge' AND active AND note LIKE '%%bounce%%'
+                       ORDER BY id DESC LIMIT 1""")
         _bounce = _hc.fetchone()
+        # design home/v006 (review of #2460, B2): the newest THESIS -> GREEN transition; a bounce alert armed before it
+        # belongs to an earlier episode and is never shown as live
+        _hc.execute("""SELECT instrument, max(created_at) FROM inverse_stoplight_transitions
+                       WHERE light='THESIS' AND split_part(new_state, '|', 1)='GREEN' GROUP BY instrument""")
+        _green_since = {str(r[0]).upper(): r[1] for r in _hc.fetchall()}
         _rows = (out.get("momentum") or {}).get("rows") or []
         _tech = next((r for r in _rows if r.get("sector") == "Technology"), {})
-        if _tech.get("state") not in ("LAGGING", "WEAKENING", None) and _hint:
-            hs = {
-                "state": "stand_down",
-                "line": f"HEDGE: stand-down signaled — Technology recovered to {_tech.get('state')}",
-            }
-        elif _hint and _hint[0] == "filled":
+        _in_play_line, _close_meta = None, None
+        if _hint and _hint[0] == "filled":
             # Phase 4: last close via the daily_bars projection (ticker_prices), with its age.
             from lib.data_broker.daily_bars import get_last_close as _brk_last_close
 
@@ -16601,24 +16613,25 @@ def _defense_posture(query=None):
                 if _px is not None and _hint[1]
                 else None
             )
-            hs = {
-                "state": "in_play",
-                "line": f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else ""),
-                "close_as_of": _lc.get("as_of"),
-                "close_stale": _lc.get("stale"),
-            }
-        elif _bounce and _bounce[2] and str(_bounce[2])[:10] == datetime.now(timezone.utc).date().isoformat():
-            hs = {
-                "state": "entry_window_open",
-                "line": f"HEDGE: entry window OPEN — {_bounce[0]} bounce ≥ ${_bounce[1]}",
-            }
-        else:
-            hs = {
-                "state": "armed",
-                "line": f"HEDGE: waiting for a bounce day ({_bounce[0]} ≥ ${_bounce[1]})"
-                if _bounce
-                else "HEDGE: alerts arming tonight",
-            }
+            _in_play_line = f"HEDGE: {_hint[2]} in play" + (f" {_pl:+.1f}%" if _pl is not None else "")
+            _close_meta = {"close_as_of": _lc.get("as_of"), "close_stale": _lc.get("stale")}
+        # design home/v006: the inverse-hedge stoplight decides; a stale defense_hedge alert never reads as live
+        from lib.defense_hedge_state import hedge_state as _hedge_state
+
+        _sl_cfg = (_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json") or {}).get(
+            "inverse_stoplights"
+        ) or {}
+        hs = _hedge_state(
+            stoplights=_load_json(PROJECT_ROOT / "data" / "runtime" / "inverse_stoplights_latest.json"),
+            intent=_hint,
+            bounce=_bounce,
+            tech_state=_tech.get("state"),
+            today=datetime.now(timezone.utc).date(),
+            stale_days=int(_sl_cfg.get("stale_calendar_days", 4)),
+            in_play_line=_in_play_line,
+            close_meta=_close_meta,
+            green_since=_green_since,
+        )
         out["hedge_state"] = hs
     except Exception as e:
         import traceback
@@ -17906,8 +17919,6 @@ def _ticket_review_run(body):
     # Explicit single-lane metered Flash is allowed; Pro/policies needing confirmation are not.
     metered_flash = {"deepseek-flash", "fast", "fast_think"}
     blocked_paid = {
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
         "deepseek-pro",
         "deepseek-v4",
         "pro",
@@ -30726,6 +30737,17 @@ def _queue_summary():
         or {}
     ).get("cnt", 0)
     pending = by_status.get("pending", 0)
+    # The consumer lane's registry state: RETIRED means nothing drains this table by design (needs_action.rule_queue
+    # then raises no Do-now item, and the Jobs page labels the backlog retired instead of CRIT).
+    try:
+        from lib.lane_registry import load_registry as _qs_load
+
+        _qs_lanes = (_qs_load() or {}).get("lanes") or []
+        _qs_row = next((r for r in _qs_lanes if isinstance(r, dict) and r.get("lane_id") == "deep-overnight-llm"), {})
+        lane_state = _qs_row.get("state")
+    except Exception as exc:  # noqa: BLE001 — an unreadable registry is reported, never treated as retired
+        lane_state = None
+        print(f"[queue_summary] lane registry unreadable: {type(exc).__name__}", file=_sys_heal.stderr)
     cap = 100
     now = datetime.now()
     window_start = now.replace(hour=23, minute=0, second=0, microsecond=0)
@@ -30737,6 +30759,9 @@ def _queue_summary():
         # False when the queue table could not be read (db_adapter returns None): the zeros below are then not
         # measurements. GET /api/v2/needs-action reports the source unavailable instead (2026-10-21).
         "measured": raw_rows is not None,
+        "lane_id": "deep-overnight-llm",
+        "lane_state": lane_state,
+        "retired": lane_state == "RETIRED",
         "pending": pending,
         "done_today": done_today,
         "failed": by_status.get("failed", 0),
@@ -30871,6 +30896,10 @@ def _home_do_now(query=None):
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
         # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
         "held": _home_held,
+        # FQ-097 (operator 2026-11-04): the CIO's own verdict per (symbol, account) — the same capital plan the
+        # CIO desk renders. Do-now stop items print it and add none of their own. Side-effect free: the read-only
+        # probe never records decisions from a GET (codex-cloud at 8802d4da9).
+        "cio": _cio_capital_plan_probe,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
@@ -36694,12 +36723,28 @@ def _cio_capital_plan(query=None):
     return _cio_capital_plan_build(query)
 
 
-def _cio_capital_plan_build(query=None):
+def _cio_capital_plan_probe():
+    """Side-effect-free capital-plan read for Home's Do-now queue.
+
+    The Do-now queue only DISPLAYS the plan. Its GET must never append to the
+    authoritative decision journal: a GET that writes durable state is forbidden
+    (AGENTS.md §28.9), and §28.11 forbids new side-effecting GET exceptions
+    (codex-cloud at 8802d4da9). Build the same plan with recording disabled — a
+    read-only projection never calls the recording handler.
+    """
+    return _request_memoized("cio_capital_plan_readonly", lambda: _cio_capital_plan_build(record=False))
+
+
+def _cio_capital_plan_build(query=None, *, record=True):
     """GET /api/v2/cio/capital-plan — Alex's Capital Plan + Position Decision table.
 
     READ_ONLY_ADVISORY. Deterministic sources-and-uses arithmetic composed from
     canonical state (holdings.json + redeploy capital book + opportunity queue +
     sector opportunities + thesis risk posture). Never promotes or executes.
+
+    ``record=False`` skips appending unseen position decisions to the
+    authoritative decision journal, for read-only consumers such as the Home
+    Do-now queue.
     """
     try:
         from scripts.lib.cio_capital_plan import build_capital_plan_from_sources
@@ -36726,12 +36771,13 @@ def _cio_capital_plan_build(query=None):
             risk_posture=posture,
             investment_policy=_ratified_investment_policy(),
         )
-        try:
-            from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
+        if record:
+            try:
+                from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
 
-            record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
-        except Exception:
-            pass
+                record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
+            except Exception:
+                pass
         return {"ok": True, **plan}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
@@ -36767,6 +36813,10 @@ def _capital_plan_compact():
                 {
                     "symbol": d.get("symbol"),
                     "stance": d.get("cio_stance"),
+                    # FQ-098 (cc-deepseek-9 F2 at b1b38341): the stance's own generation time travels WITH the stance, so
+                    # a board can say how old the call is. Without it every rendered stance read "no evidence date —
+                    # treat as unverified", a false claim in the opposite direction. Never a page-build clock.
+                    "stance_as_of": d.get("decision_generated_at") or d.get("as_of") or d.get("generated_at"),
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
                     "actionable": d.get("actionable"),
@@ -68331,11 +68381,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # POST ack: records the operator's acknowledgment in the episode ledger (P3-T7, lib.market_risk.escalation).
     if base_path == "/api/v2/market-risk/latest" and method == "GET":
         try:
-            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL, build as _mr_build
+            from lib.market_risk_projection import build as _mr_build, load_snapshot as _mr_load
 
             from lib.market_risk import escalation as _mr_esc
 
-            _snap = _load_json(PROJECT_ROOT / _MR_REL)
+            # live snapshot when present, else the labelled shadow one (never a live episode on a shadow tier)
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             _radar = _load_json(PROJECT_ROOT / "data" / "runtime" / "hedging_radar_latest.json")
             _ep_err = None
             try:
@@ -68345,6 +68396,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _proj = _mr_build(_snap, _radar, episode=_ep)
             if _ep_err:
                 _proj["episode_error"] = _ep_err
+            # design home/v005: dollars and account labels are joined here, API side, from the holdings store — never
+            # in the engine assessment (it feeds the models; AGENTS.md §2A). Fails soft to the projection without them.
+            try:
+                from lib.market_risk_book_join import join as _mr_join
+
+                _proj = _mr_join(_proj)
+            except Exception as _e:  # noqa: BLE001
+                _proj["book_exposure_error"] = f"{type(_e).__name__}: {_e}"
             return 200, {"ok": True, "data": _json_clean(_proj)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
@@ -68354,7 +68413,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from lib.market_risk import escalation as _mr_esc
             from lib.market_risk_projection import ack_outcome as _mr_ack, build as _mr_build
 
-            from lib.market_risk_projection import SNAPSHOT_REL as _MR_REL
+            from lib.market_risk_projection import load_snapshot as _mr_load
 
             # handler-side same-origin CSRF, enforced whatever enforce/report_only say — the deploy STOP pattern
             # (cc_auth.command_csrf_check; review of #2383 round 3, M-C)
@@ -68362,7 +68421,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not _mr_csrf_ok:
                 return 403, {"ok": False, "error": "acknowledgment refused: cross-site request", "reason": _mr_csrf_why}
 
-            _snap = _load_json(PROJECT_ROOT / _MR_REL)
+            _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
             try:
                 _ep = _mr_esc.open_episode(_mr_esc.load())
             except _mr_esc.EpisodeStoreCorrupt:

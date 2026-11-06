@@ -1,0 +1,82 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v005",
+  "state": "APPROVED",
+  "title": "Home: actionable market-risk card (sectors with your dollars, positions at risk, budget breaches, review list, re-entry stages, look-through)",
+  "created": "2026-11-01",
+  "approval": {
+    "by": "operator",
+    "at": "2026-11-01",
+    "ref": "in-session directive (coordinator session_01GeLa7JgVXENzWSJSDhcHkF)",
+    "kind": "operator in-session words, verbatim: \"Are you approved? Homepage version 005.\" (2026-11-01, ~11:30 ET). Recorded from the message under AGENTS.md \u00a720, as for home/v002 and home/v004; the Approvals -> Designs tap is not yet recording to the ledger. Applied with the operator's correction from his broker screenshot (a same-account re-buy after a stop-out is a holding; its wash sale has occurred), which changed section 2 of the SPEC and the mockups before these fingerprints were taken.",
+    "source": [
+      "docs/designs/DSN-20261031-market-risk-ui.md"
+    ],
+    "push_approval": "https://github.com/PatsKiller/tardeai/pull/2441#issuecomment-6560722751",
+    "ledger": null
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "base": "v004",
+  "depends_on": [
+    "home/v004 (APPROVED)",
+    "home/v002 (APPROVED)",
+    "GET /api/v2/market-risk/latest pass-through additions (SPEC: 'Data the projection must start passing through')",
+    "config/issuer_segments.json (new, operator-owned weights)",
+    "scripts/market_risk_backtest.py --reentry (Stage 1 / Stage 2 report; thresholds chosen by the operator)"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/home",
+    "note": "Private store, never committed (design/README.md rule 7). Market figures from the 2026-11-01 shadow evaluation; book values, symbols and accounts are bracketed placeholders; the ORANGE boards are an example tier on the same placeholder book. A separate real-data render for the operator's review is local-only and is not referenced here. Paths relative to root; sha256 binds each file.",
+    "files": [
+      {
+        "path": "v005/mockups/HomeV005DesktopYellow.dc.html",
+        "sha256": "f51fac8097714b8fcc6b48217d940e3895ec0ae6b71c78bd02467e5eebfcb84f",
+        "bytes": 19726,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005PhoneYellowCollapsed.dc.html",
+        "sha256": "7f9f576379c6e74efa6f246c9dbe8457f780a5cd5791b48cf086e27c2a091480",
+        "bytes": 19717,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005PhoneYellowExpanded.dc.html",
+        "sha256": "232151d3e4249c2a99a596b2a74a9c2f59c1e211ba5bdcef4e33b15dbc34390a",
+        "bytes": 19720,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005DesktopOrange.dc.html",
+        "sha256": "b75c0ba40a073adc3056dc6487115cc7d96335061d2aea44317e06830053e25b",
+        "bytes": 19947,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005PhoneOrange.dc.html",
+        "sha256": "6f9a9cea5a2ae23a715b31fd26ec433cc685c14c6a04f9dd866d6dca2735f5af",
+        "bytes": 19947,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/HomeV005States.dc.html",
+        "sha256": "236abe64bfdfedeae6bb7db2b2f83962ece6278b767e8b8f547c7d53a76c524d",
+        "bytes": 9519,
+        "role": "mockups"
+      },
+      {
+        "path": "v005/mockups/canvas.json",
+        "sha256": "70e8689e9453f0fde91b60ad053e6636134023d65df69f21f342a0c18b224c85",
+        "bytes": 1342,
+        "role": "mockups"
+      }
+    ]
+  },
+  "removals": [],
+  "moves": [
+    "v004 contributor lines, not-measured line and 'De-escalates if' move to section 7 'Why the score is N', below the actionable sections",
+    "v004 'Your book' panel replaced by sections 3-5 (same facts with dollars and accounts)"
+  ]
+}

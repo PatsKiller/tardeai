@@ -85,7 +85,7 @@ try {
     await expect(ready).toContainText('ALFA · zone $10.00–$11.50')
     await expect(ready).not.toContainText('OLDY')
     await expect(ready).toContainText('1 packet older than 48 h is hidden here and kept in history.')
-    await expect(page.getByRole('region', { name: 'Source clocks' })).toContainText('Writer RETIRED')
+    await expect(page.getByRole('region', { name: 'Source clocks' })).toContainText('Retired — not refreshing this source')
     await shot('1', 'ready-now')
     let sheet = await openSheet(ready.getByRole('button', { name: /ALFA · zone/ }), 'ALFA · BUY_READY')
     await expect(sheet).toContainText('ADD · conviction 71')

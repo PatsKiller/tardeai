@@ -52,12 +52,19 @@ def test_policy_carries_override_renewal_admin_and_premium_tier():
                                   "prospectus_fact_check": "bulk",  # data-quality gate read (Haiku), 2026-10-26
                                   "prospectus_accuracy_review": "long_form",  # monthly accuracy sample (Opus), 2026-10-26
                                   # news methodology 2026-10-27: Haiku relevance read, Sonnet CIO note
-                                  "prospectus_news_classify": "bulk", "prospectus_cio_news_note": "mid"}
+                                  "prospectus_news_classify": "bulk", "prospectus_cio_news_note": "mid",
+                                  # operator 2026-11-01 "sonnet for search": the Ask hosted web_search process
+                                  "cio_ask_web_search": "mid"}
     assert p["models"]["mid"] == "claude-sonnet-5-5"
     assert p["premium_tier_processes"] == ["prospectus_writer_premium"]
     assert set(p["anthropic_only_processes"]) == {"prospectus_writer", "prospectus_writer_premium", "prospectus_fact_check",
                                                   "prospectus_accuracy_review", "cio_ask_reanswer",
-                                                  "prospectus_news_classify", "prospectus_cio_news_note"}
+                                                  "prospectus_news_classify", "prospectus_cio_news_note",
+                                                  # 2026-11-01: hosted web_search never leaves the credit lane
+                                                  "cio_ask_web_search"}
+    # 2026-11-01: the transport-side tool gate. One process may send a `tools` payload; the registry row's
+    # tools_allowed allowlist is the bridge-side twin of this list.
+    assert p["tools_processes"] == ["cio_ask_web_search"]
     assert p["thinking_controls"]["claude-fable-5-1"]["enabled"] == {"thinking": None, "output_config": {"effort": "high"}}
 
 

@@ -10,6 +10,7 @@ import WatchProspects from './WatchProspects'
 import WatchMyList from './WatchMyList'
 import WatchSuggests from './WatchSuggests'
 import { HOW_FALLBACK, TAB_TIPS } from '../lib/watchListsModel'
+import { isHomeBestOpportunities } from '../lib/bestOpportunities'
 import OpportunitiesHub from './OpportunitiesHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, TYPE, RAIL } from '../lib/watchTokens'
@@ -64,10 +65,14 @@ export default function WatchHub({ onDrill }: Props) {
   }, [raw, searchParams, setSearchParams])
 
   const tab = SLUG_TAB[raw] ?? 'MyWatchlist'
+  const homeBest = tab === 'Opportunities' && isHomeBestOpportunities(searchParams)
 
   const selectTab = (nextTab: typeof TABS[number]) => {
     const next = new URLSearchParams(searchParams)
     next.set('tab', TAB_SLUG[nextTab])
+    if (nextTab === 'Opportunities' && isHomeBestOpportunities(searchParams)) {
+      for (const key of ['preset', 'sort', 'limit', 'page']) next.delete(key)
+    }
     setSearchParams(next, { replace: true })
   }
 
@@ -76,10 +81,12 @@ export default function WatchHub({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h1 style={{ ...hubTitle(), margin: 0 }}>
-            Watch <span style={{ color: BB.text3 }}>›</span> {TAB_LABEL[tab]}
+            Watch <span style={{ color: BB.text3 }}>›</span> {homeBest ? 'Best opportunities' : TAB_LABEL[tab]}
           </h1>
           <div style={hubSubtitle(terminalUi)}>
-            {tab === 'MyWatchlist'
+            {homeBest
+              ? 'The same top-five selection as Home, ranked by CIO conviction'
+              : tab === 'MyWatchlist'
               ? 'Your names — starred first · never dropped by caps or expiry · last trade and re-entry for names you sold'
               : tab === 'Suggests'
               ? 'What the system proposes for your list · top of the Full universe ranking · add or dismiss'

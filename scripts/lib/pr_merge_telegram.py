@@ -29,6 +29,11 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+try:
+    from scripts.lib import pr_all_checks_green as pacg
+except ImportError:  # pragma: no cover — run from scripts/
+    from lib import pr_all_checks_green as pacg  # type: ignore
+
 SCHEMA = "PrMergeTelegramApproval@v1"
 LABEL = "operator-merge"
 DEFAULT_REPO = os.environ.get("TRADEAI_GITHUB_REPO", "PatsKiller/tardeai")
@@ -435,29 +440,36 @@ def mint_and_notify(
 
 
 def pr_check_rollup_green(pr_number: int, *, repo: str = DEFAULT_REPO) -> tuple[bool, dict[str, str]]:
-    """Return (all required success, {check: conclusion})."""
+    """(required checks completed SUCCESS and every executed check green, {check: conclusion}).
+
+    Every check counts, not only branch protection's required four: #2465 merged with `secret-scan`
+    red on four heads because every merge path read only the required list. A missing required check
+    is not evidence and blocks. The installed `gh` has no `--json` on `gh pr checks`, so this reads
+    the PR's own ``statusCheckRollup`` — which is the rollup for its current head.
+    """
     proc = subprocess.run(
-        ["gh", "pr", "checks", str(pr_number), "--repo", repo, "--json", "name,state,bucket"],
+        ["gh", "pr", "view", str(pr_number), "--repo", repo, "--json", "headRefOid,statusCheckRollup"],
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
     )
-    statuses: dict[str, str] = {}
-    if proc.returncode == 0 and proc.stdout.strip():
+    doc: dict[str, Any] = {}
+    if proc.stdout.strip():
         try:
-            rows = json.loads(proc.stdout)
+            doc = json.loads(proc.stdout) or {}
         except json.JSONDecodeError:
-            rows = []
-        for row in rows:
-            name = str(row.get("name") or "")
-            bucket = str(row.get("bucket") or row.get("state") or "").lower()
-            if name in REQUIRED_CHECKS:
-                statuses[name] = "SUCCESS" if bucket in ("pass", "success") else bucket.upper()
-    if not statuses:
+            doc = {}
+    rollup = doc.get("statusCheckRollup") or []
+    run_rows = pacg.normalize_rollup(rollup)
+    statuses = {row["name"]: (row["conclusion"].upper() or "PENDING") for row in run_rows}
+    if not run_rows:
         return False, {c: "UNKNOWN" for c in REQUIRED_CHECKS}
-    missing = [c for c in REQUIRED_CHECKS if statuses.get(c) != "SUCCESS"]
-    return (not missing), statuses
+    result = pacg.evaluate_merge_rollup(rollup, required=REQUIRED_CHECKS)
+    missing = [c for c in REQUIRED_CHECKS if c not in statuses]
+    for c in missing:
+        statuses[c] = "MISSING"
+    return (bool(result["ok"]) and not missing), statuses
 
 
 def label_names(pr: dict[str, Any]) -> set[str]:

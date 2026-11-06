@@ -35,6 +35,30 @@ class Ctx:
     can_read: Callable[[], bool] = field(default=lambda: False)
 
 
+def design_approval_href(design_id: str) -> str:
+    """The one place a design approval is recorded (fix 2026-10-31, DSN-20261031-market-risk-ui taps lost).
+
+    ``design_registry`` only reads ``<claims_dir>/designs/approvals.jsonl``, written only by Ops Controls kind
+    ``pipeline.approve_design`` (passkey + typed words, host applier). That button is on the work-pipeline card the
+    ``design`` filter opens."""
+    return "/coordination?design=" + quote(str(design_id), safe="")
+
+
+def design_registry_entry(row: dict, meta: dict, text: str, code_sha: str) -> dict:
+    """Approvals-queue row for a design-registry design or packet. Never a RECORD item: an APPROVE in the governance
+    ledger is RECORD_ONLY and ``design_registry`` never reads it, so the design would stay PROPOSED. The reader sends
+    the operator to the governed path instead, and ``DecisionLedger.decide`` refuses GOVERNED_ACTION_REQUIRED."""
+    packet = row["kind"] == "packet"
+    # Packets containing activations/policy edits cannot be approved as a generic design.
+    mode = "ACTIVATE" if packet else "DESIGN"
+    entry = core.item(ident="design:" + row["id"], kind=mode, title=meta["title"],
+                      proposed_by=meta["proposed_by"], created_at=meta["created_at"], source="design_registry",
+                      doc=core.document(text, source_sha=code_sha, version=row["id"]),
+                      governed_href="/coordination?tab=work" if packet else design_approval_href(row["id"]))
+    entry["decision_mode"] = "GOVERNED_PATH"
+    return entry
+
+
 def _raw_git(repository: Path, *args: str) -> str:
     # Never let git search a release's parents for an unrelated .git directory.
     if not (repository / ".git").exists():
@@ -240,12 +264,7 @@ def _default_sources(root: Path) -> dict:
             meta = reconcile.describe(kind=row["kind"], ident=row["id"], path=path, readme_text=text if packet else None,
                                       owner=None if packet else owners.get(row["id"]), target=target,
                                       added=added.get(path), claims=claims, title=row.get("title"))
-            # Packets containing activations/policy edits cannot be approved as a generic design.
-            mode = "ACTIVATE" if packet else "DESIGN"
-            entry = core.item(ident="design:" + row["id"], kind=mode, title=meta["title"],
-                              proposed_by=meta["proposed_by"], created_at=meta["created_at"], source="design_registry",
-                              doc=core.document(text, source_sha=code_sha, version=row["id"]),
-                              governed_href="/coordination?tab=work" if mode == "ACTIVATE" else None)
+            entry = design_registry_entry(row, meta, text, code_sha)
             entry["proposed_by_basis"], entry["created_at_basis"] = meta["proposed_by_basis"], meta["created_at_basis"]
             if packet:
                 state = reconcile.reconcile(target, facts)

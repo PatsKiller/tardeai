@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_deep_brief_20261031",
+  "files": [
+    "tests/test_market_risk_deep_brief_20261031.py"
+  ],
+  "anchor": "MARKET_RISK_DEEP_BRIEF_20261031",
+  "comment": [
+    "ANCHOR: MARKET_RISK_DEEP_BRIEF_20261031 — the follow-up deep brief after a market-risk alert: deterministic fact",
+    "pack (base rates with n, options hedging, catalysts, multi-source consensus), the hardened prose gate (79 review",
+    "probe strings; zero-width, confusables, number words, ungrounded and uncited sentences refused), the governed",
+    "writer's fallbacks, triggers, the P2 send after the initial card, snapshot storage and Ask-the-CIO wiring.",
+    "Hermetic: fixture reader, stubbed model, patched transport; 2026 held out of the base-rate table."
+  ]
+}

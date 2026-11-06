@@ -13,17 +13,44 @@ export type PricingMeta = {
 const SRC_LABEL: Record<string, string> = {
   finviz_live: 'Finviz live',
   finviz_afterhours: 'Finviz after-hours',
+  finviz_premarket: 'Finviz pre-market',
+  finviz_overnight: 'Finviz overnight',
   schwab: 'Schwab sync',
-  market_quotes: 'market quotes',
+  market_quotes: 'Market quotes',
   finviz: 'Finviz',
-  holdings: 'holdings file',
+  holdings: 'Holdings file',
   snaptrade: 'SnapTrade (laggy)',
-  technical_snapshot: 'technical snapshot',
+  technical_snapshot: 'Technical snapshot',
+  cash_unit: 'Cash balances',
 }
 
+// Provider segment of a `source:provider` price key.
+const PROVIDER_LABEL: Record<string, string> = {
+  alpaca: 'Alpaca',
+  yfinance: 'Yahoo',
+  polygon: 'Polygon',
+  schwab: 'Schwab',
+  finviz: 'Finviz',
+}
+
+/**
+ * FQ-050 (2026-11-04): the price line used to print the internal key
+ * `data_broker.market_quotes:alpaca` as "data broker.market quotes:alpaca". The face is operator
+ * words ("Alpaca quotes"); the raw key stays recoverable in the `title` of the stamp.
+ */
 export function priceSourceLabel(src?: string): string {
   if (!src) return '—'
-  return SRC_LABEL[src] ?? src.replace(/_/g, ' ')
+  const known = SRC_LABEL[src]
+  if (known) return known
+  const [baseRaw, providerRaw] = String(src).split(':')
+  const base = baseRaw.replace(/^(data_broker|broker)\./, '')
+  const baseLabel = SRC_LABEL[base] ?? base.replace(/_/g, ' ')
+  if (!providerRaw) return baseLabel
+  const provider = PROVIDER_LABEL[providerRaw.toLowerCase()]
+    ?? providerRaw.charAt(0).toUpperCase() + providerRaw.slice(1)
+  // "Market quotes" + Alpaca reads as "Alpaca quotes"; any other base keeps the provider in front.
+  if (base === 'market_quotes') return `${provider} quotes`
+  return `${provider} · ${baseLabel.charAt(0).toLowerCase()}${baseLabel.slice(1)}`
 }
 
 /** Parse server stamps like "2026-06-23 09:55:54 ET" or ISO. */

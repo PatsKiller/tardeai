@@ -1,7 +1,7 @@
 """Production read side of the Market Risk Engine: ``PgReader`` implements ``contract.DataReader``.
 
 Reads only EXISTING stores (DSN-20261031-market-risk-engine P1; new stores wait for their §7A rows):
-``market_quotes``, ``market_ohlcv_bars``, ``market_regime_indicators``, ``fred_economic_series``,
+``market_quotes``, ``market_ohlcv_bars``, ``ticker_prices``, ``market_regime_indicators``, ``fred_economic_series``,
 ``option_chain_snapshots``, ``sector_momentum_state``, ``symbol_profiles`` and the macro calendar
 (``<state root>/data/runtime/macro_calendar.json`` when the refresh lane has written it, else the operator's
 ``config/macro_calendar_overrides.json``).
@@ -16,14 +16,17 @@ Rules every method keeps:
   the exposure module, which reads positions through the positions projection).
 
 Daily closes: ``market_ohlcv_bars`` (``timeframe='daily'``) covers few index ETFs and stopped updating for some
-(SPY's last daily bar is 2026-10-09 as of 2026-10-31), so ``daily_bars`` merges it with closes derived from the
-Alpaca quote snapshots in ``market_quotes``: the close of session D is the ``prev_close`` carried by the first quote
+(SPY's last daily bar is 2026-10-09 as of 2026-10-31; XLC, XLRE and XLK never had one), so ``daily_bars`` merges it,
+in order of preference, with closes derived from the Alpaca quote snapshots in ``market_quotes`` and, last, the yfinance
+end-of-day rows of ``ticker_prices`` (only sessions neither of the first two has). A quote close: the close of session D is the ``prev_close`` carried by the first quote
 of the next session; the newest session's close is its last regular-hours quote, flagged ``provisional``.
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import math
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -35,9 +38,38 @@ ET = ZoneInfo("America/New_York")
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OVERRIDES_PATH = PROJECT_ROOT / "config" / "macro_calendar_overrides.json"
 REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59)  # last quote at or before this = the newest session's provisional close
+#: A same-day close may only come from the regular session. Without this floor a 07:15 ET pre-market
+#: quote became the day's "close" (2026-11-02: ten symbols, eight repeating Friday's close), shifting
+#: the moving averages and flipping verdicts.
+REGULAR_OPEN_ET = time(9, 30)
+EARLY_CLOSE_ET = time(13, 0, 59)
+
+
+def _same_day_cutoff_et(day: date) -> time:
+    """The last regular-session quote time for ``day`` (early close aware via scripts/market_session.py)."""
+    try:
+        try:
+            from scripts.market_session import market_early_closes
+        except ImportError:  # scripts/ on sys.path
+            from market_session import market_early_closes  # type: ignore[no-redef]
+        # market_early_closes() returns ISO date strings
+        if day.isoformat() in market_early_closes(day.year):
+            return EARLY_CLOSE_ET
+    except Exception:  # noqa: BLE001 — an unreadable calendar must not invent a close; fall back to 16:00
+        pass
+    return REGULAR_CLOSE_CUTOFF_ET
+
+
+def _display_quote_cutoff_et(day: date) -> time:
+    """Include the last fractional second for display only; never widen stage/VIX inputs."""
+    return _same_day_cutoff_et(day).replace(microsecond=999999)
+
+
 VIX_SYMBOL = "^VIX"
 DAILY_TIMEFRAME = "daily"
 QUOTE_SOURCE_FOR_CLOSES = "alpaca"
+#: ticker_prices sources that carry an official end-of-day close (review of #2460, B1)
+TICKER_PRICE_CLOSE_SOURCES = ("yfinance", "yfinance_eod")
 SECTOR_COLUMNS = (
     "as_of",
     "etf",
@@ -87,6 +119,9 @@ def _default_conn():
     except ImportError:  # scripts/ on sys.path
         from session13_db import get_conn  # type: ignore[no-redef]
     return get_conn()
+
+
+EXTENDED_TABLE = "market_quotes_extended"  # scripts/lib/writers/market_quotes_extended_writer.py
 
 
 class PgReader:
@@ -147,9 +182,100 @@ class PgReader:
             [list(symbols), _aware(start), _aware(end)],
         )
         for r in rows:
+            r["session"] = "regular"
             r["as_of"] = _iso(r["fetched_at"])
             r["fetched_at"] = r["as_of"]
-        return rows
+        return rows + self.extended_quotes(symbols, start=start, end=end)
+
+    def regular_session_quotes(self, symbols: Iterable[str], *, end: datetime) -> dict[str, dict[str, Any]]:
+        """Latest eligible stored regular quote per symbol, independently of confirmed stage bars.
+
+        ``as_of`` is market_quotes.fetched_at, the ledger observation/ingestion clock,
+        not exchange/provider trade time or proof of live freshness/an official close.
+        A quote observation is never promoted to confirmed OHLCV. After the close,
+        only this session's 09:30-through-closing-minute prints qualify; older days
+        and extended-session prices cannot masquerade as today's regular price.
+        """
+        from scripts.lib.market_risk import sessions as market_sessions
+
+        end = _aware(end).astimezone(timezone.utc)
+        local = end.astimezone(ET)
+        day = local.date()
+        if not market_sessions.is_trading_day(day) or local.time() < REGULAR_OPEN_ET:
+            day = market_sessions.last_closed_session(end)
+        start = datetime.combine(day, REGULAR_OPEN_ET, ET).astimezone(timezone.utc)
+        until = min(end, datetime.combine(day, _display_quote_cutoff_et(day), ET).astimezone(timezone.utc))
+        syms = sorted({str(s).strip().upper() for s in symbols if str(s).strip()})
+        out = {sym: {"schema": "ReentryRegularQuote@v1", "status": "unavailable", "price": None,
+                     "source": "market_quotes:alpaca", "session": "regular", "session_date": day.isoformat(),
+                     "expected_session_date": day.isoformat(), "as_of": None,
+                     "basis": "latest_regular_session_quote", "reason": "NO_REGULAR_QUOTE_FOR_SESSION"}
+               for sym in syms}
+        if not syms:
+            return out
+        rows = self._rows(
+            "SELECT symbol, source, price, fetched_at FROM market_quotes WHERE source = %s AND symbol = ANY(%s) "
+            "AND fetched_at >= %s AND fetched_at <= %s ORDER BY symbol, fetched_at",
+            [QUOTE_SOURCE_FOR_CLOSES, syms, start, until],
+        )
+        seen: dict[str, datetime] = {}
+        for row in rows:
+            sym, ts, price = str(row.get("symbol") or "").upper(), row.get("fetched_at"), row.get("price")
+            if (sym not in out or row.get("source") != QUOTE_SOURCE_FOR_CLOSES
+                    or not isinstance(ts, datetime) or ts.tzinfo is None
+                    or isinstance(price, bool) or not isinstance(price, (int, float, Decimal))):
+                continue
+            ts = ts.astimezone(timezone.utc)
+            if not start <= ts <= until or not math.isfinite(float(price)) or float(price) <= 0:
+                continue
+            if sym in seen and ts < seen[sym]:
+                continue
+            seen[sym] = ts
+            out[sym].update(status="available", price=float(price), as_of=ts.isoformat().replace("+00:00", "Z"), reason=None)
+        return out
+
+    def extended_quotes(self, symbols: Iterable[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Pre-market / after-hours / overnight / Sunday futures-open prints from their own store (never market_quotes,
+        the latest-quote ledger). A row is returned only when its bar had ended AND it had been inserted by ``end``
+        (replays see what existed then).
+        Before the migration is applied the table is absent: that is checked with ``to_regclass`` first, so no error
+        is raised and the session's read-only setting is never rolled back (review of #2384 round 2). Any other read
+        error rolls back and re-asserts ``default_transaction_read_only`` before returning nothing."""
+        exists = self._rows("SELECT to_regclass('market_quotes_extended') IS NOT NULL AS present", [])
+        if not exists or not exists[0].get("present"):
+            self.extended_quotes_error = "market_quotes_extended not created (migration not applied)"
+            return []
+        try:
+            rows = self._rows(
+                "SELECT symbol, session, session_date, price, reference_close, reference_date, change_pct, volume, "
+                "bar_end, feed, reference_basis FROM market_quotes_extended WHERE symbol = ANY(%s) AND bar_end >= %s "
+                "AND bar_end <= %s AND inserted_at <= %s ORDER BY symbol, bar_end",
+                [[s.upper() for s in symbols], _aware(start), _aware(end), _aware(end)],
+            )
+        except Exception as exc:  # noqa: BLE001 - reported via the category as UNKNOWN, logged here
+            if self._conn is not None:
+                self._conn.rollback()
+                cur = self._conn.cursor()
+                cur.execute("SET default_transaction_read_only = on")
+                cur.close()
+            self.extended_quotes_error = f"{type(exc).__name__}"
+            logging.getLogger(__name__).warning("market_quotes_extended unreadable (%s): extended_hours reads UNKNOWN",
+                                                type(exc).__name__)
+            return []
+        out = []
+        for r in rows:
+            out.append({
+                "symbol": r["symbol"], "source": f"{EXTENDED_TABLE}:{r['feed']}", "session": r["session"],
+                "session_date": _iso(r["session_date"]) if isinstance(r["session_date"], datetime) else str(r["session_date"]),
+                "price": float(r["price"]),
+                # overnight / futures_open rows may be level-only (no reference in the payload): None, never 0
+                "prev_close": None if r["reference_close"] is None else float(r["reference_close"]),
+                "reference_date": None if r["reference_date"] is None else str(r["reference_date"]),
+                "reference_basis": r["reference_basis"],
+                "day_change_pct": None if r["change_pct"] is None else float(r["change_pct"]), "volume": r["volume"],
+                "as_of": _iso(r["bar_end"]), "fetched_at": _iso(r["bar_end"]),
+            })
+        return out
 
     def daily_bars(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> list[dict[str, Any]]:
         syms = [s.upper() for s in symbols]
@@ -177,7 +303,14 @@ class PgReader:
                 "as_of": _iso(_close_instant(d)),
             }
         span = timedelta(days=int(sessions * 1.6) + 10)
+        # Second source: closes derived from the Alpaca quote snapshots (the official prev_close of the next session).
         for row in self._quote_closes(syms, start=end - span, end=end):
+            out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
+        # Last resort: the platform's daily-close projection (``ticker_prices``, data-broker domain ``technicals``, the
+        # table the Defense desk's sector momentum reads). Ranked AFTER the bars and the quote closes, so it only fills
+        # sessions neither has: the sector ETFs ``market_ohlcv_bars`` never had (XLC, XLRE, XLK) before the quote
+        # history starts. A symbol with bars or quote closes for a session keeps them (SPY's benchmark is unchanged).
+        for row in self._ticker_price_closes(syms, start=end - span, end=end):
             out.setdefault((row["symbol"], date.fromisoformat(row["date"])), row)
         if VIX_SYMBOL in syms:
             for row in self._vix_closes(start=end - span, end=end):
@@ -255,6 +388,54 @@ class PgReader:
                 }
         return [out[d] for d in sorted(out)]
 
+    def _ticker_price_closes(self, symbols: list[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Daily closes from ``ticker_prices`` (close only), as-of correct and conservative (review of #2460, B1):
+
+        * only the official-daily-close sources in ``TICKER_PRICE_CLOSE_SOURCES`` (``yfinance``); ``market_quotes`` rows
+          are the last intraday / after-hours print of the day, not the close, and are never read;
+        * a row counts only when it was written AFTER its session closed (``created_at >= close_instant(price_date)``)
+          and by ``end`` (``created_at <= end``); a NULL ``created_at`` is unknowable and excluded.
+
+        Residual risk (documented, not detectable): the table is upserted on (symbol, price_date) and an upsert never
+        updates ``created_at``, so a close rewritten later (a vendor correction) keeps its first ``created_at`` and a
+        replay at an instant between the two writes sees the corrected value. There is no ``updated_at`` column to
+        exclude it. Restricting to the yfinance end-of-day source keeps such rewrites to vendor corrections."""
+        rows = self._rows(
+            "SELECT upper(symbol) AS symbol, price_date, close_price, source, created_at FROM ticker_prices "
+            "WHERE upper(symbol) = ANY(%s) AND price_date >= %s AND price_date <= %s "
+            "AND created_at IS NOT NULL AND created_at <= %s AND source = ANY(%s) AND close_price IS NOT NULL "
+            "ORDER BY 1, price_date",
+            [symbols, start.astimezone(ET).date(), end.astimezone(ET).date(), end, list(TICKER_PRICE_CLOSE_SOURCES)],
+        )
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            d = r["price_date"]
+            if isinstance(d, datetime):
+                d = d.astimezone(ET).date()
+            seen = r.get("created_at")
+            if not isinstance(d, date) or not isinstance(seen, datetime) or str(r.get("source") or "") not in TICKER_PRICE_CLOSE_SOURCES:
+                continue
+            seen = _aware(seen)
+            close_at = _close_instant(d)
+            # written before its session closed (an intraday print later upserted), or after `end`: not a knowable close
+            if seen < close_at or seen > end or close_at > end:
+                continue
+            out.append(
+                {
+                    "symbol": str(r["symbol"]),
+                    "date": d.isoformat(),
+                    "open": None,
+                    "high": None,
+                    "low": None,
+                    "close": r["close_price"],
+                    "volume": None,
+                    "source": f"ticker_prices:{r.get('source')}",
+                    "provisional": False,
+                    "as_of": _iso(seen),
+                }
+            )
+        return out
+
     def _quote_closes(self, symbols: list[str], *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         rows = self._rows(
             "SELECT symbol, price, prev_close, fetched_at FROM market_quotes WHERE source = %s AND symbol = ANY(%s) "
@@ -275,7 +456,11 @@ class PgReader:
                         continue
                     close, prov, seen = nxt["prev_close"], False, nxt["fetched_at"]
                 else:
-                    regular = [q for q in by_day[d] if q["fetched_at"].astimezone(ET).time() <= REGULAR_CLOSE_CUTOFF_ET]
+                    cutoff = _same_day_cutoff_et(d)
+                    regular = [
+                        q for q in by_day[d]
+                        if REGULAR_OPEN_ET <= q["fetched_at"].astimezone(ET).time() <= cutoff
+                    ]
                     if not regular or regular[-1].get("price") is None:
                         continue
                     close, seen = regular[-1]["price"], regular[-1]["fetched_at"]
@@ -422,6 +607,31 @@ class PgReader:
             "coverage": len(caps),
             "source": "fundamental_data.MarketCap (finviz)",
         }
+
+    def etf_holdings(self, symbols: Iterable[str], *, end: datetime) -> list[dict[str, Any]]:
+        """Newest ``etf_holdings_snapshot`` rows per ETF at or before ``end``. The store exists only once its §7A row
+        is granted and the writer has run; until then this returns [] and sets ``etf_holdings_note``."""
+        syms = [str(s).upper() for s in symbols]
+        if not syms:
+            return []
+        try:
+            cur = self._cur()
+            cur.execute(
+                "SELECT etf, holding, name, weight, as_of FROM etf_holdings_snapshot s WHERE etf = ANY(%s) AND as_of <= %s "
+                "AND as_of = (SELECT max(as_of) FROM etf_holdings_snapshot t WHERE t.etf = s.etf AND t.as_of <= %s)",
+                (syms, _aware(end), _aware(end)),
+            )
+            return [
+                {"etf": r[0], "holding": r[1], "name": r[2], "weight": float(r[3]), "as_of": _iso(r[4])}
+                for r in cur.fetchall()
+            ]
+        except Exception as exc:  # noqa: BLE001 — the store may not exist yet; look-through falls back to factsheets
+            try:
+                self._conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            self.etf_holdings_note = f"etf_holdings_snapshot unavailable: {type(exc).__name__}"
+            return []
 
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
