@@ -199,7 +199,8 @@ def home_actions(
     heat = [h for h in projection.get("heatmap") or [] if isinstance(h, dict)]
     groups = (out.get("book_exposure") or {}).get("groups") or {}
     defense_cfg = _lj("config/defense_recommendations.json") or {}
-    momentum = (_lj("data/runtime/sector_momentum_latest.json") or {}).get("rows") or []
+    momentum_doc = _lj("data/runtime/sector_momentum_latest.json") or {}
+    momentum = momentum_doc.get("rows") or []
     try:
         res["protect"] = ha.protect(out.get("review") or [], budgets=out.get("budgets") or [],
                                     reentry=out.get("reentry") or {}, overnight=overnight, policy=policy)
@@ -209,6 +210,7 @@ def home_actions(
         res["hedge"] = ha.hedge(stoplights=_lj("data/runtime/inverse_stoplights_latest.json"), momentum_rows=momentum,
                                 book_exposure=out.get("book_exposure") or {}, defense_cfg=defense_cfg,
                                 today=now.date(), transitions=transitions)
+        res["hedge"]["momentum_as_of"] = momentum_doc.get("generated_at")
     except Exception as exc:  # noqa: BLE001
         res["hedge_error"] = f"{type(exc).__name__}: {exc}"
     try:
@@ -253,6 +255,104 @@ def home_actions(
     return res
 
 
+def home_context(
+    projection: dict[str, Any],
+    joined: dict[str, Any],
+    *,
+    policy: dict[str, Any],
+    now: datetime,
+    get_conn: Any = None,
+    reader: Any = None,
+) -> dict[str, Any]:
+    """v007 uses the existing canonical reader on its own bounded read-only connection."""
+    import json
+    from pathlib import Path
+
+    context = _import("market_risk_home_context")
+    owned = reader is None
+    try:
+        if reader is None:
+            conn = _ro_conn(db_bounds(policy), get_conn)
+            try:
+                reader = _import("market_risk.reader").PgReader(conn_factory=lambda: conn)
+            except Exception:
+                conn.close()
+                raise
+        try:
+            registry = json.loads((Path(__file__).resolve().parents[2] / "config/lane_registry.json").read_bytes())
+        except (OSError, ValueError):
+            registry = {}
+        cio_stances = {}
+        cio_error = None
+        try:
+            cio_stances = _import("cio_truth").stances_for_symbols(
+                context.symbols_for(projection, joined), root=Path(__file__).resolve().parents[2],
+                db_query=lambda sql, params=None: reader._rows(sql, params or []), now=now,
+                market_closed=_import("market_risk.sessions").session_label(now) != "regular", limit=80)
+        except Exception as exc:  # noqa: BLE001 — never substitute a different stance source
+            cio_error = type(exc).__name__
+        connection = getattr(reader, "_conn", None)
+        if connection is not None:
+            connection.rollback()  # end a read-only metadata transaction before independent quote reads
+        result = context.collect(projection, joined, reader=reader, read_rows=getattr(reader, "_rows", None),
+                                 now=now, registry=registry, cio_stances=cio_stances)
+        if cio_error:
+            result["read_errors"].append({"source": "cio_truth", "reason": cio_error,
+                                          "remediation": {"key": "HOMEV007:cio_truth",
+                                                          "action": "Restore the registered CIO read model."}})
+        return result
+    except Exception as exc:  # noqa: BLE001 — preserve known snapshot fields, expose typed source gap
+        result = context.build(projection, joined, now=now)
+        result["read_errors"] = [
+            {
+                "source": "canonical_home_context",
+                "reason": type(exc).__name__,
+                "remediation": {
+                    "key": "HOMEV007:canonical_home_context",
+                    "action": "Restore the canonical read-only context source.",
+                },
+            }
+        ]
+        return result
+    finally:
+        if owned and reader is not None:
+            reader.close()
+
+
+def unavailable_block(reason: str, now: datetime, *, code: str = "unavailable") -> dict:
+    """The shaped block emitted when the additive context cannot be built.
+
+    It carries the same keys as a built block so a consumer that checks for presence can tell
+    "unavailable" from "present and empty", and both the gap and the read error name the same
+    remediation that would fix it. Every early return of ``join`` uses it, so the contract's
+    "state, never presence" holds on every path, not only on the exception path.
+    """
+    remediation = {
+        "key": "HOMEV007:context",
+        "action": "Restore the additive context module; no fact is shown while it is unavailable.",
+    }
+    return {
+        "schema": "HomeMarketRiskContext@v1",
+        "state": "unavailable",
+        "generated_at": now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "symbols": {},
+        "positions": [],
+        "budgets": [],
+        "gaps": [{"symbol": None, "field": "home_v007", "reason": reason, "remediation": dict(remediation)}],
+        "read_errors": [{"source": "home_v007_join", "reason": code, "remediation": dict(remediation)}],
+        "reason": reason,
+        "remediation": remediation,
+        "advisory_only": True,
+    }
+
+
+def unavailable_context(exc: Exception, now: datetime) -> dict:
+    """The exception-path block; keeps the historical signature."""
+    return unavailable_block(
+        "the additive home context could not be built (" + type(exc).__name__ + ")", now, code=type(exc).__name__
+    )
+
+
 def join(
     projection: dict[str, Any],
     *,
@@ -261,23 +361,50 @@ def join(
     get_conn: Any = None,
     store: dict[str, Any] | None = None,
     policy: dict[str, Any] | None = None,
+    context_reader: Any = None,
 ) -> dict[str, Any]:
     """The projection with ``book_exposure``, ``review``, ``scope_labels``, ``budgets_detail`` and ``reentry_detail``
     added (or ``book_exposure_error`` with the reason)."""
     if projection.get("state") not in ("evaluated", "stale"):
-        return projection
+        # Every path out of this function carries the block the contract describes: absence of
+        # home_v007 is reserved for "the join did not run at all", never for a failure we know about.
+        return {
+            **projection,
+            "home_v007": unavailable_block(
+                "the market-risk projection is not evaluated or stale; the additive context was not built",
+                now or datetime.now(timezone.utc),
+                code="projection_not_evaluated",
+            ),
+        }
     now = now or datetime.now(timezone.utc)
-    bd = _import("market_risk_book_dollars")
     try:
+        # Inside the try: a missing dependency is a known failure, and a known failure must carry the
+        # shaped block. Outside it, an ImportError escapes to the route, which answers 200 with no
+        # home_v007 at all and makes "absent" mean both "did not run" and "failed".
+        bd = _import("market_risk_book_dollars")
         if store is None:
             store = _import("portfolio_positions").load_store()
         if not store:
-            return {**projection, "book_exposure_error": "holdings store unreadable"}
+            return {
+                **projection,
+                "book_exposure_error": "holdings store unreadable",
+                "home_v007": unavailable_block(
+                    "the holdings store is unreadable; the additive context was not built",
+                    now, code="holdings_store_unreadable",
+                ),
+            }
         ad = _import("account_display")
         if policy is None:
             policy = _import("market_risk.policy").load_policy()
     except Exception as exc:  # noqa: BLE001
-        return {**projection, "book_exposure_error": f"{type(exc).__name__}: {exc}"}
+        return {
+            **projection,
+            "book_exposure_error": f"{type(exc).__name__}: {exc}",
+            "home_v007": unavailable_block(
+                "the holdings store or policy could not be loaded; the additive context was not built",
+                now, code=type(exc).__name__,
+            ),
+        }
     stops: list[dict[str, Any]] | None = None
     ledger_sells: list[dict[str, Any]] = []
     ledger_error: str | None = None
@@ -296,7 +423,8 @@ def join(
             try:
                 lks = _import("last_known_stops")
                 stops = [
-                    {"account": r.get("account"), "symbol": r.get("symbol"), "stop_price": r.get("stop_price")}
+                    {"account": r.get("account"), "symbol": r.get("symbol"), "stop_price": r.get("stop_price"),
+                     "captured_at": r.get("captured_at"), "source": r.get("source"), "status": r.get("status")}
                     for r in lks.load_last_known(brokers=("schwab",), now=now, conn=conn)
                 ]
             except Exception:  # noqa: BLE001 — stops unread: "stops unavailable", never "no stop"
@@ -352,12 +480,52 @@ def join(
             ledger_sells=ledger_sells, deferred_loss=deferred_loss,
         )
     except Exception as exc:  # noqa: BLE001
-        return {**projection, "book_exposure_error": f"{type(exc).__name__}: {exc}"}
+        return {
+            **projection,
+            "book_exposure_error": f"{type(exc).__name__}: {exc}",
+            "home_v007": unavailable_block(
+                "the book exposure build failed; the additive context was not built",
+                now, code=type(exc).__name__,
+            ),
+        }
     be = out["book_exposure"]
     be["stops_known"] = stops is not None
     be["ledger_error"] = ledger_error
-    actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
+    observed_stops = None if stops is None else [
+        {"symbol": row["symbol"], "account_label": ad.account_label(row["account"]),
+         "price": row["stop_price"], "as_of": row.get("captured_at"),
+         "source": row.get("source"), "status": row.get("status")} for row in stops]
+    # TWO try blocks, deliberately (cc2 review F1, 2026-11-03). home_actions() builds the LEGACY v006 card
+    # (protect/hedge/rotate); home_context() only ADDS the v007 block. When both shared one try, a context
+    # failure — including the reachable one where a malformed book_exposure row raises inside the context's
+    # own rebuild and re-raises out of its finally — set actions={} and erased protect/hedge, the exact
+    # fields this PR promises must survive.
+    try:
+        actions = home_actions(projection, out, policy=policy, overnight=overnight, transitions=transitions, now=now)
+    except Exception as exc:  # noqa: BLE001 — the shaped unavailable block is the honest answer
+        actions = {}
+        v007 = unavailable_context(exc, now)
+    else:
+        try:
+            v007 = home_context(projection, {**out, **actions, "budgets_detail": out["budgets"],
+                                            "observed_stops": observed_stops}, policy=policy,
+                                now=now, get_conn=get_conn, reader=context_reader)
+        except Exception as exc:  # noqa: BLE001 — the additive context cannot erase the v006 card
+            v007 = unavailable_context(exc, now)
+    # Final assembly is part of the join's contract. card_config() parses int/float out of operator
+    # policy, and run_alerts() reads the projection: a malformed value or an alerts failure must not
+    # escape as a 200 with no block, and must not discard the legacy fields already computed.
+    try:
+        card_cfg = card_config(policy)
+        alerts = run_alerts(projection)
+    except Exception as exc:  # noqa: BLE001 -- the failure becomes an explicit unavailable block, never an empty card
+        card_cfg, alerts = {}, []
+        v007 = unavailable_block(
+            "the final assembly failed (" + type(exc).__name__ + "); the additive context was not completed",
+            now, code=type(exc).__name__,
+        )
     return {
+        # The BUILT block is authoritative: an incoming projection key must never shadow it.
         **projection,
         **actions,
         "book_exposure": be,
@@ -366,6 +534,7 @@ def join(
         "budgets_detail": out["budgets"],
         "reentry_detail": out["reentry"],
         "reentry_card": (policy.get("reentry_watch") or {}).get("card") or {},
-        "card_config": card_config(policy),
-        "alerts": run_alerts(projection),
+        "card_config": card_cfg,
+        "alerts": alerts,
+        "home_v007": v007,
     }
