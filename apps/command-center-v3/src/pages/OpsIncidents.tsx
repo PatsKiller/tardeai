@@ -12,7 +12,7 @@ import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDeta
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import { governanceRequest, governanceRequestId } from '../lib/operatorApprovals'
 import {
-  ageText, canAct, INCIDENTS_PATH, matchesFilter, refLink, sortIncidents, sourceText, statusLabel, STATUS_FILTERS,
+  ageText, canAct, escalationStatus, INCIDENTS_PATH, matchesFilter, refLink, severityLabel, sortIncidents, sourceText, statusLabel, STATUS_FILTERS,
   type Incident, type IncidentDetailWire, type IncidentsWire,
 } from '../lib/incidents'
 import { rowModel } from '../lib/incidentRow'
@@ -61,9 +61,10 @@ function OperatorActions({ inc, onDone }: { inc: Incident; onDone: () => void })
 
 function Detail({ inc, events, titleRef, onChanged }: { inc: Incident; events: Record<string, unknown>[] | null; titleRef?: Ref<HTMLHeadingElement>; onChanged: () => void }) {
   const s = statusLabel(inc.status)
+  const escalation = escalationStatus(inc)
   const facts: Array<[string, string]> = [
     ['Id', inc.id], ['Opened', at(inc.opened_at)], ['Age', ageText(inc.opened_at, inc.closed_at)], ['Source', sourceText(inc)],
-    ['Where', inc.where || '—'], ['Owner', inc.owner || '—'], ['Severity', inc.severity || '—'],
+    ['Where', inc.where || '—'], ['Owner', inc.owner?.trim() || 'Unassigned'], ['Severity', inc.severity || '—'],
   ]
   const m = rowModel(inc, { age: ageText(inc.opened_at, inc.closed_at), source: sourceText(inc) })
   if (m.raw) facts.push(['Reported as', m.raw])
@@ -73,7 +74,7 @@ function Detail({ inc, events, titleRef, onChanged }: { inc: Incident; events: R
   return <div data-testid="incident-detail" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <h3 ref={titleRef} tabIndex={-1} data-detail-focus style={{ margin: 0, fontSize: TYPE.md, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{inc.title}</h3>
     <ChipRow><Chip tone={s.tone}>{s.label}</Chip>{inc.acknowledged ? <Chip tone="neutral">acknowledged</Chip> : null}
-      {inc.escalations?.length ? <Chip tone="danger">P1 sent</Chip> : null}</ChipRow>
+      {escalation ? <Chip tone={escalation.tone}>{escalation.label}</Chip> : null}</ChipRow>
     {inc.status === 'blocked' ? <div style={{ ...panel, borderColor: toneVars('danger').border }}>
       <p style={{ ...muted, color: TOKENS.text[0] }}><strong>Blocked:</strong> {inc.blocked_reason}</p>
       <p style={{ ...muted, color: TOKENS.text[0], marginTop: 6 }}><strong>Next step:</strong> {inc.handoff}</p>
@@ -145,6 +146,10 @@ export default function OpsIncidents() {
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {rows.map(r => {
                 const m = rowModel(r, { age: ageText(r.opened_at, r.closed_at), source: sourceText(r) })
+                // A recorded severity is validated exactly against the ledger's canonical P0-P3 (never case-folded into
+                // validity), so an off-ledger value reads as "Severity unknown (...)"; an absent one keeps the row
+                // model's "Not recorded".
+                const severity = r.severity?.trim() ? severityLabel(r.severity) : { label: m.priority.code, tone: m.priority.tone }
                 return <li key={r.id} style={{ borderTop: `1px solid ${TOKENS.border}` }}>
                   <button type="button" data-testid={`incident-row-${r.id}`} aria-current={selectedId === r.id} onClick={() => sheet.open(r.id)}
                     style={{ width: '100%', minHeight: 56, display: 'grid', gap: 6, textAlign: 'left', padding: '12px 14px', cursor: 'pointer',
@@ -154,7 +159,8 @@ export default function OpsIncidents() {
                       style={{ fontSize: sheet.mobile ? TYPE.md : TYPE.base, fontWeight: 700, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{m.headline}</span>
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <Chip tone={m.status.tone}>{m.status.label}</Chip>
-                      <Chip tone={m.priority.tone}>{m.priority.code}</Chip>
+                      <Chip tone={severity.tone}>{severity.label}</Chip>
+                      <span style={muted}>Owner: {r.owner?.trim() || 'Unassigned'}</span>
                       {/* the phone drops the SOURCE identifier, never the age: how old this is decides whether the
                           operator can act on it at all (cx-openai-4 R2 on PR 2628) */}
                       {sheet.mobile
@@ -164,6 +170,8 @@ export default function OpsIncidents() {
                     {/* NEXT — who acts, in one sentence (FQ-045) */}
                     <span data-testid={`incident-next-${r.id}`}
                       style={{ fontSize: sheet.mobile ? TYPE.sm : TYPE.xs, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{m.nextAction}</span>
+                    {/* the next step is in nextAction above; the blocker itself is not, so it is stated here */}
+                    {r.status === 'blocked' && <span style={muted}>Blocked: {r.blocked_reason || 'Reason not recorded'}</span>}
                   </button>
                 </li>
               })}

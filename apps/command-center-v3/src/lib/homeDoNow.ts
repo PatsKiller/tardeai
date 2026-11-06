@@ -408,6 +408,30 @@ export function cashPct(overview: any): number | null {
   return (cash / pv) * 100
 }
 
+export type BriefingProvenance = { state: 'dated' | 'unknown' | 'future'; generatedAt: string | null; label: string }
+
+/** A saved section's own TIMESTAMPTZ, never the page/quote/position clock. No content parsing or freshness cutoff. */
+export function briefingProvenance(raw: unknown, nowMs = Date.now()): BriefingProvenance {
+  const unknown = (why: string): BriefingProvenance => ({ state: 'unknown', generatedAt: null, label: `Generation time unknown · ${why}` })
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unknown('not recorded for this section')
+  const value = (raw as Record<string, unknown>).generated_at
+  if (typeof value !== 'string' || !value.trim()) return unknown('not recorded for this section')
+  const stamp = value.trim()
+  const parts = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i.exec(stamp)
+  if (!parts) return unknown('a valid time and time zone are required')
+  const [year, month, day, hour, minute, second] = parts.slice(1, 7).map(v => Number(v ?? 0))
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  const at = Date.parse(stamp.replace(' ', 'T'))
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1] || hour > 23 || minute > 59 || second > 59 || !Number.isFinite(at)) return unknown('recorded time is invalid')
+  const display = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(at)
+  const part = (name: string) => display.find(p => p.type === name)?.value ?? ''
+  const when = `${part('month')} ${part('day')}, ${part('year')} ${part('hour')}:${part('minute')} ET`
+  if (!Number.isFinite(nowMs)) return { state: 'unknown', generatedAt: stamp, label: `Generated ${when} · current clock unavailable` }
+  if (at > nowMs) return { state: 'future', generatedAt: stamp, label: `Generated ${when} · time is in the future` }
+  return { state: 'dated', generatedAt: stamp, label: `Generated ${when} · ${ageLabel((nowMs - at) / 1000)} ago` }
+}
+
 /** One-line summary of an LLM briefing section for the collapsed "AI briefing" drawer.
  *  /api/v2/command serves each section as `{content, generated_at}`; String() of that object
  *  rendered "[object Object]" on Home (site validation 2026-10-22). Accepts a plain string,

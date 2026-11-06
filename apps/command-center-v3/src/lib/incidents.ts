@@ -82,11 +82,40 @@ export function canAct(i: Incident): { ack: boolean; close: boolean } {
   return { ack: !terminal && !i.acknowledged, close: !terminal }
 }
 
+/** An escalation event is an attempt; only a typed durable delivery verdict confirms it. */
+export function escalationStatus(i: Pick<Incident, 'escalations'>): { label: string; tone: Tone } | null {
+  const attempts = i.escalations ?? []
+  if (!attempts.length) return null
+  const delivered = attempts.filter(attempt => attempt.delivered === true).length
+  return delivered
+    ? { label: `${delivered} of ${attempts.length} escalation deliveries confirmed`, tone: delivered === attempts.length ? 'info' : 'warning' }
+    : { label: `Escalation delivery unconfirmed (${attempts.length} attempt${attempts.length === 1 ? '' : 's'})`, tone: 'warning' }
+}
+
+/** The ledger's canonical severities: exact, uppercase P0–P3 (mirrors SEV_RANK in incident_flood_policy.py). */
+const SEVERITY_RANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 }
+
+/** Validate the original value against the canonical set — never trim or case-fold it into validity. */
+export function severityLabel(value?: string): { label: string; tone: Tone; rank: number } {
+  if (value !== undefined && Object.prototype.hasOwnProperty.call(SEVERITY_RANK, value)) {
+    const rank = SEVERITY_RANK[value]
+    return { label: value, tone: rank <= 1 ? 'danger' : rank === 2 ? 'warning' : 'neutral', rank }
+  }
+  const shown = value?.trim()
+  return { label: shown ? `Severity unknown (${shown})` : 'Severity unknown', tone: 'warning', rank: 9 }
+}
+
 export function sortIncidents(rows: Incident[]): Incident[] {
   return [...rows].sort((a, b) => {
+    const terminal = a.status === 'fixed' || a.status === 'closed'
+    const terminalB = b.status === 'fixed' || b.status === 'closed'
+    if (terminal !== terminalB) return terminal ? 1 : -1
+    if (!terminal) {
+      const severity = severityLabel(a.severity).rank - severityLabel(b.severity).rank
+      if (severity) return severity
+    }
     const sa = STATUS_ORDER.indexOf(a.status), sb = STATUS_ORDER.indexOf(b.status)
     if (sa !== sb) return sa - sb
-    const terminal = a.status === 'fixed' || a.status === 'closed'
     return terminal ? Date.parse(b.updated_at) - Date.parse(a.updated_at) : Date.parse(a.opened_at) - Date.parse(b.opened_at)
   })
 }
