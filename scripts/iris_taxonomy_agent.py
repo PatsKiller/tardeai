@@ -1340,7 +1340,8 @@ def handle_iris_hygiene_command(subcommand, args_str):
                      "youtube": "youtube_transcripts", "youtube_transcript": "youtube_transcripts"}
         table = table_map.get(p["content_type"], "intelligence_whiteboard")
         new_status = "archived" if p["proposed_action"] == "archive" else "demoted"
-        cur.execute(f"UPDATE {table} SET hygiene_status=%s, demoted_at=NOW(), demoted_reason='John approved via Telegram' WHERE id=%s",
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- table from the literal table_map values
+            f"UPDATE {table} SET hygiene_status=%s, demoted_at=NOW(), demoted_reason='John approved via Telegram' WHERE id=%s",
                     (new_status, p["content_id"]))
         cur.execute("UPDATE iris_hygiene_pending SET status='approved', resolved_at=NOW() WHERE id=%s", (pid,))
         cur.execute("""INSERT INTO iris_hygiene_log (content_type, content_id, content_title, action,
@@ -1826,6 +1827,7 @@ def get_library_status():
             if src == "hermes_research":
                 cur.execute("SELECT count(*) as n FROM hermes_research_intelligence WHERE status='promoted'")
             else:
+                # nosemgrep: tq-py-sql-fstring -- tbl from literal sources dict
                 cur.execute(f"SELECT count(*) as n FROM {tbl}")
             t = int((cur.fetchone() or {}).get("n", 0))
             cur.execute("SELECT count(*) as n FROM content_embeddings WHERE source_type=%s", (src,))

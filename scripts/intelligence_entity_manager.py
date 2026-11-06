@@ -24,6 +24,7 @@ CALLING PATTERN:
 """
 
 import logging
+import re
 import json
 import os
 from datetime import datetime, timezone
@@ -31,6 +32,9 @@ from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
+
+# Column names are interpolated into UPDATE ... SET; only plain identifiers may pass.
+_SAFE_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -228,6 +232,9 @@ def upsert_entity(conn, entity_id: str, entity_type: str,
         for col, val in fields.items():
             if col in ('entity_id', 'entity_type', 'created_at', 'display_name', 'entity_subtype'):
                 continue
+            if not isinstance(col, str) or not _SAFE_COLUMN_RE.match(col):
+                log.warning(f"[IEM] Skipping field with unsafe column name: {col!r}")
+                continue
 
             if col == 'current_thresholds' and isinstance(val, dict):
                 set_parts.append(f"{col} = %s::jsonb")
@@ -255,6 +262,7 @@ def upsert_entity(conn, entity_id: str, entity_type: str,
 
         values.append(entity_id)  # for WHERE clause
 
+        # nosemgrep: tq-py-sql-fstring -- every column name passed _SAFE_COLUMN_RE above; values bound
         cur.execute(f"""
             UPDATE intelligence_entities
             SET {', '.join(set_parts)}

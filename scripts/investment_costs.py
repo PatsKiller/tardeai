@@ -197,7 +197,8 @@ def _freshness(cur) -> dict:
 
 def costs_events(cur, query: dict | None = None) -> dict:
     w, args = _filters(query or {})
-    cur.execute(f"""SELECT cost_event_id, occurred_at, broker, account_key, symbol, occ_symbol,
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- w is literal fragments from _filters; values bound in args
+        f"""SELECT cost_event_id, occurred_at, broker, account_key, symbol, occ_symbol,
                            cost_class, cost_category, actual_or_estimated, amount,
                            strategy_position_id, trade_uid, superseded, notes
                     FROM investment_cost_events WHERE {w}
@@ -211,7 +212,8 @@ def costs_events(cur, query: dict | None = None) -> dict:
 
 def costs_by_trade(cur, query: dict | None = None) -> dict:
     w, args = _filters(query or {})
-    cur.execute(f"""SELECT COALESCE(trade_uid, 'strategy:' || strategy_position_id::text, 'unlinked'),
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- w is literal fragments from _filters; values bound in args
+        f"""SELECT COALESCE(trade_uid, 'strategy:' || strategy_position_id::text, 'unlinked'),
                            cost_class, COALESCE(sum(amount),0), count(*)
                     FROM investment_cost_events WHERE {w}
                     GROUP BY 1,2 ORDER BY 3 DESC LIMIT 100""", args)
@@ -227,10 +229,12 @@ def _period_clause(grain: str) -> str:
 
 def costs_summary(cur, query: dict | None = None) -> dict:
     w, args = _filters(query or {})
-    cur.execute(f"""SELECT cost_class, COALESCE(sum(amount),0), count(*)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- w is literal fragments from _filters; values bound in args
+        f"""SELECT cost_class, COALESCE(sum(amount),0), count(*)
                     FROM investment_cost_events WHERE {w} GROUP BY 1""", args)
     classes = {r[0]: {"total": float(r[1]), "events": r[2]} for r in cur.fetchall()}
-    cur.execute(f"""SELECT cost_category, cost_class, COALESCE(sum(amount),0)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- w is literal fragments from _filters; values bound in args
+        f"""SELECT cost_category, cost_class, COALESCE(sum(amount),0)
                     FROM investment_cost_events WHERE {w} GROUP BY 1,2 ORDER BY 3 DESC LIMIT 15""", args)
     return {"by_class": classes,
             "by_category": [{"category": r[0], "class": r[1], "total": float(r[2])} for r in cur.fetchall()],
@@ -244,7 +248,8 @@ def costs_timeseries(cur, query: dict | None = None) -> dict:
     q = query or {}
     grain = q.get("grain", "month")
     w, args = _filters(q)
-    cur.execute(f"""SELECT {_period_clause(grain)}::date, cost_class, COALESCE(sum(amount),0)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- _period_clause returns a fixed literal; values bound
+        f"""SELECT {_period_clause(grain)}::date, cost_class, COALESCE(sum(amount),0)
                     FROM investment_cost_events WHERE {w}
                     GROUP BY 1,2 ORDER BY 1""", args)
     return {"grain": grain,
@@ -253,7 +258,8 @@ def costs_timeseries(cur, query: dict | None = None) -> dict:
 
 def costs_by_security(cur, query: dict | None = None) -> dict:
     w, args = _filters(query or {})
-    cur.execute(f"""SELECT symbol, cost_class, COALESCE(sum(amount),0), count(*)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- w is literal fragments from _filters; values bound in args
+        f"""SELECT symbol, cost_class, COALESCE(sum(amount),0), count(*)
                     FROM investment_cost_events WHERE {w} AND symbol IS NOT NULL
                     GROUP BY 1,2 ORDER BY 3 DESC LIMIT 60""", args)
     return {"rows": [{"symbol": r[0], "class": r[1], "total": float(r[2]), "events": r[3]}

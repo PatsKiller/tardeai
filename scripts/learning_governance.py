@@ -293,7 +293,7 @@ def get_learning_status(conn):
         ("agent_learning_scores", "agent_scores"),
     ]:
         try:
-            cur.execute(f"SELECT COUNT(*) FROM {tbl}")
+            cur.execute(f"SELECT COUNT(*) FROM {tbl}")  # nosemgrep: tq-py-sql-fstring -- tbl from literal list
             status[f"{label}_total"] = cur.fetchone()[0]
         except Exception:
             status[f"{label}_total"] = 0
@@ -302,7 +302,8 @@ def get_learning_status(conn):
     # Status breakdowns
     for tbl, label in [("learning_hypotheses", "hypotheses"), ("config_change_proposals", "proposals")]:
         try:
-            cur.execute(f"SELECT status, COUNT(*) FROM {tbl} GROUP BY status")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- tbl from literal list
+                f"SELECT status, COUNT(*) FROM {tbl} GROUP BY status")
             status[f"{label}_by_status"] = {r[0]: r[1] for r in cur.fetchall()}
         except Exception:
             status[f"{label}_by_status"] = {}
