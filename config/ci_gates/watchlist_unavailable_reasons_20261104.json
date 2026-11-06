@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_unavailable_reasons_20261104",
+  "files": [
+    "tests/test_watchlist_unavailable_reasons_20261104.py"
+  ],
+  "anchor": "WATCHLIST_UNAVAILABLE_REASONS_20261104",
+  "comment": [
+    "ANCHOR: WATCHLIST_UNAVAILABLE_REASONS_20261104 — FQ-076: four disabled filters state their reason in visible text. Generic next-review fields render exactly as projected; when absent, the page says the producer has not provided a review time. Individual CIO or Maria states never imply a card-wide scheduling negative, and policy windows never become promised execution times. Actual component renders cover deferred and queued reviewer payloads, flat times/conditions and an explicitly projected generic negative. The render runs in the frontend build chain, which has npm ci; this gate guards that registration. Hermetic synthetic fixtures only."
+  ]
+}
