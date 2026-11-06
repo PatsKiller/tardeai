@@ -170,21 +170,37 @@ def get_symbol_news(db_query, symbol: str, *, days: int = 45, limit: int = 6) ->
     return out
 
 
-def get_news_bulk(db_query, symbols: list[str], *, hours: int = 72, per_symbol: int = 6) -> dict[str, list[dict[str, Any]]]:
+def get_news_bulk(db_query, symbols: list[str], *, hours: int = 72, per_symbol: int = 6,
+                  since=None, until=None) -> dict[str, list[dict[str, Any]]]:
     """{SYMBOL: [articles newest first]} for many symbols in one query (news_articles, registry domain catalyst_news),
-    for the 5-min scalp lane's catalyst read (2026-10-09). Same-title rows collapse per symbol. Read-only."""
+    for the 5-min scalp lane's catalyst read (2026-10-09). Same-title rows collapse per symbol. Read-only.
+
+    ``since``/``until`` (optional) bound the observation window by the articles' own clocks instead of the
+    database's ``now()``: a display consumer that states a fact's age must use the same clock it ages against,
+    so a test or a replayed payload can reproduce the window. Both are passed as SQL parameters."""
     syms = sorted({(s or "").upper().strip() for s in symbols if s and str(s).strip()})
     if not syms:
         return {}
+    where = ["upper(symbol) = ANY(%s)"]
+    params: list[Any] = [syms]
+    if since is not None:
+        where.append("published_at >= %s")
+        params.append(since)
+        if until is not None:
+            where.append("published_at <= %s")
+            params.append(until)
+    else:
+        where.append("published_at > now() - make_interval(hours => %s)")
+        params.append(int(hours))
+    where.extend(["NOT COALESCE(is_duplicate, false)", "title IS NOT NULL", not_news_sql()])
     rows = db_query(
         f"""
-        SELECT upper(symbol) AS symbol, title, source, source_url, published_at
+        SELECT upper(symbol) AS symbol, title, summary, source, source_url, published_at
         FROM news_articles
-        WHERE upper(symbol) = ANY(%s) AND published_at > now() - make_interval(hours => %s)
-          AND NOT COALESCE(is_duplicate, false) AND title IS NOT NULL AND {not_news_sql()}
+        WHERE {' AND '.join(where)}
         ORDER BY upper(symbol), published_at DESC
         """,
-        (syms, int(hours)),
+        params,
     ) or []
     out: dict[str, list[dict[str, Any]]] = {}
     seen: dict[str, set[str]] = {}
@@ -195,7 +211,8 @@ def get_news_bulk(db_query, symbols: list[str], *, hours: int = 72, per_symbol: 
             continue
         seen[sym].add(key)
         at = r.get("published_at")
-        out.setdefault(sym, []).append({"title": r.get("title"), "source": r.get("source"), "url": r.get("source_url"),
+        out.setdefault(sym, []).append({"title": r.get("title"), "summary": r.get("summary"),
+                                        "source": r.get("source"), "url": r.get("source_url"),
                                         "published_at": at.isoformat() if hasattr(at, "isoformat") else at})
     return out
 
