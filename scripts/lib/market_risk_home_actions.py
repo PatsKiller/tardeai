@@ -125,6 +125,75 @@ def protect(
     }
 
 
+#: Heatmap states that count as a weakening / lagging sector for the Defense desk's two hedge triggers.
+HEATMAP_TRIGGER_STATES = ("STRESS",)
+
+
+def _heat_as_of(heatmap: list[dict[str, Any]], as_of: str | None) -> str | None:
+    if as_of:
+        return str(as_of)[:10]
+    days = sorted({str(h.get("as_of"))[:10] for h in heatmap if h.get("as_of")})
+    return days[-1] if days else None
+
+
+def heatmap_trigger_inputs(
+    heatmap: list[dict[str, Any]] | None,
+    book_exposure: dict[str, Any],
+    *,
+    today: date,
+    as_of: str | None,
+    stale_days: int,
+) -> dict[str, Any]:
+    """The Defense desk's two trigger inputs from the market-risk heatmap. ``reason`` is set (and the numbers are
+    None) when the heatmap cannot be used: no measured sector, no date, or older than ``stale_days``."""
+    heat = [h for h in heatmap or [] if isinstance(h, dict)]
+    sectors = [h for h in heat if h.get("kind") == "sector" and h.get("state") not in (None, "UNKNOWN")]
+    day = _heat_as_of(heat, as_of)
+    out: dict[str, Any] = {"largest_weakening": None, "lagging_count": None, "as_of": day, "reason": None}
+    if not heat:
+        out["reason"] = "market-risk heatmap missing"
+        return out
+    if not sectors:
+        out["reason"] = "market-risk heatmap has no measured sector"
+        return out
+    try:
+        age = (today - date.fromisoformat(str(day))).days if day else None
+    except ValueError:
+        age = None
+    if age is None:
+        out["reason"] = "market-risk heatmap has no as_of date"
+        return out
+    if age > stale_days:
+        out["reason"] = f"market-risk heatmap stale (as of {day}, {age} days old)"
+        return out
+    groups = book_exposure.get("groups") or {}
+    invested = _f(book_exposure.get("invested_usd"))
+    hit = [h for h in sectors if h.get("state") in HEATMAP_TRIGGER_STATES]
+    pct = {h.get("key"): (round(100.0 * _f((groups.get(h.get("key")) or {}).get("usd")) / invested, 2) if invested else None)
+           for h in hit}
+    top = max(hit, key=lambda h: _f(pct.get(h.get("key"))), default=None)
+    out["largest_weakening"] = ({"key": top.get("key"), "label": top.get("label"), "state": top.get("state"),
+                                 "pct_invested": pct.get(top.get("key"))} if top else None)
+    out["lagging_count"] = len(hit)
+    return out
+
+
+def stressed_breakdown(book_exposure: dict[str, Any], heatmap: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The groups behind ``stressed_usd`` (``book_exposure.stressed_groups``), largest first. Themes overlap
+    sectors, so the rows can add up to more than ``stressed_usd`` (which never double-counts)."""
+    by_key = {h.get("key"): h for h in heatmap or [] if isinstance(h, dict)}
+    groups = book_exposure.get("groups") or {}
+    invested = _f(book_exposure.get("invested_usd"))
+    out = []
+    for k in book_exposure.get("stressed_groups") or []:
+        usd = _f((groups.get(k) or {}).get("usd"))
+        h = by_key.get(k) or {}
+        out.append({"key": k, "label": h.get("label") or k, "kind": h.get("kind"), "state": h.get("state"),
+                    "usd": round(usd, 2), "pct_invested": round(100.0 * usd / invested, 2) if invested else None})
+    out.sort(key=lambda r: -r["usd"])
+    return out
+
+
 # ── Hedge ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 def hedge(
     *,
@@ -134,9 +203,19 @@ def hedge(
     defense_cfg: dict[str, Any],
     today: date,
     transitions: list[dict[str, Any]] | None = None,
+    heatmap: list[dict[str, Any]] | None = None,
+    heatmap_as_of: str | None = None,
+    momentum_as_of: str | None = None,
 ) -> dict[str, Any]:
     """The Hedge block: NOT_NOW / WATCH / CONSIDER / UNKNOWN from the stoplight's THESIS lights, with the book facts
-    against the Defense desk's own thresholds. Never re-derives a competing thesis."""
+    against the Defense desk's own thresholds. Never re-derives a competing thesis.
+
+    The two trigger inputs (largest weakening sector's % of invested, count of lagging sectors) come from TODAY's
+    market-risk heatmap (operator decision 2026-11-06): a ``kind == "sector"`` group in a ``HEATMAP_TRIGGER_STATES``
+    state counts as weakening/lagging, its % of invested is the book's look-through dollars in that group over
+    invested dollars. When the heatmap is missing or older than the stoplight's ``stale_calendar_days`` the Defense
+    desk's sector momentum rows are used instead and ``momentum_source.reason`` says why. The desk's own numbers stay
+    in ``defense_momentum`` so a disagreement between the two clocks is visible."""
     ie = defense_cfg.get("inverse_etf") or {}
     sl = defense_cfg.get("inverse_stoplights") or {}
     thr = {
@@ -150,8 +229,22 @@ def hedge(
     state, cands, as_of, reason = th["state"], th["candidates"], th["as_of"], th["reason"]
     rows = [r for r in momentum_rows or [] if isinstance(r, dict)]
     weak = [r for r in rows if r.get("state") in ("WEAKENING", "LAGGING") and r.get("book_pct") is not None]
-    largest = max(weak, key=lambda r: _f(r.get("book_pct")), default=None)
-    lagging = sum(1 for r in rows if r.get("state") == "LAGGING")
+    d_largest = max(weak, key=lambda r: _f(r.get("book_pct")), default=None)
+    defense_momentum = {
+        "largest_weakening": {"label": d_largest.get("sector"), "pct_invested": d_largest.get("book_pct")} if d_largest else None,
+        "lagging_count": sum(1 for r in rows if r.get("state") == "LAGGING"),
+        "as_of": momentum_as_of,
+    }
+    heat = heatmap_trigger_inputs(heatmap, book_exposure, today=today, as_of=heatmap_as_of,
+                                  stale_days=int(sl.get("stale_calendar_days", 4)))
+    if heat["reason"] is None:
+        largest_weakening, lagging = heat["largest_weakening"], heat["lagging_count"]
+        source = {"kind": "market_risk_heatmap", "as_of": heat["as_of"], "today": heat["as_of"] == today.isoformat(),
+                  "reason": None}
+    else:
+        largest_weakening, lagging = defense_momentum["largest_weakening"], defense_momentum["lagging_count"]
+        source = {"kind": "defense_sector_momentum", "as_of": momentum_as_of,
+                  "today": str(momentum_as_of or "")[:10] == today.isoformat(), "reason": heat["reason"]}
     verdict = {"GREEN": "CONSIDER", "AMBER": "WATCH", "RED": "NOT_NOW"}.get(state, "UNKNOWN")
     since = None
     for t in transitions or []:
@@ -166,11 +259,14 @@ def hedge(
         "as_of": as_of,
         "reason": reason,
         "thresholds": thr,
-        "largest_weakening": {"label": largest.get("sector"), "pct_invested": largest.get("book_pct")} if largest else None,
+        "largest_weakening": largest_weakening,
         "lagging_count": lagging,
+        "momentum_source": source,
+        "defense_momentum": defense_momentum,
         "stressed_usd": book_exposure.get("stressed_usd"),
         "stressed_pct_book": book_exposure.get("stressed_pct_book"),
         "stressed_pct_invested": book_exposure.get("stressed_pct_invested"),
+        "stressed_breakdown": stressed_breakdown(book_exposure, heatmap),
         "entry": None,
     }
     if state == "GREEN":

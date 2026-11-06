@@ -816,7 +816,11 @@ def build(
             "threshold": exposure_threshold,
             "ratio": current_exposure / exposure_threshold,
             "group": largest.get("label"),
-            "basis": "same sector_momentum.book_pct compared by existing Defense trigger",
+            "basis": (
+                "market-risk heatmap STRESS sector, look-through dollars over invested, compared by existing Defense trigger"
+                if (hedge.get("momentum_source") or {}).get("kind") == "market_risk_heatmap"
+                else "same sector_momentum.book_pct compared by existing Defense trigger"
+            ),
         }
         if current_exposure is not None and exposure_threshold and exposure_threshold > 0
         else None,

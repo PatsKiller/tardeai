@@ -127,6 +127,77 @@ def test_hedge_unknown_when_the_stoplight_is_stale():
     assert h["verdict"] == "UNKNOWN" and h["reason"] == "stale"
 
 
+# operator 2026-11-06: the Hedge triggers read TODAY's market-risk heatmap, not the Defense desk's previous close
+HEAT_TODAY = [
+    {"key": "tech", "label": "Technology", "kind": "sector", "state": "STRESS", "rs1": 1.2, "rs5": -5.5, "as_of": TODAY.isoformat()},
+    {"key": "fin", "label": "Financials", "kind": "sector", "state": "STRESS", "rs1": -0.9, "rs5": -1.0, "as_of": TODAY.isoformat()},
+    {"key": "util", "label": "Utilities", "kind": "sector", "state": "RESILIENT", "rs1": 0.1, "rs5": 2.0, "as_of": TODAY.isoformat()},
+    {"key": "semis", "label": "Semis", "kind": "theme", "state": "STRESS", "rs1": 3.0, "rs5": -30.0, "as_of": TODAY.isoformat()},
+    {"key": "rates", "label": "Long Treasuries", "kind": "macro", "state": "STRESS", "rs1": 0.0, "rs5": 0.0, "as_of": TODAY.isoformat()},
+]
+BE_HEAT = {"stressed_usd": 30000.0, "stressed_pct_book": 15.0, "stressed_pct_invested": 30.0, "invested_usd": 100000.0,
+           "stressed_groups": ["fin", "semis", "tech"],
+           "groups": {"tech": {"usd": 25000.0, "pct_book": 12.5}, "fin": {"usd": 5000.0, "pct_book": 2.5},
+                      "semis": {"usd": 20000.0, "pct_book": 10.0}, "util": {"usd": 9000.0, "pct_book": 4.5}}}
+DESK_ROWS = [{"etf": "XLK", "sector": "Technology", "state": "LEADING", "book_pct": 6.0}]
+
+
+def _hedge_heat(heatmap, heat_as_of, thesis=None):
+    return ha.hedge(stoplights=_stoplights(thesis or {"PSQ": "RED"}), momentum_rows=DESK_ROWS, book_exposure=BE_HEAT,
+                    defense_cfg=DEFENSE, today=TODAY, heatmap=heatmap, heatmap_as_of=heat_as_of,
+                    momentum_as_of="2031-03-09T22:25:00+00:00")
+
+
+def test_hedge_triggers_come_from_todays_heatmap_sectors_only():
+    h = _hedge_heat(HEAT_TODAY, TODAY.isoformat())
+    # largest STRESS *sector* by look-through dollars over invested; the Semis theme and the macro row never count
+    assert h["largest_weakening"] == {"key": "tech", "label": "Technology", "state": "STRESS", "pct_invested": 25.0}
+    assert h["lagging_count"] == 2
+    assert h["momentum_source"] == {"kind": "market_risk_heatmap", "as_of": TODAY.isoformat(), "today": True, "reason": None}
+    # the desk's own (older) numbers stay visible for diagnostics
+    assert h["defense_momentum"] == {"largest_weakening": None, "lagging_count": 0, "as_of": "2031-03-09T22:25:00+00:00"}
+    # thresholds and the thesis-driven verdict are unchanged: a RED thesis is still NOT_NOW above the trigger
+    assert h["thresholds"]["trigger_book_pct"] == DEFENSE["inverse_etf"]["trigger_book_pct"]
+    assert h["verdict"] == "NOT_NOW" and h["thesis_state"] == "RED"
+    assert _hedge_heat(HEAT_TODAY, TODAY.isoformat(), {"PSQ": "GREEN"})["verdict"] == "CONSIDER"
+    # as_of from the rows when the sectors block has none
+    assert _hedge_heat(HEAT_TODAY, None)["momentum_source"]["as_of"] == TODAY.isoformat()
+
+
+def test_hedge_heatmap_from_a_prior_session_is_used_but_not_called_today():
+    prior = (TODAY - timedelta(days=3)).isoformat()
+    h = _hedge_heat([{**r, "as_of": prior} for r in HEAT_TODAY], prior)
+    assert h["momentum_source"]["kind"] == "market_risk_heatmap" and h["momentum_source"]["today"] is False
+
+
+@pytest.mark.parametrize("heatmap,heat_as_of,reason", [
+    (None, None, "market-risk heatmap missing"),
+    ([], TODAY.isoformat(), "market-risk heatmap missing"),
+    ([{**HEAT_TODAY[0], "state": "UNKNOWN"}, HEAT_TODAY[3]], TODAY.isoformat(), "market-risk heatmap has no measured sector"),
+    ([{k: v for k, v in HEAT_TODAY[0].items() if k != "as_of"}], None, "market-risk heatmap has no as_of date"),
+    (HEAT_TODAY, (TODAY - timedelta(days=9)).isoformat(), "market-risk heatmap stale"),
+])
+def test_hedge_falls_back_to_the_desks_momentum_with_a_reason(heatmap, heat_as_of, reason):
+    h = _hedge_heat(heatmap, heat_as_of)
+    src = h["momentum_source"]
+    assert src["kind"] == "defense_sector_momentum" and src["reason"].startswith(reason)
+    assert src["as_of"] == "2031-03-09T22:25:00+00:00" and src["today"] is False
+    assert h["largest_weakening"] == h["defense_momentum"]["largest_weakening"] is None
+    assert h["lagging_count"] == h["defense_momentum"]["lagging_count"] == 0
+
+
+def test_hedge_stressed_breakdown_lists_the_groups_behind_stressed_usd():
+    h = _hedge_heat(HEAT_TODAY, TODAY.isoformat())
+    assert h["stressed_breakdown"] == [
+        {"key": "tech", "label": "Technology", "kind": "sector", "state": "STRESS", "usd": 25000.0, "pct_invested": 25.0},
+        {"key": "semis", "label": "Semis", "kind": "theme", "state": "STRESS", "usd": 20000.0, "pct_invested": 20.0},
+        {"key": "fin", "label": "Financials", "kind": "sector", "state": "STRESS", "usd": 5000.0, "pct_invested": 5.0},
+    ]
+    assert not set(h) & set(ha.HEDGE_FORBIDDEN)
+    # no exposure doc: an empty breakdown, never an error
+    assert ha.stressed_breakdown({}, HEAT_TODAY) == []
+
+
 # ── Rotate ──────────────────────────────────────────────────────────────────────────────────────────────────────
 def _heat(key, state, rs1, rs5, kind="sector"):
     return {"key": key, "label": key.title(), "kind": kind, "state": state, "rs1": rs1, "rs5": rs5}

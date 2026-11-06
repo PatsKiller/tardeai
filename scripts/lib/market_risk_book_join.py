@@ -209,8 +209,12 @@ def home_actions(
     try:
         res["hedge"] = ha.hedge(stoplights=_lj("data/runtime/inverse_stoplights_latest.json"), momentum_rows=momentum,
                                 book_exposure=out.get("book_exposure") or {}, defense_cfg=defense_cfg,
-                                today=now.date(), transitions=transitions)
-        res["hedge"]["momentum_as_of"] = momentum_doc.get("generated_at")
+                                today=now.date(), transitions=transitions,
+                                heatmap=(projection.get("sectors") or {}).get("groups") or heat,
+                                heatmap_as_of=(projection.get("sectors") or {}).get("as_of"),
+                                momentum_as_of=momentum_doc.get("generated_at"))
+        # the clock of the trigger numbers (heatmap day, or the Defense desk's run on fallback)
+        res["hedge"]["momentum_as_of"] = res["hedge"]["momentum_source"].get("as_of")
     except Exception as exc:  # noqa: BLE001
         res["hedge_error"] = f"{type(exc).__name__}: {exc}"
     try:
