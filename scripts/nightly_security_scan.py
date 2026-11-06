@@ -51,7 +51,7 @@ def _default_runner(argv: list[str], cwd: Path, *, timeout_s: float = 900) -> tu
     """Bound the owned process group, including descendants retaining output pipes."""
     try:
         # Reviewed config argv, never a shell; retain the prior runner's scoped S603 waiver.
-        proc = subprocess.Popen(argv, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.PIPE,  # noqa: S603
+        proc = subprocess.Popen(argv, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.PIPE,  # noqa: S603 -- reviewed config argv, never a shell
                                 text=True, start_new_session=True)
     except FileNotFoundError:
         return 127, "", "not found"
@@ -66,7 +66,7 @@ def _default_runner(argv: list[str], cwd: Path, *, timeout_s: float = 900) -> tu
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
-            pass
+            print(f"nightly_security_scan: process group {proc.pid} already gone", file=sys.stderr)
         except OSError:
             cleanup_ok = False
         try:
@@ -298,11 +298,11 @@ def main(argv: list[str] | None = None) -> int:
     send = None
     if a.apply:
         try:
-            from telegram_alert import send_telegram_outcome  # type: ignore
+            from telegram_alert import send_telegram_outcome  # type: ignore -- flat scripts/ import when run as a script
         except ModuleNotFoundError as exc:
             if exc.name != "telegram_alert":
                 raise
-            from scripts.telegram_alert import send_telegram_outcome  # type: ignore
+            from scripts.telegram_alert import send_telegram_outcome  # type: ignore -- package import when scripts/ is not on the path
         send = lambda text, priority="P1": send_telegram_outcome(text, priority=priority)  # noqa: E731
     receipt = run_scan(cfg, send=send, dry_run=not a.apply)
     if a.json:
