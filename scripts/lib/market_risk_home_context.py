@@ -592,6 +592,8 @@ def build(
         cio_reason = (canonical_cio.get("gap") or {}).get("reason")
         if canonical_cio.get("identity_status") != "CONFIRMED":
             cio_reason = "Canonical CIO identity is unresolved; no ticker-based stance substitution"
+        elif cio_reason:
+            pass  # no CIO record for this GUID: say so, never relabel it as a clock defect (LIVEFIX-K)
         elif cio_clock is None or canonical_cio.get("input_time_gap"):
             cio_reason = (
                 (canonical_cio.get("input_time_gap") or {}).get("reason")
