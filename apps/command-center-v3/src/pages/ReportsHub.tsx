@@ -1,28 +1,32 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
 import MorningCommandStrip, { buildStripCells } from '../components/reports/MorningCommandStrip'
-import ReportsArchive from '../components/reports/ReportsArchive'
 import BriefSectionPanels from '../components/reports/BriefSectionPanels'
 import ActionDeck, { buildDeckActions } from '../components/reports/ActionDeck'
 import ReportCoverageStrip from '../components/reports/ReportCoverageStrip'
-import ReportSearch from '../components/reports/ReportSearch'
 import DocxDownloads from '../components/reports/DocxDownloads'
 import ReportLibrary from '../components/reports/ReportLibrary'
 import StructuredBrief from '../components/reports/StructuredBrief'
-import AlertAnalyticsBand from '../components/reports/AlertAnalyticsBand'
 import AnalystReportsPanel from '../components/reports/AnalystReportsPanel'
 import SystemRollupTab from '../components/reports/SystemRollupTab'
 import AlertSettingsModal from '../components/reports/AlertSettingsModal'
-import { parseBriefSections, executiveSummaryText, rankedActionLines, SUPER_TABS } from '../components/reports/briefUtils'
+import { parseBriefSections, executiveSummaryText, rankedActionLines } from '../components/reports/briefUtils'
+import ReportsHome, { type ToolMode } from '../components/reports/ReportsHome'
+import type { ReaderRef } from '../components/reports/ReportReader'
+import '../components/reports/reportsRedesign.css'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, T } from '../lib/watchTokens'
 
-// v3 Reports — a COMMAND PORTAL for everything sent to the operator (Telegram / email / SIEM): briefs,
-// digests, alerts, advisories, recovery, dividends, regime, paper, system. Visual KPI summary + extracted
-// action queue + advanced filters/quick-views + split-pane reader. Every report body stays fully readable
-// (Telegram/markdown rendered). Source: /api/v2/reports/* (read-only). Search · filter · paginate · purge.
+// v3 Reports — Reports redesign v001 (operator-approved 2026-11-06; mockup in persistent-state
+// data/design/pages/reports/v001/mockups/ReportsRedesign.html). Home = ReportsHome: one search, the newest
+// market report on top (as-of + gaps first), one grouped list, a full-screen reader on a phone. The old
+// mode buttons (Library · Today's Brief · Analyst · System · Alert Settings · Purge) live under the ⋯ menu
+// and open here as tool panes with a back link. Alert analytics moved to Communications → Analytics.
+// Old deep links keep working: ?mode=archive|library|brief|analyst|system, ?report=ar-75&cat=…, ?generate=1.
+// ReportsArchive.tsx is no longer referenced (kept, not deleted — see the mapping table in the mockup).
+// Source: /api/v2/reports/* (read-only). Advisory only.
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -125,12 +129,8 @@ function SeverityBadge({ sev }: { sev?: string }) {
   return <span style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 2, background: c + '22', color: c, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{sev || 'info'}</span>
 }
 
-// ── quick views: predicate over a list item + matching action classes / severities ────────────────────
-const RISK_CLASSES = ['stop_triggered', 'unprotected_position', 'risk_review']
-const SYSTEM_CLASSES = ['system_health', 'cron_or_backup', 'llm_review']
-type QV = '' | 'today' | 'needs_action' | 'risk' | 'approvals' | 'hermes' | 'system' | 'critical'
-type HubMode = 'library' | 'brief' | 'archive' | 'analyst' | 'system'
-// qv predicates live SERVER-side now (reports_portal._qv_match) — one corpus, one query family (v3 WS-A)
+type HubMode = 'home' | ToolMode
+// quick-view predicates live SERVER-side (reports_portal._qv_match); the Filter sheet in ReportsHome uses them.
 // ── Reader "Key sections": recognized markdown headers → anchor ids in Article body ──
 const SECTIONS = [
   { id: 'exec', label: 'Executive Summary', rx: /executive summary/i },
@@ -141,104 +141,93 @@ const SECTIONS = [
 ]
 const sectionIdOf = (text: string): string | undefined => SECTIONS.find(s => s.rx.test(text))?.id
 
+const TOOL_TITLE: Record<ToolMode, string> = { library: 'Report Library', brief: "Today's Brief", analyst: 'Analyst studio', system: 'System rollup' }
+
+/** ?report=<source>-<id> → reader ref (source is nl|ae|ob|ar; id is numeric). */
+export function parseReportParam(report: string, cat?: string): ReaderRef | null {
+  const m = (report || '').trim().match(/^(nl|ae|ob|ar)-(\d+)$/)
+  return m ? { source: m[1], id: m[2], category: cat || undefined } : null
+}
+
 export default function ReportsHub({ onDrill }: Props) {
   void onDrill
   const [terminalUi] = useTerminalUi()
   const { data: cats } = useApi<any>('/api/v2/reports/categories', 60_000)
   const categories = cats?.categories || []
-  const [mode, setMode] = useState<HubMode>(() => {
+  const deepLink = useMemo(() => {
+    try {
+      const q = new URLSearchParams(window.location.search)
+      return parseReportParam(q.get('report') || '', (q.get('cat') || '').trim())
+    } catch { return null }
+  }, [])
+  const [mode, setModeState] = useState<HubMode>(() => {
     try {
       const q = new URLSearchParams(window.location.search)
       const m = (q.get('mode') || '').trim().toLowerCase()
-      if (m === 'analyst' || m === 'archive' || m === 'brief' || m === 'library' || m === 'system') return m as HubMode
-      if ((q.get('report') || '').trim()) return 'archive'   // deep link from Home: ?report=ar-75&cat=weekly_reviews
+      if (m === 'analyst' || m === 'brief' || m === 'library' || m === 'system') return m as HubMode
+      if (m === 'archive' || (q.get('report') || '').trim()) return 'home'   // the archive IS the home list now
       const sym = (q.get('symbol') || '').trim()
       const typ = (q.get('type') || '').trim()
       if (q.get('generate') === '1' || (sym && typ.startsWith('symbol_'))) return 'analyst'
     } catch { /* ignore */ }
-    return 'library'
+    return 'home'
   })
-  // Deep link (?report=<source>-<id>&cat=<category>): open that report in the archive reader.
-  const deepLink = useMemo(() => {
+  const setMode = (m: HubMode) => {
+    setModeState(m)
     try {
-      const q = new URLSearchParams(window.location.search)
-      const report = (q.get('report') || '').trim(), cat = (q.get('cat') || '').trim()
-      const grp = SUPER_TABS.find(t => t.categories.includes(cat))
-      return report && grp ? { report, cat, tab: grp.key } : null
-    } catch { return null }
-  }, [])
-  const [superTab, setSuperTab] = useState(deepLink?.tab || 'briefs')
-  const [active, setActive] = useState<string>(deepLink?.cat || 'morning_briefs')
-  const [qInput, setQInput] = useState('')
-  const [q, setQ] = useState('')
-  const [page, setPage] = useState(1)
-  const [days, setDays] = useState<number | ''>(7)
-  const [qv, setQv] = useState<QV>('')
-  const [purge, setPurge] = useState(false)
+      const u = new URL(window.location.href)
+      if (m === 'home') u.searchParams.delete('mode'); else u.searchParams.set('mode', m)
+      window.history.replaceState(window.history.state, '', u.toString())
+    } catch { /* ignore */ }
+  }
+  const [purge, setPurge] = useState<{ cat: string; label: string } | null>(null)
   const [alertSettings, setAlertSettings] = useState(false)
-  const [selId, setSelId] = useState<string | null>(deepLink?.report || null)
-  const keepDeepSel = useRef(!!deepLink)
-  const [briefExpanded, setBriefExpanded] = useState(false)
-  const [searchInput, setSearchInput] = useState('')
-  const [searchQ, setSearchQ] = useState('')
 
+  return (
+    <>
+      {mode === 'home' ? (
+        <ReportsHome
+          categories={categories}
+          initialOpen={deepLink}
+          onTool={m => setMode(m)}
+          onPurge={(cat, label) => setPurge({ cat, label })}
+          onAlertSettings={() => setAlertSettings(true)}
+        />
+      ) : (
+        <div className="rp" style={{ maxWidth: 1480 }}>
+          <div className="rp-head">
+            <button type="button" className="rp-btn ghost" onClick={() => setMode('home')} aria-label="Back to reports" data-testid="tool-back">‹ Reports</button>
+            <h1 style={{ ...hubTitle(), margin: 0, flex: 1, minWidth: 0 }}>{TOOL_TITLE[mode]}</h1>
+          </div>
+          <span style={hubSubtitle(terminalUi)}>
+            {mode === 'library' ? 'every report the system produces — cadence lanes · freshness rails · in-page viewer'
+              : mode === 'analyst' ? 'analyst-grade reports · Word/PDF export · intelligence deep dives'
+              : mode === 'system' ? 'everything the system did — pipelines, agents, trades, research · daily digest 20:40'
+              : 'morning command · action list · unified brief'}
+          </span>
+          {mode === 'library' && <LibraryMode />}
+          {mode === 'analyst' && <AnalystReportsPanel />}
+          {mode === 'brief' && <BriefMode categories={categories} />}
+          {mode === 'system' && <SystemRollupTab />}
+        </div>
+      )}
+      {purge && <PurgeModal category={purge.cat} categoryLabel={purge.label} onClose={() => setPurge(null)} />}
+      {alertSettings && <AlertSettingsModal onClose={() => setAlertSettings(false)} />}
+    </>
+  )
+}
+
+// Today's Brief tool pane. Its fetches (overview, risk, regime, Trade AI, today's briefs, action items) run
+// only while this pane is open — before the redesign they ran on every Reports visit.
+function BriefMode({ categories }: { categories: any[] }) {
+  const [briefExpanded, setBriefExpanded] = useState(false)
   const { data: overview } = useApi<any>('/api/v2/overview', 60_000)
   const { data: risk } = useApi<any>('/api/v2/risk', 60_000)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
-  const briefListPath = '/api/v2/reports/list?category=morning_briefs&page=1&per_page=10&days=1'
-  const { data: briefList } = useApi<any>(briefListPath, 0)
-
-  useEffect(() => { const t = setTimeout(() => { setQ(qInput); setPage(1) }, 350); return () => clearTimeout(t) }, [qInput])
-  useEffect(() => { const t = setTimeout(() => setSearchQ(searchInput), 350); return () => clearTimeout(t) }, [searchInput])
-  useEffect(() => {
-    const grp = SUPER_TABS.find(s => s.key === superTab)
-    if (grp && !grp.categories.includes(active)) setActive(grp.categories[0])
-  }, [superTab]) // eslint-disable-line
-  useEffect(() => { setPage(1) }, [active, days, q, qv])
-  useEffect(() => { if (keepDeepSel.current) { keepDeepSel.current = false; return } setSelId(null) }, [active, days, q, page])
-
-  const effDays = qv === 'today' ? 1 : days
-  const summaryPath = `/api/v2/reports/portal-summary?days=${effDays || 7}`
-  const { data: summary } = useApi<any>(summaryPath, 0)
-  // Action Queue (Phase 2): fetch the FULL extracted set; the AQ has its own Now/Risk/Approvals/System/
-  // Research/All tabs (independent of the page quick-views, which filter the report LIST). This is what
-  // lets the queue default to a small "Now" set instead of hundreds of rows.
-  const actionsPath = `/api/v2/reports/action-items?days=${effDays || 7}&limit=1000`
-  const { data: actionsData } = useApi<any>(actionsPath, 0)
-  // WS-A (v3): qv filters SERVER-side in the same query that serves the list — the chips render
-  // qv_counts computed in that same pass, so chip-vs-list disagreement (486 vs 18) is impossible.
-  const listPath = useMemo(() =>
-    `/api/v2/reports/list?category=${active}&q=${encodeURIComponent(q)}&page=${page}&per_page=15${effDays ? `&days=${effDays}` : ''}${qv && qv !== 'today' ? `&qv=${qv}` : ''}`,
-    [active, q, page, effDays, qv])
-  const { data: list, loading } = useApi<any>(listPath, 0)
-
-  const rawItems = list?.items || []
-  const items = rawItems
-  const total = list?.total ?? 0
-  const matching = list?.matching ?? total
-  const qvCounts = list?.qv_counts || null
-  const qvScanned = list?.qv_scanned ?? 0
-  const pages = list?.pages ?? 1
-  const activeCat = categories.find((c: any) => c.key === active)
-
-  // auto-select first result when nothing selected
-  const selected = useMemo(() => items.find((it: any) => `${it.source}-${it.id}` === selId) || items[0] || null, [items, selId])
+  const { data: briefList } = useApi<any>('/api/v2/reports/list?category=morning_briefs&page=1&per_page=10&days=1', 0)
+  const { data: actionsData } = useApi<any>('/api/v2/reports/action-items?days=7&limit=1000', 0)
   const allActions = actionsData?.actions || []
-  const reportActions = useMemo(() => {
-    if (!selected) return []
-    const rid = `${selected.source}-${selected.id}`, seen = new Set<string>()
-    return allActions.filter((a: any) => a.report_id === rid).filter((a: any) => { if (seen.has(a.action_class)) return false; seen.add(a.action_class); return true })
-  }, [selected, allActions])
-
-  const k = summary?.kpis || {}
-
-  const archiveCategories = useMemo(() => {
-    const grp = SUPER_TABS.find(s => s.key === superTab)
-    if (!grp) return categories
-    return categories.filter((c: any) => grp.categories.includes(c.key))
-  }, [categories, superTab])
-
   const todayBriefs: any[] = briefList?.items || []
   const aegisBrief = useMemo(() => todayBriefs.find((b: any) => (b.type || '').includes('aegis')) || todayBriefs[0] || null, [todayBriefs])
   const tradeAiBrief = useMemo(() => todayBriefs.find((b: any) => (b.type || '').includes('trade_ai')), [todayBriefs])
@@ -303,79 +292,15 @@ export default function ReportsHub({ onDrill }: Props) {
     onPortfolio: () => { window.open(FQDN + '/v3/portfolio', '_blank') },
   })
 
-  const modeBtn = (m: HubMode, label: string) => {
-    const on = mode === m
-    return (
-      <button key={m} onClick={() => setMode(m)} style={hubTab(on, terminalUi)}>{label}</button>
-    )
-  }
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1480, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-        <h1 style={{ ...hubTitle(), margin: 0 }}>
-          {mode === 'library' ? 'Report Library' : mode === 'brief' ? 'Morning Brief' : mode === 'analyst' ? 'Analyst Reports' : mode === 'system' ? 'System Rollup' : 'Report Archive'}
-        </h1>
-        <span style={hubSubtitle(terminalUi)}>
-          {mode === 'library'
-            ? 'every report the system produces — cadence lanes · freshness rails · in-page viewer'
-            : mode === 'brief'
-            ? (todayBrief ? fmtDate(todayBrief.created_at) : 'loading today\'s brief…')
-            : mode === 'analyst'
-              ? 'analyst-grade reports · Word/PDF export · intelligence deep dives'
-            : mode === 'system'
-              ? 'everything the system did — pipelines, agents, trades, research · daily digest 20:40'
-              : 'searchable operator reports, alerts, and advisories'}
-        </span>
-        <span style={{ flex: 1 }} />
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={() => setAlertSettings(true)} style={hubTab(false, terminalUi)}>Alert Settings</button>
-          {modeBtn('library', 'Library')}
-          {modeBtn('brief', "Today's Brief")}
-          {modeBtn('analyst', 'Analyst Reports')}
-          {modeBtn('archive', 'Archive')}
-          {modeBtn('system', 'System')}
-        </div>
-      </div>
-
-      {/* Global search — all Telegram / email / SIEM / ai_reports stores */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <input
-          value={searchInput}
-          onChange={e => setSearchInput(e.target.value)}
-          placeholder="Search all reports (symbol, topic, retirement, weekly…)…"
-          style={{ flex: 1, fontSize: 12, padding: '8px 12px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 2, color: 'var(--text0)' }}
-        />
-        {searchInput && (
-          <button onClick={() => { setSearchInput(''); setSearchQ('') }} style={{ fontSize: 10, fontWeight: 700, padding: '6px 10px', borderRadius: 2, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text3)', cursor: 'pointer' }}>Clear</button>
-        )}
-      </div>
-      {searchQ && (
-        <ReportSearch
-          query={searchQ}
-          onSelect={(it) => { setMode('archive'); setActive(it.category || 'morning_briefs'); setSelId(`${it.source}-${it.id}`); setSearchInput(''); setSearchQ('') }}
-          onArchive={() => { setMode('archive'); setQInput(searchQ); setQ(searchQ); setSearchInput(''); setSearchQ('') }}
-        />
-      )}
-
-      {mode === 'library' && !searchQ && <LibraryMode />}
-
-      {mode === 'analyst' && !searchQ && (
-        <AnalystReportsPanel />
-      )}
-
-      {mode === 'brief' && !searchQ && (
-        <StructuredBrief liveStopsTriggered={(risk?.stops || risk?.data?.stops || []).filter?.((x: any) => String(x.status || '').toLowerCase() === 'triggered').length} />
-      )}
-      {mode === 'brief' && !searchQ && (
-        <>
+    <>
+      <StructuredBrief liveStopsTriggered={(risk?.stops || risk?.data?.stops || []).filter?.((x: any) => String(x.status || '').toLowerCase() === 'triggered').length} />
       <ReportCoverageStrip categories={categories} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <MorningCommandStrip cells={stripCells} />
           {!aegisBrief && !tradeAiBrief ? (
             <div style={{ ...card, padding: 32, textAlign: 'center', color: 'var(--text3)', fontSize: 12 }}>
-              No morning brief for today yet. Check Archive → Morning Briefs, or wait for the daily Aegis cron (System → Jobs).
+              No morning brief for today yet. Check Reports → Daily briefs & digests → Morning Briefs, or wait for the daily Aegis cron (System → Jobs).
             </div>
           ) : (
             <>
@@ -421,65 +346,19 @@ export default function ReportsHub({ onDrill }: Props) {
                 </div>
               )}
               <div style={{ fontSize: 10, color: 'var(--text3)' }}>
-                Also on Home → Morning Command · Archive for historical briefs
+                Also on Home → Morning Command · Reports → Daily briefs & digests for past briefs
               </div>
             </>
           )}
         </div>
         </>
-      )}
-
-      {mode === 'system' && !searchQ && <SystemRollupTab />}
-      {mode === 'archive' && !searchQ && (
-        <AlertAnalyticsBand onDrillType={(t) => { setQInput(t); setQ(t) }} />
-      )}
-      {mode === 'archive' && !searchQ && (
-        <ReportsArchive
-          categories={categories}
-          superTab={superTab}
-          setSuperTab={setSuperTab}
-          active={active}
-          setActive={setActive}
-          archiveCategories={archiveCategories}
-          activeCat={activeCat}
-          qInput={qInput}
-          setQInput={setQInput}
-          days={days}
-          setDays={setDays}
-          qv={qv}
-          setQv={setQv}
-          items={items}
-          rawItems={rawItems}
-          loading={loading}
-          total={total}
-          matching={matching}
-          qvCounts={qvCounts}
-          qvScanned={qvScanned}
-          pages={pages}
-          page={page}
-          setPage={setPage}
-          selId={selId}
-          setSelId={setSelId}
-          selected={selected}
-          kpis={k}
-          effDays={effDays}
-          reportActions={reportActions}
-          fmtDate={fmtDate}
-          renderArticle={(text) => <Article text={text} />}
-          onPurge={() => setPurge(true)}
-          onStatClick={(newQv) => setQv(newQv)}
-        />
-      )}
-
-      {purge && <PurgeModal category={active} categoryLabel={activeCat?.label || ''} onClose={() => setPurge(false)} />}
-      {alertSettings && <AlertSettingsModal onClose={() => setAlertSettings(false)} />}
-    </div>
   )
 }
 
 function PurgeModal({ category, categoryLabel, onClose }: { category: string; categoryLabel: string; onClose: () => void }) {
   const [olderThan, setOlderThan] = useState(90)
-  const [scope, setScope] = useState<'category' | 'all'>('category')
+  // No category picked (grouped home) → the only honest scope is "all"; never a blank category that purges everything.
+  const [scope, setScope] = useState<'category' | 'all'>(category ? 'category' : 'all')
   const [preview, setPreview] = useState<any>(null)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState<any>(null)
@@ -499,7 +378,7 @@ function PurgeModal({ category, categoryLabel, onClose }: { category: string; ca
         <div style={{ fontSize: 14, fontWeight: 900, color: BB.red }}>🗑 Purge old reports</div>
         <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 8 }}>Delete reports older than <b style={{ color: 'var(--text0)' }}>{olderThan} days</b> in:</div>
         <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-          {([['category', categoryLabel], ['all', 'All categories']] as any).map(([v, l]: any) => (
+          {((category ? [['category', categoryLabel], ['all', 'All categories']] : [['all', 'All categories']]) as any).map(([v, l]: any) => (
             <button key={v} onClick={() => setScope(v)} style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 2, cursor: 'pointer', border: `1px solid ${scope === v ? BB.red : 'var(--border)'}`, background: scope === v ? `${BB.red}18` : 'transparent', color: scope === v ? BB.red : 'var(--text2)' }}>{l}</button>
           ))}
         </div>
