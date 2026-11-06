@@ -15,7 +15,8 @@ import { useApi } from '../hooks/useApi'
  */
 export type DeskRowField = { label: string; value: string }
 export type DeskRowDetail = { title: string; fields: DeskRowField[]; source?: string; href?: string; href_label?: string }
-export type DeskRow = { id: string; label: string; value: string; tone?: 'good' | 'warn' | 'bad' | 'info' | null; href?: string; detail?: DeskRowDetail }
+export type DeskRow = { id: string; label: string; value: string; tone?: 'good' | 'warn' | 'bad' | 'info' | null; href?: string; detail?: DeskRowDetail
+  /** FQ-064: the row's text carries measured figures, so the board may break it only at whitespace. */ nowrap?: boolean }
 export type DeskPanel = { id: string; title: string; sub?: string; span?: number; rows: DeskRow[]; gap?: string | null; empty?: string }
 export type DeskProjection = {
   ok?: boolean
@@ -34,9 +35,14 @@ const rowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-betwee
 const valueStyle: CSSProperties = { fontFamily: 'var(--font-mono)', textAlign: 'right', overflowWrap: 'anywhere', minWidth: 0 }
 
 function RowBody({ row }: { row: DeskRow }) {
+  // FQ-064: a row whose text carries measured figures ("win 49.4% · 158 trades") must never break inside a
+  // number on a phone, so it wraps only at whitespace. A prose row keeps the old anywhere-wrapping, which is
+  // what stops a long unbroken token overflowing the panel — this is a per-row mark, not a global style.
+  const wrap: CSSProperties = row.nowrap ? { overflowWrap: 'normal' } : { overflowWrap: 'anywhere' }
   return <>
-    <span style={{ minWidth: 0, overflowWrap: 'anywhere', color: BB.text2 }}>{row.label}</span>
-    <span style={{ ...valueStyle, color: row.tone ? TONE[row.tone] ?? BB.text0 : BB.text0 }}>{row.value}</span>
+    <span data-desk-row-label style={{ minWidth: 0, ...wrap, color: BB.text2 }}>{row.label}</span>
+    <span data-desk-row-value style={{ ...valueStyle, ...wrap, ...(row.nowrap ? { whiteSpace: 'nowrap' as const } : {}),
+      color: row.tone ? TONE[row.tone] ?? BB.text0 : BB.text0 }}>{row.value}</span>
   </>
 }
 

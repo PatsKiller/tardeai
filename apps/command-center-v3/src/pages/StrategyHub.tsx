@@ -381,8 +381,8 @@ function StrategyLeaderboard({ data, onDrill, onTab }: any) {
   const note: string = data?.note ?? ''
   const CONF: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#94a3b8' }
   const chart = rows.map(r => ({ name: r.strategy_id.replace(/_/g, ' ').slice(0, 14), R: r.live?.avg_r ?? 0 }))
-  const th = { fontSize: 9.5, color: 'var(--text3)', textTransform: 'uppercase' as const, fontWeight: 800, textAlign: 'right' as const, padding: '5px 8px' }
-  const td = { fontSize: 12, padding: '6px 8px', textAlign: 'right' as const, color: 'var(--text1)' }
+  const th = { fontSize: 9.5, color: 'var(--text3)', textTransform: 'uppercase' as const, fontWeight: 800, textAlign: 'right' as const, padding: '5px 8px', whiteSpace: 'nowrap' as const }
+  const td = { fontSize: 12, padding: '6px 8px', textAlign: 'right' as const, color: 'var(--text1)', whiteSpace: 'nowrap' as const, fontVariantNumeric: 'tabular-nums' as const }
   const drillRow = (r: any) => onDrill?.({
     title: r.strategy_id, subtitle: `rank #${r.rank} · ${r.confidence} confidence · tilt ${r.tilt ?? '—'}×`,
     endpoint: '/api/v2/strategy-leaderboard',
