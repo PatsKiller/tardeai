@@ -59,14 +59,17 @@ def main():
 
     def stat(t, status_col):
         try:
-            cur.execute(f"SELECT count(*) FROM {t}"); n = cur.fetchone()[0]
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the module constant LOOPS
+                f"SELECT count(*) FROM {t}"); n = cur.fetchone()[0]
             last = None
             if has_col(t, "created_at"):
-                cur.execute(f"SELECT max(created_at) FROM {t}"); last = str(cur.fetchone()[0])
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the module constant LOOPS
+                    f"SELECT max(created_at) FROM {t}"); last = str(cur.fetchone()[0])
             queued = completed = None
             if status_col and has_col(t, status_col):
-                cur.execute(f"SELECT count(*) FROM {t} WHERE lower(coalesce({status_col}::text,'')) "
-                            f"IN ('pending','queued','open','staged','new')"); queued = cur.fetchone()[0]
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- t, status_col from the module constant LOOPS
+                    f"SELECT count(*) FROM {t} WHERE lower(coalesce({status_col}::text,'')) "
+                    f"IN ('pending','queued','open','staged','new')"); queued = cur.fetchone()[0]
                 completed = n - (queued or 0)
             return {"exists": True, "rows": n, "last": last, "queued": queued, "completed": completed}
         except Exception:

@@ -1261,7 +1261,7 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
     placeholders = ", ".join(["%s"] * len(insert_data))
 
     cur = conn.cursor()
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- cols_str = literal keys of data above; values are params
         f"INSERT INTO paper_trade_proposals ({cols_str}) VALUES ({placeholders}) RETURNING id",
         list(insert_data.values())
     )

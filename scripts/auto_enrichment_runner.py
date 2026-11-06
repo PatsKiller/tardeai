@@ -103,9 +103,11 @@ def _fetch_proposals(conn, force_all=False):
                 created_at ASC
     """
     if force_all:
-        cur.execute(f"{base_cols} FROM paper_trade_proposals WHERE status = 'PENDING' {order}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- base_cols, order are literal SQL above
+            f"{base_cols} FROM paper_trade_proposals WHERE status = 'PENDING' {order}")
     else:
-        cur.execute(f"""
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- base_cols, order are literal SQL above
+            f"""
             {base_cols}
             FROM paper_trade_proposals
             WHERE status = 'PENDING'
