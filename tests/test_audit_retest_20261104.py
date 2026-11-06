@@ -84,3 +84,22 @@ def test_a_session_specific_finding_is_deferred_not_passed():
     out = R.decide(item_status="merged", fix_commit="abc", is_ancestor=YES, session_required="premarket",
                    session_now="regular", check_expected=None)
     assert out == R.DEFERRED_SESSION
+
+
+def test_a_regression_never_lowers_severity():
+    # cc-opus-1 BLOCK at f3e40670: REGRESSED wrote a flat "P1", so a P0 that came back was stored as LESS urgent.
+    # "A regression at P1" means at least P1.
+    for before, after in (("P0", "P0"), ("P1", "P1"), ("P2", "P1"), ("P3", "P1")):
+        row = R.transition({"severity": before, "status": "closed"}, R.REGRESSED, now="t", evidence={})
+        assert row["severity"] == after, (before, row["severity"])
+
+
+def test_an_item_with_no_fix_commit_is_not_reported_as_fixed():
+    # cc-opus-1 BLOCK at f3e40670: no fix commit returned "fixed_but_not_serving" — calling an unfixed item fixed.
+    for status in ("open", "merged", "reopened"):
+        out = R.decide(item_status=status, fix_commit=None, is_ancestor=YES, session_required=None,
+                       session_now=None, check_expected=True)
+        assert out == R.NO_FIX_COMMIT, (status, out)
+        assert "fixed" not in out
+    row = R.transition({"severity": "P2", "status": "open"}, R.NO_FIX_COMMIT, now="t", evidence={})
+    assert row["status"] == "open" and row["severity"] == "P2"

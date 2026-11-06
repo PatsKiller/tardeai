@@ -17,6 +17,8 @@ RETEST_FAIL = "retest_fail"
 FIXED_NOT_SERVING = "fixed_but_not_serving"
 REGRESSED = "regressed"
 DEFERRED_SESSION = "retest_deferred_session"
+#: No fix commit recorded: nothing was fixed, so the item is neither "fixed but not serving" nor retestable.
+NO_FIX_COMMIT = "no_fix_commit"
 
 
 def serving_release(pid_cwd: str) -> Optional[str]:
@@ -52,7 +54,10 @@ def decide(*, item_status: str, fix_commit: str | None, is_ancestor: Callable[[s
         if check_expected is False:
             return REGRESSED
         return RETEST_PASSED
-    if not fix_commit or not is_serving(fix_commit, is_ancestor=is_ancestor):
+    if not fix_commit:
+        # Nothing was fixed. Reporting "fixed_but_not_serving" here would call an unfixed item fixed.
+        return NO_FIX_COMMIT
+    if not is_serving(fix_commit, is_ancestor=is_ancestor):
         return FIXED_NOT_SERVING
     if session_required and session_now != session_required:
         return DEFERRED_SESSION
@@ -82,9 +87,10 @@ def transition(item: Mapping, outcome: str, *, now: str, evidence: Mapping) -> d
         out["failed_retests"] = int(item.get("failed_retests") or 0) + 1
     elif outcome == REGRESSED:
         out["status"] = "reopened"
-        out["severity"] = "P1"
+        # "A regression at P1" is a floor: a P0 that comes back stays P0, never stored as less urgent.
+        out["severity"] = sev if sev == "P0" else "P1"
         out["regressed"] = True
-    # FIXED_NOT_SERVING / DEFERRED_SESSION leave the item where it was
+    # FIXED_NOT_SERVING / DEFERRED_SESSION / NO_FIX_COMMIT leave the item where it was
     return out
 
 
