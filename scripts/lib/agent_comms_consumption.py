@@ -82,7 +82,7 @@ def fetch_recent_events(
         params.append(str(direction).upper())
     params.append(max(1, int(limit)))
     cur = conn.cursor()
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- cols from module constant _EVENT_COLUMNS; where literal
         f"""SELECT {cols} FROM communication_events
             {where}
             ORDER BY COALESCE(observed_at, created_at) DESC

@@ -127,6 +127,7 @@ def run(apply, all_closed, fine=False, fine_days=FINE_DAYS):
     import psycopg2.extras
     conn = db(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     where = "c.measurable" if all_closed else "c.measurable AND c.winner"
+    # nosemgrep: tq-py-sql-fstring -- where is one of two literal strings
     cur.execute(f"""
         SELECT c.trade_instance_id, c.symbol, c.entry_time, c.exit_time, ti.side, c.winner, ti.entry_price
         FROM trade_profit_capture_analysis c JOIN trade_instances ti ON ti.id = c.trade_instance_id

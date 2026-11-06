@@ -87,6 +87,8 @@ def _cosine(a, b):
 
 def _fetch_candidates(conn, table, query_vec, symbol=None, allowed_sources=None, fetch_limit=150):
     """Fetch embedding candidates from a table."""
+    if table not in (BASELINE_TABLE, CANDIDATE_TABLE):
+        raise ValueError(f"unknown embedding table: {table!r}")
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     conditions = ["created_at > NOW() - INTERVAL '365 days'"]
@@ -99,6 +101,7 @@ def _fetch_candidates(conn, table, query_vec, symbol=None, allowed_sources=None,
         conditions.append(f"source_type IN ({placeholders})")
         params.extend(allowed_sources)
     where = " AND ".join(conditions) if conditions else "TRUE"
+    # nosemgrep: tq-py-sql-fstring -- table allowlisted above; where is literal fragments
     cur.execute(f"""
         SELECT id, source_type, source_id, title, embedding, created_at
         FROM {table}
