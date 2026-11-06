@@ -384,6 +384,7 @@ def fetch_classification_candidates(cur, limit=10):
     appear in screener scans but have many classified symbols in the incubator.
     """
     strat_list = ",".join(f"'{s}'" for s in _CLASSIFICATION_STRATEGIES)
+    # nosemgrep: tq-py-sql-fstring -- strat_list and score floor are module constants
     cur.execute(f"""
         SELECT iu.*,
                'WAIT' as scan_decision,

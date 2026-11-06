@@ -89,11 +89,11 @@ def _parse(raw):
 
 def pending_reviews(cur, limit=None):
     """Read-only: (candidates, rows still to review, skipped_existing). SELECTs only."""
-    cur.execute(f"""SELECT symbol, account, exit_date::date AS cd, strategy_id, entry_price, exit_price,
+    cur.execute("""SELECT symbol, account, exit_date::date AS cd, strategy_id, entry_price, exit_price,
                       shares, pnl, exit_reason
                     FROM trades WHERE status='closed' AND source_table='paper_trades'
                       AND entry_price > 0 AND exit_price > 0
-                    ORDER BY exit_date DESC {'LIMIT ' + str(int(limit)) if limit else ''}""")
+                    ORDER BY exit_date DESC LIMIT %s""", (int(limit) if limit else None,))
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     todo, skip, seen = [], 0, set()

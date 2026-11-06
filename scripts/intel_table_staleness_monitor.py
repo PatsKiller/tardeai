@@ -62,8 +62,12 @@ def db():
 
 
 def _count_since(cur, table, ts_col, hours):
-    cur.execute(f"SELECT count(*) FROM {table} WHERE {ts_col} > %s",
-                (datetime.now(timezone.utc) - timedelta(hours=hours),))
+    allowed = {(t, c) for intel, intel_ts, inp, inp_ts, _sev in PAIRS for t, c in ((intel, intel_ts), (inp, inp_ts))}
+    if (table, ts_col) not in allowed:
+        raise ValueError(f"table/column not in PAIRS: {table!r}.{ts_col!r}")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- table/ts_col checked against module-constant PAIRS above
+        f"SELECT count(*) FROM {table} WHERE {ts_col} > %s",
+        (datetime.now(timezone.utc) - timedelta(hours=hours),))
     return cur.fetchone()[0]
 
 
@@ -85,7 +89,7 @@ def detect(cur):
             })
     for label, table, ts_col, where_sql, max_h, sev in ABSOLUTE:
         try:
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- table, where_sql, ts_col from module-constant ABSOLUTE
                 f"SELECT count(*) FROM {table} WHERE {where_sql} AND {ts_col} > %s",
                 (datetime.now(timezone.utc) - timedelta(hours=max_h),))
             fresh = cur.fetchone()[0]
