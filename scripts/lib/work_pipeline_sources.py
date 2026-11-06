@@ -816,7 +816,7 @@ def load(state_root: Path, prs: list[Mapping], claims: list[Mapping], now: datet
     if serving is None:
         try:
             serving = release_reader.serving() if release_reader is not None else {}
-        except Exception:  # noqa: BLE001 - missing identity remains a named source gap
+        except Exception:  # noqa: BLE001 -- missing identity remains a named source gap
             serving = {}
     if not serving or not serving.get("sha"):
         gaps["releases"] = "served_identity_unavailable"

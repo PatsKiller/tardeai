@@ -498,7 +498,7 @@ class PrCensus:
                         receipt = release_health(Path(receipt_root))
                         if receipt.get("sha") == serving.get("sha"):
                             serving = {**serving, "since": receipt.get("at")}
-                except Exception as exc:  # noqa: BLE001 - membership remains explicitly unavailable
+                except Exception as exc:  # noqa: BLE001 -- membership remains explicitly unavailable
                     warnings.append(f"served identity unavailable ({type(exc).__name__})")
                 for p in merged_prs:
                     if p.get("merge_sha"):
@@ -1598,7 +1598,7 @@ class WorkPipeline:
                     source_gaps={"coordinator_ledger": "source_not_configured",
                                  "digest_approvals": "source_not_configured", "plans": "source_not_configured"},
                 )
-        except Exception as exc:  # noqa: BLE001 - source failures remain visible without taking the board down
+        except Exception as exc:  # noqa: BLE001 -- source failures remain visible without taking the board down
             coordination = {"schema": shared_sources.SCHEMA, "by_pr": {}, "active_claim_ids": [],
                             "sources": {}, "as_of": None, "captured_at": _iso(now),
                             "gaps": [{"source": "coordination", "reason": type(exc).__name__}]}
@@ -1635,7 +1635,7 @@ class WorkPipeline:
                     raise ValueError("canonical approval members unavailable")
             else:
                 raise ValueError("canonical approval source not configured")
-        except Exception as exc:  # noqa: BLE001 - a missing adapter never restores the old financial-only count
+        except Exception as exc:  # noqa: BLE001 -- a missing adapter never restores the old financial-only count
             waiting = {"actionable_items": [], "actionable_count": None, "known_actionable_count": None,
                        "pending_count": None, "complete": False, "as_of": None,
                        "scope": "all_operator_approvals", "source": "operator_approvals_api.queue_summary",
