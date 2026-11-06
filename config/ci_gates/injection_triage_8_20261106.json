@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_8_20261106",
+  "files": [
+    "tests/test_injection_triage_8_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_8_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_8_20261106 — SQL injection triage, batch 8 (tq-py-sql-fstring, operator-approved security",
+    "item 2026-11-06). The phase-5 learning recommender, cross-source synthesizer, hermes news bridge, outcome grader",
+    "and scalp shadow feeder now pass their time windows as driver parameters (now() - %s * interval '1 hour/day')",
+    "instead of splicing them into SQL text. Hermetic: a recording fake cursor, no database."
+  ]
+}

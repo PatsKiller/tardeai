@@ -58,14 +58,14 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
 
     # 1. Entity spikes (top entities by mention count)
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT entity_value, entity_type, COUNT(*) as mentions
             FROM content_entity_links
-            WHERE extracted_at > NOW() - INTERVAL '{hours} hours'
+            WHERE extracted_at > NOW() - %s * INTERVAL '1 hour'
             GROUP BY entity_value, entity_type
             HAVING COUNT(*) >= 2
             ORDER BY mentions DESC LIMIT 20
-        """)
+        """, (hours,))
         bundle["sources"]["entity_spikes"] = [
             {"entity": r[0], "type": r[1], "mentions": r[2]} for r in cur.fetchall()
         ]
@@ -74,12 +74,12 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
 
     # 2. Top news themes (news_articles summary)
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT COALESCE(symbol, 'macro') as symbol, COUNT(*) as count
             FROM news_articles
-            WHERE created_at > NOW() - INTERVAL '{hours} hours'
+            WHERE created_at > NOW() - %s * INTERVAL '1 hour'
             GROUP BY 1 ORDER BY count DESC LIMIT 15
-        """)
+        """, (hours,))
         bundle["sources"]["news_themes"] = [
             {"symbol": r[0], "articles": r[1]} for r in cur.fetchall()
         ]
@@ -117,14 +117,14 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
 
     # 5. Recent research themes (last 7d, promoted rows)
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT topic, research_type, COUNT(*) as ct
             FROM hermes_research_intelligence
-            WHERE created_at > NOW() - INTERVAL '{hours} hours'
+            WHERE created_at > NOW() - %s * INTERVAL '1 hour'
               AND status = 'promoted'
             GROUP BY topic, research_type
             ORDER BY ct DESC LIMIT 10
-        """)
+        """, (hours,))
         bundle["sources"]["research_themes"] = [
             {"topic": r[0], "type": r[1], "count": r[2]} for r in cur.fetchall()
         ]
@@ -133,12 +133,12 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
 
     # 6. Agenda candidates (Phase 2 output)
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT decision, topic_id, rationale, run_at::text
             FROM hermes_research_agenda_audit
-            WHERE run_at > NOW() - INTERVAL '{hours} hours'
+            WHERE run_at > NOW() - %s * INTERVAL '1 hour'
             ORDER BY run_at DESC LIMIT 10
-        """)
+        """, (hours,))
         bundle["sources"]["agenda_actions"] = [
             {"decision": r[0], "topic_id": r[1], "rationale": r[2]} for r in cur.fetchall()
         ]

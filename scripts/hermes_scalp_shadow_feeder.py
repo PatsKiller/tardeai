@@ -20,7 +20,7 @@ def run(apply: bool = False, days: int = 30) -> dict:
     cur = conn.cursor()
     cur.execute(DDL)
     cur.execute(
-        f"""SELECT pt.symbol, pt.strategy_id, pt.pnl, pt.entry_price, pt.shares,
+        """SELECT pt.symbol, pt.strategy_id, pt.pnl, pt.entry_price, pt.shares,
                    h.composite_score, pt.closed_at
             FROM paper_trades pt
             LEFT JOIN LATERAL (
@@ -28,9 +28,10 @@ def run(apply: bool = False, days: int = 30) -> dict:
               WHERE h.symbol = pt.symbol AND h.scored_at <= COALESCE(pt.entry_time, pt.created_at)
               ORDER BY h.scored_at DESC LIMIT 1
             ) h ON true
-            WHERE lower(pt.status) = 'closed' AND pt.closed_at > NOW() - INTERVAL '{int(days)} days'
+            WHERE lower(pt.status) = 'closed' AND pt.closed_at > NOW() - %s * INTERVAL '1 day'
               AND (pt.strategy_id ILIKE '%%scalp%%' OR pt.strategy_id ILIKE '%%momentum%%')
-            ORDER BY pt.closed_at DESC LIMIT 200"""
+            ORDER BY pt.closed_at DESC LIMIT 200""",
+        (int(days),),
     )
     rows = cur.fetchall()
     written = 0

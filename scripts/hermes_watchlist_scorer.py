@@ -427,7 +427,8 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
     # Tier order: holdings and live proposals ahead of in_directive_watch — 989 directive-flagged
     # names were consuming the whole cap and pushing real-money holdings out of the scoring window.
     # Within a tier, hermes_rank orders who makes the cut (was an arbitrary 0 for all daily rows).
-    cur.execute(f"""WITH daily AS (
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- daily_sql is literal SQL from sql_scoring_priority_exists
+        f"""WITH daily AS (
                      SELECT wi.symbol,
                        MIN(CASE WHEN wi.symbol = ANY(%s) THEN 0
                                 WHEN EXISTS (SELECT 1 FROM paper_trade_proposals p
