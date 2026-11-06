@@ -179,7 +179,7 @@ def _atomic_write(path: Path, text: str) -> None:
     except BaseException:
         try:
             os.unlink(tmp)
-        except OSError:
+        except OSError:  # nosemgrep: tq-py-except-pass -- cleanup after a failed write: the original exception is re-raised on the next line, so nothing is swallowed; a failed unlink must not mask it
             pass
         raise
 
@@ -610,7 +610,8 @@ def _queue_intent_fn():
     except ModuleNotFoundError as exc:
         if (getattr(exc, "name", "") or "") not in ("lib", "lib.host_comms_intents"):
             raise
-        from scripts.lib.host_comms_intents import queue_intent  # type: ignore[no-redef]
+        # The same module reached through the other tree root; the name is identical, so the redefinition is the point.
+        from scripts.lib.host_comms_intents import queue_intent  # type: ignore[no-redef] -- same module via the scripts package root
     return queue_intent
 
 
