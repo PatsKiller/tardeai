@@ -149,7 +149,8 @@ def get_sample_docs(conn, limit=500, source_types=None):
         type_filter = f"AND source_type IN ({placeholders})"
         params = list(source_types) + [limit]
 
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- type_filter holds only %s placeholders; values are params
+        f"""
         SELECT id, source_type, source_id, title, embedding
         FROM content_embeddings
         WHERE embedding IS NOT NULL
