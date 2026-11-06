@@ -273,7 +273,7 @@ class Stub:
             self.runs.append((argv, cwd, env))
             return 0, "ok"
 
-        def notify(text, producer):
+        def notify(text, producer, priority="P2"):
             self.sent.append(text)
             return True
 
@@ -542,8 +542,10 @@ def test_p1_reaches_the_telegram_chokepoint_with_incident_id(tmp_path, monkeypat
     S.cycle(d=_d(tmp_path), state_root=tmp_path / "state", release_root=tmp_path, cfg=_scfg(), deps=deps, apply=True,
             now=T0, environ={}, root=ROOT)
     assert len(sent) == 1 and sent[0]["priority"] == "P1" and r["id"] in sent[0]["message"]
-    assert sent[0]["producer"] == f"incident_supervisor:{r['id']}"
-    assert L.load_records(_d(tmp_path))[r["id"]]["escalations"][0]["delivered"] is True
+    assert sent[0]["producer"] == "incident_supervisor:batch"  # one batched message per run (§12 rule 3)
+    rows = L.load_records(_d(tmp_path))[r["id"]]["escalations"]
+    assert [row["delivered"] for row in rows] == [False, True], rows
+    assert rows[0]["episode"] == rows[1]["episode"] == 1
 
 
 def test_daily_brief_reaches_the_telegram_chokepoint(tmp_path, monkeypatch):

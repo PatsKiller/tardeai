@@ -2,7 +2,7 @@
 //   node --experimental-strip-types src/lib/prospectusModel.test.ts
 // Synthetic tickers and made-up numbers only (public repo).
 import {
-  coverageTone, needsRewrite, peerCell, relWindows, rowStatus, verdictTiles,
+  coverageTone, creditState, failureHeadline, needsRewrite, peerCell, relWindows, rowStatus, verdictTiles,
   budgetView, chartRows, detailState, filePath, filterItems, mdBlocks, modelLabel, orderedSections, pageRoute, priceLines,
   scopeCounts, splitCitations, statusOf, targetRange, totals, whenEt, type ProspectusIndexItem,
   cleanProse, coverageGroups, displayName, footnotes, isBlankValue, isFundDoc, monthLabel, monthTicks, relRows,
@@ -136,6 +136,36 @@ eq('my history cites come right after the verdict', footnotes({ symbol: 'Z', ver
 const mdt = mdBlocks('Intro line\n| Metric | Value |\n|---|---:|\n| P/E | 26.8 [F3] |\n| Yield | 0.7% |\nAfter')
 eq('markdown pipe table → a table block, never raw pipes', mdt.map(b => b.kind), ['p', 'table', 'p'])
 eq('pipe table cells', [mdt[1].head, mdt[1].rows], [['Metric', 'Value'], [['P/E', '26.8 [F3]'], ['Yield', '0.7%']]])
+
+
+// FQ-052 (audit 2026-11-04): the credit tile was a bare dash. The live payload carries
+// { credit_remaining_usd: null, status: 'UNAVAILABLE', error: 'CreditDenied' }.
+const creditDenied = budgetView({ credit_remaining_usd: null, today_used_usd: null, daily_cap_usd: null, status: 'UNAVAILABLE', error: 'CreditDenied' })
+eq('credit denied is named, not a dash', [creditDenied.remaining, creditDenied.credit.measured, creditDenied.credit.headline], ['—', false, 'Unavailable'])
+check('credit denied says why', /credit check was refused/i.test(creditDenied.credit.reason))
+const creditOk = budgetView({ credit_remaining_usd: 41.2, today_used_usd: 3, daily_cap_usd: 10 })
+eq('measured credit unchanged', [creditOk.remaining, creditOk.credit.measured], ['$41.20', true])
+eq('missing credit is "not measured"', creditState(null).headline, 'Not measured')
+// A payload can say UNAVAILABLE with no error text; reading only `error` reported "Not measured" when the
+// source refused to answer (self-review 2026-11-04).
+eq('status UNAVAILABLE without an error is unavailable', creditState({ credit_remaining_usd: null, status: 'UNAVAILABLE' }).headline, 'Unavailable')
+eq('status ERROR without an error is unavailable', creditState({ credit_remaining_usd: null, status: 'ERROR' }).headline, 'Unavailable')
+eq('null budget is not measured', creditState(null).headline, 'Not measured')
+
+// FQ-053: failed rows printed "GenerationFailed: OUTPUT_NOT_JSON".
+const failedRun = failureHeadline('GenerationFailed: OUTPUT_NOT_JSON')
+check('failure headline is plain words', !/OUTPUT_NOT_JSON|GenerationFailed/.test(failedRun.text), failedRun.text)
+check('failure headline says the draft could not be generated', /could not be generated/i.test(failedRun.text))
+check('failure headline gives a next step', /re-run the rewrite/i.test(failedRun.text))
+eq('raw code is preserved for the title', failedRun.raw, 'GenerationFailed: OUTPUT_NOT_JSON')
+check('unknown failure still gives a next step', /re-run the rewrite/i.test(failureHeadline('SOMETHING_ELSE').text))
+// The writer's own sentence is better than any generic one, and the page contract requires it (e2e
+// prospectus.spec asserts that text for a failed row). Only machine codes are translated.
+eq('a prose failure reason is kept verbatim',
+   failureHeadline('Writer refused: too few cited facts (2 of 6 required)').text,
+   'Writer refused: too few cited facts (2 of 6 required)')
+check('a prose reason is still available as the raw title',
+      failureHeadline('Writer refused: too few cited facts (2 of 6 required)').raw.includes('too few cited facts'))
 
 console.log(`prospectusModel: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
