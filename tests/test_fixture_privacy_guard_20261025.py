@@ -161,8 +161,20 @@ def test_host_live_holdings_never_appear_in_new_fixtures():
         pytest.skip("live holdings are host-only")
     preexisting = _preexisting()
     rows = json.loads(HOLDINGS.read_text(encoding="utf-8")).get("holdings") or []
+    def _quantity(r: dict):
+        """The quantity, or None when the row does not say. None is NOT zero here: this is a privacy guard, so a row
+        whose size cannot be read must be CHECKED, not skipped. `float(x or 0) > 0` dropped exactly those rows, which
+        is the fail-open direction for the one test whose job is to catch live symbols leaking into public fixtures."""
+        raw = r.get("quantity", r.get("shares"))
+        if raw is None or raw == "":
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
     symbols = {str(r.get("symbol") or "").upper() for r in rows
-               if not r.get("is_cash") and float(r.get("quantity") or r.get("shares") or 0) > 0} - {""}
+               if not r.get("is_cash") and (_quantity(r) is None or _quantity(r) > 0)} - {""}
     accounts = {str(r.get("account_id") or r.get("account") or "") for r in rows} - {""}
     words = [re.compile(r"(?<![A-Za-z0-9_])" + re.escape(s) + r"(?![A-Za-z0-9_])") for s in symbols]
     bad = [rel for rel, text in fixture_files() if rel not in preexisting and (
