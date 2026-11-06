@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reentry_honesty_20261106",
+  "files": [
+    "tests/test_reentry_honesty_20261106.py"
+  ],
+  "anchor": "REENTRY_HONESTY_20261106",
+  "comment": [
+    "ANCHOR: REENTRY_HONESTY_20261106 — re-entry never defaults a verdict: an exit with no completed session after it",
+    "is Pending next close, every verdict carries the rule that decided it, and the new verdict never pages."
+  ]
+}

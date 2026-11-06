@@ -95,7 +95,7 @@ export interface ReviewItem { symbol: string; account_label: string; kinds: stri
 export interface BudgetDetail { account_label: string; budget: string; limit: number | null; actual: number | null; unit: string; actual_usd: number | null; drivers: { name: string; usd: number | null }[] }
 export interface StageCond { key: string; met: boolean; text: string }
 export interface ReentryStages {
-  verdict?: string; exit_price?: number | null; last_close?: number | null; last_date?: string | null; swing_low?: number | null; invalidation_level?: number | null
+  verdict?: string; verdict_basis?: string | null; exit_price?: number | null; last_close?: number | null; last_date?: string | null; swing_low?: number | null; invalidation_level?: number | null
   sma10?: number | null; sma20?: number | null; anchored_vwap?: number | null; pct_vs_exit?: number | null; pct_vs_sma20?: number | null; trend?: 'up' | 'down' | 'flat' | null
   stage1?: { met: number; of: number; conditions: StageCond[] }; stage2?: { met: boolean; conditions: StageCond[] }; error?: string
 }
@@ -404,6 +404,8 @@ export type GroupChip = 'STRESS' | 'WEAK' | 'RESILIENT' | 'HOLDING' | 'NOT MEAS.
 export interface SectorRowModel { key: string; label: string; theme: boolean; chip: GroupChip; tone: Tone; rs1: string; rs5: string; rs1n: number | null; rs5n: number | null; usd: string; pctBook: string; held: boolean; unknown: boolean; reason: string | null }
 export interface ReentryRowModel {
   symbol: string; head: string; now: string; vsExit: string; vsExitNeg: boolean; vsMa: string; trend: string; verdict: string; verdictTone: Tone
+  /** The rule that decided the verdict (backend ``verdict_basis``); empty when the backend sent none. */
+  verdictBasis: string
   stage1: string; waiting: string; invalidates: string; stage2: string; wash: { text: string; tone: 'info' | 'warning' } | null; earnings: string | null; lookThrough: string
 }
 export interface BudgetLine { account: string; text: string; drivers: string }
@@ -482,7 +484,9 @@ export function rotateModel(r: RotateBlock | null | undefined): RotateModel | nu
   }
 }
 
-const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success' }
+const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success', 'Pending next close': 'neutral' }
+/** No verdict from the backend is a fact about the data, never "Still falling" (PKG-SELLOFF-INTEL-20261106 B). */
+export const VERDICT_NOT_EVALUATED = 'Not evaluated'
 const GROUP_WORD: Record<string, string> = { tech: 'technology', comm: 'communications', ai_basket: 'AI basket', semis: 'semis', real_estate: 'real estate' }
 
 function businessDaysBetween(a: string, b: string): number {
@@ -591,7 +595,9 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
   const shown = cards.filter(([, c]) => isRecent(c)).slice(0, maxRows)
   const older = cards.length - shown.length
   const reentry: ReentryRowModel[] = shown.map(([sym, c]) => {
-    const st = c.stages as ReentryStages
+    const st = (c.stages ?? {}) as ReentryStages
+    const verdict = typeof st.verdict === 'string' && st.verdict.trim() ? st.verdict : null
+    const s1Conds = st.stage1?.conditions ?? []
     const det = (mr.reentry_detail ?? {})[sym] ?? {}
     const held = det.held_elsewhere_labels?.length ? ` · still held in ${det.held_elsewhere_labels.join(', ')}` : ''
     const unmet1 = (st.stage1?.conditions ?? []).filter(x => !x.met).map(x => x.key === 'tier_ok' ? 'market tier ORANGE or worse' : x.text)
@@ -652,9 +658,11 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       now: quoteKnown ? fmtPrice(price) : priorRegularQuote ? '—' : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
       vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
-      verdict: st.verdict ?? 'Still falling', verdictTone: VERDICT_TONE[st.verdict ?? 'Still falling'] ?? 'neutral',
-      stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
-      waiting: unmet1.length ? unmet1.join(', ') : 'all met',
+      verdict: verdict ?? VERDICT_NOT_EVALUATED, verdictTone: verdict ? VERDICT_TONE[verdict] ?? 'neutral' : 'neutral',
+      verdictBasis: typeof st?.verdict_basis === 'string' ? st.verdict_basis : '',
+      stage1: s1Conds.length ? `${st.stage1?.met ?? s1Conds.filter(x => x.met).length} of ${st.stage1?.of ?? s1Conds.length}` : 'not evaluated',
+      // "all met" only when there are conditions and every one is met; an empty list is not evaluated, not satisfied.
+      waiting: !s1Conds.length ? 'not evaluated' : unmet1.length ? unmet1.join(', ') : 'all met',
       invalidates: fmtPrice(st.invalidation_level),
       stage2: st.stage2?.met ? 'met' : unmet2.length ? unmet2.join(' or ') : 'not measured',
       wash, earnings, lookThrough: `${priceEvidence} · ${ltLine}${st.last_date ? ` · stage closes through ${shortDay(st.last_date)}` : ''}`,
