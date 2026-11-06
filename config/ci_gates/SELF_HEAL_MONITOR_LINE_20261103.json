@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "SELF_HEAL_MONITOR_LINE_20261103",
+  "files": [
+    "tests/test_self_heal_monitor_line_20261103.py"
+  ],
+  "anchor": "SELF_HEAL_MONITOR_LINE_20261103",
+  "comment": [
+    "ANCHOR: SELF_HEAL_MONITOR_LINE_20261103 — the hourly self-heal block may never publish a healthy verdict it did not measure. An unreadable store, a stale or future-dated receipt, a switched-off watcher, a failed triage, a failed runbook action, a dispatch that exited 0 without proving work, and a store whose root is not named in the line all read NOT LIVE with the reason printed. The suite is hermetic: fixture documents, a fixture state root, no network and no DB."
+  ]
+}
