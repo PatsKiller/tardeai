@@ -8,7 +8,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import JobsHealth from '../components/JobsHealth'
-import DeployInFlightBoard, { type DeployInFlightWire } from '../components/DeployInFlightBoard'
+import DeployInFlightBoard from '../components/DeployInFlightBoard'
 import DeployOperatorCoach from '../components/DeployOperatorCoach'
 import DeployPromoteReadiness from '../components/DeployPromoteReadiness'
 import DeployHelpDrawer from '../components/DeployHelpDrawer'
@@ -17,11 +17,13 @@ import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
   ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, prList, RELEASES_SCHEDULES_PATH,
-  sectionView, stageTone, stopFacts, verifyLabel,
+  sectionView, stageTone, stopFacts, verifyLabel, verifyVerdict,
   type Freshness, type LedgerToday, type NextRelease, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow,
 } from '../lib/releasesSchedules'
 import OpsDeskFrame from '../components/OpsDeskFrame'
+import { IN_FLIGHT_PATH, KNOWN_SCHEMAS, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
+import { agentStateSentence, coordinationSource, engineerPanelProps, flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, panelSentence, plainText, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -203,11 +205,222 @@ function N8nTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
   </div>
 }
 
+
+/** The operator view: what is live, what needs him, what is stuck and who fixes it (operator 2026-11-03). Every number
+ *  carries its own clock or says in words that it has none; no code, SHA, branch or PR number appears here. */
+/** Is the in-flight payload an ANSWERED census? Only a payload that actually carries the \`prs\` array is.
+ *  \`{}\` is an invalid response, not an empty one (codex round five): deriving this with \`!!wire\` made an
+ *  invalid census render as "Nothing needs you" / "Nothing is stuck". The page calls THIS, and the test feeds
+ *  \`{}\` through it rather than handing a pre-computed false to the child. */
+
+/** F1 (cx-openai-2): is this response a CENSUS the page may draw conclusions from?
+ *
+ *  It used to ask only "is there a prs array". A response can carry every field and still be a census the page must
+ *  not reason over: an unsupported schema, a wire that says STALE or UNAVAILABLE, a status that is not OK, rows the
+ *  normalizer DROPPED, or clocks in the past. Any of those makes completeness UNKNOWN — never empty.
+ *
+ *  ONE derivation, used by the operator view and the engineer board, so the two cannot disagree about one response.
+ */
+export function inFlightCensus(wire: unknown, transport: { stale?: boolean } = {}): {
+  answered: boolean; reason: string | null
+} {
+  const w = wire as { schema?: string; freshness?: string; status?: string; prs?: unknown;
+    generated_at?: string; coordination?: { status?: string } } | null | undefined
+  if (!w) return { answered: false, reason: 'no response' }
+  if (!(KNOWN_SCHEMAS as readonly unknown[]).includes(w.schema)) return { answered: false, reason: `unsupported schema ${w.schema ?? 'none'}` }
+  const fresh = String(w.freshness ?? '').toUpperCase()
+  if (fresh && fresh !== 'OK') return { answered: false, reason: `the source says ${fresh.toLowerCase()}` }
+  const status = String(w.status ?? '').toUpperCase()
+  if (status && status !== 'OK' && status !== 'PARTIAL') return { answered: false, reason: `the source status is ${status.toLowerCase()}` }
+  if (transport.stale) return { answered: false, reason: 'the response is out of date' }
+  if (!Array.isArray(w.prs)) return { answered: false, reason: 'the response carries no usable list' }
+  const norm = normalizeRows(w.prs as unknown[])
+  if (norm.dropped) return { answered: false, reason: `${norm.dropped} row(s) could not be read` }
+  return { answered: true, reason: null }
+}
+
+/** Backwards-compatible thin wrapper: the boolean half of the same derivation. */
+export function flightAnswered(wire: unknown): boolean {
+  return inFlightCensus(wire).answered
+}
+
+export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAsOf, flightError, loading, now,
+  flightLoading, flightStale, flightAnswered, coordStatus }: {
+  s: Record<SectionKey, SectionView<any>>; rows: InFlightPr[]
+  agents: Array<{ agent?: string | null; session?: string; task?: string | null; state?: string
+    execution_state?: string | null; as_of?: string | null; claim_as_of?: string | null }>
+  generatedAt: string | null; flightAsOf: string | null; coordAsOf: string | null
+  flightError: string | null; loading: boolean; now: number
+  // codex R4 (PR 2541): an empty list means nothing ONLY when the source actually answered. These three carry the
+  // source's own state into the render, so an unanswered or stale request can never print "nothing" / "no agent".
+  flightLoading: boolean; flightStale: boolean; flightAnswered: boolean
+  coordStatus: 'OK' | 'PARTIAL' | 'UNAVAILABLE' }) {
+  // An unparseable stamp is unknown, never an em-dash standing in for a time (codex R6).
+  const when = (v: string | null | undefined) => { if (!v) return 'unknown'; const t = etDateTime(v); return t === '—' ? 'unknown' : t }
+  // Every block that shows a number says when it was counted (lead, 2026-11-03).
+  const flightClock = flightAsOf ? `checked ${when(flightAsOf)}` : 'as of unknown — the open-change source did not record when it checked'
+  const coordClock = coordAsOf ? `last agent report ${when(coordAsOf)}` : 'as of unknown — the agent list did not record when it last checked'
+  const status = liveNow(s as any, generatedAt, when)
+  const ask = needsYou(rows)
+  const groups = goingLive(rows)
+  const blocked = stuck(rows)
+  const td = s.n8n_today
+  const jobs = jobsLine(td as any, when)
+  const hist = s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null
+  const notChecked = flightError ? `The open-change list could not be read (${plainText(flightError, 'no reason given')}); anything below is from the sources that answered, and this is not an all-clear.` : null
+  // One sentence per SOURCE STATE, reused by every list. Nothing here claims a measured zero unless the source
+  // answered and the answer was empty (codex R4).
+  // THE GENERAL PROPERTY (codex third read): every panel derives its own source state, and may assert "none" only
+  // when that source is current. No panel inherits another's confidence, and no list decides emptiness ad hoc.
+  const flightSrc = flightSource({ answered: flightAnswered, loading: flightLoading, stale: flightStale,
+    error: flightError }, when, flightAsOf)
+  const coordSrc = coordinationSource({ status: coordStatus, answered: coordStatus != null,
+    stale: flightStale }, when, coordAsOf)
+  const flightNote = flightSrc.state === 'current' ? null : flightSrc.note   // above rows that ARE shown
+  const agentsNote = agents.length && coordSrc.state !== 'current' ? coordSrc.note : null
+  // codex R5: merged-but-not-live comes from the RELEASE payload, never from the open-PR list.
+  const nextFresh = s.next_release?.state === 'OK'
+  const waiting = mergedWaiting(nextFresh ? (s.next_release.value as any) : null, s.serving.value as any, when)
+  return <div data-testid="rs-operator-view" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
+    <section data-testid="rs-what-is-live" style={{ ...panel, gap: 6 }}>
+      <ChipRow><Chip tone={status.tone} variant="solid">{status.tone === 'success' ? 'All good' : status.tone === 'danger' ? 'Needs attention' : 'Watch'}</Chip></ChipRow>
+      <h2 style={{ ...h2, fontSize: TYPE.lg }}>{loading ? 'Checking what is live…' : status.headline}</h2>
+      <p style={{ ...muted, color: TOKENS.text[1] }}>{loading ? 'This is not an all-clear yet — the sources have not answered.' : status.detail}</p>
+      <p style={muted}>{loading ? 'no clock yet' : status.clock}</p>
+      {ask.length ? <a href="#rs-needs-you" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary, fontWeight: 700 }}>{ask.some(p => needsYouAction(p).kind === 'inspect') ? 'Check the recorded items below ↓'
+        : `${ask.length} thing${ask.length === 1 ? '' : 's'} need you ↓`}</a> : null}
+    </section>
+
+    <section id="rs-needs-you" data-testid="rs-needs-you" style={panel}>
+      <h2 style={h2}>Needs you</h2>
+      <p style={muted}>{flightClock}</p>
+      {notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{notChecked}</p> : null}
+      {flightNote && !notChecked ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
+      {ask.length === 0 ? <p style={muted}>{panelSentence('needs_you', flightSrc)}</p> : ask.map(p => (
+        <div key={p.number} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
+          <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{plainText(p.title)}</div>
+          <div style={muted}>{plainText(p.work?.owner ?? p.work?.board_owner, 'The agent that wrote it')}: {plainText(p.work?.current_task, 'the work is described only under Details for engineers')}.</div>
+          <div style={{ ...muted, color: TOKENS.text[1] }}>{needsYouFacts(p, needsYouAction(p)).headline}</div>
+          {needsYouFacts(p, needsYouAction(p)).warning
+            ? <div style={{ ...muted, color: toneVars('warning').color }}>{needsYouFacts(p, needsYouAction(p)).warning}</div> : null}
+          <div style={muted}>{needsYouAction(p).effect}</div>
+          {needsYouAction(p).kind !== 'inspect' || p.url ? <Link
+            to={needsYouAction(p).kind === 'push' ? '/system/releases?engineer=1' : p.url}
+            style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>{needsYouAction(p).label}</Link>
+            : <p style={muted}>No change link was supplied.</p>}
+        </div>))}
+    </section>
+
+    <section data-testid="rs-going-live" style={panel}>
+      <h2 style={h2}>Going live today</h2>
+      <p style={muted}>{flightClock}</p>
+      {flightNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
+      {/* codex R5: this section is fed by RELEASE data as well as open changes, so a merge that is not live yet is
+          representable even when the open-change list is empty or unreadable. */}
+      {waiting.waiting || waiting.tone !== 'success'
+        ? <div data-testid="rs-merged-not-live" style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
+            <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{waiting.headline}</div>
+            <div style={{ ...muted, color: waiting.tone === 'warning' ? toneVars('warning').color : TOKENS.text[1] }}>{waiting.detail}</div>
+          </div> : null}
+      {!rows.length ? <p style={muted}>{goingLiveSentence(flightSrc, waiting)}</p> : groups.map(g => (
+        <div key={g.stage}>
+          <h3 style={{ ...h2, fontSize: TYPE.base, marginTop: 8 }}>{g.label} · {g.rows.length}</h3>
+          {g.rows.map(p => <div key={p.number} style={{ ...muted, padding: '4px 0' }}>
+            {plainText(p.title)} — {plainText(p.work?.owner ?? p.work?.board_owner, 'nobody assigned yet')}
+            {p.work?.as_of ? `, last touched ${when(p.work.as_of)}` : ', no time recorded for this step'}
+          </div>)}
+        </div>))}
+    </section>
+
+    <section data-testid="rs-stuck" style={panel}>
+      <h2 style={h2}>Stuck — and who fixes it</h2>
+      <p style={muted}>{flightClock}</p>
+      {flightNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
+      {!blocked.length ? <p style={muted}>{panelSentence('stuck', flightSrc)}</p>
+        : blocked.map(({ pr, because, whose }) => <div key={pr.number} style={{ ...muted, padding: '4px 0' }}>
+          <b style={{ color: TOKENS.text[0] }}>{plainText(pr.title)}</b> — {because}. {whose} has the next step.
+        </div>)}
+    </section>
+
+    <section data-testid="rs-agents-now" style={panel}>
+      <h2 style={h2}>Agents now</h2>
+      <p style={muted}>{coordClock}</p>
+      {agentsNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{agentsNote}</p> : null}
+      {!agents.length ? <p style={muted}>{panelSentence('agents', coordSrc)}</p>
+        : agents.map((a, i) => {
+          // cc3 review F2: BOARD agents carry no `agent` name and no `as_of`; the served facts are session,
+          // execution_state and claim_as_of. Say the activity in words and the time we can actually prove.
+          const name = plainText(a.agent ?? a.session, 'An agent session')
+          // codex R4: an unrecorded or unrecognised state is NOT idle. Only a state the page can actually read is
+          // coloured; "we do not know" renders as unknown, in the neutral tone.
+          const activity = agentStateSentence(a.execution_state ?? a.state)
+          const clock = a.claim_as_of ?? a.as_of
+          return <div key={i} style={{ ...muted, padding: '2px 0', color: activity.idle === true ? toneVars('warning').color
+            : activity.idle === null ? toneVars('neutral').color : TOKENS.text[1] }}>
+            {name}: {plainText(a.task, 'no task named')} — {activity.text}
+            {clock ? `, last reported ${when(clock)}` : ', no time recorded for this agent'}
+          </div>
+        })}
+    </section>
+
+    <section data-testid="rs-old-work" style={panel}>
+      <h2 style={h2}>Old work</h2>
+      <p style={muted}>The daily pull-request audit is not counted on this page, so no number is shown here rather than a guess.</p>
+      <Link to="/coordination?rag=red" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>See the blocked and red work →</Link>
+    </section>
+
+    <section data-testid="rs-recent-releases" style={panel}>
+      <h2 style={h2}>Recent releases</h2>
+      <p style={muted}>{s.history.asOf ? `history as of ${when(s.history.asOf)}` : 'as of unknown — the release history did not record when it was read'}</p>
+      {!hist?.releases?.length ? <p style={muted}>Release history cannot be read right now.</p> : hist.releases.slice(0, 5).map(r => {
+        // codex R1 (PR 2541): read the STRUCTURED verdict. The previous code tested the label with /VERIFIED$/, and
+        // "NOT VERIFIED" ends with "VERIFIED" — so a failed check rendered as "Checked working: yes."
+        const verdict = {
+          verified: 'Checked working: yes.',
+          not_verified: 'Checked working: no — the release did not pass its own check.',
+          rollback: 'This release was rolled back.',
+          not_recorded: 'Checked working: not recorded — the receipt was replaced by a later release.',
+        }[verifyVerdict(r)]
+        return <div key={r.receipt} style={{ ...muted, padding: '4px 0' }}>
+          <b style={{ color: TOKENS.text[0] }}>{etDateTime(r.at)}</b> — {verdict}
+          {' '}The recorded changes are not named in words on this page.
+        </div>
+      })}
+    </section>
+
+    <section data-testid="rs-jobs-health" style={panel}>
+      <h2 style={h2}>Scheduled jobs health</h2>
+      <p style={{ ...muted, color: jobs.tone === 'warning' ? toneVars('warning').color : TOKENS.text[1] }}>{jobs.text}</p>
+      <p style={muted}>{jobs.clock}</p>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <Link to="/system/ops-controls?tab=jobs" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>Open the job controls →</Link>
+        <Link to="/ops/jobs" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary }}>See every job →</Link>
+      </div>
+    </section>
+  </div>
+}
+
 export default function ReleasesSchedules() {
   const now = useNow(15_000)
   const [params, setParams] = useSearchParams()
   const tab: TabKey = params.get('tab') === 'jobs' ? 'jobs' : params.get('tab') === 'n8n' ? 'n8n' : 'deploys'
   const api = useApi<ReleasesSchedulesWire>(RELEASES_SCHEDULES_PATH, 60_000, { enabled: tab !== 'jobs' })
+  // Operator view first (operator 2026-11-03). The developer content stays, behind a toggle, closed by default.
+  // codex R3 (PR 2541): the section carried `hidden` AND an inline `display:grid`, and an inline display beats the
+  // hidden attribute — so the engineer panel was laid out while its toggle said CLOSED. The toggle also forced the
+  // panel open on non-deploy tabs with no way to close it. An explicit choice now wins over the tab default.
+  const [engChoice, setEngChoice] = useState<boolean | null>(null)
+  const eng = engChoice ?? (params.get('engineer') === '1' || tab !== 'deploys')
+  const setEng = (open: boolean) => {
+    setEngChoice(open)
+    const n = new URLSearchParams(params); if (open) n.set('engineer', '1'); else n.delete('engineer')
+    setParams(n, { replace: true })
+  }
+  const flight = useApi<DeployInFlightWire>(IN_FLIGHT_PATH, 60_000)
+  const flightWire = ((flight.data as { data?: DeployInFlightWire } | DeployInFlightWire | null) as any)?.data ?? flight.data
+  const flightRows: InFlightPr[] = flightWire && Array.isArray(flightWire.prs) ? normalizeRows(flightWire.prs).rows : []
+  const flightAgents = normalizeCoordination(flightWire?.coordination).agents
+  const flightError = flight.error ? String(flight.error) : (flightWire?.reason ?? null)
   const opts = { nowMs: now, error: !!api.error, stale: api.stale }
   const keys: SectionKey[] = ['serving', 'next_release', 'history', 'release_errors', 'n8n_today', 'timeline']
   const s = Object.fromEntries(keys.map(k => [k, sectionView(api.data, k, opts)])) as Record<SectionKey, SectionView<any>>
@@ -221,8 +434,34 @@ export default function ReleasesSchedules() {
   const select = (t: TabKey) => { const n = new URLSearchParams(params); if (t === 'deploys') n.delete('tab'); else n.set('tab', t); setParams(n, { replace: true }) }
   return <OpsDeskFrame page="releases">
 <div className="ops-evidence-page" data-testid="releases-schedules" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
+    <OperatorView s={s} rows={flightRows} agents={flightAgents} generatedAt={api.data?.generated_at ?? null}
+      flightAsOf={flightWire?.generated_at ?? null} coordAsOf={normalizeCoordination(flightWire?.coordination).as_of}
+      flightError={flightError} loading={api.loading && !api.data} now={now}
+      flightLoading={!!flight.loading && !flightWire} flightStale={!!flight.stale}
+      flightAnswered={inFlightCensus(flightWire, { stale: !!flight.stale }).answered}
+      coordStatus={normalizeCoordination(flightWire?.coordination).status} />
+
+    <button type="button" id="rs-engineer-toggle" data-testid="rs-engineer-toggle" aria-expanded={eng} aria-controls="rs-engineer-details"
+      onClick={() => setEng(!eng)}
+      style={{ minHeight: 44, width: '100%', textAlign: 'left', cursor: 'pointer', background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`,
+        borderRadius: RADIUS.md, padding: '10px 14px', color: TOKENS.text[0], fontSize: TYPE.sm, fontWeight: 700 }}>
+      {eng ? 'Hide details for engineers' : 'Details for engineers'}
+      <span style={{ display: 'block', fontWeight: 400, color: TOKENS.text[2], marginTop: 2 }}>
+        Everything the page showed before is here: raw tables, commit identifiers, check names and run ids.
+      </span>
+    </button>
+
+    <div data-testid="rs-engineer-tabs">
+    <nav role="tablist" aria-label="Releases and schedules sections" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: `1px solid ${TOKENS.border}`, paddingBottom: 10 }}>
+      {TABS.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`rs-tab-${k}`} onClick={() => select(k)}
+        style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
+          background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
+    </nav>
+    </div>
+
+    <section id="rs-engineer-details" aria-labelledby="rs-engineer-toggle" {...engineerPanelProps(eng)}
+      style={{ ...engineerPanelProps(eng).style, gap: 12, minWidth: 0 }}>
     <div style={{ ...panel, gap: 4 }}>
-      <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Releases &amp; schedules</h1>
       <p style={muted}>Two jobs on Deploys: Approve a merge (not live yet), then put main on the site. Serving pin · deploy STOP · Mergify · n8n schedules. Help is on the Deploys tab.</p>
       <ChipRow>
         {api.error && !api.data ? <Chip tone="warning">UNAVAILABLE · {api.error}</Chip> : api.loading && !api.data ? <Chip tone="neutral">Loading</Chip>
@@ -247,14 +486,9 @@ export default function ReleasesSchedules() {
       })}
     </div>
 
-    <nav role="tablist" aria-label="Releases and schedules sections" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', borderBottom: `1px solid ${TOKENS.border}`, paddingBottom: 10 }}>
-      {TABS.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={tab === k} data-testid={`rs-tab-${k}`} onClick={() => select(k)}
-        style={{ borderRadius: RADIUS.md, padding: '8px 14px', fontSize: TYPE.sm, fontWeight: 700, cursor: 'pointer', minHeight: 44,
-          background: tab === k ? TOKENS.bg[2] : 'transparent', border: `1px solid ${tab === k ? TOKENS.primary : TOKENS.border}`, color: tab === k ? TOKENS.text[0] : TOKENS.text[2] }}>{label}</button>)}
-    </nav>
-    {tab === 'deploys'
-      ? <DeploysTab s={s} stopEffective={stop.effective} stopState={stop.state} />
-      : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+
+    {tab === 'deploys' ? <DeploysTab s={s} stopEffective={stop.effective} stopState={stop.state} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+    </section>
   </div>
   </OpsDeskFrame>
 }

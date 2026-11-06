@@ -3,7 +3,7 @@ const assert = {
   ok(value: unknown, message = 'expected truthy value') { if (!value) throw new Error(message) },
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
-import { ageText, ciLabel, ciTone, coachFacts, kpiDisplay, lastRunText, prList, promoteFacts, sectionView, SECTION_KEYS, stopFacts, verifyLabel, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
+import { ageText, ciLabel, ciTone, coachFacts, kpiDisplay, lastRunText, prList, promoteFacts, sectionView, SECTION_KEYS, stopFacts, verifyLabel, verifyVerdict, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
 
 const NOW = Date.parse('2026-10-22T19:00:00Z')
 const wire: ReleasesSchedulesWire = {
@@ -49,6 +49,15 @@ assert.equal(prList([1, 2, 3], null, 2), '#1, #2 +1 more')
 assert.equal(verifyLabel({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: true, readback_errors: [] }, verify_reason: null, serving: true }).text, 'LIVE · VERIFIED')
 assert.equal(verifyLabel({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: false }, verify_reason: null }).tone, 'danger')
 assert.equal(verifyLabel({ receipt: 'r', mode: 'rollback', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: null, prs_reason: null, verify: null, verify_reason: null }).text, 'ROLLBACK')
+
+// codex R1 (#2541): the verdict is STRUCTURED. "NOT VERIFIED" ends with "VERIFIED", so any suffix test on the label
+// reads a failed verification as a pass — which is exactly what the operator view did.
+assert.equal(verifyVerdict({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: false }, verify_reason: null }), 'not_verified')
+assert.equal(verifyVerdict({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: true, readback_errors: ['x'] }, verify_reason: null }), 'not_verified')
+assert.equal(verifyVerdict({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: true, rolled_back: true }, verify_reason: null }), 'not_verified')
+assert.equal(verifyVerdict({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: [], prs_reason: null, verify: { ok: true, readback_errors: [] }, verify_reason: null, serving: true }), 'verified')
+assert.equal(verifyVerdict({ receipt: 'r', mode: 'apply', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: null, prs_reason: null, verify: null, verify_reason: null }), 'not_recorded')
+assert.equal(verifyVerdict({ receipt: 'r', mode: 'rollback', at: null, sha: 's', sha_basis: 'BUILD_SHA', prs: null, prs_reason: null, verify: null, verify_reason: null }), 'rollback')
 const row = (o: Partial<TimelineRow>): TimelineRow => ({ at: '2026-10-22T20:33:00Z', lane: 'l', lane_id: 'l', runner: 'cron', schedule: '', stage: 'LIVE', n8n_stage: null, fires_in_horizon: 1, cadence_label: null, paused_since: null, paused_note: null, last_run: null, ...o })
 assert.match(lastRunText(row({ stage: 'PAUSED', paused_since: '2026-10-14', paused_note: 'schwab' })), /paused since 2026-10-14 · schwab/)
 assert.match(lastRunText(row({ runner: 'n8n' })), /no ledger run today/)

@@ -5,8 +5,8 @@
 // "auto-rebase"), a review/CI receipt for an older head shown as current, local-only work shown as published,
 // and an old backend (no `work` / no `coordination`) pretending to have facts.
 import {
-  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, executionState, nextActionFor,
-  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeRows, normalizeWork, publicationLabel,
+  IN_FLIGHT_SCHEMA, IN_FLIGHT_SCHEMA_V2, KNOWN_SCHEMAS, agentStateTone, ciLabel2, draftLabel, evidenceSentence, evidenceState, executionState, nextActionFor,
+  normalizeCoordination, normalizeFactor, normalizeMergeable, normalizeReview, normalizeRow, normalizeRows, normalizeWork, publicationLabel, prPipelineStage,
   reviewLabel, rowFacts, shortSha, type CiState, type ReviewState,
 } from './deployInFlight.ts'
 
@@ -300,6 +300,28 @@ const evilWire = normalizeRows([{ number: 4001, head_sha: HEAD, title: 't', work
 eq('the board payload still projects its row', evilWire.rows.length, 1)
 eq('with the review UNKNOWN', evilWire.rows[0].work.review.state, 'UNKNOWN')
 
+// ---- row 05: "UNKNOWN" on every PR was four different situations wearing one word. Each now has a sentence, and a
+// state we do not recognise stays unrecognised instead of becoming a pass.
+eq('evidence OBSERVED', evidenceSentence('OBSERVED'), 'checked')
+eq('evidence STALE_OTHER_HEAD', evidenceSentence('STALE_OTHER_HEAD'), 'checked, but for an older version of the change')
+eq('evidence NOT_RECORDED', evidenceSentence('NOT_RECORDED'), 'no check is recorded')
+eq('evidence SOURCE_UNAVAILABLE', evidenceSentence('SOURCE_UNAVAILABLE'), 'the record of the check could not be read')
+eq('evidence state is case-insensitive', evidenceState('observed'), 'OBSERVED')
+eq('an unrecognised evidence state stays null', evidenceState('WAT'), null)
+eq('no state gives no sentence', evidenceSentence(undefined), null)
+
+// cc3's served contract adds two states to the vocabulary; both must read as words, never as a pass.
+eq('evidence PARTIAL', evidenceSentence('PARTIAL'), 'partly checked — one of the sources did not answer')
+eq('evidence TARGET_HEAD_MISSING', evidenceSentence('TARGET_HEAD_MISSING'), 'the check refers to a version that is no longer the one proposed')
+
+// cc3 review F1: normalizeRow builds an explicit object, so a served field it does not name is lost. Eligibility must
+// survive the projection, or the page falls back to a heuristic the live payload never satisfies.
+const withActions = normalizeRow({ number: 7, title: 't', url: 'u', head_sha: HEAD, branch: 'b', mergeable: 'MERGEABLE',
+  operator_actions: { required: true, eligible: ['approve', 'push'], reason: 'yours', withheld: [{ action: 'hold', why: 'no label' }] } })
+eq('operator_actions survives normalization', withActions.operator_actions?.eligible.join(','), 'approve,push')
+eq('withheld survives normalization', withActions.operator_actions?.withheld?.[0]?.why, 'no label')
+eq('a row with no actions normalizes to null', normalizeRow({ number: 8, head_sha: HEAD }).operator_actions, null)
+eq('an unknown action word is dropped', normalizeRow({ number: 9, head_sha: HEAD, operator_actions: { required: false, eligible: ['nuke'], reason: null } }).operator_actions?.eligible.length, 0)
 // ---- cx-openai-4's three P1s on #2517 (2026-11-03): each was a PASS displayed where the truth is unknown or blocked.
 // R3: clocks compared as text let an older MERGE beat a newer BLOCK.
 const r3 = normalizeReview({ head_sha: HEAD, source: 'ledger', verdicts: [
@@ -350,6 +372,34 @@ eq('P1 a plain MERGE envelope with MERGE records is still a pass',
   rowWith({ state: 'MERGE', head_sha: HEAD,
     records: [{ verdict: 'MERGE', reviewer: 'cc2', head_sha: HEAD, as_of: '2026-11-03T12:00:00Z' }] }).work.review.state,
   'MERGE')
+
+// FIRST cloud #2592: an operator approval cannot promote an unready exact head.
+// Feed raw rows through normalizeRows so old/missing review and CI receipts stay unknown.
+for (const approved of [false, true]) {
+  const base = row()
+  const cases: Array<[string, Record<string, unknown>, string]> = [
+    ['draft', { is_draft: true }, 'building'],
+    ['local only', { work: { ...base.work, publication_state: 'local_only' } }, 'building'],
+    ['conflict', { mergeable: 'CONFLICTING' }, 'pr_open'],
+    ['unknown mergeability', { mergeable: 'UNKNOWN' }, 'pr_open'],
+    ['missing review', { work: { ...base.work, review: undefined } }, 'pr_open'],
+    ['blocking review', { work: { ...base.work, review: { state: 'CHANGES', head_sha: HEAD } } }, 'pr_open'],
+    ['old review', { work: { ...base.work, review: { state: 'MERGE', head_sha: OLD } } }, 'pr_open'],
+    ['missing CI', { work: { ...base.work, ci: undefined } }, 'pr_open'],
+    ['red CI', { work: { ...base.work, ci: { state: 'RED', head_sha: HEAD } } }, 'pr_open'],
+    ['pending CI', { work: { ...base.work, ci: { state: 'PENDING', head_sha: HEAD } } }, 'pr_open'],
+    ['old CI', { work: { ...base.work, ci: { state: 'GREEN', head_sha: OLD } } }, 'pr_open'],
+  ]
+  for (const [name, overrides, expected] of cases) {
+    const normalized = normalizeRows([{ ...base, has_operator_merge: approved, ...overrides }]).rows[0]
+    eq(`approval=${approved}/${name}: unproven readiness stays building/review`, prPipelineStage(normalized), expected)
+  }
+  eq(`approval=${approved}/ready: exact-head green review remains positive`,
+    prPipelineStage(normalizeRows([{ ...base, has_operator_merge: approved }]).rows[0]), approved ? 'in_batch' : 'approved')
+  for (const publication of ['merged', 'live']) eq(`approval=${approved}/${publication}: publication evidence survives`,
+    prPipelineStage(normalizeRows([{ ...base, has_operator_merge: approved,
+      work: { ...base.work, publication_state: publication } }]).rows[0]), publication === 'merged' ? 'merged' : 'released')
+}
 
 console.log(`deployInFlight: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

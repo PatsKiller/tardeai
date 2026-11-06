@@ -2,7 +2,7 @@
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/workPipeline.test.ts
 import {
   EMPTY_FILTER, PIPELINE_STAGES, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions, filterToParams,
-  liveToday, planLabel, queuedSections, ragTone, summarize, type PipelineItem,
+  liveToday, planLabel, queuedSections, ragTone, summarize, operatorStage, OPERATOR_STAGES, OPERATOR_STAGE_LABEL, type PipelineItem,
 } from './workPipeline.ts'
 import { COMMANDS_PATH, commandBody, parseSplitParts } from './workPipelineActions.ts'
 declare const process: { exit(code?: number): never }
@@ -110,4 +110,14 @@ t('commands: one endpoint, the actor is never in the body; split grammar', () =>
   ])
 })
 
+// ---- the operator's five groups (SPEC_RELEASES_PAGE_OPERATOR_VIEW_20261103): eleven codes -> plain words, and an
+// unknown code is never guessed into "Live".
+eq(operatorStage({ stage: 'building' }), 'building'); eq(operatorStage({ stage: 'pr_open' }), 'review')
+eq(operatorStage({ stage: 'ci' }), 'review'); eq(operatorStage({ stage: 'in_batch' }), 'merging')
+// codex R5 (#2541): `merged` is NOT `live` — only the serving release identity proves a version is running.
+eq(operatorStage({ stage: 'merged' }), 'awaiting'); eq(operatorStage({ stage: 'verified' }), 'live')
+eq(operatorStage({ stage: 'queued' }), 'backlog'); eq(operatorStage({ stage: 'approved' }), 'ready')
+eq(operatorStage({ stage: 'something_new' }), null); eq(operatorStage({}), null)
+eq(OPERATOR_STAGES.includes(operatorStage({ stage: 'released' }) as any), true)
+eq(Object.values(OPERATOR_STAGE_LABEL).some(v => /[A-Z]{2,}|_/.test(v)), false)
 console.log(`workPipeline: ${n} passed`)

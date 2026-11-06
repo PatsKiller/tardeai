@@ -122,7 +122,9 @@ function AgentCard({ a }: { a: CoordinationAgent }) {
     </div>
     {a.blocker ? <div style={{ fontSize: TYPE.sm, color: toneVars('danger').color }}>blocked: {a.blocker}</div> : null}
     {a.next_action ? <div style={tiny}>next: {a.next_action}</div> : null}
-    <div style={tiny}>{a.as_of ? asOfText(a.as_of) : 'as_of not stated'} · {a.source ?? 'source not stated'}</div>
+    <div style={tiny}>{a.as_of ? asOfText(a.as_of)
+      : a.claim_as_of ? `claim heartbeat ${asOfText(a.claim_as_of)}`
+      : 'as of not stated — no claim heartbeat in the sources read'} · {a.source ?? 'source not stated'}</div>
   </div>
 }
 
@@ -301,12 +303,22 @@ export default function DeployInFlightBoard() {
   const push = (p: InFlightPr) => post({ action: 'push', branch: p.branch, head_sha: p.head_sha, override: overrideBudget }, `push:${p.number}`)
   const refreshHints = () => post({ action: 'refresh_hints' }, 'refresh_hints')
 
+  // Row 05 (operator 2026-11-03): a button that is merely disabled still reads as 'this is on you'. A conflicted
+  // 8-day-old PR showed an ENABLED Push (it was neither draft nor branch-less). Actions are now rendered only
+  // where the operator could actually act, and a row with none says whose step it is instead of showing buttons.
+  // `operator_actions.eligible` is the server's decision (cc3 contract, 2026-11-03); the local rules below are
+  // only the fallback for an older payload that does not carry it.
+  const eligible = (p: InFlightPr, a: 'approve' | 'hold' | 'push') => p.operator_actions
+    ? (p.operator_actions.eligible ?? []).includes(a) : null
   // Operator clarity: Approve only when the digest says READY (can_approve, which now includes the changed-path
   // hold gate). An ABSENT field is not permission: a backend that does not state the file-based verdict must not
-  // get the button, or the board is back to offering Approve on facts nobody checked (PR 2307 F1).
-  const canApprove = (p: InFlightPr) => p.can_approve === true && !p.has_operator_merge
-  const canHold = (p: InFlightPr) => p.has_operator_merge
-  const canPush = (p: InFlightPr) => !p.is_draft && p.branch !== ''
+  // get the button, or the board is back to offering Approve on facts nobody checked (PR 2307 F1). The server's
+  // eligibility list can only take Approve away, never grant it past the READY verdict.
+  const canApprove = (p: InFlightPr) => p.can_approve === true && !p.has_operator_merge && (eligible(p, 'approve') ?? true)
+  const canHold = (p: InFlightPr) => eligible(p, 'hold') ?? p.has_operator_merge
+  const canPush = (p: InFlightPr) => eligible(p, 'push') ?? (!p.is_draft && p.branch !== '' && p.mergeable !== 'CONFLICTING' && p.next !== 'coordinator')
+  // Update branch is an Advanced action: with Advanced off it is not an action the row offers.
+  const hasAction = (p: InFlightPr) => canApprove(p) || canHold(p) || (advanced && canPush(p))
 
   const approveTitle = (p: InFlightPr) => {
     if (p.has_operator_merge) return 'Already Approved — Hold to take it back. (operator-merge set)'
@@ -403,25 +415,24 @@ export default function DeployInFlightBoard() {
                       : null}
                   </td>
                   <td data-label="Your move" style={td}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button type="button" data-testid={`approve-${p.number}`} onClick={() => approve(p)}
-                        disabled={busy !== null || !canApprove(p)} style={btn('success', busy !== null || !canApprove(p))}
+                    {!hasAction(p) ? <span style={tiny}>not yours to act on — {f.next ?? 'the next step belongs to the agent or coordinator'}</span>
+                      : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {canApprove(p) && <button type="button" data-testid={`approve-${p.number}`} onClick={() => approve(p)}
+                        disabled={busy !== null} style={btn('success', busy !== null)}
                         title={approveTitle(p)}>
                         Approve
-                      </button>
-                      <button type="button" data-testid={`hold-${p.number}`} onClick={() => hold(p)}
-                        disabled={busy !== null || !canHold(p)} style={btn('warning', busy !== null || !canHold(p))}
+                      </button>}
+                      {canHold(p) && <button type="button" data-testid={`hold-${p.number}`} onClick={() => hold(p)}
+                        disabled={busy !== null} style={btn('warning', busy !== null)}
                         title="Removes Approve (operator-merge) so Mergify will not queue this PR.">
                         Hold
-                      </button>
-                      {advanced ? (
-                        <button type="button" data-testid={`push-${p.number}`} onClick={() => push(p)}
-                          disabled={busy !== null || !canPush(p)} style={btn('info', busy !== null || !canPush(p))}
-                          title="Advanced: issues a git-push guard grant bound to this branch + head SHA and fast-forwards it (force stays refused). Does NOT put the change on your live site.">
-                          Update branch
-                        </button>
-                      ) : null}
-                    </div>
+                      </button>}
+                      {advanced && canPush(p) && <button type="button" data-testid={`push-${p.number}`} onClick={() => push(p)}
+                        disabled={busy !== null} style={btn('info', busy !== null)}
+                        title="Advanced: issues a git-push guard grant bound to this branch + head SHA and fast-forwards it (force stays refused). Does NOT put the change on your live site.">
+                        Update branch
+                      </button>}
+                    </div>}
                   </td>
                 </tr>
               })}
