@@ -75,12 +75,18 @@ import re
 import string
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_REL = "config/pii_baseline.json"
 SCHEMA = "PiiBaseline@v1"
+# FQ-154 (claude-lead 2026-11-05): files this scanner cannot read are NOT clean. Every unreadable file is
+# either registered here with a reason (a person reviewed it) or reported as a finding — silence is never
+# a pass (AGENTS.md rule 8).
+BINARY_REVIEW_REL = "config/pii_binary_review.json"
+SCHEMA_BINARY_REVIEW = "PiiBinaryReview@v2"
 DENY_ENV = "TRADEAI_PII_DENY_FILE"
 GZ_MAX_BYTES = 64 * 1024 * 1024
 # Assembled so this file does not itself carry the markers it counts.
@@ -96,8 +102,16 @@ CATEGORIES = (
     "private_ip",
     "home_path",
     "blocked_path",
+    "binary_unreadable",
+    "binary_review_mismatch",
+    "binary_baseline_drift",
 )
-RATCHETED = tuple(c for c in CATEGORIES if c != "deny_pattern")
+# binary_unreadable is deliberately NOT ratcheted and NOT in the deny-pattern advisory: a baseline count is a
+# permission slip, and the whole defect was permission-by-silence. It fails --tree outright until each file is
+# registered with a reason in config/pii_binary_review.json. binary_review_mismatch and binary_baseline_drift are
+# the same: a number in a baseline must never become permission for a changed blob or a widened enumeration.
+_UNRATCHETED = ("deny_pattern", "binary_unreadable", "binary_review_mismatch", "binary_baseline_drift")
+RATCHETED = tuple(c for c in CATEGORIES if c not in _UNRATCHETED)
 
 # ── email ────────────────────────────────────────────────────────────────────────────────────────────
 EMAIL_RE = re.compile(
@@ -427,18 +441,193 @@ def count_markers(text: str, lines: set[int]) -> int:
     return sum(1 for n, ln in enumerate(text.split("\n"), 1) if n in lines and any(k in ln for k in ALLOW_MARKERS))
 
 
-def _decode(data: bytes, path: str) -> str | None:
+def _decode_with_reason(data: bytes, path: str) -> tuple[str | None, str | None]:
+    """``(text, None)`` when the file can be scanned, else ``(None, why)``.
+
+    FQ-154 (claude-lead 2026-11-05): the old ``_decode`` returned ``None`` for anything with a NUL byte in its
+    first 8 KiB, and every caller treated ``None`` as "nothing found" — so every PNG, JPEG, PDF and archive was
+    reported clean without being read. That is AGENTS.md rule 8 exactly: silence treated as a pass. The reason
+    now travels with the ``None`` so the caller can make an explicit verdict instead of a silent one.
+    """
     if path.endswith(".gz"):
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(data)) as fh:
                 data = fh.read(GZ_MAX_BYTES + 1)
-        except (OSError, EOFError):
-            return None
+        except (OSError, EOFError) as exc:
+            return None, f"compressed file could not be decompressed ({type(exc).__name__})"
         if len(data) > GZ_MAX_BYTES:
             raise ScanError(f"{path}: decompresses past {GZ_MAX_BYTES} bytes; refusing to skip it silently")
     if b"\0" in data[:8192]:
+        return None, "binary content (NUL byte in the first 8 KiB) cannot be scanned for personal data"
+    return data.decode("utf-8", errors="replace"), None
+
+
+def _decode(data: bytes, path: str) -> str | None:
+    return _decode_with_reason(data, path)[0]
+
+
+@dataclass(frozen=True)
+class BinaryReview:
+    """The two registers, kept apart on purpose.
+
+    ``reviewed`` is a person's statement about one file (reason, reviewer, date, content digest). ``grandfathered``
+    is a FROZEN ENUMERATION of the files that were already in the tree on 2026-11-05 when this gate landed: they
+    keep main green without claiming anyone looked at them, and nothing new can join — a pattern wide enough to
+    admit ``hero.png`` admits the next screenshot too, which is the defect this gate exists to stop. Removal is
+    one-way: a file that is reviewed or deleted leaves the enumeration (and its count and digest must move with it).
+
+    Every record also pins the sha256 of the blob that was registered. Registration is evidence about a FILE, not a
+    path allowlist: replacing a reviewed or grandfathered image with different bytes is ``binary_review_mismatch``
+    until a person reviews the new content and records its digest.
+    """
+
+    reviewed: dict[str, dict]
+    grandfathered: dict[str, dict]
+
+    def problem(self, path: str, data: bytes) -> tuple[str, str] | None:
+        """``None`` when ``data`` is the blob a person registered; else ``(category, detail)``."""
+        rec = self.reviewed.get(path) or self.grandfathered.get(path)
+        if rec is None:
+            return "binary_unreadable", f"not registered in {BINARY_REVIEW_REL}"
+        kind = "reviewed" if path in self.reviewed else "grandfathered"
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != rec["sha256"]:
+            return (
+                "binary_review_mismatch",
+                f"content differs from its {kind} {BINARY_REVIEW_REL} record "
+                f"(registered sha256 {rec['sha256'][:12]}, this blob {actual[:12]}); a changed binary needs a fresh review",
+            )
         return None
-    return data.decode("utf-8", errors="replace")
+
+
+EMPTY_REVIEW = BinaryReview(reviewed={}, grandfathered={})
+
+
+def _review_paths(doc: dict, key: str, where: str | Path, *, fields: tuple[str, ...]) -> dict[str, dict]:
+    entries = doc.get(key)
+    if not isinstance(entries, dict):
+        raise ScanError(f"{where}: {key!r} must be an object of path -> record")
+    out: dict[str, dict] = {}
+    for rel, rec in entries.items():
+        if not isinstance(rel, str) or not rel or rel.startswith("/") or ".." in PurePosixPath(rel).parts:
+            raise ScanError(f"{where}: {rel!r} is not a repository-relative path")
+        if not isinstance(rec, dict):
+            raise ScanError(f"{where}: {rel}: record must be an object")
+        missing = [k for k in fields if not str(rec.get(k) or "").strip()]
+        if missing:
+            raise ScanError(f"{where}: {rel}: record is missing {', '.join(missing)}")
+        out[rel] = {k: str(rec[k]) for k in fields}
+        if not re.fullmatch(r"[0-9a-f]{64}", out[rel]["sha256"]):
+            raise ScanError(f"{where}: {rel}: sha256 must be 64 lowercase hex characters (the registered blob digest)")
+    return out
+
+
+def _read_register(path: Path, *, repo: Path | None, from_index: bool) -> tuple[str, str] | None:
+    """``(text, where)`` for the register, ``None`` when it is absent. From the index it is the exact snapshot a
+    ``--staged`` scan judges; absent there means nothing is exempt (fail closed)."""
+    if from_index:
+        if repo is None:
+            raise ScanError(f"cannot read {BINARY_REVIEW_REL} from the index without a repository")
+        r = subprocess.run(["git", "show", f":{BINARY_REVIEW_REL}"], cwd=repo, capture_output=True)
+        if r.returncode != 0:
+            return None
+        return r.stdout.decode("utf-8", errors="replace"), f"{repo}:index:{BINARY_REVIEW_REL}"
+    if not path.is_file():
+        return None
+    try:
+        return path.read_text(encoding="utf-8"), str(path)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ScanError(f"{path}: binary review register is unreadable ({type(exc).__name__})") from exc
+
+
+def load_binary_review(path: Path, *, repo: Path | None = None, from_index: bool = False) -> BinaryReview:
+    """Both registers. A malformed register fails closed; a missing one is EMPTY, so every unreadable file is a
+    finding — fail closed, never open.
+
+    ``--staged`` passes ``from_index=True``: binary contents come from the index, so the exemptions must too
+    (codex-cloud P2 on #2691) — a review record that is not part of the commit cannot authorize that commit.
+
+    The grandfathered enumeration asserts its own size and digest, so a deleted file, a smuggled path or a quietly
+    enlarged list is a scan error rather than a silent pass. Trust in the enumeration's *contents* comes from the
+    gate-landing ref (see ``validate_grandfathered``), never from this editable document.
+    """
+    source = _read_register(path, repo=repo, from_index=from_index)
+    if source is None:
+        return EMPTY_REVIEW
+    text, where = source
+    try:
+        doc = json.loads(text)
+    except ValueError as exc:
+        raise ScanError(f"{where}: not JSON ({exc.msg if hasattr(exc, 'msg') else exc})") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != SCHEMA_BINARY_REVIEW:
+        raise ScanError(f"{where}: schema must be {SCHEMA_BINARY_REVIEW!r}")
+    reviewed = _review_paths(doc, "files", where, fields=("reason", "reviewed_by", "reviewed_at", "sha256"))
+    grand = _review_paths(doc, "grandfathered", where, fields=("reason", "sha256"))
+    both = sorted(set(reviewed) & set(grand))
+    if both:
+        raise ScanError(f"{where}: {both[:3]} cannot be both reviewed and grandfathered; removal is one-way")
+    declared = doc.get("grandfathered_count")
+    if declared != len(grand):
+        raise ScanError(
+            f"{where}: grandfathered_count is {declared!r} but 'grandfathered' lists {len(grand)} path(s); the frozen "
+            "enumeration states its own size"
+        )
+    digest = hashlib.sha256("\n".join(sorted(grand)).encode("utf-8")).hexdigest()
+    if doc.get("grandfathered_sha256") != digest:
+        raise ScanError(
+            f"{where}: grandfathered_sha256 does not match the enumeration (expected {digest}); the frozen list may only "
+            "shrink, one reviewed or deleted file at a time"
+        )
+    return BinaryReview(reviewed=reviewed, grandfathered=grand)
+
+
+def gate_landing_ref(repo: Path) -> str:
+    """The PINNED ref the frozen enumeration is judged against in ``--tree`` mode: the commit that added
+    ``config/pii_binary_review.json``.
+
+    It cannot move with the change under test — a later commit may edit the enumeration, but the fence is the tree
+    in which the gate landed, so a commit that adds a binary, its register record and an updated count/digest in one
+    go is refused. If that commit cannot be found (untracked register, shallow history) this is a scan error, never
+    an empty fence (codex-cloud P1 on #2691).
+    """
+    raw = _git(repo, "log", "--format=%H", "--diff-filter=A", "--no-renames", "--", BINARY_REVIEW_REL)
+    commits = [line.strip() for line in raw.decode("utf-8", errors="replace").splitlines() if line.strip()]
+    if not commits:
+        raise ScanError(
+            f"cannot resolve the gate-landing ref for {BINARY_REVIEW_REL}: no commit adds it, so the frozen "
+            "enumeration cannot be validated"
+        )
+    return commits[-1]  # git log is newest-first: the earliest addition is the landing
+
+
+def validate_grandfathered(repo: Path, trusted_ref: str, paths: Iterable[str]) -> None:
+    """Every grandfathered path must exist in ``trusted_ref``'s tree (codex-cloud P1 on #2691).
+
+    Per mode the trusted ref is: ``--range`` the range base, ``--staged`` HEAD, ``--tree`` the gate-landing commit.
+    A path that was not already in that tree was never in the tree when the gate landed, so the enumeration cannot
+    admit it — a change cannot add a binary, its register entry and an updated count/digest and pass. An
+    unresolvable ref is a scan error (fail closed), never an empty fence.
+    """
+    paths = sorted(set(paths))
+    if not paths:
+        return
+    try:
+        _git(repo, "rev-parse", "--verify", "--quiet", f"{trusted_ref}^{{commit}}")
+    except ScanError:
+        raise ScanError(
+            f"trusted ref {trusted_ref!r} for {BINARY_REVIEW_REL} cannot be resolved; refusing to judge the frozen "
+            "enumeration without it (fetch the ref, then re-run)"
+        ) from None
+    raw = _git(repo, "ls-tree", "-r", "-z", "--name-only", "--full-tree", f"{trusted_ref}^{{commit}}")
+    tree = {p.decode("utf-8", errors="surrogateescape") for p in raw.split(b"\0") if p}
+    missing = [p for p in paths if p not in tree]
+    if missing:
+        raise ScanError(
+            f"{len(missing)} grandfathered path(s) do not exist in {trusted_ref!r} "
+            f"({', '.join(missing[:3])}{' …' if len(missing) > 3 else ''}); the frozen enumeration cannot admit a path "
+            "that was not already in the tree when the gate landed — review the file and add it to 'files' with its "
+            "sha256 instead"
+        )
 
 
 def _git(repo: Path, *args: str) -> bytes:
@@ -448,12 +637,10 @@ def _git(repo: Path, *args: str) -> bytes:
     return r.stdout
 
 
-
 # ── merge-up exemption ──────────────────────────────────────────────────────────────────────────────
 MERGE_TARGET = "origin/main"
 #: findings exempted in this run because the merge target already publishes the identical line at that path.
 MERGE_EXEMPT = [0]
-
 
 
 def _merge_text(data: bytes, path: str) -> str | None:
@@ -539,8 +726,20 @@ def in_merge(repo: Path) -> bool:
 
 
 # ── modes ───────────────────────────────────────────────────────────────────────────────────────────
-def scan_tree(repo: Path, deny: list[re.Pattern[str]], verifier: SnapshotVerifier | None = None) -> list[Finding]:
+def scan_tree(
+    repo: Path,
+    deny: list[re.Pattern[str]],
+    verifier: SnapshotVerifier | None = None,
+    binary_review: BinaryReview | None = None,
+    trusted_ref: str | None = None,
+) -> list[Finding]:
     verifier = verifier or SnapshotVerifier(repo, "HEAD")
+    review = load_binary_review(repo / BINARY_REVIEW_REL) if binary_review is None else binary_review
+    # --tree cannot judge the frozen enumeration against the tree it is scanning (the change is IN that tree): it is
+    # judged against the pinned gate-landing commit instead. An unresolvable ref fails closed.
+    if review.grandfathered:
+        validate_grandfathered(repo, trusted_ref or gate_landing_ref(repo), review.grandfathered)
+    unreadable_seen: set[str] = set()
     out: list[Finding] = []
     for entry in _git(repo, "ls-files", "-s", "-z").split(b"\0"):
         if not entry:
@@ -558,9 +757,28 @@ def scan_tree(repo: Path, deny: list[re.Pattern[str]], verifier: SnapshotVerifie
             continue
         if verifier.skip(path, data):
             continue  # verbatim past version of a live policy file (see SnapshotVerifier)
-        text = _decode(data, path)
-        if text:
+        text, unreadable = _decode_with_reason(data, path)
+        if text is not None:
             out.extend(scan_text(path, text, deny))
+            continue
+        unreadable_seen.add(path)
+        # An unreadable file is a FINDING, never a pass: the register is the only silence that is a verdict, and it
+        # only silences the exact blob (sha256) a person registered.
+        problem = review.problem(path, data)
+        if problem:
+            category, why = problem
+            out.append(Finding(path, 0, category, f"{unreadable}; {why}"))
+    # The frozen enumeration asserts itself against the tree: a path that is gone (or can now be scanned) is a
+    # failure, so the list can only shrink one reviewed-or-deleted file at a time and never admits a new one silently.
+    for rel in sorted(set(review.grandfathered) - unreadable_seen):
+        out.append(
+            Finding(
+                rel,
+                0,
+                "binary_baseline_drift",
+                "grandfathered entry is not an unreadable tracked file; remove it from the enumeration",
+            )
+        )
     return out
 
 
@@ -586,7 +804,11 @@ def _base(rng: str) -> str:
 
 
 def scan_range(
-    repo: Path, rng: str, deny: list[re.Pattern[str]], verifier: SnapshotVerifier | None = None
+    repo: Path,
+    rng: str,
+    deny: list[re.Pattern[str]],
+    verifier: SnapshotVerifier | None = None,
+    trusted_ref: str | None = None,
 ) -> tuple[list[Finding], int]:
     """(findings on added lines, number of added lines carrying an inline allow marker)."""
     verifier = verifier or SnapshotVerifier(repo, _base(rng))
@@ -625,24 +847,50 @@ def scan_range(
 
     target = _target(rng)
     markers = 0
+    # --staged judges the index, so it reads the register from the index too (codex-cloud P2 on #2691); a register
+    # that is not part of the commit cannot exempt the commit. --range reads the checkout's register and judges the
+    # frozen enumeration against the range base; --staged judges it against HEAD.
+    staged = rng == "--cached"
+    review = load_binary_review(repo / BINARY_REVIEW_REL, repo=repo, from_index=staged)
+    if review.grandfathered:
+        validate_grandfathered(repo, trusted_ref or ("HEAD" if staged else _base(rng)), review.grandfathered)
     for path in sorted(statuses):
         lines = added.get(path)
         whole = path.endswith(".gz") and statuses[path] in ("A", "M", "R", "C")
         if not lines and not whole:
+            # No text hunks: a binary carries none, so this blob would never reach the scan below. Read it for a
+            # MODIFICATION as well as an addition — otherwise replacing a text file with binary content, or
+            # modifying an unregistered binary, skips the blob entirely and reports the change clean (FQ-154).
+            # A registered path is read too: registration pins the blob's sha256, so a replacement is a mismatch.
+            # _git() routes the call through this file's already-baselined helper and fails closed (ScanError).
+            data = _git(repo, "show", f"{target}:{path}")
+            text, unreadable = _decode_with_reason(data, path)
+            if text is None:
+                problem = review.problem(path, data)
+                if problem:
+                    category, why = problem
+                    out.append(Finding(path, 0, category, f"{unreadable}; {why}"))
             continue
         r = subprocess.run(["git", "show", f"{target}:{path}"], cwd=repo, capture_output=True)
         if r.returncode != 0:
             raise ScanError(f"git show {target}:{path} failed")
         if verifier.skip(path, r.stdout):
             continue  # verbatim past version of a live policy file on the base ref (see SnapshotVerifier)
-        text = _decode(r.stdout, path)
-        if text:
-            found = scan_text(path, text, deny, None if whole else lines)
-            if merge is not None:
-                found = merge.keep(path, text, found)
-            out.extend(found)
-            if lines:
-                markers += count_markers(text, lines)
+        text, unreadable = _decode_with_reason(r.stdout, path)
+        if text is None:
+            problem = review.problem(path, r.stdout)
+            if problem:
+                category, why = problem
+                out.append(Finding(path, 0, category, f"{unreadable}; {why}"))
+            continue
+        found = scan_text(path, text, deny, None if whole else lines)
+        if merge is not None:
+            # A merge-up cannot introduce exposure origin/main already publishes (FQ-154b): drop only a finding
+            # whose value line AND identifying context are byte-identical there, at the same path and line.
+            found = merge.keep(path, text, found)
+        out.extend(found)
+        if lines:
+            markers += count_markers(text, lines)
     if merge is not None:
         MERGE_EXEMPT[0] += merge.exempt
     return out, markers
@@ -744,6 +992,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--limit", type=int, default=200)
     ap.add_argument("--verbose", action="store_true", help="--tree: list every finding (path:line, category)")
+    ap.add_argument(
+        "--list-binaries",
+        action="store_true",
+        help="--tree: print the paths of files this scanner cannot read (registered and unregistered), for review",
+    )
     args = ap.parse_args(argv)
     repo = Path(args.repo).resolve()
     baseline_path = Path(args.baseline) if args.baseline else repo / BASELINE_REL
@@ -823,7 +1076,28 @@ def main(argv: list[str] | None = None) -> int:
 
     current = counts(findings)
     deny_n = sum(1 for f in findings if f.category == "deny_pattern")
+    binary_categories = ("binary_unreadable", "binary_review_mismatch", "binary_baseline_drift")
+    binaries = [f for f in findings if f.category in binary_categories]
+    try:
+        review = load_binary_review(repo / BINARY_REVIEW_REL)
+    except ScanError as exc:
+        print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
+        return 2
+    unreadable_n = sum(1 for f in findings if f.category == "binary_unreadable")
+    mismatch_n = sum(1 for f in findings if f.category == "binary_review_mismatch")
+    drift_n = sum(1 for f in findings if f.category == "binary_baseline_drift")
+    binary_line = (
+        f"binaries: {unreadable_n} unreadable not registered, {len(review.reviewed)} reviewed, "
+        f"{len(review.grandfathered)} grandfathered, {drift_n} baseline drift, {mismatch_n} content mismatch"
+    )
     if args.write_baseline:
+        if binaries:
+            print(
+                f"check_no_pii: REFUSED -- {len(binaries)} file(s) have no valid exemption; that is not a baseline "
+                f"count. Register each in {BINARY_REVIEW_REL} with a reason and its sha256 after review, or remove it",
+                file=sys.stderr,
+            )
+            return 1
         rising = write_baseline(baseline_path, current)
         if rising:
             print(f"check_no_pii: REFUSED -- baseline may only shrink; would raise {rising}", file=sys.stderr)
@@ -836,20 +1110,38 @@ def main(argv: list[str] | None = None) -> int:
         print(f"check_no_pii: ERROR (fail closed): {exc}", file=sys.stderr)
         return 2
     grew, shrank = compare(current, base)
+    if args.list_binaries:
+        print(
+            f"check_no_pii --list-binaries: {len(binaries)} unreadable file(s) with no valid exemption, "
+            f"{len(review.reviewed)} reviewed, {len(review.grandfathered)} grandfathered "
+            "(paths only; this command never reads the contents)"
+        )
+        for f in binaries:
+            print(f"  {f.category}  {f.path}  ({f.detail})")
+        for rel in sorted(review.reviewed):
+            print(f"  reviewed      {rel}  ({review.reviewed[rel]['reason']})")
+        for rel in sorted(review.grandfathered):
+            print(f"  grandfathered {rel}  ({review.grandfathered[rel]['reason']})")
+        return 1 if binaries else 0
     if args.json:
         _dump(
             {
                 "mode": "tree",
-                "ok": not grew,
+                "ok": bool(not grew and not binaries),
                 "counts": current,
                 "baseline": base,
                 "grew": grew,
                 "shrank": shrank,
+                "binary_unreadable": unreadable_n,
+                "binary_review_mismatch": mismatch_n,
+                "binary_reviewed": len(review.reviewed),
+                "binary_grandfathered": len(review.grandfathered),
+                "binary_baseline_drift": drift_n,
                 "deny_pattern_advisory": deny_n,
                 "snapshot_files_skipped": verifier.skipped,
             }
         )
-        return 1 if grew else 0
+        return 1 if (grew or binaries) else 0
     print("check_no_pii --tree (counts per category; values never printed)")
     print(f"  {'category':18} {'baseline':>8} {'now':>6}")
     for k in RATCHETED:
@@ -857,10 +1149,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {k:18} {base[k]:>8} {current[k]:>6}{flag}")
     if deny_n or deny:
         print(f"  {'deny_pattern':18} {'n/a':>8} {deny_n:>6}  (advisory; private deny file, not ratcheted)")
+    # Printed on EVERY run, including when zero: a count that only appears on failure cannot show growth.
+    print(f"  {binary_line}")
+    if binaries:
+        # Not a ratcheted count: a number in the baseline is permission, and permission is what was missing.
+        for f in binaries:
+            print(f"    {f.category}: {f.path}  ({f.detail})")
     if verifier.skipped:
         print(f"  {verifier.skipped} policy snapshot file(s) skipped: byte-identical to a past policy file on HEAD")
     if args.verbose:
         _print(findings, args.limit)
+    if binaries:
+        print(
+            f"FAIL: {len(binaries)} unreadable file(s) have no valid exemption in {BINARY_REVIEW_REL} (unregistered, "
+            "or their content no longer matches the registered sha256). A scanner that cannot read a file reports it "
+            "clean unless this list is explicit."
+        )
+        _print(binaries, min(args.limit, 200))
+        print(f"Review the file, then register it in {BINARY_REVIEW_REL} with a reason and its sha256, or remove it.")
+        return 1
     if grew:
         print(
             "FAIL: the tree gained personal or identifying data. Run --range origin/main...HEAD to see the new lines."

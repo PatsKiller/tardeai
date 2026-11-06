@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "check_no_pii_binaries_20261105",
+  "files": [
+    "tests/test_check_no_pii_binaries_20261105.py"
+  ],
+  "anchor": "FQ-154",
+  "comment": [
+    "ANCHOR: FQ-154 — a file the PII scanner cannot read is never clean.",
+    "scripts/check_no_pii.py:_decode returned None for any file with a NUL byte in its first 8 KiB, and every",
+    "caller treated None as 'nothing found', so every PNG, JPEG, PDF and archive was reported clean without being",
+    "read (two live-page captures reached a public branch through it). The suite pins the replacement contract: an",
+    "unreadable file is a binary_unreadable finding unless it is registered in config/pii_binary_review.json with a",
+    "reason, reviewer and date; the count is not ratcheted so no baseline can swallow it; --tree fails on the",
+    "existing tree; and the register must be its canonical rendering."
+  ]
+}
