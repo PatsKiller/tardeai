@@ -244,6 +244,10 @@ def _fetch_screener_tickers(url: str, cookie: str, token: str = "", *, deadline_
     return tickers
 
 
+#: A savepoint identifier: run_screener refuses any name that does not fullmatch this before it reaches SQL.
+_SAVEPOINT_RE = re.compile(r"sp_(?:scr|mem)_[A-Za-z0-9_]{1,48}")
+
+
 def _sp_name(prefix: str, screener_id: str) -> str:
     """Postgres SAVEPOINT identifier — alphanumeric + underscore only."""
     safe = re.sub(r"[^A-Za-z0-9_]", "_", str(screener_id or "x"))[:48]
@@ -421,30 +425,38 @@ def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_mon
             if _ensure_txn_usable(conn):
                 print(f"  [screener] recovered aborted transaction before {sid}")
             sp = _sp_name("sp_scr", sid)
+            sp_mem = _sp_name("sp_mem", sid)
+            if not (_SAVEPOINT_RE.fullmatch(sp) and _SAVEPOINT_RE.fullmatch(sp_mem)):
+                raise ValueError(f"unsafe savepoint name for screener {sid!r}")
             _fence_before_first_write()   # first membership/classification write of the run (2026-10-16)
             try:
-                cur.execute(f"SAVEPOINT {sp}")
+                cur.execute(f"SAVEPOINT {sp}")  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
 
                 # Membership: nested savepoint — lock timeout must not poison classifications
                 if tickers:
-                    sp_mem = _sp_name("sp_mem", sid)
                     try:
-                        cur.execute(f"SAVEPOINT {sp_mem}")
+                        cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
+                            f"SAVEPOINT {sp_mem}")
                         n_mem = _update_screener_membership(cur, sid, tickers, _run_id)
-                        cur.execute(f"RELEASE SAVEPOINT {sp_mem}")
+                        cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
+                            f"RELEASE SAVEPOINT {sp_mem}")
                         screener_result["membership_updated"] = n_mem
                     except Exception as _me:
                         membership_failures += 1
                         try:
-                            cur.execute(f"ROLLBACK TO SAVEPOINT {sp_mem}")
+                            cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp_mem fullmatched _SAVEPOINT_RE
+                                f"ROLLBACK TO SAVEPOINT {sp_mem}")
                         except Exception:
                             # nested savepoint gone — roll outer and re-open outer for remaining writes
                             try:
-                                cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
-                                cur.execute(f"SAVEPOINT {sp}")
+                                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                                    f"ROLLBACK TO SAVEPOINT {sp}")
+                                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                                    f"SAVEPOINT {sp}")
                             except Exception:
                                 _ensure_txn_usable(conn)
-                                cur.execute(f"SAVEPOINT {sp}")
+                                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                                    f"SAVEPOINT {sp}")
                         print(f"  [screener] membership update failed for {sid}: {str(_me)[:120]}")
                         screener_result["membership_error"] = str(_me)[:160]
 
@@ -478,12 +490,14 @@ def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_mon
                         (len(tickers), sid),
                     )
 
-                cur.execute(f"RELEASE SAVEPOINT {sp}")
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                    f"RELEASE SAVEPOINT {sp}")
                 screener_result["db_ok"] = True
             except Exception as _dbe:
                 db_write_failures += 1
                 try:
-                    cur.execute(f"ROLLBACK TO SAVEPOINT {sp}")
+                    cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
+                        f"ROLLBACK TO SAVEPOINT {sp}")
                 except Exception:
                     if _ensure_txn_usable(conn):
                         print(f"  [screener] full rollback after DB failure on {sid}")

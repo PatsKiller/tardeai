@@ -92,12 +92,14 @@ HAS_TOKENS = "tokens_in IS NOT NULL AND tokens_out IS NOT NULL"
 
 
 def report(cur) -> dict:
-    cur.execute(f"""SELECT count(*), sum(estimated_cost_usd),
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only module constants (TARGET/HAS_TOKENS/RATES/PEAK_SQL/IS_PRO)
+        f"""SELECT count(*), sum(estimated_cost_usd),
                            count(*) FILTER (WHERE {HAS_TOKENS}),
                            count(*) FILTER (WHERE NOT ({HAS_TOKENS}))
                     FROM llm_consumption_log WHERE {TARGET}""")
     n, claimed, with_tok, without = cur.fetchone()
-    cur.execute(f"""SELECT sum({_cost_expr()}) FROM llm_consumption_log
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only module constants (TARGET/HAS_TOKENS/RATES/PEAK_SQL/IS_PRO)
+        f"""SELECT sum({_cost_expr()}) FROM llm_consumption_log
                     WHERE {TARGET} AND {HAS_TOKENS}""")
     real = cur.fetchone()[0]
     return {"rows": n or 0, "claimed_sum": float(claimed or 0),
@@ -132,7 +134,8 @@ def main() -> int:
         return 0
 
     # 1. Preserve the original value on the row itself before touching it.
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only module constants (TARGET/HAS_TOKENS/RATES/PEAK_SQL/IS_PRO)
+        f"""
         UPDATE llm_consumption_log
            SET metadata_json = coalesce(metadata_json,'{{}}'::jsonb) || jsonb_build_object(
                  'legacy_cost_value', estimated_cost_usd,
@@ -143,7 +146,8 @@ def main() -> int:
     preserved = cur.rowcount
 
     # 2. Recompute where tokens allow it.
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only module constants (TARGET/HAS_TOKENS/RATES/PEAK_SQL/IS_PRO)
+        f"""
         UPDATE llm_consumption_log
            SET estimated_cost_usd = ROUND(({_cost_expr()})::numeric, 8),
                cost_basis = '{RECOMPUTED}'
@@ -151,7 +155,8 @@ def main() -> int:
     recomputed = cur.rowcount
 
     # 3. NULL where we cannot know. Never invent a number, never write zero.
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only module constants (TARGET/HAS_TOKENS/RATES/PEAK_SQL/IS_PRO)
+        f"""
         UPDATE llm_consumption_log
            SET estimated_cost_usd = NULL,
                cost_basis = '{NULLED}'
@@ -162,9 +167,11 @@ def main() -> int:
 
     cur.execute("SELECT count(*) FROM llm_consumption_log")
     total_after = cur.fetchone()[0]
-    cur.execute(f"SELECT count(*) FROM llm_consumption_log WHERE {TARGET}")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- module constant TARGET
+        f"SELECT count(*) FROM llm_consumption_log WHERE {TARGET}")
     remaining = cur.fetchone()[0]
-    cur.execute(f"""SELECT count(*), sum(estimated_cost_usd)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- module constants TARGET/RECOMPUTED
+        f"""SELECT count(*), sum(estimated_cost_usd)
                     FROM llm_consumption_log WHERE cost_basis='{RECOMPUTED}'""")
     rn, rs = cur.fetchone()
     cur.execute("""SELECT count(*) FROM llm_consumption_log

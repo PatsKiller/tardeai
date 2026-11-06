@@ -139,7 +139,8 @@ def preview() -> dict:
 def enrich() -> dict:
     conn = _get_conn(); cur = conn.cursor()
     for col, typ in _PERF_COLS:
-        cur.execute(f"ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS {col} {typ}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- col/typ from the fixed _PERF_COLS tuple
+            f"ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS {col} {typ}")
     conn.commit()
 
     syms = _target_symbols(cur)
