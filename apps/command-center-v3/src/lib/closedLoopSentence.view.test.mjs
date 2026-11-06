@@ -99,6 +99,20 @@ check('the actual caller preserves finite numeric string zero and signed changes
     assert.match(reviewText({ score_delta: delta }).text, phrase)
   }
 })
+check('the actual proposal caller keeps a malformed trigger rate unknown', () => {
+  // The field next to score_delta had the same defect: `!= null` let a non-numeric rate through to Number() and the
+  // sentence printed "candidate trigger rate NaN%". Rendered through the production caller, not the helper.
+  for (const rate of [null, undefined, '', ' ', 'n/a', '—', 'abc', 'NaN', 'Infinity', '-Infinity', NaN, Infinity, -Infinity, true, false, [], [0.1], {}, { value: 0.1 }]) {
+    const { text } = reviewText({ sample_days: 30, score_delta: 0, candidate_metrics: { trigger_rate: rate } })
+    assert.doesNotMatch(text, /NaN/, `malformed trigger_rate ${JSON.stringify(rate)} -> ${text}`)
+    assert.doesNotMatch(text, /candidate trigger rate/, `malformed trigger_rate ${JSON.stringify(rate)} -> ${text}`)
+  }
+})
+check('the actual caller still renders a finite trigger rate', () => {
+  for (const [rate, phrase] of [[0.12, /candidate trigger rate 12%/], ['0.4', /candidate trigger rate 40%/], [0, /candidate trigger rate 0%/]]) {
+    assert.match(reviewText({ sample_days: 30, score_delta: 0, candidate_metrics: { trigger_rate: rate } }).text, phrase)
+  }
+})
 
 check('the safe band constrains the threshold value, not the candidate score', () => {
   const { text } = reviewText({ candidate_score: 0.91, score_delta: 0.042 })

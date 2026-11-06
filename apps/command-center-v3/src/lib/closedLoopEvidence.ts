@@ -14,8 +14,14 @@ export function closedLoopEvidenceText(evidence: Record<string, unknown> | null 
     : numericDelta !== 0
       ? ` · score ${numericDelta > 0 ? 'up' : 'down'} ${Math.abs(numericDelta).toFixed(3)}`
       : ' · score unchanged'
-  const trigger = metrics?.trigger_rate != null
-    ? ` · candidate trigger rate ${(Number(metrics.trigger_rate) * 100).toFixed(0)}% (scoring-window length not recorded)`
+  // The same rule as the delta above: a value that is not a finite number is a measurement nobody took, and printing it
+  // yielded "candidate trigger rate NaN%". `!= null` alone let 'x', true, [] and {} through to Number(...).
+  const triggerRaw = metrics?.trigger_rate
+  const numericTrigger = typeof triggerRaw === 'number' || (typeof triggerRaw === 'string' && triggerRaw.trim() !== '')
+    ? Number(triggerRaw)
+    : NaN
+  const trigger = Number.isFinite(numericTrigger)
+    ? ` · candidate trigger rate ${(numericTrigger * 100).toFixed(0)}% (scoring-window length not recorded)`
     : ''
   return sample + confidence + change + trigger
 }
