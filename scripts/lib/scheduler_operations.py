@@ -356,7 +356,7 @@ def _read_runs_projected(conn) -> list[dict[str, Any]] | None:
         )
         # CASE is lazy in SQLite: json_object only runs for non-empty object receipts (an empty string would raise).
         sql = (
-            f"SELECT {keep}, {kind} AS _receipt_kind, CASE WHEN ({kind}) = 1 THEN json_object({pairs}) END AS _receipt "
+            f"SELECT {keep}, {kind} AS _receipt_kind, CASE WHEN ({kind}) = 1 THEN json_object({pairs}) END AS _receipt "  # noqa: S608  -- identifiers are PRAGMA column names (quote-checked) and the RECEIPT_KEYS constant; values are not interpolated
             "FROM runs ORDER BY requested_at DESC LIMIT 10000"
         )
         rows = []
