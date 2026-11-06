@@ -29,7 +29,7 @@ from typing import Any
 try:
     from . import jsonl_tail
 except ImportError:  # pragma: no cover - flat import layout
-    import jsonl_tail  # type: ignore[no-redef]
+    import jsonl_tail  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
 
 
 SCHEMA = "AnthropicCreditAuthorization@v1"

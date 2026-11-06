@@ -36,7 +36,7 @@ def deliver(diagnostic: dict) -> bool:
         try:
             from telegram_alert import send_telegram
         except ImportError:
-            from scripts.telegram_alert import send_telegram  # type: ignore[no-redef]
+            from scripts.telegram_alert import send_telegram  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
         accepted = send_telegram(
             diagnostic["message"],
             priority=diagnostic.get("priority", "P1"),

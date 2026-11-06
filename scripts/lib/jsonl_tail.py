@@ -33,7 +33,7 @@ from pathlib import Path
 try:
     from . import ops_diagnostics
 except ImportError:  # pragma: no cover - flat import layout
-    import ops_diagnostics  # type: ignore[no-redef]
+    import ops_diagnostics  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
 
 log = logging.getLogger(__name__)
 

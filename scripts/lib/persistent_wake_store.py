@@ -14,12 +14,12 @@ from typing import Any, Iterator
 try:
     from . import jsonl_tail
 except ImportError:  # pragma: no cover - flat import layout
-    import jsonl_tail  # type: ignore[no-redef]
+    import jsonl_tail  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
 
 try:
     from . import ops_notify_owner
 except ImportError:  # pragma: no cover - flat import layout
-    import ops_notify_owner  # type: ignore[no-redef]
+    import ops_notify_owner  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
 
 # The wake consumer is an already-authorised notification owner: register it so a store-damage
 # diagnostic from jsonl_tail reaches the operator. The planner never imports this module, so the
