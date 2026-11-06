@@ -192,7 +192,19 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
                                                            and (_number(r.get("market_value")) or 0) == 0)},
             "accounts": accounts, "holdings": rows,
             "stored_totals": deepcopy(holdings_doc.get("portfolio_totals") or {}),
-            **_evidence("portfolio_positions.load_store canonical holdings", at, now, reason=reason)}
+            "document_source": holdings_doc.get("document_source"),
+            "document_fallback_reason": holdings_doc.get("document_fallback_reason"),
+            **_evidence(_HOLDINGS_EVIDENCE.get(holdings_doc.get("document_source"),
+                                               "portfolio_positions.load_store canonical holdings"),
+                        at, now, reason=reason or holdings_doc.get("document_fallback_reason"))}
+
+
+#: Where the holdings aggregate came from (lib/holdings_document.py). A fallback names itself and its reason.
+_HOLDINGS_EVIDENCE = {
+    "positions_current": "positions_current (DB) rendered by holdings_export.build_document",
+    "holdings_json_fallback": "holdings store file fallback (database unavailable or the render refused)",
+    "holdings_json": "portfolio_positions.load_store canonical holdings",
+}
 
 
 _ACTIVE_STOP_STATES = {"active", "working", "open", "new", "accepted", "partially_filled"}
@@ -1316,8 +1328,11 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         root = production_state_root()
     root = Path(root)
     state = root / "data" / "portfolios" / "state"
-    from .portfolio_positions import load_store, store_path
-    portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_store(store_path(root)), now=now)
+    from .portfolio_positions import store_path
+    from .holdings_document import load_document
+    # DB first (operator 2026-11-06): the export's render of positions_current, the file only as the stated
+    # fallback. A non-production root (fixtures, offline copies) never reaches the live DB.
+    portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_document(store_path(root)), now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")

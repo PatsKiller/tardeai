@@ -21,7 +21,7 @@ What one run does (tables: migrations/2026_10_06_positions_store_phase1.sql):
 Prices are never stored as truth: broker_market_value is the broker's own figure, for reconciliation.
 
   positions_sync.py                 # dry run: read brokers, print what would be written
-  positions_sync.py --apply         # write (needs the migration applied)
+  positions_sync.py --apply         # write (needs the migration applied), then render holdings.json from it
   positions_sync.py --check-fresh   # exit 2 when the latest complete run is older than the contract
   positions_sync.py --diff          # shadow diff: positions_current vs holdings.json (phase 2 report)
 """
@@ -94,7 +94,7 @@ def _f(x: Any) -> Optional[float]:
 # broker_market_value, asset_type.
 
 def read_schwab(account_key: str) -> dict:
-    import schwab_transport as st  # type: ignore
+    import schwab_transport as st  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     acct = st.get_account(account_key)
     if not isinstance(acct, dict) or acct.get("status") not in ("active", None) or "cash" not in acct:
         return {"ok": False, "error": f"account: {str(acct)[:160]}"}
@@ -116,12 +116,12 @@ def read_schwab(account_key: str) -> dict:
 
 def read_alpaca_live(account_key: str) -> dict:
     """Alpaca LIVE account (never paper — paper is training only and never counted)."""
-    from lib.positions_readers import read_alpaca_live as _r  # type: ignore
+    from lib.positions_readers import read_alpaca_live as _r  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     return _r(account_key)
 
 
 def read_moomoo(account_key: str) -> dict:
-    from lib.positions_readers import read_moomoo as _r  # type: ignore
+    from lib.positions_readers import read_moomoo as _r  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     return _r(account_key)
 
 
@@ -281,7 +281,7 @@ def lot_checks(current: list[dict], open_lots: list[dict], qty_tol: float, basis
 # ── database ────────────────────────────────────────────────────────────────
 
 def _conn():
-    from db_adapter import _get_conn  # type: ignore
+    from db_adapter import _get_conn  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     return _get_conn()
 
 
@@ -320,7 +320,7 @@ def open_run(conn) -> int:
 
 def write_run(conn, run_id: int, plan: dict, open_lots: list[dict], realized: list[dict], notes: str) -> None:
     """Everything for one run in ONE transaction (plan rule 5)."""
-    from psycopg2.extras import Json, execute_values  # type: ignore
+    from psycopg2.extras import Json, execute_values  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
     try:
         with conn.cursor() as cur:
             execute_values(cur, """INSERT INTO position_snapshots (sync_run_id, account_key, broker, symbol, qty,
@@ -441,7 +441,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 cur.execute("SELECT account_key, symbol, qty, cost_basis_total, is_cash FROM positions_current")
                 cols = [d[0] for d in cur.description]
                 current = [dict(zip(cols, r)) for r in cur.fetchall()]
-                from lib import portfolio_positions as pp  # type: ignore
+                from lib import portfolio_positions as pp  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
                 diffs = shadow_diff(current, pp.load_store(), cfg["qty_tolerance"], cfg["basis_tolerance_usd"])
                 report.update({"generated_at": datetime.now(timezone.utc).isoformat(), "rows": len(current),
                                "differences": diffs})
@@ -470,8 +470,42 @@ def main(argv: Optional[list[str]] = None) -> int:
         run_id = open_run(conn)
         write_run(conn, run_id, plan, open_lots, realized, notes)
         summary["run_id"] = run_id
+    # holdings.json is generated from what this run promoted (operator 2026-11-06): right after a promoted
+    # --apply, under the shared holdings write lock. A dry run renders the same document and writes nothing.
+    if plan["promote"]:
+        summary["holdings_export"] = export_holdings(dry_run=not args.apply)
     print(json.dumps(summary, indent=1, default=_jsonable))
     return 0 if plan["status"] == "complete" else 1
+
+
+def export_holdings(*, dry_run: bool, exporter: Any = None, connect: Optional[Callable[[], Any]] = None,
+                    lock: Optional[Callable[[], Any]] = None, alert: bool = True, **export_kwargs) -> dict:
+    """Render holdings.json from positions_current right after a promoted run (the sync is the writer).
+
+    Runs scripts/holdings_export.py in-process: its own READ-ONLY, REPEATABLE READ connection, the shared
+    holdings write lock around the read-modify-write, backups first, atomic replace. A refusal never undoes
+    the DB run that was just committed; it is returned in the summary (and the export's freshness monitor
+    pages if the file is now stale), so a refused export is visible, not a silent success.
+    """
+    if exporter is None:
+        import holdings_export as exporter  # type: ignore -- scripts/ is on sys.path at runtime; mypy cannot resolve the flat import
+    connect = connect or exporter._connect
+    lock = lock if lock is not None else exporter.holdings_lock()
+    conn = None
+    try:
+        conn = connect()
+        receipt = exporter.export(conn=conn, dry_run=dry_run, lock=lock, **export_kwargs)
+        if alert and not dry_run:
+            store = Path(receipt["store"])
+            receipt["alert"] = exporter.maybe_alert_stale(store=store, conn=conn,
+                                                          state_root=export_kwargs.get("state_root") or store.parent)
+        return receipt
+    except exporter.ExportError as exc:
+        print(f"positions_sync: holdings export REFUSED — {exc}; last good file kept", file=sys.stderr)
+        return {"ok": False, "dry_run": dry_run, "refused": str(exc)}
+    finally:
+        if conn is not None:
+            exporter._close(conn)
 
 
 if __name__ == "__main__":

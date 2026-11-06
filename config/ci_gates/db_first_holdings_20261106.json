@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "db_first_holdings_20261106",
+  "files": [
+    "tests/test_holdings_db_first_20261106.py"
+  ],
+  "anchor": "HOLDINGS_DB_FIRST_20261106",
+  "comment": [
+    "ANCHOR: HOLDINGS_DB_FIRST_20261106 — operator 2026-11-06 (go with all three): (a) PARITY — holdings_export renders every field the",
+    "Home/API readers access (the test greps the reader modules) by carrying the fields other writers own and rendering every DB fact",
+    "from positions_current; (b) positions_sync --apply chains the export under the shared holdings lock and the Schwab sync stamps a",
+    "full ISO-8601 broker_position_as_of; (c) lib/holdings_document serves the same render from the DB with the file as the stated",
+    "fallback. Synthetic fixtures; no DB, broker or credential."
+  ]
+}

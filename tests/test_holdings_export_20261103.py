@@ -137,28 +137,19 @@ def test_portfolio_day_change_is_rendered_from_the_quote_join():
     assert he.render_document(_dicts(), generated_at=NOW)["portfolio_totals"]["day_change"] is None
 
 
-def test_a_zero_byte_store_is_regenerated_without_being_read(tmp_path, monkeypatch):
+def test_a_zero_byte_store_is_regenerated_and_carries_nothing(tmp_path):
+    # 2026-11-06 contract change (operator "go with all three"): the export reads the previous document
+    # ONLY to carry fields other writers own. A 0-byte store is no previous document: nothing is carried,
+    # the book renders from the DB alone, and the gap is stated.
     store = tmp_path / "holdings.json"
     store.write_bytes(b"")
-    real_open, real_read_text = Path.open, Path.read_text
-
-    def guarded_open(self, *a, **k):
-        if self == store:
-            raise AssertionError("the export must never read the existing store")
-        return real_open(self, *a, **k)
-
-    def guarded_read_text(self, *a, **k):
-        if self == store:
-            raise AssertionError("the export must never read the existing store")
-        return real_read_text(self, *a, **k)
-
-    monkeypatch.setattr(Path, "open", guarded_open)
-    monkeypatch.setattr(Path, "read_text", guarded_read_text)
     receipt = he.export(state_root=tmp_path, conn=Conn(), store=store, backups=tmp_path / "backups", now=NOW)
-    monkeypatch.undo()
     with open(store, encoding="utf-8") as fh:
         doc = json.load(fh)
     assert receipt["ok"] and len(doc["holdings"]) == 2 and doc["portfolio_totals"]["positions"] == 2
+    assert receipt["prior_state"] == "empty" and receipt["carried_rows"] == 0
+    assert doc["export_provenance"]["prior_used"] is False
+    assert any("no usable previous document" in g for g in doc["gaps"])
 
 
 def test_a_corrupt_store_is_regenerated(tmp_path):
