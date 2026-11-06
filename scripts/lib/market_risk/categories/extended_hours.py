@@ -262,6 +262,8 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
             source=str(latest[s].get("source") or "market_quotes"),
             detail=f"{m:+.1f}%"
             + (f" vs {latest[s]['reference_date']} close" if latest[s].get("reference_date") else "")
+            + (" (same-day dated close: the provider dates its close to the print's session, not the reference)"
+               if "settle_same_day" in str(latest[s].get("reference_basis") or "") else "")
             + f" ({_et_label(latest[s].get('as_of'))}, {aged[s]:.1f}h old)",
         )
         for s, m in sorted(moves.items(), key=lambda kv: kv[1])
@@ -326,6 +328,73 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     head = f"{worst_sym} {worst:+.1f}% extended" if worst_sym else "opening shock"
     if gap_state is not None and worst_sym in gaps and worst == gaps[worst_sym]["gap_pct"]:
         head = f"{worst_sym} opened {worst:+.1f}% ({gaps[worst_sym]['gap_atr']:+.1f} ATR) vs previous close"
+    # Belt and braces (round-2 review of #2485, 2026-11-02): futures-only evidence may not raise this category above
+    # WARN — and so may not drive a page — unless an index proxy moves the same way by at least the configured
+    # fraction of the futures move. A stale futures close with a fresh stamp then cannot alert on its own.
+    # 2026-11-05 (claude-lead BLOCK on #2526): that cap is scoped to a close the provider dates to the PRINT's own
+    # session (``settle_same_day``), the only basis that can carry a stale closePrice under a fresh stamp. A properly
+    # dated reference (the prior session's close) is independently anchored, so it is not capped: a Sunday 18:00-20:00
+    # futures crash with no QQQ/SPY print still reaches STRESS, as it does on main.
+    # 2026-11-05 (codex-cloud BLOCK at 83fe9eaa0, P1): the cap is on the same-day futures CONTRIBUTION, not on the
+    # category. A fresh SPY at -1.6% is through the stress threshold on its own; an unconfirmed same-day /NQ beside it
+    # must not downgrade that independently measured STRESS to WARN. So the restricted rows are removed and the
+    # remaining evidence is re-scored; the category keeps the stronger of that and the capped WARN.
+    # 2026-11-05 (cx-openai D52 triage at ce4d7f89f): confirmation is per CONTRIBUTION, not all-or-nothing over the
+    # same-day set. A same-day futures row that a proxy confirms on its own stays in the move set and keeps its
+    # severity; only the unconfirmed same-day rows are removed. Otherwise an unrelated unconfirmed /NQ would silence a
+    # confirmed /ES beside it.
+    frac = float((cfg.get("futures_confirm") or {}).get("fraction", 0.5))
+
+    def _confirmed(sym: str) -> bool:
+        m = moves[sym]
+        return any(moves.get(p) is not None and moves[p] < 0 and abs(moves[p]) >= frac * abs(m) for p in proxies)
+
+    same_day_basis = "settle_same_day" in str(latest.get(worst_sym, {}).get("reference_basis") or "")
+    if (state in ("WARN", "STRESS") and worst_sym in futures and worst is not None and worst < 0
+            and not shock.get("shock") and worst_sym not in gaps and same_day_basis):
+        if not _confirmed(worst_sym):
+            # restrict a same-day futures row only when it is itself unconfirmed: another same-day row that a proxy
+            # confirms is independent support and must not be removed with it
+            restricted = {s for s in moves
+                          if s in futures and moves[s] < 0
+                          and "settle_same_day" in str(latest[s].get("reference_basis") or "")
+                          and not _confirmed(s)}
+            rest = {s: m for s, m in moves.items() if s not in restricted}
+            rest_state, rest_score, rest_sym, rest_worst = "CALM", 0.0, None, None
+            rest_is_gap = False
+            if rest:
+                rest_sym = min(rest, key=rest.get)
+                rest_worst = rest[rest_sym]
+                if rest_worst <= stress:
+                    rest_state, rest_score = "STRESS", min(100.0, 75.0 + 25.0 * (rest_worst - stress) / stress)
+                elif rest_worst <= warn:
+                    rest_state, rest_score = "WARN", 40.0 + 35.0 * (rest_worst - warn) / (stress - warn)
+                else:
+                    rest_state, rest_score = ("CALM",
+                                              max(0.0, 40.0 * rest_worst / warn) if rest_worst < 0 else 0.0)
+            # 2026-11-05 (cx-openai D52 triage at dc016b5fe): an opening gap is an independently printed index-proxy
+            # observation, not futures evidence, so the cap may not take its severity away. A gap that reached STRESS
+            # at 318-320 keeps it even when the row being removed is the one that made the futures score the worst.
+            if gaps and gap_state is not None and gap_score > rest_score:
+                rest_state, rest_score, rest_sym = gap_state, gap_score, gsym
+                rest_worst = gaps[gsym]["gap_pct"]
+                rest_is_gap = True
+            capped_score = min(score, 74.0)
+            evidence.append(Evidence(label="futures-only move not confirmed", value=None, as_of=None,
+                                     source=CATEGORY,
+                                     detail=f"needs an index proxy at >= {frac:.0%} of the futures move ({worst:+.1f}%); "
+                                            "not counted above WARN"))
+            if rest_score > capped_score:
+                state, score = rest_state, rest_score
+                if rest_is_gap:
+                    head = (f"{rest_sym} opened {rest_worst:+.1f}% ({gaps[gsym]['gap_atr']:+.1f} ATR) vs previous "
+                            f"close · {worst_sym} not confirmed: not counted above WARN")
+                else:
+                    head = f"{rest_sym} {rest_worst:+.1f}% extended · {worst_sym} not confirmed: not counted above WARN"
+                worst_sym, worst = rest_sym, rest_worst
+            else:
+                state, score = "WARN", capped_score
+                head += f" · capped at WARN: no index proxy moved {frac:.0%} of the futures move"
     if big:
         head += " · " + ", ".join(big[:3])
     if shock.get("shock"):
