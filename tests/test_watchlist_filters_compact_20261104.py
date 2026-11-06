@@ -23,22 +23,30 @@ Hermetic: node, the committed component and its packages, a synthetic fixture. N
 ANCHOR: WATCHLIST_FILTERS_COMPACT_20261104
 """
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RENDER_STEP = "node --experimental-strip-types src/lib/watchlistFiltersCompact.view.test.mjs"
 RENDER = ROOT / "apps/command-center-v3/src/lib/watchlistFiltersCompact.view.test.mjs"
 
 
 def test_the_build_chain_runs_the_render_test():
-    """The proof runs in the job that has `npm ci`; this asserts the step is still there."""
+    """The proof runs in the job that has `npm ci`. Since #2686 the build line names no test: `scripts/run-tests.mjs`
+    discovers every runnable `*.test.*` under `src/` unless `scripts/tests.dormant.json` lists it. So the guard asserts
+    the three things that make the render test run: discovery is on the build line before `tsc`, the file is a runnable
+    test under `src/`, and it is not dormant."""
     assert RENDER.is_file(), f"the render test is missing: {RENDER}"
-    pkg = json.loads((ROOT / "apps/command-center-v3/package.json").read_text(encoding="utf-8"))
+    app = ROOT / "apps/command-center-v3"
+    pkg = json.loads((app / "package.json").read_text(encoding="utf-8"))
     steps = [step.strip() for step in pkg["scripts"]["build"].split("&&")]
-    assert RENDER_STEP in steps, (
-        "the frontend build chain no longer runs the FQ-077 render test — the phone layout has lost its proof; "
-        "re-add it before `tsc && vite build`"
-    )
+    assert "node scripts/run-tests.mjs" in steps, "the build line no longer runs test discovery (scripts/run-tests.mjs)"
+    assert "tsc" in steps and steps.index("node scripts/run-tests.mjs") < steps.index("tsc"), (
+        "test discovery must run before `tsc && vite build`")
+    rel = RENDER.relative_to(app).as_posix()
+    assert rel.startswith("src/") and re.search(r"\.test\.(ts|mjs|cjs|js|tsx|jsx)$", rel), f"{rel} is not a runnable test"
+    dormant = json.loads((app / "scripts/tests.dormant.json").read_text(encoding="utf-8")).get("files", {})
+    assert rel not in dormant, (
+        "the FQ-077 render test is listed as dormant — the phone layout has lost its proof; remove it from tests.dormant.json")
 
 
 def test_the_gate_file_is_the_one_this_test_registers():
