@@ -1,5 +1,5 @@
 import {
-  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
+  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, moversHeading, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
 } from './homeDoNow.ts'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, opportunitiesQuery, isHomeBestOpportunities } from './bestOpportunities.ts'
 declare const process: { exit(code?: number): never }
@@ -172,6 +172,22 @@ const emptyCurrent = { positions: { source: 'fixture CIO', rows: [] }, stops: { 
 const retainedEmpty = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), emptyCurrent,
   { pending_approvals: 0 }, undefined, { positionsStale: true })
 check('restoration: an empty retained answer is never a fresh all-clear', retainedEmpty.state === 'STALE')
+
+// FU-006: the movers heading says "today" only after a same-day (New York) holdings observation
+const mvOv = (observed?: string) => (observed ? { observation: { envelopes: { holdings: { freshness: { observed_at_utc: observed, status: 'FRESH' } } } } } : {})
+const preOpen = Date.parse('2026-11-06T12:12:00Z') // Fri 07:12 ET
+const mhPrior = moversHeading(mvOv('2026-11-06T01:55:00Z'), preOpen) // Thu 20:55 ET
+check('FU-006: before the first read the heading names the last session, not today',
+  mhPrior.when === 'last session' && !mhPrior.sameDay && !/today/i.test(mhPrior.title) && mhPrior.title.includes('Nov 5'))
+const mhToday = moversHeading(mvOv('2026-11-06T14:40:00Z'), Date.parse('2026-11-06T15:00:00Z'))
+check('FU-006: a same-day read says today', mhToday.when === 'today' && mhToday.sameDay && mhToday.title === 'What moved your book today')
+const mhNone = moversHeading({}, preOpen)
+check('FU-006: no observation time claims no day', mhNone.when === 'unknown' && !mhNone.sameDay && !/today|session/i.test(mhNone.title))
+const mhEt = moversHeading(mvOv('2026-11-05 20:55 ET'), preOpen)
+check('FU-006: an ET-labelled prior-evening time is the last session', mhEt.when === 'last session' && mhEt.title.includes('Nov 5'))
+const mhLate = moversHeading(mvOv('2026-11-06T03:30:00Z'), Date.parse('2026-11-06T04:30:00Z')) // both Thu ET, different UTC dates
+check('FU-006: the day boundary is New York, not UTC', mhLate.when === 'today')
+check('FU-006: an unreadable time claims no day', moversHeading(mvOv('not a time'), preOpen).when === 'unknown')
 
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

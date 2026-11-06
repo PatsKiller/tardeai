@@ -17,7 +17,7 @@ import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOppo
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, briefingSummary,
+  doNowFrom, homeWithCurrentTruth, positionsFreshness, moversBars, moversHeading, accountRows, cashPct, money, pct, ageLabel, briefingSummary,
 } from '../lib/homeDoNow'
 import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -160,6 +160,7 @@ export default function HomeDoNow() {
   const lagging = postureRows.filter((r: any) => r.state === 'LAGGING')
   const leading = postureRows.filter((r: any) => r.state === 'LEADING')
   const movers = moversBars(overview)
+  const moversHead = moversHeading(overview, now)
   const [openMovers, setOpenMovers] = useState<Record<string, boolean>>({})
   const accounts = accountRows(perf, overview)
   const cash = cashPct(overview)
@@ -259,12 +260,12 @@ export default function HomeDoNow() {
             )}
           </section>
 
-          <section style={card} data-testid="home-movers" aria-label="What moved your book today">
-            <CardHead title="What moved your book today" to="/portfolio" linkText="Portfolio" />
-            {movers.bars.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{overview ? 'No position moved today.' : 'Loading…'}</div>}
+          <section style={card} data-testid="home-movers" data-movers-when={moversHead.when} aria-label={moversHead.title} title={moversHead.tip}>
+            <CardHead title={moversHead.title} to="/portfolio" linkText="Portfolio" />
+            {movers.bars.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{overview ? (moversHead.sameDay ? 'No position moved today.' : 'No position moved.') : 'Loading…'}</div>}
             {movers.bars.map(b => {
               const open = !!openMovers[b.sym]
-              const tip = `${b.sym}${b.multi ? ` · ${accountsBadge(b.accounts.length)}: ${b.accounts.map(a => `${a.label} ${money(a.amount, true)}`).join(', ')}` : b.accountLabel ? ` · ${b.accountLabel}` : ''}: ${money(b.amount, true)} today${b.dayPct != null ? ` (${pct(b.dayPct)})` : ''} · dollar day change of the holding (/api/v2/overview top_movers). Bar length is relative to the largest move shown.`
+              const tip = `${b.sym}${b.multi ? ` · ${accountsBadge(b.accounts.length)}: ${b.accounts.map(a => `${a.label} ${money(a.amount, true)}`).join(', ')}` : b.accountLabel ? ` · ${b.accountLabel}` : ''}: ${money(b.amount, true)} ${moversHead.sameDay ? 'today' : moversHead.when === 'last session' ? 'last session' : 'on an undated day'}${b.dayPct != null ? ` (${pct(b.dayPct)})` : ''} · dollar day change of the holding (/api/v2/overview top_movers). Bar length is relative to the largest move shown.`
               const bar = (amount: number, widthPct: number) => (
                 <span style={{ height: 8, background: TOKENS.bg[3], borderRadius: RADIUS.sm, overflow: 'hidden', display: 'flex', justifyContent: amount < 0 ? 'flex-end' : 'flex-start' }}>
                   <span style={{ display: 'block', height: 8, width: `${widthPct}%`, background: amount < 0 ? TOKENS.danger : TOKENS.success }} />
