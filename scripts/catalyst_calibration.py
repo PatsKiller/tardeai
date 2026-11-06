@@ -97,7 +97,8 @@ def compute(readonly: bool = False) -> dict:
         enforce_readonly(c)  # the server refuses any write (AGENTS.md §6)
     cur = c.cursor()
     # settled catalysts with a stored direction; realized fwd return from daily-ish bars
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only int module constants SETTLE_DAYS/LOOKBACK_DAYS
+        f"""
         WITH cat AS (
             SELECT id, symbol, catalyst_type, published_at,
                    COALESCE(raw_payload->>'direction','neutral') AS direction
