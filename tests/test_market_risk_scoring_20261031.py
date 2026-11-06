@@ -180,6 +180,63 @@ def test_hysteresis_deescalation_needs_three_sessions():
     assert a.tier == "NONE"
 
 
+@pytest.mark.parametrize("required_sessions", [3, 5])
+def test_deescalation_explanation_names_the_configured_session_hold(required_sessions):
+    """FQ-107: lower score/confirmation counts do not erase the completed-session gate."""
+    policy = dict(POLICY_LIVE, hysteresis={**POLICY_LIVE["hysteresis"], "deescalate_sessions": required_sessions})
+    prior = {"tier": "RED", "market_tier": "RED", "hysteresis": {"below_sessions": ["2026-10-27"]}}
+    readings = {"technical": ("STRESS", 80), "options_flow": ("STRESS", 85)}
+    assessment = scoring.compose(obs(readings), policy, prior=prior, now=NOW)
+    assert assessment.market_tier == "RED"
+    assert assessment.hysteresis["raw_tier"] == "YELLOW"
+    assert assessment.market_score < policy["tiers"]["red"]["min_score"]
+    assert assessment.confirming == 2 < policy["tiers"]["red"]["min_warn"]
+    assert len(assessment.hysteresis["below_sessions"]) == 2
+    before = assessment.tier, assessment.market_tier, assessment.score
+    explanation = explain.deescalates_if(assessment, policy)
+    assert "RED is held by the completed-session rule" in explanation
+    assert f"2 of {required_sessions} completed trading sessions" in explanation
+    assert "current readings support YELLOW" in explanation
+    assert (assessment.tier, assessment.market_tier, assessment.score) == before
+
+
+def test_deescalation_explanation_does_not_count_a_session_twice_or_keep_a_finished_hold():
+    prior = {"tier": "RED", "market_tier": "RED", "hysteresis": {"below_sessions": ["2026-10-27"]}}
+    readings = {"technical": ("STRESS", 80), "options_flow": ("STRESS", 85)}
+    first = scoring.compose(obs(readings), POLICY_LIVE, prior=prior, now=NOW)
+    same_session = scoring.compose(
+        obs(readings, NOW + timedelta(hours=1)), POLICY_LIVE, prior=first.to_dict(), now=NOW + timedelta(hours=1)
+    )
+    assert "2 of 3 completed trading sessions" in explain.deescalates_if(same_session, POLICY_LIVE)
+    next_close = NOW + timedelta(days=1)
+    released = scoring.compose(obs(readings, next_close), POLICY_LIVE, prior=same_session.to_dict(), now=next_close)
+    assert released.market_tier == "YELLOW"
+    assert "RED is held" not in explain.deescalates_if(released, POLICY_LIVE)
+
+
+def test_session_hold_explanation_does_not_invent_a_deescalation_hold_on_escalation():
+    assessment = scoring.compose(
+        obs(OCT28_CLOSE), POLICY, prior={"tier": "YELLOW", "market_tier": "YELLOW", "hysteresis": {}}, now=NOW
+    )
+    assert assessment.hysteresis["candidate"] == "ORANGE"
+    assert "completed-session rule" not in explain.deescalates_if(assessment, POLICY)
+
+
+def test_session_hold_explanation_reaches_the_served_projection_unchanged():
+    from scripts.lib.market_risk_projection import build as build_projection, snapshot_from_assessment
+
+    readings = {"technical": ("STRESS", 80), "options_flow": ("STRESS", 85)}
+    assessment = scoring.compose(
+        obs(readings), POLICY_LIVE, prior={"tier": "RED", "market_tier": "RED", "hysteresis": {}}, now=NOW
+    )
+    explain.explain(assessment, POLICY_LIVE)
+    snapshot = snapshot_from_assessment(assessment.to_dict())
+    projected = build_projection(snapshot=snapshot, radar=None, now=NOW)
+    assert projected["tier"] == "RED"
+    assert projected["deescalates_if"] == assessment.deescalates_if
+    assert "1 of 3 completed trading sessions" in projected["deescalates_if"]
+
+
 def test_bootstrap_adopts_raw():
     a = scoring.compose(obs(OCT28_CLOSE), POLICY, prior=None, now=NOW)
     assert a.hysteresis["bootstrap"] is True and a.tier == "ORANGE"
