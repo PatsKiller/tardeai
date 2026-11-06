@@ -1,6 +1,10 @@
 {
   "schema": "CiGate@v1",
   "name": "watchdog_reminder_identity_20261102",
-  "files": ["tests/test_watchdog_reminder_identity_20261102.py"],
-  "comment": ["Scoped deterministic watchdog reminder identity across real Telegram/editor path; untrusted payloads cannot issue a context; holds/interdict and delivery evidence remain binding."]
+  "files": [
+    "tests/test_watchdog_reminder_identity_20261102.py"
+  ],
+  "comment": [
+    "Scoped deterministic watchdog reminder identity across real Telegram/editor path; untrusted payloads cannot issue a context; holds/interdict and delivery evidence remain binding."
+  ]
 }
