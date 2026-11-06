@@ -15,6 +15,7 @@ import {
   ageText, canAct, INCIDENTS_PATH, matchesFilter, refLink, sortIncidents, sourceText, statusLabel, STATUS_FILTERS,
   type Incident, type IncidentDetailWire, type IncidentsWire,
 } from '../lib/incidents'
+import { rowModel } from '../lib/incidentRow'
 
 const panel: CSSProperties = { padding: 14, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0 }
 const muted: CSSProperties = { margin: 0, fontSize: TYPE.sm, color: TOKENS.text[2] }
@@ -64,6 +65,9 @@ function Detail({ inc, events, titleRef, onChanged }: { inc: Incident; events: R
     ['Id', inc.id], ['Opened', at(inc.opened_at)], ['Age', ageText(inc.opened_at, inc.closed_at)], ['Source', sourceText(inc)],
     ['Where', inc.where || '—'], ['Owner', inc.owner || '—'], ['Severity', inc.severity || '—'],
   ]
+  const m = rowModel(inc, { age: ageText(inc.opened_at, inc.closed_at), source: sourceText(inc) })
+  if (m.raw) facts.push(['Reported as', m.raw])
+  if (m.rawDetail) facts.push(['From the report', m.rawDetail])
   if (inc.closed_at) facts.push(['Closed', `${at(inc.closed_at)}${inc.resolution ? ` · ${inc.resolution.replace(/_/g, ' ')}` : ''}`])
   if (inc.recurrence_of) facts.push(['Recurrence of', inc.recurrence_of])
   return <div data-testid="incident-detail" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
@@ -140,16 +144,26 @@ export default function OpsIncidents() {
             {data && rows.length === 0 ? <p style={{ ...muted, padding: 14 }}>No incidents match this filter.</p> : null}
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {rows.map(r => {
-                const s = statusLabel(r.status)
+                const m = rowModel(r, { age: ageText(r.opened_at, r.closed_at), source: sourceText(r) })
                 return <li key={r.id} style={{ borderTop: `1px solid ${TOKENS.border}` }}>
                   <button type="button" data-testid={`incident-row-${r.id}`} aria-current={selectedId === r.id} onClick={() => sheet.open(r.id)}
-                    style={{ width: '100%', minHeight: 56, display: 'grid', gap: 4, textAlign: 'left', padding: '10px 14px', cursor: 'pointer',
+                    style={{ width: '100%', minHeight: 56, display: 'grid', gap: 6, textAlign: 'left', padding: '12px 14px', cursor: 'pointer',
                       background: selectedId === r.id ? TOKENS.bg[2] : 'transparent', border: 0, color: TOKENS.text[0] }}>
-                    <span style={{ fontSize: TYPE.sm, fontWeight: 700, overflowWrap: 'anywhere' }}>{r.title}</span>
+                    {/* WHAT — the ledger's sentence with identifiers spelled out (FQ-046) */}
+                    <span data-testid={`incident-headline-${r.id}`}
+                      style={{ fontSize: sheet.mobile ? TYPE.md : TYPE.base, fontWeight: 700, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{m.headline}</span>
                     <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                      <Chip tone={s.tone}>{s.label}</Chip>
-                      <span style={muted}>{ageText(r.opened_at, r.closed_at)} · {sourceText(r)}{r.fix_refs?.length ? ` · ${refLink(r.fix_refs[0]).label}` : ''}</span>
+                      <Chip tone={m.status.tone}>{m.status.label}</Chip>
+                      <Chip tone={m.priority.tone}>{m.priority.code}</Chip>
+                      {/* the phone drops the SOURCE identifier, never the age: how old this is decides whether the
+                          operator can act on it at all (cx-openai-4 R2 on PR 2628) */}
+                      {sheet.mobile
+                        ? <span style={muted}>{m.age}{r.fix_refs?.length ? ` · ${refLink(r.fix_refs[0]).label}` : ''}</span>
+                        : <span style={muted}>{m.meta}{r.fix_refs?.length ? ` · ${refLink(r.fix_refs[0]).label}` : ''}</span>}
                     </span>
+                    {/* NEXT — who acts, in one sentence (FQ-045) */}
+                    <span data-testid={`incident-next-${r.id}`}
+                      style={{ fontSize: sheet.mobile ? TYPE.sm : TYPE.xs, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{m.nextAction}</span>
                   </button>
                 </li>
               })}
