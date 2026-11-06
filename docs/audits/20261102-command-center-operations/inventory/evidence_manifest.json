@@ -1,0 +1,38 @@
+{
+  "schema": "CommandCenterCoverageEvidenceManifest@v1",
+  "as_of": "2026-11-02T18:45:27.608050Z",
+  "source_member_hashes": [
+    {
+      "path": "config/lane_registry.json",
+      "sha256": "60a4c9461ae50c24281e9454235dec99a0c44363449adab2e8ddbfc9be63dba4",
+      "bytes": 1441163
+    },
+    {
+      "path": "config/cron_outage_watchdog.json",
+      "sha256": "6abb7b8015a83f03896287e633560ed66e48b792944246a04f0e1d749523c2d1",
+      "bytes": 6740
+    },
+    {
+      "path": "data/runtime/cron_outage_watchdog_latest.json",
+      "sha256": "4981dfe83912c964b9ea22756f6f5fe70de3a0792387de9ba15553d69ddd4582",
+      "bytes": 224295
+    },
+    {
+      "path": "logs/safe_flock_events.jsonl",
+      "window_sha256": "d0094c69a3bfd8747f5c5c75265229436a8692322ac95dc37922ca9d72fcc87c",
+      "window_bytes": 8388448,
+      "whole_file_bytes": 67762677
+    }
+  ],
+  "baseline_inventory_sha256": "97f7ee1266db8eba01b5597e2233fff758d0312e66b1eb5a67f1aae72ce9d710",
+  "baseline_jobs_snapshot_sha256": "014a995ae2a53f6db6771a67e2b96cfbf963b48b97dc32ecef2c806f79c44f7a",
+  "registered_member_sha256": "d70a344ae748eb90ce2b524b7c28b2d82491d26121d5d060fc4cc8fefa604243",
+  "files": {
+    "coverage.md": "d33d1e2963b16b525f91ed8a4ede2e592bc7b53208681945605d8715c8f5c090",
+    "inventory.csv": "797af5f3f3ad23bc304d56fa17867755d5139753458602ebc72d85b93773480d",
+    "inventory.json": "afe1dae4748f7344e3542ec2104d684905aeb3544459b42bdc94c7cbcceca5dd",
+    "runtime_orphans.csv": "ed7eb0a09324fc538bd8093d7f5b0a3b0022448020feb750e2a699b39013387f",
+    "summary.json": "70d117e44f9bba1515f5d07e5ad89543432a0f4c2eb5c0270d5a23b69c9668b1",
+    "ticket_groups.json": "9086c870abe524fbd7f796445b04e3eb60004451532b5f348d3d50c55bf9b862"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema": "CommandCenterAuditValidation@v1",
+  "as_of": "2026-11-02T19:41:04Z",
+  "actor": "codex",
+  "command": "Independent Python regeneration of coverage counts, unique membership, per-lane ticket bindings,7export byte comparisons; python3 scripts/check_open_items.py; git diff --check",
+  "output": {
+    "registered_rows": 687,
+    "unique_ids": 687,
+    "coverage": {
+      "Measured": 93,
+      "Partially Measured": 391,
+      "Unmeasured": 1,
+      "Orphaned": 8,
+      "Disabled": 194
+    },
+    "unknown_rows_with_existing_tickets": 217,
+    "tickets": 25,
+    "exact_key_bindings": 579,
+    "copied_original_exports": 7,
+    "runtime_orphans": 5,
+    "open_items_validation": "OPEN_ITEMS ok:177rows, every row has an owner and a review date",
+    "diff_check_exit": 0
+  },
+  "inventory_sha256": "afe1dae4748f7344e3542ec2104d684905aeb3544459b42bdc94c7cbcceca5dd",
+  "limit": "Source membership/binding only, no runtime recovery or complete job measurability established."
+}

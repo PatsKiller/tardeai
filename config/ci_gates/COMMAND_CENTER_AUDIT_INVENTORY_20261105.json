@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "COMMAND_CENTER_AUDIT_INVENTORY_20261105",
+  "files": [
+    "tests/test_command_center_audit_inventory_20261105.py"
+  ],
+  "anchor": "COMMAND_CENTER_AUDIT_INVENTORY_20261105",
+  "comment": [
+    "ANCHOR: COMMAND_CENTER_AUDIT_INVENTORY_20261105 — PR #2498 F2: the frozen 687-lane Command Center",
+    "inventory must have a documented refresh path. Pins scripts/build_command_center_audit_inventory.py:",
+    "--check names every lane added/removed/re-owned since the capture (exit 2), --write stamps a new",
+    "capture and never invents runtime evidence, and the frozen evidence directory is never overwritten."
+  ]
+}
