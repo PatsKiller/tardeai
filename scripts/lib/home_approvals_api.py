@@ -114,7 +114,7 @@ def _operator(ctx: Ctx) -> Optional[str]:
 
 
 def default_ctx() -> Ctx:
-    from lib import cc_auth  # type: ignore  # the server gate's own module object/thread-local
+    from lib import cc_auth  # type: ignore -- the server gate's own module object/thread-local, not importable as a typed package
 
     cfg = cc_auth.load_config()
 
