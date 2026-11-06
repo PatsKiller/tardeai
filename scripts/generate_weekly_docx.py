@@ -9,7 +9,7 @@ Usage:
     .venv/bin/python scripts/generate_weekly_docx.py --dry-run
 """
 import argparse, json, os, sys
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -338,6 +338,101 @@ def generate_docx(data: dict, output_path: Path):
     return output_path
 
 
+LANE_ID = "generate-weekly-docx"
+
+
+def _write_lane_receipt(
+    *, ok: bool, started: datetime, produced: int, attempted: int, skipped: dict[str, int], error: str | None = None
+) -> None:
+    """Write the lane's durable run receipt (``data/runtime/generate-weekly-docx_last.json``).
+
+    The registry used to point this lane's ``output_signal`` at the *directory* the reports land in, so a
+    directory mtime could be advanced by any file and a rerun of the same dated report never refreshed it —
+    neither can prove this run completed. The LaneRunReceipt is the durable artifact the Jobs projection
+    reads instead (``json_key`` on ``ok_at``). A receipt failure is reported on stderr and never breaks the
+    report (lane_last_receipt.write_lane_receipt itself never raises).
+    """
+    try:
+        try:
+            from lib import lane_last_receipt as lr
+        except ImportError:  # pragma: no cover - imported as scripts.<module>
+            from scripts.lib import lane_last_receipt as lr
+        lr.write_lane_receipt(
+            LANE_ID,
+            ok=ok,
+            exit_code=0 if ok else 1,
+            started_at=started,
+            script="generate_weekly_docx.py",
+            produced_count=produced,
+            attempted_count=attempted,
+            skipped_reasons=skipped or None,
+            error=error,
+            summary={"artifacts": produced},
+        )
+    except Exception as exc:  # noqa: BLE001 - a receipt problem must not break the report
+        print(f"[weekly] lane receipt not written: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+def _produce_week(args, report, stem, today, counts: dict) -> None:
+    """Write the dated report and its exports, recording progress in ``counts``.
+
+    The counters live in the caller's dict and are updated as each artifact lands, so a run that fails
+    half-way still reports what it actually produced instead of 0/0 (cc2's #2527 review).
+    """
+    from analyst_report_builder import save_report_json
+    from report_export import export_report
+
+    week_dir = PROJECT_ROOT / "archive" / "weekly" / str(today) / "reports_weekly"
+    week_dir.mkdir(parents=True, exist_ok=True)
+    analyst_dir = _portfolio_reports_root() / "analyst"
+    analyst_dir.mkdir(parents=True, exist_ok=True)
+
+    save_report_json(report, stem=stem)
+    counts["produced"] = 1
+    counts["attempted"] = 1
+    skipped = counts["skipped"]
+
+    if args.legacy:
+        counts["attempted"] += 1
+        conn = _get_conn()
+        try:
+            data = gather_weekly_data(conn)
+            output = Path(args.output) if args.output else week_dir / f"weekly_{today}.docx"
+            path = generate_docx(data, output)
+            print(f"[weekly] Legacy DOCX: {path} ({path.stat().st_size / 1024:.1f} KB)")
+            counts["produced"] += 1
+        finally:
+            conn.close()
+
+    formats = ["docx", "pdf"] if args.format == "all" else [args.format]
+    for fmt in formats:
+        counts["attempted"] += 1
+        result = export_report(report, fmt, output_stem=stem)
+        if result.get("ok"):
+            dest = week_dir / result["filename"]
+            try:
+                import shutil
+
+                shutil.copy2(result["path"], dest)
+            except Exception:
+                dest = Path(result["path"])
+            print(f"[weekly] Analyst {fmt.upper()}: {dest} ({result.get('size_kb')} KB)")
+            counts["produced"] += 1
+        else:
+            skipped[f"{fmt}_export_failed"] = skipped.get(f"{fmt}_export_failed", 0) + 1
+            print(f"[weekly] Analyst {fmt.upper()} failed: {result.get('error')}", file=sys.stderr)
+
+    try:
+        from telegram_alert import send_telegram
+        send_telegram(
+            f"*Weekly Portfolio Review*\n{stem} generated\nView Reports → Analyst Reports",
+            priority="P2",
+            producer="generate_weekly_docx",
+        )
+    except Exception:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(description="Weekly DOCX Report Generator")
     parser.add_argument("--dry-run", action="store_true", help="Print data without generating docx")
@@ -346,55 +441,38 @@ def main():
     parser.add_argument("--format", default="docx", choices=("docx", "pdf", "all"))
     args = parser.parse_args()
 
-    from analyst_report_builder import build_weekly_review, save_report_json
-    from report_export import export_report
-
-    report = build_weekly_review()
-    today = date.today()
-    stem = f"weekly_review_{today.strftime('%Y%m%d')}"
+    from analyst_report_builder import build_weekly_review
 
     if args.dry_run:
-        print(json.dumps(report, indent=2, default=str))
+        # A dry run writes nothing, including no lane receipt (AGENTS.md §6).
+        print(json.dumps(build_weekly_review(), indent=2, default=str))
         return
 
-    week_dir = PROJECT_ROOT / "archive" / "weekly" / str(today) / "reports_weekly"
-    week_dir.mkdir(parents=True, exist_ok=True)
-    analyst_dir = _portfolio_reports_root() / "analyst"
-    analyst_dir.mkdir(parents=True, exist_ok=True)
-
-    save_report_json(report, stem=stem)
-
-    if args.legacy:
-        conn = _get_conn()
-        try:
-            data = gather_weekly_data(conn)
-            output = Path(args.output) if args.output else week_dir / f"weekly_{today}.docx"
-            path = generate_docx(data, output)
-            print(f"[weekly] Legacy DOCX: {path} ({path.stat().st_size / 1024:.1f} KB)")
-        finally:
-            conn.close()
-
-    formats = ["docx", "pdf"] if args.format == "all" else [args.format]
-    for fmt in formats:
-        result = export_report(report, fmt, output_stem=stem)
-        if result.get("ok"):
-            dest = week_dir / result["filename"]
-            try:
-                import shutil
-                shutil.copy2(result["path"], dest)
-            except Exception:
-                dest = Path(result["path"])
-            print(f"[weekly] Analyst {fmt.upper()}: {dest} ({result.get('size_kb')} KB)")
-        else:
-            print(f"[weekly] Analyst {fmt.upper()} failed: {result.get('error')}", file=sys.stderr)
-
+    started = datetime.now(timezone.utc)
+    counts: dict = {"produced": 0, "attempted": 0, "skipped": {}}
     try:
-        from telegram_alert import send_telegram
-        send_telegram(f"*Weekly Portfolio Review*\n{stem} generated\nView Reports → Analyst Reports",
-                      priority="P2", producer="generate_weekly_docx")
-    except Exception:
-        pass
+        report = build_weekly_review()
+        today = date.today()
+        stem = f"weekly_review_{today.strftime('%Y%m%d')}"
+        _produce_week(args, report, stem, today, counts)
+    except Exception as exc:  # noqa: BLE001 - record the failed run, then keep the real error
+        _write_lane_receipt(
+            ok=False,
+            started=started,
+            produced=counts["produced"],
+            attempted=counts["attempted"],
+            skipped=counts["skipped"],
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        raise
+    # ok means the run produced its artifacts: the dated JSON AND every requested export. A run whose
+    # DOCX/PDF failed is not a success even though the JSON landed (cc2's #2527 BLOCK).
+    exports_failed = any(str(key).endswith("_export_failed") for key in counts["skipped"])
+    ok = counts["produced"] > 0 and not exports_failed
+    _write_lane_receipt(ok=ok, started=started, produced=counts["produced"],
+                        attempted=counts["attempted"], skipped=counts["skipped"])
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -373,10 +373,11 @@
       "expected_cadence_hours": 168,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/portfolios/reports/analyst"
+        "kind": "json_key",
+        "path": "data/runtime/generate-weekly-docx_last.json",
+        "key": "ok_at"
       },
-      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/generate_weekly_docx.py:361 save_report_json creates the weekly dated JSON, :388-389 sends Telegram. Directory signal is coarse: reruns of the same dated file do not refresh it; needs a stable job receipt before cutover.",
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/generate_weekly_docx.py:361 save_report_json creates the weekly dated JSON, :388-389 sends Telegram. The signal used to be the REPORTS DIRECTORY: a directory mtime can be advanced by any file and a rerun of the same dated report never refreshes it, so it could not prove this run completed (jobs coverage audit 2026-11-03). The lane now writes a stable LaneRunReceipt (data/runtime/generate-weekly-docx_last.json, ok_at on success) and the registry reads that.",
       "state_since": "2026-10-08",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P11",
