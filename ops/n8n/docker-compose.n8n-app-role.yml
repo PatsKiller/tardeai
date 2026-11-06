@@ -1,0 +1,8 @@
+# n8n program package 0.1e (2026-11-06): n8n connects to its Postgres as the least-privilege role n8n_app instead of
+# the bootstrap superuser. Layered on docker-compose.n8n.yml by scripts/ops/n8n_db_role.py --switch; the base file is
+# unchanged so the 0.1a cutover hash check still holds. Password: ~/.config/tradeai/n8n/n8n-app-role.env (0600).
+services:
+  n8n:
+    environment:
+      DB_POSTGRESDB_USER: n8n_app
+      DB_POSTGRESDB_PASSWORD: ${N8N_APP_PG_PASSWORD:?N8N_APP_PG_PASSWORD is not set; see ops/n8n/README.md}

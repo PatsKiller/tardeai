@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_db_role_20261106",
+  "files": [
+    "tests/test_n8n_db_role_20261106.py"
+  ],
+  "anchor": "N8N_DB_ROLE_20261106",
+  "comment": [
+    "ANCHOR: N8N_DB_ROLE_20261106 — n8n program package 0.1e. n8n moves off its Postgres bootstrap superuser onto",
+    "n8n_app (LOGIN, no SUPERUSER/CREATEROLE/CREATEDB/REPLICATION/BYPASSRLS), which owns n8n's objects in public and",
+    "may connect only to database n8n. Only a SCRAM verifier crosses to psql, on stdin; --switch refuses before the",
+    "0.1a cutover or before the role is ready, and fails unless the active-workflow count holds and n8n connects as",
+    "n8n_app. Hermetic: a fake docker runner."
+  ]
+}
