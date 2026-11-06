@@ -6,6 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubPanel, BB, T, TYPE, RAIL, numStyle, terminalButton, focusStyle } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
+import { PromoteUnavailableNote } from '../lib/watchpoolPromoteNote'
 
 // v3 Watchpool & Directives — operator watch directives (ticker/sector/trend) + the unified
 // strategy_watchpool, with the shared provenance pill row. Advisory; Hermes-firewall preserved.
@@ -302,11 +303,17 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                 <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
                   {String(h.surfaced_at || '').slice(0, 16).replace('T', ' ')}
                 </span>
+                {/* FQ-079: two unavailable facts, one component — extracted so the rendered words can be asserted
+                    (cc-deepseek-3's review of PR 2660 at a098e91b: a source grep passed while the producer-shaped case
+                    was never rendered). Neither branch disables Promote or changes eligibility. */}
+                <PromoteUnavailableNote directiveId={h.directive_id} divergence={h.divergence} />
                 <button
                   disabled={busy || !h.directive_id}
                   onClick={() => promote(h.symbol, h.directive_id, h.surfaced_by)}
-                  style={{ ...terminalButton('primary'), marginLeft: 'auto', opacity: busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}
-                  title="Operator one-tap promote — still advisory; scalp firewall applies"
+                  style={{ ...terminalButton('primary'), marginLeft: h.directive_id ? 'auto' : 8, opacity: busy || !h.directive_id ? 0.5 : 1, cursor: busy ? 'wait' : h.directive_id ? 'pointer' : 'not-allowed' }}
+                  title={h.directive_id
+                    ? 'Operator one-tap promote — still advisory; scalp firewall applies'
+                    : 'Unavailable: this suggestion has no directive, so there is nothing to promote'}
                 >Promote</button>
               </div>
             ))}
