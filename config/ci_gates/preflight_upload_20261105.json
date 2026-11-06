@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "preflight_upload_20261105",
+  "files": [
+    "tests/test_preflight_upload_20261105.py"
+  ],
+  "anchor": "PREFLIGHT_UPLOAD_20261105",
+  "comment": [
+    "ANCHOR: PREFLIGHT_UPLOAD_20261105 — operator D50 item 4: scripts/preflight_upload.py refuses an upload",
+    "when tests were not run green at the exact head (validated per-file receipt bound to a clean committed",
+    "source), a new test is unregistered, the PR lacks its plain-English answers, origin/main would conflict, a",
+    "binary lands under docs/evidence/, or this upload would make a fourth open PR for the session (drafts and",
+    "stale-owned claims count; repairing one of the existing three is allowed). Hermetic: git runs in a temporary",
+    "repository; gh and the test runner are fakes."
+  ]
+}

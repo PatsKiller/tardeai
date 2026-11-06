@@ -98,8 +98,40 @@ rm -f node_modules
 Proceed only under a current, operator-approved `git-push` grant bound to this branch/PR and
 the exact push/merge purpose. This grant does not authorize prepare or promote.
 
+**Pre-upload check (operator D50 item 4).** Before the push, run the automatic check from this
+worktree at the exact head being uploaded. A clean branch prints nothing and exits 0; otherwise
+it prints one plain-English reason per line and exits 1. Fix the reason; do not upload around it.
+
+```bash
+"$HOME/trade-ai-releases/persistent-state/data/coordination/coordinator/test_slot.sh" \
+  python3 scripts/preflight_upload.py --record-tests
+# ^ run the touched tests under the shared test slot (D50), then write the head receipt
+python3 scripts/preflight_upload.py                  # clean: prints nothing, exit 0
+```
+
+It refuses when (a) the test files this branch adds or changes were not run green at this exact
+head — the receipt is bound to the full head SHA under the worktree's git dir, every test child is
+forced to `TRADE_AI_CI=1`, and the receipt must carry a successful execution row for every touched
+file derived from a structured runner result (pytest's junit report or final summary line): a
+missing/empty/unrelated row, a nonzero exit, an unsafe path alias, or an all-skipped/no-tests-ran
+run is refused. A zero-test run is tolerated only for a file the reviewed project list
+`config/ci_skip_tolerant_units.json` names with a reason; there is no caller waiver. Recording
+refuses dirty tracked source, untracked source or config that could change execution (inert
+artifacts such as `__pycache__`, `.pytest_cache` and coverage files are allowed), and a head that
+moves mid-run; a receipt for another head is refused by name, so re-run `--record-tests` after
+every commit; (b) a new or renamed Python test is named in no `config/ci_gates/*.json`, or a new
+UI test is not the executable input of a `node ...` step of the `apps/command-center-v3`
+`package.json` `scripts.build` string (an app-relative path such as `src/lib/x.test.ts`; a test
+named only as an argument to another script does not count); (c) the PR description lacks its
+six answers under `## In plain English` (`scripts/check_pr_plain_english.py`, drafts included);
+(d) merging `origin/main` would conflict — the conflicted files are named; (e) a binary file was
+added under `docs/evidence/`; or (f) this upload would make a fourth open pull request for the
+session — drafts and stale-but-owned claims count, repairing one of the existing three is allowed.
+`--skip-wip-cap` skips only the last check, prints a warning, and is for the check's own PR.
+
 ```bash
 cd /home/johnclaw/tradeai-wt-<name>
+# only after `python3 scripts/preflight_upload.py` exits 0 at this exact head:
 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/agent-push -u origin wt/<name>
 gh pr create --base main --head wt/<name> --title "..." --body "..."
 ```
