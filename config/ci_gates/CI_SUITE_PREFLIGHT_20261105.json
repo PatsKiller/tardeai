@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CI_SUITE_PREFLIGHT_20261105",
+  "files": [
+    "tests/test_ci_suite_preflight_20261105.py"
+  ],
+  "anchor": "CI_SUITE_PREFLIGHT_20261105",
+  "comment": [
+    "ANCHOR: CI_SUITE_PREFLIGHT_20261105 — DSN-20261031-ci-load-reduction §5 / operator D50 item 7: the full sharded suite is skipped only for a merge-of-main-only push, judged by comparing the head's branch diff against origin/main with its first parent's. The rule fails OPEN: a non-merge head, a hand-resolved merge, an unreadable head or an unresolvable origin/main all run the suite, because a skipped suite that should have run is a green on untested code. The decision lives in scripts/lib/ci_suite_preflight.py so it can be tested and mutated rather than trusted as inline YAML."
+  ]
+}

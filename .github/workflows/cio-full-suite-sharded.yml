@@ -59,10 +59,41 @@ env:
   TEST_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
+  # DSN-20261031-ci-load-reduction §5 (D50 item 7): a push that ONLY merges origin/main into the
+  # branch carries no new branch content — the head tree is byte-identical to its first parent's tree —
+  # so the full suite has nothing new to say. The measurement behind it: on 2026-10-31, 54% of all runs
+  # were Mergify catch-up pushes and 269 of 444 full-suite PR runs were cancelled by a newer push.
+  # Concurrent pushes to one head already cancel each other (the `concurrency:` block above); this job
+  # removes the runs that should never have started. It never skips silently — `ci-gate` and
+  # `cio-hardening` still report, and their attestation names the reason the suite did not run.
+  preflight:
+    name: preflight (does this head need the full suite)
+    if: github.event_name == 'pull_request' && (github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 4
+    outputs:
+      suite_needed: ${{ steps.decide.outputs.suite_needed }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+      - name: Fetch origin/main (the branch-diff comparison needs it)
+        run: git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+      - id: decide
+        name: Is this head a merge-of-main-only push?
+        run: |
+          set -euo pipefail
+          python3 scripts/lib/ci_suite_preflight.py --github-output "$GITHUB_OUTPUT"
+
   shard:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
+    needs: preflight
+    # A merge-of-main-only push has nothing new to test; every other event keeps its existing rule.
+    if: (github.event_name != 'pull_request' || needs.preflight.outputs.suite_needed == 'true')
+        && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
     name: shard ${{ matrix.shard }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -105,9 +136,12 @@ jobs:
           if-no-files-found: ignore
 
   serial:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
+    needs: preflight
+    # A merge-of-main-only push has nothing new to test; every other event keeps its existing rule.
+    if: (github.event_name != 'pull_request' || needs.preflight.outputs.suite_needed == 'true')
+        && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
     name: shard serial
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -142,9 +176,12 @@ jobs:
           if-no-files-found: ignore
 
   pg:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
+    needs: preflight
+    # A merge-of-main-only push has nothing new to test; every other event keeps its existing rule.
+    if: (github.event_name != 'pull_request' || needs.preflight.outputs.suite_needed == 'true')
+        && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
     name: shard pg
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 20
     services:
       # The isolated M2 test cluster the m2_conn tests expect (scripts/lib/m2_live_shadow_guard.py:
@@ -206,9 +243,12 @@ jobs:
   # The rails `cio-hardening` runs after its gates, so `ci-gate` can replace it without
   # dropping one (audit table "Where each moved or removed check keeps its guarantee").
   integrity:
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/')
+    needs: preflight
+    # A merge-of-main-only push has nothing new to test; every other event keeps its existing rule.
+    if: (github.event_name != 'pull_request' || needs.preflight.outputs.suite_needed == 'true')
+        && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
     name: integrity rails
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -281,9 +321,9 @@ jobs:
     # The aggregate (candidate required context). Runs even when a dependency failed, and fails
     # unless every dependency succeeded AND the shard manifests prove completeness.
     name: ci-gate
-    needs: [shard, serial, pg, integrity]
+    needs: [preflight, shard, serial, pg, integrity]
     if: (always()) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -301,7 +341,13 @@ jobs:
           pattern: cio-shard-*-attempt-*
           path: ${{ runner.temp }}/manifests
           merge-multiple: false
+      - name: Say so when the suite was deliberately not needed
+        if: github.event_name == 'pull_request' && needs.preflight.outputs.suite_needed != 'true'
+        run: |
+          echo "ci-gate: the full suite did not run — ${{ needs.preflight.outputs.reason }}"
+          echo "ci-gate: this run attests the SKIP, not a suite result; the last full-suite head for this PR is the evidence."
       - name: Verify every job passed and the shards ran exactly the registered files
+        if: github.event_name != 'pull_request' || needs.preflight.outputs.suite_needed == 'true'
         env:
           CI_GATE_NEEDS: ${{ toJSON(needs) }}
         run: |
@@ -337,9 +383,9 @@ jobs:
     # cio-production-hardening-ci workflow stays untouched until then; retiring it and flipping branch
     # protection to this context is the operator's step (design §7).
     name: cio-hardening
-    needs: [shard, serial, pg, integrity]
+    needs: [preflight, shard, serial, pg, integrity]
     if: (always()) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false || startsWith(github.head_ref, 'mergify/'))
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -357,7 +403,13 @@ jobs:
           pattern: cio-shard-*-attempt-*
           path: ${{ runner.temp }}/manifests
           merge-multiple: false
+      - name: Say so when the suite was deliberately not needed
+        if: github.event_name == 'pull_request' && needs.preflight.outputs.suite_needed != 'true'
+        run: |
+          echo "ci-gate: the full suite did not run — ${{ needs.preflight.outputs.reason }}"
+          echo "ci-gate: this run attests the SKIP, not a suite result; the last full-suite head for this PR is the evidence."
       - name: Verify every job passed and the shards ran exactly the registered files
+        if: github.event_name != 'pull_request' || needs.preflight.outputs.suite_needed == 'true'
         env:
           CI_GATE_NEEDS: ${{ toJSON(needs) }}
         run: |
@@ -376,7 +428,7 @@ jobs:
       (github.event_name == 'schedule' || github.event_name == 'push') &&
       (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') ||
        contains(needs.*.result, 'timed_out'))
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       issues: write
