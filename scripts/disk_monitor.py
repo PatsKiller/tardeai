@@ -333,7 +333,8 @@ def build_baseline(mon: Mapping[str, Any], mounts: list[dict], hotspots: list[di
             # fail closed: keep the prior value, record the failure beside it — never the error as the value
             prior = hs_map.get(h["id"]) or {}
             hs_map.setdefault(h["id"], {"bytes": prior.get("bytes"), "path": h["path"]})
-            hs_map[h["id"]]["unmeasured"] = h.get("unmeasured") or 0
+            # the row always carries this count; if it ever does not, record the absence as unknown
+            hs_map[h["id"]]["unmeasured"] = h.get("unmeasured")
             hs_map[h["id"]]["last_failure"] = now.isoformat()
             continue
         hs_map[h["id"]] = {"bytes": h["bytes"], "path": h["path"], "recorded_at": now.isoformat()}
@@ -392,7 +393,14 @@ def purge_command(mon: Mapping[str, Any]) -> str:
 
 
 def _gb(n: Optional[int]) -> str:
-    return f"{(n or 0) / 1024**3:.1f}G"
+    """Gigabytes — or the word, when the measurement is missing. `(n or 0)` printed an unmeasured directory as
+    `0.0G`, which is a confident zero about something never observed (taxonomy #2)."""
+    return "size unknown" if n is None else f"{n / 1024**3:.1f}G"
+
+
+def _gb_delta(n: Optional[int]) -> str:
+    """A signed change, or the word. A growth alert that cannot compute growth must say so."""
+    return "change unknown" if n is None else f"+{n / 1024**3:.1f}G"
 
 
 def mount_alert_text(m: Mapping[str, Any], mon: Mapping[str, Any],
@@ -434,8 +442,10 @@ def mount_alert_text(m: Mapping[str, Any], mon: Mapping[str, Any],
 
 
 def hotspot_alert_text(h: Mapping[str, Any]) -> str:
-    return (f"Hotspot {h['id']} growing: {_gb(h['bytes'])} now (baseline {_gb(h.get('baseline_bytes'))},"
-            f" +{_gb((h['bytes'] or 0) - (h.get('baseline_bytes') or 0))}); purge: {h.get('purge') or 'none'}")
+    baseline = h.get("baseline_bytes")
+    delta = None if h["bytes"] is None or baseline is None else h["bytes"] - baseline
+    return (f"Hotspot {h['id']} growing: {_gb(h['bytes'])} now (baseline {_gb(baseline)},"
+            f" {_gb_delta(delta)}); purge: {h.get('purge') or 'none'}")
 
 
 # ── notify ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -472,8 +482,12 @@ def _load_condition(state_path: Optional[Path]) -> dict[str, Any]:
         from scripts.lib.alert_condition_state import load_store
 
         return (load_store(state_path) or {}).get("conditions") or {}
-    except Exception:  # noqa: BLE001
-        return {}
+    except Exception:  # noqa: BLE001 -- a read failure must predict a notification, never a suppression
+        # An unreadable store yields "no prior condition", so the dry run PREDICTS A SEND rather than none: the
+        # failure direction is towards telling the operator, not towards silence. A confident empty state would only
+        # be wrong in the safe direction, which is why this is suppressed rather than turned into an exception the
+        # read-only path would have to handle for nothing.
+        return {}  # nosemgrep: tq-py-broad-except-returns-default -- unknown predicts notify, never suppresses
 
 
 def _condition_snapshot(state_path: Optional[Path], key: str) -> Optional[dict[str, Any]]:
@@ -577,7 +591,7 @@ def run(
     sends: list[dict[str, Any]] = []
     if baseline:
         top_hotspots = sorted((h for h in ev["hotspots"] if h["bytes"] is not None),
-                              key=lambda h: -(h["bytes"] or 0))[: int(mon.get("top_consumers") or 5)]
+                              key=lambda h: -h["bytes"])[: int(mon.get("top_consumers") or 5)]
         # mount used-band + growth-band, one alert per mount per transition
         for m in ev["mounts"]:
             if "used_pct" not in m:
