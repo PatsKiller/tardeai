@@ -177,6 +177,19 @@ const current = mergedWaiting({ ...nextAhead, is_serving: true, commits_ahead: 0
 check('main being the running version is not "waiting"', current.waiting === false && /is the version that is running/.test(current.headline))
 const unreadable = mergedWaiting(null, servingNow as any, when)
 check('an unreadable comparison is unknown, never an all-clear', unreadable.waiting === false && unreadable.tone === 'warning' && /cannot be read/i.test(unreadable.headline))
+// cx-openai D52 at ea9442610: `is_serving: false` with no serving identity and no measured distance is what the
+// backend emits when the serving SHA is unavailable — it must not become "A merge is not live yet".
+const unidentifiedServing = mergedWaiting(
+  { is_serving: false, commits_ahead: null, prs_reason: 'serving SHA unavailable' } as any, null, when)
+check('an unidentified serving version is unknown, never "a merge is not live yet"',
+  unidentifiedServing.known === false && unidentifiedServing.waiting === false
+  && unidentifiedServing.tone === 'warning' && !/not live yet/i.test(unidentifiedServing.headline))
+const servedButUncounted = mergedWaiting({ ...nextAhead, commits_ahead: null } as any, servingNow as any, when)
+check('a known serving version with no measured distance is also unknown',
+  servedButUncounted.known === false && servedButUncounted.waiting === false)
+const countedButUnnamed = mergedWaiting({ ...nextAhead, commits_ahead: 2 } as any, null, when)
+check('a measured distance with no serving block is still unknown rather than invented',
+  countedButUnnamed.waiting === false && /cannot be read/i.test(countedButUnnamed.headline))
 const single = mergedWaiting({ ...nextAhead, commits_ahead: 1 } as any, servingNow as any, when)
 check('one change is singular', /1 merged change is not live yet/.test(single.headline))
 

@@ -145,9 +145,19 @@ export function mergedWaiting(
       detail: `Nothing merged is waiting to be promoted. The version running is ${running}.` }
   }
   const ahead = next.commits_ahead
-  const count = typeof ahead === 'number' && ahead > 0
-    ? `${ahead} merged change${ahead === 1 ? '' : 's'} ${ahead === 1 ? 'is' : 'are'} not live yet`
-    : 'A merge is not live yet'
+  // cx-openai D52 at ea9442610: the backend emits `is_serving: false` whenever the serving SHA is UNAVAILABLE
+  // (`head == serving_sha` is False when serving_sha is missing), together with `commits_ahead: null` and a
+  // `prs_reason` that names it. Nothing was compared in that shape, so this may not turn it into "A merge is not live
+  // yet": the serving identity must be known AND the distance measured before the page claims a merge is waiting.
+  const measured = typeof ahead === 'number' && ahead > 0
+  const servingIdentified = Boolean(serving && (serving.since || serving.release_name))
+  if (!measured || !servingIdentified) {
+    return { known: false, waiting: false, tone: 'warning',
+      headline: 'Whether merged work is still waiting cannot be read',
+      detail: 'The version that is running could not be identified, or how far main is ahead of it was not measured, so '
+        + 'nothing here says a merge is not live yet — treat it as unknown.' }
+  }
+  const count = `${ahead} merged change${ahead === 1 ? '' : 's'} ${ahead === 1 ? 'is' : 'are'} not live yet`
   const merged = next.committed_at ? ` The newest of them was merged ${when(next.committed_at)}.` : ''
   const prs = Array.isArray(next.prs_since_serving) && next.prs_since_serving.length
     ? ` They came in through ${next.prs_since_serving.length} change${next.prs_since_serving.length === 1 ? '' : 's'}.` : ''
