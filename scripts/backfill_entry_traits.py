@@ -18,6 +18,9 @@ _RVOL = re.compile(r"RVOL\s+([\d.]+)x", re.I)
 _FLOAT = re.compile(r"Float\s+([\d.]+)\s*M", re.I)
 _GRADE = re.compile(r"\b([A-D][+\-]?)\s+(\d+)\s*pts", re.I)
 _CATA = re.compile(r"verified catalyst", re.I)
+#: The only columns _parse may emit; every UPDATE column name is checked against this before use.
+_TRAIT_COLS = frozenset({"rvol_at_entry", "float_m_at_entry", "signal_grade", "score_at_entry",
+                         "catalyst_verified"})
 
 
 def _parse(setup: str) -> dict:
@@ -60,8 +63,11 @@ def main():
         updated += 1
         fields_set += len(to_set)
         if apply:
+            if not set(to_set) <= _TRAIT_COLS:
+                raise ValueError(f"unexpected column(s): {sorted(set(to_set) - _TRAIT_COLS)}")
             sets = ", ".join(f"{k}=%s" for k in to_set)
-            cur.execute(f"UPDATE paper_trades SET {sets} WHERE id=%s", (*to_set.values(), d["id"]))
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- column names checked against the fixed _TRAIT_COLS set above
+                f"UPDATE paper_trades SET {sets} WHERE id=%s", (*to_set.values(), d["id"]))
         else:
             print(f"  #{d['id']}: would set {to_set}")
     if apply:

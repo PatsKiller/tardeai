@@ -89,8 +89,9 @@ def run(apply):
         if sets:
             detail.append({"trade_id": t["id"], "symbol": t["symbol"], "fields": why})
             if apply:
-                wc.execute(f"UPDATE paper_trades SET {','.join(sets)}, updated_at=now() WHERE id=%s",
-                           params + [t["id"]])
+                wc.execute(  # nosemgrep: tq-py-sql-fstring -- sets holds only literal "col=%s" fragments built above
+                    f"UPDATE paper_trades SET {','.join(sets)}, updated_at=now() WHERE id=%s",
+                    params + [t["id"]])
     if apply:
         conn.commit()
     conn.close()

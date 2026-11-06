@@ -61,6 +61,21 @@ sys.path.insert(0, str(ROOT))
 DEFAULT_EXCLUDED = ("operator_message",)
 
 
+def _scope_sql(days: int, excluded: tuple[str, ...]) -> tuple[str, list]:
+    """The shared WHERE clause as literal SQL plus its driver parameters.
+
+    `event_type <> ALL(%s)` matches the old `NOT IN (...)` for every row, NULL event_type included
+    (both evaluate to NULL and exclude it).
+    """
+    sql = ("created_at > now() - %s * interval '1 day' "
+           "AND subject_guid IS NULL AND sanitized_body IS NOT NULL")
+    params: list = [int(days)]
+    if excluded:
+        sql += " AND event_type <> ALL(%s)"
+        params.append(list(excluded))
+    return sql, params
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true",
@@ -74,22 +89,22 @@ def main() -> int:
     from db_adapter import _get_conn  # noqa: PLC0415
 
     excluded = () if args.include_operator_messages else DEFAULT_EXCLUDED
-    where_excl = ""
-    if excluded:
-        where_excl = " AND event_type NOT IN (" + ",".join(f"'{e}'" for e in excluded) + ")"
 
     conn = _get_conn()
     conn.autocommit = False
     cur = conn.cursor()
 
-    scope = (f"created_at > now() - interval '{int(args.days)} days' "
-             f"AND subject_guid IS NULL AND sanitized_body IS NOT NULL{where_excl}")
+    # `scope` is fixed SQL text with %s placeholders; the window and the excluded types travel
+    # as driver parameters in `scope_params`, never in the SQL text.
+    scope, scope_params = _scope_sql(args.days, excluded)
 
-    cur.execute(f"SELECT count(*) FROM communication_events WHERE {scope}")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- scope is literal SQL from _scope_sql; values are params
+        f"SELECT count(*) FROM communication_events WHERE {scope}", scope_params)
     todo = cur.fetchone()[0]
-    cur.execute(f"""SELECT direction, event_type, count(*)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- scope is literal SQL from _scope_sql; values are params
+        f"""SELECT direction, event_type, count(*)
                       FROM communication_events WHERE {scope}
-                     GROUP BY 1,2 ORDER BY count(*) DESC""")
+                     GROUP BY 1,2 ORDER BY count(*) DESC""", scope_params)
     breakdown = cur.fetchall()
 
     print(f"Message identity backfill — trailing {args.days} days")
@@ -108,9 +123,10 @@ def main() -> int:
     # run resolved a different subject set than the real run -- ('AI','subject')
     # appeared at 300 chars and vanished at 260. A dry run that does not match
     # the run it previews is worse than no dry run: it is false assurance.
-    cur.execute(f"""SELECT event_id, sanitized_body
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- scope is literal SQL from _scope_sql; values are params
+        f"""SELECT event_id, sanitized_body
                       FROM communication_events WHERE {scope}
-                     ORDER BY created_at DESC LIMIT 5""")
+                     ORDER BY created_at DESC LIMIT 5""", scope_params)
     print("\n  what the CURRENT tagger resolves on the FULL body (as --apply will):")
     for eid, body in cur.fetchall():
         subs = subjects_from_tag(tag_text(body or ""))
@@ -124,9 +140,11 @@ def main() -> int:
 
     from scripts.lib.cio_outbound_identity import tag_outbound_event  # noqa: PLC0415
 
-    limit_sql = f" LIMIT {int(args.limit)}" if args.limit else ""
-    cur.execute(f"""SELECT event_id, sanitized_body FROM communication_events
-                     WHERE {scope} ORDER BY created_at DESC{limit_sql}""")
+    limit_sql = " LIMIT %s" if args.limit else ""
+    limit_params = [int(args.limit)] if args.limit else []
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- scope/limit_sql are literal SQL; values are params
+        f"""SELECT event_id, sanitized_body FROM communication_events
+                     WHERE {scope} ORDER BY created_at DESC{limit_sql}""", scope_params + limit_params)
     rows = cur.fetchall()
 
     tagged = linked = skipped = failed = 0

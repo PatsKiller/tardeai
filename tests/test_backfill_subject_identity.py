@@ -209,13 +209,13 @@ def test_a_table_without_the_columns_is_skipped_not_counted_zero(mod):
 
 def test_add_columns_is_idempotent(mod):
     cur = FakeCur([c for c, _ in mod.IDENTITY_COLUMNS] + ["symbol"], [])
-    assert mod.add_columns(cur, "t", apply=True) == []
+    assert mod.add_columns(cur, "news_articles", apply=True) == []
     assert cur.ddl == []
 
 
 def test_add_columns_uses_if_not_exists(mod):
     cur = FakeCur(["symbol"], [])
-    mod.add_columns(cur, "t", apply=True)
+    mod.add_columns(cur, "news_articles", apply=True)
     assert cur.ddl and all("IF NOT EXISTS" in d for d in cur.ddl)
 
 

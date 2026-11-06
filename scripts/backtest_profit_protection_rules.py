@@ -396,7 +396,8 @@ def run(args, run_id):
                 "estimate_quality", "result_scope", "graft_verdict"]
         for r in results:
             vals = dict(r); vals["excluded_reasons"] = json.dumps(r["excluded_reasons"])
-            wc.execute(f"""INSERT INTO profit_protection_rule_backtests ({','.join(cols)})
+            wc.execute(  # nosemgrep: tq-py-sql-fstring -- cols is the literal column list above; values are params
+                f"""INSERT INTO profit_protection_rule_backtests ({','.join(cols)})
                 VALUES ({','.join('%('+c+')s' for c in cols)})""", {c: vals.get(c) for c in cols})
             written += 1
         conn.commit(); conn.close()
