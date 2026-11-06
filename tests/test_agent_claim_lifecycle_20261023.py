@@ -49,12 +49,21 @@ class Clock:
 
 
 @pytest.fixture(autouse=True)
-def _pin_real_clock(monkeypatch):
+def _pin_real_clock(monkeypatch, tmp_path):
     """Claims are stamped at T0; paths that build their own board (CLI.main, board_view) read the module clock.
     Pin it to T0 so the 2-hour staleness rule never ages a fixture claim with the wall clock (batch 9: these
     tests passed before 16:00Z on 2026-10-23 and failed after)."""
     monkeypatch.setattr(B, "utc_now", lambda: T0)
     monkeypatch.setattr(LC, "_utc_now", lambda: T0)
+    # Default readers used by CLI tests must not discover this host's release receipts.
+    # Explicit FakeReleases paths/callables still exercise the real release classification.
+    original_init = LC.ReleaseReader.__init__
+
+    def fixture_releases(self, releases_base=None, deploy_state_dir=None, **kwargs):
+        original_init(self, releases_base or tmp_path / "releases",
+                      deploy_state_dir or tmp_path / "deploy", **kwargs)
+
+    monkeypatch.setattr(LC.ReleaseReader, "__init__", fixture_releases)
 
 
 class FakeGH:
@@ -804,3 +813,51 @@ def _app_test_runner_list() -> set[str]:
                          capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, f"run-tests.mjs --list failed: {out.stderr[-500:]}"
     return set(json.loads(out.stdout)["run"])
+
+
+# ── cc-deepseek-9's F2 at #2302: the report-only cleanup must run BEFORE the release ───────────────────────
+def test_release_reports_scratch_before_it_releases_the_claim(tmp_path, monkeypatch):
+    """The tool refuses a claim that is no longer on the board, so a hook run after release reports nothing."""
+    import argparse
+    import agent_claim as A
+
+    order: list[str] = []
+
+    class _Board:
+        def release(self, *a, **k):
+            order.append("release")
+            return {"claim_id": "C1", "status": "done", "session": "s1", "task": "t", "paths": [], "ended_at": "2026-11-05T00:00:00Z"}
+
+    monkeypatch.setattr(A, "_session", lambda a: "s1")
+    monkeypatch.setattr(A, "_incident_warning", lambda session: 0)
+    monkeypatch.setattr(A, "_board", lambda a: _Board())
+    monkeypatch.setattr(A, "_agent_scratch_cleanup_hook",
+                        lambda claim_id=None, claims_dir=None: order.append("cleanup"))
+
+    ns = argparse.Namespace(claim_id="C1", status="done", note="", pr=None, summary="s", force=False,
+                            json=False, session="s1", vendor="v", agent=None, claims_dir=str(tmp_path))
+    A.cmd_release(ns)
+    assert order == ["cleanup", "release"], order
+
+
+def test_the_cleanup_hook_receives_the_claims_dir(tmp_path, monkeypatch):
+    """A custom board directory must reach the tool, or the plan is computed against the wrong board."""
+    import argparse
+    import agent_claim as A
+
+    seen: list[str | None] = []
+
+    class _Board:
+        def release(self, *a, **k):
+            return {"claim_id": "C1", "status": "done", "session": "s1", "task": "t", "paths": [], "ended_at": "2026-11-05T00:00:00Z"}
+
+    monkeypatch.setattr(A, "_session", lambda a: "s1")
+    monkeypatch.setattr(A, "_incident_warning", lambda session: 0)
+    monkeypatch.setattr(A, "_board", lambda a: _Board())
+    monkeypatch.setattr(A, "_agent_scratch_cleanup_hook",
+                        lambda claim_id=None, claims_dir=None: seen.append(claims_dir))
+
+    ns = argparse.Namespace(claim_id="C1", status="done", note="", pr=None, summary="s", force=False,
+                            json=False, session="s1", vendor="v", agent=None, claims_dir=str(tmp_path))
+    A.cmd_release(ns)
+    assert seen == [str(tmp_path)], seen
