@@ -1,5 +1,5 @@
 /**
- * Hermetic nav alias tests for CIO Desk 5-tab IA.
+ * Hermetic nav alias tests for the CIO Desk 4-tab IA (intel/v001: Today · Holdings verdicts · My questions · Report).
  * Run via: node --experimental-strip-types src/lib/cioHubTabs.test.ts
  */
 import {
@@ -15,31 +15,30 @@ function eq(name: string, got: unknown, want: unknown) {
   if (g !== w) { failed++; console.error(`FAIL ${name}: got ${g} want ${w}`) }
 }
 
-eq('default tab', CIO_HUB_DEFAULT_TAB, 'overview')
-eq('five tabs', [...CIO_HUB_TABS], [
-  'overview',
-  'decisions',
-  'research',
-  'capital-policy',
-  'evidence-comms',
-])
-eq('null → overview', resolveCioHubTab(null), 'overview')
-eq('empty → overview', resolveCioHubTab(''), 'overview')
-eq('overview', resolveCioHubTab('overview'), 'overview')
-eq('cio-brain → overview', resolveCioHubTab('cio-brain'), 'overview')
-eq('cio-now → decisions', resolveCioHubTab('cio-now'), 'decisions')
-eq('opportunities → decisions', resolveCioHubTab('opportunities'), 'decisions')
-eq('universe-theses → research', resolveCioHubTab('universe-theses'), 'research')
-eq('investment-books → research', resolveCioHubTab('investment-books'), 'research')
-eq('capital-plan → capital-policy', resolveCioHubTab('capital-plan'), 'capital-policy')
-eq('posture → capital-policy', resolveCioHubTab('posture'), 'capital-policy')
-eq('operator-policy → capital-policy', resolveCioHubTab('operator-policy'), 'capital-policy')
-eq('report → evidence-comms', resolveCioHubTab('report'), 'evidence-comms')
-eq('telegram-receipts → evidence-comms', resolveCioHubTab('telegram-receipts'), 'evidence-comms')
-eq('unknown → overview', resolveCioHubTab('unknown-tab'), 'overview')
+eq('default tab', CIO_HUB_DEFAULT_TAB, 'today')
+eq('four tabs', [...CIO_HUB_TABS], ['today', 'holdings', 'questions', 'report'])
+eq('null → today', resolveCioHubTab(null), 'today')
+eq('empty → today', resolveCioHubTab(''), 'today')
+eq('overview → today', resolveCioHubTab('overview'), 'today')
+eq('decisions → today', resolveCioHubTab('decisions'), 'today')
+eq('cio-brain → report', resolveCioHubTab('cio-brain'), 'report')
+eq('cio-now → today', resolveCioHubTab('cio-now'), 'today')
+eq('opportunities → today', resolveCioHubTab('opportunities'), 'today')
+eq('universe-theses → report', resolveCioHubTab('universe-theses'), 'report')
+eq('investment-books → report', resolveCioHubTab('investment-books'), 'report')
+eq('capital-plan → report', resolveCioHubTab('capital-plan'), 'report')
+eq('posture → report', resolveCioHubTab('posture'), 'report')
+eq('operator-policy → report', resolveCioHubTab('operator-policy'), 'report')
+eq('evidence-comms → report', resolveCioHubTab('evidence-comms'), 'report')
+eq('telegram-receipts → report', resolveCioHubTab('telegram-receipts'), 'report')
+eq('advisory → holdings', resolveCioHubTab('advisory'), 'holdings')
+eq('questions', resolveCioHubTab('questions'), 'questions')
+eq('unknown → today', resolveCioHubTab('unknown-tab'), 'today')
 eq('sub telegram', resolveEvidenceSubtab('telegram-receipts'), 'telegram-receipts')
 eq('sub cio-brain', resolveEvidenceSubtab('cio-brain'), 'full-brain')
 eq('sub evidence', resolveEvidenceSubtab('evidence'), 'audit')
+eq('sub research', resolveEvidenceSubtab('research'), 'research')
+eq('sub posture', resolveEvidenceSubtab('posture'), 'capital-policy')
 eq('sub overview null', resolveEvidenceSubtab('overview'), null)
 
 if (failed) throw new Error(`cioHubTabs.test.ts: ${failed} failed`)

@@ -9,7 +9,7 @@
  *  URLs do not change, so bookmarks, Telegram deep links and ?tab= keep working.
  *
  *  Two pages appear in two sections on purpose (mockup §3 note 8): Home › Needs you and Ops › Approvals open
- *  /approvals; Home › My questions and Intel › My questions open /cio/questions. The Home copies are `alias` entries:
+ *  /approvals; Home › My questions opens /cio/questions (Intel › CIO Desk › My questions since intel/v001). The Home copies are `alias` entries:
  *  the same route, so nothing is duplicated, and "where am I" follows the section the operator came from. */
 
 export type NavSectionId = 'home' | 'portfolio' | 'trade' | 'intel' | 'ops'
@@ -84,24 +84,21 @@ export const NAV: NavSection[] = [
         { to: '/trading', label: 'Trading', match: ['/go/order', '/go/proposal', '/manual-execution'] },
         { to: '/watch', label: 'Watch', match: ['/watch-legacy', '/watchlist', '/watchpool', '/sectors', '/pullback-macd'] },
         { to: '/active-trader', label: 'Active Trader' },
-        { to: '/strategy', label: 'Strategy' },
+        { to: '/strategy', label: 'Strategy', match: ['/rec-intel'] },
         { to: '/journal', label: 'Journal (TradeInView)', match: ['/trade-in-view'] },
       ] },
     ],
   },
   {
     id: 'intel', label: 'Intel', groups: [
+      // Intel consolidation (intel/v001, 2026-11-06): Advisory → CIO Desk › Holdings verdicts; My questions → a CIO
+      // Desk tab; Intelligence + Research lineage → Research Intel tabs; Rec Intelligence → Strategy (Trade) and
+      // Prospectus › My history; Hermes → Ops › Engines. The old URLs redirect (App.tsx) and still locate here.
       { label: 'Desks', pages: [
-        { to: '/cio', label: 'CIO Desk', exact: true, strip: true },
-        { to: '/advisory', label: 'Advisory Desk', strip: true },
-        { to: '/cio/questions', label: 'My questions' },
+        { to: '/cio', label: 'CIO Desk', exact: true, strip: true, match: ['/advisory', '/cio/questions'] },
       ] },
       { label: 'Research', pages: [
-        { to: '/research-intelligence', label: 'Research Intel', strip: true, match: ['/research'] },
-        { to: '/intelligence', label: 'Intelligence' },
-        { to: '/hermes', label: 'Hermes' },
-        { to: '/rec-intel', label: 'Rec Intelligence' },
-        { to: '/closed-loop', label: 'Research lineage' },
+        { to: '/research-intelligence', label: 'Research Intel', strip: true, match: ['/research', '/intelligence', '/closed-loop'] },
         { to: '/prospectus', label: 'Prospectus' },
       ] },
       { label: 'Outputs', pages: [
@@ -121,6 +118,7 @@ export const NAV: NavSection[] = [
         { to: '/agents', label: 'Agents' },
         { to: '/consumption', label: 'LLM Spend' },
         { to: '/coordination', label: 'Coordination' },
+        { to: '/ops/engines', label: 'Engines', match: ['/hermes'] },
       ] },
       { label: 'Decide', pages: [
         { to: '/approvals', label: 'Approvals', strip: true },

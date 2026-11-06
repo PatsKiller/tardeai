@@ -24,7 +24,14 @@ const allPages = NAV.flatMap(s => sectionPages(s, true))
 const menuRoutes = new Set(allPages.map(p => p.to))
 
 check('35 old rail items + 11 control plane pages snapshotted', OLD_RAIL.length === 46)
-for (const to of OLD_RAIL) check(`old rail route ${to} is still a menu page`, menuRoutes.has(to))
+/** Intel consolidation (intel/v001, operator-approved 2026-11-06) retired these from the menu; each still locates. */
+const RETIRED_FROM_MENU = new Set(['/advisory', '/intelligence', '/closed-loop', '/hermes', '/rec-intel'])
+for (const to of OLD_RAIL) {
+  if (RETIRED_FROM_MENU.has(to)) {
+    const here = locateNav(to)
+    check(`retired rail route ${to} locates a menu page`, !!here && menuRoutes.has(here.page.to) && !menuRoutes.has(to), here ? here.page.to : 'null')
+  } else check(`old rail route ${to} is still a menu page`, menuRoutes.has(to))
+}
 for (const to of OLD_OFF_RAIL) {
   const here = locateNav(to)
   check(`off-rail route ${to} resolves to a menu page`, !!here && menuRoutes.has(here.page.to), here ? here.page.to : 'null')
@@ -50,12 +57,12 @@ const portfolio = NAV.find(s => s.id === 'portfolio')!
 check('Portfolio groups', portfolio.groups.map(g => `${g.label}:${g.pages.map(p => p.label).join('/')}`).join(' | ')
   === 'What I own:Holdings/Retirement | Protect:Risk/Defense | Reposition:Re-Entry/Rotation/Redeploy')
 const intel = NAV.find(s => s.id === 'intel')!
-check('Intel groups', intel.groups.map(g => g.label).join(',') === 'Desks,Research,Outputs' && sectionPages(intel, false).length === 11)
+check('Intel groups', intel.groups.map(g => g.label).join(',') === 'Desks,Research,Outputs' && sectionPages(intel, false).length === 5)
 const ops = NAV.find(s => s.id === 'ops')!
-check('Ops: 13 pages + Control Plane preview group', sectionPages(ops, false).length === 13 && sectionPages(ops, true).length === 24)
+check('Ops: 14 pages + Control Plane preview group', sectionPages(ops, false).length === 14 && sectionPages(ops, true).length === 25)
 check('control plane group behind the flag', ops.groups.includes(CONTROL_PLANE_GROUP) && CONTROL_PLANE_GROUP.preview === true)
 check('Home: Today / Needs you / My questions', NAV[0].groups[0].pages.map(pageHref).join(' ') === '/ /approvals?tab=waiting /cio/questions')
-check('long sections keep the current page in the strip', stripPages(intel, false, intel.groups[1].pages[3]).includes(intel.groups[1].pages[3]))
+check('long sections keep the current page in the strip', stripPages(ops, false, ops.groups[1].pages[3]).includes(ops.groups[1].pages[3]))
 check('short sections show every page in the strip', stripPages(portfolio, false, null).length === 7)
 
 console.log(`navConfig: ${pass} passed, ${fail} failed`)
