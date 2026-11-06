@@ -9,6 +9,7 @@ import { dateOnlyPart, fmtAsOf } from '../lib/asOfDisplay'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { deriveTodayPnlState } from '../lib/todayPnlState'
+import { HOME_APPROVALS, type NeedsYouSummary } from '../lib/homeApprovals'
 import { deriveHeaderFeedState } from '../lib/headerFeedState'
 import type { HeaderFeed } from '../lib/headerFeedState'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -99,6 +100,10 @@ export default function MetricStrip({ onDrill }: Props) {
     stale: overviewStale, refetch: overviewRefetch,
   } = useApi<any>('/api/v2/overview', 120_000, CHROME)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, CHROME)
+  // LIVEFIX-P: the header flag counts the same queue as the Home "Needs you" card and the nav badge, so the
+  // header can never say "1 APPROVALS" while the card says "Nothing needs you". The legacy overview count is only
+  // a fallback when that queue cannot be read.
+  const { data: needsYouSummary } = useApi<NeedsYouSummary>(`${HOME_APPROVALS}/summary`, 60_000, CHROME)
   const {
     data: regime, loading: regimeLoading, error: regimeError,
     stale: regimeStale, refetch: regimeRefetch,
@@ -389,7 +394,7 @@ export default function MetricStrip({ onDrill }: Props) {
     : vixReading.state === 'UNAVAILABLE'
       ? vixReading.label
       : `${vixProvenanceText} · ${vixReading.label}`
-  const approvals = overview?.pending_approvals ?? overview?.approvals_count
+  const approvals = typeof needsYouSummary?.count === 'number' ? needsYouSummary.count : (overview?.pending_approvals ?? overview?.approvals_count)
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
   // Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B). The
   // header must distinguish the selected quote provider from an eligible
