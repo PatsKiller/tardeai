@@ -963,19 +963,13 @@ def test_an_output_path_that_aliases_an_input_is_refused(tmp_path):
     (coord / "inbox").mkdir(parents=True)
     (coord / "AUDIT_FIX_QUEUE.json").write_text("{}", encoding="utf-8")
     # 1. pointing the ledger at the queue
-    try:
+    with pytest.raises(D.DispatchError):
         D.safe_output_path(coord / "AUDIT_FIX_QUEUE.json", coord=coord)
-        raise AssertionError("writing the queue was allowed")
-    except D.DispatchError:
-        pass
     # 2. a symlink under the coordinator that points at the inbox
     link = coord / "MERGE_READY.md"
     link.symlink_to(coord / "inbox" / "somewhere.md")
-    try:
+    with pytest.raises(D.DispatchError):
         D.safe_output_path(link, coord=coord)
-        raise AssertionError("writing through a symlink was allowed")
-    except D.DispatchError:
-        pass
     # 3. the legitimate path still works once the symlink is gone
     link.unlink()
     assert D.safe_output_path(coord / "MERGE_READY.md", coord=coord) == (coord / "MERGE_READY.md").resolve()

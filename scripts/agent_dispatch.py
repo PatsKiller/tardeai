@@ -30,7 +30,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib import agent_dispatch as D  # noqa: E402
 from lib.pr_all_checks_green import MERGE_REQUIRED_CHECKS, evaluate_merge_rollup  # noqa: E402
-from lib.pr_merge_delegation import (  # noqa: E402 - read-only evidence helpers, no merge entrypoint
+from lib.pr_merge_delegation import (  # noqa: E402 -- read-only evidence helpers, no merge entrypoint
     Refused as EvidenceRefused,
     path_ok,
     reviewer_artifact,
@@ -58,7 +58,7 @@ def _run(cmd: Sequence[str], **kw: Any) -> Any:
     kw.setdefault("capture_output", True)
     kw.setdefault("text", True)
     kw.setdefault("timeout", D.RUN_TIMEOUT_S)
-    return subprocess.run(list(cmd), **kw)  # noqa: S603
+    return subprocess.run(list(cmd), **kw)  # noqa: S603 -- argv is a list built by this module, never a shell string
 
 
 def tmux_sessions(run: Callable[..., Any] = _run) -> list[str]:
@@ -354,8 +354,9 @@ def open_prs(run: Callable[..., Any] = _run, with_commits: bool = True) -> list[
                 try:
                     commits = json.loads(c.stdout or "{}").get("commits") or []
                     pr.commit_shas = tuple(str(x.get("oid")) for x in commits if isinstance(x, dict) and x.get("oid"))
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    # Unreadable commit list: commit_shas stays () so the PR is identified by its head alone, never by a guess.
+                    print(f"agent_dispatch: PR {pr.number} commit list unreadable: {exc}", file=sys.stderr)
         out.append(pr)
     return out
 
@@ -416,11 +417,11 @@ def idle_minutes_from_state(panes: Sequence[D.PaneState], path: Path, now_iso: s
             started = now
         updated[pane.session] = started.isoformat(timespec="seconds").replace("+00:00", "Z")
         out.append((pane.session, (now - started).total_seconds() / 60.0))
-    idle_minutes_from_state.last = updated  # type: ignore[attr-defined]
+    idle_minutes_from_state.last = updated  # type: ignore[attr-defined]  # -- a function attribute carrying the last idle map between cycles
     return out
 
 
-idle_minutes_from_state.last = {}  # type: ignore[attr-defined]
+idle_minutes_from_state.last = {}  # type: ignore[attr-defined]  # -- a function attribute carrying the last idle map between cycles
 
 
 def run_cycle(
@@ -527,7 +528,7 @@ def run_cycle(
         for a in assignments:
             try:
                 r = D.submit(a.session, a.instruction, run=run, sleep=sleep)
-            except Exception as exc:  # noqa: BLE001 — a lane that dies mid-cycle loses the receipt of what it sent
+            except Exception as exc:  # noqa: BLE001 -- a lane that dies mid-cycle loses the receipt of what it sent
                 r = D.SubmitResult(False, False, 0, f"dispatch raised {type(exc).__name__}: {exc}")
             head = ""
             if a.kind in ("review", "merge_prep"):

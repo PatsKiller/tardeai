@@ -32,7 +32,7 @@ try:  # repo root on sys.path
     from scripts.lib.agent_claim_board import (
         ClaimBoard, ClaimError, canonical_pattern, patterns_overlap, _segment_regex as claim_segment_regex)
 except ImportError:  # scripts/ on sys.path
-    from lib.agent_claim_board import (  # type: ignore[no-redef]
+    from lib.agent_claim_board import (  # type: ignore[no-redef]  # -- the fallback import when scripts/ itself is on sys.path
         ClaimBoard, ClaimError, canonical_pattern, patterns_overlap, _segment_regex as claim_segment_regex)
 
 REPO = "PatsKiller/tardeai"
@@ -58,7 +58,7 @@ try:  # package import (scripts.lib.pr_merge_delegation)
         path_refusal,
     )
 except ImportError:  # scripts/ on sys.path, module loaded by file path (the merge tests do this)
-    from lib.merge_path_classes import (  # type: ignore[no-redef]
+    from lib.merge_path_classes import (  # type: ignore[no-redef]  # -- the fallback import when scripts/ itself is on sys.path
         DECISION_PATHS,
         DECISION_REFUSAL,
         DELEGATION_CONTROL_PATHS,
