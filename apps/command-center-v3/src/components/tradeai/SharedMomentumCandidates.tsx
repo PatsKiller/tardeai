@@ -4,6 +4,7 @@ import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS } from '../../lib/designTokens'
 import { SymbolLink } from '../opportunity/OpportunityContext'
 import ListPager, { useListOffset } from '../ListPager'
+import DetailHeader from '../DetailHeader'
 import type { ListPage } from '../ListPager'
 
 type SetupEvidence = {
@@ -190,7 +191,7 @@ export default function SharedMomentumCandidates() {
         </table>
       </div>}
       {historyId && <aside className="candidate-history" role="dialog" aria-modal="true" aria-label="Candidate observation history">
-        <button type="button" autoFocus onClick={() => setHistoryId(null)}>Back to candidates</button>
+        <DetailHeader variant="auto" back="Candidates" title="Observation history" onClose={() => setHistoryId(null)} autoFocus style={{ margin: '-16px -16px 12px' }} />
         <div>{(['TRADE_AI', 'ACTIVE_TRADER'] as const).map(source => <button key={source} type="button" aria-pressed={source === historySource} onClick={() => setHistorySource(source)}>{source === 'TRADE_AI' ? 'TradeAI' : 'Active Trader'}</button>)}</div>
         <ListPager page={history?.pagination} previous={historyPaging.previous} next={historyPaging.next} busy={historyLoading} gap={history?.payload_gap} />
         {history?.candidates?.[0]?.candidate_id === historyId && (!history.history_source || history.history_source === historySource) ? <>

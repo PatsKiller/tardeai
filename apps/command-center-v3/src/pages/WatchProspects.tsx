@@ -16,6 +16,7 @@ import ConflictLine from '../components/conflicts/ConflictLine'
 import ConflictSheet, {useConflictSheet, type ConflictSection} from '../components/conflicts/ConflictSheet'
 import WatchReviewRequest from '../components/watch/WatchConflictPanel'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
+import DetailHeader from '../components/DetailHeader'
 import { WatchCompanyFacts, companyDisplayName } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
@@ -524,7 +525,8 @@ export default function WatchProspects() {
         </section>
 
         {selected && !sheet.key && !detail.mobile && <aside className="watch-card-detail" aria-label="Prospect record" style={panel}>
-          <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
+          {/* nav/v001 §5: the list stays visible beside this record, so ✕ only (no "Back to list"). */}
+          <DetailHeader variant="drawer" title={`${selected.symbol} · prospect record`} onClose={() => setSel(null)} autoFocus />
           <Detail r={selected} cio={cio} onOpenConflict={key => openConflict(selected, key)} />
         </aside>}
         {selected && !sheet.key && detail.mobile && <MobileDetailSheet title={`${selected.symbol} · prospect record`} onBack={detail.close}>

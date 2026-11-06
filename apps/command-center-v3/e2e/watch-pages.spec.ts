@@ -91,8 +91,8 @@ for (const w of WIDTHS) {
       await page.getByTestId('mine-row').first().locator('button[aria-pressed]').nth(1).click()
       await expect(page.getByTestId('watch-detail')).toBeVisible()
       await shot(page, `my-watchlist-detail_${w}`)
-      // W2/W9 (mobile-first standard): "Back to list" beside the list; the phone sheet's "← Back".
-      await page.getByRole('button', { name: w === 412 ? '← Back' : 'Back to list', exact: true }).click()
+      // nav/v001 §5: the shared header's ✕ closes the record on desktop and phone.
+      await page.getByTestId('detail-close').click()
       await expect(page.getByTestId('watch-detail')).toBeHidden()
       // filters in the URL; empty-state hint when nothing matches
       await page.getByRole('button', { name: /Position filters/ }).first().click()
@@ -167,7 +167,7 @@ for (const w of WIDTHS) {
       await expect(page.locator('[data-opportunity-detail="NAVN"]')).toContainText('25.853 / 25.1 / 26.02')
       await shot(page, `full-universe-detail_${w}`)
       // Phones open the record as a full-screen sheet (mobile-first standard 1): go back to the list first.
-      if (w === 412) { await page.getByRole('button', { name: '← Back', exact: true }).click(); await expect(page.locator('[data-opportunity-detail="NAVN"]')).toHaveCount(0) }
+      if (w === 412) { await page.getByTestId('detail-close').click(); await expect(page.locator('[data-opportunity-detail="NAVN"]')).toHaveCount(0) }
       await navn.getByTestId('mine-star').click()
       await page.locator('[data-filter="position"][data-opt="formerly_held"]').click()
       await expect(page).toHaveURL(/position=formerly_held/)

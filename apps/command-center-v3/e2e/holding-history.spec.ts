@@ -285,7 +285,7 @@ test.describe('phone list card chip and detail sheet', () => {
       await chip.scrollIntoViewIfNeeded(); await inViewport(card, page, 44); await chip.tap()
       const sheet = page.getByTestId('history-detail-sheet')
       await expect(sheet).toBeVisible(); await expect(page.getByTestId('history-back')).toBeFocused()
-      await expect(page.getByTestId('history-back')).toHaveText('← Back to names')
+      await expect(page.getByTestId('history-back')).toHaveText('‹ Names')
       expect(await sheet.boundingBox()).toEqual({ x: 0, y: 0, width: viewport.width, height: viewport.height })
       // The gap detail moved off the card stays reachable in the sheet.
       await expect(sheet.getByRole('complementary', { name: 'CHIP source gaps' })).toContainText('without an explicit trade link 3')

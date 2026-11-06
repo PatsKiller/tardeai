@@ -4,9 +4,11 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import DeskPage, { DeskGap } from '../src/components/DeskPage'
 import NavRail from '../src/components/NavRail'
+import SectionStrip from '../src/components/SectionStrip'
 import '../src/index.css'
 createRoot(document.getElementById('root')!).render(<BrowserRouter><div style={{ display: 'flex', height: '100vh' }}>
   <NavRail /><main className="app-main" style={{ flex: 1, minWidth: 0, padding: 20, overflowY: 'auto' }}>
+    <SectionStrip />
     <Routes><Route path="/system/ops-controls" element={<h1>Decision destination</h1>} /><Route path="*" element={<DeskPage title="Restored desk" purpose="Review the evidence, identify the gaps, and choose what needs attention."
       tabs={[{ id: 'overview', label: 'Overview' }, { id: 'history', label: 'History' }]} tabAliases={{ legacy: 'history' }} sources={[
         { id: 'posture', label: 'Posture', asOf: '2026-10-24T23:30:00Z', laneIds: ['posture'], maxAgeHours: 1 },

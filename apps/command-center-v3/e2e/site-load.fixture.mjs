@@ -114,7 +114,7 @@ try{
     await page.goto(`${origin}/v3/communications?tab=events`);await page.locator('[data-feed-card]').first().waitFor()
     await tap(page.locator('[data-feed-card]').first());const drawer=page.getByTestId('comms-drawer');await visible(drawer);await shot('comms-detail')
     await tap(drawer.getByTestId('comms-drawer-actions').getByRole('button',{name:/^Acknowledge /}));await visible(page.getByText('Confirm: Acknowledge — 1 message',{exact:true}));await page.getByRole('button',{name:'Cancel',exact:true}).click()
-    await tap(drawer.getByRole('button',{name:'Back to messages',exact:true}));await expect(drawer).toHaveCount(0)
+    await tap(drawer.getByTestId('detail-close'));await expect(drawer).toHaveCount(0)
     await tap(page.getByRole('button',{name:'Retention',exact:true}));await expect(page.getByText('1300',{exact:true}).first()).toBeVisible();const commStart=traffic.length;await page.clock.runFor(65_100);await page.waitForLoadState('networkidle');assert(!traffic.slice(commStart).some(r=>['/api/v2/communications/events','/api/v2/communications/deliveries','/api/v2/communications/agents'].includes(r.path)));await shot('comms-retention')
     flows.push({width,page:'comms',detail:true,back:true,filter:'URL tab',primary_action:'acknowledge opens confirmation',inactive_poll_stopped:true})
     for(const name of ['prospects','mine','suggests']){

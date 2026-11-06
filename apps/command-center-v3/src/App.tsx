@@ -5,6 +5,7 @@ import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hoo
 import { initialProbeState, onProbeResult } from './lib/reconnectProbe'
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
+import SectionStrip from './components/SectionStrip'
 import DetailDrawer, { type DrillContext } from './components/DetailDrawer'
 import SharedIntelligenceBridge from './components/SharedIntelligenceBridge'
 import StrategyHub from './pages/StrategyHub'
@@ -245,6 +246,8 @@ function Shell() {
         <NavRail />
         <main className="app-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
           <SharedIntelligenceBridge />
+          {/* Menu level 2 (nav/v001): the current section's pages; level 3 stays each page's own tabs. */}
+          <SectionStrip />
           <Routes>
             <Route index element={<RouteErrorBoundary route="/v3/"><HomeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="portfolio" element={<RouteErrorBoundary route="/v3/portfolio"><PortfolioHub onDrill={setDrill} /></RouteErrorBoundary>} />

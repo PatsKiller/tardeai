@@ -105,7 +105,7 @@ try {
           await page.getByTestId('incident-row-' + id).click()
           await page.getByTestId('incident-detail').getByText(label, { exact: true }).waitFor()
           assert.equal(await page.getByText('P1 sent', { exact: true }).count(), 0)
-          if (width === 390) await page.getByRole('button', { name: '← Back', exact: true }).click()
+          if (width === 390) await page.getByTestId('detail-close').click()
         }
         if (width !== 390) await page.getByRole('button', { name: 'Close', exact: true }).click()
         await page.getByTestId('incident-filter-all').click()

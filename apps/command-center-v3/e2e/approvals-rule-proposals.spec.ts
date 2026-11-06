@@ -85,7 +85,7 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await noOverflow()
     await page.screenshot({ path: testInfo.outputPath(`approvals-rule-proposal-sheet-${width}.png`) })
 
-    await tap(sheet.getByRole('button', { name: '← Back' }))
+    await tap(sheet.getByTestId('detail-close'))
     await expect(page).toHaveURL(/\/approvals(\?tab=CONFLICT)?$/)
     await expect(page.getByRole('heading', { name: 'Approvals Center', exact: true })).toBeVisible()
     await expect(page.locator('.queue-row').filter({ hasText: 'Proposed conflict rule' })).toBeVisible()

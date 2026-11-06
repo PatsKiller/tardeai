@@ -117,9 +117,9 @@ try {
       await expect(card.getByTestId('watch-blocking-reason')).toContainText('Trade AI deterministic check fails')
       await card.getByTitle(`Open the ${rows[i].symbol} record`, { exact: true }).click()
       await expect(page.getByTestId('watch-detail-conflicts')).toContainText('Desk disagreement retained in record')
-      // W2/W9 (mobile-first standard): the record closes with "Back to list" beside the list, or the
-      // full-screen sheet's "← Back" on a phone.
-      await page.getByRole('button', { name: width === 412 ? '← Back' : 'Back to list', exact: true }).click()
+      // nav/v001 §5: the record closes with the shared header's ✕ (beside the list on desktop, in the
+      // full-screen sheet's "‹ {list}" · title · ✕ header on a phone).
+      await page.getByTestId('detail-close').click()
     }
     await expect(card.locator('.watch-company-label')).toHaveText('CATALYST')
     await expect(card.getByTestId('watch-company-catalyst')).not.toContainText('Source claim')

@@ -4,6 +4,7 @@
  */
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import DetailHeader from '../components/DetailHeader'
 import { useApi } from '../hooks/useApi'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import { RADIUS } from '../lib/designTokens'
@@ -189,10 +190,9 @@ export default function SymbolIntelligencePage() {
 
   return (
     <div data-symbol-intelligence-page data-symbol={sym} data-provider-calls={String(body?.provider_calls ?? 0)}>
+      {/* Shared header (nav/v001 §5): "‹ Watch" back to the Intelligence board · symbol · ✕. */}
+      <DetailHeader back="Watch" backTo="/watch?tab=intelligence" title={sym || 'Symbol'} titleAs="span" style={{ marginBottom: 10 }} />
       <div style={{ marginBottom: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Link to="/watch?tab=intelligence" style={{ color: BB.text3, fontSize: TYPE.xs, textDecoration: 'none' }}>
-          ← Intelligence Board
-        </Link>
         <Link to="/cio" style={{ color: BB.text3, fontSize: TYPE.xs, textDecoration: 'none' }}>
           CIO hub
         </Link>

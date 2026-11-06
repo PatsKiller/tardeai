@@ -93,7 +93,7 @@ try{
   await noHorizontal()
   await tap(row.getByRole('button',{name:'Ask the CIO to review',exact:true}))
   const dialog=page.getByRole('dialog',{name:'SCHD · recorded conflict'})
-  await inView(dialog);await inView(dialog.getByRole('button',{name:'← Back'}))
+  await inView(dialog);await inView(dialog.getByTestId('detail-close'))
   await inView(dialog.getByRole('heading',{name:'What disagrees',exact:true}))
   assert(await dialog.evaluate(el=>el.contains(document.activeElement)),'Focus enters the conflict detail')
   assert.equal(new URL(page.url()).searchParams.get('conflict'),finding.key)
@@ -129,14 +129,14 @@ try{
   await dialog.getByTestId('conflict-resolved').scrollIntoViewIfNeeded();await inView(dialog.getByTestId('conflict-resolved'));await expect(dialog.getByTestId('conflict-resolved')).toContainText('the CIO chose HOLD')
   await expect(dialog).toContainText('Fixture reviewed evidence; decision recorded');await expect(dialog).toContainText('Cleared by the engine')
   await page.screenshot({path:path.join(output,`impl-watch-${surface}-resolved-${width}.png`),fullPage:false,animations:'disabled'})
-  await tap(dialog.getByRole('button',{name:'← Back'}))
+  await tap(dialog.getByTestId('detail-close'))
   await expect(row.getByTestId('conflict-line')).toHaveCount(0)
   await expect(row.getByRole('button',{name:'Ask the CIO to review',exact:true})).toHaveCount(0)
   assert.equal(new URL(page.url()).searchParams.get('source'),'fixture')
   if(width<820){
    await tap(row.locator('[title="Open the SCHD record"]'))
    const recordDialog=page.getByRole('dialog',{name:surface==='mine'?'SCHD · watch record':'SCHD · prospect record'})
-   await inView(recordDialog);await inView(recordDialog.getByRole('button',{name:'← Back'}))
+   await inView(recordDialog);await inView(recordDialog.getByTestId('detail-close'))
    await page.goBack();await expect(page.getByRole('dialog')).toHaveCount(0)
   }
   // The released W2 pager must use the actual next_offset (17), not limit (25).

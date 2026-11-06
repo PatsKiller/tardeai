@@ -72,7 +72,7 @@ test('412: every queue row, filter, Show all and four drawers responds to taps',
     const actionHref = await row.getByTestId('do-now-action').getAttribute('href')
     expect(actionHref).not.toBeNull()
     await expect(sheet.getByRole('link')).toHaveAttribute('href', actionHref!)
-    await sheet.getByRole('button', { name: '← Back' }).tap()
+    await sheet.getByTestId('detail-close').tap()
     await expect(sheet).toHaveCount(0)
     expect((await row.getByTestId('do-now-action').boundingBox())!.height).toBeGreaterThanOrEqual(44)
   }
@@ -81,7 +81,7 @@ test('412: every queue row, filter, Show all and four drawers responds to taps',
     await page.getByTestId(`home-drawer-${id}`).getByRole('button', { expanded: false }).first().tap()
     const sheet = page.getByRole('dialog', { name: title }); await expect(sheet).toBeVisible()
     if (process.env.HOME_REVERT_PROOF_DIR) await page.screenshot({ path: `${process.env.HOME_REVERT_PROOF_DIR}/impl-home-drawer-${id}-412.png` })
-    await sheet.getByRole('button', { name: '← Back' }).tap(); await expect(sheet).toHaveCount(0)
+    await sheet.getByTestId('detail-close').tap(); await expect(sheet).toHaveCount(0)
   }
   expect(writes).toEqual([]); expect(errors).toEqual([])
 })

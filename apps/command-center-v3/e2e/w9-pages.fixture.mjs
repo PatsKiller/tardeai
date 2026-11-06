@@ -154,7 +154,7 @@ try {
     if (width < 820) {
       const dialog = page.getByRole('dialog')
       await viewportVisible(dialog)
-      await viewportVisible(dialog.getByRole('button', {name: '← Back'}))
+      await viewportVisible(dialog.getByTestId('detail-close'))
       assert(await dialog.evaluate(el => el.contains(document.activeElement)), 'Focus must enter detail')
       await expect.poll(() => new URL(page.url()).searchParams.get('detail-drawer')).toBe('record')
       await shot('research-detail')
@@ -180,7 +180,7 @@ try {
       await viewportVisible(dialog)
       await expect(dialog).toContainText('Recorded fixture fund description')
       await shot('watch-classic-detail')
-      await tap(dialog.getByRole('button', {name: '← Back'}))
+      await tap(dialog.getByTestId('detail-close'))
       await expect(dialog).toHaveCount(0)
     }
     await tap(page.getByTestId('watch-tab-opportunities'))

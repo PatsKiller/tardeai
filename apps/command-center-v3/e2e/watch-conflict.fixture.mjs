@@ -62,7 +62,7 @@ try {
     await expect(dialog.getByTestId('conflict-record-state')).toHaveAttribute('data-state','OPEN')
     await expect(dialog).toContainText('Schwab Roth')
     await expect(dialog).not.toContainText('schwab_roth_ira')
-    await inView(dialog.getByRole('button',{name:'← Back'}))
+    await inView(dialog.getByTestId('detail-close'))
     assert(await dialog.evaluate(el=>el.contains(document.activeElement)),'Focus enters sheet')
     await page.screenshot({path:path.join(output,`impl-conflict-shared-open-${width}.png`),fullPage:width>=820,animations:'disabled'})
     recordState='UNDER_REVIEW';await page.clock.runFor(15_000)

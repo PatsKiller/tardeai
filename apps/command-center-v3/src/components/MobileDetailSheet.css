@@ -8,7 +8,7 @@
 .mobile-detail-sheet button, .mobile-detail-sheet a, .mobile-detail-sheet summary { min-height: 44px; min-width: 44px; }
 .mobile-detail-sheet a { display: inline-flex; align-items: center; }
 .mobile-detail-sheet .cc-drawer { width: 100% !important; height: 100% !important; }
-.mobile-detail-evidence { padding: 0; height: calc(100dvh - 56px); }
+.mobile-detail-evidence { padding: 0; height: calc(100dvh - 52px); }
 .mobile-detail-evidence > div { position: static !important; height: 100%; }
 .mobile-detail-evidence { margin: -16px; }
 .mobile-detail-evidence [data-drawer-close] { display: none; }

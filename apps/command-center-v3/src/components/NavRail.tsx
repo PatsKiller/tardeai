@@ -1,129 +1,54 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
-import { locateIn } from '../lib/navLocate'
-import { RADIUS } from '../lib/designTokens'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { useNavHere, openAllSheet } from '../hooks/useNavHere'
 import { HOME_APPROVALS, titledWithCount, type NeedsYouSummary } from '../lib/homeApprovals'
+import { NAV, isHere, pageHref, sectionPages, visibleGroups, type NavSection, type NavSectionId } from '../lib/navConfig'
+import '../styles/navShell.css'
 
-type Hub = { to: string; label: string; exact?: boolean; hardNav?: boolean; restored?: boolean }
+/** Level 1 of the menu (design nav/v001, operator-approved 2026-11-06).
+ *
+ *  Phone (≤ 820 px): a bottom tab bar with the five sections, always on screen; tapping the active tab again opens
+ *  the section's "All ▾" grouped sheet (SectionStrip). Desktop: a rail with the same five sections, the active one
+ *  expanded into its groups and pages, the others folded with a page count. One table drives both (lib/navConfig).
+ *  The ☰ command bar and full-screen nav sheet are gone; every page they listed is still one or two taps away. */
 
-/** Board 0 restores all eleven desks without dropping the existing navigation. */
-// Fixed restoration date: the badge expires after fourteen days, never on each visit.
-const RESTORED_AT = Date.parse('2026-10-24T22:51:33Z')
-const RESTORED_UNTIL = RESTORED_AT + 14 * 24 * 60 * 60 * 1000
-const SECTIONS: { label: string; hubs: Hub[] }[] = [
-  {
-    label: 'Trade',
-    hubs: [
-      { to: '/', label: 'Home', exact: true },
-      { to: '/portfolio', label: 'Portfolio', exact: true },
-      { to: '/trading', label: 'Trading' },
-      { to: '/watch', label: 'Watch' },
-      { to: '/portfolio/re-entry', label: 'Re-Entry', restored: true },
-      { to: '/risk', label: 'Risk' },
-      { to: '/defense', label: 'Defense', restored: true },
-      { to: '/rotation', label: 'Rotation', restored: true },
-      { to: '/active-trader', label: 'Active Trader' },
-      { to: '/journal', label: 'TradeInView' },
-      { to: '/strategy', label: 'Strategy', restored: true },
-    ],
-  },
-  {
-    label: 'Intel',
-    hubs: [
-      { to: '/cio', label: 'CIO Desk', exact: true },
-      { to: '/advisory', label: 'Advisory Desk', restored: true },
-      { to: '/cio/questions', label: 'My questions' },
-      { to: '/research-intelligence', label: 'Research Intel' },
-      { to: '/intelligence', label: 'Intelligence', restored: true },
-      { to: '/closed-loop', label: 'Research lineage', restored: true },
-      { to: '/hermes', label: 'Hermes', restored: true },
-      { to: '/rec-intel', label: 'Rec Intelligence', restored: true },
-      { to: '/reports', label: 'Reports', restored: true },
-      { to: '/communications', label: 'Communications' },
-      // Ticker Prospectus (operator 2026-10-26): appended; nothing above moved.
-      { to: '/prospectus', label: 'Prospectus' },
-    ],
-  },
-  {
-    label: 'Ops',
-    hubs: [
-      { to: '/health', label: 'Health' },
-      { to: '/ops/jobs', label: 'Jobs & health' },
-      { to: '/agents', label: 'Agents', restored: true },
-      // The /consumption route existed since v3 but was never on the rail, so the only
-      // way to reach LLM spend and its off-peak routing control was to know the URL.
-      { to: '/consumption', label: 'LLM Spend' },
-      { to: '/coordination', label: 'Coordination' },
-      { to: '/system/broker-access', label: 'Broker Access' },
-      { to: '/system/releases', label: 'Releases & Schedules' },
-      { to: '/approvals', label: 'Approvals' },
-      { to: '/policy', label: 'Rulebook' },
-      // Conflict resolution matrix — not AGENTS.md; Rulebook is the agent operating standard.
-      { to: '/conflicts/rules', label: 'Conflicts' },
-      { to: '/system/ops-controls', label: 'Ops Controls' },
-      { to: '/system', label: 'System', exact: true },
-      // Incident ledger (operator 2026-10-27): appended; nothing above moved.
-      { to: '/ops/incidents', label: 'Incidents' },
-    ],
-  },
-]
-
-const CONTROL_PLANE_PREVIEW: { label: string; hubs: Hub[] } = {
-  label: 'Control Plane (preview)',
-  hubs: [
-    { to: '/control-plane', label: 'Hub', exact: true },
-    { to: '/control-plane/system', label: 'System' },
-    { to: '/control-plane/agents', label: 'Agent Office' },
-    { to: '/control-plane/workflows', label: 'Workflow Trace' },
-    { to: '/control-plane/research', label: 'Research' },
-    { to: '/control-plane/data', label: 'Data' },
-    { to: '/control-plane/identity', label: 'Identity' },
-    { to: '/control-plane/notifications', label: 'Notifications' },
-    { to: '/control-plane/learning', label: 'Learning' },
-    { to: '/control-plane/maturity', label: 'Maturity' },
-    { to: '/control-plane/audit', label: 'Audit' },
-  ],
+const ICONS: Record<NavSectionId, ReactNode> = {
+  home: <path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
+  portfolio: <><circle cx="12" cy="12" r="8" /><path d="M12 4v8l6 4" /></>,
+  trade: <><path d="M4 18l5-6 4 3 7-9" /><path d="M15 6h5v5" /></>,
+  intel: <><path d="M12 3a6 6 0 0 1 4 10.5V17H8v-3.5A6 6 0 0 1 12 3z" /><path d="M9 21h6" /></>,
+  ops: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" /></>,
 }
+const Icon = ({ id }: { id: NavSectionId }) => <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{ICONS[id]}</svg>
 
-function locate(pathname: string): { section: string; page: string } {
-  return locateIn(pathname, [...SECTIONS, CONTROL_PLANE_PREVIEW])
-}
+/** Where a section tab goes: its first page (Home → Today, Portfolio → Holdings, …). */
+const sectionHref = (s: NavSection) => pageHref(s.groups[0].pages[0])
 
 export default function NavRail() {
-  const { pathname } = useLocation()
-  const [open, setOpen] = useState(false)
-  const [previewFlag, setPreviewFlag] = useState(false)
-  useEffect(() => {
-    try { setPreviewFlag(localStorage.getItem('CC_CONTROL_PLANE_PREVIEW') === '1') } catch { /* private mode */ }
-  }, [pathname])
-  const showControlPlane = previewFlag || pathname.startsWith('/control-plane')
-  const sections = showControlPlane ? [...SECTIONS, CONTROL_PLANE_PREVIEW] : SECTIONS
-  const here = locate(pathname)
-  // Home v008 "Needs you" (spec §1): open-decision count on the Home item and in the tab title. Background priority so
-  // the page's own reads go first; a 403 or an unreadable store simply shows no badge.
+  const { here, showPreview, pathname } = useNavHere()
+  // Home v008 "Needs you" (spec §1): open-decision count on Home and in the tab title. Background priority so the
+  // page's own reads go first; a 403 or an unreadable store simply shows no badge.
   const needsYou = useApi<NeedsYouSummary>(`${HOME_APPROVALS}/summary`, 60_000, { priority: 'background' })
   const needsYouCount = typeof needsYou.data?.count === 'number' ? needsYou.data.count : null
   useEffect(() => {
     if (typeof document === 'undefined') return
     document.title = titledWithCount(document.title, needsYouCount)
   }, [needsYouCount, pathname])
-  const panelRef = useRef<HTMLDivElement | null>(null)
-
-  // Close on navigation — the sheet must never survive a route change.
-  useEffect(() => { setOpen(false) }, [pathname])
+  const railRef = useRef<HTMLElement | null>(null)
 
   // The rail always takes its clicks (operator 2026-10-08: "cant click watch"). Pages draw their own full-screen
   // overlays (z 900–10000: message panels, drawers, modals) on top of the rail, so a click on a nav link landed on
   // the backdrop instead. A click whose point is over the rail goes to the rail link under it, whatever is on top;
   // the route change then unmounts the page and its overlay. Capture phase, so the overlay never sees the click.
+  // Desktop rail only: on a phone the rail is display:none (zero rect) and the bottom bar sits under the sheets.
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
-      const rail = panelRef.current
+      const rail = railRef.current
       const target = e.target as Node | null
       if (!rail || !target || rail.contains(target)) return
       const r = rail.getBoundingClientRect()
-      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return
+      if (!r.width || e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return
       const under = document.elementsFromPoint(e.clientX, e.clientY).find(el => rail.contains(el))
       const link = under?.closest('a') as HTMLAnchorElement | null
       if (!link) return
@@ -135,107 +60,75 @@ export default function NavRail() {
     return () => window.removeEventListener('click', onClick, true)
   }, [])
 
-  // Escape closes; lock body scroll so the page behind cannot scroll under the sheet.
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', onKey)
-    panelRef.current?.focus()
-    return () => {
-      document.body.style.overflow = prev
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  // Reports forces a full page load (it ships its own bundle). Stamping the cache
-  // buster at CLICK time, not render time, keeps the href stable across re-renders.
-  const hardHref = useCallback((to: string) => `/v3${to}?_cc=${Date.now()}`, [])
-
-  const items = (
-    <>
-      {sections.map(sec => (
-        <div key={sec.label} className="nav-group">
-          <div className="nav-eyebrow">{sec.label}</div>
-          {sec.hubs.map(h =>
-            h.hardNav ? (
-              <a
-                key={h.to}
-                className="nav-item"
-                href={hardHref(h.to)}
-                aria-current={pathname.startsWith(h.to) ? 'page' : undefined}
-                onClick={e => { e.currentTarget.href = hardHref(h.to) }}
-              >
-                {h.label}
-              </a>
-            ) : (
-              <NavLink
-                key={h.to}
-                to={h.to}
-                aria-label={h.label}
-                end={h.exact}
-                className={({ isActive }) => 'nav-item' + (isActive ? ' is-active' : '')}
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                {h.label}
-                {h.to === '/' && needsYouCount != null && needsYouCount > 0 && <span data-testid="nav-needs-you-badge" aria-hidden="true" title={`${needsYouCount} decision${needsYouCount === 1 ? '' : 's'} need you`} style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, padding: '1px 7px', borderRadius: 999, background: 'var(--warning-bg)', color: 'var(--warning-color)' }}>{needsYouCount}</span>}
-                {h.restored && Date.now() >= RESTORED_AT && Date.now() < RESTORED_UNTIL && <span aria-hidden="true" style={{ marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: RADIUS.md, background: 'var(--info-bg)', color: 'var(--info-color)' }}>back</span>}
-              </NavLink>
-            ),
-          )}
-        </div>
-      ))}
-    </>
-  )
+  const badge = needsYouCount != null && needsYouCount > 0 ? needsYouCount : null
+  const badgeTitle = badge ? `${badge} decision${badge === 1 ? '' : 's'} need you` : undefined
 
   return (
     <>
-      <style>{`@media (min-width: 821px) { .nav-rail { width: 230px; } }`}</style>
-      {/* Mobile command bar — replaces the rail below 820px. States where you are in
-          the app's own taxonomy rather than showing a bare hamburger. */}
-      <div className="nav-bar">
-        <button
-          type="button"
-          className="nav-bar__toggle"
-          aria-expanded={open}
-          aria-controls="nav-sheet"
-          aria-label={open ? 'Close navigation' : 'Open navigation'}
-          onClick={() => setOpen(v => !v)}
-        >
-          <span className="nav-bar__glyph" aria-hidden="true">{open ? '✕' : '☰'}</span>
-          <span className="nav-bar__where">
-            <span className="nav-bar__section">{here.section}</span>
-            <span className="nav-bar__page">{here.page}</span>
-          </span>
-        </button>
-      </div>
+      <nav ref={railRef} className="nav-rail" aria-label="Sections">
+        {NAV.map(section => {
+          const active = here?.section.id === section.id
+          const groups = visibleGroups(section, showPreview)
+          const count = sectionPages(section, false).length
+          return (
+            <div key={section.id} className={'nav-sec' + (active ? ' is-active' : '')}>
+              <Link
+                to={sectionHref(section)}
+                state={{ navSection: section.id }}
+                className="nav-sec__head"
+                aria-expanded={active}
+                aria-current={active && here?.page === section.groups[0].pages[0] ? 'page' : undefined}
+              >
+                <Icon id={section.id} />
+                <span className="nav-sec__label">{section.label}</span>
+                {section.id === 'home' && badge
+                  ? <span className="nav-badge" data-testid="nav-needs-you-badge" aria-hidden="true" title={badgeTitle}>{badge}</span>
+                  : <span className="nav-sec__count" aria-hidden="true">{active ? '▾' : `▸ ${count}`}</span>}
+              </Link>
+              {active && groups.map(g => (
+                <div key={g.label} className="nav-group" role="group" aria-label={g.label}>
+                  {(groups.length > 1 || g.label !== section.label) && <div className="nav-eyebrow">{g.label}</div>}
+                  {g.pages.map(p => (
+                    <Link
+                      key={p.label}
+                      to={pageHref(p)}
+                      state={{ navSection: section.id }}
+                      className={'nav-item' + (isHere(here, section, p) ? ' is-active' : '')}
+                      aria-current={isHere(here, section, p) ? 'page' : undefined}
+                    >
+                      {p.label}
+                    </Link>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </nav>
 
-      <nav
-        id="nav-sheet"
-        ref={panelRef}
-        tabIndex={-1}
-        aria-label="Sections"
-        className={'nav-rail' + (open ? ' is-open' : '')}
-      >
-        {/* Sheet header — mobile only. The sheet covers the whole viewport, so it
-            carries its own close control rather than depending on where the command
-            bar happens to sit under the metric strip. */}
-        <div className="nav-sheet__head">
-          <span className="nav-bar__where">
-            <span className="nav-bar__section">{here.section}</span>
-            <span className="nav-bar__page">{here.page}</span>
-          </span>
-          <button
-            type="button"
-            className="nav-sheet__close"
-            aria-label="Close navigation"
-            onClick={() => setOpen(false)}
-          >
-            ✕
-          </button>
-        </div>
-        {items}
+      <nav className="nav-tabbar" aria-label="Sections">
+        {NAV.map(section => {
+          const active = here?.section.id === section.id
+          return (
+            <Link
+              key={section.id}
+              to={sectionHref(section)}
+              state={{ navSection: section.id }}
+              className={'nav-tab' + (active ? ' is-active' : '')}
+              aria-current={active ? 'page' : undefined}
+              onClick={e => {
+                // Tapping the section you are in opens its grouped "All ▾" sheet instead of reloading its first page.
+                if (!active) return
+                e.preventDefault()
+                openAllSheet(section.id)
+              }}
+            >
+              <Icon id={section.id} />
+              <span className="nav-tab__label">{section.label}</span>
+              {section.id === 'home' && badge && <span className="nav-badge nav-tab__badge" data-testid="nav-needs-you-tab-badge" aria-hidden="true" title={badgeTitle}>{badge}</span>}
+            </Link>
+          )
+        })}
       </nav>
     </>
   )
