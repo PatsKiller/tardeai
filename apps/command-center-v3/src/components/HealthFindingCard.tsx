@@ -7,6 +7,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import { RADIUS, TOKENS, TYPE } from '../lib/designTokens'
 import { fmtAsOf } from '../lib/asOfDisplay'
 import { humanizeCode } from '../lib/displayLabels'
+import { componentLabel } from '../lib/operatorLanguage.ts'
 
 const SEV_COLOR: Record<string, string> = {
   critical: TOKENS.danger, warning: TOKENS.warning, info: TOKENS.text[2],
@@ -75,8 +76,15 @@ export function HealthFindingCard({ finding, compact = false, categoryLabel, onO
       </div>
       {!compact && (
         <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>Seen by {String(finding.detected_by ?? 'the health check')}</span>
-          {rem.by ? <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>handled by {String(rem.by)}</span> : null}
+          {/* WHO — plain words on the face, the raw pair in the hover title (#2643's rule, kept inside this card). */}
+          <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>Seen by{' '}
+            <span title={rem.by ? `${finding.detected_by || 'health_agent'} → ${rem.by}`
+                                : String(finding.detected_by || 'health_agent')}>
+              {rem.by
+                ? `${componentLabel(finding.detected_by || 'health_agent')} → ${componentLabel(rem.by)}`
+                : (finding.detected_by ? componentLabel(finding.detected_by) : 'the health check')}
+            </span>
+          </span>
         </div>
       )}
       {hasDetail ? (

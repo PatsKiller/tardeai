@@ -6,6 +6,8 @@ import { useApi } from '../hooks/useApi'
 import { HealthFindingCard } from '../components/HealthFindingCard'
 import { TYPE } from '../lib/designTokens'
 import { StateCard } from '../components/StateCard'
+import { componentLabel, sentenceIdentifiers } from '../lib/operatorLanguage.ts'
+import { humanizeCode } from '../lib/displayLabels'
 import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
 import RiskHealthStrip from '../components/risk/RiskHealthStrip'
@@ -14,7 +16,6 @@ import OpsAutonomyDashboard from './OpsAutonomyDashboard'
 import { AutonomyLoopPanel, DailyIntelligencePanel, MemoryPanel } from './MaturityPanels'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
-import { humanizeCode } from '../lib/displayLabels'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
@@ -45,7 +46,9 @@ const CAT_HELP: Record<string, string> = {
   data_quality: 'Freshness of holdings, risk, dividends, news, CIO decisions, agent jobs + open data gaps.',
   execution_health: 'Pipeline failures, stuck agent jobs, critical execution escalations, orphaned stops.',
   intelligence_quality: 'Local LLM reachability, ensemble failures, stale research backlog.',
-  risk_protection: 'Unprotected open positions, stops in alert state, recent P0/P1 SIEM alerts.',
+  // FQ-036: the score grades the health agent's own findings, not stop coverage. The old wording
+  // claimed it counted unprotected positions, which is why a green card could sit beside a red gauge.
+  risk_protection: 'Stops in alert state, stops above the Street mean, and unresolved urgent incidents (24h). Whether each position has a stop is not scored here — that is the Unprotected gauge.',
   retirement_planning: 'Golden Window present, dividend income consistency, dividend calendar freshness.',
   pipeline_freshness: 'Data pipeline output recency — ticker snapshots, setup advisories, rotation summaries, backtest results.',
 }
@@ -301,17 +304,19 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 132, overflowY: 'auto' }}>
                 {(activity.activity || []).map((a: any, i: number) => (
-                  <div key={i} style={{ fontSize: 10.5, padding: '3px 0' }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div key={i} style={{ fontSize: 10.5, padding: '3px 0', minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', rowGap: 2 }}>
                       <span style={{ color: 'var(--text3)', width: 116, flexShrink: 0 }}>{fmtWhen(a.at)}</span>
-                      <span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: 10, color: STATUS_COLOR[a.action] || 'var(--text3)', width: 88, flexShrink: 0 }}>{a.action}</span>
-                      <span style={{ color: 'var(--text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.component}</span>
-                      <span style={{ color: 'var(--accent)', flexShrink: 0 }}>{a.actor}</span>
+                      <span title={a.action} style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: 10, color: STATUS_COLOR[a.action] || 'var(--text3)', width: 88, flexShrink: 0, overflowWrap: 'anywhere' }}>{sentenceIdentifiers(a.action)}</span>
+                      {/* FQ-035: the row used to print the raw component key (`data_quality:data_source_stale`).
+                          The face is operator words; the raw key stays in the hover title. */}
+                      <span title={a.component} style={{ color: 'var(--text1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{componentLabel(a.component)}</span>
+                      <span title={a.actor} style={{ color: 'var(--accent)', flexShrink: 0 }}>{componentLabel(a.actor)}</span>
                       {a.pr_url?.startsWith('http') && <a href={a.pr_url} style={{ color: 'var(--accent)', fontSize: 10 }}>PR ↗</a>}
                       {a.artifact_url && !a.pr_url?.startsWith('http') && <a href={a.artifact_url} style={{ color: 'var(--accent)', fontSize: 10 }}>diff ↓</a>}
                     </div>
                     {(a.detail || a.resolution) && (
-                      <div style={{ marginLeft: 124, marginTop: 2, color: 'var(--text3)', fontSize: 10, lineHeight: 1.4 }}>
+                      <div title={[a.detail, a.resolution].filter(Boolean).join(' · ')} style={{ marginLeft: 124, marginTop: 2, color: 'var(--text3)', fontSize: 10, lineHeight: 1.4, overflowWrap: 'anywhere' }}>
                         {a.detail}{a.resolution ? ` · ${a.resolution}` : ''}
                       </div>
                     )}
@@ -422,7 +427,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
               <div key={kind} title={`Preference: ${(r.preference || []).join(' → ')}`}
                 style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11, padding: '5px 10px',
                   background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 3 }}>
-                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }} title={kind}>{humanizeCode(kind)}</span>
+                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }}>{kind.replace(/_/g, ' ')}</span>
                 <span style={{ color: 'var(--text3)' }}>→</span>
                 <span style={{ color: r.active ? 'var(--green)' : 'var(--red)', fontWeight: 700, width: 150, flexShrink: 0 }}>
                   {r.active || 'none available'}
