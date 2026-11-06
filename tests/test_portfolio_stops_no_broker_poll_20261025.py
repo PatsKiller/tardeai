@@ -163,3 +163,24 @@ def test_a_stored_trailing_order_keeps_the_offset_that_is_its_protection(api):
     assert entry["is_trailing"] is True
     assert entry["stop_price"] is None
     assert (entry["trail_offset"], entry["order_id"], entry["stop_qty"]) == (5.0, "fixture-order-7", 10.0)
+
+
+def test_fidelity_manual_orders_reach_the_stored_stop_model():
+    """Fidelity has no order API: its persisted operator-recorded GTC stops are stored evidence, not a live read.
+    Without them a protected Fidelity holding read NO_STOP while Stop Management still showed the order."""
+    from datetime import datetime, timezone
+
+    from scripts.lib import cio_truth
+
+    def fake_query(sql, params=None, fetch=None):
+        assert "manual_broker_stops" in sql
+        return [{"account": "fidelity_401k", "symbol": "FIXA", "order_id": "manual-1", "order_type": "STOP",
+                 "stop_price": 40, "qty": 10, "status": "open", "updated_at": "2026-10-24T20:00:00Z"}]
+
+    rows = cio_truth._manual_broker_rows(fake_query)
+    assert rows and rows[0]["captured_at"] == "2026-10-24T20:00:00Z"
+    stop = cio_truth.stop_for("fidelity_401k", "FIXA", broker_rows=rows,
+                              now=datetime(2026, 10, 24, 22, 0, tzinfo=timezone.utc))
+    assert (stop["stop_source"], stop["stop_state"], stop["stop_price"]) == ("broker_resting", "active", 40.0)
+    # No DB is not "no stops": the helper yields nothing and the caller keeps the unknown state.
+    assert cio_truth._manual_broker_rows(None) == []

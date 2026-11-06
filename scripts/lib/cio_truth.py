@@ -600,6 +600,22 @@ def _query_rows(db_query, sql, params=None) -> list[dict] | None:
         return None
 
 
+def _manual_broker_rows(db_query) -> list[dict]:
+    """Operator-recorded resting orders at brokers with no order API (Fidelity GTC stops).
+
+    A persisted observation of a real order is the same kind of evidence as a ``stop_last_known`` row, so the
+    stored page model reads it with no broker call. Without it a Fidelity holding with an operator-recorded stop
+    fell out of the holdings projection and was labelled NO_STOP while Stop Management still showed the order
+    (codex review of PR 2180 at 17199ab97). A missing table or DB yields ``[]`` — the stop_last_known rows stand.
+    """
+    rows = _query_rows(
+        db_query,
+        "SELECT account, symbol, order_id, order_type, stop_price, qty, status, updated_at "
+        "FROM manual_broker_stops WHERE active = TRUE "
+        "AND lower(COALESCE(status,'open')) NOT IN ('cancelled','canceled','filled','closed','expired')")
+    return [{**dict(r), "captured_at": r.get("updated_at")} for r in rows or []]
+
+
 def approvals_for(*, db_query=None, rows=None, projection=None, now=None) -> dict:
     """Typed queue counts; paper/broker proposals are disjoint account groups.
 
@@ -1323,6 +1339,12 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_store(store_path(root)), now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,order_type,stop_price,qty,status,captured_at FROM stop_last_known")
+    if "broker_stops" not in inputs:
+        # Fidelity has no order API: its GTC stops exist only as persisted operator records. Reading them here is
+        # still a stored read — no broker call — and it keeps a protected Fidelity holding out of the NO_STOP bucket.
+        manual = _manual_broker_rows(db_query)
+        if broker is not None and manual:  # None means the DB is unreadable: keep it unknown, never "zero stops"
+            broker = list(broker) + manual
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")
     fills = inputs.get("stop_fills") if "stop_fills" in inputs else fill_ledger(broker, db_query=db_query)
     positions = []
