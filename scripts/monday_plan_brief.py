@@ -60,6 +60,14 @@ _SEASONAL_BY_MONTH: dict[int, tuple[str, ...]] = {
 _DISCLAIMER = re.compile(r"^advisory\b.*\bno order, size or stop( level)? is implied", re.I)
 #: Symbols brief_guard.clean would drop silently ("VIX 27.0 >= 25.0" would read "VIX 27.0  25.0").
 _FOLD = str.maketrans({"\u2192": "->", "\u2265": ">=", "\u2264": "<="})
+#: Sanity bounds for a GROUP or ETF move. A sector/industry ETF moving more than this is far likelier a bad bar (an
+#: unadjusted split: SOXX "-79% off its 52w high", Semis "-42.8% in 5 days" on 2026-11-06) than a real move, so
+#: the brief says "data check failed" instead of printing the number. March 2020 stays inside every bound
+#: (semis ETF worst 5d about -24%, worst 20d drawdown about -40%).
+GROUP_MAX_ABS_5D_PCT = 30.0
+GROUP_MIN_DD20_PCT = -45.0
+ETF_MIN_OFF_52W_HIGH_PCT = -60.0
+_OFF_52W = re.compile(r"(\b[A-Z][A-Z0-9.]{0,9}) (-\d+(?:\.\d+)?)% off 52w high")
 _STOP_DISTANCE = re.compile(r"\s*\(stop [^)]*\)", re.I)
 _CYCLE_FACTS = ("midterm_year_pattern", "post_election_year", "presidential_4yr_cycle", "midterm_bottom_picker")
 
@@ -144,8 +152,23 @@ def _deep_brief_body(text: str) -> str:
             skipping = False
         if _DISCLAIMER.match(s):
             continue
-        out.append(_STOP_DISTANCE.sub("", ln))
+        out.append(_OFF_52W.sub(_check_52w, _STOP_DISTANCE.sub("", ln)))
     return "\n".join(out).strip()
+
+
+def _check_52w(mt: "re.Match[str]") -> str:
+    if float(mt.group(2)) < ETF_MIN_OFF_52W_HIGH_PCT:
+        return f"{mt.group(1)} distance from 52w high: data check failed"
+    return mt.group(0)
+
+
+def _group_sane(g: dict[str, Any]) -> bool:
+    for key in ("r5", "rs5"):
+        v = g.get(key)
+        if isinstance(v, (int, float)) and abs(v) > GROUP_MAX_ABS_5D_PCT:
+            return False
+    dd = g.get("dd20")
+    return not (isinstance(dd, (int, float)) and dd < GROUP_MIN_DD20_PCT)
 
 
 def section_almanac(session: date, rows: Optional[list[dict[str, Any]]] = None) -> list[str]:
@@ -181,8 +204,10 @@ def _reentry_line(sym: str, rec: dict[str, Any]) -> list[str]:
         state = f"all {len(conds)} conditions met"
     else:
         state = f"{met} of {len(conds)} conditions met"
-    verdict = (rec.get("stages") or {}).get("verdict") if isinstance(rec.get("stages"), dict) else None
-    lines = [f"- {sym}: stage {verdict or 'not evaluated'} · {state} · as of {rec.get('as_of') or 'unknown'}"]
+    # Counts only. The engine's stage label (reentry_stages.evaluate) is a different rule: "Confirmed" when any one
+    # stage-2 price check passes, regardless of these five conditions, so printing both reads as a contradiction
+    # ("Confirmed" at 2 of 5). The label returns once the two agree (selloff package B).
+    lines = [f"- {sym}: {state} · as of {rec.get('as_of') or 'unknown'}"]
     lines += [f"    {'met' if c.get('met') is True else 'not met'}: {c.get('text')}" for c in conds]
     br = rec.get("base_rate") or {}
     if br.get("n") and isinstance(br.get("rate"), (int, float)):
@@ -219,11 +244,18 @@ def section_stressed(snapshot: Optional[dict[str, Any]]) -> list[str]:
     out = [f"Stressed and weak groups (vs {bench.get('symbol') or 'SPY'} {_pct(bench.get('r5'))} 5d), biggest 20d drawdown first:"]
     if not groups:
         out.append("- none flagged")
-    for g in sorted(groups, key=lambda g: g.get("dd20") if isinstance(g.get("dd20"), (int, float)) else 0):
+    failed = [g for g in groups if not _group_sane(g)]
+    sane = [g for g in groups if _group_sane(g)]
+    for g in sorted(sane, key=lambda g: g.get("dd20") if isinstance(g.get("dd20"), (int, float)) else 0):
         syms = ",".join(g.get("symbols") or [])
         out.append(
             f"- {g.get('label')} ({syms}) {str(g.get('state')).lower()}: 5d {_pct(g.get('r5'))}, "
             f"vs benchmark {_pct(g.get('rs5'))}, off 20d high {_pct(g.get('dd20'))}"
+        )
+    for g in failed:
+        out.append(
+            f"- {g.get('label')} ({','.join(g.get('symbols') or [])}) {str(g.get('state')).lower()}: data check failed "
+            "(a move beyond the sanity bound, likely a bad price bar; numbers withheld until the source is verified)"
         )
     out.append("  Member names by drawdown: not in this brief yet (selloff package E).")
     return out

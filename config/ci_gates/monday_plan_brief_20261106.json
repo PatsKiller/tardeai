@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "monday_plan_brief_20261106",
+  "files": [
+    "tests/test_monday_plan_brief_20261106.py"
+  ],
+  "anchor": "MONDAY_PLAN_BRIEF_20261106",
+  "comment": [
+    "ANCHOR: MONDAY_PLAN_BRIEF_20261106 — the next-session plan brief: every section present or named unavailable,",
+    "no default stage verdict, implausible group moves withheld, sizing/stop wording refused, dry run sends nothing."
+  ]
+}
