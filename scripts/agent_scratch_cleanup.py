@@ -275,13 +275,13 @@ def git_layout(path: Path) -> Optional[dict[str, Any]]:
         if not gitdir.is_absolute():
             gitdir = (path / gitdir).resolve()
         common = gitdir
-        try:
-            rel = (gitdir / "commondir").read_text(encoding="utf-8").strip()
-            common = (gitdir / rel).resolve()
-        except FileNotFoundError:
-            pass  # no commondir file: this gitdir is itself the common dir (a plain clone, not a linked worktree)
-        except OSError:
-            return None  # commondir exists but is unreadable: the owner is unknown, so the caller must not treat it as a repo
+        commondir_file = gitdir / "commondir"
+        if commondir_file.exists():  # no file: this gitdir is itself the common dir (a plain clone, not a linked worktree)
+            try:
+                rel = commondir_file.read_text(encoding="utf-8").strip()
+                common = (gitdir / rel).resolve()
+            except OSError:
+                return None  # exists but unreadable: the owner is unknown, so the caller must not treat it as a repo
         main_repo = common.parent if common.name == ".git" else common
         return {"kind": "git_worktree", "main_repo": main_repo}
     return None
