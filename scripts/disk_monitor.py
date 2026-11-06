@@ -143,7 +143,7 @@ def measure_mount(mount: str) -> Optional[dict[str, Any]]:
 def du_bytes(path: Path, timeout_s: float) -> Optional[int]:
     """Disk usage (bytes) like ``du -sB1 -x``; None when du fails or times out. Mirrors scripts/disk_hygiene.du_bytes."""
     try:
-        proc = subprocess.run(["du", "-s", "-B1", "-x", str(path)], capture_output=True, text=True, timeout=timeout_s)  # noqa: S603, S607  (fixed argv, the `du` on PATH)
+        proc = subprocess.run(["du", "-s", "-B1", "-x", str(path)], capture_output=True, text=True, timeout=timeout_s)  # noqa: S603, S607 -- fixed argv built here, and `du` resolved from PATH deliberately
     except (OSError, subprocess.SubprocessError):
         return None
     if proc.returncode != 0:
@@ -378,7 +378,7 @@ def hygiene_dry_run(mon: Mapping[str, Any]) -> str:
     rules = ROOT / mon.get("hygiene_rules_rel", "config/disk_hygiene_rules.json")
     cmd = [sys.executable, str(ROOT / "scripts" / "disk_hygiene.py"), "--dry-run", "--report", "--rules", str(rules)]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=float(mon.get("du_timeout_s") or 600))  # noqa: S603  (argv built in this function; S607 anchors on the argv line above)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=float(mon.get("du_timeout_s") or 600))  # noqa: S603 -- argv built in this function; S607 anchors on the argv line above
     except (OSError, subprocess.SubprocessError) as exc:
         return f"hygiene_dry_run_unavailable:{type(exc).__name__}"
     out = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
@@ -458,7 +458,7 @@ def default_notify(text: str, priority: str) -> str:
 
         ok = send_telegram(text, message_class="operator_alert", priority=priority, producer="disk_monitor")
         return "accepted" if ok else "send_returned_false"
-    except Exception as exc:  # noqa: BLE001 - alerting never raises past the monitor
+    except Exception as exc:  # noqa: BLE001 -- alerting never raises past the monitor
         return f"error:{type(exc).__name__}"
 
 
@@ -471,14 +471,14 @@ def _observe(key: str, band: str, alertable: bool, mon: Mapping[str, Any],
         # re-alert an unchanged warn/critical band after the interval, while --dry-run's _predict_notify can
         # never predict a heartbeat (it does not advance the real clock). Omit it so apply and dry-run agree.
         return observe(key, band, alertable=alertable, path=state_path, extra=dict(extra))
-    except Exception as exc:  # noqa: BLE001 - a dedupe-state failure never suppresses measurement
+    except Exception as exc:  # noqa: BLE001 -- a dedupe-state failure never suppresses measurement
         return {"action": "error", "notify": False, "error": type(exc).__name__, "key": key, "state": band}
 
 
 def _load_condition(state_path: Optional[Path]) -> dict[str, Any]:
     """Read-only peek at the dedupe store (never writes). A dry run predicts its sends from this, so --dry-run
     exercises the real transition rule without mutating the store (AGENTS.md §6: a dry run must not reach the write)."""
-    try:
+    try:  # nosemgrep: tq-py-broad-except-returns-default -- unknown predicts a notification, never a suppression
         from scripts.lib.alert_condition_state import load_store
 
         return (load_store(state_path) or {}).get("conditions") or {}
@@ -487,7 +487,7 @@ def _load_condition(state_path: Optional[Path]) -> dict[str, Any]:
         # failure direction is towards telling the operator, not towards silence. A confident empty state would only
         # be wrong in the safe direction, which is why this is suppressed rather than turned into an exception the
         # read-only path would have to handle for nothing.
-        return {}  # nosemgrep: tq-py-broad-except-returns-default -- unknown predicts notify, never suppresses
+        return {}
 
 
 def _condition_snapshot(state_path: Optional[Path], key: str) -> Optional[dict[str, Any]]:
@@ -523,7 +523,7 @@ def _restore_pending(state_path: Optional[Path],
             continue
         try:
             _restore_condition(state_path, key, snapshot)
-        except Exception:  # noqa: BLE001 - a failed rollback is itself a run failure, never swallowed
+        except Exception:  # noqa: BLE001 -- a failed rollback is itself a run failure, never swallowed
             failed += 1
     return failed
 
