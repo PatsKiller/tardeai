@@ -6,9 +6,10 @@
   ],
   "anchor": "DEPLOY_IN_FLIGHT_20261029",
   "comment": [
-    "ANCHOR: DEPLOY_IN_FLIGHT_20261029 — Deploy console P1 (DSN-20261029-deploy-console), read-only in-flight board:",
+    "ANCHOR: DEPLOY_IN_FLIGHT_20261029 — Deploy console in-flight board (DSN-20261029 + operator clarity):",
     "GET /api/v2/ops/in-flight (scripts/lib/deploy_in_flight.py) lists open PRs to main through `gh pr list` and",
-    "projects number/title/head SHA/mergeable/mergeStateStatus/why-held/next. No write path, no label/merge/push/",
-    "promote/schedule, no broker path. Hermetic: fixture PR dicts + injected lister; a gh failure is UNAVAILABLE, never 0."
+    "projects number/title/head SHA/mergeable/mergeStateStatus/why-held/next plus plain_english, four required",
+    "checks, digest_status/can_approve (Telegram READY parity), ages, and next_plain. No write path on this",
+    "module. Hermetic: fixture PR dicts + injected lister; a gh failure is UNAVAILABLE, never 0."
   ]
 }
