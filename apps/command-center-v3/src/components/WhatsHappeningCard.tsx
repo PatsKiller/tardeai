@@ -3,7 +3,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
-import { columns, counters, STATE_LABEL, STATE_TONE, topRows, type WorkItem } from '../lib/whatsHappening'
+import { columns, counters, STATE_LABEL, STATE_TONE, topRows } from '../lib/whatsHappening'
 import { cardFeed, type Census, type FeedRow } from '../lib/whatsHappeningFeed'
 
 const card: CSSProperties = {
