@@ -557,6 +557,7 @@ def strategy_payload(*, root: Path, db_query: DbQuery | None = None, now: dateti
 
 # ── Board 3 · Defense ─────────────────────────────────────────────────────────
 DEFENSE_LANES = {
+    "engine": ["market-risk-evaluate"],
     "posture": ["sector-momentum-engine"],
     "industries": ["industry-momentum-groups"],
     "recommendations": ["defense-recommendations"],
@@ -589,12 +590,35 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     cash = cash if isinstance(cash, dict) else {}
     review, v_gap = _read_json(root / "config" / "promote_criteria.json")
     review = review if isinstance(review, dict) else {}
+    # D1 (design defense/v001): the Market Risk engine is the desk's headline read, via the defense projection
+    # (scripts/defense_engine_build.py); the raw engine snapshot is the fallback. The CIO regime row stays below it.
+    engine, e_gap = _read_json(rt / "defense_engine_latest.json")
+    engine = engine if isinstance(engine, dict) else {}
+    mr_snap, mr_gap = ({}, None) if engine else _read_json(rt / "market_risk_latest.json")
+    mr_snap = mr_snap if isinstance(mr_snap, dict) else {}
+    etier = engine.get("tier") if isinstance(engine.get("tier"), dict) else {}
+    tier_label = etier.get("tier") or mr_snap.get("tier")
+    tier_score = etier.get("score") if etier else mr_snap.get("score")
+    shock = (etier.get("shock") or {}).get("class") if etier else (mr_snap.get("shock_type") or {}).get("class")
+    engine_as_of = etier.get("as_of") or mr_snap.get("as_of")
 
     regime = truth.get("regime") or {}
     groups = recs.get("groups") if isinstance(recs.get("groups"), dict) else {}
+    # D4: cards for names the book no longer holds are not counted or shown (the recs job ran on a stale file).
+    from .defense_engine import drop_unheld_cards, held_symbols
+    groups, unheld = drop_unheld_cards(groups, held_symbols(truth))
     total_recs = sum(len(v) for v in groups.values() if isinstance(v, list))
     transitions = [t for t in momentum.get("transitions_today") or [] if isinstance(t, dict)]
     act = [
+        _row("act-engine", "Market risk (engine)",
+             (f"{tier_label} {round(tier_score)}" if isinstance(tier_score, (int, float)) else str(tier_label))
+             + (f" · {str(shock).lower()} shock" if shock else "") if tier_label else GAP_NOT_ON_FILE,
+             "bad" if tier_label in ("RED", "ORANGE") else "warn" if tier_label == "YELLOW" else None,
+             href="/defense",
+             detail=_detail("Market risk (engine)", [("Tier", tier_label), ("Score", tier_score), ("Shock type", shock),
+                            ("As of", _date(engine_as_of))],
+                            "data/runtime/defense_engine_latest.json tier (Market Risk engine)" if engine
+                            else "data/runtime/market_risk_latest.json (engine snapshot; defense projection not on file)")),
         _row("act-regime", "Market regime (CIO)", str(regime.get("label") or "not on file"),
              detail=_detail("Market regime (CIO record)", [("Regime", regime.get("label")), ("VIX", regime.get("vix")),
                             ("Confidence", regime.get("confidence")), ("As of", _date(regime.get("as_of")))],
@@ -607,7 +631,8 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
         _row("act-recs", "Recommendations by group",
              " · ".join(f"{k.replace('_', ' ')} {len(v)}" for k, v in groups.items() if isinstance(v, list)) or GAP_NOT_ON_FILE,
              detail=_detail("Defense recommendations", [(k.replace("_", " "), f"{len(v)}") for k, v in groups.items() if isinstance(v, list)]
-                            + [("Mode", recs.get("mode")), ("Generated", _date(recs.get("generated_at")))],
+                            + [("Mode", recs.get("mode")), ("Generated", _date(recs.get("generated_at")))]
+                            + ([("Not shown (no longer held)", ", ".join(", ".join(d["symbols"]) for d in unheld))] if unheld else []),
                             "data/runtime/defense_recommendations_latest.json groups") if groups else None),
         _row("act-intents", "Open intents and execution", "Classic view →", "info", href="/defense/classic"),
         _row("act-sectors", "Sector momentum & leaders", "→ Watch › Sectors", "info", href="/watch?tab=sectors"),
@@ -714,6 +739,8 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     ]
 
     sources = [
+        _source("engine", "Market Risk engine", engine.get("generated_at") or mr_snap.get("as_of"), DEFENSE_LANES["engine"],
+                gap=None if (engine or mr_snap) else (e_gap or mr_gap), max_age_hours=2),
         _source("posture", "Sector posture", momentum.get("generated_at"), DEFENSE_LANES["posture"], gap=m_gap, max_age_hours=26),
         _source("industries", f"Industries · {len(industries.get('industries') or [])}" if industries else "Industries",
                 industries.get("captured_at"), DEFENSE_LANES["industries"], gap=i_gap),

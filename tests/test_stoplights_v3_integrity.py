@@ -281,6 +281,15 @@ def test_concurrent_evaluators_one_open_cycle(pg_env):
 
 # ── P1-2: full evaluate_all() holdings→card→ledger (real PG) ─────────────────
 
+def _engine_doc(spy_trigger: bool) -> dict:
+    """A synthetic DefenseProjection@v1 carrying only what the stoplights read."""
+    from datetime import datetime as _dt, timezone as _tz
+    trig = {b: {"trigger": False, "exposure_pct": 0.0} for b in ("SPY", "QQQ", "DIA", "IWM")}
+    trig["SPY"] = {"trigger": spy_trigger, "exposure_pct": 50.0}
+    return {"schema": "DefenseProjection@v1", "generated_at": _dt.now(_tz.utc).isoformat(),
+            "hedge_readiness": {"inverse_triggers": trig}}
+
+
 @pytest.fixture()
 def e2e(pg_env, tmp_path, monkeypatch):
     conn, cur, hpath = pg_env
@@ -292,13 +301,12 @@ def e2e(pg_env, tmp_path, monkeypatch):
     snap_dir = tmp_path / "runtime"
     snap_dir.mkdir()
     monkeypatch.setattr(sl, "SNAP", snap_dir / "stoplights.json")
-    recs = tmp_path / "recs.json"
-    recs.write_text(json.dumps({"groups": {"short_side": [
-        {"title": "HEDGE · SH (1x inverse SPY — deterioration)"}]}}))
-    real_loads = json.loads
+    # THESIS input = the defense engine projection's inverse triggers (D2, design defense/v001)
+    recs = tmp_path / "defense_engine_latest.json"
+    recs.write_text(json.dumps(_engine_doc(True)))
     orig_read = Path.read_text
     def patched_read(self, *a, **k):
-        if str(self).endswith("defense_recommendations_latest.json"):
+        if str(self).endswith("defense_engine_latest.json"):
             return recs.read_text()
         return orig_read(self, *a, **k)
     monkeypatch.setattr(Path, "read_text", patched_read)
@@ -337,7 +345,7 @@ def test_e2e_scenario_b_thesis_reversal(e2e):
     conn, cur, hpath, bars, recs = e2e
     _write_holdings(hpath, [SH_ROW])
     _run_eval(conn, cur)
-    recs.write_text(json.dumps({"groups": {"short_side": []}}))   # thesis card GONE → RED
+    recs.write_text(json.dumps(_engine_doc(False)))   # engine trigger off → THESIS RED
     out = _run_eval(conn, cur)
     L = next(c for c in out["candidates"] if c["inverse"] == "SH")["lights"]
     assert L["THESIS"]["state"] == "RED"

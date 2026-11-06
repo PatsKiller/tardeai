@@ -228,7 +228,9 @@ def test_projection_code_never_imports_execution_or_side_effecting_helpers():
     imported = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     imported |= {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)} | {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
-    assert imported <= {"__future__", "json", "math", "datetime", "pathlib", "typing", "zoneinfo"}, imported
+    # defense_engine: the pure DefenseProjection helpers (design defense/v001), held to the same guard in
+    # tests/test_defense_engine.py::test_engine_module_is_pure
+    assert imported <= {"__future__", "json", "math", "datetime", "pathlib", "typing", "zoneinfo", "defense_engine"}, imported
     for forbidden in ("defense_execution", "place_order", "subprocess", "ensure_tables", "atomic_write_json_soft",
                       "compute_statistics", "ensure_analyst_batch", "write_text", "write_bytes", "unlink", "mkdir", "commit"):
         assert forbidden not in names, forbidden
@@ -430,3 +432,32 @@ def test_board13_duplicates_replaced_by_links():
     assert "<BacktestPanel" in strategy
     reentry = (src / "pages/desks/ReEntryDesk.tsx").read_text(encoding="utf-8")
     assert "ReEntryAnalystLookthroughBoard" not in reentry and "ReEntryRotationWorkspace" not in reentry
+
+
+# ── design defense/v001: D1 engine row, D4 unheld cards ─────────────────────
+def test_defense_reads_the_market_risk_engine_and_drops_unheld_cards_d1_d4(tmp_path):
+    defense_tree(tmp_path)
+    rt = tmp_path / "data/runtime"
+    write(rt / "defense_recommendations_latest.json", {"generated_at": NOW.isoformat(), "mode": "SHADOW", "groups": {
+        "protect": [{"title": "TRIM ALFA", "instruments": [{"symbol": "ALFA"}]},
+                    {"title": "MOVE-OUT GONE", "instruments": [{"symbol": "GONE"}]}]}})
+    write(rt / "defense_engine_latest.json", {"schema": "DefenseProjection@v1", "generated_at": NOW.isoformat(),
+          "tier": {"tier": "ORANGE", "score": 61.4, "as_of": NOW.isoformat(), "shock": {"class": "SECTOR"}}})
+    truth = {"positions": {"rows": [{"symbol": "ALFA", "account_id": "fixture_ira", "market_value": 1000}]}}
+    out = desk.defense_payload(root=tmp_path, now=NOW, truth=truth, states=REG)
+    act = panel(out, "where-to-act", "act")
+    eng = row(act, "act-engine")
+    assert eng["value"] == "ORANGE 61 · sector shock" and eng["tone"] == "bad"
+    assert act["rows"][0]["id"] == "act-engine"
+    recs = row(act, "act-recs")
+    assert recs["value"] == "protect 1"
+    assert "GONE" in json.dumps(recs["detail"])
+
+
+def test_defense_engine_row_falls_back_to_the_raw_engine_snapshot(tmp_path):
+    defense_tree(tmp_path)
+    write(tmp_path / "data/runtime/market_risk_latest.json", {"as_of": NOW.isoformat(), "tier": "YELLOW", "score": 44.0})
+    out = desk.defense_payload(root=tmp_path, now=NOW, truth={}, states=REG)
+    eng = row(panel(out, "where-to-act", "act"), "act-engine")
+    assert eng["value"] == "YELLOW 44" and eng["tone"] == "warn"
+    assert "engine snapshot" in json.dumps(eng["detail"])

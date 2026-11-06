@@ -617,6 +617,27 @@ class _DryRunConn:
         return getattr(self._conn, name)
 
 
+ENGINE_REL = ("data", "runtime", "defense_engine_latest.json")  # resolved under ROOT at call time
+
+
+def thesis_inputs(now: datetime | None = None) -> tuple[dict, dict, str | None]:
+    """(exposure{bench: pct|None}, trigger{bench: bool|None}, unknown_reason) from the defense projection."""
+    from lib.defense_engine import config as _de_config, thesis_inputs_from_projection
+    try:
+        doc = json.loads(ROOT.joinpath(*ENGINE_REL).read_text())
+    except (OSError, ValueError):
+        doc = None
+    try:
+        raw = json.loads(CFG_PATH.read_text())
+    except (OSError, ValueError):
+        raw = None
+    limit = float(_de_config(raw)["stale_projection_hours"])
+    trig, expo, why = thesis_inputs_from_projection(doc, now or datetime.now(timezone.utc), max_age_hours=limit)
+    if why:
+        return {}, {}, why
+    return expo, trig, None
+
+
 def evaluate_all(cur, conn, notify: bool = False, dry_run: bool = False) -> dict:
     """Nightly/refresh evaluation for the whole lane; persists transitions,
     dedupes alerts (only meaningful transitions fire).
@@ -658,31 +679,18 @@ def _evaluate_all(cur, conn, notify: bool, dry_run: bool) -> dict:
                "locked": LOCKED, "path_warning": PATH_WARNING}
         _write_snapshot(out, dry_run)
         return out
-    # book context from the defense snapshot (labeled data with timestamps)
-    # THESIS truth comes from the DESK's own hedge computation: a rendered
-    # HEDGE card already encodes "deterioration trigger active + exposure over
-    # materiality + benchmark mapping" through the field-guarded engine. The
-    # stoplights never re-derive a competing thesis.
-    exposure = {}
-    trigger = {"SPY": False, "QQQ": False, "DIA": False, "IWM": False}
-    try:
-        snap = json.loads((ROOT / "data" / "runtime" / "defense_recommendations_latest.json").read_text())
-        data = snap.get("data", snap)
-        c = _cfg()
-        import re as _re
-        for h in (data.get("groups", {}).get("short_side") or []):
-            t = h.get("title") or ""
-            if not t.startswith("HEDGE"):
-                continue  # short ADVISORIES are not hedge-thesis cards
-            for inst in LANE:
-                if _re.search(rf"\b{inst['inverse']}\b", t) or f"inverse {inst['bench']}" in t:
-                    trigger[inst["bench"]] = True
-                    exposure[inst["bench"]] = c["materiality_exposure_pct"]  # desk-card-derived: passes materiality by construction
-    except Exception:
-        trigger = {}   # snapshot unreadable → unknown, THESIS goes AMBER not RED
+    # THESIS inputs come from the Market Risk engine through the defense projection (D2, design defense/v001):
+    # hedge_readiness.inverse_triggers carries, per benchmark, whether the deterioration trigger is met and the
+    # look-through stressed share of invested. The old input — a regex over "HEDGE" card titles in
+    # defense_recommendations_latest.json — measured Tech by direct holdings only, so a fund's tech share never
+    # counted and the trigger could not fire. A missing or stale projection leaves every trigger UNKNOWN
+    # (AMBER), never "no thesis" (RED).
+    exposure, trigger, thesis_unknown = thesis_inputs()
     out = {"generated_at": datetime.now(timezone.utc).isoformat(),
            "policy_version": POLICY_VERSION, "candidates": [], "locked": LOCKED,
-           "path_warning": PATH_WARNING}
+           "path_warning": PATH_WARNING,
+           "thesis_source": {"input": "data/runtime/defense_engine_latest.json hedge_readiness.inverse_triggers",
+                             "unknown_reason": thesis_unknown}}
     from lib.market_risk.stoplight_notify import emit as _notify_emit
     from lib.market_risk.stoplight_notify import load_config as _notify_config
     from lib.market_risk.stoplight_notify import should_notify as _should_notify
@@ -691,6 +699,8 @@ def _evaluate_all(cur, conn, notify: bool, dry_run: bool) -> dict:
     for inst in LANE:
         bench, inv = inst["bench"], inst["inverse"]
         bars = _bars(cur, bench, 80)
+        inv_bars = _bars(cur, inv, 5)
+        inv_close = inv_bars[-1] if inv_bars else None
         fresh = _bars_fresh(bars)
         th = thesis_light(cur, bench, exposure.get(bench), trigger.get(bench), fresh)
         if not fresh:
@@ -715,7 +725,9 @@ def _evaluate_all(cur, conn, notify: bool, dry_run: bool) -> dict:
                 "path_dependence_warning": PATH_WARNING,
                 "max_hold_sessions": _cfg()["max_hold_sessions"],
                 "lane_status": "operator-stage eligible (existing rails)",
-                "latest_close": bars[-1] if bars else None,
+                # D9: the inverse ETF's own last close (it was the benchmark's bar); the benchmark's is labelled
+                "latest_close": inv_close,
+                "benchmark_close": bars[-1] if bars else None,
                 "position": pos,
                 "lights": {"THESIS": th, "ENTRY": en, "MANAGE": mg, "EXIT": ex}}
         out["candidates"].append(card)

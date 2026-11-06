@@ -17034,19 +17034,19 @@ def _build_data_rhythm():
             "recommendations",
             "data/runtime/defense_recommendations_latest.json",
             "generated_at",
-            "2× daily 10:30 + 17:50 ET · trim ladders, plan, oversight",
+            "2× daily 10:10 + 17:50 ET · trim ladders, plan, oversight",
         ),
         (
             "inverse_stoplights",
             "data/runtime/inverse_stoplights_latest.json",
             "generated_at",
-            "2× daily 10:15 + 17:55 ET · inverse-ETF entry gates",
+            "Daily 17:55 ET · inverse-ETF entry gates (no 10:15 run is scheduled)",
         ),
         (
             "cash_alternatives",
             "data/runtime/defense_cash_alternatives_latest.json",
             "generated_at",
-            "Daily 17:15 ET · conservative cash vehicles",
+            "Not scheduled · conservative cash vehicles (no writer lane; proposed 17:15 ET)",
         ),
         (
             "hedging_radar",
@@ -17074,7 +17074,7 @@ def _build_data_rhythm():
     rhythm["producers"].append(
         {
             "key": "gap_checker",
-            "schedule": "2× daily 10:16 + 17:56 ET · stale-sector watchdog",
+            "schedule": "Not scheduled · stale-sector watchdog (no lane runs it)",
             "last_run": str(gaps.get("last_check"))[:19] if gaps.get("last_check") else None,
             "age_label": age_label,
             "light": clr,
@@ -17238,6 +17238,53 @@ def _defense_industries(query=None):
 
         print(f"[defense-industries] failed: {e}\n{traceback.format_exc()}", flush=True)
         return {"ok": True, "industries": [], "note": "industry engine read error — check server logs"}
+
+
+_DEFENSE_ENGINE_CACHE: dict = {}
+
+
+def _defense_engine_get(query=None):
+    """GET /api/v2/defense/engine — DefenseProjection@v1 (design defense/v001; scripts/defense_engine_build.py).
+
+    Serves data/runtime/defense_engine_latest.json. Stale fallback: when the file is missing, unreadable or older
+    than its freshness limit, the projection is built in-process from the same read-only inputs (cached 60 s) and
+    labelled ``served_from: "request_build"`` with the reason; if that build fails too, the old file is served with
+    ``stale: true`` and the reason. Advisory only: no size, order or level field (lib.defense_engine.assert_advisory).
+    """
+    import time as _t
+
+    def _out(ok, served_from, age, stale, why, data):
+        # useApi unwraps {ok, data}: the serving label also rides inside the projection as ``served``
+        served = {"served_from": served_from, "age_hours": age, "stale": stale, "fallback_reason": why}
+        return {"ok": ok, **served, "data": ({**data, "served": served} if isinstance(data, dict) else data)}
+
+    from datetime import datetime as _dtm, timezone as _tz
+
+    from lib import defense_engine as _de
+
+    path = PROJECT_ROOT / _de.OUT_REL
+    doc = _load_json(path)
+    limit_h = float(_de.config(_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json"))
+                    .get("projection_serve_hours") or 1.5)
+    now = _dtm.now(_tz.utc)
+    age = _de.age_hours((doc or {}).get("generated_at"), now) if isinstance(doc, dict) else None
+    if isinstance(doc, dict) and doc.get("schema") == _de.SCHEMA and age is not None and age <= limit_h:
+        return _out(True, "file", age, False, None, _json_clean(doc))
+    why = ("projection not on file" if doc is None else f"projection is {age} h old (limit {limit_h:g} h)"
+           if age is not None else "projection unreadable")
+    hit = _DEFENSE_ENGINE_CACHE.get("doc")
+    if hit and _t.time() - hit[0] < 60:
+        return _out(True, "request_build", 0.0, False, why, hit[1])
+    try:
+        import defense_engine_build as _deb
+
+        built = _json_clean(_deb.build(PROJECT_ROOT, now=now))
+        _DEFENSE_ENGINE_CACHE["doc"] = (_t.time(), built)
+        return _out(True, "request_build", 0.0, False, why, built)
+    except Exception as e:  # noqa: BLE001 -- the old file, labelled, beats a 500
+        if isinstance(doc, dict) and doc.get("schema") == _de.SCHEMA:
+            return _out(True, "file", age, True, f"{why}; request build failed: {type(e).__name__}", _json_clean(doc))
+        return _out(False, None, None, True, f"{why}; request build failed: {type(e).__name__}", None)
 
 
 def _cash_alternatives_get(query=None):
@@ -49240,6 +49287,7 @@ ROUTES = {
     # (2026-06-25, 2026-07-16, 2026-07-17). Only warm_caches may pass force=True.
     "/api/v2/market-movers": _market_movers,
     "/api/v2/defense/posture": _defense_posture,
+    "/api/v2/defense/engine": _defense_engine_get,
     "/api/v2/defense/industries": _defense_industries,
     "/api/v2/defense/recommendations": _defense_recommendations,
     "/api/v2/defense/sector-leaders": _defense_sector_leaders,
