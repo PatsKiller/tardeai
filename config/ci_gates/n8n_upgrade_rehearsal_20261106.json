@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_upgrade_rehearsal_20261106",
+  "files": [
+    "tests/test_n8n_upgrade_rehearsal_20261106.py"
+  ],
+  "anchor": "N8N_UPGRADE_REHEARSAL_20261106",
+  "comment": [
+    "ANCHOR: N8N_UPGRADE_REHEARSAL_20261106 - n8n program 0.1h: the upgrade rehearsal fails when the image is not the pin (unless it is a named target), the instance does not boot, a migration errors, workflows are lost, the restored key cannot decrypt, or the scratch containers leak; the pin file agrees with the live compose image tags."
+  ]
+}

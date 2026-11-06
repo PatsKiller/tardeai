@@ -1,0 +1,8 @@
+{
+  "schema": "N8nVersionPin@v1",
+  "as_of": "2026-11-06",
+  "n8n_image": "n8nio/n8n:2.43.0",
+  "postgres_image": "postgres:16.15-alpine",
+  "compose_file": "m8m-bakeoff-lab/docker-compose.n8n.yml",
+  "_why": "The live pin (n8n program 0.1h, AGENTS 23.26: never 'latest'). A change to the compose image tag and this file land in the same PR, after scripts/n8n_upgrade_rehearsal.py --apply --target --image <new> PASSED on the newest bundle. Runbook: docs/runbooks/N8N_UPGRADE_RUNBOOK.md."
+}
