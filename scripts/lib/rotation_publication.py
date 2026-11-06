@@ -13,7 +13,7 @@ import math
 from datetime import datetime, timezone
 from typing import Any
 
-from .account_state import parse_time, project_account_state
+from .account_state import observation_instant, position_observation, project_account_state
 
 SCHEMA = "RotationPublication@v1"
 WITHHELD_FIELDS = (
@@ -75,6 +75,10 @@ def exact_position(rows: list[dict], symbol: str, account: str | None) -> dict:
     return found[0]
 
 
+def _iso_utc(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 def _aware_time(value):
     if not isinstance(value, str):
         return None
@@ -85,11 +89,80 @@ def _aware_time(value):
         return None
 
 
+def _market_row(row: Any) -> dict | None:
+    if not isinstance(row, dict) or not all(isinstance(row.get(k), str) and row[k].strip() for k in ("etf", "name")):
+        return None
+
+    def number(key):
+        value = row.get(key)
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
+
+    out = {"etf": row["etf"], "name": row["name"]}
+    out.update({key: number(key) for key in ("return_1m", "return_3m", "return_6m")})
+    quality = number("data_quality")
+    proven = quality is not None and quality > 0 and any(out[k] is not None for k in ("return_1m", "return_3m", "return_6m"))
+    out.update({"data_quality": quality, "quality_status": "KNOWN" if proven else "UNKNOWN",
+                "rs_raw": number("rs_raw") if proven else None,
+                "rs_score": number("rs_score") if proven else None})
+    return out
+
+
+def market_research(summary: dict, *, now: datetime) -> dict:
+    """Project neutral market groups, independently of account advice readiness.
+
+    The existing snapshot is read only. Never call the adapter's get/build path:
+    it may query a DB or write a cache. No thesis transitions pass this allowlist.
+    """
+    candidate = summary.get("sector_ladders")
+    source = "summary.sector_ladders"
+    if not isinstance(candidate, dict) or not (candidate.get("sectors") or candidate.get("industries")):
+        candidate = summary.get("market_research")
+        source = "summary.market_research"
+        if not isinstance(candidate, dict) or candidate.get("schema") != "RotationMarketResearch@v1":
+            candidate = None
+    snapshot_bytes = None
+    if candidate is None:
+        from .data_broker import rotation_ladders
+        path = getattr(rotation_ladders, "SNAPSHOT_PATH", None)
+        source = "stored_rotation_ladders"
+        if path is not None:
+            try:
+                snapshot_bytes = path.read_bytes()
+                value = json.loads(snapshot_bytes)
+                candidate = value if isinstance(value, dict) else None
+            except (OSError, ValueError, TypeError):
+                candidate = None
+    candidate = candidate or {}
+    sectors = [_market_row(r) for r in candidate.get("sectors", [])] if isinstance(candidate.get("sectors"), list) else []
+    industries = []
+    groups = candidate.get("industries")
+    for group in groups if isinstance(groups, list) else []:
+        if not isinstance(group, dict) or not isinstance(group.get("sector"), str) or not isinstance(group.get("industries"), list):
+            continue
+        members = [_market_row(r) for r in group["industries"]]
+        industries.append({"sector": group["sector"], "industries": [r for r in members if r is not None]})
+    computed = observation_instant(candidate.get("computed_at"), now=now)
+    return {
+        "schema": "RotationMarketResearch@v1", "scope": "MARKET_GROUP_OBSERVATIONS",
+        "available": any(r is not None for r in sectors) or any(g["industries"] for g in industries),
+        "sectors": [r for r in sectors if r is not None], "industries": industries,
+        "computed_at": _iso_utc(computed) if computed else None,
+        "quote_as_of": None, "freshness": "UNKNOWN",
+        "gaps": ["Underlying quote observation times are not retained; computed_at is a build clock."],
+        "cache": {"source": source, "snapshot_read_only": source == "stored_rotation_ladders",
+                  "source_sha256": hashlib.sha256(snapshot_bytes).hexdigest() if snapshot_bytes is not None else None,
+                  "build_age_seconds": max(0, (now - computed).total_seconds()) if computed else None,
+                  "build_age_basis": "computed_at"},
+    }
+
+
 def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
                     now: datetime | None = None, market_service=None) -> dict:
     """Apply source truth at both computed-output and persisted-cache boundaries."""
     now = now or datetime.now(timezone.utc)
+    now = now.astimezone(timezone.utc) if now.tzinfo else now.replace(tzinfo=timezone.utc)
     out = copy.deepcopy(summary) if isinstance(summary, dict) else {}
+    out["market_research"] = market_research(out, now=now)
     unavailable, stale, accounts = [], [], []
     unavailable.extend(out.pop("_publication_errors", []))
     prior = out.get("publication") or {}
@@ -130,7 +203,7 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         unavailable.append("missing_input")
         rows, summaries = [], {}
     used, bound_times = set(), []
-    required_positions = dated_positions = dated_accounts = 0
+    required_positions = dated_positions = dated_accounts = day_precision_positions = 0
     from .cio_market_aware_freshness import is_stale
     from .cio_domain_registry import CIODomainRegistry
     try:
@@ -138,6 +211,14 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
     except (OSError, ValueError, KeyError, RuntimeError):
         capability = None
         unavailable.append("freshness_policy_unavailable")
+    def source_is_stale(stamp, window):
+        try:
+            return is_stale(stamp, now, window * 3600,
+                            market_hours_only=capability.freshness_market_hours_only, service=market_service)
+        except Exception:  # noqa: BLE001 -- a failed calendar is unavailable evidence
+            unavailable.append("freshness_calendar_unavailable")
+            return False
+
     for row in rows:
         if not isinstance(row, dict):
             unavailable.append("malformed_input")
@@ -163,23 +244,26 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
             (stale if "STALE" in (raw["state"], block["state"]) else unavailable).append("account_state_conflict")
         if block.get("contract_version") != "AccountState@v1" or not block.get("state"):
             unavailable.append("unsupported_account_state")
-        as_of = block.get("last_sync_at") or projected.get("state_as_of")
+        as_of = block.get("last_sync_at") if "last_sync_at" in block else projected.get("state_as_of")
         window = block.get("sync_window_hours")
         valid_window = isinstance(window, (int, float)) and not isinstance(window, bool) and math.isfinite(window) and window > 0
-        position_stamp = parse_time(row.get("broker_position_as_of_at") or row.get("broker_position_as_of") or row.get("as_of"))
+        position_stamp, _, position_precision = position_observation(row, now=now)
         if position_stamp is None or position_stamp > now:
             unavailable.append("invalid_position_clock")
         else:
             dated_positions += 1
             bound_times.append(position_stamp)
-            if valid_window and capability and is_stale(position_stamp, now, window * 3600,
-                                                       market_hours_only=capability.freshness_market_hours_only, service=market_service):
+            if position_precision == "day":
+                day_precision_positions += 1
+            if valid_window and capability and source_is_stale(position_stamp, window):
                 stale.append("position_evidence_stale")
         if acct in used:
             continue
         used.add(acct)
-        account_stamp = parse_time(as_of)
-        accounts.append({"account_key": acct, "state": state, "source_as_of": account_stamp.isoformat() if account_stamp else as_of})
+        account_stamp = observation_instant(as_of, now=now)
+        accounts.append({"account_key": acct, "state": state,
+                         "source_as_of": _iso_utc(account_stamp) if account_stamp else None,
+                         "source_as_of_raw": as_of})
         if account_stamp is None or account_stamp > now:
             unavailable.append("invalid_account_clock")
         else:
@@ -190,14 +274,13 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         elif state != "LIVE":
             unavailable.append("account_unavailable")
         else:
-            stamp = parse_time(as_of)
+            stamp = observation_instant(as_of, now=now)
             if stamp is None or stamp > now or not valid_window:
                 unavailable.append("invalid_account_clock")
             else:
                 # Reuse the existing portfolio market-calendar contract. Friday
                 # close during the weekend is not stale just because 48h passed.
-                if capability and is_stale(stamp, now, window * 3600,
-                                          market_hours_only=capability.freshness_market_hours_only, service=market_service):
+                if capability and source_is_stale(stamp, window):
                     stale.append("account_evidence_stale")
     try:
         out["research_rotation_ideas"] = unique_rows(out.get("research_rotation_ideas") or [], ("from_account_key", "from_symbol", "to_symbol"))
@@ -227,11 +310,14 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
     out["publication"] = {
         "schema": SCHEMA, "status": status, "reasons": sorted(set(unavailable + stale)),
         "producer_ok": producer_ok is True,
-        "checked_at": now.isoformat(), "input_sha256": source_digest,
-        "source_as_of": min(bound_times).isoformat() if bound_times else None,
+        "checked_at": _iso_utc(now), "input_sha256": source_digest,
+        "source_as_of": _iso_utc(min(bound_times)) if bound_times and dated_positions == required_positions and dated_accounts == len(accounts) else None,
+        "oldest_known_source_as_of": _iso_utc(min(bound_times)) if bound_times else None,
+        "newest_known_source_as_of": _iso_utc(max(bound_times)) if bound_times else None,
         "source_as_of_basis": "oldest_required_position_or_account_timestamp",
         "holdings_reported_as_of": holdings.get("as_of") if isinstance(holdings, dict) else None,
         "coverage": {"required_positions": required_positions, "dated_positions": dated_positions,
+                     "day_precision_positions": day_precision_positions,
                      "accounts": len(accounts), "dated_accounts": dated_accounts},
         "cache_generated_at": out.get("generated_at"), "cached_at": out.get("cached_at") or out.get("_cached_at"),
         "accounts": accounts,
