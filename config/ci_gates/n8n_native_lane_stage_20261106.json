@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_native_lane_stage_20261106",
+  "files": [
+    "tests/test_n8n_native_lane_stage_20261106.py"
+  ],
+  "anchor": "N8N_NATIVE_LANE_STAGE_20261106",
+  "comment": [
+    "ANCHOR: N8N_NATIVE_LANE_STAGE_20261106 — n8n program 0.4b-fix. The four native n8n lanes (incident fan-in, pilot",
+    "dispatch, research intake, crontab snapshot) carry scheduler.stage canary, so the relay live-list render keeps",
+    "them; without it the relay refused every fire (relay_live_not_enabled) from 2026-10-30."
+  ]
+}
