@@ -20,7 +20,7 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Optional
 
 _CONFIG = Path(__file__).resolve().parents[2] / "config" / "account_display_names.json"
 UNLABELLED = "Unlabelled account"
@@ -29,12 +29,19 @@ _MASK = re.compile(r"(\.\.\.|··|…|\*\*|xx)\s*\w*\d", re.I)
 ACCOUNT_FIELDS = ("account_id", "account", "account_key", "accountId", "broker_account")
 
 
+def _read_config(path: str) -> Optional[dict]:
+    """Read the registry fresh. ``None`` means unreadable or not a JSON object (never a guess)."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 @lru_cache(maxsize=1)
 def _load(path: str = str(_CONFIG)) -> dict:
-    try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {"aliases": {}, "names": {}}
+    data = _read_config(path)
+    return data if data is not None else {"aliases": {}, "names": {}}
 
 
 def looks_like_number(text: str) -> bool:
@@ -43,25 +50,32 @@ def looks_like_number(text: str) -> bool:
     return bool(_DIGIT_RUN.search(s) or _MASK.search(s))
 
 
-def canonical_key(raw: Any) -> str:
+def _canonical(raw: Any, cfg: Mapping) -> str:
     key = str(raw or "").strip().lower().replace(" ", "_").replace("-", "_")
     if not key:
         return ""
-    return str((_load().get("aliases") or {}).get(key, key))
+    return str((cfg.get("aliases") or {}).get(key, key))
 
 
-def account_label(raw: Any) -> str:
-    """The short human name for an account key. Never contains an account number."""
-    key = canonical_key(raw)
+def _label(key: str, cfg: Mapping) -> str:
     if not key:
         return UNLABELLED
-    entry = (_load().get("names") or {}).get(key)
+    entry = (cfg.get("names") or {}).get(key)
     name = entry.get("name") if isinstance(entry, Mapping) else None
     if not name:
         if looks_like_number(key):
             return UNLABELLED
         name = re.sub(r"\bIra\b", "IRA", key.replace("_", " ").title())
     return UNLABELLED if looks_like_number(name) else str(name)
+
+
+def canonical_key(raw: Any) -> str:
+    return _canonical(raw, _load())
+
+
+def account_label(raw: Any) -> str:
+    """The short human name for an account key. Never contains an account number."""
+    return _label(canonical_key(raw), _load())
 
 
 def location_facts(row: Mapping[str, Any]) -> dict[str, str]:
@@ -86,6 +100,52 @@ def labels_map(keys: Iterable[Any] | None = None) -> dict[str, str]:
     if keys is None:
         keys = list((_load().get("names") or {}).keys())
     return {str(k): account_label(k) for k in keys if str(k or "").strip()}
+
+
+def _humanized(key: Any) -> set[str]:
+    s = str(key or "").strip().lower().replace("-", "_")
+    return {s, s.replace("_", " ")} if s else set()
+
+
+def redaction_terms() -> tuple[str, ...]:
+    """Every string that can name a configured account, longest first, for an egress guard.
+
+    Prose sent to an external model must not carry account identity. The terms are the display
+    label, the registry name, the account key and its aliases (and their humanized forms), the
+    broker (a broker alone can identify the one account held there), and the label with its broker
+    prefix stripped when what remains is still distinctive ("Rollover IRA", "Roth IRA").
+
+    The registry is read **fresh** on every call: identity evidence at an egress boundary must not be
+    a stale cache (a file edited or removed after a cache warm is a changed or unreadable source). An
+    incomplete snapshot yields ``()``: an unreadable file, a non-object, or a registry with no
+    ``names`` entries (aliases alone cannot say which accounts exist). Callers must fail closed on
+    ``()`` rather than treating any non-empty term list as permission to send prose.
+    """
+    cfg = _read_config(str(_CONFIG))
+    if not isinstance(cfg, Mapping):
+        return ()
+    names = cfg.get("names")
+    if not isinstance(names, Mapping) or not names:
+        return ()  # no account entries: not a complete identity snapshot
+    terms: set[str] = set()
+    for key, entry in names.items():
+        entry = entry if isinstance(entry, Mapping) else {}
+        label = _label(_canonical(key, cfg), cfg)
+        terms.add(str(key))
+        terms.add(label)
+        for field_name in ("name", "registry_name", "broker"):
+            if entry.get(field_name):
+                terms.add(str(entry[field_name]))
+        terms.update(_humanized(key))
+        bits = label.split()
+        if len(bits) >= 3:
+            terms.add(" ".join(bits[1:]))
+    aliases = cfg.get("aliases")
+    if isinstance(aliases, Mapping):
+        for alias in aliases:
+            terms.add(str(alias))
+            terms.update(_humanized(alias))
+    return tuple(sorted((t.strip() for t in terms if str(t).strip()), key=len, reverse=True))
 
 
 def row_account(row: Mapping[str, Any]) -> str:

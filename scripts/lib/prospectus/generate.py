@@ -181,12 +181,29 @@ def guard_text(text: str, values: list[float], *, where: str, log: list[dict]) -
     return re.sub(r"\n{3,}", "\n\n", "\n".join(kept_lines)).strip()
 
 
+def _previous_identity_terms(previous: dict | None) -> list[str]:
+    """Account identity terms the previous version's facts/blocks carried (delta egress provenance).
+
+    A retained delta section's prose was written against the *previous* facts, so its account names may
+    no longer appear anywhere in the current document. Carrying them forward lets the accuracy auditor
+    redact them from prose that is otherwise unchanged.
+    """
+    if not previous:
+        return []
+    try:
+        from .accuracy_audit import _doc_account_terms  # local import: no cycle, only the delta path needs it
+        return sorted(_doc_account_terms(previous))
+    except Exception:  # noqa: BLE001 - provenance is best-effort; the auditor fails closed on its own
+        return []
+
+
 def validate(doc: dict, bundle: Bundle, *, mode: str = "full", previous: dict | None = None) -> tuple[list[dict], str, list[dict]]:
     """Return (sections, verdict_line, guard_log). Raises GenerationFailed when too little survives."""
     expected = sections_for(bundle.scope)
     wanted = expected if mode == "full" else tuple(s for s in DELTA_SECTION_IDS if s in expected)
     values = allowed_values(bundle)
     known = {f["id"] for f in bundle.facts}
+    provenance = _previous_identity_terms(previous)
     log: list[dict] = []
     by_id = {}
     for sec in doc.get("sections") or []:
@@ -197,7 +214,10 @@ def validate(doc: dict, bundle: Bundle, *, mode: str = "full", previous: dict | 
     for sid in expected:
         sec = by_id.get(sid)
         if sec is None and sid not in wanted and sid in prev:
-            out.append(prev[sid])  # delta: unchanged section carried forward from the previous version
+            carried = dict(prev[sid])  # delta: unchanged section carried forward from the previous version
+            if provenance:
+                carried["account_identity_provenance"] = provenance
+            out.append(carried)
             continue
         body = guard_text(sec.get("body_md", "") if sec else "", values, where=sid, log=log)
         cited = set(CITE_RE.findall(body))
