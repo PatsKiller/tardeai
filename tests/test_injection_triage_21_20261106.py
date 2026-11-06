@@ -20,6 +20,9 @@ pytest.importorskip("psycopg2")
 import yaml  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
+#: Alarm coverage (scripts/lib/alarm_firing_coverage.py): the refused-retry page, fired and captured by
+#: test_watchdog_refuses_a_hostile_schedule_row_and_escalates.
+COVERS = ["scripts/pipeline_watchdog.py:360"]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib.shell_command_guard import check_command  # noqa: E402

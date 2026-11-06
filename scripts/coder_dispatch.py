@@ -319,7 +319,7 @@ def verify(reg: dict, wt: Path, files: list[str]) -> tuple[bool, str]:
             return False, f"test_cmd refused: runner {argv[0][:60]!r} is not one of {sorted(_TEST_RUNNERS)}"
         if any(a in ("-c", "-e", "--eval", "-p", "--print") for a in argv[1:]):
             return False, "test_cmd refused: inline code (-c/-e/--eval) is not a test command"
-        r = subprocess.run(argv, cwd=str(wt), capture_output=True, text=True, timeout=600)
+        r = subprocess.run(argv, cwd=str(wt), capture_output=True, text=True, timeout=600)  # noqa: S603 -- argv checked above: allowlisted runner, no shell, no inline code
         if r.returncode != 0:
             return False, f"test_cmd failed: {(r.stderr or r.stdout).strip()[-400:]}"
     return True, "verified" + (f" ({len(pyf)} py files compiled)" if pyf else "")
