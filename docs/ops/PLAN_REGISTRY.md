@@ -1,0 +1,125 @@
+# Plan registry — every approved plan persisted for every agent
+
+Operator, 2026-11-02: "build the plan registry". A plan the operator approves is written once to the
+server, with its approval provenance, and every agent — Claude Code, Codex, Cursor, any vendor — can
+find it, link its claim/branch/PR, tick its steps and follow it to done or abandoned.
+
+## Where it lives
+
+    ${TRADEAI_STATE_ROOT:-~/trade-ai-releases/persistent-state}/data/coordination/plans/
+      <plan-id>.md          front-matter + the plan body (steps as - [ ] boxes)
+      ledger.jsonl          append-only: one line per add / link / step_done / status / stalled
+      pending_notifications.jsonl  stall alerts not yet delivered to the coordinator inbox
+      .lock                 flock target; every write is locked and atomic (tmp + replace)
+
+`<plan-id>` is `YYYYMMDD-<slug>-<8 hex>`, derived from the title and body, so the SAME plan always
+gets the same id and a retried registration never duplicates it.
+
+## Claude Code: the ExitPlanMode hook
+
+The repository never edits `~/.claude/settings.json`. To register every plan the operator approves in
+Claude Code, add this to that file (merge into the existing `hooks` object):
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/plan_registry_hook.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook reads Claude Code's JSON on stdin, takes the approved text (`tool_response.plan` first, then
+a `planFilePath` file, then `tool_input.plan`), and writes an approved plan with `vendor: claude` and
+the session id as `author_session`. A `planFilePath` is read ONLY when it is a plan-shaped document — a `*.md` / `*.markdown` / `*.txt`
+name that is not a dotfile and not credential-shaped (`token`, `secret`, `credential`, `password`,
+`api_key`, `.env`, `id_rsa`, `.pem`, `.key` are refused) — inside one of two directories: the plan
+store (`<state root>/data/coordination/plans`) or `~/.claude/plans`. It must be a regular,
+non-symlink file of at most 256 KiB, valid UTF-8 text with no NUL byte. Nothing else is plan input,
+so the shared registry can never be used to copy a credential or an arbitrary file. It never fails the tool: a registry problem
+is reported on stderr and the exit status is 0.
+
+## Every other vendor: the CLI
+
+    python3 scripts/plan_registry.py add --title "..." --file plan.md \
+        --author <session> --vendor codex [--quote "operator words"]
+
+`author_session` is a self-declared string. Each plan also records `author_proof`: `claim:<id>` when
+that session matches a live claim on the board, otherwise `self-declared` — weigh it accordingly; it
+is not an authentication.
+    python3 scripts/plan_registry.py status
+    python3 scripts/plan_registry.py list [--status approved] [--json]
+    python3 scripts/plan_registry.py show <plan-id>
+    python3 scripts/plan_registry.py link <plan-id> --claim <claim-id> --branch wt/x --pr 123
+    python3 scripts/plan_registry.py step done <plan-id> "third step text"
+    python3 scripts/plan_registry.py set-status <plan-id> in_progress|done|abandoned|stalled
+    python3 scripts/plan_registry.py stale --hours 72 [--apply]
+
+`link` also revives a `stalled` plan to `in_progress`: activity is what the stale check watches.
+
+Every mutating subcommand (`add`, `link`, `step done`, `set-status`) takes `--dry-run`. The preview
+runs the same read-and-compute path and reports the plan path, the resulting front-matter, and the
+ledger line it would append; it returns before any writer is called, so it cannot reach the store
+(AGENTS.md §6). `stale` without `--apply` remains the read-only stale preview.
+
+If a registration is interrupted between the plan write and its ledger line (a crash, a full disk),
+the next `add` of the same plan repairs the missing `add` event instead of reporting an
+incomplete registration as success. The plan itself is still written only once.
+
+## Stale plans
+
+Every approved or in-progress plan with no `claim`, `branch` or `pr` and no activity for
+`stale_hours` (default 72, `config/plan_registry.json`) is set to `stalled` and one line per plan is
+appended to the coordinator inbox (`data/coordination/coordinator/inbox.md`). Registration itself is
+not activity; only a link, a step or a status change is.
+
+The activity timestamps are re-read under the same lock that flips the status, so a plan linked or
+resumed while a scan is running is never overwritten as `stalled`.
+
+The inbox line is recorded in `pending_notifications.jsonl` BEFORE the plan is marked `stalled`, and
+delivery is retried on every `stale --apply` independently of whether the plan is still
+stale-eligible. A failed inbox write therefore leaves the alert queued for the next run; the run
+reports it under `pending` and never counts it as sent. `stale --apply` prints `flagged`,
+`delivered` and `pending`.
+
+Run it hourly from a host timer (PROPOSED lane `plan-registry-stale` in `config/lane_registry.json`;
+installing the timer is operator-only, AGENTS.md §17):
+
+    python3 scripts/plan_registry.py stale --apply
+
+## Read-only API and the Command Center page
+
+Follow-up PR: `/api/v2/plans` (read-only list/detail from the same plan files) and a mobile-first
+Command Center "Plans" page (list -> full-screen detail, steps done/left, claim and PR links).
+
+## Authority
+
+Read/write over the coordination plan store only. It never touches a broker, order, stop, position,
+credential or release path.
+
+
+## Containment (review 2, 2026-11-02)
+
+The store is not trusted to contain itself through the filesystem alone. Every read and write:
+
+* validates the id (`^[a-z0-9][a-z0-9-]{0,80}$`) and proves the resolved path stays under the plan
+  store — including `list()` and `stale()`, which skip any `*.md` whose stem fails that check, so a
+  symlink dropped into the store is never served;
+* writes through `mkstemp` (`O_EXCL`) inside the store and renames it into place, so a pre-planted
+  temp-name symlink cannot redirect the write outside;
+* opens the lock and the ledger with `O_NOFOLLOW`, so neither can be a link to another file.
+
+The hook's plan file is read through **one descriptor**: `O_NOFOLLOW` refuses a symlinked final
+component, `fstat` decides regular/size on that descriptor, containment is proven on
+`/proc/self/fd/<fd>` — the file actually opened — and the bytes are read from the same descriptor, so
+swapping the path between a check and the read cannot redirect it. If the kernel cannot say where the
+descriptor points, nothing is read.
