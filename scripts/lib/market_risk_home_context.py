@@ -223,11 +223,11 @@ def collect(
         quotes.extend(reader.extended_quotes(symbols, start=now - timedelta(days=4), end=now) or [])
         if getattr(reader, "extended_quotes_error", None):
             failed("market_quotes_extended", RuntimeError("canonical extended source unavailable"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- recorded via failed(), the source is reported as a gap
         failed("market_quotes_extended", exc)
     try:
         bars = reader.daily_bars(symbols, sessions=80, end=now) or []
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- recorded via failed(), the source is reported as a gap
         failed("daily_bars", exc)
     if read_rows is not None:
         try:
@@ -344,7 +344,7 @@ def collect(
                             else "Next earnings date not recorded"
                         ),
                     }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- recorded via failed(), the source is reported as a gap
             failed("canonical_symbol_calendar", exc)
     result = build(
         projection,

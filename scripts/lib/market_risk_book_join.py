@@ -518,7 +518,7 @@ def join(
     try:
         card_cfg = card_config(policy)
         alerts = run_alerts(projection)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- the failure becomes an explicit unavailable block, never an empty card
         card_cfg, alerts = {}, []
         v007 = unavailable_block(
             "the final assembly failed (" + type(exc).__name__ + "); the additive context was not completed",
