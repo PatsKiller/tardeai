@@ -328,7 +328,8 @@ def load_all(inprocess: bool = False) -> dict:
     broker = [{"account": r[0], "symbol": r[1], "qty": r[2], "avg_price": r[3], "market_value": r[4],
                "unrealized_pl": r[5], "captured_at": r[6]} for r in cur.fetchall()]
     cols = "trade_date, trade_time, account, symbol, action, quantity, price, amount, fees, dedupe_key, import_source"
-    cur.execute(f"SELECT {cols} FROM trade_transactions WHERE symbol IS NOT NULL AND symbol <> '' ORDER BY trade_date")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- cols is the literal column list two lines above
+        f"SELECT {cols} FROM trade_transactions WHERE symbol IS NOT NULL AND symbol <> '' ORDER BY trade_date")
     names = [c.strip() for c in cols.split(",")]
     txns = [dict(zip(names, r)) for r in cur.fetchall()]
     cur.execute("""SELECT account, symbol, (exit_time AT TIME ZONE 'America/New_York')::date, qty, qty*exit_price

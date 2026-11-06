@@ -102,7 +102,9 @@ def main() -> int:
     conn.autocommit = False
     cur = conn.cursor()
 
-    cur.execute(f"SELECT count(*) FROM analyst_consensus_history WHERE {AFFECTED_PREDICATE}")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- AFFECTED_PREDICATE is a module constant
+        f"SELECT count(*) FROM analyst_consensus_history WHERE {AFFECTED_PREDICATE}"
+    )
     affected = cur.fetchone()[0]
     cur.execute("SELECT count(*) FROM analyst_consensus_history")
     total = cur.fetchone()[0]
@@ -136,7 +138,7 @@ def main() -> int:
 
     try:
         # 1. Archive whole rows, unmodified. Idempotent: skip ids already held.
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- QUARANTINE_TABLE is a module constant
             f"CREATE TABLE IF NOT EXISTS {QUARANTINE_TABLE} (LIKE analyst_consensus_history INCLUDING DEFAULTS)"
         )
         cur.execute(
@@ -147,7 +149,9 @@ def main() -> int:
         )
         archived = cur.rowcount
 
-        cur.execute(f"SELECT count(*) FROM {QUARANTINE_TABLE}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- QUARANTINE_TABLE is a module constant
+            f"SELECT count(*) FROM {QUARANTINE_TABLE}"
+        )
         held = cur.fetchone()[0]
         if held < affected:
             raise RuntimeError(

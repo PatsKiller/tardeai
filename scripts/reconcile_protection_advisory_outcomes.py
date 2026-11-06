@@ -230,7 +230,8 @@ def _reconcile(conn, persist=True):
 
         if persist:
             cols = list(rec.keys())
-            wc.execute(f"""insert into protection_advisory_outcomes ({','.join(cols)})
+            wc.execute(  # nosemgrep: tq-py-sql-fstring -- columns are the literal keys of rec; values bound as params
+                f"""insert into protection_advisory_outcomes ({','.join(cols)})
                 values ({','.join('%('+c+')s' for c in cols)})
                 on conflict (trade_id) do update set
                 {','.join(f'{c}=excluded.{c}' for c in cols if c!='trade_id')}, reconciled_at=now()""", rec)

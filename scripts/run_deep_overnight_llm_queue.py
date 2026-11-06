@@ -1284,6 +1284,7 @@ def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_p
     # Phase 1: Fill quota for each forced type (highest priority first within each type)
     for jtype in types:
         quota = quotas.get(jtype, 15)
+        # nosemgrep: tq-py-sql-fstring -- constants + fixed triage_filter_sql predicate; values are params
         cur.execute(f"""
             SELECT {columns_sql}
             FROM deep_overnight_llm_queue
@@ -1304,6 +1305,7 @@ def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_p
                 selected.append(row)
                 seen_ids.add(job["id"])
                 taken += 1
+        # nosemgrep: tq-py-sql-fstring -- constant + fixed triage_filter_sql predicate; values are params
         avail_count_sql = cur.execute(
             f"SELECT COUNT(*) FROM deep_overnight_llm_queue WHERE status='pending' AND job_type=%s "
             f"{triage_sql} {REQUEUE_DUE_SQL}",
@@ -1317,6 +1319,7 @@ def _build_balanced_queue(cur, job_types, limit, quotas, triage_sql="", triage_p
         # Get strategy_classification first (fills remaining), then any other unselected
         id_exclude = tuple(seen_ids) if seen_ids else (0,)
         placeholders = ",".join(["%s"] * len(id_exclude))
+        # nosemgrep: tq-py-sql-fstring -- "%s" markers, constants, fixed triage predicate; values are params
         cur.execute(f"""
             SELECT {columns_sql}
             FROM deep_overnight_llm_queue
@@ -1360,6 +1363,7 @@ def _enqueue_requeue(cur, plan):
     key = str(plan["key"])
     attempt = 0 if plan.get("reset_attempt") else int(plan["attempt"])
     delay = int(plan.get("delay_s") or 0)
+    # nosemgrep: tq-py-sql-fstring -- only module constant REQUEUE_KEY_META interpolated; values are params
     cur.execute(f"""
         UPDATE deep_overnight_llm_queue
         SET status = 'pending',
@@ -1540,6 +1544,7 @@ def main():
             type_filter = f"AND job_type IN ({placeholders})"
             type_params = types
 
+        # nosemgrep: tq-py-sql-fstring -- "%s" markers, constant, fixed triage predicate; values are params
         cur.execute(f"""
             SELECT id, job_type, symbol, trade_id, journal_id, account,
                    priority_tier, priority_score, reason_codes,

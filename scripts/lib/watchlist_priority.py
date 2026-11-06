@@ -257,6 +257,7 @@ def job_priority_params(holdings: list[str] | None = None,
 def load_daily_priority_symbols(cur, project_root: Path | None = None) -> set[str]:
     """All symbols that qualify for daily priority (for alert scoping without rank)."""
     holdings = holdings_list(project_root)
+    # nosemgrep: tq-py-sql-fstring -- fragment from sql_daily_priority_exists('wi.symbol'); values are params
     cur.execute(f"""SELECT DISTINCT UPPER(wi.symbol) AS symbol
                     FROM watchlist_items wi
                     WHERE wi.status IN ('active','researched')
@@ -275,6 +276,7 @@ def load_alert_priority_symbols(cur, project_root: Path | None = None) -> set[st
     holdings = holdings_list(project_root)
     out = {str(s).upper() for s in holdings}
     try:
+        # nosemgrep: tq-py-sql-fstring -- fragment from sql_scoring_priority_exists('wi.symbol'); values are params
         cur.execute(f"""SELECT DISTINCT UPPER(wi.symbol) AS symbol
                         FROM watchlist_items wi
                         WHERE {sql_scoring_priority_exists('wi.symbol')}""",

@@ -41,7 +41,7 @@ def main():
     for t in ["cio_decisions", "strategy_rotation_recommendations", "rebalance_plans",
               "rebalance_plan_actions", "marl_training_datasets", "marl_simulation_runs",
               "marl_policy_evaluations", "marl_counterfactual_actions"]:
-        cur.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_name='{t}'")
+        cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name=%s", (t,))
         check(f"Table {t}", cur.fetchone()[0] > 0)
 
     # 2. CIO decisions populated

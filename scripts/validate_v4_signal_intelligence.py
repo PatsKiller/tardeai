@@ -59,7 +59,7 @@ def main():
         for t in ["catalyst_events", "news_articles", "social_mentions", "fused_signals",
                   "catalyst_type_weights", "catalyst_sentiment_analysis", "news_attention_spikes",
                   "social_volume_spikes", "catalyst_historical_reactions"]:
-            cur.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_name='{t}'")
+            cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name=%s", (t,))
             check(f"Table {t}", cur.fetchone()[0] > 0)
         cur.execute("SELECT COUNT(*) FROM catalyst_type_weights")
         check("Catalyst weights seeded", cur.fetchone()[0] >= 15)

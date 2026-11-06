@@ -41,7 +41,8 @@ def run(json_path):
     conn = db(); cur = conn.cursor()
     cur.execute("SELECT count(*) FROM paper_trades WHERE status='closed'")
     n = cur.fetchone()[0]
-    cur.execute(f"SELECT {', '.join(FIELDS.values())} FROM paper_trades WHERE status='closed'")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- aggregate expressions from the fixed module FIELDS dict
+        f"SELECT {', '.join(FIELDS.values())} FROM paper_trades WHERE status='closed'")
     vals = cur.fetchone()
     conn.close()
     out = {}

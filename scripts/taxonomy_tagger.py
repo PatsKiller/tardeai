@@ -49,22 +49,29 @@ NO_MATCH_TTL_DAYS = int(os.environ.get("TAXONOMY_NO_MATCH_TTL_DAYS", "30"))
 
 
 def _ensure_columns(cur, table):
+    if table not in TABLES:
+        raise ValueError(f"unknown taxonomy table: {table!r}")
     for col in ("category_content", "category_sector", "category_lifecycle"):
-        cur.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} TEXT")
-    cur.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_cat ON {table} (category_content)")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked vs TABLES above; col from literal tuple
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} TEXT")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked against the fixed TABLES dict above
+        f"CREATE INDEX IF NOT EXISTS idx_{table}_cat ON {table} (category_content)")
 
 
 def tag_table(table, limit, use_llm, ensure_schema=False):
     import taxonomy
     from db_adapter import get_connection
-    spec = TABLES[table]
+    if table not in TABLES:
+        raise ValueError(f"unknown taxonomy table: {table!r}")
+    spec = TABLES[table]  # id/text expressions are literals from the fixed TABLES dict
     conn = get_connection(); cur = conn.cursor()
     if ensure_schema:
         # One-time DDL only on request — the hourly ALTER TABLE took an exclusive lock every run
         # (9 recorded LockNotAvailable failures against live readers).
         _ensure_columns(cur, table); conn.commit()
 
-    cur.execute(f"""SELECT {spec['id']} AS id, {spec['text']} AS txt
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked vs TABLES; spec exprs are TABLES literals
+        f"""SELECT {spec['id']} AS id, {spec['text']} AS txt
                     FROM {table}
                     WHERE category_content IS NULL
                        OR (category_content = %s
@@ -83,7 +90,8 @@ def tag_table(table, limit, use_llm, ensure_schema=False):
             no_match += 1
         else:
             tagged += 1
-        cur.execute(f"""UPDATE {table}
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked vs TABLES; spec exprs are TABLES literals
+            f"""UPDATE {table}
                         SET category_content=%s, category_sector=%s, category_lifecycle=%s,
                             taxonomy_tagged_at=now()
                         WHERE {spec['id']}=%s""",
@@ -92,7 +100,8 @@ def tag_table(table, limit, use_llm, ensure_schema=False):
             conn.commit()
     conn.commit()
     # coverage (real tags only — no_match sentinels are processed-but-uncategorized)
-    cur.execute(f"""SELECT COUNT(*) FILTER (WHERE category_content IS NOT NULL AND category_content <> %s),
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked vs TABLES; spec exprs are TABLES literals
+        f"""SELECT COUNT(*) FILTER (WHERE category_content IS NOT NULL AND category_content <> %s),
                            COUNT(*) FROM {table}""", (NO_MATCH,))
     cov, total = cur.fetchone()
     conn.close()

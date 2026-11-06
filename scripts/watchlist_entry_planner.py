@@ -286,7 +286,8 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
         # capture big technical moves, earnings/M&A/analyst/etc. capture fundamentals) forces an earlier
         # re-plan. Unplanned names always plan. This also drains the list by rank instead of re-planning the
         # same top ~`limit` every run (which starved low-ranked directive names like MRLN #76).
-        cur.execute(f"""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- only interpolation is the fixed _weekly_drain_clause fragment
+            f"""SELECT DISTINCT ON (symbol) symbol, hermes_composite_score, hermes_rank, trend,
                          NULL::int AS proposal_id, NULL::numeric AS proposed_entry,
                          NULL::numeric AS proposed_stop, NULL::numeric AS proposed_target1, NULL::text AS strategy_id,
                          EXISTS (SELECT 1 FROM operator_starred_symbols s
@@ -339,7 +340,10 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
         # --symbols filter. run() routes every one of these through the OAuth lane (they're _buy_rated).
         if buy_rated_cap > 0 and not symbols:
             have = {r["symbol"] for r in rows}
-            cur.execute(f"""SELECT * FROM (
+            # INTEREST_* thresholds are bound as params; the only interpolation left is the fixed
+            # _weekly_drain_clause fragment (literal column ref), which holds no values.
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- only interpolation is the fixed drain-clause fragment
+                f"""SELECT * FROM (
                              SELECT DISTINCT ON (wi.symbol) wi.symbol, wi.hermes_composite_score,
                                wi.hermes_rank, wi.trend, NULL::int AS proposal_id,
                                NULL::numeric AS proposed_entry, NULL::numeric AS proposed_stop,
@@ -353,8 +357,8 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                                -- it as a parameter placeholder and the execute raises IndexError.)
                                (EXISTS (SELECT 1 FROM operator_starred_symbols s
                                         WHERE UPPER(s.symbol) = UPPER(wi.symbol))
-                                OR (ABS(COALESCE(wi.change_pct, 0)) >= {INTEREST_MOVE_PCT}
-                                    AND COALESCE(wi.rvol, 0) >= {INTEREST_MOVE_RVOL})) AS _interest
+                                OR (ABS(COALESCE(wi.change_pct, 0)) >= %s
+                                    AND COALESCE(wi.rvol, 0) >= %s)) AS _interest
                              FROM watchlist_items wi
                              WHERE wi.symbol ~ '^[A-Z]{{1,5}}$' AND wi.status <> 'removed'
                                AND (
@@ -377,14 +381,14 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                                  -- elevated volume means the packet the verdict was formed from no
                                  -- longer describes the tape. RVOL is required so this reads
                                  -- "something happened" rather than "this is a small cap".
-                                 OR (ABS(COALESCE(wi.change_pct, 0)) >= {INTEREST_MOVE_PCT}
-                                     AND COALESCE(wi.rvol, 0) >= {INTEREST_MOVE_RVOL})
+                                 OR (ABS(COALESCE(wi.change_pct, 0)) >= %s
+                                     AND COALESCE(wi.rvol, 0) >= %s)
                                  -- SIGNAL 4 — FRESH CATALYST. Same reasoning on the fundamental side.
                                  OR EXISTS (SELECT 1 FROM catalyst_events ce
                                             WHERE UPPER(ce.symbol) = UPPER(wi.symbol)
                                               AND ce.catalyst_type <> 'other'
-                                              AND ce.published_at > now() - interval '{INTEREST_CATALYST_DAYS} days'
-                                              AND COALESCE(ce.confidence, 0) >= {INTEREST_CATALYST_CONF})
+                                              AND ce.published_at > now() - %s * interval '1 day'
+                                              AND COALESCE(ce.confidence, 0) >= %s)
                                  -- SIGNAL 5 — SCOPE PROMOTION. The governor already decided this name
                                  -- warrants attention; planning is what "attention" should mean.
                                  OR UPPER(COALESCE(wi.scope_tier, '')) = 'S1'
@@ -397,7 +401,9 @@ def _candidates(cur, limit, symbols=None, scope="watchlist", buy_rated_cap=20):
                            -- is never crowded out by a deep researched name.
                            ORDER BY _interest DESC, _displayed DESC,
                                     hermes_composite_score DESC NULLS LAST LIMIT %s""",
-                        (buy_rated_cap,))
+                        (INTEREST_MOVE_PCT, INTEREST_MOVE_RVOL,
+                         INTEREST_MOVE_PCT, INTEREST_MOVE_RVOL, INTEREST_CATALYST_DAYS, INTEREST_CATALYST_CONF,
+                         buy_rated_cap))
             for r in cur.fetchall():
                 d = dict(zip([dd[0] for dd in cur.description], r))
                 if d["symbol"] not in have:

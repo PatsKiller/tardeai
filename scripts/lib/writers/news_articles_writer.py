@@ -314,6 +314,7 @@ def is_duplicate(cur, symbol: Any, source_url: Any = None, title: Any = None) ->
     else:
         sym_clause = "symbol = %s"
         params.insert(0, symbol)
+    # nosemgrep: tq-py-sql-fstring -- sym_clause and clauses are literal fragments chosen above; values are params
     cur.execute(f"SELECT id FROM news_articles WHERE {sym_clause} AND ({' OR '.join(clauses)}) LIMIT 1", params)
     return cur.fetchone() is not None
 

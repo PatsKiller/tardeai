@@ -42,7 +42,8 @@ def get_reviewable(conn, trade_id=None, symbol=None):
     # DISTINCT ON (pt.id): the proposal LEFT JOIN matches every same-symbol proposal in a ±7d
     # window, which fans one trade out to N rows → N duplicate reviews. Collapse to one row per
     # trade, keeping the nearest proposal (smallest |proposal - trade| creation gap).
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- conds are literal predicates; values bound
+        f"""
         SELECT * FROM (
             SELECT DISTINCT ON (pt.id)
                    pt.id, pt.symbol, pt.strategy_id, pt.status, pt.pnl, pt.r_multiple,

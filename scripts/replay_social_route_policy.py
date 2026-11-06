@@ -38,12 +38,12 @@ def build(days: int = 30) -> dict:
 
     warnings = []
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT symbol, score, rvol, price, gap_pct, float_mm AS float_m, decision,
                    catalyst_verified, catalyst_source, sources
             FROM scalp_scan_results
-            WHERE scanned_at > NOW() - INTERVAL '{int(days)} days'
-        """)
+            WHERE scanned_at > NOW() - %s * INTERVAL '1 day'
+        """, (int(days),))
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     except Exception as e:

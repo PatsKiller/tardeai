@@ -236,8 +236,9 @@ def _db_rows(session: date) -> list[dict]:
                             options="-c default_transaction_read_only=on", connect_timeout=5)
     try:
         cur = conn.cursor()
-        cur.execute(f"SELECT {', '.join(COLUMNS)} FROM trade_ai_scans WHERE run_date = %s AND decision = 'GO'",
-                    (session,))
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- column list is the module constant COLUMNS tuple
+            f"SELECT {', '.join(COLUMNS)} FROM trade_ai_scans WHERE run_date = %s AND decision = 'GO'",
+            (session,))
         return [dict(zip(COLUMNS, row)) for row in cur.fetchall()]
     finally:
         conn.close()

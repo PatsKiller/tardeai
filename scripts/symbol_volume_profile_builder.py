@@ -245,19 +245,27 @@ def upsert_profile(conn, res: dict) -> int:
 
 
 def resolve_universe(conn, cfg: dict) -> list[str]:
+    from psycopg2 import sql as _sql
+
     u = cfg["universe"]
-    with conn.cursor() as cur:
-        cur.execute(
-            f"""
-            SELECT DISTINCT {u['symbol_column']}
-            FROM {u['source_table']}
-            WHERE {u['time_column']} > now() - interval '{int(u['lookback_days'])} days'
-              AND ({u['float_column']} IS NULL OR {u['float_column']} <= %s)
-              AND {u['symbol_column']} IS NOT NULL
+    # Table/column names come from a config file, so they are quoted as identifiers, never spliced.
+    query = _sql.SQL(
+        """
+            SELECT DISTINCT {sym}
+            FROM {tbl}
+            WHERE {tcol} > now() - %s * interval '1 day'
+              AND ({fcol} IS NULL OR {fcol} <= %s)
+              AND {sym} IS NOT NULL
             ORDER BY 1
-            """,
-            [float(u["float_mm_max"])],
-        )
+            """
+    ).format(
+        sym=_sql.Identifier(u["symbol_column"]),
+        tbl=_sql.Identifier(*str(u["source_table"]).split(".")),
+        tcol=_sql.Identifier(u["time_column"]),
+        fcol=_sql.Identifier(u["float_column"]),
+    )
+    with conn.cursor() as cur:
+        cur.execute(query, [int(u["lookback_days"]), float(u["float_mm_max"])])
         return [r[0] for r in cur.fetchall()]
 
 

@@ -129,7 +129,8 @@ def run_mfe_analysis(conn, symbol_filter=None):
     cur = conn.cursor()
     where = "AND t.symbol = %s" if symbol_filter else ""
     params = [symbol_filter] if symbol_filter else []
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- where is a literal clause; symbol bound
+        f"""
         SELECT t.id, t.symbol, t.strategy_id, t.entry_price, t.exit_price,
                t.stop_loss, t.target_1, t.shares,
                -- Phase 195: derive dates robustly from best-available timestamps so trades whose

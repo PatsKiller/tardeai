@@ -36,10 +36,10 @@ def _momentum_symbols(conn, days: int = 2) -> list:
         cur = conn.cursor()
         cur.execute("""
             SELECT DISTINCT symbol FROM trade_ai_scans
-            WHERE scanned_at > NOW() - INTERVAL '%s days'
+            WHERE scanned_at > NOW() - %s * INTERVAL '1 day'
               AND (float_m IS NULL OR float_m <= 20)
             ORDER BY symbol LIMIT %s
-        """ % (int(days), MAX_SYMBOLS))
+        """, (int(days), MAX_SYMBOLS))
         return [r[0] for r in cur.fetchall()]
     except Exception:
         try:

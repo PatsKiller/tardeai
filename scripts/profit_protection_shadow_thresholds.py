@@ -169,7 +169,8 @@ def run(apply, json_path, md_path, run_id, min_sample, operator_override=False):
                 "evidence_sample_size", "expected_giveback_reduction", "expected_premature_exit_cost",
                 "confidence", "graft_verdict", "notes"]
         for r in recs:
-            wc.execute(f"""INSERT INTO profit_protection_shadow_recommendations ({','.join(cols)})
+            wc.execute(  # nosemgrep: tq-py-sql-fstring -- cols is the literal column list above; values are params
+                f"""INSERT INTO profit_protection_shadow_recommendations ({','.join(cols)})
                 VALUES ({','.join('%('+c+')s' for c in cols)})""", {c: r.get(c) for c in cols})
             written += 1
         conn.commit(); conn.close()

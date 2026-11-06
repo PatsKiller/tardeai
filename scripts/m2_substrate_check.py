@@ -122,7 +122,9 @@ def capture(conn, *, tenant: str) -> dict:
     cur.execute("SELECT set_config('app.tenant_id', %s, true)", (tenant,))
     counts: dict = {}
     for view, base in VIEWS.items():
+        # nosemgrep: tq-py-sql-fstring -- NS is a module constant; base from the VIEWS constant; tenant is a param
         cur.execute(f'SELECT count(*) FROM {NS}.{base} WHERE tenant_id = %s', (tenant,)); b = cur.fetchone()[0]
+        # nosemgrep: tq-py-sql-fstring -- NS is a module constant; view is a VIEWS constant key; tenant is a param
         cur.execute(f'SELECT count(*) FROM {NS}."{view}" WHERE tenant_id = %s', (tenant,)); v = cur.fetchone()[0]
         counts[view] = {"base": int(b), "view": int(v), "tenant": tenant}
     cur.execute("SELECT current_user, (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user), version()")
@@ -154,6 +156,7 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
     t = f"{tenant}:substrate-check:{uuid.uuid4().hex[:8]}"   # a throwaway tenant: nothing it writes can collide
     with conn.cursor() as cur:
         cur.execute("SELECT set_config('app.tenant_id', %s, false)", (t,))
+        # nosemgrep: tq-py-sql-fstring -- NS is a module constant; no other interpolation
         cur.execute(f"SELECT count(*) FROM {NS}.memory_fact_version"); before = cur.fetchone()[0]
     try:
         now = _dt.datetime.now(_dt.timezone.utc)
@@ -180,6 +183,7 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
                 cur.execute(f"INSERT INTO {NS}.memory_fact_version (tenant_id, identity_guid, subject_guid, predicate, object_value, valid_period, tx_period, status, confidence, source_type, source_id, source_as_of, temporal_policy) "
                             "VALUES (%s,%s::uuid,%s,'catalyst_tag',%s::jsonb, tstzrange(%s::timestamptz,%s::timestamptz,'[)'), tstzrange(statement_timestamp(),NULL,'[)'), 'CANDIDATE','low','check',%s,statement_timestamp(),'GAPS_ALLOWED')",
                             (t, ident_m, subj, json.dumps({"tag": ["earnings", "launch"][i]}), a, b, f"m{i}"))
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; values are params
             cur.execute(f"SELECT count(*) FROM {NS}.memory_fact_version WHERE tenant_id=%s AND identity_guid=%s::uuid", (t, ident_m)); multi = cur.fetchone()[0]
         suites["exclusion"] = {"pass": excl == "23P01" and multi == 2, "single_valued_sqlstate": excl, "multi_valued_rows": int(multi)}
         # 2. closure through the real function (memory_m2_v2.write_fact → write_fact_version)
@@ -187,6 +191,7 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
         v1 = m2.write_fact(conn, tenant_id=t, identity_guid=ident2, subject_guid=subj, predicate="target_allocation", obj={"v": 1}, valid_from=vf, valid_to=vt, temporal_policy="SINGLE_VALUED_CURRENT")
         v2 = m2.write_fact(conn, tenant_id=t, identity_guid=ident2, subject_guid=subj, predicate="target_allocation", obj={"v": 2}, valid_from=vf, valid_to=vt, temporal_policy="SINGLE_VALUED_CURRENT")
         with conn.cursor() as cur:
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; literal view name; values are params
             cur.execute(f'SELECT memory_version_id::text, row_kind, upper_inf(tx_period), supersedes_id::text FROM {NS}."MemoryFactVersion@v2" WHERE tenant_id=%s AND identity_guid=%s::uuid ORDER BY version_seq', (t, ident2))
             rows = cur.fetchall()
         by = {r[0]: r for r in rows}
@@ -204,11 +209,13 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
                                        ("delete_current", f"DELETE FROM {NS}.memory_fact_version WHERE memory_version_id=%s::uuid", v2),
                                        ("delete_closed", f"DELETE FROM {NS}.memory_fact_version WHERE memory_version_id=%s::uuid", v1),
                                        ("update_confidence_current", f"UPDATE {NS}.memory_fact_version SET confidence='high' WHERE memory_version_id=%s::uuid", v2)):
+                # nosemgrep: tq-py-sql-fstring -- label comes from the literal tuple of suite names in this loop
                 cur.execute(f"SAVEPOINT {label}")
                 try:
                     cur.execute(sql, (target,)); codes[label] = "ALLOWED"
                 except Exception as exc:  # noqa: BLE001
                     codes[label] = f"{type(exc).__name__}:{getattr(exc, 'pgcode', '?')}"
+                # nosemgrep: tq-py-sql-fstring -- label comes from the literal tuple of suite names in this loop
                 cur.execute(f"ROLLBACK TO SAVEPOINT {label}")
         must_refuse = ("update_object_current", "update_valid_period_current", "update_closed_row", "delete_current", "delete_closed")
         suites["immutability"] = {"pass": all(codes[k] != "ALLOWED" for k in must_refuse), **codes,
@@ -225,11 +232,13 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
                     cur.execute("SELECT (SELECT rolbypassrls FROM pg_roles WHERE rolname=current_user), (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)")
                     agent["bypassrls"], agent["superuser"] = cur.fetchone()
                     for label, sql in (("update", f"UPDATE {NS}.memory_fact_version SET confidence='high' WHERE tenant_id=%s"), ("delete", f"DELETE FROM {NS}.memory_fact_version WHERE tenant_id=%s")):
+                        # nosemgrep: tq-py-sql-fstring -- label is the literal update/delete from the tuple in this loop
                         cur.execute(f"SAVEPOINT a_{label}")
                         try:
                             cur.execute(sql, (t,)); agent[label] = "ALLOWED"
                         except Exception as exc:  # noqa: BLE001
                             agent[label] = f"{type(exc).__name__}:{getattr(exc, 'pgcode', '?')}"
+                        # nosemgrep: tq-py-sql-fstring -- label is the literal update/delete from the tuple in this loop
                         cur.execute(f"ROLLBACK TO SAVEPOINT a_{label}")
             finally:
                 ac.rollback(); ac.close()
@@ -246,9 +255,12 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
                         "VALUES (%s::uuid,%s,%s,%s,%s,%s::uuid[],%s::uuid,%s::uuid[],%s,%s,%s,%s,%s,%s,%s,%s,false)",
                         (adj_id, t, subj, "target_allocation", rec.get("conflict_id"), [v1, v2], v2, [v1], rec.get("policy") or "NEWER_TX_WINS", rec.get("policy_version") or "v1",
                          "deterministic", None, None, [f"fact:{v1}", f"fact:{v2}"], f"trace:{uuid.uuid4().hex[:8]}", "0" * 64))
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; values are params
             cur.execute(f"INSERT INTO {NS}.provenance_edge (edge_id, tenant_id, from_object_id, to_object_id, relation, source, trace_id) VALUES (%s::uuid,%s,%s::uuid,%s::uuid,'SUPERSEDES','substrate-check',%s)",
                         (str(uuid.uuid4()), t, v2, v1, "trace:x"))
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; literal view name; values are params
             cur.execute(f'SELECT selected_fact_id::text, array_length(rejected_fact_ids,1), deterministic_policy FROM {NS}."AdjudicationReceipt@v1" WHERE tenant_id=%s AND adjudication_id=%s::uuid', (t, adj_id)); a = cur.fetchone()
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; literal view name; values are params
             cur.execute(f'SELECT relation, to_object_id::text FROM {NS}."ProvenanceEdge@v1" WHERE tenant_id=%s AND from_object_id=%s::uuid', (t, v2)); e = cur.fetchone()
         suites["adjudication_provenance"] = {"pass": bool(a) and a[0] == v2 and a[1] == 1 and bool(e) and e[0] == "SUPERSEDES" and e[1] == v1,
                                              "receipt": {"selected": (a[0] if a else None) == v2, "rejected": (a[1] if a else None), "policy": a[2] if a else None}, "edge": {"relation": e[0] if e else None, "walks_to_parent": (e[1] if e else None) == v1}}
@@ -256,7 +268,9 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
         again = m2.insert_identity(conn, tenant_id=t, subject_guid=subj, predicate="portfolio_thesis")
         other = m2.insert_identity(conn, tenant_id=t + ":other", subject_guid=subj, predicate="portfolio_thesis")
         with conn.cursor() as cur:
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; literal view name; values are params
             cur.execute(f'SELECT security_guid FROM {NS}."MemoryIdentity@v1" WHERE tenant_id=%s AND identity_guid=%s::uuid', (t, ident)); sg = cur.fetchone()
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; values are params
             cur.execute(f"SELECT count(*) FROM {NS}.memory_identity WHERE tenant_id=%s AND subject_guid=%s AND predicate='portfolio_thesis'", (t, subj)); n_same = cur.fetchone()[0]
         suites["identity_spine"] = {"pass": again == ident and other != ident and n_same == 1 and bool(sg and sg[0]),
                                     "dedup": again == ident, "tenant_split": other != ident, "rows_same_key": int(n_same), "security_guid_carried": bool(sg and sg[0])}
@@ -269,6 +283,7 @@ def run_shadow(dsn: str, *, tenant: str) -> dict:
     finally:
         conn.rollback()
         with conn.cursor() as cur:
+            # nosemgrep: tq-py-sql-fstring -- NS is a module constant; no other interpolation
             cur.execute(f"SELECT count(*) FROM {NS}.memory_fact_version"); after = cur.fetchone()[0]
         conn.close()
     return {"database": dsn.split("@")[-1], "tenant": t, "suites": suites, "rows_before": int(before), "rows_after": int(after),

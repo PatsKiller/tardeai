@@ -45,6 +45,7 @@ from pathlib import Path
 try:
     import psycopg2
     import psycopg2.extras
+    from psycopg2 import sql
 except ImportError:
     print("ERROR: psycopg2 not installed.")
     sys.exit(1)
@@ -129,12 +130,13 @@ def main():
                 backup_dir = Path("backups") / f"session34_schema_{ts}"
                 backup_dir.mkdir(parents=True, exist_ok=True)
 
-                cur.execute(f"SELECT COUNT(*) AS cnt FROM {args.table}")
+                tbl, colname = sql.Identifier(args.table), args.column
+                cur.execute(sql.SQL("SELECT COUNT(*) AS cnt FROM {}").format(tbl))
                 row_count = cur.fetchone()['cnt']
                 print(f"\nRow count in {args.table}: {row_count}")
 
                 if row_count > 0:
-                    cur.execute(f"SELECT * FROM {args.table}")
+                    cur.execute(sql.SQL("SELECT * FROM {}").format(tbl))
                     rows = cur.fetchall()
                     backup_file = backup_dir / f"{args.table}_pre_alter.json"
                     backup_file.write_text(json.dumps(
@@ -143,15 +145,16 @@ def main():
                     print(f"Data backup: {backup_file}")
 
                 # Apply the ALTER
-                cur.execute(f"""
-                    ALTER TABLE {args.table}
-                    ALTER COLUMN {args.column} TYPE TEXT USING {args.column}::TEXT
-                """)
-                cur.execute(f"""
-                    ALTER TABLE {args.table}
-                    ADD COLUMN IF NOT EXISTS {args.column}_low NUMERIC,
-                    ADD COLUMN IF NOT EXISTS {args.column}_high NUMERIC
-                """)
+                cur.execute(sql.SQL("""
+                    ALTER TABLE {tbl}
+                    ALTER COLUMN {col} TYPE TEXT USING {col}::TEXT
+                """).format(tbl=tbl, col=sql.Identifier(colname)))
+                cur.execute(sql.SQL("""
+                    ALTER TABLE {tbl}
+                    ADD COLUMN IF NOT EXISTS {low} NUMERIC,
+                    ADD COLUMN IF NOT EXISTS {high} NUMERIC
+                """).format(tbl=tbl, low=sql.Identifier(f"{colname}_low"),
+                            high=sql.Identifier(f"{colname}_high")))
 
                 # Log the change
                 log_file = Path("backups") / "session34_schema_changes.log"

@@ -107,7 +107,8 @@ def get_pending_jobs(conn, job_types, limit):
     cur = conn.cursor()
     types = [t.strip() for t in job_types.split(",")]
     placeholders = ",".join(["%s"] * len(types))
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only a count of %s placeholders is interpolated; values are params
+        f"""
         SELECT id, job_type, symbol, trade_id, journal_id,
                priority_tier, priority_score, reason_codes,
                last_qwen_summary, metadata_json

@@ -144,7 +144,8 @@ for strategy_id, meta in METADATA.items():
         continue
 
     values.append(strategy_id)
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- SET columns are keys of the literal METADATA dict
+        f"""
         UPDATE strategy_registry
         SET {', '.join(set_parts)}, updated_at = NOW()
         WHERE strategy_id = %s

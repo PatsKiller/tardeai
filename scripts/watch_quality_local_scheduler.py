@@ -226,7 +226,7 @@ def _verify_pending_batch(conn: Any, prepared: list[dict], persisted: list[dict]
 
     placeholders = ",".join(["%s"] * len(expected_ids))
     cur = conn.cursor()
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- placeholders is only literal "%s" markers; ids are bound params
         f"""SELECT packet_id, upper(symbol), packet
               FROM decision_packets
              WHERE packet_id IN ({placeholders})

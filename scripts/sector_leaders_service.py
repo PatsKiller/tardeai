@@ -542,7 +542,7 @@ def _industry_rows(cur, sector_name: str, horizon: str) -> list[dict[str, Any]]:
     "rank N of 144" so the basis is unambiguous.
     """
     col = HORIZONS[horizon]["industry_col"]
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- col is a value of the fixed HORIZONS dict (KeyError otherwise)
         f"""WITH ranked AS (
               SELECT industry, sector, state, rel1w, rel1m, {col} AS composite,
                      stocks, as_of, created_at,

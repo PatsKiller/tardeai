@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_17_20261106",
+  "files": [
+    "tests/test_injection_triage_17_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_17_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_17_20261106 — SQL-injection triage batch 17 (tq-py-sql-fstring, operator-approved",
+    "security item 2026-11-06). Interpolated SQL values became psycopg2 parameters (interval day counts, LIMIT) and",
+    "command-line table/column names became quoted sql.Identifier objects; the scalp universe refuses a config",
+    "identifier that is not a bare lower-case name. Hermetic: fake cursors record (sql, params); no database opens."
+  ]
+}

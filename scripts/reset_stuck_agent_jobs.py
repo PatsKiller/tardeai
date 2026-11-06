@@ -35,9 +35,9 @@ def find_stuck(conn, minutes: int = STUCK_MINUTES) -> list:
                EXTRACT(EPOCH FROM (now() - COALESCE(started_at, created_at)))/60.0 AS age_min
         FROM watchlist_agent_jobs
         WHERE status = 'processing'
-          AND COALESCE(started_at, created_at) < now() - interval '%s minutes'
+          AND COALESCE(started_at, created_at) < now() - %s * interval '1 minute'
         ORDER BY COALESCE(started_at, created_at)
-    """ % int(minutes))
+    """, (int(minutes),))
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -47,8 +47,8 @@ def reset(conn, minutes: int = STUCK_MINUTES) -> int:
     cur.execute("""
         UPDATE watchlist_agent_jobs SET status='queued', started_at=NULL
         WHERE status = 'processing'
-          AND COALESCE(started_at, created_at) < now() - interval '%s minutes'
-    """ % int(minutes))
+          AND COALESCE(started_at, created_at) < now() - %s * interval '1 minute'
+    """, (int(minutes),))
     n = cur.rowcount
     conn.commit()
     return n
@@ -60,9 +60,9 @@ def find_stuck_synthesis(conn, minutes: int = STUCK_MINUTES) -> list:
     cur.execute("""
         SELECT symbol, EXTRACT(EPOCH FROM (now() - updated_at))/60.0 AS age_min
         FROM watchlist_analysis_maturity
-        WHERE final_synthesis_status = 'processing' AND updated_at < now() - interval '%s minutes'
+        WHERE final_synthesis_status = 'processing' AND updated_at < now() - %s * interval '1 minute'
         ORDER BY updated_at
-    """ % int(minutes))
+    """, (int(minutes),))
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
@@ -72,8 +72,8 @@ def reset_synthesis(conn, minutes: int = STUCK_MINUTES) -> int:
     cur.execute("""
         UPDATE watchlist_analysis_maturity
         SET final_synthesis_status='pending', updated_at=now()
-        WHERE final_synthesis_status='processing' AND updated_at < now() - interval '%s minutes'
-    """ % int(minutes))
+        WHERE final_synthesis_status='processing' AND updated_at < now() - %s * interval '1 minute'
+    """, (int(minutes),))
     n = cur.rowcount
     conn.commit()
     return n

@@ -310,13 +310,22 @@ def _stage(conn, job_id: int, name: str, extra: dict | None = None):
     conn.commit()
 
 
+# Columns _finish may set: the column names are interpolated into SQL, so they come only from this list.
+_FINISH_COLUMNS = frozenset({
+    "input_hash_before", "input_hash_after", "packet_id_before", "packet_id_after", "decision_run_id",
+    "invalidation_reasons", "refreshed_dimensions", "source_calls", "lane_calls", "failure_class", "error",
+})
+
+
 def _finish(conn, job_id: int, state: str, **fields):
     sets, vals = ["state=%s", "completed_at=now()"], [state]
     for k, v in fields.items():
+        if k not in _FINISH_COLUMNS:
+            raise ValueError(f"_finish: column {k!r} is not in _FINISH_COLUMNS")
         sets.append(f"{k}=%s")
         vals.append(json.dumps(v) if isinstance(v, (dict, list)) else v)
     vals.append(job_id)
-    conn.cursor().execute(
+    conn.cursor().execute(  # nosemgrep: tq-py-sql-fstring -- column names checked against _FINISH_COLUMNS above
         f"UPDATE watch_decision_refresh_jobs SET {', '.join(sets)} WHERE job_id=%s", vals)
     conn.commit()
 
