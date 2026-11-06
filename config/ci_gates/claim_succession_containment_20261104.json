@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "claim_succession_containment_20261104",
+  "files": [
+    "tests/test_claim_succession_containment_20261104.py"
+  ],
+  "anchor": "CLAIM_SUCCESSION_CONTAINMENT_20261104",
+  "comment": [
+    "ANCHOR: CLAIM_SUCCESSION_CONTAINMENT_20261104 — a claim succeeds a stale predecessor only when it holds EVERY path the predecessor held (containment), or when the operator of the claim names it explicitly with --takeover; a shared file is never a succession. The suite pins the predicate, the board behaviour, the deduplication and the refusals (unknown / live / disjoint targets). Hermetic: a synthetic board in tmp_path only."
+  ]
+}

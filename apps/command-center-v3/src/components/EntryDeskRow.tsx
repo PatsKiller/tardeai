@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { deriveTradeAiRating, ratingLabel } from '../lib/manualTosRating'
+import { RADIUS } from '../lib/designTokens'
+import { RATING_SCOPE_TITLE, decisionWords, ratingScopeWords, stateBadgeWords, stateScopeTitle, techScopeTitle } from '../lib/manualSetupScope'
 import { exitLadder as ladderCalc, planWarnings as warningsCalc, MONITOR_RULES } from '../lib/exitLadder'
 import { schwabTicketsFromLadder, ticketsText } from '../lib/schwabTickets'
 import { protectiveStopLine } from '../lib/draftOrderView'
@@ -42,11 +44,6 @@ function badgeColor(source: SourceKind) {
 }
 function statusColor(state: SetupState) {
   return state === 'BROKER_OBSERVED' ? C.green : state === 'GENERATED' ? C.blue : state === 'EXCEPTION' ? C.red : C.dim
-}
-function decisionText(r: SetupRow) {
-  const d = String(r.decision ?? '').toUpperCase()
-  if (d === 'GO' || d === 'WAIT') return d
-  return r.source === 'WATCHLIST' ? 'WATCHLIST ADVISORY' : 'DECISION PENDING'
 }
 function setupLine(r: SetupRow) {
   // a protective stop draft reads as what it is: SELL … STOP … (side/type from the draft, lib/draftOrderView)
@@ -95,10 +92,15 @@ type Props = {
   onPromote: (r: SetupRow, proposalId?: number) => void
   promoteBusy?: boolean
   focused?: boolean
+  /** FQ-043: the desk renders a compact shortlist; the full ticket is one tap away. */
+  expanded?: boolean
+  onToggle?: () => void
 }
 
 export default function EntryDeskRow({
   r, state, hit, account, streetTarget, tech, accounts, accountMap, onSetField, onCopyMsg, onPromote, promoteBusy, focused,
+  expanded = true,
+  onToggle,
 }: Props) {
   const rating = deriveTradeAiRating(r)
   const sz = sizing(r, account)
@@ -171,18 +173,26 @@ export default function EntryDeskRow({
         boxShadow: focused ? '0 0 0 1px rgba(96,165,250,.25)' : undefined,
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.35fr) minmax(0,1fr) auto', gap: 12, alignItems: 'start' }}>
+      {/* codex P2 at f5586fdd1 (PR 2599): a collapsed row has ONE grid child, so the page's mobile
+          stylesheet (W9Mobile.css, .w9-entry-desk) must exempt it from its two-equal-column !important
+          override; the component states the fact and the stylesheet selects it. */}
+      <div
+        data-testid="entry-desk-row-grid"
+        data-desk-collapsed={expanded ? undefined : 'true'}
+        style={{ display: 'grid', gridTemplateColumns: expanded ? 'minmax(0,1.35fr) minmax(0,1fr) auto' : 'minmax(0,1fr)', gap: 12, alignItems: 'start' }}
+      >
         <div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={{ fontSize: 9, color: badgeColor(r.source), fontWeight: 900 }}>{r.source}</span>
             <span style={{ fontSize: 17, fontWeight: 900, ...mono }}>{r.symbol}</span>
             {r.company && <span style={{ fontSize: 10, color: C.dim }}>{r.company}</span>}
-            <span style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>
-              {state === 'BROKER_OBSERVED' ? 'AUTO-LINKED FROM SCHWAB READ-ONLY' : state}
+            <span title={stateScopeTitle(state)}
+              style={{ fontSize: 9, color: statusColor(state), background: `${statusColor(state)}22`, padding: '2px 7px', borderRadius: 4 }}>
+              {stateBadgeWords(state)}
             </span>
             {tech?.technical_grade && (
               <span
-                title={tech.narrative_snip || tech.action || ''}
+                title={`${techScopeTitle(tech.technical_grade)}\n${tech.narrative_snip || tech.action || ''}`}
                 style={{
                   fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 4,
                   color: techAccent(tech.technical_grade),
@@ -195,9 +205,9 @@ export default function EntryDeskRow({
             )}
           </div>
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 6, fontSize: 9 }}>
-            <span style={{ color: C.amber }}>{decisionText(r)}</span>
+            <span style={{ color: C.amber }} title="The desk's advisory verdict — not an order instruction">{decisionWords(r.decision, r.source)}</span>
             <span style={{ color: analystColor(r) }}>
-              {rating.source === 'analyst' ? 'analyst' : 'Trade AI rating'} {ratingLabel(rating.rating)}
+              <span title={RATING_SCOPE_TITLE}>{rating.source === 'analyst' ? 'analyst' : 'Trade AI rating'} {ratingScopeWords(ratingLabel(rating.rating))}</span>
             </span>
             {r.analystCount != null && <span style={{ color: C.dim }}>{r.analystCount} analysts</span>}
             {r.analystUpside != null && (
@@ -213,6 +223,12 @@ export default function EntryDeskRow({
           )}
           {r.reason && <div style={{ marginTop: 4, fontSize: 9, color: C.dim, lineHeight: 1.4 }}>{String(r.reason).slice(0, 200)}</div>}
           <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, ...mono }}>{setupLine(r)}</div>
+          {onToggle && (
+            <button type="button" onClick={onToggle} data-testid="entry-desk-details-toggle" aria-expanded={expanded}
+              style={{ marginTop: 6, fontSize: 10, padding: '3px 9px', borderRadius: RADIUS.sm, border: '1px solid var(--border)', background: 'transparent', color: C.blue, cursor: 'pointer' }}>
+              {expanded ? 'Hide details ▴' : 'Show details ▾ (sizing, diligence, copy, broker queue)'}
+            </button>
+          )}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 7, fontSize: 9 }}>
             {r.entryPrice != null && (r.protective
               ? <span data-testid="entry-desk-protective" style={{ color: C.red }}>protective {r.side} {r.entryType.replace(/_/g, ' ')} {r.trailPct != null ? `trail ${r.trailPct}%` : r.entryPrice.toFixed(2)}</span>
@@ -227,6 +243,7 @@ export default function EntryDeskRow({
               {warns.map((w, i) => <div key={i} style={{ fontSize: 9, color: w.color, fontWeight: 700 }}>⚠ {w.text}</div>)}
             </div>
           )}
+          {expanded && (<>
           {ladder && (
             <div style={{ marginTop: 7, background: 'rgba(15,23,42,.48)', border: '1px solid var(--border)', borderRadius: 7, padding: '6px 8px' }}>
               <div style={{ fontSize: 8, color: C.dim, fontWeight: 900, textTransform: 'uppercase' }}>
@@ -255,9 +272,10 @@ export default function EntryDeskRow({
               {tech.action}
             </div>
           )}
+          </>)}
         </div>
 
-        <div>
+        {expanded && <div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px', gap: 8, marginBottom: 7 }}>
             <select value={r.account} onChange={e => onSetField(r.id, { account: e.target.value })} style={inputStyle}>
               {['ANY', ...accounts.filter(a => a !== 'ANY')].filter((v, i, arr) => arr.indexOf(v) === i).map(a => (
@@ -279,9 +297,9 @@ export default function EntryDeskRow({
             <div style={metricBox}><div style={{ fontSize: 8, color: C.dim }}>Risk / R:R</div><div style={{ fontSize: 11, fontWeight: 800, color: sz.rr && sz.rr >= 2 ? C.green : C.amber }}>{money(sz.risk)} / {sz.rr ? sz.rr.toFixed(2) : '—'}</div></div>
           </div>
           <div style={{ marginTop: 6, fontSize: 9, color: C.dim }}>Sizing is read-only — does not place orders.</div>
-        </div>
+        </div>}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', minWidth: 148 }}>
+        {expanded && <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', minWidth: 148 }}>
           <button onClick={() => doCopy(setupLine(r), 'setup')} style={btn('#1d4ed8')}>Copy setup</button>
           <button
             title="Copy Schwab ticket drafts — no API submit"
@@ -305,7 +323,7 @@ export default function EntryDeskRow({
               {promoteBusy ? '…' : '→ Broker queue'}
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {ackOpen && (

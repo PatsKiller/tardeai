@@ -104,9 +104,15 @@ try {
     assert(geometry.panels.every(p => p.scroll <= p.client + 1), JSON.stringify(geometry))
     assert.deepEqual({ ...traffic, reads: [] }, { reads: [], unexpected: [], mutations: [], external: [], errors: [] })
     // Keyboard access reveals the original observations and both selected/broken sources.
-    const summary = first.locator('summary'); await summary.focus(); await page.keyboard.press('Enter')
-    await expect(first.locator('details')).toHaveAttribute('open', '')
-    await expect(first.locator('details')).toContainText('Broken reference: Watch symbol master')
+    // MAIN-RED 2026-11-06: the row now carries TWO disclosures - the conflict line's "technical detail" and the market
+    // record's "Source details" - so a bare locator('summary') is ambiguous (strict-mode violation). Scope to the market
+    // record disclosure by its own class and require exactly one, so this still fails if that disclosure disappears,
+    // stops opening, or loses the broken reference: a naked .first() would pick whichever came first and never fail again.
+    const marketDetails = first.locator('details.watch-market-details')
+    await expect(marketDetails, 'the market record disclosure is missing from the mine-row').toHaveCount(1)
+    const summary = marketDetails.locator('summary'); await summary.focus(); await page.keyboard.press('Enter')
+    await expect(marketDetails).toHaveAttribute('open', '')
+    await expect(marketDetails).toContainText('Broken reference: Watch symbol master')
     await page.keyboard.press('Enter')
     const name = `impl-c2-retention-${width}-${status}`
     await page.screenshot({ path: path.join(out, name + '.png'), fullPage: true, animations: 'disabled' })
