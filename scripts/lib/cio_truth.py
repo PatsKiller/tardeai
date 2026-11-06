@@ -16,6 +16,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .account_display import canonical_key, account_label, location_facts
+from .stop_session_evidence import stop_observation_freshness
 
 
 def _number(value) -> float | None:
@@ -301,6 +302,17 @@ def _stop_category(p: dict) -> str:
     return "planned" if p.get("stop_source") == "planned" and p.get("stop_price") is not None else "none"
 
 
+def _unproven_protection(p: dict) -> bool:
+    """A broker stop was read but its current protection cannot be established either way.
+
+    ``stop_for`` demotes a resting stop whose observation is not current (``STALE``/``UNAVAILABLE``) to
+    ``stop_state == "unknown"``, and an unmapped broker status lands there too. Such a position is neither
+    proven protected nor proven unprotected: an unknown observation must not become a definite "unprotected"
+    count or dollar figure any more than it may become a zero-risk one.
+    """
+    return p.get("stop_state") == "unknown"
+
+
 def _resting_summary(counted: list[dict], total_usd, *, broker_available: bool) -> dict:
     """Counted positions by stop category plus the loss if every resting broker stop (active or pending) fills.
 
@@ -449,7 +461,22 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
                 break
     meta = _evidence("stop_last_known" if row else "stops.json", at, now,
                      reason="stop state not recorded" if state == "unknown" else None)
+    observation = stop_observation_freshness(at, now=now) if row else None
+    observed_state = state
     note = None
+    if observation is not None:
+        meta.update(as_of=observation["as_of"], stale=observation["status"] != "FRESH")
+        if observation["status"] == "UNAVAILABLE":
+            # The raw reported clock remains in stop_observation for diagnosis;
+            # it cannot establish a usable observation time or an elapsed age.
+            meta.update(as_of=None, age_hours=None)
+        if meta["stale"]:
+            meta["gap"] = {"reason": observation["reason"]}
+            if state in ("active", "pending_activation"):
+                # Preserve the recorded state separately; an old observation
+                # cannot establish current protection or an active-stop count.
+                state = "unknown"
+                note = observation["reason"]
     if state == "filled":
         seen = _when(row.get("captured_at"))
         seen_label = _et_label(seen) if seen else "an unrecorded time"
@@ -472,7 +499,8 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
     return {"account_id": account, "account_label": account_label(account), "symbol": symbol,
             "stop_price": sp, "stop_source": source, "stop_state": state,
             "stop_status_raw": row.get("status"), "stop_captured_at": meta["as_of"],
-            "broker_protected": state == "active" and sp is not None and sp > 0,
+            "broker_protected": state == "active" and not meta["stale"] and sp is not None and sp > 0,
+            "stop_state_observed": observed_state, "stop_observation": observation,
             "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"),
             # The broker order KIND survives a page view: a trailing order has no fixed trigger price, so without it
             # an active observation with an unknown price could not be told apart from a stop whose price was lost.
@@ -1001,11 +1029,20 @@ def risk_payload(*, root=None, now=None, db_query=None, inputs=None, document=No
         positions.append(p)
     denominator = _sum_known(positions, "market_value") if positions else None
     unprotected = risk.get("unprotected_value_usd")
+    unproven = risk.get("unproven_value_usd")
+    # codex-cloud P1 on #2677: `unprotected_value_usd` deliberately EXCLUDES a position whose broker status is
+    # unmapped (FQ-116: an unproven stop is neither protected nor unprotected), so subtracting only the
+    # unprotected figure from the total silently reclassified every unproven dollar as PROTECTED. A synthetic
+    # $11,000 holding with an unmapped status reported `unproven_value_usd=11000` and still counted $11,000 as
+    # protected. Protected is derived, so it may only be stated when every part of the subtraction is known; the
+    # unproven figure is published beside it rather than absorbed into it.
+    protected = (round(denominator - unprotected - unproven, 2)
+                 if denominator is not None and unprotected is not None and unproven is not None else None)
     return {"portfolio_heat_pct": risk.get("portfolio_heat_pct"), "total_risk_dollars": risk.get("loss_at_stop_usd"),
-            "pct_protected": round(100 * (denominator-unprotected) / denominator, 2)
-            if denominator and unprotected is not None else None,
-            "total_protected_mv": round(denominator-unprotected, 2) if denominator is not None and unprotected is not None else None,
-            "total_unprotected_mv": unprotected, "position_count": portfolio.get("position_count"),
+            "pct_protected": round(100 * protected / denominator, 2) if denominator and protected is not None else None,
+            "total_protected_mv": protected,
+            "total_unprotected_mv": unprotected, "total_unproven_mv": unproven,
+            "position_count": portfolio.get("position_count"),
             "position_counts": portfolio.get("position_counts"), "paper_position_count": None,
             "positions": positions, "stops": {f"{p['account_id']}:{p['symbol']}": p for p in stops["rows"]},
             "positions_basis": "holdings_live", "positions_as_of": portfolio.get("positions_as_of"),
@@ -1425,7 +1462,8 @@ def positions_payload(payload, *, root=None, now=None, db_query=None, inputs=Non
             row.update(account_id=account, account_label=account_label(account))
             if fact:
                 for field in ("price", "shares", "market_value", "stop_price", "stop_source", "stop_state",
-                              "stop_captured_at", "broker_protected", "basis_truth", "distance_to_stop_pct", "loss_at_stop_usd"):
+                              "stop_captured_at", "broker_protected", "basis_truth", "distance_to_stop_pct", "loss_at_stop_usd",
+                              "stop_status_raw", "stop_state_observed", "stop_note", "stop_evidence", "stop_observation"):
                     row[field] = deepcopy(fact.get(field))
                 row["current_price"] = row["price"]
                 row["cost_basis"] = fact["basis_truth"]["cost_basis_usd"]
@@ -1548,15 +1586,25 @@ def stop_clock(positions, now, *, broker_available=True, contract=None) -> dict:
     Stale uses the broker_stops freshness contract: the open-session window while the market is open, the closed
     window otherwise (weekends do not page). A stale read keeps its counts but names their age in a gap.
     """
-    times = [_timestamp(p.get("stop_captured_at")) for p in positions
-             if p.get("stop_source") == "broker_resting" and p.get("stop_captured_at")]
-    times = [t for t in times if t is not None]
+    observations = [stop_observation_freshness(p.get("stop_captured_at"), now=now)
+                    for p in positions if p.get("stop_source") == "broker_resting"]
+    unusable = sum(o["status"] == "UNAVAILABLE" for o in observations)
+    times = [_timestamp(o["as_of"]) for o in observations if o["status"] != "UNAVAILABLE"]
     at = min(times) if times else None
     meta = _evidence("stop_last_known (broker reads) > stops.json, per account+symbol", at, now,
                      reason="persisted broker stop observations unavailable" if not broker_available else None)
     meta["last_broker_read_at"] = meta["as_of"]
     meta["last_broker_read_label"] = _et_label(at) if at else None
     if not broker_available:
+        return meta
+    if unusable:
+        # One readable row cannot establish a complete refresh clock for its
+        # neighbours. Keep partial history explicitly, not as a fresh as_of.
+        meta["partial_observation_as_of"] = meta["as_of"]
+        meta.update(as_of=None, age_hours=None, stale=True,
+                    last_broker_read_at=None, last_broker_read_label=None,
+                    gap={"reason": f"Stop observation time is unavailable for {unusable} of "
+                                   f"{len(observations)} recorded positions; a complete refresh time is not known."})
         return meta
     if at is None:
         meta["stale"] = True
@@ -1588,6 +1636,9 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
                   else ((p.get("stop_note") or "stop filled · awaiting holdings sync")[:1].upper()
                         + (p.get("stop_note") or "stop filled · awaiting holdings sync")[1:]) if state == "filled"
                   else "No active broker stop observed")
+        observation = p.get("stop_observation")
+        if observation and observation.get("status") != "FRESH" and state != "filled":
+            reason = observation.get("reason") or "Stop observation time is unavailable"
         items.append(item(f"protection:{p['account_id']}:{p['symbol']}", "protect", "P1",
                           f"{p['symbol']} · {p['account_label']}", reason,
                           "Review protection", "/v3/risk", "cio_truth.stops",
@@ -1646,19 +1697,25 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         p["stop_evidence"] = {k: stop[k] for k in ("source", "as_of", "age_hours", "stale", "gap")}
         positions.append(p)
     counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= 100]
+    unproven_positions = [p for p in counted_positions if _unproven_protection(p)]
+    unproven_ids = {id(p) for p in unproven_positions}
+    # Proven unprotected only: an unproven row is neither protected nor unprotected, so it never adds to the
+    # definite "without protection" figures. It is published separately as the unproven set.
+    proven_unprotected = [p for p in counted_positions if not p["broker_protected"] and id(p) not in unproven_ids]
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{**{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                          "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
-                                         "stop_history", "stop_order_type")},
+                                         "stop_history", "stop_order_type", "stop_state_observed", "stop_observation")},
                   # the stored broker order id, so a page can show a resting stop without a live broker read
                   "stop_order_id": p.get("order_id")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
-             "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
+             "filled_count": counts["filled"], "unprotected_count": len(proven_unprotected),
+             "unproven_count": len(unproven_positions),
              "position_count": portfolio["position_count"],
              "nearest": None, "awaiting_fill": [],
              **stop_clock(positions, now, broker_available=broker is not None, contract=inputs.get("stop_freshness"))}
     if broker is None:
-        for key in ("active_count", "pending_count", "filled_count", "unprotected_count"):
+        for key in ("active_count", "pending_count", "filled_count", "unprotected_count", "unproven_count"):
             stops[key] = None
     # Current holdings and the same stop states supply the display risk summary;
     # stale pre-market risk rows never substitute for the current position set.
@@ -1680,16 +1737,39 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         p["planned_stop_distance_pct"] = round(100 * (price-sp) / price, 2) if planned_level and price and sp else None
         p["counted"] = any(p is c for c in counted_positions)
         p["stop_category"] = _stop_category(p)
-    protected_loss = round(sum(losses), 2) if portfolio["holdings"] and broker is not None and all(v is not None for v in losses) else None
-    unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value") if portfolio["holdings"] and broker is not None else None
+    # cx-openai D52 triage on #2677: the uncertainty must cover exactly the positions that supply the monetary risk
+    # total, and an unmeasured book is not a zero-risk one. `losses` is built above from every broker-protected
+    # position; the guard used to read only `counted_positions` (>= $100), so a book whose positions were all smaller
+    # than the counting threshold produced an empty `losses` list — and `all([])` is True — publishing
+    # loss_at_stop_usd 0.0 and portfolio_heat_pct 0.0 for a stop set nobody had observed.
+    uncertain_observation = any(p.get("stop_observation") is not None
+                                and p["stop_observation"]["status"] != "FRESH" for p in positions)
+    if not portfolio["holdings"] or broker is None or any(v is None for v in losses):
+        protected_loss = None
+    elif not positions:
+        protected_loss = 0.0  # nothing is held, so nothing can be lost at a stop
+    elif not losses:
+        protected_loss = None  # positions are held and none has an observed active stop: unknown, not zero
+    else:
+        protected_loss = round(sum(losses), 2)
+    if uncertain_observation:
+        protected_loss = None  # Unknown evidence must not become a zero-risk figure.
+    unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"] and not _unproven_protection(p)],
+                                "market_value") if portfolio["holdings"] and broker is not None else None
+    unproven_mv = (_sum_known([p for p in positions if _unproven_protection(p)], "market_value")
+                   if portfolio["holdings"] and broker is not None else None)
     position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
                         "portfolio_heat_pct": round(protected_loss / portfolio["total_usd"] * 100, 3)
                         if portfolio.get("total_usd") and protected_loss is not None else None,
-                        "unprotected_value_usd": unprotected_mv, "largest_name": None,
+                        "unprotected_value_usd": unprotected_mv, "unproven_value_usd": unproven_mv,
+                        "largest_name": None,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
+    if uncertain_observation:
+        position_section.update(loss_at_resting_stops_usd=None, resting_heat_pct=None, unprotected_value_usd=None)
+        stops["unprotected_count"] = None
     by_symbol = {}
     for p in positions:
         by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0) + (_number(p.get("market_value")) or 0)

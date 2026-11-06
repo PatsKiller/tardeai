@@ -208,7 +208,8 @@ def test_status_scorecard_and_observability_share_evaluations(tmp_path):
 
 def test_header_holdings_risk_have_identical_totals_count_quote_and_stop_state(tmp_path, holdings):
     doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "policy": {}, "cio_status": {},
-            "broker_stops": [{"account": "schwab_roth", "symbol": "SPCX", "status": "pending_activation", "stop_price": 90}],
+            "broker_stops": [{"account": "schwab_roth", "symbol": "SPCX", "status": "pending_activation",
+                              "stop_price": 90, "captured_at": NOW.isoformat()}],
             "approvals": [{"kind": "paper", "count": 3}], "paper_stats": {"closed": 10, "wins": 5}})
     header = truth.overview_payload({"periods": {"1D": {"change": 123}}}, document=doc)
     book = truth.holdings_payload({"holdings": [{"symbol": "SPCX", "account": "schwab_roth", "price": 777}]}, document=doc)
