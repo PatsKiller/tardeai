@@ -286,7 +286,9 @@ def _deliver_question(request_id: str, actor: str, note: str, now) -> bool:
     import os
     from pathlib import Path
 
-    root = os.environ.get("TRADEAI_COORDINATION_ROOT") or "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination"
+    # The default is the same host path, resolved from the running user's home rather than written as a literal.
+    root = os.environ.get("TRADEAI_COORDINATION_ROOT") or str(
+        Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "coordination")
     inbox = Path(root) / "coordinator" / "inbox" / "cc-deepseek-7"
     try:
         inbox.mkdir(parents=True, exist_ok=True)
