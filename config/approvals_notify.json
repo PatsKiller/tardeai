@@ -1,0 +1,8 @@
+{
+  "schema": "ApprovalsNotifyConfig@v1",
+  "as_of": "2026-11-03",
+  "_why": "SPEC_HOME_V008_NEEDS_YOU_APPROVALS_20261103.md §4, operator verbatim: 'ONE short message per new request (\"1 decision needs you: Merge #2518 · open Home\"), batched and never repeated more than every 2 h. Quiet hours 22:00–07:00: only P0 pages; everything else waits on the dashboard.' priority P2 falls inside the operator's quiet window (scripts/telegram_alert_router.py owns that window, 22:00–07:00 America/New_York); a held batch is not consumed, so the first run after 07:00 delivers ONE catch-up message. A request carrying a P0 operator page passes priority P1 here only when the request store says so.",
+  "repeat_floor_minutes": 120,
+  "priority": "P2",
+  "home_url": ""
+}
