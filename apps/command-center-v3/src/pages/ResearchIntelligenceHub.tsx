@@ -5,6 +5,11 @@ import './W9Mobile.css'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import HermesDecisionLinksPanel from '../components/HermesDecisionLinksPanel'
+import IntelligenceNewsTab from '../components/intelligence/IntelligenceNewsTab'
+import IntelligenceSourcesTab from '../components/intelligence/IntelligenceSourcesTab'
+import AegisThesisWatch from '../components/intel/AegisThesisWatch'
+import ClosedLoopPanel from './ClosedLoopPanel'
+import { RESEARCH_INTEL_TABS, resolveResearchIntelTab } from '../lib/intelConsolidation'
 import TickerLinks from '../components/TickerLinks'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -1103,7 +1108,7 @@ function ArticleCard({
         <Link to={`/cio?tab=research&symbol=${encodeURIComponent(item.symbol)}&research=${encodeURIComponent(item.id)}`} onClick={e => e.stopPropagation()} style={{ color: C.accent, fontWeight: 700, textDecoration: 'none' }}>
           Open CIO research context →
         </Link>
-        {item.source_system === 'hermes' && <Link to={`/hermes?tab=Provenance&symbol=${encodeURIComponent(item.symbol)}`} onClick={e => e.stopPropagation()} style={{ color: C.muted, fontWeight: 650, textDecoration: 'none' }}>
+        {item.source_system === 'hermes' && <Link to={`/ops/engines?tab=Provenance&symbol=${encodeURIComponent(item.symbol)}`} onClick={e => e.stopPropagation()} style={{ color: C.muted, fontWeight: 650, textDecoration: 'none' }}>
           Open Hermes provenance →
         </Link>}
       </div>}
@@ -1340,7 +1345,8 @@ const THEME_TO_CATEGORY: Record<string, string> = {
   bonds: 'macro_geo',
 }
 
-export default function ResearchIntelligenceHub({ onDrill }: Props) {
+/** Briefs — the research desk body (the page's default tab). */
+function ResearchBriefs({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [searchParams, setSearchParams] = useSearchParams()
   const queryParam = searchParams.get('symbol') || searchParams.get('q') || ''
@@ -1687,7 +1693,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               <Link to="/retirement" style={navLink(C.muted)}>Retirement plan →</Link>
               <Link to="/portfolio" style={navLink(C.muted)}>Portfolio →</Link>
               <Link to={`/cio?tab=research${q.trim() ? `&symbol=${encodeURIComponent(q.trim())}` : ''}`} style={navLink(C.muted)}>CIO research →</Link>
-              <Link to="/hermes" style={navLink(C.muted)}>Hermes →</Link>
+              <Link to="/ops/engines" style={navLink(C.muted)}>Engines (Hermes) →</Link>
               <Link to="/risk" style={navLink(C.muted)}>Risk →</Link>
               <button
                 type="button"
@@ -2171,7 +2177,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     {(data.hermes_wire as {
                       alert_type?: string; symbol?: string; text?: string; created_at?: string
                     }[]).map((w, i) => (
-                      <Link key={`${w.symbol}-${i}`} to="/hermes" style={{
+                      <Link key={`${w.symbol}-${i}`} to="/ops/engines" style={{
                         display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px',
                         borderBottom: `1px solid ${C.line}`, fontSize: 12, textDecoration: 'none', color: C.ink,
                       }}>
@@ -2522,7 +2528,6 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
           <RailCard title="Desk links" accent={C.accent}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <Link to="/intelligence?tab=research" style={navLink(C.muted)}>Legacy research topics</Link>
               <Link to="/watch" style={navLink(C.muted)}>Watchlist</Link>
               <Link to="/rebalance" style={navLink(C.muted)}>Rebalance</Link>
               <Link to="/agents" style={navLink(C.muted)}>Agents</Link>
@@ -2577,4 +2582,45 @@ const navLink = (c: string): CSSProperties => ({
 const refreshBtn: CSSProperties = {
   fontSize: 12, fontWeight: 750, padding: '7px 12px', borderRadius: 10, cursor: 'pointer',
   border: `1px solid color-mix(in srgb, ${C.accent} 33%, transparent)`, background: C.accentSoft, color: C.accent,
+}
+
+/**
+ * /v3/research-intelligence — Research Intel (intel/v001, operator-approved 2026-11-06).
+ * Tabs: Briefs · News · Thesis watch (Aegis, names not held) · Lineage (the single copy of Closed Loop) · Sources.
+ * News, Sources and Lineage moved here from the retired Intelligence page; /intelligence and /closed-loop redirect here.
+ */
+export default function ResearchIntelligenceHub({ onDrill }: Props) {
+  const [sp, setSp] = useSearchParams()
+  const tab = resolveResearchIntelTab(sp.get('tab'))
+  const select = (id: string) => {
+    const next = new URLSearchParams(sp)
+    if (id === 'briefs') next.delete('tab'); else next.set('tab', id)
+    next.delete('detail')
+    setSp(next, { replace: true })
+  }
+  return (
+    <div data-testid="research-intel">
+      <nav role="tablist" aria-label="Research Intel sections" className="ri-tabs"
+        style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '12px 16px 0', maxWidth: '100%', boxSizing: 'border-box' }}>
+        {RESEARCH_INTEL_TABS.map(t => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => select(t.id)}
+            data-testid={`ri-tab-${t.id}`}
+            style={{
+              minHeight: 44, padding: '7px 14px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer',
+              background: tab === t.id ? 'var(--accent-dim)' : 'var(--bg2)', color: tab === t.id ? 'var(--accent)' : 'var(--text2)',
+              fontSize: 12, fontWeight: tab === t.id ? 700 : 500,
+            }}>{t.label}</button>
+        ))}
+      </nav>
+      {tab === 'briefs' && <ResearchBriefs onDrill={onDrill} />}
+      {tab !== 'briefs' && (
+        <div role="tabpanel" style={{ padding: '12px 16px', minWidth: 0, maxWidth: 1240 }}>
+          {tab === 'news' && <IntelligenceNewsTab onDrill={onDrill} />}
+          {tab === 'thesis' && <AegisThesisWatch held={false} />}
+          {tab === 'lineage' && <ClosedLoopPanel />}
+          {tab === 'sources' && <IntelligenceSourcesTab onDrill={onDrill} />}
+        </div>
+      )}
+    </div>
+  )
 }

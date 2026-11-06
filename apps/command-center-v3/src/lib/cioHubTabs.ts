@@ -1,52 +1,62 @@
 /**
- * CIO Desk hub tab IA — 5 primary tabs + aliases from the former 13-tab strip.
+ * CIO Desk hub tab IA — Intel consolidation (design intel/v001, operator-approved 2026-11-06):
+ * Today · Holdings verdicts · My questions · Report. Every former tab keeps a home:
+ *  - Overview + Decisions → Today
+ *  - Advisory per-holding verdicts → Holdings verdicts
+ *  - /cio/questions → My questions (the Home alias stays)
+ *  - Research, Capital & Policy and Evidence & Comms → Report (as sub-sections)
  */
 
 export const CIO_HUB_TABS = [
-  'overview',
-  'decisions',
-  'research',
-  'capital-policy',
-  'evidence-comms',
+  'today',
+  'holdings',
+  'questions',
+  'report',
 ] as const
 
 export type CioHubTab = (typeof CIO_HUB_TABS)[number]
 
 export const CIO_HUB_TAB_LABEL: Record<CioHubTab, string> = {
-  overview: 'Overview',
-  decisions: 'Decisions',
-  research: 'Research',
-  'capital-policy': 'Capital & Policy',
-  'evidence-comms': 'Evidence & Comms',
+  today: 'Today',
+  holdings: 'Holdings verdicts',
+  questions: 'My questions',
+  report: 'Report',
 }
 
 /** Old query-param values → new primary tab (bookmarks / deep links). */
 export const CIO_HUB_TAB_ALIASES: Record<string, CioHubTab> = {
-  overview: 'overview',
-  decisions: 'decisions',
-  research: 'research',
-  'capital-policy': 'capital-policy',
-  'evidence-comms': 'evidence-comms',
+  today: 'today',
+  holdings: 'holdings',
+  questions: 'questions',
+  report: 'report',
+  // The 5-tab IA (2026-10)
+  overview: 'today',
+  decisions: 'today',
+  research: 'report',
+  'capital-policy': 'report',
+  'evidence-comms': 'report',
+  // Advisory Desk folded in
+  advisory: 'holdings',
+  verdicts: 'holdings',
   // Legacy 13-tab strip
-  'cio-brain': 'overview',
-  'cio-now': 'decisions',
-  opportunities: 'decisions',
-  'universe-theses': 'research',
-  'investment-books': 'research',
-  'capital-plan': 'capital-policy',
-  posture: 'capital-policy',
-  'operator-policy': 'capital-policy',
-  report: 'evidence-comms',
-  evidence: 'evidence-comms',
-  'notification-gate': 'evidence-comms',
-  'telegram-receipts': 'evidence-comms',
-  'senses-evidence': 'evidence-comms',
-  // Evidence subsection deep links (still land on Evidence & Comms)
-  brain: 'evidence-comms',
-  'full-brain': 'evidence-comms',
+  'cio-brain': 'report',
+  'cio-now': 'today',
+  opportunities: 'today',
+  'universe-theses': 'report',
+  'investment-books': 'report',
+  'capital-plan': 'report',
+  posture: 'report',
+  'operator-policy': 'report',
+  evidence: 'report',
+  'notification-gate': 'report',
+  'telegram-receipts': 'report',
+  'senses-evidence': 'report',
+  // Evidence subsection deep links (still land on Report)
+  brain: 'report',
+  'full-brain': 'report',
 }
 
-export const CIO_HUB_DEFAULT_TAB: CioHubTab = 'overview'
+export const CIO_HUB_DEFAULT_TAB: CioHubTab = 'today'
 
 export function resolveCioHubTab(raw: string | null | undefined): CioHubTab {
   const key = String(raw || '').trim()
@@ -54,7 +64,7 @@ export function resolveCioHubTab(raw: string | null | undefined): CioHubTab {
   return CIO_HUB_TAB_ALIASES[key] || CIO_HUB_DEFAULT_TAB
 }
 
-/** Optional evidence subsection when aliasing into Evidence & Comms. */
+/** Optional Report sub-section when aliasing a legacy tab into Report. */
 export function resolveEvidenceSubtab(raw: string | null | undefined): string | null {
   const key = String(raw || '').trim()
   const map: Record<string, string> = {
@@ -66,6 +76,13 @@ export function resolveEvidenceSubtab(raw: string | null | undefined): string | 
     brain: 'full-brain',
     'full-brain': 'full-brain',
     'cio-brain': 'full-brain',
+    research: 'research',
+    'universe-theses': 'research',
+    'investment-books': 'research',
+    'capital-policy': 'capital-policy',
+    'capital-plan': 'capital-policy',
+    posture: 'capital-policy',
+    'operator-policy': 'capital-policy',
   }
   return map[key] || null
 }

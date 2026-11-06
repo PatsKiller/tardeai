@@ -3,8 +3,9 @@ import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
 import { RADIUS } from '../lib/designTokens'
+import { isHiddenAdvisoryRow, isRealConflict, realConflictMessages, verdictMix } from '../lib/intelConsolidation'
 
-interface Props { onDrill?: (ctx: any) => void }
+interface Props { onDrill?: (ctx: any) => void; embedded?: boolean }
 
 type Banner = { id: string; severity: string; title: string; detail: string }
 type FieldState = {
@@ -187,7 +188,9 @@ function worseFreshness(a: unknown, b: unknown): string {
 }
 
 const MATERIALITY_FLOOR = 500
-const CLASSES = ['all', 'holding', 'watchlist', 'watchlist_hub', 'closed_journal', 'allocation'] as const
+// Intel consolidation (intel/v001): the model-portfolio allocation-gap rows are no longer shown (the policy file's
+// review date passed); the backend still builds them.
+const CLASSES = ['all', 'holding', 'watchlist', 'watchlist_hub', 'closed_journal'] as const
 const WATCH_FILTERS = [
   ['all', 'All'],
   ['needs_attention', 'Needs attention'],
@@ -697,7 +700,7 @@ function classHeadline(r: DeskRow) {
   return r.verdict
 }
 
-export default function AdvisoryDeskHub({ onDrill }: Props) {
+export default function AdvisoryDeskHub({ onDrill, embedded }: Props) {
   const [cls, setCls] = useState<(typeof CLASSES)[number]>('all')
   const [watchFilter, setWatchFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -709,8 +712,15 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   const path = cls === 'all' ? '/api/v3/advisory' : `/api/v3/advisory?class=${cls}`
   const { data, loading, error, refetch } = useApi<any>(path, 60_000)
 
-  const rows: DeskRow[] = useMemo(() => data?.rows ?? [], [data?.rows])
-  const banners: Banner[] = useMemo(() => data?.banners ?? [], [data?.banners])
+  // Holdings verdicts (intel/v001): allocation-gap rows and paper-account rows are hidden here, and a data conflict
+  // is shown only when the marks disagree by more than the configured materiality (advisory_desk.yaml
+  // routing.cache.mv_bucket_pct, served as conflict_materiality_pct; missing → every disagreement shows).
+  const rows: DeskRow[] = useMemo(() => ((data?.rows ?? []) as DeskRow[]).filter(r => !isHiddenAdvisoryRow(r)), [data?.rows])
+  const materialityPct: number | null = typeof data?.conflict_materiality_pct === 'number' ? data.conflict_materiality_pct : null
+  const realConflict = (r: DeskRow) => isRealConflict(r as any, materialityPct)
+  const realConflictCount = rows.filter(realConflict).length
+  const mix = useMemo(() => verdictMix(rows), [rows])
+  const banners: Banner[] = useMemo(() => ((data?.banners ?? []) as Banner[]).filter(b => b.id !== 'DATA_CONFLICT'), [data?.banners])
   const ts = data?.timestamps || {}
   const health = data?.desk_health || {}
   const priceClock = data?.price_clock || {}
@@ -765,13 +775,9 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                             const re = r.expand?.reentry || r.reentry
                             const durable = r.expand?.durable_memory || r.durable_memory
                             const senses = r.expand?.financial_senses || r.financial_senses
-                            const conflicts: string[] = [
-                              ...((dq.conflicts as string[]) || []),
-                              ...((facts?.conflicts as string[]) || []),
-                              ...((prov?.conflicts as string[]) || []),
-                            ].filter((c, i, a) => c && a.indexOf(c) === i)
-                            const suppressed = Boolean(dq.action_suppressed || facts?.action_suppressed || prov?.action_suppressed || conflicts.length)
-                            const synthesis = prov?.opinion_synthesis
+                            void dq
+                            const conflicts: string[] = realConflictMessages(r as any)
+                            const suppressed = realConflict(r)
                             const holdingish = r.row_class === 'holding'
                             const watchish = r.row_class === 'watchlist'
                             const reish = r.row_class === 'closed_journal' || r.verdict === 'RE_ENTER'
@@ -799,16 +805,6 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                                       WHY THIS CALL
                                     </div>
                                     {r.why_call}
-                                  </div>
-                                )}
-                                {synthesis && (
-                                  <div style={{
-                                    background: 'var(--bg)', border: '1px solid var(--border)',
-                                    borderRadius: 6, padding: '8px 10px', marginBottom: 10,
-                                    fontSize: 12, color: 'var(--text)', lineHeight: 1.4,
-                                  }}>
-                                    <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text3)', letterSpacing: 0.3, marginBottom: 4 }}>OPINION SYNTHESIS</div>
-                                    {synthesis}
                                   </div>
                                 )}
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
@@ -916,8 +912,8 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
   const watchDiffers = Boolean(watchFeedFresh && watchRowsFresh && watchFeedFresh !== watchRowsFresh)
 
   return (
-    <div style={{ padding: '16px 24px', maxWidth: 1360 }}>
-      <div style={hubTitle()}>📋 Advisory Desk</div>
+    <div style={{ padding: embedded ? 0 : '16px 24px', maxWidth: 1360 }} data-testid="holdings-verdicts">
+      {embedded ? <h2 style={{ margin: '0 0 4px', fontSize: 16 }}>Holdings verdicts</h2> : <div style={hubTitle()}>Holdings verdicts</div>}
       <div style={hubSubtitle()}>
         <span title="READ_ONLY_ADVISORY">Read-only advice</span> · class-aware facts · watch intelligence · re-entry · durable memory
         <span title={String(overall)} style={{ color: qualityTone(overall) || 'var(--text3)', marginLeft: 16, fontWeight: 700 }}>
@@ -937,8 +933,19 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         <Stamp label="RE-ENTRY" at={ts.reentry} fresh={ts.reentry_freshness} />
         <Stamp label="SENSES" at={ts.senses} fresh={ts.senses_freshness} />
         <Stamp label="MEMORY" at={ts.memory} fresh={ts.memory_freshness} />
-        <Stamp label="FLASH OPINION" at={ts.flash} fresh={ts.flash_freshness} />
-        <Stamp label="PRO SYNTHESIS" at={ts.synthesis} fresh={ts.synthesis_freshness} />
+      </div>
+      <div data-testid="verdict-mix" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '0 0 12px' }} aria-label="Verdict mix">
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text3)', alignSelf: 'center' }}>Verdict mix · {rows.length} rows</span>
+        {mix.map(m => (
+          <span key={m.verdict} title={VERDICT_HELP[m.verdict]} style={{ border: '1px solid var(--border)', borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
+            <b style={{ color: VERDICT_COLOR[m.verdict] || 'var(--text)' }}>{m.count}</b> {stateLabel(m.verdict)}
+          </span>
+        ))}
+        {realConflictCount > 0 && (
+          <span data-testid="real-conflicts" style={{ border: '1px solid var(--red)', borderRadius: 999, padding: '3px 10px', fontSize: 12, color: 'var(--red)', fontWeight: 700 }}>
+            {realConflictCount} data conflict{realConflictCount === 1 ? '' : 's'}
+          </span>
+        )}
       </div>
       {watchDiffers && (
         <div data-testid="watch-clock-note" style={{ margin: '-4px 0 12px', fontSize: 11, color: 'var(--amber)', lineHeight: 1.4 }}>
@@ -1019,18 +1026,6 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         ))}
       </div>
 
-      {data?.synthesis && (
-        <div style={{
-          background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8,
-          padding: 14, marginBottom: 16, fontSize: 13, lineHeight: 1.5, color: 'var(--text)',
-        }}>
-          <div style={{ fontSize: 11, color: ts.synthesis_label === 'PRIOR SYNTHESIS' ? 'var(--amber)' : 'var(--text3)', marginBottom: 6, fontWeight: 600 }}>
-            {ts.synthesis_label || 'DESK SYNTHESIS'}
-            {ts.synthesis ? ` · generated ${fmtWhen(ts.synthesis)} · age ${ageLabel(ts.synthesis) || '?'}` : ''}
-          </div>
-          {data.synthesis}
-        </div>
-      )}
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {CLASSES.map((c) => {
@@ -1146,8 +1141,8 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     <span>{r.row_class}</span>
                     <span>conf {r.confidence != null ? Number(r.confidence).toFixed(2) : 'n/a'}</span>
                     <span>{classHeadline(r)}</span>
-                    <span title={dq.action_suppressed ? 'DATA_CONFLICT — ACTION SUPPRESSED' : undefined} style={{ color: dq.action_suppressed ? 'var(--red)' : 'var(--text3)' }}>
-                      ev {dq.evidence_count ?? 0}{dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}{dq.action_suppressed ? ' · conflicting marks' : dq.quality ? ` · ${dq.quality}` : ''}
+                    <span title={realConflict(r) ? 'DATA_CONFLICT — ACTION SUPPRESSED' : undefined} style={{ color: realConflict(r) ? 'var(--red)' : 'var(--text3)' }}>
+                      ev {dq.evidence_count ?? 0}{dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}{realConflict(r) ? ' · conflicting marks' : dq.quality ? ` · ${dq.quality}` : ''}
                     </span>
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--text3)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{headline}</span>
@@ -1210,7 +1205,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
                     <td style={{ padding: '8px 10px' }} data-testid="data-quality">
                       ev {dq.evidence_count ?? 0}
                       {dq.gap_count ? ` · gaps ${dq.gap_count}` : ''}
-                      {dq.action_suppressed ? <span style={{ color: 'var(--red)', fontWeight: 700 }}> · DATA CONFLICT</span>
+                      {realConflict(r) ? <span style={{ color: 'var(--red)', fontWeight: 700 }}> · DATA CONFLICT</span>
                         : dq.quality ? ` · ${dq.quality}` : ''}
                     </td>
                     <td style={{ padding: '8px 10px', color: 'var(--text2)', maxWidth: 340, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}

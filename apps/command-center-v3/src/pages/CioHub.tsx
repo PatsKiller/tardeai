@@ -23,6 +23,9 @@ import CioOfficeHomeProjections from '../components/cio/CioOfficeHomeProjections
 import CioProductHealthPanel from '../components/cio/CioProductHealthPanel'
 import CioThesisDelegationPanel from '../components/cio/CioThesisDelegationPanel'
 import { TopOpportunitiesWidget } from './OpportunitiesHub'
+import AdvisoryDeskHub from './AdvisoryDeskHub'
+import MyQuestions from './MyQuestions'
+import AegisThesisWatch from '../components/intel/AegisThesisWatch'
 import CioThesisResearchContextPanel from '../components/cio/CioThesisResearchContextPanel'
 import CioRecordLedgersPanel from '../components/cio/CioRecordLedgersPanel'
 import CioLessonDigestPanel from '../components/cio/CioLessonDigestPanel'
@@ -41,8 +44,8 @@ import {
 /**
  * /v3/cio — private investment office desk.
  *
- * Five tabs: Overview (scorecard + judgment) · Decisions · Research · Capital & Policy · Evidence & Comms.
- * Legacy ?tab= values alias into this set. READ_ONLY_ADVISORY; no invented cash/policy.
+ * Four tabs (intel/v001, 2026-11-06): Today (status + decisions) · Holdings verdicts (Advisory folded in)
+ * · My questions · Report (report, research, capital & policy, evidence). Legacy ?tab= values alias into this set. READ_ONLY_ADVISORY; no invented cash/policy.
  */
 
 interface Props { onDrill?: (ctx: any) => void }
@@ -1757,7 +1760,7 @@ function EvidenceSection({ evidence }: { evidence: Evidence }) {
         {' · '}
         <Link to="/system" style={{ color: 'var(--accent)' }}>System</Link>
         {' · '}
-        <Link to="/advisory" style={{ color: 'var(--accent)' }}>Advisory desk</Link>
+        <Link to="/cio?tab=holdings" style={{ color: 'var(--accent)' }}>Holdings verdicts</Link>
         {' · '}
         <Link to="/agents" style={{ color: 'var(--accent)' }}>Agent runtime</Link>
       </div>
@@ -2045,8 +2048,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
   const [dispositions, setDispositions] = useState<DispositionMap>({})
   const [legacyUnversioned, setLegacyUnversioned] = useState<DispositionMap>({})
   const [evidenceTile, setEvidenceTile] = useState<ScorecardTile | null>(null)
-  const { data, loading, error } = useApi<Home>('/api/v3/cio/home', 60_000, { enabled: tab !== 'overview' && tab !== 'capital-policy' })
-  const { data: pageTruth, loading: pageTruthLoading, error: pageTruthError } = useW7Pages(tab === 'overview' || tab === 'capital-policy')
+  const { data, loading, error } = useApi<Home>('/api/v3/cio/home', 60_000, { enabled: tab === 'today' || tab === 'report' })
+  const { data: pageTruth, loading: pageTruthLoading, error: pageTruthError } = useW7Pages(tab === 'today' || (tab === 'report' && evidenceSub === 'capital-policy'))
 
   useEffect(() => {
     const resolved = resolveCioHubTab(tabRaw)
@@ -2054,7 +2057,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     const fromAlias = resolveEvidenceSubtab(tabRaw)
     if (subRaw) setEvidenceSub(subRaw)
     else if (fromAlias) setEvidenceSub(fromAlias)
-    // Normalize legacy tab query params to the new 5-tab set
+    // Normalize legacy tab query params to the 4-tab set
     if (tabRaw && tabRaw !== resolved) {
       const next = new URLSearchParams(sp)
       next.set('tab', resolved)
@@ -2123,7 +2126,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     if (sub) {
       setEvidenceSub(sub)
       next.set('sub', sub)
-    } else if (t !== 'evidence-comms') {
+    } else if (t !== 'report') {
       next.delete('sub')
     }
     setSp(next, { replace: true })
@@ -2137,9 +2140,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     setSp(next, { replace: true })
   }
 
-  // decision= on the Decisions tab opens that decision's lineage and scrolls to it.
+  // decision= on the Today tab opens that decision's lineage and scrolls to it.
   useEffect(() => {
-    if (tab === 'decisions' && focus.decision) {
+    if (tab === 'today' && focus.decision) {
       decisionFocusRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
     }
   }, [tab, focus.decision])
@@ -2156,10 +2159,10 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
       // Projected on request from stored evidence; cio-decision-engine is PAUSED since 2026-08-08 and is not its producer.
       { id: 'cio-status', label: 'CIO evaluations', asOf: pageTruth?.cio_status?.as_of, gap: pageTruth?.cio_status?.gap?.reason },
       { id: 'holdings', label: 'Holdings', asOf: pageTruth?.portfolio?.positions_as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: pageTruth?.portfolio?.gap?.reason },
-    ]} decisionGap="Review decisions on the Decisions tab.">
+    ]} decisionGap="Review decisions on the Today tab.">
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
       <style>{`.cio-hub button,.cio-hub select,.cio-hub input{min-height:44px}.cio-hub{overflow-wrap:anywhere}.cio-mandate-form{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}.cio-mandate-row{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}@media(max-width:820px){.cio-mandate-form,.cio-mandate-row{grid-template-columns:minmax(0,1fr)}.cio-mandate-form>*{min-width:0}.cio-hub__tabs{flex-wrap:wrap!important;overflow-x:visible!important;row-gap:6px}.cio-hub__tabs button{flex:0 1 auto!important;max-width:100%;white-space:normal!important;text-align:center}}`}</style>
-      {(tab === 'overview' || tab === 'capital-policy') && pageTruth && <W7Conflicts section={pageTruth.conflicts} title="CIO findings" />}
+      {tab === 'today' && pageTruth && <W7Conflicts section={pageTruth.conflicts} title="CIO findings" />}
       <nav ref={tabsRef} className="cio-hub__tabs" style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap', scrollMarginTop: 8 }} aria-label="Office sections" role="tablist">
         {TABS.map(t => (
           <button
@@ -2180,14 +2183,12 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
         ))}
       </nav>
 
-      {tab === 'overview' && (
-        <div role="tabpanel" aria-label={TAB_LABEL.overview} data-testid="cio-overview">
-          {pageTruth ? <W7CioStatus data={pageTruth} /> : <W7Load loading={pageTruthLoading} error={pageTruthError} />}
-        </div>
-      )}
-
-      {tab === 'decisions' && (
-        <div role="tabpanel" aria-label={TAB_LABEL.decisions}>
+      {tab === 'today' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.today} data-testid="cio-today">
+          <div data-testid="cio-overview">
+            {pageTruth ? <W7CioStatus data={pageTruth} /> : <W7Load loading={pageTruthLoading} error={pageTruthError} />}
+          </div>
+          <div style={{ marginTop: 28 }} />
           {focus.decision && (
             <div ref={decisionFocusRef} data-testid="cio-decision-focus" style={{ marginBottom: 24 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 8, fontSize: 12, color: 'var(--text2)' }}>
@@ -2219,8 +2220,27 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'research' && (
-        <div role="tabpanel" aria-label={TAB_LABEL.research}>
+      {tab === 'holdings' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.holdings} data-testid="cio-holdings">
+          <AegisThesisWatch held />
+          <AdvisoryDeskHub onDrill={_onDrill} embedded />
+        </div>
+      )}
+
+      {tab === 'questions' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.questions} data-testid="cio-questions">
+          <MyQuestions />
+        </div>
+      )}
+
+      {tab === 'report' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.report}>
+          <EvidenceCommsSubnav
+            active={evidenceSub}
+            onSelect={(sub) => selectTab('report', sub)}
+          />
+          {evidenceSub === 'research' && (
+        <div data-testid="cio-report-research">
           {(focus.decision || focus.artifact || focus.research) && (
             // The research evidence panel filters on decision= itself; this
             // banner makes the deep-link focus visible instead of silently ignored.
@@ -2243,24 +2263,16 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           </div>
           <CioThesisDelegationPanel />
         </div>
-      )}
-
-      {tab === 'capital-policy' && (
-        <div role="tabpanel" aria-label={TAB_LABEL['capital-policy']}>
+          )}
+          {evidenceSub === 'capital-policy' && (
+        <div data-testid="cio-report-capital-policy">
           {pageTruth ? <W7Capital data={pageTruth} /> : <W7Load loading={pageTruthLoading} error={pageTruthError} />}
           <details open={showMandateSettings || mandateDetail} onToggle={e => setShowMandateSettings(e.currentTarget.open)} style={{ marginTop: 28 }}>
             <summary style={{ minHeight: 44, cursor: 'pointer', padding: '12px 0' }}>Other mandate settings</summary>
             {(showMandateSettings || mandateDetail) && <OperatorPolicyPanel />}
           </details>
         </div>
-      )}
-
-      {tab === 'evidence-comms' && (
-        <div role="tabpanel" aria-label={TAB_LABEL['evidence-comms']}>
-          <EvidenceCommsSubnav
-            active={evidenceSub}
-            onSelect={(sub) => selectTab('evidence-comms', sub)}
-          />
+          )}
           {evidenceSub === 'report' && homeOk && <ReportSection report={home.report} />}
           {evidenceSub === 'audit' && homeOk && <EvidenceSection evidence={home.evidence} />}
           {evidenceSub === 'notification-gate' && <NotificationGatePanel />}
@@ -2299,6 +2311,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (sub: string) => void }) {
   const items: { id: string; label: string }[] = [
     { id: 'report', label: 'Report' },
+    { id: 'research', label: 'Research' },
+    { id: 'capital-policy', label: 'Capital & policy' },
     { id: 'audit', label: 'Audit / evidence' },
     { id: 'notification-gate', label: 'Notification gate' },
     { id: 'telegram-receipts', label: 'Telegram receipts' },

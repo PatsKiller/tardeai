@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import OpenPositionsByOrigin from '../components/intel/OpenPositionsByOrigin'
 import { useApi } from '../hooks/useApi'
 import { inlineMarkdown } from '../components/PolicyRuleParts'
 import ProspectusCharts from '../components/prospectus/ProspectusCharts'
@@ -505,6 +506,8 @@ export default function ProspectusPage() {
   const phone = usePhone()
   const scope = (['holdings', 'watch', 'all', 'rewrite'].includes(sp.get('scope') || '') ? sp.get('scope') : 'all') as ScopeFilter
   const q = sp.get('q') || ''
+  // My history (intel/v001): open positions by discovery origin, from Rec Intelligence. ?view=history
+  const history = sp.get('view') === 'history'
   const { data, loading, error, refetch } = useApi<any>(indexPath(), 60_000)
   const idx = useMemo(() => unwrap<ProspectusIndex>(data, 'items'), [data])
   const items = idx?.items ?? []
@@ -534,26 +537,29 @@ export default function ProspectusPage() {
       <div className="psp-controls">
         <div className="psp-filters" role="group" aria-label="Which tickers">
           {SCOPES.map(s => (
-            <button key={s.id} type="button" className={`psp-filter${scope === s.id ? ' psp-filter-on' : ''}`} aria-pressed={scope === s.id}
-              data-testid={`prospectus-filter-${s.id}`} onClick={() => setParam('scope', s.id === 'all' ? null : s.id)}>
+            <button key={s.id} type="button" className={`psp-filter${!history && scope === s.id ? ' psp-filter-on' : ''}`} aria-pressed={!history && scope === s.id}
+              data-testid={`prospectus-filter-${s.id}`} onClick={() => { const n = new URLSearchParams(sp); if (s.id === 'all') n.delete('scope'); else n.set('scope', s.id); n.delete('view'); n.delete('version'); setSp(n, { replace: true }) }}>
               {phone ? (s.phoneLabel ?? s.label) : s.label}{!phone && <span className="psp-count"> {counts[s.id]}</span>}
             </button>
           ))}
+          <button type="button" className={`psp-filter${history ? ' psp-filter-on' : ''}`} aria-pressed={history}
+            data-testid="prospectus-filter-history" onClick={() => setParam('view', history ? null : 'history')}>My history</button>
         </div>
-        <label className="psp-search-label">{!phone && <span>Search</span>}
+        {!history && <label className="psp-search-label">{!phone && <span>Search</span>}
           <input type="search" className="psp-search" placeholder="Ticker or company" aria-label="Search prospectuses"
             value={q} onChange={e => setParam('q', e.target.value || null)} data-testid="prospectus-search" />
-        </label>
+        </label>}
       </div>
-      {loading && !idx && <div className="psp-skeleton" data-testid="prospectus-list-loading" aria-busy="true"><div /><div /><div /></div>}
-      {error && !idx && (
+      {history && <OpenPositionsByOrigin linkSearch={listSearch} />}
+      {!history && loading && !idx && <div className="psp-skeleton" data-testid="prospectus-list-loading" aria-busy="true"><div /><div /><div /></div>}
+      {!history && error && !idx && (
         <div className="psp-empty psp-tone-danger" role="alert" data-testid="prospectus-list-error">
           <b>Could not load the prospectus list.</b><span>{String(error)}</span>
           <button type="button" className="psp-btn" onClick={refetch}>Retry</button>
         </div>
       )}
-      {idx && shown.length === 0 && <div className="psp-empty" data-testid="prospectus-list-empty"><b>No tickers match.</b><span>Try All, or clear the search.</span></div>}
-      {shown.length > 0 && (phone ? <PhoneCards rows={shown} linkSearch={listSearch} /> : <DesktopTable rows={shown} linkSearch={listSearch} />)}
+      {!history && idx && shown.length === 0 && <div className="psp-empty" data-testid="prospectus-list-empty"><b>No tickers match.</b><span>Try All, or clear the search.</span></div>}
+      {!history && shown.length > 0 && (phone ? <PhoneCards rows={shown} linkSearch={listSearch} /> : <DesktopTable rows={shown} linkSearch={listSearch} />)}
     </section>
   )
 

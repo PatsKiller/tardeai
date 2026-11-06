@@ -1008,7 +1008,29 @@ def _get_advisory_desk_uncached(*, force: bool = False, row_class: str | None = 
         },
         "schedule": schedule,
         "run_now": run_now,
+        "conflict_materiality_pct": _conflict_materiality_pct(),
     }
+
+
+def _conflict_materiality_pct(config_path: Path | None = None) -> float | None:
+    """Mark / market-value disagreement (percent, relative) below which the UI does not show a data conflict.
+
+    Read from config/advisory_desk.yaml ``routing.cache.mv_bucket_pct`` — the same 0.5%-style relative bucket the
+    desk already uses to decide that two market values are the same. None when the config cannot be read, and the
+    UI then fails closed (every disagreement shows).
+    """
+    path = config_path or (PROJECT_ROOT / "config" / "advisory_desk.yaml")
+    try:
+        import yaml  # type: ignore
+
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        val = ((cfg.get("routing") or {}).get("cache") or {}).get("mv_bucket_pct")
+        if isinstance(val, bool) or val is None:
+            return None
+        out = float(val)
+        return out if out >= 0 else None
+    except Exception:
+        return None
 
 
 def get_advisory_brief(*, max_items: int = 3) -> dict[str, Any]:
