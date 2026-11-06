@@ -11,8 +11,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # the test-private loader lives beside this file
+from _critical_module_loader import load  # noqa: E402
 
-from scripts.lib import critical_receipts as CR  # noqa: E402
+CR = load("critical_receipts")  # AGENTS.md:484: loaded by file path, never through the package
+
 
 
 class FakeCursor:

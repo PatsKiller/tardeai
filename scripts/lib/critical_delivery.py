@@ -8,7 +8,10 @@ Three channels, one event:
 
   telegram_critical   the Critical chat, its own notification sound, so it stands out from the flood
   email               subject starts "CRITICAL —"; the body carries what happened, then the action and link
-  text_gateway        every verified email-to-text address on file
+  text_gateway        every email-to-text address on file; each carries the operator's own ``verified`` flag,
+                      and ``gateway_unverified_count`` surfaces how many were not verified. An unverified
+                      gateway is still attempted — dropping an alert target on a config flag would lose
+                      delivery silently, which is the worse failure — but it is never counted as verified.
 
 This module owns the parts that must not be got wrong twice: which alerts may use the text channel at all, where the
 targets come from, and what a message says. It sends nothing and writes nothing — the dispatcher does that, and it does it
@@ -241,6 +244,10 @@ def fan_out_plan(alert_class: str, contact: dict, policy: dict | None = None) ->
         "channels": list(attempted),
         "attempted": attempted,
         "gateway_count": len(gateways),
+        # P2 (cc-deepseek-3): ``verified`` was recorded and read by nothing. It is read here rather than enforced in the
+        # send loop: the operator's flag is a statement about the address, and a false one must be visible without the
+        # alert silently disappearing.
+        "gateway_unverified_count": sum(1 for target in gateways if not target.verified),
         "gateway_error": gateway_error,
         "email_configured": bool(mail),
         "text_enabled": text_enabled,

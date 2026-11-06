@@ -12,9 +12,13 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # the test-private loader lives beside this file
+from _critical_module_loader import load  # noqa: E402
 
-from scripts.lib import critical_channels as cc  # noqa: E402
-from scripts.lib import critical_delivery as cd  # noqa: E402
+cc = load("critical_channels")  # AGENTS.md:484: loaded by file path, never through the package
+cd = load("critical_delivery")  # AGENTS.md:484: loaded by file path, never through the package
+cc.cd = cd  # same file, loaded copy: bind it so the module under test raises the class this suite catches
+
 
 CLASS = "B2_stop_cancelled_expired_rejected"
 
@@ -426,3 +430,39 @@ def test_a_malformed_gateway_address_does_not_stop_email_or_telegram(monkeypatch
     assert by["email"].status == "sent" and by["telegram_critical"].status == "sent"
     assert by["text_gateway"].status == "skipped" and by["text_gateway"].reason == "text_gateway_not_an_address"
     assert delivery.delivered is True
+
+
+def test_a_stale_stub_in_the_package_path_cannot_satisfy_this_suite():
+    """AGENTS.md:484's cause, reproduced deliberately — and it must not reach the module under test.
+
+    2026-09-14: an earlier suite left an empty stub in ``sys.modules`` and every later ``from scripts.lib import …``
+    asserted against it. This suite loads its subject by file path, and this test pins that property rather than
+    assuming it: poison the package path first, then load the file, and require the real implementation.
+    """
+    import importlib.util
+    import types
+
+    saved = sys.modules.get("scripts.lib.critical_channels")
+    stub = types.ModuleType("scripts.lib.critical_channels")
+    sys.modules["scripts.lib.critical_channels"] = stub
+    isolated_name = "_under_test_critical_channels_poisoned"
+    try:
+        path = ROOT / "scripts" / "lib" / "critical_channels.py"
+        spec = importlib.util.spec_from_file_location(isolated_name, path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[isolated_name] = module
+        spec.loader.exec_module(module)
+
+        assert module is not stub, "the file-path load returned the poisoned package entry"
+        assert hasattr(module, "deliver"), "the loaded module is not the implementation"
+        # and the module this suite actually holds came from the file
+        assert cc is not stub
+        assert Path(cc.__spec__.origin) == ROOT / "scripts" / "lib" / "critical_channels.py"
+        assert sys.modules[cc.__spec__.name] is cc
+    finally:
+        sys.modules.pop(isolated_name, None)
+        if saved is None:
+            sys.modules.pop("scripts.lib.critical_channels", None)
+        else:
+            sys.modules["scripts.lib.critical_channels"] = saved

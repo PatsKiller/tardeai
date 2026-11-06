@@ -13,8 +13,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # the test-private loader lives beside this file
+from _critical_module_loader import load  # noqa: E402
 
-from scripts.lib import critical_producers as P  # noqa: E402
+P = load("critical_producers")  # AGENTS.md:484: loaded by file path, never through the package
+
 
 
 def policy_yaml(tmp_path, url="https://cc-host.example.ts.net/v3/reports"):
@@ -111,22 +114,8 @@ def test_dry_run_reports_a_disabled_class_without_failing_the_run():
     assert report["classes"][0]["disabled"] is True
 
 
-ALLOWLIST = ROOT / "config" / "critical_text_classes.json"
-
-
-@pytest.mark.skipif(not ALLOWLIST.is_file(), reason="the operator allowlist lands with the critical-text primitive; "
-                                                   "until then there is nothing to check and nothing is enabled")
-def test_the_repo_allowlist_enables_every_class_that_has_a_producer():
-    """D35's acceptance line, held from this side: once the allowlist exists, a class with a producer must be ON.
-
-    Skipping while the file is absent is honest — it is absent because the primitive is not merged yet, and a skip says so.
-    The moment the file lands, a class accidentally left off fails here.
-    """
-    import json
-
-    doc = json.loads(ALLOWLIST.read_text(encoding="utf-8"))
-    classes = doc.get("classes") or {}
-    missing = sorted(set(P.PRODUCERS) - set(classes))
-    disabled = sorted(k for k in P.PRODUCERS if k in classes and (classes[k] or {}).get("enabled") is not True)
-    assert not missing, f"producer with no allowlist entry: {missing}"
-    assert not disabled, f"class present but not enabled: {disabled}"
+# D35's "every class with a producer is ON" acceptance line lives with the PR that ships
+# config/critical_text_classes.json. It was a @pytest.mark.skipif here, which is a green skip: AGENTS.md:1023 says fix a
+# skip or delete it, never leave it reporting green, and an assertion that executes nowhere is not a proof of anything.
+# Its shape, kept for whoever ships the allowlist: json.loads(ALLOWLIST.read_text()) -> assert set(P.PRODUCERS) <=
+# set(doc["classes"]) and every one of them enabled is True.
