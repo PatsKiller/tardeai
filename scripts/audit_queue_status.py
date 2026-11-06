@@ -13,9 +13,10 @@ A row is NAMED by `FQ-0NN` anywhere in the PR body, or by the branch name (`wt/f
 the PR a candidate; a row is CLAIMED by the branch name or by a first-class declaration ("closes/fixes FQ-0NN") in a
 clause that does not negate it. One declaration governs every row after its verb in the clause ("Closes FQ-021 and
 FQ-022." claims both). Negation is scoped to the row it governs, not the line, so one line may claim one row
-and disclaim another. A row's recorded `pr` remains evidence even when that PR's current wording no longer names it.
-A passing mention decides nothing (#2640 QS3). A row whose status is HELD_*, delivered, parked or
-closed_* is never touched: those are decisions, not observations.
+and disclaim another. A PR whose own text says a row stays open ("FQ-104 stays open: … it does not yet render them")
+never delivers that row — the declaration outranks a branch-name claim (#2640 B1). A row's recorded `pr` remains
+evidence even when that PR's current wording no longer names it. A passing mention decides nothing (#2640 QS3).
+A row whose status is HELD_*, delivered, parked or closed_* is never touched: those are decisions, not observations.
 
 Dry run by default. `--apply` writes the queue under an exclusive lock, after a timestamped backup beside it, and only
 if something changed; a concurrent writer that moved the file meanwhile makes it refuse rather than overwrite. Nothing
@@ -171,6 +172,24 @@ _NEGATION = re.compile(r"\b(?:not|never|no longer|cannot|isn't|aren't|won't|does
 #: parking a row whose real PR was open.
 #: A negation between a declaration verb and a row disclaims only that row: "Closes FQ-021, not FQ-022."
 _NOT_BEFORE_ROW = re.compile(r"\b(?:not|except|excluding)\b", re.IGNORECASE)
+#: A row's own sentence can say the work is NOT finished without a negation word, so the negation grammar above
+#: missed it (#2640 B1, post-merge): #2673 was merged while its body said "FQ-104 stays open: this makes the
+#: opinions available, it does not yet render them", and the tool marked FQ-104 delivered. Two placements:
+#: the phrase after the row id ("FQ-104 stays open", "FQ-076 remains open until …"), or a "next step of FQ-0NN"
+#: construction before it. Both are bounded so prose about "an open PR" is not mistaken for a statement about a row.
+_OPEN_AFTER_ROW = re.compile(
+    r"\b(?:stays?|remains?|is|are)\s+(?:still\s+)?open\b"
+    r"|\bnot\s+yet\s+(?:complete|completed|closed|done|fixed|delivered|finished|implemented|rendered)\b",
+    re.IGNORECASE,
+)
+_OPEN_BEFORE_ROW = re.compile(r"\b(?:next step of|remainder of|rest of)\s*$", re.IGNORECASE)
+_OPEN_WINDOW = 80
+#: The row-level disclaimer must sit IMMEDIATELY before the row id ("not FQ-022", "not closing FQ-022"). The looser
+#: `_NOT_BEFORE_ROW` scans the whole segment from the clause start, which read an unrelated "not" as a disclaimer —
+#: #2674's "exit code 0 is not evidence of work (audit FQ-117 …)" disclaimed FQ-117. That was harmless while the
+#: disclaimer only filtered the recorded association; it is not harmless now that it filters a CLAIM (#2640 B1).
+_ROW_LOCAL_DISCLAIMER = re.compile(
+    r"\b(?:not|except|excluding)\b(?:\s+[a-z]+)?[\s,]*$", re.IGNORECASE)
 _DECLARES_VERB = re.compile(
     r"\b(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|implement(?:s|ed|ing)?|address(?:es|ed|ing)?"
     r"|deliver(?:s|ed|ing)?|does|owns?)\b",
@@ -247,6 +266,10 @@ def _disclaimed_rows(pr: dict[str, Any]) -> set[str]:
     * row level — "Closes FQ-021, not FQ-022."
     * verb level — "Not closing FQ-022." / "Does not close FQ-022."
 
+    A third form has no negation word at all and says the row is NOT FINISHED (#2640 B1): "FQ-104 stays open: this
+    makes the opinions available, it does not yet render them." A merged PR carrying that sentence may not deliver
+    the row, whether it named the row in its body or only in its branch name.
+
     Codex cloud at b53cd7bb1: only the row-level form was seen here. ``rows_named_by`` correctly refused a verb-negated
     row, so it was not a candidate — but ``sync`` then re-added the row's recorded PR (CX2), found no disclaimer here,
     and let that PR deliver or park a row it says in its own text it is not closing.
@@ -257,7 +280,8 @@ def _disclaimed_rows(pr: dict[str, Any]) -> set[str]:
         for m in _ROW_IN_BODY.finditer(clause):
             row = f"FQ-{m.group(1)}"
             named.add(row)
-            if _NOT_BEFORE_ROW.search(clause[_row_or_verb_start(clause, m.start()):m.start()]):
+            if (_ROW_LOCAL_DISCLAIMER.search(clause[_row_or_verb_start(clause, m.start()):m.start()])
+                    or _declares_row_open(clause, m)):
                 out.add(row)
     # A row the body names but `rows_named_by` refuses is disclaimed, not silent.
     out |= {row for row in named if row not in rows_named_by(pr)}
@@ -268,6 +292,13 @@ def _row_or_verb_start(clause: str, row_start: int) -> int:
     """Start of the segment governing this row: after the last declaration verb before it."""
     verbs = [v for v in _ACTION.finditer(clause) if v.start() < row_start]
     return verbs[-1].end() if verbs else 0
+
+
+def _declares_row_open(clause: str, m: re.Match[str]) -> bool:
+    """Does this clause say THIS row is not finished? Bounded to the row, never the whole line."""
+    if _OPEN_AFTER_ROW.search(clause[m.end(): m.end() + _OPEN_WINDOW]):
+        return True
+    return bool(_OPEN_BEFORE_ROW.search(clause[max(0, m.start() - _OPEN_WINDOW):m.start()]))
 
 
 def rows_named_by(pr: dict[str, Any]) -> set[str]:
@@ -380,7 +411,11 @@ def choose_pr(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[st
     if not candidates:
         return None
     row = str(item.get("id"))
-    claimed = [p for p in candidates if row in rows_claimed_by(p)]
+    # #2640 B1 (post-merge): a candidate that CLAIMS the row (often only by its branch name) can still say, in its
+    # own text, that the row is not finished — "FQ-104 stays open: … it does not yet render them." The disclaimer
+    # filter used to run only on the recorded association below, so a branch-name claim outran it and `delivered`
+    # (a decision state that is never re-derived) removed live work from dispatch. Apply it to claims as well.
+    claimed = [p for p in candidates if row in rows_claimed_by(p) and row not in _disclaimed_rows(p)]
     owned = _as_pr_number(item.get("pr"))
 
     # QS3 / CX3 (#2640, codex-cloud): a mere mention is not evidence. When NO candidate claims the row, only the
