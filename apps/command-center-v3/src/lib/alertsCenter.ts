@@ -12,6 +12,7 @@
  * No React import so `node src/lib/alertsCenter.test.ts` runs it.
  */
 import { renderSetupCounts, type SetupRunSummary } from './setupRunSummary.ts'
+import { accountName, rowAccountKey } from './accountLabels.ts'
 
 /** Title chrome that must never become a dossier / Scalp symbol. */
 export const ALERT_CHROME_SYMBOLS = new Set([
@@ -68,6 +69,8 @@ export function dossierHref(symbol: string | null | undefined): string | null {
 
 type PacketRow = {
   symbol?: string | null
+  account?: string | null
+  account_label?: string | null
   state?: string | null
   saved_at?: string | null
   packet_age_h?: number | null
@@ -88,14 +91,20 @@ export function rowsFromBuyReadyPackets(payload: any): AlertRow[] {
       : r.zone?.position === 'above' ? `${r.zone.distance_pct}% above zone`
       : r.zone?.position === 'below' ? `${r.zone.distance_pct}% below zone`
       : null
+    // FQ-096 serves one packet per (symbol, account). The row id and the printed line must carry the account too:
+    // with `entry:SYM:STATE` two accounts' packets share one id, and the modal's `find(r => r.id === selectedId)`
+    // then shows the FIRST account's price and summary under the second account's alert (codex-cloud P1).
+    const acct = rowAccountKey(r)
+    const acctName = acct ? accountName(acct, r.account_label) : null
     const bits = [
+      acctName,
       state?.replace(/_/g, ' '),
       zone,
       r.price != null ? `$${Number(r.price).toFixed(2)}` : null,
       r.cio_verdict?.verdict ? `CIO ${String(r.cio_verdict.verdict).replace(/_/g, ' ')}` : null,
     ].filter(Boolean)
     return {
-      id: `entry:${sym || i}:${state || 'x'}`,
+      id: `entry:${sym || i}:${acct || '-'}:${state || 'x'}`,
       kind: 'entry' as const,
       title: sym ? `${sym} — ${state?.replace(/_/g, ' ') || 'entry packet'}` : (state || 'entry packet'),
       subtitle: bits.join(' · ') || (r.catalyst ? String(r.catalyst).slice(0, 120) : undefined),

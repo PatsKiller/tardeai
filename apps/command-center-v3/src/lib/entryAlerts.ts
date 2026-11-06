@@ -10,6 +10,17 @@ export type OptionsAltVerdict = {
   claimed?: { status?: string | null; qualified?: string[] } | null
 }
 
+/** The identity of one entry-alert card: (symbol, account), never the bare symbol.
+ *
+ *  FQ-096 made the packet index serve one row per (symbol, account), so two accounts can hold a packet for the same
+ *  symbol in the same state. Keying the lane by symbol alone collapsed the second card into the first (React keeps one
+ *  child per key), and the Alerts Center ids collided the same way (codex-cloud P1 at buy_ready_packets_index). */
+export function entryRowKey(row: { symbol?: string | null; account?: string | null } | null | undefined): string {
+  const sym = String(row?.symbol ?? '').trim().toUpperCase()
+  const acct = String(row?.account ?? '').trim()
+  return acct ? `${sym}|${acct}` : sym
+}
+
 export function optionsAltChip(v: OptionsAltVerdict | null | undefined): { tone: Tone; label: string; title: string } {
   const status = String(v?.status || '').toUpperCase()
   const n = Number(v?.qualified_count || 0)

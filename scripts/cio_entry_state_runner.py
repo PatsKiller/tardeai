@@ -46,6 +46,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -85,6 +86,43 @@ def _load_json(path: Path, default):
         return default
 
 
+def _load_json_checked(path: Path) -> tuple[Any, bool]:
+    """``(payload, read_ok)`` — a failed read is NOT an empty document.
+
+    ``_load_json`` returns its default on any error, so callers could not tell a missing/malformed
+    holdings file from a genuinely empty portfolio. Unknown is not zero (cx-openai-3 CX3-S-F4).
+    """
+    try:
+        return json.loads(path.read_text()), True
+    except Exception:
+        return None, False
+
+
+def _adopt_account(ev: dict, e: dict, sym: str, account: str) -> None:
+    """Move an unscoped evidence row under its scoped key once an account is known.
+
+    A decision packet may name the account for a row the desk left unscoped. Leaving that row under
+    the bare symbol split one account's evidence into two keys: the scoped readers missed it and the
+    bare key never matched a scoped prior state (codex-cloud P2 at runner:232, 2026-11-05). When a
+    row for the same account already exists, the later facts are filled in rather than one row
+    overwriting the other.
+    """
+    from lib.account_scope import evidence_key
+    if not account or ev.get(sym) is not e:
+        return  # already scoped, or this dict is not the bare-symbol row
+    want = evidence_key(sym, account)
+    if want == sym:
+        return
+    existing = ev.get(want)
+    if existing is not None and existing is not e:
+        for key, value in e.items():
+            existing.setdefault(key, value)
+        del ev[sym]
+        return
+    del ev[sym]
+    ev[want] = e
+
+
 def _age_h(ts) -> float | None:
     if ts is None or not hasattr(ts, "timestamp"):
         return None
@@ -105,21 +143,36 @@ def _after_open(ts) -> bool:
 
 def gather(cur) -> dict[str, dict]:
     """symbol → evidence dict for cio_entry_state.evaluate."""
+    from lib.account_scope import (
+        account_of,
+        canonical_account,
+        evidence_key,
+        held_accounts,
+        held_in,
+        holdings_document_known,
+        resolve_held,
+    )
     ev: dict[str, dict] = {}
     desk = _load_json(DESK_PATH, {})
     for r in desk.get("rows") or []:
         sym = str(r.get("symbol") or "").upper()
         if not sym:
             continue
-        ev[sym] = {"symbol": sym, "price": r.get("price"), "quote_age_h": r.get("price_age_h"),
-                   "entry_low": r.get("entry_low"), "entry_high": r.get("entry_high"), "stop": r.get("stop"),
-                   "target": r.get("target"), "atr": r.get("atr"), "wash_blocked": r.get("wash_blocked"),
-                   "held": r.get("held"), "earnings_date": r.get("earnings_date"), "rsi": r.get("rsi"),
-                   "catalyst": (r.get("catalyst") or {}).get("headline") if isinstance(r.get("catalyst"), dict) else None,
-                   "plan_source": "reentry_desk"}
+        # FQ-096: an account the source states is carried, and two rows for the same symbol in
+        # different accounts stay separate rows rather than the second overwriting the first.
+        _acct = str(r.get("account") or "").strip()
+        _e: dict = {"symbol": sym, "price": r.get("price"), "quote_age_h": r.get("price_age_h"),
+                    "entry_low": r.get("entry_low"), "entry_high": r.get("entry_high"), "stop": r.get("stop"),
+                    "target": r.get("target"), "atr": r.get("atr"), "wash_blocked": r.get("wash_blocked"),
+                    "held": r.get("held"), "earnings_date": r.get("earnings_date"), "rsi": r.get("rsi"),
+                    "catalyst": (r.get("catalyst") or {}).get("headline") if isinstance(r.get("catalyst"), dict) else None,
+                    "plan_source": "reentry_desk"}
+        if _acct:
+            _e["account"] = _acct
+        ev[evidence_key(sym, _acct)] = _e
     cur.execute("""SELECT upper(symbol) s FROM watchlist_items WHERE status='active'
                    UNION SELECT upper(symbol) FROM paper_trade_proposals WHERE status='PENDING'""")
-    tracked = {row[0] for row in cur.fetchall()} | set(ev)
+    tracked = {row[0] for row in cur.fetchall()} | {e.get("symbol") for e in ev.values() if e.get("symbol")}
     # Swing entry alerts have ONE sender (operator 2026-10-19): watchlist_entry_planner persists its
     # alert-eligible near-entry/ready plans and this runner pages them (lib.entry_alert_context).
     from lib.entry_alert_context import planner_plan_symbols, single_sender_enabled
@@ -156,8 +209,13 @@ def gather(cur) -> dict[str, dict]:
                     WHERE superseded_by IS NULL AND upper(symbol) = ANY(%s)""", (syms,))
     packets = {row[0]: row[1] or {} for row in cur.fetchall()}
     enrichment = _load_json(STATE_DIR / "ticker_enrichment_cache.json", {})
-    holdings = _load_json(STATE_DIR / "holdings.json", {})
-    held = {str(h.get("symbol") or "").upper() for h in holdings.get("holdings") or [] if not h.get("is_cash")}
+    holdings_doc, holdings_read = _load_json_checked(STATE_DIR / "holdings.json")
+    # FQ-096 / SPEC §1b rule 3: holdings are keyed by (symbol, account). A residual in one account
+    # must not read as "held everywhere" and block a re-entry in another; the accounts are named so
+    # the reader (and the CIO verdict record) can see the scope instead of a symbol-wide boolean.
+    # A missing/malformed file is UNKNOWN evidence, never a confirmed-empty book.
+    holdings_known = holdings_read and holdings_document_known(holdings_doc)
+    held = held_accounts(holdings_doc) if holdings_known else {}
     try:
         import watch_packet_quality as pq
     except Exception:
@@ -165,63 +223,104 @@ def gather(cur) -> dict[str, dict]:
     from lib.finviz_csv import enrichment_market_cap_billions
 
     for sym in syms:
-        e = ev.setdefault(sym, {"symbol": sym, "plan_source": None})
-        if e.get("plan_source") is None:
-            if sym in plans and (plans[sym][0] is not None or plans[sym][1] is not None):
-                lo, hi, st, tg, created = plans[sym]
-                e.update(entry_low=lo, entry_high=hi, stop=st, target=tg, plan_source="entry_plan",
-                         plan_age_h=_age_h(created), plan_after_move=_after_open(created))
-            elif sym in cards and cards[sym][0] is not None:
-                ideal, zl, zh, st, tg, _, card_age_h = cards[sym]
-                # A strategy card is rewritten by its own job; it is never a re-plan after a move.
-                e.update(entry_low=zl or ideal, entry_high=zh or ideal, stop=st, target=tg, plan_source="strategy_card",
-                         plan_age_h=card_age_h, plan_after_move=False)
-        if sym in quotes:
-            px, age_h, chg = quotes[sym]
-            if e.get("price") is None:
-                e["price"], e["quote_age_h"] = px, age_h
-            e["change_pct"] = chg
-        if not e.get("catalyst") and sym in cards:
-            e["catalyst"] = cards[sym][5]
-        e["cio_action"] = cio.get(sym)
-        # The card's "Review:" line: the latest CIO decision, named (an entry_review row is a review; any
-        # other decision is the CIO's stance on record). The runner's own fresh review overrides it.
-        for k, v in cio_review_fields(cio_rows.get(sym)).items():
-            e.setdefault(k, v)
-        e["held"] = bool(e.get("held")) or sym in held
-        if sym in profiles:
-            # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
-            # the tracked set, and a blank identity line under a BUY READY call is worse
-            # than no line at all.
-            desc, sector, industry = profiles[sym]
-            e["company"], e["sector"], e["industry"] = desc, sector, industry
-        pk = packets.get(sym)
-        if pk is not None and pq is not None:
-            e["quality_state"] = pq.packet_gate(pk).get("quality")
-            e.setdefault("earnings_date", ((pk.get("event_state") or {}).get("earnings") or {}).get("date"))
-        e["market_cap_label"] = cap_label(
-            None if (b := enrichment_market_cap_billions(enrichment.get(sym) or {})) is None else b * 1000.0)
-        # P8 thesis/structure inputs from house enrichment (never invent).
-        enr = enrichment.get(sym) or {}
-        if isinstance(enr, dict):
-            if e.get("pe") is None and enr.get("pe") is not None:
-                e["pe"] = enr.get("pe")
-            if e.get("forward_pe") is None and enr.get("forward_pe") is not None:
-                e["forward_pe"] = enr.get("forward_pe")
-            if e.get("peg") is None and enr.get("peg") is not None:
-                e["peg"] = enr.get("peg")
-            if e.get("atr") is None and enr.get("atr") is not None:
-                e["atr"] = enr.get("atr")
-            if not e.get("sector") and enr.get("sector"):
-                e["sector"] = enr.get("sector")
-            if not e.get("industry") and enr.get("industry"):
-                e["industry"] = enr.get("industry")
+        entries = [x for x in ev.values() if x.get("symbol") == sym]
+        if not entries:
+            entries = [ev.setdefault(sym, {"symbol": sym, "plan_source": None})]
+        for e in entries:
+            if e.get("plan_source") is None:
+                if sym in plans and (plans[sym][0] is not None or plans[sym][1] is not None):
+                    lo, hi, st, tg, created = plans[sym]
+                    e.update(entry_low=lo, entry_high=hi, stop=st, target=tg, plan_source="entry_plan",
+                             plan_age_h=_age_h(created), plan_after_move=_after_open(created))
+                elif sym in cards and cards[sym][0] is not None:
+                    ideal, zl, zh, st, tg, _, card_age_h = cards[sym]
+                    # A strategy card is rewritten by its own job; it is never a re-plan after a move.
+                    e.update(entry_low=zl or ideal, entry_high=zh or ideal, stop=st, target=tg, plan_source="strategy_card",
+                             plan_age_h=card_age_h, plan_after_move=False)
+            if sym in quotes:
+                px, age_h, chg = quotes[sym]
+                if e.get("price") is None:
+                    e["price"], e["quote_age_h"] = px, age_h
+                e["change_pct"] = chg
+            if not e.get("catalyst") and sym in cards:
+                e["catalyst"] = cards[sym][5]
+            e["cio_action"] = cio.get(sym)
+            # The card's "Review:" line: the latest CIO decision, named (an entry_review row is a review; any
+            # other decision is the CIO's stance on record). The runner's own fresh review overrides it.
+            for k, v in cio_review_fields(cio_rows.get(sym)).items():
+                e.setdefault(k, v)
+            # Account/packet merge BEFORE the held lookup: a packet that names the account is part of
+            # the evidence about which account this row is for (reviewer clearing condition, 2026-11-04).
+            pk = packets.get(sym)
+            if isinstance(pk, dict) and not str(e.get("account") or "").strip():
+                _pa = str(pk.get("account") or pk.get("account_key") or "").strip()
+                if _pa:
+                    e["account"] = _pa
+            # Once the account is known the row belongs under its scoped key: downstream readers
+            # (evidence_for(symbol, account), changed_symbols vs scoped prior states) look there
+            # (codex-cloud P2 at runner:232, 2026-11-05).
+            _adopt_account(ev, e, sym, str(e.get("account") or "").strip())
+            if pk is not None and pq is not None:
+                e["quality_state"] = pq.packet_gate(pk).get("quality")
+                e.setdefault("earnings_date", ((pk.get("event_state") or {}).get("earnings") or {}).get("date"))
+            _acct = str(e.get("account") or "").strip()
+            e["held_accounts"] = held_in(held, sym) if holdings_known else []
+            # Held is a fact about ONE account. For a named row the validated scoped evidence decides
+            # — an inherited symbol-wide flag never widens it (cx-openai-3 CX3-S-F1, cx-openai-2 F1).
+            # An unscoped row keeps the conservative "held somewhere" answer. Unreadable or
+            # account-less holdings evidence stays UNKNOWN / SCOPE_UNKNOWN, never "not held".
+            e["held"], e["held_evidence"] = resolve_held(
+                held, sym, _acct, inherited=e.get("held"), evidence_known=holdings_known)
+            if _acct and e["held_accounts"] and canonical_account(_acct) not in {
+                    canonical_account(a) for a in e["held_accounts"]}:
+                # A plan row may carry a scope that disagrees with the holding rows; that is a fact
+                # to surface, not a reason to widen the block. Aliases of one account do not disagree.
+                e.setdefault("held_scope_note", f"position recorded under {', '.join(e['held_accounts'])}")
+            if sym in profiles:
+                # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
+                # the tracked set, and a blank identity line under a BUY READY call is worse
+                # than no line at all.
+                desc, sector, industry = profiles[sym]
+                e["company"], e["sector"], e["industry"] = desc, sector, industry
+            e["market_cap_label"] = cap_label(
+                None if (b := enrichment_market_cap_billions(enrichment.get(sym) or {})) is None else b * 1000.0)
+            # P8 thesis/structure inputs from house enrichment (never invent).
+            enr = enrichment.get(sym) or {}
+            if isinstance(enr, dict):
+                if e.get("pe") is None and enr.get("pe") is not None:
+                    e["pe"] = enr.get("pe")
+                if e.get("forward_pe") is None and enr.get("forward_pe") is not None:
+                    e["forward_pe"] = enr.get("forward_pe")
+                if e.get("peg") is None and enr.get("peg") is not None:
+                    e["peg"] = enr.get("peg")
+                if e.get("atr") is None and enr.get("atr") is not None:
+                    e["atr"] = enr.get("atr")
+                if not e.get("sector") and enr.get("sector"):
+                    e["sector"] = enr.get("sector")
+                if not e.get("industry") and enr.get("industry"):
+                    e["industry"] = enr.get("industry")
     return ev
 
 
+def identity_key(result: dict) -> str:
+    """The scoped identity of a result: bare ``SYMBOL`` when unscoped, ``SYMBOL|ACCOUNT`` otherwise."""
+    from lib.account_scope import evidence_key
+    return evidence_key(result.get("symbol"), result.get("account"))
+
+
 def last_states(cur) -> dict[str, str]:
-    cur.execute("""SELECT DISTINCT ON (symbol) symbol, state FROM cio_entry_states ORDER BY symbol, evaluated_at DESC""")
-    return {row[0]: row[1] for row in cur.fetchall()}
+    """Prior state by scoped identity — SYMBOL for an unscoped row, SYMBOL|ACCOUNT otherwise.
+
+    cx-openai-3 CX3-S-F2 / cx-openai-2 F3: a symbol-only lookup let one account's prior state stand
+    in for another's. The account is recorded in ``details`` (the table has no account column), so
+    the lookup reads it from there rather than collapsing the symbol.
+    """
+    from lib.account_scope import evidence_key
+    cur.execute("""SELECT DISTINCT ON (symbol, COALESCE(details->>'account', ''))
+                          symbol, COALESCE(details->>'account', '') AS account, state
+                     FROM cio_entry_states
+                    ORDER BY symbol, COALESCE(details->>'account', ''), evaluated_at DESC""")
+    return {evidence_key(row[0], row[1]): row[2] for row in cur.fetchall()}
 
 
 def alerted_today(cur, keys: list[str]) -> set[str]:
@@ -275,6 +374,37 @@ def starred_symbols(cur) -> set[str]:
         return set()
 
 
+def changed_symbols(results: dict[str, dict], prior: dict) -> list[str]:
+    """Bare symbols whose state changed, deduped — what the prospect writer is handed.
+
+    F2 (cc-deepseek-3 / cc-deepseek-6 on #2603): ``results`` is keyed ``SYMBOL|ACCOUNT`` for a scoped row, so the old
+    comprehension looked up a key that ``prior`` (bare symbols) never carries: every scoped row read as changed and the
+    writer received ``"SPCX|schwab_ira"`` as a symbol — failing soft, so no prospect was written at all.
+
+    cx-openai-3 CX3-S-F2 / cx-openai-2 F3: ``prior`` now carries the same scoped identity, so account A's prior state
+    cannot stand in for account B's. The writer still receives bare symbols.
+    """
+    def _symbol_of(key, row):
+        return row.get("symbol") or str(key).split("|", 1)[0]
+
+    return sorted({_symbol_of(k, r) for k, r in results.items() if prior.get(k) != r["state"]})
+
+
+def decision_id(result: dict, *, now: datetime | None = None) -> str:
+    """The ``cio_decisions`` id for one entry-state row — unique per (symbol, account, second).
+
+    F1 (cc-deepseek-3 / cc-deepseek-6 on #2603): the id was ``cio-entry-<symbol>-<second>``, which is not unique once
+    one symbol can be reported for two accounts in the same pass (FQ-096); both rows formatted the same second, so the
+    second INSERT violated ``cio_decisions_pkey`` and the whole apply aborted before any commit. The account is part of
+    the row's identity, so it is part of the id. The ``cio-entry-`` prefix is unchanged: consumers exclude these rows
+    from stance stamping by that prefix (``stamp_cio_stance``).
+    """
+    at = now or datetime.now(timezone.utc)
+    account = str(result.get("account") or "").strip().lower()
+    suffix = f"-{account}" if account else ""
+    return f"cio-entry-{str(result['symbol']).lower()}{suffix}-{at.strftime('%Y%m%d%H%M%S')}"
+
+
 def alert_worthy(actionable: list[dict], prior: dict, done: set,
                  starred: set[str] | None = None) -> list[dict]:
     """Page only on a move TOWARD a buy, once per symbol, state and day.
@@ -295,7 +425,8 @@ def alert_worthy(actionable: list[dict], prior: dict, done: set,
     for r in actionable:
         if ces.transition_key(r) in done:
             continue
-        if r["state"] == "ENTRY_NEAR" and (prior.get(r["symbol"]) == "BUY_READY"
+        # Prior state is scoped too: account A's BUY_READY must not read as account B's prior state.
+        if r["state"] == "ENTRY_NEAR" and (prior.get(identity_key(r)) == "BUY_READY"
                                            or ces.transition_key({**r, "state": "BUY_READY"}) in done):
             continue
         if r["state"] == "ENTRY_NEAR" and str(r.get("symbol") or "").upper() not in starred:
@@ -341,8 +472,11 @@ def prepare_packet_inputs(result: dict, ev: dict, *, apply: bool) -> dict:
     from lib.buy_ready_cio_review import review_packet
     from lib.cio_options_fluency import build_buy_ready_packet
     sym = str(result.get("symbol") or "").upper()
+    acct = str(result.get("account") or ev.get("account") or "").strip() or None
     try:
-        ev["portfolio_facts"] = build_portfolio_facts(sym)
+        # Ownership is a fact about (symbol, account): symbol-wide facts would OR another account's
+        # holding into this row's packet (codex-cloud P2 at cio_options_fluency:1003, 2026-11-05).
+        ev["portfolio_facts"] = build_portfolio_facts(sym, account=acct)
     except Exception as exc:  # noqa: BLE001
         ev["portfolio_facts"] = {"status": "UNAVAILABLE", "error": type(exc).__name__, "flags": []}
     plan = {k: result.get(k) for k in ("symbol", "price", "entry_low", "entry_high", "stop", "target")}
@@ -357,32 +491,77 @@ def prepare_packet_inputs(result: dict, ev: dict, *, apply: bool) -> dict:
     return review
 
 
+def packet_filename(result: dict) -> str:
+    """The durable packet name: ``SYMBOL.json`` unscoped, ``SYMBOL|ACCOUNT.json`` scoped.
+
+    cx-openai-3 CX3-S-F3 / cx-openai-2 F2: one ``SYMBOL.json`` per symbol meant account B's packet
+    overwrote account A's. The scoped identity in the name keeps both accessible; the index reader
+    globs the directory, and the single-symbol endpoint picks the newest of the two.
+    """
+    key = identity_key(result) or "UNKNOWN"
+    return f"{key.replace('/', '_').replace(chr(92), '_')}.json"
+
+
 def save_packet(result: dict, ev: dict) -> None:
-    """Latest packet per symbol for the Command Center (read-only consumer: api_v2)."""
+    """Latest packet per scoped row for the Command Center (read-only consumer: api_v2)."""
     try:
         from lib.cio_options_fluency import build_buy_ready_packet
         packet = build_buy_ready_packet(result, {**ev, "held": result.get("held"), "plan_source": result.get("plan_source")})
         packet["saved_at"] = datetime.now(timezone.utc).isoformat()
+        if not packet.get("account"):
+            packet["account"] = str(result.get("account") or "").strip() or None
         PACKET_DIR.mkdir(parents=True, exist_ok=True)
-        (PACKET_DIR / f"{str(result.get('symbol')).upper()}.json").write_text(json.dumps(packet, default=str, indent=1))
+        (PACKET_DIR / packet_filename(result)).write_text(json.dumps(packet, default=str, indent=1))
     except Exception:  # noqa: BLE001 — the page must never fail on the cache
         pass
 
 
 def record_review(cur, review: dict, result: dict) -> None:
     """Store an OK review as a cio_decisions row (action_class='entry_review'); queue a
-    pending/failed live review for follow-up within CIO_ENTRY_REVIEW_WAIT_MIN."""
+    pending/failed live review for follow-up within CIO_ENTRY_REVIEW_WAIT_MIN.
+
+    The review is recorded against the row that produced it, account included: cx-openai-2 F2 /
+    cx-openai-3 CX3-S-F3 proved that a symbol-only map recorded account B's review against account A.
+    """
     from lib.buy_ready_cio_review import INSERT_SQL, decision_row
-    row = decision_row(review)
+    account = str(result.get("account") or "").strip() or None
+    row = decision_row(review, account=account)
     if row:
         cur.execute(INSERT_SQL, row)
         return
     if review.get("mode") == "live" and review.get("status") in ("PENDING", "LLM_ERROR", "INVALID"):
         REVIEW_PENDING.parent.mkdir(parents=True, exist_ok=True)
         with REVIEW_PENDING.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"symbol": result.get("symbol"), "state": result.get("state"),
+            fh.write(json.dumps({"symbol": result.get("symbol"), "account": account,
+                                 "state": result.get("state"),
                                  "queued_at": datetime.now(timezone.utc).isoformat(),
                                  "result": result, "status": review.get("status")}, default=str) + "\n")
+
+
+def evidence_for(evidence: dict, symbol: str, account: str | None = None) -> dict:
+    """The evidence row for a scoped row: the exact ``SYMBOL|ACCOUNT`` key when an account is known.
+
+    FQ-096 R2 (cx-openai-4, 2026-11-04): gather() keys a stated-account row as SYN|acct, so any
+    symbol-only lookup raises KeyError or silently reads {}. Call sites that only know a symbol use this;
+    call sites that hold the result object use evidence_of[id(result)] so they get the EXACT row.
+
+    cx-openai-3 CX3-S-F3 / cx-openai-2 F2: ``account`` narrows the lookup. When an account is named
+    and has no row, this returns ``{}`` rather than another account's evidence — the follow-up reader
+    must not silently re-review a different account.
+    """
+    sym = str(symbol or "").upper().strip()
+    if not sym:
+        return {}
+    acct = str(account or "").strip()
+    if acct:
+        key = identity_key({"symbol": sym, "account": acct})
+        return evidence.get(key) or {}
+    if sym in evidence:
+        return evidence[sym]
+    for key, value in evidence.items():
+        if str(key).upper().startswith(sym + "|"):
+            return value
+    return {}
 
 
 def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
@@ -397,28 +576,33 @@ def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
     keep, out = [], []
     latest: dict[str, dict] = {}
     for r in rows:
-        latest[str(r.get("symbol")).upper()] = r
-    for sym, r in latest.items():
+        # Scoped identity: two accounts for one symbol are two follow-ups, not one overwriting the other.
+        _acct = str(r.get("account") or (r.get("result") or {}).get("account") or "").strip()
+        latest[identity_key({"symbol": r.get("symbol"), "account": _acct})] = {**r, "account": _acct}
+    for r in latest.values():
+        sym = str(r.get("symbol")).upper()
+        acct = str(r.get("account") or "").strip()
         try:
             age_min = (now - datetime.fromisoformat(str(r["queued_at"]))).total_seconds() / 60.0
         except (KeyError, ValueError):
             continue
         if age_min > _review_wait_minutes():
-            out.append({"symbol": sym, "follow_up": "expired"})
+            out.append({"symbol": sym, **({"account": acct} if acct else {}), "follow_up": "expired"})
             continue
-        ev = dict(evidence.get(sym) or {})
+        ev = dict(evidence_for(evidence, sym, acct) or {})
         review = prepare_packet_inputs(r["result"], ev, apply=True)
         if review.get("status") == "OK":
             from lib.buy_ready_cio_review import INSERT_SQL, decision_row
-            row = decision_row(review)
+            row = decision_row(review, account=acct or None)
             if row:
                 cur.execute(INSERT_SQL, row)
             payload = cio_card_payload(r["result"], ev, review=review)
-            out.append({"symbol": sym, "follow_up": "sent", **operator_send(payload, primary_symbols=[sym])})
+            out.append({"symbol": sym, **({"account": acct} if acct else {}), "follow_up": "sent",
+                        **operator_send(payload, primary_symbols=[sym])})
             save_packet(r["result"], ev)
         else:
             keep.append(r)
-            out.append({"symbol": sym, "follow_up": review.get("status")})
+            out.append({"symbol": sym, **({"account": acct} if acct else {}), "follow_up": review.get("status")})
     REVIEW_PENDING.write_text("".join(json.dumps(x, default=str) + "\n" for x in keep), encoding="utf-8")
     return out
 
@@ -562,7 +746,18 @@ def main() -> int:
         cur.execute(DDL)
         conn.commit()
     evidence = gather(cur)
-    results = {sym: ces.evaluate(e) for sym, e in evidence.items()}
+    results: dict[str, dict] = {}
+    evidence_of: dict[int, dict] = {}
+    for _key, _e in evidence.items():
+        _r = ces.evaluate(_e)
+        # F1 (cc-deepseek-3 / cc-deepseek-6 on #2603): the row's account is part of its identity (FQ-096), so it has
+        # to reach the persisted decision id. `evaluate()` returns the plan fields only; carry the account from the
+        # evidence, or from the scoped key when the evidence omits it.
+        if not str(_r.get("account") or "").strip():
+            _acct_key = str(_key).split("|", 1)[1] if "|" in str(_key) else ""
+            _r["account"] = str(_e.get("account") or _acct_key).strip()
+        results[_key] = _r
+        evidence_of[id(_r)] = _e
     try:
         prior = last_states(cur)
     except Exception:
@@ -585,28 +780,32 @@ def main() -> int:
     # M5 09-24: options alternatives + portfolio facts + CIO review before any render
     # (render_cio is also the cio_decisions rationale written below).
     for r in (to_alert if a.apply else to_alert[:1]):
-        reviews[r["symbol"]] = prepare_packet_inputs(r, evidence[r["symbol"]], apply=a.apply)
+        # Keyed by scoped identity, not symbol: two accounts reviewed in one pass each keep their own.
+        reviews[identity_key(r)] = prepare_packet_inputs(r, evidence_of[id(r)], apply=a.apply)
     if a.apply:
         for sym, r in results.items():
-            if prior.get(sym) != r["state"]:
+            # The key is the bare symbol for an unscoped row, SYMBOL|ACCOUNT otherwise (FQ-096).
+            sym = r.get("symbol") or str(sym).split("|", 1)[0]
+            if prior.get(identity_key(r)) != r["state"]:
                 alert = r in to_alert
                 cur.execute("""INSERT INTO cio_entry_states (symbol, state, prior_state, alerted, details)
                                VALUES (%s,%s,%s,%s,%s::jsonb)""",
-                            (sym, r["state"], prior.get(sym), alert,
+                            (sym, r["state"], prior.get(identity_key(r)), alert,
                              json.dumps({**r, "transition_key": ces.transition_key(r)}, default=str)))
         for r in to_alert:
-            if prior.get(r["symbol"]) == r["state"]:
+            if prior.get(identity_key(r)) == r["state"]:
                 cur.execute("""INSERT INTO cio_entry_states (symbol, state, prior_state, alerted, details)
                                VALUES (%s,%s,%s,true,%s::jsonb)""",
                             (r["symbol"], r["state"], r["state"],
                              json.dumps({**r, "transition_key": ces.transition_key(r)}, default=str)))
-            did = f"cio-entry-{r['symbol'].lower()}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            did = decision_id(r)
             cur.execute("""INSERT INTO cio_decisions (decision_id, symbol, strategy_type, action, action_class, priority,
                                                       confidence_raw, decision_safety, human_review_required, rationale,
                                                       status, agent_votes)
-                           VALUES (%s,%s,%s,%s,'entry',%s,%s,'safe',true,%s,'proposed','{}')""",
+                           VALUES (%s,%s,%s,%s,'entry',%s,%s,'safe',true,%s,'proposed','{}')
+                           ON CONFLICT (decision_id) DO NOTHING""",
                         (did, r["symbol"], r.get("plan_source"), r["state"], "high" if r["state"] == "BUY_READY" else "medium",
-                         None, ces.render_cio(r, evidence[r["symbol"]])[:500]))
+                         None, ces.render_cio(r, evidence_of[id(r)])[:500]))
         conn.commit()
         for r in digest:
             # recorded as alerted so the digest names do not come back one by one later today
@@ -616,12 +815,14 @@ def main() -> int:
                          json.dumps({**r, "transition_key": ces.transition_key(r), "via": "digest"}, default=str)))
         conn.commit()
         for r in to_alert:
-            if r["symbol"] in reviews:
-                record_review(cur, reviews[r["symbol"]], r)
+            _review_key = identity_key(r)
+            if _review_key in reviews:
+                record_review(cur, reviews[_review_key], r)
         conn.commit()
         for r in to_alert:
-            sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence[r["symbol"]])})
-            save_packet(r, evidence[r["symbol"]])
+            evidence_row = evidence_of.get(id(r)) or evidence_for(evidence, r["symbol"], r.get("account"))
+            sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence_row)})
+            save_packet(r, evidence_row)
         follow_ups = follow_up_pending_reviews(cur, evidence)
         conn.commit()
         if follow_ups:
@@ -639,7 +840,7 @@ def main() -> int:
                     primary_symbols=digest_syms,
                 ),
             })
-        changed = sorted(sym for sym, r in results.items() if prior.get(sym) != r["state"])
+        changed = changed_symbols(results, prior)
         prospect_writer = write_cio_prospects(changed)
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "counts": counts,
@@ -656,7 +857,8 @@ def main() -> int:
         report["reviews"] = {k: {"status": v.get("status"), "mode": v.get("mode")} for k, v in reviews.items()}
     if not a.apply and to_alert:
         report["sample_operator_message"] = stamp_cio_stance(
-            ces.render_operator(to_alert[0], evidence[to_alert[0]["symbol"]]), [to_alert[0]["symbol"]])
+            ces.render_operator(to_alert[0], evidence_of.get(id(to_alert[0])) or evidence_for(evidence, to_alert[0]["symbol"], to_alert[0].get("account"))),
+            [to_alert[0]["symbol"]])
     print(json.dumps(report, indent=2, default=str))
     return 0
 

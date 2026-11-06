@@ -491,6 +491,9 @@ def runner(monkeypatch):
     import lib.alert_quotes as aq
 
     monkeypatch.setattr(cesr, "_load_json", lambda path, default: default)
+    # Holdings are irrelevant to this case, but an unreadable store is now UNKNOWN ownership and
+    # cannot back BUY_READY (codex-cloud P2, account_scope:122). This fixture means "no positions".
+    monkeypatch.setattr(cesr, "_load_json_checked", lambda path: ({"holdings": []}, True))
     # The FOXA plan fixture is CREATED 2026-10-15; pin the plan-age clock to two hours later so the 7-day plan
     # limit (cio_entry_state.PLAN_MAX_AGE_H) is judged against the fixture day, not the CI wall clock
     # (it went red on 2026-10-22, exactly 7 days on).

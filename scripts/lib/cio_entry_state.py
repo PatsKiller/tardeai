@@ -110,6 +110,15 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
         blocked.append(f"CIO decision is {cio_action}")
     if ev.get("wash_blocked"):
         blocked.append("wash-sale window")
+    # Unknown ownership is not "not held" (codex-cloud P2, account_scope:122). When the holdings
+    # evidence cannot name this account, an entry call would render an affirmative new position for
+    # a name the book may already own, so it cannot back BUY_READY. A row whose own inherited fact
+    # says held is unaffected: its conservative answer is already "existing position".
+    held_evidence = str(ev.get("held_evidence") or "").upper()
+    if not ev.get("held") and held_evidence == "UNKNOWN":
+        blocked.append("holdings could not be read — ownership unknown")
+    elif not ev.get("held") and held_evidence == "SCOPE_UNKNOWN":
+        blocked.append("a holding for this symbol names no account — ownership for this account unknown")
     if price is not None and stop is not None and price <= stop:
         blocked.append("price is at or below the plan stop")
     earn_days = _days_until(ev.get("earnings_date"), today)
@@ -141,6 +150,13 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
         "quality_state": ev.get("quality_state"), "cio_action": cio_action or None,
         "market_cap_label": (ev.get("market_cap_label") or {}).get("code"),
         "catalyst": ev.get("catalyst"), "plan_source": ev.get("plan_source"), "held": bool(ev.get("held")),
+        # FQ-096: the account this evaluation is about, and where the symbol is actually held. The
+        # record carries both so a reader can see the scope instead of trusting a symbol-wide boolean.
+        "account": ev.get("account"),
+        "held_accounts": list(ev.get("held_accounts") or []),
+        # How sure the held answer is (CONFIRMED / UNKNOWN / SCOPE_UNKNOWN). A reader can see that
+        # an unavailable holdings source was not turned into an affirmative "not held".
+        "held_evidence": ev.get("held_evidence"),
         "earnings_in_days": earn_days,
     }
 
@@ -316,6 +332,17 @@ def render_cio(result: dict, ev: dict) -> str:
 
 
 def transition_key(result: dict, day: date | None = None) -> str:
-    """One alert per symbol per state per day."""
+    """One alert per scoped row per state per day.
+
+    FQ-096 / cx-openai-3 CX3-S-F2 (2026-11-05): the key was symbol-only, so an alert already
+    delivered for account A suppressed the equally actionable row for account B. The scoped row
+    carries its account into the key; an UNSCOPED row keeps the legacy key verbatim, so a repeat of
+    an unscoped transition is still suppressed.
+    """
+    from lib.account_scope import SCOPE_UNSCOPED
+
     day = day or datetime.now(timezone.utc).date()
-    return f"cio_entry:{result['symbol']}:{result['state']}:{day.isoformat()}"
+    symbol = str(result.get("symbol") or "").upper().strip()
+    account = str(result.get("account") or "").strip()
+    scope = "" if (not account or account == SCOPE_UNSCOPED) else f"{account}:"
+    return f"cio_entry:{symbol}:{scope}{result['state']}:{day.isoformat()}"

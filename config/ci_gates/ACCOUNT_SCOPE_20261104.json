@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ACCOUNT_SCOPE_20261104",
+  "files": [
+    "tests/test_account_scope_20261104.py",
+    "tests/test_account_scope_runner_20261104.py"
+  ],
+  "anchor": "ACCOUNT_SCOPE_20261104",
+  "comment": [
+    "ANCHOR: FQ-096 / SPEC_ONE_POSITION_VERDICT §1b rule 3. canonical_observation.py defaulted",
+    "account_scope=ALL_ACCOUNTS, so a residual in one account could read as held everywhere. The tests",
+    "pin an unscoped default that cannot claim all accounts, an explicit scope that propagates, and",
+    "(symbol, account) holdings semantics: an Individual residual never holds an IRA position.",
+    "The runner tests drive the real caller (cio_entry_state_runner.gather with a scripted cursor) and the",
+    "re-entry surface: an explicitly stated account survives into the evidence key and the held decision, two",
+    "accounts for one symbol stay separate rows, and HELD is decided from the row's own account."
+  ]
+}

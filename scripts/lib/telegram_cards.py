@@ -197,10 +197,14 @@ def entry_card(
     evidence: list[str],
 ) -> Card:
     sym = str(item.get("symbol") or "").upper()
+    # Unknown ownership is not a new position and not a low-conviction one (codex-cloud P2, 2026-11-05).
+    ownership_unknown = held is not True and str(item.get("held_evidence") or "").upper() in {"UNKNOWN", "SCOPE_UNKNOWN"}
     if marker == "🔴":
         header = "ENTRY BLOCKED"
     elif held is True:
         header = "ADD-ON ENTRY"
+    elif ownership_unknown:
+        header = "OWNERSHIP UNVERIFIED"
     elif state in {"BUY_READY", "READY"}:
         header = "HIGH CONVICTION ENTRY"
     elif "NEAR" in state:
@@ -218,6 +222,8 @@ def entry_card(
         risk = reward = None
     status_icon = {"🟢": "🟢", "🔴": "🔴"}.get(marker, "🟡")
     status = [_block(status_icon, "STATUS", [state.replace("_", " ")]), _block("⚠️", "ACTION REQUIRED", [next_action])]
+    if ownership_unknown:
+        status.append(_block("⚪", "POSITION", ["Position status unavailable"]))
     zone = f"Zone: {_card_money(low)} - {_card_money(high)}" if low is not None and high is not None else ""
     note = item.get("price_note") or ("inside entry zone" if state in {"BUY_READY", "READY"} else "")
     levels = [

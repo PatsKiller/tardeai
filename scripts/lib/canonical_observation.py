@@ -273,7 +273,9 @@ class ObservationEnvelope:
 
     dataset: str
     source_identity: str
-    account_scope: str = "ALL_ACCOUNTS"
+    # FQ-096: never default to a cross-account claim. Unstated scope is UNSCOPED (lib.account_scope),
+    # so a residual in one account cannot be read as "held everywhere" and block another account.
+    account_scope: str = "UNSCOPED"
     provider_timestamp: str | None = None
     observed_at: str | None = None
     received_at: str | None = None
@@ -349,7 +351,7 @@ def observe_state_file(
     *,
     checkout_root: Path | str | None = None,
     observed_at_field: str = "completed_at",
-    account_scope: str = "ALL_ACCOUNTS",
+    account_scope: str = "UNSCOPED",
     max_age_hours: float | None = None,
     trace_id: str | None = None,
     now: datetime | None = None,

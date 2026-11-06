@@ -396,6 +396,13 @@ def cio_entry_alert(item: dict[str, Any]) -> RichMessage:
     sym = str(item.get("symbol") or "").upper()
     state = str(item.get("state") or item.get("status") or "ENTRY").upper()
     held = item.get("held")
+    # Unknown ownership is neither "existing" nor "new" (codex-cloud P2, 2026-11-05): the boolean
+    # alone rendered a green "New position" for a name whose holding names no account, or whose
+    # holdings source could not be read. A definite `held is True` still reads as existing.
+    held_evidence = str(item.get("held_evidence") or "").upper()
+    ownership_unknown = held is not True and held_evidence in {"UNKNOWN", "SCOPE_UNKNOWN"}
+    if ownership_unknown:
+        held = None
     hard_block = item.get("first_hard_block") or item.get("invalidation")
     stance = str(item.get("cio_stance") or item.get("cio_action") or "HUMAN REVIEW").replace("_", " ").upper()
     if hard_block and state in {"BLOCKED", "INVALIDATED"}:
@@ -410,6 +417,8 @@ def cio_entry_alert(item: dict[str, Any]) -> RichMessage:
         marker = "🟡"
     else:
         marker = "⚪"
+    if ownership_unknown and marker == "🟢":
+        marker = "🟡"   # unknown ownership needs a human look before it reads as ready
 
     price = item.get("price")
     low, high = item.get("entry_low", item.get("zone_low")), item.get("entry_high", item.get("zone_high"))

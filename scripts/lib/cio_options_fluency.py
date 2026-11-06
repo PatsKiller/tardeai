@@ -879,13 +879,13 @@ def _options_alt_from_alternatives(sym: str, alts: dict[str, Any], struct: dict[
     }
 
 
-def _load_portfolio_facts(sym: str) -> dict[str, Any]:
+def _load_portfolio_facts(sym: str, account: Optional[str] = None) -> dict[str, Any]:
     try:
         try:
             from scripts.lib.buy_ready_portfolio_facts import build_portfolio_facts  # noqa: PLC0415
         except ImportError:
             from lib.buy_ready_portfolio_facts import build_portfolio_facts  # type: ignore  # noqa: PLC0415
-        return build_portfolio_facts(sym)
+        return build_portfolio_facts(sym, account=account or None)
     except Exception as exc:  # noqa: BLE001 — a missing fact is reported, never invented
         return {"status": "UNAVAILABLE", "error": type(exc).__name__, "flags": [], "unknowns": ["portfolio facts"]}
 
@@ -910,6 +910,9 @@ def build_buy_ready_packet(
     """
     ev = ev or {}
     sym = str(result.get("symbol") or ev.get("symbol") or "").upper()
+    # FQ-096: the account is part of the packet's identity, so two accounts for one symbol are two
+    # durable records rather than one overwriting the other (cx-openai-3 CX3-S-F3, cx-openai-2 F2).
+    acct = str(result.get("account") or ev.get("account") or "").strip()
     enr = enrichment if enrichment is not None else load_enrichment_row(sym)
     thesis = build_thesis_indicators(sym, ev=ev, enrichment=enr)
     atr = result.get("atr") if result.get("atr") is not None else ev.get("atr") or enr.get("atr")
@@ -973,6 +976,7 @@ def build_buy_ready_packet(
     former = former_holding_context(ev)
     equity = {
         "symbol": sym,
+        "account": acct or None,
         "state": result.get("state"),
         "price": result.get("price"),
         "quote_age_h": result.get("quote_age_h") if result.get("quote_age_h") is not None else ev.get("quote_age_h"),
@@ -991,11 +995,23 @@ def build_buy_ready_packet(
         "time_horizon": result.get("time_horizon") or ev.get("time_horizon"),
     }
     port = portfolio if portfolio is not None else ev.get("portfolio_facts")
+    # Ownership is a fact about (symbol, account): facts built without this account (an older
+    # caller's symbol-wide blob) cannot decide it, so they are re-derived scoped instead of ORed in
+    # (codex-cloud P2 at cio_options_fluency:1003, 2026-11-05).
+    if isinstance(port, dict) and acct:
+        try:
+            from lib.account_scope import canonical_account
+        except ImportError:  # imported as scripts.lib.*
+            from scripts.lib.account_scope import canonical_account  # type: ignore[no-redef]
+        scoped_to = str(port.get("account") or "").strip()
+        if not scoped_to or canonical_account(scoped_to) != canonical_account(acct):
+            port = None
     if port is None:
-        port = _load_portfolio_facts(sym)
+        port = _load_portfolio_facts(sym, acct)
     packet = {
         "schema": "BuyReadyInstitutionalPacket@v2",
         "symbol": sym,
+        "account": acct or None,
         "equity": equity,
         "options_alt": alt,
         "options_alternatives": alts if isinstance(alts, dict) else None,
