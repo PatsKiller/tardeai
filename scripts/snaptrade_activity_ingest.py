@@ -153,6 +153,12 @@ def normalize_activity(activity: dict, account_key: str) -> dict | None:
     if action in ("Buy", "Sell") and (not sym or sym == "CASH") and qty <= 0:
         return None
     uid = _activity_id(activity)
+    # The broker's OWN reference for this event. It goes into its own column, and it is NULL when the provider supplied
+    # none — NULL is the fact "no reference", never a value to be reconstructed. The synthetic fallback below is a
+    # dedupe aid for this ingester only: it is built from the MUTABLE quantity (and amount), so it is not an identity
+    # and must never be stored as one (operator grant 2026-11-04T03:14Z; AGENTS 24.16 identity work).
+    provider_uid = _activity_id(activity) or None
+    uid = provider_uid
     if not uid:
         uid = f"snap:{account_key}:{_date(_pick(activity, 'trade_date', 'date', 'settlement_date', 'time'))}:{action}:{sym}:{qty:g}:{amount:g}:{desc[:30]}"
     return {
@@ -165,6 +171,7 @@ def normalize_activity(activity: dict, account_key: str) -> dict | None:
         "fees": round(fees, 2),
         "description": desc,
         "account": account_key,
+        "provider_uid": provider_uid,
         "uid": uid,
         "trade_time": _time(_pick(activity, "time", "trade_date", "date", "created_at")),
     }
@@ -226,13 +233,15 @@ def run(apply: bool = False, days: int = 45) -> dict:
         for r in rows:
             cur.execute("""INSERT INTO trade_transactions
                              (trade_date, action, symbol, quantity, price, amount, fees, description,
-                              account, import_source, dedupe_key, trade_time)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'snaptrade_activity',%s,%s)
+                              account, import_source, dedupe_key, trade_time, provider_uid)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'snaptrade_activity',%s,%s,%s)
                            ON CONFLICT (dedupe_key) DO UPDATE SET price=EXCLUDED.price,
                              quantity=EXCLUDED.quantity, amount=EXCLUDED.amount, fees=EXCLUDED.fees,
-                             description=EXCLUDED.description, trade_time=EXCLUDED.trade_time""",
+                             description=EXCLUDED.description, trade_time=EXCLUDED.trade_time,
+                             provider_uid=COALESCE(EXCLUDED.provider_uid, trade_transactions.provider_uid)""",
                         (r["trade_date"], r["action"], r["symbol"], r["quantity"], r["price"], r["amount"],
-                         r["fees"], r["description"], r["account"], _dedupe_key(r), r.get("trade_time")))
+                         r["fees"], r["description"], r["account"], _dedupe_key(r), r.get("trade_time"),
+                         r.get("provider_uid")))
         conn.commit()
         report["inserted"] = len(rows)
     conn.close()

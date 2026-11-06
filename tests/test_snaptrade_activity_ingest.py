@@ -95,3 +95,28 @@ def test_portfolio_api_suppresses_stale_fidelity_holding_after_full_sell():
     assert "action IN ('Buy','Sell')" in src
     assert "fully sold the stale holding" in src
     assert "_sold_qty >= _shares" in src
+
+
+def test_the_providers_own_event_id_is_stored_as_its_own_column():
+    """Operator grant 2026-11-04: the id the ingester already reads becomes provider_uid, the only stable identity a
+    transaction has (the composite dedupe_key contains the mutable quantity)."""
+    mod = load_module()
+    row = mod.normalize_activity(
+        {"id": "act-9f2", "date": "2026-10-30", "description": "SOLD 100 SPCX", "type": "SELL",
+         "symbol": "SPCX", "units": 100, "price": 80.0, "amount": 8000.0},
+        "schwab_taxable",
+    )
+    assert row["provider_uid"] == "act-9f2"
+
+
+def test_a_manufactured_fallback_id_is_never_written_as_a_provider_uid():
+    """The synthetic fallback is built from the MUTABLE quantity, so it is a dedupe aid and never an identity: the
+    column is NULL, which is the fact 'the provider supplied no reference'."""
+    mod = load_module()
+    row = mod.normalize_activity(
+        {"date": "2026-10-30", "description": "SOLD 100 SPCX", "type": "SELL",
+         "symbol": "SPCX", "units": 100, "price": 80.0, "amount": 8000.0},   # no id in the activity
+        "schwab_taxable",
+    )
+    assert row["provider_uid"] is None, row["provider_uid"]
+    assert str(row["uid"]).startswith("snap:"), row["uid"]      # the dedupe aid still works

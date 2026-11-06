@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "RECOVERY_ENGINE_A_20261103",
+  "files": [
+    "tests/test_recovery_engine_a_20261103.py"
+  ],
+  "anchor": "RECOVERY_ENGINE_A_20261103",
+  "comment": [
+    "ANCHOR: RECOVERY_ENGINE_A_20261103 — Recovery & Re-Entry Engine piece A: recovery_cases row, fills consumer,",
+    "residual-aware held rule (SPCX 200/1,400 and PFLT 1.15 are not held), materiality tiers, per-account eligibility,",
+    "and the SPCX replay gate (T1 case on 10-30, one P1 on the 11-02 close). Hermetic: in-memory SQLite, no broker."
+  ]
+}
