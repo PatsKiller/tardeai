@@ -24,7 +24,7 @@ sys.path.insert(0, str(PROJ / "scripts"))
 from db_adapter import _get_conn
 from build_closed_trade_digest import run as build_digest_run, build_digest_message
 from closed_trade_postmortem_model import build_postmortem, build_daily_summary
-from telegram_alert_router import classify_alert, should_send_telegram
+from telegram_alert_router import classify_alert, peek_should_send
 from telegram_alert import send_telegram
 
 
@@ -99,7 +99,7 @@ def run(args):
 
     # Classify
     route_level = classify_alert(message)
-    would_send = should_send_telegram(message)
+    would_send = peek_should_send(message)
     action_count = len(summary.get("trades_needing_review", []))
     lessons_count = len(postmortems)
 
