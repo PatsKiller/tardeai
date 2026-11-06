@@ -33,7 +33,7 @@ if str(ROOT) not in sys.path:
 from scripts.lib.atomic_json_store import atomic_write_bytes, atomic_write_json  # noqa: E402
 
 GOOD = b'{"holdings": [{"symbol": "SCHD", "shares": 100.0}], "portfolio_totals": {"total_value": 12345.67}}'
-PRIOR = b'{"holdings": [{"symbol": "VTI", "shares": 10.0}], "portfolio_totals": {"total_value": 9999.0}}'
+PRIOR = b'{"holdings": [{"symbol": "VTI", "shares": 10.0, "account": "test_acct", "market_value": 9999.0}], "portfolio_totals": {"total_value": 9999.0}}'
 
 
 def _leftover_names(directory: Path) -> list[str]:
@@ -151,6 +151,8 @@ def test_schwab_restore_path_restores_backup_atomically(tmp_path, monkeypatch):
         reason_code = "VALID_COMPLETE"
         reason = "ok"
         total = 9999.0
+        cash_total = 0.0
+        details = {"summed_market_value": 9999.0}
         position_count = 1
         missing_accounts = []
 
@@ -158,6 +160,11 @@ def test_schwab_restore_path_restores_backup_atomically(tmp_path, monkeypatch):
     monkeypatch.setattr(sps, "reconcile_totals", lambda doc, **kw: None)
     monkeypatch.setattr(sps, "_record", lambda *a, **k: None)
     monkeypatch.setattr(sps, "_alert", lambda *a, **k: None)
+
+    def _no_db():
+        raise AssertionError("this test must never reach a database")
+
+    monkeypatch.setattr(sps, "_conn", _no_db)
 
     def boom(path=None, last_good=None):
         raise AssertionError("simulated post-write assert failure")
