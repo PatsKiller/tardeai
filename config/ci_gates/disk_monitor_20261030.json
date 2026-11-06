@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_monitor_20261030",
+  "files": [
+    "tests/test_disk_monitor_20261030.py"
+  ],
+  "anchor": "DISK_MONITOR_20261030",
+  "comment": [
+    "ANCHOR: DISK_MONITOR_20261030 — host-resident disk GROWTH monitor (scripts/disk_monitor.py, config/disk_monitor.json):",
+    "persistent baseline + per-mount/per-hotspot growth vs a rolling window, transition-only Telegram alerts (P2 warn /",
+    "P1 critical) via alert_condition_state dedupe, and a --dry-run that writes and sends nothing. It never deletes —",
+    "it reports the reviewed disk_hygiene reclaim. Hermetic: fake df/du, tmp home/state/alert paths, fake notify."
+  ]
+}

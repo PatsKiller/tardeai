@@ -1,0 +1,770 @@
+#!/usr/bin/env python3
+"""disk_monitor.py — host-resident disk GROWTH monitor: baseline + transition alerts, no deletion.
+
+The n8n band monitor (scripts/disk_usage_monitor.py, lane ``disk-usage-monitor``) fires only when ``/`` crosses
+80/90% used and is gated behind the n8n relay; it keeps no baseline, so a store growing 63 MB/day or a cache that
+doubles between polls is invisible until the band trips. The 2026-10-30 ENOSPC (root hit 98%, holdings.json
+truncated to 0 bytes, Command Center broke) happened with no growth signal at all.
+
+This monitor is host-resident (never n8n, not LLM-heavy), runs a few times a day, and is the growth half of the
+pair:
+
+    python3 scripts/disk_monitor.py                  # default = --dry-run: measure + print, write/send NOTHING
+    python3 scripts/disk_monitor.py --apply          # record the baseline + alert on a TRANSITION + LaneRunReceipt
+    python3 scripts/disk_monitor.py --with-hygiene   # also run scripts/disk_hygiene.py --dry-run and quote it
+
+What it measures (config/config/disk_monitor.json):
+  * df-style used% of each mount (used / (used + available), the same reach disk_usage_monitor uses);
+  * du of each hotspot (the known ENOSPC consumers: ~/.cache, ~/.npm, ~/.codex, ~/.hermes/state.db, ~/logs,
+    ~/worktrees, ~/wt, ~/wt-*, ~/tradeai-wt-*);
+  * per-mount growth vs a rolling ``growth_window_hours`` window and per-hotspot growth vs the persisted baseline.
+
+Baseline: ``<state root>/data/runtime/disk_monitor_baseline.json`` (DiskMonitorBaseline@v1), written atomically.
+The first run seeds it and sends nothing. Later runs alert ONLY on a TRANSITION into warn/critical via
+telegram_alert.send_telegram, deduped by lib/alert_condition_state (condition keys ``host:disk_monitor:<mount>:used``,
+``host:disk_monitor:<mount>:growth``, ``host:disk_monitor_hotspot:<id>``). warn -> P2, critical -> P1 (disk about to
+fill is operator-actionable). It NEVER deletes: the alert names the exact paths + sizes, the reclaimable estimate
+from the latest disk_hygiene manifest, and the operator-gated purge command; ``--with-hygiene`` additionally quotes
+``scripts/disk_hygiene.py --dry-run``.
+
+Fail closed (§7): a mount or hotspot that cannot be measured keeps its prior baseline value and records the failure
+beside it — never an error string in the value slot, never a silent zero. A `du` that exits non-zero is rejected even
+when it printed a partial numeric total (an unreadable descendant is not a smaller directory). A partially measured
+glob is treated as unmeasured (a partial sum would later read as growth). An unmeasurable hotspot is a degradation
+(recorded), not a run failure; an unmeasurable mount, a failed write (baseline, receipt or condition store), or a
+failed/unaccepted send fails the run. A transition whose notification is not accepted is restored in the condition
+store, so the next run retries it instead of suppressing it as an already-seen "ongoing" state.
+
+Alerts are transitions only: there is no heartbeat re-alert, so an unchanged band stays quiet. A hotspot observed
+healthy clears its stored condition, so the next growth episode alerts independently.
+
+Exit: 0 = measured and (in --apply) baseline + receipt written and any due alert accepted; 1 = config unreadable, a
+mount unmeasurable, a write failed (including the condition store), or a send failed/was rejected; 2 = usage.
+MBI_BEHAVIOR = 0. No broker, no DB, no network beyond the Telegram chokepoint (scripts/telegram_alert.py).
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable, Mapping, Optional
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.lib import lane_last_receipt as R  # noqa: E402
+
+LANE_ID = "disk-monitor"
+SCRIPT = "scripts/disk_monitor.py"
+CONFIG_PATH = ROOT / "config" / "disk_monitor.json"
+CONFIG_SCHEMA = "DiskMonitorConfig@v1"
+BASELINE_SCHEMA = "DiskMonitorBaseline@v1"
+BANDS = ("ok", "warn", "critical")
+SKIP_DEPENDENCY = "dependency_unavailable"
+
+
+class ConfigError(ValueError):
+    pass
+
+
+# ── config ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def _expand(p: str, home: Path) -> Path:
+    if p == "~":
+        return home
+    if p.startswith("~/"):
+        return home / p[2:]
+    return Path(p)
+
+
+def hotspot_targets(entry: Mapping[str, Any], home: Path) -> list[Path]:
+    p = _expand(str(entry["path"]), home)
+    if entry.get("glob"):
+        return sorted(x for x in p.parent.glob(p.name) if not x.is_symlink())
+    return [p]
+
+
+def load_config(path: Optional[Path] = None, *, home: Optional[Path] = None) -> dict[str, Any]:
+    """Read config/disk_monitor.json with ``~`` expanded; raises ConfigError when unreadable or incomplete."""
+    p = Path(path) if path else CONFIG_PATH
+    try:
+        raw = p.read_bytes()
+        doc = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigError(f"monitor_config_unreadable:{type(exc).__name__}") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != CONFIG_SCHEMA:
+        raise ConfigError("monitor_config_schema")
+    for key in (
+        "mounts", "warn_pct", "critical_pct", "grow_warn_bytes", "grow_critical_bytes",
+        "hotspot_growth_min_bytes", "hotspot_growth_ratio", "state_name", "producer", "hotspots",
+    ):
+        if key not in doc:
+            raise ConfigError(f"monitor_config_missing:{key}")
+    if not float(doc["warn_pct"]) < float(doc["critical_pct"]):
+        raise ConfigError("monitor_thresholds_out_of_order")
+    h = Path(home) if home else _expand(str(doc.get("home") or "~"), Path.home())
+    doc["_home"] = h
+    doc["_path"] = str(p)
+    doc["_sha256"] = hashlib.sha256(raw).hexdigest()
+    doc["_hotspots"] = [{**e, "_paths": hotspot_targets(e, h)} for e in doc["hotspots"]]
+    return doc
+
+
+# ── measurement (read only) ────────────────────────────────────────────────────────────────────────────────────────
+
+
+def measure_mount(mount: str) -> Optional[dict[str, Any]]:
+    """df-style usage of ``mount`` (used / (used + available)); None when statvfs fails. Mirrors
+    scripts/disk_usage_monitor.measure."""
+    try:
+        st = os.statvfs(mount)
+    except OSError:
+        return None
+    used = (st.f_blocks - st.f_bfree) * st.f_frsize
+    avail = st.f_bavail * st.f_frsize
+    reach = used + avail
+    return {
+        "mount": mount,
+        "used_pct": round(used / reach * 100.0, 2) if reach else 0.0,
+        "used_bytes": used,
+        "avail_bytes": avail,
+        "size_bytes": st.f_blocks * st.f_frsize,
+    }
+
+
+def du_bytes(path: Path, timeout_s: float) -> Optional[int]:
+    """Disk usage (bytes) like ``du -sB1 -x``; None when du fails or times out. Mirrors scripts/disk_hygiene.du_bytes."""
+    try:
+        proc = subprocess.run(["du", "-s", "-B1", "-x", str(path)], capture_output=True, text=True, timeout=timeout_s)  # noqa: S603, S607 -- fixed argv built here, and `du` resolved from PATH deliberately
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        # du did not finish the traversal: an unreadable descendant or a file vanishing mid-walk still lets it
+        # print a PARTIAL numeric total. That partial is not this directory's size; storing it would overwrite a
+        # good baseline and later read the reappearing bytes as growth (a false alert), so reject the measurement.
+        return None
+    try:
+        return int(proc.stdout.split()[0])
+    except (IndexError, ValueError):
+        return None
+
+
+def measure_hotspots(mon: Mapping[str, Any], now: datetime) -> list[dict[str, Any]]:
+    """One row per configured hotspot: total bytes over its (possibly globbed) paths. A path that cannot be measured
+    is counted as unmeasured (fail closed); the row's bytes are the sum of the measured paths, or None when none
+    measured."""
+    to = float(mon.get("du_timeout_s") or 120)
+    out: list[dict[str, Any]] = []
+    for e in mon["_hotspots"]:
+        total = 0
+        measured = 0
+        unmeasured = 0
+        for p in e["_paths"]:
+            b = du_bytes(p, to)
+            if b is None:
+                unmeasured += 1
+            else:
+                total += b
+                measured += 1
+        out.append({
+            "id": e["id"], "path": e["path"], "purge": e.get("purge") or "",
+            # An aggregate over a glob is only a total when EVERY target was measured. A partial sum stored as
+            # valid would later read the reappearing target's existing bytes as new growth (false alert), so a
+            # partial observation is unmeasured: build_baseline keeps the complete prior value and records the
+            # failure beside it.
+            "bytes": total if measured and not unmeasured else None,
+            "measured_paths": measured, "unmeasured": unmeasured,
+            "measured_at": now.isoformat(),
+        })
+    return out
+
+
+# ── bands / flags (pure) ───────────────────────────────────────────────────────────────────────────────────────────
+
+
+def band_of(pct: float, mon: Mapping[str, Any]) -> str:
+    if pct >= float(mon["critical_pct"]):
+        return "critical"
+    if pct >= float(mon["warn_pct"]):
+        return "warn"
+    return "ok"
+
+
+def growth_band(delta: Optional[int], mon: Mapping[str, Any]) -> str:
+    if delta is None:
+        return "unknown"
+    if delta >= int(mon["grow_critical_bytes"]):
+        return "critical"
+    if delta >= int(mon["grow_warn_bytes"]):
+        return "warn"
+    return "ok"
+
+
+def hotspot_flag(cur: Optional[int], base: Optional[int], mon: Mapping[str, Any]) -> str:
+    if cur is None:
+        return "unknown"
+    if base is None or base <= 0:
+        return "new"
+    if cur >= int(mon["hotspot_growth_min_bytes"]) and cur >= float(mon["hotspot_growth_ratio"]) * base:
+        return "growing"
+    return "ok"
+
+
+def condition_key(mount: str, kind: str) -> str:
+    """The stable dedupe key (never a raw percent, never a timestamp): band changes are the only transitions."""
+    return f"host:disk_monitor:{mount}:{kind}"
+
+
+# ── baseline ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def baseline_path(state_root: Optional[Path], mon: Mapping[str, Any]) -> Path:
+    return R.runtime_dir(state_root) / mon["state_name"]
+
+
+def load_baseline(state_root: Optional[Path], mon: Mapping[str, Any]) -> dict[str, Any]:
+    p = baseline_path(state_root, mon)
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) and doc.get("schema") == BASELINE_SCHEMA else {}
+
+
+def growth_reference_sample(baseline: Mapping[str, Any], mon: Mapping[str, Any], now: datetime,
+                            mount: str) -> Optional[tuple[int, Optional[float]]]:
+    """The reference ``used_bytes`` and the epoch it was measured at — the elapsed time is the rate's denominator.
+
+    The sample is the earliest within growth_window_hours, so the delta spans as much of the window as the samples
+    allow. That does not make the interval the window: a sample four hours old measures four hours of growth, and
+    dividing it by 24 understates the rate six-fold (cloud ticket at 8aaa00c45: 20 GiB over 4h reported as
+    "20 GiB/day over 24h" when the truth is 120 GiB/day). The baseline mount value carries no time of its own, so its
+    epoch is None and the caller falls back to the configured window — saying so, not guessing.
+    """
+    window = float(mon.get("growth_window_hours") or 24) * 3600.0
+    best: Optional[tuple[float, int]] = None
+    for s in baseline.get("samples") or []:
+        try:
+            at = datetime.fromisoformat(str(s.get("at"))).timestamp()
+        except (ValueError, TypeError):
+            continue
+        v = (s.get("mounts") or {}).get(mount)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and now.timestamp() - window <= at <= now.timestamp():
+            if best is None or at < best[0]:
+                best = (at, int(v))
+    if best is not None:
+        return best[1], best[0]
+    m = (baseline.get("mounts") or {}).get(mount) or {}
+    if isinstance(m.get("used_bytes"), (int, float)) and not isinstance(m.get("used_bytes"), bool):
+        return int(m["used_bytes"]), None
+    return None
+
+
+def growth_reference(baseline: Mapping[str, Any], mon: Mapping[str, Any], now: datetime, mount: str) -> Optional[int]:
+    """The reference ``used_bytes`` only. See :func:`growth_reference_sample` for the epoch the rate needs."""
+    sample = growth_reference_sample(baseline, mon, now, mount)
+    return sample[0] if sample is not None else None
+
+
+def evaluate(baseline: Mapping[str, Any], mounts: list[dict], hotspots: list[dict],
+             mon: Mapping[str, Any], now: datetime) -> dict[str, Any]:
+    """Pure: turn raw measurements into bands, growth deltas and hotspot flags. No I/O."""
+    rows: list[dict[str, Any]] = []
+    for m in mounts:
+        if "used_pct" not in m:
+            rows.append({"mount": m["mount"], "error": m["error"]})
+            continue
+        sample = growth_reference_sample(baseline, mon, now, m["mount"])
+        ref, ref_at = sample if sample is not None else (None, None)
+        delta = (m["used_bytes"] - ref) if ref is not None else None
+        window = float(mon.get("growth_window_hours") or 24)
+        # The denominator is the interval actually observed. With no reference time (the baseline mount value, or a
+        # sample with no readable clock) it is the configured window, and `growth_interval_source` says which.
+        elapsed_hours = ((now.timestamp() - ref_at) / 3600.0) if ref_at is not None else window
+        interval_source = "sample" if ref_at is not None else "window"
+        if elapsed_hours <= 0:
+            # A zero-length observation cannot express a per-day rate; say unknown instead of dividing by it.
+            rate, elapsed_hours, interval_source = None, None, "unknown"
+        else:
+            rate = (delta / elapsed_hours * 24) if delta is not None else None
+        rows.append({
+            **m,
+            "used_band": band_of(m["used_pct"], mon),
+            "growth_band": growth_band(delta, mon),
+            "delta_bytes": delta,
+            "rate_bytes_per_day": rate,
+            "growth_interval_hours": elapsed_hours,
+            "growth_interval_source": interval_source,
+        })
+    base_hs: dict[str, Any] = {}
+    for hid, entry in (baseline.get("hotspots") or {}).items():
+        if isinstance(entry, dict):
+            base_hs[hid] = entry.get("bytes")
+    hs: list[dict[str, Any]] = []
+    for h in hotspots:
+        base = base_hs.get(h["id"])
+        hs.append({**h, "baseline_bytes": base, "flag": hotspot_flag(h["bytes"], base, mon)})
+    return {"mounts": rows, "hotspots": hs}
+
+
+def build_baseline(mon: Mapping[str, Any], mounts: list[dict], hotspots: list[dict],
+                   now: datetime, previous: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    prev = dict(previous or {})
+    mounts_map = dict(prev.get("mounts") or {})
+    for m in mounts:
+        if "used_pct" not in m:
+            continue
+        mounts_map[m["mount"]] = {
+            "used_bytes": m["used_bytes"], "used_pct": m["used_pct"],
+            "size_bytes": m["size_bytes"], "avail_bytes": m["avail_bytes"],
+            "recorded_at": now.isoformat(),
+        }
+    hs_map = dict(prev.get("hotspots") or {})
+    for h in hotspots:
+        if h["bytes"] is None:
+            # fail closed: keep the prior value, record the failure beside it — never the error as the value
+            prior = hs_map.get(h["id"]) or {}
+            hs_map.setdefault(h["id"], {"bytes": prior.get("bytes"), "path": h["path"]})
+            # the row always carries this count; if it ever does not, record the absence as unknown
+            hs_map[h["id"]]["unmeasured"] = h.get("unmeasured")
+            hs_map[h["id"]]["last_failure"] = now.isoformat()
+            continue
+        hs_map[h["id"]] = {"bytes": h["bytes"], "path": h["path"], "recorded_at": now.isoformat()}
+    samples = [s for s in (prev.get("samples") or []) if isinstance(s, dict)]
+    samples.append({
+        "at": now.isoformat(),
+        "mounts": {m["mount"]: m["used_bytes"] for m in mounts if "used_pct" in m},
+        "hotspots": {h["id"]: h["bytes"] for h in hotspots},
+    })
+    samples = samples[-int(mon.get("samples_to_keep") or 8):]
+    return {
+        "schema": BASELINE_SCHEMA,
+        "baseline_at": prev.get("baseline_at") or now.isoformat(),
+        "updated_at": now.isoformat(),
+        "mounts": mounts_map,
+        "hotspots": hs_map,
+        "samples": samples,
+    }
+
+
+# ── hygiene reclaim estimate (read only) ───────────────────────────────────────────────────────────────────────────
+
+
+def latest_manifest(state_root: Optional[Path], mon: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+    root = state_root if state_root else R.runtime_dir(None).parent.parent
+    p = root / mon["hygiene_manifest_rel"]
+    try:
+        m = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError):
+        return None
+    t = m.get("totals") or {}
+    return {
+        "generated_at": m.get("generated_at"),
+        "candidates": t.get("candidates"),
+        "reclaimable_bytes": t.get("reclaimable_bytes"),
+    }
+
+
+def hygiene_dry_run(mon: Mapping[str, Any]) -> str:
+    """Run scripts/disk_hygiene.py --dry-run --report (read only) and return its combined output."""
+    rules = ROOT / mon.get("hygiene_rules_rel", "config/disk_hygiene_rules.json")
+    cmd = [sys.executable, str(ROOT / "scripts" / "disk_hygiene.py"), "--dry-run", "--report", "--rules", str(rules)]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=float(mon.get("du_timeout_s") or 600))  # noqa: S603 -- argv built in this function; S607 anchors on the argv line above
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f"hygiene_dry_run_unavailable:{type(exc).__name__}"
+    out = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
+    return out.strip() or f"hygiene_dry_run_empty_rc:{proc.returncode}"
+
+
+def purge_command(mon: Mapping[str, Any]) -> str:
+    return mon.get("purge_command", "").replace("{py}", sys.executable)
+
+
+# ── alert text ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def _gb(n: Optional[int]) -> str:
+    """Gigabytes — or the word, when the measurement is missing. `(n or 0)` printed an unmeasured directory as
+    `0.0G`, which is a confident zero about something never observed (taxonomy #2)."""
+    return "size unknown" if n is None else f"{n / 1024**3:.1f}G"
+
+
+def _gb_delta(n: Optional[int]) -> str:
+    """A signed change, or the word. A growth alert that cannot compute growth must say so."""
+    return "change unknown" if n is None else f"+{n / 1024**3:.1f}G"
+
+
+def mount_alert_text(m: Mapping[str, Any], mon: Mapping[str, Any],
+                     manifest: Optional[Mapping[str, Any]], hotspots: list[dict]) -> tuple[str, str]:
+    """(subject, summary) for a mount transition. The subject names what actually tripped (used% and/or growth),
+    never a bare threshold on the wrong axis."""
+    mount = m["mount"]
+    used = m["used_band"]
+    growth = m["growth_band"]
+    if used == "ok" and growth == "ok":
+        subject = f"Disk {mount} recovered: below {float(mon['warn_pct']):.0f}% used"
+    else:
+        sev = "critical" if "critical" in (used, growth) else "warn"
+        triggers: list[str] = []
+        if used != "ok":
+            thr = float(mon["critical_pct"] if used == "critical" else mon["warn_pct"])
+            triggers.append(f"used at or above {thr:.0f}%")
+        if growth not in ("ok", "unknown"):
+            gthr = int(mon["grow_critical_bytes"] if growth == "critical" else mon["grow_warn_bytes"])
+            triggers.append(f"growth at or above {_gb(gthr)}/{float(mon.get('growth_window_hours') or 24):.0f}h")
+        subject = f"Disk {mount} {sev.upper()}: " + " and ".join(triggers)
+    parts = [f"{m['used_pct']:.1f}% used, {_gb(m['avail_bytes'])} free of {_gb(m['size_bytes'])}"]
+    if m.get("delta_bytes") is not None:
+        # The interval named here is the one actually observed, not the configured window: a four-hour-old sample
+        # reported "over 24h" states a rate six times too low, and that is the claim the operator reads.
+        interval = m.get("growth_interval_hours")
+        if interval is None:
+            parts.append(f"growth {_gb(m['delta_bytes'])} (rate unknown: no elapsed interval was observed)")
+        else:
+            parts.append(f"growth {_gb(m['delta_bytes'])} over {interval:.1f}h"
+                         f" (rate {_gb(m.get('rate_bytes_per_day'))}/day)")
+    if hotspots:
+        parts.append("top: " + ", ".join(f"{h['id']} {_gb(h['bytes'])}" for h in hotspots))
+    if manifest and manifest.get("reclaimable_bytes") is not None:
+        parts.append(f"reclaimable {_gb(manifest['reclaimable_bytes'])} in {manifest.get('candidates')} items"
+                     f" per hygiene manifest {str(manifest.get('generated_at') or '')[:16]} (apply is operator-gated)")
+    parts.append("purge: " + purge_command(mon))
+    return subject, "; ".join(parts)
+
+
+def hotspot_alert_text(h: Mapping[str, Any]) -> str:
+    baseline = h.get("baseline_bytes")
+    delta = None if h["bytes"] is None or baseline is None else h["bytes"] - baseline
+    return (f"Hotspot {h['id']} growing: {_gb(h['bytes'])} now (baseline {_gb(baseline)},"
+            f" {_gb_delta(delta)}); purge: {h.get('purge') or 'none'}")
+
+
+# ── notify ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def default_notify(text: str, priority: str) -> str:
+    try:
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from telegram_alert import send_telegram  # noqa: PLC0415 (host-only lane; never an n8n closure)
+
+        ok = send_telegram(text, message_class="operator_alert", priority=priority, producer="disk_monitor")
+        return "accepted" if ok else "send_returned_false"
+    except Exception as exc:  # noqa: BLE001 -- alerting never raises past the monitor
+        return f"error:{type(exc).__name__}"
+
+
+def _observe(key: str, band: str, alertable: bool, mon: Mapping[str, Any],
+             state_path: Optional[Path], extra: Mapping[str, Any]) -> dict[str, Any]:
+    from scripts.lib.alert_condition_state import observe
+
+    try:
+        # No heartbeat interval: this monitor alerts on TRANSITIONS only. Passing a min_realert_minutes would
+        # re-alert an unchanged warn/critical band after the interval, while --dry-run's _predict_notify can
+        # never predict a heartbeat (it does not advance the real clock). Omit it so apply and dry-run agree.
+        return observe(key, band, alertable=alertable, path=state_path, extra=dict(extra))
+    except Exception as exc:  # noqa: BLE001 -- a dedupe-state failure never suppresses measurement
+        return {"action": "error", "notify": False, "error": type(exc).__name__, "key": key, "state": band}
+
+
+def _load_condition(state_path: Optional[Path]) -> dict[str, Any]:
+    """Read-only peek at the dedupe store (never writes). A dry run predicts its sends from this, so --dry-run
+    exercises the real transition rule without mutating the store (AGENTS.md §6: a dry run must not reach the write)."""
+    try:  # nosemgrep: tq-py-broad-except-returns-default -- unknown predicts a notification, never a suppression
+        from scripts.lib.alert_condition_state import load_store
+
+        return (load_store(state_path) or {}).get("conditions") or {}
+    except Exception:  # noqa: BLE001 -- a read failure must predict a notification, never a suppression
+        # An unreadable store yields "no prior condition", so the dry run PREDICTS A SEND rather than none: the
+        # failure direction is towards telling the operator, not towards silence. A confident empty state would only
+        # be wrong in the safe direction, which is why this is suppressed rather than turned into an exception the
+        # read-only path would have to handle for nothing.
+        return {}
+
+
+def _condition_snapshot(state_path: Optional[Path], key: str) -> Optional[dict[str, Any]]:
+    """The stored record for ``key`` before this run observes it, or None when the key was absent. A send that is
+    not accepted restores this exact record: a transition must not be consumed by a failed notification."""
+    rec = _load_condition(state_path).get(key)
+    return dict(rec) if isinstance(rec, dict) else None
+
+
+def _restore_condition(state_path: Optional[Path], key: str,
+                       snapshot: Optional[Mapping[str, Any]]) -> None:
+    """Put ``key``'s record back exactly as it was before an unaccepted send, so the next run sees the same
+    transition (new/reversed/recovered) instead of a consumed "ongoing" state that never retries. Writes the
+    store, so it is only called on the apply path; a write failure here is a run failure (never swallowed)."""
+    from scripts.lib.alert_condition_state import load_store, save_store
+
+    data = load_store(state_path)
+    conds = data.setdefault("conditions", {})
+    if snapshot is None:
+        conds.pop(key, None)
+    else:
+        conds[key] = dict(snapshot)
+    save_store(data, state_path)
+
+
+def _restore_pending(state_path: Optional[Path],
+                     entries: "tuple[tuple[str, Optional[Mapping[str, Any]], Mapping[str, Any]], ...]") -> int:
+    """Restore every observed record whose alert was not accepted; returns how many restores failed. An observe
+    that errored never persisted anything, so it is skipped (the next run retries it on its own)."""
+    failed = 0
+    for key, snapshot, obs in entries:
+        if obs.get("action") == "error":
+            continue
+        try:
+            _restore_condition(state_path, key, snapshot)
+        except Exception:  # noqa: BLE001 -- a failed rollback is itself a run failure, never swallowed
+            failed += 1
+    return failed
+
+
+def _predict_notify(prev: Optional[Mapping[str, Any]], band: str, alertable: bool) -> bool:
+    """Whether ``observe()`` would notify for a transition, given the stored prior record (no write, no heartbeat
+    re-alert — a dry run never advances the real clock)."""
+    if prev is None:
+        return bool(alertable)
+    prev_state = prev.get("state")
+    prev_alertable = bool(prev.get("alertable")) if prev else None
+    if prev_state == band and bool(prev_alertable) == bool(alertable):
+        return False  # ongoing: no new event
+    if prev_alertable and not alertable:
+        return True  # recovered
+    if prev_state != band:
+        return bool(alertable)  # new / reversed / cleared
+    return bool(alertable)  # same state string, alertable flipped False -> True
+
+
+def _transition(apply: bool, key: str, band: str, alertable: bool, mon: Mapping[str, Any],
+                state_path: Optional[Path], extra: Mapping[str, Any]) -> dict[str, Any]:
+    """observe (write) in --apply, predict (read-only) in --dry-run. Same transition rule either way."""
+    if apply:
+        return _observe(key, band, alertable, mon, state_path, extra)
+    prev = _load_condition(state_path).get(key)
+    return {"notify": _predict_notify(prev, band, alertable), "action": "dry-run-predicted",
+            "key": key, "state": band}
+
+
+# ── run ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def run(
+    *,
+    mon: Mapping[str, Any],
+    state_root: Optional[Path],
+    apply: bool,
+    now: datetime,
+    wall_start: Optional[datetime] = None,
+    notify: Optional[Callable[[str, str], str]] = None,
+    alert_state_path: Optional[Path] = None,
+    with_hygiene: bool = False,
+) -> int:
+    notify = notify or default_notify  # resolved at call time so tests can monkeypatch module.default_notify
+    wall_start = wall_start or datetime.now(timezone.utc)
+    failures = 0
+    mounts: list[dict[str, Any]] = []
+    for mount in mon["mounts"]:
+        m = measure_mount(mount)
+        if m is None:
+            mounts.append({"mount": mount, "error": "statvfs_failed"})
+            failures += 1
+        else:
+            mounts.append(m)
+    hotspots = measure_hotspots(mon, now)
+    degraded_hotspots = sum(1 for h in hotspots if h["bytes"] is None)  # fail-closed, not a run failure (§7)
+    manifest = latest_manifest(state_root, mon)
+    hygiene_out = hygiene_dry_run(mon) if with_hygiene else None
+    baseline = load_baseline(state_root, mon)
+    ev = evaluate(baseline, mounts, hotspots, mon, now)
+    next_baseline = build_baseline(mon, mounts, hotspots, now, baseline or None)
+    bpath = baseline_path(state_root, mon)
+
+    sends: list[dict[str, Any]] = []
+    if baseline:
+        top_hotspots = sorted((h for h in ev["hotspots"] if h["bytes"] is not None),
+                              key=lambda h: -h["bytes"])[: int(mon.get("top_consumers") or 5)]
+        # mount used-band + growth-band, one alert per mount per transition
+        for m in ev["mounts"]:
+            if "used_pct" not in m:
+                continue
+            used_key = condition_key(m["mount"], "used")
+            grow_key = condition_key(m["mount"], "growth")
+            used_prev = _condition_snapshot(alert_state_path, used_key) if apply else None
+            grow_prev = _condition_snapshot(alert_state_path, grow_key) if apply else None
+            used_obs = _transition(apply, used_key, m["used_band"],
+                                   m["used_band"] != "ok", mon, alert_state_path, {"used_pct": m["used_pct"]})
+            grow_obs = _transition(apply, grow_key, m["growth_band"],
+                                   m["growth_band"] not in ("ok", "unknown"),
+                                   mon, alert_state_path, {"delta_bytes": m.get("delta_bytes")})
+            # a condition store that cannot be written is a run failure, not a silent no-alert
+            failures += sum(1 for o in (used_obs, grow_obs) if o.get("action") == "error")
+            if used_obs.get("notify") or grow_obs.get("notify"):
+                subject, summary = mount_alert_text(m, mon, manifest, top_hotspots)
+                priority = "P1" if "critical" in (m["used_band"], m["growth_band"]) else "P2"
+                if not apply:
+                    sends.append({"kind": "mount", "subject": subject, "summary": summary, "priority": priority})
+                    continue
+                body = subject + "\n" + summary
+                if with_hygiene and hygiene_out:
+                    body += "\n" + hygiene_out[:1500]
+                outcome = notify(body, priority)
+                sends.append({"kind": "mount", "subject": subject, "summary": summary, "priority": priority,
+                              "outcome": outcome})
+                if outcome != "accepted":
+                    # any non-accepted outcome (a transport error OR send_telegram returning False) means the
+                    # operator was not told: the run must not report healthy, and the observed transitions must be
+                    # put back so the next run retries them instead of suppressing them as an "ongoing" no-op
+                    failures += 1
+                    failures += _restore_pending(alert_state_path,
+                                                 ((used_key, used_prev, used_obs), (grow_key, grow_prev, grow_obs)))
+        # hotspot growth, P2 (diagnostic; the mount alert is the actionable one). Observe healthy flags with
+        # alertable=False too, so recovery clears the persisted condition and a later growth episode is a fresh
+        # transition instead of a suppressed "ongoing" one. An unmeasurable ("unknown") hotspot changes nothing:
+        # it is a degradation, not evidence of recovery.
+        for h in ev["hotspots"]:
+            if h["flag"] == "unknown":
+                continue
+            alertable = h["flag"] in ("growing", "new")
+            key = condition_key(h["id"], "hotspot")
+            prev = _condition_snapshot(alert_state_path, key) if apply else None
+            obs = _transition(apply, key, h["flag"], alertable, mon,
+                              alert_state_path,
+                              {"bytes": h["bytes"], "baseline_bytes": h.get("baseline_bytes")})
+            if obs.get("action") == "error":
+                failures += 1  # the condition could not be persisted: the run must not report healthy
+            if not alertable or not obs.get("notify"):
+                continue
+            if not apply:
+                sends.append({"kind": "hotspot", "hotspot": h["id"], "priority": "P2",
+                              "summary": hotspot_alert_text(h)})
+                continue
+            outcome = notify(hotspot_alert_text(h), "P2")
+            sends.append({"kind": "hotspot", "hotspot": h["id"], "priority": "P2", "outcome": outcome})
+            if outcome != "accepted":
+                failures += 1
+                failures += _restore_pending(alert_state_path, ((key, prev, obs),))
+
+    report = {
+        "dry_run": not apply,
+        "mode": "apply" if apply else "dry-run",
+        "now": now.isoformat(),
+        "host": os.uname().nodename if hasattr(os, "uname") else "",
+        "config": mon["_path"],
+        "baseline": str(bpath),
+        "first_run": not baseline,
+        "mounts": ev["mounts"],
+        "hotspots": ev["hotspots"],
+        "manifest": manifest,
+        "hygiene_dry_run": hygiene_out,
+        "would_send": sends if not apply else None,
+        "sent": sends if apply else None,
+        "degraded_hotspots": degraded_hotspots,
+        "failures": failures,
+    }
+    if not apply:
+        R.dry_run_report(
+            LANE_ID,
+            {k: report[k] for k in ("mounts", "hotspots", "manifest", "would_send", "first_run",
+                                    "degraded_hotspots", "failures")},
+            would_write=[str(bpath), str(R.receipt_path(LANE_ID, state_root))],
+            receipt=R.receipt_path(LANE_ID, state_root),
+        )
+        print(json.dumps(report, default=str))
+        return 0 if failures == 0 else 1
+
+    try:
+        from scripts.lib.atomic_json_store import atomic_write_json
+
+        atomic_write_json(bpath, next_baseline, indent=1)
+    except OSError as exc:
+        report["error"] = f"baseline_write_failed:{type(exc).__name__}"
+        failures += 1
+    report["failures"] = failures  # surface a late baseline-write failure in the reported outcome
+    measured = sum(1 for m in ev["mounts"] if "used_pct" in m)
+    ok = failures == 0
+    receipt = R.write_lane_receipt(
+        LANE_ID,
+        ok=ok,
+        exit_code=0 if ok else 1,
+        started_at=wall_start,
+        script=SCRIPT,
+        summary={k: report[k] for k in ("mounts", "hotspots", "sent", "first_run", "degraded_hotspots",
+                                        "failures", "manifest")},
+        error=report.get("error"),
+        path=R.receipt_path(LANE_ID, state_root),
+        output={"produced_count": measured, "attempted_count": len(mon["mounts"]),
+                "skipped_reasons": {SKIP_DEPENDENCY: len(mon["mounts"]) - measured} if measured < len(mon["mounts"]) else {},
+                "empty_reason": None,
+                "output_evidence": [{"kind": "file", "ref": str(bpath)}]},
+    )
+    if receipt is None:
+        # a run whose durable receipt could not be written must fail: silence here means the operator (and every
+        # receipt reader) sees a stale or missing record while the run reports success
+        failures += 1
+        ok = False
+        report["failures"] = failures
+        report["error"] = report.get("error") or "lane_receipt_write_failed"
+    print(json.dumps(report, default=str))
+    return 0 if ok else 1
+
+
+# ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def _parse_now(text: Optional[str]) -> Optional[datetime]:
+    if not text:
+        return datetime.now(timezone.utc)
+    try:
+        d = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return d if d.tzinfo else None
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    g = ap.add_mutually_exclusive_group()
+    g.add_argument("--dry-run", action="store_true", help="the default: measure + print; write and send nothing")
+    g.add_argument("--apply", action="store_true", help="record the baseline + alert on a transition + receipt")
+    ap.add_argument("--with-hygiene", action="store_true", help="also run scripts/disk_hygiene.py --dry-run and quote it")
+    ap.add_argument("--config", help="config file (default config/disk_monitor.json)")
+    ap.add_argument("--state-root", help="persistent-state root (default TRADEAI_STATE_ROOT / resolver)")
+    ap.add_argument("--home", help=argparse.SUPPRESS)  # tests
+    ap.add_argument("--now", help=argparse.SUPPRESS)  # tests: aware ISO 8601
+    ap.add_argument("--alert-state", help=argparse.SUPPRESS)  # tests
+    try:
+        a = ap.parse_args(argv)
+    except SystemExit as exc:
+        return 2 if exc.code else 0
+    wall_start = datetime.now(timezone.utc)
+    now = _parse_now(a.now)
+    if now is None:
+        print("--now must be an aware ISO 8601 timestamp", file=sys.stderr)
+        return 2
+    try:
+        mon = load_config(Path(a.config) if a.config else None, home=Path(a.home) if a.home else None)
+    except ConfigError as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}))
+        return 1
+    return run(
+        mon=mon,
+        state_root=Path(a.state_root) if a.state_root else None,
+        apply=bool(a.apply),
+        now=now,
+        wall_start=wall_start,
+        alert_state_path=Path(a.alert_state) if a.alert_state else None,
+        with_hygiene=a.with_hygiene,
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
