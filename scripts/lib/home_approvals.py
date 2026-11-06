@@ -66,6 +66,7 @@ ACTION_TYPES: dict[str, str] = {
     "install_schedule": "install one reviewed scheduler line already in the lane registry",
     "restore_store": "run a reviewed restore packet (dry-run diff shown, evidence copy, rollback)",
     "policy_approval": "record the APPROVE line for an AGENTS/policy PR at its exact head",
+    "backup_n8n": "take one n8n backup now (database dump, data volume, workflow export, Drive copy)",
 }
 
 REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
@@ -76,6 +77,7 @@ REQUIRED_FACTS: dict[str, tuple[str, ...]] = {
     "install_schedule": ("lane_id", "schedule_expression", "file_sha256"),
     "restore_store": ("packet_sha256",),
     "policy_approval": ("pr", "head_sha"),
+    "backup_n8n": ("reason",),
 }
 
 STATES = ("open", "approved", "executing", "executed", "failed", "declined", "expired", "cancelled")
