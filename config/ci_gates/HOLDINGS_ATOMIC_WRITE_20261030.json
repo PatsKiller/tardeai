@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HOLDINGS_ATOMIC_WRITE_20261030",
+  "files": [
+    "tests/test_holdings_atomic_write_20261030.py"
+  ],
+  "anchor": "HOLDINGS_ATOMIC_WRITE_20261030",
+  "comment": [
+    "ANCHOR: HOLDINGS_ATOMIC_WRITE_20261030 — DSN-20261030: disk ENOSPC during a deploy truncated",
+    "holdings.json (and ticker_snapshot_latest.json / finviz_quote_cache.json) to 0 bytes because two write",
+    "paths were non-atomic (truncate-then-write). The fix routes both through scripts/lib/atomic_json_store.",
+    "atomic_write_bytes (temp + fsync + os.replace): the repricer holdings refresh and the schwab_position_sync",
+    "backup restore. Hermetic: tmp_path + monkeypatched os.replace/os.fsync and side-effect writers; no live",
+    "holdings.json, no broker, no network, no DB."
+  ]
+}
