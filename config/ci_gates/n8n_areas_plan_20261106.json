@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_areas_plan_20261106",
+  "files": [
+    "tests/test_n8n_areas_plan_20261106.py"
+  ],
+  "anchor": "N8N_AREAS_PLAN_20261106",
+  "comment": [
+    "ANCHOR: N8N_AREAS_PLAN_20261106 - n8n 0.1g: every workflow maps to exactly one of the seven areas; the plan reports duplicates, unmapped and absent workflows and lists the ones still in the root list; it never writes."
+  ]
+}

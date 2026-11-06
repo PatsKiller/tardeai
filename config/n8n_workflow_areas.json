@@ -1,0 +1,70 @@
+{
+ "schema": "N8nWorkflowAreas@v1",
+ "as_of": "2026-11-06",
+ "_why": "n8n program 0.1g: every workflow belongs to exactly one area; the area is its folder and its tag. Checked by scripts/n8n_areas_plan.py against the live workflow list.",
+ "areas": {
+  "Trading alerts": [
+   "tradeai-momentum-lifecycle-candidate",
+   "tradeai-approval-router",
+   "tradeai-event-router",
+   "finviz-view-contracts-shadow",
+   "catalyst-calibration-monitor-shadow",
+   "watch-directives-monitor-shadow"
+  ],
+  "Risk": [
+   "governance-pipeline-shadow",
+   "lane-governance-packet-weekly-shadow",
+   "after-close-pipeline-broker-truth-shadow"
+  ],
+  "Rotation": [
+   "portfolio-daily-cadence-shadow",
+   "portfolio-weekly-cadence-shadow",
+   "portfolio-monthly-cadence-shadow",
+   "portfolio-lookthrough-cadence-shadow",
+   "after-close-pipeline-planning-shadow"
+  ],
+  "Data feeds": [
+   "premarket-data-pipeline-shadow",
+   "after-close-pipeline-close-capture-shadow",
+   "n8n-research-intake-consumer",
+   "n8n-research-intake-consumer-shadow",
+   "source-attribution-monitor-shadow",
+   "hermes-learning-pipeline-learn-shadow",
+   "hermes-learning-pipeline-tune-shadow",
+   "hermes-overnight-pipeline-close-shadow",
+   "hermes-overnight-pipeline-night-shadow",
+   "tradeai-fabric-hermes-learning"
+  ],
+  "Health & watchdogs": [
+   "n8n-incident-fanin",
+   "n8n-incident-fanin-shadow",
+   "n8n-lab-watchdog-shadow",
+   "n8n-monitor-dof",
+   "n8n-monitor-trade-ai",
+   "tradeai-heartbeat-watcher",
+   "tradeai-incident-router",
+   "tradeai-fabric-error",
+   "tradeai-fabric-error-probe",
+   "crontab-snapshot-for-health-agent",
+   "crontab-snapshot-for-health-agent-shadow",
+   "maturity-remeasure",
+   "maturity-remeasure-shadow",
+   "n8n-bench-error"
+  ],
+  "Digests": [
+   "generate-analyst-daily-digest-shadow",
+   "tradeai-digest-scheduler"
+  ],
+  "Platform": [
+   "platform-maintenance-monthly-shadow",
+   "platform-maintenance-nightly-shadow",
+   "platform-maintenance-weekly-shadow",
+   "tradeai-dispatcher",
+   "tradeai-fabric-run-lane",
+   "tradeai-fabric-run-lane-probe",
+   "n8n-pilot-dispatch",
+   "n8n-pilot-dispatch-shadow",
+   "n8n-bench-nodes"
+  ]
+ }
+}
