@@ -12,7 +12,9 @@ import types
 from pathlib import Path
 
 import pytest
-from psycopg2 import sql
+# CI's plain shards do not install psycopg2; this line routes the file to the Postgres shard (scripts/lib/ci_shards.py).
+pytest.importorskip("psycopg2")
+from psycopg2 import sql  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
