@@ -23,8 +23,11 @@ export type DeskDecision = { id: string; title: string; detail?: string; href?: 
 /** FQ-023 (2026-11-04): the panel printed the writer's own vocabulary — "Writer ACTIVE", "Writer · 2", "Last successful
  *  run: not measured". That is the producer's state, not the operator's. These two helpers say what the writer is and
  *  what it costs when it has not run; the raw lane id and state stay in the element's title. */
+// ACTIVE is the lane registry's enablement flag, not evidence that the writer has run. Rendering it as "running"
+// claimed a liveness the record does not establish; the row's own "last succeeded …" / "No successful run is
+// recorded" line is what speaks about liveness.
 const WRITER_STATE: Record<string, string> = {
-  ACTIVE: 'running', PAUSED: 'paused', RETIRED: 'retired', NONE: 'not set up', ERROR: 'failing', STALE: 'overdue',
+  ACTIVE: 'enabled', PAUSED: 'paused', RETIRED: 'retired', NONE: 'not set up', ERROR: 'failing', STALE: 'overdue',
 }
 export function writerStateLabel(state: string | null | undefined): string {
   const k = String(state ?? '').trim().toUpperCase()
@@ -172,7 +175,10 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
               )}
               {writer?.last_success_at && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>At <ReadableTime value={writer.last_success_at} /></div>}
               {writer?.evidence_as_of && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
-              {writer?.reason && !writer?.last_success_at && <div style={{ color: BB.text3, marginTop: 2, fontSize: TYPE.sm }}>{writer.reason}</div>}
+              {/* A past success is evidence the lane once worked, not an explanation of why it is not current now, so it
+                  must not suppress the producer's reason. The producer's own "no successful run" wording is skipped in
+                  the one case the amber line above already states it; a NONE/unreadable registry state always explains. */}
+              {writer?.reason && (writer?.last_success_at || writer?.state === 'NONE' || !writer?.state) && <div style={{ color: BB.text3, marginTop: 2, fontSize: TYPE.sm }}>{writer.reason}</div>}
             </div>)}
             {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
           </article>

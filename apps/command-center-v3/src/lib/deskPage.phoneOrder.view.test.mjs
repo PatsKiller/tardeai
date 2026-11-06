@@ -122,9 +122,37 @@ check('writer jargon is gone and the lane is named in words', () => {
   const t = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
   assert.doesNotMatch(t, /Writer ACTIVE/, 'raw writer state is still the label')
   assert.doesNotMatch(t, /Last successful run:/, 'raw writer label is still printed')
-  assert.match(t, /Schwab position sync is running/, 'the lane is not named in words')
+  assert.match(t, /Schwab position sync is enabled/, 'the lane is not named in words')
+  // ACTIVE is a registry enablement flag. This fixture carries no run evidence at all, so "running" would be a claim
+  // the record does not make — and the suite must catch the old word if it comes back.
+  assert.doesNotMatch(t, /Schwab position sync is running/, 'a registry flag was rendered as runtime liveness')
   assert.match(t, /cannot be confirmed current/, 'the consequence is not stated')
   assert.match(html, /title="schwab-position-sync"/, 'the raw lane id is not kept')
+})
+check('a past success does not suppress why the writer is not current now', () => {
+  // The producer's reason was rendered only when `last_success_at` was null, so a lane that is NOT SET UP but ran in
+  // the past printed "is not set up · last succeeded 7h ago" and never said why it is not set up.
+  globalThis.__deskWriterFixture = { ok: true, data: { writers: [{ lane_id: 'schwab-position-sync', state: 'NONE',
+    last_success_at: '2026-11-05T09:30:00Z', evidence_as_of: null, reason: 'No scheduled writer is registered for this source.' }] } }
+  PHONE = false
+  const props = { title: 'Defense', purpose: 'p', tabs: [], sources: [{ id: 'holdings', label: 'Holdings', laneIds: ['schwab-position-sync'] }],
+    children: React.createElement('div', null, 'x') }
+  const html = renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/defense'] }, React.createElement(DeskPage, props)))
+  const t = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  assert.match(t, /Schwab position sync is not set up/, 'the state is not stated')
+  assert.match(t, /last succeeded/, 'the past run is hidden')
+  assert.match(t, /No scheduled writer is registered for this source/, 'a past success suppressed the reason')
+})
+check('an enabled writer with no run does not repeat the same sentence twice', () => {
+  globalThis.__deskWriterFixture = { ok: true, data: { writers: [{ lane_id: 'schwab-position-sync', state: 'ACTIVE',
+    last_success_at: null, evidence_as_of: null, reason: 'No successful run is recorded in the available execution evidence.' }] } }
+  PHONE = false
+  const props = { title: 'Defense', purpose: 'p', tabs: [], sources: [{ id: 'holdings', label: 'Holdings', laneIds: ['schwab-position-sync'] }],
+    children: React.createElement('div', null, 'x') }
+  const html = renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/defense'] }, React.createElement(DeskPage, props)))
+  const t = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+  const occurrences = (t.match(/No successful run is recorded/g) || []).length
+  assert.equal(occurrences, 1, `the no-run sentence is printed ${occurrences} times: ${t}`)
 })
 
 const results = []
