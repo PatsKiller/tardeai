@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_filters_compact_20261104",
+  "files": [
+    "tests/test_watchlist_filters_compact_20261104.py"
+  ],
+  "anchor": "WATCHLIST_FILTERS_COMPACT_20261104",
+  "comment": [
+    "ANCHOR: WATCHLIST_FILTERS_COMPACT_20261104 — FQ-077: at phone width the WHOLE filter toolbar is inside the disclosure (cc-deepseek-5 R1: a summary beside the toolbar left the same wall of controls under it), the active chips render exactly once (R2), desktop renders the toolbar inline, and the width comes from a subscribed matchMedia rather than a one-shot read during render (R4). Proved by rendering the page at both widths and asserting containment — a source scan cannot see it (R3). Pytest-collectable so the CI shard runner executes it; apps/command-center-v3/src/lib/watchlistFiltersCompact.view.test.mjs does the rendering."
+  ]
+}

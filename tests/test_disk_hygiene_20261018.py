@@ -632,7 +632,11 @@ def test_monitor_alerts_once_per_band_change_never_per_percent(mon):
     assert mon.run(92.0) == 0
     assert mon.run(91.0) == 0
     assert mon.run(70.0) == 0
+    assert mon.run(70.0) == 0   # the recovery is DELAYED by the clock, never discarded: the escalation at +60 opened
+    assert mon.run(70.0) == 0   # an interval, and these two quiet polls reach its end
     kinds = [(d, k) for d, k, *_ in mon.intents()]
+    # WARN -> CRITICAL is said AT ONCE (cc-deepseek-2 R6). This row is the assertion an earlier head deleted so that a
+    # silent escalation would still show a green tick; it is restored, and it fails if the escalation goes quiet again.
     assert kinds == [("host", "disk_usage_warn"), ("host", "disk_hygiene_alert"),
                      ("host", "disk_usage_critical"), ("host", "disk_usage_recovered")]
     subjects = [s for _, _, s, _, _ in mon.intents()]

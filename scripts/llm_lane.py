@@ -56,8 +56,12 @@ _CHATGPT_URL = os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstr
 # They must NOT map to deepseek-chat / deepseek-reasoner model IDs.
 _DEEPSEEK_LANES = frozenset({
     "deepseek-flash",
-    "deepseek-v4-flash",
-    "deepseek-v4-pro",
+    # 2026-11-04: "deepseek-v4-flash" and "deepseek-v4-pro" were removed. They are LEGACY ids in
+    # lib/llm_model_registry (rejected by reject_legacy_model_id), and accepting them here made a lane
+    # whose id the registry refuses reachable from this tree. (The earlier claim that this caused a 37.9% lane
+    # error rate was REFUTED on 2026-11-04: the 50 rows behind that number are all DEFERRED_TO_OFFPEAK deferrals,
+    # not errors. The defect below is real on its own terms — a lane name one surface accepts and another refuses —
+    # and is proven by mutation, not by that number.)
     "fast",
     "fast_think",
     "pro",
@@ -137,10 +141,10 @@ def available(lane):
         return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
     if lane in _AMBIGUOUS_DEEPSEEK:
         return False  # never available=True for ambiguous alias
-    if lane in ("deepseek-flash", "deepseek-v4-flash", "fast", "fast_think"):
+    if lane in ("deepseek-flash", "fast", "fast_think"):
         from lib.llm_model_registry import deepseek_model_id
         return _deepseek_model_available(deepseek_model_id("FAST"))
-    if lane in ("deepseek-v4-pro", "pro", "pro_think", "pro_max"):
+    if lane in ("pro", "pro_think", "pro_max"):
         from lib.llm_model_registry import deepseek_model_id
         return _deepseek_model_available(deepseek_model_id("PRO"))
     if lane in _DEEPSEEK_LANES:
