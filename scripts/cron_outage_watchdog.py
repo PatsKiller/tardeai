@@ -305,8 +305,11 @@ def deliver(report: dict, prior: dict, *, sender, now: datetime, reminder_second
             + "\nWrapper refusals: " + (", ".join(str(x["job_id"]) + ":" + str(x["reason"]) for x in new_refusals) or "none")
             + f"\nCoverage gaps: {len(report['coverage_gap_lane_ids'])}; observation {report['observed_at']}"
             + "\nInspect wrapper paths and release layout; this monitor runs no repairs.")
+    from scripts.lib.watchdog_reminder_identity import watchdog_reminder
+
     try:
-        outcome = sender(body)
+        with watchdog_reminder(body, finding_key=key, now=now, reminder_seconds=reminder_seconds):
+            outcome = sender(body)
     except Exception:
         outcome = {"status": "FAILED", "accepted": False, "delivered": False}
     if not isinstance(outcome, dict):

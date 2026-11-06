@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+import hashlib
 import json
 import os
 import re
@@ -19,6 +20,7 @@ from scripts.lib import cron_outage_watchdog as W, recovery_validator as RV
 from scripts.lib.cron_schedule import fires_between
 from scripts.lib.n8n_dlq_disposition import cause, instant
 from scripts.lib.scheduler_operations import successful_execution
+from scripts.lib.job_failure_diagnostics import diagnostics_for_run
 
 SCHEMA = "JobsHealth@v1"
 ROOT = Path(__file__).resolve().parents[2]
@@ -203,35 +205,180 @@ WATCHER_LANES = {
 }
 
 
-def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool) -> list[dict]:
-    """Deterministic read-only watcher lights from the registry, the run rows and the independent monitor.
+def _watcher_runtime(root: Path) -> dict:
+    """Read existing receipts; no watcher execution or scheduler discovery."""
+    files = {
+        "pager": "data/runtime/delivery_failure_alerts/latest.json",
+        "merge_digest": "data/runtime/pr_merge_telegram/digest_last_run.json",
+        "merge_reconcile": "data/runtime/pr_merge_telegram/digest_reconcile_last_run.json",
+        "self_heal": "data/runtime/self_heal_fixer_last.json",
+    }
+    allowed = ("schema", "at", "as_of", "finished_at", "ok", "apply", "mode", "delivered",
+               "accepted", "delivery_status", "priority", "arming", "policy", "counts")
+    out = {}
+    for key, rel in files.items():
+        doc = _json(root / rel)
+        out[key] = {"source": rel, "receipt": {k: doc[k] for k in allowed if k in doc}}
+    out["pager"]["implementation_present"] = (ROOT / "scripts/delivery_failure_alerts.py").is_file()
+    out["self_heal"]["implementation_present"] = (ROOT / "scripts/self_heal_fixer.py").is_file()
+    out["watchdog_state"] = _json(root / "data/runtime/cron_outage_watchdog_state.json")
+    out["reminder_seconds"] = _json(ROOT / "config/cron_outage_watchdog.json").get("reminder_seconds", 1800)
+    return out
 
-    ``status`` is one of ok / degraded / down / absent; the strip maps it to green / amber / red / red.
-    """
+
+def _receipt_clock(doc: dict, now: datetime):
+    at = next((instant(doc.get(k)) for k in ("at", "as_of", "finished_at") if instant(doc.get(k))), None)
+    return at if at and at <= now else None
+
+
+def _notification_view(watchdog: dict, runtime: dict, now: datetime) -> dict | None:
+    """Incident severity, this-poll delivery and previous delivery are distinct."""
+    raw = watchdog.get("notification")
+    if not isinstance(raw, dict):
+        return None
+    out = dict(raw)
+    state = runtime.get("watchdog_state") or {}
+    finding_key = hashlib.sha256(json.dumps({
+        "missed": watchdog.get("missed_lane_ids") or [],
+        "monitor": sorted(x["id"] for x in watchdog.get("monitor_incidents") or []),
+    }, sort_keys=True).encode()).hexdigest()
+    same_findings = state.get("finding_key") == finding_key
+    last = instant(state.get("last_delivered_at"))
+    last = last if last and last <= now else None
+    if raw.get("delivered") is True:
+        observed = instant(watchdog.get("observed_at"))
+        if observed and observed <= now:
+            last = max(filter(None, (last, observed)))
+    seconds = runtime.get("reminder_seconds", 1800)
+    seconds = seconds if type(seconds) in (int, float) and seconds > 0 else 1800
+    due = last + timedelta(seconds=seconds) if last else None
+    out.update(incident_alert_required=bool(watchdog.get("alert_required")),
+               incident_status=watchdog.get("status"), last_delivered_at=W.iso(last) if last else None,
+               next_reminder_at=W.iso(due) if due and same_findings else None)
+    if raw.get("delivered") is True:
+        out["summary"] = "Delivered this poll; incident status is reported separately."
+    elif raw.get("status") == "NOT_REQUIRED" and watchdog.get("alert_required") and same_findings and due and now < due:
+        out["suppression_reason"] = "reminder_not_due"
+        out["summary"] = (f"Repeat suppressed until {W.iso(due)}; incident remains {watchdog.get('status')}. "
+                          f"Last delivery receipt: {W.iso(last)}.")
+    elif raw.get("status") == "NOT_REQUIRED":
+        out["summary"] = ("No send requested this poll. " +
+                          (f"Last delivery receipt: {W.iso(last)}." if last else "Previous delivery is not measured."))
+    else:
+        out["summary"] = (f"Delivery this poll: {raw.get('status') or 'not measured'}; delivery is not confirmed. " +
+                          (f"Last delivery receipt: {W.iso(last)}." if last else "Previous delivery is not measured."))
+    return out
+
+
+def _runtime_light(key: str, runtime: dict, *, now: datetime) -> dict | None:
+    evidence = runtime.get(key)
+    if not isinstance(evidence, dict):
+        return None
+    doc = evidence.get("receipt") or {}
+    expected = {"pager": "DeliveryFailureAlert@v1", "self_heal": "SelfHealFixerReceipt@v1"}.get(key)
+    valid = (expected is None or doc.get("schema") == expected) and doc.get("mode") not in {"dry_run", "dry-run", "shadow", "preflight"} and doc.get("dry_run") is not True
+    at = _receipt_clock(doc, now) if valid else None
+    base = {"component_kind": "event_handler" if key == "pager" else
+            "coding_worker" if key == "self_heal" else "scheduled_watcher",
+            "as_of": W.iso(at) if at else None, "source": evidence.get("source"),
+            "runtime_observed": bool(at)}
+    if key == "pager":
+        if not evidence.get("implementation_present"):
+            return {**base, "status": "absent", "display_status": "Implementation missing",
+                    "cause": "Failure-paging code is absent; this is an event handler, not a cron job."}
+        if not at:
+            return {**base, "status": "degraded", "display_status": "Event-driven · delivery not measured",
+                    "cause": "Paging code is installed; no valid delivery receipt is available. No schedule is required."}
+        delivered = doc.get("delivered") is True and doc.get("delivery_status") == "DELIVERED"
+        return {**base, "status": "ok" if delivered else "degraded",
+                "display_status": "Event-driven · delivery observed" if delivered else "Event-driven · last delivery unconfirmed",
+                "cause": f"Last event {doc.get('delivery_status') or 'not confirmed'} at {W.iso(at)}; "
+                         "scheduler registration is not applicable.",
+                "delivery_status": doc.get("delivery_status"), "last_delivery_observed": delivered}
+    if key == "self_heal" and at:
+        arming = doc.get("arming") or {}
+        if arming.get("armed") is False:
+            policy = doc.get("policy") or {}
+            return {**base, "status": "degraded", "display_status": "Disarmed at last run",
+                    "cause": f"{arming.get('why') or 'No arming evidence'}; push policy: {policy.get('why') or 'not measured'}.",
+                    "pending_requests": (doc.get("counts") or {}).get("fix_requested")}
+    return None
+
+
+def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool, *,
+              runtime: dict | None = None, now: datetime | None = None) -> list[dict]:
+    """Watcher operation is separate from incident severity and this poll's send."""
+    runtime = runtime or {}
+    now = now or datetime.now(timezone.utc)
     by_lane = {r["lane_id"]: r for r in rows}
+    critical = monitor_ok and monitor.get("status") == "CRIT"
+    uncertain = monitor_ok and monitor.get("status") not in {"OK", "CRIT"}
     out = [{"id": "missed-run-watchdog", "label": "Missed-run watchdog",
-            "status": "ok" if monitor_ok else "degraded", "cause": None if monitor_ok else monitor["cause"]}]
-    for lane_id, label in WATCHER_LANES.items():
+            "status": "degraded" if critical or uncertain else "ok" if monitor_ok else "degraded",
+            "display_status": "Watching · critical findings" if critical else
+                              "Watching · coverage not established" if uncertain else "Watching" if monitor_ok else "Not measured",
+            "component_kind": "scheduled_watcher", "incident_status": monitor.get("status"),
+            "as_of": monitor.get("observed_at"),
+            "cause": (monitor.get("notification") or {}).get("summary") if critical else
+                     "Fresh monitor receipt; incident coverage is not established." if uncertain else
+                     None if monitor_ok else monitor["cause"]}]
+    # The per-PR prompt timer was retired in favor of the digest.
+    merge_id = "pr-merge-digest" if "pr-merge-digest" in by_lane else "pr-merge-telegram-notify"
+    watchers = {merge_id if key == "pr-merge-telegram-notify" else key: label
+                for key, label in WATCHER_LANES.items()}
+    for lane_id, label in watchers.items():
+        key = "pager" if lane_id == "delivery-failure-alerts" else "self_heal" if lane_id == "self-heal-fixer" else "merge_digest"
+        light = _runtime_light(key, runtime, now=now)
+        if light is not None:
+            out.append({"id": lane_id, "label": label, **light})
+            continue
         row = by_lane.get(lane_id)
         if row is None:
             out.append({"id": lane_id, "label": label, "status": "absent",
-                        "cause": "Not a registered job — it cannot run, watch or page"})
+                        "display_status": "Execution not measured",
+                        "cause": "No matching registry row or implementation evidence; execution and delivery are not measured."})
             continue
         state, result = row["state"], row["result"]
-        if result == "failed":
-            status, cause = "down", row["cause"]
+        proof = (runtime.get(key) or {}).get("receipt") or {}
+        proof_at = _receipt_clock(proof, now)
+        if state == "NEVER_SCHEDULED" and proof_at and proof.get("apply") is True:
+            status, display = "degraded", "Registry/runtime drift"
+            outcome = "succeeded" if proof.get("ok") is True else "failed"
+            reason = (f"An applied run {outcome} at {W.iso(proof_at)}, but the registry declares NEVER_SCHEDULED. "
+                      "Correct the declaration through the reviewed registry path; do not install a second timer.")
+        elif result == "failed":
+            status, display, reason = "down", "Failed", row["cause"]
         elif state in {"PAUSED", "DISABLED"}:
-            status, cause = "degraded", row["cause"] or f"{label} is {state.lower()}: designed, not running"
+            status, display, reason = "degraded", state.title(), row["cause"] or f"{label} is {state.lower()}"
         elif state == "NEVER_SCHEDULED":
-            status, cause = "degraded", f"{label} is never scheduled: its unit is not installed"
+            status, display, reason = "degraded", "Schedule not verified", "Registry declares never scheduled; installation is not independently observed."
         elif state == "RETIRED":
-            status, cause = "absent", f"{label} is retired"
-        elif result in {"succeeded", "due"}:
-            status, cause = "ok", None
+            status, display, reason = "absent", "Retired", f"{label} is retired"
+        elif result == "succeeded":
+            status, display, reason = "ok", "Successful run observed", None
         else:
-            status, cause = "degraded", row["cause"] or f"{label} is not proven running"
-        out.append({"id": lane_id, "label": label, "status": status, "cause": cause})
+            status, display, reason = "degraded", "Run not verified", row["cause"] or f"{label} is not proven running"
+        out.append({"id": lane_id, "label": label, "status": status, "display_status": display,
+                    "component_kind": "scheduled_watcher", "cause": reason,
+                    "as_of": W.iso(proof_at) if proof_at else row.get("last_run_at")})
     return out
+
+
+def _execution_population(lane: dict) -> str:
+    """Describe the declared trigger, without inventing a recurring schedule."""
+    if lane.get("state") == "NEVER_SCHEDULED":
+        return "not_scheduled"
+    scheduler = lane.get("scheduler") or {}
+    kind, expression = scheduler.get("kind"), str(scheduler.get("expression") or "")
+    if kind == "systemd" and expression.endswith(".service"):
+        return "continuous_service"
+    if kind in {"manual", "on_demand"}:
+        return "on_demand"
+    if kind in {"event", "signal", "webhook"}:
+        return "event_driven"
+    if kind in {"cron", "n8n"} or kind == "systemd" and expression.endswith(".timer"):
+        return "scheduled"
+    return "no_schedule_declared"
 
 
 def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
@@ -265,6 +412,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         last_at = instant(last.get("finished_at") or last.get("started_at"))
         diagnostic = None
         failure_at = None
+        failure_run = None
         component = W.component(lane)
         events = [e for e in captured.get("events") or [] if component and e.get("component") == component
                   and instant(e.get("ts")) and instant(e["ts"]) <= now
@@ -275,6 +423,9 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                 last_at = max(filter(None, [last_at, at]))
             if event.get("event_type") == "refused" or (event.get("event_type") == "completed" and event.get("exit_code") != 0):
                 failure_at, diagnostic = at, cause(event)
+                failure_run = {**event, "lane_id": lane_id, "finished_at": event["ts"],
+                               "state": "RUN_REFUSED" if event.get("event_type") == "refused" else "RUN_FAILED",
+                               "receipt": event}
         log_error = (captured.get("log_errors") or {}).get(lane_id)
         if (diagnostic == NO_DIAGNOSTIC and failure_at and log_error
                 and abs(log_error["at"] - failure_at) <= LOG_DIAGNOSTIC_SLACK):
@@ -283,12 +434,13 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         if last.get("state") in _FAILURES:
             if failure_at is None or last_at and last_at >= failure_at:
                 failure_at, diagnostic = instant(last.get("finished_at")), cause(RV.receipt_of(last), last.get("reason"))
+                failure_run = last
         try:
             due, upcoming, issue, gated, due_today = _schedule(lane, now, trading_day)
         except (ValueError, TypeError, KeyError):
             due, upcoming, issue, gated, due_today = [], None, "schedule could not be measured", False, False
         outcome, reason = "unknown", "Successful execution is not yet measured"
-        if state in {"PAUSED", "RETIRED", "DISABLED"}:
+        if state in {"PAUSED", "RETIRED", "DISABLED", "NEVER_SCHEDULED"}:
             outcome, reason = ("retired" if state == "RETIRED" else "paused"), lane.get("state_reason") or f"Job is {state.lower()}"
             upcoming = None
         elif failure_at and (success is None or failure_at > success):
@@ -300,25 +452,42 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         elif last.get("state") in {"REQUESTED", "RUNNING"}:
             outcome, reason = "due", "Execution requested" if last.get("state") == "REQUESTED" else "Execution started; completion pending"
         elif issue:
-            reason = "Schedule is not measured" if issue else reason
+            population = _execution_population(lane)
+            reason = ("Continuous service: health evidence is not measured; no recurring completion is expected"
+                      if population == "continuous_service" else
+                      "On-demand or event-driven execution: no recurring completion is expected; evidence is not measured"
+                      if population in {"on_demand", "event_driven"} else
+                      "No recurring schedule is declared; execution evidence is not measured"
+                      if population == "no_schedule_declared" else "Schedule is not measured")
         elif check.get("status") == "OUTSIDE_WINDOW":
             outcome, reason = "outside_window", "Outside the scheduled window"
         elif due and success and success < due[-1]:
             outcome, reason = "due", "Waiting for the next successful execution"
+        diagnostics = None
+        if outcome == "failed":
+            role = {"cron": "host_cron", "n8n": "n8n_executor", "systemd": "systemd_service",
+                    "event": "event_handler"}.get(scheduler.get("kind"))
+            diagnostics = diagnostics_for_run(failure_run or last, last_success=W.iso(success) if success else None,
+                                              host_role=role)
+            if reason in {NO_DIAGNOSTIC, "output_unverifiable"}:
+                reason = diagnostics["failure_reason"]
         rows.append({"lane_id": lane_id, "job": lane.get("display_name") or lane_id.replace("-", " ").replace("_", " ").capitalize(),
             "scheduler": scheduler.get("kind") or "unknown", "state": state, "result": outcome,
+            "execution_population": _execution_population(lane),
             "last_run_at": W.iso(last_at) if last_at else None, "last_success_at": W.iso(success) if success else None,
             "successful_run_id": successful[-1].get("run_id") if successful else None,
             "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": due_today,
             "missed_fires": check.get("missed_fires"), "market_hours_only": gated,
-            "cause": reason, "evidence": last.get("run_id") or ("wrapper event" if events else None)})
+            "cause": reason, "diagnostics": diagnostics,
+            "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
+    populations = Counter(row["execution_population"] for row in rows)
     seen = instant(watchdog.get("observed_at"))
     monitor_ok = bool(watchdog.get("schema") == W.SCHEMA and watchdog.get("mode") == "monitor"
                       and seen and 0 <= (now - seen).total_seconds() <= 180)
     monitor = {"observed_at": watchdog.get("observed_at"), "status": watchdog.get("status") if monitor_ok else "UNKNOWN",
         "cause": None if monitor_ok else "Independent monitor receipt missing, stale or a dry run",
-        "notification": watchdog.get("notification") if monitor_ok else None}
+        "notification": _notification_view(watchdog, captured.get("watcher_runtime") or {}, now) if monitor_ok else None}
     incidents = [{"id": row["lane_id"], "severity": "critical" if row["result"] == "failed" else "warning",
                   "title": f"{row['job']}: {row['result'].replace('_', ' ')}", "message": row["cause"],
                   "href": "/ops/jobs", "source": "job_execution"}
@@ -328,9 +497,12 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
                           "message": monitor["cause"], "href": "/ops/jobs", "source": "job_execution"})
     return {"schema": SCHEMA, "as_of": W.iso(now), "authority": "READ_ONLY_ADVISORY", "rows": rows,
         "summary": {"due_today": sum(r["due_today"] and r["state"] == "ACTIVE" for r in rows),
+                    "registered_total": len(rows), "populations": dict(populations),
+                    "not_scheduled": populations["not_scheduled"],
                     **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
                     **_measurement(counts["unknown"], captured.get("collection_gaps") or [])},
-        "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok),
+        "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok,
+            runtime=captured.get("watcher_runtime"), now=now),
         "incidents": incidents, "incident_count": len(incidents),
         "coverage_gaps": captured.get("collection_gaps") or [],
         "note": "Execution evidence only. An enabled schedule, fresh log or dry run does not prove successful work."}
@@ -343,6 +515,7 @@ def _load(root: Path, registry_path: Path, now: datetime):
     registry = _json(registry_path)
     registry = bind_components(registry, _json(ROOT / "config/cron_outage_watchdog.json"))
     snapshot = collect(registry, root)
+    snapshot["watcher_runtime"] = _watcher_runtime(root)
     log_paths = Counter(str((lane.get("output_signal") or {}).get("path")) for lane in registry.get("lanes") or []
                         if (lane.get("output_signal") or {}).get("kind") == "file_mtime")
     for lane in registry.get("lanes") or []:

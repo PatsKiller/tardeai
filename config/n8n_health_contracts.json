@@ -34934,6 +34934,30 @@
         }
       ]
     },
+    "expected_output": {
+      "schema": "N8nExpectedOutput@v1",
+      "rule": "min_produced",
+      "produced_field": "produced_count",
+      "unit": "completed conflict comparison reports",
+      "min_produced": 1,
+      "window_h": null,
+      "empty_allowed_reasons": [],
+      "fatal_skip_reasons": [
+        "no_runner",
+        "dependency_unavailable"
+      ],
+      "evidence": [
+        {
+          "kind": "file_artifact",
+          "ref": "data/conflicts/reports/<sha256(run_id)>.json: ConflictResolverReceipt@v1 run_id and input_manifest_sha256; SHA256 bound by immutable LaneRunReceipt@v2"
+        }
+      ],
+      "on_violation": {
+        "run_state": "RUN_FAILED",
+        "reason": "empty_output",
+        "notifier_priority": "P2"
+      }
+    },
     "class_note": "learn (R1 dispatcher class; memory/learning writer lane, AGENTS.md 4.3.0 §23.18)"
   },
     {

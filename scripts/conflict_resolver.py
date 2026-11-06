@@ -86,7 +86,10 @@ def _run(root, bundles, *, now, shadow=False, run_id=None, memory_writer=None, p
     """Library entry for reviewed scheduler/fixture callers; no sender exists."""
     started = time.monotonic()
     root = Path(root)
-    run_id = run_id or os.environ.get("TRADEAI_RUN_ID") or "conflict-" + uuid.uuid4().hex
+    executor_run_id = os.environ.get("TRADEAI_RUN_ID")
+    if shadow and executor_run_id and run_id is not None and run_id != executor_run_id:
+        raise ValueError("conflict report run identity differs from executor attempt")
+    run_id = run_id or executor_run_id or "conflict-" + uuid.uuid4().hex
     bundles = list(bundles)
     target = root / "data/conflicts/reports" / (hashlib.sha256(run_id.encode()).hexdigest() + ".json")
     st = ConflictLedger(root, memory_writer=memory_writer, pg_writer=pg_writer, pg_enabled=pg_enabled)
@@ -161,9 +164,13 @@ def _run(root, bundles, *, now, shadow=False, run_id=None, memory_writer=None, p
         from scripts.lib.lane_last_receipt import write_lane_receipt
         receipt = write_lane_receipt("conflict-resolver", ok=True, exit_code=0, started_at=now.isoformat(),
             script="scripts/conflict_resolver.py", path=root / "data/runtime/conflict-resolver_last.json",
-            summary={"phase": "shadow", "notifications": 0, "rulebook_sha256": report["rulebook_sha256"]},
-            produced_count=1, attempted_count=len(bundles), output_evidence=[{"path": str(target),
-                "sha256": hashlib.sha256(target.read_bytes()).hexdigest(), "kind": "comparison_report"}])
+            summary={"phase": "shadow", "notifications": 0, "rulebook_sha256": report["rulebook_sha256"],
+                     "subjects_evaluated": len(bundles), "empty_inputs": not bundles,
+                     "input_manifest_sha256": report["input_manifest_sha256"]},
+            # The durable output unit is a comparison report, including a completed no-subject poll.
+            produced_count=1, attempted_count=1, output_evidence=[{"path": str(target),
+                "ref": str(target.relative_to(root)), "artifact_schema": report["schema"],
+                "sha256": hashlib.sha256(target.read_bytes()).hexdigest(), "kind": "file_artifact"}])
         if receipt is None:
             raise RuntimeError("conflict resolver receipt write failed")
     return report

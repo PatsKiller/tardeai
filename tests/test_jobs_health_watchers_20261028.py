@@ -39,10 +39,10 @@ def test_watcher_lights_are_honest():
     assert w["missed-run-watchdog"]["status"] == "degraded"
     assert w["self-heal-fixer"]["status"] == "degraded"
     assert w["pr-merge-telegram-notify"]["status"] == "degraded"
-    assert "not installed" in w["pr-merge-telegram-notify"]["cause"]
+    assert "installation is not independently observed" in w["pr-merge-telegram-notify"]["cause"]
     # delivery_failure_alerts is not a registered lane -> absent (red), never silently green.
     assert w["delivery-failure-alerts"]["status"] == "absent"
-    assert "not a registered job" in w["delivery-failure-alerts"]["cause"].lower()
+    assert "execution and delivery are not measured" in w["delivery-failure-alerts"]["cause"].lower()
 
 
 def test_watchdog_ok_when_monitor_receipt_is_fresh():

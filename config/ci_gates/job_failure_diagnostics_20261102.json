@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "job_failure_diagnostics_20261102",
+  "files": [
+    "tests/test_job_failure_diagnostics_20261102.py"
+  ],
+  "comment": [
+    "Safe pure diagnostics from retained receipt evidence; output-verdict subreasons, redaction, no invented traceback/exit, private host suppression and missing-evidence refusal. No job execution or live stores."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_timeout_diagnostics_20261102",
+  "files": [
+    "tests/test_n8n_timeout_diagnostics_20261102.py"
+  ],
+  "comment": [
+    "Synthetic process seams preserve bounded redacted timeout output without changing kill, deadline, state, retry, lock or live scheduling behavior. No scheduled workload or live store."
+  ]
+}

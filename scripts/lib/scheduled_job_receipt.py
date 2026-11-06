@@ -1,7 +1,8 @@
 """Durable receipt for legacy CLI jobs without changing their action or exit code.
 
 Only a receipt path is added to the CLI. The wrapped job still owns its argument
-parser and return value. Receipt summaries never contain stdout, exception text,
+parser and return value. Explicit --dry-run and help never publish run evidence.
+Receipt summaries never contain stdout, exception text,
 credentials, or a claim that an accepted notification was delivered.
 
 ``ok_at`` (added 2026-10-10, n8n refactor wave 1) is the registry ``json_key`` freshness key: it
@@ -54,8 +55,12 @@ def run_with_receipt(
     sys.argv[:] = [original[0], *remaining]
     code = 0
     summary: dict = {"state": "completed"}
-    # Help is argument inspection, not evidence that a scheduled job ran.
+    # Inspection is not evidence that a scheduled job ran. Keep help behavior
+    # and recognize only the established explicit dry-run flag before the CLI
+    # separator; a positional literal or arbitrary mode string grants nothing.
     help_only = "--help" in remaining or "-h" in remaining
+    control_args = remaining[:remaining.index("--")] if "--" in remaining else remaining
+    inspection_only = help_only or "--dry-run" in control_args
     try:
         result = action()
         if isinstance(result, int):
@@ -74,7 +79,7 @@ def run_with_receipt(
         raise
     finally:
         sys.argv[:] = original
-        if not help_only:
+        if not inspection_only:
             if summary_from is not None:
                 try:
                     extra = summary_from() or {}

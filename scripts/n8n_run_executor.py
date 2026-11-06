@@ -160,6 +160,7 @@ from scripts.lib.effect_claim import (  # noqa: E402
     handover_manifest_path,
     HandoverLockTimeout,
 )
+from scripts.lib.error_line_redaction import redact_error_line  # noqa: E402
 from scripts.lib.n8n_due import parse_key as parse_slot_key  # noqa: E402
 from scripts.lib.n8n_process_keys import is_process_key, parse_process_key  # noqa: E402
 from scripts.lib.n8n_fabric_store import FabricStoreError, RunOutcomeStore  # noqa: E402
@@ -941,6 +942,13 @@ def apply_output_verdict(
     return receipt
 
 
+def _timeout_tail(value: str | bytes | None) -> str | None:
+    """Decode and redact before bounding a timeout diagnostic, never invent missing evidence."""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return redact_error_line(value)[-TAIL_CHARS:] or None if isinstance(value, str) else None
+
+
 def _spawn(
     receipt: dict[str, Any],
     entry: Mapping[str, Any],
@@ -956,8 +964,10 @@ def _spawn(
     """The spawn and its classification (unchanged from the pre-2026-10-14 tail of ``_execute_once``)."""
     try:
         result = run(argv, timeout=timeout_s + KILL_AFTER_S + 30, env=lane_env, cwd=code_root)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         receipt["timed_out"] = True
+        receipt["stdout_tail"] = _timeout_tail(exc.output)
+        receipt["stderr_tail"] = _timeout_tail(exc.stderr)
         receipt["output_signal_mtime_after"] = _mtime(signal_path)
         return _finish(receipt, "RUN_TIMEOUT", reason="executor_deadline", started=started)
     except OSError as exc:
@@ -998,9 +1008,12 @@ def _subprocess_runner(
     _release_spawn_fence()
     try:
         out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         proc.kill()
-        proc.communicate()
+        out, err = proc.communicate()
+        # communicate() after kill returns buffered output; retain earlier exception data if absent.
+        exc.output = out if out is not None else exc.output
+        exc.stderr = err if err is not None else exc.stderr
         raise
     except BaseException:  # match subprocess.run cleanup if communication is interrupted after spawn
         proc.kill()
@@ -1698,8 +1711,8 @@ def heartbeat_runner(on_spawn, on_beat, heartbeat_s: float = EXECUTOR_DEFAULTS["
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 proc.kill()
-                proc.communicate()
-                raise subprocess.TimeoutExpired(argv, timeout)
+                out, err = proc.communicate()
+                raise subprocess.TimeoutExpired(argv, timeout, output=out, stderr=err)
             try:
                 out, err = proc.communicate(timeout=min(heartbeat_s, remaining))
                 return subprocess.CompletedProcess(argv, proc.returncode, out, err)

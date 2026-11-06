@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scheduled_job_receipt_dryrun_20261102",
+  "files": [
+    "tests/test_scheduled_job_receipt_dryrun_20261102.py"
+  ],
+  "comment": [
+    "Explicit inspection cannot create canonical scheduled success. Synthetic actions, real pure watchdog, canonical bytes/mtime/absence and argv/exit preservation; no registered job execution."
+  ]
+}

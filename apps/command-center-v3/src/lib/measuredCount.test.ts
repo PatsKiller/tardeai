@@ -67,3 +67,23 @@ t('data approvals: every row checked → real counts including real zeros', () =
   const tiles = dataApprovalTiles([{ verdict: 'APPROVED' }, { verdict: 'NOT_READY' }], { approved: 1, ready: 0, notReady: 1, findings: 0 }, { state: 'DONE' })
   eq([tiles.approved.value, tiles.ready.value, tiles.notReady.value, tiles.findings.value], [1, 0, 1, 0])
 })
+
+
+// Alert severity is independent from watchdog execution and per-poll sends.
+import { jobsPopulationText, notificationStatusText, watcherStatusText } from './jobsWatchers.ts'
+t('watchers: degraded does not mean disarmed for every component', () => {
+  eq(watcherStatusText({ status: 'degraded' }), 'Degraded')
+  eq(watcherStatusText({ status: 'degraded', display_status: 'Registry/runtime drift' }), 'Registry/runtime drift')
+  eq(watcherStatusText({ status: 'degraded', display_status: 'Event-driven · delivery not measured' }), 'Event-driven · delivery not measured')
+})
+t('watchers: suppressed repeat preserves critical incident and prior delivery uncertainty', () => {
+  const s = notificationStatusText({ status: 'NOT_REQUIRED', delivered: false }, 'CRIT')
+  ok(s.includes('incident status is CRIT') && s.includes('Previous delivery is not measured'), s)
+  eq(notificationStatusText({ status: 'NOT_REQUIRED', summary: 'Repeat suppressed; last delivery at fixture time' }, 'CRIT'), 'Repeat suppressed; last delivery at fixture time')
+  eq(notificationStatusText({ delivered: true }, 'CRIT'), 'Delivered this poll')
+})
+t('jobs populations: registered components are not the due-today denominator', () => {
+  const s = jobsPopulationText({ populations: { scheduled: 3, continuous_service: 1, event_driven: 2, not_scheduled: 4 } })
+  ok(!!s && s.includes('3 scheduled') && s.includes('4 not scheduled') && s.includes('different population'), String(s))
+  eq(jobsPopulationText({}), null)
+})
