@@ -402,6 +402,10 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Read path (projection):** `operator_settings` — to_build
 - **Readers:** Ops, Home
 
+| Copy | Role | How | Page/API files reading it (measured) |
+|---|---|---|---|
+| `data/ops/operator_settings_env.json` (file) | derived | Ops -> Controls toggles (2026-10-25): env projection of the active settings whose catalog entry names an env_key (ENABLE_SMS, OPERATOR_SMS_EMAIL, COMMS_GATEWAY_MODE), rewritten atomically by the host applier after every applied setting change (scripts/lib/ops_controls_core.write_settings_projection); read at call time by scripts/lib/ops_env_overlay.py (comms gateway mode, the sms adapter). Non-secret; absent = consumers use their environment as before. | — |
+
 ### Market breadth, daily (S&P 500 and Nasdaq-100) — `market_breadth_daily` (PROPOSED)
 
 **Operator decision (§17):** Grant market_breadth_daily as the one breadth store (design §1, P1-T1/P1-T5). Operator grant given 2026-10-31 (verbatim above); the row is promoted into domains[] with its approval block by the writer PR, when the writer file exists (AGENTS.md §7A: registry row first, writer second).

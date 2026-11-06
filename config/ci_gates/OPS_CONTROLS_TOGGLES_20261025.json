@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "OPS_CONTROLS_TOGGLES_20261025",
+  "files": [
+    "tests/test_ops_controls_toggles_20261025.py"
+  ],
+  "anchor": "OPS_CONTROLS_TOGGLES_20261025",
+  "comment": [
+    "ANCHOR: OPS_CONTROLS_TOGGLES_20261025 — Ops -> Controls toggles (operator 2026-10-25 \"this should have just been a toggle to turn on/off on the control ops.\"): ENABLE_SMS, OPERATOR_SMS_EMAIL (10 digits @ known carrier gateway) and COMMS_GATEWAY_MODE (OFF/CANARY/ACTIVE) as operator_settings catalog entries (risky: passkey + phrase, host applier), projected to a non-secret env file the consumers read (projection > environment > default; restore on unset); test-send is operator-only, confirm-gated, idempotent, cooldown-limited and audited; overlay env reads are literal managed names only. Hermetic: in-memory store, temp projection, fake transport."
+  ]
+}
