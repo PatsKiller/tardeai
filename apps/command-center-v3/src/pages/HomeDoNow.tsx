@@ -13,7 +13,8 @@
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH } from '../lib/bestOpportunities'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, opportunityRowLabel, topEligibleRows, topListNotice } from '../lib/bestOpportunities'
+import { listAsOfWords, opportunitiesCardState, quoteAge } from '../lib/opportunityQuoteAge'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
@@ -133,7 +134,7 @@ export default function HomeDoNow() {
   const mr = unwrapMarketRisk(mrResp)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 60_000)
   const { data: posture } = useApi<any>('/api/v2/defense/posture', 300_000)
-  const { data: oppTop } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
+  const { data: oppTop, error: oppError, stale: oppStale, loading: oppLoading } = useApi<any>(BEST_OPPORTUNITIES_API, 300_000)
   const platformApi = useApi<any>('/api/v2/system/platform-health', 60_000)
   const dpApi = useApi<DeploysStatusWire>(DEPLOYS_PATHS.status, 120_000)
   const { data: command } = useApi<any>('/api/v2/command', 300_000)
@@ -161,7 +162,29 @@ export default function HomeDoNow() {
   const accounts = accountRows(perf, overview)
   const cash = cashPct(overview)
   const n = dn.numbers
-  const opps: any[] = (unwrap(oppTop)?.items || []).slice(0, 5)
+  const oppBody = unwrap(oppTop)
+  // FQ-114 (cx-openai-5): the producer decides who is a top candidate; Home renders its receipt and never widens the
+  // list itself. F1 (cc-deepseek-3 at 49d15e5cb): a producer that has not sent the receipt yet gets the list it DID
+  // send, not a blank card — `topEligibleRows` is the one place that decides which of the two it is.
+  const opps: any[] = topEligibleRows(oppBody).slice(0, 5)
+  const oppNotice = topListNotice(oppBody)
+  // FQ-088: the list carries an as-of and every row a quote time. Home discarded both, so a reward-to-risk
+  // computed from an old quote looked exactly like a current one.
+  const oppAsOf = listAsOfWords(unwrap(oppTop)?.as_of)
+  // R1 (codex BLOCK at 77b94efa3a, then cc-deepseek-8 at f44f21fbe): a failed poll must not look current — and a
+  // failed FIRST load has no last list to retain, so it must not claim one, and it is not still loading either.
+  // The composition is a tested function; the page renders its sentences and never invents its own.
+  // P2651-R4 (codex at c50f1110): a truthy body is not a successful read. `ok:false` is a source error, and an object
+  // with no `items` ARRAY has told us nothing about the list — none of the three may be presented as "no candidate",
+  // and none of them is still loading.
+  const oppItemsValid = !!oppBody && Array.isArray(oppBody.items)
+  const oppSourceError = !!oppBody && (oppBody.ok === false || !oppItemsValid)
+  const oppState = opportunitiesCardState({
+    loading: !!oppLoading, error: !!oppError, stale: !!oppStale, itemCount: opps.length,
+    listLoaded: oppItemsValid && !oppSourceError, sourceError: oppSourceError,
+    qualificationPresent: !!(oppBody && oppBody.top_list),
+  })
+  const oppRetained = oppState.retained
   const ph = platformHealthFrom(platformApi.data, { error: platformApi.error, loading: platformApi.loading, nowMs: now })
   const scanStale = tradeAiSurfaceFreshness(tradeAi).stale
   const setup = renderSetupCounts(tradeAi?.setup_run_summary, { stale: scanStale, staleLabel: 'STALE' })
@@ -331,17 +354,42 @@ export default function HomeDoNow() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14 }}>
         <section style={card} data-testid="home-opportunities" aria-label="Best opportunities">
           <CardHead title="Best opportunities" to={BEST_OPPORTUNITIES_PATH} linkText="View top 5" touchTarget />
-          {opps.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppTop ? 'Nothing clears the bar right now.' : 'Loading…'}</div>}
-          {opps.map((o: any) => (
+          {oppState.retainedText ? <div data-testid="home-opportunities-retained" style={{ fontSize: TYPE.xs, fontWeight: 600, color: TOKENS.warning }}>{oppState.retainedText}</div> : null}
+          {oppAsOf ? <div data-testid="home-opportunities-as-of" style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{oppAsOf}</div> : null}
+          {/* FQ-114: the producer's own qualification/risk sentence, rendered verbatim. Home adds no verdict. */}
+          {oppNotice ? <p role="status" data-testid="home-opportunities-qualification" style={{ fontSize: TYPE.sm, color: TOKENS.warning, overflowWrap: 'anywhere' }}>{oppNotice}</p> : null}
+          {oppState.emptyText ? <div data-testid="home-opportunities-empty" style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{oppState.emptyText}</div> : null}
+          {opps.map((o: any) => {
+            // FQ-088: the row quotes the price the R:R was computed from; an old or missing quote is marked, never
+            // presented as current. Missing is not guessed from the list as-of.
+            const q = quoteAge(o?.inputs_as_of?.quote)
+            // R2 (codex BLOCK): the row's quote-input clock is not reliably bound to the price the ratio used (the
+            // backend can pair an older fallback price with a newer row timestamp), so the caption names it as the
+            // INPUT clock and never claims the ratio itself is current from it. No price at all means the ratio is the
+            // plan's, not a live price.
+            const hasPrice = o?.risk_reward?.current_price != null
+            const caption = oppRetained ? 'retained · not current'
+              : !hasPrice ? 'plan-based · not a current price'
+              : `${q.short} · input clock`
+            const captionTone = oppRetained || !hasPrice || q.state !== 'current' ? TOKENS.warning : TOKENS.text[3]
+            const captionTitle = oppRetained
+              ? 'The last refresh failed, so this row is retained and not current.'
+              : !hasPrice
+                ? 'This ratio comes from the entry plan; no current price was attached to the row.'
+                : `${q.words} This is the list's quote-input clock; the price behind the ratio is not proven to come from that observation.`
+            return (
             <button key={o.symbol} type="button" onClick={() => openSymbol(o.symbol)}
               title={`${o.symbol}: conviction ${o.conviction != null ? Math.round(o.conviction) : '—'} of 100 · reward-to-risk ${o.risk_reward?.rr != null ? Number(o.risk_reward.rr).toFixed(1) : '—'}× (/api/v3/opportunities, CIO opportunity ranking). Advisory only.`}
               style={{ display: 'grid', gridTemplateColumns: '60px minmax(0, 1fr) 64px 36px', gap: 8, alignItems: 'center', fontSize: TYPE.base, padding: '4px 0', borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: 'none', border: 'none', color: TOKENS.text[0], cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
               <span style={{ ...numStyle, fontWeight: 600 }}>{o.symbol}</span>
-              <span style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>{String(o.type ?? '').replace(/_/g, ' ')}</span>
-              <span style={{ ...numStyle, fontSize: TYPE.sm, textAlign: 'right' }}>R:R {o.risk_reward?.rr != null ? `${Number(o.risk_reward.rr).toFixed(1)}×` : '—'}</span>
+              <span style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>{opportunityRowLabel(o)}</span>
+              <span style={{ ...numStyle, fontSize: TYPE.sm, textAlign: 'right', lineHeight: 1.2 }}>R:R {o.risk_reward?.rr != null ? `${Number(o.risk_reward.rr).toFixed(1)}×` : '—'}
+                <span data-testid={`home-opp-quote-${o.symbol}`} title={captionTitle} style={{ display: 'block', fontSize: TYPE.xs, fontWeight: 400, color: captionTone }}>{caption}</span>
+              </span>
               <span style={{ ...numStyle, fontWeight: 600, color: TOKENS.success, textAlign: 'right' }}>{o.conviction != null ? Math.round(o.conviction) : '—'}</span>
             </button>
-          ))}
+            )
+          })}
         </section>
 
         <section style={card} data-testid="home-market-card" aria-label="Market in one look">
