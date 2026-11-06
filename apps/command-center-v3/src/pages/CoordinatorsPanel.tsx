@@ -8,7 +8,7 @@ import { Chip, ChipRow } from '../components/primitives'
 import AddCoordinatorModal from '../components/AddCoordinatorModal'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
 import {
-  byTerritory, divergenceLine, heartbeatLabel, sortCoordinators, stateLabel, stateTone,
+  byTerritory, divergenceLine, heartbeatLabel, leadChip, sortCoordinators, stateLabel, stateTone,
   type AgentRow, type BoardPayload, type CoordinatorsPayload, type DocsPayload,
 } from '../lib/coordinators'
 
@@ -67,6 +67,7 @@ export default function CoordinatorsPanel() {
   const inbox = d?.inbox || {}
   const agents: AgentRow[] = d?.agents || []
   const divergence = divergenceLine(d)
+  const lead = leadChip(d)
 
   if (coordApi.loading && !d) return <div style={panel} data-testid="coordination-coordinators">Loading coordinators…</div>
   if (coordApi.error && !d) return <div style={panel} data-testid="coordination-coordinators">Coordinators unavailable.</div>
@@ -101,9 +102,9 @@ export default function CoordinatorsPanel() {
           </div>
         ) : null}
         <ChipRow style={{ marginTop: 8 }}>
-          <Chip tone={d?.lead ? 'success' : 'warning'} title="the only coordinator that brings questions to the operator">
-            lead: {d?.lead || 'none'}
-          </Chip>
+          {/* A failed read is "unknown", never "none" (deputy F1 on PR 2492): this chip sits one line under the
+              "registry unreadable" alert, and "lead: none" there states as fact what the failed read could not know. */}
+          <Chip tone={lead.tone} title={lead.title}>{lead.text}</Chip>
           <Chip tone="neutral" title="how long silence marks a coordinator stale">{d?.stale_after_minutes ?? 30}m stale rule</Chip>
           <Chip tone={checks.length ? 'warning' : 'neutral'} title="risky actions waiting for a second coordinator">checks {checks.length}</Chip>
           <Chip tone={decisions.length ? 'warning' : 'neutral'} title="waiting on the operator">waiting on you {decisions.length}</Chip>

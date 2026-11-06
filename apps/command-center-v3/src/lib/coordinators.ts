@@ -90,6 +90,22 @@ export function joinLineForSelection(
   return data.line || ''
 }
 
+/** The lead chip's words. A FAILED READ is "unknown", never "none".
+ *
+ *  When the registry cannot be read the payload is `lead: null` with `registry_error` set, and the panel rendered
+ *  "lead: none" one line under its own red "registry unreadable" alert — a failed read flattened into a factual claim
+ *  about who leads. The same panel already says "unknown" for a store it could not read elsewhere (deputy F1 on PR 2492). */
+export function leadChip(p?: {
+  lead?: string | null; registry_error?: string | null; registry_unreadable?: boolean
+} | null): { text: string; tone: 'success' | 'warning' | 'neutral'; title: string } {
+  const title = 'the only coordinator that brings questions to the operator'
+  if (p?.registry_error || p?.registry_unreadable) {
+    return { text: 'lead: unknown', tone: 'neutral', title: 'the registry could not be read, so the lead is not known' }
+  }
+  if (!p?.lead) return { text: 'lead: none', tone: 'warning', title }
+  return { text: `lead: ${p.lead}`, tone: 'success', title }
+}
+
 /** The line a READABLE but divergent registry must show, or null.
  *
  *  The server already publishes `divergent` and `registry_problems` (two leads, a top-level lead that disagrees with
