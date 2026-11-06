@@ -368,6 +368,19 @@ BAD down
 "text": "TRADE AI SYSTEM ALERT — P1 n8n DEAD-MAN (host watcher; n8n not involved)\n• healthz: FAIL (http None, connection_refused)\n• heartbeat (heartbeat-watch): ok (…)\nBad since 2026-10-22T13:31:33Z. … Runbook: docs/ops/packets/n8n-platform-hardening-20261022/README.md#fw-p6"
 ```
 
+**Before Apply — provision the alert env file** (package 0.4f, 2026-11-06). The units read Telegram from
+`~/.config/tradeai/n8n/host-alert.env`, which nothing had created: without it the dead-man builds its P1 page and
+reports `not_configured`. `scripts/ops/n8n_host_alert_env.py` copies exactly `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID` from the runtime env (`/run/user/<uid>/tradeai/env`) at 0600 in a 0700 directory; it never prints a
+value and never overwrites a file that differs. Dry run (measured 2026-11-06; writes nothing):
+
+```
+cd ~/trade-ai-releases/portfolio-server/CURRENT && ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/ops/n8n_host_alert_env.py
+"source_has": {"TELEGRAM_BOT_TOKEN": true, "TELEGRAM_CHAT_ID": true}, "target_problems": ["alert env file missing: …/host-alert.env"], "would_write": true
+```
+
+Apply: the same command with `--write` → `"ok": true, "written": true`; re-running the dry run then prints `"ok": true`.
+
 **Apply** (one line):
 
 ```
