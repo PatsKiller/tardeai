@@ -216,7 +216,7 @@ def wrapper_check(env: Env) -> dict[str, Any]:
     runner = env.wrapper_runner
     if runner is None:
 
-        def runner(cur: Path, out: Path) -> tuple[int, str]:  # noqa: E306
+        def runner(cur: Path, out: Path) -> tuple[int, str]:
             p = subprocess.run(
                 [
                     "python3",
@@ -277,7 +277,10 @@ def broken_findings(findings_doc: Mapping[str, Any], kinds: list[str], slow_ms: 
         if f.get("severity") == "broken" and f.get("kind") in want and not f.get("in_flight")
     ]
     for c in findings_doc.get("coverage") or []:
-        if int(c.get("load_ms") or 0) > slow_ms:
+        load_ms = c.get("load_ms")
+        if load_ms is None:
+            continue  # not measured: unknown, never reported as fast or slow
+        if int(load_ms) > slow_ms:
             out.append(
                 {
                     "route": c.get("route"),
