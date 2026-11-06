@@ -3,6 +3,7 @@ import { useApi } from '../../hooks/useApi'
 import { queueHealthFrom, queueLevelTone, QUEUE_WARN, QUEUE_CRIT } from '../../lib/overnightQueueHealth'
 import { plausibilityFrom, plausibilityTone } from '../../lib/dataPlausibility'
 import { pipelineFailuresFrom } from '../../lib/pipelineFailures'
+import { failureCause, taskName } from '../../lib/pipelineFailureText'
 
 // System panels for failures that had no page (audit 2026-10-21): the overnight LLM queue (Jobs tab), data
 // plausibility (Data Sources tab) and recent pipeline_runs failures (Pipeline tab). Each renders UNAVAILABLE, never
@@ -102,20 +103,34 @@ export function PipelineFailuresPanel() {
   const tone = m.state === 'OK' ? (m.rows.length ? 'danger' : 'success') : m.state === 'LOADING' ? 'neutral' : 'warning'
   return (
     <div style={panel} data-testid="pipeline-failures-panel">
-      <Head title={`Recent pipeline failures (${m.windowHours}h)`} badge={badge} tone={tone} sub="pipeline_runs · status failed/error/timeout/crashed" />
+      <Head title={`Recent pipeline failures (${m.windowHours}h)`} badge={badge} tone={tone}
+        sub="Runs recorded as failed, errored, timed out or crashing" />
       {m.state === 'UNAVAILABLE' && <div style={{ ...small, color: TONE.warning }}>UNAVAILABLE{m.note ? ` · ${m.note}` : ''} — not a clean run.</div>}
       {m.state === 'OK' && m.rows.length === 0 && <div style={small}>No pipeline failures recorded in the window.</div>}
-      {m.rows.map(r => (
-        <div key={r.pipeline} style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '4px 0', borderTop: '1px solid var(--border-subtle)', fontSize: 11 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-1)', minWidth: 180 }}>{r.pipeline}</span>
-          <span style={{ color: TONE.danger, fontWeight: 700, minWidth: 40 }}>{r.failed}×</span>
-          {r.zombieCleared ? <span style={small} title="runs that never finished, settled failed by remediate_pipeline_failures">{r.zombieCleared} zombie</span> : null}
-          <span style={{ color: 'var(--text-3)', minWidth: 120 }}>{r.lastFailedAt ? r.lastFailedAt.replace('T', ' ').slice(0, 16) : '—'}</span>
-          <span style={{ color: 'var(--text-2)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.lastError ?? ''}>
-            {r.lastError ?? 'no error text recorded'}
-          </span>
-        </div>
-      ))}
+      {m.rows.map(r => {
+        // FQ-065: the row reads as task + consequence; the script id, the run count wording and the raw parser text
+        // live in the disclosure underneath. Nothing is removed from the page.
+        const cause = failureCause(r.lastError, r.zombieCleared)
+        return (
+          <div key={r.pipeline} data-pipeline-row={r.pipeline} style={{ padding: '6px 0', borderTop: '1px solid var(--border-subtle)', fontSize: 11 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--text-1)', fontWeight: 700 }}>{taskName(r.pipeline)}</span>
+              <span style={{ color: TONE.danger, fontWeight: 700 }}>{r.failed}× failed</span>
+              <span style={{ color: 'var(--text-3)' }}>{r.lastFailedAt ? `last ${r.lastFailedAt.replace('T', ' ').slice(0, 16)}` : 'time not recorded'}</span>
+            </div>
+            <div style={{ color: 'var(--text-2)', marginTop: 2 }}>{cause.summary}</div>
+            <details style={{ marginTop: 2 }}>
+              <summary style={{ ...small, cursor: 'pointer' }}>Technical detail</summary>
+              <div style={{ ...small, fontFamily: 'var(--font-mono)', wordBreak: 'break-word' }}>
+                <div>pipeline: {r.pipeline}</div>
+                <div>status: failed/error/timeout/crashed · table pipeline_runs</div>
+                {r.zombieCleared ? <div>zombie_cleared: {r.zombieCleared} (settled by remediate_pipeline_failures)</div> : null}
+                <div>last_error: {cause.technical ?? 'not recorded'}</div>
+              </div>
+            </details>
+          </div>
+        )
+      })}
     </div>
   )
 }
