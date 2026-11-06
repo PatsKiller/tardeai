@@ -27,7 +27,7 @@ def _run(argv: list[str], *, timeout: int = 180) -> dict[str, Any]:
     # the diagnosis (holdings/broker data), which must never reach a shell.
     cmd = " ".join(argv)
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 -- argument list built here, no shell
             argv, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=timeout,
         )
         return {

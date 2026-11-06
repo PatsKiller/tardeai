@@ -2811,7 +2811,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             except ValueError as _e:
                 json_response(self, 400, {"ok": False, "error": str(_e)})
                 return
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603 -- argv from yaml_apply_argv, ids validated, no shell
                 argv, capture_output=True, text=True,
                 cwd=str(PROJECT_ROOT))
             json_response(self, 200, {
