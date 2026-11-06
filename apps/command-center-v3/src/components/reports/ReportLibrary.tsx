@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { BB, T, TYPE, RAIL, numStyle, terminalButton } from '../../lib/watchTokens'
 import { Chip } from '../TerminalChip'
+import { cadenceWords, neverRunText, runStateOf, scheduleWords } from '../../lib/reportCardText'
 
 // Reports Desk v1 (WS-A): the Library — every report family the system already
 // produces, surfaced. Data: /api/v2/reports → report_catalog (built by the ONE
@@ -59,8 +61,18 @@ export default function ReportLibrary({ catalog }: { catalog: any }) {
                   </div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <span style={numStyle} title={t.last_generated_at || ''}>{fmtET(t.last_generated_at)}</span>
-                    {' · '}{fmtAge(t.age_hours)} · {t.generator}
+                    {' · '}{fmtAge(t.age_hours)} · {cadenceWords(t.cadence)}
+                    {scheduleWords(t.generator) ? ` · ${scheduleWords(t.generator)}` : ''}
                   </div>
+                  {t.status === 'never-generated' && (
+                    <div data-testid="report-never-run" style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
+                      {neverRunText(runStateOf(t))} <Link to="/ops/jobs" style={{ color: T.link }}>Open Ops → Jobs</Link>
+                    </div>
+                  )}
+                  <details style={{ marginTop: 4 }}>
+                    <summary style={{ fontSize: TYPE.xs, color: BB.text3, cursor: 'pointer' }}>Technical</summary>
+                    <div style={{ fontSize: TYPE.xs, color: BB.text3, paddingTop: 2 }}>{t.generator}</div>
+                  </details>
                   <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                     {Object.entries(t.artifacts || {}).map(([kind, url]: any) => (
                       <button key={kind} onClick={() => openArtifact(t, kind, url)}
