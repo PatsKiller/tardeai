@@ -180,8 +180,7 @@ def test_api_route_calls_the_projection_read_only_and_the_page_has_the_panel():
         assert forbidden not in block
     page = (ROOT / "apps" / "command-center-v3" / "src" / "pages" / "CoordinationPage.tsx").read_text(encoding="utf-8")
     assert "/api/v2/coordination/approvals" in page and 'data-testid="coordination-approvals"' in page
-    chain = (ROOT / "apps" / "command-center-v3" / "package.json").read_text(encoding="utf-8")
-    assert "src/lib/approvalBoard.test.ts" in chain
+    assert "src/lib/approvalBoard.test.ts" in _app_test_runner_list()
     from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
     reg = ci_gates.registry_text(ROOT)
     assert '"tests/test_approval_board_20261008.py"' in reg
@@ -226,3 +225,29 @@ def test_telegram_ack_callback_records_a_consumer_receipt_and_nothing_else(env, 
     assert answers[-1][0] == "cbq-2" and "Not authorized" in answers[-1][1]
     handler.handle_callback_query({**cb, "id": "cbq-3", "data": "ack:apx-does-not-exist-00000000"})
     assert answers[-1][0] == "cbq-3" and answers[-1][1].startswith("Not acknowledged")
+
+
+def _app_test_runner_list() -> set[str]:
+    """What the app's own discovery runner will actually run.
+
+    2026-11-05: the build line no longer names ~100 test files (that single line was the four-PR collision); it runs
+    ``scripts/run-tests.mjs``, which discovers ``src/**/*.test.ts|.mjs`` minus ``scripts/tests.dormant.json``. Naming a
+    file in the build was only ever a proxy for "it runs in CI", so the guard now asks the runner itself: the runner is
+    the build step, and this file is in its run list. It cannot drift from the runner's rule because it does not restate
+    it, and it fails loudly if the runner is removed or node is unavailable rather than passing on a stale string.
+    """
+    import shutil
+    import subprocess
+
+    app = ROOT / "apps" / "command-center-v3"
+    build = json.loads((app / "package.json").read_text())["scripts"]["build"]
+    assert "node scripts/run-tests.mjs" in build, (
+        "the app build no longer runs the discovery test runner (node scripts/run-tests.mjs): a test is registered by "
+        "being discovered, so this guard has nothing to check until the build step is restored"
+    )
+    node = shutil.which("node")
+    assert node, "node is required to ask the app runner which tests it discovers"
+    out = subprocess.run([node, "scripts/run-tests.mjs", "--list"], cwd=app,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, f"run-tests.mjs --list failed: {out.stderr[-500:]}"
+    return set(json.loads(out.stdout)["run"])
