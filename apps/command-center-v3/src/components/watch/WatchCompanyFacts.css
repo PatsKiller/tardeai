@@ -27,6 +27,11 @@
   .watch-company-company .watch-company-description { display: none; }
   .watch-company-chips > span { background: transparent !important; padding: 0 !important; }
   .watch-company-chips > span + span::before { content: ' · '; }
+  /* MAIN-RED 2026-11-06: at 390 px the facts column is ~90 px, and two 44 px heading controls plus a nowrap
+     name cannot share it — the second control was pushed 4 px past the section and the block scrolled 3 px.
+     Stack the name on its own line and let it wrap, so every control stays inside its own box at any width. */
+  .watch-company-heading { flex-wrap: wrap; row-gap: 2px; }
+  .watch-company-heading strong { flex: 1 1 100%; white-space: normal; overflow: visible; text-overflow: clip; }
   .watch-company-catalyst { display: block; }
   .watch-company-catalyst > * { margin-right: 5px; }
 }

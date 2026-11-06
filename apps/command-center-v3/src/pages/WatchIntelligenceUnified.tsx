@@ -5,7 +5,7 @@ import './W9Mobile.css'
  * Zero provider calls on load.
  */
 import { SymbolLink, useOpenSymbol } from '../components/opportunity/OpportunityContext'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
@@ -18,6 +18,25 @@ import {
   scopeOf,
 } from '../components/watch/WatchDecisionParts'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
+
+//: FQ-077 / cc-deepseek-5 R4: a one-shot `matchMedia(...).matches` read during render never updates, so rotating a
+//: phone across the breakpoint left the page in its old layout until an unrelated re-render. A subscribed hook is the
+//: fix; server rendering has no matchMedia and takes the desktop branch.
+export const PHONE_MAX_WIDTH = 760
+function useNarrowViewport(maxWidth: number = PHONE_MAX_WIDTH): boolean {
+  const read = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia(`(max-width: ${maxWidth}px)`).matches
+  const [narrow, setNarrow] = useState<boolean>(read)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(`(max-width: ${maxWidth}px)`)
+    const onChange = () => setNarrow(mq.matches)
+    onChange()
+    mq.addEventListener?.('change', onChange)
+    return () => mq.removeEventListener?.('change', onChange)
+  }, [maxWidth])
+  return narrow
+}
 
 type Card = {
   symbol: string
@@ -119,6 +138,15 @@ function stateColor(s?: string) {
   if (s === 'MANAGING') return BB.text2
   if (s === 'STALE' || s === 'DATA_UNAVAILABLE') return BB.text3
   return BB.red
+}
+
+/** The generic line renders the producer's flat projection; individual reviewer states remain in their own boxes.
+ * A CIO NOT_SCHEDULED can coexist with Maria QUEUED or deferred, so it is not a card-wide scheduling observation.
+ * Missing flat fields stay explicitly unavailable; policy windows are never promoted into promised execution times.
+ */
+function nextReviewLine(c: Card): string {
+  const flat = (c as any).next_review_at || (c as any).next_review_condition || c.next_review_time
+  return flat ? String(flat) : 'not provided — the producer has not reported a review time for this name'
 }
 
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
@@ -235,33 +263,46 @@ export default function WatchIntelligenceUnified() {
   const openSymbol = useOpenSymbol()
   const [decisionOpen, setDecisionOpen] = useState(false)
 
+  // FQ-077 F1 (cx-openai-3): ONE definition of an "effective filter" drives the request builder, the disclosure
+  // count, the chips and Clear. The chip list previously covered only a subset, so applied filters such as
+  // freshness / review_status / review_agent / material_change constrained the results while the collapsed summary
+  // read "none active". Pagination (page, page_size) and presentation (sort, layout) are deliberately NOT filters.
+  // `material_change=0` is a real "No" selection, so presence is tested explicitly — never truthiness of the value.
+  const activeFilters = useMemo<[string, string][]>(() => {
+    const out: [string, string][] = []
+    const add = (k: string, v: string) => { if (v !== '') out.push([k, v]) }
+    if (view !== 'top_ideas') add('view', view)
+    add('q', q)
+    add('street_rating', street)
+    add('trade_ai_state', state)
+    add('sector', sector)
+    add('industry', industry)
+    add('instrument', instrument)
+    add('review_status', reviewStatus)
+    add('review_agent', reviewAgent)
+    add('freshness', freshness)
+    add('material_change', materialChange)
+    add('saved_list', savedList)
+    add('provider', provider)
+    add('model', model)
+    add('cio_view', cioView)
+    if (starredOnly) add('starred', '1')
+    if (heldOnly) add('held', '1')
+    add('origin', origin)
+    for (const [k, v] of decisionQs) add(k, v)
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, q, street, state, sector, industry, instrument, reviewStatus, reviewAgent, freshness, materialChange, savedList, provider, model, cioView, starredOnly, heldOnly, origin, decisionKey])
+
   const apiQs = useMemo(() => {
     const p = new URLSearchParams()
     p.set('view', view || 'top_ideas')
     p.set('page', page || '1')
     p.set('page_size', '40')
     p.set('sort', sort || 'watch_rank')
-    if (q) p.set('q', q)
-    if (street) p.set('street_rating', street)
-    if (state) p.set('trade_ai_state', state)
-    if (sector) p.set('sector', sector)
-    if (industry) p.set('industry', industry)
-    if (instrument) p.set('instrument', instrument)
-    if (reviewStatus) p.set('review_status', reviewStatus)
-    if (reviewAgent) p.set('review_agent', reviewAgent)
-    if (freshness) p.set('freshness', freshness)
-    if (materialChange) p.set('material_change', materialChange)
-    if (savedList) p.set('saved_list', savedList)
-    if (provider) p.set('provider', provider)
-    if (model) p.set('model', model)
-    if (cioView) p.set('cio_view', cioView)
-    if (starredOnly) p.set('starred', '1')
-    if (heldOnly) p.set('held', '1')
-    if (origin) p.set('origin', origin)
-    for (const [k, v] of decisionQs) p.set(k, v)
+    for (const [k, v] of activeFilters) if (k !== 'view') p.set(k, v)
     return p.toString()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, page, sort, q, street, state, sector, industry, instrument, reviewStatus, reviewAgent, freshness, materialChange, savedList, provider, model, cioView, starredOnly, heldOnly, origin, decisionKey])
+  }, [view, page, sort, activeFilters])
 
   const [refreshKey, setRefreshKey] = useState(0)
   const [starError, setStarError] = useState<string | null>(null)
@@ -315,16 +356,8 @@ export default function WatchIntelligenceUnified() {
     }
   }
 
-  const activeChips: string[] = []
-  if (view && view !== 'top_ideas') activeChips.push(`view:${view}`)
-  if (street) activeChips.push(`street:${street}`)
-  if (state) activeChips.push(`state:${state}`)
-  if (sector) activeChips.push(`sector:${sector}`)
-  if (starredOnly) activeChips.push('starred')
-  if (heldOnly) activeChips.push('held')
-  if (origin) activeChips.push(`origin:${origin}`)
-  if (q) activeChips.push(`q:${q}`)
-  for (const [k, v] of decisionQs) activeChips.push(`${k}:${v}`)
+  // Same single definition as the request builder, so the count and chips cannot drift from what is sent to the API.
+  const activeChips = activeFilters.map(([k, v]) => `${k}:${v}`)
 
   const applyDecision = (f: Record<string, string>) => {
     const next = new URLSearchParams(sp)
@@ -371,6 +404,165 @@ export default function WatchIntelligenceUnified() {
             ) : (
               <div style={{ padding: 14, color: BB.text3, fontSize: TYPE.sm }}>Select a card</div>
             )
+
+  {/* 4. Filter toolbar (Screener controls). FQ-077: hoisted so phone width can put it inside the disclosure. */}
+  const narrowViewport = useNarrowViewport()
+  const filterToolbar = (
+  <div
+    style={{
+      display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+      background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, padding: 10, marginBottom: 8,
+    }}
+    data-filter-toolbar
+  >
+    <input
+      value={q}
+      onChange={e => setParam('q', e.target.value)}
+      placeholder="Search symbol, company, sector"
+      style={inputStyle}
+    />
+    <select value={street} onChange={e => setParam('street_rating', e.target.value)} style={inputStyle}>
+      <option value="">Street rating</option>
+      {(filterBody?.street_ratings || ['STRONG BUY', 'BUY', 'HOLD', 'SELL', 'NOT RATED']).map((r: string) => (
+        <option key={r} value={r.replace(/ /g, '_')}>{r}</option>
+      ))}
+    </select>
+    <select value={state} onChange={e => setParam('trade_ai_state', e.target.value)} style={inputStyle}>
+      <option value="">Trade AI state</option>
+      {(filterBody?.trade_ai_states || []).map((r: string) => (
+        <option key={r} value={r} title={r}>{tradeAiStateLabel(r)}</option>
+      ))}
+    </select>
+    <select value={sector} onChange={e => setParam('sector', e.target.value)} style={inputStyle}>
+      <option value="">Sector</option>
+      {(filterBody?.sectors || []).map((r: string) => (
+        <option key={r} value={r}>{r}</option>
+      ))}
+    </select>
+    <select value={industry} onChange={e => setParam('industry', e.target.value)} style={inputStyle}>
+      <option value="">Industry</option>
+      {(filterBody?.industries || []).map((r: string) => (
+        <option key={r} value={r}>{r}</option>
+      ))}
+    </select>
+    <select value={instrument} onChange={e => setParam('instrument', e.target.value)} style={inputStyle}>
+      <option value="">Instrument</option>
+      {(filterBody?.instruments || []).map((r: string) => (
+        <option key={r} value={r}>{r}</option>
+      ))}
+    </select>
+    <select value={reviewStatus} onChange={e => setParam('review_status', e.target.value)} style={inputStyle}>
+      <option value="">Review status</option>
+      <option value="COMPLETE" title="COMPLETE">{reviewStatusLabel('COMPLETE')}</option>
+      <option value="NOT_RUN" title="NOT_RUN">{reviewStatusLabel('NOT_RUN')}</option>
+    </select>
+    <select value={reviewAgent} onChange={e => setParam('review_agent', e.target.value)} style={inputStyle}>
+      <option value="">Review agent</option>
+      <option value="cio">CIO</option>
+      <option value="maria">Maria</option>
+    </select>
+    <select value={freshness} onChange={e => setParam('freshness', e.target.value)} style={inputStyle}>
+      <option value="">Quote freshness</option>
+      {['CURRENT', 'PREMARKET_CURRENT', 'AFTER_HOURS_CURRENT', 'STALE', 'DATA_UNAVAILABLE'].map(r => (
+        <option key={r} value={r} title={r}>{quoteFreshnessLabel(r)}</option>
+      ))}
+    </select>
+    <select value={materialChange} onChange={e => setParam('material_change', e.target.value)} style={inputStyle}>
+      <option value="">Material change</option>
+      <option value="1">Yes</option>
+      <option value="0">No</option>
+    </select>
+    <select
+      value={savedList}
+      onChange={e => setParam('saved_list', e.target.value)}
+      style={inputStyle}
+      disabled={!(filterBody?.saved_lists || []).length}
+      title={(filterBody?.saved_lists || []).length ? 'Saved list' : 'No canonical saved lists on host'}
+      data-filter="saved_list"
+    >
+      <option value="">{(filterBody?.saved_lists || []).length ? 'Saved list' : 'Saved list (unavailable)'}</option>
+      {(filterBody?.saved_lists || []).map((r: string) => (
+        <option key={r} value={r}>{r}</option>
+      ))}
+    </select>
+    <select
+      value={cioView}
+      onChange={e => setParam('cio_view', e.target.value)}
+      style={inputStyle}
+      disabled={!(filterBody?.cio_views || []).length}
+      title={(filterBody?.cio_views || []).length ? 'CIO view' : 'No authorized COMPLETE CIO reviews'}
+      data-filter="cio_view"
+    >
+      <option value="">{(filterBody?.cio_views || []).length ? 'CIO view' : 'CIO view (no authorized reviews)'}</option>
+      {(filterBody?.cio_views || []).map((r: string) => (
+        <option key={r} value={r}>{r}</option>
+      ))}
+    </select>
+    <select
+      value={provider}
+      onChange={e => setParam('provider', e.target.value)}
+      style={inputStyle}
+      disabled={!(filterBody?.providers || []).length}
+      title={(filterBody?.providers || []).length ? 'Provider' : 'No authorized COMPLETE artifacts — options empty'}
+      data-filter="provider"
+    >
+      <option value="">{(filterBody?.providers || []).length ? 'Provider' : 'Provider (none authorized)'}</option>
+      {(filterBody?.providers || []).map((r: string) => (
+        <option key={r} value={r}>{r}</option>
+      ))}
+    </select>
+    <select
+      value={model}
+      onChange={e => setParam('model', e.target.value)}
+      style={inputStyle}
+      disabled={!(filterBody?.models || []).length}
+      title={(filterBody?.models || []).length ? 'Model' : 'No authorized COMPLETE artifacts — options empty'}
+      data-filter="model"
+    >
+      <option value="">{(filterBody?.models || []).length ? 'Model' : 'Model (none authorized)'}</option>
+      {(filterBody?.models || []).map((r: string) => (
+        <option key={r} value={r}>{r}</option>
+      ))}
+    </select>
+    <button type="button" style={pill(decisionQs.length > 0)} onClick={() => setDecisionOpen(true)} data-open-decision-filters>
+      Decision filters{decisionQs.length ? ` · ${decisionQs.length}` : ''}
+    </button>
+    <select value={sort} onChange={e => setParam('sort', e.target.value)} style={inputStyle}>
+      <option value="watch_rank">Sort: watch rank</option>
+      {DECISION_SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      <option value="street_rating">Sort: street</option>
+      <option value="day_change">Sort: day change</option>
+      <option value="upside">Sort: upside</option>
+      <option value="symbol">Sort: symbol</option>
+    </select>
+    <select value={origin} onChange={e => setParam('origin', e.target.value)} style={inputStyle}>
+      <option value="">Origin</option>
+      <option value="screener_find">Screener find</option>
+    </select>
+    {/* FQ-076: the reason for the disabled filters is now VISIBLE, not only in a title tooltip a phone never shows. */}
+    <span data-testid="filters-unavailable-reason" style={{ fontSize: TYPE.xs, color: BB.text3, flexBasis: '100%' }}>
+      Four filters are off until the broker provider lands — catalyst and earnings windows, relative-strength band and
+      valuation band. Everything else on this page works without it.
+    </span>
+    {/* Typed unavailable controls — disabled, with the reason stated above and in the title */}
+    <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="catalyst_window">
+      <option>Catalyst window (unavailable)</option>
+    </select>
+    <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="earnings_window">
+      <option>Earnings window (unavailable)</option>
+    </select>
+    <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="relative_strength_band">
+      <option>Relative-strength band (unavailable)</option>
+    </select>
+    <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="valuation_band">
+      <option>Valuation band (unavailable)</option>
+    </select>
+    <button type="button" style={pill(starredOnly)} onClick={() => setParam('starred', starredOnly ? '' : '1')}>★ Starred only</button>
+    <button type="button" style={pill(heldOnly)} onClick={() => setParam('held', heldOnly ? '' : '1')}>Held only</button>
+    <button type="button" style={pill(layout === 'grid')} onClick={() => setParam('layout', 'grid')}>Grid</button>
+    <button type="button" style={pill(layout === 'table')} onClick={() => setParam('layout', 'table')}>Table</button>
+  </div>
+  )
 
   return (
     <div
@@ -463,156 +655,19 @@ export default function WatchIntelligenceUnified() {
         ))}
       </div>
 
-      {/* 4. Filter toolbar (Screener controls) */}
-      <div
-        style={{
-          display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
-          background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, padding: 10, marginBottom: 8,
-        }}
-        data-filter-toolbar
-      >
-        <input
-          value={q}
-          onChange={e => setParam('q', e.target.value)}
-          placeholder="Search symbol, company, sector"
-          style={inputStyle}
-        />
-        <select value={street} onChange={e => setParam('street_rating', e.target.value)} style={inputStyle}>
-          <option value="">Street rating</option>
-          {(filterBody?.street_ratings || ['STRONG BUY', 'BUY', 'HOLD', 'SELL', 'NOT RATED']).map((r: string) => (
-            <option key={r} value={r.replace(/ /g, '_')}>{r}</option>
-          ))}
-        </select>
-        <select value={state} onChange={e => setParam('trade_ai_state', e.target.value)} style={inputStyle}>
-          <option value="">Trade AI state</option>
-          {(filterBody?.trade_ai_states || []).map((r: string) => (
-            <option key={r} value={r} title={r}>{tradeAiStateLabel(r)}</option>
-          ))}
-        </select>
-        <select value={sector} onChange={e => setParam('sector', e.target.value)} style={inputStyle}>
-          <option value="">Sector</option>
-          {(filterBody?.sectors || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <select value={industry} onChange={e => setParam('industry', e.target.value)} style={inputStyle}>
-          <option value="">Industry</option>
-          {(filterBody?.industries || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <select value={instrument} onChange={e => setParam('instrument', e.target.value)} style={inputStyle}>
-          <option value="">Instrument</option>
-          {(filterBody?.instruments || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <select value={reviewStatus} onChange={e => setParam('review_status', e.target.value)} style={inputStyle}>
-          <option value="">Review status</option>
-          <option value="COMPLETE" title="COMPLETE">{reviewStatusLabel('COMPLETE')}</option>
-          <option value="NOT_RUN" title="NOT_RUN">{reviewStatusLabel('NOT_RUN')}</option>
-        </select>
-        <select value={reviewAgent} onChange={e => setParam('review_agent', e.target.value)} style={inputStyle}>
-          <option value="">Review agent</option>
-          <option value="cio">CIO</option>
-          <option value="maria">Maria</option>
-        </select>
-        <select value={freshness} onChange={e => setParam('freshness', e.target.value)} style={inputStyle}>
-          <option value="">Quote freshness</option>
-          {['CURRENT', 'PREMARKET_CURRENT', 'AFTER_HOURS_CURRENT', 'STALE', 'DATA_UNAVAILABLE'].map(r => (
-            <option key={r} value={r} title={r}>{quoteFreshnessLabel(r)}</option>
-          ))}
-        </select>
-        <select value={materialChange} onChange={e => setParam('material_change', e.target.value)} style={inputStyle}>
-          <option value="">Material change</option>
-          <option value="1">Yes</option>
-          <option value="0">No</option>
-        </select>
-        <select
-          value={savedList}
-          onChange={e => setParam('saved_list', e.target.value)}
-          style={inputStyle}
-          disabled={!(filterBody?.saved_lists || []).length}
-          title={(filterBody?.saved_lists || []).length ? 'Saved list' : 'No canonical saved lists on host'}
-          data-filter="saved_list"
-        >
-          <option value="">{(filterBody?.saved_lists || []).length ? 'Saved list' : 'Saved list (unavailable)'}</option>
-          {(filterBody?.saved_lists || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <select
-          value={cioView}
-          onChange={e => setParam('cio_view', e.target.value)}
-          style={inputStyle}
-          disabled={!(filterBody?.cio_views || []).length}
-          title={(filterBody?.cio_views || []).length ? 'CIO view' : 'No authorized COMPLETE CIO reviews'}
-          data-filter="cio_view"
-        >
-          <option value="">{(filterBody?.cio_views || []).length ? 'CIO view' : 'CIO view (no authorized reviews)'}</option>
-          {(filterBody?.cio_views || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <select
-          value={provider}
-          onChange={e => setParam('provider', e.target.value)}
-          style={inputStyle}
-          disabled={!(filterBody?.providers || []).length}
-          title={(filterBody?.providers || []).length ? 'Provider' : 'No authorized COMPLETE artifacts — options empty'}
-          data-filter="provider"
-        >
-          <option value="">{(filterBody?.providers || []).length ? 'Provider' : 'Provider (none authorized)'}</option>
-          {(filterBody?.providers || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <select
-          value={model}
-          onChange={e => setParam('model', e.target.value)}
-          style={inputStyle}
-          disabled={!(filterBody?.models || []).length}
-          title={(filterBody?.models || []).length ? 'Model' : 'No authorized COMPLETE artifacts — options empty'}
-          data-filter="model"
-        >
-          <option value="">{(filterBody?.models || []).length ? 'Model' : 'Model (none authorized)'}</option>
-          {(filterBody?.models || []).map((r: string) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <button type="button" style={pill(decisionQs.length > 0)} onClick={() => setDecisionOpen(true)} data-open-decision-filters>
-          Decision filters{decisionQs.length ? ` · ${decisionQs.length}` : ''}
-        </button>
-        <select value={sort} onChange={e => setParam('sort', e.target.value)} style={inputStyle}>
-          <option value="watch_rank">Sort: watch rank</option>
-          {DECISION_SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          <option value="street_rating">Sort: street</option>
-          <option value="day_change">Sort: day change</option>
-          <option value="upside">Sort: upside</option>
-          <option value="symbol">Sort: symbol</option>
-        </select>
-        <select value={origin} onChange={e => setParam('origin', e.target.value)} style={inputStyle}>
-          <option value="">Origin</option>
-          <option value="screener_find">Screener find</option>
-        </select>
-        {/* Typed unavailable controls — disabled with explanation */}
-        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="catalyst_window">
-          <option>Catalyst window (unavailable)</option>
-        </select>
-        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="earnings_window">
-          <option>Earnings window (unavailable)</option>
-        </select>
-        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="relative_strength_band">
-          <option>Relative-strength band (unavailable)</option>
-        </select>
-        <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="valuation_band">
-          <option>Valuation band (unavailable)</option>
-        </select>
-        <button type="button" style={pill(starredOnly)} onClick={() => setParam('starred', starredOnly ? '' : '1')}>★ Starred only</button>
-        <button type="button" style={pill(heldOnly)} onClick={() => setParam('held', heldOnly ? '' : '1')}>Held only</button>
-        <button type="button" style={pill(layout === 'grid')} onClick={() => setParam('layout', 'grid')}>Grid</button>
-        <button type="button" style={pill(layout === 'table')} onClick={() => setParam('layout', 'table')}>Table</button>
-      </div>
+      {/* 4. Filter toolbar (Screener controls). FQ-077 / cc-deepseek-5 R1: on a phone the WHOLE toolbar is inside the
+          disclosure — a summary beside it left the same wall of controls under it, so the first result was as far down
+          as before. Desktop renders it inline, unchanged. */}
+      {narrowViewport ? (
+        <details data-testid="filters-compact" style={{ marginBottom: 8 }}>
+          <summary style={{ minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: TYPE.sm, color: BB.text2 }}>
+            Filters{activeChips.length ? ` · ${activeChips.length} active` : ' · none active'}
+          </summary>
+          {filterToolbar}
+        </details>
+      ) : (
+        filterToolbar
+      )}
 
       {/* 5. Active chips */}
       {activeChips.length > 0 && (
@@ -778,7 +833,7 @@ export default function WatchIntelligenceUnified() {
                   </div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <b style={{ color: BB.text2 }}>Next review:</b>{' '}
-                    {(c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—'}
+                    {nextReviewLine(c)}
                   </div>
                   {c.primary_risk && <div style={{ fontSize: TYPE.xs, color: BB.red, marginTop: 6 }}>Risk: {c.primary_risk}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>

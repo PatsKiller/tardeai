@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_position_verdict_20261104",
+  "files": [
+    "tests/test_cio_position_verdict_20261104.py"
+  ],
+  "anchor": "CIO_POSITION_VERDICT_20261104",
+  "comment": [
+    "ANCHOR: CIO_POSITION_VERDICT_20261104 — SPEC_ONE_POSITION_VERDICT_20261104 §1b (FQ-095): the CIO is the only",
+    "producer of a position verdict, the record carries the twelve required fields, an aggregate account is refused,",
+    "and the per-(symbol, account) history survives the process that wrote it (append-only, flush + fsync per record).",
+    "Hermetic: a tmp_path store; no live database, no broker, no surface."
+  ]
+}

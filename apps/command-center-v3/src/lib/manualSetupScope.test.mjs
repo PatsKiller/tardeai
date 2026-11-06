@@ -1,0 +1,72 @@
+// node --experimental-strip-types src/lib/manualSetupScope.test.mjs
+// FQ-044 (/manual-execution F): one draft card showed READY, TECH OK, DECISION PENDING and rating
+// UNKNOWN with nothing saying what READY scopes. READY is draft completeness, not approval, and the
+// decision on this desk is advisory. The words must carry that scope, and the card must render them.
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { stateBadgeWords, stateScopeTitle, decisionWords, techScopeTitle, ratingScopeWords } from './manualSetupScope.ts'
+
+const HERE = dirname(fileURLToPath(import.meta.url))
+let failed = 0
+const check = (ok, msg) => { if (!ok) { failed++; console.error('FAIL ' + msg) } }
+
+check(/NOT SENT/.test(stateBadgeWords('READY')), 'READY still does not say the draft has not been sent')
+check(/NOT SENT/.test(stateBadgeWords('GENERATED')), 'GENERATED still does not say the draft has not been sent')
+check(stateBadgeWords('BROKER_OBSERVED') === 'AUTO-LINKED FROM SCHWAB READ-ONLY', 'the broker-linked label changed')
+check(stateBadgeWords('EXCEPTION') === 'EXCEPTION', 'a plain state was rewritten')
+check(/not approval/i.test(stateScopeTitle('READY')), 'the READY tooltip does not say it is not approval')
+check(/Schwab/.test(stateScopeTitle('BROKER_OBSERVED')), 'the broker-linked tooltip lost its source')
+// codex B3 (2026-11-04): an exception or an unrecorded state must not inherit "your ticket is complete".
+check(!/complete to review/i.test(stateScopeTitle('EXCEPTION')), 'an EXCEPTION draft is described as complete to review')
+check(/exception/i.test(stateScopeTitle('EXCEPTION')), 'an EXCEPTION draft does not say it has an exception')
+check(!/is complete to review/i.test(stateScopeTitle(null)), 'an unrecorded state claims the ticket is complete')
+check(/cannot say/.test(stateScopeTitle(undefined)), 'an unrecorded state does not say the page cannot judge it')
+check(!/is complete to review/i.test(stateScopeTitle('SOMETHING_ELSE')) && /not complete/i.test(stateScopeTitle('SOMETHING_ELSE')), 'an unknown state claims the ticket is complete')
+
+check(decisionWords('GO', 'PROPOSAL') === 'GO · advisory', 'GO does not say it is advisory')
+check(decisionWords('WAIT', 'PROPOSAL') === 'WAIT · advisory', 'WAIT does not say it is advisory')
+// cc-deepseek-8 F1 (2026-11-05): the producer's vocabulary is GO/WAIT/AVOID (scripts/api_v2.py:10925).
+// AVOID was swallowed and rendered "DECISION PENDING", so a decided row read as undecided - the exact
+// inversion of what this PR exists to prevent. One assertion per branch so the three cannot collapse.
+check(decisionWords('AVOID', 'scalp') === 'AVOID · advisory', 'a decided AVOID scalp row reads as undecided')
+check(decisionWords('AVOID', 'WATCHLIST') === 'AVOID · advisory', 'a recorded AVOID on a watchlist row loses its decision word')
+check(decisionWords(null, 'scalp') === 'DECISION NOT RECORDED', 'an absent decision does not say the decision is unrecorded')
+check(decisionWords(null, 'scalp') !== decisionWords('AVOID', 'scalp'), 'an absent decision is indistinguishable from a recorded AVOID')
+check(decisionWords(null, 'WATCHLIST') === 'WATCHLIST ADVISORY', 'the watchlist advisory label changed')
+
+const row = readFileSync(join(HERE, '../components/EntryDeskRow.tsx'), 'utf8')
+check(/stateBadgeWords\(/.test(row), 'EntryDeskRow does not render the scoped state words')
+check(/stateScopeTitle\(/.test(row), 'EntryDeskRow dropped the scope tooltip')
+check(/decisionWords\(/.test(row), 'EntryDeskRow does not render the advisory-scoped decision')
+
+const desk = readFileSync(join(HERE, '../pages/ManualTosDesk.tsx'), 'utf8')
+check(/manual-desk-scope-legend/.test(desk), 'the desk has no one-line legend saying what READY means and that nothing here places an order')
+check(/not approval/i.test(desk), 'the legend does not say READY is not approval')
+
+// FQ-043: the same page's phone length. The desk renders a compact shortlist and the full ticket
+// opens on demand; every control must still exist in the component (nothing removed).
+check(/\{expanded && <div/g.test(row) && (row.match(/\{expanded && <div/g) || []).length >= 2,
+  'the sizing and action columns are not gated behind the expanded state')
+check(/entry-desk-details-toggle/.test(row), 'the row has no way to open its details')
+// F2 at abee631b: the label changes Show/Hide, which a screen reader already reads, but the state attribute is
+// the standard contract - aria-expanded must carry the same truth as the visible label.
+check(/aria-expanded=\{expanded\}/.test(row), 'the details toggle does not expose aria-expanded')
+check(/Copy setup/.test(row) && /Copy Schwab tickets/.test(row) && /Broker queue/.test(row),
+  'a control was removed from the row instead of being moved behind the details toggle')
+check(/data-testid="manual-desk-scope-legend"/.test(desk), 'the compact desk lost the scope legend')
+check(/expanded=\{!!openRows\[/.test(desk), 'the desk does not control which rows are expanded')
+check(/onToggle=\{/.test(desk), 'the desk does not pass a toggle to the row')
+
+// FQ-044 (second pass): TECH and the rating carry their scope too — a technical grade is not a decision,
+// and an absent rating is 'not on file' rather than a bare UNKNOWN that reads like a fault.
+check(/not a decision/.test(techScopeTitle('TECH_OK')), 'the TECH badge does not say it is not a decision')
+check(/No technical grade/.test(techScopeTitle('')), 'a missing technical grade has no explanation')
+check(ratingScopeWords('Unknown') === 'not on file', 'an unknown rating still renders as UNKNOWN')
+check(ratingScopeWords('Buy') === 'Buy', 'a known rating was rewritten')
+check(/techScopeTitle\(/.test(row), 'EntryDeskRow does not scope the TECH badge')
+check(/ratingScopeWords\(ratingLabel\(rating\.rating\)\)/.test(row), 'EntryDeskRow does not scope the rating label')
+
+if (failed) { console.error(`manualSetupScope: ${failed} failure(s)`); process.exit(1) }
+console.log('manualSetupScope: ok')
