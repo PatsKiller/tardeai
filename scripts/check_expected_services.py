@@ -315,7 +315,7 @@ def main() -> int:
         import systemd_schedule_census as census
 
         census.write_census(PROJECT_ROOT)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- the census is an observation; a failure is printed and must not stop the service check
         print(f"  census: could not write ({type(exc).__name__})", file=sys.stderr)
 
     if args.alert:

@@ -185,7 +185,7 @@ def _out_path(root: Path, out: Path | None) -> Path:
     if env:
         return Path(env) / REL
     try:
-        from persistent_state_root import resolve_durable_dir  # type: ignore
+        from persistent_state_root import resolve_durable_dir  # type: ignore -- flat scripts/ import, no package path for the type checker
         return resolve_durable_dir("data/runtime", Path(root)) / Path(REL).name
     except Exception:
         return Path.home() / "trade-ai-releases/persistent-state" / REL
@@ -207,7 +207,7 @@ def write_census(root: Path, *, out: Path | None = None, now: datetime | None = 
         try:
             from scripts.lib.atomic_json_store import atomic_write_json
         except ImportError:
-            from atomic_json_store import atomic_write_json  # type: ignore
+            from atomic_json_store import atomic_write_json  # type: ignore -- flat scripts/ import, no package path for the type checker
         atomic_write_json(target, document, indent=1)
         return target
     except Exception as exc:  # noqa: BLE001 -- an observation failure must never break the caller
