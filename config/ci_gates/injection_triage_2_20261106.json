@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_2_20261106",
+  "files": [
+    "tests/test_injection_triage_2_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_2_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_2_20261106 — tq-py-sql-fstring batch 2: agent_outcome_scorer.rebuild_calibration",
+    "passes its INTERVAL window and strategy filter as driver params; the other flagged calls interpolate only",
+    "module-constant identifiers and carry a reasoned scanner suppression. A hostile value reaches params, never SQL text."
+  ]
+}

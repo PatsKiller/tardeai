@@ -41,7 +41,8 @@ def run():
                    "agent_calibration_events", "agent_calibration_windows",
                    "agent_weight_shadow_proposals", "agent_disagreement_outcomes",
                    "agent_calibration_run_log"]:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list
+                f"SELECT COUNT(*) FROM {t}")
         test("Agent calibration DB tables (7)", True)
         conn.close()
     except Exception as e: test("DB tables", False, str(e))
