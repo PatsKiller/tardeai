@@ -25,12 +25,27 @@ import hashlib
 import io
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
 MANIFEST_SCHEMA = "RetentionArchiveManifest@v1"
 COMPRESSLEVEL = 6
+
+# A table may be schema-qualified (schema.table); a key column is one plain name.
+_SQL_TABLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?$")
+_SQL_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _plain_ident(name: Any, *, table: bool = False) -> str:
+    """``name`` unchanged when it is a plain SQL identifier (``table=True`` also allows schema.table);
+    ValueError otherwise. Table and key names are spliced into SQL as identifiers (a driver parameter
+    cannot carry one), so every public entry point checks them before any statement runs."""
+    pattern = _SQL_TABLE_RE if table else _SQL_IDENT_RE
+    if not isinstance(name, str) or not pattern.fullmatch(name):
+        raise ValueError(f"{'table' if table else 'column'} name {name!r} is not a plain SQL identifier")
+    return name
 
 
 class ArchiveVerifyError(RuntimeError):
@@ -152,12 +167,16 @@ def estimate(conn, *, table: str, where_sql: str, params: Sequence[Any] = (),
              key: str = "id", sample_rows: int = 500) -> dict:
     """Read-only: matching rows, stored bytes (pg_column_size), and an archive-size estimate
     from gzip-compressing a sample of matching rows in key order."""
+    table, key = _plain_ident(table, table=True), _plain_ident(key)
     cur = conn.cursor()
+    # where_sql is the caller's code-built predicate (alias t, API contract); its values travel in params.
+    # nosemgrep: tq-py-sql-fstring -- table passed _plain_ident(); where_sql is caller code, values are params
     cur.execute(f"SELECT count(*), COALESCE(sum(pg_column_size(t.*)),0) FROM {table} t WHERE {where_sql}",
                 tuple(params))
     rows, stored = cur.fetchone()
     est = None
     if rows and sample_rows > 0:
+        # nosemgrep: tq-py-sql-fstring -- table/key passed _plain_ident(); where_sql is caller code; LIMIT is a param
         cur.execute(f"SELECT row_to_json(t) FROM {table} t WHERE {where_sql} ORDER BY t.{key} LIMIT %s",
                     (*params, int(sample_rows)))
         sample = cur.fetchall()
@@ -178,6 +197,7 @@ def archive_then_delete_batches(conn, *, table: str, where_sql: str, params: Seq
     """Apply mode. Returns a result dict; raises ArchiveVerifyError after rolling back a bad batch."""
     if batch_rows <= 0 or max_rows <= 0:
         raise ValueError("batch_rows and max_rows must be positive")
+    table, key = _plain_ident(table, table=True), _plain_ident(key)
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     archive_dir = Path(archive_dir)
     out: dict = {"table": table, "label": label, "batches": [], "rows_archived": 0, "rows_deleted": 0}
@@ -186,6 +206,7 @@ def archive_then_delete_batches(conn, *, table: str, where_sql: str, params: Seq
     while done < max_rows:
         want = min(batch_rows, max_rows - done)
         cur = conn.cursor()
+        # nosemgrep: tq-py-sql-fstring -- table/key passed _plain_ident(); where_sql is caller code; LIMIT is a param
         cur.execute(f"SELECT t.{key} FROM {table} t WHERE {where_sql} ORDER BY t.{key} LIMIT %s FOR UPDATE",
                     (*params, want))
         keys = [r[0] for r in cur.fetchall()]
@@ -196,6 +217,7 @@ def archive_then_delete_batches(conn, *, table: str, where_sql: str, params: Seq
         path = archive_dir / f"{stamp}-{label}-b{idx:04d}.jsonl.gz"
         named = conn.cursor(name=f"retention_archive_{label}_{idx}")
         named.itersize = 1000
+        # nosemgrep: tq-py-sql-fstring -- table/key passed _plain_ident() above; the locked keys are a parameter
         named.execute(f"SELECT row_to_json(t) FROM {table} t WHERE t.{key} = ANY(%s) ORDER BY t.{key}", (keys,))
         n, sha, nbytes = write_jsonl_gz(named, path)
         named.close()
@@ -209,6 +231,7 @@ def archive_then_delete_batches(conn, *, table: str, where_sql: str, params: Seq
             out["status"] = "verify_failed"
             out["error"] = why
             raise ArchiveVerifyError(f"{label} batch {idx}: {why} (archive {path}); delete refused, rolled back")
+        # nosemgrep: tq-py-sql-fstring -- table/key passed _plain_ident() above; the locked keys are a parameter
         cur.execute(f"DELETE FROM {table} t WHERE t.{key} = ANY(%s)", (keys,))
         if cur.rowcount != n:
             conn.rollback()
@@ -435,7 +458,9 @@ def managed_purge(conn, *, table: str, where_sql: str, params: Sequence[Any] = (
                   apply: bool, archive: bool = True, key: str = "id", batch_rows: int = 20000,
                   max_rows: int = DEFAULT_MANAGED_MAX_ROWS, archive_dir: Path | None = None) -> dict:
     """``where_sql`` uses the alias ``t``. Returns {table, label, eligible, deleted, archived, mode, ...}."""
+    table, key = _plain_ident(table, table=True), _plain_ident(key)
     cur = conn.cursor()
+    # nosemgrep: tq-py-sql-fstring -- table passed _plain_ident(); where_sql is caller code, values are params
     cur.execute(f"SELECT count(*) FROM {table} t WHERE {where_sql}", tuple(params))
     eligible = int(cur.fetchone()[0] or 0)
     out = {"table": table, "label": label, "writer": writer, "eligible": eligible, "deleted": 0, "archived": 0,
@@ -460,6 +485,7 @@ def managed_purge(conn, *, table: str, where_sql: str, params: Sequence[Any] = (
                    cap_reached=res.get("cap_reached", False),
                    archives=[b["path"] for b in res["batches"]])
         return out
+    # nosemgrep: tq-py-sql-fstring -- table passed _plain_ident() above; where_sql is caller code, values are params
     cur.execute(f"DELETE FROM {table} t WHERE {where_sql}", tuple(params))
     out["deleted"] = int(cur.rowcount)
     conn.commit()
