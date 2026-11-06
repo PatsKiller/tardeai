@@ -42,7 +42,7 @@ export function useGovernance<T>(path: string) {
   const [data, setData] = useState<T | null>(null)
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
-  // `loading` exists so a surface can tell "still reading" from "read finished with nothing usable" (BOARD row 36,
+  // `loading` exists so a surface can tell "still reading" and "read finished with nothing usable" apart (BOARD row 36,
   // SurfaceState@v1). Without it every consumer had to use `!data` and call both of those "loading".
   const [loading, setLoading] = useState(true)
   const refresh = useCallback(() => setRevision(n => n + 1), [])

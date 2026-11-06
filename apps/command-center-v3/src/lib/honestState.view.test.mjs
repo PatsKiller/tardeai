@@ -50,6 +50,17 @@ function compile(path) {
   return url
 }
 
+// React warns, once per render, that useLayoutEffect does nothing during server rendering. This harness renders every
+// page several times and each warning's stack trace embeds the WHOLE base64-compiled module, once per frame: together
+// they produce ~110 MB of stderr, which overflows scripts/run-tests.mjs's 64 MB spawnSync buffer and kills the file with
+// "exit null" — a discovery failure that is really a logging failure (measured 2026-11-06, 116,060,448 bytes). The
+// warning is expected in an SSR harness, so it is dropped here by its exact text; every other console.error is kept.
+const __consoleError = console.error
+console.error = (...args) => {
+  if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return
+  __consoleError(...args)
+}
+
 const render = el => renderToStaticMarkup(React.createElement(MemoryRouter, null, el))
   .replace(/<[^>]+>/g, ' ')
   .replace(/&#x27;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<')
