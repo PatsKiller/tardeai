@@ -14,6 +14,7 @@ file outside the temp tree.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import types
@@ -25,7 +26,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import generate_weekly_docx as gw  # noqa: E402
+# Load the producer by file path under a dedicated module name, registering it before exec_module
+# (AGENTS.md §7, L7-05). An ordinary ``import generate_weekly_docx`` reuses whatever a previous test
+# left in ``sys.modules``, so this suite could then exercise a cached stub instead of the producer.
+_SPEC = importlib.util.spec_from_file_location(
+    "_receipt_test_generate_weekly_docx", ROOT / "scripts" / "generate_weekly_docx.py"
+)
+gw = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = gw
+_SPEC.loader.exec_module(gw)
 
 
 def _stub_modules(monkeypatch, *, build=None, export=None):
