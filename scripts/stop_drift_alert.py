@@ -70,8 +70,8 @@ def _trail_pct_from_rec(rec: dict) -> float | None:
 
 def _load_recent_advisories(cur, days: int = 5) -> dict[str, dict]:
     cur.execute("""SELECT DISTINCT ON (symbol) symbol, evidence_json FROM hermes_research_intelligence
-                   WHERE research_type='protection_advisory' AND created_at > now()-interval '%s days'
-                   ORDER BY symbol, created_at DESC""" % int(days))
+                   WHERE research_type='protection_advisory' AND created_at > now() - %s * interval '1 day'
+                   ORDER BY symbol, created_at DESC""", (int(days),))
     adv: dict[str, dict] = {}
     for sym, ev in cur.fetchall():
         ev = ev if isinstance(ev, dict) else json.loads(ev or "{}")
@@ -121,7 +121,7 @@ def _load_live_fixed_stops(cur) -> dict[str, dict]:
         pass
     try:
         cur.execute(
-            f"""SELECT UPPER(symbol), COALESCE(effective_stop, stop_price), COALESCE(order_type,''), account
+            """SELECT UPPER(symbol), COALESCE(effective_stop, stop_price), COALESCE(order_type,''), account
                 FROM fidelity_monitored_stops
                 WHERE lower(COALESCE(status,'')) = ANY(%s) AND COALESCE(effective_stop, stop_price) IS NOT NULL""",
             (list(LIVE_STATUS),),

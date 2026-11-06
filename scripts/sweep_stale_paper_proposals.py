@@ -47,15 +47,14 @@ def main():
     now = datetime.now(timezone.utc)
 
     # Load pending proposals only
-    terminal_list = ",".join(f"'{s}'" for s in TERMINAL_STATUSES)
-    cur.execute(f"""
+    cur.execute("""
         SELECT id, symbol, strategy_id, status, action_state, created_at, expires_at,
                proposal_timeframe_class, lifecycle_status
         FROM paper_trade_proposals
-        WHERE status NOT IN ({terminal_list})
+        WHERE status <> ALL(%s)
         ORDER BY created_at
         LIMIT %s
-    """, [args.limit])
+    """, [list(TERMINAL_STATUSES), args.limit])
     proposals = cur.fetchall()
 
     results = {"run_id": run_id, "timestamp": now.isoformat(), "dry_run": args.dry_run,
