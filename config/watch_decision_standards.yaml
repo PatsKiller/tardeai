@@ -41,29 +41,31 @@ invalidating_trade_states: [AVOID, BLOCKED, DETERMINISTIC_FAIL]
 invalidating_synthesis: [AVOID, IGNORE, SELL]
 
 rules:
-  - {id: held_negative, category: risk, priority: high, actionable: true, action: "Review the held position",
+  # kind: review = the action is a research prompt (look, decide separately), never an executable step; the
+  # projection carries it as action_kind and the actionable filter does not select it (FQ-074).
+  - {id: held_negative, category: risk, priority: high, actionable: true, kind: review, action: "Review the held position",
      when: {held: true, synthesis_in: [SELL, TRIM, AVOID]}}
-  - {id: held_blocked, category: risk, priority: high, actionable: true, action: "Review the held position",
+  - {id: held_blocked, category: risk, priority: high, actionable: true, kind: review, action: "Review the held position",
      when: {held: true, trade_state_in: [AVOID, BLOCKED, DETERMINISTIC_FAIL]}}
-  - {id: reentry_confirmed, category: re_entry, priority: high, actionable: true, action: "Review re-entry now",
+  - {id: reentry_confirmed, category: re_entry, priority: high, actionable: true, kind: review, action: "Review re-entry now",
      when: {held: false, reentry_state_in: ["READY TO REVIEW"]}}
-  - {id: reentry_near, category: re_entry, priority: medium, actionable: true, action: "Set a re-entry alert",
+  - {id: reentry_near, category: re_entry, priority: medium, actionable: true, kind: execute, action: "Set a re-entry alert",
      when: {held: false, reentry_state_in: ["NEAR ENTRY"]}}
   - {id: reentry_watch, category: re_entry, priority: low, actionable: false,
      when: {held: false, reentry_state_in: [WAIT, "OVERBOUGHT WAIT", "MISSING PLAN", "MISSING MARKET"]}}
   # Entry rules never match a HELD name (2026-10-22 Watch audit: RTX/NVDA/CSWC/LDOS/BAH showed "High conviction /
   # Review entry" while Trade AI said MANAGING). A held name is managed, not entered: it falls through to held_watch.
-  - {id: proposal_ready, category: high_conviction_opportunity, priority: high, actionable: true, action: "Review the proposal",
+  - {id: proposal_ready, category: high_conviction_opportunity, priority: high, actionable: true, kind: review, action: "Review the proposal",
      when: {held: false, proposal_allowed: true}}
-  - {id: plan_ready_strong, category: high_conviction_opportunity, priority: high, actionable: true, action: "Review entry",
+  - {id: plan_ready_strong, category: high_conviction_opportunity, priority: high, actionable: true, kind: review, action: "Review entry",
      when: {held: false, plan_urgency_in: [ready], in_zone: true, min_plan_confidence: 0.6, min_rr: 2.0}}
-  - {id: plan_ready, category: reward, priority: medium, actionable: true, action: "Review entry",
+  - {id: plan_ready, category: reward, priority: medium, actionable: true, kind: review, action: "Review entry",
      when: {held: false, plan_urgency_in: [ready]}}
-  - {id: near_trigger, category: reward, priority: medium, actionable: true, action: "Watch the trigger",
+  - {id: near_trigger, category: reward, priority: medium, actionable: true, kind: execute, action: "Watch the trigger",
      when: {held: false, near_trigger: true}}
   - {id: plan_near, category: reward, priority: low, actionable: false,
      when: {held: false, plan_urgency_in: [near_entry]}}
-  - {id: held_watch, category: held_position, priority: low, actionable: false, action: "Manage the position",
+  - {id: held_watch, category: held_position, priority: low, actionable: false, kind: execute, action: "Manage the position",
      when: {held: true}}
   - {id: candidate, category: watchlist_candidate, priority: low, actionable: false, when: {}}
 

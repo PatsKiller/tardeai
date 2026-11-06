@@ -27,6 +27,10 @@ export type WatchDecision = {
   time_sensitivity?: number
   reentry_status?: string | null
   actionable?: boolean
+  /** 'review' = a research prompt (look, decide separately); 'execute' = an executable step. From the projection. */
+  action_kind?: 'review' | 'execute' | null
+  /** The projection's narrow truth the actionable filter selects: true only for an executable step. */
+  executable?: boolean
   action_hint?: string | null
   status?: string
   held?: boolean
@@ -59,7 +63,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** The decision filter keys this page sends to the projection. */
 export const DECISION_KEYS = ['category', 'priority', 'decision_status', 'reentry_status', 'min_confidence', 'min_risk',
-  'max_risk', 'min_reward', 'min_time', 'actionable', 'expiring_within_h', 'include_expired']
+  'max_risk', 'min_reward', 'min_time', 'actionable', 'next_step', 'expiring_within_h', 'include_expired']
 
 export const DECISION_SORTS: [string, string][] = [
   ['priority_score', 'Sort: priority'], ['confidence', 'Sort: confidence'], ['risk_score', 'Sort: risk'],
@@ -73,20 +77,56 @@ function expiryText(d: WatchDecision) {
   return ''
 }
 
+/** A hint that asks for a look, not an execution. Only the projection's own "Review …" wording qualifies:
+ *  anything else is left exactly as it was. */
+export function reviewPrompt(d: { action_hint?: string | null }): boolean {
+  return /^review\b/i.test(String(d.action_hint || '').trim())
+}
+
+/** "Review entry" → ": entry"; no hint → "". */
+export function reviewIdea(d: { action_hint?: string | null }): string {
+  const idea = String(d.action_hint || '').replace(/^review\s*/i, '').trim()
+  return idea ? `: ${idea}` : ''
+}
+
+/** Whether the decision is a research review prompt rather than an executable step.
+ *  Structured first: the projection declares action_kind, so the view does not have to re-read the copy. Older
+ *  payloads without the field fall back to the producer's "Review …" wording. */
+export function reviewDecision(d: { actionable?: boolean; action_hint?: string | null; action_kind?: string | null }): boolean {
+  if (d.action_kind != null) return d.action_kind === 'review'
+  return !!d.actionable && reviewPrompt(d)
+}
+
+/** The machine truth that data-decision-actionable and the actionable filter carry: a review prompt is not an
+ *  actionable decision, even though the projection still reports it has a next step to show. */
+export function actionableDecision(d: {
+  actionable?: boolean; action_hint?: string | null; action_kind?: string | null; executable?: boolean
+}): boolean {
+  if (d.executable != null) return !!d.executable
+  return !!d.actionable && !reviewDecision(d)
+}
+
 /** One line of decision badges + score bars + TTL — sits inside the existing card's chip row (no layout change). */
 export function WatchDecisionBadges({ d }: { d?: WatchDecision | null }) {
   if (!d) return null
   const when = d.expires_at ? new Date(d.expires_at).toLocaleString() : null
   return (
     <span data-watch-decision data-decision-category={d.category || ''} data-decision-priority={d.priority || ''}
-      data-decision-status={d.status || ''} data-decision-actionable={String(!!d.actionable)}
+      data-decision-status={d.status || ''} data-decision-actionable={String(actionableDecision(d))}
       style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
       {d.priority && <Badge text={d.priority.toUpperCase()} color={PRIORITY_COLOR[d.priority] || MUTED} title={`priority score ${d.priority_score ?? '—'} · rule ${d.rule_id || '—'}`} />}
       {d.category && <Badge text={d.category_label || labelOf(d.category)} color={CATEGORY_COLOR[d.category] || MUTED} />}
       {d.reentry_status && <Badge text={`Re-entry: ${d.reentry_status}`} color={REENTRY_COLOR[d.reentry_status] || MUTED} />}
       {d.status && <Badge text={STATUS_LABEL[d.status] || labelOf(d.status)} color={STATUS_COLOR[d.status] || MUTED}
         title={d.evidence_at ? `evidence ${new Date(d.evidence_at).toLocaleString()}${when ? ` · expires ${when}` : ''}` : 'no evidence inside the freshness window'} />}
-      {d.actionable && <Badge text={d.action_hint ? `▶ ${d.action_hint}` : '▶ Actionable'} color={TOKENS.success} />}
+      {/* FQ-074: a review prompt is not an order. "▶ Review entry" beside a card whose posture says
+          "Watching for confirmation — no executable ticket" reads as two answers to one question. The projection
+          declares action_kind: 'review' is a research prompt and gets its own warning chip; an executable step
+          keeps the green badge. data-decision-actionable above carries the same structured truth. */}
+      {reviewDecision(d)
+        ? <Badge text={`Review prompt${reviewIdea(d)} — not an order`} color={TOKENS.warning}
+            title={`Research review prompt${d.action_hint ? ` (${d.action_hint})` : ''} — nothing is executable from here; the position decision is separate`} />
+        : d.actionable && <Badge text={d.action_hint ? `▶ ${d.action_hint}` : '▶ Actionable'} color={TOKENS.success} />}
       {!d.actionable && d.actionable_blocked_by && (
         <Badge text={`Not actionable — Trade AI ${d.actionable_blocked_by.replace(/_/g, ' ')}`} color={TOKENS.danger}
           title="A deterministic fail / block / avoid is never actionable, whatever the plan or re-entry desk says" />
@@ -106,7 +146,9 @@ export function WatchDecisionBadges({ d }: { d?: WatchDecision | null }) {
 // ── Board ───────────────────────────────────────────────────────────────────
 
 const PANEL_PRESET: Record<string, Record<string, string>> = {
-  attention: { view: 'all', actionable: '1', sort: 'priority_score' },
+  // "Needs attention" = live signals with a next step (a review prompt counts; FQ-074 only bars it from the
+  // actionable filter). Its tile count and this preset therefore select the same set.
+  attention: { view: 'all', next_step: '1', sort: 'priority_score' },
   reward: { view: 'all', min_reward: '0.5', sort: 'reward_score' },
   reentry: { view: 'all', category: 're_entry', reentry_status: 'confirmed,potential', sort: 'priority_score' },
   risk: { view: 'all', min_risk: '0.6', sort: 'risk_score' },

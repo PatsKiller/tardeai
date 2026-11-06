@@ -24,6 +24,11 @@
 .watch-company-provenance { display: block; margin-top: 2px; }
 @media (max-width: 820px) {
   .watch-company-facts { width: 100%; box-sizing: border-box; }
+  /* The ticker group (star, symbol, armed-alert bell) and the name cannot share one nowrap line in a narrow
+     column: the row's min-content was 4 px wider than the column, so it spilled while the name was squeezed
+     to zero width. The name takes its own full-width line instead, still ellipsized. */
+  .watch-company-heading { flex-wrap: wrap; row-gap: 0; }
+  .watch-company-heading strong { flex: 1 1 100%; min-width: 0; }
   .watch-company-company .watch-company-description { display: none; }
   .watch-company-chips > span { background: transparent !important; padding: 0 !important; }
   .watch-company-chips > span + span::before { content: ' · '; }
