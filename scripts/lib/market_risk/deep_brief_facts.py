@@ -960,24 +960,15 @@ class PgSources:
     def analyst_revisions(self, symbols, end):
         """Consensus price-target change over 20 days, and the next-year EPS estimate now vs 30 days ago, from the daily
         Yahoo analyst records (``yahoo_analyst_targets_history``). The older ``analyst_consensus_history`` store has no
-        target on any row (measured 2026-11-06: 0 of 139,462), so it cannot answer this."""
+        target on any row (measured 2026-11-06: 0 of 139,462), so it cannot answer this. Read through the data-broker
+        projection ``analyst_detail.consensus_shift`` (AGENTS.md §7A rule 3)."""
         if not symbols:
             return []
-        now_rows = self._rows(
-            "SELECT DISTINCT ON (symbol) symbol, target_mean_price AS tgt_now, snapshot_date AS as_of, "
-            "data->'extended'->'eps_trend' AS eps_trend FROM yahoo_analyst_targets_history "
-            "WHERE symbol = ANY(%s) AND created_at <= %s AND target_mean_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
-            [list(symbols), end],
-        )
-        then = {
-            r["symbol"]: r["tgt_then"]
-            for r in self._rows(
-                "SELECT DISTINCT ON (symbol) symbol, target_mean_price AS tgt_then FROM yahoo_analyst_targets_history "
-                "WHERE symbol = ANY(%s) AND created_at <= %s AND snapshot_date <= (%s::date - 20) "
-                "AND target_mean_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
-                [list(symbols), end, end],
-            )
-        }
+        try:
+            from scripts.lib.data_broker.analyst_detail import consensus_shift
+        except ImportError:  # pragma: no cover -- hub import path
+            from lib.data_broker.analyst_detail import consensus_shift  # type: ignore
+        now_rows = consensus_shift(self._rows, list(symbols), written_by=end, lookback_days=20)
         out = []
         for r in now_rows:
             eps = next((e for e in (r.get("eps_trend") or []) if isinstance(e, dict) and e.get("index") == "+1y"), {})
@@ -985,7 +976,7 @@ class PgSources:
                 {
                     "symbol": r["symbol"],
                     "tgt_now": r.get("tgt_now"),
-                    "tgt_then": then.get(r["symbol"]),
+                    "tgt_then": r.get("tgt_then"),
                     "eps_next_fy": eps.get("current"),
                     "eps_next_fy_30d_ago": eps.get("30daysAgo"),
                     "as_of": _iso(r.get("as_of")),

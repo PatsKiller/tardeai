@@ -635,18 +635,15 @@ class PgReader:
     ) -> list[dict[str, Any]]:
         """Daily Yahoo analyst records (``yahoo_analyst_targets_history``) dated in [start, end] and written by ``end``:
         price (captured ~06:10 ET, the prior close), consensus target and rating, analyst count, and only the three
-        ``data.extended`` lists the dip list reads (EPS trend, EPS revisions, earnings dates). Selloff E."""
+        ``data.extended`` lists the dip list reads (EPS trend, EPS revisions, earnings dates). Selloff E. Read through the
+        data-broker projection ``analyst_detail.history_window`` (AGENTS.md §7A rule 3), never ``FROM`` the store here."""
+        try:
+            from scripts.lib.data_broker.analyst_detail import history_window
+        except ImportError:  # pragma: no cover -- hub import path
+            from lib.data_broker.analyst_detail import history_window  # type: ignore
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
-        syms = [str(s).upper() for s in symbols] if symbols is not None else None
-        return self._rows(
-            "SELECT symbol, snapshot_date, current_price, target_mean_price, recommendation_mean, recommendation_key, "
-            "number_of_analyst_opinions, jsonb_build_object('extended', jsonb_build_object("
-            "'eps_trend', data->'extended'->'eps_trend', 'eps_revisions', data->'extended'->'eps_revisions', "
-            "'earnings_dates', data->'extended'->'earnings_dates')) AS data "
-            "FROM yahoo_analyst_targets_history WHERE snapshot_date BETWEEN %s AND %s AND created_at <= %s "
-            + ("AND symbol = ANY(%s) " if syms is not None else "")
-            + "ORDER BY symbol, snapshot_date",
-            [d0, d1, _aware(end)] + ([syms] if syms is not None else []),
+        return history_window(
+            self._rows, start_date=d0, end_date=d1, written_by=_aware(end), symbols=list(symbols) if symbols is not None else None
         )
 
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
