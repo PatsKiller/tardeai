@@ -149,6 +149,10 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
     need = window + 30
     symbols = sorted({bench, *[s for g in groups for s in g.get("symbols") or []], *(cfg.get("factor_symbols") or [])})
     series = _closes(ctx.reader, symbols, need, ctx.now)
+    # Split guard (reader.PgReader.daily_bars, LIVEFIX-S): an excluded member is absent from ``series`` (so the group
+    # index uses the members left) and its stated reason is shown on the group; a back-adjusted member is named.
+    series_gaps = _reader_dict(ctx.reader, "series_gaps")
+    split_adj = _reader_dict(ctx.reader, "split_adjustments")
     b_idx = _index(series, [bench])
     b5 = _ret(b_idx, 5)
     b20 = _ret(b_idx, 20)
@@ -169,6 +173,12 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
             "kind": g.get("kind", "sector"),
             "symbols": list(g.get("symbols") or []),
         }
+        note = _data_note(row["symbols"], series_gaps, split_adj, row)
+        if not idx and row.get("data_gaps") and set(row["data_gaps"]) == set(row["symbols"]):
+            row.update(state="UNKNOWN", tier="UNKNOWN", as_of=as_of,
+                       reason_unknown="data gap: " + "; ".join(f"{k}: {v}" for k, v in row["data_gaps"].items()))
+            rows.append(row)
+            continue
         if len(idx) < 60 or b5 is None:
             row.update(state="UNKNOWN", tier="UNKNOWN", reason_unknown="insufficient history", as_of=as_of)
             rows.append(row)
@@ -250,7 +260,7 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
             state=state,
             tier=STATE_TIER[state],
             as_of=idx[-1][0],
-            evidence=f"{g['label']} {r1:+.1f}% 1d / {r5:+.1f}% 5d vs SPY {b1:+.1f}% / {b5:+.1f}%",
+            evidence=f"{g['label']} {r1:+.1f}% 1d / {r5:+.1f}% 5d vs SPY {b1:+.1f}% / {b5:+.1f}%" + (f" ({note})" if note else ""),
         )
         if g.get("kind") == "sector":
             sector_dailies.append(_daily(idx))
@@ -319,6 +329,29 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
     return block
 
 
+def _reader_dict(reader: Any, name: str) -> dict[str, Any]:
+    """A reader annotation only when it is a real dict (fixture / composite / stub readers may carry none or anything)."""
+    v = getattr(reader, name, None)
+    return dict(v) if isinstance(v, dict) else {}
+
+
+def _data_note(members: list[str], gaps: dict[str, str], splits: dict[str, list[dict[str, Any]]], row: dict[str, Any]) -> str:
+    """Record split adjustments and excluded members on the group row; return the short note the evidence and the
+    heat map show ("SOXX split-adjusted 3:1 on 2026-11-05; SMH excluded: ...")."""
+    parts = []
+    adj = {m: splits[m] for m in members if splits.get(m)}
+    if adj:
+        row["split_adjusted"] = adj
+        parts += [f"{m} split-adjusted {a['ratio']} on {a['date']}" for m, lst in adj.items() for a in lst]
+    gone = {m: gaps[m] for m in members if gaps.get(m)}
+    if gone:
+        row["data_gaps"] = gone
+        parts += [f"{m} excluded ({why.split(':', 1)[0]})" for m, why in gone.items()]
+    if parts:
+        row["data_note"] = "; ".join(parts)
+    return row.get("data_note", "")
+
+
 def _rnd(x: float | None, nd: int = 2) -> float | None:
     return None if x is None else round(float(x), nd)
 
@@ -345,7 +378,8 @@ def heatmap(block: dict[str, Any] | None, exposure: dict[str, float] | None = No
     out = []
     for r in (block or {}).get("groups") or []:
         row = {
-            k: r.get(k) for k in ("key", "label", "kind", "r1", "r5", "r20", "rs5", "rs20", "state", "tier", "as_of")
+            k: r.get(k)
+            for k in ("key", "label", "kind", "r1", "r5", "r20", "rs5", "rs20", "state", "tier", "as_of", "data_note")
         }
         if exposure is not None:
             row["book_exposure_share"] = exposure.get(r["key"])
