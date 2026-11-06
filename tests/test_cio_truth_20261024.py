@@ -494,3 +494,24 @@ def test_legacy_divergence_evidence_survives_reprojection():
     aggregate = out["portfolio_aggregate"]
     assert aggregate["legacy_observation_divergences"] == [discrepancy]
     assert aggregate["accounts"][0]["legacy_observation_divergence"] == discrepancy["detail"]
+
+
+def test_mutual_fund_never_gets_a_protection_input(holdings, tmp_path):
+    """Operator 2026-11-06: mutual funds are exempt from stops (a broker cannot hold one); ETFs and stocks are not."""
+    assert truth.broker_cannot_hold_stop({"symbol": "ABCDX", "industry": None})
+    assert truth.broker_cannot_hold_stop({"symbol": "FUND1", "industry": "Mutual Fund"})
+    assert not truth.broker_cannot_hold_stop({"symbol": "XAR", "industry": None})
+    assert not truth.broker_cannot_hold_stop({"symbol": "SPCX", "industry": "Aerospace"})
+    for p in holdings["holdings"]:
+        if p["symbol"] == "SPCX":
+            p["security_guid"] = "g"
+    doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
+    row = {"security_guid": "g", "symbol": "SPCX", "stance": "HOLD", "conviction": 60, "as_of": NOW.isoformat(),
+           "evidence_at": NOW.isoformat()}
+    held = truth.security_inputs_for("g", document=doc, projection={"prospects": [row]}, now=NOW)
+    assert held["protection_inputs"], "a stock with no stop keeps its protection input"
+    for r in doc["positions"]["rows"]:
+        if r.get("security_guid") == "g":
+            r["industry"] = "Mutual Fund"
+    fund = truth.security_inputs_for("g", document=doc, projection={"prospects": [row]}, now=NOW)
+    assert fund["protection_inputs"] == [] and fund["context"]["held"] is True

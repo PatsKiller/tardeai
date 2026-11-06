@@ -681,6 +681,20 @@ def conflict_payload(query=None, *, root=None, db_query=None, now=None, projecti
                         reason="conflict engine accepted source not yet integrated")}
 
 
+def broker_cannot_hold_stop(row: dict) -> bool:
+    """A mutual fund prices once a day at NAV, so no broker can hold a stop order on it.
+
+    Operator 2026-11-06: every ETF and stock needs a stop, IRAs included; mutual funds are exempt. A "no stop"
+    protection flag on a mutual fund (AMANX) is a false positive. Signals, any one is enough: the holding's own
+    type or industry label says mutual fund, or the ticker is the five-letter Nasdaq fund form ending in X.
+    """
+    labels = " ".join(str(row.get(k) or "") for k in ("asset_type", "instrument_type", "industry", "quote_type")).lower()
+    if "mutual fund" in labels or "mutual_fund" in labels or "mutualfund" in labels:
+        return True
+    symbol = str(row.get("symbol") or "").upper()
+    return len(symbol) == 5 and symbol.isalpha() and symbol.endswith("X")
+
+
 def security_inputs_for(security_guid, *, document, projection=None, db_query=None, now=None) -> dict:
     """Canonical facts for W10's Input/Subject adapters; no comparison rules."""
     stance = stance_for(security_guid, projection=projection, db_query=db_query, now=now)
@@ -696,7 +710,8 @@ def security_inputs_for(security_guid, *, document, projection=None, db_query=No
                 "accounts": [r["account_id"] for r in held_rows]},
             "protection_inputs": [{"source": "stop_last_known", "value": r["stop_state"],
                                    "as_of": r.get("stop_captured_at"), "account": r["account_id"],
-                                   "subject_id": security_guid, "role": "protection"} for r in held_rows],
+                                   "subject_id": security_guid, "role": "protection"} for r in held_rows
+                                  if not broker_cannot_hold_stop(r)],
             "saved_diagnostics": stance["conflicts"], "review": stance["review"],
             "gap": stance["gap"] or stance["input_time_gap"] or ({"reason": "held identity coverage incomplete"} if held is None else None)}
 
