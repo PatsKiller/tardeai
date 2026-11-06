@@ -483,6 +483,13 @@ export function rotateModel(r: RotateBlock | null | undefined): RotateModel | nu
 }
 
 const VERDICT_TONE: Record<string, Tone> = { 'Still falling': 'danger', Invalidated: 'danger', Basing: 'warning', 'Early setup': 'success', Confirmed: 'success' }
+
+/** The verdict a stopped-out card may show: the one it was given, or an explicit statement that there is none.
+ *  Never a default, never an inference from the price series (FQ-094). */
+export function verdictText(st: { verdict?: string | null } | null | undefined): string {
+  const v = typeof st?.verdict === 'string' ? st.verdict.trim() : ''
+  return v || 'no CIO verdict on record'
+}
 const GROUP_WORD: Record<string, string> = { tech: 'technology', comm: 'communications', ai_basket: 'AI basket', semis: 'semis', real_estate: 'real estate' }
 
 function businessDaysBetween(a: string, b: string): number {
@@ -652,7 +659,9 @@ export function actionableModel(mr: MarketRisk | null): ActionableModel | null {
       now: quoteKnown ? fmtPrice(price) : priorRegularQuote ? '—' : (quote?.stale || mr.stale || quote?.status === 'stale' ? 'stale' : 'unavailable'),
       vsExit: fmtSignedPct(vsExit), vsExitNeg: (vsExit ?? 0) < 0, vsMa: ma,
       trend: st.trend === 'up' ? '↑' : st.trend === 'down' ? '↓' : st.trend === 'flat' ? '→' : '',
-      verdict: st.verdict ?? 'Still falling', verdictTone: VERDICT_TONE[st.verdict ?? 'Still falling'] ?? 'neutral',
+      // FQ-094: the CIO is the only producer of a position verdict. A missing one is stated as missing — it used to
+      // become "Still falling" here, a bearish verdict the browser invented from nothing.
+      verdict: verdictText(st), verdictTone: VERDICT_TONE[verdictText(st)] ?? 'neutral',
       stage1: `${st.stage1?.met ?? 0} of ${st.stage1?.of ?? st.stage1?.conditions?.length ?? 0}`,
       waiting: unmet1.length ? unmet1.join(', ') : 'all met',
       invalidates: fmtPrice(st.invalidation_level),
