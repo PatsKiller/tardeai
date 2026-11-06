@@ -6,10 +6,12 @@ import { SymbolLink } from '../opportunity/OpportunityContext'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, SHADOW, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../../lib/designTokens'
 import { Chip, ChipRow, Collapsible, Metric, MetricRow, ShowMore } from '../primitives'
-import { optionsAltChip, type OptionsAltVerdict } from '../../lib/entryAlerts'
+import { entryRowKey, optionsAltChip, type OptionsAltVerdict } from '../../lib/entryAlerts'
+import { accountName } from '../../lib/accountLabels'
 
 type Row = {
-  symbol: string; state: string | null; plan_source?: string | null; saved_at?: string | null; packet_age_h?: number | null
+  symbol: string; account?: string | null; account_label?: string | null
+  state: string | null; plan_source?: string | null; saved_at?: string | null; packet_age_h?: number | null
   price?: number | null; quote_age_h?: number | null; entry_low?: number | null; entry_high?: number | null; stop?: number | null; target?: number | null
   zone: { position: string; distance_pct: number | null }
   rr_plan?: number | null; rr_plan_entry?: number | null; rr_at_quote?: number | null; rr_at_quote_entry?: number | null
@@ -66,6 +68,9 @@ function AlertCard({ r }: { r: Row }) {
     <article data-testid="entry-alert-card" style={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderLeft: `3px solid ${t.color}`, borderRadius: RADIUS.md, boxShadow: SHADOW[1], padding: '10px 14px', minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
         <span style={{ fontSize: TYPE.lg, fontWeight: 900, color: TOKENS.text[0] }}><SymbolLink symbol={r.symbol}>{owned ? `${r.symbol} already owned` : r.symbol}</SymbolLink></span>
+        {/* One card per (symbol, account): the name, never a number, so two accounts' packets are distinguishable
+            (operator 2026-10-23: account names on every row; FQ-096 made the second packet reach this lane). */}
+        {r.account && <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{accountName(r.account, r.account_label)}</span>}
         <ChipRow>
           <Chip tone={tone} guideKey="entry.state">{String(r.state || 'unknown').replace(/_/g, ' ')}</Chip>
           <Chip tone={ZONE_TONE[r.zone.position] || 'neutral'} guideKey="entry.zone">{zoneLabel}</Chip>
@@ -113,7 +118,7 @@ export default function EntryAlertsLane() {
         {idx.error && <div role="alert" style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load entry alerts: {String(idx.error)}</div>}
         {data && rows.length === 0 && !idx.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No entry-state packet in the last {data.max_age_h}h. The runner writes one per BUY_READY / ENTRY_NEAR symbol.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 10 }}>
-          {rows.map(r => <AlertCard key={r.symbol} r={r} />)}
+          {rows.map(r => <AlertCard key={entryRowKey(r)} r={r} />)}
         </div>
         {data?.errors?.length ? <div style={{ marginTop: 6, fontSize: TYPE.xs, color: TOKENS.warning }}>unreadable packets: {data.errors.join(', ')}</div> : null}
       </Collapsible>
