@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_push_caller_root_20261104",
+  "files": [
+    "tests/test_agent_push_caller_root_20261104.py"
+  ],
+  "anchor": "AGENT_PUSH_CALLER_ROOT_20261104",
+  "comment": [
+    "ANCHOR: AGENT_PUSH_CALLER_ROOT_20261104 — caller worktree, clean HEAD and enabled scan-hook content binding."
+  ]
+}
