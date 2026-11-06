@@ -264,16 +264,16 @@ def _wait_setup_symbol_set(conn) -> frozenset[str]:
     try:
         cur = conn.cursor()
         cur.execute(
-            f"""SELECT symbol FROM (
+            """SELECT symbol FROM (
                     SELECT DISTINCT ON (symbol) symbol, score
                     FROM trade_ai_scans
                     WHERE decision = 'WAIT'
-                      AND scanned_at > NOW() - INTERVAL '{int(WAIT_SETUP_HOURS)} hours'
+                      AND scanned_at > NOW() - %s * INTERVAL '1 hour'
                     ORDER BY symbol, scanned_at DESC
                 ) latest
                 ORDER BY score DESC NULLS LAST
                 LIMIT %s""",
-            (int(WAIT_SETUP_LIMIT),),
+            (int(WAIT_SETUP_HOURS), int(WAIT_SETUP_LIMIT)),
         )
         return frozenset(str(r[0]).upper().strip() for r in cur.fetchall() if r and r[0])
     except Exception:
@@ -2022,7 +2022,8 @@ def _update_maturity(conn, symbol: str, agent: str, status: str):
     cur = conn.cursor()
 
     # Update agent-specific status
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- mat_col checked against the fixed valid_cols list above
+        f"""
         UPDATE watchlist_analysis_maturity
         SET {mat_col} = %s, updated_at = now()
         WHERE symbol = %s
@@ -2125,7 +2126,8 @@ def _apply_escalation_policy(conn, symbol: str) -> list:
     for agent in required:
         col = agent + "_status"
         if col in ["maria_status", "steph_status", "risk_status", "tax_status", "full_chain_status"]:
-            cur.execute(f"""
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- col checked against the fixed status-column list above
+                f"""
                 UPDATE watchlist_analysis_maturity
                 SET {col} = CASE WHEN {col} IN ('not_required', 'required') THEN 'required' ELSE {col} END
                 WHERE symbol = %s
@@ -3163,7 +3165,8 @@ def _process_jobs_impl(limit: int = 10, *, _progress, _budget):
     if off_hours:
         scope = sql_off_hours_scope("j.symbol")
         scope_p = off_hours_scope_params(holdings, PROJECT_ROOT)
-        cur.execute(f"""UPDATE watchlist_agent_jobs j SET status='expired', completed_at=NOW(),
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- scope: fixed SQL from lib.watchlist_priority
+            f"""UPDATE watchlist_agent_jobs j SET status='expired', completed_at=NOW(),
                          note=COALESCE(note,'') || ' [off-hours tail deprioritized]'
                        WHERE j.status IN ('queued','pending')
                          AND j.created_at < NOW() - INTERVAL '2 hours'
@@ -3193,7 +3196,8 @@ def _process_jobs_impl(limit: int = 10, *, _progress, _budget):
     prio_p = job_priority_params(holdings, PROJECT_ROOT)
     sla_case = sql_request_type_sla_case("j.request_type")
     sla_p = request_type_sla_params()
-    cur.execute(f"""SELECT * FROM watchlist_agent_jobs j WHERE j.status = 'queued'{scope_sql}
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- fixed SQL from lib.watchlist_priority
+        f"""SELECT * FROM watchlist_agent_jobs j WHERE j.status = 'queued'{scope_sql}
         ORDER BY {sla_case}, {prio_case}, priority, created_at LIMIT %s""",
                 (*scope_params, *sla_p, *prio_p, limit))
     jobs = cur.fetchall()

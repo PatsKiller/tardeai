@@ -454,7 +454,7 @@ def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
         cur, syms, min_ratio=PRICE_OUTLIER_MIN_RATIO, max_ratio=PRICE_OUTLIER_MAX_RATIO,
     ).rows_written
     # Quarantine the rows the INSERT skipped. Do not DELETE ticker_prices.
-    cur.execute(
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- symbol_filter is a literal fragment with a named param
         f"""WITH candidates AS (
                SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
                       UPPER(symbol) AS symbol, fetched_at::date AS price_date, price

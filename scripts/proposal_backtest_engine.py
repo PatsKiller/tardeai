@@ -456,14 +456,16 @@ def main(argv=None) -> int:
                 # stayed blank. Cover both active statuses.
                 _ACTIVE = [s.strip().upper() for s in args.statuses.split(",")] if args.statuses \
                     else ['PENDING', 'APPROVED_FOR_PAPER_TEST']
-                _lim = f" LIMIT {int(args.limit)}" if args.limit else ""
+                _lim = " LIMIT %s" if args.limit else ""
+                _lim_p = [int(args.limit)] if args.limit else []
                 if args.strategy:
-                    cur.execute(f"""SELECT id FROM paper_trade_proposals
+                    cur.execute("""SELECT id FROM paper_trade_proposals
                                  WHERE status = ANY(%s) AND strategy_id=%s
-                                 ORDER BY created_at DESC{_lim}""", [list(_ACTIVE), args.strategy])
+                                 ORDER BY created_at DESC""" + _lim, [list(_ACTIVE), args.strategy, *_lim_p])
                 else:
-                    cur.execute(f"SELECT id FROM paper_trade_proposals WHERE status = ANY(%s) ORDER BY created_at DESC{_lim}",
-                                [list(_ACTIVE)])
+                    cur.execute("SELECT id FROM paper_trade_proposals WHERE status = ANY(%s) "
+                                "ORDER BY created_at DESC" + _lim,
+                                [list(_ACTIVE), *_lim_p])
                 results = []
                 for (pid,) in cur.fetchall():
                     result = backtest_proposal(conn, pid, persist=not dry_run)

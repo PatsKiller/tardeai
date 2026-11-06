@@ -163,11 +163,12 @@ def get_news_for_symbol(conn, symbol, hours_back=72):
 
     try:
         cur = conn.cursor()
-        cur.execute(f"""
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- cols: only literal column names above
+            f"""
             SELECT {', '.join(cols)} FROM news_articles
-            WHERE symbol = %s AND published_at > NOW() - INTERVAL '{int(hours_back)} hours'
+            WHERE symbol = %s AND published_at > NOW() - %s * INTERVAL '1 hour'
             ORDER BY published_at DESC LIMIT 20
-        """, [symbol])
+        """, [symbol, int(hours_back)])
         col_names = [d[0] for d in cur.description]
         return [dict(zip(col_names, row)) for row in cur.fetchall()]
     except Exception as e:
