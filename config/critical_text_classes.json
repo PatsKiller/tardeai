@@ -1,0 +1,68 @@
+{
+  "schema": "CriticalTextClasses@v1",
+  "note": "The operator's allowlist for critical ACT-NOW texts (SPEC_CRITICAL_TEXT_ACTION_ALERTS_20261104). Class ids only: no address ever lives in the repo; the Fi lines are read from operator_contact.json. Turning a class off here stops its texts and nothing else. B4 builds its one-tap reauth link from the runtime tailnet base (TRADEAI_CC_LINK_BASE): the hostname is an address and never lives here.",
+  "max_per_hour": 10,
+  "dedupe_hours": 12,
+  "classes": {
+    "A1_extended_hours_near_stop": {
+      "enabled": true,
+      "part": "A",
+      "title": "Extended-hours price at or near a stop that cannot fire until 9:30"
+    },
+    "A2_stop_not_raised_after_move": {
+      "enabled": true,
+      "part": "A",
+      "title": "A big move left the live stop below the stop policy's own recommendation"
+    },
+    "B1_no_protective_stop_or_wrong_size": {
+      "enabled": true,
+      "part": "B",
+      "title": "No live stop, or the stop quantity differs from shares held"
+    },
+    "B2_stop_cancelled_expired_rejected": {
+      "enabled": true,
+      "part": "B",
+      "title": "The broker cancelled, expired or rejected a protective stop"
+    },
+    "B3_stop_above_market_premarket": {
+      "enabled": true,
+      "part": "B",
+      "title": "The stop is already above the market price before the open"
+    },
+    "B4_schwab_login_expiring": {
+      "enabled": true,
+      "part": "B",
+      "title": "The Schwab refresh token needs the operator's manual re-login"
+    },
+    "B5_trading_halt": {
+      "enabled": true,
+      "part": "B",
+      "title": "A held position is halted"
+    },
+    "B6_options_expiry_or_assignment": {
+      "enabled": true,
+      "part": "B",
+      "title": "Short option near expiry in the money, assignment risk, or a long that would auto-exercise"
+    },
+    "B7_margin_or_cash": {
+      "enabled": true,
+      "part": "B",
+      "title": "Margin call, negative cash, or an order beyond buying power"
+    },
+    "B8_order_rejected_or_partial": {
+      "enabled": true,
+      "part": "B",
+      "title": "An operator order was rejected or only partially filled"
+    },
+    "B9_monitoring_blind": {
+      "enabled": true,
+      "part": "B",
+      "title": "Stop sync, positions or price feed stale beyond its SLA while positions are open"
+    },
+    "B10_concentration_breach": {
+      "enabled": true,
+      "part": "B",
+      "title": "A position has grown past its account cap"
+    }
+  }
+}
