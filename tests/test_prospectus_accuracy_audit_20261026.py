@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import sys
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 for _p in (str(ROOT), str(ROOT / "scripts"), str(ROOT / "tests")):
     if _p not in sys.path:
@@ -18,6 +20,8 @@ for _p in (str(ROOT), str(ROOT / "scripts"), str(ROOT / "tests")):
 
 from scripts.lib.prospectus import accuracy_audit as aa  # noqa: E402
 from scripts.lib.prospectus import blocks as bk  # noqa: E402
+from scripts.lib.prospectus import generate as gen  # noqa: E402
+from scripts.lib.prospectus.inputs import Bundle  # noqa: E402
 import prospectus_accuracy_audit as cli  # noqa: E402
 
 NOW = datetime(2026, 10, 26, 22, tzinfo=timezone.utc)
@@ -223,13 +227,149 @@ def test_review_prompt_redacts_an_account_missing_from_the_registry():
     assert "added 100 shares of ZZDEMO after the pullback" in prompt
 
 
-def test_review_prompt_withholds_prose_when_account_redaction_is_unavailable(monkeypatch):
-    """No registry terms means no way to tell safe prose from account prose: withhold it (fail closed)."""
+def test_review_prompt_refuses_egress_when_account_redaction_is_unavailable(monkeypatch):
+    """No complete identity snapshot: refuse the outbound call outright (a numbers-only prompt is not certified)."""
     monkeypatch.setattr(aa, "_account_redaction_terms", lambda doc: ())
     doc = {"symbol": "ZZDEMO", "verdict_line": "The synthetic account still holds ZZDEMO.",
            "sections": [{"id": "summary", "title": "Summary",
                          "body_md": "The synthetic account added 100 shares of ZZDEMO."}],
            "facts": [{"id": "F1", "label": "Position (synthetic account)", "value": 100}]}
+    with pytest.raises(aa.AccountIdentityUnavailable):
+        aa.review_prompt(doc)
+
+
+def _review_run(doc, tmp_path):
+    run = {"results": [{"symbol": doc["symbol"], "scope": doc.get("scope", "watch"), "counts": {}}]}
+    return run
+
+
+def test_identity_snapshot_is_fresh_and_alias_only_is_incomplete(tmp_path, monkeypatch):
+    """A warmed cache is not identity evidence: the registry is re-read, and aliases alone are incomplete."""
+    from scripts.lib import account_display as ad
+    cfg = tmp_path / "names.json"
+    cfg.write_text(json.dumps({"names": {"zz_acct": {"name": "Zz Warm Account"}}, "aliases": {}}))
+    monkeypatch.setattr(ad, "_CONFIG", cfg)
+    ad._load.cache_clear()
+    assert "Zz Warm Account" in ad.redaction_terms()
+    # Changed on disk after a read: the next snapshot is the new one, not the cached one.
+    cfg.write_text(json.dumps({"names": {"zz_acct": {"name": "Zz Renamed Account"}}, "aliases": {}}))
+    terms = ad.redaction_terms()
+    assert "Zz Renamed Account" in terms and "Zz Warm Account" not in terms
+    # Aliases with no account names cannot say which accounts exist: not a complete snapshot.
+    cfg.write_text(json.dumps({"names": {}, "aliases": {"zz_alias": "zz_acct"}}))
+    assert ad.redaction_terms() == ()
+    # Deleted source is unreadable, never "complete".
+    cfg.unlink()
+    assert ad.redaction_terms() == ()
+
+
+def test_review_refuses_egress_when_the_identity_source_disappears(tmp_path, monkeypatch):
+    """The actual outbound boundary: a registry warmed then removed must not release synthetic private prose."""
+    from scripts.lib import account_display as ad
+    cfg = tmp_path / "names.json"
+    cfg.write_text(json.dumps({"names": {"zz_acct": {"name": "Zz Warm Account"}}, "aliases": {}}))
+    monkeypatch.setattr(ad, "_CONFIG", cfg)
+    doc = {"symbol": "ZZDEMO", "verdict_line": "The Zz Warm Account still holds ZZDEMO.",
+           "sections": [{"id": "summary", "title": "Summary",
+                         "body_md": "The Zz Warm Account added 100 shares of ZZDEMO."}],
+           "facts": [{"id": "F1", "label": "Position", "value": 100}]}
+    assert "Zz Warm Account" not in aa.review_prompt(doc)  # warm and redacted while the source exists
+    cfg.unlink()
+    calls = []
+
+    def fake(prompt):
+        calls.append(prompt)
+        return '{"issues": [], "overall": "ok"}', {"cost_usd": 0.4}
+
+    plan = cli.run_review(tmp_path / "accuracy", _review_run(doc, tmp_path), {"ZZDEMO": doc},
+                          apply=True, n=1, now=NOW, review_fn=fake)
+    assert calls == []  # no outbound call at all
+    assert plan["reviews"] and "AccountIdentityUnavailable" in plan["reviews"][0]["error"]
+
+
+def test_review_refuses_egress_for_an_alias_only_registry(tmp_path, monkeypatch):
+    """Aliases without account names are an incomplete snapshot, not permission to send prose."""
+    from scripts.lib import account_display as ad
+    cfg = tmp_path / "names.json"
+    cfg.write_text(json.dumps({"names": {}, "aliases": {"zz_alias": "zz_acct"}}))
+    monkeypatch.setattr(ad, "_CONFIG", cfg)
+    doc = {"symbol": "ZZDEMO", "verdict_line": "The Zz Aliased Account still holds ZZDEMO.",
+           "sections": [{"id": "summary", "title": "Summary",
+                         "body_md": "The Zz Aliased Account added 100 shares of ZZDEMO."}],
+           "facts": [{"id": "F1", "label": "Position", "value": 100}]}
+    calls = []
+
+    def fake(prompt):
+        calls.append(prompt)
+        return "", {}
+
+    plan = cli.run_review(tmp_path / "accuracy", _review_run(doc, tmp_path), {"ZZDEMO": doc},
+                          apply=True, n=1, now=NOW, review_fn=fake)
+    assert calls == [] and "AccountIdentityUnavailable" in plan["reviews"][0]["error"]
+
+
+def test_review_prompt_redacts_account_names_in_mapping_keys_without_collision():
+    """Every outgoing text position is sanitized, keys included, and distinct identities never merge."""
+    from scripts.lib.account_display import account_label
+    name = account_label("schwab_rollover_ira")
+    other = account_label("schwab_roth")
+    assert name and other and name != other
+    doc = {"symbol": "ZZDEMO",
+           "sections": [{"id": "summary", "title": "Summary", "body_md": "Nothing to audit here."}],
+           "facts": [{"id": "F1", "label": "Position",
+                      "value": {name: 111, other: 222, "plain": 333}}]}
     prompt = aa.review_prompt(doc)
-    assert "synthetic account" not in prompt
-    assert '"value": 100' in prompt  # the numbers-only read still works
+    assert name not in prompt and other not in prompt
+    assert '"plain"' in prompt
+    # Both redacted keys survive with their own values: no silent key collision.
+    assert "111" in prompt and "222" in prompt and "333" in prompt
+    assert "[account]#1" in prompt and "[account]#2" in prompt
+
+
+def test_doc_account_terms_harvests_every_repeated_label_match():
+    """One string can name more than one account; every occurrence is evidence, not just the first."""
+    doc = {"facts": [{"id": "F1", "label": "My open position (Zz First Account): shares; "
+                                           "My open position (Zz Second Account): shares"}],
+           "sections": []}
+    terms = aa._doc_account_terms(doc)
+    assert {"Zz First Account", "Zz Second Account"} <= terms
+
+
+def test_delta_retained_section_provenance_redacts_the_previous_account(tmp_path):
+    """Real full→delta carry-forward: a retained section's prior account name must not reach the reviewer."""
+    bundle = Bundle(symbol="ZZDLT", scope="watch", name="Zzdelta Holdings")
+    bundle.add("price", "Last close", value=10.0, source="fixture", as_of=NOW)
+    bundle.add("position", "My open position (Zz New Account): shares", value=5.0, source="fixture")
+
+    carried_ids = ("business_and_moat", "financials_and_trend", "valuation_vs_peers",
+                   "risks", "analyst_view", "thesis_breakers")
+    previous = {
+        "symbol": "ZZDLT", "mode": "full",
+        "facts": [{"id": "F9", "label": "My open position (Zz Old Account): shares", "value": 5.0,
+                   "source": "fixture"}],
+        "sections": [{"id": sid, "title": sid,
+                      "body_md": ("The Zz Old Account still holds the position through the cycle."
+                                  if sid == "business_and_moat" else "Steady ordinary prose about the business.")}
+                     for sid in carried_ids],
+    }
+    # The writer rewrites only the delta sections; the rest are carried from the previous version.
+    writer = {"verdict_line": "Steady view.",
+              "sections": [{"id": "summary_verdict", "body_md": "The business is steady."},
+                           {"id": "catalysts_and_dates", "body_md": "No dated catalysts are recorded."}]}
+    sections, verdict, _log = gen.validate(writer, bundle, mode="delta", previous=previous)
+    doc = {"symbol": "ZZDLT", "scope": "watch", "mode": "delta", "verdict_line": verdict,
+           "sections": sections, "facts": bundle.facts, "blocks": {}}
+
+    calls = []
+
+    def fake(prompt):
+        calls.append(prompt)
+        return '{"issues": [], "overall": "ok"}', {"cost_usd": 0.4}
+
+    cli.run_review(tmp_path / "accuracy", _review_run(doc, tmp_path), {"ZZDLT": doc},
+                   apply=True, n=1, now=NOW, review_fn=fake)
+    assert len(calls) == 1
+    prompt = calls[0]
+    assert "Zz Old Account" not in prompt  # the prior identity the retained prose carries is redacted
+    assert "Zz New Account" not in prompt  # the current identity from the current facts is redacted
+    assert "still holds the position through the cycle" in prompt  # ordinary prose is still audited

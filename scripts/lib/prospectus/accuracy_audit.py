@@ -851,6 +851,17 @@ def sample_for_review(results: list[dict], docs: dict[str, dict], *, n: int = RE
 
 
 _ACCOUNT_PLACEHOLDER = "[account]"
+
+
+class AccountIdentityUnavailable(RuntimeError):
+    """No complete account-identity snapshot: the review prompt must not leave the host.
+
+    Raised at the egress boundary when the display registry is unreadable, incomplete (aliases but no
+    names) or the document's own identity evidence cannot be established. The caller records the
+    refusal and makes no model call.
+    """
+
+
 #: Fact/block shapes that carry an account name in a string rather than an ``account`` key.
 _ACCOUNT_IN_TEXT = (
     re.compile(r"My open position \((.+?)\)"),
@@ -867,12 +878,19 @@ def _doc_account_terms(doc: dict) -> set[str]:
 
     The writer only learned an account name from the facts it was given, and those facts are stored in
     this document. Harvesting them means an account missing from the display registry is still redacted.
+    A retained delta section also carries the identity terms of the version its prose came from
+    (``account_identity_provenance``), because those names may no longer be in the current facts.
     """
     out: set[str] = set()
 
     def walk(node: Any, key: str = "") -> None:
         if isinstance(node, dict):
             for k, v in node.items():
+                if k == "account_identity_provenance" and isinstance(v, list):
+                    # Provenance from the version a retained delta section was written from. Keep the
+                    # names only; never re-parse them as ordinary prose.
+                    out.update(str(t).strip() for t in v if str(t).strip() and len(str(t).strip()) <= 120)
+                    continue
                 walk(v, k)
         elif isinstance(node, list):
             for v in node:
@@ -884,8 +902,7 @@ def _doc_account_terms(doc: dict) -> set[str]:
             if (key in ("account", "account_name", "account_label") or key == "accounts") and len(s) <= 80:
                 out.add(s)
             for rx in _ACCOUNT_IN_TEXT:
-                m = rx.search(s)
-                if m:
+                for m in rx.finditer(s):  # every occurrence: one string can name more than one account
                     out.add(m.group(1).strip())
 
     walk(doc)
@@ -911,7 +928,12 @@ def _account_redaction_terms(doc: dict) -> tuple[str, ...]:
 
 
 def _redact_accounts(value: Any, pattern: Optional[re.Pattern]) -> Any:
-    """Recursively replace every configured account name in ``value`` with a neutral placeholder."""
+    """Recursively replace every configured account name in ``value``, mapping keys included.
+
+    A fact value can be a mapping whose key is itself an account name, so keys are redacted too. Two
+    different keys that redact to the same text are kept distinct (``[account]#1``, ``[account]#2``)
+    and a generated key never overwrites an unchanged one: no identity is silently dropped.
+    """
     if pattern is None:
         return value
     if isinstance(value, str):
@@ -919,7 +941,26 @@ def _redact_accounts(value: Any, pattern: Optional[re.Pattern]) -> Any:
     if isinstance(value, list):
         return [_redact_accounts(v, pattern) for v in value]
     if isinstance(value, dict):
-        return {k: _redact_accounts(v, pattern) for k, v in value.items()}
+        items = list(value.items())
+        redacted = [pattern.sub(_ACCOUNT_PLACEHOLDER, k) if isinstance(k, str) else k for k, _ in items]
+        reserved = {orig for (orig, _), rk in zip(items, redacted) if rk == orig}
+        changed_counts: dict[Any, int] = {}
+        for (orig, _), rk in zip(items, redacted):
+            if rk != orig:
+                changed_counts[rk] = changed_counts.get(rk, 0) + 1
+        out: dict[Any, Any] = {}
+        used: dict[Any, int] = {}
+        for (orig, v), rk in zip(items, redacted):
+            key = rk
+            if rk != orig and (changed_counts[rk] > 1 or rk in reserved or rk in used):
+                n = used.get(rk, 0) + 1
+                key = f"{rk}#{n}"
+                while key in reserved or key in out:
+                    n += 1
+                    key = f"{rk}#{n}"
+                used[rk] = n
+            out[key] = _redact_accounts(v, pattern)
+        return out
     return value
 
 
@@ -928,28 +969,24 @@ def review_prompt(doc: dict, *, max_facts: int = 160, max_chars: int = 60000) ->
 
     The prompt is sent to an external model, so account identity is redacted **here**, at the egress
     boundary, whatever field the prose arrived in (``text``, ``body`` or ``body_md``) and whoever
-    supplied it. If the account registry cannot be read the prose is withheld rather than sent.
+    supplied it. If no complete account-identity snapshot is available the call is refused outright
+    (:class:`AccountIdentityUnavailable`): a numbers-only prompt would still be an outbound call whose
+    remaining string positions (ids, units, values) cannot be certified account-free.
     """
     terms = _account_redaction_terms(doc)
-    pattern = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(t) for t in terms) + r")(?!\w)", re.I) if terms else None
-    if pattern is None:
-        # Fail closed: without the registry nothing can tell prose that names an account from prose
-        # that does not, so no prose leaves the host (the facts still support a numbers-only read).
-        facts = [{k: f.get(k) for k in ("id", "value", "unit", "as_of") if f.get(k) is not None}
-                 for f in _facts(doc)[:max_facts]]
-        sections = [{"id": s.get("id"), "text": None} for s in doc.get("sections") or []]
-        verdict_line = None
-    else:
-        facts = [{k: f.get(k) for k in ("id", "label", "value", "unit", "text", "as_of") if f.get(k) is not None}
-                 for f in _facts(doc)[:max_facts]]
-        # The report writer stores prose as ``body_md`` (generate.py:210). Without it the prompt carried
-        # every section title with no sentence to audit, so the model was asked to check "every sentence"
-        # against facts while holding none of them (row-12 ticket 3, 2026-11-03).
-        sections = [{"id": s.get("id"), "title": s.get("title"),
-                     "text": s.get("text") or s.get("body") or s.get("body_md")}
-                    for s in doc.get("sections") or []]
-        verdict_line = doc.get("verdict_line")
-    body = json.dumps(_redact_accounts({"symbol": doc.get("symbol"), "verdict_line": verdict_line,
+    if not terms:
+        raise AccountIdentityUnavailable(
+            "account identity source unavailable or incomplete; review prose withheld (no egress)")
+    pattern = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(t) for t in terms) + r")(?!\w)", re.I)
+    facts = [{k: f.get(k) for k in ("id", "label", "value", "unit", "text", "as_of") if f.get(k) is not None}
+             for f in _facts(doc)[:max_facts]]
+    # The report writer stores prose as ``body_md`` (generate.py:210). Without it the prompt carried
+    # every section title with no sentence to audit, so the model was asked to check "every sentence"
+    # against facts while holding none of them (row-12 ticket 3, 2026-11-03).
+    sections = [{"id": s.get("id"), "title": s.get("title"),
+                 "text": s.get("text") or s.get("body") or s.get("body_md")}
+                for s in doc.get("sections") or []]
+    body = json.dumps(_redact_accounts({"symbol": doc.get("symbol"), "verdict_line": doc.get("verdict_line"),
                                         "sections": sections, "facts": facts}, pattern), default=str)[:max_chars]
     return ("You are auditing a research report for accuracy against its own cited facts. Read every sentence. "
             "List each statement whose number, date, direction or claim is not supported by the facts, contradicts "
