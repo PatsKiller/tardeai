@@ -7,8 +7,11 @@ injected or stubbed, and the module under test is loaded by file path (AGENTS.md
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
+
+import pytest
 
 
 def _load():
@@ -240,6 +243,76 @@ def test_run_fails_closed_when_claim_board_unreadable(tmp_path, monkeypatch):
     assert scratch.exists()
 
 
+def test_cloud_live_claim_view_refuses_unavailable_directory(tmp_path):
+    """codex-cloud at 3b2c293ec (P1): `ClaimBoard.read_all()` answers `([], [])` for a missing directory, so the
+    wrapper itself must refuse the view instead of reporting an authoritative empty board."""
+    mod = _load()
+    live, warning = mod.live_claim_view(tmp_path / "absent-claims")
+    assert live == []
+    assert warning == "claim_directory_unavailable"
+
+
+def test_cloud_live_claim_view_refuses_unreadable_directory(tmp_path, monkeypatch):
+    """An unreadable claim directory is unknown evidence, never an empty board."""
+    mod = _load()
+    board = tmp_path / "claims"
+    board.mkdir()
+    real = mod.os.scandir
+
+    def scan(path):
+        if Path(path) == board:
+            raise PermissionError("synthetic unreadable board")
+        return real(path)
+
+    monkeypatch.setattr(mod.os, "scandir", scan)
+    live, warning = mod.live_claim_view(board)
+    assert live == []
+    assert warning == "claim_board_read_failed:PermissionError"
+
+
+def test_cloud_board_warning_refuses_before_removal(tmp_path, monkeypatch, capsys):
+    """The planning-time `board_warn` refusal is load-bearing on its own: a board that was unreadable while
+    the candidates were chosen must refuse removal even if it happens to read clean at revalidation."""
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)  # a real, readable merged-completion board
+    calls = 0
+
+    def view(claims_dir):
+        nonlocal calls
+        calls += 1
+        return ([], "claim_board_read_failed:OSError") if calls == 1 else ([], None)
+
+    monkeypatch.setattr(mod, "live_claim_view", view)
+    monkeypatch.setattr(mod, "process_refs", lambda proc_root: set())
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"], report
+    assert report["board_warning"] == "claim_board_read_failed:OSError", report
+
+
+@pytest.mark.parametrize("warning", ["board", "process"])
+def test_cloud_unknown_inspection_reports_nothing_removable(tmp_path, monkeypatch, capsys, warning):
+    """Fail closed in the report too, not only at removal: an uninspectable claim board or process set must
+    leave the dry-run `would_remove` list empty, even when completion evidence is valid."""
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path, apply=False)  # valid merged completion
+    if warning == "board":
+        expected = "claim_board_read_failed:OSError"
+        monkeypatch.setattr(mod, "live_claim_view", lambda claims_dir: ([], expected))
+    else:
+        expected = "process_inspection_failed:OSError"
+
+        def fail(proc_root):
+            raise mod.CleanupError(expected)
+
+        monkeypatch.setattr(mod, "process_refs", fail)
+    mod.run(**args)
+    dry = capsys.readouterr().out
+    assert candidate.exists()
+    assert "would delete:" not in dry, dry
+    assert expected in dry, dry
+
+
 def test_in_use_by_ignores_ancestor_reference(tmp_path):
     """cc-deepseek-9 F1 at #2302: only a process INSIDE the candidate makes it in use.
 
@@ -261,9 +334,6 @@ def test_in_use_by_ignores_ancestor_reference(tmp_path):
 
 
 # Cloud2302: every filesystem and board is a synthetic fixture, including process inspection.
-import json
-import sys
-import pytest
 
 
 def _completed_task(board, *, task="own-task", session="fixture-session", status="done", pr_state="merged"):
@@ -425,6 +495,30 @@ def test_cloud_live_claim_and_real_worklog_references(tmp_path, capsys, referenc
     mod.run(**args)
     report = json.loads(capsys.readouterr().out)
     assert candidate.exists() and not report["removed_count"], report
+
+
+def test_cloud_live_claim_structured_paths_are_honored_in_isolation(tmp_path, monkeypatch, capsys):
+    """codex-cloud at 3b2c293ec (P1): `live_claim_view()` loaded a claim's `paths`, but only the worktree reached
+    `evaluate()`, so an explicit path reference did not hold the directory. Isolate the structured `paths`
+    channel: `reference_text` is empty here, so only `paths` can refuse the removal."""
+    mod = _load()
+    candidate, args = _fixture_run(mod, tmp_path)
+    live = [
+        {
+            "claim_id": "peer-paths",
+            "task": "peer task",
+            "worktree": str(tmp_path / "unrelated-project"),
+            "session": "peer",
+            "paths": [str(candidate)],
+            "reference_text": "",
+        }
+    ]
+    monkeypatch.setattr(mod, "live_claim_view", lambda claims_dir: (live, None))
+    monkeypatch.setattr(mod, "process_refs", lambda proc_root: set())
+    mod.run(**args)
+    report = json.loads(capsys.readouterr().out)
+    assert candidate.exists() and not report["removed_count"], report
+    assert any("live_claim_reference" in r for row in report["refused"] for r in row["reasons"]), report
 
 
 @pytest.mark.parametrize(
