@@ -198,14 +198,11 @@ def test_position_rows_carry_a_datetime_stamp(monkeypatch):
         stamp_broker_qty=lambda prior, qty, **k: ({"shares": qty, "broker_actual_shares": qty}, None)))
     rows, _ = sps._build_account_rows("schwab_taxable", [{"symbol": "NVDA", "qty": 10, "market_value": 1500}], {})
     r = rows[0]
-    # 2026-11-06: the full ISO-8601 UTC instant. Date-only parsed as 00:00 UTC and aged a same-day book.
-    assert "T" in r["broker_position_as_of"] and r["broker_position_as_of"] == r["broker_position_as_of_at"]
-    from lib.account_state import parse_time
-    assert parse_time(r["broker_position_as_of"]).isoformat() == r["broker_position_as_of"]  # the instant, not midnight
-    assert r["broker_position_as_of"][:10] == r["as_of"]                # readers taking the date still get it
+    assert len(r["broker_position_as_of"]) == 10                       # legacy date-only, unchanged
+    assert "T" in r["broker_position_as_of_at"] and r["broker_position_as_of_at"].startswith(r["broker_position_as_of"])
     cash = sps._cash_rows_for_account("schwab_taxable", [], "schwab_taxable",
                                       types.SimpleNamespace(get_account=lambda ak: {"status": "active", "cash": 5}))
-    assert "T" in cash[0]["broker_position_as_of_at"] and cash[0]["broker_position_as_of"] == cash[0]["broker_position_as_of_at"]
+    assert "T" in cash[0]["broker_position_as_of_at"]
 
 
 def test_aggregate_observation_prefers_the_datetime_stamp():

@@ -66,8 +66,9 @@ database no longer holds is dropped (it was sold).
 
 - `positions_sync.py --apply` → `holdings_export` (after a promoted run, under the holdings write lock).
 - The enrichers above keep writing their own fields in place, as before, under the same lock.
-- `schwab_position_sync.py` **still writes** the file (see "Not done" below); it now stamps
-  `broker_position_as_of` as a full ISO-8601 UTC instant instead of a date.
+- `schwab_position_sync.py` **still writes** the file (see "Not done" below). Its change to stamp
+  `broker_position_as_of` as a full ISO-8601 UTC instant ships in a separate PR: that file is an always-held
+  broker path and needs the operator's push.
 
 ## Readers (Step 3)
 

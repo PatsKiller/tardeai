@@ -2,8 +2,8 @@
 
 (a) the export renders every field and key the readers use — the PARITY test greps the reader modules and
     fails on any field they access that the export does not render;
-(b) positions_sync --apply chains the export under the shared holdings lock; the Schwab sync stamps a full
-    ISO-8601 UTC broker_position_as_of;
+(b) positions_sync --apply chains the export under the shared holdings lock (the Schwab sync's full
+    ISO-8601 stamp ships separately: that file is an always-held broker path);
 (c) lib/holdings_document serves the export's render from the DB, the file only as the stated fallback.
 
 Synthetic fixtures only (public repo): no real symbol, value, account number or capture.
@@ -438,12 +438,6 @@ def test_main_exports_only_after_a_promoted_run(monkeypatch):
                         lambda accts, readers=None: {a: ({"ok": False, "error": "x", "captured_at": NOW}
                                                          if a == "schwab_taxable" else dict(ok)) for a in accts})
     assert positions_sync.main(["--apply"]) == 1 and calls == []        # partial run: no export
-
-
-def test_the_schwab_sync_stamps_a_full_iso_instant():
-    src = (ROOT / "scripts/schwab_position_sync.py").read_text(encoding="utf-8")
-    assert '"broker_position_as_of": as_of' not in src
-    assert '"broker_position_as_of": now' in src
 
 
 # ── (c) the readers read the DB ──────────────────────────────────────────────────────────────────
