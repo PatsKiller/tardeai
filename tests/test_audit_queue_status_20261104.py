@@ -688,3 +688,38 @@ def test_each_live_instance_survives_its_pr_merging(fq, prn, branch, body):
     rep = S.sync(queue(row(fq, status="fix_in_review", pr=prn)), [cand], now=NOW)
     assert rep["changed"] == 0, (fq, rep["changes"])
     assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+
+
+# ── #2640 B1 F1 (deputy, 2026-11-06T0042Z): the row-local negation must span more than one intervening word ──
+# The first attempt anchored the pattern to one optional word ("(?:\s+[a-z]+)?$"), so "not the older FQ-022",
+# "not the earlier FQ-022", "not its duplicate FQ-022" and "not (FQ-022)" stopped disclaiming — a false delivery
+# of live work, the exact failure the fix exists to prevent. The remedy keeps the loose negator but searches only
+# the text after the last clause-internal boundary before the row.
+
+@pytest.mark.parametrize("body,row", [
+    ("Closes FQ-021, not the older FQ-022.", "FQ-022"),
+    ("Closes FQ-021, not the earlier FQ-022.", "FQ-022"),
+    ("Closes FQ-021, not its duplicate FQ-022.", "FQ-022"),
+    ("Closes FQ-021, not (FQ-022).", "FQ-022"),
+    ("Closes FQ-021, not closing FQ-022.", "FQ-022"),
+])
+def test_a_multiword_row_local_negation_still_disclaims(body, row):
+    cand = pr(2673, branch="wt/unrelated", body=body)
+    assert row in S._disclaimed_rows(cand), body
+    assert row not in S.rows_claimed_by(cand), body
+
+
+def test_a_multiword_disclaimer_stops_a_claiming_pr_from_delivering():
+    """End to end with a branch-name claim: the multi-word disclaimer must survive the claim path."""
+    cand = pr(2673, state="MERGED", branch="wt/fq022-labels", body="Closes FQ-021, not the older FQ-022.",
+              merge="f" * 40)
+    rep = S.sync(queue(row("FQ-022", status="fix_in_review", pr=2673)), [cand], now=NOW)
+    assert rep["changed"] == 0, rep["changes"]
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+
+
+def test_open_source_in_prose_does_not_disclaim_a_row():
+    """N1 (cc-6): 'the repository is open source' is prose, not a statement that the row is open."""
+    cand = pr(2674, branch="wt/unrelated",
+              body="FQ-121 was added because the repository is open source and this line is documentation.")
+    assert "FQ-121" not in S._disclaimed_rows(cand)

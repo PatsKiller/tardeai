@@ -178,18 +178,20 @@ _NOT_BEFORE_ROW = re.compile(r"\b(?:not|except|excluding)\b", re.IGNORECASE)
 #: the phrase after the row id ("FQ-104 stays open", "FQ-076 remains open until …"), or a "next step of FQ-0NN"
 #: construction before it. Both are bounded so prose about "an open PR" is not mistaken for a statement about a row.
 _OPEN_AFTER_ROW = re.compile(
-    r"\b(?:stays?|remains?|is|are)\s+(?:still\s+)?open\b"
+    # "is/are open" only with "still": "the repository is open source" is prose, not a statement about a row.
+    r"\b(?:stays?|remains?)\s+(?:still\s+)?open\b"
+    r"|\b(?:is|are)\s+still\s+open\b"
     r"|\bnot\s+yet\s+(?:complete|completed|closed|done|fixed|delivered|finished|implemented|rendered)\b",
     re.IGNORECASE,
 )
 _OPEN_BEFORE_ROW = re.compile(r"\b(?:next step of|remainder of|rest of)\s*$", re.IGNORECASE)
 _OPEN_WINDOW = 80
-#: The row-level disclaimer must sit IMMEDIATELY before the row id ("not FQ-022", "not closing FQ-022"). The looser
-#: `_NOT_BEFORE_ROW` scans the whole segment from the clause start, which read an unrelated "not" as a disclaimer —
-#: #2674's "exit code 0 is not evidence of work (audit FQ-117 …)" disclaimed FQ-117. That was harmless while the
-#: disclaimer only filtered the recorded association; it is not harmless now that it filters a CLAIM (#2640 B1).
-_ROW_LOCAL_DISCLAIMER = re.compile(
-    r"\b(?:not|except|excluding)\b(?:\s+[a-z]+)?[\s,]*$", re.IGNORECASE)
+#: The row-level disclaimer lives between the last clause-internal boundary (comma, semicolon, opening paren) and
+#: the row id, and there it may be as loose as `_NOT_BEFORE_ROW`: "not FQ-022", "not closing FQ-022", "not the older
+#: FQ-022", "not its duplicate FQ-022". Searching the WHOLE segment from the clause start read an unrelated "not" as a
+#: disclaimer — #2674's "exit code 0 is not evidence of work (audit FQ-117 …)" disclaimed FQ-117 — while an anchored
+#: one-word pattern (the previous attempt) missed every multi-word form and would have delivered live work (#2640 B1).
+#: A boundary that is only the row's own wrapping paren is stepped over once, so "not (FQ-022)" still disclaims.
 _DECLARES_VERB = re.compile(
     r"\b(?:clos(?:e|es|ed|ing)|fix(?:es|ed|ing)?|resolv(?:e|es|ed|ing)|implement(?:s|ed|ing)?|address(?:es|ed|ing)?"
     r"|deliver(?:s|ed|ing)?|does|owns?)\b",
@@ -280,18 +282,28 @@ def _disclaimed_rows(pr: dict[str, Any]) -> set[str]:
         for m in _ROW_IN_BODY.finditer(clause):
             row = f"FQ-{m.group(1)}"
             named.add(row)
-            if (_ROW_LOCAL_DISCLAIMER.search(clause[_row_or_verb_start(clause, m.start()):m.start()])
-                    or _declares_row_open(clause, m)):
+            if _row_local_negation(clause, m.start()) or _declares_row_open(clause, m):
                 out.add(row)
     # A row the body names but `rows_named_by` refuses is disclaimed, not silent.
     out |= {row for row in named if row not in rows_named_by(pr)}
     return out
 
 
-def _row_or_verb_start(clause: str, row_start: int) -> int:
-    """Start of the segment governing this row: after the last declaration verb before it."""
-    verbs = [v for v in _ACTION.finditer(clause) if v.start() < row_start]
-    return verbs[-1].end() if verbs else 0
+def _row_local_negation(clause: str, row_start: int) -> bool:
+    """A negation between the last clause-internal boundary and the row id, so it governs THIS row.
+
+    Boundaries are `,` `;` and `(`. A boundary that is only the row's own wrapping paren is stepped over once
+    ("Closes FQ-021, not (FQ-022)."), so the negation in front of it is still read. Anything earlier in the clause
+    is out of reach — that is what stopped #2674's "… is not evidence of work (audit FQ-117 …)" from disclaiming.
+    """
+    seg = clause[:row_start]
+    cut = max(seg.rfind(","), seg.rfind(";"), seg.rfind("("))
+    window = seg[cut + 1:] if cut >= 0 else seg
+    if not window.strip(" \t("):
+        prev = seg[:cut]
+        cut2 = max(prev.rfind(","), prev.rfind(";"), prev.rfind("("))
+        window = prev[cut2 + 1:] if cut2 >= 0 else prev
+    return bool(_NOT_BEFORE_ROW.search(window))
 
 
 def _declares_row_open(clause: str, m: re.Match[str]) -> bool:
