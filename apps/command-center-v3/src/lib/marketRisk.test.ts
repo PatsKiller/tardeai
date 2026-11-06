@@ -155,6 +155,25 @@ console.log(`marketRisk.test v004 summary: ${n} checks ok`)
     reentry_detail: { NEWX: { exit_account_label: 'A', held_elsewhere_labels: ['B'], wash_sale: { state: 'occurred', account_label: 'B', rebuy_date: '2031-03-07', rebuy_price: 9.8, deferred_loss_usd: 100 } } },
   }
   const mr = unwrapMarketRisk({ ok: true, data: base })!
+  {
+    // PKG-SELLOFF-INTEL-20261106 B: no default verdict, "all met" only with conditions, the basis travels.
+    const row = (stages: any) => actionableModel(unwrapMarketRisk({ ok: true, data: { ...base,
+      reentry_watch: { ZZQ: { symbol: 'ZZQ', exit_date: '2031-03-07', exit_price: 10, stages } } } }))!.reentry[0]
+    const none = row({ last_close: 9.5 })
+    assert.equal(none.verdict, 'Not evaluated', 'no backend verdict is never defaulted to Still falling')
+    assert.equal(none.verdictTone, 'neutral')
+    assert.equal(none.stage1, 'not evaluated'); assert.equal(none.waiting, 'not evaluated', 'an empty condition list is not "all met"')
+    assert.equal(none.verdictBasis, '')
+    const pending = row({ verdict: 'Pending next close', verdict_basis: 'pending: no completed session after the exit yet', stage1: { met: 0, of: 0, conditions: [] } })
+    assert.equal(pending.verdict, 'Pending next close'); assert.equal(pending.verdictTone, 'neutral')
+    assert.equal(pending.waiting, 'not evaluated'); assert.equal(pending.stage1, 'not evaluated')
+    const allMet = row({ verdict: 'Early setup', stage1: { met: 2, of: 2, conditions: [{ key: 'a', met: true, text: 'a' }, { key: 'b', met: true, text: 'b' }] } })
+    assert.equal(allMet.waiting, 'all met'); assert.equal(allMet.stage1, '2 of 2')
+    const confirmed = row({ verdict: 'Confirmed', verdict_basis: 'confirmed by price: close above 10.00 (Stage 2 needs one; Stage 1 is 2 of 5)',
+      stage1: { met: 2, of: 5, conditions: [{ key: 'a', met: true, text: 'a' }, { key: 'b', met: false, text: 'b' }] } })
+    assert.match(confirmed.verdictBasis, /^confirmed by price: .*Stage 1 is 2 of 5/, 'Confirmed beside 2 of 5 names its rule')
+    assert.equal(confirmed.waiting, 'b')
+  }
   assert.equal(verdictLine(mr), 'Sector selloff — Technology / Semis. Not market-wide: 2 of 3 sectors holding.')
   const a = actionableModel(mr)!
   assert.equal(a.exposure, "Your exposure: $60 (6.0% of book · 10.0% of invested) in stressed groups — mostly DEMOF's 9% technology. Cash 40%.")
