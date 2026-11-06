@@ -338,6 +338,26 @@ def _last_action_was_noop(rec) -> bool:
     return bool(last.get("no_op", (last.get("detail") or {}).get("no_op")))
 
 
+def disk_incident_route(rec: Mapping[str, Any], cfg: Mapping[str, Any]) -> Optional[dict]:
+    """Which configured disk lane this incident came from, or None.
+
+    Matched EXACTLY (case-insensitive) against the structured source fields — job, lane, watcher — never the free-text
+    title, so an incident that merely mentions a disk is not swept in. Operator 2026-11-03 (disk permanent-fix item 4):
+    a disk incident is never parked as needs_operator; the fixer lane owns it.
+    """
+    route = ((cfg.get("policy") or {}).get("disk_incident_routes")) or {}
+    if not isinstance(route, dict):
+        return None
+    src = rec.get("source") or {}
+    jobs = {str(x).strip().lower() for x in route.get("jobs") or [] if str(x).strip()}
+    watchers = {str(x).strip().lower() for x in route.get("watchers") or [] if str(x).strip()}
+    hit_job = sorted({str(src.get(k) or "").strip().lower() for k in ("job", "lane")} & jobs)
+    hit_watcher = sorted({str(src.get("watcher") or "").strip().lower()} & watchers)
+    if not (hit_job or hit_watcher):
+        return None
+    return {"job": hit_job, "watcher": hit_watcher, "class": "code_defect"}
+
+
 def _fresh_ok_dispatch(rec: Mapping[str, Any], policy: Mapping[str, Any], now: datetime) -> bool:
     """Is a dispatch in THIS episode successful and still inside ``fixer_active_hours``?
 
@@ -398,7 +418,7 @@ def _batch_text(rows: list[dict], priority: str) -> str:
 
     Each entry names the incident, how long it has been unresolved and the exact next action. The
     operator asked for one batched message per run, never six separate P1s; a batch pages P1 only
-    when it carries an operator-only decision, otherwise P2.
+    when it carries an operator-only decision or exhausted attempts (AGENTS §28.14); routine diagnostics stay P2.
     """
     items = []
     for row in rows:
@@ -449,12 +469,13 @@ def _current_escalations(rec: Mapping[str, Any]) -> list[dict]:
 
 
 def _pending_escalation(rec: Mapping[str, Any]) -> Optional[dict]:
-    """The latest current-episode escalation when it was NOT delivered (a page to retry)."""
+    """The latest undelivered reason in this episode; another reason's success cannot erase it."""
     rows = _current_escalations(rec)
-    if not rows:
-        return None
-    last = rows[-1]
-    return None if last.get("delivered") is True else dict(last)
+    delivered = {str(row.get("key") or row.get("reason")) for row in rows if row.get("delivered") is True}
+    for row in reversed(rows):
+        if str(row.get("key") or row.get("reason")) not in delivered:
+            return dict(row)
+    return None
 
 
 def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool, out: dict, now: datetime,
@@ -466,8 +487,9 @@ def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool
     retries on the next evaluation, a different reason class (time box vs attempt cap vs refused
     scope) has its own key and still pages, and episode-1 history never hides an episode-2 page.
 
-    Batching (ONBOARDING §12 rule 3, operator 2026-11-03): nothing is sent here. The row is queued and
-    ``_flush_escalations`` sends ONE message for the whole run; ``operator_only`` decides P1 vs P2.
+    Batching (ONBOARDING §12 rule 3): nothing is sent here. An undelivered ledger row is persisted
+    before blocking, then ``_flush_escalations`` sends ONE message. Operator decisions and exhausted-attempt
+    keys page P1; notification urgency does not grant operator-only authority.
     """
     key = key or reason
     for e in _current_escalations(rec):
@@ -481,28 +503,52 @@ def _escalate(rec: dict, reason: str, ask: str, d: Path, deps: Deps, apply: bool
     if not apply:
         out["would_escalate"].append(row)
         return
+    # The append is fsynced before this incident may become blocked. A later fault or process
+    # interruption must leave a retry obligation even when the single batch send never starts.
+    # Reuse an undelivered row for this episode/key; a retry must not invent another delivery.
+    if not any((e.get("key") or e.get("reason")) == key for e in _current_escalations(rec)):
+        L.escalate(row["id"], actor=ACTOR, reason=reason, delivered=False, key=key,
+                   episode=row["episode"], d=d, now=now)
     out.setdefault("_pending_escalations", []).append(row)
 
 
 def _flush_escalations(d: Path, deps: Deps, out: dict, now: datetime) -> None:
     """Send the run's escalations as ONE message; record each incident's delivered row.
 
-    P1 only when the batch contains an operator-only decision, P2 otherwise (ONBOARDING §12 rule 3).
-    A failed send records ``delivered: False`` for every queued incident, so the existing
-    delivery-only retry path re-queues them next cycle instead of the page being silently lost.
+    One batch (ONBOARDING §12 rule 3): P1 for operator-only decisions or exhausted attempts
+    (AGENTS §28.14), P2 for routine diagnostics. Exhaustion does not change ``operator_only``.
+    Every queued reason already has a durable undelivered row. Success appends its delivery;
+    failure leaves that obligation for the delivery-only retry, without inventing a successful send.
     """
     pending = out.pop("_pending_escalations", [])
     if not pending:
         return
-    priority = "P1" if any(row.get("operator_only") for row in pending) else "P2"
+    # Work later in the cycle may have closed, reopened or delivered an earlier obligation.
+    # Re-read the ledger before notification; an old episode must not page for the new one.
+    records = L.load_records(d)
+    current_pending = []
+    for row in pending:
+        rec = records.get(row["id"])
+        if (rec and rec.get("status") in (*L.UNRESOLVED, "blocked")
+                and int(rec.get("episode") or 1) == row["episode"]
+                and not any(e.get("delivered") is True and (e.get("key") or e.get("reason")) == row["key"]
+                            for e in _current_escalations(rec))):
+            current_pending.append(row)
+        else:
+            out["skipped"].append({"id": row["id"], "why": "escalation superseded"})
+    pending = current_pending
+    if not pending:
+        return
+    priority = "P1" if any(row.get("operator_only") or row.get("key") == "max_attempts" for row in pending) else "P2"
     delivered = False
     try:
         delivered = bool(deps.notify(_batch_text(pending, priority), "incident_supervisor:batch", priority=priority))
-    except Exception:  # noqa: BLE001 — a send fault must not lose the ledger rows
-        delivered = False
+    except Exception as exc:  # noqa: BLE001 — the durable undelivered obligations remain retryable
+        out["notification_error"] = {"error_class": type(exc).__name__}
     for row in pending:
-        L.escalate(row["id"], actor=ACTOR, reason=row["reason"], delivered=delivered, key=row["key"],
-                   episode=row["episode"], d=d, now=now)
+        if delivered:
+            L.escalate(row["id"], actor=ACTOR, reason=row["reason"], delivered=True, key=row["key"],
+                       episode=row["episode"], d=d, now=now)
         out["escalated"].append({"id": row["id"], "reason": row["reason"], "key": row["key"],
                                  "delivered": delivered, "operator_only": row["operator_only"],
                                  "priority": priority})
@@ -563,6 +609,31 @@ def _call_fixer(deps: Deps, req: Path, apply: bool, timeout_s: float) -> dict:
 def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
           now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT,
           clock: Callable[[], float] = time.monotonic) -> dict:
+    """Flush one batch on every exit, including a failure in unrelated incident work."""
+    now = now or L.utcnow()
+    out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
+                           "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
+                           "would_escalate": [], "skipped": []}
+    completed = False
+    try:
+        result = _run_cycle(d=d, state_root=state_root, release_root=release_root, cfg=cfg, deps=deps,
+                            apply=apply, now=now, environ=environ, root=root, clock=clock, out=out)
+        completed = True
+        return result
+    finally:
+        if apply:
+            _flush_escalations(d, deps, out, now)
+            # Ops exposes only this receipt's as_of, not an error flag. Keep its last completed
+            # clock on a failed cycle; the original exception still propagates to the caller.
+            if completed:
+                d.mkdir(parents=True, exist_ok=True)
+                p = d / "supervisor_last.json"
+                p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
+
+
+def _run_cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, Any], deps: Deps, apply: bool,
+          now: Optional[datetime] = None, environ: Optional[Mapping[str, str]] = None, root: Path = ROOT,
+          clock: Callable[[], float] = time.monotonic, out: dict) -> dict:
     now = now or L.utcnow()
     pol = cfg["policy"]
     environ = os.environ if environ is None else environ
@@ -583,9 +654,6 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             return None, remaining
         return min(fixer_timeout_s, remaining), remaining
 
-    out: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "as_of": L.iso(now), "mode": "apply" if apply else "dry_run",
-                           "considered": [], "actions": [], "dispatched": [], "blocked": [], "escalated": [],
-                           "would_escalate": [], "skipped": []}
     recs = L.load_records(d)
     max_n = int(pol.get("max_incidents_per_cycle", 5))
     queue = sorted((r for r in recs.values() if r["status"] in L.UNRESOLVED), key=lambda r: r["opened_at"])
@@ -596,6 +664,19 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
     retries = sorted((r for r in recs.values()
                       if r["status"] == "blocked" and _pending_escalation(r)),
                      key=lambda r: r["opened_at"])[:max_n]
+    # Stage already-durable delivery retries before fallible work. The public cycle's finally
+    # flushes this same batch if an unresolved incident fails, without running a model for the retry.
+    for rec in retries:
+        pending = _pending_escalation(rec)
+        if not pending:
+            continue
+        iid = rec["id"]
+        out["considered"].append(iid)
+        key = pending.get("key") or pending.get("reason")
+        reason = pending.get("reason") or "incident blocked"
+        ask = rec.get("handoff") or "A person must take this incident."
+        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key,
+                  operator_only=key in ("needs_operator", "refused_scope"))
     for rec in queue[:max_n]:
         iid = rec["id"]
         out["considered"].append(iid)
@@ -606,11 +687,12 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             ask = f"Refused scope ({hit!r}): AGENTS.md §0 / §28.14 item 4 — a person decides; no automated fix."
             if apply:
                 L.attempt(iid, actor=ACTOR, action="refused", result=ask, ok=None, sets_fixing=False, d=d, now=now)
+            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now, key="refused_scope",
+                     operator_only=True)
+            if apply:
                 rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: refused scope {hit!r}",
                               handoff="operator/coordinator: review the evidence; no agent may act on this scope", d=d, now=now)
             out["blocked"].append({"id": iid, "why": f"refused_scope:{hit}"})
-            _escalate(rec, f"refused scope {hit!r}", ask, d, deps, apply, out, now, key="refused_scope",
-                     operator_only=True)
             continue
         # 2. attempts cap (counted within THIS episode: attempts before the last reopen are history)
         if counted_attempts(rec) >= int(pol.get("max_attempts_per_incident", 3)):
@@ -651,12 +733,12 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             if _fresh_ok_dispatch(rec, pol, now):
                 out["skipped"].append({"id": iid, "why": "fixer job active"})
                 continue
+            _escalate(rec, why, "Supervisor attempts exhausted; a person must take it.", d, deps, apply, out, now,
+                      key="max_attempts")
             if apply:
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: read attempts[] and the evidence; fix by PR or record the operator decision", d=d, now=now)
             out["blocked"].append({"id": iid, "why": why})
-            _escalate(rec, why, "Supervisor attempts exhausted; a person must take it.", d, deps, apply, out, now,
-                      key="max_attempts")
             continue
         # 3. time box
         if age_min >= float(pol.get("escalate_after_minutes", 60)):
@@ -670,47 +752,66 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
         if last and now - last < timedelta(minutes=float(pol.get("model_cooldown_minutes", 30))):
             out["skipped"].append({"id": iid, "why": "cooldown"})
             continue
-        if _calls_today(d, now) >= int(pol.get("max_model_calls_per_day", 40)):
-            out["skipped"].append({"id": iid, "why": "daily model-call cap"})
-            continue
         # Cycle budget (2026-11-03): never start a model call the unit timeout could kill. The gate
         # sits after every cheap/deterministic path and before build_prompt/model.
         remaining = spendable_s()
         if remaining < model_timeout_s:
             _defer_budget(iid, "before model", d=d, now=now, apply=apply, out=out, remaining_s=remaining)
             continue
-        prompt = build_prompt(rec, cfg, evidence=evidence_excerpt(rec, state_root), runbooks=runbook_excerpt(rec, cfg, root))
-        if not apply:
-            out["skipped"].append({"id": iid, "why": "dry_run: would call model", "prompt_chars": len(prompt)})
+        # 3b. DISK INCIDENT — deterministic, BEFORE any model call (operator 2026-11-03, item 4: "the incident
+        # supervisor must never park a disk incident as 'needs a person'; it dispatches the fixer"). Placed after
+        # every cheap rail (refused scope, attempts cap, time box, cooldown, call cap, cycle budget) and before
+        # build_prompt, so no model call can happen first and no model answer can change the class. The dispatch
+        # itself is the existing hardened code_defect branch below — this only forces the classification.
+        disk = disk_incident_route(rec, cfg)
+        if disk and not apply:
+            # A dry run never dispatches: it reports what it would have done and moves on.
+            out["skipped"].append({"id": iid, "why": "dry_run: would dispatch the fixer", "route": "disk_incident"})
             continue
-        _bump_calls(d, now)
-        try:
-            text, provider = deps.model(prompt)
-        except Exception as exc:  # noqa: BLE001 — a refused/failed call is recorded, the time box still escalates
-            L.attempt(iid, actor=ACTOR, action="triage", result=f"model unavailable: {str(exc)[:200]}", ok=False,
-                      sets_fixing=False, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": "model_error"})
-            continue
-        provider = str(provider or "").lower()
-        if any(p in provider for p in pol.get("never_providers") or []):
-            L.attempt(iid, actor=ACTOR, action="triage", result=f"answer from refused provider {provider} discarded",
-                      ok=False, sets_fixing=False, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": f"refused_provider:{provider}"})
-            continue
-        verdict = parse_verdict(text)
-        if not verdict:
-            L.attempt(iid, actor=ACTOR, action="triage", result="unparseable model output", ok=False,
-                      sets_fixing=False, detail={"provider": provider}, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": "unparseable"})
-            continue
-        detail = {"provider": provider, "class": verdict["class"], "proposed": verdict["action"],
-                  "rationale": verdict["rationale"]}
-        acts = any(p in provider for p in pol.get("act_on_providers") or ["anthropic"])
-        if not acts:
-            L.attempt(iid, actor=ACTOR, action="triage_readonly", result=f"{verdict['class']}: {verdict['action']}",
-                      ok=None, sets_fixing=False, detail=detail, d=d, now=now)
-            out["skipped"].append({"id": iid, "why": f"readonly_provider:{provider}"})
-            continue
+        if disk:
+            verdict = {"class": "code_defect",
+                       "action": f"fix the disk incident: {str(rec.get('title') or '')[:200]}",
+                       "params": {}, "rationale": "disk incident routed to the fixer lane (operator 2026-11-03)"}
+            detail = {"provider": "deterministic", "class": "code_defect", "route": "disk_incident",
+                      "matched": disk, "proposed": verdict["action"]}
+        else:
+            # The daily model-call cap is a MODEL gate (cx-openai-3 F3): it must never park a deterministic disk
+            # incident, which needs no model at all. It lives here, on the only branch that spends calls.
+            if _calls_today(d, now) >= int(pol.get("max_model_calls_per_day", 40)):
+                out["skipped"].append({"id": iid, "why": "daily model-call cap"})
+                continue
+            prompt = build_prompt(rec, cfg, evidence=evidence_excerpt(rec, state_root), runbooks=runbook_excerpt(rec, cfg, root))
+            if not apply:
+                out["skipped"].append({"id": iid, "why": "dry_run: would call model", "prompt_chars": len(prompt)})
+                continue
+            _bump_calls(d, now)
+            try:
+                text, provider = deps.model(prompt)
+            except Exception as exc:  # noqa: BLE001 — a refused/failed call is recorded, the time box still escalates
+                L.attempt(iid, actor=ACTOR, action="triage", result=f"model unavailable: {str(exc)[:200]}", ok=False,
+                          sets_fixing=False, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": "model_error"})
+                continue
+            provider = str(provider or "").lower()
+            if any(p in provider for p in pol.get("never_providers") or []):
+                L.attempt(iid, actor=ACTOR, action="triage", result=f"answer from refused provider {provider} discarded",
+                          ok=False, sets_fixing=False, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": f"refused_provider:{provider}"})
+                continue
+            verdict = parse_verdict(text)
+            if not verdict:
+                L.attempt(iid, actor=ACTOR, action="triage", result="unparseable model output", ok=False,
+                          sets_fixing=False, detail={"provider": provider}, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": "unparseable"})
+                continue
+            detail = {"provider": provider, "class": verdict["class"], "proposed": verdict["action"],
+                      "rationale": verdict["rationale"]}
+            acts = any(p in provider for p in pol.get("act_on_providers") or ["anthropic"])
+            if not acts:
+                L.attempt(iid, actor=ACTOR, action="triage_readonly", result=f"{verdict['class']}: {verdict['action']}",
+                          ok=None, sets_fixing=False, detail=detail, d=d, now=now)
+                out["skipped"].append({"id": iid, "why": f"readonly_provider:{provider}"})
+                continue
         if verdict["class"] == "runbook":
             chosen, why = validate_action(verdict, rec, cfg)
             if not chosen:
@@ -754,12 +855,12 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
                 why = "prior fixer dispatch in this episode did not prove work; not redispatching"
                 L.attempt(iid, actor=ACTOR, action="triage", result=why, ok=False, sets_fixing=False,
                           detail={**detail, "fixer": "stale_or_failed_dispatch"}, d=d, now=now)
+                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
+                          d, deps, apply, out, now, key="fixer_dispatch_failed")
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: inspect the fixer job; a retry needs an operator requeue",
                               d=d, now=now)
                 out["blocked"].append({"id": iid, "why": why})
-                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
-                          d, deps, apply, out, now, key="fixer_dispatch_failed")
                 continue
             # Cycle budget (2026-11-03): the fixer timeout is capped at the remaining budget, and a
             # dispatch is deferred (triage row only) when too little remains. The incident stays
@@ -785,39 +886,20 @@ def cycle(*, d: Path, state_root: Path, release_root: Path, cfg: Mapping[str, An
             out["dispatched"].append({"id": iid, "rc": res.get("rc"), "prs": res.get("prs")})
             if not ok:
                 why = f"fixer dispatch did not prove work (rc={res.get('rc')})"
+                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
+                          d, deps, apply, out, now, key="fixer_dispatch_failed")
                 rec = L.block(iid, actor=ACTOR, blocked_reason=why,
                               handoff="coordinator: inspect the fixer job; a retry needs an operator requeue",
                               d=d, now=now)
                 out["blocked"].append({"id": iid, "why": why})
-                _escalate(rec, why, "The fixer did not prove work; a person must take it.",
-                          d, deps, apply, out, now, key="fixer_dispatch_failed")
         else:  # needs_operator
             L.attempt(iid, actor=ACTOR, action="triage", result=f"needs_operator: {verdict['action']}", ok=None,
                       sets_fixing=False, detail=detail, d=d, now=now)
+            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator",
+                      operator_only=True)
             rec = L.block(iid, actor=ACTOR, blocked_reason=f"needs_operator: {verdict['rationale'][:300]}",
                           handoff=verdict["action"] or "operator decision required", d=d, now=now)
             out["blocked"].append({"id": iid, "why": "needs_operator"})
-            _escalate(rec, "needs operator", verdict["action"], d, deps, apply, out, now, key="needs_operator",
-                      operator_only=True)
-    # Delivery-only retry (2026-11-03) for blocked incidents whose latest current-episode page was
-    # not delivered. This runs AFTER the unresolved queue and does nothing else: no model call, no
-    # runbook action, no fixer dispatch and no new block. A successful retry makes the escalation
-    # delivered, so the next cycle no longer sees it; a failed one is retried again next cycle.
-    for rec in retries:
-        pending = _pending_escalation(rec)
-        if not pending:
-            continue
-        iid = rec["id"]
-        out["considered"].append(iid)
-        key = pending.get("key") or pending.get("reason")
-        reason = pending.get("reason") or "incident blocked"
-        ask = rec.get("handoff") or "A person must take this incident."
-        _escalate(rec, reason, ask, d, deps, apply, out, now, key=key,
-                  operator_only=key in ("needs_operator", "refused_scope"))
-    if apply:
-        _flush_escalations(d, deps, out, now)
-        p = d / "supervisor_last.json"
-        p.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
     return out
 
 

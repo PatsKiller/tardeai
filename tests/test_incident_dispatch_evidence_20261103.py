@@ -489,9 +489,11 @@ def test_an_episode_that_delivered_the_same_key_does_not_suppress_the_next_episo
     assert len(pages2) == 1, "episode 2 must send its own page"
     assert [r["code_defect"]["episode"] for r in fake.requests] == [1, 2], fake.requests
     esc = L.load_records(tmp_path / "ledger")[rec["id"]]["escalations"]
-    assert [e["delivered"] for e in esc] == [True, True], esc
-    # the SAME reason class: only episode scoping can distinguish them
-    assert esc[0]["key"] == esc[1]["key"] == "fixer_dispatch_failed", esc
+    # Each episode first persists an undelivered obligation, then the successful send.
+    assert [e["delivered"] for e in esc] == [False, True, False, True], esc
+    assert [e["episode"] for e in esc] == [1, 1, 2, 2], esc
+    # The SAME reason class: only episode scoping can distinguish them.
+    assert all(e["key"] == "fixer_dispatch_failed" for e in esc), esc
 
 
 def test_a_blocked_incident_retries_only_an_undelivered_page(tmp_path, monkeypatch):
