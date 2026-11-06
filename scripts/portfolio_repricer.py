@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -59,6 +60,87 @@ _CASH_SYMBOLS = frozenset({
 def _utc_now_iso() -> str:
     from datetime import timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+#: A totals note is a claim about the document it was written for. This pass recomputes the day
+#: change from the rows, so a note saying the day change was not carried/measurable is describing a
+#: document that no longer exists. 2026-11-03: the live store carried
+#: "rebuilt by the positions_current rebuild (run 638); day change not carried" beside a populated day_change,
+#: and the repricer rewrote day_change every 15 minutes without ever clearing the note.
+_DAY_CHANGE_UNKNOWN = re.compile(
+    r"\b(not carried|unavailable|not available|unknown|unmeasured|not a measured value|seeded|placeholder)\b",
+    re.IGNORECASE,
+)
+_DAY_CHANGE_MENTION = re.compile(r"\bday[ _-]?change\b", re.IGNORECASE)
+#: Only these two describe the totals; `basis_note` describes basis coverage and stays untouched
+#: while `basis_complete` is false.
+_TOTALS_NOTE_KEYS = ("note", "day_change_note")
+
+
+def _day_change_coverage(rows) -> Dict[str, int]:
+    """How many rows carried a REAL day change, and how many could not be measured.
+
+    A coerced zero is not a measurement (cc-deepseek-5 R1, 2026-11-04). The totals sum
+    ``h.get("day_change") or 0``, so a holding with no prior close — or fills that do not reconcile —
+    contributes 0 and the total looks computed while nothing was measured. The counts travel on the
+    totals so the note decision stands on a recorded fact instead of on the sum's type.
+    """
+    measured = unmeasured = 0
+    for row in rows:
+        value = row.get("day_change") if isinstance(row, dict) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            unmeasured += 1
+        else:
+            measured += 1
+    return {"day_change_measured_rows": measured, "day_change_unmeasured_rows": unmeasured}
+
+
+def _reconcile_totals_notes(totals: Dict[str, Any], *, day_change_measured_rows: int) -> List[str]:
+    """Drop the note text this pass has just falsified, keep the text that is still true.
+
+    `note` is clause-structured ("rebuilt by the positions_current rebuild (run 638); day change not carried"),
+    so only the falsified clause is removed — the provenance half survives. `day_change_note` exists
+    only to explain a day change that came from somewhere other than this computation, so it goes
+    whole. Returns the keys that changed.
+
+    No day change computed means no note can be called stale — and neither does a day change that is a
+    NUMBER ONLY BECAUSE the rows were coerced: when no holding contributed a measured value the total is a
+    confident-looking zero and the note describing exactly that is still TRUE. Clearing it there was the
+    mirror of the original bug: a note that outlived its fact became a note deleted while its fact stands
+    (cc-deepseek-5 R1). ``day_change_measured_rows`` is that fact, and it is required, not defaulted.
+    """
+    day_change = totals.get("day_change")
+    if isinstance(day_change, bool) or not isinstance(day_change, (int, float)):
+        return []
+    if int(day_change_measured_rows or 0) <= 0:
+        # Every contribution was a coerced zero. The number beside the note is 0.0 and the note says that is
+        # not a measurement — both remain true, so nothing here is falsified.
+        return []
+    changed: List[str] = []
+    for key in _TOTALS_NOTE_KEYS:
+        text = totals.get(key)
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if key == "day_change_note":
+            if _DAY_CHANGE_UNKNOWN.search(text):
+                totals.pop(key, None)
+                changed.append(key)
+            continue
+        kept = [clause for clause in text.split(";")
+                if not (_DAY_CHANGE_MENTION.search(clause) and _DAY_CHANGE_UNKNOWN.search(clause))]
+        if len(kept) == len(text.split(";")):
+            continue
+        replacement = ";".join(clause.strip() for clause in kept if clause.strip())
+        if replacement:
+            totals[key] = replacement
+        else:
+            totals.pop(key, None)
+        changed.append(key)
+    if changed:
+        # AGENTS.md "Time discipline": a stored timestamp carries an explicit Z. ``_utc_now_iso``
+        # ends with ``+00:00``, which names the same instant but leaves the zone to be inferred.
+        totals["notes_reconciled_at"] = _utc_now_iso().replace("+00:00", "Z")
+    return changed
 
 
 def _summary_amount(value, *, signed: bool = False) -> str:
@@ -439,8 +521,8 @@ def _fetch_data_broker_quotes(symbols: List[str], root: Path, *, batch_reader=No
 
 
 # ── Yahoo price cache fetch (Fidelity funds after 8 PM) ───────────────────────
-def _fetch_fidelity_from_cache(fid_syms: List[str], root: Path) -> Dict[str, float]:
-    """Pull latest NAV from price_cache.json for Fidelity proprietary symbols."""
+def _fetch_fidelity_from_cache(fid_syms: List[str], root: Path) -> Dict[str, Any]:
+    """Pull latest NAV (and, when the cache has history, the preceding NAV) per Fidelity symbol."""
     result = {}
     if not fid_syms:
         return result
@@ -480,19 +562,30 @@ def _fetch_fidelity_from_cache(fid_syms: List[str], root: Path) -> Dict[str, flo
             pub_sym = fid_map.get(fid_sym, fid_sym)
             is_proxy = str(pub_sym).upper() != str(fid_sym).upper()
             sym_data = prices.get(pub_sym, {})
+            # Collect the dated NAVs once so the chosen mark's PRECEDING NAV can travel with it.
+            # Without it the NAV branch below can update the mark but has no measurement to build
+            # a day change from, and previously left a seeded 0.0 in place (codex-cloud P1, #2588).
+            navs = []
             for d in dates:
                 val = sym_data.get(d)
-                if val is not None:
-                    px = float(val) if not isinstance(val, dict) else float(val.get("close", 0) or 0)
-                    result[fid_sym] = {
-                        "price": px,
-                        "source": "proxy_public_ticker" if is_proxy else "price_cache_nav",
-                        "source_as_of": d,
-                        "proxy": is_proxy,
-                        "not_for_valuation": is_proxy,
-                        "mapped_symbol": pub_sym if is_proxy else fid_sym,
-                    }
-                    break
+                if val is None:
+                    continue
+                px = float(val) if not isinstance(val, dict) else float(val.get("close", 0) or 0)
+                if px > 0:
+                    navs.append((d, px))
+            if not navs:
+                continue
+            d, px = navs[0]
+            prev_close = navs[1][1] if len(navs) > 1 else None
+            result[fid_sym] = {
+                "price": px,
+                "prev_close": prev_close,
+                "source": "proxy_public_ticker" if is_proxy else "price_cache_nav",
+                "source_as_of": d,
+                "proxy": is_proxy,
+                "not_for_valuation": is_proxy,
+                "mapped_symbol": pub_sym if is_proxy else fid_sym,
+            }
     except Exception as e:
         print(f"  [repricer] Fidelity cache error: {e}")
 
@@ -733,7 +826,7 @@ def _closed_today_day_change(
 def _apply_to_holdings(
     holdings: List[Dict],
     live_prices: Dict[str, Dict],
-    fidelity_prices: Dict[str, float],
+    fidelity_prices: Dict[str, Any],
     intraday_fills: Optional[Dict[tuple, Dict[str, list]]] = None,
 ) -> int:
     """Update price/market_value/day_change fields in holdings list. Returns update count."""
@@ -772,6 +865,21 @@ def _apply_to_holdings(
                 h["canonical_mark_ingested_at"] = _utc_now_iso()
                 h["analytical_market_value"] = round(new_price * shares, 2)
                 h["price_source"] = src
+                # A NAV mark moved the price, so a day change that was seeded/left over no longer
+                # describes it. Recompute it from the PRECEDING NAV when the cache gave us one;
+                # otherwise the change is UNKNOWN — never zero and never the old value
+                # (codex-cloud P1 on #2588: the branch updated the mark without recomputing).
+                prev_close = (meta or {}).get("prev_close")
+                try:
+                    prev_close = float(prev_close) if prev_close is not None else None
+                except (TypeError, ValueError):
+                    prev_close = None
+                if prev_close is not None and prev_close > 0:
+                    h["day_change"] = round((new_price - prev_close) * shares, 2)
+                    h["day_change_pct"] = round((new_price - prev_close) / prev_close * 100, 4)
+                else:
+                    h["day_change"] = None
+                    h["day_change_pct"] = None
                 _sync_legacy_price_alias(h, new_price)
                 updated += 1
         elif sym in live_prices and shares > 0:
@@ -1020,6 +1128,22 @@ def _recalc_totals(portfolio: Dict) -> None:
     excluded_mv    = round(gt - gv, 2)
     excluded_count = len(valid) - len(valid_with_cost)
     gd    = sum((acct.get("day_change") or 0) for acct in account_summaries.values())
+    # Which of those contributions were REAL (cc-deepseek-5 R1): the sum above coerces every None to 0, so a
+    # book where nothing could be measured still yields a numeric 0.0. The counts are recorded on the totals so
+    # the note reconciliation can tell "we measured zero" from "we measured nothing".
+    #
+    # Count EXACTLY the rows the sum above consumed — `ah` is `account == acct_key and not is_loan` (line 876)
+    # and `closed_today` is read per account key. Counting every holding instead would let a loan row or a row
+    # filed under an account with no summary report "measured" while the total it stands beside was entirely
+    # coerced, which is the same over-clear one level down.
+    _dc_rows = [h for h in holdings if not h.get("is_loan") and h.get("account") in account_summaries]
+    _dc_rows += [
+        row
+        for _acct_key, _closed_rows in (portfolio.get("closed_today") or {}).items()
+        if _acct_key in account_summaries
+        for row in (_closed_rows or []) if isinstance(row, dict)
+    ]
+    _dc_coverage = _day_change_coverage(_dc_rows)
 
     # Sanity: reject if total changed > 25% from previous (likely data corruption)
     prev_total = portfolio.get("portfolio_totals", {}).get("total_value", 0) or 0
@@ -1071,10 +1195,18 @@ def _recalc_totals(portfolio: Dict) -> None:
         "excluded_count":     excluded_count,
         "day_change":         round(gd, 2),
         "day_change_pct":     round((gd / (gt - gd) * 100) if (gt - gd) else 0, 4),
+        # How the day change was arrived at: rows that carried a real number vs rows coerced to 0. A total with
+        # zero measured rows is not a measurement, and the note says so.
+        **_dc_coverage,
         "total_cash":            _total_cash,
         "total_cash_source":     "position_rows",
         "total_cash_written_at": _utc_now_iso(),
     })
+    # The totals above are now this pass's; any note text asserting the day change was not carried
+    # or not measured describes the document we just replaced — unless nothing was measured, in which
+    # case the note is still true and the reconciliation keeps it.
+    _reconcile_totals_notes(portfolio["portfolio_totals"],
+                            day_change_measured_rows=_dc_coverage["day_change_measured_rows"])
 
     for h in holdings:
         mv = h.get("market_value") or 0
@@ -1225,7 +1357,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
         print(f"  [repricer] Quote cache: {n_updated} symbols updated -> finviz_quote_cache.json")
 
     # ── 3. Apply to portfolio holdings ────────────────────────────────────────
-    fidelity_prices: Dict[str, float] = {}
+    fidelity_prices: Dict[str, Any] = {}
     if fidelity_syms and now_min >= 20 * 60:  # after 8 PM ET
         fidelity_prices = _fetch_fidelity_from_cache(fidelity_syms, root)
         print(f"  [repricer] Fidelity (8 PM cache): {len(fidelity_prices)}/{len(fidelity_syms)} funds")

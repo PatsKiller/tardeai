@@ -23,6 +23,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+try:  # imported as scripts.<module> by tests, directly by the lanes
+    from lib.day_change_display import (  # noqa: E402
+        format_amount as _format_amount,
+        format_day_change as _format_day_change,
+        format_pct as _format_pct,
+    )
+except ImportError:  # pragma: no cover - top-level scripts/ import
+    from scripts.lib.day_change_display import (  # type: ignore # noqa: E402
+        format_amount as _format_amount,
+        format_day_change as _format_day_change,
+        format_pct as _format_pct,
+    )
+
 log = logging.getLogger("llm_context_engine")
 
 ANTI_HALLUCINATION = """
@@ -183,14 +196,16 @@ def get_portfolio_context(conn=None):
         hdata = json.load(open(str(PROJECT_ROOT / "data/portfolios/state/holdings.json")))
         total = hdata.get("portfolio_totals", {}).get("total_value", 0)
         holdings = sorted(hdata.get("holdings", []),
-                          key=lambda h: h.get("market_value", 0), reverse=True)[:25]
-        lines = [f"Portfolio: ${total:,.0f}"]
+                          key=lambda h: h.get("market_value") or 0, reverse=True)[:25]
+        lines = [f"Portfolio: {_format_amount(total)}"]
         for h in holdings:
             sym = h.get("symbol", "?")
-            mv = h.get("market_value", 0)
-            pct = h.get("portfolio_pct", 0)
-            dc = h.get("day_change", 0)
-            lines.append(f"  {sym}: ${mv:,.0f} ({pct:.1f}%) day={dc:+.0f}")
+            mv = _format_amount(h.get("market_value"))
+            pct = _format_pct(h.get("portfolio_pct"))
+            # An unmeasured day change is the WORD unknown. Formatting it with `:+.0f` raised
+            # TypeError and discarded every holding in this block (codex-cloud P2, #2588).
+            dc = _format_day_change(h.get("day_change"), currency="")
+            lines.append(f"  {sym}: {mv} ({pct}) day={dc}")
         return "\n".join(lines) + "\n"
     except Exception as e:
         return f"  Portfolio error: {e}\n"

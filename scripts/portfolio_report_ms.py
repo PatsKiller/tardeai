@@ -35,6 +35,23 @@ try:  # reports live in persistent-state, not the release dir (lib/portfolio_rep
     from lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib.portfolio_reports_root import portfolio_reports_root as _portfolio_reports_root  # noqa: E402
+try:  # an unmeasured day change renders as the word unknown, never 0 and never a crash
+    from lib.day_change_display import (
+        format_day_change as _format_day_change,
+        is_measured as _is_measured,
+    )
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import (
+        format_day_change as _format_day_change,
+        is_measured as _is_measured,
+    )
+
+
+def _day_class(value) -> str:
+    """CSS class for a day-change cell; unknown gets no pos/neg colour."""
+    if not _is_measured(value):
+        return ""
+    return "pos" if float(value) >= 0 else "neg"
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 CIO_DIR = PROJECT_ROOT / "data" / "cio"
 REPORT_DIR = _portfolio_reports_root() / "ms"
@@ -587,7 +604,7 @@ def _section_accounts(ctx) -> str:
         f"<tr><td>{a['display_name']}</td><td>{a['broker'] or '—'}</td>"
         f"<td class='num'>{_fmt_usd(a['total_value'])}</td>"
         f"<td class='num'>{a['weight_pct']:.1f}%</td>"
-        f"<td class='num {('pos' if a['day_change']>=0 else 'neg')}'>{a['day_change']:+,.0f}</td>"
+        f"<td class='num {_day_class(a.get('day_change'))}'>{_format_day_change(a.get('day_change'))}</td>"
         f"<td class='num'>{a['gain_loss_pct']:+.2f}%</td></tr>"
         for a in ctx["accounts"]
     )

@@ -32,6 +32,19 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+try:
+    from lib.day_change_display import (
+        format_day_change as _format_day_change,
+        format_day_change_pct as _format_day_change_pct,
+        is_measured as _is_measured,
+    )
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import (
+        format_day_change as _format_day_change,
+        format_day_change_pct as _format_day_change_pct,
+        is_measured as _is_measured,
+    )
+
 MARKET_OPEN_ET  = (9,  0)
 MARKET_CLOSE_ET = (16, 15)
 SELF_TERMINATE  = (16, 31)
@@ -205,17 +218,22 @@ def check_triggers(portfolio: Dict, market_data: Dict[str, Dict], trigger_state:
     totals   = portfolio.get("portfolio_totals", {})
     total_mv = totals.get("total_value", 0) or 1
 
-    day_change = totals.get("day_change", 0) or 0
-    day_pct    = (day_change / (total_mv - day_change) * 100) if total_mv > 0 else 0
+    # An unmeasured day change is UNKNOWN, not a flat day. Do not let it trip (or suppress)
+    # a portfolio-level move alert on a number nobody measured (codex-cloud P2 on #2588).
+    day_change = totals.get("day_change")
+    day_pct = None
+    if _is_measured(day_change):
+        day_change = float(day_change)
+        day_pct    = (day_change / (total_mv - day_change) * 100) if total_mv > 0 else 0
 
-    if day_pct <= -THRESH_PORTFOLIO_MOVE and trigger_state.can_fire("PORTFOLIO", "DOWN_1PCT"):
+    if day_pct is not None and day_pct <= -THRESH_PORTFOLIO_MOVE and trigger_state.can_fire("PORTFOLIO", "DOWN_1PCT"):
         alerts.append({"ticker": "PORTFOLIO", "trigger": "DOWN_1PCT",
-                        "msg": f"📉 *Portfolio down {day_pct:.1f}% today*\nTotal: ${total_mv:,.0f}  Day: ${day_change:+,.0f}"})
+                        "msg": f"📉 *Portfolio down {day_pct:.1f}% today*\nTotal: ${total_mv:,.0f}  Day: {_format_day_change(day_change)}"})
         trigger_state.mark_fired("PORTFOLIO", "DOWN_1PCT")
 
-    if day_pct >= THRESH_PORTFOLIO_MOVE and trigger_state.can_fire("PORTFOLIO", "UP_1PCT"):
+    if day_pct is not None and day_pct >= THRESH_PORTFOLIO_MOVE and trigger_state.can_fire("PORTFOLIO", "UP_1PCT"):
         alerts.append({"ticker": "PORTFOLIO", "trigger": "UP_1PCT",
-                        "msg": f"📈 *Portfolio up {day_pct:.1f}% today*\nTotal: ${total_mv:,.0f}  Day: ${day_change:+,.0f}"})
+                        "msg": f"📈 *Portfolio up {day_pct:.1f}% today*\nTotal: ${total_mv:,.0f}  Day: {_format_day_change(day_change)}"})
         trigger_state.mark_fired("PORTFOLIO", "UP_1PCT")
 
     for h in holdings:
@@ -290,8 +308,9 @@ def check_triggers(portfolio: Dict, market_data: Dict[str, Dict], trigger_state:
 def _morning_brief(portfolio: Dict, market_data: Dict[str, Dict], root: Path) -> str:
     totals   = portfolio.get("portfolio_totals", {})
     total_mv = totals.get("total_value", 0)
-    day_chg  = totals.get("day_change", 0) or 0
-    day_pct  = (day_chg / (total_mv - day_chg) * 100) if total_mv > 0 else 0
+    day_raw  = totals.get("day_change")
+    day_chg  = float(day_raw) if _is_measured(day_raw) else None
+    day_pct  = (day_chg / (total_mv - day_chg) * 100) if (day_chg is not None and total_mv > 0) else None
     as_of    = portfolio.get("as_of", "")
 
     holdings = [h for h in portfolio.get("holdings", [])
@@ -309,13 +328,17 @@ def _morning_brief(portfolio: Dict, market_data: Dict[str, Dict], root: Path) ->
             mover_lines.append(f"  {arrow} {sym:6} ${px:.2f}  {chg:+.1f}%")
 
     movers_txt = "\n".join(mover_lines) if mover_lines else "  (no significant pre-market moves)"
-    day_arrow = "📈" if day_chg >= 0 else "📉"
-    sign      = "+" if day_chg >= 0 else ""
+    if day_chg is None:
+        total_line = f"💼 Total: *${total_mv:,.0f}*  Day: {_format_day_change(day_raw)} (not measured)"
+    else:
+        day_arrow = "📈" if day_chg >= 0 else "📉"
+        total_line = (f"💼 Total: *${total_mv:,.0f}*  {day_arrow} "
+                      f"{_format_day_change_pct(day_pct)} ({_format_day_change(day_chg)})")
 
     return "\n".join([
         f"☀️ *Portfolio Morning Brief — {as_of}*",
         "",
-        f"💼 Total: *${total_mv:,.0f}*  {day_arrow} {sign}{day_pct:.2f}% (${day_chg:+,.0f})",
+        total_line,
         "",
         f"📊 Pre-Market Snapshot:",
         movers_txt,
@@ -339,8 +362,9 @@ def _eod_summary(portfolio: Dict, market_data: Dict[str, Dict], alerts_fired: Li
                 return result["text"]
     totals   = portfolio.get("portfolio_totals", {})
     total_mv = totals.get("total_value", 0)
-    day_chg  = totals.get("day_change", 0) or 0
-    day_pct  = (day_chg / (total_mv - day_chg) * 100) if total_mv > 0 else 0
+    day_raw  = totals.get("day_change")
+    day_chg  = float(day_raw) if _is_measured(day_raw) else None
+    day_pct  = (day_chg / (total_mv - day_chg) * 100) if (day_chg is not None and total_mv > 0) else None
     all_gain = totals.get("total_gain", 0) or 0
     all_pct  = totals.get("total_gain_pct", 0) or 0
     as_of    = portfolio.get("as_of", "")
@@ -369,13 +393,17 @@ def _eod_summary(portfolio: Dict, market_data: Dict[str, Dict], alerts_fired: Li
         px   = mkt.get("price", 0)
         return f"  {sym:6} {chg:+.1f}%  ${val:+,.0f}  @ ${px:.2f}"
 
-    day_arrow = "📈" if day_chg >= 0 else "📉"
-    sign      = "+" if day_chg >= 0 else ""
+    if day_chg is None:
+        total_line = f"💼 Total: *${total_mv:,.0f}*  Day: {_format_day_change(day_raw)} (not measured)"
+    else:
+        day_arrow = "📈" if day_chg >= 0 else "📉"
+        total_line = (f"💼 Total: *${total_mv:,.0f}*  {day_arrow} "
+                      f"{_format_day_change_pct(day_pct)} ({_format_day_change(day_chg)} today)")
 
     lines = [
         f"🌆 *Portfolio Close — {as_of}*",
         "",
-        f"💼 Total: *${total_mv:,.0f}*  {day_arrow} {sign}{day_pct:.2f}% (${day_chg:+,.0f} today)",
+        total_line,
         f"📈 All-time: *${all_gain:+,.0f}* (+{all_pct:.1f}%)",
         "",
     ]

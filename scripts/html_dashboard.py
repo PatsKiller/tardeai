@@ -5,6 +5,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:  # an unmeasured day change renders as the word unknown, never 0.00% and never a crash
+    from lib.day_change_display import (
+        format_day_change_pct as _format_day_change_pct,
+        is_measured as _is_measured,
+    )
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import (
+        format_day_change_pct as _format_day_change_pct,
+        is_measured as _is_measured,
+    )
+
 def _e(s) -> str: return html_lib.escape(str(s or ""))
 def _sign(v: float) -> str: return f"+{v:.2f}" if v >= 0 else f"{v:.2f}"
 def _pct_color(v: float) -> str: return "#0F9D58" if v > 0 else ("#DB4437" if v < 0 else "#9A9AB0")
@@ -480,9 +491,9 @@ def generate_html_dashboard(
     _go_count  = len(go_list)
     _port      = portfolio_totals or {}
     _port_val  = _port.get("total_value", 0) or 0
-    _port_day  = _port.get("day_change", 0) or 0
-    _day_sign  = "+" if _port_day >= 0 else ""
-    _day_col   = "ok" if _port_day >= 0 else "danger"
+    _port_day_pct = _port.get("day_change_pct")
+    _day_txt   = _format_day_change_pct(_port_day_pct)
+    _day_col   = ("ok" if float(_port_day_pct) >= 0 else "danger") if _is_measured(_port_day_pct) else "warn"
     _vix_col   = "warn" if vix_val > 20 else "ok"
     _go_col    = "ok" if _go_count > 0 else "warn"
     exec_strip_html = (
@@ -496,7 +507,7 @@ def generate_html_dashboard(
         f"<div class='exec-item'><span class='exec-label'>GO Tier</span>"
         f"<span class='exec-value {_go_col}'>{_go_count}</span></div>"
         + (f"<div class='exec-item'><span class='exec-label'>Portfolio</span>"
-           f"<span class='exec-value {_day_col}'>{_day_sign}{_port.get('day_change_pct', 0) or 0:.2f}%</span></div>"
+           f"<span class='exec-value {_day_col}'>{_day_txt}</span></div>"
            if _port_val > 0 else "")
         + f"<div style='margin-left:auto;font-size:9px;color:#9A9AB0'>Run {_e(run_label)} &middot; {_e(date_str)} &middot; {ts}</div>"
         "</div>"

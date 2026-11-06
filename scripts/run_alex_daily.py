@@ -17,6 +17,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+try:  # an unmeasured day change is the word unknown, not a crash or a flat zero
+    from lib.day_change_display import format_day_change as _format_day_change
+    from lib.day_change_display import is_measured as _is_measured
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import format_day_change as _format_day_change
+    from scripts.lib.day_change_display import is_measured as _is_measured
+
 
 def _save_report(report_type: str, title: str, content: str, provider: str = "", cost: float = 0):
     """Store a weekly/monthly report in DB for the AI Analyst page."""
@@ -48,13 +55,14 @@ def _send_tg(msg: str) -> bool:
 def _load_portfolio_summary() -> dict:
     """Load portfolio totals, income, and top movers from state files."""
     state_dir = PROJECT_ROOT / "data" / "portfolios" / "state"
-    totals = {"value": 0, "income": 0, "day_change": 0, "positions": 0}
+    totals = {"value": 0, "income": 0, "day_change": None, "positions": 0}
     try:
         holdings = json.loads((state_dir / "holdings.json").read_text())
         pt = holdings.get("portfolio_totals", {})
         totals["value"] = pt.get("total_value", 0)
-        totals["day_change"] = pt.get("day_change", 0)
-        totals["day_change_pct"] = pt.get("day_change_pct", 0)
+        # Missing/None is UNKNOWN, not a measured zero (codex-cloud P2 on #2588).
+        totals["day_change"] = pt.get("day_change")
+        totals["day_change_pct"] = pt.get("day_change_pct")
         totals["positions"] = len(holdings.get("holdings", []))
     except Exception:
         pass
@@ -180,13 +188,18 @@ def run_daily(send_telegram: bool = False):
         divider = "\u2501" * 24
         income_target = 55000
         income_pct = int(pf["income"] / income_target * 100) if income_target else 0
-        day_emoji = "\U0001F7E2" if (pf.get("day_change", 0)) >= 0 else "\U0001F534"
+        _pf_day = pf.get("day_change")
+        day_txt = _format_day_change(_pf_day)
+        if not _is_measured(_pf_day):
+            day_emoji = "\u2754"
+        else:
+            day_emoji = "\U0001F7E2" if _pf_day >= 0 else "\U0001F534"
 
         lines = [
             f"\U0001F4CA *Alex Daily Brief \u2014 {date_str}*",
             divider,
             "",
-            f"{day_emoji} *Portfolio:* ${pf['value']/1e6:.2f}M ({'+' if pf.get('day_change',0) >= 0 else ''}${pf.get('day_change',0):,.0f} today)",
+            f"{day_emoji} *Portfolio:* ${pf['value']/1e6:.2f}M ({day_txt} today)",
             f"\U0001F4B0 *Income:* ${pf['income']:,.0f}/yr {_text_progress_bar(pf['income'], income_target)}",
             f"\U0001F3AF *Gap:* ${income_target - pf['income']:,.0f} remaining to ${income_target:,} target",
         ]

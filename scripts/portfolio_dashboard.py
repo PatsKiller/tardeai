@@ -10,6 +10,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:  # an unmeasured day change renders as the word unknown, never 0 and never a crash
+    from lib.day_change_display import (
+        format_day_change as _format_day_change,
+        format_day_change_pct as _format_day_change_pct,
+        is_measured as _is_measured,
+    )
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib.day_change_display import (
+        format_day_change as _format_day_change,
+        format_day_change_pct as _format_day_change_pct,
+        is_measured as _is_measured,
+    )
+
 
 def _e(s: Any) -> str:
     return html.escape(str(s)) if s is not None else ""
@@ -528,14 +541,14 @@ def _build_overview(portfolio: Dict, analysis: Dict, rebalancing: Dict, perf_his
     total_mv = totals.get("total_value", 0)
     total_gain = totals.get("total_gain", 0)
     total_gain_pct = totals.get("total_gain_pct", 0)
-    day_chg = totals.get("day_change", 0)
+    day_chg = totals.get("day_change")
 
     cards = f"""
     <div class='cards'>
       <div class='card'>
         <div class='card-label'>Total Portfolio</div>
         <div class='card-value'>{_fmt_usd(total_mv)}</div>
-        <div class='card-sub {_color_class(day_chg)}'>{_fmt_usd(day_chg)} today</div>
+        <div class='card-sub {_color_class(day_chg)}'>{_format_day_change(day_chg)} today</div>
       </div>
       <div class='card'>
         <div class='card-label'>Total Gain / Loss</div>
@@ -1882,14 +1895,14 @@ def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = 
     _tv = _totals.get("total_value", 0)
     _tg = _totals.get("total_gain", 0)
     _tg_pct = _totals.get("total_gain_pct", 0)
-    _dc = _totals.get("day_change", 0) or 0
-    _dc_pct = _totals.get("day_change_pct", 0) or 0
+    _dc = _totals.get("day_change")
+    _dc_pct = _totals.get("day_change_pct")
     _divs = _a.get("dividends", {})
     _div_inc = _divs.get("total_annual_income", 0) or 0
     _beta = _r.get("portfolio_beta", 0) or 0
     _ytd = _ph.get("periods", {}).get("YTD", {}).get("change_pct", 0) or 0
     _1y = _ph.get("periods", {}).get("1Y", {}).get("change_pct", 0) or 0
-    _dc_col = "#0F9D58" if _dc >= 0 else "#DB4437"
+    _dc_col = "#9A9AB0" if not _is_measured(_dc) else ("#0F9D58" if _dc >= 0 else "#DB4437")
     _ytd_col = "#0F9D58" if _ytd >= 0 else "#DB4437"
 
     # Sector pie chart (CSS conic-gradient)
@@ -1918,7 +1931,7 @@ def _build_ai_analysis(ai_analysis: Optional[Dict], portfolio: Optional[Dict] = 
         <div class='account-card' style='text-align:center;padding:12px'>
           <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>Portfolio</div>
           <div style='color:#e0e0f0;font-size:22px;font-weight:800'>${_tv:,.0f}</div>
-          <div style='color:{_dc_col};font-size:11px'>{'+' if _dc>=0 else ''}{_dc_pct:.2f}% today</div>
+          <div style='color:{_dc_col};font-size:11px'>{_format_day_change_pct(_dc_pct)} today</div>
         </div>
         <div class='account-card' style='text-align:center;padding:12px'>
           <div style='color:#6b6b8a;font-size:9px;text-transform:uppercase;letter-spacing:1px'>All-Time Gain</div>
@@ -2020,16 +2033,16 @@ def _build_performance(portfolio: Dict, analysis: Dict, risk: Dict, perf_history
     total_mv      = totals.get("total_value", 0)
     total_gain    = totals.get("total_gain", 0)
     total_gain_pct= totals.get("total_gain_pct", 0)
-    day_pnl       = totals.get("day_change", 0)
-    day_pnl_pct   = (day_pnl / (total_mv - day_pnl) * 100) if total_mv > day_pnl > -total_mv else 0
+    day_pnl       = totals.get("day_change")
+    day_pnl_pct   = (day_pnl / (total_mv - day_pnl) * 100) if (_is_measured(day_pnl) and total_mv > day_pnl > -total_mv) else None
 
     # ── Today's P&L by account ──────────────────────────────────────────────
     acct_day_rows = ""
     acct_keys_list = []   # ordered list for filter pills
     for k, s in sorted(account_sums.items(), key=lambda x: -(x[1].get("total_value") or 0)):
-        d = s.get("day_change") or 0
+        d = s.get("day_change")
         v = s.get("total_value", 0)
-        d_pct = (d / (v - d) * 100) if v > abs(d) else 0
+        d_pct = (d / (v - d) * 100) if (_is_measured(d) and v > abs(d)) else None
         display = s.get("display_name", k)
         acct_keys_list.append((k, display))
         # Add data-acct for JS filtering
@@ -2037,8 +2050,8 @@ def _build_performance(portfolio: Dict, analysis: Dict, risk: Dict, perf_history
           <td><b style='color:#e0e0f0'>{_e(display)}</b></td>
           <td class='nt'>{_e(s.get("account_type",""))}</td>
           <td style='text-align:right;font-weight:700'>{_fmt_usd(v)}</td>
-          <td class='{_color_class(d)}' style='text-align:right;font-weight:700'>{_fmt_usd(d)}</td>
-          <td class='{_color_class(d_pct)}' style='text-align:right'>{d_pct:+.2f}%</td>
+          <td class='{_color_class(d)}' style='text-align:right;font-weight:700'>{_format_day_change(d)}</td>
+          <td class='{_color_class(d_pct)}' style='text-align:right'>{_format_day_change_pct(d_pct)}</td>
         </tr>"""
 
     # ── Today's P&L by sector (from individual holding day changes) ─────────
@@ -2081,28 +2094,33 @@ def _build_performance(portfolio: Dict, analysis: Dict, risk: Dict, perf_history
                 return "ETF/Fund"
             return "Other"
 
-    sector_day: Dict[str, list] = {}
+    sector_day: Dict[str, Dict[str, float]] = {}
     for h in holdings:
         if h.get("is_loan") or h.get("is_cash"): continue
-        d = h.get("day_change") or 0
         mv = h.get("market_value") or 0
         if mv <= 0: continue
         sector = _get_sector_fn(h.get("symbol",""), h.get("asset_type",""))
-        sector_day.setdefault(sector, [0.0, 0.0])
-        sector_day[sector][0] += d
-        sector_day[sector][1] += mv
+        agg = sector_day.setdefault(sector, {"day": 0.0, "mv": 0.0, "measured": 0})
+        if _is_measured(h.get("day_change")):
+            agg["day"] += float(h["day_change"])
+            agg["measured"] += 1
+        agg["mv"] += mv
 
     sector_rows = ""
-    for sector, (d, mv) in sorted(sector_day.items(), key=lambda x: -abs(x[1][0])):
+    for sector, agg in sorted(sector_day.items(), key=lambda x: -abs(x[1]["day"])):
+        mv = agg["mv"]
         if mv < 100: continue
-        d_pct = (d / (mv - d) * 100) if mv > abs(d) else 0
+        # A sector whose rows carry no measured day change stays unknown; summing
+        # missing values as 0 would show a flat sector that was never measured.
+        d = agg["day"] if agg["measured"] else None
+        d_pct = (d / (mv - d) * 100) if (_is_measured(d) and mv > abs(d)) else None
         pct_port = mv / total_mv * 100 if total_mv else 0
         sector_rows += f"""<tr>
           <td>{_e(sector)}</td>
           <td class='nt' style='text-align:right'>{pct_port:.1f}%</td>
           <td style='text-align:right;font-weight:700'>{_fmt_usd(mv)}</td>
-          <td class='{_color_class(d)}' style='text-align:right;font-weight:700'>{_fmt_usd(d)}</td>
-          <td class='{_color_class(d_pct)}' style='text-align:right'>{d_pct:+.2f}%</td>
+          <td class='{_color_class(d)}' style='text-align:right;font-weight:700'>{_format_day_change(d)}</td>
+          <td class='{_color_class(d_pct)}' style='text-align:right'>{_format_day_change_pct(d_pct)}</td>
         </tr>"""
 
     # ── All-time by position ─────────────────────────────────────────────────
@@ -2261,8 +2279,8 @@ def _build_performance(portfolio: Dict, analysis: Dict, risk: Dict, perf_history
     <div class='cards'>
       <div class='card'>
         <div class='card-label'>Today P&L</div>
-        <div class='card-value {_color_class(day_pnl)}'>{_fmt_usd(day_pnl)}</div>
-        <div class='card-sub {_color_class(day_pnl_pct)}'>{day_pnl_pct:+.2f}% today</div>
+        <div class='card-value {_color_class(day_pnl)}'>{_format_day_change(day_pnl)}</div>
+        <div class='card-sub {_color_class(day_pnl_pct)}'>{_format_day_change_pct(day_pnl_pct)} today</div>
       </div>
       <div class='card'>
         <div class='card-label'>All-Time Gain</div>
@@ -2340,7 +2358,7 @@ def _build_period_returns(performance, portfolio, perf_history=None):
     building = ph.get("building", [])
     totals   = portfolio.get("portfolio_totals", {})
 
-    day_pnl    = totals.get("day_change", 0) or 0
+    day_pnl    = totals.get("day_change")  # None = not measured; never coerce to 0
     total_gain = totals.get("total_gain", 0) or 0
     gain_pct   = totals.get("total_gain_pct", 0) or 0
     total_val  = totals.get("total_value", 0) or 0
@@ -2370,15 +2388,20 @@ def _build_period_returns(performance, portfolio, perf_history=None):
                      f"<div class='card-sub nt' style='font-size:10px'>{msg}</div></div>")
 
     d1   = ph_pds.get("1D") or {}
-    d1c  = d1.get("change", day_pnl) or day_pnl
+    d1c  = d1.get("change") if d1.get("change") is not None else day_pnl
     d1cp = d1.get("change_pct")
-    d1sub = f"{'+'if (d1cp or 0)>=0 else ''}{d1cp:.2f}% today" if d1cp else "Today change"
-    d1col = "up" if d1c >= 0 else "dn"
+    if _is_measured(d1cp):
+        d1sub = f"{'+' if d1cp >= 0 else ''}{d1cp:.2f}% today"
+    elif _is_measured(d1c):
+        d1sub = "Today change"
+    else:
+        d1sub = "Day change not measured"
+    d1col = "nt" if not _is_measured(d1c) else ("up" if d1c >= 0 else "dn")
 
     cards_html = (
         f"<div class='cards'>"
         f"<div class='card'><div class='card-label'>Today P&amp;L</div>"
-        f"<div class='card-value {d1col}'>{_fmt_usd(d1c)}</div>"
+        f"<div class='card-value {d1col}'>{_format_day_change(d1c)}</div>"
         f"<div class='card-sub nt'>{d1sub}</div></div>"
         f"<div class='card'><div class='card-label'>All-Time Gain</div>"
         f"<div class='card-value up'>{_fmt_usd(total_gain)}</div>"
