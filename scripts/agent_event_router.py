@@ -652,6 +652,18 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
+    if not dry_run:
+        # Durable execution proof for the Jobs projection. A dry run writes nothing (AGENTS.md §6).
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+
+            write_lane_receipt("agent-event-router", ok=True, exit_code=0,
+                               summary={"processed": processed},
+                               script="scripts/agent_event_router.py")
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[agent-event-router] lane receipt write failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
+
     _log("")
 
 

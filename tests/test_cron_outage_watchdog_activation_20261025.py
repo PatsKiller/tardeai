@@ -114,6 +114,47 @@ def test_collect_counts_only_explicit_ok_receipts_and_skips_inactive_lane_gaps(t
     assert result["collection_gaps"] == ["active-missing:receipt_unavailable"]
 
 
+def test_advisory_lane_without_a_receipt_is_expected_not_a_gap(tmp_path):
+    """A lane whose own declaration says it writes no live receipt is coverage, never a gap (2026-11-01)."""
+    write(tmp_path / "logs/safe_flock_events.jsonl", "")
+    write(tmp_path / watchdog.CRONTAB_SNAPSHOT, "")
+    rows = [lane(lane_id="dry", dispatch={"mode": "dry_run"},
+                 output_signal={"kind": "json_key", "path": "data/runtime/dry.json", "key": "ok_at"}),
+            lane(lane_id="shadow",
+                 scheduler={"kind": "n8n", "expression": "dispatcher", "cadence": "0 * * * *", "stage": "shadow"},
+                 output_signal={"kind": "json_key", "path": "data/runtime/shadow.json", "key": "ok_at"}),
+            lane(lane_id="live", dispatch={"mode": "live"},
+                 output_signal={"kind": "json_key", "path": "data/runtime/live.json", "key": "ok_at"})]
+    result = watchdog.collect({"lanes": rows}, tmp_path)
+    assert result["collection_gaps"] == ["live:receipt_unavailable"]
+    assert result["expected_absent_receipts"] == [{"lane_id": "dry", "mode": "dry_run"},
+                                                  {"lane_id": "shadow", "mode": "shadow"}]
+
+
+def test_live_dispatch_wins_over_a_shadow_stage(tmp_path):
+    """An explicit live dispatch must still write its receipt; stage alone cannot excuse the gap."""
+    write(tmp_path / "logs/safe_flock_events.jsonl", "")
+    write(tmp_path / watchdog.CRONTAB_SNAPSHOT, "")
+    row = lane(lane_id="live-shadow", dispatch={"mode": "live"},
+               scheduler={"kind": "n8n", "expression": "dispatcher", "cadence": "0 * * * *", "stage": "shadow"},
+               output_signal={"kind": "json_key", "path": "data/runtime/x.json", "key": "ok_at"})
+    result = watchdog.collect({"lanes": [row]}, tmp_path)
+    assert result["collection_gaps"] == ["live-shadow:receipt_unavailable"]
+    assert result["expected_absent_receipts"] == []
+
+
+def test_advisory_lane_still_counts_a_receipt_that_does_exist(tmp_path):
+    """Suppression is about a missing receipt, never about ignoring one that is present."""
+    write(tmp_path / "logs/safe_flock_events.jsonl", "")
+    write(tmp_path / watchdog.CRONTAB_SNAPSHOT, "")
+    write(tmp_path / "data/runtime/dry.json", {"ok_at": "2026-10-25T03:22:03Z"})
+    row = lane(lane_id="dry", dispatch={"mode": "dry_run"},
+               output_signal={"kind": "json_key", "path": "data/runtime/dry.json", "key": "ok_at"})
+    result = watchdog.collect({"lanes": [row]}, tmp_path)
+    assert result["collection_gaps"] == []
+    assert result["successes"]["dry"][0]["source"] == "ok_at"
+
+
 def test_receipt_success_rules():
     assert watchdog.receipt_success({"ok_at": "2026-10-25T03:00:00Z"}, "ok_at")[1] == "ok_at"
     assert watchdog.receipt_success({"finished_at": "2026-10-25T03:00:00Z", "state": "RUN_DONE", "exit_code": 0}, "finished_at")

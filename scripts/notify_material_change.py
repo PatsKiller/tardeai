@@ -1163,7 +1163,7 @@ def route_check(message: str) -> str:
     the most recent communication_deliveries row — but "most recent row" is not "the
     row for my send", and a stale SUPPRESSED row made a successful send look unknown.
 
-    peek_should_send() is a pure read of the message (it never claims a recovery day), correlated to exactly
+    should_send_telegram() is a pure function of the message, correlated to exactly
     this text, so there is nothing to mis-attribute. A router that cannot be imported
     is treated as "will send" — that is the legacy path's own behaviour, and assuming
     suppression there would silence every alert on a partial install.
@@ -1173,10 +1173,10 @@ def route_check(message: str) -> str:
     held an eight-name batch for 179 runs.
     """
     try:
-        from telegram_alert_router import peek_should_send
+        from telegram_alert_router import should_send_telegram
     except ImportError:
         return "WILL_SEND"
-    return "WILL_SEND" if peek_should_send(message) else "WOULD_SUPPRESS"
+    return "WILL_SEND" if should_send_telegram(message) else "WOULD_SUPPRESS"
 
 
 def capture_agent_turns(conn, *, message: str, rows: list[dict], gw: dict) -> int:
@@ -1578,5 +1578,20 @@ def main() -> int:
     return 0
 
 
+def _entry() -> int:
+    code = main()
+    if code == 0:
+        # --dry-run returns at module import, so this only ever runs on a live pass.
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+            write_lane_receipt("material-change-notifier-stage2", ok=True, exit_code=0,
+                               summary={"entry": "notify_material_change"},
+                               script="scripts/notify_material_change.py")
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[material-change-notifier-stage2] lane receipt write failed: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+    return code
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_entry())

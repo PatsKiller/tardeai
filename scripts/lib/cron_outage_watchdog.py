@@ -50,6 +50,31 @@ def schedules(row: dict) -> tuple[list[str], str, str | None]:
     return result, tz, None
 
 
+#: Modes in which a lane's own declaration says no live success receipt can exist.
+ADVISORY_MODES = frozenset({"dry_run", "shadow", "preflight"})
+
+
+def advisory_mode(lane: dict) -> str | None:
+    """The mode in which this lane writes no live success receipt, or None when it is expected to.
+
+    A dry run, shadow or preflight run takes the writer's no-write branch by design (AGENTS.md §6:
+    a dry run cannot reach the write), so a missing receipt for such a lane is expected coverage,
+    not monitor blindness. An explicit ``dispatch.mode`` wins over ``scheduler.stage``: a lane
+    dispatched live must still write its receipt even while its stage is shadow.
+    """
+    dispatch = lane.get("dispatch") or {}
+    mode = dispatch.get("mode")
+    if isinstance(mode, str) and mode.strip():
+        normalized = mode.strip().lower().replace("-", "_")
+        return normalized if normalized in ADVISORY_MODES else None
+    stage = (lane.get("scheduler") or {}).get("stage")
+    if isinstance(stage, str):
+        normalized = stage.strip().lower().replace("-", "_")
+        if normalized in ADVISORY_MODES:
+            return normalized
+    return None
+
+
 def component(row: dict) -> str | None:
     if row.get("watchdog_wrapper_component"):
         return str(row["watchdog_wrapper_component"])

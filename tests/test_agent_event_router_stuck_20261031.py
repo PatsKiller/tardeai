@@ -83,3 +83,21 @@ def test_topic_events_create_no_per_symbol_jobs():
     assert R.create_agent_jobs(conn, ev, dry_run=False) == []
     assert log == []
     assert R._is_topic_subject("topic:x") and not R._is_topic_subject("TOPS") and not R._is_topic_subject(None)
+
+
+def test_a_completed_live_drain_writes_a_lane_receipt(tmp_path, monkeypatch):
+    """The Jobs projection reads ok_at; a dry run must write nothing (AGENTS.md §6)."""
+    import json
+    import sys
+
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    monkeypatch.setattr(R, "drain_queue", lambda dry_run: 0)
+    monkeypatch.setattr(R, "_log", lambda *a, **k: None)
+    monkeypatch.setattr(sys, "argv", ["agent_event_router"])
+    R.main()
+    receipt = json.loads((tmp_path / "data/runtime/agent-event-router_last.json").read_text())
+    assert receipt["lane_id"] == "agent-event-router" and receipt["ok_at"]
+
+    monkeypatch.setattr(sys, "argv", ["agent_event_router", "--dry-run"])
+    R.main()
+    assert json.loads((tmp_path / "data/runtime/agent-event-router_last.json").read_text())["ok_at"] == receipt["ok_at"]

@@ -25,7 +25,7 @@ const jobs = {schema: 'JobsHealth@v1', as_of: at, rows: [], total: 0, offset: 0,
   summary: {due_today: 0, succeeded: 0, failed: 0, missed: 0, paused: 0, retired: 0},
   monitor: {observed_at: at, status: 'OK', cause: null}, coverage_gaps: [], incident_count: 0}
 
-for (const width of [1440, 412, 390]) for (const state of ['canonical', 'null-headline', 'gap', 'unavailable', 'stale', 'detail-unavailable', 'multi'] as const) {
+for (const width of [1440, 412, 390]) for (const state of ['canonical', 'null-headline', 'gap', 'truncated', 'unavailable', 'stale', 'detail-unavailable', 'multi'] as const) {
   test(`Jobs DATA_ERROR ${state} fixture ${width}`, async ({page}) => {
     const height = width === 412 ? 915 : width === 390 ? 844 : 1000
     await page.setViewportSize({width, height})
@@ -42,6 +42,7 @@ for (const width of [1440, 412, 390]) for (const state of ['canonical', 'null-he
         const supplied = state === 'multi' ? {...section, findings: [finding, second]}
           : state === 'null-headline' ? {...section, headline: null}
           : state === 'gap' ? {...section, findings: [], headline: null, gap: {reason: 'Canonical ledger not yet produced'}}
+          : state === 'truncated' ? {...section, truncated: {shown: 200, total: 747, limit: 200}}
           : state === 'stale' ? {...section, stale: true} : section
         return route.fulfill({status: 200, json: {...jobs, data_errors: state === 'unavailable'
           ? {section: null, unavailable_reason: 'Conflict data is unavailable: the canonical reader is not installed'}
@@ -71,6 +72,11 @@ for (const width of [1440, 412, 390]) for (const state of ['canonical', 'null-he
     } else {
       await expect(line).toHaveText(/Canonical data error needs attention/)
       expect((await line.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+      // A bounded page is not an outage: say how much is shown and never call the check unavailable.
+      if (state === 'truncated') {
+        await expect(root.getByTestId('conflict-truncated')).toHaveText('Showing first 200 of 747 conflict records.')
+        await expect(root.getByTestId('conflict-gap')).toHaveCount(0)
+      }
       if (state === 'stale') await expect(root).toContainText('The data error comparison is out of date')
       if (width < 820) await line.tap(); else await line.click()
       const sheet = page.getByRole('dialog', {name: 'Job data error'})

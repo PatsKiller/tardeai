@@ -207,7 +207,8 @@ def main(argv=None):
                "alerts_sent": len(alerts), "regressions": regressions, "lanes": out}
     print(json.dumps(summary, indent=2, default=str))
     code = 1 if regressions else 0
-    write_lane_receipt("oauth_lane_keepalive", ok=code == 0, exit_code=code, started_at=started,
+    # The registry id, so the Jobs projection and the source-clock reader match this receipt.
+    write_lane_receipt("oauth-lane-keepalive", ok=code == 0, exit_code=code, started_at=started,
                        summary={"checked": len(lanes), "ok": summary["ok"], "regressions": regressions,
                                 "alerts": len(alerts)},
                        path=_runtime_dir() / "oauth_lane_keepalive_last.json")

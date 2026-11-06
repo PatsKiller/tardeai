@@ -126,19 +126,24 @@ def records_section(root=None, *, subject_kind=None, subject_id=None, kind=None)
     """Canonical section for Watch/Home/Ops; includes authoritative lifecycle detail."""
     from .adapters import findings_section
     root = root or _root()
+    # ``gap`` is reserved for a section that could not be read. A bounded page of a larger
+    # collection is ``truncated``: the check ran, it simply has more records than one page.
     if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
-        return findings_section([], gap={"reason": "conflict ledger not yet produced"})
+        return {**findings_section([], gap={"reason": "conflict ledger not yet produced"}), "truncated": None}
     try:
         collection = list_records(root, subject_kind=subject_kind, subject_id=subject_id, kind=kind, limit=200, active_only=True)
         records = collection["records"]
         findings = [{**r, "schema": "ConflictFinding@v1", "history": r.get("history"),
                      "history_gap": "fetch conflict detail for lifecycle history"} for r in records]
-        section = findings_section(findings, gap={"reason": "more conflict records available", "total": collection["total"]}
-                                   if collection["total"] > 200 else None)
-        return {**section, "source": "conflict_events.jsonl", "as_of": max((r["updated_at"] for r in records), default=None),
+        total = collection["total"]
+        section = findings_section(findings, gap=None)
+        return {**section,
+                "truncated": ({"shown": len(records), "total": total, "limit": 200}
+                              if total > len(records) else None),
+                "source": "conflict_events.jsonl", "as_of": max((r["updated_at"] for r in records), default=None),
                 "stale": None}
     except (OSError, ValueError, KeyError):
-        return findings_section([], gap={"reason": "conflict ledger unavailable or invalid"})
+        return {**findings_section([], gap={"reason": "conflict ledger unavailable or invalid"}), "truncated": None}
 
 
 def data_error_section(root=None):

@@ -1,7 +1,9 @@
 """One read-only execution projection for /ops/jobs and the five monitoring embeds.
 
-Existing lane registry, wrapper events, run receipts and watchdog readback only.
-No scheduler discovery subprocess, producer execution, DB migration or sender.
+Existing lane registry, wrapper events, run receipts, watchdog readback and a persisted host
+systemd-timer census only. No scheduler discovery subprocess at read time, no producer execution,
+DB migration or sender. The census is written hourly by the expected-services audit
+(scripts/lib/systemd_schedule_census.py); this projection only reads its artifact.
 """
 from __future__ import annotations
 
@@ -21,6 +23,9 @@ from scripts.lib.n8n_dlq_disposition import cause, instant
 from scripts.lib.scheduler_operations import successful_execution
 
 SCHEMA = "JobsHealth@v1"
+#: Written hourly by the expected-services audit (scripts/lib/systemd_schedule_census.py). Read-only here.
+SYSTEMD_CENSUS_REL = "data/runtime/systemd_schedule_census.json"
+CENSUS_MAX_AGE = timedelta(hours=2)
 ROOT = Path(__file__).resolve().parents[2]
 _CACHE = {}
 _LOCK = threading.Lock()
@@ -174,7 +179,40 @@ def _schedule(lane, now, trading_day):
     return due, next_due, issue, gated, bool(today_fires)
 
 
-def _measurement(unknown: int, collection_gaps: list) -> dict:
+def _systemd_census(root: Path, now: datetime) -> tuple[dict, dict]:
+    """The host's timer observation plus its state; never a subprocess at read time."""
+    doc = _json(Path(root) / SYSTEMD_CENSUS_REL)
+    units = doc.get("units")
+    seen = instant(doc.get("observed_at"))
+    if doc.get("schema") != "SystemdScheduleCensus@v1" or not isinstance(units, dict):
+        return {}, {"state": "unavailable", "as_of": None}
+    if seen is None or seen > now or now - seen > CENSUS_MAX_AGE:
+        return {}, {"state": "stale", "as_of": doc.get("observed_at")}
+    return units, {"state": "fresh", "as_of": doc.get("observed_at"), "coverage": doc.get("coverage")}
+
+
+def _host_schedule(lane: dict, units: dict, now: datetime) -> tuple[list, datetime | None, bool, bool]:
+    """(due, next_due, due_today, measured) for a systemd lane from the census row.
+
+    ``measured`` is False when the unit is absent, stopped or carries no parseable elapse; the
+    lane then keeps the honest "no schedule declared" result instead of inventing one.
+    """
+    scheduler = lane.get("scheduler") or {}
+    if scheduler.get("kind") != "systemd":
+        return [], None, False, False
+    row = units.get(str(scheduler.get("expression") or ""))
+    if not isinstance(row, dict):
+        return [], None, False, False
+    zone = ZoneInfo(str((lane.get("dispatch") or {}).get("tz") or scheduler.get("timezone") or "America/New_York"))
+    next_due = instant(row.get("next_elapse"))
+    last = instant(row.get("last_trigger"))
+    today = now.astimezone(zone).date()
+    due = [last] if last and last.astimezone(zone).date() == today else []
+    due_today = bool(due) or bool(next_due and next_due.astimezone(zone).date() == today)
+    return due, next_due if next_due and next_due > now else None, due_today, bool(next_due or last)
+
+
+def _measurement(unknown: int, collection_gaps: list, breakdown: str | None = None) -> dict:
     """A count that cannot be measured is a gap, never 0 (operator design rule 2026-10-25).
 
     ``missed`` is only countable for jobs whose schedule and run receipts are measured. With unmeasured jobs
@@ -183,13 +221,15 @@ def _measurement(unknown: int, collection_gaps: list) -> dict:
     """
     reasons = []
     if unknown:
+        detail = f": {breakdown}" if breakdown else ""
         reasons.append(f"{unknown} job{'s' if unknown != 1 else ''} not measured (no run receipt or no measurable "
-                       "schedule), so missed runs among them cannot be counted")
+                       f"schedule){detail}, so missed runs among them cannot be counted")
     if collection_gaps:
         reasons.append("execution evidence incomplete: " + "; ".join(str(g) for g in collection_gaps[:3]))
     return {"not_measured": unknown, "missed_measured": not reasons,
             "gap_reasons": {"missed": " · ".join(reasons) or None,
-                            "not_measured": "No run receipt or no measurable schedule" if unknown else None}}
+                            "not_measured": (f"No run receipt or no measurable schedule ({breakdown})" if breakdown
+                                             else "No run receipt or no measurable schedule") if unknown else None}}
 
 
 #: The operations watchers surfaced by the Jobs & health stoplight strip (operator 2026-10-28: "a mode in the
@@ -234,7 +274,8 @@ def _watchers(registry: dict, rows: list[dict], monitor: dict, monitor_ok: bool)
     return out
 
 
-def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
+def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day,
+          host_schedule: dict | None = None) -> dict:
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
     by_lane = {}
@@ -262,6 +303,13 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         last = values[-1] if values else {}
         successful = [r for r in values if successful_execution(r, now)]
         success = instant(check.get("last_success_at"))
+        if success is None:
+            # The watchdog returns NOT_APPLICABLE for a systemd lane, so its row carries no
+            # success clock. Use the validated successes already merged for this lane.
+            stamps = [instant(hit.get("at")) for hit in (captured.get("successes") or {}).get(lane_id) or []
+                      if hit.get("validated_success")]
+            stamps = [stamp for stamp in stamps if stamp and stamp <= now]
+            success = max(stamps) if stamps else None
         last_at = instant(last.get("finished_at") or last.get("started_at"))
         diagnostic = None
         failure_at = None
@@ -287,6 +335,11 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             due, upcoming, issue, gated, due_today = _schedule(lane, now, trading_day)
         except (ValueError, TypeError, KeyError):
             due, upcoming, issue, gated, due_today = [], None, "schedule could not be measured", False, False
+        # A systemd lane's schedule is measured from the host census, not from a cron expression.
+        host_due, host_next, host_today, host_measured = _host_schedule(lane, host_schedule or {}, now)
+        if host_measured:
+            due, upcoming, issue, due_today = host_due, host_next, None, host_today
+        schedule_source = "systemd_timer" if host_measured else (None if issue else "registry")
         outcome, reason = "unknown", "Successful execution is not yet measured"
         if state in {"PAUSED", "RETIRED", "DISABLED"}:
             outcome, reason = ("retired" if state == "RETIRED" else "paused"), lane.get("state_reason") or f"Job is {state.lower()}"
@@ -300,19 +353,44 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         elif last.get("state") in {"REQUESTED", "RUNNING"}:
             outcome, reason = "due", "Execution requested" if last.get("state") == "REQUESTED" else "Execution started; completion pending"
         elif issue:
-            reason = "Schedule is not measured" if issue else reason
+            # Classified below as schedule_not_declared; this branch only stops the later
+            # outside-window/due branches from claiming a lane whose schedule is unknown.
+            pass
         elif check.get("status") == "OUTSIDE_WINDOW":
             outcome, reason = "outside_window", "Outside the scheduled window"
         elif due and success and success < due[-1]:
             outcome, reason = "due", "Waiting for the next successful execution"
+        # "Not measured" is three different facts, and an operator can act on only one of them.
+        # Name which one it is instead of printing one blanket reason for all of them.
+        evidence_gap = None
+        if outcome == "unknown":
+            if state == "NEVER_SCHEDULED":
+                evidence_gap, reason = "never_scheduled", "Registered but never scheduled; no run is expected"
+            elif issue:
+                evidence_gap, reason = "schedule_not_declared", "No schedule is declared, so this lane cannot be measured"
+            else:
+                evidence_gap, reason = "execution_not_measured", "No run receipt proves a successful run"
+        schedule_measured = bool(host_measured or (state != "NEVER_SCHEDULED" and not issue))
         rows.append({"lane_id": lane_id, "job": lane.get("display_name") or lane_id.replace("-", " ").replace("_", " ").capitalize(),
             "scheduler": scheduler.get("kind") or "unknown", "state": state, "result": outcome,
             "last_run_at": W.iso(last_at) if last_at else None, "last_success_at": W.iso(success) if success else None,
             "successful_run_id": successful[-1].get("run_id") if successful else None,
             "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": due_today,
             "missed_fires": check.get("missed_fires"), "market_hours_only": gated,
+            "evidence_gap": evidence_gap, "schedule_measured": schedule_measured,
+            "schedule_source": schedule_source,
             "cause": reason, "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
+    gaps = Counter(row["evidence_gap"] for row in rows if row["result"] == "unknown")
+    # The three facts behind "not measured", guaranteed to sum to it: an unclassified
+    # unknown is counted as a missing receipt rather than dropped.
+    never = gaps.get("never_scheduled", 0)
+    undeclared = gaps.get("schedule_not_declared", 0)
+    no_receipt = max(0, counts["unknown"] - never - undeclared)
+    breakdown = " · ".join(part for part in (
+        f"{never} never scheduled" if never else "",
+        f"{undeclared} declare no schedule" if undeclared else "",
+        f"{no_receipt} need a run receipt" if no_receipt else "") if part) or None
     seen = instant(watchdog.get("observed_at"))
     monitor_ok = bool(watchdog.get("schema") == W.SCHEMA and watchdog.get("mode") == "monitor"
                       and seen and 0 <= (now - seen).total_seconds() <= 180)
@@ -329,7 +407,10 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
     return {"schema": SCHEMA, "as_of": W.iso(now), "authority": "READ_ONLY_ADVISORY", "rows": rows,
         "summary": {"due_today": sum(r["due_today"] and r["state"] == "ACTIVE" for r in rows),
                     **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
-                    **_measurement(counts["unknown"], captured.get("collection_gaps") or [])},
+                    "unknown_never_scheduled": never,
+                    "unknown_schedule_not_declared": undeclared,
+                    "unknown_execution_not_measured": no_receipt,
+                    **_measurement(counts["unknown"], captured.get("collection_gaps") or [], breakdown)},
         "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok),
         "incidents": incidents, "incident_count": len(incidents),
         "coverage_gaps": captured.get("collection_gaps") or [],
@@ -364,8 +445,10 @@ def _load(root: Path, registry_path: Path, now: datetime):
         snapshot.setdefault("collection_gaps", []).append(why or "run ledger unavailable")
     if not registry.get("lanes"):
         snapshot.setdefault("collection_gaps", []).append("lane registry unavailable")
+    units, census = _systemd_census(root, now)
     report = build(registry, snapshot, runs, _json(root / "data/runtime/cron_outage_watchdog_latest.json"),
-                   now=now, trading_day=is_trading_day)
+                   now=now, trading_day=is_trading_day, host_schedule=units)
+    report["schedule_census"] = census
     from scripts.lib.jobs_conflict_errors import get_data_errors
     report["data_errors"] = get_data_errors(root)
     return report

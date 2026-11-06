@@ -595,6 +595,21 @@ def main(argv: list[str] | None = None):
              result["dispatched_count"], len(research_rows),
              sum(1 for r in persist_rows if r.get("persisted")))
 
+    # Durable execution proof for the Jobs projection. --dry-run returns earlier (consult only),
+    # so a plan never writes a dispatch receipt (2026-11-01).
+    try:
+        from scripts.lib.lane_last_receipt import write_lane_receipt
+
+        write_lane_receipt(
+            "cio-wake-dispatch",
+            ok=not result.get("error_count"),
+            exit_code=0,
+            summary={"dispatched": result.get("dispatched_count"), "errors": result.get("error_count")},
+            script="scripts/cio_wake_dispatch_entrypoint.py",
+        )
+    except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+        log.warning("cio-wake-dispatch lane receipt write failed: %s: %s", type(exc).__name__, exc)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")

@@ -9,10 +9,13 @@ import CountTile from './CountTile'
 import { jobsCount, jobsMissed, jobsNotMeasured, type JobsSummary } from '../lib/measuredCount'
 
 export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
+/** Which fact makes an unknown row unmeasured. Three different facts, three different remedies. */
+export type EvidenceGap = 'never_scheduled' | 'schedule_not_declared' | 'execution_not_measured'
 export interface JobHealthRow {
   lane_id: string; job: string; scheduler: string; state: string; result: JobResult
   last_run_at: string | null; last_success_at: string | null; next_due_at: string | null
   cause: string; market_hours_only: boolean; successful_run_id?: string | null
+  evidence_gap?: EvidenceGap | null; schedule_measured?: boolean
 }
 export interface JobsHealthWire {
   schema: string; as_of: string; rows: JobHealthRow[]; total: number; offset: number; limit: number; has_more: boolean
@@ -29,6 +32,7 @@ const filters = [['attention', 'Needs attention'], ['all', 'All jobs'], ['market
 const panel: CSSProperties = { padding: 14, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0 }
 const tone = (result: JobResult): Tone => result === 'failed' ? 'danger' : result === 'missed' || result === 'unknown' ? 'warning' : result === 'succeeded' ? 'success' : 'neutral'
 const resultLabel: Record<JobResult, string> = { succeeded: 'Succeeded', failed: 'Failed', missed: 'Missed', paused: 'Paused', retired: 'Retired', unknown: 'Not measured', due: 'Due', outside_window: 'Outside window' }
+const gapLabel: Record<EvidenceGap, string> = { never_scheduled: 'Unscheduled by design', schedule_not_declared: 'No schedule declared', execution_not_measured: 'No run receipt' }
 const at = (value: string | null) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : 'Not measured'
 
 export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
@@ -96,11 +100,12 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
     </div>
     <div style={{ ...panel, padding: 0, overflow: 'hidden' }}>
       <div className="jobs-health-row jobs-health-head" style={{ padding: '10px 14px', borderBottom: `1px solid ${TOKENS.border}`, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{['Job', 'Runs on', 'Last run', 'Result', 'Next due', 'Why'].map(x => <span key={x}>{x}</span>)}</div>
-      {data?.rows.map(row => <article key={row.lane_id} className="jobs-health-row" aria-label={row.job} style={{ padding: '12px 14px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, fontSize: TYPE.base }}>
+      {data?.rows.map(row => <article key={row.lane_id} className="jobs-health-row" aria-label={row.job} data-evidence-gap={row.evidence_gap ?? undefined} style={{ padding: '12px 14px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, fontSize: TYPE.base }}>
         <strong className="jobs-health-job">{row.job}</strong>
         <div><span className="jobs-health-mobile-label">Runs on</span>{row.scheduler === 'cron' ? 'Host cron' : row.scheduler}</div>
         <div style={{ fontFamily: FONT.mono, fontSize: TYPE.sm }}><span className="jobs-health-mobile-label">Last run</span>{at(row.last_run_at)}</div>
-        <div><span className="jobs-health-mobile-label">Result</span><span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: RADIUS.sm, color: toneVars(tone(row.result)).color, background: toneVars(tone(row.result)).bg }}>{resultLabel[row.result]}</span></div>
+        <div><span className="jobs-health-mobile-label">Result</span><span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: RADIUS.sm, color: toneVars(tone(row.result)).color, background: toneVars(tone(row.result)).bg }}>{resultLabel[row.result]}</span>
+          {row.evidence_gap && <div data-testid="job-evidence-gap" style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginTop: 4 }}>{gapLabel[row.evidence_gap]}</div>}</div>
         <div style={{ fontFamily: FONT.mono, fontSize: TYPE.sm }}><span className="jobs-health-mobile-label">Next due</span>{row.state === 'PAUSED' || row.state === 'RETIRED' || row.state === 'DISABLED' ? '—' : at(row.next_due_at)}</div>
         <div className="jobs-health-cause" style={{ overflowWrap: 'anywhere', color: TOKENS.text[1] }}><span className="jobs-health-mobile-label">Why</span>{row.cause}<div style={{ marginTop: 4, fontSize: TYPE.sm, color: TOKENS.text[2] }}>Last success: {at(row.last_success_at)}</div><button type="button" onClick={() => select(row.lane_id)} style={{ minHeight: 44, marginTop: 8, width: '100%', borderRadius: RADIUS.sm, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.info }}>Review job</button></div>
       </article>)}

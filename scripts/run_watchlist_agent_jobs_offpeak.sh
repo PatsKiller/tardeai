@@ -223,5 +223,13 @@ case "$rc" in
     ;;
 esac
 
+if [ "$rc" -eq 0 ]; then
+  # Execution proof for the Jobs projection; a lock-skip (99), timeout (124) or worker failure
+  # writes nothing. The standard writer owns the state root, atomicity and the schema.
+  PYTHONPATH="$PROJ/scripts${PYTHONPATH:+:$PYTHONPATH}" "$PY" -c \
+    'from lib.lane_last_receipt import write_lane_receipt; write_lane_receipt("run-watchlist-agent-jobs-offpeak", ok=True, exit_code=0, summary={"mode": "offpeak_drain"}, script="scripts/run_watchlist_agent_jobs_offpeak.sh")' \
+    >/dev/null 2>&1 || true
+fi
+
 log "exit=${rc}"
 exit "$rc"

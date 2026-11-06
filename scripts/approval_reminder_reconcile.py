@@ -113,8 +113,10 @@ def main(argv: list[str] | None = None) -> int:
     now = _dt.datetime.now(_dt.timezone.utc)
     rpath = receipt_path(a.receipt)
     tpath = transport_path(a.transport)
-    run = {"schema": "ApprovalReminderReconcileRun@v1", "as_of": now.isoformat(), "receipt": str(rpath),
-           "transport": str(tpath), "written": False}
+    # ok is only ever written on the successful path below: a missing or unreadable reminder
+    # receipt returns before the write, so ok_at cannot advance on a failed reconcile.
+    run = {"schema": "ApprovalReminderReconcileRun@v1", "ok": True, "as_of": now.isoformat(),
+           "receipt": str(rpath), "transport": str(tpath), "written": False}
     if not rpath.is_file():
         run["status"] = "NO_RECEIPT"
         print(json.dumps(run, indent=1))

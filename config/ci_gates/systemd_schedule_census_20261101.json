@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "systemd_schedule_census_20261101",
+  "files": [
+    "tests/test_systemd_schedule_census_20261101.py"
+  ],
+  "anchor": "SYSTEMD_SCHEDULE_CENSUS_20261101",
+  "comment": [
+    "ANCHOR: SYSTEMD_SCHEDULE_CENSUS_20261101 — the host's systemd timer calendar is written once",
+    "hourly by the expected-services audit and read by the Jobs projection. Hermetic, fake runner."
+  ]
+}

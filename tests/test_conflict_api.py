@@ -82,6 +82,22 @@ def test_active_projection_filters_before_paging_and_counts_only_active(tmp_path
     assert context["blocks_promotion"] and [r["key"] for r in context["open_conflicts"]] == [KEY]
 
 
+def test_records_section_reports_truncation_not_unavailability(tmp_path, monkeypatch):
+    """A bounded page of a larger collection is ``truncated``; ``gap`` stays for a section that failed (2026-11-01)."""
+    from scripts.lib.conflicts.api import records_section
+    from scripts.lib.conflicts.ledger import ConflictLedger
+    st = ledger(tmp_path)
+    st.reconcile(SUBJECT, [conflict(kind="DATA_ERROR", tier=1)], at=NOW, apply=True)
+    active = st.records()[KEY]
+    records = {f"k{i}": {**active, "key": f"k{i}", "updated_at": (NOW + timedelta(minutes=i)).isoformat()}
+               for i in range(201)}
+    monkeypatch.setattr(ConflictLedger, "records", lambda self: records)
+    section = records_section(tmp_path, kind="DATA_ERROR")
+    assert section["gap"] is None
+    assert section["truncated"] == {"shown": 200, "total": 201, "limit": 200}
+    assert len(section["findings"]) == 200
+
+
 def test_operator_queue_reports_real_active_truncation(tmp_path):
     st = ledger(tmp_path)
     st.reconcile(SUBJECT, [conflict(kind="NEEDS_OPERATOR", never_auto=True),

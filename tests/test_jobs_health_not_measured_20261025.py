@@ -35,6 +35,22 @@ def test_unmeasured_jobs_make_missed_unmeasured_not_zero():
     assert summary["missed_measured"] is False
     assert "2 jobs not measured" in summary["gap_reasons"]["missed"]
     assert summary["gap_reasons"]["not_measured"]
+    # "Not measured" is three facts and they must sum to it (2026-11-01).
+    assert (summary["unknown_never_scheduled"] + summary["unknown_schedule_not_declared"]
+            + summary["unknown_execution_not_measured"]) == summary["unknown"]
+    assert summary["unknown_schedule_not_declared"] == 1   # the systemd fixture declares no schedule
+    assert summary["unknown_execution_not_measured"] == 1  # job-a is scheduled but has no run
+    assert summary["unknown_never_scheduled"] == 0
+    assert "declare no schedule" in summary["gap_reasons"]["not_measured"]
+
+
+def test_never_scheduled_is_its_own_bucket_not_a_missing_receipt():
+    summary = build([lane("unscheduled", state="NEVER_SCHEDULED")])["summary"]
+    assert summary["unknown"] == summary["not_measured"] == 1
+    assert summary["unknown_never_scheduled"] == 1
+    assert summary["unknown_schedule_not_declared"] == 0
+    assert summary["unknown_execution_not_measured"] == 0
+    assert "never scheduled" in summary["gap_reasons"]["not_measured"]
 
 
 def test_fully_measured_report_has_a_real_zero():

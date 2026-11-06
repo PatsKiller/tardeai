@@ -221,6 +221,19 @@ export function overviewSurfaceFreshness(
     ? overview.data_as_of_account
     : null
 
+  // The aggregate that owns the money already decides this over its own budget
+  // (portfolio_aggregate_contract.STALE_AFTER_HOURS = 48h). A second, shorter
+  // rule in the header could contradict it — and on a weekend it did, flagging a
+  // healthy Friday book STALE while the aggregate still read COMPLETE. One
+  // source of truth, one budget (operator review 2026-11-01).
+  const agg = (overview.portfolio_aggregate && typeof overview.portfolio_aggregate === 'object')
+    ? (overview.portfolio_aggregate as Record<string, unknown>)
+    : {}
+  const aggState = typeof agg.freshness_state === 'string' ? agg.freshness_state.toUpperCase() : null
+  const budgetHours = typeof agg.stale_after_hours === 'number' && agg.stale_after_hours > 0
+    ? agg.stale_after_hours
+    : 48
+
   // The DATA clock leads. `as_of` is the loader-run date and cannot date the
   // data; it stays on the payload and is reported, but it no longer sets age.
   const dataStamp = parseTimestamp(dataAsOf, nowMs)
@@ -247,7 +260,12 @@ export function overviewSurfaceFreshness(
   }
 
   const age = ageHoursFrom(dataStamp, nowMs)
-  const stale = age != null && age >= 36
+  // An explicit aggregate verdict wins; otherwise apply that aggregate's budget.
+  const stale = aggState === 'STALE'
+    ? true
+    : aggState === 'COMPLETE'
+      ? false
+      : age != null && age >= budgetHours
   const acct = dataAsOfAccount ? ` · ${dataAsOfAccount}` : ''
 
   if (!stale) {

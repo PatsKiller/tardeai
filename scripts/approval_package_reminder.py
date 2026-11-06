@@ -177,6 +177,10 @@ def build_run_receipt(
         "schema": "ApprovalReminderReceipt@v1",
         "run_id": run_id or uuid.uuid4().hex,
         "served_sha": _served_sha(),
+        # An explicit success flag for the Jobs projection: a completed run with no error
+        # class. It never claims delivery (delivery_status stays separate) and a failed run
+        # writes ok=false, so ok_at cannot advance on it (2026-11-01).
+        "ok": error_class is None,
         "started_at": started.isoformat(),
         "ended_at": now.isoformat(),
         "as_of": now.isoformat(),
