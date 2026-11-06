@@ -1,0 +1,5 @@
+{
+  "schema": "CioDeliveryConfig@v1",
+  "_comment": "tradeai-cio-delivery (scripts/cio_delivery_worker.py, every 5 min). max_expiries_per_run bounds how many overdue PENDING notes one run expires, so a 1,200-note backlog drains over a few runs instead of one long write burst (2026-10-31 stuck sweep).",
+  "max_expiries_per_run": 200
+}
