@@ -96,16 +96,29 @@ def _covered_weights(ctx: c.EvalContext, fn: Callable) -> dict | None:
     because the mega-caps had no cap on file). Event earnings then read "not measured", never a made-up share."""
     ev = ctx.policy.get("event") or {}
     uni = [str(u).upper() for u in ev.get("index_universe") or []]
-    w = fn(end=ctx.now, universe=uni or None)
+    aliases = {str(k).upper(): str(v).upper() for k, v in (ev.get("issuer_aliases") or {}).items()}
+    keys = uni + [k for k, v in aliases.items() if v in uni and k not in uni]
+    w = fn(end=ctx.now, universe=keys or None)
+    if w and aliases:  # a share class / cache key (GOOG, BRK-B) folds into its issuer; the issuer's own row wins
+        folded: dict[str, float] = {}
+        for k, v in (w.get("weights") or {}).items():
+            issuer = aliases.get(k.upper(), k.upper())
+            if issuer not in folded or k.upper() == issuer:
+                folded[issuer] = v
+        tot = sum(folded.values())
+        w = dict(w, weights={k: v / tot for k, v in folded.items()}) if tot else w
     if not uni:
         return w
     got = set((w or {}).get("weights") or {})
     cov = len(got & set(uni)) / len(uni)
     floor = float(ev.get("min_cap_coverage", 0.8))
-    if w is None or cov < floor:
+    required = [str(u).upper() for u in ev.get("required_issuers") or []]
+    req_missing = sorted(set(required) - got)
+    if w is None or cov < floor or req_missing:
         missing = sorted(set(uni) - got)
+        why = f"largest issuers missing {', '.join(req_missing)}; " if req_missing else ""
         ctx.extras["index_weights_note"] = (
-            f"caps known for {len(got & set(uni))} of {len(uni)} largest constituents (need {floor:.0%}); "
+            f"{why}caps known for {len(got & set(uni))} of {len(uni)} largest constituents (need {floor:.0%}); "
             f"missing {', '.join(missing[:8])}{'…' if len(missing) > 8 else ''}"
         )
         return None
