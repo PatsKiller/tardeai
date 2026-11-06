@@ -514,7 +514,7 @@ export function categoryLine(c: HomeV007['risk']['categories'][number]): string 
 const GAP_FIELD_LABEL: Record<string, string> = {
   quote: 'Price', day_change: 'Day change', since_exit: 'Since exit', since_exit_history: 'Since-exit history',
   cio: 'CIO stance', market_stance: 'Market-risk stance', volume: 'Volume', next_event: 'Next event',
-  references: 'Trigger references', headlines: 'Headlines', home_v007: "Today's context",
+  references: 'Trigger references', headlines: 'Headlines', home_v007: 'Your names today',
 }
 export function gapFieldLabel(field: string | null | undefined): string {
   if (!field) return 'Unnamed field'
@@ -556,4 +556,261 @@ export function compactPct(f: Fact & { pct: number | null }): string {
   if (f.state === 'not_applicable') return 'n/a'
   if (f.state !== 'measured' || f.pct == null) return 'not measured'
   return `${f.pct > 0 ? '+' : ''}${f.pct.toFixed(2)}%${f.stale ? ' (stale)' : ''}`
+}
+
+// ── v008 "Your names today" (operator-approved mockup home/v008 HomeTodaysContextActionable, 2026-11-06) ──────────
+// The flat A–Z symbol list is replaced by three groups, each opening with its takeaway: today's stop-outs, held names
+// in stressed groups, and older exits on watch. Facts and links only: no order, size, stop level or buy/sell word.
+// Every value still comes from a measured fact; an unmeasured price says NO PRICE and why, never a bare "not measured".
+
+/** Where Risk › Recovery lives (RecoveryViews' list path); `&case=<key>` selects one case. */
+export const RECOVERY_LIST_PATH = '/risk?tab=Recovery'
+/** The Protect card's generic stop review, used when a held name carries no item-level link. */
+export const STOP_REVIEW_PATH = '/risk?tab=exposure'
+/** Positions under this value fold into one footnote line (approved mockup: "leftover positions under $100"). */
+export const TINY_POSITION_USD = 100
+/** An earnings date this many trading days away or fewer is flagged on an older exit (approved mockup). */
+export const EARNINGS_FLAG_TRADING_DAYS = 5
+
+export type NamesSource = {
+  reentry: Array<{ symbol: string; exitDate: string | null; exitPrice: number | null; quotePrice: number | null; quoteAsOf: string | null; quoteReason: string | null; pctVsExit: number | null; stagesMeasured: boolean; stagesNote: string | null; exitAccount: string | null; heldElsewhere: string[] }>
+  holdings: Array<{ symbol: string; account: string | null; valueUsd: number; pctAccount: number | null; stopDistancePct: number | null; stance: string | null }>
+  /** true = the stop read answered (a missing stop is "no stop"); false/null = stops unread ("stop unknown"). */
+  stopsKnown: boolean | null
+  reviewLinks: Array<{ symbol: string; to: string }>
+  /** The inverse/hedge lane: these belong to the Hedge card and never appear here. */
+  inverse: string[]
+}
+
+/** Read the sibling fields of the same /api/v2/market-risk/latest response. Absent fields are empty, never invented. */
+export function namesSource(resp: unknown): NamesSource {
+  const top = rec(resp)
+  const d = top && rec(top.data) && !('home_v007' in top) ? rec(top.data)! : (top ?? {})
+  const watch = rec(d.reentry_watch) ?? {}
+  const detail = rec(d.reentry_detail) ?? {}
+  const reentry = Object.entries(watch).filter(([k]) => !k.startsWith('_')).map(([symbol, v]) => {
+    const c = rec(v) ?? {}
+    const cq = rec(c.current_quote)
+    const st = rec(c.stages)
+    const det = rec(detail[symbol]) ?? {}
+    const s1 = rec(st?.stage1)
+    return {
+      symbol: symbol.toUpperCase(),
+      exitDate: str(c.exit_date)?.slice(0, 10) ?? null,
+      exitPrice: num(c.exit_price) ?? num(st?.exit_price),
+      quotePrice: num(cq?.price),
+      quoteAsOf: str(cq?.as_of),
+      quoteReason: str(cq?.reason),
+      pctVsExit: num(cq?.pct_vs_exit) ?? num(st?.pct_vs_exit),
+      stagesMeasured: !!s1 && num(s1.of) != null && num(s1.of)! > 0 && !str(st?.note),
+      stagesNote: str(st?.note),
+      exitAccount: str(det.exit_account_label),
+      heldElsewhere: Array.isArray(det.held_elsewhere_labels) ? det.held_elsewhere_labels.filter((x): x is string => typeof x === 'string' && !!x) : [],
+    }
+  })
+  const be = rec(d.book_exposure)
+  const holdings = (Array.isArray(be?.rows) ? be!.rows : []).filter(rec).map(r => {
+    const o = r as Record<string, unknown>
+    return { symbol: (str(o.symbol) ?? '?').toUpperCase(), account: str(o.account_label), valueUsd: num(o.value_usd) ?? 0,
+      pctAccount: num(o.pct_account), stopDistancePct: num(o.stop_distance_pct), stance: str(o.stance) }
+  })
+  const links: NamesSource['reviewLinks'] = []
+  const prot = rec(d.protect)
+  for (const it of [...(Array.isArray(prot?.items) ? prot!.items : []), ...(Array.isArray(prot?.more) ? prot!.more : []), ...(Array.isArray(d.review) ? d.review : [])]) {
+    const o = rec(it); const sym = str(o?.symbol); const to = str(o?.to)
+    if (sym && to && !links.some(l => l.symbol === sym.toUpperCase())) links.push({ symbol: sym.toUpperCase(), to })
+  }
+  const hedge = rec(d.hedge)
+  const inverse = [
+    ...(Array.isArray(hedge?.candidates) ? hedge!.candidates : []),
+    str(rec(hedge?.entry)?.inverse),
+  ].filter((x): x is string => typeof x === 'string' && !!x).map(x => x.toUpperCase())
+  return { reentry, holdings, stopsKnown: typeof be?.stops_known === 'boolean' ? be.stops_known as boolean : null, reviewLinks: links, inverse }
+}
+
+export type RecoveryCaseRef = { key: string; symbol: string; account: string | null; settled: boolean }
+
+export type ExitStatus = 'above' | 'below' | 'no_price'
+export type StoppedRow = {
+  symbol: string; account: string; status: ExitStatus; pill: string
+  /** Why there is no price, and the last price time when one exists. Only for NO PRICE. */
+  noPriceWhy: string | null
+  vsExitPct: number | null; exitPrice: number | null; price: number | null; dayPct: number | null
+  event: string | null; why: string | null; caseTo: string | null; askText: string
+}
+export type HeldRow = {
+  symbol: string; accountText: string; valueUsd: number; pill: string; price: number | null; dayPct: number | null
+  event: string | null; stopFacts: string[]; needsStopLook: boolean; reviewTo: string; askText: string
+}
+export type OlderRow = { symbol: string; vsExitPct: number | null; dayPct: number | null; flag: string | null; flagged: boolean }
+export type NamesToday = {
+  stoppedHeading: string; stoppedTakeaway: string; stopped: StoppedRow[]
+  held: HeldRow[]; heldTakeaway: string; tiny: Array<{ symbol: string; usd: number }>
+  older: OlderRow[]; olderTakeaway: string
+  cioGap: { missing: number; total: number; reason: string | null } | null
+  total: number
+}
+
+const DAY_MS = 86_400_000
+const isoDay = (iso: string): number => Date.parse(`${iso.slice(0, 10)}T12:00:00Z`)
+const weekday = (t: number) => { const w = new Date(t).getUTCDay(); return w !== 0 && w !== 6 }
+/** The latest weekday on or before the ET date (holidays are not modelled; the label then names the date). */
+function lastSessionDate(todayEt: string): string {
+  let t = isoDay(todayEt)
+  while (!weekday(t)) t -= DAY_MS
+  return new Date(t).toISOString().slice(0, 10)
+}
+/** Trading days from `from` (exclusive) to `to` (inclusive); negative when `to` is before `from`. */
+export function tradingDaysUntil(from: string, to: string): number {
+  const a = isoDay(from), b = isoDay(to)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN
+  if (b < a) return -1
+  let n = 0
+  for (let t = a + DAY_MS; t <= b; t += DAY_MS) if (weekday(t)) n++
+  return n
+}
+const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const monDay = (iso: string) => { const t = new Date(isoDay(iso)); return `${MONTH[t.getUTCMonth()]} ${t.getUTCDate()}` }
+const dayLabel = (iso: string) => { const t = new Date(isoDay(iso)); return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][t.getUTCDay()]} ${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}` }
+export const signedPct1 = (v: number | null): string => v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(1)}%`
+const usd0 = (v: number) => `$${Math.round(v).toLocaleString('en-US')}`
+const words = (s: string) => s.replace(/_/g, ' ').toLowerCase()
+
+/** EXIT / TRIM from either spelling ("EXIT", "exit review", "trim_review"); anything else is not a stressed stance. */
+export function stressedStance(raw: string | null | undefined): 'EXIT' | 'TRIM' | null {
+  const s = String(raw ?? '').toUpperCase().replace(/[\s-]+/g, '_').replace(/_REVIEW$/, '')
+  return s === 'EXIT' || s === 'TRIM' ? s : null
+}
+
+/** The measured next event as "earnings Jan 26"; null when unmeasured or past. */
+function eventFact(s: SymbolContext | undefined, todayEt: string): { text: string; date: string; label: string } | null {
+  const ne = s?.nextEvent
+  if (!ne || ne.state !== 'measured' || !ne.at) return null
+  const date = ne.at.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < todayEt) return null
+  const label = words(ne.label ?? 'event')
+  return { text: `${label} ${monDay(date)}`, date, label }
+}
+
+export function askCioText(symbol: string): string { return `What is your view on ${symbol} today?` }
+
+export function caseLink(symbol: string, account: string | null, cases: RecoveryCaseRef[]): string | null {
+  const open = cases.filter(c => c.symbol === symbol && !c.settled)
+  if (!open.length) return null
+  const pick = open.find(c => account && c.account === account) ?? open[0]
+  return `${RECOVERY_LIST_PATH}&case=${encodeURIComponent(pick.key)}`
+}
+
+/** Build the three groups. Pure: `now` and every input are arguments, so the rules are unit-tested. */
+export function namesToday(v7: HomeV007, src: NamesSource, cases: RecoveryCaseRef[], now: Date): NamesToday {
+  const todayEt = etDate(now.toISOString()) ?? now.toISOString().slice(0, 10)
+  const session = lastSessionDate(todayEt)
+  const ctx = new Map(v7.symbols.map(s => [s.symbol.toUpperCase(), s]))
+  const inverse = new Set([...src.inverse, ...v7.hedge.inverse.map(i => i.symbol.toUpperCase())])
+  const priceOf = (s: SymbolContext | undefined) => s && s.quote.state === 'measured' ? s.quote.price : null
+  const dayOf = (s: SymbolContext | undefined) => s && s.dayChange.state === 'measured' ? s.dayChange.pct : null
+  const vsExitOf = (r: NamesSource['reentry'][number], s: SymbolContext | undefined): number | null => {
+    if (s) return s.sinceExit.state === 'measured' && s.quote.state === 'measured' ? s.sinceExit.pct : null
+    return r.quotePrice != null ? r.pctVsExit : null
+  }
+
+  // 1. Stopped out in the latest session.
+  const watch = src.reentry.filter(r => !inverse.has(r.symbol))
+  const recent = watch.filter(r => r.exitDate && r.exitDate >= session)
+  const stopped: StoppedRow[] = recent.map(r => {
+    const s = ctx.get(r.symbol)
+    const vs = vsExitOf(r, s)
+    const price = s ? priceOf(s) : r.quotePrice
+    const status: ExitStatus = vs == null ? 'no_price' : vs >= 0 ? 'above' : 'below'
+    const lastAt = s?.quote.asOf ?? r.quoteAsOf
+    const noPriceWhy = status === 'no_price'
+      ? `${(s ? (s.quote.state !== 'measured' ? s.quote.reason : s.sinceExit.reason) : r.quoteReason) ?? 'no current quote was measured for this name'}${lastAt ? ` · last price time ${fmtAsOf(lastAt) ?? lastAt}` : ' · no earlier price on record'}`
+      : null
+    let why: string | null
+    if (status === 'below') why = 'The stop did its job'
+    else {
+      const bits: string[] = []
+      if (s?.cio.state === 'measured' && s.cio.stance) bits.push(`CIO ${s.cio.stance.toUpperCase()}${s.cio.conviction != null ? ` · ${s.cio.conviction}` : ''}`)
+      if (s?.marketStance.state === 'measured' && s.marketStance.value) bits.push(`market-risk ${words(s.marketStance.value)}`)
+      if (!r.stagesMeasured) bits.push(r.exitDate === todayEt ? 'first re-entry check after tonight’s close' : (r.stagesNote ?? 'no re-entry check measured yet'))
+      why = bits.length ? bits.join(' · ') : null
+    }
+    const held = r.heldElsewhere.filter(h => h !== r.exitAccount)
+    const account = `${r.exitAccount ?? 'account not recorded'}${held.length ? ` · still held in ${held.join(', ')}` : ''}`
+    return {
+      symbol: r.symbol, account, status, noPriceWhy, vsExitPct: vs, exitPrice: r.exitPrice, price, dayPct: dayOf(s),
+      pill: status === 'no_price' ? 'NO PRICE' : `${status === 'above' ? 'ABOVE' : 'BELOW'} EXIT ${signedPct1(vs)}`,
+      event: eventFact(s, todayEt)?.text ?? null, why,
+      caseTo: status === 'below' ? null : (caseLink(r.symbol, r.exitAccount, cases) ?? RECOVERY_LIST_PATH),
+      askText: askCioText(r.symbol),
+    }
+  }).sort((a, b) => (a.status === 'above' ? 0 : a.status === 'no_price' ? 1 : 2) - (b.status === 'above' ? 0 : b.status === 'no_price' ? 1 : 2) || (b.vsExitPct ?? 0) - (a.vsExitPct ?? 0))
+  const priced = stopped.filter(r => r.status !== 'no_price')
+  const above = stopped.filter(r => r.status === 'above').length
+  const stoppedTakeaway = !stopped.length ? 'none'
+    : `${above} of ${priced.length} now above your exit${priced.length < stopped.length ? ` · ${stopped.length - priced.length} without a price` : ''}`
+  const stoppedHeading = session === todayEt ? 'Stopped out today' : `Stopped out ${dayLabel(session)}`
+  const stoppedSyms = new Set(stopped.map(r => r.symbol))
+
+  // 2. Held names in stressed groups.
+  const bySym = new Map<string, NamesSource['holdings']>()
+  for (const h of src.holdings) {
+    if (inverse.has(h.symbol) || stoppedSyms.has(h.symbol) || h.valueUsd <= 0) continue
+    const s = ctx.get(h.symbol)
+    const stance = stressedStance(h.stance) ?? stressedStance(s?.marketStance.state === 'measured' ? s.marketStance.value : null)
+    if (!stance) continue
+    bySym.set(h.symbol, [...(bySym.get(h.symbol) ?? []), h])
+  }
+  const held: HeldRow[] = []
+  const tiny: NamesToday['tiny'] = []
+  for (const [symbol, rows] of bySym) {
+    const total = rows.reduce((n, r) => n + r.valueUsd, 0)
+    if (total < TINY_POSITION_USD) { tiny.push({ symbol, usd: total }); continue }
+    const s = ctx.get(symbol)
+    const stance = rows.map(r => stressedStance(r.stance)).find(Boolean) ?? stressedStance(s?.marketStance.value) ?? 'EXIT'
+    const multi = rows.length > 1
+    const stopFacts = rows.map(r => {
+      const who = multi ? `${r.account ?? 'account'} ` : ''
+      if (r.stopDistancePct != null) return `${who}stop ${Math.abs(r.stopDistancePct).toFixed(1)}% ${r.stopDistancePct >= 0 ? 'below' : 'above'}`
+      if (src.stopsKnown === true) return `${who}no stop on ${usd0(r.valueUsd)}${r.pctAccount != null ? ` (${r.pctAccount.toFixed(1)}% of that account)` : ''}`
+      return `${who}stop unknown (stops not read)`
+    })
+    held.push({
+      symbol, valueUsd: total, pill: `MARKET-RISK ${stance}`,
+      accountText: `${multi ? `${rows.length} accounts` : rows[0].account ?? 'account'} · ${usd0(total)}`,
+      price: priceOf(s), dayPct: dayOf(s), event: eventFact(s, todayEt)?.text ?? null, stopFacts,
+      needsStopLook: rows.some(r => r.stopDistancePct == null),
+      reviewTo: src.reviewLinks.find(l => l.symbol === symbol)?.to ?? STOP_REVIEW_PATH,
+      askText: askCioText(symbol),
+    })
+  }
+  held.sort((a, b) => b.valueUsd - a.valueUsd)
+  tiny.sort((a, b) => b.usd - a.usd)
+  const noStop = held.filter(h => h.needsStopLook).length
+  const heldTakeaway = !held.length ? 'none' : `${held.length} held${noStop ? ` · ${noStop} with an account not covered by a stop` : ''}`
+
+  // 3. Older exits on watch: closest to the exit first; unknown distance last.
+  const older: OlderRow[] = watch.filter(r => !stoppedSyms.has(r.symbol)).map(r => {
+    const s = ctx.get(r.symbol)
+    const vs = vsExitOf(r, s)
+    const ev = eventFact(s, todayEt)
+    const soon = ev && /earn/.test(ev.label) && tradingDaysUntil(todayEt, ev.date) <= EARNINGS_FLAG_TRADING_DAYS ? `${ev.label} ${dayLabel(ev.date)}` : null
+    const flag = soon ?? (vs != null && vs >= 0 ? 'above exit' : vs == null ? 'no price' : null)
+    return { symbol: r.symbol, vsExitPct: vs, dayPct: dayOf(s), flag, flagged: !!soon || (vs != null && vs >= 0) }
+  }).sort((a, b) => (a.vsExitPct == null ? 1 : 0) - (b.vsExitPct == null ? 1 : 0) || Math.abs(a.vsExitPct ?? 0) - Math.abs(b.vsExitPct ?? 0))
+  const aboveOld = older.filter(o => o.vsExitPct != null && o.vsExitPct >= 0).length
+  const soonOld = older.filter(o => o.flag && /^earn/.test(o.flag)).length
+  const olderTakeaway = [aboveOld ? `${aboveOld} above exit` : null, soonOld ? `${soonOld} with earnings within ${EARNINGS_FLAG_TRADING_DAYS} trading days` : null].filter(Boolean).join(' · ')
+
+  // One CIO gap line for every name the card shows.
+  const shown = [...stopped.map(r => r.symbol), ...held.map(h => h.symbol), ...older.map(o => o.symbol)]
+  const missing = shown.filter(sym => ctx.get(sym)?.cio.state !== 'measured')
+  const reasons = new Map<string, number>()
+  for (const sym of missing) { const r = ctx.get(sym)?.cio.reason ?? (ctx.has(sym) ? null : 'the name is not in the context block'); if (r) reasons.set(r, (reasons.get(r) ?? 0) + 1) }
+  const reason = [...reasons.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
+  return {
+    stoppedHeading, stoppedTakeaway, stopped, held, heldTakeaway, tiny, older, olderTakeaway,
+    cioGap: missing.length ? { missing: missing.length, total: shown.length, reason } : null,
+    total: shown.length,
+  }
 }

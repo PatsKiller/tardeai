@@ -7,6 +7,16 @@ export type AskUpdate = { threadId: string; source: 'mutation' | 'header' | 'thr
 export function publishAskUpdate(detail: AskUpdate): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ASK_UPDATED_EVENT, { detail }))
 }
+/** Fill the global Ask the CIO box (it does not submit: the operator reads, edits and presses Ask). Used by Home's
+ *  "Ask CIO about SYM" so a row can hand the existing Ask entry a symbol without a new route. */
+export const ASK_PREFILL_EVENT = 'cc-cio-ask-prefill'
+export function prefillAsk(question: string): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ASK_PREFILL_EVENT, { detail: { question } }))
+}
+export function askPrefill(event: Event): string | null {
+  const q = (event as CustomEvent).detail?.question
+  return typeof q === 'string' && q.trim() ? q : null
+}
 export function askUpdate(event: Event): AskUpdate | null {
   const d = (event as CustomEvent).detail
   return d && typeof d.threadId === 'string' && ['mutation','header','thread'].includes(d.source) ? d : null

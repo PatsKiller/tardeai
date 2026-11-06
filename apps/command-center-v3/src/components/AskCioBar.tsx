@@ -12,7 +12,7 @@ import type { AnswerVersion, TrackedRow } from '../lib/askCioModel'
 import { useApi } from '../hooks/useApi'
 import { askCio, askErrorText, type AskResult } from '../lib/askCioApi'
 import AskCioAnswer from './AskCioAnswer'
-import { ASK_UPDATED_EVENT, answerForAsk, askUpdate, keepNewestAnswer, matchingThread, newerHeaderAnswer, publishAskUpdate, readableAnswerForAsk, statusForAsk, threadVersionKey } from '../lib/askCioPresentation'
+import { ASK_PREFILL_EVENT, ASK_UPDATED_EVENT, askPrefill, answerForAsk, askUpdate, keepNewestAnswer, matchingThread, newerHeaderAnswer, publishAskUpdate, readableAnswerForAsk, statusForAsk, threadVersionKey } from '../lib/askCioPresentation'
 import { useAskPhoneSheet } from '../hooks/useAskPhoneSheet'
 import './AskCio.css'
 
@@ -48,6 +48,20 @@ export default function AskCioBar() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [res, err])
+
+  // Home's "Ask CIO about SYM": fill the box and bring it into view; never submit on the operator's behalf.
+  useEffect(() => {
+    const onPrefill = (e: Event) => {
+      const text = askPrefill(e)
+      if (!text) return
+      setQ(text); setErr(null)
+      const el = inputRef.current
+      el?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+      el?.focus()
+    }
+    window.addEventListener(ASK_PREFILL_EVENT, onPrefill)
+    return () => window.removeEventListener(ASK_PREFILL_EVENT, onPrefill)
+  }, [])
 
   function toggleMic() {
     if (listening) { recRef.current?.stop(); return }

@@ -111,6 +111,23 @@ const V7 = {
   budget_presentation_decisions: { complete: false, items: 3, history: [{ state: 'previous' }] },
   gaps: [{ symbol: 'DEMO', field: 'cio.rationale', reason: 'store does not expose it', remediation: { key: 'ask_owner', action: 'ask owner' } }],
 }
+// v008 "Your names today" reads the sibling fields of the same response. Made-up symbols only (the repo is public).
+// Exits are dated today (ET) so they land in the "Stopped out" group whatever day the fixture runs.
+const TODAY_ET = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date())
+const NAMES = {
+  reentry_watch: {
+    DEMO: { exit_date: TODAY_ET, exit_price: 50 },
+    AAA: { exit_date: TODAY_ET, exit_price: 10, current_quote: { price: 11, pct_vs_exit: 10, as_of: '2026-11-02T21:00:00Z' } },
+    BBB: { exit_date: TODAY_ET, exit_price: 20, current_quote: { reason: 'no canonical quote for this name yet' } },
+    OLD1: { exit_date: '2026-10-01', exit_price: 10, current_quote: { price: 9, pct_vs_exit: -10 } },
+    SH: { exit_date: TODAY_ET, exit_price: 31 },
+  },
+  reentry_detail: { AAA: { exit_account_label: 'Demo IRA', held_elsewhere_labels: ['Demo Taxable'] } },
+  book_exposure: { stops_known: true, rows: [
+    { symbol: 'CCC', account_label: 'Demo IRA', value_usd: 5000, pct_account: 12, stop_distance_pct: 4.2, stance: 'exit review' },
+    { symbol: 'TINY', account_label: 'Demo IRA', value_usd: 40, stance: 'exit review' },
+  ] },
+}
 const browser = await chromium.launch({ args: ['--no-sandbox'] })
 const results = []
 try {
@@ -123,7 +140,7 @@ try {
       const url = new URL(route.request().url())
       if (url.origin !== 'http://v007.test') { t.external.push(route.request().url()); return route.abort() }
       if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html })
-      if (url.pathname === '/api/v2/market-risk/latest') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: { home_v007: V7 } }) })
+      if (url.pathname === '/api/v2/market-risk/latest') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: { home_v007: V7, ...NAMES } }) })
       return route.fulfill({ contentType: 'application/json', body: '{"ok":false}' })
     })
     await page.goto('http://v007.test/')
@@ -143,7 +160,9 @@ try {
         .map(el => el.getAttribute('data-testid'))
       return {
         sectorsOpen: open('mr-sectors-section'), diagnosticsOpen: open('v7-diagnostics'),
-        compactRows: document.querySelectorAll('[data-testid^="v7-row-"]').length,
+        stoppedRows: [...document.querySelectorAll('[data-testid^="v8-stopped-"]')].filter(el => el.hasAttribute('data-status')).map(el => `${el.getAttribute('data-testid')}:${el.getAttribute('data-status')}`),
+        heldRows: document.querySelectorAll('[data-testid^="v8-held-"]').length,
+        olderOpen: open('v8-older'),
         v7text: v7?.innerText || '', order,
         multiSegmentHeadings: (document.body.innerText.match(/Multi-segment issuer/gi) || []).length,
         overflow: document.documentElement.scrollWidth > innerWidth + 1,
@@ -153,11 +172,23 @@ try {
     try {
       assert.equal(first.sectorsOpen, false, `the sector table is collapsed by default at ${width}`)
       assert.equal(first.diagnosticsOpen, false, `diagnostics are collapsed by default at ${width}`)
-      assert.ok(first.compactRows >= 3, `one compact row per symbol at ${width}: ${first.compactRows}`)
+      // v008: stopped-out names grouped by their position vs the exit (above, then no price, then below); the hedge ETF is left out.
+      assert.deepEqual(first.stoppedRows, ['v8-stopped-AAA:above', 'v8-stopped-BBB:no_price', 'v8-stopped-DEMO:below'], `stopped-out rows at ${width}`)
+      assert.equal(first.heldRows, 1, `one held name in a stressed group at ${width}`)
+      assert.equal(first.olderOpen, false, `older exits are collapsed by default at ${width}`)
+      assert.ok(/Your names today/.test(first.v7text) && !/Today’s context/.test(first.v7text), `the card is renamed at ${width}`)
+      assert.ok(/1 of 2 now above your exit · 1 without a price/.test(first.v7text), `the stopped-out takeaway at ${width}: ${first.v7text.slice(0, 600)}`)
+      assert.ok(/ABOVE EXIT \+10\.0%/.test(first.v7text) && /NO PRICE/.test(first.v7text) && /BELOW EXIT −0\.3%/.test(first.v7text), `status pills at ${width}`)
+      assert.ok(/The stop did its job/.test(first.v7text), `a below-exit row says the stop did its job at ${width}`)
+      assert.ok(/still held in Demo Taxable/.test(first.v7text), `the account line names where it is still held at ${width}`)
+      assert.ok(/Demo IRA stop 4\.2% below|stop 4\.2% below/.test(first.v7text) && /TINY \$40/.test(first.v7text), `held stop facts and the under-$100 footnote at ${width}: ${first.v7text.slice(0, 900)}`)
+      assert.ok(/CIO view missing for \d+ of \d+ names/.test(first.v7text), `one CIO gap line at ${width}`)
+      assert.ok(!/\bSH\b/.test(first.v7text.split('Diagnostics')[0]), `the inverse ETF is not in the names groups at ${width}`)
+      assert.ok(!/risk score|budget risk budget/.test(first.v7text), `raw score and budget lines sit behind Diagnostics at ${width}`)
       assert.ok(/Diagnostics \(\d+ gaps?\)/i.test(first.v7text), `the diagnostics disclosure names its gap count at ${width}: ${first.v7text.slice(0, 600)}`)
       assert.ok(!/\bgap [A-Z]+\./.test(first.v7text), `no raw per-field gap line in the first view at ${width}`)
       assert.ok(!/trade time unverified/.test(first.v7text), `provenance sits behind Diagnostics at ${width}`)
-      assert.ok(/\$49\.87/.test(first.v7text) && /since exit/.test(first.v7text) && /CIO/.test(first.v7text), `the compact row carries price, since exit and stance at ${width}: ${first.v7text.slice(0, 600)}`)
+      assert.ok(/exit \$50\.00/.test(first.v7text) && /now \$49\.87/.test(first.v7text), `a stopped row carries exit and now at ${width}: ${first.v7text.slice(0, 600)}`)
       assert.equal(first.overflow, false, `horizontal overflow in the first view at ${width}`)
       const at = id => first.order.indexOf(id)
       assert.ok(at('mr-positions-section') < at('mr-sectors-section') && at('mr-sectors-section') < at('mr-reentry-section')
@@ -192,14 +223,18 @@ try {
         v7text: document.querySelector('[data-testid="home-v007"]')?.innerText || '',
         v7buttons: document.querySelectorAll('[data-testid="home-v007"] button').length,
         v7intentOpen: document.querySelectorAll('[data-testid="v7-intent-open"]').length,
-        v7otherButtons: [...document.querySelectorAll('[data-testid="home-v007"] button')].filter(b => b.getAttribute('data-testid') !== 'v7-intent-open').length,
+        // Ask CIO only pre-fills the global Ask box; Explain opens a sheet; the gap line opens Diagnostics. None acts.
+        v7askButtons: [...document.querySelectorAll('[data-testid="home-v007"] button')].filter(b => /^v8-ask-/.test(b.getAttribute('data-testid') || '')).map(b => b.textContent),
+        v7otherButtons: [...document.querySelectorAll('[data-testid="home-v007"] button')].filter(b => !['v7-intent-open', 'mr-explain', 'v8-cio-gap-details'].includes(b.getAttribute('data-testid')) && !/^v8-ask-/.test(b.getAttribute('data-testid') || '')).map(b => b.getAttribute('data-testid') || b.textContent),
+        caseLinks: [...document.querySelectorAll('[data-testid^="v8-case-"]')].map(a => a.getAttribute('href')),
+        olderText: document.querySelector('[data-testid="v8-older"]')?.innerText || '',
       }
     })
     assert.deepEqual(t.pageErrors, [], `page errors at ${width}`)
     assert.deepEqual(t.external, [], `the card must not reach any external origin at ${width}: ${JSON.stringify(t.external)}`)
     try {
       assert.ok(Object.values(m.sections).every(Boolean), `a section is missing at ${width}: ${JSON.stringify(m.sections)}`)
-      assert.equal(m.details, 7, `collapsible count at ${width} (six sections + Diagnostics)`)
+      assert.equal(m.details, 8, `collapsible count at ${width} (six sections + older exits + Diagnostics)`)
       assert.equal(m.multiSegmentHeadings, 1, `"Multi-segment issuer" renders once at ${width}`)
       assert.ok(m.gapGroups.length >= 1 && m.gapGroups.every(g => /unavailable/.test(g)), `gaps render as grouped lines at ${width}: ${JSON.stringify(m.gapGroups)}`)
       for (const row of m.reentry) {
@@ -251,9 +286,11 @@ try {
       assert.ok(/a size, an order or a stop level/.test(m.v7text), `advisory line missing at ${width}`)
       // The control is gated by the payload, not by a build constant: exactly the one row whose operator_decision is
       // `available` AND names a scope offers it; every other row stays read-only and shows its own unavailability.
-      assert.equal(m.v7buttons, 1, `exactly one operator control at ${width}, got ${m.v7buttons}`)
-      assert.equal(m.v7intentOpen, 1, `the intent control must be the operator one at ${width}`)
-      assert.equal(m.v7otherButtons, 0, `no other button may appear in the context at ${width}`)
+      assert.equal(m.v7intentOpen, 1, `exactly one operator control (the intent control) at ${width}`)
+      assert.deepEqual(m.v7otherButtons, [], `no other button may appear in the context at ${width}`)
+      assert.deepEqual(m.v7askButtons, ['Ask CIO about AAA', 'Ask CIO about BBB', 'Ask CIO about DEMO', 'Ask CIO about CCC'], `Ask CIO per name at ${width}`)
+      assert.deepEqual(m.caseLinks, ['/risk?tab=Recovery', '/risk?tab=Recovery'], `re-entry case links only on above/no-price rows at ${width}`)
+      assert.ok(/Older exits on watch \(1\)/i.test(m.olderText) && /OLD1/.test(m.olderText) && /−10\.0% vs exit/.test(m.olderText), `older exits at ${width}: ${m.olderText}`)
       assert.ok(/intentional decision wire the reviewed subtype/.test(m.v7text), `the producer's own unavailable decision reason is shown at ${width}: ${m.v7text.slice(0, 600)}`)
     } catch (e) { process.exitCode = 1; throw e }
     const shot = path.join(out, `card-${width}.png`)
