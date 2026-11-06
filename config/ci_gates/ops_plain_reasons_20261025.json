@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ops_plain_reasons_20261025",
+  "files": [
+    "tests/test_ops_plain_reasons_20261025.py"
+  ],
+  "anchor": "OPS_PLAIN_REASONS_20261025",
+  "comment": [
+    "ANCHOR: OPS_PLAIN_REASONS_20261025 — a Jobs Missed note and its evidence gaps are stated in words an operator",
+    "can act on, not policy codes. Registered here so scripts/check_test_coverage.py sees the file as run by CI:",
+    "#2693 added the test and no gate named it, which tests/test_ci_test_coverage_gate.py catches as unlisted_new."
+  ]
+}
