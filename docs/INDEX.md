@@ -2105,6 +2105,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROSPECTUS_WATCH_BATCH.md` | Ticker Prospectus — cheaper Watch reports (batch, medium effort, ~5k tokens) |
 | `docs/ops/PROTECTIVE_PUT_ADVISORY.md` | Protective put / collar unit economics (D32 section 5) — FQ-142 |
 | `docs/ops/PR_HYGIENE.md` | PR hygiene — the daily audit and the pre-build overlap check |
+| `docs/ops/PR_REVIEW_MODAL_SPEC.md` | PR review in the Command Center — independent review, read and decided in one sheet |
 | `docs/ops/PUSH_POLICY_V2_CI.md` | Push policy v2 — the CI half: draft PRs are cheap, ready PRs run everything |
 | `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout |
