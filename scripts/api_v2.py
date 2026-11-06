@@ -163,6 +163,52 @@ def _json_clean(obj):
     return obj
 
 
+def _guarded_freshness(state_dir=None):
+    """The freshness manifest with the authoritative-store guard applied (2026-11-03).
+
+    A manifest proves a producer ran; it does not prove the store it describes is readable. Every
+    consumer that publishes a freshness status goes through here, so a 0-byte or corrupt holdings.json
+    (or a manifest whose hash/clock no longer matches it) cannot render FRESH on any surface.
+
+    The read itself is ``lib.authoritative_store_guard.guarded_manifest`` — one code path, shared with
+    the HTTP server and the lane scripts; this wrapper only supplies api_v2's STATE_DIR.
+    """
+    sd = state_dir or STATE_DIR
+    try:
+        from lib.authoritative_store_guard import guarded_manifest
+
+        return guarded_manifest(sd)
+    except Exception as exc:  # noqa: BLE001 — a guard failure is not permission to say fresh
+        from datetime import datetime as _dt
+
+        return {
+            "status": "UNAVAILABLE",
+            "guard": {
+                "ok": False,
+                "status": "UNAVAILABLE",
+                "reasons": [f"guard_error:{type(exc).__name__}"],
+                "checked_at": _dt.now().isoformat(),
+            },
+        }
+
+
+def _store_guarded_surface_status(surface_status, guard_view, store_status):
+    """Fold the authoritative-store verdict into a surface freshness status.
+
+    The envelopes judge FILE ages; they cannot judge whether the holdings payload those files
+    describe is readable or still matches its manifest. A surface may therefore never be fresher than
+    the store: an unreadable store is UNKNOWN (it outranks STALE), a mismatched one is STALE, and a
+    healthy verdict leaves the envelope status untouched (cx-openai-4 R1, 2026-11-03).
+    """
+    if isinstance(guard_view, dict) and guard_view.get("ok") is True:
+        return surface_status
+    store_surface = "UNKNOWN" if str(store_status or "").upper() == "UNAVAILABLE" else "STALE"
+    order = {"FRESH": 0, "STALE": 1, "UNKNOWN": 2}
+    if order.get(store_surface, 2) >= order.get(str(surface_status or "UNKNOWN"), 2):
+        return store_surface
+    return surface_status
+
+
 def _load_json(path: Path):
     try:
         if path.exists() and path.stat().st_size == 0:
@@ -3606,6 +3652,9 @@ def overview():
     h, _env_h = observe_state_file("holdings.json", observed_at_field="last_repriced", trace_id=_trace)
     perf, _env_perf = observe_state_file("performance_history.json", trace_id=_trace)
     fresh, _env_fresh = observe_state_file("_freshness.json", trace_id=_trace)
+    # The envelope proves the MANIFEST is recent; only the guard proves the store it describes is
+    # readable. pipeline_status_reported below republishes the guarded status, never the raw claim.
+    _fresh_guarded = _guarded_freshness()
     news, _env_news = observe_state_file("portfolio_news.json", trace_id=_trace)
     _envelopes = {
         "holdings": _env_h,
@@ -3886,8 +3935,18 @@ def overview():
     }
 
     # ── Surface freshness ────────────────────────────────────────────────────
-    # As fresh as the OLDEST contributing dataset, never as fresh as the newest.
-    _surface_status = worst_status(_envelopes)
+    # As fresh as the OLDEST contributing dataset, never as fresh as the newest — and never fresher
+    # than the authoritative store can prove. The envelopes measure files; only the guard proves the
+    # holdings payload they describe is readable and still matches the manifest (cx-openai-4 R1).
+    _surface_status = _store_guarded_surface_status(
+        worst_status(_envelopes),
+        _fresh_guarded.get("guard") if isinstance(_fresh_guarded.get("guard"), dict) else {},
+        _fresh_guarded.get("status"),
+    )
+    _guard_ok = (_fresh_guarded.get("guard") or {}).get("ok") is True
+    _not_fresh = {name for name, env in _envelopes.items() if env.status in NOT_FRESH}
+    if not _guard_ok:
+        _not_fresh.add("authoritative_store")
     _observation_block = {
         "trace_id": _trace,
         "surface_status": _surface_status,
@@ -3896,7 +3955,10 @@ def overview():
         "read_only": True,
         "envelopes": {name: env.to_dict() for name, env in _envelopes.items()},
         "diagnostics": envelope_diagnostics(_envelopes),
-        "not_fresh_datasets": sorted(n for n, e in _envelopes.items() if e.status in NOT_FRESH),
+        # The store verdict is evidence, not a second opinion: without it a "fresh" surface would
+        # be a claim about file ages that says nothing about the book they describe.
+        "authoritative_store": _fresh_guarded.get("guard"),
+        "not_fresh_datasets": sorted(_not_fresh),
         "position_counts": _position_counts,
     }
 
@@ -4067,7 +4129,7 @@ def overview():
         # contributing dataset (AGENTS.md 9.1). Fails closed to unknown.
         "pipeline_status": _surface_status.lower(),
         "pipeline_status_source": "computed:canonical_observation",
-        "pipeline_status_reported": fresh.get("status", "unknown"),
+        "pipeline_status_reported": _fresh_guarded.get("status", "unknown"),
         "pipeline_completed": fresh.get("completed_at", ""),
         "observation": _observation_block,
         # Sprint 4A additions (total_cash / last_repriced already set above — do not rekey)
@@ -7532,12 +7594,9 @@ def _ops_audit():
 
 
 def ops_summary():
-    fresh = _load_json(STATE_DIR / "_freshness.json") or {}
-    # The manifest proves a producer ran; it does not prove the store it describes
-    # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
-    from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
-
-    _store_guard = _holdings_guard(STATE_DIR)
+    # One guarded read: the manifest plus the authoritative-store verdict, status already applied.
+    fresh = _guarded_freshness()
+    _store_guard = fresh.get("guard") or {}
     health_rows = (
         _db_query(
             """
@@ -7553,7 +7612,7 @@ def ops_summary():
 
     return {
         "pipeline": {
-            "status": _effective_status(fresh.get("status", "unknown"), _store_guard),
+            "status": fresh.get("status", "unknown"),
             "authoritative_store": _store_guard,
             "completed_at": fresh.get("completed_at", ""),
             "duration_seconds": fresh.get("pipeline_duration_seconds", 0),
@@ -18846,7 +18905,7 @@ def stopped_out_watch_list():
 
     # Add portfolio context for strategic reasoning
     _rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    _fr = _load_json(STATE_DIR / "_freshness.json") or {}
+    _fr = _guarded_freshness()
     _wl = _load_json(STATE_DIR / "watchlist.json") or {}
     portfolio_context = {
         "heat_pct": _rm.get("portfolio_heat_pct", 0),
@@ -24719,7 +24778,7 @@ def _portfolio_monitor():
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     news = _load_json(STATE_DIR / "portfolio_news.json") or {}
-    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    freshness = _guarded_freshness()
     div_cal = _load_json(STATE_DIR / "dividend_calendar.json") or {}
 
     holdings = h.get("holdings", [])
@@ -29814,7 +29873,7 @@ def _morning_command():
     """
     h = _load_json(STATE_DIR / "holdings.json") or {}
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    freshness = _guarded_freshness()
     div_cal = _load_json(STATE_DIR / "dividend_calendar.json") or {}
     news_data = _load_json(STATE_DIR / "portfolio_news.json") or {}
 
@@ -30221,15 +30280,21 @@ def _compute_freshness(freshness):
     from datetime import datetime, timezone
 
     file_ts = freshness.get("completed_at")
+    # The guard verdict decides whether any clock may be believed at all. A 0-byte holdings.json
+    # has a fresh mtime and a recent pipeline_runs row, so "most recent clock" alone reported
+    # fresh over an unreadable book — the exact false all-clear this surface must not publish.
+    _guard_verdict = freshness.get("guard") if isinstance(freshness.get("guard"), dict) else {}
+    _store_ok = _guard_verdict.get("ok") is True
     # Check latest pipeline run
     # 2026-06-12: column is finished_at (run_completed_at never existed — this errored on every
     # morning-command load and silently returned None for pipeline freshness)
     pr = _db_query("SELECT MAX(finished_at) as latest FROM pipeline_runs WHERE status='success'", fetch="one")
     db_ts = pr.get("latest") if pr else None
-    # Also check holdings.json mtime as most relevant freshness signal
+    # Also check holdings.json mtime as most relevant freshness signal — meaningful only when the
+    # store itself is readable; a 0-byte/corrupt file's mtime is not evidence of anything.
     holdings_ts = None
     _hp = STATE_DIR / "holdings.json"
-    if _hp.exists():
+    if _store_ok and _hp.exists():
         holdings_ts = datetime.fromtimestamp(_hp.stat().st_mtime, tz=timezone.utc).isoformat()
     # Pick most recent of all sources
     best = file_ts
@@ -30238,10 +30303,11 @@ def _compute_freshness(freshness):
             _cs = str(_candidate)
             if not best or _cs > str(best):
                 best = _cs
-    # Weekend awareness: if it's Sat/Sun and best is within 48h, mark fresh
+    # Weekend awareness: if it's Sat/Sun and best is within 48h, mark fresh — but only when the
+    # guard says the store and the manifest agree. A weekend clock never sanctions a bad store.
     now = datetime.now(timezone.utc)
     status = freshness.get("status", "unknown")
-    if best:
+    if best and _store_ok:
         try:
             from dateutil.parser import parse as dtparse
 
@@ -30683,7 +30749,7 @@ def _global_alerts():
     across all pages until conditions resolve.
     """
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    freshness = _load_json(STATE_DIR / "_freshness.json") or {}
+    freshness = _guarded_freshness()
 
     alerts = []
     heat = rm.get("portfolio_heat_pct", 0)

@@ -18714,6 +18714,25 @@
       "note": "Every 3 min: head-SHA binding for operator-merge, one Merged note and one Live note per DeployOnMainReceipt."
     },
     {
+      "lane_id": "disabled-features-reminder",
+      "owner": "platform",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-31",
+      "reason_confidence": "ESTABLISHED",
+      "scheduler": {
+        "kind": "none",
+        "expression": "declared only: health_tick step disabled-features-reminder (not installed)"
+      },
+      "expected_cadence_hours": 24.0,
+      "output_signal": {
+        "kind": "none",
+        "path": ""
+      },
+      "state_reason": "Operator 2026-10-31: \"there needs to be a reminder to switch it back on. We just don't want to leave it off\". scripts/check_disabled_features.py pages P2 once a day for any config/ disabled_until block past review_by. Declared only: adding the health_tick step row is the activation (§25.10.2).",
+      "reason_evidence": "tests/test_disabled_features_reminder_20261031.py; dry run lists market_risk_curation (due 2026-12-05).",
+      "note": "Activation: add the health_tick step in the PR body to config/health_tick_steps.json (daily 09:05 ET, --apply). Exit 3 = finding."
+    },
+    {
       "lane_id": "prospectus-build",
       "owner": "cio",
       "scheduler": {
@@ -19120,6 +19139,68 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "No crontab line, timer or health-tick step exists for scripts/stuck_work_monitor.py; the script is not on main yet (PR #2366). This row declares the lane before it is scheduled (AGENTS.md §23.11).",
       "note": "Proposed health-tick step (config/health_tick_steps.json, before pipeline-watchdog which stays last): {\"step_id\": \"stuck-work-monitor\", \"command\": [\"$PY\", \"scripts/stuck_work_monitor.py\", \"--apply\"], \"cadence_minutes\": 5, \"minute_offset\": 2, \"hours\": null, \"weekdays\": [1, 2, 3, 4, 5, 6, 7], \"lock\": \"/tmp/health_tick_stuck-work-monitor.lock\", \"timeout_s\": 90, \"needs_env\": false, \"market_day_gate\": false, \"log\": \"logs/stuck_work_monitor.log\", \"finding_rc\": [3]}. With every switch false, --apply writes only its receipt, state and history."
+    },
+    {
+      "lane_id": "mcporter-token-refresh",
+      "owner": "portfolio",
+      "state": "RETIRED",
+      "state_since": "2026-10-31",
+      "state_reason": "Operator, in the coordinator session 2026-10-31 ~10:58 ET, verbatim: \"turn off the mcporter job, we don't need it\". The coordinator ran systemctl --user disable --now mcporter-token-refresh.timer and reset-failed; unit files stay in place (archived, never deleted).",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "mcporter-token-refresh.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "output_signal": {
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: retired; no output or freshness is expected"
+      },
+      "consumer": "none (retired)",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "OBSERVED_HOST 2026-10-31: systemctl --user is-enabled mcporter-token-refresh.timer -> disabled; last failure 'gcloud auth ... returned empty' (stuck sweep row 16).",
+      "unit_enabled_state": "disabled",
+      "service": "mcporter-token-refresh.service",
+      "value_class": "Technical Debt",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "mcporter-token-refresh.timer",
+        "pipeline": "P14",
+        "value_class": "Technical Debt",
+        "recommendation": "PIPELINE:P14",
+        "f_recommendation": "REDESIGN (service account)",
+        "event_driven_candidate": false,
+        "f_evidence": "276 failures since 10-01, none since 09-21"
+      },
+      "stay_on_cron": {
+        "class": "secret",
+        "token": "token",
+        "source": "n8n_coordination_gateway.SECRET_KEYS"
+      }
+    },
+    {
+      "lane_id": "site-audit",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "site-audit",
+        "match": "PROPOSED - NOT INSTALLED: no n8n workflow exists yet for this lane"
+      },
+      "expected_cadence_hours": 48,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-11-04",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/audit/page-audit-latest.json",
+        "key": "generated_at"
+      },
+      "value_class": "observability",
+      "rationalization": "SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md: one capture lane for the whole Command Center, every 48 h at most, rotating market session weekly; replaces ad-hoc screenshot runs.",
+      "recommendation": "Install as an n8n workflow (operator rule: new schedules are n8n, never cron). The workflow calls scripts/site_audit/page_audit_capture.py with SITE_AUDIT_CHROME set and SITE_AUDIT_CAPTURE_ROOT=${TRADEAI_STATE_ROOT}/data/audit, obeys the health gate, 4 s pacing, one browser, and aborts on slowdown or restart. That root is what makes the path above resolve: the capture writes a dated page-audit-<stamp>/ directory per run plus the page-audit-latest.json pointer, because both readers of an output_signal (lane_registry.observe_signal, cron_outage_watchdog) take an exact path and never glob.",
+      "note": "Lane definition lives in scripts/site_audit/lane.py (windows, 48 h ceiling, weekly session rotation) and is enforced by tests/test_site_audit_lane_20261104.py. The spec's Mon/Wed/Fri 06:30 ET + Sun 21:00 ET cannot satisfy its own 48 h ceiling (Fri 06:30 -> Sun 21:00 is 62.5 h); Saturday 06:30 ET is added as the bridge. Captures stay outside the repo.",
+      "reason_confidence": "ESTABLISHED",
+      "state_reason": "SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md §2.1 (operator 2026-11-04): one capture every 48 h at most, session rotating weekly, never cron. Not installed yet: no n8n workflow exists, and the registry edit is operator-merged (AGENTS §17). Lane arithmetic and the 48 h ceiling are in scripts/site_audit/lane.py with tests; the spec's named slots alone leave a 62.5 h gap, so a Saturday 06:30 ET run bridges it.",
+      "reason_evidence": "persistent-state/handoffs/SPEC_SITE_AUDIT_AUTOREMEDIATE_LOOP_20261104.md §2.1 and §6; scripts/site_audit/lane.py (WINDOWS, MAX_GAP_HOURS, session rotation); tests/test_site_audit_lane_20261104.py (largest gap over a year <= 48 h); scripts/site_audit/deep_crawl.py and tests/test_site_audit_deep_crawl_step_20261104.py; no n8n workflow exists yet (`site-audit` absent from n8n) - state NEVER_SCHEDULED until installed."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -24449,47 +24530,6 @@
       ]
     },
     {
-      "lane_id": "mcporter-token-refresh",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "mcporter-token-refresh.timer"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "Technical Debt",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "mcporter-token-refresh.timer",
-        "pipeline": "P14",
-        "value_class": "Technical Debt",
-        "recommendation": "PIPELINE:P14",
-        "f_recommendation": "REDESIGN (service account)",
-        "event_driven_candidate": false,
-        "f_evidence": "276 failures since 10-01, none since 09-21"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "enabled",
-      "service": "mcporter-token-refresh.service",
-      "cadence_basis": "unknown schedule: placeholder 168 h",
-      "exec_start": "/bin/bash ~/.config/mcporter/refresh_token.sh",
-      "stay_on_cron": {
-        "class": "secret",
-        "token": "token",
-        "source": "n8n_coordination_gateway.SECRET_KEYS"
-      },
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ]
-    },
-    {
       "lane_id": "recovery-watch",
       "owner": "platform",
       "scheduler": {
@@ -25951,6 +25991,47 @@
       "service": "tradeai-plan-registry-stale.service (PROPOSED; no unit file)",
       "cadence_basis": "PROPOSED: hourly",
       "exec_start": "PROPOSED: ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/plan_registry.py stale --apply"
+    },
+    {
+      "lane_id": "self-heal-fixer-shadow",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "workflow_id": "self-heal-fixer-shadow",
+        "match": "self-heal-fixer-shadow",
+        "cadence": "30 9-18 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "D11"
+      },
+      "expected_cadence_hours": 64.0,
+      "cadence_basis": "Maximum scheduled gap of dispatch.cron 30 9-18 * * 1-5 = 63 h (Friday 18:30 -> Monday 09:30 America/New_York; reconcile_lane_registry.cron_cadence_hours), plus 1 h for dispatch/finish lateness at the Monday 09:30 slot. scripts/lib/lane_registry.py::_scheduler_present measures wall-clock age since the last finished run, so a weekday-only n8n lane must declare the gap across its quiet weekend or it reports ORPHANED every evening and all weekend while every fire succeeded. The cost of the wall-clock rule is that an intra-week outage is tolerated up to ~64 h; a schedule-aware (last-due-slot) threshold belongs in lane_registry.py and needs its own PR.",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-04",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/self_heal_fixer_shadow/receipt.json"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 9-18 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W3",
+        "class": "report",
+        "priority": 4,
+        "retry_policy": "transient-2"
+      },
+      "note": "D11 shadow dry-cycle lane, operator-approved 2026-11-04. n8n runs the fixer's dry cycle only: the allowlist row declares dry_run_arg --cycle and live_arg null, so a live request is refused as data. dispatch.mode is dry_run, so the dispatcher fires the lane dry; the stage clamp would also turn any live request into dry_run. stage is hand-maintained and nothing in code promotes it; promotion is a registry PR. The host lane self-heal-fixer stays PAUSED / KEEP_ON_CRON and its own row is untouched. A green n8n execution is process evidence, not proof: the receipt is the proof."
     }
   ],
   "freshness_contracts": [

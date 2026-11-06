@@ -1145,15 +1145,55 @@ Be direct. Give specific tickers, share counts, and dollar amounts.""",
 
 # ── Cache Management ──────────────────────────────────────────────────────────
 
-def _current_holdings_hash(state_dir: Path) -> str:
-    """Read holdings_hash from _freshness.json (written by orchestrator)."""
+def _guarded_freshness(state_dir: Path) -> dict:
+    """The freshness manifest through the one guarded read (authoritative_store_guard)."""
     try:
-        fp = Path(state_dir) / "_freshness.json"
-        if fp.exists():
-            return json.loads(fp.read_text()).get("holdings_hash", "")
+        from lib.authoritative_store_guard import guarded_manifest
+
+        return guarded_manifest(state_dir)
     except Exception:
-        pass
-    return ""
+        return {"status": "UNAVAILABLE", "guard": {"ok": False, "status": "UNAVAILABLE", "reasons": ["guard_error"]}}
+
+
+def _current_holdings_hash(state_dir: Path) -> str:
+    """Read holdings_hash from _freshness.json (written by orchestrator).
+
+    Cache-invalidation key, not a status: the guarded read is used so this file has one manifest
+    path like every other consumer; the hash field is republished unchanged.
+    """
+    return str(_guarded_freshness(state_dir).get("holdings_hash") or "")
+
+
+def _freshness_warning_for(state_dir: Path) -> str:
+    """The staleness warning the analysis prompt carries, from the guarded read.
+
+    Fail closed: a manifest that is absent, stale, hash-mismatched or sitting over an unreadable
+    store is a warning — the analysis must never be told the data is current when it is not.
+    """
+    doc = _guarded_freshness(state_dir)
+    completed_raw = doc.get("completed_at")
+    if not completed_raw:
+        return (
+            "\n⚠️ DATA STALENESS WARNING: No pipeline freshness manifest found. "
+            "Unable to verify data recency. Analysis may be based on stale data.\n"
+        )
+    status = str(doc.get("status") or "unknown").lower()
+    if status == "fresh":
+        return ""
+    age_note = ""
+    try:
+        completed = datetime.fromisoformat(str(completed_raw).replace("Z", "+00:00"))
+        now = datetime.now(completed.tzinfo) if completed.tzinfo else datetime.now()
+        age_note = f"Portfolio data is {round((now - completed).total_seconds() / 3600):.0f} hours old "
+        age_note += f"(last pipeline: {str(completed_raw)[:16]}). "
+    except (TypeError, ValueError):
+        age_note = "The pipeline's last completion time could not be verified. "
+    reasons = (doc.get("guard") or {}).get("reasons") or []
+    reason_note = f"Reason: {', '.join(str(r) for r in reasons)}. " if reasons else ""
+    return (
+        f"\n⚠️ DATA STALENESS WARNING: {age_note}{reason_note}"
+        f"Analysis may not reflect current positions or prices.\n"
+    )
 
 
 def _should_refresh(state_dir: Path, key: str, max_days: int = 30) -> bool:
@@ -1245,28 +1285,11 @@ def run_ai_analysis(portfolio, analysis, rebalancing, state_dir, force_refresh=F
     print(f"  [ai] Running AI analysis (mode: {run_type}, lanes: {_chain})...")
 
     # ── Freshness check (Phase 0) ────────────────────────────────────────────
-    _freshness_warning = ""
-    try:
-        _fp = state_dir / "_freshness.json"
-        if _fp.exists():
-            _fm = json.loads(_fp.read_text())
-            _completed = datetime.fromisoformat(_fm.get("completed_at", "2000-01-01"))
-            _age_hours = (datetime.now() - _completed).total_seconds() / 3600
-            if _age_hours > 26:
-                _freshness_warning = (
-                    f"\n⚠️ DATA STALENESS WARNING: Portfolio data is {_age_hours:.0f} hours old "
-                    f"(last pipeline: {_fm.get('completed_at', 'unknown')[:16]}). "
-                    f"Analysis may not reflect current positions or prices.\n"
-                )
-                print(f"  [ai] ⚠️  Data is {_age_hours:.0f}h stale — injecting warning")
-        else:
-            _freshness_warning = (
-                "\n⚠️ DATA STALENESS WARNING: No pipeline freshness manifest found. "
-                "Unable to verify data recency. Analysis may be based on stale data.\n"
-            )
-            print("  [ai] ⚠️  No freshness manifest — injecting warning")
-    except Exception:
-        pass  # Don't block AI on freshness check failure
+    # One guarded read: a 0-byte/corrupt store or a stale/hash-mismatched manifest warns, and the
+    # pipeline can never be described as current just because the manifest file is recent.
+    _freshness_warning = _freshness_warning_for(state_dir)
+    if _freshness_warning:
+        print("  [ai] ⚠️  Freshness warning injected into the analysis prompt")
 
     # Load previous weekly reports for monthly context
     _weekly_context = ""

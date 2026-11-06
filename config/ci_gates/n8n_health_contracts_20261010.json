@@ -3,7 +3,8 @@
   "name": "n8n_health_contracts_20261010",
   "files": [
     "tests/test_n8n_health_contracts_20261010.py",
-    "tests/test_draft_health_contracts_20261012.py"
+    "tests/test_draft_health_contracts_20261012.py",
+    "tests/test_self_heal_fixer_shadow_contract_20261105.py"
   ],
   "anchor": "N8N_HEALTH_CONTRACTS",
   "comment": [
@@ -11,6 +12,9 @@
     "monitor has an N8nHealthContract@v1 in config/n8n_health_contracts.json (purpose, connects_to, healthy /",
     "degraded / failed, baseline, alerting, remediation); scripts/check_n8n_health_contracts.py fails a lane that",
     "enters shadow/canary/cutover without one, and canary/cutover need a REVIEWED contract. Hermetic: tmp ledger.",
-    "2026-10-12: the 66 grandfathered DRAFT contracts are tested in place. Status stays DRAFT."
+    "2026-10-12: the 66 grandfathered DRAFT contracts are tested in place. Status stays DRAFT.",
+    "2026-11-05: test_self_heal_fixer_shadow_contract_20261105.py pins the D11 shadow lane's REVIEWED contract and",
+    "its dry_run dispatch block, and proves the weekday-only lane's declared cadence does not report ORPHANED in",
+    "the evening or at the weekend when every scheduled fire succeeded."
   ]
 }

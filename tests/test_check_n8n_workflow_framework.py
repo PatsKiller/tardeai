@@ -190,6 +190,11 @@ def test_every_committed_expected_output_rule_passes_m6():
         "tradeai-momentum-lifecycle-candidate",
         "momentum-cache-reconcile",
         "trade-ai-scalp-live",
+        "site-audit",
+        # site-audit (SITE_AUDIT_DEEP_CRAWL_20261104) is a REVIEWED lane that is NEVER_SCHEDULED: no n8n
+        # workflow exists yet, so there is no run output to bind an expected_output rule to. The contract
+        # carries its healthy/failed checks; a rule lands with the fresh content-bound review when the
+        # workflow exists.
         # conflict-resolver left this set 2026-10-31: it went live with allowlist output_receipt v2 (#2293) and no rule,
         # so every live run ended output_unverifiable (rule_missing) and its breaker opened 10-30 16:15Z. The rule was
         # added with a fresh content-bound review (PR "n8n live lanes: output rule + attempt receipt").
