@@ -613,6 +613,7 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
     cur = conn.cursor()
     lineage = _turn_lineage(cur, event_id=event_id, causation_id=causation_id,
                             parent_event_id=parent_event_id)
+    lineage = {k: v for k, v in lineage.items() if k in TURN_LINEAGE_COLUMNS}
     lin_cols = "".join(f", {k}" for k in lineage)
     lin_ph = ",%s" * len(lineage)
     # Atomic intake and the legacy conversation entry point can both capture
@@ -641,7 +642,7 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
         )""" if identified else ""
         replay_params = (role, channel, str(chat_id), int(message_id), text,
                          same.get("subject_guid"), same.get("issuer_guid"), same.get("symbol")) if identified else ()
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- lin_cols from TURN_LINEAGE_COLUMNS; replay_sql literal
             f"""INSERT INTO operator_conversation_turns
                  (role, channel, chat_id, message_id, thread_id,
                   reply_to_message_id, turn_index, text,

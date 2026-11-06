@@ -600,7 +600,7 @@ def _retrieve_db(
                     " AND LOWER(COALESCE(e.knowledge_eligibility, 'ineligible')) "
                     "NOT IN ('', 'ineligible', 'none', 'denied', 'blocked')"
                 )
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- eligibility_clause is "" or a literal; values are params
                 f"""
                 SELECT m.event_id, m.channel, m.provider_coordinates, m.joined_at,
                        e.direction, e.event_type, e.message_class, e.producer,

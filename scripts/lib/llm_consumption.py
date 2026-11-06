@@ -1644,12 +1644,13 @@ def overview(*, days: int = 30) -> dict:
     ensure_schema()
     cur = _conn().cursor()
     periods = {
-        "today": "created_at >= CURRENT_DATE",
-        "week": "created_at >= NOW() - INTERVAL '7 days'",
-        "month": f"created_at >= NOW() - INTERVAL '{int(days)} days'",
+        "today": ("created_at >= CURRENT_DATE", None),
+        "week": ("created_at >= NOW() - INTERVAL '7 days'", None),
+        "month": ("created_at >= NOW() - %s * INTERVAL '1 day'", (int(days),)),
     }
     by_lane: dict[str, dict] = {}
-    for label, where in periods.items():
+    for label, (where, where_params) in periods.items():
+        # nosemgrep: tq-py-sql-fstring -- where is one of three literal predicates; days is a param
         cur.execute(f"""
             SELECT model_lane,
                    COUNT(*) AS calls,
@@ -1658,7 +1659,7 @@ def overview(*, days: int = 30) -> dict:
                    COUNT(*) FILTER (WHERE NOT success) AS failures
             FROM llm_consumption_log WHERE {where}
             GROUP BY model_lane
-        """)
+        """, where_params)
         for lane, calls, chars, units, fails in cur.fetchall():
             by_lane.setdefault(lane, {})[label] = {
                 "calls": int(calls), "chars": int(chars), "relative_units": float(units or 0),

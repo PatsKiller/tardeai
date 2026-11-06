@@ -373,6 +373,7 @@ class ScopeGovernorEngine:
                         reason_payload = f"{d.reason}|edge={json.dumps(d.evidence, separators=(',', ':'))}"
                     except Exception:
                         pass
+                # nosemgrep: tq-py-sql-fstring -- trig is one of two literals, NOW() or last_trigger_at
                 cur.execute(f"""UPDATE watchlist_items
                                 SET scope_tier=%s, trigger_source=%s, last_trigger_at={trig}, updated_at=NOW()
                                 WHERE UPPER(symbol)=%s AND status IN ('active','researched')""",
