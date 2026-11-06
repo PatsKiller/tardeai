@@ -39,7 +39,8 @@ def evaluate(ctx: EvalContext) -> CategoryObservation:
     latest = _latest(rows)
     proxy, proxy_why, proxy_ev, proxy_newest, thrust = _proxy(ctx, cfg)
     if not latest and proxy is None:
-        return unknown(CATEGORY, ctx.now, "no sector_momentum_state rows and no sector-ETF daily bars for the proxy")
+        detail = "; ".join(str(e.detail) for e in proxy_ev if e.detail) or "no sector-ETF daily bars for the proxy"
+        return unknown(CATEGORY, ctx.now, f"no sector_momentum_state rows and {detail}"[:300])
     pts = 0.0
     ev: list[Evidence] = []
     parts: list[str] = []
@@ -151,8 +152,11 @@ def _proxy(ctx: EvalContext, cfg: dict) -> tuple[float | None, list[str], list[E
         )
     by = md.closes_by_symbol(rows)
     newest = max((s[-1][0] for s in by.values() if s), default=None)
-    if newest is None or md.stale(newest, ctx.now, float(pc["stale_after_hours"])):
+    if newest is None:
         return None, [], [], None, None
+    if md.stale(newest, ctx.now, float(pc["stale_after_hours"]), ctx.policy.get("decay")):
+        why = f"sector-ETF daily bars are stale (newest {md.iso(newest)}, limit {float(pc['stale_after_hours']):g}h)"
+        return None, [], [Evidence("breadth proxy", "UNKNOWN", md.iso(newest), "daily_bars", why)], None, None
     closes = {s: [c for _, c in by.get(s, [])] for s in universe if by.get(s)}
     style = {k: [c for _, c in by.get(k, [])] for k in ("RSP", "SPY")}
     m = breadth_proxy.measure(closes, style, pc)

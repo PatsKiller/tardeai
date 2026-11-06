@@ -5,8 +5,12 @@ It can never by itself raise the category above WARN: the cap is enforced here, 
 
 from __future__ import annotations
 
+from zoneinfo import ZoneInfo
+
 from scripts.lib.cio_seasonality_engine import build_seasonality_context
 from scripts.lib.market_risk.contract import CategoryObservation, EvalContext, Evidence, assert_no_behavior_fields
+
+ET = ZoneInfo("America/New_York")
 
 CATEGORY = "seasonal"
 MAX_STATE = "WARN"
@@ -15,7 +19,8 @@ MAX_STATE = "WARN"
 def evaluate(ctx: EvalContext) -> CategoryObservation:
     cfg = ctx.policy["seasonal"]
     pts_cfg = cfg["points"]
-    s = build_seasonality_context(ctx.now)
+    # the calendar is New York's: at 20:38 ET on Oct 31 the UTC date is already November (review of #2415 round 2)
+    s = build_seasonality_context(ctx.now.astimezone(ET))
     m, cyc, tags = s["month"], s["presidential_cycle"], set(s["calendar_effects"])
     hits: list[tuple[str, float]] = []
     if m["hypothesis_bucket"].startswith("historically_weaker"):

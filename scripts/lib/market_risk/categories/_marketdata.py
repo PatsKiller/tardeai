@@ -69,8 +69,17 @@ def sma(vals: list[float], n: int) -> float | None:
     return sum(vals[-n:]) / n if len(vals) >= n else None
 
 
-def stale(newest: datetime | None, now: datetime, hours: float) -> bool:
-    return newest is None or (now - newest).total_seconds() / 3600.0 > float(hours)
+def stale(newest: datetime | None, now: datetime, hours: float, decay_cfg: dict[str, Any] | None = None) -> bool:
+    """True when ``newest`` is missing or unusable at ``now``. With ``decay_cfg`` (the policy's ``decay`` block) this is
+    ``scoring.staleness``: the same market clock, future-stamp check and hard caps the scorer applies, so a weekend
+    does not age a category's inputs and truly old inputs are still refused. Without it, wall-clock hours."""
+    if newest is None:
+        return True
+    if decay_cfg:
+        from scripts.lib.market_risk.scoring import staleness
+
+        return staleness(newest, now, decay_cfg, float(hours))[1] is not None
+    return (now - newest).total_seconds() / 3600.0 > float(hours)
 
 
 def iso(t: datetime | None) -> str | None:

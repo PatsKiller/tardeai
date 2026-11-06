@@ -61,7 +61,7 @@ def test_shipped_config_lists_the_shared_paths_with_merge_strategy():
         assert p in entries, p
         assert entries[p]["merge"] and entries[p]["reason"]
     assert entries["docs/INDEX.md"]["merge"] == "regenerate"
-    assert entries["apps/command-center-v3/package.json"]["merge"] == "union_build"
+    assert entries["apps/command-center-v3/package.json"]["merge"] == "take_main_build"
     assert entries["DOCS_AND_AGENTS_UPDATE_BACKLOG.md"]["merge"] == "append rows"
     assert "~/n8n-maturity-verification/DOCS_AND_AGENTS_UPDATE_BACKLOG.md" in entries
     assert not any(B.is_glob(p) for p in entries)

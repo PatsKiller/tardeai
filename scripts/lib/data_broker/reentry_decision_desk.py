@@ -52,6 +52,21 @@ def _age_label(age_h: float | None) -> str:
     return f"{age_h:.1f}h"
 
 
+def missing_indicators_note(state: Any, price: Any, rsi: Any) -> dict[str, str] | None:
+    """FQ-002: a quote that is present cannot be reported as a missing market.
+
+    The state stays MISSING MARKET (its ordering and consumers depend on it), but the operator-facing
+    reason says what is actually missing — the technical indicators — in ordinary words. No table name
+    and no script instruction in primary text; both are developer detail that belongs in Ops.
+    """
+    if state == "MISSING MARKET" and price is not None and rsi is None:
+        return {
+            "reason": "The price is available but the technical indicators are missing, so a re-entry review cannot run yet.",
+            "action": "Refresh the technical indicators",
+        }
+    return None
+
+
 def _held_positions_by_symbol() -> dict[str, list[dict[str, Any]]]:
     """symbol -> every account row with qty > 0 (holdings.json store of record).
 
@@ -696,12 +711,9 @@ def build_decision_desk(
             held=sym in held,
             wash_blocked=wash_blocked,
         )
-        if intel.get("state") == "MISSING MARKET" and price is not None and rsi is None:
-            intel = {
-                **intel,
-                "reason": "Quote present but RSI missing from indicator_confluence_cache — run indicator_cache_refresh for exited symbols.",
-                "action": "Refresh indicator cache",
-            }
+        note = missing_indicators_note(intel.get("state"), price, rsi)
+        if note:
+            intel = {**intel, **note}
 
         chips = list(intel.get("chips") or [])
         res_state = str(res.get("state") or "UNAVAILABLE").upper()

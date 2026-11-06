@@ -186,7 +186,9 @@ def test_bootstrap_adopts_raw():
 
 
 def test_decay_steps_and_staleness():
-    pol = POLICY
+    # the step table in wall-clock hours: 100 h before this Wednesday spans a weekend, which the policy's market clock
+    # (decay.clock: market) does not count; that clock is tested in test_market_risk_offhours_20261031
+    pol = dict(POLICY, decay=dict(POLICY["decay"], clock="wall"))
     w = [scoring.decay_weight(ob("event", "STRESS", 80, age_h=h), NOW, pol)[0] for h in (1, 20, 40, 70, 90, 100)]
     assert w == [1.0, 0.8, 0.6, 0.4, 0.4, 0.0]
     stale = scoring.compose(

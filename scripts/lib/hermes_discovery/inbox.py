@@ -310,6 +310,11 @@ def upsert_candidate(candidate_type: str, label: str, *,
     if not label:
         raise DiscoveryInboxError("label is required")
     key = normalized_key or dedupe.normalize_key(label)
+    if not key and candidate_type == "TICKER_CANDIDATE":
+        # A bare ticker that is also a stopword (A, IT, ON, ARE, BE, AN) normalizes to nothing. On 2026-10-26 the
+        # analyst-signal run hit 'A' (Agilent), raised, and three failures opened the n8n breaker for
+        # hermes-analyst-signal-discovery. A ticker's identity is the symbol itself, so key on it.
+        key = label.lower()
     if not key:
         raise DiscoveryInboxError(f"label normalizes to empty key: {label!r}")
 
@@ -483,6 +488,30 @@ def decide_candidate(candidate_id: int, decision: str, *,
     return row
 
 
+def _plain_view(row: dict[str, Any]) -> dict[str, Any]:
+    """FQ-059: a system-health TOPIC_CANDIDATE is returned in plain English, with the health checker's own sentence
+    kept as ``technical``. Applied on the way out (list and detail), so a candidate stored before the wording change
+    reads correctly too. Any other candidate is returned untouched, and a failure here can never break a read."""
+    if str(row.get("candidate_type") or "").upper() != "TOPIC_CANDIDATE":
+        return row
+    try:
+        from .plain_text import plain_health_candidate
+
+        meta = row.get("meta_json")
+        if isinstance(meta, str):
+            import json as _json
+
+            meta = _json.loads(meta) if meta.strip() else {}
+        got = plain_health_candidate(row.get("label"), row.get("summary"), meta if isinstance(meta, dict) else None)
+    except Exception:  # noqa: BLE001 — wording must never break a read
+        return row
+    if not got:
+        return row
+    out = dict(row)
+    out["label"], out["summary"], out["technical"] = got["label"], got["summary"], got["technical"]
+    return out
+
+
 def get_candidate(candidate_id: int, *, with_audit: bool = False) -> dict[str, Any] | None:
     """Fetch one candidate (optionally with its audit trail, newest first)."""
     row = _exec("SELECT * FROM hermes_discovery_candidates WHERE id = %s",
@@ -497,7 +526,7 @@ def get_candidate(candidate_id: int, *, with_audit: bool = False) -> dict[str, A
                ORDER BY id DESC LIMIT 100""",
             (candidate_id,), fetch="all") or []
         out["audit"] = [dict(a) for a in audit]
-    return out
+    return _plain_view(out)
 
 
 def list_candidates(*, candidate_type: str | None = None,
@@ -529,7 +558,7 @@ def list_candidates(*, candidate_type: str | None = None,
         f"""SELECT * FROM hermes_discovery_candidates {where}
             ORDER BY last_seen_at DESC, id DESC LIMIT %s OFFSET %s""",
         tuple(params), fetch="all") or []
-    return [dict(r) for r in rows]
+    return [_plain_view(dict(r)) for r in rows]
 
 
 def inbox_stats() -> dict[str, Any]:

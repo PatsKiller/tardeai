@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_all_checks_green_20261102",
+  "files": [
+    "tests/test_pr_all_checks_green_20261102.py"
+  ],
+  "comment": [
+    "2026-11-02 (item 1 of PLAN_COLLISION_AUTOREMEDIATION_20261101): one merge rule — every non-skipped check on the exact head must be success or neutral, not only branch protection's required set. PR #2465 merged 2026-11-01 with `secret-scan` red because only the required list was read; main went red at f96c6399f and the deploy poller refused to promote. The integration half of the rule (work_pipeline_tier2.merge_preconditions) is covered by tests/test_work_pipeline_tier2_20261023.py, which CI already runs. Hermetic: fixture check rollups, no network."
+  ]
+}

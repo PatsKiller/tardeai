@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_risk_home_v006_20261101",
+  "files": [
+    "tests/test_market_risk_v006_build_20261101.py"
+  ],
+  "anchor": "MARKET_RISK_HOME_V006_20261101",
+  "comment": [
+    "ANCHOR: MARKET_RISK_HOME_V006_20261101 — design home/v006 build: Protect clauses from facts, Hedge verdict from the",
+    "Defense desk's inverse stoplight (never a size band or playbook), Rotate by 1d/5d relative strength, folded groups,",
+    "the tap-to-explain glossary, the posture hedge_state following the stoplight (a stale bounce alert is never live),",
+    "sector daily closes from ticker_prices (as-of correct), and APPROVED issuer segments in the risk budget."
+  ]
+}

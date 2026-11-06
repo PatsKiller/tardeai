@@ -35,6 +35,9 @@ YAHOO_SYMBOLS = "SPY QQQ IWM RSP SMH SOXX XLK TLT HYG LQD UUP USO GLD ^VIX ^VVIX
 # advance/decline and new-high/new-low series have no free public API, so breadth history is built from these.
 BREADTH_SYMBOLS = "XLB XLE XLF XLI XLP XLU XLV XLY XLC XLRE DIA".split()
 YAHOO_SYMBOLS += BREADTH_SYMBOLS
+# Sector attribution and shock-type (precision PR): defensive single names, the AI basket, growth/value factor ETFs.
+PRECISION_SYMBOLS = "PFE WMT PG NVDA AMD AVGO MSFT AMZN GOOGL META IWF IWD".split()
+YAHOO_SYMBOLS += PRECISION_SYMBOLS
 FRED_SERIES = ("BAMLH0A0HYM2", "DGS10", "T10Y2Y", "DCOILWTICO", "DTWEXBGS", "VIXCLS")
 START = date(2016, 1, 1)  # one year of warm-up before the earliest scenario (2017 calm control)
 UA = "Mozilla/5.0 (compatible; tradeai-fixture-build/1.0)"
