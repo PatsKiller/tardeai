@@ -115,6 +115,20 @@ export type InFlightPr = {
   why_held: string | null
   next: LegacyNext
   work: WorkBlock
+  // Operator clarity (DSN-20261029, additive and optional): the digest-parity facts the board shows beside the
+  // coordination ones. Optional so a wire that predates them still renders — never guessed when absent.
+  plain_english?: Record<string, string> | null
+  plain_english_missing?: boolean
+  checks?: Record<string, string> | null
+  digest_status?: string | null
+  digest_reason?: string | null
+  can_approve?: boolean
+  created_at?: string | null
+  updated_at?: string | null
+  created_age?: string | null
+  updated_age?: string | null
+  next_plain?: string | null
+  author?: string | null
 }
 
 export type DeployInFlightWire = {
@@ -385,7 +399,32 @@ export function normalizeRow(raw: unknown): InFlightPr {
     why_held: asText(pr.why_held),
     next: (['auto-merge', 'coordinator', 'auto-rebase', 'blocked-shard-hints'] as string[]).includes(legacy) ? legacy : 'coordinator',
     work: normalizeWork(pr.work, head),
+    // Operator clarity (additive): passed through only when the wire states them; an absent field stays absent so
+    // the board shows "not stated" rather than inventing a status or an approval.
+    plain_english: asAnswers(pr.plain_english),
+    plain_english_missing: pr.plain_english_missing === true,
+    checks: asAnswers(pr.checks),
+    digest_status: asText(pr.digest_status),
+    digest_reason: asText(pr.digest_reason),
+    can_approve: typeof pr.can_approve === 'boolean' ? pr.can_approve : undefined,
+    created_at: asText(pr.created_at),
+    updated_at: asText(pr.updated_at),
+    created_age: asText(pr.created_age),
+    updated_age: asText(pr.updated_age),
+    next_plain: asText(pr.next_plain),
+    author: asText(pr.author),
   }
+}
+
+/** A flat string→string map from the wire, or null. An object-valued member is dropped, never stringified. */
+function asAnswers(v: unknown): Record<string, string> | null {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null
+  const out: Record<string, string> = {}
+  for (const [k, raw] of Object.entries(v as Record<string, unknown>)) {
+    const s = asString(raw)
+    if (s) out[k] = s
+  }
+  return Object.keys(out).length ? out : null
 }
 
 /** Project the whole `prs` array. A null/non-object member is dropped and COUNTED — never a crash, never silence. */
