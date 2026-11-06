@@ -39,7 +39,7 @@ def _load_closed_trades(conn, date_filter):
     cols = [desc[0] for desc in cur.description]
 
     if date_filter == "today":
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the module constant _DIGEST_EXCLUDE_SQL
             f"""SELECT * FROM paper_trades WHERE status='closed' AND closed_at::date = CURRENT_DATE
                {_DIGEST_EXCLUDE_SQL}"""
         )
@@ -50,7 +50,8 @@ def _load_closed_trades(conn, date_filter):
             return {"status": "ok", "closed_count": 0,
                     "message": "Closed Trade Review -- no trades closed today (nothing to review)."}
     else:
-        cur.execute(f"""SELECT * FROM paper_trades WHERE status='closed'
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the module constant _DIGEST_EXCLUDE_SQL
+            f"""SELECT * FROM paper_trades WHERE status='closed'
                {_DIGEST_EXCLUDE_SQL}""")
         rows = cur.fetchall()
 

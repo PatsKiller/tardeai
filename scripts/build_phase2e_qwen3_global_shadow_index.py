@@ -46,6 +46,11 @@ def embed_text(text, model):
     lat = round((time.monotonic() - start) * 1000, 1)
     return result.get("embedding", []), lat
 
+def table_ident(name):
+    """A CLI-supplied table name as a quoted SQL identifier (``schema.table`` keeps its two parts)."""
+    from psycopg2 import sql
+    return sql.Identifier(*str(name).split("."))
+
 def log(msg):
     print(f"{datetime.now().strftime('%H:%M:%S')} [phase2e-build] {msg}", flush=True)
 
@@ -94,18 +99,21 @@ def main():
 
     conn = get_conn()
     cur = conn.cursor()
+    from psycopg2 import sql
+    src_ident = table_ident(args.source_table)
+    tgt_ident = table_ident(args.target_table)
 
     # Counts
-    cur.execute(f"SELECT COUNT(*) FROM {args.source_table}")
+    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(src_ident))
     src_total = cur.fetchone()[0]
-    cur.execute(f"SELECT COUNT(*) FROM {args.target_table}")
+    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(tgt_ident))
     tgt_before = cur.fetchone()[0]
     log(f"Source rows: {src_total} | Target before: {tgt_before}")
 
     # Get already-indexed keys for resume
     existing = set()
     if args.resume:
-        cur.execute(f"SELECT source_type, source_id FROM {args.target_table} WHERE embedding_model=%s",
+        cur.execute(sql.SQL("SELECT source_type, source_id FROM {} WHERE embedding_model=%s").format(tgt_ident),
                     (args.model,))
         existing = set((r[0], r[1]) for r in cur.fetchall())
         log(f"Resume: {len(existing)} already indexed")
@@ -120,21 +128,21 @@ def main():
     # Fetch by priority order
     all_sources = []
     for st in SOURCE_PRIORITY:
-        cur.execute(f"""SELECT id, source_type, source_id, title, created_at
-                        FROM {args.source_table}
-                        WHERE source_type = %s {type_filter}
-                        ORDER BY created_at DESC""",
+        cur.execute(sql.SQL("""SELECT id, source_type, source_id, title, created_at
+                        FROM {}
+                        WHERE source_type = %s {}
+                        ORDER BY created_at DESC""").format(src_ident, sql.SQL(type_filter)),
                     [st] + ([t.strip() for t in args.source_types.split(",")] if args.source_types else []))
         all_sources.extend(cur.fetchall())
 
     # Also catch any source types not in priority list
-    cur.execute(f"""SELECT DISTINCT source_type FROM {args.source_table}""")
+    cur.execute(sql.SQL("""SELECT DISTINCT source_type FROM {}""").format(src_ident))
     all_types = set(r[0] for r in cur.fetchall())
     missing_types = all_types - set(SOURCE_PRIORITY)
     for st in sorted(missing_types):
-        cur.execute(f"""SELECT id, source_type, source_id, title, created_at
-                        FROM {args.source_table} WHERE source_type = %s
-                        ORDER BY created_at DESC""", [st])
+        cur.execute(sql.SQL("""SELECT id, source_type, source_id, title, created_at
+                        FROM {} WHERE source_type = %s
+                        ORDER BY created_at DESC""").format(src_ident), [st])
         all_sources.extend(cur.fetchall())
 
     cols = ["id", "source_type", "source_id", "title", "created_at"]
@@ -196,14 +204,14 @@ def main():
                 failed += 1
                 continue
 
-            cur.execute(f"""
-                INSERT INTO {args.target_table}
+            cur.execute(sql.SQL("""
+                INSERT INTO {}
                     (source_type, source_id, title, content_preview, content_hash,
                      embedding, embedding_model, embedding_dim, embedding_latency_ms,
                      source_created_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_type, source_id, embedding_model) DO NOTHING
-            """, (doc["source_type"], doc["source_id"], title, title[:200],
+            """).format(tgt_ident), (doc["source_type"], doc["source_id"], title, title[:200],
                   content_hash, json.dumps(embedding), args.model, len(embedding),
                   lat, doc.get("created_at")))
             conn.commit()
@@ -227,7 +235,7 @@ def main():
     elapsed_total = round(time.monotonic() - start_time, 1)
     avg_latency = round(sum(latencies) / max(len(latencies), 1), 1)
 
-    cur.execute(f"SELECT COUNT(*) FROM {args.target_table}")
+    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(tgt_ident))
     final_count = cur.fetchone()[0]
 
     coverage_pct = round(100 * final_count / max(src_total, 1), 1)

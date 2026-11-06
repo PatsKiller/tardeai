@@ -48,6 +48,12 @@ def embed_text(text, model="nomic-embed-text"):
     return result.get("embedding", []), latency
 
 
+def table_ident(name):
+    """A CLI-supplied table name as a quoted SQL identifier (``schema.table`` keeps its two parts)."""
+    from psycopg2 import sql
+    return sql.Identifier(*str(name).split("."))
+
+
 def log(msg):
     print(f"{datetime.now().strftime('%H:%M:%S')} [phase2b-build] {msg}", flush=True)
 
@@ -124,6 +130,8 @@ def main():
     args = parser.parse_args()
 
     target_table = args.table
+    from psycopg2 import sql
+    target_ident = table_ident(target_table)
     target_model = args.model
     log("Phase 2B — Build parallel embedding test index")
     log(f"Model: {target_model} | Table: {target_table} | Limit: {args.limit_docs} | Batch: {args.batch_size}")
@@ -193,11 +201,11 @@ def main():
 
     # Filter out docs already in test table
     source_keys = [(d["source_type"], d["source_id"]) for d in source_docs]
-    cur.execute(f"""
+    cur.execute(sql.SQL("""
         SELECT source_type, source_id
-        FROM {target_table}
+        FROM {}
         WHERE embedding_model = %s
-    """, (target_model,))
+    """).format(target_ident), (target_model,))
     existing = set((r[0], r[1]) for r in cur.fetchall())
     pending = [d for d in source_docs if (d["source_type"], d["source_id"]) not in existing]
     skipped_existing = len(source_docs) - len(pending)
@@ -250,14 +258,14 @@ def main():
                         log(f"  FAIL: empty embedding for {doc['source_type']}:{doc['source_id']}")
                     continue
 
-                cur.execute(f"""
-                    INSERT INTO {target_table}
+                cur.execute(sql.SQL("""
+                    INSERT INTO {}
                         (source_type, source_id, title, content_preview, content_hash,
                          embedding, embedding_model, embedding_dim, embedding_latency_ms,
                          source_created_at)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (source_type, source_id, embedding_model) DO NOTHING
-                """, (
+                """).format(target_ident), (
                     doc["source_type"],
                     doc["source_id"],
                     title,
@@ -294,7 +302,7 @@ def main():
     avg_latency = round(sum(latencies) / max(len(latencies), 1), 1)
 
     # Final count
-    cur.execute(f"SELECT COUNT(*) FROM {target_table}")
+    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(target_ident))
     final_count = cur.fetchone()[0]
 
     log("=" * 60)

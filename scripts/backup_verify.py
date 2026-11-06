@@ -398,7 +398,8 @@ def verify_db_connectivity():
 
         # Check key tables have data
         for table, min_rows in [("trade_ai_scans", 10), ("paper_trade_proposals", 1), ("notification_log", 1)]:
-            cur.execute(f"SELECT COUNT(*) FROM {table}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- table from the fixed literal list in this loop
+                f"SELECT COUNT(*) FROM {table}")
             rows = cur.fetchone()[0]
             status = "OK" if rows >= min_rows else "WARN"
             findings.append({"check": f"db_{table}", "status": status, "detail": f"{rows} rows"})
