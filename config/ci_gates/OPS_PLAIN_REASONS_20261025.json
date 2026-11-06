@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "OPS_PLAIN_REASONS_20261025",
+  "files": [
+    "tests/test_ops_plain_reasons_20261025.py"
+  ],
+  "anchor": "OPS_PLAIN_REASONS_20261025",
+  "comment": [
+    "ANCHOR: OPS_PLAIN_REASONS_20261025 — the Jobs page's Missed note and coverage gaps are plain words: an",
+    "evidence-gap code is never shown verbatim, because some carry a file path or a lane id (page audit 2026-10-25).",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}
