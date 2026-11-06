@@ -19,8 +19,14 @@ export type DeskSource = {
   note?: string
   /** A receipt clock with no single writer lane. Skips the missing-writer warning. */
   clockOnly?: boolean
+  /**
+   * The source has not been read yet (its surface is still loading). Renders the gap text only — a clock that was
+   * never read is not "update time unavailable", and saying so beside a loading banner is the contradiction SurfaceState
+   * exists to stop (BOARD row 36).
+   */
+  pending?: boolean
 }
-export type DeskDecision = { id: string; title: string; detail?: string; href?: string }
+export type DeskDecision = { id: string; title: string; detail?: string; href?: string; diagnostics?: { title: string; detail?: string } }
 export type DeskWriter = {
   lane_id: string
   state: 'ACTIVE' | 'PAUSED' | 'RETIRED' | 'NONE' | null
@@ -89,11 +95,13 @@ export type DeskPageProps = {
   sources: readonly DeskSource[]
   decisions?: readonly DeskDecision[]
   decisionGap?: string
+  compactSources?: boolean
   children: ReactNode | ((activeTab: string) => ReactNode)
 }
 
 /** No page facts are computed here: callers supply source timestamps and decisions. */
-export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAliases, sources, decisions, decisionGap, children }: DeskPageProps) {
+export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAliases, sources, decisions, decisionGap, compactSources = false, children }: DeskPageProps) {
+  const SourceContainer = compactSources ? 'details' : 'section'
   const homeData = title === 'Home' && typeof children !== 'function' ? cioPageDataFrom(children) : null
   const pageSources = homeData ? withHomeClocks(sources, homeData) : sources
   const [active, setTab] = useDeskTab(tabs, defaultTab, tabAliases)
@@ -124,8 +132,9 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
         border: `1px solid ${active === tab.id ? T.link : BB.border}`, color: active === tab.id ? T.link : BB.text2, background: BB.bgPanel,
       }}>{tab.label}</button>)}
     </nav>}
-    <section aria-label="Source clocks" style={panel}>
-      <h2 style={{ margin: '0 0 12px', fontSize: TYPE.md }}>Source clocks</h2>
+    <SourceContainer aria-label="Source clocks" style={panel}>
+      {compactSources ? <summary style={{ minHeight: 44, cursor: 'pointer', color: BB.text2 }}>Update times and run details</summary>
+        : <h2 style={{ margin: '0 0 12px', fontSize: TYPE.md }}>Source clocks</h2>}
       {(error || stale || sourceReadFailed) && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
         <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry writer clocks</button>
       </DeskGap>}
@@ -136,6 +145,15 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           const sourceWriters = (source.laneIds ?? []).map(id => writers.get(id))
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
           const gap = source.gap || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
+          if (source.pending) {
+            // The clock was never read, so its gap is not this row's text: `gap` above already folded in `age.gap`
+            // ("Update time unavailable") from an `asOf` that does not exist yet, and printing it beside a loading
+            // banner is the same co-render the surface contract forbids (cc-deepseek-3 N2 / BOARD row 36).
+            return <article key={source.id} style={{ ...panel, padding: 12 }}>
+              <strong>{source.label}</strong>
+              <div data-testid="desk-source-pending" style={{ color: BB.amber, marginTop: 6 }}>{source.gap ?? 'Not read yet.'}</div>
+            </article>
+          }
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
             <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
             {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
@@ -167,13 +185,14 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           </article>
         })}
       </div>
-    </section>
+    </SourceContainer>
     <section aria-label="Decisions for you" style={panel}>
       <h2 style={{ fontSize: TYPE.md, margin: '0 0 8px' }}>Decisions for you</h2>
       {decisions?.length ? <ul style={{ paddingLeft: 20, margin: 0 }}>{decisions.map(decision => <li key={decision.id} style={{ marginTop: 8 }}>
         {!decision.href && <strong>{decision.title}</strong>}
         {decision.detail && <div style={{ fontSize: TYPE.base, color: BB.text3, marginTop: 4 }}>{decision.detail}</div>}
         {decision.href && <Link style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }} to={decision.href}>{decision.title}</Link>}
+        {decision.diagnostics && <details><summary style={{ minHeight: 44, cursor: 'pointer' }}>Technical details</summary><p>{decision.diagnostics.title}</p>{decision.diagnostics.detail && <p>{decision.diagnostics.detail}</p>}</details>}
       </li>)}</ul> : <p style={{ color: BB.text3, margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
     </section>
     <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{homeData ? <HomeBoardMount data={homeData} /> : (typeof children === 'function' ? children(active) : children)}</div>

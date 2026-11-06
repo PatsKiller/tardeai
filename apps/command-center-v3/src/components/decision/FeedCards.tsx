@@ -9,7 +9,10 @@ import { BigNumberCard, FAMILY_ICON, familyFor, familyStyle, type Family } from 
 /** "🚨 STOP HEALTH — 3 alert(s) (1 urgent)" → "STOP HEALTH": the alert TYPE, without emoji, ticker or counts. */
 export function alertType(headline?: string | null, symbols: string[] = []): string {
   let h = String(headline || '').replace(/^[^A-Za-z$]+/, '')
-  for (const s of symbols) h = h.replace(new RegExp(`\\$?\\b${s}\\b`, 'g'), '')
+  for (const s of symbols) {
+    const literal = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    h = h.replace(new RegExp(`\\$?\\b${literal}\\b`, 'g'), '')
+  }
   h = h.split(/\s[—–-]\s|·|:/)[0] || h
   return h.replace(/\s+/g, ' ').trim().slice(0, 48).toUpperCase() || '—'
 }
@@ -69,23 +72,40 @@ export function LevelsLine({ l }: { l?: any }) {
   return <div style={{ ...numStyle, fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{parts.join(' · ')}</div>
 }
 
-export function FeedCard({ e, selected, picked, onPick, onOpen }: {
-  e: any; selected: boolean; picked: boolean; onPick: () => void; onOpen: () => void
+/** Investment entry messages need an identified instrument before they can invite a decision.
+ * General operational messages and inbound notes may legitimately have no ticker. */
+export function messageIdentity(e: any): { symbols: string[]; incomplete: boolean } {
+  const usableSymbol = (value: unknown): value is string => typeof value === 'string' && /[\p{L}\p{N}]/u.test(value)
+  const parsed = Array.isArray(e?.symbols) ? e.symbols.filter(usableSymbol).map((s: string) => s.trim()) : []
+  // symbols[] is parsed from message prose, independently of the producer's explicit instrument identity. A body
+  // without a ticker can therefore have symbols=[] AND a known entity_refs.symbol. Use that canonical field when
+  // no parsed symbols are usable; never extract a ticker from subject_key/prose or change the event's actionability.
+  const refs = e?.entity_refs
+  const explicit = refs && typeof refs === 'object' && !Array.isArray(refs)
+    && Object.prototype.hasOwnProperty.call(refs, 'symbol') && usableSymbol(refs.symbol) ? refs.symbol.trim() : null
+  const symbols: string[] = parsed.length ? parsed : explicit ? [explicit] : []
+  const entry = ['reward', 'high_conviction_opportunity', 're_entry', 'watchlist_candidate'].includes(e?.category)
+    || /\b(?:review entry|high conviction entry)\b/i.test(`${e?.action_hint || ''} ${e?.headline || e?.short_summary || ''}`)
+  return { symbols, incomplete: e?.direction !== 'INBOUND' && entry && symbols.length === 0 }
+}
+
+export function FeedCard({ e, selected, picked, onPick, onOpen, selectable = true }: {
+  e: any; selected: boolean; picked: boolean; onPick: () => void; onOpen: () => void; selectable?: boolean
 }) {
-  const fam: Family = familyFor(e.priority, e.category)
+  const { symbols: syms, incomplete } = messageIdentity(e)
+  const fam: Family = incomplete ? 'neutral' : familyFor(e.priority, e.category)
   const s = familyStyle(fam)
-  const syms: string[] = e.symbols || []
   // opportunity cards only: on a risk/stop card the urgency (priority) is the decision number
-  const conv: number | null = fam === 'opportunity' && e.levels?.conviction != null && Number.isFinite(Number(e.levels.conviction)) ? Number(e.levels.conviction) : null
+  const conv: number | null = !incomplete && fam === 'opportunity' && e.levels?.conviction != null && Number.isFinite(Number(e.levels.conviction)) ? Number(e.levels.conviction) : null
   const soon = e.ttl_remaining_s != null && e.ttl_remaining_s > 0 && e.ttl_remaining_s < 12 * 3600
   const catalyst = catalystOf(e.sanitized_body)
   const acked = e.lifecycle_status === 'acknowledged' || !!e.acknowledged_at
   return (
-    <div data-feed-card={e.event_id} data-family={fam} onClick={onOpen}
-      style={{ display: 'grid', gridTemplateColumns: '20px minmax(0,1fr) auto', gap: 10, alignItems: 'center', cursor: 'pointer',
-        background: selected ? s.bg : 'var(--bg1)', border: `1px solid ${selected ? s.border : 'var(--border)'}`,
-        borderLeft: `5px solid ${s.border}`, borderRadius: RADIUS.md, padding: '8px 12px', opacity: acked && !selected ? 0.75 : 1 }}>
-      <input type="checkbox" checked={picked} onClick={(ev) => ev.stopPropagation()} onChange={onPick} aria-label="select" />
+    <div data-feed-card={e.event_id} data-family={fam} data-selectable={selectable} onClick={onOpen}
+      style={{ display: 'grid', gridTemplateColumns: selectable ? '20px minmax(0,1fr) auto' : 'minmax(0,1fr) auto', gap: 10, alignItems: 'center', cursor: 'pointer',
+        background: selected ? s.bg : 'var(--bg1)', borderTop: `1px solid ${selected ? s.border : 'var(--border)'}`,
+        borderRight: `1px solid ${selected ? s.border : 'var(--border)'}`, borderBottom: `1px solid ${selected ? s.border : 'var(--border)'}`, borderLeft: `5px solid ${s.border}`, borderRadius: RADIUS.md, padding: '8px 12px', opacity: acked && !selected ? 0.75 : 1 }}>
+      {selectable && <input type="checkbox" checked={picked} onClick={(ev) => ev.stopPropagation()} onChange={onPick} aria-label="Select this message" />}
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 16 }}>{FAMILY_ICON[fam]}</span>
@@ -93,20 +113,24 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
             ? <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--text0)' }}><SymbolLink symbol={syms[0]} />{syms.length > 1 ? <span style={{ fontSize: 11, color: 'var(--text3)' }}> +{syms.length - 1}</span> : null}</span>
             : e.direction === 'INBOUND' ? <span style={{ fontSize: 12, fontWeight: 900, color: s.color }}>FROM YOU</span> : null}
           {syms.length > 0 && <PriceTag m={e.market} />}
-          <span style={{ fontSize: 13, fontWeight: 800, color: s.color, letterSpacing: '.03em' }}>{alertType(e.headline || e.short_summary, syms)}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: s.color, letterSpacing: '.03em' }}>{incomplete ? 'Incomplete message' : alertType(e.headline || e.short_summary, syms)}</span>
         </div>
-        {e.action_hint && e.actionable
+        {incomplete ? <div role="note" style={{ color: 'var(--warning-color)', fontSize: 13, marginTop: 2 }}>The subject is missing. Entry review is unavailable; read the original message for context.</div> : e.action_hint && e.actionable
           ? <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginTop: 2 }}>▶ {e.action_hint}</div>
           : <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{labelOf(e.category)} · informational</div>}
-        <LevelsLine l={e.levels} />
-        <AnalystLine a={e.analyst} />
+        {!incomplete && <details className="comms-card-facts" onClick={event => event.stopPropagation()} style={{ marginTop: 4 }}>
+          <summary style={{ fontSize: 12, color: 'var(--text3)', cursor: 'pointer', minHeight: 44 }}>Supporting detail</summary>
+          <LevelsLine l={e.levels} />
+          <AnalystLine a={e.analyst} />
         {catalyst && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={catalyst}><span style={{ color: 'var(--text3)' }}>Catalyst </span>{catalyst}</div>}
+        </details>}
+        <button type="button" onClick={event => { event.stopPropagation(); onOpen() }} style={{ minHeight: 44, color: 'var(--info-color)', background: 'transparent', border: 0, padding: 0, cursor: 'pointer' }}>Read message</button>
       </div>
       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
         {/* One number per ticker everywhere (operator 2026-10-08: "why confidence doesn't match"): the CIO conviction
             that Home and the opportunity view show. Message priority (an urgency score per message, so two messages
             on one ticker differed) is shown, labelled, on risk cards and when the CIO has no conviction for the name. */}
-        {conv != null ? (
+        {incomplete ? <span style={{ fontSize: 11, color: 'var(--text3)' }}>Subject needed</span> : conv != null ? (
           <>
             <div style={{ ...numStyle, fontSize: 22, fontWeight: 900, color: e.levels?.low_conviction ? 'var(--text3)' : 'var(--text0)', lineHeight: 1 }} title={`CIO conviction ${Math.round(conv)}/100${e.priority_score != null ? ` · message priority ${Math.round(e.priority_score)}` : ''}`}>{Math.round(conv)}</div>
             <div style={{ fontSize: 10, color: e.levels?.low_conviction ? 'var(--warning-color)' : 'var(--text3)' }}

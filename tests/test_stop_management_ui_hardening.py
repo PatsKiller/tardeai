@@ -171,6 +171,9 @@ def test_15_build_marker_visible_for_deployment_verification():
     head = src.index('data-testid="cc-loaded-build"')
     assert "Loaded bundle:" not in src[head:start], "identifiers must not also sit in the visible part"
     assert "Running the artifact the server serves" in src[head:start] or "Serves" in src[head:start] or "artifact" in src[head:start]
+    # Page data truth remains separate from shell identity after the Diagnostics disclosure.
+    assert 'data-surface-loaded=' in src
+    assert 'footerQualifier(surface)' in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():
