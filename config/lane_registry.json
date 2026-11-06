@@ -25880,6 +25880,47 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "self-heal-fixer-shadow",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "workflow_id": "self-heal-fixer-shadow",
+        "match": "self-heal-fixer-shadow",
+        "cadence": "30 9-18 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "D11"
+      },
+      "expected_cadence_hours": 64.0,
+      "cadence_basis": "Maximum scheduled gap of dispatch.cron 30 9-18 * * 1-5 = 63 h (Friday 18:30 -> Monday 09:30 America/New_York; reconcile_lane_registry.cron_cadence_hours), plus 1 h for dispatch/finish lateness at the Monday 09:30 slot. scripts/lib/lane_registry.py::_scheduler_present measures wall-clock age since the last finished run, so a weekday-only n8n lane must declare the gap across its quiet weekend or it reports ORPHANED every evening and all weekend while every fire succeeded. The cost of the wall-clock rule is that an intra-week outage is tolerated up to ~64 h; a schedule-aware (last-due-slot) threshold belongs in lane_registry.py and needs its own PR.",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-04",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/self_heal_fixer_shadow/receipt.json"
+      },
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 9-18 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W3",
+        "class": "report",
+        "priority": 4,
+        "retry_policy": "transient-2"
+      },
+      "note": "D11 shadow dry-cycle lane, operator-approved 2026-11-04. n8n runs the fixer's dry cycle only: the allowlist row declares dry_run_arg --cycle and live_arg null, so a live request is refused as data. dispatch.mode is dry_run, so the dispatcher fires the lane dry; the stage clamp would also turn any live request into dry_run. stage is hand-maintained and nothing in code promotes it; promotion is a registry PR. The host lane self-heal-fixer stays PAUSED / KEEP_ON_CRON and its own row is untouched. A green n8n execution is process evidence, not proof: the receipt is the proof."
     }
   ],
   "freshness_contracts": [

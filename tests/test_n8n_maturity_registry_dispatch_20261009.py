@@ -548,6 +548,10 @@ N8N_NATIVE_SHADOW = frozenset(
         # dry_run. The live host crontab entry keeps doing the typing; the stage clamp makes a requested live run a
         # dry run (tests/test_agent_nudger_p2_20261103.py).
         "agent_nudge",
+        # 2026-11-04 D11 operator-approved dry-cycle lane: n8n-native dispatcher row at shadow, weekdays
+        # 09:30-18:30 ET, dispatch dry_run; the host lane self-heal-fixer stays PAUSED/KEEP_ON_CRON
+        # (tests/test_self_heal_fixer_shadow_contract_20261105.py).
+        "self-heal-fixer-shadow",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).

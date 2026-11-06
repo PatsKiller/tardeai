@@ -4644,8 +4644,34 @@
       "market_gate": false,
       "output_signal": "data/coordination/agent_nudger/state.json",
       "output_receipt": "v2"
+    },
+    {
+      "lane_id": "self-heal-fixer-shadow",
+      "command": [
+        "$PY",
+        "scripts/self_heal_fixer.py",
+        "--out",
+        "$STATE_ROOT/data/runtime/self_heal_fixer_shadow"
+      ],
+      "dry_run_arg": [
+        "--cycle"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_self_heal_fixer_shadow.lock",
+      "lock_kind": "flock",
+      "timeout_s": 900,
+      "market_gate": false,
+      "output_signal": "data/runtime/self_heal_fixer_shadow/receipt.json",
+      "env_names": [
+        "HOME",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "A --cycle run makes no model call, but the module's live-mode provider-key path exists and reads HOME-relative paths; report until a run with enforce mode is proven for the dry cycle.",
+      "env_evidence": "scripts/self_heal_fixer.py: state_root() reads TRADEAI_STATE_ROOT (default under HOME); provider key_file and {home} substitution read HOME. The D1 package executed the dry cycle with rc=0 and no model call.",
+      "source": "Operator decision 2026-11-04 (D11 shadow): n8n runs the fixer's dry cycle only; live execution remains the host lane self-heal-fixer (PAUSED, KEEP_ON_CRON). AGENTS \u00a724.5: no push, PR or remote write from a scheduled job."
     }
-  ],
+],
   "blocked_reasons": {
     "n8n-activation-grants": "AGENTS 3.0.0 §23.10 P16 read-only checker (scripts/check_n8n_activation_grants.py). Blocked 2026-10-09 by the allowlist's own safety test: the command path, the receipt name n8n_activation_grants_last.json and any natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant'. The check is read-only, but renaming the entrypoint to dodge the token or exempting it is an operator decision, not an agent's. Registry row NEVER_SCHEDULED; no workflow generated.",
     "dof-run-pipeline": "AGENTS 23.3 forbids a DOF SQL path; the six-stage runner contains SQL writers and a model-scoring stage. No foreign cwd/interpreter contract, shared cron lock, nonzero aggregate failure exit, dry-run or stable receipt. Keep outside runnable lanes until supervisor/operator resolves authority and producer contracts.",
