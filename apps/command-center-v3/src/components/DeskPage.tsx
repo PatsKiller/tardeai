@@ -115,15 +115,19 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
   const sourceReadFailed = Boolean(data) && (('ok' in (data as object) && (data as { ok: boolean }).ok !== true) || !Array.isArray(payload?.writers))
   const writerRows = Array.isArray(payload?.writers) ? payload!.writers : []
   const writers = new Map(writerRows.filter(writer => writer && typeof writer.lane_id === 'string').map(writer => [writer.lane_id, writer]))
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, color: BB.text1 }}>
-    <header><h1 style={{ margin: 0, fontSize: TYPE.xl, color: BB.text0 }}>{title}</h1>
-      <p style={{ margin: '6px 0 0', color: BB.text3, fontSize: TYPE.md }}>{purpose}</p></header>
-    {tabs.length > 0 && <nav aria-label={`${title} views`} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-      {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={active === tab.id} onClick={() => { tapped.current = tab.id !== active; setTab(tab.id) }} style={{
-        minHeight: 44, minWidth: 44, padding: '8px 12px', borderRadius: RADIUS.md, cursor: 'pointer', fontSize: TYPE.base,
-        border: `1px solid ${active === tab.id ? T.link : BB.border}`, color: active === tab.id ? T.link : BB.text2, background: BB.bgPanel,
-      }}>{tab.label}</button>)}
-    </nav>}
+  // FQ-034 (2026-11-04, re-applied over main's writer row): on a phone the writer/schedule diagnostics sat between the
+  // tab bar and the tab's own content, so "Where to act" opened below a long block of source clocks. The decision
+  // content leads on a phone and the clocks collapse into a disclosure at the end; the desktop order is unchanged.
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia('(max-width: 820px)').matches)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(max-width: 820px)')
+    const update = () => setPhone(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  const clocksSection = (
     <section aria-label="Source clocks" style={panel}>
       <h2 style={{ margin: '0 0 12px', fontSize: TYPE.md }}>Source clocks</h2>
       {(error || stale || sourceReadFailed) && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
@@ -168,6 +172,8 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
         })}
       </div>
     </section>
+  )
+  const decisionsSection = (
     <section aria-label="Decisions for you" style={panel}>
       <h2 style={{ fontSize: TYPE.md, margin: '0 0 8px' }}>Decisions for you</h2>
       {decisions?.length ? <ul style={{ paddingLeft: 20, margin: 0 }}>{decisions.map(decision => <li key={decision.id} style={{ marginTop: 8 }}>
@@ -176,6 +182,26 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
         {decision.href && <Link style={{ color: T.link, display: 'flex', alignItems: 'center', minHeight: 44, width: '100%' }} to={decision.href}>{decision.title}</Link>}
       </li>)}</ul> : <p style={{ color: BB.text3, margin: 0 }}>{decisionGap ?? 'Decision evidence has not been supplied for this view.'}</p>}
     </section>
-    <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{homeData ? <HomeBoardMount data={homeData} /> : (typeof children === 'function' ? children(active) : children)}</div>
+  )
+  const contentBlock = <div ref={contentRef} style={{ scrollMarginTop: 8 }}>{homeData ? <HomeBoardMount data={homeData} /> : (typeof children === 'function' ? children(active) : children)}</div>
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, color: BB.text1 }}>
+    <header><h1 style={{ margin: 0, fontSize: TYPE.xl, color: BB.text0 }}>{title}</h1>
+      <p style={{ margin: '6px 0 0', color: BB.text3, fontSize: TYPE.md }}>{purpose}</p></header>
+    {tabs.length > 0 && <nav aria-label={`${title} views`} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {tabs.map(tab => <button key={tab.id} type="button" aria-pressed={active === tab.id} onClick={() => { tapped.current = tab.id !== active; setTab(tab.id) }} style={{
+        minHeight: 44, minWidth: 44, padding: '8px 12px', borderRadius: RADIUS.md, cursor: 'pointer', fontSize: TYPE.base,
+        border: `1px solid ${active === tab.id ? T.link : BB.border}`, color: active === tab.id ? T.link : BB.text2, background: BB.bgPanel,
+      }}>{tab.label}</button>)}
+    </nav>}
+    {!phone && clocksSection}
+    {phone && decisionsSection}
+    {!phone && decisionsSection}
+    {contentBlock}
+    {phone && (
+      <details data-testid="desk-source-clocks" style={{ ...panel }}>
+        <summary style={{ cursor: 'pointer', fontSize: TYPE.md, fontWeight: 700 }}>What updates this view</summary>
+        <div style={{ marginTop: 8 }}>{clocksSection}</div>
+      </details>
+    )}
   </div>
 }
