@@ -48,10 +48,10 @@ def resolve_mode(*, refresh: bool = False) -> tuple[str, str]:
 def _sync_operator_overlay() -> dict:
     try:
         from scripts.lib import ops_env_overlay
-    except Exception:  # noqa: BLE001 — served layouts with only scripts/ on the path
+    except Exception:  # noqa: BLE001 -- served layouts with only scripts/ on the path
         try:
-            from lib import ops_env_overlay  # type: ignore
-        except Exception:  # noqa: BLE001 — no overlay module: the environment alone decides, as before
+            from lib import ops_env_overlay  # type: ignore[no-redef] -- served layouts import it as lib.*
+        except Exception:  # noqa: BLE001 -- no overlay module: the environment alone decides, as before
             return {}
     return ops_env_overlay.sync_environ()
 

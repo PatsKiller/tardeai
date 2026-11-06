@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import secrets
 from dataclasses import dataclass, field
@@ -990,7 +991,8 @@ def toggles_view(ctx: Ctx) -> dict:
         from scripts.lib.comms import channel_adapters as CA
 
         channels = {c: c in CA.SUPPORTED_CHANNELS for c in TEST_CHANNELS}
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 -- adapter import failed: every channel is reported unsupported, which the screen shows
+        logging.getLogger(__name__).exception("ops_controls_api: channel adapters unavailable")
         channels = {c: False for c in TEST_CHANNELS}
     return {"state": "OK", "reason": None, "channels": channels,
             "cooldown_s": int(((ctx.cfg.get("toggles") or {}).get("test_send_cooldown_s")) or 60),

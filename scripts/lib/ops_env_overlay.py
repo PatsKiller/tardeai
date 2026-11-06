@@ -29,6 +29,7 @@ managed ones (the projection path comes from the config file; tests set ``PATH_O
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tempfile
@@ -198,6 +199,6 @@ def write_projection(path: Path, doc: Mapping[str, Any]) -> None:
     except BaseException:
         try:
             os.unlink(tmp)
-        except OSError:
-            pass
+        except OSError as exc:
+            logging.getLogger(__name__).warning("ops_env_overlay: could not remove temp file %s: %s", tmp, exc)
         raise
