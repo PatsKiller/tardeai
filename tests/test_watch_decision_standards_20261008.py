@@ -43,6 +43,9 @@ def test_categories_and_ttls():
 def test_strong_ready_plan_in_zone_is_high_conviction_and_actionable():
     d = wd.decide(card(), {"plan": plan()}, now=NOW)
     assert (d["category"], d["status"], d["actionable"]) == ("high_conviction_opportunity", "active", True)
+    # FQ-074: "Review entry" is a research prompt, not an executable step. The structured kind travels with the
+    # decision so the badge and the actionable filter never infer it from the copy.
+    assert (d["action_kind"], d["executable"], d["action_hint"]) == ("review", False, "Review entry")
     assert d["time_sensitivity"] == 1.0 and d["confidence"] == 0.7
     assert d["expires_at"] == (datetime.fromisoformat(FRESH) + timedelta(hours=96)).isoformat()
     assert 0 < d["ttl_remaining_s"] <= 96 * 3600
@@ -64,6 +67,14 @@ def test_reentry_desk_state_maps_to_reentry_status(state, status, actionable):
 def test_held_with_sell_synthesis_is_risk():
     d = wd.decide(card(held=True), {"synthesis": {"recommendation": "SELL", "updated_at": FRESH}}, now=NOW)
     assert d["category"] == "risk" and d["actionable"] and d["risk_score"] >= 0.9
+    assert (d["action_kind"], d["executable"], d["action_hint"]) == ("review", False, "Review the held position")
+
+
+def test_reentry_desk_hints_carry_a_structured_kind():
+    ready = wd.decide(card(), {"reentry": {"state": "READY TO REVIEW", "price_as_of": FRESH}}, now=NOW)
+    near = wd.decide(card(), {"reentry": {"state": "NEAR ENTRY", "price_as_of": FRESH}}, now=NOW)
+    assert (ready["action_kind"], ready["action_hint"]) == ("review", "Review re-entry now")
+    assert (near["action_kind"], near["executable"], near["action_hint"]) == ("execute", True, "Set a re-entry alert")
 
 
 def test_old_signal_expires_but_a_held_name_stays_visible():
@@ -126,8 +137,22 @@ def test_filters_by_category_priority_actionable_and_scores():
     pick = lambda q: [c["symbol"] for c in rows if wd.passes(c["decision"], q)]  # noqa: E731
     assert pick({"category": "re_entry"}) == ["RE"]
     assert pick({"reentry_status": "potential"}) == ["RE"]
-    assert set(pick({"actionable": "1"})) == {"HC", "RE", "H"}
+    # FQ-074: the actionable filter selects executable steps only. HC ("Review entry") and H ("Review the held
+    # position") are research prompts; RE's "Set a re-entry alert" is the executable step.
+    assert set(pick({"actionable": "1"})) == {"RE"}
     assert "HC" in pick({"min_time": "0.9"})
+
+
+def test_a_review_prompt_is_not_selectable_as_an_actionable_decision():
+    by = {c["symbol"]: c["decision"] for c in _items()}
+    assert by["HC"]["actionable"] and not by["HC"]["executable"]           # has a next step, not executable
+    assert by["H"]["action_kind"] == "review" and not by["H"]["executable"]
+    assert by["RE"]["action_kind"] == "execute" and by["RE"]["executable"]
+    for symbol in ("HC", "H"):
+        assert not wd.passes(by[symbol], {"actionable": "1"}), symbol
+    assert wd.passes(by["RE"], {"actionable": "1"})
+    # The next-step filter still sees a review prompt: it has something to show, it just is not an order.
+    assert {s for s in by if wd.passes(by[s], {"next_step": "1"})} == {"HC", "H", "RE"}
 
 
 def test_sorts_cover_every_score():
@@ -143,7 +168,15 @@ def test_sorts_cover_every_score():
 def test_board_answers_the_six_questions_over_live_items():
     b = wd.board(_items(), now=NOW)
     assert list(b["panels"]) == ["attention", "reward", "reentry", "risk", "expiring", "recent"]
+    # FQ-074: the actionable count and its panels select executable steps only, matching the actionable filter.
+    # "Needs attention" keeps every live signal with a next step, so a held name whose synthesis says TRIM is not
+    # dropped from the board merely because its step reads "review".
     assert {i["symbol"] for i in b["panels"]["attention"]["items"]} == {"HC", "RE", "H"}
+    # The tile's count and the filter its preset sends must select the same set (the count/filter agreement rule).
+    assert {i["symbol"] for i in b["panels"]["attention"]["items"]} == {
+        c["symbol"] for c in _items() if wd.passes(c["decision"], {"next_step": "1"})}
+    assert b["actionable"] == 1
+    assert {i["symbol"] for i in b["panels"]["recent"]["items"]} == {"RE"}
     assert [i["symbol"] for i in b["panels"]["reentry"]["items"]] == ["RE"]
     assert b["facets"]["status"]["expired"] == 1 and b["facets"]["status"]["invalidated"] == 1
 

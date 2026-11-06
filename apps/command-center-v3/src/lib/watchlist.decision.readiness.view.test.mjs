@@ -76,6 +76,29 @@ check('a blocked decision is still blocked, in red', () => {
   assert.doesNotMatch(t, /Review prompt/)
 })
 
+// FQ-074 follow-up: the machine attribute must agree with the chip. A review prompt is not an actionable decision,
+// so the row a filter reads must not say "true" while the chip says "not an order".
+check('a review prompt is not marked actionable in the machine view', () => {
+  const html = renderToStaticMarkup(React.createElement(Badges, { d: decision() }))
+  assert.match(html, /data-decision-actionable="false"/)
+})
+
+check('a real action is still marked actionable in the machine view', () => {
+  const html = renderToStaticMarkup(React.createElement(Badges, { d: decision({ action_hint: 'Trim' }) }))
+  assert.match(html, /data-decision-actionable="true"/)
+})
+
+// The projection carries the kind structurally; the view must not have to re-read the copy.
+check('a structured review kind renders the review chip without an actionable flag', () => {
+  const t = text(renderToStaticMarkup(React.createElement(Badges, { d: decision({ actionable: false, executable: false, action_kind: 'review' }) })))
+  assert.match(t, /Review prompt: entry — not an order/)
+})
+
+check('a structured execute kind keeps the green badge', () => {
+  const t = text(renderToStaticMarkup(React.createElement(Badges, { d: decision({ action_hint: 'Trim', executable: true, action_kind: 'execute' }) })))
+  assert.match(t, /▶ Trim/)
+})
+
 const results = []
 for (const c of cases) {
   try { c.fn(); results.push({ name: c.name, passed: true }) }

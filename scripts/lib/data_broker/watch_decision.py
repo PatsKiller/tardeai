@@ -349,14 +349,21 @@ def decide(card: dict[str, Any], inp: dict[str, Any], *, now: Optional[datetime]
         status = "active"
     if status == "expired" and reentry_status and reentry_status != "invalidated":
         reentry_status = "expired"
-    actionable = bool(rule.get("actionable")) and status == "active"
+    has_hint = bool(rule.get("actionable")) and status == "active"
     # A deterministic fail / block / avoid is never actionable for a non-held idea, whatever rule matched
     # (2026-10-22 audit: FATN, AXTI "actionable / Set a re-entry alert" while Trade AI said NO TRADE ACTION).
     blocked_by = None
     no_act = {str(x).upper() for x in cfg.get("non_actionable_trade_states") or []}
-    if actionable and not fx["held"] and fx["trade_state"] in no_act:
-        actionable = False
+    if has_hint and not fx["held"] and fx["trade_state"] in no_act:
+        has_hint = False
         blocked_by = fx["trade_state"]
+    # kind declares whether the rule's action is a research review prompt or an executable step (FQ-074). It travels
+    # with the decision so the badge, the data attribute and the actionable filter never infer it from the copy.
+    # ``actionable`` keeps its domain meaning — the decision has a next step to show — while ``executable`` is the
+    # truth the actionable filter and the card's machine attribute select on: a review prompt is not an order.
+    kind = str(rule.get("kind") or "execute").strip().lower()
+    if kind not in ("review", "execute"):
+        kind = "execute"
     return {
         "version": DECISION_VERSION,
         "rule_id": rule.get("id"),
@@ -367,8 +374,10 @@ def decide(card: dict[str, Any], inp: dict[str, Any], *, now: Optional[datetime]
         **s,
         "reentry_status": reentry_status,
         "reentry_state": fx["reentry_state"] or None,
-        "actionable": actionable,
-        "action_hint": (rule.get("action") or fx["reentry_action"]) if actionable else None,
+        "actionable": has_hint,
+        "action_kind": kind if has_hint else None,
+        "executable": bool(has_hint and kind == "execute"),
+        "action_hint": (rule.get("action") or fx["reentry_action"]) if has_hint else None,
         "actionable_blocked_by": blocked_by,
         "status": status,
         "held": fx["held"],
@@ -437,6 +446,18 @@ def reentry_desk_counts(rows: Optional[dict[str, dict[str, Any]]] = None) -> dic
             "source": "lib.data_broker.reentry_decision_desk", "scope": "desk"}
 
 
+def is_executable(d: dict[str, Any]) -> bool:
+    """What the actionable filter selects: an executable step, never a research review prompt (FQ-074).
+
+    ``actionable`` still reports that the decision has a next step to show (a review prompt does); ``executable`` is
+    the narrower truth the filter and the card's data-decision-actionable attribute carry. Older payloads without the
+    field fall back to the structured kind, never to the copy."""
+    ex = d.get("executable")
+    if ex is None:
+        ex = bool(d.get("actionable")) and (d.get("action_kind") or "") != "review"
+    return bool(ex)
+
+
 def passes(d: dict[str, Any], q: dict[str, Any]) -> bool:
     """Decision filters (all optional). Expired/invalidated are hidden unless asked for."""
     st = _csv(q.get("decision_status"))
@@ -455,7 +476,10 @@ def passes(d: dict[str, Any], q: dict[str, Any]) -> bool:
         return False
     if re_st and (d.get("reentry_status") or "") not in re_st:
         return False
-    if str(q.get("actionable") or "").lower() in ("1", "true", "yes") and not d.get("actionable"):
+    if str(q.get("actionable") or "").lower() in ("1", "true", "yes") and not is_executable(d):
+        return False
+    # "has a next step to show" — a review prompt qualifies; the badge still says it is not an order (FQ-074).
+    if str(q.get("next_step") or "").lower() in ("1", "true", "yes") and not d.get("actionable"):
         return False
     for key, fld in (("min_confidence", "confidence"), ("min_risk", "risk_score"), ("min_reward", "reward_score"),
                      ("min_time", "time_sensitivity"), ("min_priority_score", "priority_score")):
@@ -497,7 +521,8 @@ def _compact(c: dict[str, Any]) -> dict[str, Any]:
         "held": bool(c.get("held")),
         **{k: d.get(k) for k in ("category", "category_label", "priority", "priority_score", "confidence",
                                  "risk_score", "reward_score", "time_sensitivity", "reentry_status", "actionable",
-                                 "action_hint", "status", "expires_at", "ttl_remaining_s", "evidence_at")},
+                                 "action_kind", "executable", "action_hint", "status", "expires_at", "ttl_remaining_s",
+                                 "evidence_at")},
     }
 
 
@@ -520,13 +545,18 @@ def board(cards: list[dict[str, Any]], *, now: Optional[datetime] = None,
         return [_compact(c) for c in sorted(rows, key=lambda c: (-(_f(d(c).get(k)) or 0),
                                                               -(_f(d(c).get("priority_score")) or 0)))[:n]]
 
+    # The actionable count, the actionable filter and the "Recently actionable" panel select executable steps
+    # (FQ-074), so a review prompt is never presented as a selectable actionable decision. "Needs attention" keeps
+    # its old membership — every live signal with a next step, review prompts included — because a held name whose
+    # synthesis says TRIM/SELL must not fall off the board just because its step is "look", not "execute".
+    executable = [c for c in live if is_executable(d(c))]
     attention = [c for c in live if d(c).get("actionable")]
     # Highest reward: an expired or needs-data signal has no current reward — only active signals count.
     reward = [c for c in live if d(c).get("status") == "active" and (d(c).get("reward_score") or 0) >= rmin]
     reentry = [c for c in live if d(c).get("reentry_status") in ("confirmed", "potential")]
     risk = [c for c in live if d(c).get("category") == "risk" or (d(c).get("risk_score") or 0) >= kmin]
     expiring = [c for c in live if (d(c).get("ttl_remaining_s") or exp_s + 1) <= exp_s]
-    recently = [c for c in attention if (_ts(d(c).get("evidence_at")) or recent) > recent]
+    recently = [c for c in executable if (_ts(d(c).get("evidence_at")) or recent) > recent]
     reentry_panel: dict[str, Any] = {
         "label": "Re-entry — watch names (confirmed + potential)", "count": len(reentry), "scope": "live",
         "items": top(reentry, "priority_score")}
@@ -559,7 +589,7 @@ def board(cards: list[dict[str, Any]], *, now: Optional[datetime] = None,
 
     return {"version": DECISION_VERSION, "panels": panels,
             "live": len(live), "in_view": sum(1 for c in cards if in_view(d(c))), "all": len(cards),
-            "actionable": len(attention),
+            "actionable": len(executable),
             "facets": facet(cards), "facets_scope": "all",
             "facets_live": facet(live),
             "count_scopes": {"live": "live", "in_view": "view", "all": "all", "actionable": "live",
