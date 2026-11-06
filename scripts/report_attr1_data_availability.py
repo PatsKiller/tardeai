@@ -72,7 +72,9 @@ def main():
         for t in ["strategy_performance_snapshots", "performance_daily", "paper_trades",
                    "paper_performance_governance", "agent_performance_history"]:
             try:
-                cur.execute(f"SELECT COUNT(*) FROM {t}")
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the literal table list above
+                    f"SELECT COUNT(*) FROM {t}"
+                )
                 db_tables[t] = cur.fetchone()[0]
             except Exception:
                 db_tables[t] = None

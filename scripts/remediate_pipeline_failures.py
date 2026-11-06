@@ -343,7 +343,7 @@ def clear_zombie_pipeline_runs(min_age_hours: float = 2.0) -> dict:
         row = cur.fetchone()
         summary_type = (row[0] if row else "") or ""
         if summary_type in ("jsonb", "json"):
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- age_sql is a local literal; age is a param
                 f"""UPDATE pipeline_runs
                    SET status='failed',
                        finished_at = COALESCE(finished_at, now()),
@@ -360,7 +360,7 @@ def clear_zombie_pipeline_runs(min_age_hours: float = 2.0) -> dict:
                 (float(min_age_hours),),
             )
         else:
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- age_sql is a local literal; age is a param
                 f"""UPDATE pipeline_runs
                    SET status='failed',
                        finished_at = COALESCE(finished_at, now()),
@@ -378,7 +378,7 @@ def clear_zombie_pipeline_runs(min_age_hours: float = 2.0) -> dict:
         try:
             conn = _conn()
             cur = conn.cursor()
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- age_sql is a local literal; age is a param
                 f"""UPDATE pipeline_runs
                    SET status='failed',
                        finished_at = COALESCE(finished_at, now()),

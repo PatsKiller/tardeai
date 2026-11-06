@@ -112,14 +112,18 @@ def main() -> int:
     conn.autocommit = False
     cur = conn.cursor()
 
-    cur.execute(f"SELECT count(*) FROM narrative_subjects ns WHERE {LINK_PREDICATE}")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- LINK_PREDICATE is a module constant
+        f"SELECT count(*) FROM narrative_subjects ns WHERE {LINK_PREDICATE}"
+    )
     affected = cur.fetchone()[0]
     cur.execute("SELECT count(*) FROM narrative_subjects WHERE source_table='communication_events'")
     total = cur.fetchone()[0]
-    cur.execute(f"""SELECT count(DISTINCT ns.source_id) FROM narrative_subjects ns
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- LINK_PREDICATE/AFFECTED_EVENTS are module constants
+        f"""SELECT count(DISTINCT ns.source_id) FROM narrative_subjects ns
                      WHERE {LINK_PREDICATE}""")
     events = cur.fetchone()[0]
-    cur.execute(f"""SELECT count(*) FROM communication_events e
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- LINK_PREDICATE/AFFECTED_EVENTS are module constants
+        f"""SELECT count(*) FROM communication_events e
                      WHERE {AFFECTED_EVENTS} AND subject_guid IS NOT NULL""")
     stamped = cur.fetchone()[0]
 
@@ -131,7 +135,8 @@ def main() -> int:
     print(f"  events with subject_guid: {stamped:,}  (NULLed; body untouched)")
     print(f"  quarantine table       : {QUARANTINE_TABLE}")
 
-    cur.execute(f"""SELECT ns.semantic_subject, ns.relationship, count(*)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- LINK_PREDICATE/AFFECTED_EVENTS are module constants
+        f"""SELECT ns.semantic_subject, ns.relationship, count(*)
                       FROM narrative_subjects ns WHERE {LINK_PREDICATE}
                      GROUP BY 1,2 ORDER BY count(*) DESC LIMIT 10""")
     print("\n  what would be quarantined:")
@@ -157,7 +162,9 @@ def main() -> int:
         )
         archived = cur.rowcount
 
-        cur.execute(f"SELECT count(*) FROM {QUARANTINE_TABLE}")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- QUARANTINE_TABLE is a module constant
+            f"SELECT count(*) FROM {QUARANTINE_TABLE}"
+        )
         held = cur.fetchone()[0]
         if held < affected:
             raise RuntimeError(
