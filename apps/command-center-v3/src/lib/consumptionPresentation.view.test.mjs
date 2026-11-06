@@ -116,10 +116,24 @@ for (const [mode, phone] of [['desk', false], ['phone', true]]) {
     preview.filter(b => !/type="button"/.test(b)).join(' | '))
   check(label('both preview controls are labelled'), /Show all — \d+ more process/.test(markup) && /Show all — \d+ more call/.test(markup),
     markup.slice(0, 300))
-  check(label('every rendered call row carries the "Technical detail" disclosure'), summaries.length === visibleCalls,
-    `got ${summaries.length}, expected ${visibleCalls}`)
-  check(label('the detail disclosure is a 44px touch target'), summaries.every(s => MIN_44.test(s)),
-    summaries.filter(s => !MIN_44.test(s)).slice(0, 2).join(' | '))
+  // cx-openai-3, executed at 2e3d9e2be: the page renders 10/5 call rows that EACH carry their own direct "Technical
+  // detail" disclosure, plus three Source-clocks Diagnostics disclosures that belong to DeskPage. A global <summary>
+  // count therefore overcounts (13/8) and, worse, an unrelated decoy summary could keep a global count right while a
+  // row had lost its disclosure. Scope the assertion to the call rows themselves.
+  const rows = [...markup.matchAll(/<div\b[^>]*data-testid="consumption-call-row"[^>]*>/g)]
+  check(label('the page renders the expected number of call rows'), rows.length === visibleCalls,
+    `got ${rows.length}, expected ${visibleCalls}`)
+  const segments = markup.split('data-testid="consumption-call-row"').slice(1)
+  const perRow = segments.map(seg => {
+    const own = [...seg.matchAll(/<summary\b[^>]*>[\s\S]{0,200}?Technical detail/g)].map(m => m[0])
+    return own
+  })
+  check(label('every rendered call row carries its OWN "Technical detail" disclosure'),
+    perRow.length === rows.length && perRow.every(own => own.length === 1),
+    `rows ${perRow.length}; disclosures per row ${JSON.stringify(perRow.map(o => o.length))}`)
+  const ownSummaries = perRow.flat()
+  check(label('the detail disclosure is a 44px touch target'), ownSummaries.length > 0 && ownSummaries.every(s => MIN_44.test(s)),
+    ownSummaries.filter(s => !MIN_44.test(s)).slice(0, 2).join(' | '))
 }
 
 // ── cx-openai-3's CX3-F1: the census must not invent a clean window from an unread source ─────────────
