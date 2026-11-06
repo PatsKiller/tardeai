@@ -74,59 +74,9 @@ import {
 } from './pages/control-plane'
 import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
-import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
+import { BuildMarker } from './components/BuildMarker'
+import { SurfaceStateProvider } from './components/SurfaceGap'
 
-
-function BuildMarker() {
-  const [served, setServed] = useState<unknown>(null)
-  useEffect(() => {
-    let cancelled = false
-    let inFlight = false
-    let controller: AbortController | null = null
-    const check = async () => {
-      if (inFlight) return
-      inFlight = true
-      controller = new AbortController()
-      const timer = window.setTimeout(() => controller?.abort(), 5000)
-      try {
-        const response = await fetch('/v3/build-meta.json', { cache: 'no-store', signal: controller.signal })
-        if (!response.ok) throw new Error('build metadata unavailable')
-        const metadata: unknown = await response.json()
-        if (!cancelled) setServed(metadata)
-      } catch {
-        if (!cancelled) setServed(null)
-      } finally {
-        window.clearTimeout(timer)
-        inFlight = false
-      }
-    }
-    const visible = () => { if (document.visibilityState === 'visible') void check() }
-    void check()
-    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void check() }, 60_000)
-    document.addEventListener('visibilitychange', visible)
-    return () => {
-      cancelled = true
-      controller?.abort()
-      window.clearInterval(interval)
-      document.removeEventListener('visibilitychange', visible)
-    }
-  }, [])
-  const comparison = compareServedBuild(LOADED_BUILD, served)
-  // FQ-081: the bundle id, build date and source revision are technical identifiers, not something an operator reads
-  // in the footer. The one operator-facing fact stays visible — whether this tab is running the artifact the server is
-  // serving — and the identifiers move one tap away. data-source-sha stays on the element: it is machine-read.
-  return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
-    {comparison === 'SAME' ? 'Running the artifact the server serves' : comparison === 'UNAVAILABLE' ? 'Served build comparison UNAVAILABLE' : <>
-      newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
-    </>}
-    {' · '}<details data-testid="build-diagnostics" style={{ display: 'inline-block' }}>
-      <summary style={{ cursor: 'pointer', display: 'inline' }}>Diagnostics</summary>
-      <span style={{ display: 'block' }}>
-        Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
-      </span>
-    </details>
-  </span>
-}
 
 function ReconnectingBar() {
   const { degraded, failing } = useConnectionHealth()
@@ -232,8 +182,16 @@ function GoProposalDeepLink() {
 
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
+  // The active page publishes its SurfaceState here so the build footer can say "this page's data did not load"
+  // instead of leaving "matches served artifact" to be read as an all-clear (BOARD row 36, rule 7).
+  // Ownership: a clearing null is accepted only when it comes from the surface that currently owns the slot, so the
+  // outgoing page of a route change cannot erase the incoming page's state (F2 review, 2026-11-04).
+  // STABLE IDENTITY, EMPTY DEPS (cc-deepseek-3 B1): the publisher lives in SurfaceStateProvider and is memoised with
+  // no dependencies, so it does not change when the report does. A mounted test observes the published report in the
+  // footer instead of reading this file as text (finding P1, 2026-11-05).
   return (
     <OpportunityModalProvider>
+    <SurfaceStateProvider>
     <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <SchwabReauthBanner />
       <FinvizCookieBanner />
@@ -327,6 +285,7 @@ function Shell() {
       </div>
       <DetailDrawer ctx={drill} onClose={() => setDrill(null)} />
     </div>
+    </SurfaceStateProvider>
     </OpportunityModalProvider>
   )
 }
