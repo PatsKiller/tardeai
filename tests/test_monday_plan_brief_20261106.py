@@ -19,6 +19,9 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 
 from scripts import monday_plan_brief as m  # noqa: E402
 
+# The send_telegram site is fired by test_live_run_goes_through_the_telegram_chokepoint below.
+COVERS = ["scripts/monday_plan_brief.py"]
+
 NOW = datetime(2026, 11, 8, 23, 0, tzinfo=timezone.utc)  # Sunday 18:00 ET
 
 
