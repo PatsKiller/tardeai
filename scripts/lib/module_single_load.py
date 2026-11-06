@@ -39,11 +39,14 @@ from __future__ import annotations
 
 import importlib.abc
 import importlib.util
+import logging
 import os
 import sys
 import threading
 import time
 from pathlib import Path
+
+_LOG = logging.getLogger(__name__)
 
 _LOCK = threading.Lock()
 _FINDER: "SingleLoadFinder | None" = None
@@ -162,8 +165,10 @@ class _AliasLoader(importlib.abc.Loader):
         if self._spec is not None:
             try:
                 module.__spec__ = self._spec
-            except AttributeError:
-                pass
+            except AttributeError as exc:
+                # Module objects that forbid setting __spec__ keep the alias spec: reload/pickle then
+                # resolve by the alias name. Visible, not silent.
+                _LOG.warning("module_single_load: cannot restore canonical __spec__ on %r: %s", module, exc)
         if self._wait_owner is None:
             return
         # Another thread is executing this package's __init__. Wait for it (only the module lock of this
@@ -294,7 +299,8 @@ def uninstall() -> None:
             try:
                 sys.meta_path.remove(_FINDER)
             except ValueError:
-                pass
+                # Already removed from sys.meta_path by someone else: the goal state, nothing to undo.
+                _LOG.debug("module_single_load: finder was not on sys.meta_path at uninstall")
         _FINDER = None
 
 
@@ -303,8 +309,8 @@ def _bind_parent(name: str, mod) -> None:
     if parent and parent in sys.modules:
         try:
             setattr(sys.modules[parent], child, mod)
-        except (AttributeError, TypeError):
-            pass
+        except (AttributeError, TypeError) as exc:
+            _LOG.warning("module_single_load: cannot bind %s on parent %s: %s", child, parent, exc)
 
 
 def _fold_loaded(finder: SingleLoadFinder) -> None:
