@@ -106,7 +106,7 @@ def main():
     cur.execute(SCHEMA)
     conn.commit()
     for t in ["llm_feedback_observations", "llm_learning_recommendations", "llm_prompt_experiments"]:
-        cur.execute(f"SELECT COUNT(*) FROM {t}")
+        cur.execute(f"SELECT COUNT(*) FROM {t}")  # nosemgrep: tq-py-sql-fstring -- t from the literal list above
         print(f"{t}: {cur.fetchone()[0]} rows")
     conn.close()
     print("Phase 5 schema applied.")

@@ -4,6 +4,7 @@ Read-only against production. No routing changes."""
 
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.request
@@ -14,6 +15,17 @@ from pathlib import Path
 PROJ = Path(__file__).resolve().parent.parent
 
 OLLAMA_URL = "http://localhost:11434"
+
+# Table names arrive from --*-table and are spliced into SQL as identifiers (a driver parameter cannot
+# carry one): each is checked against this pattern in the function that uses it, before the query.
+_PLAIN_IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
+
+
+def _plain_ident(name):
+    """The name unchanged when it is a plain lowercase SQL identifier; ValueError otherwise."""
+    if not isinstance(name, str) or not _PLAIN_IDENT.fullmatch(name):
+        raise ValueError(f"not a plain SQL table name: {name!r}")
+    return name
 
 # Same 40 queries from Phase 2A (embedding_ab_baseline.py)
 QUERIES = [
@@ -106,7 +118,9 @@ def log(msg):
 
 def search_table(conn, table, query_vec, top_k=10, fetch_limit=200):
     """Fetch embeddings from table, compute cosine sim in Python, return top-k."""
+    table = _plain_ident(table)
     cur = conn.cursor()
+    # nosemgrep: tq-py-sql-fstring -- table passed _plain_ident() above; LIMIT is a parameter
     cur.execute(f"""
         SELECT source_type, source_id, title, embedding
         FROM {table}
@@ -143,7 +157,9 @@ def search_table(conn, table, query_vec, top_k=10, fetch_limit=200):
 
 def search_production_table(conn, table, query_vec, top_k=10, fetch_limit=200):
     """Fetch from production content_embeddings (uses created_at not indexed_at)."""
+    table = _plain_ident(table)
     cur = conn.cursor()
+    # nosemgrep: tq-py-sql-fstring -- table passed _plain_ident() above; LIMIT is a parameter
     cur.execute(f"""
         SELECT source_type, source_id, title, embedding
         FROM {table}
@@ -232,8 +248,10 @@ def main():
     conn = get_db_connection()
 
     # Verify candidate table exists and has data
+    candidate_table = _plain_ident(args.candidate_table)
+    baseline_table = _plain_ident(args.baseline_table)
     cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*) FROM {args.candidate_table}")
+    cur.execute(f"SELECT COUNT(*) FROM {candidate_table}")  # nosemgrep: tq-py-sql-fstring -- passed _plain_ident()
     candidate_count = cur.fetchone()[0]
     log(f"Candidate table has {candidate_count} rows")
     if candidate_count == 0:
@@ -242,7 +260,8 @@ def main():
         conn.close()
         sys.exit(1)
 
-    cur.execute(f"SELECT COUNT(*) FROM {args.baseline_table} WHERE embedding IS NOT NULL")
+    # nosemgrep: tq-py-sql-fstring -- baseline_table passed _plain_ident() above
+    cur.execute(f"SELECT COUNT(*) FROM {baseline_table} WHERE embedding IS NOT NULL")
     baseline_count = cur.fetchone()[0]
     log(f"Baseline table has {baseline_count} rows with embeddings")
     cur.close()

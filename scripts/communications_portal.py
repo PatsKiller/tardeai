@@ -682,15 +682,18 @@ def hub_events(filters: dict[str, Any]) -> dict[str, Any] | None:
                 if order == "ASC":
                     ranked.reverse()
                 page = ranked[off: off + lim]
-            cur.execute(f"SELECT count(*) FROM communication_events WHERE {where}", params)
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- where is hub_where(): literal clauses, values in params
+                f"SELECT count(*) FROM communication_events WHERE {where}", params)
             total = cur.fetchone()[0]
             facets: dict[str, dict[str, int]] = {}
             for dim in ("category", "priority"):
                 w, p = hub_where(filters, skip=(dim,))
-                cur.execute(f"SELECT {dim}, count(*) FROM communication_events WHERE {w} GROUP BY 1", p)
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- dim from the literal tuple; w from hub_where (params)
+                    f"SELECT {dim}, count(*) FROM communication_events WHERE {w} GROUP BY 1", p)
                 facets[dim] = {str(k): n for k, n in cur.fetchall()}
             w, p = hub_where(filters, skip=("lifecycle_status",))
-            cur.execute(f"SELECT status, count(*) FROM communication_events WHERE {w} GROUP BY 1", p)
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- w is hub_where(): literal clauses, values in params
+                f"SELECT status, count(*) FROM communication_events WHERE {w} GROUP BY 1", p)
             facets["lifecycle_status"] = {str(k): n for k, n in cur.fetchall()}
             w, p = hub_where(dict(filters, include_expired=True), skip=("reentry_status",))
             cur.execute(f"SELECT reentry_status, count(*) FROM communication_events WHERE {w} "
@@ -757,12 +760,15 @@ def board(limit: int = 6) -> dict[str, Any] | None:
                 if ranked_by_conviction:
                     rows = conviction_order([_project_hub(r) for r in rows], conviction_floor())[:lim]
                     panels[key] = {"label": label, "count": None, "items": attach_market(rows)}
-                    cur.execute(f"SELECT count(*) FROM communication_events WHERE {_LIVE} AND {cond}")
+                    cur.execute(  # nosemgrep: tq-py-sql-fstring -- _LIVE and cond are module constants (BOARD_PANELS)
+                        f"SELECT count(*) FROM communication_events WHERE {_LIVE} AND {cond}")
                     panels[key]["count"] = cur.fetchone()[0]
                     continue
-                cur.execute(f"SELECT count(*) FROM communication_events WHERE {_LIVE} AND {cond}")
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- _LIVE and cond are module constants (BOARD_PANELS)
+                    f"SELECT count(*) FROM communication_events WHERE {_LIVE} AND {cond}")
                 panels[key] = {"label": label, "count": cur.fetchone()[0], "items": attach_market([_project_hub(r) for r in rows])}
-            cur.execute(f"SELECT count(*), count(*) FILTER (WHERE actionable) FROM communication_events WHERE {_LIVE}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- _LIVE is a module constant (literal SQL)
+                f"SELECT count(*), count(*) FILTER (WHERE actionable) FROM communication_events WHERE {_LIVE}")
             live, actionable = cur.fetchone()
         conn.rollback()
     except Exception:

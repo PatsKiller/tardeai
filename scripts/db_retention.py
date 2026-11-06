@@ -274,6 +274,15 @@ _SQL_IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 _SOURCE_SPEC_KEYS = ("source_column", "source_key_column", "source_table", "source_table_key", "source_table_ts")
 
 
+def _plain_ident(name) -> str:
+    """A registry table/column name unchanged when it is a plain SQL identifier; ValueError otherwise.
+    Registry names are spliced into SQL as identifiers (a driver parameter cannot carry one), and the
+    registry path is overridable (TRADEAI_RETENTION_REGISTRY), so every name is checked before use."""
+    if not isinstance(name, str) or not _SQL_IDENT_RE.fullmatch(name):
+        raise ValueError(f"registry name {name!r} is not a plain SQL identifier")
+    return name
+
+
 def _source_table_spec(r: dict, source: str) -> dict:
     """D10 (2026-10-21, operator: fix-first): a source window measures the SOURCE document's age, not the
     embedding's created_at. Measuring the embedding looped: archive, delete, then rag_indexer re-embeds the
@@ -341,7 +350,9 @@ def run_source_windows(cur, conn, windows: list[dict], dry_run: bool) -> tuple[i
             where, params = source_window_predicate(w, guard)
             basis = f"{w['source_table']}.{w['source_table_ts']}"  # D10: the age is the source document's
             if dry_run:
-                cur.execute(f"SELECT count(*) FROM {w['table']} t WHERE {where}", params)
+                src_table = _plain_ident(w["table"])
+                # nosemgrep: tq-py-sql-fstring -- src_table passed _plain_ident(); where is the validated predicate
+                cur.execute(f"SELECT count(*) FROM {src_table} t WHERE {where}", params)
                 n = cur.fetchone()[0]
                 print(f"  {label:<43} {basis:<18} {w['days']:>5}  {n:>8}  (source window, archive-first;"
                       f" per-run cap {w['max_rows']:,})")
@@ -463,7 +474,9 @@ def fk_guard(cur, table: str) -> str:
     """, (table,))
     parts = []
     for child, child_col, parent_col in cur.fetchall():
-        parts.append(f' AND NOT EXISTS (SELECT 1 FROM {child} ch WHERE ch."{child_col}" = t."{parent_col}")')
+        # child is regclass::text (Postgres quotes it as needed); attnames are quoted here, '"' doubled
+        cc, pc = str(child_col).replace('"', '""'), str(parent_col).replace('"', '""')
+        parts.append(f' AND NOT EXISTS (SELECT 1 FROM {child} ch WHERE ch."{cc}" = t."{pc}")')
     return "".join(parts)
 
 
@@ -575,6 +588,7 @@ DEFAULT_ARCHIVE_CAP_GB_MONTH = 2.0
 
 def project_row(cur, table: str, col: str, days: int, archive_first: bool, sample_rows: int = 200) -> dict:
     ra = _retention_archive()
+    table, col, days = _plain_ident(table), _plain_ident(col), int(days)
     out = {"table": table, "ts_column": col, "window_days": days, "archive_first": archive_first}
     cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=%s "
                 "AND column_name=%s", (table, col))
@@ -582,18 +596,24 @@ def project_row(cur, table: str, col: str, days: int, archive_first: bool, sampl
         out["status"] = "absent"
         return out
     guard = fk_guard(cur, table)
+    # Every statement below: table/col passed _plain_ident() above, guard is fk_guard(), values are params.
+    # nosemgrep: tq-py-sql-fstring -- identifiers checked by _plain_ident(); days is a parameter
     cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} < now() - make_interval(days => %s){guard}", (days,))
     out["tonight_rows"] = int(cur.fetchone()[0])
+    # nosemgrep: tq-py-sql-fstring -- identifiers checked by _plain_ident(); both windows are parameters
     cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} >= now() - make_interval(days => %s) "
                 f"AND t.{col} < now() - make_interval(days => %s)", (days + 7, days))
     out["boundary_rows_per_day"] = round(int(cur.fetchone()[0]) / 7.0, 1)
+    # nosemgrep: tq-py-sql-fstring -- identifiers checked by _plain_ident(); the interval is a literal
     cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} >= now() - interval '7 days'")
     out["inflow_rows_per_day"] = round(int(cur.fetchone()[0]) / 7.0, 1)
+    # nosemgrep: tq-py-sql-fstring -- identifiers checked by _plain_ident(); days and LIMIT are parameters
     cur.execute(f"SELECT row_to_json(t) FROM {table} t WHERE t.{col} < now() - make_interval(days => %s) LIMIT %s",
                 (days, int(sample_rows)))
     sample = cur.fetchall()
     out["sample_basis"] = "eligible"
     if not sample:
+        # nosemgrep: tq-py-sql-fstring -- identifiers checked by _plain_ident(); LIMIT is a parameter
         cur.execute(f"SELECT row_to_json(t) FROM {table} t ORDER BY t.{col} DESC NULLS LAST LIMIT %s", (int(sample_rows),))
         sample = cur.fetchall()
         out["sample_basis"] = "newest"
@@ -696,7 +716,11 @@ def run(dry_run: bool = False):
                 print(f"  WARN: {table}.{col} column not found — skipping")
                 continue
 
+            # Identifiers are spliced (a parameter cannot carry one): plain names only. days stays a literal
+            # int, cast here, because archive_rows() must archive exactly the rows this DELETE removes.
+            table, col, days = _plain_ident(table), _plain_ident(col), int(days)
             guard = fk_guard(cur, table)
+            # nosemgrep: tq-py-sql-fstring -- table/col passed _plain_ident(), days int() above, guard fk_guard()
             cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
             matching = cur.fetchone()[0]
             if dry_run:
@@ -707,6 +731,7 @@ def run(dry_run: bool = False):
                     n_arch, path = archive_rows(cur, table, col, days, guard, conn=conn)
                     if n_arch != matching:
                         raise RuntimeError(f"archived {n_arch} != matching {matching}; delete refused (archive {path})")
+                # nosemgrep: tq-py-sql-fstring -- table/col passed _plain_ident(), days int() above, guard fk_guard()
                 cur.execute(f"DELETE FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
                 count = cur.rowcount
                 if n_arch is not None and count != n_arch:
