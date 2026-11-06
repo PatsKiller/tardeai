@@ -358,6 +358,40 @@ export function moversBars(overview: any, max = 6): { bars: MoverBar[]; shownSum
   return { bars, shownSum: Math.round(bars.reduce((s: number, b: MoverBar) => s + b.amount, 0) * 100) / 100, total: num(overview?.today_change) }
 }
 
+export interface MoversHeading {
+  /** The card heading. Says "today" only when the holdings were observed on today's New York date. */
+  title: string
+  /** 'today' | 'last session' | 'unknown'; used in the row tooltips and the empty-state line. */
+  when: 'today' | 'last session' | 'unknown'
+  sameDay: boolean
+  tip: string
+}
+
+function etDateKey(ms: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms))
+}
+
+/** FU-006 (operator screenshot 07:12 ET 2026-11-06): before the day's first broker read the movers are the PRIOR
+ *  session's day changes (holdings as of Thu 20:55 ET), but the card said "What moved your book today". The heading
+ *  now says "today" only when the holdings were observed on today's New York date; otherwise it names the last
+ *  session and its date, and with no observation time it claims no day at all. Same observation time as the
+ *  Positions badge (positionsFreshness), so the two can never disagree. */
+export function moversHeading(overview: any, nowMs: number): MoversHeading {
+  const env = overview?.observation?.envelopes?.holdings
+  const observed = str(env?.freshness?.observed_at_utc) ?? str(env?.observed_at) ?? str(overview?.last_repriced)
+  const t = observed ? parseObservedTime(observed) : NaN
+  if (!Number.isFinite(t)) {
+    return { title: 'What moved your book', when: 'unknown', sameDay: false,
+      tip: `Holdings observation time ${observed ? `unreadable (${observed})` : 'missing'}, so these day changes cannot be dated.` }
+  }
+  if (etDateKey(t) === etDateKey(nowMs)) {
+    return { title: 'What moved your book today', when: 'today', sameDay: true, tip: `Holdings observed ${observed} (today, New York time).` }
+  }
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(t))
+  return { title: `What moved your book last session (${day})`, when: 'last session', sameDay: false,
+    tip: `Holdings observed ${observed}; no broker read yet today, so these are the last session's day changes.` }
+}
+
 export interface AccountRow { key: string; name: string; value: number | null; d1: number | null; ytd: number | null; ytdApprox: boolean; tip: string }
 
 /** Account NAME for the accounts table (one map: lib/accountLabels.ts — names only, never a number). */
