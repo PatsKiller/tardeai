@@ -24602,6 +24602,9 @@ def _recovery_dashboard():
     avg_patience = sum(float(i.get("patience_score") or 0) for i in items) / max(1, len(items))
 
     return {
+        # Recovery engine piece D (2026-11-06): the canonical case projection, read through piece A's one accessor.
+        # Additive: the legacy stopped_out_watch keys below are unchanged for every existing reader.
+        "recovery_cases": _recovery_case_projection(),
         "items": [{k: _json_clean(v) for k, v in r.items()} for r in items],
         "relist_events": [{k: _json_clean(v) for k, v in r.items()} for r in relist_events],
         "history": [{k: _json_clean(v) for k, v in r.items()} for r in history],
@@ -24630,6 +24633,89 @@ def _recovery_dashboard():
             ).items()
         },
     }
+
+
+RECOVERY_CASE_PROJECTION_SCHEMA = "RecoveryCaseProjection@v1"
+#: The four recovery-case actions (design recovery-reentry mockup, operator-approved 2026-11-06). No server endpoint
+#: validates them yet, so the projection says so and the UI renders them disabled — never a client-side executor.
+RECOVERY_CASE_ACTIONS = ("create_reentry_plan", "watch", "close_case", "snooze")
+
+
+def _recovery_latest_quote(symbol: str):
+    """The newest market_quotes row for one symbol: price, its OWN observation time and source. None when absent."""
+    row = _db_query(
+        "SELECT price, source, fetched_at FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
+        (str(symbol or "").upper(),),
+        fetch="one",
+    )
+    if not isinstance(row, dict):
+        return None
+    try:
+        price = float(row.get("price")) if row.get("price") not in (None, "") else None
+    except (TypeError, ValueError):
+        price = None
+    if price is None or price != price or price <= 0:
+        return None
+    return {"price": price, "observed_at": _json_clean(row.get("fetched_at")), "source": row.get("source") or "market_quotes"}
+
+
+def _recovery_case_projection(conn=None, quote_for=None, now=None) -> dict:
+    """Read-only projection of piece A's ``recovery_cases`` for the Recovery screens (piece D).
+
+    Nothing is computed here: no state, confidence, size, stop, target or eligibility. Each case is the store's own
+    ``to_dict()`` plus ``case_version`` (the row's ``updated_at`` — a changed case has a new version) and the latest
+    quote with its observation time. An absent store or a failed read is reported as such, never as zero cases.
+    """
+    generated = (now or datetime.now(timezone.utc)).isoformat()
+    base = {
+        "schema": RECOVERY_CASE_PROJECTION_SCHEMA,
+        "generated_at": generated,
+        "source": "recovery_cases (piece A accessor)",
+        "actions": {
+            "names": list(RECOVERY_CASE_ACTIONS),
+            "wired": False,
+            "endpoint": None,
+            "reason": "No server endpoint validates recovery-case actions yet.",
+        },
+    }
+    try:
+        _ensure_scripts_path()
+        try:
+            from lib import recovery_state as _rs  # noqa: PLC0415
+        except ImportError:
+            from scripts.lib import recovery_state as _rs  # type: ignore  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return {**base, "state": "unavailable", "reason": "recovery state module not on this build", "count": None, "cases": []}
+    if conn is None:
+        try:
+            from db_adapter import USE_DB, _get_conn  # noqa: PLC0415
+
+            conn = _get_conn() if USE_DB else None
+        except Exception:  # noqa: BLE001
+            conn = None
+    store = _rs.store_accessor(conn, None)
+    if store is None:
+        return {**base, "state": "unavailable", "reason": "recovery case store not reachable", "count": None, "cases": []}
+    try:
+        rows = store.list()
+    except Exception as exc:  # noqa: BLE001
+        try:
+            conn.rollback()  # never leave the thread's shared connection in an aborted transaction
+        except Exception:  # noqa: BLE001
+            pass
+        return {**base, "state": "unavailable", "reason": f"recovery case read failed ({type(exc).__name__})",
+                "count": None, "cases": []}
+    quote_for = quote_for or _recovery_latest_quote
+    cases = []
+    for row in rows:
+        case = row.to_dict() if hasattr(row, "to_dict") else dict(row)
+        case["case_version"] = case.get("updated_at") or None
+        try:
+            case["quote"] = quote_for(case.get("symbol"))
+        except Exception:  # noqa: BLE001
+            case["quote"] = None
+        cases.append({k: _json_clean(v) for k, v in case.items()})
+    return {**base, "state": "ok", "reason": None, "count": len(cases), "cases": cases}
 
 
 def _recovery_sector_context(symbols: list) -> dict:

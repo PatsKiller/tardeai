@@ -21,7 +21,7 @@ export default function RiskHub({ onDrill }: Props) {
   const tab = TABS.find(t => t.toLowerCase() === (TAB_ALIASES[rawTab] ?? rawTab)) || 'Exposure'
   const { data, loading, error } = useW7Pages()
   const { data: correlation, error: correlationError } = useApi<any>('/api/v2/correlation', 120_000, { enabled: tab === 'Correlation' })
-  const { data: recovery, error: recoveryError } = useApi<any>('/api/v2/recovery', 120_000, { enabled: tab === 'Recovery' })
+  const { data: recovery, error: recoveryError, stale: recoveryStale } = useApi<any>('/api/v2/recovery', 120_000, { enabled: tab === 'Recovery' })
   const { data: marketRisk, error: marketRiskError } = useApi<any>('/api/v2/market-risk/latest', 60_000, { enabled: tab === 'Market risk' })
   const symbol = params.get('symbol')
   const focused = useRef(false)
@@ -42,7 +42,7 @@ export default function RiskHub({ onDrill }: Props) {
     {data && tab === 'Concentration' && <W7RiskConcentration data={data} />}
     {tab === 'Correlation' && <W7RiskCorrelation data={correlation} error={correlationError} />}
     {data && tab === 'Market risk' && <W7RiskMarketRisk data={data} mr={marketRisk} error={marketRiskError} />}
-    {tab === 'Recovery' && <W7RiskRecovery data={recovery} error={recoveryError} />}
+    {tab === 'Recovery' && <W7RiskRecovery data={recovery} error={recoveryError} stale={recoveryStale} />}
     </div>
   </DeskPage>
 }

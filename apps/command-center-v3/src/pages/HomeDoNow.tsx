@@ -8,7 +8,7 @@
  *  Sources (every number's tooltip names its own): /api/v2/overview (header, movers, cash; holdings.json),
  *  /api/v2/portfolio/performance (accounts, YTD), /api/v2/home/do-now (queue, heat), /api/v2/cio/pages
  *  (categorized stop protection, shared with Risk), /api/v2/risk-regime/latest, /api/v2/trade-ai/summary, /api/v2/defense/posture,
- *  /api/v3/opportunities, /api/v2/system/platform-health, /api/v2/ops/deploys, /api/v2/command.
+ *  /api/v3/opportunities, /api/v2/system/platform-health, /api/v2/ops/deploys, /api/v2/command, /api/v2/recovery (recovery cases).
  *  Protection uses the categorized CIO positions read model, shared with Risk; summary performance uses overview/performance.
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
@@ -38,6 +38,7 @@ import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../componen
 import { MarketRiskSummary } from '../components/home/MarketRiskSummary'
 import { unwrapMarketRisk } from '../lib/marketRisk'
 import { vixFreshness } from '../lib/vixFreshness'
+import { RecoveryHomeCard } from '../components/recovery/RecoveryViews'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
@@ -221,6 +222,8 @@ export default function HomeDoNow() {
       <MarketRiskBanner mr={mr} />
       {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
       <MarketRiskSummary mr={mr} />
+      {/* Design recovery-reentry (approved 2026-11-06): an open high-impact recovery case stays at the top of Home. */}
+      <RecoveryHomeCard />
       <LatestDeepDive />
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>

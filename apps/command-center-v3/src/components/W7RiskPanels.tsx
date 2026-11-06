@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { DrillContext } from './DetailDrawer'
 import { W7Gap, W7Metric, W7Panel, W7PolicyLimits, grid, line, linkStyle, mono, pct, text, usd, when } from './W7PagePanels'
 import { RADIUS, TOKENS, TYPE } from '../lib/designTokens'
@@ -7,6 +7,9 @@ import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { STOP_CATEGORY_LABEL, STOP_CATEGORY_TONE, stopCategory, stopDistancePct, stopLossUsd, symbolList, type StopCategory } from '../lib/stopDisplay'
 import { toneVars } from '../lib/designTokens'
 import { ShadowTag } from './home/MarketRiskBanner'
+import { RecoveryListView } from './recovery/RecoveryViews'
+import { useCaseGates } from './recovery/RecoveryCaseCard'
+import { byImpact, recoveryProjection } from '../lib/recoveryCases'
 import { shadowMarker, bannerVisible, budgetLabel, episodeLine, fmtPct, pointsSum, shortTime, tierTone, unwrapMarketRisk, type MarketRisk } from '../lib/marketRisk'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
@@ -124,12 +127,23 @@ export function W7RiskCorrelation({ data, error }: { data: any, error?: unknown 
     <Link style={linkStyle} to="/strategy?tab=planner">Review in Strategy →</Link>
   </W7Panel>
 }
-export function W7RiskRecovery({ data, error }: { data: any, error?: unknown }) {
+/** Risk → Recovery (piece D, mockup approved 2026-11-06): the recovery_cases projection from GET /api/v2/recovery.
+ *  A server that predates the projection still shows the legacy recovery-watch rows, labelled as such. */
+export function W7RiskRecovery({ data, error, stale }: { data: any, error?: unknown, stale?: boolean }) {
+  const [params, setParams] = useSearchParams()
+  const projection = recoveryProjection(data, error)
+  const gates = useCaseGates(projection.cases)
   const rows: any[] = data?.items || []
-  return <W7Panel title="Recovery watch">
-    {rows.map((r, i) => <div key={r.symbol || i} style={line}><b>{r.symbol}</b><span>{r.account_label}</span><p style={{ flexBasis: '100%', margin: 0 }}>{r.analyst_verdict || r.reason || 'Review evidence on the Re-Entry desk.'}</p><Link to={`/portfolio/re-entry?symbol=${encodeURIComponent(r.symbol || '')}`} style={linkStyle}>Review recovery evidence →</Link></div>)}
-    {!rows.length && <W7Gap>{error ? 'Recovery watch could not be loaded.' : 'No recovery evidence has been published.'}</W7Gap>}
-  </W7Panel>
+  const select = (key: string) => { const next = new URLSearchParams(params); next.set('case', key); setParams(next, { replace: true }) }
+  const selectedKey = params.get('case') ?? ([...projection.cases].sort(byImpact)[0]?.key ?? null)
+  return <div style={{ display: 'grid', gap: 12 }}>
+    <RecoveryListView projection={projection} sourceUnavailable={!!error || !!stale} selectedKey={selectedKey} onSelect={select}
+      gate={gates.gate} onReview={gates.review} legacyCount={Array.isArray(data?.items) ? data.items.length : null} />
+    {projection.state === 'missing' && <W7Panel title="Recovery watch (legacy)">
+      {rows.map((r, i) => <div key={r.symbol || i} style={line}><b>{r.symbol}</b><span>{r.account_label}</span><p style={{ flexBasis: '100%', margin: 0 }}>{r.analyst_verdict || r.reason || 'Review evidence on the Re-Entry desk.'}</p><Link to={`/portfolio/re-entry?symbol=${encodeURIComponent(r.symbol || '')}`} style={linkStyle}>Review recovery evidence →</Link></div>)}
+      {!rows.length && <W7Gap>{error ? 'Recovery watch could not be loaded.' : 'No recovery evidence has been published.'}</W7Gap>}
+    </W7Panel>}
+  </div>
 }
 
 export function W7RiskStyles() { return <style>{`.w7-position-head{display:grid}.w7-position-row{display:grid;grid-template-columns:80px minmax(130px,1.4fr) repeat(6,minmax(65px,1fr)) 128px;gap:10px;padding:8px 0;border-top:1px solid var(--border-subtle);align-items:center;font-size:12px}.w7-field-label{display:none}@media(max-width:1000px){.w7-position-head{display:none}.w7-position-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0;align-items:start}.w7-position-action{grid-column:1/-1}.w7-field-label{display:block;color:var(--text-2);font:11px var(--font-sans)}}`}</style> }
