@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "merge_refusal_detail_20261104",
+  "files": [
+    "tests/test_merge_refusal_detail_20261104.py"
+  ],
+  "anchor": "MERGE_REFUSAL_NAMES_THE_PAIR_20261104",
+  "comment": [
+    "ANCHOR: MERGE_REFUSAL_NAMES_THE_PAIR_20261104 — a takeover refusal keeps its reason code (claim_takeover_chain_invalid) and gains a bounded detail: the two claim ids, their shared predecessor and the overlapping paths (at most five), so the refusal is actionable without re-deriving it. Every board is a synthetic tmp_path; no repo state, claim board, network, DB or broker is touched.",
+    "Registered so the gate file set stays complete: the shard runner executes gate files with pytest, and tests/test_ci_test_coverage_gate.py refuses a test file no gate lists (ci_self_guards / shard 7)."
+  ]
+}
