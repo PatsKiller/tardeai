@@ -75,6 +75,17 @@ for (const width of [1440, 412, 390]) {
       })))
       expect(descriptions.every(d => d.h <= 2 * d.lh + 1 && d.title?.includes(d.text || ''))).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true)
+      // MAIN-RED 2026-11-06 (390 px): two 44 px controls and a nowrap company name shared a ~90 px column, so the
+      // second control was pushed past the section's right edge and the block scrolled 3 px. Assert the heading's own
+      // children stay inside it, so a re-break names the cause instead of the generic 3 px.
+      const headingEscape = await facts.evaluateAll(els => els.map(el => {
+        const h = el.querySelector('.watch-company-heading') as HTMLElement | null
+        if (!h) return 0
+        const right = h.getBoundingClientRect().right
+        return Math.max(0, ...Array.from(h.children).map((c: any) => c.getBoundingClientRect().right - right))
+      }))
+      const worstEscape = Math.max(0, ...headingEscape)
+      expect(worstEscape, `a company-facts heading child escapes its section by ${worstEscape} px`).toBeLessThanOrEqual(1)
       for (const box of await facts.evaluateAll(els => els.map(el => ({ w: el.clientWidth, s: el.scrollWidth })))) expect(box.s).toBeLessThanOrEqual(box.w + 1)
       expect(forbidden).toEqual([])
       if (width < 820) await facts.first().scrollIntoViewIfNeeded()
