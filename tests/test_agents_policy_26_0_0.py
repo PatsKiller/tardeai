@@ -36,7 +36,9 @@ BINDING = AGENTS[:VH]
 #: 29.3.0: three §11 rules (draft-first, stack top, one merge window) add 18 binding lines to main's 2649. Their
 #: measurements, the 5,369-run evidence and the rollout live in LESSONS L11-01 and DSN-20261031-ci-load-reduction,
 #: not here. 2667 measured; this ceiling is that plus three lines of headroom.
-MAX_BINDING_LINES = 2670
+#: 30.0.2: main's 30.0.1 brought the binding text to 2668; the §8.1 consumer-testing rule adds three lines plus its
+#: separating blank (2672 measured). Raised by measurement plus the same three lines of headroom; no rule text removed.
+MAX_BINDING_LINES = 2675
 
 
 def _control() -> dict[str, str]:
