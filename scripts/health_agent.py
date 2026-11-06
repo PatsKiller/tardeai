@@ -642,6 +642,26 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         # Only string commands are executable (skip agent_hung dict etc.)
         if not isinstance(raw_cmd, str) or not raw_cmd.strip():
             continue
+        # Injection triage 21 (2026-11-06): the policy is DB-first (config_documents), so a row writer could
+        # otherwise run any shell line. Only the narrow remediation grammar reaches the shell below.
+        from lib.shell_command_guard import check_command
+
+        _ok, _why = check_command(raw_cmd, roots=(str(PROJECT_ROOT), str(DEV_ROOT)))
+        if not _ok:
+            entry = {
+                "at": now.isoformat(),
+                "type": ftype,
+                "cmd": raw_cmd[:300],
+                "ok": False,
+                "refused": True,
+                "note": f"remediation command refused by shell_command_guard: {_why}",
+                "trigger": f.get("message", "")[:200],
+            }
+            results.append(entry)
+            REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(REMEDIATION_LOG, "a") as fh:
+                fh.write(json.dumps(entry) + "\n")
+            continue
         cmd = _rewrite_remediation_cmd(raw_cmd)
         if cmd in ran_cmds:
             continue
@@ -775,7 +795,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             t0 = _time_module.time()
             try:
                 from lib.watchlist_deadline import child_environment
-                proc = subprocess.Popen(
+                proc = subprocess.Popen(  # nosemgrep: tq-py-subprocess-shell -- raw_cmd passed shell_command_guard
                     cmd,
                     shell=True,
                     stdout=subprocess.PIPE,
