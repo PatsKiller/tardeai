@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_host_alert_env_20261106",
+  "files": [
+    "tests/test_n8n_host_alert_env_20261106.py"
+  ],
+  "anchor": "N8N_HOST_ALERT_ENV_20261106",
+  "comment": [
+    "ANCHOR: N8N_HOST_ALERT_ENV_20261106 — n8n program package 0.4f. The dead-man's least-privilege alert env file",
+    "(host-alert.env) holds exactly TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID at 0600 in a 0700 directory. The helper's",
+    "dry run writes nothing; --write never overwrites a different file and never prints a value. Hermetic: tmp paths."
+  ]
+}
