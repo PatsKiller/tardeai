@@ -29,9 +29,21 @@ CIO_DARWIN = PROJECT_ROOT / "data" / "cio" / "darwin_scorecards.jsonl"
 
 IPS_MAX_POSITION_PCT = 8.0  # fallback only; live value = lib.ips_policy.ips_max_position_pct()
 IPS_CRITICAL_POSITION_PCT = 15.0  # fallback only; live value = lib.ips_policy.ips_critical_position_pct()
-MODEL_PORTFOLIO = PROJECT_ROOT / "config" / "model_portfolio.json"
+# None = resolve at read time (private data/cio/policy/ overlay, else config/
+# template — lib.policy_files); an explicit Path set here always wins.
+MODEL_PORTFOLIO: Path | None = None
 HOLDINGS = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
+
+
+def _model_portfolio_path() -> Path:
+    if MODEL_PORTFOLIO is not None:
+        return Path(MODEL_PORTFOLIO)
+    try:
+        from ..policy_files import MODEL_PORTFOLIO as name, policy_path
+    except ImportError:  # pragma: no cover - module loaded outside the lib package
+        from lib.policy_files import MODEL_PORTFOLIO as name, policy_path
+    return policy_path(name, PROJECT_ROOT)
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -145,7 +157,7 @@ def guardian_cash_concentration(*, session_id: str = "", desk: dict | None = Non
         ips_critical = IPS_CRITICAL_POSITION_PCT
 
     try:
-        mp = json.loads(MODEL_PORTFOLIO.read_text(encoding="utf-8"))
+        mp = json.loads(_model_portfolio_path().read_text(encoding="utf-8"))
         cash_cfg = (mp.get("strategic_allocation") or {}).get("cash_and_equivalents") or {}
         if cash_cfg.get("target_pct") is not None:
             target_cash = float(cash_cfg["target_pct"])

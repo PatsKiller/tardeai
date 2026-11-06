@@ -20,6 +20,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = PROJECT_ROOT / "config"
 IPS_FILENAME = "investment_policy_statement.json"
 
+try:  # package import (lib.* / scripts.lib.*) or scripts/lib on sys.path
+    from .policy_files import policy_path as _policy_path, source_for_path as _source_for_path
+except ImportError:  # pragma: no cover
+    from policy_files import policy_path as _policy_path, source_for_path as _source_for_path
+
 _warned: set[tuple[str, str]] = set()
 POLICY_KEY = "constraints.concentration_policy"
 CLASS_LABELS = {"broad_diversified_fund": "Broad diversified fund", "narrow_thematic_fund": "Narrow or thematic fund",
@@ -27,8 +32,13 @@ CLASS_LABELS = {"broad_diversified_fund": "Broad diversified fund", "narrow_them
 
 
 def _constraints(config_dir: Path | None) -> tuple[dict[str, Any], Path]:
-    location = Path(config_dir) if config_dir is not None else CONFIG_DIR
-    path = location if location.suffix == ".json" else location / IPS_FILENAME
+    if config_dir is None:
+        # Explicit arguments always win; otherwise the private ratified IPS
+        # (data/cio/policy/) when valid, else the public template (config/).
+        path = _policy_path(IPS_FILENAME, PROJECT_ROOT) if CONFIG_DIR == PROJECT_ROOT / "config" else CONFIG_DIR / IPS_FILENAME
+    else:
+        location = Path(config_dir)
+        path = location if location.suffix == ".json" else location / IPS_FILENAME
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -105,10 +115,17 @@ def concentration_policy(config_dir: Path | None = None) -> dict:
             "lookthrough_company_limit_pct": _positive(limits, "lookthrough_company") if valid else None,
             "lookthrough_sector_limit_pct": _positive(limits, "lookthrough_sector") if valid else None,
             "near_limit_fraction": fraction if valid else None, "near_limit_pct": None,
-            "source": f"config/{IPS_FILENAME}#{POLICY_KEY}", "source_label": "Operator IPS concentration policy",
+            "source": f"{_source_label(path)}#{POLICY_KEY}", "policy_source": _source_for_path(path, PROJECT_ROOT), "source_label": "Operator IPS concentration policy",
             "as_of": raw.get("as_of"), "approval_ref": raw.get("approval_ref"), "scope": "whole_portfolio",
             "gap": None if valid else {"reason": "approved concentration policy unavailable"},
             "classification_rules": deepcopy(raw.get("fund_classification") or {})}
+
+
+def _source_label(path: Path) -> str:
+    """Repo-relative label for the IPS actually read (private overlay or template)."""
+    if _source_for_path(path, PROJECT_ROOT) == "private":
+        return f"data/cio/policy/{IPS_FILENAME}"
+    return f"config/{IPS_FILENAME}"
 
 
 def instrument_class(position: dict, *, evidence=None, policy=None) -> dict:
