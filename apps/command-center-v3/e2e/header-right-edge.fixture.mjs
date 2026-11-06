@@ -40,6 +40,10 @@ const fixtures = {
   '/api/v2/health': { findings: [...Array.from({ length: 12 }, () => ({ severity: 'critical' })),
     ...Array.from({ length: 113 }, () => ({ severity: 'warning' }))] },
   '/api/v2/design-features': { header: {} },
+  // Review CX1 at aa7bd075: the header now reads the pipeline for a canonical approval queue, but the served route
+  // still returns the legacy WorkPipeline@v1 body. This fixture mirrors production: no waiting_on_you, so the header
+  // keeps the existing overview pending_approvals count until the producer lands.
+  '/api/v2/coordination/pipeline': { schema: 'WorkPipeline@v1', as_of: clock, items: [], summary: {}, sources: {} },
 }
 const bundled = await build({
   stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client';
@@ -102,11 +106,14 @@ try {
       traffic.unexpected.push(url.pathname)
       return route.abort()
     })
+    // The header's approval source is fulfilled before geometry is measured, so the request census below is stable.
+    const pipelineAnswered = page.waitForResponse(resp => new URL(resp.url()).pathname === '/api/v2/coordination/pipeline')
     await page.goto('http://header-fixture.test/')
     await page.waitForFunction(({ approvals, health, critical, badge }) => {
       const text = document.querySelector('.metric-strip-row')?.textContent || ''
       return text.includes(`${approvals} APPROVALS`) && text.includes(`${health} HEALTH (${critical} crit)`) && text.includes(badge)
     }, { approvals, health, critical, badge })
+    if (!before) await pipelineAnswered
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     const measure = () => page.evaluate(() => {
       const row = document.querySelector('.metric-strip-row')
@@ -188,7 +195,7 @@ try {
     }
     assert.deepEqual(traffic.external, []); assert.deepEqual(traffic.mutations, [])
     assert.deepEqual(traffic.unexpected, []); assert.deepEqual(traffic.errors, [])
-    assert.equal(new Set(traffic.api).size, 7, 'every header API fulfilled synthetically')
+    assert.equal(new Set(traffic.api).size, before ? 7 : 8, 'every header API fulfilled synthetically')
     const suffix = badge !== '2FA LIVE' ? '-' + badge.toLowerCase().replaceAll(' ', '-') : stress ? '-stress' : ''
     await page.screenshot({ path: path.join(out, `header-${width}${suffix}.png`), animations: 'disabled' })
     if (width === 412) {

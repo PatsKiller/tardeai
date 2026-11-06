@@ -4,6 +4,7 @@ import {
   EMPTY_FILTER, PIPELINE_STAGES, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions, filterToParams,
   liveToday, planLabel, queuedSections, ragTone, summarize, type PipelineItem,
 } from './workPipeline.ts'
+import { WORK_PIPELINE_JOINT_SOURCE_FIXTURE } from '../fixtures/workPipeline.fixture.ts'
 import { COMMANDS_PATH, commandBody, parseSplitParts } from './workPipelineActions.ts'
 declare const process: { exit(code?: number): never }
 function fail(m: string): never { console.log(`  [FAIL] ${m}`); process.exit(1) }
@@ -111,3 +112,412 @@ t('commands: one endpoint, the actor is never in the body; split grammar', () =>
 })
 
 console.log(`workPipeline: ${n} passed`)
+
+
+// Source-bound current-flow projection; all new records below are synthetic.
+import { FLOW_STAGES, flowProjection, waitingProjection } from './workPipelineFlow.ts'
+const FLOW_NOW = new Date('2026-11-03T02:00:00Z'), FLOW_HEAD = 'a'.repeat(40), OTHER_HEAD = 'b'.repeat(40)
+const CREATED = '2026-11-02T23:00:00Z', ENTERED = '2026-11-03T01:00:00Z'
+function flowItem(extra: Record<string, unknown> = {}) {
+  return { id: 'PR-9001', title: 'Synthetic work', stage: 'checks', owner: { session: 'fixture-session', vendor: 'fixture', coordinator: 'fixture-lead' },
+    created_at: CREATED, last_touched: '2026-11-03T01:55:00Z', stage_since: ENTERED, head_sha: FLOW_HEAD,
+    next: { actor: 'coordinator', text: 'Review current evidence', command: null }, checks: { head_sha: FLOW_HEAD, passed: 2, total: 3, failed_names: ['fixture-check'] },
+    reviews: [{ reviewer: 'fixture-reviewer', verdict: 'MERGE', head_sha: FLOW_HEAD, at: ENTERED, source: 'fixture-ledger' }],
+    stuck: { basis: 'stage' }, pr_number: 9001, pr_url: 'https://example.test/pull/9001', ...extra }
+}
+function flowEnvelope(items: unknown[], extra: Record<string, unknown> = {}) {
+  return { schema: 'WorkPipeline@v1', as_of: FLOW_NOW.toISOString(), coordination: { complete: true, source_at: FLOW_NOW.toISOString(), items,
+    stuck_after_minutes: 45, approvals: { complete: true, as_of: FLOW_NOW.toISOString(), items: [] }, agents: [], ...extra } }
+}
+const flowN = n
+
+t('nine current stages and an explicit coordinator actor share one in-flight grouping', () => {
+  eq(FLOW_STAGES, ['requested', 'building', 'uploaded', 'pr_open', 'checks', 'review', 'approval', 'merged', 'live'])
+  const p = flowProjection(flowEnvelope([flowItem()]), FLOW_NOW)
+  eq(p.items[0].next.actor, 'coordinator'); eq(p.items[0].owner.coordinator, 'fixture-lead')
+  eq([p.items[0].ageMinutes, p.items[0].stageAgeMinutes, p.items[0].stuck], [180, 60, true])
+  eq(p.inFlight.map(x => x.id), p.groups.flatMap(g => g.items.map(x => x.id)))
+})
+t('only valid full aware instants can date a current item', () => {
+  eq(flowProjection(flowEnvelope([flowItem({ created_at: '2026-11-02T18:00:00-05:00' })]), FLOW_NOW).items[0].createdAt, '2026-11-02T23:00:00.000Z')
+  for (const bad of ['2026-11-02', '2026-11-02 23:00:00', '2026-11-04T00:00:00Z', '2026-02-30T23:00:00Z', '2026-11-02T24:00:00Z']) {
+    const it = flowProjection(flowEnvelope([flowItem({ created_at: bad })]), FLOW_NOW).items[0]
+    eq(it.createdAt, null); eq(it.ageMinutes, null); eq(it.gaps.some(g => g.startsWith('Created:')), true)
+  }
+})
+t('explicit null clocks do not borrow timing or API capture fields', () => {
+  const p = flowProjection(flowEnvelope([flowItem({ created_at: null, last_touched: null, stage_since: null, when: { created_at: CREATED, last_activity: CREATED, stage_since: CREATED } })], { source_at: null, observed_at: CREATED }), FLOW_NOW)
+  eq([p.items[0].createdAt, p.items[0].touchedAt, p.items[0].stageSince, p.sourceAt], [null, null, null, null])
+  eq(flowProjection({ items: [], as_of: CREATED }, FLOW_NOW).sourceAt, null)
+})
+t('mismatched or unbound reviews and checks never become current-head proof', () => {
+  const it = flowProjection(flowEnvelope([flowItem({ checks: { head_sha: OTHER_HEAD, passed: 3, total: 3 }, reviews: [{ reviewer: 'old', verdict: 'MERGE', head_sha: OTHER_HEAD }] })]), FLOW_NOW).items[0]
+  eq([it.checks.passed, it.checks.total, it.reviews[0].currentHead], [null, null, false])
+  const unbound = flowProjection(flowEnvelope([flowItem({ reviews: [{ reviewer: 'unbound', verdict: 'MERGE', current_head: true }] })]), FLOW_NOW).items[0]
+  eq(unbound.reviews[0].currentHead, null)
+})
+t('required check and review counts are source-owned, never assumed', () => {
+  const it = flowProjection(flowEnvelope([flowItem({ checks: { head_sha: FLOW_HEAD, state: 'GREEN' }, reviews: { required_count: 2, items: [] } })]), FLOW_NOW).items[0]
+  eq([it.checks.passed, it.checks.total, it.reviewRequired], [null, null, 2])
+})
+t('old batch and task-complete stages remain readable without claiming Review or Live', () => {
+  const a = item({ id: 'old-batch', stage: 'in_batch', rag: 'green' }), b = item({ id: 'done-task', kind: 'task', stage: 'verified', rag: 'green', finished: true })
+  const p = flowProjection({ items: [a, b], as_of: CREATED }, FLOW_NOW)
+  eq(p.items.map(x => x.stage), [null, null]); eq(p.inFlight.length, 2); eq(p.metrics.inFlight, null); eq(p.metrics.liveToday, null)
+  eq(p.items[0].events.some(e => e.label.startsWith('Legacy ')), true)
+})
+t('old holds and next-owner operator labels never populate the canonical waiting queue', () => {
+  const old = item({ id: 'old-held', stage: 'approved', rag: 'amber', next: { owner: 'operator', text: 'Unhold', command: 'legacy-command' } })
+  const p = flowProjection({ items: [old], summary: { needs_me: 99 } }, FLOW_NOW)
+  eq(p.items[0].stage, 'requested'); eq(p.items[0].next.actor, 'unknown'); eq(p.waiting, null); eq(p.metrics.waiting, null)
+})
+t('unproven Live stays unresolved; proven Live is retired by the shared membership projection', () => {
+  const unknown = flowProjection(flowEnvelope([flowItem({ stage: 'live' })]), FLOW_NOW)
+  eq(unknown.items[0].stage, null); eq(unknown.inFlight.length, 1); eq(unknown.metrics.liveToday, null)
+  const live = flowItem({ stage: 'live', merged_at: '2026-11-03T00:30:00Z', live: { served: true, verified: true, source: 'fixture-receipt', at: '2026-11-03T01:30:00Z' }, checks: { head_sha: FLOW_HEAD, passed: 3, total: 3, green_at: ENTERED } })
+  const p = flowProjection(flowEnvelope([live, flowItem({ id: 'inactive', in_flight: false })]), FLOW_NOW)
+  eq(p.inFlight.length, 0); eq([p.metrics.inFlight, p.metrics.liveToday, p.metrics.mergedToday, p.metrics.greenToLiveMinutes], [0, 1, 1, 30])
+})
+t('missing green time never fabricates zero green-to-live latency', () => {
+  const p = flowProjection(flowEnvelope([flowItem({ stage: 'live', merged_at: ENTERED, live: { served: true, verified: true, source: 'fixture-receipt', at: '2026-11-03T01:30:00Z' } })]), FLOW_NOW)
+  eq(p.metrics.greenToLiveMinutes, null)
+})
+t('missing, partial and failed collection sources never produce healthy zero metrics', () => {
+  for (const raw of [null, flowEnvelope([], { complete: false }), { ...flowEnvelope([]), sources: { census: { warning: 'synthetic census unavailable' } } }]) {
+    const p = flowProjection(raw, FLOW_NOW)
+    eq([p.metrics.inFlight, p.metrics.mergedToday, p.metrics.liveToday, p.metrics.idleAgentMinutes], [null, null, null, null]); eq(p.gaps.length > 0, true)
+  }
+})
+t('a complete empty source can report measured zeros', () => {
+  const p = flowProjection(flowEnvelope([]), FLOW_NOW)
+  eq([p.metrics.inFlight, p.metrics.stuck, p.metrics.mergedToday, p.metrics.liveToday, p.metrics.waiting, p.metrics.idleAgentMinutes], [0, 0, 0, 0, 0, 0])
+})
+t('malformed returned members yield a named gap rather than empty healthy totals', () => {
+  const p = flowProjection(flowEnvelope([null, 'bad-member']), FLOW_NOW)
+  eq(p.metrics.inFlight, null); eq(p.metrics.mergedToday, null); eq(p.gaps.some(g => g.includes('malformed member')), true)
+})
+t('canonical waiting members drive counts with partial and conflicting-source refusals', () => {
+  const member = { id: 'canonical-action', title: 'Synthetic decision', source: 'fixture-approval-queue', as_of: CREATED, head_sha: FLOW_HEAD }
+  const p = flowProjection(flowEnvelope([], { approvals: { complete: true, as_of: ENTERED, actionable_items: [member, member] } }), FLOW_NOW)
+  eq(p.metrics.waiting, 1); eq(p.waiting?.map(x => x.id), ['canonical-action'])
+  const partial = flowProjection(flowEnvelope([], { approvals: { complete: false, as_of: ENTERED, actionable_items: [member] } }), FLOW_NOW)
+  eq(partial.waiting?.length, 1); eq(partial.metrics.waiting, null)
+  const conflict = flowProjection(flowEnvelope([], { approvals: { complete: true, as_of: ENTERED, actionable_items: [member, { ...member, head_sha: OTHER_HEAD }] } }), FLOW_NOW)
+  eq(conflict.metrics.waiting, null); eq(conflict.waiting?.length, 0)
+})
+t('agent idle uses its own activity clock and unknown nudge counts stay unknown', () => {
+  const agent = { session: 'fixture-session', last_activity: '2026-11-03T01:45:00Z', nudges_today: 3 }
+  const p = flowProjection(flowEnvelope([], { agents: [agent] }), FLOW_NOW)
+  eq([p.agents[0].idleMinutes, p.agents[0].nudgesToday, p.metrics.idleAgentMinutes], [15, 3, 15])
+  const future = flowProjection(flowEnvelope([], { agents: [{ ...agent, last_activity: '2026-11-04T00:00:00Z', nudges_today: null }] }), FLOW_NOW)
+  eq([future.agents[0].idleMinutes, future.agents[0].nudgesToday, future.metrics.idleAgentMinutes], [null, null, null])
+})
+t('claim stale labels do not invent a configured stuck verdict', () => {
+  const p = flowProjection(flowEnvelope([flowItem({ stale: true, stuck: undefined })], { stuck_after_minutes: undefined }), FLOW_NOW)
+  eq(p.items[0].stuck, null); eq(p.metrics.stuck, null)
+})
+function aSourcePayload(extra: Record<string, unknown> = {}, bundleExtra: Record<string, unknown> = {}) {
+  const fact = (value: unknown, source = 'claim_board') => ({ value, source, as_of: ENTERED, gap: null })
+  const bundle = { owner: fact({ session: 'a-session', vendor: 'fixture', coordinator: 'a-lead' }), coordinator: fact('a-lead'), last_activity: fact('2026-11-03T01:45:00Z'), next_action: fact('Read current proof', 'claim_worklog'),
+    ci: { state: 'GREEN', head_sha: FLOW_HEAD, as_of: ENTERED, source: 'fixture-ci', workflows: [], gap: null },
+    review: { head_sha: FLOW_HEAD, state: 'MERGE', evidence_class: 'reported_review_not_approval', source: 'coordinator_ledger', gap: null, records: [{ reviewer_session: 'a-reviewer', verdict: 'MERGE', observed_at: ENTERED }] },
+    live: fact(false, 'served_release+deploy_receipt'), timeline: [{ kind: 'pr_open', as_of: CREATED, source: 'github_census', source_ref: 'github_pr:9001', head_sha: FLOW_HEAD }], ...bundleExtra }
+  const sources = Object.fromEntries(['claims', 'coordinator_ledger', 'digest_approvals', 'plans', 'releases'].map(k => [k, { source: k, as_of: ENTERED, gap: null }]))
+  return { schema: 'WorkPipeline@v1', as_of: FLOW_NOW.toISOString(), items: [{ ...item({ id: 'PR-9001', stage: 'pr_open', rag: 'amber', pr_number: 9001 }), in_flight: true, coordination: bundle }], sources: { census: { refreshed_at: ENTERED, warning: null } },
+    coordination: { schema: 'WorkPipelineSources@v1', as_of: ENTERED, captured_at: FLOW_NOW.toISOString(), sources, gaps: [], claims: [], active_claim_ids: [], ...extra } }
+}
+t('actual A fact envelopes work without a guessed coordination.items collection', () => {
+  const p = flowProjection(aSourcePayload(), FLOW_NOW), it = p.items[0]
+  eq(it.owner, { session: 'a-session', vendor: 'fixture', coordinator: 'a-lead' }); eq(it.touchedAt, '2026-11-03T01:45:00.000Z')
+  eq([it.stage, it.createdAt, it.stageSince], ['pr_open', '2026-11-02T23:00:00.000Z', null]); eq(it.next.actor, 'unknown'); eq(it.next.text, 'Read current proof')
+  eq(it.reviews[0].currentHead, true); eq(it.checks.total, null); eq(p.sourceAt, '2026-11-03T01:00:00.000Z'); eq(p.metrics.inFlight, 1)
+})
+t('A explicit inactive membership is honored without inventing Live status', () => {
+  const raw = aSourcePayload(); raw.items[0].in_flight = false; const p = flowProjection(raw, FLOW_NOW)
+  eq(p.inFlight.length, 0); eq(p.metrics.inFlight, 0)
+})
+t('A verified live fact keeps its own source clock rather than capture time', () => {
+  const p = flowProjection(aSourcePayload({}, { live: { value: true, source: 'served_release+deploy_receipt', as_of: '2026-11-03T01:30:00Z', gap: null } }), FLOW_NOW)
+  eq([p.items[0].stage, p.items[0].liveAt, p.inFlight.length], ['live', '2026-11-03T01:30:00.000Z', 0])
+})
+t('A missing source remains named and makes collection counters unknown', () => {
+  const raw = aSourcePayload({ sources: { plans: { source: 'plan_registry', gap: 'synthetic missing registry', as_of: null } }, gaps: [{ source: 'plans', reason: 'synthetic missing registry' }] })
+  const p = flowProjection(raw, FLOW_NOW); eq(p.items.length, 1); eq(p.metrics.inFlight, null); eq(p.gaps.some(g => g.includes('plans') && g.includes('missing registry')), true)
+})
+t('unsafe partial legacy shapes are never attached to the old action-card renderer', () => {
+  for (const patch of [{ where: { files: null } }, { cells: [null] }, { what: null }, { next: { text: {} } }]) {
+    const bad = { ...item({ id: 'malformed-old', stage: 'building', rag: 'amber' }), ...patch }
+    eq(flowProjection(flowEnvelope([bad]), FLOW_NOW).items[0].legacy, undefined)
+  }
+})
+t('flow projection preserves raw canonical facts and legacy action data without mutation', () => {
+  const raw = aSourcePayload(), before = JSON.stringify(raw); flowProjection(raw, FLOW_NOW); eq(JSON.stringify(raw), before)
+})
+
+
+t('submillisecond future observations cannot become observed creation or Live evidence', () => {
+  const future = '2026-11-03T02:00:00.000001Z'
+  const p = flowProjection(flowEnvelope([flowItem({ stage: 'live', created_at: future,
+    live: { verified: true, served: true, source: 'fixture-receipt', at: future } })]), FLOW_NOW)
+  eq([p.items[0].createdAt, p.items[0].stage, p.items[0].liveAt, p.inFlight.length], [null, null, null, 1])
+  const past = flowProjection(flowEnvelope([flowItem({ created_at: '2026-11-03T01:59:59.999999Z' })]), FLOW_NOW)
+  eq(past.items[0].createdAt, '2026-11-03T01:59:59.999Z')
+})
+t('A positive Live fact with an invalid observation remains named unknown rather than measured zero', () => {
+  const p = flowProjection(aSourcePayload({}, { live: { value: true, source: 'served_release+deploy_receipt',
+    as_of: '2026-11-03T02:00:00.000001Z', gap: null } }), FLOW_NOW)
+  eq(p.items[0].stage === 'live', false); eq(p.items[0].liveAt, null)
+  eq(p.items[0].gaps.some(g => g.startsWith('Live:')), true); eq(p.metrics.liveToday, null)
+})
+
+console.log(`workPipelineFlow: ${n - flowN} passed`)
+
+
+// Canonical A waiting_on_you / E actionable projection integration.
+const waitingN = n
+const POLICY_COMMAND = `APPROVE_AGENTS_POLICY_99_0_0 9001 ${FLOW_HEAD}`
+function approvalMember(extra: Record<string, unknown> = {}) {
+  return { id: 'policy:fixture-9001', title: 'Review synthetic policy', kind: 'POLICY', version: '99.0.0', source: 'fixture-policy-source',
+    source_sha: FLOW_HEAD, source_as_of: ENTERED, policy_approval_command: POLICY_COMMAND,
+    pr: 9001, pr_url: 'https://github.com/example/repository/pull/9001', governed_href: '/approvals/policy-fixture',
+    next_actor: 'operator', next_action: 'Read the exact current version', actionable: true, stale: false, source_gap: null, ...extra }
+}
+function canonicalQueue(extra: Record<string, unknown> = {}) {
+  return { scope: 'all_operator_approvals', source: 'operator_approvals_api.queue_summary', actionable_items: [approvalMember()], actionable_count: 1,
+    known_pending_count: 1, pending_count: 1, complete: true, gaps: [], as_of: '2026-11-03T01:50:00Z', stale: false, ...extra }
+}
+t('actual root waiting_on_you maps E proof, exact command and operator display metadata', () => {
+  const q = canonicalQueue(), p = waitingProjection({ waiting_on_you: q }, FLOW_NOW), member = p.members![0]
+  eq([p.count, p.complete, p.sourceAt], [1, true, '2026-11-03T01:50:00.000Z'])
+  eq([member.head, member.sourceAt, member.command], [FLOW_HEAD, '2026-11-03T01:00:00.000Z', POLICY_COMMAND])
+  eq([member.prNumber, member.nextActor, member.nextAction, member.url], [9001, 'operator', 'Read the exact current version', '/approvals/policy-fixture'])
+  eq(waitingProjection(q, FLOW_NOW).members, p.members)
+})
+t('canonical member order is shared by header helper and full flow without reclassification', () => {
+  const other = approvalMember({ id: 'activation:fixture', kind: 'ACTIVATE', source_sha: OTHER_HEAD, policy_approval_command: null, pr: 9002, governed_href: '/releases', actionable: false })
+  const q = canonicalQueue({ actionable_items: [other, approvalMember()], actionable_count: 2, known_pending_count: 2, pending_count: 2 })
+  const raw = { ...flowEnvelope([]), waiting_on_you: q }, direct = waitingProjection(raw, FLOW_NOW), flow = flowProjection(raw, FLOW_NOW)
+  eq(direct.members!.map(x => x.id), ['activation:fixture', 'policy:fixture-9001'])
+  eq(flow.waiting, direct.members); eq(flow.metrics.waiting, direct.count)
+})
+t('explicit null or invalid root queue never borrows a prototype list', () => {
+  const proto = flowEnvelope([], { approvals: { complete: true, items: [{ id: 'proto-only', title: 'Old prototype' }] } })
+  eq(waitingProjection(proto, FLOW_NOW).members!.map(x => x.id), ['proto-only'])
+  for (const bad of [null, {}, [], { actionable_items: null }]) {
+    const p = waitingProjection({ ...proto, waiting_on_you: bad }, FLOW_NOW)
+    eq(p.members, null); eq(p.count, null); eq(p.complete, false)
+  }
+})
+t('all three E counter mismatches preserve known members but hide commands and total', () => {
+  for (const bad of [{ actionable_count: 2 }, { known_pending_count: 2 }, { pending_count: 2 }, { known_pending_count: undefined }]) {
+    const p = waitingProjection({ waiting_on_you: canonicalQueue(bad) }, FLOW_NOW)
+    eq(p.members!.map(x => x.id), ['policy:fixture-9001']); eq(p.count, null); eq(p.complete, false)
+    eq(p.members![0].command, null); eq(p.gaps.some(g => g.startsWith('actionable_queue:')), true)
+  }
+})
+t('partial global queue allows independently proven commands while keeping total unknown', () => {
+  const p = waitingProjection({ waiting_on_you: canonicalQueue({ complete: false, pending_count: 99, gaps: [{ source: 'plans', reason: 'Synthetic source missing' }] }) }, FLOW_NOW)
+  eq([p.count, p.complete, p.members![0].command], [null, false, POLICY_COMMAND])
+  eq(p.gaps.some(g => g.includes('plans') && g.includes('Synthetic source missing')), true)
+})
+t('a complete empty canonical source reports measured zero and no stale fallback', () => {
+  const p = waitingProjection({ waiting_on_you: canonicalQueue({ actionable_items: [], actionable_count: 0, known_pending_count: 0, pending_count: 0 }) }, FLOW_NOW)
+  eq([p.members, p.count, p.complete], [[], 0, true])
+})
+t('stale canonical queue keeps members but exposes no executable policy line', () => {
+  const p = waitingProjection({ waiting_on_you: canonicalQueue({ stale: true }) }, FLOW_NOW)
+  eq(p.members!.length, 1); eq([p.count, p.complete, p.members![0].command], [null, false, null])
+})
+t('member proof clocks refuse unknown and microfuture instants without any queue/creation fallback', () => {
+  for (const at of [null, undefined, '2026-11-02', '2026-11-03 01:00:00', 'bad-clock', '2026-11-04T00:00:00Z', '2026-11-03T02:00:00.000001Z']) {
+    const q = canonicalQueue({ actionable_items: [approvalMember({ source_as_of: at, as_of: ENTERED, created_at: CREATED })] })
+    const p = waitingProjection({ waiting_on_you: q }, FLOW_NOW)
+    eq([p.members![0].sourceAt, p.members![0].command], [null, null]); eq(p.count, 1)
+    eq(p.gaps.some(g => g.includes('source_as_of')), true)
+  }
+})
+t('individual actionable, stale and source-gap refusals cannot erase canonical membership', () => {
+  for (const patch of [{ actionable: false }, { actionable: undefined }, { stale: true }, { source_gap: 'Unverified source' }]) {
+    const p = waitingProjection({ waiting_on_you: canonicalQueue({ actionable_items: [approvalMember(patch)] }) }, FLOW_NOW)
+    eq(p.members!.length, 1); eq(p.count, 1); eq(p.members![0].command, null)
+  }
+})
+t('policy lines require the provided exact head and PR, and are never reconstructed', () => {
+  for (const patch of [{ source_sha: OTHER_HEAD }, { source_sha: 'a'.repeat(7) }, { pr: 9002 }]) {
+    const p = waitingProjection({ waiting_on_you: canonicalQueue({ actionable_items: [approvalMember(patch)] }) }, FLOW_NOW)
+    eq(p.members![0].command, null); eq(p.gaps.some(g => g.includes('exact source head or PR')), true)
+  }
+  const exact = `  ${POLICY_COMMAND}\n`
+  eq(waitingProjection({ waiting_on_you: canonicalQueue({ actionable_items: [approvalMember({ policy_approval_command: exact })] }) }, FLOW_NOW).members![0].command, exact)
+})
+t('financial-only totals and wrong scope never become global waiting membership', () => {
+  for (const q of [{ total: 7, by_type: { financial: 7 }, complete: true }, canonicalQueue({ scope: 'financial_only' })]) {
+    const p = waitingProjection({ waiting_on_you: q, summary: { needs_me: 7 } }, FLOW_NOW)
+    eq(p.members, null); eq(p.count, null); eq(p.complete, false)
+  }
+})
+t('queue snapshot null does not borrow API capture and unsafe navigation URLs stay absent', () => {
+  const p = waitingProjection({ as_of: ENTERED, waiting_on_you: canonicalQueue({ as_of: null, actionable_items: [approvalMember({ governed_href: 'javascript:fixture', pr_url: '//external.test/fixture' })] }) }, FLOW_NOW)
+  eq(p.sourceAt, null); eq(p.members![0].sourceAt, '2026-11-03T01:00:00.000Z'); eq(p.members![0].url, null)
+})
+t('waiting projection never mutates provider members or their verbatim evidence', () => {
+  const raw = { waiting_on_you: canonicalQueue() }, before = JSON.stringify(raw)
+  waitingProjection(raw, FLOW_NOW); flowProjection(raw, FLOW_NOW); eq(JSON.stringify(raw), before)
+})
+console.log(`workPipelineWaiting: ${n - waitingN} passed`)
+
+
+// One shared queue-snapshot and transport gate for Header and Work.
+const queueGateN = n
+
+t('unknown queue snapshot clocks retain members but block both shared total and commands', () => {
+  for (const at of [undefined, null, '2026-11-02', '2026-11-03 01:50:00', 'bad-clock', '2026-11-04T00:00:00Z', '2026-11-03T02:00:00.000001Z']) {
+    const raw = { ...flowEnvelope([]), waiting_on_you: canonicalQueue({ as_of: at }) }
+    const waiting = waitingProjection(raw, FLOW_NOW), flow = flowProjection(raw, FLOW_NOW)
+    eq(waiting.members!.map(m => m.id), ['policy:fixture-9001']); eq(waiting.members![0].sourceAt, '2026-11-03T01:00:00.000Z')
+    eq([waiting.count, waiting.complete, waiting.members![0].command], [null, false, null])
+    eq(flow.metrics.waiting, waiting.count); eq(flow.waiting, waiting.members)
+    eq(waiting.gaps.some(g => g.startsWith('Canonical approval queue snapshot:')), true)
+  }
+})
+t('a prototype without its own measured queue clock stays unknown, even with an API capture', () => {
+  const member = { id: 'prototype', title: 'Historical proposal', as_of: ENTERED }
+  for (const at of [undefined, null, '2026-11-02', '2026-11-03 01:50:00', '2026-11-04T00:00:00Z', '2026-11-03T02:00:00.000001Z']) {
+    const raw = flowEnvelope([], { approvals: { complete: true, as_of: at, items: [member] } })
+    const waiting = waitingProjection(raw, FLOW_NOW)
+    eq(waiting.members!.map(m => m.id), ['prototype']); eq([waiting.count, waiting.complete, waiting.sourceAt], [null, false, null])
+    eq(flowProjection(raw, FLOW_NOW).metrics.waiting, null)
+  }
+  const measured = waitingProjection(flowEnvelope([], { approvals: { complete: true, as_of: ENTERED, items: [member] } }), FLOW_NOW)
+  eq([measured.count, measured.complete, measured.sourceAt], [1, true, '2026-11-03T01:00:00.000Z'])
+})
+t('retained-error and stale transports use one nonmutating total and command gate', () => {
+  const raw = { ...flowEnvelope([]), waiting_on_you: canonicalQueue() }, before = JSON.stringify(raw)
+  const healthy = waitingProjection(raw, FLOW_NOW)
+  eq([healthy.count, healthy.complete, healthy.members![0].command], [1, true, POLICY_COMMAND])
+  for (const context of [{ readFailed: true }, { stale: true }]) {
+    const waiting = waitingProjection(raw, FLOW_NOW, context), flow = flowProjection(raw, FLOW_NOW, context)
+    eq(waiting.members!.map(m => m.id), healthy.members!.map(m => m.id))
+    eq([waiting.count, waiting.complete, waiting.members![0].command], [null, false, null])
+    eq(waiting.sourceAt, healthy.sourceAt); eq(flow.metrics.waiting, waiting.count); eq(flow.waiting, waiting.members)
+    eq(waiting.gaps.some(g => g.includes(context.readFailed ? 'read unavailable' : 'transport is stale')), true)
+  }
+  eq(JSON.stringify(raw), before)
+})
+t('valid partial queue clock preserves an independently proven command after a healthy read', () => {
+  const raw = { ...flowEnvelope([]), waiting_on_you: canonicalQueue({ complete: false, pending_count: null }) }
+  const waiting = waitingProjection(raw, FLOW_NOW, { readFailed: false, stale: false })
+  eq([waiting.count, waiting.complete, waiting.members![0].command], [null, false, POLICY_COMMAND])
+  eq(flowProjection(raw, FLOW_NOW, {}).waiting, waiting.members)
+})
+t('invalid evaluation clock cannot certify queue total or command recency', () => {
+  const p = waitingProjection({ waiting_on_you: canonicalQueue() }, Number.NaN)
+  eq([p.count, p.complete, p.members![0].command], [null, false, null])
+  eq(p.gaps.some(g => g.includes('evaluation clock')), true)
+})
+// Review CX1 at aa7bd075: a consumer may switch to this contract only once the served route supplies it. `supplied`
+// is the deferral gate, and it distinguishes an absent source from a supplied-but-broken one.
+t('a served legacy payload with no approval source reports supplied=false so consumers keep their existing display', () => {
+  const legacy = { schema: 'WorkPipeline@v1', as_of: FLOW_NOW.toISOString(), items: [], summary: {}, sources: {} }
+  const p = waitingProjection(legacy, FLOW_NOW)
+  eq([p.supplied, p.members, p.count], [false, null, null])
+  const noApprovals = { ...flowEnvelope([]), coordination: { schema: 'WorkPipelineSources@v1' } }
+  eq(waitingProjection(noApprovals, FLOW_NOW).supplied, false)
+})
+t('a supplied but broken approval source is never reported as unsupplied', () => {
+  for (const bad of [null, {}, [], { actionable_items: null }]) {
+    const p = waitingProjection({ waiting_on_you: bad }, FLOW_NOW)
+    eq([p.supplied, p.members, p.count], [true, null, null])
+  }
+  eq(waitingProjection(flowEnvelope([], { approvals: { complete: true, items: [] } }), FLOW_NOW).supplied, true)
+  eq(waitingProjection({ waiting_on_you: canonicalQueue({ complete: false }) }, FLOW_NOW).supplied, true)
+})
+t('A typed stuck and exact blocker facts populate their current display aliases', () => {
+  const raw = aSourcePayload({}, { stuck: { value: true, source: 'fixture-stage-clock', as_of: ENTERED, gap: null },
+    blocker: { value: 'Synthetic current check is failing', source: 'fixture-check-evidence', as_of: ENTERED, gap: null } })
+  const p = flowProjection(raw, FLOW_NOW)
+  eq([p.items[0].stuck, p.items[0].blocker, p.metrics.stuck], [true, 'Synthetic current check is failing', 1])
+})
+t('explicit empty blocker and false stuck facts override historical values without guessing', () => {
+  const raw = aSourcePayload({}, { stuck: { value: false, source: 'fixture-stage-clock', as_of: ENTERED, gap: null },
+    blocker: { value: null, source: 'fixture-check-evidence', as_of: ENTERED, gap: null } })
+  Object.assign(raw.items[0], { blocker: 'Old blocker', stuck: true })
+  const p = flowProjection(raw, FLOW_NOW)
+  eq([p.items[0].stuck, p.items[0].blocker, p.metrics.stuck], [false, null, 0])
+})
+console.log(`workPipelineQueueGate: ${n - queueGateN} passed`)
+
+
+// Independent refusal probe found these malformed policy-line bindings.
+const policyBindingN = n
+t('policy copy lines require the declared kind, operator actor, version, positive PR and exact token shape', () => {
+  for (const patch of [{ pr: null }, { pr: undefined }, { pr: '9001' }, { pr: 0 },
+    { next_actor: 'coordinator' }, { next_actor: 'agent' }, { next_actor: null }, { kind: 'FINDING' },
+    { version: null }, { version: '30.0.0' },
+    { policy_approval_command: `SYNTHETIC_INVALID 9001 ${FLOW_HEAD}` },
+    { policy_approval_command: `${POLICY_COMMAND} extra` },
+    { policy_approval_command: `APPROVE_AGENTS_POLICY_99_0_0 09001 ${FLOW_HEAD}` }]) {
+    const q = canonicalQueue({ actionable_items: [approvalMember(patch)] })
+    const p = waitingProjection({ waiting_on_you: q }, FLOW_NOW)
+    eq([p.count, p.members!.map(m => m.id)], [1, ['policy:fixture-9001']])
+    eq(p.members![0].command, null)
+  }
+})
+t('a semantically exact policy line is preserved verbatim after its bindings are checked', () => {
+  const line = `  APPROVE_AGENTS_POLICY_99_0_0  9001 ${FLOW_HEAD}\n`
+  const p = waitingProjection(canonicalQueue({ actionable_items: [approvalMember({ policy_approval_command: line })] }), FLOW_NOW)
+  eq(p.members![0].command, line)
+})
+console.log(`workPipelinePolicyBinding: ${n - policyBindingN} passed`)
+
+
+// The independent review's null-PR and ambiguous-agent reproductions.
+const identityN = n
+const identityFixture = () => JSON.parse(JSON.stringify(WORK_PIPELINE_JOINT_SOURCE_FIXTURE))
+function addIdentityClaim(raw: ReturnType<typeof identityFixture>, id: string, session: string) {
+  const work = JSON.parse(JSON.stringify(raw.items.find((row: Record<string, unknown>) => row.id === 'claim-local')))
+  work.id = id; work.who.session = session; work.how.claim_ids = [id]; work.where.branch = `wt/synthetic-${id}`
+  raw.items.push(work)
+  const claim = JSON.parse(JSON.stringify(raw.coordination.claims.find((row: Record<string, unknown>) => row.claim_id === 'claim-local')))
+  claim.claim_id = id; claim.session = session; claim.branch = work.where.branch
+  raw.coordination.claims.push(claim); raw.coordination.active_claim_ids.push(id)
+  return { work, claim }
+}
+t('ordinary pre-PR agents bind their exact claims instead of the first null-PR item', () => {
+  const raw = identityFixture(); addIdentityClaim(raw, 'claim-other', 'session-other')
+  const p = flowProjection(raw, FLOW_NOW)
+  eq(p.agents.find(a => a.session === 'session-other')?.itemId, 'claim-other')
+  eq(p.agents.find(a => a.session === 'session-claim-local')?.itemId, 'claim-local')
+})
+t('an explicit claim association precedes a shared session label', () => {
+  const raw = identityFixture(), { claim } = addIdentityClaim(raw, 'claim-specific', 'session-claim-local')
+  raw.coordination.claims = [claim]; raw.coordination.active_claim_ids = [claim.claim_id]
+  eq(flowProjection(raw, FLOW_NOW).agents[0].itemId, 'claim-specific')
+})
+t('orphan and known-owner PR collisions remain unassigned', () => {
+  for (const pr of [null, 99001]) {
+    const raw = identityFixture(), claim = JSON.parse(JSON.stringify(raw.coordination.claims.find((r: Record<string, unknown>) => r.claim_id === 'claim-local')))
+    claim.claim_id = 'claim-orphan'; claim.session = 'session-orphan'; claim.pr_number = pr
+    raw.coordination.claims.push(claim); raw.coordination.active_claim_ids.push(claim.claim_id)
+    const agent = flowProjection(raw, FLOW_NOW).agents.find(a => a.session === claim.session)!
+    eq(agent.itemId, null); eq(agent.gaps.some(g => g.startsWith('Current item:')), true)
+  }
+})
+t('ambiguous session or PR associations retain a named gap rather than choosing a row', () => {
+  for (const pr of [null, 99077]) {
+    const raw = identityFixture(), local = raw.items.find((r: Record<string, unknown>) => r.id === 'claim-local')
+    const work = [JSON.parse(JSON.stringify(local)), JSON.parse(JSON.stringify(local))]
+    work.forEach((w, i) => { w.id = `unbound-${i}`; w.pr_number = pr; w.what.pr_number = pr; w.who.session = pr === null ? 'session-ambiguous' : null; w.how.claim_ids = [] })
+    const claim = JSON.parse(JSON.stringify(raw.coordination.claims.find((r: Record<string, unknown>) => r.claim_id === 'claim-local')))
+    claim.claim_id = 'unbound-claim'; claim.session = 'session-ambiguous'; claim.pr_number = pr
+    raw.items = work; raw.coordination.claims = [claim]; raw.coordination.active_claim_ids = [claim.claim_id]
+    const agent = flowProjection(raw, FLOW_NOW).agents[0]
+    eq(agent.itemId, null); eq(agent.gaps.some(g => /ambiguous|multiple/i.test(g)), true)
+  }
+})
+t('equally recent active claims for one session do not invent a unique current item', () => {
+  const raw = identityFixture(); addIdentityClaim(raw, 'claim-tied', 'session-claim-local')
+  const agent = flowProjection(raw, FLOW_NOW).agents.find(a => a.session === 'session-claim-local')!
+  eq(agent.itemId, null); eq(agent.gaps.some(g => g.includes('equally recent')), true)
+})
+console.log(`workPipelineAgentIdentity: ${n - identityN} passed`)

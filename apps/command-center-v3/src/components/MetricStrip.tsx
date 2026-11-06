@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
@@ -16,6 +16,7 @@ import { runHealthReasonCodes, reasonCodeOneLiner, runHealthLabel } from '../lib
 import { BB, T, TYPE, numStyle, rowRail } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
 import type { DrillContext } from './DetailDrawer'
+import { waitingProjection } from '../lib/workPipelineFlow'
 
 const CHROME = { priority: 'background' } as const
 import AlertsCenterModal from './AlertsCenterModal'
@@ -90,6 +91,8 @@ export default function MetricStrip({ onDrill }: Props) {
 
   // App chrome: these yield to the page's own reads (useApi priority 'background', perf 2026-10-25).
   const { data: overview } = useApi<any>('/api/v2/overview', 120_000, CHROME)
+  const approvalApi = useApi<unknown>('/api/v2/coordination/pipeline', 120_000, CHROME)
+  const approvalQueue = useMemo(() => waitingProjection(approvalApi.data, now, { readFailed: Boolean(approvalApi.loading || approvalApi.error), stale: approvalApi.stale }), [approvalApi.data, now, approvalApi.loading, approvalApi.error, approvalApi.stale])
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, CHROME)
   const { data: regime } = useApi<any>('/api/v2/risk-regime/latest', 120_000, CHROME)
   const { data: tradeAi } = useApi<any>('/api/v2/trade-ai/summary', 120_000, CHROME)
@@ -347,7 +350,29 @@ export default function MetricStrip({ onDrill }: Props) {
     : vixReading.state === 'UNAVAILABLE'
       ? vixReading.label
       : `${vixProvenanceText} · ${vixReading.label}`
-  const approvals = overview?.pending_approvals ?? overview?.approvals_count
+  // Deferred switch (review CX1 at aa7bd075): the checked-in /api/v2/coordination/pipeline does not yet supply the
+  // canonical waiting_on_you queue, so until the producer lands the header keeps its pre-existing overview count.
+  // Once ANY approval source is supplied, a partial, stale or failed one reads as UNKNOWN — never as a silent
+  // fallback to a different population.
+  const overviewApprovals = Number.isSafeInteger(overview?.pending_approvals) && overview.pending_approvals >= 0
+    ? overview.pending_approvals
+    : Number.isSafeInteger(overview?.approvals_count) && overview.approvals_count >= 0 ? overview.approvals_count : null
+  const approvalReadReady = !approvalApi.loading && !approvalApi.error && !approvalApi.stale
+  const approvals = !approvalQueue.supplied
+    ? overviewApprovals
+    : approvalReadReady && approvalQueue.complete && approvalQueue.sourceAt ? approvalQueue.count : null
+  const approvalGaps = [
+    !approvalQueue.supplied ? 'coordination/pipeline: canonical approval queue not supplied; showing overview pending_approvals' : null,
+    ...approvalQueue.gaps,
+    approvalApi.loading ? 'coordination/pipeline: approval queue loading' : null,
+    approvalApi.error ? `coordination/pipeline: approval queue request failed (${approvalApi.error})` : null,
+    approvalApi.stale ? 'coordination/pipeline: retained approval queue is stale' : null,
+  ].filter(Boolean).join(' · ')
+  const approvalSourceMark = approvalQueue.supplied
+    ? approvalQueue.sourceAt ? `Queue snapshot as of ${approvalQueue.sourceAt}` : 'Queue snapshot time unavailable'
+    : 'Overview pending_approvals (legacy source; canonical queue not yet served)'
+  const approvalLabel = approvals == null ? 'Approval total unavailable' : `${approvals} pending approvals`
+  const approvalTip = `${approvalLabel} · Approvals Center · ${approvalSourceMark}${approvalGaps ? ` · ${approvalGaps}` : ''}`
   const priceStamp = pricingStampLine(overview?.pricing ?? { last_repriced: overview?.last_repriced, reprice_source: overview?.reprice_source })
   // Canonical quote-selection projection (cc-header-truth-v2 Phase 2 B). The
   // header must distinguish the selected quote provider from an eligible
@@ -642,10 +667,11 @@ export default function MetricStrip({ onDrill }: Props) {
         <span className="ms-compact__label">TODAY</span>
         <span className="ms-compact__value" style={{ ...numStyle, color: todayTile.color }}>{todayTile.value}</span>
       </button>
-      {approvals != null && approvals > 0 && (
-        <button type="button" className="ms-compact__chip" onClick={() => navigate('/')}
-          aria-label={`${approvals} pending approvals`} title={`${approvals} pending approvals — Home → Action Inbox`}
-          style={{ background: BB.amberDim, color: BB.amber, borderRadius: RADIUS.sm }}>⚑ {approvals}</button>
+      {(approvals == null || approvals > 0) && (
+        <button type="button" className="ms-compact__chip" data-testid="ms-approvals-compact" onClick={() => navigate('/approvals')}
+          data-approval-state={approvals == null ? 'unknown' : 'known'} data-source-at={approvalQueue.sourceAt ?? undefined}
+          aria-label={approvalTip} title={approvalTip}
+          style={{ background: BB.amberDim, color: BB.amber, borderRadius: RADIUS.sm }}>⚑ {approvals ?? '?'}</button>
       )}
       {healthWarn > 0 && (
         <button type="button" className="ms-compact__chip" onClick={() => navigate('/health')}
@@ -761,13 +787,15 @@ export default function MetricStrip({ onDrill }: Props) {
       >
         ⚑ ALERTS
       </div>
-      {approvals != null && approvals > 0 && (
-        <div onClick={() => navigate('/')}
-          title={`${approvals} pending approvals — Home → Action Inbox has CTAs to Risk and Trading`}
+      {(approvals == null || approvals > 0) && (
+        <button type="button" data-testid="ms-approvals-desktop" onClick={() => navigate('/approvals')}
+          data-approval-state={approvals == null ? 'unknown' : 'known'} data-source-at={approvalQueue.sourceAt ?? undefined}
+          aria-label={approvalTip} title={approvalTip}
           style={{ padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
+            flex: '0 0 auto', border: 0, fontFamily: 'inherit', lineHeight: 'inherit',
             background: BB.amberDim, color: BB.amber, marginRight: 8 }}>
-          ⚑ {approvals} APPROVALS →
-        </div>
+          ⚑ {approvals ?? '?'} APPROVALS →
+        </button>
       )}
       {healthWarn > 0 && (
         <div onClick={() => navigate('/health')}
