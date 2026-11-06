@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI coordinator snapshot timer (every minute; co-coordinators)
+# PROPOSED by the co-coordinator build 2026-11-02. NOT enabled here.
+
+[Timer]
+OnCalendar=*:0/1
+Persistent=true
+Unit=tradeai-coordinator-snapshot.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "coordinator_20261102",
+  "files": [
+    "tests/test_coordinator_20261102.py"
+  ],
+  "anchor": "CO_COORDINATORS_20261102",
+  "comment": [
+    "ANCHOR: CO_COORDINATORS_20261102 — co-coordinators by territory (plan PLAN_CO_COORDINATORS_20261102): registry,",
+    "shared notebook, ledger, inbox, two-coordinator checks, handoff, board, whoami; locked atomic writes; the",
+    "read-only view never creates the store. Hermetic."
+  ]
+}
