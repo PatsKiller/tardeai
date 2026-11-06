@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HOLDINGS_WRITER_ORDERING_20261103",
+  "files": [
+    "tests/test_holdings_writer_ordering_20261103.py"
+  ],
+  "anchor": "HOLDINGS_WRITER_ORDERING_20261103",
+  "comment": [
+    "ANCHOR: HOLDINGS_WRITER_ORDERING_20261103 — a holdings writer that changes rows reconciles every derived total it invalidates at the one gate: portfolio_totals.total_value and total_cash, each account_summaries cash figure that already carries cash, the last_writer provenance record, and the removal of a note whose claim the write has made false. Rows are never rewritten by the reconciliation."
+  ]
+}
