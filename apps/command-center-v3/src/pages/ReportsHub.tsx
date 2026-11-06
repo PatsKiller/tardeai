@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -151,14 +151,24 @@ export default function ReportsHub({ onDrill }: Props) {
       const q = new URLSearchParams(window.location.search)
       const m = (q.get('mode') || '').trim().toLowerCase()
       if (m === 'analyst' || m === 'archive' || m === 'brief' || m === 'library' || m === 'system') return m as HubMode
+      if ((q.get('report') || '').trim()) return 'archive'   // deep link from Home: ?report=ar-75&cat=weekly_reviews
       const sym = (q.get('symbol') || '').trim()
       const typ = (q.get('type') || '').trim()
       if (q.get('generate') === '1' || (sym && typ.startsWith('symbol_'))) return 'analyst'
     } catch { /* ignore */ }
     return 'library'
   })
-  const [superTab, setSuperTab] = useState('briefs')
-  const [active, setActive] = useState<string>('morning_briefs')
+  // Deep link (?report=<source>-<id>&cat=<category>): open that report in the archive reader.
+  const deepLink = useMemo(() => {
+    try {
+      const q = new URLSearchParams(window.location.search)
+      const report = (q.get('report') || '').trim(), cat = (q.get('cat') || '').trim()
+      const grp = SUPER_TABS.find(t => t.categories.includes(cat))
+      return report && grp ? { report, cat, tab: grp.key } : null
+    } catch { return null }
+  }, [])
+  const [superTab, setSuperTab] = useState(deepLink?.tab || 'briefs')
+  const [active, setActive] = useState<string>(deepLink?.cat || 'morning_briefs')
   const [qInput, setQInput] = useState('')
   const [q, setQ] = useState('')
   const [page, setPage] = useState(1)
@@ -166,7 +176,8 @@ export default function ReportsHub({ onDrill }: Props) {
   const [qv, setQv] = useState<QV>('')
   const [purge, setPurge] = useState(false)
   const [alertSettings, setAlertSettings] = useState(false)
-  const [selId, setSelId] = useState<string | null>(null)
+  const [selId, setSelId] = useState<string | null>(deepLink?.report || null)
+  const keepDeepSel = useRef(!!deepLink)
   const [briefExpanded, setBriefExpanded] = useState(false)
   const [searchInput, setSearchInput] = useState('')
   const [searchQ, setSearchQ] = useState('')
@@ -185,7 +196,7 @@ export default function ReportsHub({ onDrill }: Props) {
     if (grp && !grp.categories.includes(active)) setActive(grp.categories[0])
   }, [superTab]) // eslint-disable-line
   useEffect(() => { setPage(1) }, [active, days, q, qv])
-  useEffect(() => { setSelId(null) }, [active, days, q, page])
+  useEffect(() => { if (keepDeepSel.current) { keepDeepSel.current = false; return } setSelId(null) }, [active, days, q, page])
 
   const effDays = qv === 'today' ? 1 : days
   const summaryPath = `/api/v2/reports/portal-summary?days=${effDays || 7}`

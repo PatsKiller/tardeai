@@ -4,15 +4,15 @@
     "Files scripts/check_no_pii.py cannot read (binary content, or a compressed file it cannot decompress).",
     "A scanner that cannot read a file reports it clean unless that file is listed here, so this file is the only",
     "silence that is a verdict. Two registers, never mixed:",
-    "  files         — REVIEWED. One person states what the file is and why it carries no personal or identifying",
+    "  files         \u2014 REVIEWED. One person states what the file is and why it carries no personal or identifying",
     "                  data (reason, reviewed_by, reviewed_at, sha256). Add one only after opening the file and",
     "                  hashing the exact blob that will be committed; replace the blob and the exemption no longer",
     "                  applies until the new content is reviewed.",
-    "  grandfathered — FROZEN ENUMERATION of the 150 files already in the tree on 2026-11-05 when this gate landed.",
+    "  grandfathered \u2014 FROZEN ENUMERATION of the 150 files already in the tree on 2026-11-05 when this gate landed.",
     "                  They keep main green without claiming review. Nothing new may join: a pattern wide enough to",
     "                  admit hero.png admits the next screenshot too, which is the defect this gate exists to stop.",
     "                  Every path must exist in the gate-landing commit (--tree), the range base (--range) or HEAD",
-    "                  (--staged); a path that was not already there is refused. Removal is one-way — review a file",
+    "                  (--staged); a path that was not already there is refused. Removal is one-way \u2014 review a file",
     "                  or delete it, then remove it here; the count and digest move with it, and a path that is both",
     "                  reviewed and grandfathered fails the scan.",
     "Every record pins sha256, the digest of the blob it was registered for: a changed binary is a finding until a",
@@ -23,10 +23,6 @@
   ],
   "files": {},
   "grandfathered": {
-    "\u0004": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "b64d30657bf1ba91aec0f932910419698047c9ab6387cbbe52430dc59bcf6d86"
-    },
     "apps/command-center-v2/docs/atm_lifecycle_v1_2026_05_26/screenshots/manual_close_review_pending_clarity_v1_4.png": {
       "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
       "sha256": "a752bc8002e7bea1cfea7cac91fd764787c67cc003ed46e245c5af03446540d5"
@@ -38,74 +34,6 @@
     "apps/command-center-v2/src_bak_20260422_124231/assets/hero.png": {
       "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
       "sha256": "881ffbcaafc212e49addad08846a5b82761355fa20624253af3477ba33262c5c"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/BETA-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "821918b1f09b087384b461f9ee21b44aadc59a317803f22c2b7b5c29f4f57271"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/BETA-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "552248e8b74e13f5ada3739674531d5a7e6515e683813ca396a51be1acfec398"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/CECO-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "511c0038e67f34c3ff770b2f7e09f9b0a575e8afdff7b502b6ead9f984ca0eaf"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/CECO-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "a2ab829c3ab7eed3500dfce332a32e927a93e7f6912c2e6f6fa40fcd039fdde8"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/DXCM-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "4d5338ac3fb2f1f1b0505e5cf2bbb35b3faff6d02b05e374102dcad18ddbf6e1"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/DXCM-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "c1a6e73a58f2457bf0775e4aa4a259e002cfbb289bee5561ae7cee41896f994c"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/FATN-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "5ae944d0f089ef0e48de71939fe03fb2e365d3c52dc6bedcb43e27c458b62a2c"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/FATN-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "b6d14d52df465d98055c1c9fdb00233f1813d1effa2b7748ea64526d152ea2d4"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/MRLN-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "e9eb9c0d20b30488afd1ca08f42f39bba264a4212446157cf08f241692f96dd4"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/MRLN-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "554462f18ee50a60ef89d61987d577479f3abd4ffea8de01e2548ad69114f2ac"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/NUAI-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "5cf30e195ed6c6e9f1f87c804f3503b582e530605e0023bb15ab9853b78a013c"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/NUAI-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "9ff013a181d35e9395288b243ca9b4907d506f5bc79412cccfc33fdfec38c5a5"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/SMCI-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "f73baf3d6408ea46113c8725525876e3643f95858d0316e1c3537f07138152b6"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/SMCI-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "8a684fa047595959d08e84879fd85a4831c3dcce83ee29b1cf28d9a1d9ec1f46"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/SWBI-collapsed.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "c37e632e52ea24693c5f473731f7822c253f8efb49fc089046fbbf90f45dc397"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/SWBI-details.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "2879b1878e957c206bfc0c8e99689e7ec1b4b53cb905ac42091d0b6c19102d4d"
-    },
-    "apps/command-center-v3/e2e/screenshots/operator-cards/_watch-overview.png": {
-      "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
-      "sha256": "d33525f1488a08bbff953af6c81bd0c9bf249753fc7bdaeafb110aaeb3fe3e0c"
     },
     "docs/_evidence/autonomous_advisory_loop/cio_truth_gates/conflicted-sizing-withheld.png": {
       "reason": "grandfathered, unreviewed: present in the tree when this gate landed 2026-11-05",
@@ -624,6 +552,6 @@
       "sha256": "ec8f8c0d45fa407b0d81b12ac59e679b82adac0c332607f7ad65da00e852eef0"
     }
   },
-  "grandfathered_count": 150,
-  "grandfathered_sha256": "0afbe99e15e3f26b1b9cefe1a4958b0a97f7e716bb9123ccaf58de6dacd8b8c0"
+  "grandfathered_count": 132,
+  "grandfathered_sha256": "57e1a3babc4be1c953e782e7b97596fd72858117aece04378dd42f5dc070bffb"
 }

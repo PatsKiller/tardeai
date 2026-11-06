@@ -121,6 +121,21 @@ function HermesDrawerBody({ cmd }: { cmd: any }) {
   )
 }
 
+// Newest Weekly Review (e.g. the selloff deep dive), one tap from Home, opened in the Reports reader.
+function LatestDeepDive() {
+  const { data } = useApi<any>('/api/v2/reports/list?category=weekly_reviews&page=1&per_page=1&days=14', 300_000)
+  const it = data?.items?.[0]
+  if (!it?.id) return null
+  const to = `/reports?mode=archive&cat=weekly_reviews&report=${encodeURIComponent(`${it.source}-${it.id}`)}`
+  return (
+    <Link data-testid="home-latest-deep-dive" to={to} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 10px', padding: '10px 14px', borderRadius: RADIUS.lg, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0], textDecoration: 'none' }}>
+      <span style={{ fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: TOKENS.text[2] }}>Latest deep dive</span>
+      <span style={{ fontSize: TYPE.sm, fontWeight: 600, minWidth: 0 }}>{it.title}</span>
+      <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>Open report →</span>
+    </Link>
+  )
+}
+
 export default function HomeDoNow() {
   const now = useNow(30_000)
   const openSymbol = useOpenSymbol()
@@ -206,6 +221,7 @@ export default function HomeDoNow() {
       <MarketRiskBanner mr={mr} />
       {/* Design home/v004: at YELLOW the same slot holds the calm, collapsible summary card (no Acknowledge). */}
       <MarketRiskSummary mr={mr} />
+      <LatestDeepDive />
       {/* Slim header */}
       <header data-testid="home-header" style={{ ...card, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 24px', flexDirection: 'row' }}>
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
