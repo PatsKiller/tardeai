@@ -110,7 +110,7 @@ try {
     // FATN: already asked → the row opens the full-screen record with Back and the blocked state; no duplicate POST.
     await tap(card('FATN').getByTestId('watch-step'))
     let dialog = page.getByRole('dialog', {name: sheetName('FATN')})
-    await inView(dialog); await inView(dialog.getByRole('button', {name: '← Back'}))
+    await inView(dialog); await inView(dialog.getByTestId('detail-close'))
     const state = dialog.getByTestId('watch-review-state')
     await state.scrollIntoViewIfNeeded(); await inView(state)
     await expect(state).toContainText('Blocked: waiting for evidence'); await expect(state).toHaveAttribute('data-status', 'blocked')
@@ -125,19 +125,19 @@ try {
     await expect(dialog.getByTestId('watch-cio-message')).toContainText('Answered')
     assert.equal(traffic.asks.length, 1, 'the row asked the CIO once')
     assert.equal(traffic.posts.length, 1); assert.match(traffic.posts[0].body.note, /no CIO view/)
-    await tap(dialog.getByRole('button', {name: '← Back'})); await expect(page.getByRole('dialog')).toHaveCount(0)
+    await tap(dialog.getByTestId('detail-close')); await expect(page.getByRole('dialog')).toHaveCount(0)
 
     // QUE: never asked → one tap on the row asks and the record shows "Queued".
     await tap(card('QUE').getByTestId('watch-step'))
     dialog = page.getByRole('dialog', {name: sheetName('QUE')})
-    await inView(dialog); await inView(dialog.getByRole('button', {name: '← Back'}))
+    await inView(dialog); await inView(dialog.getByTestId('detail-close'))
     // Same as the blocked case: the message is the ASK's outcome; the queue's own state is asserted beside it.
     await expect(dialog.getByTestId('watch-cio-message')).toHaveText('Answered')
     assert.equal(traffic.asks.length, 2, 'the row asked the CIO once')
     await expect(dialog.getByTestId('watch-review-state')).toContainText('Queued for the CIO')
     assert.equal(traffic.posts.length, 2); assert.equal(traffic.posts[1].path, '/api/v3/opportunities/QUE/review-request')
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-queued-sheet-${width}.png`), animations: 'disabled'})
-    await tap(dialog.getByRole('button', {name: '← Back'})); await expect(page.getByRole('dialog')).toHaveCount(0)
+    await tap(dialog.getByTestId('detail-close')); await expect(page.getByRole('dialog')).toHaveCount(0)
     await expect(card('QUE').getByTestId('watch-row-review-state')).toContainText('Queued for the CIO')
 
     // NAVN: a Watch flag with no engine section → flags and exactly one actionable ask button in the record.
@@ -150,7 +150,7 @@ try {
     assert.equal(traffic.posts.length, 3); assert.match(traffic.posts[2].body.note, /Trade AI deterministic fail/)
     await noHorizontal()
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-flag-sheet-${width}.png`), animations: 'disabled'})
-    await tap(dialog.getByRole('button', {name: '← Back'}))
+    await tap(dialog.getByTestId('detail-close'))
     assert.deepEqual({external: traffic.external, unexpected: traffic.unexpected, mutations: traffic.mutations, errors: traffic.errors},
       {external: [], unexpected: [], mutations: [], errors: []})
     cases.push({surface, width, height, no_false_conflict: true, row_ask_actionable: true, full_screen_sheet_back: true,

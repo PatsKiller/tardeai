@@ -175,7 +175,7 @@ print(json.dumps(canonical_rows([row],resolver=lambda *a,**kw:truth,projection={
         const sheet = page.getByRole('dialog', { name: 'ZZQA · watch record' })
         const box = await sheet.boundingBox()
         expect(box && box.y <= 1 && box.height >= 900).toBe(true)
-        const back = sheet.getByRole('button', { name: '← Back', exact: true })
+        const back = sheet.getByTestId('detail-close')
         const target = await back.boundingBox()
         expect(target && target.width >= 44 && target.height >= 44).toBe(true)
         await back.tap()

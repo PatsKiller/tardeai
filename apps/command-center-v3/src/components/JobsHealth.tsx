@@ -6,6 +6,7 @@ import AnthropicCreditPanel from './AnthropicCreditPanel'
 import ConflictSheet, { useConflictSheet, type ConflictSection } from './conflicts/ConflictSheet'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import CountTile from './CountTile'
+import DetailHeader from './DetailHeader'
 import { jobsCount, jobsMissed, jobsNotMeasured, type JobsSummary } from '../lib/measuredCount'
 
 export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
@@ -88,7 +89,7 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       {conflictUnavailable && <p role="status" data-testid="jobs-conflict-unavailable" style={{ margin: 0, color: TOKENS.warning }}>{conflictUnavailable}</p>}
       {dataErrors?.section?.stale && <p role="status" style={{ margin: 0, color: TOKENS.warning }}>The data error comparison is out of date. The last supplied section remains visible.</p>}
       {dataErrors?.section && <ConflictLine section={dataErrors.section} onOpen={conflict.open} />}
-      {conflict.key && !dataErrors?.section && <button type="button" onClick={conflict.close} style={{ minHeight: 44 }}>Back to jobs</button>}
+      {conflict.key && !dataErrors?.section && <DetailHeader variant="drawer" titleAs="span" title="Job data error is no longer in this observation" onClose={conflict.close} />}
     </section>
     {enabled && conflict.key && dataErrors?.section && <ConflictSheet title="Job data error" section={dataErrors.section} mobile={conflict.mobile} onBack={conflict.close} />}
     <div role="group" aria-label="Filter jobs" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -115,8 +116,8 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       {!!data.coverage_gaps.length && <span>{data.coverage_gaps.length} evidence gaps</span>}
     </div>}
     {selectedId && <div role="dialog" aria-modal="true" aria-labelledby="job-evidence-title" data-testid="job-evidence-sheet" style={{ position: 'fixed', inset: 0, zIndex: 1500, background: TOKENS.bg[0], color: TOKENS.text[0], display: 'flex', flexDirection: 'column', padding: 16, boxSizing: 'border-box', overflowY: 'auto' }}>
-      <button type="button" onClick={() => select(null)} style={{ minHeight: 44, alignSelf: 'flex-start', padding: '8px 16px', background: TOKENS.bg[1], color: TOKENS.info, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm }}>← Back</button>
-      <h2 id="job-evidence-title" ref={detailTitle} tabIndex={-1} style={{ fontSize: TYPE.lg }}>{selected?.job || 'Job evidence'}</h2>
+      {/* One back control (nav/v001 §5): the shared header replaces the top "← Back" and the bottom "Back to jobs". */}
+      <DetailHeader back="Jobs" title={selected?.job || 'Job evidence'} titleId="job-evidence-title" titleRef={detailTitle} onClose={() => select(null)} style={{ margin: '-16px -16px 12px' }} />
       {selected ? <div style={{ display: 'grid', gap: 14, maxWidth: 720 }}>
         <strong style={{ color: toneVars(tone(selected.result)).color }}>{resultLabel[selected.result]}</strong>
         <p style={{ overflowWrap: 'anywhere' }}>{selected.cause}</p>
@@ -128,7 +129,6 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
         </dl>
         <p style={{ color: TOKENS.text[2] }}>A successful execution requires a matching completion receipt and exit code. Output correctness and alert delivery are separate evidence.</p>
       </div> : <p role="status">{detail.error ? 'Job evidence could not be read.' : detail.loading ? 'Loading job evidence…' : 'This job is not in the current observation.'}</p>}
-      <button type="button" onClick={() => select(null)} style={{ marginTop: 'auto', minHeight: 44, width: '100%', padding: 12, borderRadius: RADIUS.md, border: `1px solid ${TOKENS.info}`, background: TOKENS.bg[2], color: TOKENS.info }}>Back to jobs</button>
     </div>}
   </section>
 }

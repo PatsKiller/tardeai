@@ -70,15 +70,15 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await expect(page.getByRole('button', { name: 'History', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await page.reload()
     await expect(page.getByRole('heading', { name: 'History evidence' })).toBeVisible()
-    if (width <= 820) await activate(page.getByRole('button', { name: 'Open navigation', exact: true }))
+    // Menu redesign nav/v001: phone = bottom tab bar (5 sections), desktop = rail with the active section expanded;
+    // every restored desk is still on the menu (Strategy in this section's strip, the rest one tap away in its section),
+    // and the eleven "back" badges are gone.
     const rail = page.getByRole('navigation', { name: 'Sections' })
-    const restored = ['Re-Entry', 'Defense', 'Rotation', 'Strategy', 'Advisory Desk', 'Intelligence', 'Research lineage', 'Hermes', 'Rec Intelligence', 'Reports', 'Agents']
-    for (const name of restored) await expect(rail.getByRole('link', { name, exact: true })).toHaveCount(1)
-    await expect(rail.getByText('back', { exact: true })).toHaveCount(11)
-    if (width <= 820) { const link = rail.getByRole('link', { name: 'Reports', exact: true }); const box = await inViewport(link); expect(box.height).toBeGreaterThanOrEqual(44) }
+    for (const name of ['Home', 'Portfolio', 'Trade', 'Intel', 'Ops']) await expect(rail.getByRole('link', { name, exact: true })).toHaveCount(1)
+    if (width <= 820) { const tab = rail.getByRole('link', { name: 'Trade', exact: true }); const box = await inViewport(tab); expect(box.height).toBeGreaterThanOrEqual(44) }
+    await expect(page.getByRole('navigation', { name: 'Trade pages' }).getByRole('link', { name: 'Strategy', exact: true })).toHaveAttribute('aria-current', 'page')
+    await expect(rail.getByText('back', { exact: true })).toHaveCount(0)
     await page.screenshot({ path: shot('rail'), fullPage: true })
-    // The phone sheet has its own ✕ and the bar toggle also reads "Close navigation" while open; tap the sheet's.
-    if (width <= 820) await activate(rail.getByRole('button', { name: 'Close navigation', exact: true }))
     const primary = page.getByRole('link', { name: 'Review the cash-alternatives gap', exact: true })
     const primaryBox = await inViewport(primary); expect(primaryBox.height).toBeGreaterThanOrEqual(44)
     await activate(primary)
@@ -92,9 +92,6 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
     await expect(page).toHaveURL(/tab=history&account=fixture#review$/)
     await page.goto('http://desk-frame-fixture.test/strategy?tab=History&account=fixture#review')
     await expect(page).toHaveURL(/tab=history&account=fixture#review$/)
-    await page.clock.setFixedTime(new Date('2026-11-08T00:00:00Z'))
-    await page.reload()
-    await expect(rail.getByText('back', { exact: true })).toHaveCount(0)
     apiFails = true
     await page.reload()
     await expect(clocks.getByRole('note').filter({ hasText: 'Writer clocks unavailable' })).toBeVisible()

@@ -8,7 +8,6 @@
  *  4. Server exchanges code → seeds token; status refreshes
  */
 import { useCallback, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { RADIUS } from '../lib/designTokens'
 
@@ -207,7 +206,6 @@ export default function SchwabReauthHub() {
             Manual OAuth renewal · no browser auto-login · codes expire ~5 minutes after login
           </div>
         </div>
-        <Link to="/system" style={{ fontSize: 11, color: 'var(--text2)' }}>← System</Link>
       </div>
 
       <div style={{

@@ -91,7 +91,7 @@ for (const width of [1440, 412, 390]) for (const state of ['canonical', 'null-he
         const box = await sheet.boundingBox()
         expect(box?.x).toBe(0); expect(box?.y).toBe(0); expect(box?.width).toBe(width); expect(box?.height).toBe(height)
       }
-      const back = sheet.getByRole('button', {name: '← Back', exact: true})
+      const back = sheet.getByTestId('detail-close')
       expect((await back.boundingBox())?.height).toBeGreaterThanOrEqual(44)
       if (process.env.W4_SCREENSHOT_DIR) await page.screenshot({path: path.join(process.env.W4_SCREENSHOT_DIR, `impl-16-dataerror-detail-${state}-${width}.png`), fullPage: true})
       if (state === 'multi') {
@@ -165,7 +165,7 @@ for (const width of [1440, 412, 390]) {
     await page.goBack()
     await expect(sheet).toHaveCount(0)
     if (width < 820) await line.tap(); else await line.click()
-    const back = sheet.getByRole('button', {name: '← Back', exact: true})
+    const back = sheet.getByTestId('detail-close')
     expect((await back.boundingBox())?.height).toBeGreaterThanOrEqual(44)
     if (width < 820) await back.tap(); else await back.click()
     await expect(sheet).toHaveCount(0)

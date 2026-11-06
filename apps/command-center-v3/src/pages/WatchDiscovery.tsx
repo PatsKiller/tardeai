@@ -5,7 +5,6 @@
 import type { DrillContext } from '../components/DetailDrawer'
 import ScreenerFindsHub from './ScreenerFindsHub'
 import { BB, TYPE, hubTitle, hubSubtitle } from '../lib/watchTokens'
-import { Link } from 'react-router-dom'
 import { useTerminalUi } from '../lib/terminalUi'
 
 interface Props { onDrill?: (ctx: DrillContext) => void }
@@ -15,7 +14,6 @@ export default function WatchDiscovery({ onDrill }: Props) {
   return (
     <div data-watch-discovery>
       <div style={{ marginBottom: 12 }}>
-        <Link to="/watch" style={{ fontSize: TYPE.xs, color: BB.text3, textDecoration: 'none' }}>← Watch Intelligence</Link>
         <div style={hubTitle()}>Watch Discovery & Administration</div>
         <div style={hubSubtitle(terminalUi)}>
           Directives, screener universe, ToS import, and batch tools — not the five-second decision surface.

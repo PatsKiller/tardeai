@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import DeskPage, { DeskGap } from './DeskPage'
+import DetailHeader from './DetailHeader'
 import { GOVERNANCE, askAboutRule, governanceRequest, governanceRequestId, useGovernance, type ApprovalItem, type Change, type Decision } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
 
@@ -137,8 +138,9 @@ export default function AmendmentReader({ id }: { id: string }) {
     parts.push(<pre key={`text-${cursor}`}>{doc.text.slice(cursor)}</pre>)
     return <>{parts}{doc.changes.some(c => c.before) && <><h2>Removed wording</h2>{doc.changes.filter(c => c.before).map(block)}</>}</>
   }
-  return <div className="approvals"><Link className="primary" to="/approvals">← Back to approvals</Link>
-    <h1 ref={title} tabIndex={-1} style={{ margin: '16px 0', fontSize: 22 }}>{item?.title ?? 'Read & decide'}</h1>
+  return <div className="approvals">
+    {/* Shared header (nav/v001 §5): "‹ Approvals" · title · ✕ replaces the page's own "← Back to approvals". */}
+    <DetailHeader back="Approvals" backTo="/approvals" title={item?.title ?? 'Read & decide'} titleAs="h1" titleRef={title} style={{ marginBottom: 16 }} />
     {governed && <section className="panel stack" role="note" data-testid="governed-decision" style={{ marginBottom: 16 }}>
       <p>{item?.kind === 'DESIGN'
         ? 'Designs are approved on their work-pipeline card with your passkey and typed words. That is the only approval the design registry reads; nothing on this page records it.'

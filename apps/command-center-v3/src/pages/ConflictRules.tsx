@@ -3,6 +3,7 @@ import {createPortal} from 'react-dom'
 import {Link} from 'react-router-dom'
 import DeskPage, {DeskGap} from '../components/DeskPage'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
+import DetailHeader from '../components/DetailHeader'
 import {useApi} from '../hooks/useApi'
 import {conflictSource, conflictTime, conflictValue} from '../lib/watchConflictPresentation'
 import {
@@ -16,14 +17,14 @@ import '../styles/conflictRules.css'
 const RULEBOOK = '/api/v3/conflicts/rulebook'
 const PROPOSALS = '/api/v3/conflicts/proposals'
 
-/** Full-screen on a phone (≤ 820 px), side panel on desktop; ← Back always closes. */
+/** Full-screen on a phone (≤ 820 px) with the shared "‹ Conflicts" header; side panel on desktop with ✕ only (nav/v001 §5). */
 function DetailSheet({title, mobile, onBack, children}: {title: string; mobile: boolean; onBack: () => void; children: ReactNode}) {
   const panel = useRef<HTMLElement>(null)
   useEffect(() => { if (!mobile) panel.current?.querySelector<HTMLElement>('[data-detail-focus]')?.focus() }, [mobile, title])
   if (mobile) return <MobileDetailSheet title={title} onBack={onBack}><div className="conflict-rules">{children}</div></MobileDetailSheet>
   return createPortal(<aside ref={panel} role="dialog" aria-modal="false" aria-label={title} className="conflict-rules conflict-rules-panel"
     onKeyDown={event => { if (event.key === 'Escape') onBack() }}>
-    <button type="button" className="cr-back" onClick={onBack}>← Back</button>
+    <DetailHeader variant="drawer" title={title} onClose={onBack} style={{margin: '-16px -16px 12px'}} />
     {children}
   </aside>, document.body)
 }

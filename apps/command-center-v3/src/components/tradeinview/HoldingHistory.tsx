@@ -7,6 +7,7 @@ import { TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
 import { HISTORY_SORTS, accountCountText, dateText, decodeHistory, finite, gapText, heldText, historyUrl, missingReason, money, namedGaps, numberText, percent, provenanceText, reasonText, segmentGeometry, sortFrom, tripCountText,
   type Gap, type HistoryDetail, type HistorySymbol, type HistoryTrip, type HoldingHistoryPayload } from '../../lib/holdingHistoryModel'
 import './HoldingHistory.css'
+import DetailHeader from '../DetailHeader'
 
 type Props = { onReplay: (tradeId: string) => void }
 const historyStyle = { '--hh-bg': TOKENS.bg[1], '--hh-inset': TOKENS.bg[0], '--hh-border': TOKENS.border, '--hh-muted': TOKENS.text[2], '--hh-text': TOKENS.text[0], '--hh-info': TOKENS.info, '--hh-focus': TOKENS.focusRing,
@@ -39,7 +40,7 @@ function MobileDetail({ symbol, onBack, children }: { symbol: string; onBack: ()
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
     }}>
-    <header className="hh-sheet-header"><button ref={back} type="button" onClick={onBack} data-testid="history-back">← Back to names</button><h2 id="hh-mobile-title">{symbol} history</h2></header>
+    <DetailHeader back="Names" title={`${symbol} history`} titleId="hh-mobile-title" onClose={onBack} backRef={back} backTestId="history-back" />
     <div className="hh-sheet-body">{children}</div>
   </div>, document.body)
 }

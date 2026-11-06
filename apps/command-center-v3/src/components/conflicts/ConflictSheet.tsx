@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { MobileDetailSheet, useMobilePageDetail } from '../MobileDetailSheet'
+import DetailHeader from '../DetailHeader'
 import { RADIUS, TOKENS, TYPE } from '../../lib/designTokens'
 import { accountName } from '../../lib/accountLabels'
 import { conflictRule, conflictSource, conflictTime, conflictValue, reviewPresentation } from '../../lib/watchConflictPresentation'
@@ -123,7 +124,8 @@ export default function ConflictSheet({title, section, mobile, onBack, children}
   return createPortal(<aside ref={panel} role="dialog" aria-modal="false" aria-label={title} style={{position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 1100,
     width: 'min(560px, 45vw)', boxSizing: 'border-box', overflowY: 'auto', padding: 16, minWidth: 0,
     borderLeft: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0]}}>
-    <button type="button" onClick={back} style={{minHeight: 44, minWidth: 80, marginBottom: 12, color: TOKENS.text[0], background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, cursor: 'pointer'}}>← Back</button>
+    {/* Desktop drawer beside the list: ✕ only (nav/v001 §5); the phone sheet gets "‹ {list}" · title · ✕. */}
+    <DetailHeader variant="drawer" title={title} onClose={back} style={{margin: '-16px -16px 12px'}} />
     {body}
   </aside>, document.body)
 }

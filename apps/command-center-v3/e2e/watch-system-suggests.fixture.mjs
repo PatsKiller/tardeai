@@ -119,7 +119,7 @@ try {
     await expect(record).not.toContainText('CIO record needed')
     assert.equal(traffic.posts.length, 1, 'One tap queues once; progress never posts')
     await page.screenshot({path: path.join(output, `suggests-answered-${width}.png`), animations: 'disabled'})
-    await tap(record.getByRole('button', {name: width < 821 ? '← Back' : 'Back to list', exact: true}))
+    await tap(record.getByTestId('detail-close'))
     await tap(page.locator('[data-symbol="ZZBB"]').getByTestId('watch-step'))
     const refused = width < 821 ? page.getByRole('dialog', {name: 'ZZBB · suggestion record'}) : page.getByRole('complementary', {name: 'Record'})
     await expect(refused.getByTestId('watch-cio-message')).toContainText('PROCESS_CAP')

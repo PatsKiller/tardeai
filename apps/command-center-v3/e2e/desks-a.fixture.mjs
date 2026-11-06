@@ -77,7 +77,7 @@ try {
       assert(await sheet.evaluate(el => el.contains(document.activeElement)), 'Focus must move into detail')
       return sheet
     }
-    const back = async sheet => { await tap(sheet.getByRole('button', { name: '← Back' })); await expect(page.getByRole('dialog')).toHaveCount(0) }
+    const back = async sheet => { await tap(sheet.getByTestId('detail-close')); await expect(page.getByRole('dialog')).toHaveCount(0) }
 
     // Board 1 · Re-Entry
     await page.goto(`${ORIGIN}/v3/portfolio/re-entry`)

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import DetailHeader from './DetailHeader'
 import './MobileDetailSheet.css'
 
 /** Page-owned phone detail, with a URL entry so browser Back restores the list. */
@@ -31,7 +32,9 @@ export function useMobilePageDetail(queryKey = 'detail') {
   return {mobile, id: params.get(queryKey), open, close}
 }
 
-export function MobileDetailSheet({title, onBack, children}: {title: string; onBack: () => void; children: ReactNode}) {
+/** Full-screen phone detail. The header is the shared DetailHeader: "‹ {list}" · title · ✕ (nav/v001 §5).
+ *  `backLabel` names the list it returns to; it defaults to the current menu page. */
+export function MobileDetailSheet({title, onBack, backLabel, children}: {title: string; onBack: () => void; backLabel?: string; children: ReactNode}) {
   const sheet = useRef<HTMLElement>(null)
   useEffect(() => {
     const previousFocus = document.activeElement
@@ -56,7 +59,7 @@ export function MobileDetailSheet({title, onBack, children}: {title: string; onB
         if (!event.shiftKey && document.activeElement === last) {event.preventDefault(); first?.focus()}
       }
     }}>
-    <header className="mobile-detail-header"><button type="button" onClick={onBack}>← Back</button><span>{title}</span></header>
+    <DetailHeader title={title} titleAs="span" back={backLabel} onClose={onBack} />
     <div className="mobile-detail-body">{children}</div>
   </section>, document.body)
 }

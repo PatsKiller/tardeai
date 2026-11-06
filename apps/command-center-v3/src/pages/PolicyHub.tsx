@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import DeskPage, { DeskGap } from '../components/DeskPage'
 import { GOVERNANCE, askAboutRule, governanceRequest, useGovernance, type Policy } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
+import DetailHeader from '../components/DetailHeader'
 import { AuditLastLine, RuleMarkdown, type RulebookPolicy, type RulebookRule } from '../components/PolicyRuleParts'
 
 type Sheet =
@@ -240,8 +241,8 @@ export default function PolicyHub() {
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
         if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }}>
-      <button type="button" onClick={closeSheet}>← Back to Rulebook</button>
-      <h2 style={{ margin: 0 }}>{sheetLabel}</h2>
+      {/* Shared header (nav/v001 §5): "‹ Rulebook" · title · ✕ on a phone; ✕ only beside the list on desktop. */}
+      <DetailHeader back="Rulebook" title={sheetLabel} variant={phone ? 'sheet' : 'drawer'} onClose={closeSheet} style={phone ? { margin: '-16px -16px 0' } : undefined} />
       {sheet.kind === 'change' && <><p className="muted">{sheet.rule.section}</p><RuleMarkdown text={sheet.rule.text} /></>}
       {sheet.kind === 'ask' && <p className="muted">Section: {sheet.section}. The CIO answers with Opus; this is not Agree / Disagree on every rule.</p>}
       {sheet.kind === 'add' && <label>New section title

@@ -17,6 +17,7 @@ import { armedBySymbol, unwrapAny, type ListRow } from '../lib/watchListsModel'
 import { Detail, Row, conflictSection } from './WatchProspects'
 import { useCioReview, currentReviewState } from '../components/watch/CioReview'
 import { MobileDetailSheet, useMobilePageDetail } from '../components/MobileDetailSheet'
+import DetailHeader from '../components/DetailHeader'
 import WatchReloadNotice from '../components/watch/WatchReloadNotice'
 import { laneWord } from './WatchMyList'
 import { MINE_TIPS, mineAction } from '../components/watch/MineControls'
@@ -182,7 +183,7 @@ export default function WatchSuggests() {
           </div>
         </section>
         {!detail.mobile && <aside className="watch-card-detail" data-open={!!selected} aria-label="Record" style={{ ...panel, position: 'static', width: 'auto', flex: '1 1 300px', maxWidth: 440, padding: 12 }}>
-          {selected && <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...btn('info'), minHeight: 44 }}>Back to list</button>}
+          {selected && <DetailHeader variant="drawer" title={`${selected.symbol} · suggestion record`} onClose={() => setSel(null)} autoFocus />}
           <Detail r={selected} cio={cio} />
         </aside>}
         {detail.mobile && selected && <MobileDetailSheet title={`${selected.symbol} · suggestion record`} onBack={detail.close}>

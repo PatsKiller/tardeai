@@ -72,7 +72,7 @@ for (const { width, height } of [{ width: 412, height: 915 }, { width: 390, heig
       await expect(sheet).toBeVisible()
       await expect(sheet).toContainText('Never fixture-delete. Archive the fixture instead.')
       await expect(sheet).not.toContainText('**')
-      await sheet.getByRole('button', { name: '← Back to Rulebook' }).tap()
+      await sheet.getByTestId('detail-close').tap()
       await expect(sheet).toHaveCount(0)
     }
     expect(writes).toEqual([])

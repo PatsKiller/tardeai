@@ -18,6 +18,7 @@ import { useCioReview } from '../components/watch/CioReview'
 import { asksCio } from '../lib/watchProspectsModel'
 import {useConflictSheet} from '../components/conflicts/ConflictSheet'
 import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
+import DetailHeader from '../components/DetailHeader'
 import './W9Mobile.css'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { AddSymbolBox, MINE_TIPS, RemoveButton } from '../components/watch/MineControls'
@@ -126,7 +127,8 @@ export default function WatchMyList() {
           </div>
         </section>
         {selected && !sheet.key && !detail.mobile && <aside className="watch-card-detail" aria-label="Record" style={panel}>
-          <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
+          {/* nav/v001 §5: the list stays visible beside this record, so ✕ only (no "Back to list"). */}
+          <DetailHeader variant="drawer" title={`${selected.symbol} · watch record`} onClose={() => setSel(null)} autoFocus />
           <Detail r={selected} cio={cio} onOpenConflict={key => openConflict(selected, key)} />
         </aside>}
         {selected && !sheet.key && detail.mobile && <MobileDetailSheet title={`${selected.symbol} · watch record`} onBack={detail.close}>

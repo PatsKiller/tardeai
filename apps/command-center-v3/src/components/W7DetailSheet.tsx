@@ -1,7 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
-import { TOKENS, RADIUS } from '../lib/designTokens'
+import DetailHeader from './DetailHeader'
 
 export function useW7Detail() {
   const [params, setParams] = useSearchParams()
@@ -32,8 +32,8 @@ export default function W7DetailSheet({ title, children, onClose }: { title: str
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
     }
   }}>
-    <style>{`.w7-detail-sheet{position:fixed;inset:24px;max-width:760px;margin:auto;z-index:1000;overflow:auto;overflow-wrap:anywhere;background:var(--bg-1);border:1px solid var(--border-color);border-radius:var(--radius-lg);padding:20px;color:var(--text-0);box-shadow:0 0 0 100vmax var(--bg-0)}.w7-detail-sheet button,.w7-detail-sheet input,.w7-detail-sheet select{min-height:44px}.w7-detail-sheet input,.w7-detail-sheet textarea,.w7-detail-sheet select{min-width:0;max-width:100%;box-sizing:border-box}@media(max-width:820px){.w7-detail-sheet{inset:0;border-radius:var(--radius-sm);max-width:none;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom))}.cio-mandate-actions{flex-direction:column}.cio-mandate-actions button{width:100%}}`}</style>
-    <button onClick={onClose} style={{ minHeight: 44, minWidth: 80, padding: '10px 16px', background: TOKENS.bg[2], color: TOKENS.text[0], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md }}>← Back</button>
-    <h2 style={{ fontSize: 18 }}>{title}</h2>{children}
+    <style>{`.w7-detail-sheet{position:fixed;inset:24px;max-width:760px;margin:auto;z-index:1000;overflow:auto;overflow-wrap:anywhere;background:var(--bg-1);border:1px solid var(--border-color);border-radius:var(--radius-lg);padding:20px;color:var(--text-0);box-shadow:0 0 0 100vmax var(--bg-0)}.w7-detail-sheet button,.w7-detail-sheet input,.w7-detail-sheet select{min-height:44px}.w7-detail-sheet input,.w7-detail-sheet textarea,.w7-detail-sheet select{min-width:0;max-width:100%;box-sizing:border-box}/* nav/v001 §5: the shared header spans the sheet edge to edge */.w7-detail-sheet>.detail-header{margin:-20px -20px 12px}@media(max-width:820px){.w7-detail-sheet>.detail-header{margin:-16px -16px 12px}.w7-detail-sheet{inset:0;border-radius:var(--radius-sm);max-width:none;padding:16px;padding-bottom:max(16px,env(safe-area-inset-bottom))}.cio-mandate-actions{flex-direction:column}.cio-mandate-actions button{width:100%}}`}</style>
+    {/* One shared header (nav/v001 §5): "‹ {list}" · title · ✕, replacing the sheet's own "← Back". */}
+    <DetailHeader title={title} onClose={onClose} />{children}
   </div>, document.body)
 }
