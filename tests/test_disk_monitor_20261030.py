@@ -473,9 +473,39 @@ def test_dry_run_reports_the_transition_it_would_send(mon, capsys):
 
 
 def test_monitor_imports_no_sender_or_broker():
-    src = (ROOT / "scripts" / "disk_monitor.py").read_text()
-    for bad in ("requests", "urllib", "psycopg", "place_order", "alpaca", "schwab"):
-        assert bad not in src, bad
+    """The monitor is read-only: it must not import a network client, a broker or an order path.
+
+    Cloud ticket at 8aaa00c45 asked for this to inspect IMPORTS rather than scan the source text, and it is right for
+    two concrete reasons. A text scan fails a clean module that merely mentions one of these words — a comment, a log
+    line, the word "schwab" in a docstring — so it punishes documentation. And it misses the shapes that actually
+    import something: `import requests as r` still contains the word, but `from urllib.parse import urlparse` is only
+    caught if you happen to ban the right substring, while a package reached through a helper or an alias is not
+    caught at all.
+
+    Parsing asks the only question that matters: what does this module bring into scope? A dynamic import is refused
+    outright (`__import__`, `importlib.import_module`), because it would make the answer unknowable from the file —
+    and this is the same lesson as AGENTS.md:484's "inspect the thing, not its spelling".
+    """
+    import ast
+
+    tree = ast.parse((ROOT / "scripts" / "disk_monitor.py").read_text(encoding="utf-8"))
+    banned = {"requests", "urllib", "urllib2", "urllib3", "http", "httpx", "aiohttp", "socket",
+              "psycopg", "psycopg2", "psycopg3", "sqlalchemy"}
+    imported: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            imported.append(node.module or "")
+        elif isinstance(node, ast.Call):
+            called = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+            assert called not in ("__import__", "import_module"), (
+                f"dynamic import at line {node.lineno} — this check can no longer prove what the module imports")
+    tops = {name.split(".")[0] for name in imported if name}
+    assert not (tops & banned), f"the monitor imports a sender/network package: {sorted(tops & banned)}"
+    broker = [name for name in imported if any(w in name.lower() for w in ("alpaca", "schwab", "moomoo", "broker"))]
+    assert not broker, f"the monitor imports a broker package: {broker}"
+    assert not any(name == "place_order" for name in imported), "the monitor imports an order path"
 
 
 def test_a_four_hour_old_sample_is_not_reported_as_a_24_hour_rate():
