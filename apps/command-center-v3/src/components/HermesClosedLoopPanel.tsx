@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from './DetailDrawer'
 import ThresholdProposalModal from './ThresholdProposalModal'
+import { closedLoopEvidenceText } from '../lib/closedLoopEvidence'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -180,6 +181,13 @@ function HoldoutBadge({ holdout }: { holdout?: { passed?: boolean; skipped?: boo
   )
 }
 
+// FQ-026 (cc-deepseek-6 at c9638963): the sentence used to assert "score unchanged" whenever `score_delta` was absent
+// (null, undefined or '') — an absent measurement rendered as a confident one, the same class as a failed refresh shown
+// as a fresh number. Exported so the rendered test asserts the sentence the operator reads, not a source grepx.
+export function EvidenceSentence({ evidence, metrics }: { evidence: any; metrics: any }) {
+  return <div style={{ marginTop: 4 }}>{closedLoopEvidenceText(evidence, metrics)}</div>
+}
+
 // Exported for the rendered legibility test (FQ-025): the pre-change table used a fixed 0.7fr grid at fontSize 8/10,
 // which is what the operator reported as unreadable on a phone. A source-grep test cannot see that; rendering can.
 //
@@ -243,7 +251,7 @@ function CliCommandButton({ label, command }: { label: string; command: string }
   )
 }
 
-function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction }: {
+export function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction }: {
   proposals: any[]
   thresholds: any[]
   onClose: () => void
@@ -317,21 +325,27 @@ function ThresholdReviewModal({ proposals, thresholds, onClose, onRequestAction 
                     {String(evidence.confidence).toUpperCase()}
                   </span>
                 )}
-                <div style={{ marginTop: 4 }}>
-                  sample {evidence.sample_days ?? '—'} days
-                  {' · '}Δ score {evidence.score_delta ?? '—'}
-                  {evidence.runner_up && ` · runner-up ${evidence.runner_up.value} (${Number(evidence.runner_up.score).toFixed(4)})`}
-                  {metrics.trigger_rate != null && ` · trigger ${(Number(metrics.trigger_rate) * 100).toFixed(0)}%`}
-                  {band && ` · band ${band.min}–${band.max}`}
-                </div>
-                {evidence.metric_contributions && (
-                  <div style={{ marginTop: 4, fontSize: 11 }}>
-                    Contributions: {Object.entries(evidence.metric_contributions).map(([k, v]) => `${k}=${Number(v).toFixed(4)}`).join(' · ')}
+                {/* FQ-026: the engine's internals read as a raw ledger ("sample 30 days · Δ score 0.0312 ·
+                    Contributions: rsi=0.42 · …"). The operator gets the sentence; every value stays, one
+                    click away, in the detail block. Nothing is removed or rounded away. */}
+                <EvidenceSentence evidence={evidence} metrics={metrics} />
+                <details style={{ marginTop: 6 }}>
+                  <summary style={{ fontSize: 11, color: 'var(--text3)', cursor: 'pointer' }}>How this was scored</summary>
+                  <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text3)' }}>
+                    {evidence.runner_up && (
+                      <div>The next best candidate was {evidence.runner_up.value} at {Number(evidence.runner_up.score).toFixed(4)}.</div>
+                    )}
+                    {band && <div>Allowed threshold range: {band.min}–{band.max}.</div>}
+                    {evidence.metric_contributions && (
+                      <div>
+                        Contributions: {Object.entries(evidence.metric_contributions).map(([k, v]) => `${k}=${Number(v).toFixed(4)}`).join(' · ')}
+                      </div>
+                    )}
+                    {Array.isArray(evidence.confidence_factors) && evidence.confidence_factors.length > 0 && (
+                      <div>Factors: {evidence.confidence_factors.join(', ')}</div>
+                    )}
                   </div>
-                )}
-                {Array.isArray(evidence.confidence_factors) && evidence.confidence_factors.length > 0 && (
-                  <div style={{ marginTop: 4, fontSize: 11 }}>Factors: {evidence.confidence_factors.join(', ')}</div>
-                )}
+                </details>
               </div>
 
               {modifyId === p.id ? (
