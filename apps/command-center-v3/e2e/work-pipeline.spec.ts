@@ -146,6 +146,21 @@ test('copy command writes the exact command client-side, no server write', async
   expect(posts).toEqual([])
 })
 
+test('desktop 1440: the phone-only current-stage line is not rendered', async ({ page }) => {
+  // FQ-032 (cc-deepseek-3 R1 at e983b7d7): the line carried no base display rule, so outside the phone media query it
+  // fell back to block and every desktop card stated the stage twice. The phone assertions cannot see that; the
+  // desktop page is where the operator reads the pipeline outside the audit's phone captures.
+  const posts: Post[] = []; const seen: string[] = []
+  await mockApi(page, posts, seen)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/v3/coordination')
+  await expect(page.getByTestId('work-pipeline')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('wp-current-stage').first()).toBeHidden()
+  const visible = await page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="wp-current-stage"]'))
+    .filter(el => getComputedStyle(el as HTMLElement).display !== 'none').length)
+  expect(visible).toBe(0)
+})
+
 test('phone width 412: no horizontal scroll, cards stack', async ({ page }) => {
   const posts: Post[] = []; const seen: string[] = []
   await mockApi(page, posts, seen)
@@ -160,4 +175,29 @@ test('phone width 412: no horizontal scroll, cards stack', async ({ page }) => {
   await page.screenshot({ path: `${SHOTS}/work-pipeline-412-full.png` })
   await page.getByTestId('preset-needs-me').click()
   await page.screenshot({ path: `${SHOTS}/work-pipeline-412-needs-me.png` })
+})
+
+test('phone: the current stage reads in words at 390 and 412, and no visible cell label is clipped', async ({ page }) => {
+  const posts: Post[] = []; const seen: string[] = []
+  await mockApi(page, posts, seen)
+  for (const width of [390, 412]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/v3/coordination')
+    await expect(page.getByTestId('work-pipeline')).toBeVisible({ timeout: 60_000 })
+    // FQ-032 review at 64b3abc24: an 11-column strip gives each cell 26-28 px and the labels need 39-54 px, so the
+    // words lead on their own full-width line instead of being squeezed into a cell.
+    const line = page.getByTestId('wp-current-stage').first()
+    await expect(line).toBeVisible()
+    const box = await line.boundingBox()
+    expect(box!.width).toBeGreaterThan(120)
+    await expect(line).toContainText(/Now at:/)
+    // BLOCK F2: red is used for a stale claim too, so no failure verdict may be inferred from colour
+    await expect(line).not.toContainText(/Fail/)
+    // whatever label IS shown must fit: a visible label wider than its cell is the defect this replaces
+    const clipped = await page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="stage-cells"] .wp-cell-text'))
+      .filter(el => getComputedStyle(el).display !== 'none')
+      .filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && el.scrollWidth > r.width + 1 })
+      .map(el => el.textContent))
+    expect(clipped).toEqual([])
+  }
 })

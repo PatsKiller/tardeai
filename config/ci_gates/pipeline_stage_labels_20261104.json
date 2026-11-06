@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pipeline_stage_labels_20261104",
+  "files": [
+    "tests/test_pipeline_stage_labels_20261104.py"
+  ],
+  "anchor": "PIPELINE_STAGE_LABELS_20261104",
+  "comment": [
+    "ANCHOR: PIPELINE_STAGE_LABELS_20261104 — FQ-032: on a phone the work-pipeline stage strip NAMES the current stage in words (data-current cell keeps its label, bars are tall enough to carry it) instead of showing a stack of unlabeled coloured bars; the other cells stay compact and every cell keeps its accessible label. Pytest-collectable so the CI shard runner executes it (a .mjs file cannot be collected); apps/command-center-v3/src/lib/pipelineStageLabels.view.test.mjs mirrors it for a node run."
+  ]
+}
