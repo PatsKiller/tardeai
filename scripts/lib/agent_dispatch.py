@@ -31,6 +31,7 @@ import time
 from .agent_claim_board import AUXILIARY_CLAIM_DIR_SCHEMAS, ClaimView, overlapping_pairs, patterns_overlap
 from . import merge_hold_paths
 from .pr_merge_delegation import Refused as EvidenceRefused, collect_held_classes, effective_claim_states, text_id
+from .merge_path_classes import DECISION_REFUSAL, OPERATOR_ONLY_REFUSAL, path_refusal
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -450,6 +451,26 @@ def review_requirements(path: Path | None = None) -> tuple[int, int, tuple[str, 
         return 1, 2, ("**",)
 
 
+_REFUSAL_STEPS = {
+    OPERATOR_ONLY_REFUSAL: "an operator-only or delegation-definition path — the canonical merge evaluator refuses "
+                           "it without an operator decision",
+    DECISION_REFUSAL: "a Section-17 decision-required path — the canonical merge evaluator refuses it without an "
+                      "operator decision",
+}
+
+
+def canonical_refusal_step(files: Sequence[str]) -> str | None:
+    """The one step a PR on a refused path needs, or None.
+
+    The Ready-to-merge projection must say what the merge evaluator would decide: a path in the operator-only or
+    Section-17 decision-required classes is refused on the path alone (merge_path_classes.path_refusal, the same
+    predicate pr_merge_delegation raises on), so reporting it READY would be false readiness. Nothing here weakens
+    the gate: the classes come from the evaluator's own module.
+    """
+    code = path_refusal(files)
+    return _REFUSAL_STEPS.get(code) if code else None
+
+
 def required_reviews(
     files: Sequence[str], requirements: tuple[int, int, tuple[str, ...]] | None = None
 ) -> tuple[int, bool]:
@@ -655,6 +676,8 @@ def merge_ready(
                 )
             ):
                 step = "shared-infrastructure evidence unproven — qualify metadata, label, check and isolated review at this exact head"
+            elif (refusal_step := canonical_refusal_step(pr.scope_files)) is not None:
+                step = refusal_step
             else:
                 ready.append({**base, "verdicts": sorted(reviewers)})
                 continue

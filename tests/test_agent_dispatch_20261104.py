@@ -3279,3 +3279,44 @@ def test_registered_coauthor_old_head_cannot_supply_current_registration(tmp_pat
     ]
     assert D.source_author_sessions(pr, indexed[(7, pr.head_sha)], "author") == {"author"}
     assert not D.merge_ready([pr], indexed, claims, {7: "author"})["ready"]
+
+
+def _fully_attested_merge(pr, reviewer):
+    return {
+        "verdict": "MERGE",
+        "reviewer": reviewer,
+        "section17_completion_head": pr.head_sha,
+        "section17_review_completed": True,
+        "engineering_completion_head": pr.head_sha,
+        "engineering_tests_completed": True,
+        "engineering_docs_completed": True,
+        "authorship_completion_head": pr.head_sha,
+        "registered_author_sessions": ("author",),
+        "registered_authorship_valid": True,
+    }
+
+
+@pytest.mark.parametrize("path,reason", [
+    ("config/portfolio_positions.yaml", "Section-17 decision-required"),
+    ("scripts/schwab_synthetic.py", "operator-only"),
+])
+def test_the_ready_projection_respects_the_canonical_path_refusals(path, reason):
+    """FALSE READINESS (2026-11-06): the projection reported Ready=1 for config/portfolio_positions.yaml and
+    scripts/schwab_synthetic.py while pr_merge_delegation refuses both on the path alone (operator-only /
+    Section-17 decision-required, :566-570). A merge-ready light must say what the gate actually decides."""
+    pr = _complete_pr(15, "h" * 40, "wt/d", "CLEAN", False, commit_shas=("h" * 40,), files=(path,))
+    claims = [claim(session="cc-4", branch="wt/d", head="h" * 40, status="done", paths=pr.files)]
+    v = {(15, "h" * 40): [_fully_attested_merge(pr, "cc-9"), _fully_attested_merge(pr, "cc-5")]}
+    out = D.merge_ready([pr], v, claims, {15: "cc-4"})
+    assert out["ready"] == [], f"{path} is refused by the canonical evaluator; readiness would be false"
+    assert reason in out["one_step"][0]["step"]
+
+
+def test_a_pr_outside_the_refused_paths_is_still_ready():
+    """The control: the refusal must not turn into blanket pessimism."""
+    pr = _complete_pr(16, "h" * 40, "wt/e", "CLEAN", False, commit_shas=("h" * 40,),
+                      files=("apps/command-center-v3/src/pages/Home.tsx",))
+    claims = [claim(session="cc-4", branch="wt/e", head="h" * 40, status="done", paths=pr.files)]
+    v = {(16, "h" * 40): [_fully_attested_merge(pr, "cc-9"), _fully_attested_merge(pr, "cc-5")]}
+    out = D.merge_ready([pr], v, claims, {16: "cc-4"})
+    assert [r["pr"] for r in out["ready"]] == [16]

@@ -44,13 +44,31 @@ MAX_BYTES = 2 * 1024 * 1024
 SHA = re.compile(r"[0-9a-f]{40}")
 HASH = re.compile(r"[0-9a-f]{64}")
 SESSION = re.compile(r"[A-Za-z0-9_./:-]{3,160}")
-# Ratification and the delegation verifier/classification controls stay operator-owned.
-# Other hook, CI and merge/deploy engineering uses the held two-review path.
-DELEGATION_CONTROL_PATHS = ('scripts/lib/pr_merge_delegation.py', 'scripts/lib/pr_all_checks_green.py', 'scripts/lib/merge_hold_paths.py', 'config/merge_hold_paths.json', '.cursor/hooks/guard_standing_policy.py', 'tests/test_pr_merge_delegation_20261102.py', 'tests/test_pr_all_checks_standing_20261102.py', 'tests/test_guard_standing_policy_20261102.py')
-RESERVED = ("AGENTS.md", "*/AGENTS.md", "AI_WORK_POLICY.md", "CLAUDE.md", "GEMINI.md", ".goosehints",
-            ".cursor/rules/*", ".github/copilot-instructions.md", "config/agent_standing_authority.json") + DELEGATION_CONTROL_PATHS
-# Source engineering that a legacy hold registry may not yet list still owes two
-# independent reviews, strict green checks and actual completion attestations.
+# The refused path classes live in one module so the Ready-to-merge projection cannot claim readiness
+# the evaluator refuses (merge_path_classes.py). Re-exported here for every existing caller.
+try:  # package import (scripts.lib.pr_merge_delegation)
+    from .merge_path_classes import (
+        DECISION_PATHS,
+        DECISION_REFUSAL,
+        DELEGATION_CONTROL_PATHS,
+        OPERATOR_ONLY,
+        OPERATOR_ONLY_REFUSAL,
+        RESERVED,
+        hits,
+        path_refusal,
+    )
+except ImportError:  # scripts/ on sys.path, module loaded by file path (the merge tests do this)
+    from lib.merge_path_classes import (  # type: ignore[no-redef]
+        DECISION_PATHS,
+        DECISION_REFUSAL,
+        DELEGATION_CONTROL_PATHS,
+        OPERATOR_ONLY,
+        OPERATOR_ONLY_REFUSAL,
+        RESERVED,
+        hits,
+        path_refusal,
+    )
+
 ENGINEERING_HELD_PATHS = {
     "hooks_guard": (
         ".cursor/hooks/*", ".githooks/*", "scripts/hooks/*", "scripts/githooks/*",
@@ -77,18 +95,6 @@ ENGINEERING_HELD_PATHS = {
         "tests/test_pr_all_checks_standing_20261102.py",
     ),
 }
-OPERATOR_ONLY = ("scripts/brokers/*", "scripts/active_trader/*", "scripts/moomoo/*", "scripts/schwab_*",
-                 "scripts/lib/schwab_*", "scripts/broker_*", "scripts/lib/broker*", "scripts/*order_intent*",
-                 "scripts/lib/*order_intent*", "scripts/*execution_guard*", "scripts/lib/*execution_guard*",
-                 "scripts/alpaca_*stop*", "scripts/defense_execution.py", "apps/broker-admin/*",
-                 "config/active_trader*", "config/secret_registry.yaml", ".env", ".env.*", "*/.env", "*/.env.*",
-                 "config/*branch*protection*", ".github/settings*", "scripts/*branch*protection*",
-                 "scripts/lib/*branch*protection*",
-                 "scripts/lib/trading_lock.py", "scripts/lib/trading_session_grant.py",
-                 "scripts/validate_schwab_write_policy.py", "scripts/lib/cio_instrument_record.py")
-DECISION_PATHS = ("config/lane_registry.json", "config/data_source_authority.json", "config/n8n_relay_live*.json",
-                  "config/n8n_live*.json", "config/*access_mode*", "config/*kill_switch*", "config/*risk_policy*",
-                  'config/operator_alert_policy.yaml', 'config/portfolio_positions.yaml', 'config/search_routing_policy.json', 'config/conflict_rulebook.json', 'config/systemd/*', 'config/disk_hygiene_rules.json', 'config/anthropic_credit_policy.json')
 # New classes require explicit engineering classification in the trusted source
 # registry. A mutable class declaration cannot relax the immutable excluded paths.
 DELEGATED_HELD_CLASSES = frozenset({"hooks_guard", "merge_deploy_control"})
@@ -141,10 +147,6 @@ def json_read(path):
 def path_ok(value):
     return isinstance(value, str) and value and not value.startswith("/") and "\\" not in value and all(
         p not in {"", ".", ".."} for p in value.split("/"))
-
-
-def hits(path, patterns):
-    return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
 
 def overlaps(path, claimed):
@@ -564,10 +566,9 @@ def evaluate(snapshot, *, now, claim_board=None):
         excluded = snapshot.get("excluded_globs")
         if not isinstance(excluded, list) or any(not isinstance(p, str) or not p for p in excluded):
             raise Refused("merge_exclusions_invalid")
-        if any(hits(p, (*RESERVED, *OPERATOR_ONLY, *excluded)) for p in effective_files):
-            raise Refused("operator_only_or_delegation_definition_path")
-        if any(hits(p, DECISION_PATHS) for p in effective_files):
-            raise Refused("applicable_section17_decision_required")
+        refusal = path_refusal(effective_files, operator_only_extra=excluded)
+        if refusal is not None:
+            raise Refused(refusal)
         if evidence.get("section17_review_completed") is not True:
             raise Refused("section17_review_unproven")
         if snapshot.get("checks", {}).get("ok") is not True:
