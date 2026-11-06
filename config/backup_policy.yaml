@@ -52,6 +52,16 @@ verification:
   lock_path: "~/.cache/tradeai/backup_enforcer.lock"
   fifo_dir: "~/.cache/tradeai/backup_enforcer"
 
+drive_n8n:
+  # n8n program 0.2a: the n8n bundle (database dump + data volume incl. the encryption key + workflow export +
+  # compose files), gpg-encrypted by scripts/n8n_backup.py. Same Trade_AI_Backups folder, its own prefix and
+  # ledger, so db retention never sees these objects. N+1 on Drive, deleted only after the newest is verified.
+  folder_id: "1GYbZyM8nTfwuh-h2EsWTxbMpXlEUA6Qi"
+  prefix: "n8n_backup"
+  keep_n: 1
+  prune_enabled: true
+  ledger_path: "data/runtime/backup_offsite_n8n_ledger.json"
+
 drive_other:
   # 2026-08-11 operator directive: only leave latest of each family on Drive.
   # 2026-09-19 operator directive: one week of retention. The daily families are

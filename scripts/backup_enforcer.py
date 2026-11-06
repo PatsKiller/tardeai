@@ -305,6 +305,8 @@ _P1_REASONS = frozenset({"newest_gzip_failed", "local_md5_mismatch", "drive_md5_
 CONDITION_HOST = "backup_retention:host"
 CONDITION_DRIVE = "backup_retention:drive"
 CONDITION_UPLOAD = "backup_retention:upload"
+CONDITION_N8N_UPLOAD = "backup_retention:upload_n8n"
+CONDITION_N8N_DRIVE = "backup_retention:drive_n8n"
 
 
 def _require(cfg: dict, keys: tuple[str, ...], section: str) -> dict:
@@ -1010,7 +1012,7 @@ def run(policy: dict, *, dry_run: bool = False, now: Optional[float] = None, dri
 
 def verify_upload(policy: dict, *, source: Path, plaintext: Path, encrypted: Path, drive: Any = None,
                   notify: Optional[Callable[[str, str], str]] = None,
-                  alert_state_path: Optional[Path] = None) -> dict:
+                  alert_state_path: Optional[Path] = None, condition: str = CONDITION_UPLOAD) -> dict:
     """P4-T2 uploader gate: success only if Drive holds exactly one object named like the encrypted file with
     its size and md5, and the encrypted plaintext is byte-identical to the host dump. Records the ledger entry
     backup_enforcer later requires before removing anything."""
@@ -1022,8 +1024,8 @@ def verify_upload(policy: dict, *, source: Path, plaintext: Path, encrypted: Pat
     def _finish(reason: str) -> dict:
         out["reason"] = reason
         out["alerts"] = raise_alerts(
-            {CONDITION_UPLOAD: ("ok" if out["ok"] else reason, not out["ok"],
-                                f"{encrypted.name}: {reason}")},
+            {condition: ("ok" if out["ok"] else reason, not out["ok"],
+                         f"{encrypted.name}: {reason}")},
             notify=notify or default_notify, state_path=alert_state_path,
             realert_minutes=int(vcfg["alert_realert_minutes"]), receipt=str(_repo_path(vcfg["ledger_path"])))
         with contextlib.suppress(OSError):
@@ -1080,8 +1082,61 @@ def verify_upload(policy: dict, *, source: Path, plaintext: Path, encrypted: Pat
     return _finish("verified")
 
 
+def n8n_policy(policy: dict) -> dict:
+    """The policy as the n8n bundle sees it (0.2a): ``drive_n8n`` replaces ``drive_db`` (its own folder, prefix,
+    keep_n and ledger) and the verification section points at the n8n ledger. Everything else is shared, so the
+    n8n copy obeys the same md5-before-prune rules as the database dump. PolicyError when ``drive_n8n`` is absent."""
+    sec = policy.get("drive_n8n")
+    if not isinstance(sec, dict) or not sec:
+        raise PolicyError("drive_n8n")
+    view = dict(policy)
+    view["drive_db"] = {**dict(policy.get("drive_db") or {}), **sec}
+    ver = dict(policy.get("verification") or {})
+    if sec.get("ledger_path"):
+        ver["ledger_path"] = sec["ledger_path"]
+    view["verification"] = ver
+    return view
+
+
+def run_n8n_drive(policy: dict, *, dry_run: bool = False, drive: Any = None,
+                  notify: Optional[Callable[[str, str], str]] = None,
+                  alert_state_path: Optional[Path] = None) -> dict:
+    """Drive retention for the n8n bundles: keep the newest keep_n+1, delete older ones only after the newest is
+    verified against the n8n upload ledger. An unreachable Drive or an unverified newest object is reported
+    and alerted, never treated as 'nothing to do'."""
+    try:
+        _, dcfg, vcfg = load_sections(n8n_policy(policy))
+    except PolicyError as exc:
+        return {"ok": False, "refused": f"policy_incomplete:{exc}", "alertable": True}
+    cache = StateCache(_repo_path(vcfg["cache_path"]), int(vcfg["cache_max_entries"]))
+    ledger = load_ledger(_repo_path(vcfg["ledger_path"]))
+    drive = drive if drive is not None else GogDrive(dcfg, vcfg)
+    try:
+        listing = drive.list(str(dcfg["prefix"]))
+    except (DriveError, OSError) as exc:
+        res = {"ok": False, "refused": "drive_unreachable", "detail": str(exc)[:200], "alertable": True}
+    else:
+        res = enforce_drive_db(dcfg, dry_run=dry_run, listing=listing, drive=drive, ledger=ledger, cache=cache,
+                               prune=bool(dcfg.get("prune_enabled")))
+        res["alertable"] = not res.get("ok")
+    res["finished_at"] = _utc_iso()
+    if not dry_run:
+        detail = json.dumps({k: res.get(k) for k in ("refused", "detail", "remaining")}, default=str)
+        res["alerts"] = raise_alerts(
+            {CONDITION_N8N_DRIVE: ("ok" if res["ok"] else str(res.get("refused") or "retention_failed"),
+                                   bool(res["alertable"]), "n8n Drive copies: " + detail)},
+            notify=notify or default_notify, state_path=alert_state_path,
+            realert_minutes=int(vcfg["alert_realert_minutes"]), receipt=str(_repo_path(vcfg["receipt_path"])))
+        with contextlib.suppress(OSError):
+            cache.save()
+    return res
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--n8n", action="store_true",
+                    help="act on the n8n bundles (policy drive_n8n): with --verify-upload verify a bundle upload, "
+                         "otherwise run Drive retention for them")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--drive-db", action="store_true", help="Prune Drive even if drive_db.prune_enabled is false")
@@ -1093,6 +1148,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = ap.parse_args(argv)
     pol = _load_policy()
 
+    if args.n8n and not args.verify_upload:
+        res = run_n8n_drive(pol, dry_run=args.dry_run)
+        print(json.dumps(res, indent=2, default=str))
+        return 0 if res.get("ok") else 1
+
     if args.status:
         out = {"local": status_local(pol.get("local_pg") or {})}
         print(json.dumps(out, indent=2))
@@ -1102,8 +1162,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         if not (args.source and args.plaintext and args.encrypted):
             ap.error("--verify-upload needs --source, --plaintext and --encrypted")
         try:
-            res = verify_upload(pol, source=Path(args.source), plaintext=Path(args.plaintext),
-                                encrypted=Path(args.encrypted))
+            res = verify_upload(n8n_policy(pol) if args.n8n else pol, source=Path(args.source),
+                                plaintext=Path(args.plaintext), encrypted=Path(args.encrypted),
+                                condition=CONDITION_N8N_UPLOAD if args.n8n else CONDITION_UPLOAD)
         except PolicyError as exc:
             res = {"ok": False, "reason": f"policy_incomplete:{exc}"}
         print(json.dumps(res, indent=2, default=str))
