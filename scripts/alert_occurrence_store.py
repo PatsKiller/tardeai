@@ -213,7 +213,10 @@ def record_occurrence(
         )
         occurrence_id = cur.fetchone()[0]
 
-        # Incident state advances from the decision, never from raw event data alone.
+        # Incident state advances from the decision, never from raw event data alone. `material` (the module's own
+        # MATERIAL_REASONS) is exactly the set of change signals that notify even when the condition was acknowledged:
+        # those clear the acknowledgement, because it answered a condition the operator has now seen change. An
+        # ordinary window-elapsed repeat is not material - it is the case the acknowledgement exists to silence.
         cur.execute(
             """
             UPDATE alert_incidents
@@ -227,7 +230,15 @@ def record_occurrence(
                    state_version = %s,
                    symbol = COALESCE(symbol, %s),
                    resolved_at = CASE WHEN %s THEN %s ELSE NULL END,
-                   status = CASE WHEN %s THEN 'resolved' ELSE 'open' END
+                   status = CASE WHEN %s THEN 'resolved' ELSE 'open' END,
+                   -- cx-openai D52 triage on #2680: a MATERIAL change invalidates the acknowledgement. Without this the
+                   -- first changed occurrence notified, and the NEXT one reloaded the old acknowledgement and was
+                   -- suppressed as "acknowledged condition unchanged" - so an operator who acknowledged a warning once
+                   -- stopped hearing about the incident as it got worse. An acknowledgement answers the condition the
+                   -- operator saw; when severity, required action, state version or resolution change, they have not
+                   -- seen this one.
+                   acknowledged_at = CASE WHEN %s THEN NULL ELSE acknowledged_at END,
+                   acknowledged_by = CASE WHEN %s THEN NULL ELSE acknowledged_by END
              WHERE incident_id = %s
             """,
             (observed_at, decision.notify, decision.notify,
@@ -236,7 +247,9 @@ def record_occurrence(
              bool(event.operator_action_required), str(event.state_version or "1"),
              event.symbol,
              decision.is_resolution, observed_at,
-             decision.is_resolution, incident_id),
+             decision.is_resolution,
+             material, material,
+             incident_id),
         )
 
         queued = delivered = False

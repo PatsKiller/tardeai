@@ -279,6 +279,7 @@ class TestSyntheticNotDeliverable:
 # ── Blocker 5: recurring-event dedupe, deterministic with injected timestamps ─
 from datetime import datetime, timedelta, timezone                 # noqa: E402
 from alert_dedupe import (                                         # noqa: E402
+    NOTIFY_ACTION_REQUIRED,
     NOTIFY_ESCALATION_DEADLINE,
     NOTIFY_FIRST_OCCURRENCE,
     NOTIFY_RECURRED_AFTER_RESOLUTION,
@@ -286,6 +287,7 @@ from alert_dedupe import (                                         # noqa: E402
     NOTIFY_SEVERITY_INCREASED,
     NOTIFY_STATE_VERSION,
     NOTIFY_WINDOW_ELAPSED,
+    SUPPRESS_ACKNOWLEDGED,
     SUPPRESS_WITHIN_WINDOW,
     PriorState,
     should_notify,
@@ -358,6 +360,31 @@ class TestRecurringDedupe:
                           dedupe_window_seconds=86400, escalate_after_seconds=1800)
         assert not d.notify
 
+    def test_acknowledged_unchanged_condition_stays_quiet_past_its_window(self):
+        """codex P2: the ack writer existed but the reader still returned notify=True from the ordinary
+        window-elapsed branch, so an acknowledged incident kept enqueuing repeats. An ack means "seen"."""
+        d = should_notify(_prior(acknowledged_at=T0 + timedelta(minutes=5)),
+                          now=T0 + timedelta(hours=3), severity="warning",
+                          dedupe_window_seconds=900)
+        assert not d.notify and d.reason == SUPPRESS_ACKNOWLEDGED and d.occurrence_seq == 2
+
+    def test_an_escalation_of_an_acknowledged_incident_still_notifies(self):
+        """The quiet rule must not swallow a real change: a worse severity, a newly required operator action, a new
+        state version and a recurrence after resolution all still notify after acknowledgement."""
+        acked = T0 + timedelta(minutes=5)
+        d = should_notify(_prior(acknowledged_at=acked), now=T0 + timedelta(minutes=30),
+                          severity="critical", dedupe_window_seconds=86400)
+        assert d.notify and d.reason == NOTIFY_SEVERITY_INCREASED
+        d = should_notify(_prior(acknowledged_at=acked), now=T0 + timedelta(minutes=30),
+                          severity="warning", operator_action_required=True, dedupe_window_seconds=86400)
+        assert d.notify and d.reason == NOTIFY_ACTION_REQUIRED
+        d = should_notify(_prior(acknowledged_at=acked), now=T0 + timedelta(minutes=30),
+                          severity="warning", state_version="2", dedupe_window_seconds=86400)
+        assert d.notify and d.reason == NOTIFY_STATE_VERSION
+        d = should_notify(_prior(acknowledged_at=acked, resolved_at=T0 + timedelta(minutes=10)),
+                          now=T0 + timedelta(minutes=30), severity="warning", dedupe_window_seconds=86400)
+        assert d.notify and d.reason == NOTIFY_RECURRED_AFTER_RESOLUTION
+
     def test_resolution_is_reported_once(self):
         d = should_notify(_prior(), now=T0 + timedelta(hours=1), resolving=True)
         assert d.notify and d.reason == NOTIFY_RESOLUTION and d.is_resolution
@@ -429,3 +456,39 @@ class TestShellBodySafety:
             assert "send_operator_alert.py" in text, f"{rel} does not use the safe sender"
             # absolute project path + venv, so cron's cwd cannot break imports
             assert '"$PROJ/' in text or '"$PY"' in text, f"{rel} lacks absolute paths"
+
+
+# ---- cx-openai D52 triage on #2680: a material change invalidates the operator's acknowledgement ----------------
+def test_a_material_change_is_exactly_the_set_of_change_signals():
+    """The ack is cleared on `material` reasons and kept on an ordinary repeat, so the two must be the same set."""
+    from alert_occurrence_store import MATERIAL_REASONS
+    import alert_dedupe as D
+
+    assert D.NOTIFY_SEVERITY_INCREASED in MATERIAL_REASONS
+    assert D.NOTIFY_ACTION_REQUIRED in MATERIAL_REASONS
+    assert D.NOTIFY_STATE_VERSION in MATERIAL_REASONS
+    assert D.NOTIFY_RECURRED_AFTER_RESOLUTION in MATERIAL_REASONS
+    assert D.NOTIFY_WINDOW_ELAPSED not in MATERIAL_REASONS, "an ordinary repeat must not clear the acknowledgement"
+    assert D.SUPPRESS_ACKNOWLEDGED not in MATERIAL_REASONS
+    assert D.NOTIFY_FIRST_OCCURRENCE not in MATERIAL_REASONS
+
+
+def test_persisting_an_occurrence_clears_a_stale_acknowledgement_on_material_change():
+    """The defect triage found: `record_occurrence` advanced severity/state but left `acknowledged_at`, so the NEXT
+    occurrence reloaded the old acknowledgement and was suppressed - the operator stopped hearing about an incident
+    as it got worse. This pins the statement that clears it, and that the material flag is what drives it.
+    """
+    import inspect
+    import re
+
+    import alert_occurrence_store as store
+
+    src = inspect.getsource(store.record_occurrence)
+    update = src[src.index("UPDATE alert_incidents"):src.index("alert_notification_deliveries")]
+    assert re.search(r"acknowledged_at\s*=\s*CASE WHEN %s THEN NULL", update), (
+        "the incident update does not clear the acknowledgement on a material change"
+    )
+    assert re.search(r"acknowledged_by\s*=\s*CASE WHEN %s THEN NULL", update), (
+        "the acknowledgement's author is left behind after a material change"
+    )
+    assert "material" in src[src.index("material = "):src.index("material = ") + 80], src[:200]
