@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stop_session_evidence_20261104",
+  "files": [
+    "tests/test_stop_session_evidence_20261104.py",
+    "tests/test_cio_truth_stop_session_20261104.py"
+  ]
+}
