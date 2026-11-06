@@ -40,9 +40,9 @@ def main():
     cur.execute("""SELECT workflow, model_role, COUNT(*) as cnt,
                           COUNT(DISTINCT symbol) as symbols
                    FROM llm_feedback_observations
-                   WHERE created_at > NOW() - INTERVAL '%s days'
+                   WHERE created_at > NOW() - %s * INTERVAL '1 day'
                    GROUP BY workflow, model_role
-                   ORDER BY cnt DESC""" % args.since_days)
+                   ORDER BY cnt DESC""", (args.since_days,))
     groups = cur.fetchall()
 
     recommendations = []
@@ -66,8 +66,8 @@ def main():
     cur.execute("""SELECT workflow, COUNT(*) as total,
                           SUM(CASE WHEN fallback_used THEN 1 ELSE 0 END) as fallbacks
                    FROM llm_feedback_observations
-                   WHERE created_at > NOW() - INTERVAL '%s days'
-                   GROUP BY workflow HAVING COUNT(*) >= %s""" % (args.since_days, args.min_observations))
+                   WHERE created_at > NOW() - %s * INTERVAL '1 day'
+                   GROUP BY workflow HAVING COUNT(*) >= %s""", (args.since_days, args.min_observations))
     for wf, total, fb in cur.fetchall():
         if fb and fb > 0 and total > 0:
             rate = round(100 * fb / total, 1)

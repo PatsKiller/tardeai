@@ -96,14 +96,15 @@ def run(limit=200, lookback_hours=48, as_json=False, dry_run=False):
     cur = conn.cursor()
     types = ",".join("%s" for _ in BRIDGE_TYPES)
     # READ-ONLY on hermes_*; only ticker-level rows not already bridged into news_articles.
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- types is only '%s' placeholders; values are params
+        f"""
         SELECT h.id, h.symbol, h.topic, h.summary, h.source_urls_json,
                h.confidence_score, h.freshness_date, h.created_at, h.research_type, h.strategy_tags
         FROM hermes_research_intelligence h
         WHERE h.symbol IS NOT NULL AND h.symbol <> ''
           AND h.topic IS NOT NULL AND h.topic <> ''
           AND h.research_type IN ({types})
-          AND h.created_at > now() - interval '%s hours'
+          AND h.created_at > now() - %s * interval '1 hour'
           AND NOT EXISTS (
               SELECT 1 FROM news_articles n
               WHERE n.source = 'hermes'
