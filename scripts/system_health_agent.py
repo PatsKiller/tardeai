@@ -1456,7 +1456,7 @@ def _attempt_retry(comp, conn, *, attempt_state=None):
             return hold("deadline_exhausted")
         if attempt_state is not None:
             attempt_state["attempted"] = True
-        proc = subprocess.Popen(
+        proc = subprocess.Popen(  # nosemgrep: tq-py-subprocess-shell -- retry_cmd from in-code MONITORED_COMPONENTS
             run_cmd,
             shell=True,
             stdout=subprocess.PIPE,

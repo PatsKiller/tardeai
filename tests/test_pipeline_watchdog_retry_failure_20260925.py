@@ -70,7 +70,7 @@ def _wire(monkeypatch, wd, *, run_ok=True, raise_exc=None, returncode=0):
     return calls
 
 
-ISSUE = {"script": "demo_job", "critical": True, "command": "true", "issue": "overdue"}
+ISSUE = {"script": "demo_job", "critical": True, "command": ".venv/bin/python scripts/demo_job.py", "issue": "overdue"}
 
 
 def test_timeout_marks_run_failed_records_action_and_does_not_log_error(wd, monkeypatch, caplog):

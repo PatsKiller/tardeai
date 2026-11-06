@@ -35,6 +35,7 @@ import json
 import logging
 import os
 import signal
+import shlex
 import subprocess
 import sys
 import time
@@ -288,6 +289,10 @@ def run_http_diff(b: dict, prompt: str, wt: Path) -> tuple[bool, str]:
     return True, "diff applied"
 
 
+# A registry row may name the test command, not an arbitrary program (injection triage 21, 2026-11-06).
+_TEST_RUNNERS = frozenset({"pytest", "python", "python3", "make", "npm", "node"})
+
+
 def verify(reg: dict, wt: Path, files: list[str]) -> tuple[bool, str]:
     """Verification gate before PR. Configurable test_cmd; always py_compile changed Python files."""
     # 1) syntax-compile every changed .py — a real 'does it parse' gate, zero project assumptions.
@@ -300,7 +305,21 @@ def verify(reg: dict, wt: Path, files: list[str]) -> tuple[bool, str]:
     # 2) optional project test command from registry
     tc = (reg.get("defaults") or {}).get("test_cmd") or os.getenv("CODER_DISPATCH_TEST_CMD", "")
     if tc:
-        r = subprocess.run(tc, shell=True, cwd=str(wt), capture_output=True, text=True, timeout=600)
+        # Injection triage 21 (2026-11-06): the registry is DB-first (config_documents) and the env can be set by
+        # any launcher, so test_cmd runs as an argument list with no shell; shell syntax is refused, not run.
+        if any(ch in tc for ch in "`$;|&<>\n\\"):
+            return False, "test_cmd refused: shell syntax is not allowed (give a plain command and arguments)"
+        try:
+            argv = shlex.split(tc)
+        except ValueError as exc:
+            return False, f"test_cmd refused: {exc}"
+        if not argv:
+            return False, "test_cmd refused: empty"
+        if argv[0] not in _TEST_RUNNERS and not re.fullmatch(r"(?:\./)?\.venv/bin/(?:python3?|pytest)", argv[0]):
+            return False, f"test_cmd refused: runner {argv[0][:60]!r} is not one of {sorted(_TEST_RUNNERS)}"
+        if any(a in ("-c", "-e", "--eval", "-p", "--print") for a in argv[1:]):
+            return False, "test_cmd refused: inline code (-c/-e/--eval) is not a test command"
+        r = subprocess.run(argv, cwd=str(wt), capture_output=True, text=True, timeout=600)
         if r.returncode != 0:
             return False, f"test_cmd failed: {(r.stderr or r.stdout).strip()[-400:]}"
     return True, "verified" + (f" ({len(pyf)} py files compiled)" if pyf else "")
