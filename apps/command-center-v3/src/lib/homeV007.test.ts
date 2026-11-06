@@ -1,6 +1,6 @@
 // Home v007 additive context parser — display truth rules.
 //   node --experimental-strip-types src/lib/homeV007.test.ts
-import { categoryLine, compactPct, conflictLine, groupGaps, headlineLine, hedgeLine, marketStanceLine, nextEventLine, parseHomeV007, referenceLine, volumeLine } from './homeV007.ts'
+import { caseLink, categoryLine, compactPct, conflictLine, groupGaps, headlineLine, hedgeLine, marketStanceLine, namesSource, namesToday, nextEventLine, parseHomeV007, RECOVERY_LIST_PATH, referenceLine, signedPct1, STOP_REVIEW_PATH, stressedStance, tradingDaysUntil, volumeLine } from './homeV007.ts'
 import { offersBudgetDecision } from './budgetIntent.ts'
 
 declare const process: { exit(code?: number): never }
@@ -445,6 +445,125 @@ eq('and keeps its unknown state', unknownMove.hedge.inverse[0].state, 'unknown')
   eq('compactPct says not measured for unknown', compactPct({ state: 'unknown', pct: 3, stale: false } as any), 'not measured')
   eq('compactPct prints a measured value', compactPct({ state: 'measured', pct: 1.234, stale: false } as any), '+1.23%')
   eq('compactPct keeps stale', compactPct({ state: 'measured', pct: -2, stale: true } as any), '-2.00% (stale)')
+}
+
+// ── v008 "Your names today" — made-up symbols only (the repo is public) ──
+{
+  eq('stance EXIT', stressedStance('EXIT'), 'EXIT')
+  eq('stance "exit review" label', stressedStance('exit review'), 'EXIT')
+  eq('stance trim_review', stressedStance('trim_review'), 'TRIM')
+  eq('stance hold is not stressed', stressedStance('hold'), null)
+  eq('trading days Fri→Mon', tradingDaysUntil('2026-01-09', '2026-01-12'), 1)
+  eq('trading days over a week', tradingDaysUntil('2026-01-05', '2026-01-12'), 5)
+  eq('trading days in the past', tradingDaysUntil('2026-01-12', '2026-01-05'), -1)
+  eq('signed pct negative uses a minus sign', signedPct1(-2.345), '−2.3%')
+  eq('signed pct unknown', signedPct1(null), '—')
+  const cases = [{ key: 'k1', symbol: 'AAA', account: 'Acct One', settled: false }, { key: 'k2', symbol: 'AAA', account: 'Acct Two', settled: false }, { key: 'k3', symbol: 'BBB', account: null, settled: true }]
+  eq('case link prefers the exit account', caseLink('AAA', 'Acct Two', cases), `${RECOVERY_LIST_PATH}&case=k2`)
+  eq('case link falls back to any open case', caseLink('AAA', null, cases), `${RECOVERY_LIST_PATH}&case=k1`)
+  eq('settled case is not linked', caseLink('BBB', null, cases), null)
+
+  // Thu 2026-01-08 20:00 UTC = 15:00 ET. Exits dated that day are "today".
+  const NOW8 = new Date('2026-01-08T20:00:00Z')
+  const T = '2026-01-08T19:55:00Z'
+  const m = (v: unknown) => ({ state: 'measured', as_of: T, source: 'test', value: v })
+  const sym = (price: number | null, dayPct: number | null, vs: number | null, extra: Record<string, unknown> = {}) => ({
+    quote: price == null ? { state: 'unknown', reason: 'quote feed returned nothing', as_of: '2026-01-07T21:00:00Z' } : m(price),
+    day_change: dayPct == null ? { state: 'unknown' } : m({ price: 0, pct: dayPct }),
+    since_exit: vs == null ? { state: 'unknown', reason: 'no exit' } : m({ reference_price: 10, distance_price: 0, distance_pct: vs }),
+    cio: { state: 'unknown', reason: 'cio clock lacks a timezone' },
+    ...extra,
+  })
+  const v7 = parseHomeV007({
+    symbols: {
+      AAA: sym(10.5, 1.2, 5, { cio: m({ stance: 'watch', conviction: 60 }), next_event: m({ kind: 'earnings', date: '2026-02-03' }) }),
+      BBB: sym(9.5, -3, -5),
+      CCC: sym(null, null, null),
+      DDD: sym(20, 2, null, { market_risk_stance: m({ stance: 'EXIT' }) }),
+      EEE: sym(5, 0.1, -0.5, { next_event: m({ kind: 'earnings', date: '2026-01-12' }) }),
+      FFF: sym(5, 0.1, -20),
+      GGG: sym(5, 0.1, 2),
+      HHH: sym(5, 0.1, null),
+    },
+    hedge: { inverse_moves: { INV1: { quote: m(30), day_change: m({ pct: 1 }) } } },
+  })
+  const src = namesSource({ data: {
+    home_v007: {},
+    reentry_watch: {
+      AAA: { exit_date: '2026-01-08', exit_price: 10, current_quote: { price: 10.5, pct_vs_exit: 5 }, stages: { note: 'stages measured after close' } },
+      BBB: { exit_date: '2026-01-08', exit_price: 10 },
+      CCC: { exit_date: '2026-01-08', exit_price: 10 },
+      EEE: { exit_date: '2026-01-02', exit_price: 5 },
+      FFF: { exit_date: '2025-12-20', exit_price: 6 },
+      GGG: { exit_date: '2025-12-29', exit_price: 4.9 },
+      HHH: { exit_date: '2025-12-29', exit_price: 4.9 },
+      INV1: { exit_date: '2026-01-08', exit_price: 31 },
+      _meta: { ignored: true },
+    },
+    reentry_detail: { AAA: { exit_account_label: 'Acct One', held_elsewhere_labels: ['Acct Two'] } },
+    book_exposure: { stops_known: true, rows: [
+      { symbol: 'DDD', account_label: 'Acct One', value_usd: 5000, pct_account: 12.5, stop_distance_pct: 4.2, stance: 'hold' },
+      { symbol: 'DDD', account_label: 'Acct Two', value_usd: 2000, pct_account: 40, stop_distance_pct: null, stance: 'hold' },
+      { symbol: 'JJJ', account_label: 'Acct One', value_usd: 40, stance: 'exit review' },
+      { symbol: 'KKK', account_label: 'Acct One', value_usd: 9000, stance: 'hold' },
+      { symbol: 'INV1', account_label: 'Acct One', value_usd: 9000, stance: 'exit review' },
+    ] },
+    protect: { items: [{ symbol: 'DDD', to: '/risk?tab=exposure&focus=DDD' }] },
+    hedge: { candidates: ['INV2'] },
+  } })
+  eq('source reads the envelope', src.reentry.length, 8)
+  eq('source skips _ keys', src.reentry.some(r => r.symbol.startsWith('_')), false)
+  eq('source reads stops_known', src.stopsKnown, true)
+  check('source reads hedge candidates as inverse', src.inverse.includes('INV2'))
+  const n = namesToday(v7, src, [{ key: 'case-aaa', symbol: 'AAA', account: 'Acct One', settled: false }], NOW8)
+  eq('heading on a session day', n.stoppedHeading, 'Stopped out today')
+  eq('stopped excludes the inverse ETF', n.stopped.some(r => r.symbol === 'INV1'), false)
+  eq('stopped count', n.stopped.length, 3)
+  eq('above first, then no price, then below', n.stopped.map(r => r.status).join(','), 'above,no_price,below')
+  eq('takeaway counts priced names only', n.stoppedTakeaway, '1 of 2 now above your exit · 1 without a price')
+  const a = n.stopped[0]
+  eq('above pill', a.pill, 'ABOVE EXIT +5.0%')
+  eq('account names where it is still held', a.account, 'Acct One · still held in Acct Two')
+  eq('case link resolves the case key', a.caseTo, `${RECOVERY_LIST_PATH}&case=case-aaa`)
+  eq('why carries CIO stance and score', a.why, 'CIO WATCH · 60 · first re-entry check after tonight’s close')
+  eq('earnings fact', a.event, 'earnings Feb 3')
+  eq('ask text names the symbol', a.askText, 'What is your view on AAA today?')
+  const c = n.stopped[1]
+  eq('no price pill', c.pill, 'NO PRICE')
+  check('no price explains why and the last price time', !!c.noPriceWhy && c.noPriceWhy.includes('quote feed returned nothing') && c.noPriceWhy.includes('last price time'), c.noPriceWhy)
+  eq('no price still links the recovery list', c.caseTo, RECOVERY_LIST_PATH)
+  const b = n.stopped[2]
+  eq('below pill', b.pill, 'BELOW EXIT −5.0%')
+  eq('below: the stop did its job', b.why, 'The stop did its job')
+  eq('below: no primary action', b.caseTo, null)
+
+  eq('held: market-stance EXIT counts, hold label alone does not', n.held.map(h => h.symbol).join(','), 'DDD')
+  const d = n.held[0]
+  eq('held groups accounts', d.accountText, '2 accounts · $7,000')
+  eq('held stop facts per account', d.stopFacts.join(' | '), 'Acct One stop 4.2% below | Acct Two no stop on $2,000 (40.0% of that account)')
+  eq('held review link from protect', d.reviewTo, '/risk?tab=exposure&focus=DDD')
+  eq('held takeaway', n.heldTakeaway, '1 held · 1 with an account not covered by a stop')
+  eq('under $100 collapses to the footnote', n.tiny.map(t => t.symbol).join(','), 'JJJ')
+  eq('inverse holdings are left out', n.held.some(h => h.symbol === 'INV1') || n.tiny.some(t => t.symbol === 'INV1'), false)
+
+  eq('older sorted by closeness to exit, unknown last', n.older.map(o => o.symbol).join(','), 'EEE,GGG,FFF,HHH')
+  eq('older earnings within 5 trading days flagged', n.older[0].flag, 'earnings Mon 01-12')
+  eq('older above exit flagged', n.older[1].flag, 'above exit')
+  eq('deep loser not flagged', n.older[2].flagged, false)
+  eq('older takeaway', n.olderTakeaway, '1 above exit · 1 with earnings within 5 trading days')
+
+  eq('one CIO gap line counts every shown name', n.cioGap?.total, 8)
+  eq('CIO gap misses all but AAA', n.cioGap?.missing, 7)
+  eq('CIO gap names the most common cause', n.cioGap?.reason, 'cio clock lacks a timezone')
+
+  const sat = namesToday(v7, src, [], new Date('2026-01-10T15:00:00Z'))
+  eq('weekend heading names the session', sat.stoppedHeading, 'Stopped out Fri 01-09')
+  eq('weekend: Thursday exits are older', sat.stopped.length, 0)
+  const empty = namesToday(parseHomeV007({ symbols: {} }), namesSource({}), [], NOW8)
+  eq('empty payload shows nothing', empty.total, 0)
+  eq('empty payload has no gap line', empty.cioGap, null)
+  eq('unread stops say unknown', namesToday(v7, { ...src, stopsKnown: null }, [], NOW8).held[0].stopFacts[1], 'Acct Two stop unknown (stops not read)')
+  eq('no review link falls back to the stop review', namesToday(v7, { ...src, reviewLinks: [] }, [], NOW8).held[0].reviewTo, STOP_REVIEW_PATH)
 }
 
 console.log(`homeV007: ${pass} passed, ${fail} failed`)
