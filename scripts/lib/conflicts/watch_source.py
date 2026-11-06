@@ -118,7 +118,7 @@ def operator_names(query, sources):
     for kind, sql in _OPERATOR_READS:
         try:
             rows = query(sql) or []
-        except Exception as exc:  # noqa: BLE001 - one source failing never empties the others
+        except Exception as exc:  # noqa: BLE001 -- one source failing never empties the others
             sources[f"operator:{kind}"] = {"status": "error", "error": type(exc).__name__}
             continue
         for row in rows:
@@ -138,7 +138,7 @@ def operator_names(query, sources):
             if not [at for at in names[symbol] if removed_at is not None and at is not None and at > removed_at]:
                 names.pop(symbol)
         sources["operator:removed"] = {"status": "ok"}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- a failed removal read leaves every name in place, which is the safe direction
         sources["operator:removed"] = {"status": "error", "error": type(exc).__name__}
     return set(names)
 
@@ -148,9 +148,12 @@ def _read(query, sources, name, sql, params=None):
         rows = query(sql, params) or []
         sources[name] = {"status": "ok", "count": len(rows)}
         return rows
-    except Exception as exc:  # noqa: BLE001 - a failed source is a reported gap, never an empty truth
+    except Exception as exc:  # noqa: BLE001 -- a failed source is a reported gap, never an empty truth
         sources[name] = {"status": "error", "error": type(exc).__name__}
-        return []
+        # The empty list is what the caller can join over; the absence is NOT hidden — it is written into `sources`
+        # beside every other source's status, and that mapping is what the page renders. Returning an explicit
+        # unknown here would change the return type for a gap the caller already reports.
+        return []  # nosemgrep: tq-py-broad-except-returns-default -- the gap is recorded in sources[name], not swallowed
 
 
 def universe(query, *, held_symbols=(), sources=None, extra_limit=120, screener_limit=40):
