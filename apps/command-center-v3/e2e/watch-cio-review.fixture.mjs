@@ -34,8 +34,8 @@ const browser = await chromium.launch({headless: true}), cases = []
 try {
   for (const width of [412, 390]) for (const surface of ['mine', 'prospects']) {
     const height = width === 412 ? 915 : 844
-    const context = await browser.newContext({viewport: {width, height}, hasTouch: true}), page = await context.newPage()
-    const traffic = {reads: [], posts: [], external: [], unexpected: [], mutations: [], errors: []}
+    const context = await browser.newContext({viewport: {width, height}, hasTouch: true, serviceWorkers: 'block'}), page = await context.newPage()
+    const traffic = {reads: [], asks: [], posts: [], external: [], unexpected: [], mutations: [], errors: []}
     let queState = null
     const row = (symbol, extra) => ({symbol, company: 'Fixture company', security_guid: 'fixture-' + symbol, identity_status: 'CONFIRMED',
       lane: 'forming', stage: 'forming', why: 'Recorded fixture evidence', summary: 'Fixture record summary', conviction: null,
@@ -61,6 +61,16 @@ try {
       const req = route.request(), url = new URL(req.url())
       if (url.origin !== 'http://watch-cio-fixture.test') { traffic.external.push(url.href); return route.abort() }
       const json = (data, status = 200) => route.fulfill({status, contentType: 'application/json', body: JSON.stringify(data)})
+      // Watch now asks through the shared Ask API first; the thesis queue is a secondary note.
+      // Both writes stay local to this route fixture and cannot reach a provider or real endpoint.
+      if (req.method() === 'POST' && url.pathname === '/api/v2/cio/ask') {
+        const body = req.postDataJSON()
+        const symbol = /^Review ([A-Z]+) for my watchlist:/.exec(body.question ?? '')?.[1]
+        assert(['FATN', 'QUE', 'NAVN'].includes(symbol), 'Ask carries the selected synthetic row')
+        traffic.asks.push({path: url.pathname, body})
+        return json({ok: true, data: {ask_id: `ask-fixture-${symbol}`, thread_id: `thread-fixture-${symbol}`,
+          answer_text: 'Synthetic CIO answer.', thread: null}})
+      }
       const m = url.pathname.match(/^\/api\/v3\/opportunities\/([A-Z]+)\/review-request$/)
       if (req.method() === 'POST' && m) {
         traffic.posts.push({path: url.pathname, body: req.postDataJSON()})
@@ -107,11 +117,17 @@ try {
     await expect(state).toContainText('Blocked: waiting for evidence'); await expect(state).toHaveAttribute('data-status', 'blocked')
     await expect(dialog.getByTestId('watch-cio-review')).toContainText('BLOCKED_PENDING_ACQUISITION_AND_CURATION · 5 runs since you asked')
     assert.equal(traffic.posts.length, 0, 'An open request is shown, not re-posted')
+    assert.equal(traffic.asks.length, 0, 'Opening the existing review state does not ask the CIO')
     const ask = dialog.getByTestId('watch-ask-cio')
     await expect(ask).toHaveCount(1); await expect(ask).toHaveText('Ask the CIO to review')
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-blocked-sheet-${width}.png`), animations: 'disabled'})
     await tap(ask)
-    await expect(dialog.getByTestId('watch-cio-message')).toContainText('Already asked — Blocked: waiting for evidence')
+    await expect(dialog.getByTestId('watch-cio-message')).toHaveText('Answered')
+    await expect(dialog.getByTestId('watch-ask-phase')).toHaveAttribute('data-phase', 'answered')
+    await expect(dialog.getByTestId('watch-ask-thread')).toHaveAttribute('href', /\/v3\/cio\/questions\/thread-fixture-FATN$/)
+    await expect(dialog.getByTestId('watch-ask-stance-gap')).toHaveText('CIO stance was not in this answer.')
+    await expect(dialog.getByTestId('watch-ask-queue')).toContainText('Already asked — Blocked: waiting for evidence')
+    assert.equal(traffic.asks.length, 1, 'Explicit ask uses the primary Ask endpoint exactly once')
     assert.equal(traffic.posts.length, 1); assert.match(traffic.posts[0].body.note, /no CIO view/)
     await tap(dialog.getByRole('button', {name: '← Back'})); await expect(page.getByRole('dialog')).toHaveCount(0)
 
@@ -119,7 +135,11 @@ try {
     await tap(card('QUE').getByTestId('watch-step'))
     dialog = page.getByRole('dialog', {name: sheetName('QUE')})
     await inView(dialog); await inView(dialog.getByRole('button', {name: '← Back'}))
-    await expect(dialog.getByTestId('watch-cio-message')).toHaveText('CIO review queued.')
+    await expect(dialog.getByTestId('watch-cio-message')).toHaveText('Answered')
+    await expect(dialog.getByTestId('watch-ask-phase')).toHaveAttribute('data-phase', 'answered')
+    await expect(dialog.getByTestId('watch-ask-thread')).toHaveAttribute('href', /\/v3\/cio\/questions\/thread-fixture-QUE$/)
+    await expect(dialog.getByTestId('watch-ask-queue')).toHaveText('CIO review queued.')
+    assert.equal(traffic.asks.length, 2, 'New review also asks the CIO exactly once')
     await expect(dialog.getByTestId('watch-review-state')).toContainText('Queued for the CIO')
     assert.equal(traffic.posts.length, 2); assert.equal(traffic.posts[1].path, '/api/v3/opportunities/QUE/review-request')
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-queued-sheet-${width}.png`), animations: 'disabled'})
@@ -132,7 +152,11 @@ try {
     await inView(dialog)
     await expect(dialog.getByTestId('watch-detail-conflicts')).toContainText('Trade AI deterministic fail')
     await expect(dialog.getByTestId('watch-ask-cio')).toHaveCount(1)
-    await expect(dialog.getByTestId('watch-detail-conflicts').getByTestId('watch-cio-message')).toHaveText('CIO review queued.')
+    await expect(dialog.getByTestId('watch-detail-conflicts').getByTestId('watch-cio-message')).toHaveText('Answered')
+    await expect(dialog.getByTestId('watch-ask-phase')).toHaveAttribute('data-phase', 'answered')
+    await expect(dialog.getByTestId('watch-ask-thread')).toHaveAttribute('href', /\/v3\/cio\/questions\/thread-fixture-NAVN$/)
+    await expect(dialog.getByTestId('watch-detail-conflicts').getByTestId('watch-ask-queue')).toHaveText('CIO review queued.')
+    assert.equal(traffic.asks.length, 3, 'Conflict ask uses the primary Ask endpoint exactly once')
     assert.equal(traffic.posts.length, 3); assert.match(traffic.posts[2].body.note, /Trade AI deterministic fail/)
     await noHorizontal()
     await page.screenshot({path: path.join(output, `watch-cio-${surface}-flag-sheet-${width}.png`), animations: 'disabled'})
@@ -141,7 +165,7 @@ try {
       {external: [], unexpected: [], mutations: [], errors: []})
     cases.push({surface, width, height, no_false_conflict: true, row_ask_actionable: true, full_screen_sheet_back: true,
       blocked_state_visible: true, open_request_not_reposted: true, queued_state_visible: true, legacy_flags_single_button: true,
-      posts: traffic.posts.length})
+      asks: traffic.asks.length, posts: traffic.posts.length})
     await context.close()
   }
 } finally { await browser.close() }

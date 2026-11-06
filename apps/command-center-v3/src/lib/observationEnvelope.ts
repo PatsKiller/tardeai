@@ -172,12 +172,16 @@ export function formatBusinessDate(businessDate: string | null): string {
  * fails closed to UNKNOWN for any unrecognised or absent verdict.
  */
 export function freshnessFromOverviewObservation(
-  observation: { surface_status?: string | null } | null | undefined,
+  observation: { surface_status?: string | null; envelopes?: { holdings?: { freshness?: { status?: string | null } } } } | null | undefined,
   fallback?: FreshnessStatus,
 ): FreshnessStatus {
-  const raw = (observation?.surface_status ?? '').toString().trim().toUpperCase()
-  if (raw === 'FRESH' || raw === 'STALE' || raw === 'UNKNOWN') return raw
-  return fallback ?? 'UNKNOWN'
+  // Either source can refuse the same observation. A recent clock or a FRESH sibling
+  // cannot overrule an explicit stale, unavailable or unrecognized verdict.
+  const states = [observation?.surface_status, observation?.envelopes?.holdings?.freshness?.status]
+    .filter(v => v != null).map(v => String(v).trim().toUpperCase())
+  if (!states.length) return fallback ?? 'UNKNOWN'
+  if (states.some(s => s !== 'FRESH' && s !== 'STALE')) return 'UNKNOWN'
+  return states.includes('STALE') ? 'STALE' : 'FRESH'
 }
 
 /** Build an envelope, failing closed on absence. */
@@ -366,4 +370,42 @@ export function stateAriaLabel(
     STALE: 'data is stale',
   }
   return spoken[l] ?? l
+}
+
+/**
+ * FQ-087 (HQ-03): the qualifier a MONEY or POSITION value must carry next to it.
+ *
+ * The page-level chip already combines transport with data freshness, but a money number printed on its
+ * own (portfolio value, account YTD) read as fresh whenever the data clock was recent — including after a
+ * refresh that failed and was served from the retained last-good body. A failed, retained, fallback,
+ * partial or unknown transport therefore always yields a qualifier. Clean transport also preserves source
+ * refusals, unusable observation clocks and age past the threshold. `null` means genuinely fresh only.
+ */
+export function transportQualifier(transport: TransportState): string | null {
+  switch (transport) {
+    case 'ERROR': return 'refresh failed — last known value'
+    case 'RETAINED': return 'not refreshed — last known value'
+    case 'FALLBACK': return 'from a fallback source'
+    case 'PARTIAL': return 'partial data'
+    case 'UNKNOWN': return 'freshness unknown'
+    default: return null
+  }
+}
+
+export function ageQualifier(ageHours: number | null | undefined, thresholdHours: number): string | null {
+  if (ageHours == null || !Number.isFinite(ageHours) || ageHours < 0) return 'update time unavailable'
+  if (ageHours < thresholdHours) return null
+  const shown = ageHours < 48 ? `${Math.round(ageHours)}h` : `${Math.round(ageHours / 24)}d`
+  return `stale — ${shown} old`
+}
+
+export function moneyQualifier(
+  transport: TransportState,
+  ageHours: number | null | undefined,
+  thresholdHours = 24,
+  freshness: FreshnessStatus = 'FRESH',
+): string | null {
+  return transportQualifier(transport)
+    ?? (freshness === 'STALE' ? 'stale — last known value' : freshness !== 'FRESH' ? 'freshness unknown' : null)
+    ?? ageQualifier(ageHours, thresholdHours)
 }

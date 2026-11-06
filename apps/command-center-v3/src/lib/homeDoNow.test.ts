@@ -56,7 +56,7 @@ check('numbers unavailable never zero', doNowFrom({ ...ok, numbers: { status: 'U
 check('routerPath', routerPath('/v3/communications') === '/communications' && routerPath('/v3') === '/' && routerPath('https://x') === '/' && routerPath('//evil') === '/')
 
 // positions freshness
-const ov = (observed: string | null, status = 'FRESH') => ({ observation: { envelopes: { holdings: { observed_at: observed, freshness: { status } } } } })
+const ov = (observed: string | null, status = 'FRESH') => ({ observation: { envelopes: { holdings: { observed_at: observed, freshness: { status, threshold_hours: 24 } } } } })
 check('market hours detection', inMarketHours(now) && !inMarketHours(Date.parse('2026-10-24T15:00:00Z')) && !inMarketHours(Date.parse('2026-10-22T21:00:00Z')))
 const f50 = positionsFreshness(ov('2026-10-22T14:10:00Z'), now)
 check('50 min old in market hours is STALE', f50.stale && f50.label === 'Positions 50 min old · STALE' && f50.tip.includes('holdings'))
@@ -90,10 +90,10 @@ check('ET stamp parsed (EDT)', parseObservedTime('2026-10-22 16:45:03 ET') === D
 check('ET stamp parsed (EST)', parseObservedTime('2026-12-01 09:30 ET') === Date.parse('2026-12-01T14:30:00Z'))
 check('ISO still parsed', parseObservedTime('2026-10-22T15:10:43+00:00') === Date.parse('2026-10-22T15:10:43Z'))
 check('garbage is NaN', Number.isNaN(parseObservedTime('soon')))
-const etEnv = { observation: { envelopes: { holdings: { observed_at: '2026-10-22 16:45:03 ET', freshness: { status: 'FRESH' } } } } }
+const etEnv = { observation: { envelopes: { holdings: { observed_at: '2026-10-22 16:45:03 ET', freshness: { status: 'FRESH', threshold_hours: 24 } } } } }
 const etF = positionsFreshness(etEnv, Date.parse('2026-10-23T02:06:33Z'))
 check('ET-stamped FRESH envelope after hours is not STALE / not age unknown', !etF.stale && !etF.label.includes('unknown'))
-const utcEnv = { observation: { envelopes: { holdings: { observed_at: 'bad', freshness: { status: 'FRESH', observed_at_utc: '2026-10-22T20:45:03+00:00' } } } } }
+const utcEnv = { observation: { envelopes: { holdings: { observed_at: 'bad', freshness: { status: 'FRESH', threshold_hours: 24, observed_at_utc: '2026-10-22T20:45:03+00:00' } } } } }
 check('observed_at_utc preferred', positionsFreshness(utcEnv, Date.parse('2026-10-22T21:00:00Z')).ageS === 897)
 const dup = moversBars({ today_change: -10836, top_movers: [
   { symbol: 'SCHG', day_change: -0.21 }, { symbol: 'SPCX', day_change: -2912.2 }, { symbol: 'V', day_change: 846.27 }, { symbol: 'V', day_change: 5.16 },

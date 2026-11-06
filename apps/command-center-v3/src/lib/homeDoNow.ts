@@ -9,6 +9,7 @@
 import { accountName as accountLabelName, rowAccountKey } from './accountLabels.ts'
 import { STOP_CATEGORY_LABEL, stopCategory } from './stopDisplay.ts'
 import { readableTimesInText } from './readableTime.ts'
+import { moneyQualifier, freshnessFromOverviewObservation, type TransportState, type FreshnessStatus } from './observationEnvelope.ts'
 
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3'
 export type Category = 'protect' | 'decide' | 'fix'
@@ -284,26 +285,56 @@ export function parseObservedTime(raw: string): number {
   return NaN
 }
 
-export interface PositionsFreshness { stale: boolean; ageS: number | null; label: string; tip: string }
+/** Operator-owned file cutoff carried by CanonicalObservation; absence is not a default. */
+export function holdingsFreshnessThreshold(overview: any): number | null {
+  const value = overview?.observation?.envelopes?.holdings?.freshness?.threshold_hours
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+}
+
+/** Home follows the producer's strict > boundary, including a legitimate zero-hour cutoff.
+ * Other observation consumers retain their existing ageQualifier contract. */
+export function holdingsMoneyQualifier(overview: any, transport: TransportState, ageHours: number | null,
+  freshness: FreshnessStatus): string | null {
+  const threshold = holdingsFreshnessThreshold(overview)
+  const sourceFreshness = threshold == null ? 'UNKNOWN' : freshness
+  if (transport === 'OK' && sourceFreshness === 'FRESH' && threshold != null &&
+    ageHours != null && Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= threshold) return null
+  return moneyQualifier(transport, ageHours, threshold ?? NaN, sourceFreshness)
+}
+
+export interface PositionsFreshness { stale: boolean; ageS: number | null; label: string; tip: string; qualifier: string | null }
 
 /** The header badge. Source: /api/v2/overview observation.envelopes.holdings (holdings.json). STALE when the server
  *  says not FRESH, when there is no observation time, or when positions are older than 30 min in market hours (the
  *  positions_store freshness SLA in docs/architecture/DATA_DICTIONARY.md). */
-export function positionsFreshness(overview: any, nowMs: number): PositionsFreshness {
+export function positionsFreshness(overview: any, nowMs: number, transport: TransportState = 'OK'): PositionsFreshness {
+  // FQ-087 (HQ-03): the transport is an input, not a page-level afterthought. A failed or retained
+  // refresh can never leave the positions figure reading fresh, however recent the data clock.
   const env = overview?.observation?.envelopes?.holdings
   const observed = str(env?.freshness?.observed_at_utc) ?? str(env?.observed_at) ?? str(overview?.last_repriced)
   const t = observed ? parseObservedTime(observed) : NaN
-  const ageS = Number.isFinite(t) ? Math.max(0, (nowMs - t) / 1000) : null
-  const server = str(env?.freshness?.status)
+  const ageS = Number.isFinite(t) && Number.isFinite(nowMs) && nowMs >= t ? (nowMs - t) / 1000 : null
+  const reportedFreshness = freshnessFromOverviewObservation(overview?.observation, 'FRESH')
   const market = inMarketHours(nowMs)
-  const overSla = ageS != null && market && ageS > POSITIONS_SLA_MARKET_S
-  const stale = ageS == null || (server != null && server !== 'FRESH') || overSla
-  const why = ageS == null ? 'no observation time on the holdings envelope'
-    : server != null && server !== 'FRESH' ? `server freshness ${server}`
-    : overSla ? 'older than the 30 min market-hours SLA' : market ? 'within the 30 min market-hours SLA' : 'market closed; the 24 h file threshold applies'
+  const thresholdHours = holdingsFreshnessThreshold(overview)
+  const overFileThreshold = ageS != null && thresholdHours != null && ageS > thresholdHours * 3600
+  const overMarketSla = ageS != null && market && ageS > POSITIONS_SLA_MARKET_S
+  const overSla = overFileThreshold || overMarketSla
+  const transportBad = transport !== 'OK'
+  const sourceFreshness = thresholdHours == null ? 'UNKNOWN'
+    : overSla && reportedFreshness === 'FRESH' ? 'STALE' : reportedFreshness
+  const stale = transportBad || ageS == null || sourceFreshness !== 'FRESH'
+  const why = transportBad ? `the last refresh did not complete cleanly (${transport.toLowerCase()})`
+    : ageS == null ? 'no observation time on the holdings envelope'
+    : thresholdHours == null ? 'holdings freshness threshold unavailable'
+    : reportedFreshness !== 'FRESH' ? `source freshness ${reportedFreshness.toLowerCase()}`
+    : overMarketSla ? 'older than the 30 min market-hours SLA'
+    : overFileThreshold ? `older than the ${thresholdHours} h file threshold`
+    : market ? 'within the 30 min market-hours SLA' : `market closed; the ${thresholdHours} h file threshold applies`
   return {
     stale, ageS,
     label: `Positions ${ageLabel(ageS)} old${stale ? ' · STALE' : ''}`,
+    qualifier: holdingsMoneyQualifier(overview, transport, ageS == null ? null : ageS / 3600, sourceFreshness),
     tip: `Holdings observed ${observed ?? 'UNKNOWN'} (holdings.json via /api/v2/overview; positions_current is not yet approved for Home). ${why}.`,
   }
 }
