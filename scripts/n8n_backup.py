@@ -230,7 +230,7 @@ def preconditions() -> dict:
 
 def apply(*, no_drive: bool) -> dict:
     started = time.time()
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")  # local wall clock, aware: same naming as backup_secrets_state.sh
     doc: dict = {"schema": SCHEMA, "as_of": _utc(), "stamp": stamp, "ok": False, "reason": None, "drive": None}
     tmp_root = Path(tempfile.mkdtemp(prefix="n8n_backup_", dir=os.environ.get("N8N_BACKUP_TMP") or None))
     try:
