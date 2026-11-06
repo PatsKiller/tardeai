@@ -1,0 +1,26 @@
+{
+ "schema": "PrReviewLanesSchedulePlan@v1",
+ "why_not_in_this_pr": [
+  "config/lane_registry.json is operator-only (\u00a717) and config/n8n_run_allowlist.json is being edited by other open PRs; this PR therefore carries the lane as a proposal and the operator applies it.",
+  "A scheduled LLM lane is also a spend decision: the runner's own $2/day cap and one-review-per-(PR,head) rule bound it, but the cadence is the operator's call."
+ ],
+ "apply_after": "operator approval of the lane row",
+ "pr_title": "[shared-infra] register the pr-independent-review lane (n8n, draft -> dry run -> shadow -> cutover)",
+ "scope_after_review": "cc-deepseek-6's F1 (BLOCK at 6cb27e318): this PR shipped config/systemd/pr-review/tradeai-pr-review.{timer,service}, a five-minute systemd timer running the reviewer with --apply. House rule A is n8n-only, so the units are removed and the same work is expressed as one n8n lane proposal. Nothing about the reviewer's authority changes: it stays advisory, head-bound and unable to merge, label or approve anything.",
+ "house_rules": {
+  "A_scheduled_by": "n8n only; no systemd timer, no crontab line, and none left beside it",
+  "B_cutover_sequence": [
+   "draft: the workflow exists, disabled, no schedule",
+   "dry run: scripts/pr_independent_review.py with no --apply lists the would-review set and the \u00a729 preflight (credit journal, process cap, daily cap, provider cap) and calls no model",
+   "shadow: 72 hours at the real cadence, writing PrReview@v1 rows and labelling nothing",
+   "cutover: only after 72 clean shadow hours; a receipt names the lane, the first live run and the disable of any competing schedule"
+  ],
+  "C_sunset": "the lane's own disable is recorded in the same receipt; nothing here re-enables it silently"
+ },
+ "steps": [
+  "append registry_rows.json (one row) to config/lane_registry.json lanes[] -- operator, \u00a717",
+  "append the allowlist entry to config/n8n_run_allowlist.json lanes[] in a separate shared-infra PR, with live_arg null until canary",
+  "operator: approve the pr_reviews store row in data_source_authority.json (D5) -- --apply refuses with STORE_APPROVAL_PENDING until then",
+  "operator: n8n dispatcher picks pr-independent-review from the registry at shadow; canary = --apply after 72 clean shadow hours"
+ ]
+}

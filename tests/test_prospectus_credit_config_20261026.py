@@ -60,6 +60,8 @@ def test_policy_carries_override_renewal_admin_and_premium_tier():
     assert set(p["anthropic_only_processes"]) == {"prospectus_writer", "prospectus_writer_premium", "prospectus_fact_check",
                                                   "prospectus_accuracy_review", "cio_ask_reanswer",
                                                   "prospectus_news_classify", "prospectus_cio_news_note",
+                                                  # operator D3 2026-10-27: PR reviews wait for the credit, no paid fallback
+                                                  "pr_independent_review", "pr_independent_review_deep",
                                                   # 2026-11-01: hosted web_search never leaves the credit lane
                                                   "cio_ask_web_search"}
     # 2026-11-01: the transport-side tool gate. One process may send a `tools` payload; the registry row's

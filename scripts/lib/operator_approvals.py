@@ -20,7 +20,11 @@ from typing import Callable
 
 DECISION_REL = "data/governance/operator_decisions.jsonl"
 WRITER = "scripts/lib/operator_approvals.py"
-KINDS = ("POLICY", "RELEASE", "SPEND", "ACTIVATE", "DESIGN", "CONFLICT", "FINDING", "FINANCIAL")
+KINDS = ("POLICY", "RELEASE", "SPEND", "ACTIVATE", "DESIGN", "CONFLICT", "FINDING", "FINANCIAL", "MERGE")
+#: MERGE (Design approvals-pr-review/v001): one item per PR, id ``pr:<N>``, bound to the independent review of one
+#: head SHA. APPROVE of a non-held PR is the operator's merge approval for that head (the host applier adds
+#: ``operator-merge``); APPROVE of a held PR is "Approve review" and adds no label (D6, AGENTS.md §25.10).
+MERGE_DECISIONS = ("APPROVE", "HOLD", "REQUEST_CHANGES")
 # AGENTS.md itself is about 630 KB; a real before/after pair must fit.
 MAX_DOCUMENT = 1_800_000
 MAX_LEDGER = 32_000_000
@@ -285,7 +289,7 @@ class DecisionLedger:
 
     def decide(self, actor: str, current: Callable[[], dict], body: dict) -> dict:
         choice = body.get("decision")
-        if choice not in ("APPROVE", "REJECT", "REQUEST_CHANGES"):
+        if choice not in ("APPROVE", "REJECT", "REQUEST_CHANGES", "HOLD"):
             raise Refused("INVALID_DECISION", 400)
         request = body.get("request_id")
         if not isinstance(request, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request):
@@ -299,6 +303,9 @@ class DecisionLedger:
             it, review = current(), str(body.get("review_id") or "")
             sha = body.get("document_sha")
             self._session(rows, actor, review, it, sha)
+            merge = it.get("merge") if it["kind"] == "MERGE" else None
+            if (choice == "HOLD" or it["kind"] == "MERGE") and (it["kind"] != "MERGE" or choice not in MERGE_DECISIONS):
+                raise Refused("INVALID_DECISION", 400)
             for r in rows:
                 if r.get("event") == "DECIDED" and r.get("request_id") == request:
                     if (r["actor"], r["item_id"], r["document_sha"], r["decision"], r["comment"]) == (actor, it["id"], sha, choice, comment):
@@ -307,6 +314,17 @@ class DecisionLedger:
             if any(r.get("event") == "DECIDED" and r.get("item_id") == it["id"] and r.get("document_sha") == sha for r in rows):
                 raise Refused("ALREADY_DECIDED")
             token = None
+            effect = "RECORD_ONLY"
+            if merge is not None:
+                if not isinstance(merge, dict) or not SHA.fullmatch(str(merge.get("head_sha") or "")):
+                    raise Refused("REVIEW_BINDING_REQUIRED", 503)
+                if choice == "APPROVE":
+                    # A review of the current head, not stale, not CANNOT_REVIEW / waiting; else nothing to approve.
+                    if merge.get("refusal"):
+                        raise Refused(str(merge["refusal"]))
+                    effect = "REVIEW_APPROVED_NO_LABEL" if merge.get("held") else "OPERATOR_MERGE_LABEL"
+                elif choice == "HOLD":
+                    effect = "HOLD_THIS_HEAD"
             if choice == "APPROVE":
                 if it["decision_mode"] == "GOVERNED_PATH":
                     raise Refused("GOVERNED_ACTION_REQUIRED")
@@ -322,7 +340,40 @@ class DecisionLedger:
             return append({"event": "DECIDED", "actor": actor, "item_id": it["id"], "kind": it["kind"],
                            "document_sha": sha, "source_sha": it["document"]["source_sha"], "review_id": review,
                            "decision": choice, "comment": comment, "request_id": request, "policy_token": token,
-                           "effect": "RECORD_ONLY", "governed_href": it["governed_href"]})
+                           "effect": effect, "governed_href": it["governed_href"],
+                           **({"pr": it.get("pr"), "held": bool(merge.get("held")), "head_sha": merge["head_sha"]}
+                              if merge is not None else {})})
+
+    def question(self, actor: str, current: Callable[[], dict], body: dict) -> dict:
+        """"Ask the reviewer" on a MERGE item: a QUESTION row bound to the review's head and document (not terminal).
+
+        The host reviewer (scripts/pr_independent_review.py) answers it within its capped budget and writes the answer
+        to its own store; this ledger only records that the operator asked, what, and about which exact review.
+        """
+        text = body.get("question")
+        if not isinstance(text, str) or not text.strip():
+            raise Refused("QUESTION_REQUIRED", 400)
+        if len(text) > 1000:
+            raise Refused("QUESTION_TOO_LONG", 400)
+        request = body.get("request_id")
+        if not isinstance(request, str) or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", request):
+            raise Refused("REQUEST_ID_REQUIRED", 400)
+        with self._transaction() as (rows, append):
+            it = current()
+            if it["kind"] != "MERGE":
+                raise Refused("INVALID_DECISION", 400)
+            if body.get("document_sha") != it["document"]["document_sha"]:
+                raise Refused("DOCUMENT_CHANGED")
+            if not (it.get("merge") or {}).get("reviewed"):
+                raise Refused("REVIEW_REQUIRED")
+            for r in rows:
+                if r.get("event") == "QUESTION" and r.get("request_id") == request:
+                    if (r["actor"], r["item_id"], r["question"]) == (actor, it["id"], text.strip()):
+                        return r
+                    raise Refused("IDEMPOTENCY_CONFLICT")
+            return append({"event": "QUESTION", "actor": actor, "item_id": it["id"], "kind": "MERGE",
+                           "document_sha": it["document"]["document_sha"], "source_sha": it["document"]["source_sha"],
+                           "question": text.strip(), "request_id": request, "effect": "ASK_REVIEWER"})
 
     def incident_decision(self, actor: str, body: dict) -> dict:
         """Operator acknowledge / close-as-won't-fix on an IncidentRecord@v1 (Ops → Incidents, 2026-10-27).
