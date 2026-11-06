@@ -1,0 +1,26 @@
+{
+ "schema": "DeliveryLifecycleSchedulePlan@v1",
+ "why_not_in_this_pr": [
+  "config/lane_registry.json is operator-only (§17) and config/n8n_run_allowlist.json is admitting rows through other open PRs (#2684); this PR carries the row as a proposal and lets the operator apply it.",
+  "Both files are sha-pinned in docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json (read by tests/test_disk_standing_apply_20261024.py activation fixtures). Any row added changes the sha, so the applying PR must re-pin that packet in the same [shared-infra] change."
+ ],
+ "apply_after": "operator approval of the lane row",
+ "pr_title": "[shared-infra] register the post-release-tester lane (n8n, shadow first)",
+ "scope_after_d42": "Operator D42 (2026-11-05): KEEP the post-release tester and rebuild it as an n8n lane; DROP the failure-alert part, because critical-texts (#2678/#2680) owns alert delivery. This proposal therefore carries ONE lane. The delivery-failure-alerts row is gone, including its host crontab line: scheduling is n8n-only (house rule A).",
+ "house_rules": {
+  "A_scheduled_by": "n8n only; no host timer or crontab line is created, and none is left beside it",
+  "B_cutover_sequence": [
+   "draft: the workflow exists, disabled, no schedule",
+   "dry run: scripts/post_release_tester.py with no --live prints the tick plan and runs nothing; the receipt is quoted in the cutover PR",
+   "shadow: dispatcher lane at stage=shadow for 72 hours, every run receipted, no effect on the release",
+   "cutover: only after 72 clean shadow hours; the cutover receipt names the lane, the first live run and the disable of any competing schedule"
+  ],
+  "C_sunset": "the lane's own disable is recorded in the same receipt; nothing here re-enables it silently"
+ },
+ "steps": [
+  "append registry_rows.json (one row) to config/lane_registry.json lanes[] -- operator, §17",
+  "append allowlist_entry.json to config/n8n_run_allowlist.json lanes[] in a separate shared-infra PR, with live_arg null until canary",
+  "re-pin lane_registry.json and n8n_run_allowlist.json in docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json (sha256sum of the new files) and say so in the PR body",
+  "operator: n8n dispatcher picks post-release-tester from the registry at shadow; canary = live_arg ['--live'] after 72 clean shadow hours"
+ ]
+}
