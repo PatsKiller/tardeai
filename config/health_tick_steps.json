@@ -281,6 +281,29 @@
       "note": "2026-10-31 DSN-20261031-market-risk-engine-P3-T7 (new step, no crontab ancestor). Plan §5.8: a RED episode repeats until acknowledged; if the evaluator that sends repeats dies, this step pages 'escalation stalled'. Reads the episode store and the evaluator run receipt (data/runtime/market_risk/run_last.json); silent when no RED episode is OPEN or outside the evaluator schedule (config/market_risk_escalation_stall.json). Operator approved design §11 items 5 and 8 on 2026-10-31. Placed before pipeline-watchdog, which must stay last."
     },
     {
+      "step_id": "disabled-features-reminder",
+      "enabled": false,
+      "finding_rc": [
+        3
+      ],
+      "finding_note": "exits 3 (EXIT_FINDING) when a config/ disabled_until block is past its review_by date or malformed; the step pages one P2 per feature per day itself. rc 1 or a traceback = crashed.",
+      "command": [
+        "$PY",
+        "scripts/check_disabled_features.py",
+        "--apply"
+      ],
+      "cadence_minutes": 1440,
+      "minute_offset": 5,
+      "hours": [
+        9
+      ],
+      "lock": "/tmp/health_tick_disabled_features_reminder.lock",
+      "timeout_s": 60,
+      "market_day_gate": false,
+      "needs_env": false,
+      "note": "Operator 2026-10-31: \"there needs to be a reminder to switch it back on. We just don't want to leave it off\". Declared OFF (enabled: false) until the operator's word (AGENTS.md section 25.10.2); activation is flipping enabled to true. Dry run: $PY scripts/check_disabled_features.py. Lane disabled-features-reminder."
+    },
+    {
       "step_id": "pipeline-watchdog",
       "command": ["$PY", "scripts/pipeline_watchdog.py"],
       "cadence_minutes": 120,

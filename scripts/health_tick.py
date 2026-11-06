@@ -171,6 +171,8 @@ def load_table(path: Path) -> dict[str, Any]:
         if PYTHON_CRASH_RC in frc:
             raise ValueError(f"{path}: {sid}: finding_rc may not contain {PYTHON_CRASH_RC} "
                              "(Python's uncaught-exception exit); use EXIT_FINDING=3")
+        if "enabled" in s and not isinstance(s["enabled"], bool):
+            raise ValueError(f"{path}: {sid}: enabled must be true or false")
     return data
 
 
@@ -192,6 +194,8 @@ def step_is_due(step: dict[str, Any], tick: datetime, tick_minutes: int) -> bool
                      hour % (cadence/60) == 0 — cron's `*/2`, `*/4`.
     hours/weekdays : inclusive windows; weekdays are ISO 1=Mon..7=Sun.
     """
+    if step.get("enabled") is False:  # declared but off until the operator's word (AGENTS.md 25.10.2)
+        return False
     cad = int(step["cadence_minutes"])
     offset = int(step.get("minute_offset") or 0)
     hours = step.get("hours")
