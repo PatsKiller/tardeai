@@ -83,6 +83,15 @@ const full = {
   prs: [pr2501, pr2502, pr2503, pr2504, pr2505],
 }
 
+// Readiness (PR 2307 F1): the button follows the server's verdict, and an ABSENT verdict offers nothing.
+const readyRow = row(2601, { can_approve: true, digest_status: 'ready', digest_reason: 'ready', next_plain: 'Safe to Approve — same READY rules as the Telegram digest.' })
+const heldRow = row(2602, { can_approve: false, digest_status: 'files_unverified', digest_reason: 'files_unverified',
+  next_plain: 'The changed-file list could not be checked here, so Approve stays off — that is the digest\'s own rule.' })
+const readiness = {
+  schema: 'DeployInFlight@v1', generated_at: clock, status: 'OK', freshness: 'OK', source: 'synthetic fixture',
+  count: 3, ready_count: 1, prs: [readyRow, heldRow, row(2603)],
+}
+
 // Old backend: neither additive key exists.
 const old = {
   schema: 'DeployInFlight@v1', generated_at: clock, status: 'OK', freshness: 'OK', source: 'synthetic fixture',
@@ -114,6 +123,7 @@ const results = []
 try {
   const cases = [
     { name: 'full', payload: full, widths: [320, 390, 412, 1280] },
+    { name: 'readiness', payload: readiness, widths: [320, 1280] },
     { name: 'old-backend', payload: old, widths: [320, 1280] },
     ...(backendPayload ? [{ name: 'backend', payload: backendPayload, widths: [320, 390, 1440] }] : []),
     ...(adversarialPayload ? [{ name: 'backend-adversarial', payload: adversarialPayload, widths: [320, 1440] }] : []),
@@ -152,6 +162,10 @@ try {
           agentStates: [...document.querySelectorAll('[data-testid^="agent-"]')].map(el => el.textContent || ''),
           prRows: table ? table.querySelectorAll('tbody tr').length : 0,          labeledCells: table ? table.querySelectorAll('td[data-label]').length : 0,
           unlabeledCells: table ? table.querySelectorAll('td:not([data-label])').length : 0,
+          // Which Approve buttons are actually clickable — the board must never offer one on a row whose
+          // readiness it could not verify (PR 2307 F1).
+          approveEnabled: [...document.querySelectorAll('[data-testid^="approve-"]')]
+            .filter(b => !b.disabled).map(b => b.getAttribute('data-testid')),
           text,
         }
       })
@@ -165,7 +179,18 @@ try {
       const has = (s, why) => assert.ok(t.includes(s), `${c.name}@${width}: missing "${s}" (${why})`)
       has('Agents and current work', 'agent overview panel')
       has('In flight · open PRs to main', 'board title')
+      if (c.name === 'readiness') {
+        // Exactly one row states can_approve: true, so exactly one Approve is offered — the field decides, not
+        // "everything I looked at passed". The absent-verdict row and the false row stay closed.
+        assert.deepEqual(measure.approveEnabled, ['approve-2601'],
+          `${c.name}@${width}: Approve offers ${JSON.stringify(measure.approveEnabled)}`)
+        has('#2601', 'the ready PR')
+        has('Safe to Approve — same READY rules as the Telegram digest', 'the ready row says why')
+        has('could not be checked here, so Approve stays off', 'the unverified row says why it is closed')
+      }
       if (c.name === 'full') {
+        assert.deepEqual(measure.approveEnabled, [],
+          `${c.name}@${width}: an absent readiness verdict must not offer Approve (got ${JSON.stringify(measure.approveEnabled)})`)
         assert.equal(measure.agentCards, 3, `${c.name}@${width}: agent cards`)
         assert.ok(measure.prRows >= 5, `${c.name}@${width}: PR rows`)
         has('#2501', 'first PR')
