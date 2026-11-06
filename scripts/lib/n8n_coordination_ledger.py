@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import secrets
 import sqlite3
 import threading
@@ -82,6 +83,8 @@ DEAD_LETTER_FIELDS = ("slot_key", "lane_id", "mode", "slot_local", "attempts", "
                       "class", "max_attempts", "policy")
 #: Additive dead_letters columns (review of #1594): what dead_letter_rearmable needs to refuse a re-run.
 DEAD_LETTER_EXT_COLUMNS: dict[str, str] = {"class": "TEXT", "max_attempts": "INTEGER", "policy": "TEXT"}
+#: What _add_columns accepts for a table, column or type name before it is placed in DDL text.
+_SQL_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 #: Classes that never retry, whatever their policy says (a retry could double-send or double-write).
 SINGLE_ATTEMPT_CLASSES = frozenset({"send", "learn"})
 
@@ -300,12 +303,18 @@ class CoordinationLedger:
 
     def _add_columns(self, table: str, columns: Mapping[str, str]) -> None:
         """ALTER TABLE ADD COLUMN for each missing column. Two processes migrating at once (gateway + executor
-        starting together) can both see a column missing; the loser's "duplicate column name" is success."""
+        starting together) can both see a column missing; the loser's "duplicate column name" is success.
+        Every identifier is checked against a strict regex first: none of it may reach SQL text unchecked."""
+        for ident in (table, *columns.keys(), *columns.values()):
+            if not _SQL_IDENT_RE.match(str(ident)):
+                raise ValueError(f"_add_columns: not a plain SQL identifier: {ident!r}")
+        # nosemgrep: tq-py-sql-fstring -- table matched _SQL_IDENT_RE above
         have = {str(r["name"]) for r in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
         for col, typ in columns.items():
             if col in have:
                 continue
             try:
+                # nosemgrep: tq-py-sql-fstring -- table, col and typ matched _SQL_IDENT_RE above
                 self._conn.execute(f'ALTER TABLE {table} ADD COLUMN "{col}" {typ}')
             except sqlite3.OperationalError as exc:
                 if "duplicate column name" not in str(exc).lower():

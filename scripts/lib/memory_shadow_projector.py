@@ -83,9 +83,13 @@ def apply_schema(conn) -> None:
         cur.execute(sql)
         cur.execute("SELECT current_database()")
         dbname = cur.fetchone()[0]
+        from psycopg2 import sql as pgsql
+
         for role in ("tradeai_memory_shadow_writer", "tradeai_memory_shadow_reader"):
             try:
-                cur.execute(f'GRANT CONNECT ON DATABASE "{dbname}" TO {role}')
+                # dbname is a DB value: quoted as an identifier by the driver, never spliced into SQL text.
+                cur.execute(pgsql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
+                    pgsql.Identifier(dbname), pgsql.Identifier(role)))
             except Exception:
                 conn.rollback()
                 conn.autocommit = True
@@ -414,8 +418,15 @@ def project(root: Path | str, *, tenant: str = DEFAULT_TENANT, conn=None, run_id
     }
 
 
+#: Shadow tables _count may read; the table name is checked against this before it reaches SQL text.
+_COUNTABLE_TABLES = frozenset({"memory_fact_version", "memory_identity"})
+
+
 def _count(conn, table: str) -> int:
+    if table not in _COUNTABLE_TABLES:
+        raise ValueError(f"_count: table not allowlisted: {table!r}")
     with conn.cursor() as cur:
+        # nosemgrep: tq-py-sql-fstring -- table checked against the fixed _COUNTABLE_TABLES allowlist above
         cur.execute(f"SELECT COUNT(*) FROM tradeai_memory_shadow.{table}")
         return int(cur.fetchone()[0])
 

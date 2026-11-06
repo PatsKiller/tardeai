@@ -169,6 +169,7 @@ def _last(
 
 
 def _at(c: sqlite3.Connection, lane: str, recorded_at: str) -> Optional[dict]:
+    # nosemgrep: tq-py-sql-fstring -- _O_COLS is a module constant column list; lane/recorded_at are ? params
     r = c.execute(
         f"SELECT {_O_COLS} FROM run_outcomes WHERE lane_id=? AND recorded_at=? LIMIT 1", (lane, recorded_at)
     ).fetchone()
