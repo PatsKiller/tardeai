@@ -569,6 +569,8 @@ def _material_clock(row) -> tuple[str | None, list[dict], str | None]:
     so its T1/R1 adapter can emit DATA_ERROR rather than invent a UTC offset.
     """
     from .cio_company_facts import timestamp
+    if not row:
+        return None, [], None  # no CIO record: stance_for reports that gap; it is not a timestamp defect
     explicit = row.get("inputs_as_of")
     components = [{"source": c.get("source"), "value": c.get("value"),
                    "as_of": c.get("evidence_at"), "weight": c.get("weight")}
@@ -636,14 +638,20 @@ def stances_for_symbols(symbols, *, root=None, db_query=None, projection=None, n
     from .data_broker.cio_prospect import get_prospects
     resolve_identity = identity_resolver or resolve_security_identity
     names = list(dict.fromkeys(str(s).upper() for s in symbols if str(s).strip()))
+    identities = {symbol: resolve_identity(symbol, root=root) for symbol in names}
+    guids = {symbol: (identity.get("security_guid") if identity.get("identity_status") == "CONFIRMED" else None)
+             for symbol, identity in identities.items()}
     if projection is None:
         if root is not None:
             projection_kwargs.setdefault("shadow_base", Path(root) / "data/cio/cio_prospect_shadow.json")
+        # LIVEFIX-K (2026-11-06): filter to the requested GUIDs BEFORE any ``limit``. Unfiltered, a limit keeps the
+        # top-N prospects by conviction, so most requested names were absent and read as "no CIO stance".
+        projection_kwargs.setdefault("symbols", [g for g in guids.values() if g])
         projection = get_prospects(db_query=db_query, now=now, **projection_kwargs)
     result = {}
     for symbol in names:
-        identity = resolve_identity(symbol, root=root)
-        guid = identity.get("security_guid") if identity.get("identity_status") == "CONFIRMED" else None
+        identity = identities[symbol]
+        guid = guids[symbol]
         result[symbol] = {**stance_for(guid, projection=projection, now=now),
                           "identity_status": identity.get("identity_status", "UNRESOLVED")}
     return result
