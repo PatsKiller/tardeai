@@ -55930,6 +55930,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
+    # Home v008 "Needs you" one-tap approvals — HTTP edge only (piece B). Reads for the authenticated
+    # reader; a decision is accepted solely from the operator's signed-in Command Center session with
+    # same-origin CSRF, and is then passed to the store's single decision entry (home_approvals.decide),
+    # which owns requester != approver and revalidates every bound fact. Nothing here executes an action
+    # or writes a receipt. Design: persistent-state/handoffs/DESIGN_HOME_V008_APPROVALS_A_B_BOUNDARY_20261103.md
+    if base_path.rstrip("/") == "/api/v2/home/approvals" or base_path.startswith("/api/v2/home/approvals/"):
+        try:
+            from lib import home_approvals_api as _haa
+
+            _haa_out = _haa.handle(base_path, method, body, query)
+            if _haa_out is not None:
+                return _haa_out
+        except Exception as e:
+            return 503, {"ok": False, "code": "STORE_UNAVAILABLE",
+                         "reason": f"The approvals service is unavailable ({type(e).__name__}); nothing was decided."}
+
     # Approvals Center, amendment reader and Rulebook (boards 19-21, W11; docs/ops/APPROVALS_CENTER_20261024.md).
     # Reads for the authenticated reader; decisions only from the operator tailnet identity with same-origin CSRF.
     if base_path.rstrip("/") == "/api/v2/governance" or base_path.startswith("/api/v2/governance/"):
