@@ -1,7 +1,7 @@
 // DefenseProjection@v1 display helpers (design defense/v001). Synthetic values only (public repo).
 // Run: node --experimental-strip-types src/lib/defenseEngine.test.ts
 // No node:assert / node:fs: CI's tsc has no @types/node (same local check as designTokens.test.ts).
-import { clockET, defenseLines, GAP, isProjection, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText, tierTone, type DefenseProjection } from './defenseEngine.ts'
+import { clockET, defenseLines, GAP, isProjection, unwrapProjection, ladder, money, pct, readinessTone, scorePosition, signed, sourceSummaryText, tierTone, type DefenseProjection } from './defenseEngine.ts'
 
 function fail(msg: string): never { throw new Error(msg) }
 const assert = {
@@ -73,6 +73,10 @@ const P: DefenseProjection = {
 test('defense lines carry one value per projection field', () => {
   assert.ok(isProjection(P), 'schema')
   assert.ok(!isProjection({ schema: 'Other' }), 'other schema')
+  assert.equal(unwrapProjection({ ok: true, served_from: 'request_build', stale: false, data: P }), P, 'served envelope')
+  assert.equal(unwrapProjection({ ok: true, data: { ok: true, data: P } }), P, 'double envelope')
+  assert.equal(unwrapProjection(P), P, 'bare')
+  assert.equal(unwrapProjection({ data: { schema: 'Other' } }), null, 'other schema in envelope')
   const lines = defenseLines(P, new Date('2030-01-07T21:00:00Z'))
   assert.equal(lines.map(l => l.sheet).join(','), 'exposure,stops,hedge,sector,cash,base,watch,sources', 'order')
   const by = Object.fromEntries(lines.map(l => [l.id, l]))
