@@ -14,7 +14,14 @@ def ensure_phase_a_tables(cur) -> None:
         cur.execute(MIGRATION.read_text())
 
 
+#: Versioned snapshot tables _next_version may read; checked before the name reaches SQL text.
+_VERSIONED_TABLES = frozenset({"redeploy_exposure_loss", "redeploy_portfolio_context_snapshots"})
+
+
 def _next_version(cur, table: str, deploy_event_id: int) -> int:
+    if table not in _VERSIONED_TABLES:
+        raise ValueError(f"_next_version: table not allowlisted: {table!r}")
+    # nosemgrep: tq-py-sql-fstring -- table checked against the fixed _VERSIONED_TABLES allowlist above
     cur.execute(
         f"SELECT COALESCE(MAX(version), 0) + 1 FROM {table} WHERE deploy_event_id=%s",
         (deploy_event_id,),

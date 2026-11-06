@@ -693,6 +693,7 @@ def list_transfer_history(
         params.append(_norm_sym(symbol))
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     params.append(int(limit))
+    # nosemgrep: tq-py-sql-fstring -- where joins only literal clauses; account/symbol/limit travel as %s params
     cur.execute(f"""
         SELECT id, event_id, symbol, from_account, to_account, shares_moved,
                cost_basis_total, per_share_basis, basis_source, transfer_type,

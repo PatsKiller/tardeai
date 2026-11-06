@@ -373,6 +373,7 @@ def _load(probe: core.Probe, kind: str, path: Path, ev: dict) -> Optional[list]:
             return None
         try:
             con.row_factory = __import__("sqlite3").Row
+            # nosemgrep: tq-py-sql-fstring -- table matched _IDENT_RE in this function; _MAX_ROWS is a module int
             cur = con.execute(f"SELECT * FROM {table} LIMIT {_MAX_ROWS}")  # noqa: S608 - identifier validated
             return [dict(r) for r in cur.fetchall()]
         except Exception:  # noqa: BLE001

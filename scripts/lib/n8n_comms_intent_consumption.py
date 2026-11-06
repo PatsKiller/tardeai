@@ -242,6 +242,7 @@ def connect_rw(path: Path) -> sqlite3.Connection:
     have = {r[1] for r in conn.execute("PRAGMA table_info(comms_intent_incidents)")}
     for name, typ in INCIDENT_COLUMNS_ADDED:
         if name not in have:
+            # nosemgrep: tq-py-sql-fstring -- name/typ come from the module constant INCIDENT_COLUMNS_ADDED
             conn.execute(f"ALTER TABLE comms_intent_incidents ADD COLUMN {name} {typ}")
     return conn
 
