@@ -5,6 +5,8 @@ import { RADIUS } from '../lib/designTokens'
 import DeskPage, { DeskGap, type DeskDecision, type DeskSource, type DeskTab } from './DeskPage'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 import { useApi } from '../hooks/useApi'
+import { deriveSurfaceState, surfaceGap, type SurfaceShape } from '../lib/surfaceState'
+import { SurfaceGap, useReportSurfaceState } from './SurfaceGap'
 
 /**
  * Boards 1–4 render a server projection (`/api/v2/desks/<desk>`). Every label and
@@ -40,7 +42,7 @@ function RowBody({ row }: { row: DeskRow }) {
   </>
 }
 
-export function DeskPanels({ panels, onOpen }: { panels: DeskPanel[]; onOpen: (panel: string, row: string) => void }) {
+export function DeskPanels({ panels, onOpen, totalUnknown = false }: { panels: DeskPanel[]; onOpen: (panel: string, row: string) => void; totalUnknown?: boolean }) {
   return <div className="desk-board-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, alignItems: 'start' }}>
     <style>{`.desk-board-grid > section[data-span="2"]{grid-column:span 2}.desk-board-grid > section[data-span="3"]{grid-column:span 3}@media(max-width:1100px){.desk-board-grid{grid-template-columns:minmax(0,1fr) !important}.desk-board-grid > section[data-span]{grid-column:auto !important}}`}</style>
     {panels.map(panel => <section key={panel.id} data-span={panel.span ?? 1} aria-label={panel.title} data-testid={`desk-panel-${panel.id}`} style={panelStyle}>
@@ -48,7 +50,9 @@ export function DeskPanels({ panels, onOpen }: { panels: DeskPanel[]; onOpen: (p
         <h3 style={{ margin: 0, fontSize: TYPE.md, color: BB.text0 }}>{panel.title}</h3>
         {panel.sub && <span style={{ fontSize: TYPE.base, color: BB.text3, overflowWrap: 'anywhere' }}>{panel.sub}</span>}
       </div>
-      {panel.rows.length === 0 && !panel.gap && <p style={{ color: BB.text3, margin: '6px 0 0', fontSize: TYPE.base }}>{panel.empty ?? 'No rows on file.'}</p>}
+      {panel.rows.length === 0 && !panel.gap && <p style={{ color: BB.text3, margin: '6px 0 0', fontSize: TYPE.base }}>{totalUnknown
+        ? 'Not known while some sources are unavailable.'
+        : panel.empty ?? 'No rows on file.'}</p>}
       {panel.rows.map(row => row.href
         ? <Link key={row.id} to={row.href} style={{ ...rowStyle, textDecoration: 'none' }}><RowBody row={row} /></Link>
         : row.detail
@@ -73,25 +77,45 @@ export type DeskBoardConfig = {
 
 /** One desk page: the board-0 frame around the server projection, one tab at a time. */
 export default function DeskBoard({ desk, title, purpose, tabs, tabAliases, classicHref, testId, extras }: DeskBoardConfig) {
-  const { data, error, loading, refetch } = useApi<DeskProjection>(`/api/v2/desks/${desk}`, 300_000)
+  const { data, error, loading, refreshing, stale, refetch } = useApi<DeskProjection>(`/api/v2/desks/${desk}`, 300_000)
   const { selected, open, close } = useW7Detail()
-  const projection = data && typeof data === 'object' && 'tabs' in data ? data : null
+  // SurfaceState@v1 (BOARD row 36): ONE state decides every word this page prints about its data. `!projection` is
+  // never used as a synonym for "unavailable" again — that is what put "Agents unavailable" beside "Loading the
+  // desk projection." on the operator's screen.
+  const shape: SurfaceShape<DeskProjection> = {
+    what: `${title} projection`,
+    // The server names its own gaps; an envelope that cannot say is treated as complete only because it is complete.
+    gaps: d => (d && typeof d === 'object' && Array.isArray(d.errors) ? d.errors : []),
+    isEmpty: d => Object.values((d && d.tabs) || {}).every(t => (t?.panels ?? []).every(p => (p.rows ?? []).length === 0)),
+    usable: d => !!d && typeof d === 'object' && 'tabs' in d,
+  }
+  const surface = deriveSurfaceState<DeskProjection>({ data, error, loading, refreshing, stale }, shape)
+  useReportSurfaceState(`${title} page`, surface as never)
+  const projection = surface.data
+  const surfaceText = surfaceGap(surface, shape)
+  // F1 (review, 2026-11-04): the invariant is enforced HERE, in the renderer the operator sees, not only in the
+  // module. While the envelope says sources are missing (`surface.state === 'partial'`, `totalKnown === false`) this
+  // page may not print a complete-looking line — "No open decisions on file" is exactly that claim.
+  const decisionLine = !projection
+    ? (surfaceText ? surfaceText.title : 'The desk projection has not answered.')
+    : surface.totalKnown
+      ? projection.decision_gap ?? 'No open decisions on file for this desk.'
+      : `${surface.gaps.length} source${surface.gaps.length === 1 ? '' : 's'} did not answer (${surface.gaps.join(', ')}). The decisions list is not complete.`
   const sources: DeskSource[] = projection
     ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined }))
-    : [{ id: 'projection', label: `${title} projection`, gap: loading ? 'Loading the desk projection.' : 'The desk projection has not answered.' }]
+    : [{ id: 'projection', label: `${title} projection`, pending: true, gap: surfaceText ? `${surfaceText.title} ${surfaceText.reason}` : undefined }]
   const [panelId, rowId] = (selected ?? '').split(':')
   const detailRow = projection && selected
     ? Object.values(projection.tabs).flatMap(t => t.panels).find(p => p.id === panelId)?.rows.find(r => r.id === rowId)
     : undefined
   return <div data-testid={testId}>
     <DeskPage title={title} purpose={purpose} tabs={tabs} tabAliases={tabAliases} sources={sources}
-      decisions={projection?.decisions} decisionGap={projection ? projection.decision_gap ?? 'No open decisions on file for this desk.' : 'The desk projection has not answered.'}>
+      decisions={projection?.decisions} decisionGap={decisionLine}>
       {(active: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {!projection && <DeskGap title={`${title} unavailable`} reason={error ? 'The desk projection could not be read. Nothing below is current.' : 'Loading the desk projection.'}>
-          {error && <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry</button>}
-        </DeskGap>}
+        {!projection && <SurfaceGap state={surface} shape={shape} onRetry={refetch} />}
+        {projection && (surface.state === 'partial' || surface.state === 'stale') && <SurfaceGap state={surface} shape={shape} onRetry={refetch} />}
         {projection && (projection.tabs[active]?.panels?.length
-          ? <DeskPanels panels={projection.tabs[active].panels} onOpen={(p, r) => open(`${p}:${r}`)} />
+          ? <DeskPanels panels={projection.tabs[active].panels} onOpen={(p, r) => open(`${p}:${r}`)} totalUnknown={!surface.totalKnown} />
           : <DeskGap title="Nothing on file for this view" reason="The projection returned no panels for this tab." />)}
         {extras?.[active]}
         <Link to={classicHref} style={{ display: 'flex', alignItems: 'center', minHeight: 44, color: T.link, fontSize: TYPE.md }}>

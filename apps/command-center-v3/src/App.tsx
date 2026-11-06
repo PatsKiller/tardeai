@@ -1,5 +1,5 @@
 import { OpportunityModalProvider } from './components/opportunity/OpportunityContext'
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import { initialProbeState, onProbeResult } from './lib/reconnectProbe'
@@ -75,6 +75,7 @@ import {
 import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
 import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
+import { SurfaceStateContext, useSurfaceChannel } from './components/SurfaceGap'
 
 
 function BuildMarker() {
@@ -115,8 +116,12 @@ function BuildMarker() {
   // FQ-081: the bundle id, build date and source revision are technical identifiers, not something an operator reads
   // in the footer. The one operator-facing fact stays visible — whether this tab is running the artifact the server is
   // serving — and the identifiers move one tap away. data-source-sha stays on the element: it is machine-read.
-  return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
-    {comparison === 'SAME' ? 'Running the artifact the server serves' : comparison === 'UNAVAILABLE' ? 'Served build comparison UNAVAILABLE' : <>
+  // BOARD row 36, rule 7: that visible fact is about the BUNDLE, never about the page's data. A page whose data did
+  // not load must not sit under a bare "running the artifact the server serves" — that reads as "everything is fine".
+  const { report: surface } = useContext(SurfaceStateContext)
+  const qualifier = surface && !surface.dataLoaded ? ` · ${surface.name} data did not load` : ''
+  return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'} data-surface-loaded={surface ? String(surface.dataLoaded) : 'unknown'}>
+    {comparison === 'SAME' ? `Running the artifact the server serves${qualifier}` : comparison === 'UNAVAILABLE' ? 'Served build comparison UNAVAILABLE' : <>
       newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
     </>}
     {' · '}<details data-testid="build-diagnostics" style={{ display: 'inline-block' }}>
@@ -232,8 +237,16 @@ function GoProposalDeepLink() {
 
 function Shell() {
   const [drill, setDrill] = useState<DrillContext | null>(null)
+  // The active page publishes its SurfaceState here so the build footer can say "this page's data did not load"
+  // instead of leaving "matches served artifact" to be read as an all-clear (BOARD row 36, rule 7).
+  // Ownership: a clearing null is accepted only when it comes from the surface that currently owns the slot, so the
+  // outgoing page of a route change cannot erase the incoming page's state (F2 review, 2026-11-04). The hook keeps
+  // `publish` at one identity for the life of the shell: a per-render publish retriggered every publisher's effect and
+  // looped (Codex cloud P1, 2026-11-05).
+  const surfaceChannel = useSurfaceChannel()
   return (
     <OpportunityModalProvider>
+    <SurfaceStateContext.Provider value={surfaceChannel}>
     <div className="app-shell cc-terminal-ui" style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg0)', color: 'var(--text0)' }}>
       <SchwabReauthBanner />
       <FinvizCookieBanner />
@@ -327,6 +340,7 @@ function Shell() {
       </div>
       <DetailDrawer ctx={drill} onClose={() => setDrill(null)} />
     </div>
+    </SurfaceStateContext.Provider>
     </OpportunityModalProvider>
   )
 }

@@ -19,6 +19,12 @@ export type DeskSource = {
   note?: string
   /** A receipt clock with no single writer lane. Skips the missing-writer warning. */
   clockOnly?: boolean
+  /**
+   * The source has not been read yet (its surface is still loading). Renders the gap text only — a clock that was
+   * never read is not "update time unavailable", and saying so beside a loading banner is the contradiction SurfaceState
+   * exists to stop (BOARD row 36).
+   */
+  pending?: boolean
 }
 export type DeskDecision = { id: string; title: string; detail?: string; href?: string }
 export type DeskWriter = {
@@ -136,6 +142,12 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           const sourceWriters = (source.laneIds ?? []).map(id => writers.get(id))
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
           const gap = source.gap || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
+          if (source.pending) {
+            return <article key={source.id} style={{ ...panel, padding: 12 }}>
+              <strong>{source.label}</strong>
+              <div data-testid="desk-source-pending" style={{ color: BB.amber, marginTop: 6 }}>{gap ?? 'Not read yet.'}</div>
+            </article>
+          }
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
             <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
             {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
