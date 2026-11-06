@@ -298,6 +298,57 @@ def overlapping_pairs(mine: Iterable[str], theirs: Iterable[str]) -> list[tuple[
     return [(m, t) for m in mine for t in theirs_l if m not in shared and t not in shared and patterns_overlap(m, t)]
 
 
+def _glob_covers_literal(pattern: str, literal: str) -> bool:
+    """Does ``pattern`` select the concrete path ``literal``? (``**`` spans whole segments; ``*`` never does.)"""
+    ps = tuple(canonical_pattern(pattern).split("/"))
+    ls = tuple(canonical_pattern(literal).split("/"))
+    memo: dict[tuple[int, int], bool] = {}
+
+    def go(i: int, j: int) -> bool:
+        key = (i, j)
+        if key in memo:
+            return memo[key]
+        if i == len(ps):
+            out = j == len(ls)
+        elif ps[i] == "**":
+            out = go(i + 1, j) or (j < len(ls) and go(i, j + 1))
+        elif j == len(ls):
+            out = False
+        else:
+            out = bool(_segment_regex(ps[i]).match(ls[j])) and go(i + 1, j + 1)
+        memo[key] = out
+        return out
+
+    return go(0, 0)
+
+
+def _path_covers(mine: str, theirs: str) -> bool:
+    """True when every path ``theirs`` can select is also selected by ``mine``."""
+    cm, ct = canonical_pattern(mine), canonical_pattern(theirs)
+    if cm == ct:
+        return True
+    if is_glob(ct):
+        return False  # a glob predecessor is covered only by an identical claim
+    if not is_glob(cm):
+        return ct.startswith(cm.rstrip("/") + "/")
+    return _glob_covers_literal(cm, ct)
+
+
+def claim_covers(mine: Iterable[str], theirs: Iterable[str]) -> bool:
+    """True when ``mine`` holds EVERY path ``theirs`` held — full succession, not a shared file.
+
+    This is the test for recording a takeover mechanically. Overlap alone is not succession: two agents touching
+    one shared file (``scripts/api_v2.py``) are siblings, and recording one as the other's predecessor invents a
+    claim chain that later refuses every merge (see PR #2614). Explicit succession stays available via
+    ``claim --takeover <id>``.
+    """
+    mine_l = list(mine)
+    targets = [canonical_pattern(t) for t in theirs]
+    if not targets or not mine_l:
+        return False
+    return all(any(_path_covers(m, t) for m in mine_l) for t in targets)
+
+
 # --------------------------------------------------------------------------------------------- shared-additive
 
 SHARED_SCHEMA = "AgentClaimSharedPaths@v1"
@@ -672,8 +723,13 @@ class ClaimBoard:
         worktree: str | None = None,
         head_sha: str | None = None,
         policy: Mapping[str, Any] | None = None,
+        takeover_ids: Iterable[str] | None = None,
     ) -> dict[str, Any]:
-        """``policy``: {"policy_version", "policy_blob", "policy_check"} of the AGENTS.md the claim is made under."""
+        """``policy``: {"policy_version", "policy_blob", "policy_check"} of the AGENTS.md the claim is made under.
+
+        ``takeover_ids`` records a DELIBERATE succession of named stale claims whose paths this claim covers only
+        in part. Mechanical succession (full path containment) is recorded without it; a bare shared file never is.
+        """
         if not session:
             raise ClaimError("session is required (--session or AGENT_CLAIM_SESSION)")
         if not task or not str(task).strip():
@@ -704,6 +760,7 @@ class ClaimBoard:
                     branch=branch,
                     pr=pr,
                     note=note,
+                    takeover_ids=takeover_ids,
                     extra={
                         **{
                             k: v
@@ -728,6 +785,7 @@ class ClaimBoard:
         pr: str | int | None,
         note: str | None,
         extra: Mapping[str, Any] | None = None,
+        takeover_ids: Iterable[str] | None = None,
     ) -> dict[str, Any]:
         views, _bad = self.views()
         blocking = self.conflicts(canon, session=session, views=views)
@@ -737,22 +795,64 @@ class ClaimBoard:
         if blocking:
             raise ClaimConflict(describe_conflicts(blocking), blocking)
 
-        # Stale claims of other sessions that overlap: claimable, takeover recorded.
-        takeover = []
+        # Stale claims this claim FULLY succeeds: claimable, takeover recorded mechanically.
+        # Containment, not overlap. A predecessor is whoever held nothing this claim does not hold; two agents
+        # touching one shared file are siblings, and recording one as the other's predecessor invents a chain
+        # that later refuses every merge. Partial succession stays deliberate: ``claim --takeover <id>``.
+        def _record(v: "ClaimView", kind: str) -> dict[str, Any]:
+            # ``kind`` is the provenance of the link, and it is what the merge gate judges ambiguity by:
+            #   containment - this claim holds everything the predecessor held (a real succession);
+            #   explicit    - the operator of this claim named the predecessor with --takeover;
+            #   overlap     - they merely share a path (siblings; history only, never a claim of succession).
+            return {
+                "claim_id": v.claim_id,
+                "vendor": v.doc.get("vendor"),
+                "session": v.doc.get("session"),
+                "agent": v.doc.get("agent"),
+                "branch": v.doc.get("branch"),
+                "heartbeat_at": v.doc.get("heartbeat_at"),
+                "kind": kind,
+            }
+
+        by_id = {v.claim_id: v for v in views}
+        recorded: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+
+        def _link(v: "ClaimView", kind: str) -> None:
+            # Keep the first position of a link (an explicit upgrade must not reorder the list), but let the last
+            # provenance written win. The mechanical pass cannot see a declared --takeover for a CROSS-SESSION
+            # predecessor: it records that predecessor as ``overlap``/``containment`` and moves on, so without an
+            # upgrade the explicit declaration would silently never be recorded — and two live rivals declaring the
+            # same predecessor would both read as siblings and pass the merge gate.
+            if v.claim_id not in recorded:
+                order.append(v.claim_id)
+            recorded[v.claim_id] = _record(v, kind)
+
         for v in views:
             if v.state != "stale" or v.doc.get("session") == session:
                 continue
             if overlapping_pairs(canon, v.doc.get("paths") or []):
-                takeover.append(
-                    {
-                        "claim_id": v.claim_id,
-                        "vendor": v.doc.get("vendor"),
-                        "session": v.doc.get("session"),
-                        "agent": v.doc.get("agent"),
-                        "branch": v.doc.get("branch"),
-                        "heartbeat_at": v.doc.get("heartbeat_at"),
-                    }
-                )
+                # Record every overlapping stale claim again — the state resolver depends on it — but say what the
+                # link IS. Two agents touching one shared file are siblings, not a chain.
+                kind = "containment" if claim_covers(canon, v.doc.get("paths") or []) else "overlap"
+                _link(v, kind)
+        for target_id in dict.fromkeys(takeover_ids or ()):
+            target = by_id.get(str(target_id))
+            if target is None:
+                raise ClaimError(f"takeover target {target_id} is not a claim on this board")
+            if target.claim_id not in recorded:
+                if target.state != "stale":
+                    raise ClaimError(
+                        f"takeover target {target_id} is {target.state}, not stale; only a stale predecessor "
+                        "can be taken over"
+                    )
+                if not overlapping_pairs(canon, target.doc.get("paths") or []):
+                    raise ClaimError(f"takeover target {target_id} shares none of this claim's paths")
+            # A declared --takeover is deliberate succession, whether or not the mechanical pass above already
+            # recorded the same stale predecessor (it does whenever that predecessor belongs to another session).
+            # Re-record it as ``explicit`` so the merge gate counts it instead of reading it as a shared file.
+            _link(target, "explicit")
+        takeover = [recorded[claim_id] for claim_id in order]
 
         now = self.now()
         vendor_s = slug(vendor or "unknown")

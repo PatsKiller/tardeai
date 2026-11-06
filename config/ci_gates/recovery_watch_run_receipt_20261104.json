@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "recovery_watch_run_receipt_20261104",
+  "files": [
+    "tests/test_recovery_watch_receipt_20261104.py"
+  ],
+  "anchor": "RECOVERY_WATCH_RUN_RECEIPT_20261104",
+  "comment": [
+    "ANCHOR: RECOVERY_WATCH_RUN_RECEIPT_20261104 — FQ-117: the recovery runner leaves one durable receipt per invocation (UTC clock, invocation id, the source identity it actually ran from, every step's outcome, exit and error, and both recovery log files measured). Exit 0 is not evidence of work (AGENTS rule 8). Hermetic: every side-effecting step is stubbed and receipts go to tmp_path; no DB, network, Telegram or file outside the temp dir is touched."
+  ]
+}
