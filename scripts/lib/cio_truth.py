@@ -388,6 +388,9 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
             "stop_status_raw": row.get("status"), "stop_captured_at": meta["as_of"],
             "broker_protected": state == "active" and sp is not None and sp > 0,
             "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"),
+            # The broker order KIND survives a page view: a trailing order has no fixed trigger price, so without it
+            # an active observation with an unknown price could not be told apart from a stop whose price was lost.
+            "stop_order_type": (str(row.get("order_type") or "").strip().upper() or None),
             "stop_note": note, "stop_history": history, **meta}
 
 
@@ -1319,7 +1322,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     from .portfolio_positions import load_store, store_path
     portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_store(store_path(root)), now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
-        db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
+        db_query, "SELECT account,symbol,order_id,order_type,stop_price,qty,status,captured_at FROM stop_last_known")
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")
     fills = inputs.get("stop_fills") if "stop_fills" in inputs else fill_ledger(broker, db_query=db_query)
     positions = []
@@ -1337,7 +1340,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{**{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                          "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
-                                         "stop_history")},
+                                         "stop_history", "stop_order_type")},
                   # the stored broker order id, so a page can show a resting stop without a live broker read
                   "stop_order_id": p.get("order_id")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
