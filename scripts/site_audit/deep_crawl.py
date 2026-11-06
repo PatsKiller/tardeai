@@ -170,7 +170,7 @@ def _live_label_role(target: Any) -> tuple[str, str] | None:
                 role = "button"
         label = target.get_attribute("aria-label") or target.inner_text() or ""
         return str(label).strip(), role
-    except Exception as exc:  # noqa: BLE001 — unreadable target is refused, never clicked
+    except Exception as exc:  # noqa: BLE001 -- unreadable target is refused, never clicked
         _log.debug("could not read the click target: %s", exc)
         return None
 
@@ -189,7 +189,7 @@ def _expected_symbol(target: Any = None, label: str = "") -> str | None:
     if target is not None:
         try:
             symbol = str(target.get_attribute("data-symbol") or "").strip()
-        except Exception as exc:  # noqa: BLE001 — an unreadable attribute is simply no hint
+        except Exception as exc:  # noqa: BLE001 -- an unreadable attribute is simply no hint
             _log.debug("could not read data-symbol from the opener: %s", exc)
             symbol = ""
         if symbol:
@@ -219,7 +219,7 @@ def _visible_detail(page: Any, expected_symbol: str | None = None) -> tuple[str,
                 if expected_symbol.lower() not in text.lower():
                     continue
             return sel, loc
-        except Exception as exc:  # noqa: BLE001 — an absent selector is a normal "not open"
+        except Exception as exc:  # noqa: BLE001 -- an absent selector is a normal "not open"
             _log.debug("detail selector %s was not visible: %s", sel, exc)
             continue
     return None
@@ -245,7 +245,7 @@ def _detail_links(locator: Any) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     try:
         nodes = locator.query_selector_all("a[href]")
-    except Exception as exc:  # noqa: BLE001 — no anchors is normal
+    except Exception as exc:  # noqa: BLE001 -- no anchors is normal
         _log.debug("could not enumerate links inside the detail: %s", exc)
         return out
     for node in nodes[:40]:
@@ -255,7 +255,7 @@ def _detail_links(locator: Any) -> list[tuple[str, str]]:
                                                (node.inner_text() or "").strip()) if part)
             if href:
                 out.append((str(href), label))
-        except Exception as exc:  # noqa: BLE001 — an unreadable anchor is skipped
+        except Exception as exc:  # noqa: BLE001 -- an unreadable anchor is skipped
             _log.debug("skipped an anchor inside the detail: %s", exc)
     return out
 
@@ -287,7 +287,7 @@ def _capture_detail(page: Any, *, out_dir: Any = None, prefix: str = "", ordinal
     sel, loc = found
     try:
         text = loc.inner_text() or ""
-    except Exception as exc:  # noqa: BLE001 — an unreadable detail is reported, not silently "opened"
+    except Exception as exc:  # noqa: BLE001 -- an unreadable detail is reported, not silently "opened"
         _log.debug("could not read the opened detail (%s): %s", sel, exc)
         return None
     assessment = assess_detail_text(text)
@@ -314,7 +314,7 @@ def _capture_detail(page: Any, *, out_dir: Any = None, prefix: str = "", ordinal
             shot = assert_leaf_inside_root(_Path(out_dir) / f"{stem}.png", out_dir)
             page.screenshot(path=str(shot), full_page=True)
             record["screenshot"] = shot.name
-        except Exception as exc:  # noqa: BLE001 — a screenshot is extra evidence, not the contract
+        except Exception as exc:  # noqa: BLE001 -- a screenshot is extra evidence, not the contract
             _log.debug("could not screenshot the opened detail: %s", exc)
     return record
 
@@ -332,13 +332,13 @@ def _safe_detail_child(target: Any) -> tuple[Any, str, str] | None:
     try:
         children = target.locator("button, [role='button']")
         count = int(children.count())
-    except Exception as exc:  # noqa: BLE001 — no reachable children is a refusal, not a crash
+    except Exception as exc:  # noqa: BLE001 -- no reachable children is a refusal, not a crash
         _log.debug("could not enumerate a container's children: %s", exc)
         return None
     for i in range(min(count, 8)):
         try:
             child = children.nth(i)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- one unreadable child is skipped and logged; the others are still examined
             _log.debug("could not read child %d: %s", i, exc)
             continue
         live = _live_label_role(child)
@@ -438,12 +438,12 @@ def capture_page(page: Any, *, route: str, page_url: str, indices: Iterable[int]
                 href = link.get("href")
                 if href:
                     detail_links.append((str(href), str(link.get("label") or "")))
-        except Exception as exc:  # noqa: BLE001 — an opener that does not open is a finding, not a crash
+        except Exception as exc:  # noqa: BLE001 -- an opener that does not open is a finding, not a crash
             details.append(DetailRecord(**{**rec.__dict__, "skipped_reason": f"{type(exc).__name__}"}))
         finally:
             try:
                 page.keyboard.press("Escape")
-            except Exception as exc:  # noqa: BLE001 — closing a detail is best-effort
+            except Exception as exc:  # noqa: BLE001 -- closing a detail is best-effort
                 _log.debug("Escape did not close the detail: %s", exc)
     return {"route": route, "details": [d.__dict__ for d in details],
             "refused": refused, "aborted": (sweep or {}).get("abort"),
@@ -455,7 +455,8 @@ def _discover_openers(page: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     try:
         nodes = page.query_selector_all(OPENER_SELECTOR)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- the failed read is logged; no openers found is the honest result, never a click target
+        _log.warning("could not enumerate openers: %s: %s", type(exc).__name__, exc)
         nodes = []
     for i, node in enumerate(nodes):
         try:
@@ -471,10 +472,11 @@ def _discover_openers(page: Any) -> list[dict[str, Any]]:
             if not role:
                 try:
                     tag = str(node.evaluate("e => e.tagName.toLowerCase()") or "").strip().lower()
-                except Exception:  # noqa: BLE001 — an unreadable tag is an unknown role, which is refused
+                except Exception:  # noqa: BLE001 -- an unreadable tag is an unknown role, which is refused
                     tag = ""
                 role = {"button": "button", "a": "link", "summary": "button", "input": "button"}.get(tag, "")
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- an unreadable node gets an empty label and role, which discovery refuses to click
+            _log.debug("could not read opener %d: %s", i, exc)
             label, role = "", ""
         # codex R3 (2026-11-04): the old selector was fabricated ([data-open=N]) and matched nothing, so
         # a real click could never land. This is the same selector discovery used, pinned to the node.
@@ -503,14 +505,14 @@ def _bounded_body_text(page: Any, *, settle_ms: int = LINK_SETTLE_MS) -> str:
     while True:
         try:
             text = page.inner_text("body") or ""
-        except Exception as exc:  # noqa: BLE001 — an unreadable body is judged by the caller as ERROR
+        except Exception as exc:  # noqa: BLE001 -- an unreadable body is judged by the caller as ERROR
             _log.debug("could not read the destination body: %s", exc)
             text = ""
         if text.strip() or wait is None or time.monotonic() >= deadline:
             return text
         try:
             wait(250)
-        except Exception as exc:  # noqa: BLE001 — a fake/closed page cannot wait; return what we have
+        except Exception as exc:  # noqa: BLE001 -- a fake/closed page cannot wait; return what we have
             _log.debug("destination readiness wait unavailable: %s", exc)
             return text
 
@@ -521,7 +523,8 @@ def _follow_links(page: Any, *, page_url: str, max_links: int,
     records: list[LinkRecord] = []
     try:
         anchors = page.query_selector_all("a[href]")
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- the failed read is logged; no anchors means no links recorded, never a pass
+        _log.warning("could not enumerate anchors: %s: %s", type(exc).__name__, exc)
         anchors = []
     # cx-openai-4 R5 on #2648: the handles were retained ACROSS navigations. The first goto detaches every
     # remaining anchor, so reading the second one raised and the loop skipped it — two allowed links produced one
@@ -547,7 +550,7 @@ def _follow_links(page: Any, *, page_url: str, max_links: int,
             full = " ".join(part for part in ((node.get_attribute("aria-label") or "").strip(),
                                               (node.inner_text() or "").strip()) if part)
             _add(node.get_attribute("href"), full)
-        except Exception as exc:  # noqa: BLE001 — an anchor we cannot read is skipped, and said so
+        except Exception as exc:  # noqa: BLE001 -- an anchor we cannot read is skipped, and said so
             _log.debug("skipped an anchor without readable attributes: %s", exc)
     # cx-cloud CX2 on #2648: links that existed only inside an open detail are followed by their snapshotted href.
     for href, label in list(extra_links)[:40]:
@@ -564,7 +567,8 @@ def _follow_links(page: Any, *, page_url: str, max_links: int,
             records.append(LinkRecord(href=str(href), label=label, outcome=classify_target(status, text), status=status))
             # cx-cloud CX5 on #2648: a 5xx is not merely a dead link — AGENTS §28.8 says stop at the FIRST one.
             note_sweep_status(sweep, status=status, url=str(href))
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- a link that cannot be followed is recorded as DEAD with no status, and logged
+            _log.debug("could not follow %s: %s: %s", href, type(exc).__name__, exc)
             records.append(LinkRecord(href=str(href), label=label, outcome=DEAD, status=None))
         finally:
             # The return navigation is suppressed once the sweep has aborted: navigating back would be one more
@@ -572,6 +576,6 @@ def _follow_links(page: Any, *, page_url: str, max_links: int,
             if sweep is None or not sweep.get("abort"):
                 try:
                     page.goto(page_url, wait_until="domcontentloaded", timeout=20000)
-                except Exception as exc:  # noqa: BLE001 — the next link navigates anyway
+                except Exception as exc:  # noqa: BLE001 -- the next link navigates anyway
                     _log.debug("could not return to %s before the next link: %s", page_url, exc)
     return records

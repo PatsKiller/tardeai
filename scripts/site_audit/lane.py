@@ -69,7 +69,7 @@ def is_live_base(base: str) -> bool:
     """
     try:
         parsed = urlparse(str(base or ""))
-    except Exception:  # noqa: BLE001 — unparseable is not proof of a fixture backend
+    except Exception:  # noqa: BLE001 -- unparseable is not proof of a fixture backend
         return True
     if parsed.scheme not in ("http", "https"):
         return True

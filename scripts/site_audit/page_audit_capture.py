@@ -59,7 +59,7 @@ def discover_routes(page, base: str) -> list[tuple[str, str]]:
         try:
             href = a.get_attribute("href") or ""
             label = (a.inner_text() or "").strip().split("\n")[0][:60]
-        except Exception as exc:  # noqa: BLE001 — an unreadable anchor is skipped, and said so
+        except Exception as exc:  # noqa: BLE001 -- an unreadable anchor is skipped, and said so
             _log.debug("skipped an anchor in route discovery: %s", exc)
             continue
         if href.startswith("/v3"):
@@ -137,7 +137,7 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
             # cx-cloud CX1 on #2648: the URL is resolved on the ORIGIN (`HEALTH_PATH_FOR`), and the answer must be
             # JSON. An HTML body here is the SPA fallback answering for a route the API did not handle, which is
             # exactly the "healthy frontend, dead API" state this gate exists to refuse.
-            with urllib.request.urlopen(HEALTH_PATH_FOR(base), timeout=10) as r:  # noqa: S310 — http(s) enforced
+            with urllib.request.urlopen(HEALTH_PATH_FOR(base), timeout=10) as r:  # noqa: S310 -- http(s) enforced
                 body = r.read(4096)
                 if r.status >= 500 or time.time() - t0 >= 8:
                     continue
@@ -150,7 +150,7 @@ def server_healthy(base: str, wait_s: int = 300) -> bool:
                     _log.warning("health probe answered non-JSON — not healthy: %s", r.url)
                     continue
                 return True
-        except Exception as exc:  # noqa: BLE001 — a failed probe is retried until the deadline
+        except Exception as exc:  # noqa: BLE001 -- a failed probe is retried until the deadline
             _log.debug("health probe failed: %s", exc)
         time.sleep(15)
     return False
