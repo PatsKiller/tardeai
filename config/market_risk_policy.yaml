@@ -30,6 +30,8 @@ technical:
   semis_symbols: [SMH, SOXX]
   history_sessions: 260          # enough for a 52-week high and a 200-day average
   min_sessions: 25
+  series_break_ratio: 2.5        # a one-session close step >= 2.5x either way is a price-history break (unadjusted
+                                 # split; SOXX 2026-11-05); measures use only the sessions after it
   # market hours (decay.clock): 32 = one missed session at most. Friday 16:00 -> Monday 08:00 is 22; Monday's close not
   # collected by Monday 18:00 makes it UNKNOWN (review of #2415 round 2, R2-1: 96 market hours let Wednesday's bars read
   # CALM the next Monday)
@@ -489,6 +491,7 @@ sectors:
   # about the worst 7% of 5-session moves; -1.0 about the worst 16%). Groups are equal-weight indexes of their symbols.
   benchmark: SPY
   z_window_sessions: 252
+  series_break_ratio: 2.5   # a member whose closes step >= 2.5x in one session (unadjusted split) leaves its group
   corr_window_sessions: 10
   stress_z: -1.5            # 5-session return z vs its own history ...
   rs_stress_z: -1.0         # ... AND relative return vs SPY z (lagging the market, not just falling with it)

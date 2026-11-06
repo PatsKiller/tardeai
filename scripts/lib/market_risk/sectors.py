@@ -20,6 +20,7 @@ from statistics import mean, pstdev
 from typing import Any
 
 from scripts.lib.market_risk import contract as c
+from scripts.lib.market_risk.categories import _marketdata as md
 
 STATE_TIER = {"STRESS": "RED", "WEAK": "YELLOW", "NEUTRAL": "NONE", "RESILIENT": "GREEN", "UNKNOWN": "UNKNOWN"}
 
@@ -149,6 +150,21 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
     need = window + 30
     symbols = sorted({bench, *[s for g in groups for s in g.get("symbols") or []], *(cfg.get("factor_symbols") or [])})
     series = _closes(ctx.reader, symbols, need, ctx.now)
+    # A member whose closes step >= series_break_ratio in one session has a break in its price history (an unadjusted
+    # split: SOXX 2026-11-05, 451.20 -> 130.94). An equal-weight index across it is meaningless, so the member leaves
+    # every group and the block says so; a group left with no member is UNKNOWN with that reason
+    # (PKG-SELLOFF-INTEL-20261106 F).
+    breaks: dict[str, dict[str, Any]] = {}
+    for sym in sorted(series):
+        if sym == bench:
+            continue  # the benchmark is never dropped; a break there leaves every relative measure to the gap checks
+        brk = md.price_break([v for _, v in series[sym]], float(cfg.get("series_break_ratio", md.DEFAULT_BREAK_RATIO)))
+        if brk:
+            when = series[sym][brk[0]][0]
+            breaks[sym] = {"symbol": sym, "date": when, "ratio": round(brk[1], 4),
+                           "note": f"{sym} price history breaks on {when} (close x{brk[1]:.2f} in one session; likely an "
+                                   "unadjusted split): left out of its groups"}
+            del series[sym]
     b_idx = _index(series, [bench])
     b5 = _ret(b_idx, 5)
     b20 = _ret(b_idx, 20)
@@ -169,6 +185,14 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
             "kind": g.get("kind", "sector"),
             "symbols": list(g.get("symbols") or []),
         }
+        dropped = [breaks[m] for m in row["symbols"] if m in breaks]
+        if dropped:
+            row["price_breaks"] = dropped
+        if dropped and not idx:
+            row.update(state="UNKNOWN", tier="UNKNOWN", as_of=as_of,
+                       reason_unknown="; ".join(d["note"] for d in dropped))
+            rows.append(row)
+            continue
         if len(idx) < 60 or b5 is None:
             row.update(state="UNKNOWN", tier="UNKNOWN", reason_unknown="insufficient history", as_of=as_of)
             rows.append(row)
@@ -314,6 +338,7 @@ def measure(ctx: c.EvalContext) -> dict[str, Any]:
         "correlation": {"value": _rnd(corr_now), "z": _rnd(_z(corr_now, corr_hist))},
         "factors": factors,
         "defensive": {k: defensive.get(k) for k in ("state", "r5", "rs5")},
+        "price_breaks": [breaks[k] for k in sorted(breaks)],
     }
     c.assert_no_behavior_fields(block)
     return block

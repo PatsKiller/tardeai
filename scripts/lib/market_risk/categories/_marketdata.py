@@ -51,6 +51,33 @@ def closes_by_symbol(rows: Iterable[dict[str, Any]]) -> dict[str, list[tuple[dat
     return {s: [d[k] for k in sorted(d)] for s, d in tmp.items()}
 
 
+DEFAULT_BREAK_RATIO = 2.5
+
+
+def price_break(closes: list[float], max_ratio: float = DEFAULT_BREAK_RATIO) -> tuple[int, float] | None:
+    """The newest one-session move of at least ``max_ratio`` either way, as (index of the first close after it, the
+    after/before ratio); None when there is none (PKG-SELLOFF-INTEL-20261106 F).
+
+    An index or sector ETF does not move 2.5x in one session (the market-wide circuit breaker halts trading at -20%), so
+    such a step is a break in the price history, almost always an unadjusted split. SOXX on 2026-11-05: 451.20 -> 130.94
+    (a 3-for-1 split on a falling day) made "SOXX -79.1% off 52w high" out of a pre-split high. Measures must not span it.
+    """
+    ratio = float(max_ratio)
+    for i in range(len(closes) - 1, 0, -1):
+        a, b = closes[i - 1], closes[i]
+        if a and b and a > 0 and b > 0 and max(b / a, a / b) >= ratio:
+            return i, b / a
+    return None
+
+
+def break_note(sym: str, when: Any, step: float, kept: int) -> str:
+    day = when.date().isoformat() if isinstance(when, datetime) else str(when)[:10]
+    return (
+        f"{sym} price history breaks on {day} (close x{step:.2f} in one session; likely an unadjusted split): "
+        f"only the {kept} session{'' if kept == 1 else 's'} since are used"
+    )
+
+
 def series_by_id(rows: Iterable[dict[str, Any]]) -> dict[str, list[tuple[datetime, float]]]:
     tmp: dict[str, dict[str, tuple[datetime, float]]] = {}
     for r in rows:
