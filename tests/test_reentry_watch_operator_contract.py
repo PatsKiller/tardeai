@@ -102,12 +102,17 @@ def test_ticket_review_run_blocks_paid_pro_lanes() -> None:
     assert "def _ticket_review_run" in api
     assert "PAID_LANE_REQUIRES_PREMIUM_FLOW" in api
     assert "METERED_LANE_NOT_IN_FREE_ENSEMBLE" in api
-    # Block list in _ticket_review_run includes Pro
+    # Block list in _ticket_review_run includes Pro.
+    # `deepseek-v4-pro` was asserted here until #2586 ("stop accepting model names the registry rejects") removed it
+    # from this set on purpose: config/llm_model_registry.json lists it under `legacy_model_ids_rejected`. The set now
+    # names the current paid lane (`deepseek-pro`) plus the pro_* policies; a retired id falls through to the
+    # "unknown or disallowed" refusal, which is still a refusal. Pin the current vocabulary, not the retired spelling.
     start = api.index("def _ticket_review_run")
     end = api.index("def _ticket_review_status", start)
     body = api[start:end]
-    assert "deepseek-v4-pro" in body
+    assert "deepseek-pro" in body
     assert "pro_max" in body
+    assert "deepseek-v4-pro" not in body  # retired model id; see config/llm_model_registry.json legacy_model_ids_rejected
     # Premium path remains the governed entry
     assert "def _ticket_review_premium_estimate" in api
     assert "def _ticket_review_premium_run" in api

@@ -1506,7 +1506,9 @@
           "realized_lots",
           "position_snapshots"
         ],
-        "measured_unbatched_readers": {}
+        "measured_unbatched_readers": {
+          "scripts/lib/positions_read_model.py": "Step 3 W0 shadow read model (operator-approved program 2026-11-03, BOARD.md row 30): reads positions_current as the latest pointer and position_snapshots pinned to that promoted run, plus positions_sync_runs (the ungated heartbeat). No production consumer yet — the module carries NO_CONSUMER_REASON and the serving switch is W1; replace this pre-batch entry with the operator's reader-batch entry when W1 lands."
+        }
       },
       "reader_grants_pending": [
         {
