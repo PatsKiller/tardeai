@@ -167,7 +167,7 @@ def main() -> int:
         # No approved_at: the hook records that the plan exists, never when it was "approved".
         pid = pr.Registry().add(title=title_from_plan(text), body=text, author=session, vendor="claude")
         print(f"plan_registry_hook: {pid}", file=sys.stderr)
-    except Exception as exc:  # noqa: BLE001 - the hook must never block the planner
+    except Exception as exc:  # noqa: BLE001 -- the hook must never block the planner; the failure is printed to stderr
         print(f"plan_registry_hook: {type(exc).__name__}: {exc}", file=sys.stderr)
     return 0
 
@@ -177,6 +177,6 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except SystemExit:
         raise
-    except BaseException as exc:  # noqa: BLE001 - a hook must never block the planner
+    except BaseException as exc:  # noqa: BLE001 -- a hook must never block the planner; the failure is printed to stderr
         print(f"plan_registry_hook: {type(exc).__name__}: {exc}", file=sys.stderr)
         raise SystemExit(0) from None
