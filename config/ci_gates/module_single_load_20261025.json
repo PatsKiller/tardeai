@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "module_single_load_20261025",
+  "files": [
+    "tests/test_module_single_load_20261025.py"
+  ],
+  "anchor": "MODULE_SINGLE_LOAD_20261025",
+  "comment": [
+    "ANCHOR: MODULE_SINGLE_LOAD_20261025 — portfolio-server loads each own module once: a meta-path finder (scripts/lib/module_single_load.py, installed by portfolio_server.py as __main__) returns the already-loaded module for lib.X / scripts.lib.X / bare X spellings, so caches, locks and classes are not split across copies."
+  ]
+}
