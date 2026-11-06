@@ -1,3 +1,4 @@
+import { vixFreshness } from '../lib/vixFreshness'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
@@ -81,7 +82,13 @@ export default function HomeBoard14({ data }: { data: any }) {
     || (stops.stale ? `Stop data is out of date — counts are from the last broker stop read${stops.last_broker_read_label ? ` on ${stops.last_broker_read_label}` : ''}.` : null)
   const favoured = data.sectors?.favoured
   const since = regime.since_label || regime.since_gap || 'Regime start is not in the fetched history'
-  const vix = regime.vix == null ? 'Not available' : text(regime.vix)
+  // FQ-086: VIX is its own clock. This board receives the CIO page payload, whose `regime` object is built by
+  // scripts/lib/cio_truth.py::regime_for - it publishes the VIX clock as `vix_as_of` and has no `vix_source` at all.
+  // `vix_observation_time` belongs to the separate /api/v2/trade-ai projection, so it is kept only as a documented
+  // fallback for a payload that carries it. A reading with no clock stays UNDATED rather than borrowing the regime's
+  // own age, and a future clock is admitted as unreadable rather than labelled current.
+  const vixAsOf = regime.vix_as_of ?? regime.vix_observation_time
+  const vixRead = vixFreshness(regime.vix, undefined, vixAsOf)
   const questionCount = questions.count == null ? 'Not available' : `${questions.count} new`
   const releaseCount = releases.count == null ? 'Not available' : String(releases.count)
   return <div style={{ ...grid, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,360px),1fr))' }}>
@@ -114,7 +121,8 @@ export default function HomeBoard14({ data }: { data: any }) {
         <p><Link to="/risk" style={linkStyle}>All positions and stops → Risk</Link></p>
       </W7Panel>
       <W7Panel title="CIO view of the market">
-        <p data-testid="home-regime">Regime <b>{text(regime.label, 'Not classified')}</b> since <b>{since}</b> · VIX <b>{vix}</b></p>
+        <p data-testid="home-regime">Regime <b>{text(regime.label, 'Not classified')}</b> since <b>{since}</b></p>
+        <p data-testid="home-vix" data-vix-state={vixRead.state} style={{ color: vixRead.current ? TOKENS.text[2] : TOKENS.warning }}>{vixRead.label}</p>
         <p style={{ color: TOKENS.text[2] }}>{when(regime.as_of)}{regime.stale ? ' · Last published view; refresh overdue' : ''}</p>
         {regime.vix_gap && <W7Gap>{gapText(regime.vix_gap)}</W7Gap>}
         {regime.gap && <W7Gap>{gapText(regime.gap)}</W7Gap>}

@@ -793,10 +793,12 @@ def test_evaluate_is_readonly_and_uses_only_read_apis(mod, tmp_path, monkeypatch
     clock = Clock(T0)
     board = make_board(tmp_path, clock)
     author_id = seed_author(board)
-    board.claim(vendor="claude", session="session-a", agent=None, task="stale holder",
-                paths=[COORD, SOURCE])
+    holder = board.claim(vendor="claude", session="session-a", agent=None, task="stale holder",
+                         paths=[COORD, SOURCE])
     clock.at = NOW
-    board.claim(vendor="codex", session=ACTOR_B, agent=None, task="successor", paths=[COORD])
+    # The successor covers only COORD, so succession must be declared explicitly (containment-only recording).
+    board.claim(vendor="codex", session=ACTOR_B, agent=None, task="successor", paths=[COORD],
+                takeover_ids=[holder["claim_id"]])
     data = build_snapshot(mod, docs(board), author_claim_id=author_id)
 
     from scripts.lib import agent_claim_board as AB
