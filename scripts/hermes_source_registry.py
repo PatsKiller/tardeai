@@ -5,6 +5,7 @@ links paired news↔web entries, loads operator vetting queue, and supports oper
 """
 from __future__ import annotations
 
+import functools
 import json
 import re
 from datetime import datetime, timezone
@@ -49,7 +50,10 @@ KNOWN_NEWS_WEB: dict[str, str] = {
 }
 
 
+@functools.lru_cache(maxsize=8192)
 def _norm(s: str) -> str:
+    # Memoised (perf 2026-10-25): linked_web_domain compares every news row with every web domain — 3.8M calls on
+    # ~1.4k distinct strings made GET /api/v2/hermes/sources take ~20 s. Pure function, bounded cache.
     return re.sub(r"[^a-z0-9]", "", (s or "").lower())
 
 

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "write_lock_reentrant_20261103",
+  "files": [
+    "tests/test_holdings_write_lock_reentrant_20261103.py"
+  ],
+  "anchor": "WRITE_LOCK_REENTRANT_20261103",
+  "comment": [
+    "ANCHOR: WRITE_LOCK_REENTRANT_20261103 — the shared holdings.json write lock is re-entrant on one thread via a thread-local depth counter (one fd, one kernel lock at the outermost block) while other processes and other threads are still excluded for the whole read-modify-write window. Renamed from a holdings*-prefixed path: the PII guard blocks any **/holdings*.json and must not be silenced."
+  ]
+}

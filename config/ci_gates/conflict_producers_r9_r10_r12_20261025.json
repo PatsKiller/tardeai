@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conflict_producers_r9_r10_r12_20261025",
+  "files": [
+    "tests/test_wash_sale_canonical_20261025.py",
+    "tests/test_conflict_producers_r9_r10_r12_20261025.py"
+  ],
+  "anchor": "CONFLICT_PRODUCERS_R9_R10_R12_20261025",
+  "comment": [
+    "ANCHOR: CONFLICT_PRODUCERS_R9_R10_R12_20261025 — operator 2026-10-25: \"I need you to fix everything that's missing before deployment.\"",
+    "Pins: ONE wash-sale implementation (scripts/lib/wash_sale.py: taxable LOSS sale → sale+30 calendar days inclusive, all accounts",
+    "gated, IRA sales open none, unknown basis = UNKNOWN gate, per-account FIFO) and every former caller routed to it; R9/R10/R12",
+    "producers over stored state (trade_transactions, options_strategy_positions, positions_current, saved CIO ownership diagnostics),",
+    "GUID-only joins, SELECT-only, failed producer = visible gap never a silent clear; runner enriches the collected path only."
+  ]
+}

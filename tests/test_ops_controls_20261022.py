@@ -126,7 +126,7 @@ def env(tmp_path):
     cfg["guard"]["bin"] = str(guard)
     cfg["applier"].update(backup_dir=str(tmp_path / "backups"), heartbeat_file=str(tmp_path / "hb.json"),
                           lock_file=str(tmp_path / "applier.lock"))
-    cfg["release_train"]["state_dir"] = str(tmp_path / "release_window")
+    cfg["deploy"]["state_dir"] = str(tmp_path / "release_window")
     cfg["n8n_ledger"] = {"file": str(tmp_path / "no-ledger.sqlite")}  # hermetic: never the host ledger
     agents = tmp_path / "AGENTS.md"
     agents.write_text(ACTIVE_AGENTS)
@@ -262,7 +262,7 @@ def test_every_post_refuses_policy_not_active(env, sub, text):
         env.agents.unlink()
     else:
         env.agents.write_text(text)
-    st, body = post(env, sub, {"kind": "release_train.stop", "params": {}, "idempotency_key": idem(),
+    st, body = post(env, sub, {"kind": "deploy.stop", "params": {}, "idempotency_key": idem(),
                                "one_click": True})
     assert (st, body["error"]) == (409, "POLICY_NOT_ACTIVE")
     assert env.store.requests == {} and env.store.audit == []
@@ -285,7 +285,7 @@ def test_get_state_answers_while_inert_and_shows_why(env):
 def test_agent_and_non_operator_callers_are_refused_on_get_and_post(env, principal, listener):
     env.who.update(principal=principal, listener=listener)
     assert get(env, "/state")[1]["error"] == "AGENT_CALLER_REFUSED"
-    st, body = post(env, "/requests", {"kind": "release_train.stop", "params": {}, "idempotency_key": idem(),
+    st, body = post(env, "/requests", {"kind": "deploy.stop", "params": {}, "idempotency_key": idem(),
                                        "one_click": True})
     assert (st, body["error"]) == (403, "AGENT_CALLER_REFUSED")
     assert env.store.requests == {}
@@ -294,20 +294,20 @@ def test_agent_and_non_operator_callers_are_refused_on_get_and_post(env, princip
 
 def test_body_cannot_claim_the_operator_identity(env):
     env.who.update(principal="service-token", listener="service")
-    st, body = post(env, "/requests", {"kind": "release_train.stop", "params": {}, "idempotency_key": idem(),
+    st, body = post(env, "/requests", {"kind": "deploy.stop", "params": {}, "idempotency_key": idem(),
                                        "actor": OP, "operator": OP, "one_click": True})
     assert body["error"] == "AGENT_CALLER_REFUSED"
 
 
 def test_csrf_refusal(env):
     env.who["csrf"] = (False, "csrf: Origin not on allowlist")
-    st, body = post(env, "/requests", {"kind": "release_train.stop", "params": {}, "idempotency_key": idem()})
+    st, body = post(env, "/requests", {"kind": "deploy.stop", "params": {}, "idempotency_key": idem()})
     assert (st, body["error"]) == (403, "CSRF_REFUSED") and env.store.requests == {}
 
 
 def test_store_not_migrated_refuses(env):
     env.store.migrated = False
-    st, body = post(env, "/requests", {"kind": "release_train.stop", "params": {}, "idempotency_key": idem()})
+    st, body = post(env, "/requests", {"kind": "deploy.stop", "params": {}, "idempotency_key": idem()})
     assert (st, body["error"]) == (503, "STORE_NOT_MIGRATED")
 
 
@@ -328,7 +328,7 @@ def test_api_v2_dispatches_ops_controls():
 
 
 def test_release_stop_is_one_click_and_writes_the_existing_latch(env):
-    st, body = post(env, "/requests", {"kind": "release_train.stop", "params": {"reason": "test"},
+    st, body = post(env, "/requests", {"kind": "deploy.stop", "params": {"reason": "test"},
                                        "idempotency_key": idem(), "one_click": True})
     assert st == 200 and body["request"]["status"] == "APPLIED", (body["request"]["result"] or {}).get("verify")
     assert (env.tmp / "release_window" / "STOP.json").is_file()
@@ -355,12 +355,23 @@ def test_one_click_is_ignored_for_a_risky_kind(env):
     assert body["request"]["status"] == "AWAITING_STEP_UP" and "one_click ignored" in body["note"]
 
 
-# release_train.resume / .arm are supported since 2026-10-22 (passkey proof, tests/test_ops_controls_sudo_window_20261022.py).
-@pytest.mark.parametrize("kind", ["kill_switch.clear", "release_train.change_scope", "release_train.revoke"])
+# deploy.resume is supported (passkey proof, tests/test_ops_controls_sudo_window_20261022.py).
+@pytest.mark.parametrize("kind", ["kill_switch.clear"])
 def test_unsupported_kinds_say_why(env, kind):
     st, body = post(env, "/requests", {"kind": kind, "params": {}, "idempotency_key": idem()})
     assert (st, body["error"]) == (409, "KIND_NOT_SUPPORTED")
-    assert "grant" in body["detail"] or "release_control_cli" in body["detail"]
+    assert "grant" in body["detail"]
+
+
+# 2026-10-27: the retired release train's pause / arm / Run now / scope / revoke kinds are gone (operator directive).
+@pytest.mark.parametrize("kind", ["release_train.stop", "release_train.pause", "release_train.arm", "release_train.run_now",
+                                  "release_train.change_scope", "release_train.revoke", "release_train.resume"])
+def test_retired_release_train_kinds_are_unknown(env, kind):
+    from scripts.lib import ops_controls_core as C
+
+    assert kind not in C.KINDS
+    st, body = post(env, "/requests", {"kind": kind, "params": {}, "idempotency_key": idem()})
+    assert st >= 400
 
 
 def test_kill_switch_clear_reason_names_the_execution_engineering_grant():
@@ -700,7 +711,7 @@ def test_passkey_revoke_needs_a_passkey_and_phrase(env):
 
 
 def test_audit_is_append_only_and_hash_chained(env):
-    post(env, "/requests", {"kind": "release_train.stop", "params": {}, "idempotency_key": idem(), "one_click": True})
+    post(env, "/requests", {"kind": "deploy.stop", "params": {}, "idempotency_key": idem(), "one_click": True})
     assert len(env.store.audit) >= 3 and S.verify_audit_chain(env.store.audit)
     with pytest.raises(S.StoreError):
         env.store.audit_update(1, outcome="x")
@@ -739,9 +750,9 @@ def test_state_read_model_sections(env):
     assert s["data_approvals"]["rows"][0]["domain"] == "operator_settings"
     assert s["applier"]["state"] == "ABSENT" and s["factors"]["hmac_key"] == "present"
     kinds = {k["kind"]: k for k in s["kinds"]}
-    assert kinds["release_train.stop"]["direction"] == "safe" and kinds["kill_switch.engage"]["direction"] == "safe"
+    assert kinds["deploy.stop"]["direction"] == "safe" and kinds["kill_switch.engage"]["direction"] == "safe"
     assert all(k["direction"] == "risky" for k in kinds.values() if k["kind"] not in
-               ("release_train.stop", "release_train.pause", "kill_switch.engage"))
+               ("deploy.stop", "kill_switch.engage"))
 
 
 def test_unreadable_sections_are_unavailable_not_empty(env):

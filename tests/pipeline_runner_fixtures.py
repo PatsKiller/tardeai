@@ -11,8 +11,15 @@ def sandbox_runner(root: Path, runner: Path) -> Path:
     """Copy source so common-library initialization cannot write checkout logs."""
     dest = root / "scripts" / "pipelines"
     dest.mkdir(parents=True, exist_ok=True)
-    for name in (runner.name, "_manifest_runner.sh", "_pipeline_common.sh", "pipeline_manifest.py"):
-        shutil.copyfile(runner.parent / name, dest / name)
+    for name in (
+        runner.name,
+        "_manifest_runner.sh",
+        "_pipeline_common.sh",
+        "pipeline_manifest.py",
+        "pipeline_disk_alert.py",
+    ):  # the disk preflight's pager rides beside the runner (P0-T5)
+        if (runner.parent / name).exists():
+            shutil.copyfile(runner.parent / name, dest / name)
     return dest / runner.name
 
 

@@ -464,13 +464,9 @@ def test_bad_inputs_fail_closed_without_raising(calfile):
     assert MC.verdict(date(2026, 10, 23), datetime(2026, 10, 21, 9, 0), path=calfile)[0] == "UNAVAILABLE"
 
 
-def test_release_train_adapter_matches_the_controller_signature_and_vocabulary(calfile):
-    cal = MC.ReleaseTrainCalendar(calfile)
-    assert cal.verdict(date(2026, 11, 6), NOW)[0] == "MACRO_DAY"
-    assert cal.verdict(date(2026, 11, 9), NOW)[0] == "CLEAR"
-    assert MC.ReleaseTrainCalendar(calfile.parent / "nope.json").verdict(date(2026, 11, 9), NOW)[0] == "UNAVAILABLE"
-    # The controller halts with WINDOW_SKIPPED_MACRO_<verdict> for anything but CLEAR: the same four words.
+def test_verdict_vocabulary_is_four_words():
     assert {MC.CLEAR, MC.MACRO_DAY, MC.STALE, MC.UNAVAILABLE} == {"CLEAR", "MACRO_DAY", "STALE", "UNAVAILABLE"}
+    assert not hasattr(MC, "ReleaseTrainCalendar")  # retired with the release train 2026-10-27
 
 
 def test_default_path_follows_the_state_root(monkeypatch, tmp_path):
@@ -562,16 +558,12 @@ def test_no_key_exits_1_and_says_only_that(state, monkeypatch, capsys):
 # ── needs-action source ────────────────────────────────────────────────────────────────────────────────────────
 
 
-LIVE_0800 = {"enabled_0800": True, "armed": True, "detail": "delegation AUTHORIZED; 0800 enabled; control RUNNING"}
-
-
-def test_needs_action_p2_when_stale_or_missing_and_nothing_on_a_macro_day():
-    stale = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "STALE", "reason": "old", "scope": LIVE_0800}, NOW)
-    assert [(i["severity"], i["title"]) for i in stale] == [("P2", "08:00 release window skipped: calendar stale")]
-    missing = NA.rule_macro_calendar(
-        {"day": "2026-10-22", "verdict": "UNAVAILABLE", "reason": "calendar missing", "scope": LIVE_0800}, NOW
-    )
-    assert [(i["severity"], i["title"]) for i in missing] == [("P2", "08:00 release window skipped: calendar missing")]
+def test_needs_action_p3_when_stale_or_missing_and_nothing_on_a_macro_day():
+    stale = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "STALE", "reason": "old"}, NOW)
+    assert [(i["severity"], i["title"]) for i in stale] == [("P3", "Macro calendar stale")]
+    missing = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "UNAVAILABLE", "reason": "calendar missing"}, NOW)
+    assert [(i["severity"], i["title"]) for i in missing] == [("P3", "Macro calendar missing")]
+    assert "release train" not in missing[0]["why"].lower()
     assert NA.rule_macro_calendar({"verdict": "MACRO_DAY"}, NOW) == []
     assert NA.rule_macro_calendar({"verdict": "CLEAR"}, NOW) == []
     with pytest.raises(NA.SourceUnavailable):
@@ -585,61 +577,16 @@ def test_next_0800_day_rolls_past_0800_and_weekends():
     assert NA.next_0800_day(datetime(2026, 11, 2, 12, 30, tzinfo=UTC)) == date(2026, 11, 2)  # 07:30 EST
 
 
-@pytest.mark.parametrize(
-    "scope",
-    [
-        {"enabled_0800": False, "armed": False, "detail": "delegation PAUSED"},
-        {"enabled_0800": True, "armed": False, "detail": "control UNARMED"},
-        {"enabled_0800": False, "armed": True, "detail": "0800 disabled"},
-        {},
-    ],
-)
-def test_needs_action_is_p3_info_until_0800_is_enabled_and_armed(scope):
-    for v in ("STALE", "UNAVAILABLE"):
-        items = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": v, "reason": "x", "scope": scope}, NOW)
-        assert [i["severity"] for i in items] == ["P3"] and "information only" in items[0]["why"]
-        assert items[0]["evidence"]["live_0800"] is False
-
-
-def test_0800_scope_reads_the_delegation_and_control(tmp_path):
-    from scripts.lib import release_control as RC
-    from scripts.lib import release_delegation as RD
-
-    d = json.loads(RD.EXAMPLE_PATH.read_text(encoding="utf-8"))
-    d.update(status="ACTIVE", delegation_id="rtd-test-0001")
-    d["operator"]["approved_at"] = "2026-10-21T17:00:00-04:00"
-    for s in d["windows"]["slots"]:
-        s["enabled"] = s["window_id"] == "0800"
-    p = tmp_path / "hostcfg" / "delegation.json"
-    p.parent.mkdir()
-    p.write_text(json.dumps(d))
-    sd = tmp_path / "rw"
-    sc = NA.release_train_0800_scope(p, sd)
-    assert sc["enabled_0800"] is True and sc["armed"] is False  # never armed: UNARMED
-    ctl = RC.ReleaseControl(sd)
-    ctl.arm(
-        RC.Actor("host_cli", "uid:t"),
-        RC.HostCliProof("/dev/pts/9", os.getuid(), ctl.expected_phrase("arm")),
-        policy_digest=RD.load(p).digest,
-        reason="arm for test",
-    )
-    assert NA.release_train_0800_scope(p, sd)["armed"] is True
-    assert NA.release_train_0800_scope(tmp_path / "absent.json", sd)["enabled_0800"] is False
+def test_train_scope_is_gone():
+    assert not hasattr(NA, "release_train_0800_scope")
 
 
 def test_needs_action_probe_and_aggregate(tmp_path, calfile):
-    off = {"enabled_0800": False, "armed": False, "detail": "test"}
-    out = NA.aggregate(
-        {"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW, scope=off)}, now=NOW
-    )
+    out = NA.aggregate({"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW)}, now=NOW)
     assert out["sources"]["macro_calendar"]["status"] == "OK" and out["counts"]["P3"] == 1
-    assert out["items"][0]["title"] == "08:00 release window skipped: calendar missing"
-    out = NA.aggregate(
-        {"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW, scope=LIVE_0800)}, now=NOW
-    )
-    assert out["counts"]["P2"] == 1
-    ok = NA.probe_macro_calendar(calfile, now=NOW, scope=off)
-    assert ok == {"day": "2026-10-21", "verdict": "CLEAR", "reason": ok["reason"], "scope": off}
+    assert out["items"][0]["title"] == "Macro calendar missing"
+    ok = NA.probe_macro_calendar(calfile, now=NOW)
+    assert ok == {"day": "2026-10-21", "verdict": "CLEAR", "reason": ok["reason"]}
     assert "macro_calendar" in NA.RULES
 
 
@@ -657,38 +604,41 @@ def _row():
     )
 
 
-def test_registry_row_is_n8n_native_ingest_shadow_daily_0505():
+def test_registry_row_is_n8n_native_ingest_canary_live_daily_0505():
+    # Promoted shadow -> canary (dispatch live) on the operator decision of 2026-10-26.
     row = _row()
     sch, d = row["scheduler"], row["dispatch"]
-    assert (sch["kind"], sch["expression"], sch["stage"]) == ("n8n", "dispatcher", "shadow")
+    assert (sch["kind"], sch["expression"], sch["stage"]) == ("n8n", "dispatcher", "canary")
     assert sch["match"] == "scripts/macro_calendar_refresh.py"
-    assert d["mode"] == "dry_run" and d["cron"] == ["5 5 * * *"] and d["tz"] == "America/New_York"
+    assert d["mode"] == "live" and d["cron"] == ["5 5 * * *"] and d["tz"] == "America/New_York"
     assert d["class"] == "ingest" and d["retry_policy"] == "none" and row["owner"] == "platform"
     assert (row["output_signal"]["path"], row["output_signal"]["key"]) == (RECEIPT, "ok_at")
+    assert row["canary"]["since"] == "2026-10-26" and "rollback" in row["canary"]
     from scripts.lib.lane_dispatch import dispatch_eligible
 
     ok = dispatch_eligible(row)
     assert ok[0] if isinstance(ok, tuple) else ok
 
 
-def test_allowlist_entry_is_shadow_enforced_and_names_only_what_the_lane_reads():
+def test_allowlist_entry_is_live_enforced_and_names_only_what_the_lane_reads():
     a = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
     e = next(x for x in a["lanes"] if x["lane_id"] == LANE)
     assert e["command"] == ["$PY", "scripts/macro_calendar_refresh.py"]
-    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] is None
+    # live_arg [] = the script with no flag: writes the calendar and its receipt, nothing else.
+    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == []
     assert e["lock_kind"] == "flock" and e["output_signal"] == RECEIPT and e["output_receipt"] == "v2"
     assert e["env_allowlist_mode"] == "enforce"
     assert e["env_names"] == ["FRED_API_KEY", "TRADEAI_PERSISTENT_STATE_ROOT"]
     assert LANE not in json.dumps(a.get("never"))
 
 
-def test_health_contract_is_a_draft_for_the_operator_to_review():
+def test_health_contract_is_reviewed_and_at_canary():
     c = json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())
     k = next(x for x in c["contracts"] if x["id"] == LANE)
     # An agent may not mark its own contract REVIEWED (AGENTS.md §23.19): the operator does.
-    assert k["status"] in ("DRAFT", "REVIEWED") and k["owner"] == "platform" and k["stage"] == "shadow"
-    if k["status"] == "REVIEWED":
-        assert k["review"]["reviewed_by"].startswith("operator ")
+    assert k["status"] == "REVIEWED" and k["owner"] == "platform" and k["stage"] == "canary"
+    assert k["target_reason"] == "stage:canary"
+    assert k["review"]["reviewed_by"].startswith("operator ")
     assert k["evidence"]["receipt"] == RECEIPT and k["expected_output"]["rule"] == "min_produced"
     from scripts.lib import n8n_output_verdict as V
 

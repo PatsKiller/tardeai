@@ -1,0 +1,5 @@
+{
+  "schema": "MergifyQueueMonitorConfig@v1",
+  "wait_max_minutes": 90,
+  "_why": "A head whose checks never finish must not stay silent forever: after this many minutes on WAIT the monitor pages once. WAIT posts no PR comment; the merged plan is deduplicated in mergify_wait_since.json by PR."
+}

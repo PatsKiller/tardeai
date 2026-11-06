@@ -16,7 +16,10 @@ from zoneinfo import ZoneInfo
 
 SCHEMA = "DiskHygieneEvidence@v1"
 SOURCES = ("cron", "units", "processes", "coordination", "prs", "pointers")
-RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "W": "git_worktree"}
+RULE_KINDS = {"A": "archived_dump", "S": "rtc_scratch", "T": "agent_scratch", "W": "git_worktree",
+              "C": "abandoned_worktree", "R": "release_dir"}
+#: Rule X (archive retention) is reported only; it is never listable in standing_apply.rules and never removes.
+PLAN_ONLY_KINDS = {"X": "archive_ref"}
 MAX_BYTES = 40 * 1024**3
 MAX_AGE_SECONDS = 2 * 3600
 
@@ -76,8 +79,17 @@ def evidence_context(doc: Mapping[str, Any], now: datetime, *, applying: bool = 
             "opaque_processes": opaque}
 
 
-def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path], bool] | None = None) -> tuple[float | None, str | None]:
-    """Bounded recursive lstat, no symlink following; incomplete scans are held."""
+#: An mtime this far past ``now`` is a fixture or clock artefact, not activity (tests stamp files weeks ahead).
+FUTURE_MTIME_SKEW_SECONDS = 300
+
+
+def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path], bool] | None = None,
+             now: float | None = None) -> tuple[float | None, str | None]:
+    """Bounded recursive lstat, no symlink following; incomplete scans are held.
+
+    With ``now``, an entry whose mtime lies in the future counts at its ctime instead: the kernel sets ctime on
+    every change (``utime`` included), so it is the real time the entry was last written.
+    """
     newest, count = 0.0, 0
     pending = [path]
     try:
@@ -86,7 +98,10 @@ def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path
             if protected and protected(p):
                 return None, "activity_contains_protected_entry"
             st = p.lstat()
-            newest = max(newest, st.st_mtime)
+            stamp = st.st_mtime
+            if now is not None and stamp > now + FUTURE_MTIME_SKEW_SECONDS:
+                stamp = st.st_ctime
+            newest = max(newest, stamp)
             count += 1
             if count > max_entries:
                 return None, "activity_scan_limit"
@@ -119,6 +134,8 @@ def record_refs(ctx: Mapping, kind: str) -> list[tuple[str, str]]:
     co = data["coordination"]
     refs = list(ctx["refs"])
     refs += [("processes", json.dumps(data["processes"])), ("open_pr", json.dumps(data["prs"]))]
+    # rtc scratch is shared lane scratch, so any retained mention holds it. Agent scratch belongs to one task: only a
+    # live claim/worklog (plus processes, PRs, units, cron, pointers) holds it, never closed history (2026-10-31).
     fields = ("references", "live_claims", "live_worklogs") if kind == "rtc_scratch" else ("live_claims", "live_worklogs")
     refs += [("coordination:" + k, json.dumps(co[k])) for k in fields]
     return refs
@@ -146,7 +163,13 @@ def operator_digest(report: Mapping) -> str:
     detail = " ".join(f"{key}:{val['planned_gb']:.3f}/{val['applied_gb']:.3f}GiB" for key, val in sorted(rules.items()))
     held = report.get("held_bytes")
     held_label = f"{held / 1024**3:.3f}GiB" if isinstance(held, int) else "NOT_MEASURED"
-    return f"Disk hygiene planned/applied {detail or 'NOT_MEASURED'}; held {held_label}; removed {len(report.get('removed') or [])}; skipped {len(report.get('skipped') or [])}; refusal {report.get('refused') or 'none'}"
+    # The digest is what reaches alerts and the operator summary, so a refusal must name the check that
+    # refused (2026-11-02: `evidence_recheck_unavailable` alone hid an opaque-process recheck for two runs).
+    refused = report.get("refused") or "none"
+    why = str(report.get("refusal_detail") or "").strip().splitlines()
+    if why and refused != "none":
+        refused = f"{refused} ({why[0][:200]})"
+    return f"Disk hygiene planned/applied {detail or 'NOT_MEASURED'}; held {held_label}; removed {len(report.get('removed') or [])}; skipped {len(report.get('skipped') or [])}; refusal {refused}"
 
 
 def monitor_decision(current: Mapping, previous: Mapping, used_pct: float | None) -> dict:

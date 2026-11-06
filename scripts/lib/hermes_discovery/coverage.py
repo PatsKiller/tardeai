@@ -35,11 +35,17 @@ Design rules (same as the rest of the package):
 """
 from __future__ import annotations
 
+from .plain_text import plain_health_candidate as _plain_health_candidate
+
 import json
 import os
 import re
 from pathlib import Path
 from typing import Any, Callable
+try:
+    from scripts.lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.dividend_source_trust import RETIRED_SOURCE_PATTERN as _DIV_RETIRED_PATTERN  # type: ignore
 
 from . import subjects
 
@@ -199,7 +205,8 @@ def holdings_findings(*, rm_path: Path | str | None = None,
             """SELECT UPPER(symbol) AS symbol, annual_dividend_per_share
                FROM ticker_dividend_data
                WHERE UPPER(symbol) = ANY(%s)
-                 AND annual_dividend_per_share IS NOT NULL""", (held,))
+                 AND annual_dividend_per_share IS NOT NULL
+                 AND COALESCE(source, '') !~* %s""", (held, _DIV_RETIRED_PATTERN))
         adps = {r["symbol"]: float(r["annual_dividend_per_share"] or 0)
                 for r in div_rows}
         income: dict[str, float] = {}
@@ -458,12 +465,20 @@ def system_ops_findings(*, limit: int = 5,
         component = str(r.get("component") or "unknown")
         status = str(r.get("status") or "UNKNOWN")
         err = (str(r.get("last_error") or "").strip())[:160]
-        payloads.append(_topic_payload(
-            "system_ops", f"System health: {component} {status}",
+        # FQ-059: the candidate is written in plain English (what broke, what it costs); the health checker's own
+        # sentence stays in `technical`, in the evidence note and in the meta — moved, not dropped.
+        raw_label = f"System health: {component} {status}"
+        raw_summary = (
             f"{r.get('check_type')} check for {component} is {status} "
             f"(severity {r.get('severity')}, failure_count "
             f"{int(r.get('failure_count') or 0)})"
-            + (f" — {err}" if err else ""),
+            + (f" — {err}" if err else "")
+        )
+        plain = _plain_health_candidate(raw_label, raw_summary) or {}
+        payloads.append(_topic_payload(
+            "system_ops",
+            plain.get("label") or raw_label,
+            plain.get("summary") or raw_summary,
             evidence=[{"note": f"system_health_checks: {component} "
                                f"{status} at {r.get('updated_at')}"
                                + (f" — {err}" if err else "")}],
@@ -472,7 +487,8 @@ def system_ops_findings(*, limit: int = 5,
                         "component": component,
                         "check_type": r.get("check_type"),
                         "health_status": status,
-                        "severity": r.get("severity")}))
+                        "severity": r.get("severity"),
+                        "technical": plain.get("technical") or raw_label + " · " + raw_summary}))
     return payloads
 
 

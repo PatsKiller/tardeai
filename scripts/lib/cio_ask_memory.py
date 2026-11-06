@@ -28,6 +28,9 @@ from typing import Any, Optional, Protocol
 from scripts.lib.cio_ask_contract import EntityRef, MEMORY_KINDS
 
 ASK_TAG = "ask_the_cio"
+# Market-risk events the CIO memorises per security (exits during a shock, re-entry flips, leadership tiers) are
+# spine contributions tagged ``market_risk`` (scripts/lib/market_risk/cio_memory_fanout.py); Ask-the-CIO recalls them too.
+RECALL_TAGS = frozenset({ASK_TAG, "market_risk"})
 
 
 class AskMemory(Protocol):
@@ -89,7 +92,7 @@ class SpineAskMemory:
                 if entity.security_guid and sp.get("subject_guid") and sp["subject_guid"] != entity.security_guid:
                     sp = {}  # a different security under the same ticker: never recall across identities
                 for c in sp.get("contributions") or []:
-                    if ASK_TAG not in (c.get("tags") or []):
+                    if not RECALL_TAGS.intersection(c.get("tags") or []):
                         continue
                     items.append(
                         {

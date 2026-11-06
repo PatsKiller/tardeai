@@ -203,7 +203,10 @@ def test_system_ops_adapter_escalation_path(fake_db):
     p = payloads[0]
     assert p["meta"]["finding_class"] == "health_check_failure"
     assert p["meta"]["promotion_path_hint"] == "escalation_candidate"
-    assert "news_ingestion" in p["label"]
+    # FQ-059: the label names the task in words; the raw component id is kept in meta (and in technical/evidence).
+    assert "news ingestion" in p["label"]
+    assert p["meta"]["component"] == "news_ingestion"
+    assert "news_ingestion" in (p["meta"].get("technical") or "")
     # the pinned domain actually allows the escalation promotion path
     assert "escalation_candidate" in \
         domains.domain_policy("system_ops")["promotion_paths"]

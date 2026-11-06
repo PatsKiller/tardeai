@@ -1,5 +1,5 @@
 // Pure pinned-clock presentation regression; node --experimental-strip-types src/lib/watchMarketFactsPresentation.test.ts
-import { levelSourceTag, levelText, levelTimeUnknown, marketAmount, marketObserved, pricePresentation } from './watchMarketFactsPresentation.ts'
+import { levelFootnoteTime, levelSourceTag, levelText, levelTimeLabel, levelTimeUnknown, marketAmount, marketObserved, pricePresentation } from './watchMarketFactsPresentation.ts'
 import type { WatchMarketField } from './watchListsModel.ts'
 declare const process: { exit(code?: number): never }
 let checks = 0
@@ -44,4 +44,18 @@ eq('known source date has no unknown flag', levelTimeUnknown([{ ...field, as_of:
 eq('missing levels alone have no unknown flag', levelTimeUnknown([{ ...field, value: null, as_of: null }]), false)
 eq('invalid level time remains unknown', levelTimeUnknown([{ ...field, as_of: 'bad', as_of_basis: 'observation timestamp' }]), true)
 eq('invalid closed date remains unknown', levelTimeUnknown([{ ...field, as_of: '2026-02-30', as_of_basis: 'last closed session' }]), true)
+eq('footnote shows a stored instant when the basis is unrecognized', levelFootnoteTime([{ ...field, as_of: '2026-10-23T19:45:00Z', as_of_basis: 'strategy card created_at' }]), 'Oct 23, 3:45 PM ET')
+eq('footnote keeps a date-only session date', levelFootnoteTime([{ ...field, as_of: '2026-10-22', as_of_basis: 'last closed session' }]), '2026-10-22')
+eq('footnote is unknown only when no time is stored', levelFootnoteTime([{ ...field, as_of: null }]), 'time unknown')
+eq('footnote does not hide a known time beside an unknown level', levelFootnoteTime([{ ...field, as_of: '2026-10-23T19:45:00Z' }, { ...field, as_of: null }]), 'Oct 23, 3:45 PM ET')
+
+// levelTimeLabel: the master source carries no per-level timestamp, so it is "not timestamped by
+// source" — never reported as a generic "time unknown" bug when the source never carried one.
+eq('master level is not timestamped by source', levelTimeLabel([{ ...field, as_of: null, as_of_basis: 'not exposed by source', source: 'watchlist_symbol_master' }]),
+  'not timestamped by source')
+eq('no valued levels → not measured', levelTimeLabel([{ ...field, value: null, as_of: null }]), 'not measured')
+eq('genuinely unknown time stays time unknown', levelTimeLabel([{ ...field, as_of: 'bad', as_of_basis: 'observation timestamp' }]), 'time unknown')
+eq('a known observation time is shown, not a flag', levelTimeLabel([{ ...field, as_of: '2026-10-22T19:45:00Z', as_of_basis: 'observation timestamp' }]), '2026-10-22T19:45:00Z')
+eq('an undeclared level timestamp stays time unknown', levelTimeLabel([{ ...field, as_of: '2026-10-22T19:45:00Z' }]), 'time unknown')
+eq('closed-session date is a known time', levelTimeLabel([{ ...field, as_of: '2026-10-22', as_of_basis: 'last closed session' }]), '2026-10-22')
 console.log(`watchMarketFactsPresentation: ${checks} assertions passed`)

@@ -640,12 +640,32 @@ def _held_retry_outcome(output):
 
 
 def _retry_output(stdout, stderr="", rc=None):
-    """Preserve HELD as structured metadata before applying the normal log tail cap."""
+    """Preserve handled, unfinished results before applying the normal tail cap."""
     held = _held_retry_outcome(stdout)
     if held:
         return "HELD_JSON:" + json.dumps(held, separators=(",", ":"))
+    pending = _pending_retry_outcome(stdout, exit_code=rc)
+    if pending:
+        return "PENDING_JSON:" + json.dumps(pending, separators=(",", ":"))
     prefix = f"exit_code={rc}: " if rc is not None else ""
     return f"{prefix}{(stdout or '')[-1500:]} {(stderr or '')[-500:]}"[-2000:]
+
+
+def _pending_retry_outcome(output, *, exit_code=None):
+    """Only typed acceptance/deadline deferral can bypass failed-work handling."""
+    from lib.watchlist_deadline import last_json_object
+
+    payload = last_json_object(str(output or "")) or {}
+    if payload.get("ok") is not False:
+        return None
+    if (payload.get("outcome") == "PENDING" and payload.get("accepted") is True
+            and exit_code in (None, 0)):
+        return payload
+    if (payload.get("outcome") == "DEFERRED" and payload.get("schema") == "WatchlistDrain@v1"
+            and payload.get("cleanup_error") is None and payload.get("exit_code", 75) == 75
+            and exit_code in (None, 75)):
+        return payload
+    return None
 
 
 def _execute_retry_cmd(item, allowlist, dry_run=False):
@@ -704,6 +724,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
     # the 2026-06-25 thundering-herd. killpg on timeout closes that leak.
     proc = None
     try:
+        from lib.watchlist_deadline import child_environment
         proc = subprocess.Popen(
             cmd,
             shell=True,
@@ -712,6 +733,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
             text=True,
             cwd=str(PROJECT_ROOT),
             start_new_session=True,
+            env=child_environment(cmd, timeout),
         )
         try:
             stdout, stderr = proc.communicate(timeout=timeout)
@@ -732,6 +754,15 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
             return True, False, f"timeout after {timeout}s"
         duration = time.time() - t0
         rc = proc.returncode
+        if rc == 0 and (_pending_retry_outcome(stdout) or {}).get("outcome") == "PENDING":
+            _log_retry(item, cmd, True, reason, "retry_cmd_pending", rc, stdout, stderr, duration)
+            return True, False, _retry_output(stdout, stderr, rc)
+        if rc == 75 and "process_watchlist_agent_jobs.py" in cmd:
+            from lib.watchlist_deadline import last_json_object
+            drain = last_json_object(stdout) or {}
+            if drain.get("schema") == "WatchlistDrain@v1" and drain.get("outcome") == "DEFERRED":
+                _log_retry(item, cmd, True, reason, "retry_cmd_deferred", rc, stdout, stderr, duration)
+                return True, False, _retry_output(stdout, stderr, rc)
         if rc == 0:
             log.info(f"  ✅ retry_cmd succeeded ({duration:.1f}s)")
             _log_retry(item, cmd, True, reason, "retry_cmd_succeeded", rc, stdout, stderr, duration)
@@ -985,7 +1016,11 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         ).split(",")
     )
     _last_persistent_log = 0.0
+    previous_attempt_times = {id(item): item.get("_last_attempt_ts", 0) for item in actionable}
     for item in actionable:
+        if item.get("_pending_retry"):
+            item.pop("_cooling_down", None)
+            item.pop("_cooldown_remaining_sec", None)
         attempts = item.get("_attempts", 0)
         last_at = item.get("_last_attempt_ts", 0)
         comp = item.get("component", "")
@@ -1044,6 +1079,24 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     fixable = [i for i in actionable if i.get("fixable") and i.get("retry_cmd")]
     resolved_by_retry = set()
     held_for_operator = set()
+    pending_for_repair = set()
+    pending_items = []
+    pending_state_changed = False
+
+    def retain_pending(item, payload, output=None, *, skipped=False):
+        # Retry commands are deduplicated; preserve every related finding.
+        for peer in actionable:
+            if peer.get("retry_cmd") == item.get("retry_cmd") and id(peer) not in pending_for_repair:
+                peer["outcome"] = payload["outcome"]
+                if output is not None:
+                    peer["retry_output"] = output[-2000:]
+                peer["_pending_retry"] = {key: payload[key] for key in
+                                          ("outcome", "ok", "accepted", "schema", "exit_code", "cleanup_error") if key in payload}
+                peer["_attempts"] = max(0, peer.get("_attempts", 1) - 1)
+                if skipped:
+                    peer["_last_attempt_ts"] = previous_attempt_times[id(peer)]
+                pending_for_repair.add(id(peer))
+                pending_items.append(peer)
 
     if fixable:
         log.info(f"Tier 1: {len(fixable)} fixable item(s) with retry_cmd")
@@ -1063,10 +1116,15 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         fixable = deduped_fixable
 
         for idx, item in enumerate(fixable):
+            saved_pending = _pending_retry_outcome(json.dumps(item.get("_pending_retry") or {}))
             if item.get("_exhausted"):
+                if saved_pending:
+                    retain_pending(item, saved_pending, skipped=True)
                 log.info(f"  ⏭ Skipping {item.get('component')}: retries exhausted")
                 continue
             if item.get("_cooling_down"):
+                if saved_pending:
+                    retain_pending(item, saved_pending, skipped=True)
                 remaining_cd = item.get("_cooldown_remaining_sec", 0)
                 log.info(f"  ⏳ Skipping {item.get('component')}: cooling down ({remaining_cd:.0f}s remaining)")
                 continue
@@ -1075,7 +1133,16 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 f"{item.get('component')}: {(item.get('retry_cmd') or '')[:80]}",
                 flush=True,
             )
+            for peer in actionable:
+                if peer.get("retry_cmd") == item.get("retry_cmd") and peer.pop("_pending_retry", None):
+                    peer.pop("outcome", None)
+                    pending_state_changed = True
             executed, success, output = _execute_retry_cmd(item, allowlist, dry_run)
+            pending_payload = _pending_retry_outcome(output) if executed and str(output).startswith("PENDING_JSON:") else None
+            if pending_payload:
+                retain_pending(item, pending_payload, output)
+                log.info("  repair pending/deferred: %s", item.get("component"))
+                continue
             held_payload = _held_retry_outcome(output)
             if held_payload:
                 item["outcome"] = "HELD"
@@ -1184,7 +1251,8 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 time.sleep(TIER1_INTER_CMD_DELAY_SEC)
 
     # Remove resolved items from actionable
-    remaining = [i for i in actionable if id(i) not in resolved_by_retry and id(i) not in held_for_operator]
+    remaining = [i for i in actionable if id(i) not in resolved_by_retry
+                 and id(i) not in held_for_operator and id(i) not in pending_for_repair]
     if resolved_by_retry:
         log.info(f"  Tier 1 resolved {len(resolved_by_retry)}/{len(fixable)} items")
 
@@ -1192,11 +1260,12 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         log.info("No items remain in automated escalation after Tier 1")
         if not dry_run:
             # Only wipe the main queue (resolved) — staleness queue is separate
-            _safe_write_queue(QUEUE_FILE, held_items)
+            _safe_write_queue(QUEUE_FILE, held_items + pending_items)
         if resolved_by_retry and not dry_run:
             _notify(f"✅ Auto-recovery: {len(resolved_by_retry)} escalation(s) resolved by retry_cmd")
         print(
-            f"[claude-escalation] done: all resolved by Tier1 (resolved={len(resolved_by_retry)} dry_run={dry_run})",
+            f"[claude-escalation] done: no active escalation after Tier1 "
+            f"(resolved={len(resolved_by_retry)} pending={len(pending_items)} held={len(held_items)} dry_run={dry_run})",
             flush=True,
         )
         return
@@ -1210,10 +1279,10 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             flush=True,
         )
         # Leave queue intact when dry-run or when items remain unfixed
-        if not dry_run and (resolved_by_retry or held_items):
+        if not dry_run and (resolved_by_retry or held_items or pending_items or pending_state_changed):
             # Drop only resolved; rewrite queues with remaining
             try:
-                _safe_write_queue(QUEUE_FILE, remaining + held_items)
+                _safe_write_queue(QUEUE_FILE, remaining + held_items + pending_items)
             except Exception:
                 pass
         print("[claude-escalation] done (tier1-only path)", flush=True)
@@ -1366,7 +1435,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         # Separate staleness items from main queue items for staleness queue
         stale_items = [i for i in (deferred or []) if i.get("source") == "hermes_health_inspector"]
         non_stale = [i for i in (deferred or []) if i.get("source") != "hermes_health_inspector"]
-        _safe_write_queue(QUEUE_FILE, non_stale)
+        _safe_write_queue(QUEUE_FILE, non_stale + pending_items)
         _safe_write_queue(STALENESS_QUEUE_FILE, stale_items)
         return
 
@@ -1671,7 +1740,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         f"Analysis: {session_log[:200]}"
     )
 
-    _safe_write_queue(QUEUE_FILE, deferred + held_items)
+    _safe_write_queue(QUEUE_FILE, deferred + held_items + pending_items)
     log.info(f"Queue: {resolved_count} retried, {len(remaining)} tier3 → {final_status}, {len(deferred)} deferred")
 
 

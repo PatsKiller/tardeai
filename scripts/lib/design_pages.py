@@ -18,10 +18,19 @@ ROOT = Path(__file__).resolve().parents[2]
 STATES = ("DRAFT", "PROPOSED", "APPROVED", "IMPLEMENTING", "VERIFIED", "CURRENT", "SUPERSEDED", "REJECTED", "BASELINE")
 # States that carry an operator approval (BASELINE is a capture of what is live, never an approval).
 APPROVED_STATES = ("APPROVED", "IMPLEMENTING", "VERIFIED", "CURRENT", "SUPERSEDED")
+# The date the design workflow's record rules took effect (PR #2135). Versions created earlier are legacy.
+WORKFLOW_ADOPTED = "2026-11-05"
+# Approval kinds that recorded a real operator act before the Approvals -> Designs ledger tap existed. Only
+# these may stand without a ledger row, and only on a legacy (pre-adoption) version.
+LEGACY_APPROVAL_KINDS = (
+    "recorded in handoff, back-filled 2026-10-25",
+    "operator in-session words, verbatim",
+    "artifact approval relayed by the coordinator",
+)
 ROLES = ("mockups", "spec", "evidence", "evidence/batch27", "baselines", "capture")
 BOUND_ROLES = ("mockups", "spec")  # the files an approval binds; evidence and captures are informational
 PAGE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
-VERSION = re.compile(r"^v\d{3}$")
+VERSION = re.compile(r"^v\d{3}(?:\.\d+)?$")  # vNNN, or vNNN.N for a revision of an approved version
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 REMOVAL = re.compile(r'^\s*-\s*(remove|hide|move|rename):\s*([a-z][a-z /-]*?)\s+"([^"]+)"', re.I)
 
@@ -84,6 +93,14 @@ def _safe_rel(path: str) -> bool:
     return bool(path) and not p.is_absolute() and ".." not in p.parts and "\\" not in path and not path.startswith("~")
 
 
+def _may_omit_ledger(approval: dict, legacy: bool) -> bool:
+    """A pre-adoption version may cite a named pre-ledger operator act instead of an operator-decisions row."""
+    kind = str(approval.get("kind") or "")
+    if kind == LEGACY_APPROVAL_KINDS[0]:
+        return True
+    return legacy and any(kind.startswith(prefix) for prefix in LEGACY_APPROVAL_KINDS[1:])
+
+
 def validate_status(page: str, version: str, status, *, spec_exists: bool) -> list[str]:
     where = f"design/pages/{page}/versions/{version}"
     if not isinstance(status, dict):
@@ -98,12 +115,19 @@ def validate_status(page: str, version: str, status, *, spec_exists: bool) -> li
         errs.append(f"{where}: unknown state {state!r}")
     if not spec_exists and state != "BASELINE":
         errs.append(f"{where}: SPEC.md missing")
+    # The design workflow was adopted 2026-11-05 (PR #2135). Versions created before it predate the
+    # operator-decisions ledger tap, which still records nothing (the home page's v006 status record).
+    # They are recorded as legacy: the approval must still name the operator, the time and a reference, and the
+    # private assets must still be fingerprinted, but a missing ledger row is a known migration gap rather than
+    # a fabricated citation. Every version created on/after adoption must cite its ledger row.
+    legacy = bool(status.get("created")) and str(status.get("created")) < WORKFLOW_ADOPTED
     approval = status.get("approval")
     if state in APPROVED_STATES or state == "REJECTED":
         if not isinstance(approval, dict) or approval.get("by") != "operator" or not approval.get("at") or not approval.get("ref"):
             errs.append(f"{where}: state {state} needs approval {{by: operator, at, ref}}")
-        elif not approval.get("ledger") and approval.get("kind") != "recorded in handoff, back-filled 2026-10-25":
-            # Only the 10-24 back-fill may stand without a ledger decision (§28.13).
+        elif not approval.get("ledger") and not _may_omit_ledger(approval, legacy):
+            # The 10-24 back-fill, and a named pre-ledger operator act on a pre-adoption version, may stand
+            # without a ledger decision (§28.13). Anything else must cite its row.
             errs.append(f"{where}: approval must cite its operator-decisions ledger row (approval.ledger)")
         elif approval.get("ledger") and not (isinstance(approval["ledger"], dict) and SHA256.fullmatch(str(approval["ledger"].get("hash_self", "")))):
             errs.append(f"{where}: approval.ledger must carry the ledger row hash_self")
@@ -112,10 +136,13 @@ def validate_status(page: str, version: str, status, *, spec_exists: bool) -> li
     assets = status.get("private_assets") or {}
     files = assets.get("files") if isinstance(assets, dict) else None
     if not isinstance(files, list):
-        errs.append(f"{where}: private_assets.files must be a list")
+        if not legacy:
+            errs.append(f"{where}: private_assets.files must be a list")
         files = []
     if assets.get("root") not in (None, f"persistent-state/data/design/pages/{page}"):
-        errs.append(f"{where}: private_assets.root must be persistent-state/data/design/pages/{page}")
+        # A legacy record may still point at the handoff folder it was captured in; the path stays private either way.
+        if not (legacy and str(assets.get("root") or "").startswith("persistent-state/")):
+            errs.append(f"{where}: private_assets.root must be persistent-state/data/design/pages/{page}")
     seen = set()
     for f in files:
         if not isinstance(f, dict) or not _safe_rel(str(f.get("path", ""))):
@@ -128,7 +155,7 @@ def validate_status(page: str, version: str, status, *, spec_exists: bool) -> li
         if f["path"] in seen:
             errs.append(f"{where}: {f['path']}: listed twice")
         seen.add(f["path"])
-    if state in ("PROPOSED",) + APPROVED_STATES and not any(f.get("role") in BOUND_ROLES for f in files if isinstance(f, dict)):
+    if state in ("PROPOSED",) + APPROVED_STATES and not legacy and not any(f.get("role") in BOUND_ROLES for f in files if isinstance(f, dict)):
         errs.append(f"{where}: state {state} needs at least one private mockup or spec fingerprint")
     if files and status.get("fingerprint") != version_fingerprint([f for f in files if isinstance(f, dict) and "path" in f and "sha256" in f]):
         errs.append(f"{where}: fingerprint does not match the bound private files")
@@ -175,7 +202,7 @@ def validate(root: Path = ROOT) -> list[str]:
             errs.append(f"design/pages/{page}: not in design/registry.json")
             continue
         if not VERSION.fullmatch(version):
-            errs.append(f"design/pages/{page}/versions/{version}: version folders are vNNN")
+            errs.append(f"design/pages/{page}/versions/{version}: version folders are vNNN or vNNN.N")
             continue
         errs.extend(validate_status(page, version, status, spec_exists=(vdir / "SPEC.md").is_file()))
         if isinstance(status, dict):

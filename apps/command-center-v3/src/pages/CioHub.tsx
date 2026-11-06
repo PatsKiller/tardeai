@@ -2153,11 +2153,12 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
   return (
     <DeskPage title="CIO Desk" purpose="One status from one evaluation. Capital: every dollar counted once." sources={[
-      { id: 'cio-status', label: 'CIO evaluations', asOf: pageTruth?.cio_status?.as_of, laneIds: ['cio-decision-engine'], gap: pageTruth?.cio_status?.gap?.reason },
+      // Projected on request from stored evidence; cio-decision-engine is PAUSED since 2026-08-08 and is not its producer.
+      { id: 'cio-status', label: 'CIO evaluations', asOf: pageTruth?.cio_status?.as_of, gap: pageTruth?.cio_status?.gap?.reason },
       { id: 'holdings', label: 'Holdings', asOf: pageTruth?.portfolio?.positions_as_of, laneIds: ['schwab-position-sync', 'snaptrade-sync'], gap: pageTruth?.portfolio?.gap?.reason },
     ]} decisionGap="Review decisions on the Decisions tab.">
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
-      <style>{`.cio-hub button,.cio-hub select,.cio-hub input{min-height:44px}.cio-hub{overflow-wrap:anywhere}.cio-mandate-form{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}.cio-mandate-row{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}@media(max-width:820px){.cio-mandate-form,.cio-mandate-row{grid-template-columns:minmax(0,1fr)}.cio-mandate-form>*{min-width:0}}`}</style>
+      <style>{`.cio-hub button,.cio-hub select,.cio-hub input{min-height:44px}.cio-hub{overflow-wrap:anywhere}.cio-mandate-form{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}.cio-mandate-row{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}@media(max-width:820px){.cio-mandate-form,.cio-mandate-row{grid-template-columns:minmax(0,1fr)}.cio-mandate-form>*{min-width:0}.cio-hub__tabs{flex-wrap:wrap!important;overflow-x:visible!important;row-gap:6px}.cio-hub__tabs button{flex:0 1 auto!important;max-width:100%;white-space:normal!important;text-align:center}}`}</style>
       {(tab === 'overview' || tab === 'capital-policy') && pageTruth && <W7Conflicts section={pageTruth.conflicts} title="CIO findings" />}
       <nav ref={tabsRef} className="cio-hub__tabs" style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap', scrollMarginTop: 8 }} aria-label="Office sections" role="tablist">
         {TABS.map(t => (

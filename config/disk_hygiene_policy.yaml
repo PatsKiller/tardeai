@@ -1,6 +1,9 @@
 # Disk hygiene — keep host from filling again (2026-09-10 incident: 98% / 11G free).
-# Enforced by: scripts/disk_hygiene_enforcer.py (+ optional user timer).
-# Does NOT delete CURRENT, live process cwd releases, or the capped ~/db_backups dump.
+# Read by: scripts/disk_hygiene_enforcer.py, which since 2026-10-27 PLANS ONLY and removes nothing:
+# AGENTS.md §24.12 makes scripts/disk_hygiene.py (config/disk_hygiene_rules.json; n8n lane disk-hygiene
+# or the operator CLI) the only automated removal of release dirs, and backups are never in scope.
+# The enforcer's --apply prints this file's plan and exits 77 (REFUSED_OUTSIDE_24_12).
+# The plan never lists CURRENT, live process cwd releases, or the capped ~/db_backups dump.
 
 releases:
   root: "~/trade-ai-releases/portfolio-server"
@@ -36,6 +39,6 @@ disk:
   critical_free_pct: 8
   target_path: "/"
 
-# Timer should run with --apply in production after first successful dry-run review.
+# 2026-10-27: --apply is refused (AGENTS.md §24.12); a timer running it gets the plan and exit 77.
 defaults:
   dry_run: true

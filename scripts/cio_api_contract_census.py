@@ -370,8 +370,13 @@ def _binding(text: str, stmt_start: int, open_paren: int) -> tuple[list[str], st
     if m:
         return [m.group(1)], "assign"
     stripped = head.strip()
-    if stripped in ("", "await", "void", "void await") :
+    if stripped in ("", "await", "void", "void await") or re.fullmatch(
+            r"(?:(?:void|await)\s+)+(?:useApi|useJson)(?:<[^>()]*>)?", stripped):
         return [], "discarded"
+    if re.fullmatch(r"(?:useApi|useJson)(?:<[^>()]*>)?", stripped):
+        closing = open_paren + len(_call_args_text(text, open_paren)) + 1
+        if not re.match(r"\s*(?:\.|\?\.|\[|\()", text[closing + 1:]):
+            return [], "discarded"
     return [], "expression"
 
 
@@ -475,14 +480,409 @@ def _name_used(text: str, name: str, *, decl_pos: int, _depth: int = 0) -> bool:
     return False
 
 
+def _fetch_from_call(root: Path, path: Path, text: str, raw: str, surfaces: set[str],
+                     callee: str, open_paren: int, position: int) -> Fetch:
+    """One source of call/binding evidence for literal and named-route fetches."""
+    args = _split_top_args(_call_args_text(text, open_paren))
+    poll_ms = _parse_interval(args[1]) if callee in ("useApi", "useJson") and len(args) >= 2 else None
+    method = "GET"
+    if callee in ("post", "postJson", "fire") or re.search(r"method\s*:\s*['\"](POST|PUT|PATCH|DELETE)", ",".join(args[1:])):
+        method = "POST"
+    stmt_start = _statement_start(text, open_paren)
+    names, kind = _binding(text, stmt_start, open_paren)
+    if names:
+        used = any(_name_used(text, name, decl_pos=position) for name in names)
+    elif kind == "discarded":
+        used = False if method == "GET" and callee in ("useApi", "useJson") else None
+    else:
+        used = None
+    return Fetch(route=normalize_route(raw), raw=raw, file=_rel(path, root),
+                 line=text.count("\n", 0, position) + 1, callee=callee, surfaces=sorted(surfaces),
+                 poll_ms=poll_ms, bound_names=names, used=used, method=method)
+
+
+_JS_COMMENTS = re.compile(
+    r"('(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"|" + chr(96) + r"(?:[^" + chr(96) +
+    r"\\]|\\.)*" + chr(96) + r")|(/\*[\s\S]*?\*/|//[^\n]*)")
+
+
+def _without_js_comments(text: str) -> str:
+    return _JS_COMMENTS.sub(lambda match: match.group(1) if match.group(1) is not None else
+                            re.sub(r"[^\n]", " ", match.group(0)), text)
+
+
+_NAMED_IMPORT = re.compile(r"""\bimport\s*\{([^}]+)\}\s*from\s*(['"])(\.{1,2}/[^'"]+)\2""", re.S)
+
+
+@dataclass
+class _SourceScope:
+    start: int
+    end: int
+    bindings: dict[str, Optional[str]] = field(default_factory=dict)
+    function: bool = False
+
+
+def _binding_names(pattern: str) -> list[str]:
+    """Binding side of ordinary, rest and destructured declarations/parameters."""
+    pattern = pattern.strip()
+    if pattern.startswith(("{", "[")):
+        names = []
+        closing = pattern.rfind("}" if pattern.startswith("{") else "]")
+        for part in _split_top_args(pattern[1:closing]):
+            # Object renaming binds the value, not the property key.
+            if pattern.startswith("{") and ":" in part:
+                part = part.split(":", 1)[1]
+            names.extend(_binding_names(part))
+        return names
+    match = re.match(r"(?:\.\.\.)?\s*([A-Za-z_$][\w$]*)", pattern)
+    return [match.group(1)] if match else []
+
+
+def _named_code_only(text: str) -> str:
+    """Named-call code view: keep JSX expressions, blank markup/visible text.
+
+    Paired element boundaries distinguish JSX from TypeScript generic heads.
+    This view does not alter the legacy literal census or its evidence rules.
+    """
+    code = _code_only(text)
+    out = list(code)
+    # A regex body must not be read as a named route call, but a division is not a regex. Mask the
+    # unambiguous expression-start positions below; a line-leading `/` is handled separately because it
+    # is a regex opener only when the previous non-blank RAW line cannot end an expression (a division
+    # continuation always follows one). Reading the raw line matters: _code_only blanks a trailing
+    # string, so `import ... from '../lib/r'` would end in an identifier and read as an expression.
+    # Not masked, and unchanged from the legacy literal path: a regex after `)` or `}`.
+    previous_ends_expression = False
+    # A line ending in a string or template literal ends an expression too: `const ratio = 'abc'` then a
+    # line-leading `/` is a division, not a regex. Omitting the quote characters swallowed a real call.
+    # A line ending in `return`/`yield`/`case`/`do`/`else` cannot: the next `/` starts a statement there.
+    # A declaration line (`import`/`export`/`type`/`interface`/`declare`/`enum`) is complete on its own,
+    # even when it ends in a quoted path, so a following `/` starts a new statement.
+    expression_end = set("_$)]}") | {"'", '"', "`"}
+    keyword_end = re.compile(r"(?:^|[^\w$])(return|yield|case|do|else)$")
+    declaration_only = re.compile(r"^(?:import|export|type|interface|declare|enum)\b")
+    line_openers = []
+    offset = 0
+    for raw_line in text.splitlines(keepends=True):
+        stripped = raw_line.strip()
+        if stripped:
+            if (stripped[0] == "/" and not stripped.startswith(("//", "/*"))
+                    and not previous_ends_expression):
+                line_openers.append(offset + len(raw_line) - len(raw_line.lstrip()))
+            previous_ends_expression = (
+                (stripped[-1].isalnum() or stripped[-1] in expression_end)
+                and not keyword_end.search(stripped)
+                and not declaration_only.match(stripped))
+        offset += len(raw_line)
+    body = r"(?P<body>/(?![/*])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n])+/[dgimsuvy]*)"
+    # Horizontal whitespace only: the gap must not cross a newline. An `=` on the previous line is not
+    # the start of a regex on the next one (that is a division continuation, or the line pre-pass above
+    # masks a real statement-position regex).
+    regex = re.compile(r"(?:[=(,:;!&|?{\[]|=>|\breturn[ \t]+)[ \t]*" + body, re.M)
+    for literal in regex.finditer(code):
+        for pos in range(literal.start("body"), literal.end("body")):
+            out[pos] = " "
+    line_regex = re.compile(body)
+    for start in line_openers:
+        literal = line_regex.match(code, start)
+        if literal:
+            for pos in range(literal.start("body"), literal.end("body")):
+                out[pos] = " "
+    code = "".join(out)
+    tag = re.compile(r"<(/?)([A-Za-z][\w$.:-]*|)(?=[\s/>])[^<>]*>")
+
+    def _tag_start(match) -> bool:
+        """A closing tag always counts; an opening one only where a JSX element can start.
+
+        `<T>` in `foo<T>(x)` is a generic call argument, not an element: taking it as an opening tag
+        paired it with a later `</T>` and blanked the real expression between them. A `<` preceded by an
+        identifier, `)`, `]` or `.` is a comparison/generic; one after `return`/`(`, `{`, `=`, `,`, `:`,
+        `?`, `=>` or another tag is an element.
+        """
+        if match.group(1):
+            return True
+        i = match.start() - 1
+        while i >= 0 and code[i] in " \t\r\n":
+            i -= 1
+        if i < 0 or code[i] in "([{=,:;?!&|>":
+            return True
+        word = re.search(r"([A-Za-z_$][\w$]*)$", code[:i + 1])
+        return bool(word and word.group(1) in ("return", "yield", "case", "default"))
+    tags = [match for match in tag.finditer(code) if _tag_start(match)]
+    for index, opening in enumerate(tags):
+        if opening.group(1) or opening.group().rstrip().endswith("/>"):
+            continue
+        depth, closing = 1, None
+        for other in tags[index + 1:]:
+            if other.group(2) != opening.group(2):
+                continue
+            if other.group(1):
+                depth -= 1
+            elif not other.group().rstrip().endswith("/>"):
+                depth += 1
+            if depth == 0:
+                closing = other
+                break
+        if closing is None:
+            continue
+        expression = 0
+        for pos in range(opening.start(), closing.end()):
+            ch = code[pos]
+            if ch == "{":
+                expression += 1
+            elif ch == "}" and expression:
+                expression -= 1
+            elif not expression and ch != "\n":
+                out[pos] = " "
+    return "".join(out)
+
+
+def _parameter_tail(code: str, closing: int, pairs: dict[int, int],
+                    brace_ends: dict[int, int]) -> tuple[Optional[int], bool]:
+    """Find body/arrow after parameters, skipping balanced return-type objects.
+
+    The first brace after ``):`` may belong to the type, including inside a
+    generic return type. It should not acquire the function's parameters, but
+    return types such as ``keyof {…}`` and ``asserts x is {…}`` are outside
+    that guarantee.
+    """
+    pos = closing + 1
+    while pos < len(code) and code[pos].isspace():
+        pos += 1
+    if code.startswith("=>", pos):
+        return pos, True
+    if pos < len(code) and code[pos] == "{":
+        return pos, False
+    if pos >= len(code) or code[pos] != ":":
+        return None, False
+    pos += 1
+    angle, atom = 0, True
+    while pos < len(code):
+        ch = code[pos]
+        if code.startswith("=>", pos) and angle == 0:
+            return pos, True
+        if ch == "{":
+            if angle or atom:
+                end = brace_ends.get(pos)
+                if end is None:
+                    return None, False
+                pos, atom = end, False
+                continue
+            return pos, False
+        if ch in "([" and pos in pairs:
+            pos, atom = pairs[pos] + 1, False
+            continue
+        if ch == "<":
+            angle, atom = angle + 1, True
+        elif ch == ">" and angle:
+            angle, atom = angle - 1, False
+        elif ch in "|&?:":
+            atom = True
+        elif ch in ";=":
+            return None, False
+        elif ch.isalnum() or ch in "_$":
+            atom = False
+        pos += 1
+    return None, False
+
+
+def _parameter_head(code: str, opening: int) -> Optional[str]:
+    """Name before a parameter list, allowing balanced generic method heads."""
+    before = code[:opening].rstrip()
+    if before.endswith(">"):
+        depth, pos = 1, len(before) - 2
+        while pos >= 0 and depth:
+            if before[pos] == ">":
+                depth += 1
+            elif before[pos] == "<":
+                depth -= 1
+            pos -= 1
+        if depth:
+            return None
+        before = before[:pos + 1].rstrip()
+    head = re.search(r"([A-Za-z_$][\w$]*)$", before)
+    return head.group(1) if head else None
+
+
+def _source_scopes(text: str) -> list[_SourceScope]:
+    """Lexical brace scopes, function parameters and block/expression arrow scopes.
+
+    Unknown initializers still bind a name: they must shadow an imported route.
+    Bindings are resolved at each call, so a nested declaration cannot erase a
+    module consumer. Only an exact immutable route initializer donates a route.
+    """
+    code = _named_code_only(text)
+    scopes = [_SourceScope(0, len(code))]
+    braces, parens, pairs = [], [], {}
+    for token in re.finditer(r"[{}()\[\]]", code):
+        ch, pos = token.group(), token.start()
+        if ch == "{":
+            scope = _SourceScope(pos, len(code))
+            scopes.append(scope)
+            braces.append(scope)
+        elif ch == "}" and braces:
+            braces.pop().end = pos + 1
+        elif ch in "([":
+            parens.append(pos)
+        elif ch in ")]" and parens:
+            opening = parens.pop()
+            pairs[opening], pairs[pos] = pos, opening
+
+    def scope_at(pos: int, *, function: bool = False) -> _SourceScope:
+        return min((s for s in scopes if s.start <= pos < s.end and (not function or s.function or s.start == 0)),
+                   key=lambda s: s.end - s.start)
+
+    def parameters(scope: _SourceScope, params: str) -> None:
+        scope.function = True
+        for part in _split_top_args(params):
+            for name in _binding_names(part):
+                scope.bindings[name] = None
+
+    brace_ends = {scope.start: scope.end for scope in scopes[1:]}
+    arrow_parameters = {}
+    for closing, opening in pairs.items():
+        if code[closing] != ")":
+            continue
+        boundary, arrow = _parameter_tail(code, closing, pairs, brace_ends)
+        if boundary is None:
+            continue
+        params = code[opening + 1:closing]
+        if arrow:
+            arrow_parameters[boundary] = params
+        else:
+            head = _parameter_head(code, opening)
+            if head and head not in {"if", "for", "while", "switch", "catch", "with"}:
+                parameters(scope_at(boundary), params)
+
+    for arrow in re.finditer(r"=>", code):
+        before = code[:arrow.start()].rstrip()
+        closing = before.rfind(")")
+        if arrow.start() in arrow_parameters:
+            params = arrow_parameters[arrow.start()]
+        elif closing in pairs and re.fullmatch(r"\s*(?::[^=;{}]+)?", before[closing + 1:]):
+            opening = pairs[closing]
+            params = code[opening + 1:closing]
+        else:
+            name = re.search(r"([A-Za-z_$][\w$]*)\s*$", before)
+            if not name:
+                continue
+            params = name.group(1)
+        start = arrow.end()
+        while start < len(code) and code[start].isspace():
+            start += 1
+        if start < len(code) and code[start] == "{":
+            scope = scope_at(start)
+        else:
+            end, depth = start, 0
+            while end < len(code):
+                ch = code[end]
+                if depth == 0 and ch in ",;\n)}]":
+                    break
+                if ch in "([{":
+                    depth += 1
+                elif ch in ")]}":
+                    depth -= 1
+                end += 1
+            scope = _SourceScope(start, end)
+            scopes.append(scope)
+        parameters(scope, params)
+
+    # Function/class declarations shadow imports in the declaring scope.
+    for decl in re.finditer(r"\b(?:function|class)\s+([A-Za-z_$][\w$]*)", code):
+        scope_at(decl.start()).bindings[decl.group(1)] = None
+
+    # Catch parameters have block scope rather than function scope.
+    for match in re.finditer(r"\bcatch\s*\(([^()]*)\)\s*\{", code):
+        scope = scope_at(match.end() - 1)
+        for name in _binding_names(match.group(1)):
+            scope.bindings[name] = None
+
+    route_literals = dict(iter_route_literals(text))
+    for declaration in re.finditer(r"\b(const|let|var)\s+", code):
+        # Split comma declarations at the declaration's own delimiter depth.
+        chunks, start, end, depth = [], declaration.end(), declaration.end(), 0
+        while end < len(code):
+            ch = code[end]
+            if depth == 0 and ch in ";\n)":
+                break
+            if depth == 0 and ch == ",":
+                chunks.append((start, end))
+                start = end + 1
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth -= 1
+            end += 1
+        chunks.append((start, end))
+        scope = scope_at(declaration.start(), function=declaration.group(1) == "var")
+        for start, end in chunks:
+            decl = re.match(r"\s*([A-Za-z_$][\w$]*|\{[^}]*\}|\[[^\]]*\])", code[start:end])
+            if not decl:
+                continue
+            names = _binding_names(decl.group(1))
+            initializer_at = start + decl.end()
+            source_init = re.match(r"\s*(?::[^=;\n]+)?=\s*", text[initializer_at:end])
+            raw = None
+            if declaration.group(1) == "const" and len(names) == 1 and source_init:
+                position = initializer_at + source_init.end()
+                candidate = route_literals.get(position)
+                if candidate is not None:
+                    after = text[position + len(candidate) + 2:end]
+                    if not after.strip():
+                        raw = candidate
+            for name in names:
+                scope.bindings[name] = raw
+    return scopes
+
+
+def _named_route_fetches(root: Path, owners: dict[Path, set[str]], texts: dict[Path, str]) -> list[Fetch]:
+    """Follow each call's nearest lexical binding, including unknown shadows."""
+    fetches = []
+    callees = "|".join(sorted(FETCH_CALLEES))
+    clean = {path: _without_js_comments(text) for path, text in texts.items()}
+    scope_sets = {path: _source_scopes(text) for path, text in clean.items()}
+    for path, surfaces in sorted(owners.items()):
+        text, scopes = clean[path], scope_sets[path]
+        for imported in _NAMED_IMPORT.finditer(text):
+            if not _code_only(text)[imported.start():].startswith("import"):
+                continue
+            target = _resolve_import(path, imported.group(3))
+            if target not in scope_sets:
+                continue
+            target_text = clean[target]
+            for part in imported.group(1).split(","):
+                names = re.fullmatch(r"\s*([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?\s*", part)
+                if not names:
+                    continue
+                exported, local = names.group(1), names.group(2) or names.group(1)
+                raw = scope_sets[target][0].bindings.get(exported)
+                if raw is None or not re.search(rf"\bexport\s+const\s+{re.escape(exported)}\b", _code_only(target_text)):
+                    continue
+                scopes[0].bindings[local] = raw if local not in scopes[0].bindings else None
+        code = _named_code_only(text)
+        pattern = re.compile(rf"(?<![\w$.])({callees})(?:<[^>()]*>)?\(\s*([A-Za-z_$][\w$]*)\s*(?=[,)])")
+        for call in pattern.finditer(code):
+            name, raw = call.group(2), None
+            for scope in sorted((s for s in scopes if s.start <= call.start() < s.end), key=lambda s: s.end - s.start):
+                if name in scope.bindings:
+                    raw = scope.bindings[name]
+                    break
+            if raw is not None:
+                open_paren = text.index("(", call.start())
+                fetches.append(_fetch_from_call(root, path, text, raw, surfaces,
+                                                call.group(1), open_paren, call.start()))
+    return fetches
+
+
 def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> tuple[list[Fetch], list[dict[str, Any]], dict[Path, set[str]]]:
     src = root / SRC
     entries = [(surface, src / rel) for surface, rel in (surfaces if surfaces is not None else SURFACES).items()]
     owners = import_closure(entries)
     fetches: list[Fetch] = []
     constants: list[dict[str, Any]] = []
+    texts = {path: path.read_text(encoding="utf-8", errors="replace") for path in owners}
     for path, surfaces in sorted(owners.items()):
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = texts[path]
         for start, raw in iter_route_literals(text):
             line = text.count("\n", 0, start) + 1
             # const NAME = '/api/...'
@@ -496,7 +896,6 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
                 })
                 continue
             callee, open_paren = _enclosing_callee(text, start)
-            via = None
             if callee == "withQuery":
                 # A query builder is not a fetch by itself. Only count it when it
                 # is the first argument of a recognized enclosing fetch/hook.
@@ -505,7 +904,6 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
                 if outer not in FETCH_CALLEES:
                     continue
                 callee, open_paren = outer, outer_paren
-                via = "withQuery"
             if callee and callee not in FETCH_CALLEES:
                 continue  # argument of a non-fetch call (startsWith, includes, onDrill, ...)
             if not callee:
@@ -521,28 +919,8 @@ def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> t
                     continue
                 callee = call.group(1)
                 open_paren = text.index("(", call.start())
-                via = var_name
-            args = _split_top_args(_call_args_text(text, open_paren))
-            poll_ms = None
-            if callee in ("useApi", "useJson") and len(args) >= 2:
-                poll_ms = _parse_interval(args[1])
-            method = "GET"
-            if callee in ("post", "postJson", "fire") or re.search(r"method\s*:\s*['\"](POST|PUT|PATCH|DELETE)", ",".join(args[1:])):
-                method = "POST"
-            stmt_start = _statement_start(text, open_paren)
-            names, kind = _binding(text, stmt_start, open_paren)
-            used: Optional[bool]
-            if names:
-                used = any(_name_used(text, n, decl_pos=start) for n in names)
-            elif kind == "discarded":
-                # A discarded GET result is unused; a discarded mutation is fire-and-forget by design.
-                used = False if method == "GET" and callee in ("useApi", "useJson") else None
-            else:
-                used = None  # chained (.then / return / argument) — usage not statically decidable
-            fetches.append(Fetch(
-                route=normalize_route(raw), raw=raw, file=_rel(path, root), line=line, callee=callee,
-                surfaces=sorted(surfaces), poll_ms=poll_ms, bound_names=names, used=used, method=method,
-            ))
+            fetches.append(_fetch_from_call(root, path, text, raw, surfaces, callee, open_paren, start))
+    fetches.extend(_named_route_fetches(root, owners, texts))
     return fetches, constants, owners
 
 

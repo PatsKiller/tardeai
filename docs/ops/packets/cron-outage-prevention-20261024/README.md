@@ -6,6 +6,18 @@ invented approver. No host cron, unit, release, alert, broker or credential has
 been changed by this package. Worker commits locally; the operator owns remote
 publication, protected-source merge, installation and release.
 
+## Activation (2026-10-25)
+
+Operator directive 2026-10-25: "turn on everything... It shouldn't need me to turn on anything." The watchdog
+(item 6) is admitted: `config/cron_outage_watchdog.json` is `enabled`/`REVIEWED`, lane `cron-outage-watchdog`
+is registered (systemd, `tradeai-cron-outage-watchdog.timer`, every minute, receipt
+`data/runtime/cron_outage_watchdog_latest.json`), and the release installs it: `cio_phase2_exact_main_deploy.sh
+promote` runs `scripts/install_staged_units.py apply` over `config/staged_user_units.json` (dry-run first, the
+one-time rl3 refusal ack, archive-on-replace, `enable --now`, first run, is-active + receipt readback; receipt
+`data/runtime/staged_units_install_latest.json`). Preview with `cio_phase2_exact_main_deploy.sh units`; undo with
+`scripts/install_staged_units.py rollback --release <CURRENT>`. It is a host timer, not n8n, by design: the alert
+path must not depend on what it watches. Item 5 (wrapper preflight) stays pending.
+
 ## Review in order
 
 1. Read the [incident report](../../incidents/INCIDENT_20261023_SAFE_FLOCK_CRON_OUTAGE.md),

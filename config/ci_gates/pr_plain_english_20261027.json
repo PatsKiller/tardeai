@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pr_plain_english_20261027",
+  "files": [
+    "tests/test_pr_plain_english_20261027.py"
+  ],
+  "comment": [
+    "AGENTS.md §28.12 (26.0.0; operator 2026-10-27): every PR title is a plain-English sentence and every description opens",
+    "with what / why / who / when / approval / risk and fallback (scripts/check_pr_plain_english.py, the PR template,",
+    ".github/workflows/pr-plain-english.yml run from the base commit)."
+  ]
+}

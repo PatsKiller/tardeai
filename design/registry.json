@@ -64,7 +64,7 @@
       "group": "Trade",
       "component": "apps/command-center-v3/src/pages/HomeHub.tsx",
       "owner": "coordinator",
-      "approved_version": "v001",
+      "approved_version": "v006",
       "current_version": null,
       "baseline_version": null,
       "versions": [
@@ -73,6 +73,30 @@
           "state": "APPROVED",
           "approved_at": "2026-10-24",
           "fingerprint": "4da7d53edaf87df8c769f8be028b74fa335e50a0e7c225da66c2f3acadd2121c"
+        },
+        {
+          "version": "v002",
+          "state": "APPROVED",
+          "approved_at": "2026-10-31T14:55:00Z",
+          "fingerprint": "dae2a2fb2903876ab3139539f83d111fcc1546e78ffb122310beb1db0d5412b5"
+        },
+        {
+          "version": "v004",
+          "state": "APPROVED",
+          "approved_at": "2026-11-01",
+          "fingerprint": "74b7cbb40ea7b0f1fde6712cd479cbe5d9c7d5885e477b72453379e64cde69e0"
+        },
+        {
+          "version": "v005",
+          "state": "APPROVED",
+          "approved_at": "2026-11-01",
+          "fingerprint": "c863f179866c893378c5770de028f9678a9b4eaedab21b354cffcbe6c39d58ad"
+        },
+        {
+          "version": "v006",
+          "state": "APPROVED",
+          "approved_at": "2026-11-01",
+          "fingerprint": "aae0b16b0deff1d451a2e56efdbc5cd6ff4bb611197024ba9013cccde8bb5f64"
         }
       ]
     },
@@ -152,7 +176,7 @@
       "group": "Trade",
       "component": "apps/command-center-v3/src/pages/RiskHub.tsx",
       "owner": "coordinator",
-      "approved_version": "v001",
+      "approved_version": "v002",
       "current_version": null,
       "baseline_version": null,
       "versions": [
@@ -161,6 +185,12 @@
           "state": "APPROVED",
           "approved_at": "2026-10-24",
           "fingerprint": "ea6d8f0614de6b60549310394622f314dbe99a68ed83be6b7281d827b80b7e7b"
+        },
+        {
+          "version": "v002",
+          "state": "APPROVED",
+          "approved_at": "2026-10-31T14:55:00Z",
+          "fingerprint": "65601103efa46e54ff1af375358c9bb6766dd7dd0f35d0d0c26c1f66c6dce090"
         }
       ]
     },
@@ -429,6 +459,31 @@
       "versions": []
     },
     {
+      "id": "prospectus",
+      "title": "Prospectus",
+      "route": "/prospectus",
+      "group": "Intel",
+      "component": "apps/command-center-v3/src/pages/ProspectusPage.tsx",
+      "owner": "coordinator",
+      "approved_version": "v001",
+      "current_version": null,
+      "baseline_version": null,
+      "versions": [
+        {
+          "version": "v001",
+          "state": "IMPLEMENTING",
+          "approved_at": "2026-10-26",
+          "fingerprint": "dfa0cb987ae9f7a0b6d83799cd70df50e23f056ac83e90a30a5eedaa948f664b"
+        },
+        {
+          "version": "v001.1",
+          "state": "PROPOSED",
+          "approved_at": null,
+          "fingerprint": null
+        }
+      ]
+    },
+    {
       "id": "health",
       "title": "Health",
       "route": "/health",
@@ -615,6 +670,18 @@
           "fingerprint": "3ebb8eaad882bd9d675f6f300da4896c5cbc2142ea55751d06716e2229281744"
         }
       ]
+    },
+    {
+      "id": "ops-incidents",
+      "title": "Incidents",
+      "route": "/ops/incidents",
+      "group": "Ops",
+      "component": "apps/command-center-v3/src/pages/OpsIncidents.tsx",
+      "owner": "coordinator",
+      "approved_version": null,
+      "current_version": null,
+      "baseline_version": null,
+      "versions": []
     },
     {
       "id": "system",

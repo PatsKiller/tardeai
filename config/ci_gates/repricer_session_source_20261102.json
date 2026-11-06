@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "repricer_session_source_20261102",
+  "files": [
+    "tests/test_repricer_session_source_20261102.py"
+  ],
+  "anchor": "REPRICER_SESSION_SOURCE_20261102",
+  "comment": [
+    "ANCHOR: REPRICER_SESSION_SOURCE_20261102 — holdings reprice around the clock on trading days (operator 2026-11-02:",
+    "\"repricing needs to run 24 hours as we have 24-hour markets\"); reprice_source names the real session",
+    "(finviz_premarket / finviz_live / finviz_afterhours / finviz_overnight) via scripts/market_session.py; overnight",
+    "fills come from the session the prices describe; quote selection knows every session source.",
+    "Hermetic: fixed datetimes, no network, no DB."
+  ]
+}

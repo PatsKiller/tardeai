@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_accuracy_20261026",
+  "files": [
+    "tests/test_prospectus_accuracy_20261026.py",
+    "tests/test_prospectus_fund_history_20261027.py"
+  ],
+  "anchor": "PROSPECTUS_ACCURACY_20261026",
+  "comment": [
+    "ANCHOR: PROSPECTUS_ACCURACY_20261026 — Ticker Prospectus accuracy audit (operator 2026-10-26: \"Money is riding on this. We can't have inaccuracies.\"): price series are NYSE sessions only with calendar-span return windows; the annual dividend is withheld when the ex-date history contradicts it; stop fills dated by the matching journal sell; open-lot P/L read from value_and_pl; sells without basis named; fund look-through rows keyed ticker/pct; MacroCalendar@v1 dates read; stale fundamental_data withheld and sec_xbrl lines read; technical snapshot placeholders dropped; stop_event trigger; fund peers without a Finviz row; packet-only quality-gate checks for each defect class. Synthetic tickers; DB, journal and stores stubbed."
+  ]
+}

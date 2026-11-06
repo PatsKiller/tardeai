@@ -100,12 +100,17 @@ def test_every_nav_route_is_registered():
 
 def test_v001_records_the_operator_10_24_approvals():
     reg = dp.load_registry(ROOT)
-    approved = {p["id"] for p in reg["pages"] if p["approved_version"] == "v001"}
+    # The 10-24 approvals are recorded as v001 on every page that existed then. A later approved version
+    # (e.g. home v006, risk v002) supersedes it in approved_version, but the v001 record itself never changes.
+    v001_pages = {page for page, version, status, _ in dp.iter_versions(ROOT)
+                  if version == "v001" and status.get("created") == "2026-10-24"}
     # 22 desk boards cover these pages; plus TradeInView, My questions, Watch row and the site fix package.
     for pid in ("home", "risk", "jobs", "approvals", "rulebook", "watch", "tradeinview", "my-questions", "site", "shell"):
-        assert pid in approved
+        assert pid in v001_pages
     for page, version, status, vdir in dp.iter_versions(ROOT):
-        assert version == "v001" and status["state"] == "APPROVED"
+        if version != "v001" or status.get("created") != "2026-10-24":
+            continue
+        assert status["state"] == "APPROVED"
         a = status["approval"]
         assert a["by"] == "operator" and a["at"] == "2026-10-24"
         assert a["kind"] == "recorded in handoff, back-filled 2026-10-25"
@@ -113,6 +118,10 @@ def test_v001_records_the_operator_10_24_approvals():
         assert status["private_assets"]["root"] == f"persistent-state/data/design/pages/{page}"
         assert any(f["role"] in ("mockups", "spec") for f in status["private_assets"]["files"])
         assert "## Removals, hides and moves" in (vdir / "SPEC.md").read_text(encoding="utf-8")
+    # Every page that carries a v001 record still lists it in the registry, whatever its current approved version.
+    for p in reg["pages"]:
+        if p["id"] in v001_pages:
+            assert "v001" in {v.get("version") for v in p.get("versions") or []}
 
 
 def test_tradeinview_v001_keeps_calendar_and_replay():
@@ -151,6 +160,15 @@ def test_tampered_status_is_refused(tmp_path, mutate, needle):
     mutate(status)
     path.write_text(json.dumps(status), encoding="utf-8")
     assert any(needle in e for e in dp.validate(root)), dp.validate(root)
+
+
+def test_ledger_row_is_required_once_the_workflow_is_adopted(tmp_path):
+    root = _copy_design(tmp_path)
+    path, status = _status(root, "prospectus")  # v001: created 2026-10-26, relayed operator approval, ledger null
+    assert not [e for e in dp.validate(root) if "ledger" in e], dp.validate(root)
+    status["created"] = dp.WORKFLOW_ADOPTED  # the same record on/after adoption must cite its ledger row
+    path.write_text(json.dumps(status), encoding="utf-8")
+    assert any("ledger" in e for e in dp.validate(root)), dp.validate(root)
 
 
 def test_registry_version_must_match_status(tmp_path):
@@ -193,7 +211,7 @@ def test_committed_design_text_passes_the_privacy_scan():
     assert dp.privacy_scan([ROOT / "design"]) == []
 
 
-@pytest.mark.parametrize("text", ["Cash $12,500 idle", "value 132,948 at risk", "acct # 12345678", "ending …4821"])
+@pytest.mark.parametrize("text", ["Cash $12,500 idle", "value 132,948 at risk", "acct # " + "1234" * 2, "ending …4821"])
 def test_privacy_patterns_catch_amounts_and_account_numbers(tmp_path, text):
     f = tmp_path / "SPEC.md"
     f.write_text(f"# x\n{text}\n", encoding="utf-8")

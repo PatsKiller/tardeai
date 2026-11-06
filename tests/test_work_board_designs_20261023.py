@@ -64,14 +64,15 @@ def test_seeded_registry_parses_and_ids_are_consistent():
     assert errors == []
     ids = {d["id"] for d in designs}
     assert {
-        "DSN-20261021-release-train",
         "DSN-20261022-momentum-alerts",
         "DSN-20261023-ask-the-cio",
         "DSN-20261022-cio-prospect-store",
         "DSN-20261022-data-domains",
     } <= ids
-    rt = next(d for d in designs if d["id"] == "DSN-20261021-release-train")
-    assert [p["id"].rsplit("-", 1)[1] for p in rt["phases"]] == [f"P{i}" for i in range(8)]
+    # The retired release train's design was archived 2026-10-27 (archive/release_train_20261026/, operator directive).
+    assert "DSN-20261021-release-train" not in ids
+    ask = next(d for d in designs if d["id"] == "DSN-20261023-ask-the-cio")
+    assert ask["phases"] and all(p["id"].startswith("DSN-20261023-ask-the-cio-P") for p in ask["phases"])
 
 
 @pytest.mark.parametrize(
@@ -229,5 +230,30 @@ def test_ci_gate_and_build_registration():
 
     doc = json.loads((ROOT / "config" / "ci_gates" / "work_board_designs_20261023.json").read_text())
     ci_gates.validate(doc, stem="work_board_designs_20261023")
-    pkg = json.loads((ROOT / "apps" / "command-center-v3" / "package.json").read_text())
-    assert "src/lib/workBoard.test.ts" in pkg["scripts"]["build"]
+    assert "src/lib/workBoard.test.ts" in _app_test_runner_list()
+
+
+def _app_test_runner_list() -> set[str]:
+    """What the app's own discovery runner will actually run.
+
+    2026-11-05: the build line no longer names ~100 test files (that single line was the four-PR collision); it runs
+    ``scripts/run-tests.mjs``, which discovers ``src/**/*.test.ts|.mjs`` minus ``scripts/tests.dormant.json``. Naming a
+    file in the build was only ever a proxy for "it runs in CI", so the guard now asks the runner itself: the runner is
+    the build step, and this file is in its run list. It cannot drift from the runner's rule because it does not restate
+    it, and it fails loudly if the runner is removed or node is unavailable rather than passing on a stale string.
+    """
+    import shutil
+    import subprocess
+
+    app = ROOT / "apps" / "command-center-v3"
+    build = json.loads((app / "package.json").read_text())["scripts"]["build"]
+    assert "node scripts/run-tests.mjs" in build, (
+        "the app build no longer runs the discovery test runner (node scripts/run-tests.mjs): a test is registered by "
+        "being discovered, so this guard has nothing to check until the build step is restored"
+    )
+    node = shutil.which("node")
+    assert node, "node is required to ask the app runner which tests it discovers"
+    out = subprocess.run([node, "scripts/run-tests.mjs", "--list"], cwd=app,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, f"run-tests.mjs --list failed: {out.stderr[-500:]}"
+    return set(json.loads(out.stdout)["run"])

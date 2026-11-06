@@ -1,0 +1,56 @@
+# Market Risk Engine — LLM curation of the "why" sentence (DSN-20261031-market-risk-engine §5.10, P3-T3).
+# Operator 2026-10-31: "you can have normalization and alerts curated by LLM." The deterministic card is built first and
+# is always sendable; the model may only rephrase its one "Why:" sentence. Every number the model writes must already be
+# in the card or the assessment, no behaviour wording is allowed, and a failure, refusal or timeout sends the
+# deterministic card unchanged. scripts/lib/market_risk/curation.py reads this file; nothing here is hardcoded there.
+schema: MarketRiskCuration@v1
+as_of: 2026-10-31
+enabled: true
+process_id: market_risk_alert_curation   # config/llm_process_registry.json row (free OAuth lanes only)
+lane: grok                               # first lane; llm_fallback walks grok -> chatgpt
+allow_paid: false                        # never a metered lane for alert prose
+why_prefix: "Why: "
+max_why_chars: 280
+max_tokens: 200
+timeout_s:                               # wall-clock budget per tier; on expiry the deterministic card is sent
+  RED: 6
+  ORANGE: 10
+  YELLOW: 15
+  BLUE: 15
+  GREEN: 15
+  default: 10
+# Every tier is skipped until an independent review passes the allow-list template below (review of #2383, B3).
+# Turning curation back on for YELLOW/BLUE/GREEN is the one-line change `skip_tiers: [ORANGE, RED]`.
+skip_tiers: [RED, ORANGE, YELLOW, BLUE, GREEN, NONE]
+# The allow-list template (review of #2383, B3): the curated "why" may contain ONLY these words, words from the
+# contributors' displayed names and headlines, the category names, and the displayed figures. Anything else rejects
+# the curation and the deterministic card is sent. No verbs of action, no forecast verbs, no number words.
+why_vocabulary: [a, an, the, and, or, but, with, from, on, in, by, as, at, to, of, for, over, under, than, versus, vs,
+  against, while, both, also, plus, only, not, no, yet, still, now, today, recent, recently, is, are, was, were, has,
+  have, been, be, it, its, this, that, these, those, their, own, risk, risks, score, scores, point, points, category,
+  categories, confirm, confirms, confirming, confirmed, signal, signals, reading, readings, level, levels, picture,
+  driven, driver, drivers, led, mainly, mostly, largely, elevated, stressed, stress, stretched, warning, warn, calm,
+  quiet, steady, mixed, unusual, unusually, heavy, heavier, light, lighter, broad, broader, narrow, narrowing, weak,
+  weaker, weakness, weakening, strong, stronger, strength, surge, surging, surged, jump, jumped, rising, rose,
+  falling, fell, easing, eased, fading, building, persistent, sharp, sharply, high, higher, low, lower, above, below,
+  near, up, down, more, less, most, median, normal, typical, history, times, x, percent, market, markets, index,
+  indexes, sector, sectors, volatility, flow, flows, options, put/call, ratio, open, interest, volume, demand,
+  hedging, breadth, credit, rates, yields, technical, technicals, momentum, trend, leadership, semiconductor,
+  semiconductors, chips, earnings, event, events, concentration, seasonal, extended, hours, overnight, session, data,
+  measured, unmeasured, unknown, macro, cross-asset, asset, correlation, correlations, so, because, after, hit,
+  reached, all, each]
+behaviour_patterns:                      # case-insensitive regexes on NFKC-normalised prose; any match rejects the curation
+  - '\b(buy|sell|short|cover|trim|reduce|add to|scale (in|out)|exit|liquidate|hedge with)\b'
+  - '\b(lighten|unload|dump|offload|shed|shrink|pare|cut|rotate|de-?risk)\b'
+  - '\btake (some )?profits?\b'
+  - '\b(raise|go to|move to|build|hold more) cash\b'
+  - '\bget out\b|\bstep aside\b|\bhold off\b|\bavoid new\b|\bnew (entries|positions?)\b'
+  - '\b(puts|calls|protective put|collars?|hedges?|hedged)\b'
+  - '\b\d[\d,.]*\s*(shares?|contracts?|lots?|sh)\b'
+  - '\b(one|two|three|four|five|ten|twenty|fifty|a|one )?hundred\s+(shares?|sh)\b|\bhalf\b'
+  - '\bstops?\s+(at|to|of|near|under|below|above|level)\b|\bstop[- ]level\b'
+  - '\b(limit|market|stop)[- ]orders?\b'
+  - '\b(position[- ]?siz\w*|allocat\w*|weight(ing)? (to|of)|slice of|% of (the|your) (book|portfolio))\b'
+  - '\b(should|ought to|consider|recommend\w*|suggest\w*|you (may|might|could) want|it is (wise|prudent))\b'
+  - '\b(lower|raise|increase|decrease|reduce|trim|cut)\s+(your\s+)?(exposure|position|holdings?|stake)\b|\bexposure should\b'
+  - '[$€£¥]\s?\d|\d\s?(usd|eur|dollars?|bucks)\b'
