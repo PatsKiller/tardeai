@@ -1,7 +1,7 @@
 # Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR
 
 ```
-Status:      PROPOSED (code + PAUSED registry row; DISARMED; push/PR blocked until AGENTS.md 24.11 is ACTIVE)
+Status:      PROPOSED (code + PAUSED registry row; DISARMED; push/PR blocked until AGENTS.md 24.16 is ACTIVE)
 as_of:       2026-10-16
 Base:        n8n/self-heal-tranche-20261016 (PR #1828, OPEN) at f752e3e38 — stacked on it; retarget to main when #1828 merges
 ```
@@ -289,7 +289,7 @@ port; proxy allows only the listed target; the model's pytest sees no proxy/auth
    or model-written test code can open it. Exfiltration paths that remain: (a) a request to an allowlisted Anthropic
    endpoint (the destination is Anthropic itself); (b) the diff, which goes to a PUBLIC repo — the `secret_in_diff`
    scan catches literal token shapes but **not an encoded or split token**. Mitigations: nothing is pushed until the
-   24.11 amendment is ACTIVE; every PR is human-reviewed and never auto-merged. Recommended before arming: a
+   24.16 amendment is ACTIVE; every PR is human-reviewed and never auto-merged. Recommended before arming: a
    dedicated, revocable credential for this lane (a separate login used only here) so a leak is cheap to revoke.
 2. **Allowlisted hosts are coarse.** `claude.ai:443` / `console.anthropic.com:443` / `platform.claude.com:443` are
    allowed for OAuth refresh; any data path through them is open to the model. No other host is reachable on
@@ -339,7 +339,7 @@ runs the model on DeepSeek:
   prompt, the diff, the transcript or a test wrapper. The same recommendation applies: arm with a dedicated,
   revocable key for this lane.
 - **The switch is config, not code.** No `provider` block ships until the code is reviewed and merged, the
-  §24.11 successor is active, a backup exists and a dry run is quoted (the same gate as §7).
+  §24.16 successor is active, a backup exists and a dry run is quoted (the same gate as §7).
 
 ## 7. Gating (DISARMED by default)
 
@@ -352,7 +352,7 @@ runs the model on DeepSeek:
 4. the agent sandbox and the harness test sandbox both available (§5, §6a).
 
 The push/PR step additionally needs `AGENTS.md` **at the job's base commit** to contain the heading
-`## 24.11 Self-heal fix PRs from the self-heal-fixer lane` with `ACTIVE` on that line. Without it the job ends at
+`## 24.16 Self-heal fix PRs from the self-heal-fixer lane` with `ACTIVE` on that line. Without it the job ends at
 `fix_ready_local`: committed on a local branch, `pr_body.md` and `fix.patch` written; an operator may push it by hand
 (the next cycle then moves it to `fix_pr_opened` when `gh pr list --head <branch>` finds the PR).
 
@@ -396,11 +396,11 @@ recorded (`used: false`), no worktree, no model call, no state written. Files:
 
 AGENTS.md 12.0.0 §24.5 says a cron line, timer, n8n-fired lane or daemon **never pushes, opens a PR or writes to a
 remote**. The fixer pushes one branch and opens one PR from a scheduled lane, so it needs a named exception. The
-amendment widens what a scheduled job may do, so by the version policy it is **MAJOR → 13.0.0**. Proposed text,
+amendment widens what a scheduled job may do, so by the version policy it is **MAJOR → 31.0.0**. Proposed text,
 inserted after §24.10:
 
 ```markdown
-## 24.11 Self-heal fix PRs from the self-heal-fixer lane (13.0.0, ACTIVE; amends 24.5 for one lane)
+## 24.16 Self-heal fix PRs from the self-heal-fixer lane (31.0.0, ACTIVE; amends 24.5 for one lane)
 
 - **One named exception to 24.5.** The registered host lane `self-heal-fixer` (`scripts/self_heal_fixer.py`,
   `config/self_heal_fixer.json`) may push ONE new branch named `self-heal-fix/…` and open ONE pull request labelled
@@ -436,11 +436,11 @@ Until then the lane is useful but conservative: it produces a tested local branc
 | agent cannot read `.env` / write outside its worktree | yes, host (bwrap) | stub CLI inside the real agent sandbox (§6a); argv shape pinned on every runner |
 | durable claim, budget reserved before launch, crash reconciliation | yes, offline | two real processes (one runs, one `busy`); fixer SIGKILLed mid-attempt → `fix_interrupted` with partial evidence, no restart, reservation counted once |
 | patch + targeted tests + PR-profile CI | yes, offline | same loop; CI is a stub `run_cio_hardening_ci.py` in the tmp repo; the real PR profile ran in the bwrap sandbox on this host (selection only, §11) |
-| commit → push → PR (labelled) | yes, offline | real `git push` to a tmp bare remote, fake `gh` records `pr create --label self-heal-fix` (only behind the 24.11 gate) |
+| commit → push → PR (labelled) | yes, offline | real `git push` to a tmp bare remote, fake `gh` records `pr create --label self-heal-fix` (only behind the 24.16 gate) |
 | PR-head CI acceptance | yes, offline | fake `gh pr view` statusCheckRollup → evaluator |
 | merge → fix_deployed → output_recovered → incident_resolved | state machine yes, offline | fake `gh` MERGED + release SHA ancestry in a tmp repo + a live contract receipt in a tmp ledger (a fresh JSON timestamp alone is refused) + diagnoser escalation cleared |
 | a real Claude Code run on a real defect | **no** | needs arming (grant) — the first live job is the live proof |
-| a real PR on GitHub, real CI on its head | **no** | needs the 24.11 amendment ACTIVE (or an operator push of a `fix_ready_local` branch) |
+| a real PR on GitHub, real CI on its head | **no** | needs the 24.16 amendment ACTIVE (or an operator push of a `fix_ready_local` branch) |
 | a real merge, release, output recovery | **no** | operator merge + release window, then the lane's next run |
 
 ## 11. Sandbox smoke (2026-10-16, host)
