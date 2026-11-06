@@ -15,6 +15,7 @@ import {
   filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
 } from '../lib/workPipeline'
 import { copyText, parseSplitParts, sendCommand, type CommandName, type CommandResult } from '../lib/workPipelineActions'
+import { currentStageWords } from '../lib/pipelineStageWords'
 import { canCreate, disabledReason, needsWords, phraseMatches, requestParams, type Tier2Action } from '../lib/workPipelineTier2'
 import { opsApi, passkeyStepUp, type OpsRequest } from '../lib/opsControls'
 
@@ -57,11 +58,20 @@ function Technical({ label, children }: { label: string; children: ReactNode }) 
 }
 
 function StageCells({ it }: { it: PipelineItem }) {
-  return <div data-testid="stage-cells" className="wp-stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gap: 3 }}>
-    {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
-      <span className="wp-cell-text">{c.stage === it.stage && c.label ? c.label : STAGE_LABEL[c.stage]}</span>
-    </div>)}
-  </div>
+  // FQ-032 (review at 64b3abc24): an 11-column strip gives each cell ~26-28 px on a 390 px phone, and the labels need
+  // 39-54 px, so squeezing the label INTO the cell clipped it. The words now lead, in their own full-width line, and the
+  // strip keeps the colour; the cell keeps its accessible label for anything reading the DOM.
+  const words = currentStageWords(it.cells, it.stage, STAGE_LABEL)
+  return <>
+    <div data-testid="wp-current-stage" className="wp-current-stage">
+      Now at: <b>{words}</b>
+    </div>
+    <div data-testid="stage-cells" className="wp-stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gap: 3 }}>
+      {it.cells.map(c => <div key={c.stage} data-stage={c.stage} data-rag={c.rag} title={cellTitle(c)} aria-label={cellTitle(c)} style={cellStyle(c.rag, c.stage === it.stage)}>
+        <span className="wp-cell-text">{c.stage === it.stage && c.label ? c.label : STAGE_LABEL[c.stage]}</span>
+      </div>)}
+    </div>
+  </>
 }
 
 /** Tier 2: one Ops → Controls request per act — create, then a fresh passkey assertion + the typed phrase, then approve;
@@ -303,12 +313,22 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
       .wp-card-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr); }
       .wp-strip { grid-template-columns: repeat(14, minmax(0, 1fr)); }
       .wp-queue { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      /* FQ-032 (cc-deepseek-3 R1 at e983b7d7): the current-stage line is PHONE-ONLY. Without a base rule the div is
+         block by default — the media-query rule only restated the default — so every desktop card stated the stage
+         twice: once in this line, once in the strip's own current-cell label. */
+      .wp-current-stage { display: none; font-size: 12px; }
       @media (max-width: 760px) {
         .wp-card-grid { grid-template-columns: minmax(0, 1fr); }
         .wp-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         .wp-queue { grid-template-columns: minmax(0, 1fr); }
-        .wp-stages > div { height: 14px !important; }
+        /* FQ-032: the strip stays as colour, but the CURRENT stage is named in words on the phone — the bars
+           alone told an operator nothing. Every in-cell label is hidden here, the current cell included: an
+           11-column strip gives each cell 22 px and the labels need 39-54 px, so any label drawn inside a cell
+           clips. The current stage is named by the full-width line above instead, and each cell keeps its
+           aria-label and title for anything reading the DOM (cc-deepseek-5 review at c5a25828c). */
+        .wp-stages > div { height: 22px !important; }
         .wp-cell-text { display: none; }
+        .wp-current-stage { display: block; font-size: 12px; }
       }
     `}</style>
     <div style={panel}>
