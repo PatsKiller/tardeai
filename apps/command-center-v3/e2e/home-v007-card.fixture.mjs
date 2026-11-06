@@ -134,6 +134,37 @@ try {
       throw new Error(`card not rendered at ${width}; pageErrors=${errs}; text=${txt}`)
     }
     await page.waitForTimeout(300)
+    // LIVEFIX-R (operator 2026-11-06): as first seen — sectors and diagnostics collapsed, one compact row per symbol,
+    // no inline provenance or gap lines. Captured before anything is opened.
+    const first = await page.evaluate(() => {
+      const open = id => document.querySelector(`[data-testid="${id}"]`)?.open ?? null
+      const v7 = document.querySelector('[data-testid="home-v007"]')
+      const order = [...document.querySelectorAll('[data-testid="mr-actionable-body"] [data-testid$="-section"], [data-testid="home-v007"], [data-testid="v7-diagnostics"]')]
+        .map(el => el.getAttribute('data-testid'))
+      return {
+        sectorsOpen: open('mr-sectors-section'), diagnosticsOpen: open('v7-diagnostics'),
+        compactRows: document.querySelectorAll('[data-testid^="v7-row-"]').length,
+        v7text: v7?.innerText || '', order,
+        multiSegmentHeadings: (document.body.innerText.match(/Multi-segment issuer/gi) || []).length,
+        overflow: document.documentElement.scrollWidth > innerWidth + 1,
+      }
+    })
+    await page.screenshot({ path: path.join(out, `card-${width}-first-view.png`), fullPage: true })
+    try {
+      assert.equal(first.sectorsOpen, false, `the sector table is collapsed by default at ${width}`)
+      assert.equal(first.diagnosticsOpen, false, `diagnostics are collapsed by default at ${width}`)
+      assert.ok(first.compactRows >= 3, `one compact row per symbol at ${width}: ${first.compactRows}`)
+      assert.ok(/Diagnostics \(\d+ gaps?\)/i.test(first.v7text), `the diagnostics disclosure names its gap count at ${width}: ${first.v7text.slice(0, 600)}`)
+      assert.ok(!/\bgap [A-Z]+\./.test(first.v7text), `no raw per-field gap line in the first view at ${width}`)
+      assert.ok(!/trade time unverified/.test(first.v7text), `provenance sits behind Diagnostics at ${width}`)
+      assert.ok(/\$49\.87/.test(first.v7text) && /since exit/.test(first.v7text) && /CIO/.test(first.v7text), `the compact row carries price, since exit and stance at ${width}: ${first.v7text.slice(0, 600)}`)
+      assert.equal(first.overflow, false, `horizontal overflow in the first view at ${width}`)
+      const at = id => first.order.indexOf(id)
+      assert.ok(at('mr-positions-section') < at('mr-sectors-section') && at('mr-sectors-section') < at('mr-reentry-section')
+        && at('mr-reentry-section') < at('home-v007') && at('home-v007') < at('v7-diagnostics'), `phone order positions → sectors → stopped-out → context → diagnostics at ${width}: ${first.order.join(',')}`)
+    } catch (e) { process.exitCode = 1; throw e }
+    await page.evaluate(() => document.querySelectorAll('details').forEach(d => { d.open = true }))
+    await page.waitForTimeout(100)
     const m = await page.evaluate(() => {
       const text = document.body.innerText || ''
       const taps = [...document.querySelectorAll('button,a,[role="button"],summary')].map(el => {
@@ -150,6 +181,9 @@ try {
           why: /Why this tier/i.test(text),
         },
         details: document.querySelectorAll('details').length,
+        multiSegmentHeadings: (document.body.innerText.match(/Multi-segment issuer/gi) || []).length,
+        gapGroups: [...document.querySelectorAll('[data-testid="v7-gap-group"]')].map(el => el.innerText),
+        reentry: [...document.querySelectorAll('[data-testid="mr-reentry-row"]')].map(el => el.innerText),
         tableRows: document.querySelectorAll('[data-mr-actionable] tbody tr').length,
         smallTaps: taps.filter(x => (x.w > 0 || x.h > 0) && (x.w < 44 || x.h < 44)).length, taps: taps.filter(x => x.w > 0 || x.h > 0).length,
         smallDetail: taps.filter(x => (x.w > 0 || x.h > 0) && (x.w < 44 || x.h < 44)).slice(0, 4),
@@ -165,7 +199,13 @@ try {
     assert.deepEqual(t.external, [], `the card must not reach any external origin at ${width}: ${JSON.stringify(t.external)}`)
     try {
       assert.ok(Object.values(m.sections).every(Boolean), `a section is missing at ${width}: ${JSON.stringify(m.sections)}`)
-      assert.equal(m.details, 6, `collapsible count at ${width}`)
+      assert.equal(m.details, 7, `collapsible count at ${width} (six sections + Diagnostics)`)
+      assert.equal(m.multiSegmentHeadings, 1, `"Multi-segment issuer" renders once at ${width}`)
+      assert.ok(m.gapGroups.length >= 1 && m.gapGroups.every(g => /unavailable/.test(g)), `gaps render as grouped lines at ${width}: ${JSON.stringify(m.gapGroups)}`)
+      for (const row of m.reentry) {
+        assert.ok(!/0 of \d+ — waiting: all met/.test(row), `never "0 of N — waiting: all met" at ${width}: ${row}`)
+        assert.ok(!(/STILL FALLING/.test(row) && /\+\d[\d.]*% vs exit/.test(row)), `never STILL FALLING above the exit at ${width}: ${row}`)
+      }
       assert.equal(m.tableRows, 13, `sector row count at ${width}`)
       assert.equal(m.overflow, false, `horizontal overflow at ${width}`)
       assert.ok(m.smallTaps === 0, `taps under 44px at ${width}: ${JSON.stringify(m.smallDetail)}`)
@@ -173,6 +213,7 @@ try {
       assert.ok(m.v7, `home_v007 section missing at ${width}`)
       assert.ok(m.v7text.includes('DEMO'), `v7 symbol missing at ${width}`)
       assert.ok(m.v7text.includes('$49.87'), `v7 price missing at ${width}`)
+      assert.ok(/CIO stance · rationale unavailable for 1 symbol: DEMO — store does not expose it/.test(m.v7text), `the gap is grouped and names its symbol at ${width}: ${JSON.stringify(m.gapGroups)}`)
       assert.ok(/\$12\.5/.test(m.v7text) && /stale/.test(m.v7text) && /90m old/.test(m.v7text), `a measured-but-old quote must show its value, the word stale and its age at ${width}: ${m.v7text.slice(0,400)}`)
       assert.ok(/price unknown/.test(m.v7text) && /not measured/.test(m.v7text), `missing case not explicit at ${width}`)
       assert.ok(/fetched .*ET/.test(m.v7text) && /trade time unverified/.test(m.v7text), `the quote clock is labelled a fetch observation, not trade time, at ${width}: ${m.v7text.slice(0, 300)}`)
@@ -217,7 +258,7 @@ try {
     } catch (e) { process.exitCode = 1; throw e }
     const shot = path.join(out, `card-${width}.png`)
     await page.screenshot({ path: shot, fullPage: true })
-    results.push({ width, shot, measured: m, traffic: t })
+    results.push({ width, shot, firstView: first, measured: m, traffic: t })
     await ctx.close()
   }
 
@@ -257,6 +298,7 @@ try {
     assert.ok(/unavailable/i.test(m.text), `the block says it is unavailable: ${m.text.slice(0, 300)}`)
     assert.ok(/could not be built \(TimeoutError\)/.test(m.text), `and states the producer's reason: ${m.text.slice(0, 300)}`)
     assert.ok(/Restore the additive context module/.test(m.text), `and its remediation: ${m.text.slice(0, 300)}`)
+    assert.ok(/Diagnostics \(1 gap\)/i.test(m.text), `the failure's gaps sit in the Diagnostics disclosure: ${m.text.slice(0, 400)}`)
     assert.equal(m.presentFrame, false, 'no present-but-empty frame is rendered over the failure')
     assert.equal(m.buttons, 0, 'a failed block offers no control')
     const shot = path.join(out, 'card-unavailable-390.png')

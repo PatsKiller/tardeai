@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
-import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
+import { SHADOW_MARKER, SUMMARY_PHONE_MAX_PX, markerRest, actionableModel, bannerVisible, contributorsLine, episodeLine, factLine, fmtPct, pointsSum, pointsToScore, shadowMarker, shortTime, tierTone, type MarketRisk } from '../../lib/marketRisk'
 import { ActionableBody, ActionableHead, TopReview } from './MarketRiskActionable'
 import { ActionsTop } from './MarketRiskActions'
 
@@ -111,13 +111,13 @@ export function MarketRiskBanner({ mr }: { mr: MarketRisk | null }) {
       {a && open && <ActionableBody m={a} why={null} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: TYPE.md, lineHeight: 1.35 }}>
         {mr.contributors.slice(0, 5).map((c, i) => (
-          <div key={i} data-testid="home-market-risk-contributor" style={{ display: 'grid', gridTemplateColumns: '1fr 48px', gap: 8 }}>
+          <div key={i} data-testid="home-market-risk-contributor" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8 }}>
             <span style={{ color: TOKENS.text[0] }}>{c.name}{c.detail ? <span style={{ color: TOKENS.text[2] }}> · {c.detail}{c.as_of ? ` · ${shortTime(c.as_of)}` : ''}</span> : null}</span>
-            <span style={{ ...numStyle, textAlign: 'right', color: tv.color }}>{c.points >= 0 ? '+' : ''}{Math.round(c.points)}</span>
+            <span style={{ ...numStyle, textAlign: 'right', color: tv.color }}>{pointsToScore(c.points)}</span>
           </div>
         ))}
         {mr.uplift && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 48px', gap: 8, borderTop: `1px solid ${tv.border}`, paddingTop: 6, color: TOKENS.text[2] }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 8, borderTop: `1px solid ${tv.border}`, paddingTop: 6, color: TOKENS.text[2] }}>
             <span>{mr.uplift.note ?? `Market ${mr.uplift.market_score ?? '—'} → ${mr.tier} after portfolio vulnerability ${mr.uplift.vulnerability ?? '—'}`}</span>
             <span style={{ ...numStyle, textAlign: 'right', color: TOKENS.text[0] }}>= {mr.score != null ? Math.round(mr.score) : '—'}</span>
           </div>

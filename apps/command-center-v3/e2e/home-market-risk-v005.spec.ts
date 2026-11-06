@@ -47,6 +47,10 @@ for (const width of [412, 390]) {
     await shot(page, `v005-${width}-yellow-collapsed`, false)
     await page.getByTestId('home-market-risk-summary-toggle').tap()
     await expect(page.getByTestId('mr-actionable-body')).toBeVisible()
+    // LIVEFIX-R: the sector table is collapsed by default; one tap on its summary opens it.
+    await expect(page.getByTestId('mr-sectors-section')).not.toHaveAttribute('open', '')
+    await page.locator('[data-testid=mr-sectors-section] > summary').tap()
+    await expect(page.getByTestId('mr-sectors')).toBeVisible()
     // sector table: stressed-and-held first, UNKNOWN held flagged, no "% book" column on phone
     const rows = page.getByTestId('mr-sector-row')
     await expect(rows.first()).toHaveAttribute('data-key', 'tech')
@@ -58,6 +62,7 @@ for (const width of [412, 390]) {
     await expect(page.getByTestId('mr-reentry-wash')).toHaveAttribute('data-tone', 'info')
     await expect(page.getByTestId('mr-reentry-wash')).toContainText('wash sale occurred, $512 loss deferred into the new basis')
     await expect(rr.first()).toContainText('Stage 1 (early setup): 1 of 5')
+    await expect(rr.first()).not.toContainText('waiting: all met')
     await expect(rr.first()).toContainText('Invalidates below $48.20')
     await expect(page.getByTestId('mr-reentry-more')).toContainText('+1 older exit')
     await expect(page.getByTestId('mr-review-item')).toHaveCount(5)
@@ -91,11 +96,15 @@ for (const width of [412, 390]) {
 test('v005 1440: expanded by default, two columns, every section present', async ({ page }) => {
   const writes = await open(page, 'v005_yellow', 1440, 1000)
   await expect(page.getByTestId('home-market-risk-summary')).toHaveAttribute('data-open', 'true')
+  await page.locator('[data-testid=mr-sectors-section] > summary').click()  // collapsed by default (LIVEFIX-R)
   for (const id of ['mr-sectors', 'mr-reentry', 'mr-positions', 'mr-review', 'mr-budgets', 'mr-why']) await expect(page.getByTestId(id)).toBeVisible()
   await expect(page.getByTestId('mr-position-row').first()).toContainText('$12,000')
   await expect(page.getByTestId('home-market-risk-summary-contributor')).toHaveCount(2)
-  const s = (await page.getByTestId('mr-sectors').boundingBox())!, p = (await page.getByTestId('mr-positions').boundingBox())!
-  expect(p.x).toBeGreaterThan(s.x + 300)  // right column
+  // LIVEFIX-R: first column = what you hold (positions, budgets, sectors); second = why, stopped-out, context.
+  const p = (await page.getByTestId('mr-positions').boundingBox())!, s = (await page.getByTestId('mr-sectors').boundingBox())!, r = (await page.getByTestId('mr-reentry').boundingBox())!
+  expect(Math.abs(s.x - p.x)).toBeLessThan(40)  // same column
+  expect(s.y).toBeGreaterThan(p.y)              // sectors under positions
+  expect(r.x).toBeGreaterThan(p.x + 300)        // right column
   expect(await noSideScroll(page)).toBeTruthy()
   expect(await minTap(page, '[data-testid=home-market-risk-summary]')).toBeGreaterThanOrEqual(44)
   expect(writes).toEqual([])

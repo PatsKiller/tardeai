@@ -108,7 +108,7 @@ export type HomeV007 = {
   budgets: BudgetRow[]
   /** Top-level decision ledger. ``complete: false`` means the per-row history counts are partial. */
   decisionHistory: { complete: boolean | null; count: number | null; history: number }
-  gaps: Array<{ member: string; key: string; reason: string | null; remediation: string | null }>
+  gaps: Array<{ member: string; key: string; reason: string | null; remediation: string | null; symbol?: string | null; field?: string | null }>
   readErrors: Array<{ member: string; code: string; remediation: string | null }>
 }
 
@@ -253,7 +253,7 @@ export function parseHomeV007(raw: unknown): HomeV007 {
   if (!ctx) return { present: false, state: null, unavailable: false, blockReason: null, blockRemediation: null, symbols: [], positions: [], risk: { score: null, scoreAsOf: null, categories: [], nextEvaluation: null }, hedge: { triggers: [], inverse: [] }, budgets: [], decisionHistory: { complete: null, count: null, history: 0 }, gaps: [{ member: 'home_v007', key: 'absent', reason: 'the response carries no home_v007 block', remediation: 'wait for the additive reader' }], readErrors }
 
   for (const g of (Array.isArray(ctx.gaps) ? ctx.gaps : [])) {
-    const o = rec(g); if (o) gaps.push({ member: [str(o.symbol), str(o.field)].filter(Boolean).join('.') || '?', key: remediationText(o.remediation) ?? '?', reason: str(o.reason), remediation: remediationText(o.remediation) })
+    const o = rec(g); if (o) gaps.push({ member: [str(o.symbol), str(o.field)].filter(Boolean).join('.') || '?', key: remediationText(o.remediation) ?? '?', reason: str(o.reason), remediation: remediationText(o.remediation), symbol: str(o.symbol), field: str(o.field) })
   }
   for (const e of (Array.isArray(ctx.read_errors) ? ctx.read_errors : [])) {
     const o = rec(e); if (o) readErrors.push({ member: str(o.member) ?? str(o.source) ?? '?', code: str(o.code) ?? str(o.reason) ?? '?', remediation: str(o.remediation) ?? remediationText(o.remediation) })
@@ -507,4 +507,53 @@ export function categoryLine(c: HomeV007['risk']['categories'][number]): string 
   const word = c.chip ?? c.state
   if (c.state !== 'measured' && c.reason) return `${c.label} ${word} — ${c.reason}`
   return `${c.label} ${word}${c.carried ? ' · carried across a closure' : ''}`
+}
+
+
+/** Plain names for the producer's per-symbol gap fields; anything else falls back to its own key, underscores spaced. */
+const GAP_FIELD_LABEL: Record<string, string> = {
+  quote: 'Price', day_change: 'Day change', since_exit: 'Since exit', since_exit_history: 'Since-exit history',
+  cio: 'CIO stance', market_stance: 'Market-risk stance', volume: 'Volume', next_event: 'Next event',
+  references: 'Trigger references', headlines: 'Headlines', home_v007: "Today's context",
+}
+export function gapFieldLabel(field: string | null | undefined): string {
+  if (!field) return 'Unnamed field'
+  const [head, ...rest] = field.split('.')
+  const t = head.replace(/_/g, ' ')
+  const name = GAP_FIELD_LABEL[head] ?? t.charAt(0).toUpperCase() + t.slice(1)
+  return [name, ...rest.map(r => r.replace(/_/g, ' '))].join(' · ')
+}
+
+export type GapGroup = {
+  field: string | null; label: string; reason: string | null; remediation: string | null
+  /** Every symbol in the group, in payload order; a symbol-less gap is counted but not named. */
+  symbols: string[]; count: number; text: string
+}
+
+/** LIVEFIX-R (operator 2026-11-06): ~150 "gap SYMBOL.field · …" lines become one line per identical
+ *  (field, reason, remediation): "CIO stance unavailable for 17 symbols: A, B, … — <reason>". Nothing is dropped:
+ *  every symbol is named and the remediation is shown once per group. Groups keep first-seen order. */
+export function groupGaps(gaps: HomeV007['gaps']): GapGroup[] {
+  const groups = new Map<string, GapGroup>()
+  for (const g of gaps) {
+    const field = g.field ?? (g.symbol ? null : g.member)
+    const k = JSON.stringify([field, g.reason, g.remediation])
+    let grp = groups.get(k)
+    if (!grp) { grp = { field, label: gapFieldLabel(field), reason: g.reason, remediation: g.remediation, symbols: [], count: 0, text: '' }; groups.set(k, grp) }
+    grp.count += 1
+    if (g.symbol && !grp.symbols.includes(g.symbol)) grp.symbols.push(g.symbol)
+  }
+  for (const grp of groups.values()) {
+    const n = grp.symbols.length
+    const who = n ? ` for ${n} symbol${n === 1 ? '' : 's'}: ${grp.symbols.join(', ')}` : ''
+    grp.text = `${grp.label} unavailable${who}${grp.reason ? ` — ${grp.reason}` : ''}`
+  }
+  return [...groups.values()]
+}
+
+/** The compact one-line state of a fact for the per-symbol row: its value, or "not measured" — never a blank. */
+export function compactPct(f: Fact & { pct: number | null }): string {
+  if (f.state === 'not_applicable') return 'n/a'
+  if (f.state !== 'measured' || f.pct == null) return 'not measured'
+  return `${f.pct > 0 ? '+' : ''}${f.pct.toFixed(2)}%${f.stale ? ' (stale)' : ''}`
 }
