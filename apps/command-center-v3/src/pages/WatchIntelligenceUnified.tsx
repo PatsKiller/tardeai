@@ -140,6 +140,15 @@ function stateColor(s?: string) {
   return BB.red
 }
 
+/** The generic line renders the producer's flat projection; individual reviewer states remain in their own boxes.
+ * A CIO NOT_SCHEDULED can coexist with Maria QUEUED or deferred, so it is not a card-wide scheduling observation.
+ * Missing flat fields stay explicitly unavailable; policy windows are never promoted into promised execution times.
+ */
+function nextReviewLine(c: Card): string {
+  const flat = (c as any).next_review_at || (c as any).next_review_condition || c.next_review_time
+  return flat ? String(flat) : 'not provided — the producer has not reported a review time for this name'
+}
+
 function ReviewBox({ title, rev }: { title: string; rev?: ReviewStatus }) {
   const complete = rev?.status === 'COMPLETE'
   const statusCode = String(rev?.status || 'NOT_RUN').toUpperCase()
@@ -530,7 +539,12 @@ export default function WatchIntelligenceUnified() {
       <option value="">Origin</option>
       <option value="screener_find">Screener find</option>
     </select>
-    {/* Typed unavailable controls — disabled with explanation */}
+    {/* FQ-076: the reason for the disabled filters is now VISIBLE, not only in a title tooltip a phone never shows. */}
+    <span data-testid="filters-unavailable-reason" style={{ fontSize: TYPE.xs, color: BB.text3, flexBasis: '100%' }}>
+      Four filters are off until the broker provider lands — catalyst and earnings windows, relative-strength band and
+      valuation band. Everything else on this page works without it.
+    </span>
+    {/* Typed unavailable controls — disabled, with the reason stated above and in the title */}
     <select disabled style={{ ...inputStyle, opacity: 0.55 }} title="typed unavailable until broker provider lands" data-filter="catalyst_window">
       <option>Catalyst window (unavailable)</option>
     </select>
@@ -819,7 +833,7 @@ export default function WatchIntelligenceUnified() {
                   </div>
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <b style={{ color: BB.text2 }}>Next review:</b>{' '}
-                    {(c as any).next_review_at || (c as any).next_review_condition || c.next_review_time || '—'}
+                    {nextReviewLine(c)}
                   </div>
                   {c.primary_risk && <div style={{ fontSize: TYPE.xs, color: BB.red, marginTop: 6 }}>Risk: {c.primary_risk}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>

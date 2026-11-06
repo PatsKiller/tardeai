@@ -17,6 +17,7 @@ import { TOKENS, TYPE } from '../lib/watchTokens'
 import { FONT, RADIUS, SHADOW, toneVars, type Tone } from '../lib/designTokens'
 import { KillSwitchCell, SudoBanner } from '../components/OpsControlsSudo'
 import { OpsApiError, sudoToken, windowCovers } from '../lib/opsControls'
+import { controlsUnavailableExplanation } from '../lib/opsControlsPlainLanguage'
 import {
   actBlockReason, canAct, isTerminal, kindFor, opsApi, passkeyStepUp, phraseMatches, registerPasskey, validateSetting,
   type OpsControlsState, type OpsRequest, type SettingRow,
@@ -67,12 +68,16 @@ function Panel({ title, right, children }: { title: string; right?: ReactNode; c
   </div>
 }
 
-function Table({ label: aria, heads, rows }: { label: string; heads: ReactNode[]; rows: Array<Array<ReactNode>> }) {
+export function Table({ label: aria, heads, rows }: { label: string; heads: ReactNode[]; rows: Array<Array<ReactNode>> }) {
+  // `ops-evidence-table` is the shared responsive contract (OpsEvidencePages.css): below 820px every
+  // row becomes a labelled card, so no right-hand column is clipped (FQ-067). The label comes from
+  // the header text, which stays visual-only on desktop.
+  const label = (i: number) => typeof heads[i] === 'string' ? heads[i] as string : undefined
   return <div style={{ overflowX: 'auto', minWidth: 0 }}>
-    <table aria-label={aria} style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <table aria-label={aria} className="ops-evidence-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead><tr>{heads.map((h, i) => <th key={i} style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
       <tbody>
-        {rows.map((r, i) => <tr key={i} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>{r.map((c, j) => <td key={j} style={cell}>{c ?? '—'}</td>)}</tr>)}
+        {rows.map((r, i) => <tr key={i} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>{r.map((c, j) => <td key={j} style={cell} data-label={label(j)}>{c ?? '—'}</td>)}</tr>)}
         {!rows.length ? <tr><td colSpan={heads.length} style={{ ...cell, color: TOKENS.text[2] }}>No rows</td></tr> : null}
       </tbody>
     </table>
@@ -85,6 +90,21 @@ function Banner({ tone, title, children }: { tone: Tone; title: string; children
     <div style={{ fontSize: TYPE.base, fontWeight: 700, color: t.color }}>{title}</div>
     {children ? <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1], marginTop: 4 }}>{children}</div> : null}
   </div>
+}
+
+/**
+ * FQ-068: an unavailable controls page leads with the meaning and the authorized route, not the
+ * server's own error. The raw error stays in a closed technical-detail toggle (never removed).
+ */
+export function ControlsUnavailableBanner({ error }: { error: unknown }) {
+  const why = controlsUnavailableExplanation(error)
+  return <Banner tone="warning" title="UNAVAILABLE — controls state could not be read">
+    <b>{why.text}</b> {why.next}
+    {why.raw ? <details style={{ marginTop: 4, fontSize: TYPE.sm }}>
+      <summary style={{ cursor: 'pointer', width: 'fit-content' }}>technical detail</summary>
+      <span style={{ fontFamily: FONT.mono, overflowWrap: 'anywhere' }}>{why.raw}</span>
+    </details> : null}
+  </Banner>
 }
 
 /** A section that is not OK renders its state and reason, never empty-green. */
@@ -314,14 +334,17 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
 type TabKey = 'jobs' | 'n8n' | 'flags' | 'data' | 'grants' | 'audit'
 const count = (sec: { state?: string } | undefined, n: number | undefined) => (sec?.state === 'OK' ? String(n ?? 0) : '—')
 
-function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
+export function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const [reason, setReason] = useState('')
   const rt = d?.deploy
   const safeParams = reason.trim() ? { reason: reason.trim() } : {}
   const relParams = { reason: reason.trim().length >= 4 ? reason.trim() : 'operator, Ops Controls' }
   const jobs = d?.jobs
+  const phone = usePhoneWidth()
+  // FQ-068: the control panel leads. Jobs health is a diagnostic summary (source writers, watchers,
+  // coverage); it starts closed on a phone so the controls are the first thing on the page, and open
+  // on a desktop where it fits. Nothing is removed.
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
-    <JobsHealth />
     <Panel title="Deploys & kill switch">
       <p style={muted} data-testid="ops-deploys-explainer">Mergify merges; the host poller promotes. Safe direction (deploy STOP, Engage kill switch): one click, no passkey. Resume (clear the deploy STOP): passkey and the typed phrase. Emergency promote is host CLI only. Clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
@@ -341,8 +364,26 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
         . Mergify queue lives on the Mergify dashboard. Emergency promote: host CLI under release-write naming the SHA.
       </p>
     </Panel>
+    <details data-testid="ops-jobs-health-details" open={!phone} style={{ ...panel, padding: '8px 12px' }}>
+      <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: TYPE.base, color: TOKENS.text[0] }}>Jobs health and diagnostics — did every scheduled job run and succeed?</summary>
+      <div style={{ marginTop: 8 }}><JobsHealth /></div>
+    </details>
     <JobsSchedules d={d} run={run} />
   </div>
+}
+
+/** True below the app's phone breakpoint (820px); re-evaluates on resize. */
+function usePhoneWidth(): boolean {
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 820px)').matches : false)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia('(max-width: 820px)')
+    const update = () => setPhone(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  return phone
 }
 
 // ── Jobs & schedules (readability, 2026-10-22) ──────────────────────────────────────────────────────────────────────
@@ -971,7 +1012,7 @@ export default function OpsControlsPage() {
       <p style={muted}>Agents cannot use this page. Safe direction (STOP, pause, engage kill switch) is one click; the risky direction needs a passkey on this device and a typed phrase. Telegram is notified; it confirms nothing. The host terminal remains a fallback.</p>
     </div>
 
-    {api.error && !d ? <Banner tone="warning" title="UNAVAILABLE — controls state could not be read">{api.error}. Nothing here is reported as healthy, and no action is offered.</Banner> : null}
+    {api.error && !d ? <ControlsUnavailableBanner error={api.error} /> : null}
     {api.error && d ? <Banner tone="warning" title="Showing the last good state">Refresh failed: {api.error}</Banner> : null}
     {inert ? <Banner tone="danger" title="INERT — every action is disabled">
       Controls are inert until AGENTS.md 19.0.0 is ACTIVE and the operator applies the migrations. Policy {s(d?.policy?.state)}{d?.policy?.detail ? ` — ${d.policy.detail}` : ''}.
