@@ -1,0 +1,27 @@
+# Command Center operational readiness audit
+
+Status:      HISTORICAL
+as_of:       2026-11-02T18:45:27.608050Z
+Measured at: source capture 2026-11-02 / live pin a95a911a9 (`CURRENT`, observed 2026-11-02T19:29:45Z); no live service measurement in this document
+
+IN PROGRESS — NOT READY for unattended operations.
+Source implementation, review, publication, deployment and runtime recovery are separate.
+
+- [Executive readiness and grades](EXECUTIVE_SUMMARY.md)
+- [Root causes and fixes](ROOT_CAUSES.md)
+- [Self-heal readiness](SELF_HEAL_READINESS.md)
+- [All-job coverage](JOB_COVERAGE.md) and [subsystem monitoring](SUBSYSTEM_COVERAGE.md)
+- [Failure diagnostics](FAILURE_DIAGNOSTICS.md) and [receipt addendum](FAILURE_RECEIPT_ADDENDUM.md)
+- [UX/IA review](UX_REVIEW.md)
+- [Implementation, PRs and runtime acceptance](IMPLEMENTATION.md)
+- [Remediation register](REMEDIATION.md) and [machine-readable bindings](remediation_manifest.json)
+- [Evidence](PROOF_INDEX.md) and [plan](PLAN.md)
+
+The immutable capture accounts for687registered lanes and5separate runtime timers. Every frozen
+UNKNOWN row is bound to repository tickets; GitHub Issues is disabled, so no external issue is claimed.
+The operator's full operational acceptance criteria are not met by this checkpoint.
+
+**Snapshot and refresh.** The [inventory](inventory/) is frozen at 2026-11-02T18:45:27Z, not
+current state. Run `python3 scripts/build_command_center_audit_inventory.py --check` to see
+every lane added, removed, re-owned or re-scheduled since the capture (exit 2 on drift), and
+`--write --out <dir>` to produce a new date-stamped capture. See [inventory/README.md](inventory/README.md).

@@ -1,0 +1,884 @@
+{
+  "as_of": "2026-11-02T18:45:27.608050Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "bound_ledger_failure_records": 8,
+  "failures": 9,
+  "inventory_sha256": "97f7ee1266db8eba01b5597e2233fff758d0312e66b1eb5a67f1aae72ce9d710",
+  "missed": 6,
+  "notes": [
+    "Frozen membership only; later mutable last receipts cannot establish completion before as_of.",
+    "Safe metadata only: no raw stdout/stderr, credentials, broker/portfolio payload, host identity or child PID.",
+    "Remediation keys are proposed group identifiers; lead must bind them to actual tickets or PR receipts.",
+    "Diagnostic projection deliberately excludes output content; gaps mean not exported or not retained, and sizes distinguish the two.",
+    "Local source commits are not production recovery evidence."
+  ],
+  "rows": [
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-10-31T17:20:01.727129Z",
+          "run_id": "n8n-wf-c0d4c7845e5c4fcc-120345",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 0.593,
+          "duration_source": "recorded",
+          "exit_code": 0,
+          "finished_at": "2026-10-31T17:20:01.727129Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-10-31T17:20:01.134510Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "unmeasured",
+        "failure_reason": "Failure recorded; stderr diagnostic was not retained",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-10-31T17:20:01.727129Z",
+        "output_contract": {
+          "reason": null,
+          "verdict": "produced"
+        },
+        "remediation": {
+          "key": "CC-N8N-RELAY-STAGE",
+          "suggestion": "Repair capture at the original runner or producer; never invent exception text or an exit status."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "n8n-wf-c0d4c7845e5c4fcc-120345",
+      "existing_pr": 2444,
+      "heartbeat_at": "2026-10-31T17:20:01.135732Z",
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "last_run_at": "2026-10-31T17:20:01.727129Z",
+      "last_success_at": "2026-10-31T17:20:01.727129Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-N8N-RELAY-STAGE"
+      ],
+      "result": "missed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 212
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-10-31T17:15:06.942247Z",
+          "run_id": "n8n-wf-078e8fcbea0c5020-120324",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 1.34,
+          "duration_source": "recorded",
+          "exit_code": 0,
+          "finished_at": "2026-10-31T17:15:06.942247Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-10-31T17:15:05.602733Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "unmeasured",
+        "failure_reason": "Failure recorded; stderr diagnostic was not retained",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-10-31T17:15:06.942247Z",
+        "output_contract": {
+          "reason": null,
+          "verdict": "produced"
+        },
+        "remediation": {
+          "key": "CC-N8N-RELAY-STAGE",
+          "suggestion": "Repair capture at the original runner or producer; never invent exception text or an exit status."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "n8n-wf-078e8fcbea0c5020-120324",
+      "existing_pr": 2444,
+      "heartbeat_at": "2026-10-31T17:15:05.604301Z",
+      "lane_id": "n8n-pilot-dispatch",
+      "last_run_at": "2026-10-31T17:15:06.942247Z",
+      "last_success_at": "2026-10-31T17:15:06.942247Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-N8N-RELAY-STAGE"
+      ],
+      "result": "missed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 451
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-10-31T17:20:17.814368Z",
+          "run_id": "n8n-wf-722fac0e043ea5c4-120346",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 16.67,
+          "duration_source": "recorded",
+          "exit_code": 1,
+          "finished_at": "2026-10-31T17:20:17.814368Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-10-31T17:20:01.143952Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "process_exit",
+        "failure_reason": "Failure recorded; stderr diagnostic was not retained",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-10-31T17:15:44.760410Z",
+        "output_contract": {
+          "reason": "exit_1",
+          "verdict": "not_evaluated"
+        },
+        "remediation": {
+          "key": "CC-N8N-RELAY-STAGE",
+          "suggestion": "Repair capture at the original runner or producer; never invent exception text or an exit status."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "n8n-wf-722fac0e043ea5c4-120346",
+      "existing_pr": 2444,
+      "heartbeat_at": "2026-10-31T17:20:01.145064Z",
+      "lane_id": "n8n-incident-fanin",
+      "last_run_at": "2026-10-31T17:20:17.814368Z",
+      "last_success_at": "2026-10-31T17:15:44.760410Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T18:50:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-N8N-RELAY-STAGE",
+        "CC-DIAGNOSTIC-CAPTURE"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 754
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T18:36:45.134232Z",
+          "run_id": "d:watchlist-enrichment-sweep:live:20261102T1330",
+          "source": "executor_reaper",
+          "synthetic": true
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 383.041,
+          "duration_source": "recorded",
+          "exit_code": null,
+          "finished_at": "2026-11-02T18:36:45.134232Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T18:30:22.093019Z"
+        },
+        "executor_loss": {
+          "heartbeat_at": "2026-11-02T18:34:22.930061Z",
+          "overdue": false,
+          "pid_recorded": true
+        },
+        "failure_kind": "executor_lost",
+        "failure_reason": "executor_lost",
+        "gaps": [
+          "exit_code_not_observed",
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-11-02T18:08:22.754558Z",
+        "output_contract": {
+          "reason": null,
+          "verdict": null
+        },
+        "remediation": {
+          "key": "CC-EXECUTOR-OWNERSHIP",
+          "suggestion": "Inspect recorded executor ownership, heartbeat and child-liveness evidence; unknown outcome is not permission to rerun."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "executor_reaper_did_not_observe_child_output",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:watchlist-enrichment-sweep:live:20261102T1330",
+      "existing_pr": null,
+      "heartbeat_at": "2026-11-02T18:34:22.930061Z",
+      "lane_id": "watchlist-enrichment-sweep",
+      "last_run_at": "2026-11-02T18:36:45.134232Z",
+      "last_success_at": "2026-11-02T18:08:22.754558Z",
+      "missed_fires": 1,
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-EXECUTOR-OWNERSHIP"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 0
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": null,
+      "due_today": true,
+      "evidence_run_key": null,
+      "existing_pr": null,
+      "lane_id": "hermes-subject-enhance-dispatch",
+      "last_run_at": null,
+      "last_success_at": "2026-11-02T18:25:01.748446Z",
+      "missed_fires": 2,
+      "missing_evidence": "structured run receipt not bound in frozen Jobs row",
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "protected_scope": false,
+      "receipt_root": null,
+      "remediation_keys": [
+        "CC-EXECUTION-EVIDENCE-MISSING"
+      ],
+      "result": "missed",
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-10-31T17:15:06.415286Z",
+          "run_id": "n8n-wf-21fd15d5f8a4c4da-120323",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 0.941,
+          "duration_source": "recorded",
+          "exit_code": 0,
+          "finished_at": "2026-10-31T17:15:06.415286Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-10-31T17:15:05.474644Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "unmeasured",
+        "failure_reason": "Failure recorded; stderr diagnostic was not retained",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-10-31T17:15:06.415286Z",
+        "output_contract": {
+          "reason": null,
+          "verdict": "empty_allowed"
+        },
+        "remediation": {
+          "key": "CC-N8N-RELAY-STAGE",
+          "suggestion": "Repair capture at the original runner or producer; never invent exception text or an exit status."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "n8n-wf-21fd15d5f8a4c4da-120323",
+      "existing_pr": 2444,
+      "heartbeat_at": "2026-10-31T17:15:05.475908Z",
+      "lane_id": "n8n-research-intake-consumer",
+      "last_run_at": "2026-10-31T17:15:06.415286Z",
+      "last_success_at": "2026-10-31T17:15:06.415286Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-N8N-RELAY-STAGE"
+      ],
+      "result": "missed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 193
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T18:45:04.821925Z",
+          "run_id": "d:trade-ai-scalp-live:live:20261102T1345",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 0.083,
+          "duration_source": "recorded",
+          "exit_code": 75,
+          "finished_at": "2026-11-02T18:45:04.821925Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T18:45:04.739134Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "lock_contention",
+        "failure_reason": "flock_held",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-11-02T14:25:04.825655Z",
+        "output_contract": {
+          "reason": "flock_held",
+          "verdict": "not_evaluated"
+        },
+        "remediation": {
+          "key": "CC-PROTECTED-LOCK-CONTENTION",
+          "suggestion": "Compare recorded lock ownership and duration with the schedule; never remove an active lock to make monitoring green."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:trade-ai-scalp-live:live:20261102T1345",
+      "existing_pr": null,
+      "heartbeat_at": "2026-11-02T18:45:04.785158Z",
+      "lane_id": "trade-ai-scalp-live",
+      "last_run_at": "2026-11-02T18:45:04.821925Z",
+      "last_success_at": "2026-11-02T14:25:04.825655Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T18:50:00Z",
+      "output_content_exported": false,
+      "protected_scope": true,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-PROTECTED-LOCK-CONTENTION"
+      ],
+      "result": "missed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 0
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T10:05:17.403148Z",
+          "run_id": "d:macro-calendar-refresh:live:20261102T0505",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 12.978,
+          "duration_source": "recorded",
+          "exit_code": 0,
+          "finished_at": "2026-11-02T10:05:17.403148Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T10:05:04.425177Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "output_contract",
+        "failure_reason": "output_unverifiable: counts_inconsistent",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-11-02T10:05:17.284461Z",
+        "output_contract": {
+          "reason": "counts_inconsistent",
+          "verdict": "unverifiable"
+        },
+        "remediation": {
+          "key": "CC-OUTPUT-COUNT-UNITS",
+          "suggestion": "Align attempted and produced counts to the same unit and validate the real output contract."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:macro-calendar-refresh:live:20261102T0505",
+      "existing_pr": null,
+      "heartbeat_at": "2026-11-02T10:05:04.523308Z",
+      "lane_id": "macro-calendar-refresh",
+      "last_run_at": "2026-11-02T10:05:17.403148Z",
+      "last_success_at": "2026-11-02T10:05:17.284461Z",
+      "missed_fires": 0,
+      "next_due_at": "2026-11-03T10:05:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-OUTPUT-COUNT-UNITS"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 800
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T15:08:18.323031Z",
+          "run_id": "d:finviz-screener-runner:live:20261102T1000",
+          "source": "executor_reaper",
+          "synthetic": true
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 491.763,
+          "duration_source": "recorded",
+          "exit_code": null,
+          "finished_at": "2026-11-02T15:08:18.323031Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T15:00:06.560283Z"
+        },
+        "executor_loss": {
+          "heartbeat_at": "2026-11-02T15:06:08.201918Z",
+          "overdue": false,
+          "pid_recorded": true
+        },
+        "failure_kind": "executor_lost",
+        "failure_reason": "executor_lost",
+        "gaps": [
+          "exit_code_not_observed",
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-10-31T02:02:56.930135Z",
+        "output_contract": {
+          "reason": null,
+          "verdict": null
+        },
+        "remediation": {
+          "key": "CC-EXECUTOR-OWNERSHIP",
+          "suggestion": "Inspect recorded executor ownership, heartbeat and child-liveness evidence; unknown outcome is not permission to rerun."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "executor_reaper_did_not_observe_child_output",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:finviz-screener-runner:live:20261102T1000",
+      "existing_pr": null,
+      "heartbeat_at": "2026-11-02T15:06:08.201918Z",
+      "lane_id": "finviz-screener-runner",
+      "last_run_at": "2026-11-02T15:08:18.323031Z",
+      "last_success_at": "2026-10-31T02:02:56.930135Z",
+      "missed_fires": 0,
+      "next_due_at": "2026-11-03T15:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": true,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-EXECUTOR-OWNERSHIP"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 0
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T15:43:26.047884Z",
+          "run_id": "d:disk-hygiene:live:20261102T1017",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 1583.323,
+          "duration_source": "recorded",
+          "exit_code": 1,
+          "finished_at": "2026-11-02T15:43:26.047884Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T15:17:02.725192Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "process_exit",
+        "failure_reason": "Failure recorded; stderr diagnostic was not retained",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-11-02T00:01:21.885326Z",
+        "output_contract": {
+          "reason": "exit_1",
+          "verdict": "not_evaluated"
+        },
+        "remediation": {
+          "key": "CC-DIAGNOSTIC-CAPTURE",
+          "suggestion": "Repair capture at the original runner or producer; never invent exception text or an exit status."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:disk-hygiene:live:20261102T1017",
+      "existing_pr": 2444,
+      "heartbeat_at": "2026-11-02T15:43:08.459043Z",
+      "lane_id": "disk-hygiene",
+      "last_run_at": "2026-11-02T15:43:26.047884Z",
+      "last_success_at": "2026-11-02T00:01:21.885326Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T19:17:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-DIAGNOSTIC-CAPTURE"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 147
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T15:01:18.766396Z",
+          "run_id": "d:cio-prospect-shadow:live:20261102T1000",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 47.019,
+          "duration_source": "recorded",
+          "exit_code": 0,
+          "finished_at": "2026-11-02T15:01:18.766396Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T15:00:31.747702Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "output_contract",
+        "failure_reason": "output_unverifiable: attempt_receipt_missing",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-11-02T15:00:31.861386Z",
+        "output_contract": {
+          "reason": "attempt_receipt_missing",
+          "verdict": "unverifiable"
+        },
+        "remediation": {
+          "key": "CC-OUTPUT-ATTEMPT-MISSING",
+          "suggestion": "Restore the per-attempt receipt writer and prove run/attempt identity; an older last-success file is insufficient."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:cio-prospect-shadow:live:20261102T1000",
+      "existing_pr": null,
+      "heartbeat_at": "2026-11-02T15:01:01.853316Z",
+      "lane_id": "cio-prospect-shadow",
+      "last_run_at": "2026-11-02T15:01:18.766396Z",
+      "last_success_at": "2026-11-02T15:00:31.861386Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-OUTPUT-ATTEMPT-MISSING"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 800
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T18:00:49.868122Z",
+          "run_id": "d:cio-ask-lifecycle:live:20261102T1300",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 44.604,
+          "duration_source": "recorded",
+          "exit_code": 1,
+          "finished_at": "2026-11-02T18:00:49.868122Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T18:00:05.264041Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "process_exit",
+        "failure_reason": "Failure recorded; stderr diagnostic was not retained",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-11-02T15:08:31.151871Z",
+        "output_contract": {
+          "reason": "exit_1",
+          "verdict": "not_evaluated"
+        },
+        "remediation": {
+          "key": "CC-DIAGNOSTIC-CAPTURE",
+          "suggestion": "Repair capture at the original runner or producer; never invent exception text or an exit status."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:cio-ask-lifecycle:live:20261102T1300",
+      "existing_pr": null,
+      "heartbeat_at": "2026-11-02T18:00:35.483046Z",
+      "lane_id": "cio-ask-lifecycle",
+      "last_run_at": "2026-11-02T18:00:49.868122Z",
+      "last_success_at": "2026-11-02T15:08:31.151871Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-DIAGNOSTIC-CAPTURE"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 800
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": null,
+      "due_today": true,
+      "evidence_run_key": null,
+      "existing_pr": null,
+      "lane_id": "prospectus-build",
+      "last_run_at": null,
+      "last_success_at": "2026-10-28T22:44:02.866946Z",
+      "missed_fires": 2,
+      "missing_evidence": "structured run receipt not bound in frozen Jobs row",
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "protected_scope": false,
+      "receipt_root": null,
+      "remediation_keys": [
+        "CC-EXECUTION-EVIDENCE-MISSING"
+      ],
+      "result": "missed",
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": {
+        "authority": "READ_ONLY_ADVISORY",
+        "evidence": {
+          "as_of": "2026-11-02T14:15:59.926895Z",
+          "run_id": "d:conflict-resolver:live:20261102T0915",
+          "source": "run_receipt",
+          "synthetic": false
+        },
+        "exception_type": null,
+        "execution": {
+          "duration_s": 54.942,
+          "duration_source": "recorded",
+          "exit_code": 0,
+          "finished_at": "2026-11-02T14:15:59.926895Z",
+          "host_identity_status": "recorded_privately",
+          "host_role": "n8n_executor",
+          "started_at": "2026-11-02T14:15:04.984895Z"
+        },
+        "executor_loss": null,
+        "failure_kind": "output_contract",
+        "failure_reason": "output_unverifiable: rule_missing",
+        "gaps": [
+          "stderr_not_retained",
+          "traceback_not_retained"
+        ],
+        "last_success_at": "2026-11-02T14:15:59.778968Z",
+        "output_contract": {
+          "reason": "rule_missing",
+          "verdict": "unverifiable"
+        },
+        "remediation": {
+          "key": "CC-OUTPUT-RULE-MISSING",
+          "suggestion": "Review and register the missing output contract; do not turn enforcement off."
+        },
+        "schema": "JobFailureDiagnostics@v1",
+        "traceback": {
+          "available": false,
+          "reason": "not_retained",
+          "source": null,
+          "text": null
+        }
+      },
+      "due_today": true,
+      "evidence_run_key": "d:conflict-resolver:live:20261102T0915",
+      "existing_pr": null,
+      "heartbeat_at": "2026-11-02T14:15:35.100036Z",
+      "lane_id": "conflict-resolver",
+      "last_run_at": "2026-11-02T14:15:59.926895Z",
+      "last_success_at": "2026-11-02T14:15:59.778968Z",
+      "missed_fires": 2,
+      "next_due_at": "2026-11-02T19:00:00Z",
+      "output_content_exported": false,
+      "protected_scope": false,
+      "receipt_root": "persistent-state/data/governance/n8n_coordination_ledger.sqlite",
+      "remediation_keys": [
+        "CC-OUTPUT-RULE-MISSING"
+      ],
+      "result": "failed",
+      "retained_output_sizes": {
+        "stderr_chars": 0,
+        "stdout_chars": 800
+      },
+      "ticket_status": "proposed_key_not_ticket"
+    },
+    {
+      "diagnostics": null,
+      "due_today": false,
+      "evidence_run_key": "wrapper event",
+      "existing_pr": null,
+      "lane_id": "trade-close-llm-analyzer-source",
+      "last_run_at": "2026-11-02T04:00:35Z",
+      "last_success_at": null,
+      "missed_fires": 0,
+      "missing_evidence": "structured run receipt not bound in frozen Jobs row",
+      "next_due_at": "2026-11-09T04:00:00Z",
+      "protected_scope": false,
+      "receipt_root": "persistent-state/logs/safe_flock_events.jsonl",
+      "remediation_keys": [
+        "CC-DIAGNOSTIC-CAPTURE"
+      ],
+      "result": "failed",
+      "ticket_status": "proposed_key_not_ticket"
+    }
+  ],
+  "schema": "FailureDiagnosticsAudit@v1",
+  "snapshot_sha256": "014a995ae2a53f6db6771a67e2b96cfbf963b48b97dc32ecef2c806f79c44f7a",
+  "summary": {
+    "due": 4,
+    "due_today": 343,
+    "failed": 9,
+    "gap_reasons": {
+      "missed": "217 jobs not measured (no run receipt or no measurable schedule), so missed runs among them cannot be counted \u00b7 execution evidence incomplete: journal_history_window_truncated",
+      "not_measured": "No run receipt or no measurable schedule"
+    },
+    "missed": 6,
+    "missed_measured": false,
+    "not_measured": 217,
+    "outside_window": 201,
+    "paused": 22,
+    "retired": 140,
+    "succeeded": 88,
+    "unknown": 217
+  }
+}

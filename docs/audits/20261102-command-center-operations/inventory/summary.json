@@ -1,0 +1,177 @@
+{
+  "as_of": "2026-11-02T18:45:27.608050Z",
+  "registry_total": 687,
+  "registry_state_counts": {
+    "ACTIVE": 493,
+    "RETIRED": 140,
+    "NEVER_SCHEDULED": 32,
+    "PAUSED": 22
+  },
+  "active_total": 493,
+  "coverage_all": {
+    "Partially Measured": 391,
+    "Disabled": 194,
+    "Measured": 93,
+    "Unmeasured": 1,
+    "Orphaned": 8
+  },
+  "coverage_active": {
+    "Partially Measured": 391,
+    "Measured": 93,
+    "Unmeasured": 1,
+    "Orphaned": 8
+  },
+  "coverage_all_percent": {
+    "Partially Measured": 56.91,
+    "Disabled": 28.24,
+    "Measured": 13.54,
+    "Unmeasured": 0.15,
+    "Orphaned": 1.16
+  },
+  "coverage_active_percent": {
+    "Partially Measured": 79.31,
+    "Measured": 18.86,
+    "Unmeasured": 0.2,
+    "Orphaned": 1.62
+  },
+  "scheduler_all": {
+    "cron": 442,
+    "event": 5,
+    "systemd": 155,
+    "n8n": 56,
+    "none": 29
+  },
+  "scheduler_active": {
+    "cron": 329,
+    "event": 5,
+    "n8n": 53,
+    "systemd": 103,
+    "none": 3
+  },
+  "jobs_projection_summary": {
+    "due_today": 343,
+    "succeeded": 88,
+    "failed": 9,
+    "missed": 6,
+    "paused": 22,
+    "retired": 140,
+    "unknown": 217,
+    "due": 4,
+    "outside_window": 201,
+    "not_measured": 217,
+    "missed_measured": false,
+    "gap_reasons": {
+      "missed": "217 jobs not measured (no run receipt or no measurable schedule), so missed runs among them cannot be counted \u00b7 execution evidence incomplete: journal_history_window_truncated",
+      "not_measured": "No run receipt or no measurable schedule"
+    }
+  },
+  "watchdog_summary": {
+    "OUTSIDE_WINDOW": 251,
+    "NOT_MEASURED": 183,
+    "NOT_APPLICABLE": 7,
+    "OK": 44,
+    "MISSED_RUNS": 8
+  },
+  "root_cause_counts": {
+    "CC-OBS-NO-SIGNAL": 11,
+    "CC-OBS-DB-RECEIPT": 5,
+    "CC-OBS-ON-DEMAND": 8,
+    "CC-OBS-INCOMPLETE-RUN-CONTRACT": 42,
+    "CC-OBS-RECEIPT-PATH": 23,
+    "CC-OBS-EXPECTED-NONLIVE": 40,
+    "CC-OBS-SYSTEMD-SCHEDULE": 75,
+    "CC-OBS-NEVER-SCHEDULED-COUNT": 32,
+    "CC-GOV-PAUSED": 22,
+    "CC-OBS-MTIME-NOT-SUCCESS": 198,
+    "CC-OBS-RECEIPT": 6,
+    "CC-OBS-MODE-PROVENANCE": 16,
+    "CC-GOV-PROTECTED-INSTRUMENTATION": 50,
+    "CC-FAIL-MISSED": 6,
+    "CC-DIAG-FAILURE": 9,
+    "CC-FAIL-JOB": 9,
+    "CC-OBS-CONTINUOUS-SERVICE": 19,
+    "CC-OBS-ACTIVE-DISABLED-TIMER": 8,
+    "CC-OBS-UNREGISTERED-TIMER": 5
+  },
+  "runtime_inventory": {
+    "cron_entries": 358,
+    "unmatched_cron_entries": 0,
+    "systemd_unit_files": 469,
+    "systemd_loaded_units": 645,
+    "timers": 84,
+    "cron_error": null,
+    "unit_files_error": null,
+    "units_error": null,
+    "timers_error": null
+  },
+  "registered_lane_count": 687,
+  "observed_unregistered_timer_count": 5,
+  "total_inventory_including_runtime_orphans": 692,
+  "registered_unique_lane_ids": 687,
+  "execution_dimensions_active": {
+    "schedule_evidence_available": 484,
+    "schedule_declared_measurable": 384,
+    "schedule_observed_timer_clock": 76,
+    "execution_attempt_observed": 176,
+    "durable_completion_observed": 93,
+    "qualifying_success_observed": 144,
+    "jobs_reader_success_observed": 139,
+    "success_signal_discarded_by_jobs_reader": 5,
+    "output_contract_observed": 69,
+    "output_contract_satisfied": 50
+  },
+  "readmodel_unknown_by_registry_state": {
+    "ACTIVE": 185,
+    "NEVER_SCHEDULED": 32
+  },
+  "readmodel_unknown_active": 185,
+  "readmodel_unknown_active_percent": 37.53,
+  "elapsed_expected_opportunities_declared_schedule": 7445,
+  "due_today_definition": "distinct ACTIVE lanes with at least one declared recurring fire today, not number of fire opportunities; systemd recurrence is absent from this served read model",
+  "coverage_definition": "Measured = schedule evidence (or documented nonrecurring semantics) plus a durable identity-bound ledger or unambiguous wrapper completion with exit code. FAILED completions count. Business output and diagnostic quality are independent dimensions.",
+  "qualifying_success_definition": "A separate success signal from existing watchdog/explicit JSON success/log completion. Never substituted for execution/output/diagnostic coverage.",
+  "protected_scope_count": 64,
+  "inspection_limitations": [
+    "No broker/execution/scalp log or subsystem investigation; only registry and existing receipt metadata",
+    "No live jobs triggered; no scheduler or configuration mutation",
+    "Generic systemd list metadata only; no protected-unit show or ExecStart/environment read",
+    "Native Jobs projection only understands declared cron/n8n recurrence, not systemd timer properties",
+    "Latest ledger reader bounds history to10000 rows; no inferred success beyond available evidence",
+    "Existing watchdog success metadata reused at its own source timestamp; artifact mtime never used as success"
+  ],
+  "classification_active": {
+    "missing instrumentation": 379,
+    "undocumented": 8,
+    "healthy": 83,
+    "unhealthy": 15,
+    "orphaned": 8
+  },
+  "active_unknown_classification": {
+    "undocumented": 7,
+    "missing instrumentation": 170,
+    "orphaned": 8
+  },
+  "unknown_active_due_today": 75,
+  "unknown_active_not_due_today": 110,
+  "nonlive_intent_active": 56,
+  "nonlive_intent_results": {
+    "outside_window": 27,
+    "unknown": 10,
+    "succeeded": 16,
+    "due": 2,
+    "missed": 1
+  },
+  "curation": "metadata-only classification using immutable v2 capture; no new runtime observations",
+  "baseline_inventory_sha256": "97f7ee1266db8eba01b5597e2233fff758d0312e66b1eb5a67f1aae72ce9d710",
+  "baseline_jobs_snapshot_sha256": "014a995ae2a53f6db6771a67e2b96cfbf963b48b97dc32ecef2c806f79c44f7a",
+  "comparability_limits": [
+    "User screenshot18:26Z, v1at18:37:18Z, frozen final v2at18:45:27Z are different observations. No before/after improvement is inferred.",
+    "User91succeeded/215unknown versus frozen88succeeded/217unknown cannot be causally compared across clocks and protected-log exclusions.",
+    "139 in v1 was success-plus-declared-recurrence, not execution coverage. Final93durablecompletions and144successsignals use independent definitions.",
+    "Raw217unknown includes185ACTIVE and32NEVER_SCHEDULED.75ACTIVEunknown are due today;110are not in that population.",
+    "Generic unit metadata proves8ACTIVE-declared timers disabled/unloaded, not whether to re-enable them. Agent-runtime instances may be intentionally unloaded; owner decides.",
+    "Mutable later receipts cannot prove historical completion merely because producer as_of is earlier. Hermes later receipt ended18:51 after the frozen clock.",
+    "Standard n8n output-verdict coverage is not a full adjudication of heterogeneous non-n8n business-output contracts.",
+    "64protected lanes received registry/existing-receipt metadata inspection only, no broker/execution/scalp logs, protected-unit show, credentials or subsystem investigation."
+  ]
+}

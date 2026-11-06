@@ -733,6 +733,47 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/sender-inventory.md` | Communications Gateway — Sender Inventory |
 | `docs/audit/telegram-bypass-zero-closeout.md` | Telegram chokepoint — zero bypass closeout |
 | `docs/audit/wave-c-inbound-implementation.md` | Wave C — Communications Gateway, inbound half (implementation) |
+| `docs/audits/20261102-command-center-operations/EXECUTIVE_SUMMARY.md` | Command Center operational readiness |
+| `docs/audits/20261102-command-center-operations/FAILURE_DIAGNOSTICS.md` | Failure diagnostics audit — frozen baseline, 2026-11-02 |
+| `docs/audits/20261102-command-center-operations/FAILURE_RECEIPT_ADDENDUM.md` | Receipt remediation addendum — 2026-11-02 |
+| `docs/audits/20261102-command-center-operations/HEALTH_INCIDENTS_IMPLEMENTATION.md` | Health and Incidents truth correction |
+| `docs/audits/20261102-command-center-operations/IMPLEMENTATION.md` | Implementation checkpoint |
+| `docs/audits/20261102-command-center-operations/JOB_COVERAGE.md` | Job coverage report |
+| `docs/audits/20261102-command-center-operations/PLAN.md` | Command Center operations audit and remediation |
+| `docs/audits/20261102-command-center-operations/PROOF_INDEX.md` | Evidence index |
+| `docs/audits/20261102-command-center-operations/README.md` | Command Center operational readiness audit |
+| `docs/audits/20261102-command-center-operations/REMEDIATION.md` | Remediation register |
+| `docs/audits/20261102-command-center-operations/ROOT_CAUSES.md` | Root causes and remediation checkpoint |
+| `docs/audits/20261102-command-center-operations/SELF_HEAL_READINESS.md` | Alerting and self-healing readiness — 2026-11-02 |
+| `docs/audits/20261102-command-center-operations/SUBSYSTEM_COVERAGE.md` | Monitoring coverage by subsystem |
+| `docs/audits/20261102-command-center-operations/UX_REVIEW.md` | Command Center operations UX and information architecture review |
+| `docs/audits/20261102-command-center-operations/inventory/coverage.md` | Command Center v3 — complete job coverage inventory |
+| `docs/audits/20261102-command-center-operations/inventory/README.md` | Command Center inventory — frozen capture (2026-11-02T18:45:27Z) |
+| `docs/audits/20261102-command-center-operations/tickets/CC-ALERT-CHANNELS.md` | CC-ALERT-CHANNELS: Qualify alert channels and independent monitoring |
+| `docs/audits/20261102-command-center-operations/tickets/CC-ALERT-REPEAT.md` | CC-ALERT-REPEAT: Restore watchdog reminder delivery semantics |
+| `docs/audits/20261102-command-center-operations/tickets/CC-DASH-FRESHNESS.md` | CC-DASH-FRESHNESS: Correct dashboard source clocks and missing-data states |
+| `docs/audits/20261102-command-center-operations/tickets/CC-DIAG-FAILURE.md` | CC-DIAG-FAILURE: Capture actionable, redacted failure diagnostics |
+| `docs/audits/20261102-command-center-operations/tickets/CC-FAIL-JOB.md` | CC-FAIL-JOB: Repair the nine observed failed jobs |
+| `docs/audits/20261102-command-center-operations/tickets/CC-FAIL-MISSED.md` | CC-FAIL-MISSED: Account for six observed missed jobs |
+| `docs/audits/20261102-command-center-operations/tickets/CC-GOV-PAUSED.md` | CC-GOV-PAUSED: Adjudicate paused declarations |
+| `docs/audits/20261102-command-center-operations/tickets/CC-GOV-PROTECTED-INSTRUMENTATION.md` | CC-GOV-PROTECTED-INSTRUMENTATION: Instrument protected lanes under scoped authority |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-ACTIVE-DISABLED-TIMER.md` | CC-OBS-ACTIVE-DISABLED-TIMER: Resolve active declarations with disabled or unloaded timers |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-CONTINUOUS-SERVICE.md` | CC-OBS-CONTINUOUS-SERVICE: Measure continuous services as services |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-DB-RECEIPT.md` | CC-OBS-DB-RECEIPT: Expose existing database-backed run evidence |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-EXPECTED-NONLIVE.md` | CC-OBS-EXPECTED-NONLIVE: Distinguish expected shadow or dry-run output |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-INCOMPLETE-RUN-CONTRACT.md` | CC-OBS-INCOMPLETE-RUN-CONTRACT: Complete partial run contracts |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-MODE-PROVENANCE.md` | CC-OBS-MODE-PROVENANCE: Resolve success labels against nonlive intent |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-MTIME-NOT-SUCCESS.md` | CC-OBS-MTIME-NOT-SUCCESS: Replace modification-time evidence with run completion |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-NEVER-SCHEDULED-COUNT.md` | CC-OBS-NEVER-SCHEDULED-COUNT: Stop counting intentionally unscheduled entries as unmeasured jobs |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-NO-SIGNAL.md` | CC-OBS-NO-SIGNAL: Declare evidence contracts where none is usable |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-ON-DEMAND.md` | CC-OBS-ON-DEMAND: Model on-demand and event work explicitly |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-RECEIPT-PATH.md` | CC-OBS-RECEIPT-PATH: Repair writer and reader receipt references |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-RECEIPT.md` | CC-OBS-RECEIPT: Wire missing run receipts |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-SYSTEMD-SCHEDULE.md` | CC-OBS-SYSTEMD-SCHEDULE: Expose actual systemd timer recurrence and run evidence |
+| `docs/audits/20261102-command-center-operations/tickets/CC-OBS-UNREGISTERED-TIMER.md` | CC-OBS-UNREGISTERED-TIMER: Register the five observed scheduled timers |
+| `docs/audits/20261102-command-center-operations/tickets/CC-PUSH-ADOPTION.md` | CC-PUSH-ADOPTION: Remove concrete blockers to reviewed standing uploads |
+| `docs/audits/20261102-command-center-operations/tickets/CC-SELFHEAL-READY.md` | CC-SELFHEAL-READY: Qualify and authorize the existing self-heal implementation |
+| `docs/audits/20261102-command-center-operations/tickets/CC-UX-STATE.md` | CC-UX-STATE: Make health and incident state truthful and actionable |
 | `docs/audits/ALPHA_VANTAGE_GAPS_AND_NEWSAPI_2026-10-10.md` | Alpha Vantage for the gaps, and the NewsAPI test |
 | `docs/audits/ATM_APPROVE_FAILED_2026-05-22.md` | ATM approve_proposal_failed Investigation — 2026-05-22 |
 | `docs/audits/CENSUS_PART1_BACKEND_2026-08-30.md` | CENSUS — PART 1: BACKEND |
