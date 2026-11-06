@@ -79,10 +79,10 @@ REGISTRY = [
      "signal": ("log", "hermes_youtube_discovery.log")},
     {"name": "options_monitor", "schedule_match": "run_options_monitor", "cadence_h": 1,
      "signal": ("log", "options_monitor.log")},
-    {"name": "options_paper_lifecycle", "schedule_match": "run_options_paper_position_monitor",
-     "cadence_h": 1, "signal": ("log", "options_paper_monitor.log")},
-    {"name": "alpaca_paper_options_reconcile", "schedule_match": "reconcile_alpaca_paper_options",
-     "cadence_h": 2, "signal": ("log", "alpaca_paper_options_reconcile.log")},
+    # options_paper_lifecycle (run_options_paper_position_monitor) and alpaca_paper_options_reconcile
+    # (reconcile_alpaca_paper_options) removed 2026-11-06: operator decision "retire alpaca, paper
+    # background"; lanes RETIRED (retire_batch retire-alpaca-paper-20261106). Their cron lines go, and a
+    # JOBS row whose schedule_match is absent from the crontab would read NOT_SCHEDULED (a failure).
     {"name": "options_iv_snapshot", "schedule_match": "options_iv_snapshot.py", "cadence_h": 30,
      "signal": ("db", "SELECT MAX(captured_at) FROM options_iv_history")},
     {"name": "atm_auto_approver", "schedule_match": "atm_auto_approver.py", "cadence_h": 1,

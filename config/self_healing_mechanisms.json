@@ -976,7 +976,8 @@
     "regex": "FIXED: ",
     "min_count": 1
    },
-   "expected": "PROVEN-partial (CLOSED_BUT_HELD never repaired)",
+   "expected": "RETIRED 2026-11-06 -> NO_EVIDENCE expected (was PROVEN-partial: CLOSED_BUT_HELD never repaired)",
+   "retired": "2026-11-06 operator decision (\"retire alpaca, paper background\"): lane alpaca-paper-reconciler RETIRED in config/lane_registry.json (retire_batch retire-alpaca-paper-20261106); no new evidence will be written",
    "audit_ref": "B-G6"
   }
  ]

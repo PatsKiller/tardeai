@@ -123,12 +123,29 @@ def test_held_lanes_refuse(lane):
     assert LD.dispatchable(dict(ROWS[lane], dispatch={"mode": "live"})) is False
 
 
+# alpaca-stop-manager-rth and paper-execution-sweep left this list 2026-11-06: they are RETIRED
+# (operator "retire alpaca, paper background"), scheduler kind none, and covered below.
 @pytest.mark.parametrize("lane", ["positions-sync", "broker-stop-reconcile", "stop-health-check",
-                                  "schwab-position-sync", "alpaca-stop-manager-rth", "paper-execution-sweep",
+                                  "schwab-position-sync",
                                   "run-protection-pipeline-at-30-20", "sweep-schwab-instruments"])
 def test_hard_token_rows_stay_refused(lane):
     ok, why = _elig(ROWS[lane])
     assert ok is False and why.startswith("forbidden_token:"), (lane, why)
+
+
+RETIRED_PAPER_20261106 = ["alpaca-stop-manager-rth", "alpaca-stop-manager-oco-repair",
+                          "reconcile-alpaca-paper-options", "paper-execution-sweep", "alpaca-paper-adapter",
+                          "paper-performance-governance", "alpaca-paper-reconciler",
+                          "paper-execution-quality-analyzer", "paper-execution-quality",
+                          "paper-trade-advisory", "run-options-paper-position-monitor"]
+
+
+@pytest.mark.parametrize("lane", RETIRED_PAPER_20261106)
+def test_retired_alpaca_paper_lanes_never_dispatch(lane):
+    row = ROWS[lane]
+    assert row["state"] == "RETIRED" and row["scheduler"]["kind"] == "none"
+    assert _elig(row)[0] is False
+    assert lane not in POLICY["families"]
 
 
 def test_systemd_rows_stay_refused():

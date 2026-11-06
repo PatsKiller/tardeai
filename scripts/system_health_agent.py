@@ -42,6 +42,11 @@ load_dotenv(PROJECT_ROOT / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [health-agent] %(message)s")
 log = logging.getLogger("system_health_agent")
 
+# 2026-11-06 operator decision ("retire alpaca, paper background"): the Alpaca paper sync lanes
+# (alpaca-paper-adapter, alpaca-paper-reconciler) are RETIRED, so the two "open paper trade not
+# synced" checks would page forever. They stay in the source, switched off by this flag.
+_PAPER_SYNC_CHECKS_RETIRED = True
+
 # ── Configuration: Every monitored component ─────────────────────────────────
 # schedule: cron-style human readable, for display
 # log_file: path relative to PROJECT_ROOT/logs
@@ -188,7 +193,8 @@ MONITORED_COMPONENTS = [
         "max_age_min": 1500,
         "max_runtime_sec": 60,
         "critical": False,
-        "retry_cmd": ".venv/bin/python scripts/alpaca_paper_reconciler.py",
+        # RETIRED 2026-11-06 (alpaca-paper-reconciler): no retry_cmd, a retired lane must not be self-healed.
+        "retired": "2026-11-06 operator decision (retire alpaca, paper background): lane RETIRED, retire_batch retire-alpaca-paper-20261106",
         "downstream": "DB-broker sync",
     },
     # ── Data Pipeline ──
@@ -296,7 +302,8 @@ MONITORED_COMPONENTS = [
         "max_age_min": 1500,
         "max_runtime_sec": 60,
         "critical": False,
-        "retry_cmd": ".venv/bin/python scripts/paper_execution_quality_analyzer.py --recent --apply",
+        # RETIRED 2026-11-06 (paper-execution-quality-analyzer): no retry_cmd.
+        "retired": "2026-11-06 operator decision (retire alpaca, paper background): lane RETIRED, retire_batch retire-alpaca-paper-20261106",
         "downstream": "execution quality page",
     },
     # ── LLM Backtesting (v3.8) ──
@@ -368,8 +375,9 @@ MONITORED_COMPONENTS = [
         "log_file": "paper_execution.log",
         "max_age_min": 30,
         "max_runtime_sec": 120,
-        "critical": True,
-        "retry_cmd": ".venv/bin/python scripts/paper_execution_sweep.py",
+        "critical": False,
+        # RETIRED 2026-11-06 (paper-execution-sweep): no retry_cmd.
+        "retired": "2026-11-06 operator decision (retire alpaca, paper background): lane RETIRED, retire_batch retire-alpaca-paper-20261106",
         "downstream": "order submission, fill detection",
     },
     # ── Intelligence ──
@@ -2417,7 +2425,7 @@ def run_health_check(dry_run=True, verbose=False, *, now=None):
                 "auto_proposal.log",
                 "screener_pm.log",
                 "incubator_promoter.log",
-                "paper_execution.log",
+                # paper_execution.log dropped 2026-11-06: paper-execution-sweep RETIRED
                 "unified_stop_supervisor.log",
             ]
             for _logname in _SCAN_LOGS:
@@ -2462,25 +2470,28 @@ def run_health_check(dry_run=True, verbose=False, *, now=None):
                 if _today_trades == 0 and _h >= 11:
                     pipeline_alerts.append("⚠️ ATM=active but 0 trades today (check proposal pipeline)")
 
-            # 5. Alpaca position sync — SCHEDULE-AWARE.
-            # The syncing job (alpaca_paper_adapter --sync-only) runs hourly 10:00-16:00
-            # Mon-Fri. A flat 4-hour threshold therefore fired every weekday before
-            # 10:00 and all weekend: on 2026-07-20 it paged about an FCX position whose
-            # DB row matched the broker EXACTLY (79 sh @ 62.031392), simply because the
-            # last sync was Friday 16:00. Stale now means "older than the most recent
-            # SCHEDULED sync + grace" (2026-07-20 fix, same class as monitor_freshness).
-            _sync_cutoff = _last_scheduled_sync_fire()
-            cur.execute(
-                """SELECT COUNT(*) FROM paper_trades
-                           WHERE status='open'
-                             AND (last_synced_at IS NULL OR last_synced_at < %s)""",
-                [_sync_cutoff],
-            )
-            _unsync = cur.fetchone()[0] or 0
-            if _unsync > 0:
-                pipeline_alerts.append(
-                    f"📊 {_unsync} open trade(s) not synced since the last scheduled sync ({_sync_cutoff:%a %H:%M} ET)"
+            # 5. Alpaca position sync — RETIRED 2026-11-06 (operator: "retire alpaca, paper background").
+            # The syncing lanes (alpaca-paper-adapter, alpaca-paper-reconciler) are RETIRED, so open
+            # paper_trades are never re-synced and this check would page forever. Disabled, not deleted.
+            if not _PAPER_SYNC_CHECKS_RETIRED:  # retire-alpaca-paper-20261106
+                # The syncing job (alpaca_paper_adapter --sync-only) runs hourly 10:00-16:00
+                # Mon-Fri. A flat 4-hour threshold therefore fired every weekday before
+                # 10:00 and all weekend: on 2026-07-20 it paged about an FCX position whose
+                # DB row matched the broker EXACTLY (79 sh @ 62.031392), simply because the
+                # last sync was Friday 16:00. Stale now means "older than the most recent
+                # SCHEDULED sync + grace" (2026-07-20 fix, same class as monitor_freshness).
+                _sync_cutoff = _last_scheduled_sync_fire()
+                cur.execute(
+                    """SELECT COUNT(*) FROM paper_trades
+                               WHERE status='open'
+                                 AND (last_synced_at IS NULL OR last_synced_at < %s)""",
+                    [_sync_cutoff],
                 )
+                _unsync = cur.fetchone()[0] or 0
+                if _unsync > 0:
+                    pipeline_alerts.append(
+                        f"📊 {_unsync} open trade(s) not synced since the last scheduled sync ({_sync_cutoff:%a %H:%M} ET)"
+                    )
 
             # 6. Screener data quality — SOURCE-AWARE.
             # Counting every source together blamed "the screener" for rows written
@@ -2652,28 +2663,30 @@ def run_health_check(dry_run=True, verbose=False, *, now=None):
         if _cio_cnt > 0:
             portfolio_alerts.append(f"⚡ {_cio_cnt} CIO critical/high decisions pending")
 
-        # 5. Paper trade drift (open trades with no recent price sync)
-        # SCHEDULE-AWARE: this is the same check as the pipeline-side one and had
-        # the same flat-4h defect — it fired every weekday before the 10:00 sync
-        # and all weekend. Fixing only one copy left this one still paging
-        # (2026-07-20; duplicate found during the schedule-blind sweep).
-        _sync_cut = _last_scheduled_sync_fire()
-        _stale_trades = (
-            _db_query(
-                """SELECT COUNT(*) as cnt FROM paper_trades
-            WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < %s)""",
-                (_sync_cut,),
-                fetch="one",
+        # 5. Paper trade drift — RETIRED 2026-11-06 (operator: "retire alpaca, paper background");
+        # the paper sync lanes are RETIRED, so this would page forever. Disabled, not deleted.
+        if not _PAPER_SYNC_CHECKS_RETIRED:  # retire-alpaca-paper-20261106
+            # SCHEDULE-AWARE: this is the same check as the pipeline-side one and had
+            # the same flat-4h defect — it fired every weekday before the 10:00 sync
+            # and all weekend. Fixing only one copy left this one still paging
+            # (2026-07-20; duplicate found during the schedule-blind sweep).
+            _sync_cut = _last_scheduled_sync_fire()
+            _stale_trades = (
+                _db_query(
+                    """SELECT COUNT(*) as cnt FROM paper_trades
+                WHERE status='open' AND (last_synced_at IS NULL OR last_synced_at < %s)""",
+                    (_sync_cut,),
+                    fetch="one",
+                )
+                if not dry_run
+                else {}
             )
-            if not dry_run
-            else {}
-        )
-        _stale_trade_cnt = (_stale_trades or {}).get("cnt", 0)
-        if _stale_trade_cnt > 0:
-            portfolio_alerts.append(
-                f"📊 {_stale_trade_cnt} paper trade(s) not synced since the last "
-                f"scheduled sync ({_sync_cut:%a %H:%M} ET)"
-            )
+            _stale_trade_cnt = (_stale_trades or {}).get("cnt", 0)
+            if _stale_trade_cnt > 0:
+                portfolio_alerts.append(
+                    f"📊 {_stale_trade_cnt} paper trade(s) not synced since the last "
+                    f"scheduled sync ({_sync_cut:%a %H:%M} ET)"
+                )
 
         # 6. Portfolio live prices (Finviz repricer — not SnapTrade, not holdings file mtime)
         portfolio_alerts.extend(_portfolio_price_freshness_alerts(_now_et))

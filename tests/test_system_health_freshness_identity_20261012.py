@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 12, 14, 15, tzinfo=timezone.utc)
 LANE = "finviz-screener-runner"
 SCRIPT = "finviz_screener_runner.py"
-COVERS = ["scripts/system_health_agent.py:817"]
+COVERS = ["scripts/system_health_agent.py:825"]
 
 
 def test_repeated_stale_escalation_keeps_content_when_database_dedupe_fails(agent, monkeypatch):

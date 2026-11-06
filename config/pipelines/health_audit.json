@@ -324,6 +324,7 @@
       "cron_line": 170,
       "cron_schedule": "0 8,20 * * 1-5",
       "lane_id": "paper-performance-governance",
+      "retired": "2026-11-06 operator decision (\"retire alpaca, paper background\"): lane RETIRED in config/lane_registry.json (retire_batch retire-alpaca-paper-20261106); stays excluded, never a step; kept only so this manifest still accounts for every F36 line of the 2026-10-15 snapshot",
       "basename": "paper_performance_governance.py",
       "disposition_20261015": "STAY_HOST",
       "category": "STAY_HOST",

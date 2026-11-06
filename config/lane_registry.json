@@ -5173,21 +5173,19 @@
       "lane_id": "alpaca-stop-manager-rth",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "7-59/20 9-16 * * 1-5",
-        "command_text": "cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock bash scripts/market_day_gate.sh $PY scripts/alpaca_stop_manager.py --apply >> logs/alpaca_stop_manager_cron.log 2>&1",
+        "kind": "none",
         "match": "scripts/alpaca_stop_manager.py --apply"
       },
       "expected_cadence_hours": 0.34,
-      "state": "ACTIVE",
-      "state_since": "2026-09-26",
-      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — both stop-manager lines now share ONE lock (/tmp/tradeai_alpaca_stop_manager.lock) and the RTH line runs at :07/:27/:47 so it never coincides with the 04-10 repair line's :00/:15/:30/:45.",
+      "state": "RETIRED",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alpaca_stop_manager_cron.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "scripts/check_cron_sanity.py::check_shared_script_locks (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r05_two_schedules_of_a_broker_script_must_share_one_lock); crontab lines 544/731 measured 2026-09-26 colliding at 09:00/10:00 weekdays; grant dbe23b0073b3a925.",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
       "note": "Paper-only Alpaca stop ratchet (--apply). Broker-touching: overlapping runs were the P1 High finding. Signal path made state-root-relative 2026-09-27 (crontab PROJ moved to CURRENT; the absolute dev-tree log went stale).",
       "active_days": [
         0,
@@ -5213,27 +5211,39 @@
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "7-59/20 9-16 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock bash scripts/market_day_gate.sh $PY scripts/alpaca_stop_manager.py --apply >> logs/alpaca_stop_manager_cron.log 2>&1",
+        "match": "scripts/alpaca_stop_manager.py --apply"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_reason_before_retirement": {
+        "state": "ACTIVE",
+        "state_since": "2026-09-26",
+        "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — both stop-manager lines now share ONE lock (/tmp/tradeai_alpaca_stop_manager.lock) and the RTH line runs at :07/:27/:47 so it never coincides with the 04-10 repair line's :00/:15/:30/:45."
+      },
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)"
     },
     {
       "lane_id": "alpaca-stop-manager-oco-repair",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/15 4-10 * * 1-5",
-        "command_text": "cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock $PY scripts/alpaca_stop_manager.py --repair-oco --apply >> logs/alpaca_stop_manager_repair.log 2>&1",
+        "kind": "none",
         "match": "scripts/alpaca_stop_manager.py --repair-oco --apply"
       },
       "expected_cadence_hours": 0.25,
-      "state": "ACTIVE",
-      "state_since": "2026-09-26",
-      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — lock renamed from /tmp/tradeai_oco_repair.lock to the shared /tmp/tradeai_alpaca_stop_manager.lock.",
+      "state": "RETIRED",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alpaca_stop_manager_repair.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "scripts/check_cron_sanity.py::check_shared_script_locks (P1 linter); crontab line 731 measured 2026-09-26 with lock /tmp/tradeai_oco_repair.lock distinct from line 544's (none); grant dbe23b0073b3a925.",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
       "note": "OCO repair supervisor (2026-07-04) for OCO_REPLACING/naked paper positions. Signal path made state-root-relative 2026-09-27 (crontab PROJ moved to CURRENT; the absolute dev-tree log went stale).",
       "active_days": [
         0,
@@ -5259,7 +5269,21 @@
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "*/15 4-10 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock $PY scripts/alpaca_stop_manager.py --repair-oco --apply >> logs/alpaca_stop_manager_repair.log 2>&1",
+        "match": "scripts/alpaca_stop_manager.py --repair-oco --apply"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_reason_before_retirement": {
+        "state": "ACTIVE",
+        "state_since": "2026-09-26",
+        "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — lock renamed from /tmp/tradeai_oco_repair.lock to the shared /tmp/tradeai_alpaca_stop_manager.lock."
+      },
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)"
     },
     {
       "lane_id": "reconcile-exit-advisory-outcomes",
@@ -5442,21 +5466,19 @@
       "lane_id": "reconcile-alpaca-paper-options",
       "owner": "options",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 10-15 * * 1-5",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python bash linux_launchers/reconcile_alpaca_paper_options.sh",
+        "kind": "none",
         "match": "linux_launchers/reconcile_alpaca_paper_options.sh"
       },
       "expected_cadence_hours": 1.0,
-      "state": "ACTIVE",
-      "state_since": "2026-09-26",
-      "state_reason": "Declared 2026-09-26 by the P2 audit remediation (C-02 first tranche: dev-tree workers that write served state move to `cd CURRENT`). Was an inherited-debt baseline entry running from the dev tree via a launcher that hard-coded PROJECT_ROOT; the launcher now honours PROJECT_ROOT/PY. The installed cron line is edited only under an operator cron grant; `match` covers both the pre- and post-edit text.",
+      "state": "RETIRED",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/alpaca_paper_options_reconcile.log"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "scripts/check_worker_pins.py classified the line DEV_TREE (audit C-02); linux_launchers/reconcile_alpaca_paper_options.sh:4 hard-coded the dev tree until this change; alpaca_paper_options_executor.py writes Postgres only, so the execution root changes no file store; tests/test_p2_controls_truth_20260926.py::test_options_launcher_honours_project_root_and_py.",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
       "note": "Hourly RTH Alpaca PAPER options reconcile (read-only poll of fills/closes; no order submit).",
       "active_days": [
         0,
@@ -5482,7 +5504,21 @@
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "0 10-15 * * 1-5",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=$HOME/trade-ai-releases/portfolio-server/CURRENT PY=$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python bash linux_launchers/reconcile_alpaca_paper_options.sh",
+        "match": "linux_launchers/reconcile_alpaca_paper_options.sh"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_reason_before_retirement": {
+        "state": "ACTIVE",
+        "state_since": "2026-09-26",
+        "state_reason": "Declared 2026-09-26 by the P2 audit remediation (C-02 first tranche: dev-tree workers that write served state move to `cd CURRENT`). Was an inherited-debt baseline entry running from the dev tree via a launcher that hard-coded PROJECT_ROOT; the launcher now honours PROJECT_ROOT/PY. The installed cron line is edited only under an operator cron grant; `match` covers both the pre- and post-edit text."
+      },
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)"
     },
     {
       "lane_id": "symbol-news-curation-monitor",
@@ -19302,12 +19338,11 @@
       "lane_id": "paper-execution-sweep",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/5 9-16 * * 1-5",
+        "kind": "none",
         "match": "scripts/paper_execution_sweep.py"
       },
       "expected_cadence_hours": 64.08,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/paper_execution.log",
@@ -19325,7 +19360,6 @@
         "event_driven_candidate": true,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
@@ -19333,7 +19367,22 @@
         "class": "pipeline_excluded_gate",
         "token": "market_day_gate.sh",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
+      },
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "*/5 9-16 * * 1-5",
+        "match": "scripts/paper_execution_sweep.py"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "multi-tier-trade-reviewer-weekly",
@@ -19469,12 +19518,11 @@
       "lane_id": "alpaca-paper-adapter",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 10-16 * * 1-5",
+        "kind": "none",
         "match": "scripts/alpaca_paper_adapter.py"
       },
       "expected_cadence_hours": 66.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alpaca_paper_adapter.log",
@@ -19492,7 +19540,6 @@
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
@@ -19500,7 +19547,22 @@
         "class": "broker_order",
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
-      }
+      },
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "0 10-16 * * 1-5",
+        "match": "scripts/alpaca_paper_adapter.py"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "multi-tier-trade-reviewer-monthly",
@@ -19767,12 +19829,11 @@
       "lane_id": "paper-performance-governance",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 8,20 * * 1-5",
+        "kind": "none",
         "match": "scripts/paper_performance_governance.py"
       },
       "expected_cadence_hours": 60.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/state/governance_states.json",
@@ -19791,10 +19852,24 @@
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "0 8,20 * * 1-5",
+        "match": "scripts/paper_performance_governance.py"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "agent-router-cron-full",
@@ -20129,12 +20204,11 @@
       "lane_id": "alpaca-paper-reconciler",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "35 9 * * 1-5",
+        "kind": "none",
         "match": "scripts/alpaca_paper_reconciler.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/alpaca_reconciler.log",
@@ -20152,7 +20226,6 @@
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
@@ -20160,7 +20233,22 @@
         "class": "broker_order",
         "token": "alpaca",
         "source": "config/lane_stay_on_cron_tokens.json"
-      }
+      },
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "35 9 * * 1-5",
+        "match": "scripts/alpaca_paper_reconciler.py"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "intel-auto-discovery",
@@ -20867,12 +20955,11 @@
       "lane_id": "paper-execution-quality-analyzer",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 16 * * 1-5",
+        "kind": "none",
         "match": "scripts/paper_execution_quality_analyzer.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/tca_analyzer.log",
@@ -20890,21 +20977,34 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "30 16 * * 1-5",
+        "match": "scripts/paper_execution_quality_analyzer.py"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "paper-execution-quality",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 17 * * 1-5",
+        "kind": "none",
         "match": "scripts/paper_execution_quality.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/tca_events.log",
@@ -20922,10 +21022,24 @@
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "0 17 * * 1-5",
+        "match": "scripts/paper_execution_quality.py"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "claude-escalation-handler",
@@ -22687,12 +22801,11 @@
       "lane_id": "paper-trade-advisory",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 */6 * * *",
+        "kind": "none",
         "match": "scripts/paper_trade_advisory.py"
       },
       "expected_cadence_hours": 6.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/paper_trade_advisory.log",
@@ -22710,10 +22823,24 @@
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "15 */6 * * *",
+        "match": "scripts/paper_trade_advisory.py"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "enrich-proposal-technicals",
@@ -23193,12 +23320,11 @@
       "lane_id": "run-options-paper-position-monitor",
       "owner": "execution",
       "scheduler": {
-        "kind": "cron",
-        "expression": "10 17 * * 1-5",
+        "kind": "none",
         "match": "run_options_paper_position_monitor.sh"
       },
       "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_paper_monitor.log",
@@ -23217,10 +23343,24 @@
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "scheduler_before_retirement": {
+        "kind": "cron",
+        "expression": "10 17 * * 1-5",
+        "match": "run_options_paper_position_monitor.sh"
+      },
+      "scheduler_note_retirement": "2026-11-06 retire-alpaca-paper: scheduler.kind none (nothing schedules the lane); scheduler.match is kept so cron_self_heal/_registry_scheduler and find_undeclared still recognise the retired crontab text while the lead removes it; the full prior scheduler block is scheduler_before_retirement.",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision in session 2026-11-06 ~16:50 ET, verbatim: \"retire alpaca, paper background\" — Alpaca paper trading is dead and must not be shown or run. One of the 11 paper-only cron lanes retired together (wt/livefix-PAPER): alpaca-stop-manager-rth, alpaca-stop-manager-oco-repair, reconcile-alpaca-paper-options, paper-execution-sweep, alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer, paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor. The crontab line is removed/commented by the lead after this registry change is live (never by the worker). Retirement is config only: the script and all paper data stay stored. Not retired here: alpaca-live-read-sync (live read-only).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Operator instruction in the claude-lead session 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"); crontab -l 2026-11-06 measured the lane's line present and paper-only (Alpaca paper account / paper stores).",
+      "retire_batch": "retire-alpaca-paper-20261106",
+      "consumer": "none (retired)",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-11-06",
+      "adopted_reason": "retire-alpaca-paper-20261106: the row is RETIRED by operator decision; reconcile_lane_registry.py re-derives generated rows from the live crontab and would drop it once the line is gone, so the row is hand-maintained (same convention as lane-retire-wave1-20261015)."
     },
     {
       "lane_id": "hermes-analyst-coverage",

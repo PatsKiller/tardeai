@@ -45,10 +45,6 @@
     "alert-dispatcher-unified": "F10",
     "alert-missing-conditions": "F36",
     "alpaca-live-read-sync": "F09",
-    "alpaca-paper-adapter": "F09",
-    "alpaca-paper-reconciler": "F09",
-    "alpaca-stop-manager-oco-repair": "F09",
-    "alpaca-stop-manager-rth": "F09",
     "analyst-prospectus-generate": "F40",
     "analyst-urgent-refresh": "F44",
     "approval-package-reminder": "F37",
@@ -292,11 +288,6 @@
     "overnight-batch-outcomes": "F11",
     "overnight-batch-tax": "F35",
     "oversight-weekly-digest": "F37",
-    "paper-execution-quality": "F12",
-    "paper-execution-quality-analyzer": "F12",
-    "paper-execution-sweep": "F09",
-    "paper-performance-governance": "F36",
-    "paper-trade-advisory": "F09",
     "pattern-extractor": "F50",
     "persistent-wake-hourly": "F40",
     "platform-maintenance-monthly": "F41",
@@ -336,7 +327,6 @@
     "rag-indexer": "F47",
     "reclassify-momentum-proposals": "F45",
     "recommendation-intelligence-engine": "F11",
-    "reconcile-alpaca-paper-options": "F09",
     "reconcile-exit-advisory-outcomes": "F39",
     "reconcile-pullback-outcomes": "F50",
     "reconcile-watch-outcomes": "F50",
@@ -371,7 +361,6 @@
     "run-inference-cycle-postclose": "F12",
     "run-inference-cycle-preopen": "F21",
     "run-options-monitor": "F09",
-    "run-options-paper-position-monitor": "F09",
     "run-profit-capture-refresh": "F50",
     "run-protection-pipeline-at-30-20": "F09",
     "run-protection-pipeline-at-x-30-9-16": "F09",
@@ -541,5 +530,21 @@
     "telegram-smart-alerts",
     "watchlist-proposal-bridge"
   ],
-  "cron_overlap_trading_days": 1
+  "cron_overlap_trading_days": 1,
+  "retired_removed_20261106": {
+    "reason": "Operator decision 2026-11-06 ~16:50 ET (\"retire alpaca, paper background\"): Alpaca paper trading is retired. These lanes are RETIRED in config/lane_registry.json (retire_batch retire-alpaca-paper-20261106) and were removed from `families` so no n8n cutover wave can pick them up. Family ids kept here as history.",
+    "lanes": {
+      "alpaca-paper-adapter": "F09",
+      "alpaca-paper-reconciler": "F09",
+      "alpaca-stop-manager-oco-repair": "F09",
+      "alpaca-stop-manager-rth": "F09",
+      "paper-execution-quality": "F12",
+      "paper-execution-quality-analyzer": "F12",
+      "paper-execution-sweep": "F09",
+      "paper-performance-governance": "F36",
+      "paper-trade-advisory": "F09",
+      "reconcile-alpaca-paper-options": "F09",
+      "run-options-paper-position-monitor": "F09"
+    }
+  }
 }
