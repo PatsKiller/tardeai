@@ -68,7 +68,8 @@ def load_policy(account_key: str) -> dict:
     try:
         cur = _get_conn().cursor()
         cols = ",".join(f"p.{c}" for c in _POLICY_COLS)
-        cur.execute(f"""SELECT {cols} FROM account_automation_policies p
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- cols built only from the fixed _POLICY_COLS tuple
+            f"""SELECT {cols} FROM account_automation_policies p
                          JOIN broker_accounts b ON b.id = p.account_id
                         WHERE b.account_key = %s""", (key,))
         row = cur.fetchone()

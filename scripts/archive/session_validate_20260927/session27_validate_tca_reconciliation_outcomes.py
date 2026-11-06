@@ -51,7 +51,7 @@ try:
         "broker_reconciliation_items", "trade_thesis_outcomes",
         "paper_performance_governance", "paper_dashboard_snapshots",
     ]:
-        cur.execute(f"SELECT 1 FROM {t} LIMIT 1")
+        cur.execute(f"SELECT 1 FROM {t} LIMIT 1")  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list
         check(f"table {t} exists", True)
     conn.close()
 except Exception as e:

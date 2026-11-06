@@ -57,7 +57,8 @@ def run():
                   "learning_promotion_decisions", "learning_rollback_events",
                   "source_learning_scores", "strategy_learning_scores", "agent_learning_scores"]
         for t in tables:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list
+                f"SELECT COUNT(*) FROM {t}")
             cur.fetchone()
         test("Learning DB tables exist (10)", True)
         conn.close()

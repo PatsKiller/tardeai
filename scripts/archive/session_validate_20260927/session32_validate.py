@@ -37,7 +37,8 @@ def run():
         conn = get_conn(); cur = conn.cursor()
         for t in ["self_improvement_snapshots", "operator_review_queue",
                    "self_improvement_component_health", "self_improvement_operator_notes"]:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- t from the fixed literal table list
+                f"SELECT COUNT(*) FROM {t}")
         test("Command center DB tables (4)", True)
         conn.close()
     except Exception as e: test("DB tables", False, str(e))

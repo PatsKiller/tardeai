@@ -377,7 +377,7 @@ class PostgresTriggerIntakeStore:
         source_ts = _parse_ts(candidate.source_timestamp)
         with self._conn() as conn:
             cur = conn.cursor()
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                 f"""
                 INSERT INTO {SCHEMA}.{INTAKE_TABLE} (
                     intake_id, agent_id, trigger_kind, dedup_key, job_type,
@@ -425,7 +425,7 @@ class PostgresTriggerIntakeStore:
         leased: list[TriggerIntakeRow] = []
         with self._conn() as conn:
             cur = conn.cursor()
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                 f"""
                 SELECT intake_id
                 FROM {SCHEMA}.{INTAKE_TABLE}
@@ -438,7 +438,7 @@ class PostgresTriggerIntakeStore:
             )
             ids = [row[0] for row in cur.fetchall()]
             for intake_id in ids:
-                cur.execute(
+                cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                     f"""
                     UPDATE {SCHEMA}.{INTAKE_TABLE}
                     SET state = 'LEASED',
@@ -478,7 +478,7 @@ class PostgresTriggerIntakeStore:
     def _ack(self, intake_id: str, *, state: str, outcome: str, run_id: str | None = None) -> None:
         with self._conn() as conn:
             cur = conn.cursor()
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                 f"""
                 UPDATE {SCHEMA}.{INTAKE_TABLE}
                 SET state = %s,
@@ -508,7 +508,7 @@ class PostgresTriggerIntakeStore:
     def return_expired_leases(self) -> int:
         with self._conn() as conn:
             cur = conn.cursor()
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                 f"""
                 UPDATE {SCHEMA}.{INTAKE_TABLE}
                 SET state = 'QUEUED',
@@ -532,7 +532,7 @@ class PostgresTriggerIntakeStore:
             if agent_id is not None:
                 where = "WHERE agent_id = %s"
                 params.append(agent_id)
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                 f"""
                 SELECT
                     count(*) FILTER (WHERE state = 'QUEUED') AS queued,
@@ -561,7 +561,7 @@ class PostgresTriggerIntakeStore:
     def get_cursor(self, source_id: str, cursor_key: str) -> str | None:
         with self._conn() as conn:
             cur = conn.cursor()
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                 f"""
                 SELECT cursor_value
                 FROM {SCHEMA}.{CURSOR_TABLE}
@@ -583,7 +583,7 @@ class PostgresTriggerIntakeStore:
     ) -> None:
         with self._conn() as conn:
             cur = conn.cursor()
-            cur.execute(
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- SCHEMA/table names are module constants
                 f"""
                 INSERT INTO {SCHEMA}.{CURSOR_TABLE} (
                     source_id, cursor_key, agent_id, cursor_value, updated_at
