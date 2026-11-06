@@ -103,16 +103,16 @@ def section_tier(data_root: Path) -> list[str]:
         from scripts.lib.market_risk.cio_context import tier_line
 
         return [tier_line(load_market_risk_projection(project_root=data_root))]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- a failed section is reported by name, never crashes the brief
         return _unavailable("Market risk", exc)
 
 
 def section_deep_brief(loader: Optional[Callable[[], dict[str, Any]]] = None) -> list[str]:
     try:
         if loader is None:
-            from scripts.lib.market_risk.cio_context import deep_brief_on_demand as loader  # type: ignore[no-redef]
+            from scripts.lib.market_risk.cio_context import deep_brief_on_demand as loader  # type: ignore[no-redef] -- the default loader rebinds the optional parameter
         db = loader() or {}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- a failed section is reported by name, never crashes the brief
         return _unavailable("Deep brief", exc)
     if db.get("source") == "unavailable" or not (db.get("text") or db.get("facts")):
         return [f"Deep brief: unavailable ({db.get('reason') or 'no brief and none could be built'})"]
@@ -177,7 +177,7 @@ def section_almanac(session: date, rows: Optional[list[dict[str, Any]]] = None) 
             from scripts.lib.cio_calendar_facts import build_calendar_facts
 
             rows = build_calendar_facts()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- a failed section is reported by name, never crashes the brief
         return _unavailable("Calendar facts", exc)
     wanted = _SEASONAL_BY_MONTH.get(session.month, ("turn_of_month",)) + _CYCLE_FACTS
     by_id = {str(r.get("fact_id")): r for r in rows or [] if isinstance(r, dict)}
@@ -274,7 +274,7 @@ def section_opportunities(data_root: Path, items: Optional[list[dict[str, Any]]]
             ).read_projection()
             items = list((proj.get("items") or {}).values())
         ranked = op.sort_items([a for a in items if isinstance(a, dict)], "conviction")[:n]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- a failed section is reported by name, never crashes the brief
         return _unavailable("Opportunities", exc)
     if not ranked:
         return ["Top opportunities: unavailable (the opportunity board is empty or unreadable)"]
@@ -314,7 +314,7 @@ def build(
     try:
         session = next_session(today)
         session_line = f"Plan for the next session: {session:%A %Y-%m-%d}"
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreadable market calendar is printed as unknown, never crashes the brief
         session = today + timedelta(days=1)
         session_line = f"Plan for the next session: unknown (market calendar unavailable: {str(exc)[:80]})"
     try:

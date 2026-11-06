@@ -89,10 +89,20 @@ OPPS = [{"symbol": f"ZQ{i}", "sector": "Testing", "conviction": 50 + i, "stance"
 def roots(tmp_path: Path):
     state = tmp_path / "state"
     (state / "data" / "runtime" / "market_risk").mkdir(parents=True)
-    (state / "data" / "runtime" / "market_risk" / "latest.json").write_text(json.dumps(_snapshot()))
+    _write_snapshot(state, _snapshot())
     data = tmp_path / "project"
     data.mkdir()
     return data, state
+
+
+def _write_snapshot(state: Path, snap: dict) -> None:
+    """Write the synthetic snapshot the way the engine does: temp file, then os.replace."""
+    import os
+
+    target = state / "data" / "runtime" / "market_risk" / "latest.json"
+    tmp = target.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(snap))
+    os.replace(tmp, target)
 
 
 def _build(roots, **kw):
@@ -150,7 +160,7 @@ def test_implausible_group_move_says_data_check_failed(roots):
         {"label": "Bad Bar", "symbols": ["DDD4"], "state": "STRESS", "r5": -42.8, "rs5": -40.3, "dd20": -50.0})
     snap["sectors"]["groups"].append(
         {"label": "Deep Real", "symbols": ["EEE5"], "state": "STRESS", "r5": -24.0, "rs5": -20.0, "dd20": -40.0})
-    (state / "data" / "runtime" / "market_risk" / "latest.json").write_text(json.dumps(snap))
+    _write_snapshot(state, snap)
     text = _build(roots)
     assert "- Bad Bar (DDD4) stress: data check failed" in text
     assert "-42.8" not in text and "-50.0" not in text
