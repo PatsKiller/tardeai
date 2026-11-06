@@ -258,6 +258,31 @@ def test_main_reads_the_state_root_and_reports_a_torn_index_as_unknown(tmp_path,
     assert "verdict: NOT LIVE" in out
     # The other inputs in the fixture root were readable and fresh; only the index is unknown.
     assert "DETECT alive" in out and "DECIDE working" in out and "FIX no queue" in out
+    # codex-cloud P1 at monitor:347: the pasted block names the store it read, so a block from a fixture root, a
+    # second checkout or the wrong TRADEAI_STATE_ROOT can never pass for the live one (VERIFY_BEFORE_YOU_SAY).
+    assert f"root {tmp_path}" in out
+
+
+def test_an_unreadable_supervisor_is_unknown_not_an_attribute_error():
+    """codex-cloud P2 at monitor:247: ``_read`` returns None for a torn receipt, and every DECIDE read then called
+    ``supervisor.get`` -- the hourly line died with AttributeError instead of printing DECIDE unknown."""
+    block = build_block(index=_index(), supervisor=None, watchers=_watchers(),
+                        calls={"date": "2026-11-03", "count": 3},
+                        policy={"policy": {"max_model_calls_per_day": 240}}, fixer=_fixer(n=0), now=NOW,
+                        unread={"supervisor": "supervisor_last.json unreadable: invalid JSON"})
+    assert "DECIDE unknown" in block[4] and "supervisor_last.json unreadable" in block[4]
+    assert block[4].startswith("verdict: NOT LIVE")
+
+
+def test_the_header_names_the_state_root_only_when_the_caller_knows_it():
+    """The pure builder keeps its exact header for callers that do not read a store."""
+    eq_header = "SELF-HEAL · 17:07 UTC"
+    assert _ok()[0] == eq_header
+    block = build_block(index=_index(), supervisor=_supervisor(skips=(), dispatched=2, actions=1),
+                        watchers=_watchers(), calls={"date": "2026-11-03", "count": 3},
+                        policy={"policy": {"max_model_calls_per_day": 240}}, fixer=_fixer(n=0), now=NOW,
+                        state_root="/srv/state")
+    assert block[0] == eq_header + " · root /srv/state"
 
 
 # ── Codex Cloud round 2: a failed cycle is not healthy, a won't-fix is not a fix,

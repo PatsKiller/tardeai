@@ -131,11 +131,16 @@ def build_block(
     fixer: dict,
     now: datetime,
     unread: dict[str, str] | None = None,
+    state_root: str | None = None,
 ) -> list[str]:
     """The four pasted lines. Pure: every input is a parsed document, no I/O.
 
     ``unread`` optionally carries the reader's reason per source; a source whose document is
     missing or malformed without a reason is still rendered unknown, never as a zero.
+
+    ``state_root``, when the caller knows it, names the store the reading came from on the header line:
+    VERIFY_BEFORE_YOU_SAY asks a live status to show the check, and a block pasted from the wrong root (a
+    test fixture, a second checkout) looked identical to the real one (codex-cloud P1, monitor:347).
     """
     unread = unread or {}
     if now.tzinfo is None:
@@ -241,7 +246,11 @@ def build_block(
 
     # ── DECIDE ───────────────────────────────────────────────────────────────────────────────
     decide_ok = False
-    skipped = [] if supervisor_reason else (supervisor.get("skipped") or [])
+    # A receipt that could not be read is None, not an empty document (codex-cloud P2 at monitor:247): every read
+    # below went through ``supervisor.get`` even when ``supervisor_reason`` said there was nothing to read, so the
+    # hourly line died with AttributeError instead of printing DECIDE unknown. ``sup`` is the readable document only.
+    sup = supervisor if isinstance(supervisor, dict) else {}
+    skipped = [] if supervisor_reason else (sup.get("skipped") or [])
     cap_skips = sum(1 for s in skipped if isinstance(s, dict) and s.get("why") == CAP_SKIP)
     failed_skips = sum(1 for s in skipped if isinstance(s, dict) and s.get("why") in FAIL_SKIPS)
     # cx-openai D52 refresh at 749c8a216 (the ONE remaining item): a runbook action that exited non-zero is a FAILED
@@ -249,7 +258,7 @@ def build_block(
     # failed repair with an empty queue could publish LIVE. A non-zero action rc is evidence the self-healing did not do
     # its job, and it outranks the freshness checks for the same reason a stale receipt does.
     failed_actions = [
-        a for a in (supervisor.get("actions") or [])
+        a for a in (sup.get("actions") or [])
         if isinstance(a, dict) and _int_or_none(a.get("rc")) not in (None, 0)
     ]
     # cx-openai D52 KEEP_BLOCK at 3e4091ca1 (the ONE remaining item): the supervisor also records the rc of each
@@ -257,7 +266,7 @@ def build_block(
     # dispatch, no skips, no actions and an empty fixer queue published "LIVE / FIX no queue" -- a failed repair
     # reading as a healthy lane. An explicit non-zero rc is a failed dispatch; a missing rc is unknown, not zero.
     failed_dispatches = [
-        d for d in (supervisor.get("dispatched") or [])
+        d for d in (sup.get("dispatched") or [])
         if isinstance(d, dict) and _int_or_none(d.get("rc")) not in (None, 0)
     ]
     # cx-openai D52 KEEP_BLOCK at 76b6b01cd (the ONE item): a dispatch that exited 0 without PROVING work is failed
@@ -265,14 +274,14 @@ def build_block(
     # ``blocked[*].why``. The monitor read only the rc, so a fresh failed-work receipt with an empty fixer queue still
     # published LIVE. The producer's explicit verdict outranks the exit code.
     failed_dispatch_blocks = [
-        b for b in (supervisor.get("blocked") or [])
+        b for b in (sup.get("blocked") or [])
         if isinstance(b, dict) and str(b.get("why") or "").startswith(FAILED_DISPATCH_WHY)
     ]
     if supervisor_reason:
         decide_part = f"DECIDE unknown ({supervisor_reason})"
         supervisor_line = None
     else:
-        age = _age_minutes(supervisor.get("as_of"), now)
+        age = _age_minutes(sup.get("as_of"), now)
         if age is None:
             decide_part = "DECIDE unknown (supervisor_last.json unreadable: 'as_of' is not a timestamp)"
         elif age < 0:
@@ -280,11 +289,11 @@ def build_block(
         elif age > SUPERVISOR_FRESH_MIN:
             decide_part = f"DECIDE stale (supervisor receipt {age:.0f} min old)"
         elif failed_actions:
-            decide_part = (f"DECIDE failing ({len(failed_actions)} of {len(supervisor.get('actions') or [])} "
+            decide_part = (f"DECIDE failing ({len(failed_actions)} of {len(sup.get('actions') or [])} "
                            f"action(s) exited non-zero)")
         elif failed_dispatches:
             decide_part = (f"DECIDE failing ({len(failed_dispatches)} of "
-                           f"{len(supervisor.get('dispatched') or [])} dispatch(es) exited non-zero)")
+                           f"{len(sup.get('dispatched') or [])} dispatch(es) exited non-zero)")
         elif failed_dispatch_blocks:
             decide_part = (f"DECIDE failing ({len(failed_dispatch_blocks)} dispatch(es) exited without proving work)")
         elif failed_skips:
@@ -295,10 +304,10 @@ def build_block(
             decide_ok = True
             decide_part = "DECIDE working"
         supervisor_line = (
-            f"supervisor {supervisor.get('as_of', '?')}: "
-            f"considered {len(supervisor.get('considered') or [])}, "
-            f"actions {len(supervisor.get('actions') or [])}, "
-            f"dispatched {len(supervisor.get('dispatched') or [])}, "
+            f"supervisor {sup.get('as_of', '?')}: "
+            f"considered {len(sup.get('considered') or [])}, "
+            f"actions {len(sup.get('actions') or [])}, "
+            f"dispatched {len(sup.get('dispatched') or [])}, "
             f"skipped {len(skipped)} ({cap_skips} on {CAP_SKIP})"
         )
 
@@ -357,8 +366,11 @@ def build_block(
     alive = detect_ok and decide_ok and fix_ok and not data_reasons
     verdict = ("LIVE" if alive else "NOT LIVE") + " — " + " · ".join(parts)
 
+    header = f"SELF-HEAL · {now:%H:%M} UTC"
+    if state_root:
+        header += f" · root {state_root}"
     return [
-        f"SELF-HEAL · {now:%H:%M} UTC",
+        header,
         counts_line,
         supervisor_line,
         watchers_line,
@@ -381,7 +393,7 @@ def main(argv=None) -> int:
     }
     documents = {name: doc for name, (doc, _reason) in sources.items()}
     unread = {name: reason for name, (_doc, reason) in sources.items() if reason}
-    block = build_block(**documents, now=now, unread=unread)
+    block = build_block(**documents, now=now, unread=unread, state_root=str(root))
     print("\n".join(block))
     return 0
 
