@@ -200,6 +200,7 @@ export default function MetricStrip({ onDrill }: Props) {
   const todayMarketSession = todayPnl && Object.prototype.hasOwnProperty.call(todayPnl, 'market_session') ? todayPnl.market_session : overview?.market_session ?? null
   const todayHoverAccounts = (() => {
     const scope = todayPnl?.scope?.replace(/_/g, ' ') || portfolioScopeLabel || 'ALL ACCOUNTS'
+    if (todayState.reportedMove) return `${scope} · market-day move · ${overview?.today_move?.coverage_reason ?? 'coverage UNKNOWN'}`
     if (todayState.economicUnknown || todayRepresented == null || todayFunded == null) return `${scope} · coverage UNKNOWN`
     const cover = `${todayRepresented}/${todayFunded} funded accts`
     const emptyPart = todayEmpty?.length ? ` · ${todayEmpty.length} empty (${todayEmpty.join(', ')})` : ''
@@ -342,8 +343,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const autoLive = gate?.status === 'AUTHORIZED'
   const liveBadge = operatorLive ? '2FA LIVE' : autoLive ? 'AUTO LIVE' : 'AUTO BLOCKED'
   const liveBadgeBlocked = !operatorLive && !autoLive
-  const todayChange = todayState.economicUnknown ? null : overview?.today_change
-  const todayPct = todayState.economicUnknown ? null : overview?.today_pct
+  // One rule for the figure (lib/todayPnlState): proven economic total, else the reported
+  // market-day move (= Home Accounts 1D), else nothing. Never invented here.
+  const todayChange = todayState.change
+  const todayPct = todayState.pct
   const journalPnl = overview?.journal?.total_pnl
   const realizedPnl = overview?.journal?.realized_pnl
   const realizedCount = overview?.journal?.realized_count
@@ -507,26 +510,27 @@ export default function MetricStrip({ onDrill }: Props) {
       // A P&L is stamped with its OWN session, never the position clock.
       stale: todayState.reason,
       staleLabel: todayState.label,
-      asOf: todayPnl?.session_date ?? null,
-      asOfLabel: 'P&L session',
-      asOfNote: null,
+      asOf: todayState.sessionDate,
+      asOfLabel: todayState.reportedMove ? 'market-day session' : 'P&L session',
+      // The value is the holdings market-day move, not proven economic P&L: say so beside it.
+      asOfNote: todayState.reportedMove ? 'holdings move · economic P&L unproven' : null,
       tone: todayState.tone,
       valueSize: VALUE_BIG,
       minWidth: 150, maxWidth: 225,
-      undated: !todayPnl?.session_date,
+      undated: !todayState.sessionDate,
       color: todayState.tone === 'warn' ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
-      drill: { title: "Today's Move", subtitle: `${todayPnl?.session_date ? `session ${todayPnl.session_date}` : 'session UNDATED'} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
+      drill: { title: "Today's Move", subtitle: `${todayState.sessionDate ? `session ${todayState.sessionDate}` : 'session UNDATED'}${todayState.reportedMove ? ' · market-day move (= Accounts 1D)' : ''} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
-          { today_status: todayPnl?.status ?? 'UNKNOWN', today_gap: todayPnl?.gap ?? null, legacy_evidence: todayPnl?.legacy_evidence ?? null, stored_row_evidence: todayPnl?.stored_row_evidence ?? null, market_session_reference: todayMarketSession, market_latest_open_session: todayState.latestOpenSession, today_change: todayChange, today_pct: todayPct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: todayState.tone === 'warn', surface_state: todayState.label, surface_reason: todayState.reason },
+          { today_status: todayPnl?.status ?? 'UNKNOWN', today_gap: todayPnl?.gap ?? null, legacy_evidence: todayPnl?.legacy_evidence ?? null, stored_row_evidence: todayPnl?.stored_row_evidence ?? null, market_session_reference: todayMarketSession, market_latest_open_session: todayState.latestOpenSession, today_change: todayChange, today_pct: todayPct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, displayed_session_date: todayState.sessionDate, displayed_session_source: todayState.sessionSource, reported_move: todayState.reportedMove ? overview.today_move : null, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: todayState.tone === 'warn', surface_state: todayState.label, surface_reason: todayState.reason },
           ...Object.entries(overview.today_by_account ?? {})
             .sort((a: any, b: any) => Math.abs(b[1].change) - Math.abs(a[1].change))
             .map(([acct, d]: any) => ({
-              account: acct, today_change: todayState.economicUnknown ? null : d.change,
+              account: acct, today_change: todayState.economicUnknown ? (todayState.reportedMove ? (overview.today_move?.by_account?.[acct]?.change ?? null) : null) : d.change,
               today_pct: !todayState.economicUnknown && d.pct != null ? `${d.pct >= 0 ? '+' : ''}${d.pct}%` : null,
               account_value: d.value, top_movers: d.top_movers || null,
             })),
         ] : [] },
-      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · P&L session: ${todayPnl?.session_date ?? 'UNDATED'}${todayPnl?.session_source ? ` (from ${todayPnl.session_source})` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${todayPnl?.coverage_reason ?? '—'}\n · latest opened market session (calendar reference only): ${todayState.latestOpenSession ?? 'UNKNOWN'}\n · Original calculation evidence and current stored-row evidence are separate, unverified economic P&L; available in the drill.${todayState.reason ? `\n\nTODAY STATE: ${todayState.label} — ${todayState.reason}` : ''}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ? (fmtAsOf(posNewest) ?? posNewest) : 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
+      tip: `Today's net change ($ and %).\n\nACCOUNTS (hover):\n · ${todayHoverAccounts ?? '—'}\n\n · ${todayState.reportedMove ? 'market-day session' : 'P&L session'}: ${todayState.sessionDate ?? 'UNDATED'}${todayState.sessionSource ? ` (from ${todayState.sessionSource})` : ''}${todayState.moveNote ? `\n · ${todayState.moveNote}` : ''}\n · calculated: ${todayPnl?.calculated_at ?? '—'}\n · marks: ${todayPnl?.mark_source ?? '—'}\n · coverage: ${(todayState.reportedMove ? overview?.today_move?.coverage_reason : null) ?? todayPnl?.coverage_reason ?? '—'}\n · latest opened market session (calendar reference only): ${todayState.latestOpenSession ?? 'UNKNOWN'}\n · Original calculation evidence and current stored-row evidence are separate, unverified economic P&L; available in the drill.${todayState.reason ? `\n\nTODAY STATE: ${todayState.label} — ${todayState.reason}` : ''}\n\nThis is the P&L's OWN session — not the date the share counts were observed (${posNewest ? (fmtAsOf(posNewest) ?? posNewest) : 'UNDATED'}). Click for the per-account breakdown. Refreshes every 2 min.`,
     },
     {
       // "53.3% · 169 · $55,429" was three unlabelled numbers. A reader cannot tell which

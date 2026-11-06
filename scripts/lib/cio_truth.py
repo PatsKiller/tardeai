@@ -1333,6 +1333,55 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
     return out
 
 
+_TODAY_MOVE_NOTE = (
+    "Holdings market-day move: the same figure as /api/v2/portfolio/performance periods.1D "
+    "(Home Accounts 1D). Economic day P&L (closed/intraday fills, cash/loan) stays unproven (OI-044)."
+)
+
+
+def today_move_payload(market_day: dict | None, account_days: dict | None, today_pnl: dict) -> dict:
+    """TODAY as the book's market-day move, from the Accounts-table source.
+
+    LIVEFIX-H 2026-11-06: the header and Home summary read only the economic
+    today_change, which overview_payload always nulls (OI-044), so TODAY showed
+    "ECONOMIC UNKNOWN / session UNDATED" while Accounts showed the 1D move from
+    /portfolio/performance. This block republishes THAT figure (never a new
+    sum) with its mark session and the stored-row coverage census, so the
+    surfaces agree and any gap is named beside the number instead of hiding it.
+    `market_day` / `account_days` are portfolio_market_day / account_market_days
+    over the same holdings the performance endpoint uses.
+    """
+    census = (today_pnl.get("stored_row_evidence") or {}).get("census") or {}
+    session = today_pnl.get("mark_session_date")
+    change = _number((market_day or {}).get("change"))
+    by_account = {}
+    for acct, row in sorted((account_days or {}).items()):
+        value = _number((row or {}).get("change")) if isinstance(row, dict) else None
+        by_account[canonical_key(acct) or acct] = {
+            "change": value, "change_pct": _number((row or {}).get("change_pct")) if isinstance(row, dict) else None}
+    missing = list(census.get("missing_accounts") or [])
+    partial = list(census.get("partial_accounts") or [])
+    out = {"contract_version": "TodayMove@v1", "scope": "ALL_ACCOUNTS_HOLDINGS_MARKET_DAY",
+           "source": "/api/v2/portfolio/performance periods.1D (portfolio_market_day)",
+           "status": "REPORTED" if change is not None else "UNKNOWN",
+           "change": change,
+           "change_pct": _number((market_day or {}).get("change_pct")) if change is not None else None,
+           "by_account": by_account,
+           "session_date": session if change is not None else None,
+           "session_source": today_pnl.get("mark_session_source") if change is not None and session else None,
+           "mark_batch_at": today_pnl.get("mark_batch_at"), "mark_source": today_pnl.get("mark_source"),
+           "market_session": deepcopy(today_pnl.get("market_session")),
+           "economic_status": today_pnl.get("status"),
+           "complete": bool(census) and not missing and not partial,
+           "missing_accounts": missing, "partial_accounts": partial,
+           "unknown_rows": census.get("unknown_rows"),
+           "coverage_reason": census.get("coverage_reason") or "stored-row coverage census unavailable",
+           "note": _TODAY_MOVE_NOTE, "gap": None}
+    if change is None:
+        out["gap"] = {"reason": "performance market-day 1D unavailable (no holdings value)"}
+    return out
+
+
 def basis_for(position: dict, *, mark=None) -> dict:
     """Read the declared broker basis; partial/pre-window basis stays unknown."""
     broker = _number(position.get("cost_basis_broker"))

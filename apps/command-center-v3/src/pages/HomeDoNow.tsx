@@ -38,6 +38,7 @@ import { MarketRiskBanner, MarketRiskCompact, MarketRiskFact } from '../componen
 import { MarketRiskSummary } from '../components/home/MarketRiskSummary'
 import { unwrapMarketRisk } from '../lib/marketRisk'
 import { vixFreshness } from '../lib/vixFreshness'
+import { deriveTodayPnlState } from '../lib/todayPnlState'
 
 const unwrap = (d: any) => (d?.data && typeof d.data === 'object' && !Array.isArray(d.data) ? d.data : d)
 const signTone = (v: number | null | undefined): string => (v == null ? TOKENS.text[2] : v < 0 ? TOKENS.danger : v > 0 ? TOKENS.success : TOKENS.text[2])
@@ -161,8 +162,11 @@ export default function HomeDoNow() {
     cio, overview, cioApi.error, { positionsStale: cioApi.stale, approvalsStale: overviewStale || !!overviewError })
   const pos = positionsFreshness(overview, now)
   const pv: number | null = overview?.portfolio_value ?? null
-  const todayChg: number | null = overview?.today_change ?? null
-  const todayPct: number | null = overview?.today_pct ?? null
+  // Same rule as the header TODAY tile (lib/todayPnlState): economic total when proven, else the
+  // reported market-day move — the figure the Accounts table shows as 1D. Never invented.
+  const todayState = deriveTodayPnlState(overview)
+  const todayChg: number | null = todayState.change
+  const todayPct: number | null = todayState.pct
   const ytd = perf?.periods?.YTD
   const ytdPreferDisp = Boolean(ytd?.nav_is_not_market_only || ytd?.display_change != null)
   const ytdChg: number | null = (ytdPreferDisp && ytd?.display_change != null ? ytd.display_change : ytd?.change) ?? null
@@ -227,7 +231,9 @@ export default function HomeDoNow() {
         <HeadFact name="Portfolio" big testId="home-portfolio" value={pv != null ? money(pv) : ovLoading ? '…' : '—'}
           tip={`Total of all accounts, broker-reported and repriced (/api/v2/overview portfolio_value; holdings.json). ${overview?.position_count ?? '?'} positions.`} />
         <HeadFact name="Today" testId="home-today" color={signTone(todayChg)} value={todayChg != null ? `${money(todayChg, true)} · ${pct(todayPct)}` : '—'}
-          tip="Today's change across all accounts (/api/v2/overview today_change / today_pct: broker snapshot day change, repriced when missing)." />
+          tip={todayState.reportedMove
+            ? `Today's market-day move across all accounts (/api/v2/overview today_move = /api/v2/portfolio/performance periods.1D, the Accounts 1D) · session ${todayState.sessionDate ?? 'UNDATED'}${todayState.label ? ` · ${todayState.label}` : ''}. ${todayState.moveNote ?? ''}`
+            : `Today's change across all accounts (/api/v2/overview today_change / today_pct).${todayState.reason ? ` ${todayState.reason}` : ''}`} />
         <HeadFact name="YTD" testId="home-ytd" color={signTone(ytdChg)} value={ytdChg != null ? `${money(ytdChg, true)}${ytdPct != null ? ` · ${pct(ytdPct)}` : ''}${ytdPreferDisp ? ' ≈' : ''}` : '—'}
           tip={`Year to date, all accounts (/api/v2/portfolio/performance periods.YTD).${ytdPreferDisp ? ' ≈ = market change excluding transfers (display_change), the same rule as Portfolio → Returns.' : ''}${ytd?.adjustment_note ? ` ${ytd.adjustment_note}` : ''}`} />
         {/* Design home/v002 §1: the "Market" fact is renamed MARKET RISK; its regime/VIX/sectors text moved to "Market in one look". */}
