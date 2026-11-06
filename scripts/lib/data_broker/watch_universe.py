@@ -77,6 +77,7 @@ def build_universe(
     q: dict[str, Any],
     now: datetime,
     meta: Optional[dict[str, Any]] = None,
+    ranking_context: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Pure: curator items → the filtered, sorted, paged Watch view with count chips."""
     from lib.data_broker import opportunity as op
@@ -88,21 +89,37 @@ def build_universe(
         q.setdefault("sort", "formerly_held_first")
     else:
         q = op.apply_preset(q)
-    rows = [overlay(a, facts_for(s)) for s, a in items.items() if isinstance(a, dict)]
-    base = [r for r in rows if op.passes(r, q)]
+    from lib.data_broker.opportunity_eligibility import qualify, sort_qualified
+
+    rows, top_list = qualify(
+        [overlay(a, facts_for(s)) for s, a in items.items() if isinstance(a, dict)],
+        ranking_context or {},
+        op.load_config(),
+        now=now,
+    )
+    research_query = {key: value for key, value in q.items() if key != "min_coverage"}
+    pos_q = wpf.active_filters(q)
+    research = sort_qualified(
+        [
+            r
+            for r in rows
+            if not r["top_eligibility"]["eligible"] and op.passes(r, research_query) and wpf.passes(r, pos_q, now=now)
+        ],
+        "conviction",
+    )
+    base = [r for r in rows if op.passes(r, q) and (preset != "top5" or r["top_eligibility"]["eligible"])]
     if preset == PRESET_REENTRY:
         base = [r for r in base if r.get("position_state") == "formerly_held" or r.get("type") == "re_entry"]
-    pos_q = wpf.active_filters(q)
     matched = [r for r in base if wpf.passes(r, pos_q, now=now)]
     sort = str(q.get("sort") or "conviction")
     if sort in wpf.SORTS:
         ranked = sorted(matched, key=lambda r: (*wpf.sort_key(sort, r, r.get("conviction")), r["symbol"]))
     else:
-        ranked = op.sort_items(matched, sort)
+        ranked = sort_qualified(matched, sort)
     try:
-        limit = max(1, min(200, int(q.get("limit") or 100)))
+        limit = max(1, min(5 if preset == "top5" else 200, int(q.get("limit") or 100)))
     except (TypeError, ValueError):
-        limit = 100
+        limit = 5 if preset == "top5" else 100
     try:
         page = max(1, int(q.get("page") or 1))
     except (TypeError, ValueError):
@@ -128,10 +145,18 @@ def build_universe(
         "position_filters": wpf.FILTERS,
         "position_sorts": wpf.SORTS,
         "items": ranked[(page - 1) * limit : page * limit],
+        "top_list": top_list,
+        "research_candidates": research[:5] if preset == "top5" else [],
         "authority": "READ_ONLY_ADVISORY",
         "mbi_behavior": 0,
         "provider_calls": 0,
     }
+
+
+def _ranking_context(symbols, technical_symbols=None):
+    from lib.data_broker.opportunity_eligibility import read_contexts
+
+    return read_contexts(symbols, technical_symbols=technical_symbols)
 
 
 def list_watch_universe(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -153,7 +178,8 @@ def list_watch_universe(query: Optional[dict[str, Any]] = None) -> dict[str, Any
         "as_of": pm.get("as_of"),
         "run_id": pm.get("run_id"),
         "store": pm.get("store"),
-        "curated_by": "cio_opportunity_curator → CIO memory",
+        "curated_by": None,
+        "ranked_by": "Automated factor score; CIO research required for top status",
         "ranking": "curator rank (conviction order)",
         "held": {
             "source": g.get("held_source"),
@@ -162,7 +188,15 @@ def list_watch_universe(query: Optional[dict[str, Any]] = None) -> dict[str, Any
         },
         "position_facts": wpf.public(pmeta),
     }
-    out = build_universe(g.get("opps") or {}, facts_for=pmeta["facts_for"], q=q, now=now, meta=meta)
+    from lib.data_broker import opportunity as op
+    from lib.data_broker.opportunity_eligibility import technical_candidates
+
+    opportunities = g.get("opps") or {}
+    inputs = _ranking_context(
+        list(opportunities),
+        technical_candidates(list(opportunities.values()), op.load_config(), op.apply_preset(dict(q))),
+    )
+    out = build_universe(opportunities, facts_for=pmeta["facts_for"], q=q, now=now, meta=meta, ranking_context=inputs)
     mine = g.get("operator") or {}
     for it in out["items"]:  # the star toggle on every row (operator 2026-10-23)
         m = mine.get(it["symbol"])

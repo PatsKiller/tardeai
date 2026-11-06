@@ -1215,37 +1215,59 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
 OPPORTUNITY_CONFIG = Path(__file__).resolve().parents[2] / "config" / "opportunity_conviction.yaml"
 
 
-def home_best_opportunities(opp_items: dict[str, dict], *, preset: str = "top5") -> list[dict[str, Any]]:
-    """What Home "Best opportunities" shows: /api/v3/opportunities?preset=top5 over the same projection.
+def home_best_opportunities(capture: Optional[dict[str, Any]]) -> Optional[list[dict[str, Any]]]:
+    """Consume a captured canonical Home selection; None means unknown, [] means measured empty.
 
-    Reads the preset from config/opportunity_conviction.yaml and applies its min_conviction / min_rr /
-    min_coverage bars, sorted by conviction — the same rule as ``lib.data_broker.opportunity.passes`` /
-    ``sort_items`` for these keys (a test pins the equivalence). Not imported from there: that module's import
-    closure reaches market_quote -> broker transport, which a dispatched lane must not import (§23.14).
+    The caller supplies /api/v3/opportunities?preset=top5 as data. The dispatched shadow lane never imports
+    that reader (its closure reaches broker transport, §23.14) or re-derives eligibility from curator scores.
+    Scope and qualification receipts are validated as one capture; dropping malformed rows would invent a
+    complete-looking partial answer. Keep the producer's ordering and CIO stance receipt unchanged.
     """
-    import yaml
+    if (not isinstance(capture, dict) or capture.get("schema") != "OpportunityList@v1"
+            or capture.get("ok") is not True or capture.get("selection_scope") != "home_top5"):
+        return None
 
-    try:
-        cfg = yaml.safe_load(OPPORTUNITY_CONFIG.read_text(encoding="utf-8")) or {}
-    except (OSError, ValueError):
-        cfg = {}
-    q = (cfg.get("presets") or {}).get(preset) or {"min_conviction": 80, "min_rr": 2.0, "min_coverage": 0.8,
-                                                   "limit": 5, "sort": "conviction"}
+    def dated(value: Any) -> bool:
+        try:
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00")).tzinfo is not None
+        except (TypeError, ValueError):
+            return False
 
-    def ok(a: dict[str, Any]) -> bool:
-        for key, val in (("min_conviction", a.get("conviction")), ("min_rr", (a.get("risk_reward") or {}).get("rr")),
-                         ("min_coverage", a.get("coverage"))):
-            if q.get(key) is not None and (val is None or float(val) < float(q[key])):
-                return False
-        return True
-
-    rows = [a for a in opp_items.values() if ok(a)]
-    rows.sort(key=lambda a: (a.get("conviction") is None, -(a.get("conviction") or 0)))
-    return rows[: int(q.get("limit") or 5)]
+    rows = capture.get("items")
+    if not isinstance(rows, list) or len(rows) > 5 or not dated(capture.get("as_of")):
+        return None
+    symbols = set()
+    normalized = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return None
+        value = row.get("conviction")
+        if isinstance(value, bool):
+            return None
+        try:
+            conviction = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        # The producer accepts finite scores in 0..100; this is validation, not a new ranking minimum.
+        if not 0 <= conviction <= 100:
+            return None
+        symbol, rank = row.get("symbol"), row.get("rank")
+        eligibility, review = row.get("top_eligibility"), row.get("cio_review")
+        if (not isinstance(symbol, str) or not symbol.strip() or symbol in symbols
+                or not isinstance(rank, int) or isinstance(rank, bool) or rank < 1
+                or not isinstance(eligibility, dict) or eligibility.get("eligible") is not True
+                or not isinstance(review, dict) or review.get("reviewed") is not True
+                or not isinstance(review.get("stance"), str) or not review["stance"].strip()
+                or not dated(review.get("as_of"))):
+            return None
+        symbols.add(symbol)
+        normalized.append({**row, "conviction": conviction})
+    return normalized
 
 
 def compare(build_doc: dict[str, Any], state_root: Path, *, watch_top_ideas: Optional[list[str]] = None,
-            watch_source: Optional[str] = None, top_n: int = 50, now: Optional[datetime] = None) -> dict[str, Any]:
+            watch_source: Optional[str] = None, top_n: int = 50, now: Optional[datetime] = None,
+            home_opportunities: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Per-symbol agreements / conflicts between the shadow prospect and Home, Watch and Telegram."""
     now = now or datetime.now(timezone.utc)
     opp = load_file_inputs(Path(state_root))["opportunity"]
@@ -1254,27 +1276,31 @@ def compare(build_doc: dict[str, Any], state_root: Path, *, watch_top_ideas: Opt
     if _ts(opp.get("as_of")):
         opp_age_h = round((now - _ts(opp["as_of"])).total_seconds() / 3600.0, 2)
     telegram_live = opp_age_h is not None and opp_age_h <= 26
-    home5 = [a.get("symbol") for a in home_best_opportunities(opp_items)]
-    home_rank = {str(a.get("symbol")).upper(): a.get("rank") for a in opp_items.values() if a.get("rank")}
+    captured_home = home_best_opportunities(home_opportunities)
+    home_known = captured_home is not None
+    home_by_symbol = {a["symbol"]: a for a in captured_home or []}
+    home5 = list(home_by_symbol)
     watch = [str(s).upper() for s in (watch_top_ideas or [])]
     by_sym = {r["symbol"]: r for r in build_doc["prospects"]}
     shadow_top = [r["symbol"] for r in build_doc["prospects"][:top_n]]
-    home_top = [s for s, _ in sorted(home_rank.items(), key=lambda kv: kv[1])[:top_n]]
+    home_top = home5[:top_n]
     subjects = list(dict.fromkeys(shadow_top + home5 + watch))
 
     rows = []
     for sym in subjects:
         p, a = by_sym.get(sym), opp_items.get(sym) or {}
+        h = home_by_symbol.get(sym)
+        home_stance = ((h or {}).get("cio_review") or {}).get("stance")
         sh_post = posture((p or {}).get("stance"))
-        home_post = posture(a.get("stance"))
+        home_post = posture(home_stance)
         verdict = []
         if p is None:
             verdict.append("no_shadow_prospect (identity unresolved or not in universe)")
         else:
-            if a and sh_post and home_post and sh_post != home_post:
-                verdict.append(f"stance: shadow {p['stance']} vs home {a.get('stance')}")
-            if a.get("conviction") is not None and abs(float(p["conviction"]) - float(a["conviction"])) >= 10:
-                verdict.append(f"conviction: shadow {p['conviction']} vs home {a.get('conviction')}")
+            if h and sh_post and home_post and sh_post != home_post:
+                verdict.append(f"stance: shadow {p['stance']} vs home {home_stance}")
+            if h and h.get("conviction") is not None and abs(float(p["conviction"]) - float(h["conviction"])) >= 10:
+                verdict.append(f"conviction: shadow {p['conviction']} vs home {h.get('conviction')}")
             if p["conflicts"]:
                 verdict.append("inputs disagree: " + ", ".join(sorted({c['field'] for c in p['conflicts']})))
             if sym in watch and p["stage"] in ("watching",) and posture(p["stance"]) != "buy":
@@ -1284,8 +1310,9 @@ def compare(build_doc: dict[str, Any], state_root: Path, *, watch_top_ideas: Opt
             "shadow": None if p is None else {"rank": p.get("shadow_rank"), "stage": p["stage"],
                                               "stance": p["stance"], "conviction": p["conviction"],
                                               "conflicts": [c["field"] for c in p["conflicts"]]},
-            "home": {"rank": a.get("rank"), "conviction": a.get("conviction"), "stance": a.get("stance"),
-                     "in_best_opportunities": sym in home5} if a else None,
+            "home": {"rank": h.get("rank"), "conviction": h.get("conviction"), "stance": home_stance,
+                     "in_best_opportunities": True} if h else None,
+            "home_membership": (sym in home5) if home_known else None,
             "watch": {"top_idea_rank": (watch.index(sym) + 1) if sym in watch else None} if watch_top_ideas is not None
             else None,
             "telegram": ({"conviction_line": f"Conviction {round(float(a['conviction']))}/100 · #{a.get('rank')} · "
@@ -1293,16 +1320,17 @@ def compare(build_doc: dict[str, Any], state_root: Path, *, watch_top_ideas: Opt
                                                                          and a.get("conviction") is not None)
                          else {"conviction_line": None,
                                "why": "projection older than 26h" if a else "symbol not curated"}),
-            "agrees": not verdict,
+            "agrees": False if verdict else (True if home_known else None),
             "differences": verdict,
         })
     summary = {
         "subjects": len(rows),
-        "agree": sum(1 for r in rows if r["agrees"]),
-        "differ": sum(1 for r in rows if not r["agrees"]),
-        "shadow_top_vs_home_top_overlap": len(set(shadow_top) & set(home_top)),
-        "home_best_opportunities": home5,
-        "home_best_in_shadow_top": [s for s in home5 if s in shadow_top],
+        "agree": sum(1 for r in rows if r["agrees"] is True),
+        "differ": sum(1 for r in rows if r["agrees"] is False),
+        "unverified": sum(1 for r in rows if r["agrees"] is None),
+        "shadow_top_vs_home_top_overlap": len(set(shadow_top) & set(home_top)) if home_known else None,
+        "home_best_opportunities": home5 if home_known else None,
+        "home_best_in_shadow_top": [s for s in home5 if s in shadow_top] if home_known else None,
         "watch_top_ideas": watch if watch_top_ideas is not None else None,
         "watch_in_shadow_top": [s for s in watch if s in shadow_top] if watch_top_ideas is not None else None,
         "stance_differences": sum(1 for r in rows if any(d.startswith("stance") for d in r["differences"])),
@@ -1314,8 +1342,10 @@ def compare(build_doc: dict[str, Any], state_root: Path, *, watch_top_ideas: Opt
         "as_of": _iso(now),
         "top_n": top_n,
         "surfaces": {
-            "home": {"source": "data/cio/cio_opportunity_projection.json via opportunity preset top5 "
-                               "(/api/v3/opportunities, HomeDecision BestOpportunities)", "as_of": opp.get("as_of")},
+            "home": {"source": "provided canonical Home top5 capture" if home_known else
+                               "not captured; raw curator scores do not establish Home eligibility",
+                     "as_of": home_opportunities.get("as_of") if home_known else None,
+                     "state": "available" if home_known else "unavailable"},
             "watch": {"source": watch_source or "not captured (the Watch read path rebuilds the re-entry desk, "
                                                 "which writes; the shadow lane never calls it)"},
             "telegram": {"source": "scripts/lib/opportunity_alert.enrich reads the same projection; suppressed "

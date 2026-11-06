@@ -14,6 +14,7 @@ operator grants the cio_prospect registry row and the P1 migration (§17):
    REVIEW, §23.19); this file pins the builder it runs.
 5. The read-only data-broker projection cio_prospect (shadow labelled, say_so on gap, per-row stale).
 """
+
 from __future__ import annotations
 
 import ast
@@ -39,7 +40,7 @@ from scripts.lib import cio_prospect_watchlist_rules as W  # noqa: E402
 
 UP = ROOT / "migrations/2026_10_22_cio_prospect.sql"
 DOWN = ROOT / "migrations/2026_10_22_cio_prospect.down.sql"
-NOW = datetime(2026, 10, 22, 19, 45, tzinfo=timezone.utc)   # 15:45 ET, market open
+NOW = datetime(2026, 10, 22, 19, 45, tzinfo=timezone.utc)  # 15:45 ET, market open
 G_NVDA, I_NVDA = "5f0c6a3e-1111-5111-8111-000000000001", "5f0c6a3e-1111-5111-8111-0000000000a1"
 G_ACME, I_ACME = "5f0c6a3e-1111-5111-8111-000000000002", "5f0c6a3e-1111-5111-8111-0000000000a2"
 G_BETA, I_BETA = "5f0c6a3e-1111-5111-8111-000000000003", "5f0c6a3e-1111-5111-8111-0000000000a3"
@@ -50,8 +51,13 @@ def _identity(sym: str) -> dict:
     if sym in IDS:
         g, i = IDS[sym]
         return {"symbol": sym, "security_guid": g, "issuer_guid": i, "subject_guid": g, "identity_status": "CONFIRMED"}
-    return {"symbol": sym, "security_guid": None, "issuer_guid": None, "identity_status": "UNRESOLVED",
-            "identity_lookup_reason": "not in registry"}
+    return {
+        "symbol": sym,
+        "security_guid": None,
+        "issuer_guid": None,
+        "identity_status": "UNRESOLVED",
+        "identity_lookup_reason": "not in registry",
+    }
 
 
 # ── 1. migration ─────────────────────────────────────────────────────────────
@@ -59,6 +65,7 @@ def _identity(sym: str) -> dict:
 
 def test_plan_tool_static_checks_pass_and_name_the_grants():
     from scripts import cio_prospect_migration_plan as plan
+
     doc = plan.build_plan()
     assert doc["static_checks"] == {"ok": True, "failures": []}
     assert doc["applies"] is False and doc["db_contact"] is False
@@ -70,11 +77,16 @@ def test_plan_tool_static_checks_pass_and_name_the_grants():
 
 def test_plan_tool_catches_a_drop_and_a_delete():
     from scripts import cio_prospect_migration_plan as plan
+
     up, down = UP.read_text(), DOWN.read_text()
     assert plan.static_checks(up + "\nDROP TABLE cio_prospect;", down)
     assert plan.static_checks(up, down + "\nDELETE FROM cio_prospect_archived_20261022;")
-    assert plan.static_checks(up.replace("GRANT SELECT, INSERT, UPDATE ON cio_prospect TO trade_ai;",
-                                         "GRANT ALL ON cio_prospect TO trade_ai;"), down)
+    assert plan.static_checks(
+        up.replace(
+            "GRANT SELECT, INSERT, UPDATE ON cio_prospect TO trade_ai;", "GRANT ALL ON cio_prospect TO trade_ai;"
+        ),
+        down,
+    )
 
 
 def _bin() -> Path | None:
@@ -89,12 +101,14 @@ def _bin() -> Path | None:
 BIN = _bin()
 try:
     import psycopg2  # noqa: F401
+
     HAVE_PSYCOPG2 = True
 except ImportError:  # CI image without the driver: the static checks still run
     HAVE_PSYCOPG2 = False
 PSQL = shutil.which("psql") or (str(BIN / "psql") if BIN and (BIN / "psql").is_file() else None)
-NEEDS_PG = pytest.mark.skipif(BIN is None or PSQL is None or not HAVE_PSYCOPG2,
-                              reason="no PostgreSQL server binaries or psycopg2 on this host")
+NEEDS_PG = pytest.mark.skipif(
+    BIN is None or PSQL is None or not HAVE_PSYCOPG2, reason="no PostgreSQL server binaries or psycopg2 on this host"
+)
 
 
 @pytest.fixture(scope="module")
@@ -105,11 +119,19 @@ def cluster():
     env = {**os.environ, "LC_ALL": "C"}
     for k in ("PGHOST", "PGPORT", "PGUSER", "PGDATABASE", "PGPASSWORD", "PGSERVICE", "PGPASSFILE"):
         env.pop(k, None)
-    subprocess.run([str(BIN / "initdb"), "-D", str(data), "-U", "cpx_admin", "--auth=trust", "-E", "UTF8"],
-                   check=True, capture_output=True, env=env)
+    subprocess.run(
+        [str(BIN / "initdb"), "-D", str(data), "-U", "cpx_admin", "--auth=trust", "-E", "UTF8"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
     opts = f"-c listen_addresses='' -c unix_socket_directories={sock} -p 55433 -c fsync=off"
-    subprocess.run([str(BIN / "pg_ctl"), "-D", str(data), "-o", opts, "-l", str(base / "log"), "-w", "start"],
-                   check=True, capture_output=True, env=env)
+    subprocess.run(
+        [str(BIN / "pg_ctl"), "-D", str(data), "-o", opts, "-l", str(base / "log"), "-w", "start"],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
 
     def psql(user, db, sql=None, file=None):
         argv = [PSQL, "-X", "-h", str(sock), "-p", "55433", "-U", user, "-d", db, "-v", "ON_ERROR_STOP=1", "-tA"]
@@ -133,13 +155,28 @@ def _prospect_record(sym="NVDA", stage="held", stance="ADD", **over) -> dict:
     rec = ir.new_record("HELD", sym)
     rec.update({"security_guid": g, "issuer_guid": i, "subject_guid": g})
     block = {
-        "security_guid": g, "issuer_guid": i, "stage": stage, "stance": stance,
-        "conviction_components": {"opportunity_score": {"value": 80.0, "weight": 0.5, "source": "opp",
-                                                        "evidence_at": "2026-10-22T19:30:00+00:00"},
-                                  "hermes_score": {"value": 60.0, "weight": 0.5, "source": "hermes",
-                                                   "evidence_at": "2026-10-22T19:30:00+00:00"}},
-        "evidence_at": "2026-10-22T19:30:00+00:00", "expires_at": "2026-10-22T20:00:00+00:00",
-        "conflicts": [], "whats_missing": [],
+        "security_guid": g,
+        "issuer_guid": i,
+        "stage": stage,
+        "stance": stance,
+        "conviction_components": {
+            "opportunity_score": {
+                "value": 80.0,
+                "weight": 0.5,
+                "source": "opp",
+                "evidence_at": "2026-10-22T19:30:00+00:00",
+            },
+            "hermes_score": {
+                "value": 60.0,
+                "weight": 0.5,
+                "source": "hermes",
+                "evidence_at": "2026-10-22T19:30:00+00:00",
+            },
+        },
+        "evidence_at": "2026-10-22T19:30:00+00:00",
+        "expires_at": "2026-10-22T20:00:00+00:00",
+        "conflicts": [],
+        "whats_missing": [],
     }
     block.update(over)
     out, _ = ir.apply_prospect(rec, prospect=block)
@@ -151,11 +188,14 @@ def test_migration_and_backend_on_a_throwaway_cluster(cluster):
     psql = cluster
     rc, out = psql("cpx_admin", "cpx_scratch", file=UP)
     assert rc == 0, out
-    assert psql("cpx_admin", "cpx_scratch", file=UP)[0] == 0          # idempotent
-    rc, out = psql("cpx_admin", "cpx_scratch",
-                   "SELECT table_name || ':' || string_agg(privilege_type, ',' ORDER BY privilege_type) "
-                   "FROM information_schema.role_table_grants WHERE grantee = 'trade_ai' GROUP BY table_name "
-                   "ORDER BY table_name")
+    assert psql("cpx_admin", "cpx_scratch", file=UP)[0] == 0  # idempotent
+    rc, out = psql(
+        "cpx_admin",
+        "cpx_scratch",
+        "SELECT table_name || ':' || string_agg(privilege_type, ',' ORDER BY privilege_type) "
+        "FROM information_schema.role_table_grants WHERE grantee = 'trade_ai' GROUP BY table_name "
+        "ORDER BY table_name",
+    )
     assert out.splitlines() == ["cio_prospect:INSERT,SELECT,UPDATE", "cio_prospect_events:INSERT,SELECT"], out
 
     import psycopg2
@@ -187,10 +227,14 @@ def test_migration_and_backend_on_a_throwaway_cluster(cluster):
         rc, out = psql("trade_ai", "cpx_scratch", sql)
         assert rc != 0 and "violates check constraint" in out, (sql, out)
     # never deleted; events append-only, even for the owner
-    for user, sql in (("trade_ai", "DELETE FROM cio_prospect"), ("cpx_admin", "DELETE FROM cio_prospect"),
-                      ("cpx_admin", "DELETE FROM cio_prospect_events"),
-                      ("cpx_admin", "UPDATE cio_prospect_events SET writer = 'x'"),
-                      ("cpx_admin", "TRUNCATE cio_prospect_events"), ("trade_ai", "DROP TABLE cio_prospect")):
+    for user, sql in (
+        ("trade_ai", "DELETE FROM cio_prospect"),
+        ("cpx_admin", "DELETE FROM cio_prospect"),
+        ("cpx_admin", "DELETE FROM cio_prospect_events"),
+        ("cpx_admin", "UPDATE cio_prospect_events SET writer = 'x'"),
+        ("cpx_admin", "TRUNCATE cio_prospect_events"),
+        ("trade_ai", "DROP TABLE cio_prospect"),
+    ):
         rc, out = psql(user, "cpx_scratch", sql)
         assert rc != 0, (user, sql, out)
     # down: archived, never dropped; writes withdrawn; idempotent
@@ -206,19 +250,32 @@ def test_migration_and_backend_on_a_throwaway_cluster(cluster):
 
 
 def test_behavior_fields_unchanged_and_disjoint_from_the_prospect():
-    assert ir.BEHAVIOR_FIELDS == ("recommended_delta_usd", "size_usd", "shares", "qty", "order",
-                                  "stop", "limit", "target_weight_pct", "trade", "execution")
+    assert ir.BEHAVIOR_FIELDS == (
+        "recommended_delta_usd",
+        "size_usd",
+        "shares",
+        "qty",
+        "order",
+        "stop",
+        "limit",
+        "target_weight_pct",
+        "trade",
+        "execution",
+    )
     assert not set(ir.PROSPECT_FIELDS) & set(ir.BEHAVIOR_FIELDS)
     assert ir.MBI_BEHAVIOR == 0
-    assert ir.SCHEMA == "InstrumentRecord@v1"   # extended, not cloned (§13.5)
+    assert ir.SCHEMA == "InstrumentRecord@v1"  # extended, not cloned (§13.5)
 
 
-@pytest.mark.parametrize("bad", [
-    {"next_trigger": {"kind": "reference_level", "stop": 100.0}},
-    {"next_action": {"who": "cio", "order": {"side": "buy"}}},
-    {"conviction_components": {"unified_edge": {"value": 50, "inputs": {"qty": 10}}}},
-    {"watchlist": {"member": True, "size_usd": 1000}},
-])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"next_trigger": {"kind": "reference_level", "stop": 100.0}},
+        {"next_action": {"who": "cio", "order": {"side": "buy"}}},
+        {"conviction_components": {"unified_edge": {"value": 50, "inputs": {"qty": 10}}}},
+        {"watchlist": {"member": True, "size_usd": 1000}},
+    ],
+)
 def test_apply_prospect_refuses_behavior_anywhere(bad):
     rec = _prospect_record()
     with pytest.raises(ir.BehaviorWriteRefused):
@@ -229,27 +286,38 @@ def test_apply_prospect_rails():
     rec = _prospect_record()
     assert rec["conviction"] == 70.0 and rec["prospect_schema"] == ir.PROSPECT_SCHEMA
     assert rec["prospect_revision"] == 1 and rec["aliases"]["subject_key"] == "HELD:NVDA"
-    with pytest.raises(ir.ProspectInvalid):                       # not a prospect field
+    with pytest.raises(ir.ProspectInvalid):  # not a prospect field
         ir.apply_prospect(rec, prospect={"rank_score": 3})
-    with pytest.raises(ir.ProspectInvalid):                       # placeholder identity
-        ir.apply_prospect(ir.new_record("WATCH", "ACME"), prospect={
-            "security_guid": "PLACEHOLDER", "issuer_guid": "x", "stage": "watching", "stance": "WATCH",
-            "conviction": 10, "evidence_at": "2026-10-22T19:00:00+00:00", "expires_at": "2026-10-22T20:00:00+00:00"})
-    with pytest.raises(ir.ProspectInvalid):                       # conviction not reproducible
+    with pytest.raises(ir.ProspectInvalid):  # placeholder identity
+        ir.apply_prospect(
+            ir.new_record("WATCH", "ACME"),
+            prospect={
+                "security_guid": "PLACEHOLDER",
+                "issuer_guid": "x",
+                "stage": "watching",
+                "stance": "WATCH",
+                "conviction": 10,
+                "evidence_at": "2026-10-22T19:00:00+00:00",
+                "expires_at": "2026-10-22T20:00:00+00:00",
+            },
+        )
+    with pytest.raises(ir.ProspectInvalid):  # conviction not reproducible
         ir.apply_prospect(rec, prospect={"conviction": 99.0})
-    with pytest.raises(ir.ProspectInvalid):                       # stage move names no evidence
+    with pytest.raises(ir.ProspectInvalid):  # stage move names no evidence
         ir.apply_prospect(rec, prospect={"stage": "exit"})
-    with pytest.raises(ir.ProspectInvalid):                       # a conflict needs two sourced values
+    with pytest.raises(ir.ProspectInvalid):  # a conflict needs two sourced values
         ir.apply_prospect(rec, prospect={"conflicts": [{"field": "stance", "values": [{"value": "ADD"}]}]})
-    with pytest.raises(ir.CognitionNoOp):                         # nothing moved
+    with pytest.raises(ir.CognitionNoOp):  # nothing moved
         ir.apply_prospect(rec, prospect={"stance": "ADD"})
-    moved, changed = ir.apply_prospect(rec, prospect={"stage": "exit", "stance": "EXIT_REVIEW",
-                                                      "stage_evidence": {"source": "test"}})
+    moved, changed = ir.apply_prospect(
+        rec, prospect={"stage": "exit", "stance": "EXIT_REVIEW", "stage_evidence": {"source": "test"}}
+    )
     assert {"stage", "stance"} <= set(changed) and moved["prospect_revision"] == 2 and moved["stage_changed_at"]
 
 
 def test_unified_edge_is_persisted_with_its_inputs_and_reproducible():
     from scripts.unified_edge_score import edge_from_trade_context
+
     ctx = {"risk_reward": 4.9, "confidence": 0.78, "technical_score": 71.4}
     comp = ir.unified_edge_component(ctx, source="test", evidence_at="2026-10-22T19:30:00+00:00")
     assert comp["value"] == edge_from_trade_context(ctx)
@@ -260,11 +328,12 @@ def test_unified_edge_is_persisted_with_its_inputs_and_reproducible():
 
 def test_dual_write_is_inert_by_default_and_never_probes_an_ungranted_store(tmp_path):
     probed = []
-    st = ir.prospect_store_status(registry={"domains": []}, env={ir.PROSPECT_DUAL_WRITE_ENV: "1"},
-                                  table_probe=lambda: probed.append(1))
+    st = ir.prospect_store_status(
+        registry={"domains": []}, env={ir.PROSPECT_DUAL_WRITE_ENV: "1"}, table_probe=lambda: probed.append(1)
+    )
     assert st["live"] is False and "registry_row_not_granted" in st["reasons"] and probed == []
-    assert ir.prospect_row_granted() is True       # the repo registry: granted by approval E (2026-10-22)
-    st = ir.prospect_store_status(env={})            # granted, but the operator flag is off: still inert
+    assert ir.prospect_row_granted() is True  # the repo registry: granted by approval E (2026-10-22)
+    st = ir.prospect_store_status(env={})  # granted, but the operator flag is off: still inert
     assert st["live"] is False and st["reasons"] == ["dual_write_flag_off"]
 
     class Backend:
@@ -280,10 +349,11 @@ def test_dual_write_is_inert_by_default_and_never_probes_an_ungranted_store(tmp_
     store = ir.InstrumentRecordStore(tmp_path / "ir.jsonl")
     res = store.upsert_prospect(_prospect_record(), backend=Backend(), env={})
     assert res["pg"]["mode"] == "inert" and Backend.calls == []
-    assert (tmp_path / "ir.jsonl").read_text().count("\n") == 1          # jsonl stays the store of record
+    assert (tmp_path / "ir.jsonl").read_text().count("\n") == 1  # jsonl stays the store of record
     granted = {"domains": [{"domain": "cio_prospect", "approval": {"approved_by": "operator"}}]}
-    res = store.upsert_prospect(_prospect_record(stance="HOLD"), backend=Backend(), registry=granted,
-                                env={ir.PROSPECT_DUAL_WRITE_ENV: "1"})
+    res = store.upsert_prospect(
+        _prospect_record(stance="HOLD"), backend=Backend(), registry=granted, env={ir.PROSPECT_DUAL_WRITE_ENV: "1"}
+    )
     assert res["pg"]["mode"] == "dual_write" and len(Backend.calls) == 1
     assert Backend.calls[0][1]["event_type"] == "update" and Backend.calls[0][0]["writer"] == "InstrumentRecordStore"
     with pytest.raises(ir.ProspectInvalid):
@@ -297,37 +367,120 @@ def _state(tmp: Path) -> Path:
     (tmp / "data/cio").mkdir(parents=True)
     (tmp / "data/runtime").mkdir(parents=True)
     rr = {"rr": 4.9, "entry_zone": [218.5, 224.5], "entry_ref": 221.8, "invalidation_level": 213.0}
-    (tmp / "data/cio/cio_opportunity_projection.json").write_text(json.dumps({"as_of": "2026-10-22T19:30:00+00:00",
-        "items": {
-            "NVDA": {"symbol": "NVDA", "as_of": "2026-10-22T19:30:00+00:00", "conviction": 78.1, "stance": "ADD",
-                     "type": "add_on", "position_status": "owned", "coverage": 1.0, "rank": 59, "risk_reward": rr,
-                     "factors": {"technical": {"score": 71.4}}, "factors_missing": []},
-            "ACME": {"symbol": "ACME", "as_of": "2026-10-22T19:30:00+00:00", "conviction": 82.0, "stance": "WATCH",
-                     "type": "new_position", "position_status": "not_owned", "coverage": 1.0, "rank": 3,
-                     "risk_reward": {"rr": 3.0, "entry_zone": [10, 11]}, "factors": {}, "factors_missing": ["analyst"]},
-            "GHOST": {"symbol": "GHOST", "as_of": "2026-10-22T19:30:00+00:00", "conviction": 90.0, "stance": "ADD",
-                      "type": "new_position", "position_status": "not_owned", "risk_reward": {}, "factors": {}}}}))
-    (tmp / "data/cio/cio_theses_projection.json").write_text(json.dumps({"updated_ts": "2026-10-05T13:27:16+00:00",
-        "current": {"symbol_nvda": {"stance": "watch", "thesis_version": "symbol_nvda@v8", "status": "active",
-                                    "linked_symbols": ["NVDA"], "published_ts": "2026-10-05T13:27:16+00:00"}}}))
-    (tmp / "data/cio/security_research_spine.jsonl").write_text(json.dumps(
-        {"symbol": "NVDA", "as_of": "2026-10-22T19:00:00Z", "thesis": {"stance": "WATCH", "conviction": 0.62}}) + "\n")
-    (tmp / "data/cio/cio_instrument_records.jsonl").write_text(json.dumps(
-        {"subject_key": "WATCH:NVDA", "kind": "WATCH", "updated_ts": "2026-10-21T23:01:16+00:00",
-         "next_research_question": "Is the data-center guide credible?"}) + "\n")
-    (tmp / "data/runtime/reentry_decision_desk_latest.json").write_text(json.dumps({
-        "computed_at": "2026-10-22T19:40:00+00:00",
-        "rows": [{"symbol": "BETA", "stop": 9.0, "target": 15.0, "entry_low": 10.0,
-                  "intel": {"state": "NEAR ENTRY"}, "catalyst": {"verified": True, "confidence": 0.9}}]}))
-    (tmp / "data/runtime/hermes_watchlist_lifecycle.json").write_text(json.dumps({
-        "updated_at": "2026-10-22T19:37:00+00:00",
-        "symbols": {"NVDA": {"lifecycle_stage": "promoted", "conviction_score": 85.5}}}))
+    (tmp / "data/cio/cio_opportunity_projection.json").write_text(
+        json.dumps(
+            {
+                "as_of": "2026-10-22T19:30:00+00:00",
+                "items": {
+                    "NVDA": {
+                        "symbol": "NVDA",
+                        "as_of": "2026-10-22T19:30:00+00:00",
+                        "conviction": 78.1,
+                        "stance": "ADD",
+                        "type": "add_on",
+                        "position_status": "owned",
+                        "coverage": 1.0,
+                        "rank": 59,
+                        "risk_reward": rr,
+                        "factors": {"technical": {"score": 71.4}},
+                        "factors_missing": [],
+                    },
+                    "ACME": {
+                        "symbol": "ACME",
+                        "as_of": "2026-10-22T19:30:00+00:00",
+                        "conviction": 82.0,
+                        "stance": "WATCH",
+                        "type": "new_position",
+                        "position_status": "not_owned",
+                        "coverage": 1.0,
+                        "rank": 3,
+                        "risk_reward": {"rr": 3.0, "entry_zone": [10, 11]},
+                        "factors": {},
+                        "factors_missing": ["analyst"],
+                    },
+                    "GHOST": {
+                        "symbol": "GHOST",
+                        "as_of": "2026-10-22T19:30:00+00:00",
+                        "conviction": 90.0,
+                        "stance": "ADD",
+                        "type": "new_position",
+                        "position_status": "not_owned",
+                        "risk_reward": {},
+                        "factors": {},
+                    },
+                },
+            }
+        )
+    )
+    (tmp / "data/cio/cio_theses_projection.json").write_text(
+        json.dumps(
+            {
+                "updated_ts": "2026-10-05T13:27:16+00:00",
+                "current": {
+                    "symbol_nvda": {
+                        "stance": "watch",
+                        "thesis_version": "symbol_nvda@v8",
+                        "status": "active",
+                        "linked_symbols": ["NVDA"],
+                        "published_ts": "2026-10-05T13:27:16+00:00",
+                    }
+                },
+            }
+        )
+    )
+    (tmp / "data/cio/security_research_spine.jsonl").write_text(
+        json.dumps(
+            {"symbol": "NVDA", "as_of": "2026-10-22T19:00:00Z", "thesis": {"stance": "WATCH", "conviction": 0.62}}
+        )
+        + "\n"
+    )
+    (tmp / "data/cio/cio_instrument_records.jsonl").write_text(
+        json.dumps(
+            {
+                "subject_key": "WATCH:NVDA",
+                "kind": "WATCH",
+                "updated_ts": "2026-10-21T23:01:16+00:00",
+                "next_research_question": "Is the data-center guide credible?",
+            }
+        )
+        + "\n"
+    )
+    (tmp / "data/runtime/reentry_decision_desk_latest.json").write_text(
+        json.dumps(
+            {
+                "computed_at": "2026-10-22T19:40:00+00:00",
+                "rows": [
+                    {
+                        "symbol": "BETA",
+                        "stop": 9.0,
+                        "target": 15.0,
+                        "entry_low": 10.0,
+                        "intel": {"state": "NEAR ENTRY"},
+                        "catalyst": {"verified": True, "confidence": 0.9},
+                    }
+                ],
+            }
+        )
+    )
+    (tmp / "data/runtime/hermes_watchlist_lifecycle.json").write_text(
+        json.dumps(
+            {
+                "updated_at": "2026-10-22T19:37:00+00:00",
+                "symbols": {"NVDA": {"lifecycle_stage": "promoted", "conviction_score": 85.5}},
+            }
+        )
+    )
     return tmp
 
 
 def _build(tmp: Path, **kw):
-    return B.build(tmp, held_reader=lambda: {"symbols": {"NVDA"}, "source": "test_holdings", "as_of": NOW.isoformat()},
-                   identity_resolver=_identity, now=NOW, **kw)
+    return B.build(
+        tmp,
+        held_reader=lambda: {"symbols": {"NVDA"}, "source": "test_holdings", "as_of": NOW.isoformat()},
+        identity_resolver=_identity,
+        now=NOW,
+        **kw,
+    )
 
 
 def _tree(root: Path) -> dict:
@@ -338,11 +491,11 @@ def test_builder_assembles_one_prospect_per_guid_and_shows_the_nvda_conflicts(tm
     root = _state(tmp_path)
     before = _tree(root)
     doc = _build(root)
-    assert _tree(root) == before                                    # writes nothing
+    assert _tree(root) == before  # writes nothing
     assert doc["writes"] == "none" and doc["store_status"]["mode"] == "inert"
     by = {r["symbol"]: r for r in doc["prospects"]}
     assert set(by) == {"NVDA", "ACME", "BETA"}
-    assert [u["symbol"] for u in doc["identity_unresolved"]] == ["GHOST"]   # no placeholder identity
+    assert [u["symbol"] for u in doc["identity_unresolved"]] == ["GHOST"]  # no placeholder identity
     nv = by["NVDA"]
     assert nv["security_guid"] == G_NVDA and nv["issuer_guid"] == I_NVDA
     assert nv["stage"] == "held" and nv["stance"] == "ADD"
@@ -354,28 +507,276 @@ def test_builder_assembles_one_prospect_per_guid_and_shows_the_nvda_conflicts(tm
     assert nv["next_action"]["what"].startswith("resolve 2 conflict")
     comps = nv["conviction_components"]
     assert comps["unified_edge"]["method"] == "unified_edge_score.edge_from_trade_context"
-    assert nv["conviction"] == ir.conviction_from_components(comps)          # reproducible
-    assert comps["fused_score"]["value"] is None                            # not wired: shown, not invented
+    assert nv["conviction"] == ir.conviction_from_components(comps)  # reproducible
+    assert comps["fused_score"]["value"] is None  # not wired: shown, not invented
     assert nv["watchlist"]["origin"] == "held_position" and nv["watchlist"]["protected"] is True
     assert nv["next_trigger"]["note"] == "information, never an order"
     assert by["ACME"]["stage"] == "setup_forming" and by["BETA"]["stage"] == "re_entry"
-    assert by["ACME"]["shadow_rank"] < by["BETA"]["shadow_rank"]     # CIO-assessed ranks before unassessed
+    assert by["ACME"]["shadow_rank"] < by["BETA"]["shadow_rank"]  # CIO-assessed ranks before unassessed
     blob = json.dumps(doc["prospects"])
-    for k in ir.BEHAVIOR_FIELDS:                                     # re-entry stop/target never copied
+    for k in ir.BEHAVIOR_FIELDS:  # re-entry stop/target never copied
         assert f'"{k}":' not in blob, k
     for p in doc["prospects"]:
-        ir.prospect_row(p)                                           # every row is a valid table row
+        ir.prospect_row(p)  # every row is a valid table row
 
 
-def test_home_preset_matches_the_opportunity_api_rule():
-    from lib.data_broker import opportunity as op
-    items = {s: {"symbol": s, "conviction": c, "coverage": cov, "risk_reward": {"rr": rr}}
-             for s, c, cov, rr in (("A", 91, 1.0, 2.5), ("B", 85, 0.9, 1.9), ("C", 82, 0.7, 3.0), ("D", 88, 1.0, None),
-                                   ("E", 80, 0.8, 2.0), ("F", 79.9, 1.0, 5.0), ("G", 95, 1.0, 2.1), ("H", 84, 1.0, 2.2),
-                                   ("I", 86, 1.0, 4.0))}
-    q = op.apply_preset({"preset": "top5"})
-    want = [a["symbol"] for a in op.sort_items([a for a in items.values() if op.passes(a, q)], q["sort"])][: q["limit"]]
-    assert [a["symbol"] for a in B.home_best_opportunities(items)] == want == ["G", "A", "I", "H", "E"]
+def _home_capture_api(monkeypatch, *, case="ready", query=None):
+    """Real list entry point, synthetic projection/context; no reader or provider is called."""
+    import importlib.util
+
+    modules = {}
+    for name, rel in (
+        ("lib.data_broker.opportunity_eligibility", "scripts/lib/data_broker/opportunity_eligibility.py"),
+        ("scripts.api_v3_opportunities", "scripts/api_v3_opportunities.py"),
+    ):
+        spec = importlib.util.spec_from_file_location(name, ROOT / rel)
+        module = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, name, module)
+        spec.loader.exec_module(module)
+        modules[name] = module
+    api = modules["scripts.api_v3_opportunities"]
+
+    at = datetime.now(timezone.utc).isoformat()
+    raw = {
+        "symbol": "SYNQ",
+        "conviction": 90,
+        "coverage": 1.0,
+        "risk_reward": {"rr": 3.0},
+        "stance": "ADD",
+        "type": "new_position",
+        "rank": 77,
+    }
+    context = {
+        "technical": {
+            "SYNQ": {
+                "rsi": 55,
+                "macd_signal": "bullish",
+                "sma_20": 100,
+                "sma_50": 99,
+                "sma_200": 95,
+                "as_of": at,
+                "source": "indicator_confluence_cache",
+            }
+        },
+        "theses": {
+            "SYNQ": {"summary": "Synthetic CIO thesis", "stance": "WATCH", "status": "active", "published_ts": at}
+        },
+        "market_risk": {"state": "evaluated", "tier": case if case in ("RED", "ORANGE") else "GREEN", "as_of": at},
+    }
+    if case == "no_thesis":
+        context["theses"] = {}
+    if case == "no_technicals":
+        context["technical"] = {}
+    if case == "partial_coverage":
+        raw["coverage"] = 0.79
+
+    class Store:
+        def read_projection(self):
+            return {"as_of": at, "items": {"SYNQ": raw}}
+
+    monkeypatch.setattr(api, "_store", Store)
+    monkeypatch.setattr(api, "_ranking_context", lambda *args, **kwargs: context)
+    return api.get_list({"preset": "top5"} if query is None else query), raw
+
+
+@pytest.mark.parametrize("case", ["ready", "no_thesis", "no_technicals", "RED", "ORANGE", "partial_coverage"])
+def test_shadow_home_consumes_the_actual_qualified_selection(monkeypatch, case):
+    capture, raw = _home_capture_api(monkeypatch, case=case)
+    rows = B.home_best_opportunities(capture)
+    assert capture["selection_scope"] == "home_top5"
+    assert rows is not None
+    assert [r["symbol"] for r in rows] == (["SYNQ"] if case == "ready" else [])
+    assert [r["symbol"] for r in rows] == [r["symbol"] for r in capture["items"]]
+    assert B.home_best_opportunities({"SYNQ": raw}) is None, "curator scores cannot qualify Home membership"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "default",
+        "equivalent",
+        "not_top5",
+        "sector",
+        "page2",
+        "small_limit",
+        "other_sort",
+        "coverage_override",
+        "empty_override",
+        "null_override",
+        "cache_bust",
+    ],
+)
+def test_home_capture_scope_is_the_exact_uncustomized_request(monkeypatch, case):
+    queries = {
+        "default": {"preset": "top5"},
+        "equivalent": {"preset": "top5", "sort": "conviction", "limit": "5", "page": "1"},
+        "not_top5": {},
+        "sector": {"preset": "top5", "sector": "Technology"},
+        "page2": {"preset": "top5", "page": "2"},
+        "small_limit": {"preset": "top5", "limit": "1"},
+        "other_sort": {"preset": "top5", "sort": "rr"},
+        "coverage_override": {"preset": "top5", "min_coverage": "0.1"},
+        "empty_override": {"preset": "top5", "min_conviction": ""},
+        "null_override": {"preset": "top5", "min_conviction": None},
+        "cache_bust": {"preset": "top5", "_": "synthetic-cache-key"},
+    }
+    capture, _ = _home_capture_api(monkeypatch, query=queries[case])
+    is_home = case in ("default", "equivalent", "cache_bust")
+    assert capture["selection_scope"] == ("home_top5" if is_home else "research")
+    assert (B.home_best_opportunities(capture) is not None) is is_home
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "none",
+        "empty_object",
+        "wrong_schema",
+        "wrong_scope",
+        "items_none",
+        "row_text",
+        "missing_clock",
+        "naive_clock",
+        "unqualified",
+        "missing_review",
+        "bad_rank",
+        "duplicate_symbol",
+        "unreviewed",
+        "no_stance",
+        "bad_review_clock",
+    ],
+)
+def test_malformed_or_wrong_selection_stays_unknown_not_empty(monkeypatch, case):
+    from copy import deepcopy
+
+    original, _ = _home_capture_api(monkeypatch)
+    capture = deepcopy(original)
+    if case == "none":
+        capture = None
+    elif case == "empty_object":
+        capture = {}
+    elif case == "wrong_schema":
+        capture["schema"] = "Unsupported@999"
+    elif case == "wrong_scope":
+        capture["selection_scope"] = "research"
+    elif case == "items_none":
+        capture["items"] = None
+    elif case == "row_text":
+        capture["items"] = ["synthetic malformed row"]
+    elif case == "missing_clock":
+        capture.pop("as_of")
+    elif case == "naive_clock":
+        capture["as_of"] = "2026-11-05T12:00:00"
+    elif case == "unqualified":
+        capture["items"][0]["top_eligibility"]["eligible"] = False
+    elif case == "missing_review":
+        capture["items"][0].pop("cio_review")
+    elif case == "bad_rank":
+        capture["items"][0]["rank"] = None
+    elif case == "duplicate_symbol":
+        capture["items"].append(deepcopy(capture["items"][0]))
+    elif case == "unreviewed":
+        capture["items"][0]["cio_review"]["reviewed"] = False
+    elif case == "no_stance":
+        capture["items"][0]["cio_review"]["stance"] = None
+    elif case == "bad_review_clock":
+        capture["items"][0]["cio_review"]["as_of"] = "not a timestamp"
+    assert B.home_best_opportunities(capture) is None
+
+
+def _home_compare_fixture(monkeypatch, capture):
+    # Deliberately stale/incompatible curator facts: none may be published as canonical Home facts.
+    raw = {"symbol": "SYNQ", "conviction": 17, "rank": 77, "stance": "SELL"}
+    monkeypatch.setattr(
+        B,
+        "load_file_inputs",
+        lambda _: {"opportunity": {"rows": {"SYNQ": raw}, "as_of": datetime.now(timezone.utc).isoformat()}},
+    )
+    doc = {
+        "prospects": [
+            {
+                "symbol": "SYNQ",
+                "stage": "watching",
+                "stance": "WATCH",
+                "conviction": 90,
+                "conflicts": [],
+                "shadow_rank": 1,
+            }
+        ]
+    }
+    return B.compare(doc, Path("/synthetic-not-read"), home_opportunities=capture)
+
+
+@pytest.mark.parametrize(
+    "case,value",
+    [
+        ("missing", None),
+        ("null", None),
+        ("text", "bad"),
+        ("nan", float("nan")),
+        ("infinity", float("inf")),
+        ("negative_infinity", float("-inf")),
+        ("true", True),
+        ("false", False),
+        ("below_range", -1),
+        ("above_range", 101),
+        ("list", []),
+        ("object", {}),
+    ],
+)
+def test_home_capture_invalid_conviction_keeps_whole_comparison_unknown(monkeypatch, case, value):
+    capture, _ = _home_capture_api(monkeypatch)
+    if case == "missing":
+        capture["items"][0].pop("conviction")
+    else:
+        capture["items"][0]["conviction"] = value
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    assert comparison["surfaces"]["home"]["state"] == "unavailable"
+    assert comparison["rows"][0]["home"] is None
+    assert comparison["rows"][0]["agrees"] is None
+    assert comparison["summary"]["unverified"] == 1
+
+
+@pytest.mark.parametrize("value", [0, 100, 90, "90", "90.0"])
+def test_home_capture_finite_conviction_and_numeric_strings_survive(monkeypatch, value):
+    capture, _ = _home_capture_api(monkeypatch)
+    capture["items"][0]["conviction"] = value
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    assert comparison["surfaces"]["home"]["state"] == "available"
+    assert comparison["rows"][0]["home"]["conviction"] == float(value)
+    assert capture["items"][0]["conviction"] == value
+
+
+@pytest.mark.parametrize("case", ["unknown", "empty"])
+def test_home_comparison_keeps_missing_capture_distinct_from_measured_empty(monkeypatch, case):
+    capture = None if case == "unknown" else _home_capture_api(monkeypatch, case="no_thesis")[0]
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    known = case == "empty"
+    assert comparison["surfaces"]["home"]["state"] == ("available" if known else "unavailable")
+    assert comparison["summary"]["home_best_opportunities"] == ([] if known else None)
+    assert comparison["summary"]["shadow_top_vs_home_top_overlap"] == (0 if known else None)
+    assert comparison["rows"][0]["home"] is None
+    assert comparison["rows"][0]["home_membership"] == (False if known else None)
+    assert comparison["rows"][0]["agrees"] is (True if known else None)
+    assert comparison["summary"]["agree"] == (1 if known else 0)
+    assert comparison["summary"]["unverified"] == (0 if known else 1)
+
+
+def test_home_rank_stance_and_overlap_use_captured_canonical_facts(monkeypatch):
+    capture, _ = _home_capture_api(monkeypatch)
+    comparison = _home_compare_fixture(monkeypatch, capture)
+    home = comparison["rows"][0]["home"]
+    assert home == {"rank": 1, "conviction": 90, "stance": "WATCH", "in_best_opportunities": True}
+    assert comparison["rows"][0]["home_membership"] is True
+    assert comparison["summary"]["shadow_top_vs_home_top_overlap"] == 1
+    assert comparison["surfaces"]["home"]["as_of"] == capture["as_of"]
+    assert comparison["rows"][0]["telegram"]["conviction_line"].startswith("Conviction 17/100 · #77 · SELL")
+    assert not any(d.startswith(("stance:", "conviction:")) for d in comparison["rows"][0]["differences"])
+
+
+def test_raw_reweighted_curator_score_does_not_qualify_home():
+    raw = {"symbol": "SYNQ", "conviction": 99, "coverage": 1.0, "risk_reward": {"rr": 3.0}, "rank": 1}
+    assert B.home_best_opportunities({"SYNQ": raw}) is None
 
 
 def test_stance_disagreement_rule():
@@ -401,24 +802,34 @@ def test_watchlist_curation_rules():
     assert rules["status"] == "PROPOSED" and rules["approval"] is None
     m = W.membership([{"origin": "cio_curator", "reason": ""}, {"origin": "made_up", "reason": "x"}], rules)
     assert m["member"] is False and {r["refused"] for r in m["refused"]} == {"no_reason", "unknown_origin"}
-    m = W.membership([{"origin": "hermes", "reason": "promoted"}, {"origin": "operator_star", "reason": "starred"}],
-                     rules)
+    m = W.membership(
+        [{"origin": "hermes", "reason": "promoted"}, {"origin": "operator_star", "reason": "starred"}], rules
+    )
     assert m["origin"] == "operator_star" and m["protected"] and m["support"][0]["origin"] == "hermes"
 
     def p(guid, conv, origin="cio_curator", stage="actionable", expires="2026-10-22T20:00:00+00:00", stance="WATCH"):
         wl = W.membership([{"origin": origin, "reason": "r"}], rules)
-        return {"security_guid": guid, "stage": stage, "conviction": conv, "stance": stance, "expires_at": expires,
-                "evidence_at": "2026-10-22T19:00:00+00:00", "watchlist": wl}
+        return {
+            "security_guid": guid,
+            "stage": stage,
+            "conviction": conv,
+            "stance": stance,
+            "expires_at": expires,
+            "evidence_at": "2026-10-22T19:00:00+00:00",
+            "watchlist": wl,
+        }
 
     cap = rules["size_cap_per_stage"]["actionable"]
     rows = [p(f"g{i}", 50 + i) for i in range(cap + 2)] + [p("star", 1, origin="operator_star")]
-    rows += [p("old", 90, expires="2026-10-01T00:00:00+00:00"), p("oldstar", 90, origin="operator_add",
-                                                                   expires="2026-10-01T00:00:00+00:00"),
-             p("avoid", 90, stance="AVOID")]
+    rows += [
+        p("old", 90, expires="2026-10-01T00:00:00+00:00"),
+        p("oldstar", 90, origin="operator_add", expires="2026-10-01T00:00:00+00:00"),
+        p("avoid", 90, stance="AVOID"),
+    ]
     res = W.curate(rows, rules, now=NOW)
     d = res["decisions"]
-    assert d["star"]["decision"] == "keep"                       # operator stars are never auto-dropped
-    assert d["oldstar"]["decision"] == "review"                  # protected + expired -> review, not out
+    assert d["star"]["decision"] == "keep"  # operator stars are never auto-dropped
+    assert d["oldstar"]["decision"] == "review"  # protected + expired -> review, not out
     assert d["old"]["decision"] == "propose_out" and d["old"]["reason"].startswith("expired")
     assert d["avoid"]["decision"] == "propose_out"
     assert {k for k, v in d.items() if v["reason"].startswith("size cap")} == {"g0", "g1", "g2"}
@@ -427,9 +838,18 @@ def test_watchlist_curation_rules():
 
 def test_cli_dry_run_writes_nothing_and_write_shadow_writes_the_artifact(tmp_path, monkeypatch, capsys):
     from scripts import cio_prospect_shadow_build as cli
+
     root = _state(tmp_path)
-    monkeypatch.setattr(B, "load_held", lambda state_root, held_reader=None: {
-        "symbols": {"NVDA"}, "source": "test", "as_of": NOW.isoformat(), "status": "ok"})
+    monkeypatch.setattr(
+        B,
+        "load_held",
+        lambda state_root, held_reader=None: {
+            "symbols": {"NVDA"},
+            "source": "test",
+            "as_of": NOW.isoformat(),
+            "status": "ok",
+        },
+    )
     real_build = B.build
     monkeypatch.setattr(B, "build", lambda *a, **k: real_build(*a, **{**k, "identity_resolver": _identity}))
     before = _tree(root)
@@ -448,6 +868,7 @@ def test_cli_dry_run_writes_nothing_and_write_shadow_writes_the_artifact(tmp_pat
 def test_write_shadow_with_no_prospect_keeps_the_last_shadow_and_receipt(tmp_path, monkeypatch, capsys):
     """2026-10-25 canary guard: an empty build exits 1 and never replaces the last good shadow or advances ok_at."""
     from scripts import cio_prospect_shadow_build as cli
+
     root = _state(tmp_path)
     for rel in (cli.SHADOW_REL, cli.RECEIPT_REL):
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -458,8 +879,17 @@ def test_write_shadow_with_no_prospect_keeps_the_last_shadow_and_receipt(tmp_pat
         doc = real_build(*a, **{**k, "identity_resolver": _identity})
         doc["prospects"], doc["counts"]["prospects"] = [], 0
         return doc
-    monkeypatch.setattr(B, "load_held", lambda state_root, held_reader=None: {
-        "symbols": set(), "source": "test", "as_of": NOW.isoformat(), "status": "ok"})
+
+    monkeypatch.setattr(
+        B,
+        "load_held",
+        lambda state_root, held_reader=None: {
+            "symbols": set(),
+            "source": "test",
+            "as_of": NOW.isoformat(),
+            "status": "ok",
+        },
+    )
     monkeypatch.setattr(B, "build", empty)
     assert cli.main(["--write-shadow", "--state-root", str(root)]) == 1
     out = json.loads(capsys.readouterr().out)
@@ -470,11 +900,22 @@ def test_write_shadow_with_no_prospect_keeps_the_last_shadow_and_receipt(tmp_pat
 
 
 def test_builder_never_reads_positions_current_or_reaches_a_sender():
-    for path in ("scripts/lib/cio_prospect_builder.py", "scripts/cio_prospect_shadow_build.py",
-                 "scripts/lib/data_broker/cio_prospect.py", "scripts/lib/cio_prospect_watchlist_rules.py"):
+    for path in (
+        "scripts/lib/cio_prospect_builder.py",
+        "scripts/cio_prospect_shadow_build.py",
+        "scripts/lib/data_broker/cio_prospect.py",
+        "scripts/lib/cio_prospect_watchlist_rules.py",
+    ):
         src = (ROOT / path).read_text()
-        for bad in ("FROM positions_current", "JOIN positions_current", "place_order", "telegram_alert",
-                    "send_telegram", "incident_notifier", "broker_access"):
+        for bad in (
+            "FROM positions_current",
+            "JOIN positions_current",
+            "place_order",
+            "telegram_alert",
+            "send_telegram",
+            "incident_notifier",
+            "broker_access",
+        ):
             assert bad not in src, (path, bad)
         if path != "scripts/cio_prospect_shadow_build.py":
             assert "InstrumentRecordStore(" not in src and "upsert_prospect" not in src, path
@@ -482,13 +923,20 @@ def test_builder_never_reads_positions_current_or_reaches_a_sender():
             # The existing batch CLI has a separate explicit FACT-ONLY opt-in;
             # default, --dry-run and --write-shadow remain unable to write CIO
             # records (the companion fixture also checks their store bytes).
-            calls = [n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
-                     and isinstance(n.func, ast.Name) and n.func.id == "persist_company_facts"]
+            calls = [
+                n
+                for n in ast.walk(ast.parse(src))
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "persist_company_facts"
+            ]
             assert len(calls) == 1
             write_arg = next(k.value for k in calls[0].keywords if k.arg == "write")
             assert ast.unparse(write_arg) == "args.write_company_facts"
-            assert not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-                           and n.func.attr in ("upsert", "upsert_prospect") for n in ast.walk(ast.parse(src)))
+            assert not any(
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr in ("upsert", "upsert_prospect")
+                for n in ast.walk(ast.parse(src))
+            )
 
 
 # ── 5. the projection ───────────────────────────────────────────────────────
@@ -497,6 +945,7 @@ def test_builder_never_reads_positions_current_or_reaches_a_sender():
 def test_projection_serves_the_shadow_labelled_and_says_so_on_gap(tmp_path):
     from lib.data_broker import cio_prospect as cp
     from lib.data_broker.catalog import PROJECTIONS
+
     entry = next(p for p in PROJECTIONS if p["id"] == "cio_prospect")
     assert entry["read_only"] and entry["provider_calls"] == 0 and "PROPOSED" in entry["authority_domain"]
 
@@ -510,17 +959,18 @@ def test_projection_serves_the_shadow_labelled_and_says_so_on_gap(tmp_path):
     art.write_text(json.dumps(doc))
     res = cp.get_prospect("NVDA", shadow_base=art, now=NOW, market_closed=False)
     assert res["source"]["kind"] == "shadow" and res["source"]["label"].startswith("SHADOW")
-    assert "dual_write_flag_off" in res["source"]["store_not_live"]   # row granted (approval E); flag still off
+    assert "dual_write_flag_off" in res["source"]["store_not_live"]  # row granted (approval E); flag still off
     assert res["stale_after_hours"] == 0.5 and res["stale"] is False
     assert res["prospect"]["conflict_count"] == 2 and res["prospect"]["stale"] is False
     later = cp.get_prospects(shadow_base=art, now=NOW + timedelta(hours=3), market_closed=False)
-    assert later["stale"] is True and later["stale_rows"] == later["count"]     # per-row stale after expires_at
+    assert later["stale"] is True and later["stale_rows"] == later["count"]  # per-row stale after expires_at
     assert cp.get_prospect(G_ACME, shadow_base=art, now=NOW)["prospect"]["symbol"] == "ACME"
     assert cp.get_prospect("GHOST", shadow_base=art, now=NOW)["prospect"] is None
 
 
 def test_projection_reads_the_store_only_when_live(tmp_path):
     from lib.data_broker import cio_prospect as cp
+
     rec = ir.prospect_row(_prospect_record())
     seen = []
 
@@ -528,11 +978,12 @@ def test_projection_reads_the_store_only_when_live(tmp_path):
         seen.append(sql)
         return [rec]
 
-    res = cp.get_prospects(db_query=db_query, now=NOW, market_closed=False,
-                           status={"live": True, "mode": "dual_write", "reasons": []})
+    res = cp.get_prospects(
+        db_query=db_query, now=NOW, market_closed=False, status={"live": True, "mode": "dual_write", "reasons": []}
+    )
     assert res["source"]["kind"] == "store" and res["count"] == 1 and seen[0].startswith("SELECT ")
     res = cp.get_prospects(db_query=db_query, shadow_base=tmp_path / "none.json", now=NOW)
-    assert res["source"]["kind"] == "shadow" and len(seen) == 1   # ungranted: the table is never even probed
+    assert res["source"]["kind"] == "shadow" and len(seen) == 1  # ungranted: the table is never even probed
 
 
 def test_gate_file_registers_this_test():
@@ -550,23 +1001,32 @@ NAVN_NOW = datetime(2026, 10, 22, 20, 35, tzinfo=timezone.utc)
 def _navn_state(tmp: Path, *, with_records: bool = True) -> Path:
     (tmp / "data/cio").mkdir(parents=True)
     (tmp / "data/runtime").mkdir(parents=True)
-    (tmp / "data/cio/cio_opportunity_projection.json").write_text(json.dumps(
-        {"as_of": NAVN["opportunity_now"]["as_of"], "items": {"NAVN": NAVN["opportunity_now"]}}))
-    (tmp / "data/cio/cio_theses_projection.json").write_text(json.dumps(
-        {"current": {"symbol_navn": NAVN["thesis"]}}))
+    (tmp / "data/cio/cio_opportunity_projection.json").write_text(
+        json.dumps({"as_of": NAVN["opportunity_now"]["as_of"], "items": {"NAVN": NAVN["opportunity_now"]}})
+    )
+    (tmp / "data/cio/cio_theses_projection.json").write_text(json.dumps({"current": {"symbol_navn": NAVN["thesis"]}}))
     if with_records:
         (tmp / "data/cio/cio_opportunity_assessments.jsonl").write_text(
-            "".join(json.dumps(v) + "\n" for v in NAVN["assessment_versions"]))
+            "".join(json.dumps(v) + "\n" for v in NAVN["assessment_versions"])
+        )
         (tmp / "data/cio/cio_events.jsonl").write_text(json.dumps(NAVN["entry_signal"]) + "\n")
     return tmp
 
 
 def _navn_build(tmp: Path, now: datetime = NAVN_NOW, **kw) -> dict:
     ident = NAVN["identity"]
-    return B.build(tmp, held_reader=lambda: {"symbols": {"NAVN"}, "source": "test_holdings (still lists NAVN)",
-                                             "as_of": NAVN["holdings"]["updated_at"]},
-                   identity_resolver=lambda s: ident if s == "NAVN" else _identity(s), now=now,
-                   captured=NAVN["captured"], **kw)
+    return B.build(
+        tmp,
+        held_reader=lambda: {
+            "symbols": {"NAVN"},
+            "source": "test_holdings (still lists NAVN)",
+            "as_of": NAVN["holdings"]["updated_at"],
+        },
+        identity_resolver=lambda s: ident if s == "NAVN" else _identity(s),
+        now=now,
+        captured=NAVN["captured"],
+        **kw,
+    )
 
 
 def _navn(doc: dict) -> dict:
@@ -598,32 +1058,40 @@ def test_navn_lifecycle_stops_excursion_exit_cause_and_pnl(tmp_path):
     assert life["exit_cause"]["class"] == "trailing_ratchet" and life["exit_cause"]["in_profit"] is True
     exc = life["excursion"]
     assert (exc["basis"], exc["mfe_price"], exc["mfe_pct"], exc["mae_price"], exc["mae_pct"]) == (
-        "daily_close", 26.625, 3.84, 25.67, 0.12)
+        "daily_close",
+        26.625,
+        3.84,
+        25.67,
+        0.12,
+    )
     pnl = life["pnl"]
     assert pnl["net_pnl_usd"] == 189.73 and pnl["pnl_pct"] == 1.48
     assert pnl["r_on_initial_observed_stop"] == 0.286 and pnl["r_on_plan_invalidation_at_entry"] == 0.218
-    assert [c["stance"] for c in life["conviction_while_held"]] == ["ADD"]          # v27: WATCH→ADD, #1, on exit day
+    assert [c["stance"] for c in life["conviction_while_held"]] == ["ADD"]  # v27: WATCH→ADD, #1, on exit day
 
 
 def test_navn_stage_review_reentry_and_conflicts(tmp_path):
     root = _navn_state(tmp_path)
     p = _navn(_navn_build(root))
     assert (p["stage"], p["stage_phase"], p["stance"]) == ("exit", "exit_review", "WATCH")
-    assert sorted(c["field"] for c in p["conflicts"]) == ["held", "stance_after_exit"]   # shown, never resolved
+    assert sorted(c["field"] for c in p["conflicts"]) == ["held", "stance_after_exit"]  # shown, never resolved
     rev = p["post_exit_review"]
     assert rev["noise_vs_trend"]["verdict"] == "noise" and rev["prose"] is None and rev["provenance"] == "D"
     assert rev["facts"]["giveback_from_peak_pct"] == 2.27 and rev["facts"]["exit_day_close"] == 26.03
     adv = p["reentry_advice"]
     assert adv["classifier"].startswith("reentry_rules.derive_intel_state")
-    assert {a["reference"]: a["level"] for a in adv["alert_levels"]} == {"near_entry": 25.853, "in_zone": 25.1,
-                                                                         "reclaim": 26.02}
+    assert {a["reference"]: a["level"] for a in adv["alert_levels"]} == {
+        "near_entry": 25.853,
+        "in_zone": 25.1,
+        "reclaim": 26.02,
+    }
     assert {c["id"]: c["met"] for c in adv["conditions"]}["conviction_floor"] is True
     assert adv["one_alert"]["dedupe_key"] == "reentry_near:1b1fd2bf-78cf-5755-bdea-9248cd007907:srt:607228"
     assert p["next_action"]["who"] == "operator" and "trailing_ratchet" in p["next_action"]["what"]
     later = _navn(_navn_build(root, now=NAVN_NOW + timedelta(days=3)))
     assert (later["stage"], later["stage_phase"]) == ("re_entry", "re_entry_watch")
     blob = json.dumps({k: p[k] for k in ("origin", "position_lifecycle", "post_exit_review", "reentry_advice")})
-    for k in ir.BEHAVIOR_FIELDS:                                   # observed facts, never behaviour keys
+    for k in ir.BEHAVIOR_FIELDS:  # observed facts, never behaviour keys
         assert f'"{k}":' not in blob, k
     ir.prospect_row(p)
 
@@ -632,8 +1100,15 @@ def test_navn_events_one_per_fact_and_idempotent_keys(tmp_path):
     p = _navn(_navn_build(_navn_state(tmp_path)))
     ev = p["lifecycle_events"]
     types = [e["event_type"] for e in ev]
-    assert types.count("stop_change") == 7 and {"origin_attributed", "entry_fill", "exit_fill", "exit_review",
-                                                  "reentry_advice", "excursion", "conviction_change"} <= set(types)
+    assert types.count("stop_change") == 7 and {
+        "origin_attributed",
+        "entry_fill",
+        "exit_fill",
+        "exit_review",
+        "reentry_advice",
+        "excursion",
+        "conviction_change",
+    } <= set(types)
     assert len({e["event_key"] for e in ev}) == len(ev)
     assert set(types) <= set(ir.PROSPECT_EVENT_TYPES)
 
@@ -646,6 +1121,7 @@ def test_operator_initiated_when_no_internal_recommendation_was_active(tmp_path)
 
 def test_position_view_is_the_same_record(tmp_path):
     from lib.data_broker import cio_prospect as cp
+
     doc = _navn_build(_navn_state(tmp_path / "s"))
     art = tmp_path / "shadow.json"
     art.write_text(json.dumps(doc))
@@ -660,11 +1136,14 @@ def test_position_view_is_the_same_record(tmp_path):
 def test_reentry_rules_are_the_desk_rules_not_a_copy():
     from lib.data_broker import reentry_decision_desk as desk
     from lib import reentry_rules as rules
-    assert desk.derive_intel_state.__code__ is rules.derive_intel_state.__code__ or \
-        desk.derive_intel_state.__module__.endswith("reentry_rules")
+
+    assert (
+        desk.derive_intel_state.__code__ is rules.derive_intel_state.__code__
+        or desk.derive_intel_state.__module__.endswith("reentry_rules")
+    )
     assert (desk.NEAR_PCT, desk.RSI_READY_LOW, desk.RSI_READY_HIGH, desk.WASH_DAYS) == (3.0, 40.0, 70.0, 30)
     src = (ROOT / "scripts/lib/data_broker/reentry_decision_desk.py").read_text()
-    assert "def derive_intel_state" not in src                     # one implementation
+    assert "def derive_intel_state" not in src  # one implementation
 
 
 @NEEDS_PG
@@ -676,17 +1155,49 @@ def test_lifecycle_events_append_idempotently_on_the_cluster(cluster, tmp_path):
     assert rc == 0, out
     import psycopg2
 
-    backend = ir.ProspectPgBackend(lambda: psycopg2.connect(host=str(psql.sock), port=55433, user="trade_ai",
-                                                            dbname="cpx_life"))
+    backend = ir.ProspectPgBackend(
+        lambda: psycopg2.connect(host=str(psql.sock), port=55433, user="trade_ai", dbname="cpx_life")
+    )
     p = _navn(_navn_build(_navn_state(tmp_path)))
     rec = {k: v for k, v in p.items() if k not in ("lifecycle_events", "shadow_rank", "rankable")}
-    row = ir.prospect_row({**rec, "symbols": ["NAVN"], "prospect_revision": 1, "updated_ts": NAVN_NOW.isoformat(),
-                           "subject_key": "HELD:NAVN"})
+    row = ir.prospect_row(
+        {
+            **rec,
+            "symbols": ["NAVN"],
+            "prospect_revision": 1,
+            "updated_ts": NAVN_NOW.isoformat(),
+            "subject_key": "HELD:NAVN",
+        }
+    )
     res = backend.write(row, ir.prospect_event(None, row), p["lifecycle_events"])
     assert res["upserted"] == 1 and res["event_appended"] == 1 + 14
     assert backend.write(row, ir.prospect_event(None, row), p["lifecycle_events"])["event_appended"] == 0
-    rc, out = psql("cpx_admin", "cpx_life", "SELECT stage || ':' || stage_phase || ':' || (origin->>'classification') "
-                                            "FROM cio_prospect")
+    rc, out = psql(
+        "cpx_admin",
+        "cpx_life",
+        "SELECT stage || ':' || stage_phase || ':' || (origin->>'classification') FROM cio_prospect",
+    )
     assert out == "exit:exit_review:internal", out
     rc, out = psql("cpx_admin", "cpx_life", "SELECT count(*) FROM cio_prospect_events WHERE event_type = 'stop_change'")
     assert out == "7"
+
+
+def test_home_missing_capture_is_explicit_in_markdown_report(tmp_path):
+    import importlib.util
+
+    root = _state(tmp_path)
+    doc = _build(root)
+    comparison = B.compare(doc, root, now=NOW)
+    spec = importlib.util.spec_from_file_location(
+        "shadow_report_home_test", ROOT / "scripts/cio_prospect_shadow_build.py"
+    )
+    report = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = report
+    spec.loader.exec_module(report)
+    text = report.render_md(doc, comparison)
+    assert f"unverified {comparison['summary']['unverified']}" in text
+    assert "not measured" in text and "Home selection not captured" in text
+    for row in comparison["rows"]:
+        if row["agrees"] is None:
+            rendered = next(line for line in text.splitlines() if line.startswith(f"| {row['symbol']} |"))
+            assert rendered.endswith("| Home comparison unavailable |")

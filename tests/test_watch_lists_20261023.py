@@ -11,6 +11,7 @@ Fakes only: no database, no network, no broker, no production state (AGENTS.md Â
 from __future__ import annotations
 
 import sys
+import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -601,3 +602,120 @@ def test_symbol_search_ranks_ticker_then_name_and_skips_cusips():
     ] == ["NVDA", "NVDQ"]
     assert wc.search_symbols("5433", by_symbol=by_symbol, entities=ents, names=names, mine=set()) == []
     assert wc.search_symbols("", by_symbol=by_symbol, entities=ents, names=names, mine=set()) == []
+
+
+# FQ114: the real Watch list entry point must use the same qualification as Home's opportunities endpoint.
+@pytest.mark.parametrize("ready,tier", [(False, "GREEN"), (True, "RED"), (True, "GREEN")])
+def test_watch_top_list_requires_real_evidence(monkeypatch, ready, tier):
+    now = datetime.now(timezone.utc).isoformat()
+    raw = opp("SYNQ", 1, 96, stance="WATCH", typ="new_position", status="not_owned")
+    raw.update(coverage=0.9, risk_reward={"rr": 4.0})
+    context = {
+        "technical": {
+            "SYNQ": {
+                "rsi": 55,
+                "macd_signal": "bullish",
+                "sma_20": 100,
+                "sma_50": 99,
+                "sma_200": 95,
+                "as_of": now,
+                "source": "indicator_confluence_cache",
+            }
+        },
+        "theses": {
+            "SYNQ": {"summary": "Synthetic CIO thesis", "stance": "WATCH", "status": "active", "published_ts": now}
+            if ready
+            else None
+        },
+        "market_risk": {"state": "evaluated", "tier": tier, "as_of": now},
+    }
+    monkeypatch.setattr(wp, "gather", lambda *args, **kwargs: {"opps": {"SYNQ": raw}, "proj_meta": {"as_of": now}})
+    monkeypatch.setattr(
+        wpf, "load", lambda *args, **kwargs: {"facts_for": lambda symbol: {"position_state": "never_held"}}
+    )
+    monkeypatch.setattr(wu, "_ranking_context", lambda *args, **kwargs: context, raising=False)
+    result = wu.list_watch_universe({"preset": "top5", "min_coverage": "0.1"})
+    expected = ["SYNQ"] if ready and tier == "GREEN" else []
+    assert [row["symbol"] for row in result["items"]] == expected
+    if not expected:
+        assert [row["symbol"] for row in result["research_candidates"]] == ["SYNQ"]
+        assert result["research_candidates"][0]["rank"] is None
+    assert result["top_list"]["market_risk_tier"] == tier
+
+
+@pytest.mark.parametrize("limit", ["200", "not-a-number"])
+def test_watch_top_five_cap_and_ownership_filter_before_technical_reads(monkeypatch, limit):
+    import lib.data_broker.watch_universe as wu
+    import lib.data_broker.watch_prospects as wp
+    from lib.data_broker.opportunity_eligibility import technical_candidates
+    from lib.data_broker import opportunity as op
+
+    now = datetime.now(timezone.utc).isoformat()
+    raw = {
+        f"SYN{i}": {
+            "symbol": f"SYN{i}",
+            "conviction": 90 - i,
+            "coverage": 0.9,
+            "type": "existing",
+            "risk_reward": {"rr": 4},
+        }
+        for i in range(7)
+    }
+    thesis = {"summary": "Synthetic CIO research", "stance": "WATCH", "status": "active", "published_ts": now}
+    tech = {
+        "rsi": 55,
+        "macd_signal": "bullish",
+        "sma_20": 100,
+        "sma_50": 99,
+        "sma_200": 95,
+        "as_of": now,
+        "source": "indicator_confluence_cache",
+    }
+    context = {
+        "technical": {s: tech for s in raw},
+        "theses": {s: thesis for s in raw},
+        "market_risk": {"state": "evaluated", "tier": "GREEN", "as_of": now},
+    }
+    query = {"preset": "top5", "limit": limit, "type": "re_entry"}
+    candidates = technical_candidates(list(raw.values()), op.load_config(), op.apply_preset(query))
+    assert set(candidates) == set(raw), "raw existing type must not skip sold names rendered as re-entry by Watch"
+    monkeypatch.setattr(wp, "gather", lambda *a, **k: {"opps": raw, "proj_meta": {"as_of": now}})
+    monkeypatch.setattr(wpf, "load", lambda *a, **k: {"facts_for": lambda s: {"position_state": "formerly_held"}})
+    monkeypatch.setattr(wu, "_ranking_context", lambda *a, **k: context)
+    result = wu.list_watch_universe(query)
+    assert len(result["items"]) == 5
+    assert [row["symbol"] for row in result["items"]] == [f"SYN{i}" for i in range(5)]
+    assert all(row["cio_review"]["reviewed"] and row["type"] == "re_entry" for row in result["items"])
+
+
+@pytest.mark.parametrize(
+    "query,matching",
+    [
+        ({"position": "held"}, False),
+        ({"position": "never_held"}, True),
+        ({"result": "won"}, False),
+        ({"result": "lost"}, True),
+        ({"reentry": "ready"}, False),
+        ({"reentry": "waiting"}, True),
+        ({"stage": "actionable"}, False),
+        ({"stage": "forming"}, True),
+        ({"pnl_pct_min": "0"}, False),
+        ({"pnl_pct_max": "0"}, True),
+    ],
+)
+def test_watch_research_candidates_obey_the_same_position_filters(monkeypatch, query, matching):
+    now = datetime.now(timezone.utc).isoformat()
+    raw = opp("SYNQ", 1, 96, stance="WATCH")
+    raw["stage"] = "forming"
+    context = {"technical": {}, "theses": {}, "market_risk": {"state": "evaluated", "tier": "GREEN", "as_of": now}}
+    facts = {
+        "position_state": "never_held",
+        "last_round_trip": {"result": "lost", "pnl_pct": -5},
+        "reentry": {"readiness": "waiting"},
+    }
+    monkeypatch.setattr(wp, "gather", lambda *a, **k: {"opps": {"SYNQ": raw}, "proj_meta": {"as_of": now}})
+    monkeypatch.setattr(wpf, "load", lambda *a, **k: {"facts_for": lambda s: facts})
+    monkeypatch.setattr(wu, "_ranking_context", lambda *a, **k: context)
+    result = wu.list_watch_universe({"preset": "top5", **query})
+    assert not result["items"], "no CIO thesis means research-only, regardless of filters"
+    assert [r["symbol"] for r in result["research_candidates"]] == (["SYNQ"] if matching else [])
