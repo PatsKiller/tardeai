@@ -568,12 +568,35 @@ def _catalysts(p: Pack, reader: Any, now: datetime, held: list[str], sources: An
         p.add(
             "catalysts",
             "analyst revisions",
-            f"Consensus price targets over 20 days across {len(ch)} names: mean change {_pct(100 * out['analyst_change'])}",
-            source="analyst_consensus_history",
+            f"Consensus price targets over 20 days across {len(ch)} names: mean change {_pct(100 * out['analyst_change'])};"
+            f" raised on {sum(1 for x in ch if x > 0.005)}, cut on {sum(1 for x in ch if x < -0.005)}",
+            source="yahoo_analyst_targets_history",
             as_of=max(str(r.get("as_of")) for r in rev),
         )
     else:
-        p.miss("catalysts", "analyst revisions", "no analyst consensus history for the names")
+        p.miss(
+            "catalysts",
+            "analyst revisions",
+            "no consensus target 20 days back in the Yahoo analyst history for the names",
+        )
+    eps = [
+        _f(r.get("eps_next_fy")) / _f(r.get("eps_next_fy_30d_ago")) - 1.0
+        for r in rev
+        if _f(r.get("eps_next_fy")) is not None and (_f(r.get("eps_next_fy_30d_ago")) or 0) > 0
+    ]
+    if eps:
+        up, down = sum(1 for x in eps if x > 0.005), sum(1 for x in eps if x < -0.005)
+        out["eps_estimate_raised"], out["eps_estimate_cut"] = up, down
+        p.add(
+            "catalysts",
+            "eps estimates",
+            f"Next-year EPS estimates over 30 days across {len(eps)} names: raised on {up}, cut on {down},"
+            f" unchanged on {len(eps) - up - down}",
+            source="yahoo_analyst_targets_history",
+            as_of=max(str(r.get("as_of")) for r in rev),
+        )
+    else:
+        p.miss("catalysts", "eps estimates", "no next-year EPS trend in the Yahoo analyst history for the names")
     hz = _safe(lambda: sources.hermes_events(now - timedelta(hours=24), now))
     if hz and hz.get("total"):
         p.add(
@@ -938,26 +961,40 @@ class PgSources:
         )
 
     def analyst_revisions(self, symbols, end):
-        """Mean consensus price-target change over 20 days (recommendation scores are mostly empty in the store)."""
+        """Consensus price-target change over 20 days, and the next-year EPS estimate now vs 30 days ago, from the daily
+        Yahoo analyst records (``yahoo_analyst_targets_history``). The older ``analyst_consensus_history`` store has no
+        target on any row (measured 2026-11-06: 0 of 139,462), so it cannot answer this."""
         if not symbols:
             return []
         now_rows = self._rows(
-            "SELECT DISTINCT ON (symbol) symbol, target_price AS tgt_now, snapshot_date AS as_of FROM analyst_consensus_history "
-            "WHERE symbol = ANY(%s) AND created_at <= %s AND target_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
+            "SELECT DISTINCT ON (symbol) symbol, target_mean_price AS tgt_now, snapshot_date AS as_of, "
+            "data->'extended'->'eps_trend' AS eps_trend FROM yahoo_analyst_targets_history "
+            "WHERE symbol = ANY(%s) AND created_at <= %s AND target_mean_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
             [list(symbols), end],
         )
         then = {
             r["symbol"]: r["tgt_then"]
             for r in self._rows(
-                "SELECT DISTINCT ON (symbol) symbol, target_price AS tgt_then FROM analyst_consensus_history "
+                "SELECT DISTINCT ON (symbol) symbol, target_mean_price AS tgt_then FROM yahoo_analyst_targets_history "
                 "WHERE symbol = ANY(%s) AND created_at <= %s AND snapshot_date <= (%s::date - 20) "
-                "AND target_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
+                "AND target_mean_price IS NOT NULL ORDER BY symbol, snapshot_date DESC",
                 [list(symbols), end, end],
             )
         }
-        return [
-            dict(r, tgt_then=then[r["symbol"]], as_of=_iso(r.get("as_of"))) for r in now_rows if then.get(r["symbol"])
-        ]
+        out = []
+        for r in now_rows:
+            eps = next((e for e in (r.get("eps_trend") or []) if isinstance(e, dict) and e.get("index") == "+1y"), {})
+            out.append(
+                {
+                    "symbol": r["symbol"],
+                    "tgt_now": r.get("tgt_now"),
+                    "tgt_then": then.get(r["symbol"]),
+                    "eps_next_fy": eps.get("current"),
+                    "eps_next_fy_30d_ago": eps.get("30daysAgo"),
+                    "as_of": _iso(r.get("as_of")),
+                }
+            )
+        return out
 
     def hermes_events(self, start, end):
         rows = self._rows(

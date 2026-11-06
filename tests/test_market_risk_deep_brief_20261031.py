@@ -481,7 +481,7 @@ def test_analyst_targets_come_from_pg_sources_and_null_sources_is_empty():
 
     rows = PgSources(FakeReader()).analyst_revisions(["AAPL"], NOW)
     assert rows and rows[0]["tgt_now"] == 210.0 and rows[0]["tgt_then"] == 200.0
-    assert all("target_price" in q for q in seen)
+    assert all("yahoo_analyst_targets_history" in q and "target_mean_price" in q for q in seen)
 
 
 def test_triggers():

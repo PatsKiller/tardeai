@@ -630,6 +630,25 @@ class PgReader:
             self.etf_holdings_note = f"etf_holdings_snapshot unavailable: {type(exc).__name__}"
             return []
 
+    def analyst_history(
+        self, *, start: datetime, end: datetime, symbols: Iterable[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Daily Yahoo analyst records (``yahoo_analyst_targets_history``) dated in [start, end] and written by ``end``:
+        price (captured ~06:10 ET, the prior close), consensus target and rating, analyst count, and only the three
+        ``data.extended`` lists the dip list reads (EPS trend, EPS revisions, earnings dates). Selloff E."""
+        d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
+        syms = [str(s).upper() for s in symbols] if symbols is not None else None
+        return self._rows(
+            "SELECT symbol, snapshot_date, current_price, target_mean_price, recommendation_mean, recommendation_key, "
+            "number_of_analyst_opinions, jsonb_build_object('extended', jsonb_build_object("
+            "'eps_trend', data->'extended'->'eps_trend', 'eps_revisions', data->'extended'->'eps_revisions', "
+            "'earnings_dates', data->'extended'->'earnings_dates')) AS data "
+            "FROM yahoo_analyst_targets_history WHERE snapshot_date BETWEEN %s AND %s AND created_at <= %s "
+            + ("AND symbol = ANY(%s) " if syms is not None else "")
+            + "ORDER BY symbol, snapshot_date",
+            [d0, d1, _aware(end)] + ([syms] if syms is not None else []),
+        )
+
     def macro_calendar(self, *, start: datetime, end: datetime) -> list[dict[str, Any]]:
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
         events: list[dict[str, Any]] = []
