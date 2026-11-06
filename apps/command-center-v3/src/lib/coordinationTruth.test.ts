@@ -49,7 +49,7 @@ assert.equal(divergenceLine({ divergent: true, registry_problems: ['more than on
   'a divergent registry names every problem it was given')
 assert.equal(divergenceLine({ divergent: true, registry_problems: ['a', 'b'] }),
   'The coordinator registry disagrees with itself: a; b — nothing here repairs it.', 'every problem is listed')
-assert.match(String(divergenceLine({ divergent: true })), /disagrees with itself/, 'divergent with no detail still warns')
+assert.match(String(divergenceLine({ divergent: true })), /disagrees with itself/) // divergent with no detail still warns
 assert.equal(divergenceLine({ divergent: true, registry_error: 'invalid JSON', registry_problems: ['x'] }), null,
   'an unreadable registry keeps its own banner and is not reported twice')
 assert.equal(divergenceLine({ divergent: false, registry_problems: ['no coordinators'] }), null,
