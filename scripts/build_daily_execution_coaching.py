@@ -32,7 +32,8 @@ def run(days=30, source="all", apply=False):
     import psycopg2.extras
     conn = _conn(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     src_clause = "" if source == "all" else " AND q.source=%(src)s"
-    cur.execute(f"""SELECT q.*, r.grok_execution_label, r.grok_mistakes, r.grok_what_to_do_next_time
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- src_clause is one of two literals chosen above
+        f"""SELECT q.*, r.grok_execution_label, r.grok_mistakes, r.grok_what_to_do_next_time
                     FROM trade_execution_quality q
                     LEFT JOIN trade_execution_grok_reviews r ON r.trade_key=q.trade_key AND r.source=q.source
                     WHERE q.path_status='OK' AND q.exit_time >= NOW() - (%(d)s || ' days')::interval {src_clause}""",

@@ -192,17 +192,18 @@ def sweep_stale_enrichment_in_progress(cur, conn, apply: bool, *, stale_minutes:
     stats = {"terminal_cleared": 0, "active_reset": 0}
     stale_m = max(5, int(stale_minutes))
     cur.execute(
-        f"""SELECT COUNT(*) FROM paper_trade_proposals
+        """SELECT COUNT(*) FROM paper_trade_proposals
             WHERE enrichment_status = 'IN_PROGRESS'
               AND status IN ('EXPIRED', 'REJECTED', 'APPROVED', 'RISK_BLOCKED')"""
     )
     terminal_n = int(cur.fetchone()[0] or 0)
     cur.execute(
-        f"""SELECT COUNT(*) FROM paper_trade_proposals
+        """SELECT COUNT(*) FROM paper_trade_proposals
             WHERE enrichment_status = 'IN_PROGRESS'
               AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'APPROVED')
               AND COALESCE(enrichment_last_attempt_at, updated_at)
-                  < NOW() - INTERVAL '{stale_m} minutes'"""
+                  < NOW() - %s * INTERVAL '1 minute'""",
+        (stale_m,),
     )
     active_n = int(cur.fetchone()[0] or 0)
     if not apply:
@@ -219,12 +220,13 @@ def sweep_stale_enrichment_in_progress(cur, conn, apply: bool, *, stale_minutes:
         stats["terminal_cleared"] = cur.rowcount
     if active_n:
         cur.execute(
-            f"""UPDATE paper_trade_proposals
+            """UPDATE paper_trade_proposals
                 SET enrichment_status = NULL, updated_at = NOW()
                 WHERE enrichment_status = 'IN_PROGRESS'
                   AND status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'APPROVED')
                   AND COALESCE(enrichment_last_attempt_at, updated_at)
-                      < NOW() - INTERVAL '{stale_m} minutes'"""
+                      < NOW() - %s * INTERVAL '1 minute'""",
+            (stale_m,),
         )
         stats["active_reset"] = cur.rowcount
     if stats["terminal_cleared"] or stats["active_reset"]:
