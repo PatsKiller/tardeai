@@ -33,12 +33,14 @@ independent ``MERGE`` review, and a quoted dry-run receipt.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
@@ -160,8 +162,54 @@ def _append_jsonl(path: Path, doc: Mapping[str, Any]) -> None:
         handle.write(json.dumps(doc, sort_keys=True) + "\n")
 
 
+@contextmanager
+def _state_lock(state_dir: Path):
+    """Serialise every read-modify-write of ``state.json`` across processes.
+
+    claude-lead BLOCK on #2549 (2026-11-05): ``rerun_for_request`` (the Home executor's call) rewrote
+    ``state.json`` with no lock while the scheduled lane held its own copy in memory, so either side's
+    update could land on top of the other and be lost. The scheduled cycle takes the same lock for its
+    whole read-modify-write. An unopenable lock file degrades to the previous unserialised behaviour
+    rather than stopping the lane.
+    """
+    path = Path(state_dir) / "state.json.lock"
+    fh = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fh = path.open("a+")
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        if fh is not None:
+            fh.close()
+        fh = None
+    try:
+        yield
+    finally:
+        if fh is not None:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            finally:
+                fh.close()
+
+
 # --------------------------------------------------------------------------- cycle
 def run_cycle(
+    config: Mapping[str, Any],
+    *,
+    state_dir: Path,
+    gh: Callable[[list[str]], tuple[int, str]],
+    dry_run: bool = True,
+    telegram: Optional[Callable[..., Any]] = None,
+    issue_writer: Optional[Callable[..., str]] = None,
+    now: Optional[str] = None,
+) -> dict:
+    """One scheduled cycle, under the state lock (its load and its write are one transaction)."""
+    with _state_lock(state_dir):
+        return _run_cycle(config, state_dir=state_dir, gh=gh, dry_run=dry_run, telegram=telegram,
+                          issue_writer=issue_writer, now=now)
+
+
+def _run_cycle(
     config: Mapping[str, Any],
     *,
     state_dir: Path,
@@ -184,6 +232,10 @@ def run_cycle(
     if state.get("schema") != STATE_SCHEMA:
         state = {"schema": STATE_SCHEMA, "runs": {}}
     runs_state: dict[str, dict] = state.setdefault("runs", {})
+    # Operator standing order 2026-11-03: ONE re-run per failing HEAD per check group, so red is never
+    # retried into green. The ledger is keyed (head SHA, check group) and survives run-id changes: a
+    # second workflow in the same page group on the same head does not get its own retry.
+    rerun_ledger: dict[str, dict] = state.setdefault("rerun_ledger", {})
 
     rc, out = gh(["run", "list", "--repo", repo, "--branch", str(config.get("branch", "main")),
                   "--limit", str(int(config["run_list_limit"])),
@@ -226,13 +278,35 @@ def run_cycle(
                 rec["flake_recorded"] = True
                 rec["last_action"] = ACTION_FLAKE_RECORDED
                 rec["updated_at"] = started_at
+                fixer_path = None
+                failing: list[str] = []
+                if not dry_run and bool(config.get("fixer", {}).get("enabled", True)):
+                    # ONE re-run passed -> FLAKY; open the deterministic fix task with the named test ids.
+                    # The run is GREEN now, so `--log-failed` says nothing: prefer the ids and the log
+                    # captured when the re-run was requested (claude-lead BLOCK on #2549).
+                    flog = _failed_log(config, gh, run_id)
+                    failure_class, failing = classify_failure("failure", flog, infra_markers)
+                    if not failing:
+                        failing = list(rec.get("failing_test_ids") or [])
+                        failure_class = str(rec.get("failure_class") or failure_class)
+                    fixer_path, failing = _fix_request(
+                        config, {"failure_class": failure_class, "failing_test_ids": failing},
+                        run, run_id, workflow, state_dir, started_at,
+                        why="suspected flake: the re-run passed; make the failing test deterministic",
+                        log_tail=_log_tail(config, flog) or str(rec.get("failed_log_excerpt") or ""),
+                        run_key=run_key)
+                    rec["fixer_request"] = str(fixer_path)
                 receipt["actions"].append({"run_id": run_id, "workflow": workflow,
                                            "action": ACTION_FLAKE_RECORDED, "suspected_flake": True,
-                                           "note": "the re-run passed; recorded as a suspected flake"})
+                                           "failing_test_ids": list(failing),
+                                           "fixer_request": str(fixer_path) if fixer_path else None,
+                                           "note": "the re-run passed; recorded as a suspected flake and a fix task was opened"})
             else:
                 receipt["skipped"].append({"run_id": run_id, "workflow": workflow, "reason": "green"})
             continue
         prior_attempts = sum(1 for k in runs_state if k.startswith(f"{run_id}:")) - (1 if run_key in runs_state else 0)
+        group = (config.get("page_groups") or {}).get(workflow) or workflow
+        head_key = f"{tip}:{group}"
         action = _handle_red_run(
             config=config, run=run, run_id=run_id, workflow=workflow,
             record=runs_state.setdefault(run_key, {"attempts": 0, "escalated": False,
@@ -241,6 +315,7 @@ def run_cycle(
             gh=gh, state_dir=state_dir, dry_run=dry_run, telegram=telegram,
             issue_writer=issue_writer, infra_markers=infra_markers, now=started_at,
             run_key=run_key, run_prior_attempts=max(prior_attempts, 0),
+            head_key=head_key, rerun_ledger=rerun_ledger,
         )
         receipt["actions"].append(action)
 
@@ -271,8 +346,99 @@ def decide(*, attempts: int, max_reruns: int, escalated: bool, flake_recorded: b
     return ACTION_PAGE_AND_DISPATCH
 
 
+def rerun_for_request(run_id, expected_head_sha: str, *, config: Optional[Mapping[str, Any]] = None,
+                      state_dir: Optional[Path] = None, gh=None, dry_run: bool = False,
+                      progress=None) -> dict:
+    """The Home v008 executor's one call into this lane (action type ``rerun_ci``).
+
+    The approval is bound to (run id, head SHA); this function re-reads the run and refuses with a plain
+    reason if the head moved or the run is not failing, then applies the SAME one-re-run-per-(head, check
+    group) ledger the scheduled lane uses and issues exactly one ``gh run rerun <id> --failed``. A second
+    failure stays REAL: the ledger blocks a third attempt from either caller.
+
+    Returns ``{"ok": bool, "plain": str, ...}``. ``progress.reached("rerun_issued")`` is called after the
+    re-run is issued so the executor's receipt records the step. Nothing here approves anything: the
+    decision belongs to the operator's session upstream; this is the action half only.
+    """
+    cfg = config if config is not None else _load_json(default_config_path())
+    if not cfg or cfg.get("schema") != CONFIG_SCHEMA:
+        return {"ok": False, "plain": "The main-red lane has no readable config, so nothing was re-run."}
+    runner = gh or _gh_runner
+    repo = str(cfg.get("repo") or "")
+    rid = str(run_id).strip()
+    head = str(expected_head_sha or "").strip().lower()
+    if not rid.isdigit():
+        return {"ok": False, "plain": "That run id is not a number GitHub could have issued."}
+    if len(head) != 40:
+        return {"ok": False, "plain": "The request does not bind a full 40-character head SHA."}
+
+    try:
+        rc, out = runner(["run", "view", rid, "--repo", repo,
+                          "--json", "headSha,status,conclusion,workflowName"])
+    except Exception as exc:  # noqa: BLE001 — a transport fault is a plain refusal here, never a raise
+        return {"ok": False, "plain": f"I could not read run {rid} ({type(exc).__name__}), so nothing was re-run."}
+    try:
+        view = json.loads(out or "{}")
+    except ValueError:
+        view = None
+    if rc != 0 or not isinstance(view, dict) or not view:
+        return {"ok": False, "plain": f"I could not read run {rid}, so nothing was re-run."}
+    run_head = str(view.get("headSha") or "").lower()
+    if run_head != head:
+        return {"ok": False,
+                "plain": "This changed. The run is at a different head than the one you approved; nothing was re-run."}
+    if str(view.get("status") or "") != "completed" or str(view.get("conclusion") or "") not in FAILED_CONCLUSIONS:
+        return {"ok": False, "plain": "That run is not failing, so there is nothing to re-run."}
+
+    workflow = str(view.get("workflowName") or "")
+    group = (cfg.get("page_groups") or {}).get(workflow) or workflow or rid
+    head_key = f"{run_head}:{group}"
+    path = Path(state_dir) if state_dir is not None else default_state_dir()
+    # The ledger check, the re-run and its ledger write are ONE transaction under the same state lock
+    # the scheduled lane holds (claude-lead BLOCK on #2549): without it two concurrent requests could
+    # both see an empty ledger and issue two re-runs, and either side's state write could be lost.
+    with _state_lock(path):
+        state = _load_json(path / "state.json")
+        if state.get("schema") != STATE_SCHEMA:
+            state = {"schema": STATE_SCHEMA, "runs": {}}
+        ledger: dict[str, dict] = state.setdefault("rerun_ledger", {})
+        if head_key in ledger:
+            return {"ok": False, "head_key": head_key,
+                    "plain": "This head has already had its one re-run for this check; a second failure is REAL "
+                             "and will not be re-run again."}
+        if dry_run:
+            return {"ok": True, "dry_run": True, "head_key": head_key,
+                    "plain": f"Would re-run the failed jobs of {rid} once."}
+
+        try:
+            rc, out = runner(["run", "rerun", rid, "--repo", repo, "--failed"])
+        except Exception as exc:  # noqa: BLE001 — the executor records a refused receipt, it does not catch ours
+            return {"ok": False, "head_key": head_key,
+                    "plain": f"The re-run could not be issued ({type(exc).__name__}); nothing was re-run."}
+        if rc != 0:
+            return {"ok": False, "head_key": head_key,
+                    "plain": f"GitHub refused the re-run: {(out or '').strip()[:200]}"}
+        ledger[head_key] = {"run_id": rid, "at": _utcnow(), "via": "approval_request"}
+        _write_json(path / "state.json", state)
+    progress_error = None
+    if progress is not None:
+        try:
+            progress.reached("rerun_issued")
+        except Exception as exc:  # noqa: BLE001 — a progress recorder must never undo an issued re-run
+            # Reported, not swallowed: ruff's S110 (try/except/pass) is a baseline this repo only shrinks,
+            # and a silent drop here would be the one place a step could vanish without a trace.
+            progress_error = f"{type(exc).__name__}: {exc}"
+    result = {"ok": True, "head_key": head_key, "run_id": rid,
+              "plain": f"Re-ran the failed jobs of run {rid} once ({run_head[:12]}). A second failure is REAL "
+                       "and will not be re-run again."}
+    if progress_error:
+        result["progress_error"] = progress_error
+    return result
+
+
 def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry_run,
-                    telegram, issue_writer, infra_markers, now, run_key="", run_prior_attempts=0) -> dict:
+                    telegram, issue_writer, infra_markers, now, run_key="", run_prior_attempts=0,
+                    head_key="", rerun_ledger=None) -> dict:
     base = {"run_id": run_id, "workflow": workflow, "head_sha": str(run.get("headSha")),
             "run_url": run.get("url")}
     record["head_sha"] = str(run.get("headSha"))
@@ -302,7 +468,31 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     failure_class, test_ids = classify_failure(
         str(view_conclusion or run.get("conclusion")), log, infra_markers)
     base.update({"failure_class": failure_class, "failing_test_ids": test_ids})
-    rerun_allowed = bool((config.get("rerun_classes") or {}).get(failure_class)) and run_prior_attempts == 0
+    ledger = rerun_ledger if rerun_ledger is not None else {}
+    head_rerun = bool(head_key) and head_key in ledger
+    # Only the ORIGINAL attempt of a held head/check waits. Once the rerun attempt itself is red
+    # (attempt >= 2) this is the 'fail again = REAL' case: it must page and get the fix task, never
+    # another rerun. The attempt number is the last run_key component.
+    try:
+        attempt_no = int(str(run_key).rsplit(":", 1)[-1]) if ":" in str(run_key) else 1
+    except ValueError:
+        attempt_no = 1
+    if (head_rerun and attempt_no <= 1 and attempts == 0
+            and not record.get("escalated") and not record.get("flake_recorded")):
+        spent_on = str(((ledger.get(head_key) or {}).get("run_id")) or "")
+        if spent_on == run_id:
+            # This very run's one re-run was requested; hold and let its next attempt decide.
+            return {**base, "action": ACTION_NOOP,
+                    "reason": "one re-run already requested for this head/check"}
+        # The group's one re-run was spent on ANOTHER workflow at this head (claude-lead BLOCK on
+        # #2549, 2026-11-05). This red can never be re-run, and the old hold returned noop on every
+        # cycle forever, so a REAL failure whose sibling used the retry was never reported. Fall
+        # through: rerun_allowed is false below, so decide() pages it once (page cooldown applies).
+        group_name = str(head_key).split(":", 1)[-1]
+        base["note"] = (f"the one re-run for this head/check group was spent on run {spent_on or '?'} "
+                        f"({group_name}); this workflow has none left")
+    rerun_allowed = (bool((config.get("rerun_classes") or {}).get(failure_class))
+                     and run_prior_attempts == 0 and not head_rerun)
 
     decision = decide(attempts=attempts, max_reruns=int(config["max_reruns"]),
                       escalated=bool(record.get("escalated")),
@@ -317,6 +507,23 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
     if decision == ACTION_FLAKE_RECORDED:
         record["flake_recorded"] = True
         record["last_action"] = ACTION_FLAKE_RECORDED
+        fixer_path = None
+        # The re-run passed, so `--log-failed` on the current attempt says nothing. Use what was
+        # captured when the re-run was requested (claude-lead BLOCK on #2549).
+        if not test_ids:
+            test_ids = list(record.get("failing_test_ids") or [])
+            if record.get("failure_class"):
+                failure_class = str(record["failure_class"])
+                base["failure_class"] = failure_class
+        log_tail = _log_tail(config, log) or str(record.get("failed_log_excerpt") or "")
+        if not dry_run and bool(config.get("fixer", {}).get("enabled", True)):
+            # Operator standing order 2026-11-03: a passing re-run is FLAKY and must OPEN A FIX TASK so the
+            # test becomes deterministic. The task is this durable request; the fixer stops at a local fix.
+            fixer_path, test_ids = _fix_request(
+                config, base, run, run_id, workflow, state_dir, now,
+                why="suspected flake: the re-run passed; make the failing test deterministic",
+                log_tail=log_tail, run_key=run_key)
+            record["fixer_request"] = str(fixer_path)
         if bool(config.get("flaky_issue", {}).get("enabled")) and issue_writer is not None and test_ids:
             try:
                 base["flaky_issue_url"] = issue_writer(
@@ -325,7 +532,9 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
             except Exception as exc:  # noqa: BLE001
                 base["issue_error"] = f"{type(exc).__name__}: {exc}"
         return {**base, "action": ACTION_FLAKE_RECORDED, "suspected_flake": True,
-                "note": "the re-run passed; recorded as a suspected flake"}
+                "failing_test_ids": list(test_ids or []),
+                "fixer_request": str(fixer_path) if fixer_path else None,
+                "note": "the re-run passed; recorded as a suspected flake and a fix task was opened"}
     if decision == ACTION_RERUN:
         if dry_run:
             return {**base, "action": "would_" + ACTION_RERUN}
@@ -334,6 +543,14 @@ def _handle_red_run(*, config, run, run_id, workflow, record, gh, state_dir, dry
         # every cycle, forever.
         record["attempts"] = attempts + 1
         record["last_action"] = ACTION_RERUN
+        # Capture what FAILED while the run is still failing (claude-lead BLOCK on #2549, 2026-11-05):
+        # after a passing re-run `gh run view --log-failed` returns nothing, so both flake paths opened
+        # the fix task with an empty `failing_test_ids` and no test name in it.
+        record["failing_test_ids"] = list(test_ids or [])
+        record["failure_class"] = failure_class
+        record["failed_log_excerpt"] = _log_tail(config, log)
+        if rc == 0 and head_key:
+            ledger[head_key] = {"run_id": run_id, "at": now}
         if rc != 0:
             return {**base, "action": "rerun_failed", "attempt": record["attempts"],
                     "error": (out or "")[:300]}
@@ -491,18 +708,35 @@ def fixer_incident_document(*, run: Mapping[str, Any], run_id: str, workflow: st
     }
 
 
-def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
-              telegram, issue_writer, infra_markers, now, *, why, log_tail="", run_key="") -> dict:
+def _fix_request(config, base, run, run_id, workflow, state_dir, now, *, why, log_tail="", run_key=""):
+    """Write the durable LOCAL fix task (N8nCodeDefect@v1) the self-heal fixer consumes.
+
+    Operator standing order 2026-11-03: a re-run that passes leaves a FLAKY test, and 'OPEN A FIX TASK so it
+    becomes deterministic'. The fix task is this request file, not a GitHub issue (a scheduled remote write is
+    §24.5); the fixer still stops at a local fix branch until it is armed. Returns (path, failing test ids).
+    """
     failing = list(base.get("failing_test_ids") or [])
     request = fixer_incident_document(
         run=run, run_id=run_id, workflow=workflow, failing=failing,
         failure_class=str(base.get("failure_class") or ""), log_tail=log_tail, now=now)
     request["main_red_autoheal"]["repo"] = str(config["repo"])
+    request["main_red_autoheal"]["why"] = why
     run_key = run_key or run_id
     request_path = state_dir / str(config["fixer"].get("requests_rel") or "fixer_requests") / \
         f"{run_key.replace(':', '-')}.json"
+    _write_json(request_path, request)
+    if bool(config.get("fixer", {}).get("enabled", True)):
+        _append_jsonl(state_dir / "fixer_requests.jsonl", request)
+    return request_path, failing
+
+
+def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_run,
+              telegram, issue_writer, infra_markers, now, *, why, log_tail="", run_key="") -> dict:
+    failing = list(base.get("failing_test_ids") or [])
     if dry_run:
         return {**base, "action": "would_escalate", "reason": why, "failing_test_ids": failing}
+    request_path, failing = _fix_request(config, base, run, run_id, workflow, state_dir, now,
+                                         why=why, log_tail=log_tail, run_key=run_key)
 
     text = (
         f"[{config['page'].get('severity', 'P1')}] main is red: {workflow} on "
@@ -513,9 +747,6 @@ def _escalate(config, base, record, run, run_id, workflow, gh, state_dir, dry_ru
     record["escalated"] = True
     record["last_action"] = ACTION_PAGE_AND_DISPATCH
     record["fixer_request"] = str(request_path)
-    _write_json(request_path, request)
-    if bool(config.get("fixer", {}).get("enabled", True)):
-        _append_jsonl(state_dir / "fixer_requests.jsonl", request)
     group = (config.get("page_groups") or {}).get(workflow) or workflow
     page_key = f"{run.get('headSha')}:{group}"
     cooldown_h = float((config.get("page") or {}).get("page_cooldown_hours", 6))

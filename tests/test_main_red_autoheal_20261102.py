@@ -7,11 +7,12 @@ re-runs the failed jobs ONCE (``gh run rerun <id> --failed``), and:
   test blocked the deploy poller until a human re-ran it);
 * a second red records an escalation: one P1 page and one Claude Code fixer request.
 
-AGENTS.md wins over the plan. §24.5 forbids a scheduled job from writing to a remote and
-§28.14 limits the monitor's rerun to an *infrastructure* flake, "never a test failure".
-So the shipped config re-runs infrastructure failures only; a run whose failed log names
-test ids escalates on the first cycle instead of being re-run. Every remote write is
-behind a config gate whose default honours those rules.
+AGENTS.md wins over the plan. §24.5 forbids a scheduled job from writing to a remote, so
+the fix task stays a LOCAL request file. The earlier §28.14 reading ("never a test failure")
+is superseded by the operator STANDING ORDER of 2026-11-03: every failed CI run gets ONE
+automatic re-run per failing head per check group; a passing re-run is FLAKY and opens the
+fix task, a second failure is REAL and is never re-run a third time. Every remote write is
+behind a config gate.
 
 Hermetic: every gh call, the Telegram sender and the issue writer are injected fakes;
 state, receipts and fixer requests live under tmp_path. Nothing reaches GitHub.
@@ -230,8 +231,11 @@ def test_shipped_config_is_valid_and_gates_remote_writes():
 
     assert cfg["schema"] == "MainRedAutohealConfig@v1"
     assert cfg["max_reruns"] == 1
-    assert cfg["rerun_classes"]["test_failure"] is False
-    assert cfg["flaky_issue"]["enabled"] is False
+    # Operator STANDING ORDER 2026-11-03: failed CI gets ONE automatic re-run by agents (test failures
+    # included), pass = FLAKY + a local fix task, fail again = REAL and never re-run a third time.
+    assert cfg["rerun_classes"]["test_failure"] is True
+    assert "ONE automatic re-run" in cfg["_why"] and "never re-run a third time" in cfg["_why"]
+    assert cfg["flaky_issue"]["enabled"] is False  # still no GitHub write from a scheduled job (§24.5)
     assert "24.5" in cfg["_why"] and "28.14" in cfg["_why"]
     assert cfg["required_workflows"]
 
@@ -343,6 +347,13 @@ def test_main_apply_pages_through_its_own_send_import(tmp_path, monkeypatch):
     gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"})
     monkeypatch.setattr(mra, "_gh_runner", gh)
 
+    # Operator standing order 2026-11-03: the first cycle re-runs the failed jobs once (test failures
+    # included) instead of paging; the page happens only when the re-run fails again (REAL).
+    rc = mra.main(["--apply", "--state-dir", str(tmp_path / "state"), "--json"])
+
+    assert rc == 0
+    assert [c[2] for c in gh.reruns] == ["991"] and sent == []
+    gh.attempts["991"] = 2  # the re-run attempt is the red one
     rc = mra.main(["--apply", "--state-dir", str(tmp_path / "state"), "--json"])
 
     assert rc == 0
@@ -499,3 +510,167 @@ def test_a_green_rerun_on_a_new_attempt_records_the_flake(tmp_path):
     assert receipt["actions"][0]["action"] == "flake_recorded"
     assert receipt["actions"][0]["suspected_flake"] is True
     assert len(gh.reruns) == 1
+
+
+# --------------------------------------------- operator standing order 2026-11-03
+# "One re-run per failing head per check so red is never retried into green."
+GROUPED = {**CONFIG,
+           "required_workflows": ["cio-production-hardening-ci", "cio-full-suite-sharded"],
+           "rerun_classes": {"infrastructure": True, "test_failure": True, "unknown": False},
+           "page_groups": {"cio-production-hardening-ci": "cio-hardening-suite",
+                           "cio-full-suite-sharded": "cio-hardening-suite"}}
+
+
+def test_one_rerun_per_failing_head_and_check_group(tmp_path):
+    """Both workflows of one check group go red on the SAME head: the head is re-run once, not twice.
+
+    The ledger is keyed (head SHA, check group), so the second workflow does not get its own re-run.
+    It must still be REPORTED: claude-lead's BLOCK on #2549 showed the old hold returned noop on every
+    cycle forever, so a real failure whose sibling used the retry was never paged.
+    """
+    gh = FakeGh([run_json("991", "cio-production-hardening-ci"),
+                 run_json("992", "cio-full-suite-sharded")],
+                logs={"991": "FAILED tests/test_x.py::test_y - StopIteration",
+                      "992": "FAILED tests/test_x.py::test_y - StopIteration"})
+    receipt = cycle(tmp_path, gh, cfg=dict(GROUPED))
+
+    assert len(gh.reruns) == 1, gh.reruns
+    actions = sorted((a["action"] for a in receipt["actions"]))
+    assert actions == ["page_and_dispatch", "rerun"]
+    reported = next(a for a in receipt["actions"] if a["action"] == "page_and_dispatch")
+    assert "spent on run" in reported["note"], reported
+    # ...and no later cycle can buy a second re-run for the same head/check group.
+    cycle(tmp_path, gh, cfg=dict(GROUPED))
+    assert len(gh.reruns) == 1, gh.reruns
+
+
+def test_passing_rerun_opens_a_fix_task_naming_the_flaky_test(tmp_path):
+    """"Pass on re-run = FLAKY, record the test name and run ids, OPEN A FIX TASK ... and carry on." """
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"},
+                views={"991": {"conclusion": "failure", "status": "completed"}})
+    cycle(tmp_path, gh, cfg=dict(GROUPED))            # cycle 1: one automatic re-run
+    gh.views["991"] = {"conclusion": "success", "status": "completed"}
+    receipt = cycle(tmp_path, gh, cfg=dict(GROUPED))  # cycle 2: the re-run passed -> flake
+
+    action = receipt["actions"][0]
+    assert action["action"] == "flake_recorded" and action["suspected_flake"] is True
+    doc = json.loads(Path(action["fixer_request"]).read_text())
+    assert doc["main_red_autoheal"]["why"].startswith("suspected flake")
+    assert "tests/test_x.py::test_y" in doc["main_red_autoheal"]["failing_test_ids"]
+    assert doc["main_red_autoheal"]["run_id"] == "991"
+
+
+# ------------------------------------------- the Home v008 executor's one call (rerun_ci)
+class Progress:
+    def __init__(self):
+        self.steps = []
+
+    def reached(self, step):
+        self.steps.append(step)
+
+
+def _view(head="a" * 40, conclusion="failure", status="completed", workflow="cio-production-hardening-ci"):
+    return {"headSha": head, "conclusion": conclusion, "status": status, "workflowName": workflow}
+
+
+def test_rerun_for_request_issues_one_rerun_and_records_the_ledger(tmp_path):
+    gh = FakeGh([], views={"991": _view()})
+    progress = Progress()
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state",
+                                gh=gh, progress=progress)
+
+    assert out["ok"] is True and out["head_key"] == f"{'a' * 40}:cio-production-hardening-ci"
+    assert [c[2] for c in gh.reruns] == ["991"]
+    assert progress.steps == ["rerun_issued"]
+    state = json.loads((tmp_path / "state" / "state.json").read_text())
+    assert state["rerun_ledger"][out["head_key"]]["run_id"] == "991"
+    assert state["rerun_ledger"][out["head_key"]]["via"] == "approval_request"
+
+
+def test_rerun_for_request_refuses_when_the_head_moved(tmp_path):
+    gh = FakeGh([], views={"991": _view(head="b" * 40)})
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+
+    assert out["ok"] is False and "changed" in out["plain"]
+    assert gh.reruns == []
+
+
+def test_rerun_for_request_refuses_a_second_time_for_the_same_head_and_check(tmp_path):
+    gh = FakeGh([], views={"991": _view(), "992": _view()})
+    first = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+    second = mra.rerun_for_request(992, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+
+    assert first["ok"] is True and second["ok"] is False
+    assert "already had its one re-run" in second["plain"]
+    assert len(gh.reruns) == 1                      # the budget is the lane's, not the caller's
+
+
+def test_rerun_for_request_refuses_a_run_that_is_not_failing(tmp_path):
+    gh = FakeGh([], views={"991": _view(conclusion="success")})
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=gh)
+
+    assert out["ok"] is False and "not failing" in out["plain"]
+    assert gh.reruns == []
+
+
+def test_rerun_for_request_refuses_a_short_head_or_a_non_numeric_run(tmp_path):
+    gh = FakeGh([], views={"991": _view()})
+    short = mra.rerun_for_request(991, "abc", config=dict(CONFIG), state_dir=tmp_path / "s1", gh=gh)
+    bad = mra.rerun_for_request("not-a-run", "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "s2", gh=gh)
+
+    assert short["ok"] is False and bad["ok"] is False and gh.reruns == []
+
+
+def test_rerun_for_request_never_raises_on_a_transport_fault(tmp_path):
+    class Boom:
+        def __call__(self, argv):
+            raise TimeoutError("gh did not answer")
+
+    out = mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=tmp_path / "state", gh=Boom())
+
+    assert out["ok"] is False and "TimeoutError" in out["plain"]
+
+
+# ---------------- claude-lead BLOCK on #2549 (2026-11-05): the fix task keeps the test name,
+# ---------------- and the executor's re-run cannot race the scheduled lane.
+def test_the_fix_task_names_the_test_even_when_the_passing_rerun_has_no_failed_log(tmp_path):
+    """The re-run passed, so `gh run view --log-failed` now returns nothing. The ids captured when
+    the re-run was requested must still name the test in the fix task."""
+    gh = FakeGh([run_json()], logs={"991": "FAILED tests/test_x.py::test_y - StopIteration"},
+                views={"991": {"conclusion": "failure", "status": "completed"}})
+    cycle(tmp_path, gh, cfg=dict(GROUPED))            # cycle 1: one automatic re-run
+    gh.logs = {}                                      # the re-run passed: no failed log any more
+    gh.runs = [run_json(conclusion="success")]        # the run list now shows the green re-run
+    gh.views["991"] = {"conclusion": "success", "status": "completed"}
+    receipt = cycle(tmp_path, gh, cfg=dict(GROUPED))
+
+    action = receipt["actions"][0]
+    assert action["action"] == "flake_recorded", action
+    doc = json.loads(Path(action["fixer_request"]).read_text())
+    assert "tests/test_x.py::test_y" in doc["main_red_autoheal"]["failing_test_ids"], doc
+
+
+def test_rerun_for_request_waits_for_the_state_lock_the_lane_holds(tmp_path):
+    """claude-lead BLOCK on #2549: rerun_for_request rewrote state.json with no lock. It now takes
+    the SAME lock as the scheduled cycle, so its ledger check and write cannot interleave with it."""
+    import fcntl
+    import threading
+
+    state = tmp_path / "state"
+    state.mkdir()
+    gh = FakeGh([], views={"991": _view()})
+    holder = (state / "state.json.lock").open("a+")
+    fcntl.flock(holder.fileno(), fcntl.LOCK_EX)
+    result: dict = {}
+    t = threading.Thread(target=lambda: result.setdefault(
+        "out", mra.rerun_for_request(991, "a" * 40, config=dict(CONFIG), state_dir=state, gh=gh)))
+    try:
+        t.start()
+        t.join(0.5)
+        assert t.is_alive() and "out" not in result, "rerun_for_request did not wait for the state lock"
+        assert gh.reruns == [], "the re-run was issued while another writer held the state"
+    finally:
+        fcntl.flock(holder.fileno(), fcntl.LOCK_UN)
+        holder.close()
+    t.join(5)
+    assert result["out"]["ok"] is True and len(gh.reruns) == 1
