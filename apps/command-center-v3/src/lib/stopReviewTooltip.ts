@@ -1,6 +1,6 @@
 /** Format stop/protection review timestamps for native title tooltips. */
 
-import { formatPricingTime } from './pricingStamp'
+import { formatPricingTime } from './pricingStamp.ts'
 
 export type StopReviewMeta = {
   advisoryAt?: string | null
@@ -37,10 +37,24 @@ export function stopReviewTooltip(meta: StopReviewMeta): string {
   return lines.join('\n')
 }
 
+function _atMs(v: any): number | null {
+  const s = String(v ?? '').trim()
+  if (!s) return null
+  const t = Date.parse(s)
+  return Number.isFinite(t) ? t : null
+}
+
 export function mergeLiveStop(confirmed?: any, live?: any): any {
   if (!live && !confirmed) return undefined
   if (!live) return confirmed
   if (!confirmed) return live
   if (live.source === 'broker') return { ...confirmed, ...live, source: 'broker', broker_verified: true }
+  // Neither side is a live broker read. The NEWER observation wins: a stored broker observation captured after the
+  // operator's confirmation is fresher evidence, and returning the older confirmation would show a superseded level.
+  // The stored observation keeps its own provenance (source 'stop_last_known', broker_verified false) — a stored
+  // observation is never relabelled as a broker-verified live read.
+  const liveAt = _atMs(live.fetched_at ?? live.captured_at ?? live.as_of)
+  const confirmedAt = _atMs(confirmed.confirmed_at ?? confirmed.fetched_at ?? confirmed.as_of ?? confirmed.at)
+  if (liveAt != null && (confirmedAt == null || liveAt > confirmedAt)) return live
   return confirmed
 }

@@ -388,6 +388,9 @@ def stop_for(account: str, symbol: str, *, broker_rows=None, planned=None, now=N
             "stop_status_raw": row.get("status"), "stop_captured_at": meta["as_of"],
             "broker_protected": state == "active" and sp is not None and sp > 0,
             "stop_qty": _number(row.get("qty")), "order_id": row.get("order_id"),
+            # The broker order KIND survives a page view: a trailing order has no fixed trigger price, so without it
+            # an active observation with an unknown price could not be told apart from a stop whose price was lost.
+            "stop_order_type": (str(row.get("order_type") or "").strip().upper() or None),
             "stop_note": note, "stop_history": history, **meta}
 
 
@@ -595,6 +598,22 @@ def _query_rows(db_query, sql, params=None) -> list[dict] | None:
         return [dict(r) for r in rows] if isinstance(rows, (list, tuple)) else None
     except Exception:
         return None
+
+
+def _manual_broker_rows(db_query) -> list[dict]:
+    """Operator-recorded resting orders at brokers with no order API (Fidelity GTC stops).
+
+    A persisted observation of a real order is the same kind of evidence as a ``stop_last_known`` row, so the
+    stored page model reads it with no broker call. Without it a Fidelity holding with an operator-recorded stop
+    fell out of the holdings projection and was labelled NO_STOP while Stop Management still showed the order
+    (codex review of PR 2180 at 17199ab97). A missing table or DB yields ``[]`` — the stop_last_known rows stand.
+    """
+    rows = _query_rows(
+        db_query,
+        "SELECT account, symbol, order_id, order_type, stop_price, qty, status, updated_at "
+        "FROM manual_broker_stops WHERE active = TRUE "
+        "AND lower(COALESCE(status,'open')) NOT IN ('cancelled','canceled','filled','closed','expired')")
+    return [{**dict(r), "captured_at": r.get("updated_at")} for r in rows or []]
 
 
 def approvals_for(*, db_query=None, rows=None, projection=None, now=None) -> dict:
@@ -1319,7 +1338,13 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     from .portfolio_positions import load_store, store_path
     portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_store(store_path(root)), now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
-        db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
+        db_query, "SELECT account,symbol,order_id,order_type,stop_price,qty,status,captured_at FROM stop_last_known")
+    if "broker_stops" not in inputs:
+        # Fidelity has no order API: its GTC stops exist only as persisted operator records. Reading them here is
+        # still a stored read — no broker call — and it keeps a protected Fidelity holding out of the NO_STOP bucket.
+        manual = _manual_broker_rows(db_query)
+        if broker is not None and manual:  # None means the DB is unreadable: keep it unknown, never "zero stops"
+            broker = list(broker) + manual
     planned = inputs.get("planned_stops") if "planned_stops" in inputs else _read_json(state / "stops.json")
     fills = inputs.get("stop_fills") if "stop_fills" in inputs else fill_ledger(broker, db_query=db_query)
     positions = []
@@ -1335,9 +1360,11 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         positions.append(p)
     counted_positions = [p for p in positions if (_number(p.get("market_value")) or 0) >= 100]
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
-    stop_rows = [{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
-                                      "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
-                                      "stop_history")} for p in positions]
+    stop_rows = [{**{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
+                                         "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
+                                         "stop_history", "stop_order_type")},
+                  # the stored broker order id, so a page can show a resting stop without a live broker read
+                  "stop_order_id": p.get("order_id")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
              "filled_count": counts["filled"], "unprotected_count": sum(not p["broker_protected"] for p in counted_positions),
              "position_count": portfolio["position_count"],

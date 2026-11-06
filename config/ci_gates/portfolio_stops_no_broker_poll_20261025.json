@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "portfolio_stops_no_broker_poll_20261025",
+  "files": [
+    "tests/test_portfolio_stops_no_broker_poll_20261025.py"
+  ],
+  "anchor": "PORTFOLIO_STOPS_NO_BROKER_POLL_20261025",
+  "comment": [
+    "ANCHOR: PORTFOLIO_STOPS_NO_BROKER_POLL_20261025 — Portfolio page views never trigger a broker read (page audit 2026-10-25): `?stops=stored` serves the persisted stop model (stored broker order id, stored and live caches kept apart), while an explicit operator `refresh=1` still reads the broker. Regression tripwire for both stop pages and the LLM coverage route."
+  ]
+}
