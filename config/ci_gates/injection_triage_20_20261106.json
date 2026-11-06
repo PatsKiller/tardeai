@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_20_20261106",
+  "files": [
+    "tests/test_injection_triage_20_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_20_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_20_20261106 — SQL injection triage batch 20 (tq-py-sql-fstring). Values reach",
+    "the driver as parameters: watch_decision_refresh._finish binds every value and refuses a column outside",
+    "_FINISH_COLUMNS; watchlist_entry_planner binds its INTEREST_* thresholds; the v4/v5/v7 validators bind the",
+    "table name. Hermetic: a fake cursor records (sql, params); no database, no network."
+  ]
+}

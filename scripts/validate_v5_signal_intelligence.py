@@ -44,7 +44,7 @@ def main():
                  "decision_outcomes", "signal_history", "agent_performance_history",
                  "marl_training_episodes", "catalyst_type_weights"]
     for t in v5_tables:
-        cur.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_name='{t}'")
+        cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name=%s", (t,))
         check(f"Table {t}", cur.fetchone()[0] > 0)
 
     # 2. Data populated

@@ -221,7 +221,9 @@ def sweep(limit=None, dry=False, budget_s=None, clock=time.monotonic):
         prio_limit = max(cap - TAIL_MIN, 1)
     daily_sql = sql_daily_priority_exists("wi.symbol")
     dp = daily_priority_sql_params(project_root=PROJECT_ROOT)
-    cur.execute(f"""SELECT wi.symbol FROM watchlist_items wi
+    # daily_sql: fixed fragment from sql_daily_priority_exists("wi.symbol"); every value in it is a %s param.
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only interpolation is the fixed daily_sql fragment
+        f"""SELECT wi.symbol FROM watchlist_items wi
                    WHERE wi.status IN ('active','researched') AND wi.symbol IS NOT NULL
                      AND ({daily_sql}
                           OR (wi.hermes_rank IS NOT NULL AND wi.hermes_rank <= %s))

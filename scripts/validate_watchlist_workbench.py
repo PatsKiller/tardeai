@@ -47,7 +47,8 @@ def main():
         conn = psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
         cur = conn.cursor()
         for table in ['watchlist_items', 'watchlist_agent_jobs', 'watchlist_agent_results', 'watchlist_research_cards', 'watchlist_events']:
-            cur.execute(f"SELECT COUNT(*) FROM {table}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- table name from the literal list above
+                f"SELECT COUNT(*) FROM {table}")
             cnt = cur.fetchone()[0]
             check(f"Table {table}", True, f"{cnt} rows")
         conn.close()
