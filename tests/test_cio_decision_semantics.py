@@ -270,3 +270,107 @@ def test_two_rows_in_one_account_collapse_to_that_accounts_decisive_stance():
     assert opinions["acct-a"]["cio_stance"] == "TRIM", "one account's rows did not collapse to its own decisive stance"
     assert opinions["acct-b"]["cio_stance"] == "ADD", "another account's stance leaked into acct-a's"
     assert round(float(opinions["acct-a"]["current_value_usd"]), 2) == 1500.0
+# ── FQ-103: the docstring's order is the order the function obeys ────────────────────────────────────────────
+# An explicit formal verdict is the only input that records what the CIO decided. Free text (and desk readiness)
+# may speak only when no actionable verdict was recorded. Before this, all three went through the decisive-stance
+# merge, so a stronger word in a label outranked an explicit verdict — text deciding a position.
+
+def test_an_explicit_verdict_outranks_free_text():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # The case the decision-path trace measured: an explicit ADD with an EXIT in the prose became EXIT.
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "ADD", "directive_label": "Advisory EXIT — SYNX"}
+    ) == "ADD"
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "TRIM", "note": "ADD on a breakout, deploy here"}
+    ) == "TRIM"
+    assert stance_from_queue_item({"symbol": "SYNX", "verdict": "EXIT", "label": "HOLD for now"}) == "EXIT"
+
+
+def test_free_text_still_speaks_when_no_verdict_was_recorded():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    assert stance_from_queue_item({"symbol": "SCHD", "directive_label": "Advisory TRIM — SCHD"}) == "TRIM"
+    assert stance_from_queue_item({"symbol": "SCHD", "label": "Advisory EXIT — SCHD"}) == "EXIT"
+
+
+def test_the_reentry_guard_survives_the_precedence_fix():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # A governed RE_ENTER verdict is still the only way to RE_ENTER, and it still wins over prose.
+    assert stance_from_queue_item(
+        {"symbol": "ADBE", "verdict": "RE_ENTER", "directive_label": "HOLD, wait for the trigger"}
+    ) == "RE_ENTER"
+    # Desk readiness plus a "Re-enter" label remains REVIEW — never RE_ENTER.
+    assert stance_from_queue_item(
+        {"symbol": "ADBE", "state": "READY TO REVIEW", "directive_label": "Re-enter ADBE"}
+    ) == "REVIEW"
+
+
+def test_hold_and_review_are_explicit_verdicts_too():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # cc2's BLOCK at b5b61888: HOLD and REVIEW are recorded verdicts, not absences — an explicit HOLD is a decision
+    # that prose cannot overrule. These two were the smallest repair the audit contract asked for.
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "HOLD", "directive_label": "Advisory EXIT — SYNX"}
+    ) == "HOLD"
+    assert stance_from_queue_item(
+        {"symbol": "SYNX", "verdict": "REVIEW", "directive_label": "Advisory ADD — SYNX"}
+    ) == "REVIEW"
+    # and an explicit HOLD outranks a typed desk state, as the contract order says.
+    assert stance_from_queue_item({"symbol": "SYNX", "verdict": "HOLD", "state": "NEAR ENTRY"}) == "HOLD"
+
+
+def test_placeholder_verdicts_are_not_verdicts():
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    # Only a real recorded value counts. An empty/placeholder/unrecognised value is a gap, so the label still speaks.
+    for blank in ("", "—", "-", "N/A", "UNKNOWN", "SOMETHING_NEW"):
+        assert stance_from_queue_item(
+            {"symbol": "SCHD", "verdict": blank, "directive_label": "Advisory TRIM — SCHD"}
+        ) == "TRIM", blank
+
+
+def test_a_desk_state_outranks_prose_when_no_verdict_is_recorded():
+    """cc-deepseek-6 at 8b7da7bee: the docstring's order is verdict > state > label, and the code obeyed only the first.
+
+    With no recorded verdict the two lower inputs went through `merge_stances`, which keeps the STRONGER stance — so a
+    label reading "Advisory EXIT" turned a READY TO REVIEW desk into EXIT. Free text deciding a position is exactly
+    what FQ-103 exists to stop, one level below the verdict guard.
+    """
+    from scripts.lib.cio_decision_semantics import stance_from_queue_item
+
+    for state in ("READY TO REVIEW", "NEAR ENTRY", "OVERSOLD REVIEW"):
+        assert stance_from_queue_item({"symbol": "ADBE", "state": state,
+                                       "directive_label": "Advisory EXIT — ADBE"}) == "REVIEW", state
+        assert stance_from_queue_item({"symbol": "ADBE", "state": state,
+                                       "directive_label": "Exit now"}) == "REVIEW", state
+    # The label still speaks when the desk state says nothing at all — prose is the last resort, not a banned input.
+    assert stance_from_queue_item({"symbol": "ADBE", "directive_label": "Advisory EXIT — ADBE"}) == "EXIT"
+    # And a recorded verdict is untouched by any of this.
+    assert stance_from_queue_item({"symbol": "ADBE", "verdict": "ADD",
+                                   "state": "READY TO REVIEW", "directive_label": "Advisory EXIT"}) == "ADD"
+
+
+def test_a_decisive_stance_is_never_overridden_by_prose_at_the_display_layer():
+    """cc-deepseek-6's FQ-103 finding, found again one function over while repairing it.
+
+    `resolve_display_stance` merged the formal stance with a stance inferred from `why_now` prose and kept the
+    stronger, so `("ADD", "Advisory EXIT — SYNX")` rendered EXIT — a recorded ADD called an exit. A decisive formal
+    stance now wins unconditionally.
+    """
+    from scripts.lib.cio_decision_semantics import resolve_display_stance
+
+    assert resolve_display_stance("ADD", "Advisory EXIT — SYNX") == "ADD"
+    assert resolve_display_stance("TRIM", "Advisory ADD — SYNX") == "TRIM"
+    assert resolve_display_stance("EXIT", "adding on the pullback") == "EXIT"
+    assert resolve_display_stance("RE_ENTER", "HOLD, wait for the trigger") == "RE_ENTER"
+    # REVIEW is not a decision — it is "look again" — so a decisive label still sharpens it. The capital plan reads the
+    # desk's intent from exactly that pair, and `test_cio_decision_quality_pr1` caught this when I tried to make REVIEW
+    # final too: the sizing path never ran and target_weight_pct vanished.
+    assert resolve_display_stance("REVIEW", "Advisory TRIM — V") == "TRIM"
+    # The contradiction the function exists for is unchanged: no formal stance, decisive prose.
+    assert resolve_display_stance(None, "Advisory TRIM — SCHD") == "TRIM"
+    assert resolve_display_stance("", "Advisory EXIT — SYNX") == "EXIT"

@@ -35,6 +35,9 @@ export type ProspectusBudget = {
   credit_remaining_usd?: number | string | null
   today_used_usd?: number | string | null
   daily_cap_usd?: number | string | null
+  /** Additive (livs 2026-11-04): the server's own verdict on the credit read — "UNAVAILABLE" plus an error. */
+  status?: string | null
+  error?: string | null
 }
 
 /** Optional, additive (not in the 10-26 contract): the server says whether this viewer is the operator.
@@ -188,7 +191,7 @@ export function totals(idx: ProspectusIndex | null | undefined): Record<Prospect
 function numOr(v: unknown, d: number): number { const n = Number(v); return v != null && Number.isFinite(n) ? n : d }
 
 export function toNumber(v: unknown): number | null {
-  if (v == null || v === '') return null
+  if ((typeof v !== 'number' && typeof v !== 'string') || (typeof v === 'string' && !v.trim())) return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
 }
@@ -198,12 +201,68 @@ export function usd(v: unknown): string {
   return n == null ? '—' : `$${n.toFixed(2)}`
 }
 
+/**
+ * FQ-052 (audit 2026-11-04): the CREDIT tile showed a bare dash. A dash is not an answer — the tile
+ * now says whether the credit is measured, unavailable (the credit check was refused) or simply not
+ * reported, and the one-line reason travels with it. The raw service error stays in the title.
+ */
+export function creditState(b: ProspectusBudget | null | undefined): { measured: boolean; headline: string; reason: string } {
+  const err = String(b?.error ?? '').trim()
+  const status = String(b?.status ?? '').trim().toUpperCase()
+  // The server's own verdict counts too: a payload can say UNAVAILABLE with no error text, and reading only
+  // `error` would then report "Not measured" when the source in fact refused to answer (self-review, 2026-11-04).
+  if (err || status === 'UNAVAILABLE' || status === 'ERROR') {
+    return {
+      measured: false,
+      headline: 'Unavailable',
+      reason: /creditdenied/i.test(err)
+        ? 'The credit check was refused, so the remaining balance is unknown.'
+        : 'The credit service did not answer, so the remaining balance is unknown.',
+    }
+  }
+  const rem = toNumber(b?.credit_remaining_usd)
+  if (rem != null) return { measured: true, headline: '', reason: '' }
+  return {
+    measured: false,
+    headline: 'Not measured',
+    reason: 'No credit figure was reported for this snapshot.',
+  }
+}
+
 /** Credit budget line: remaining, today used / daily cap, and a 0..1 fill for the meter. */
-export function budgetView(b: ProspectusBudget | null | undefined): { remaining: string; used: string; cap: string; fill: number | null; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
+export function budgetView(b: ProspectusBudget | null | undefined): { remaining: string; used: string; cap: string; fill: number | null; tone: 'success' | 'warning' | 'danger' | 'neutral'; credit: ReturnType<typeof creditState> } {
   const used = toNumber(b?.today_used_usd), cap = toNumber(b?.daily_cap_usd), rem = toNumber(b?.credit_remaining_usd)
   const fill = used != null && cap != null && cap > 0 ? Math.max(0, Math.min(1, used / cap)) : null
   const tone = fill == null ? 'neutral' : fill >= 1 ? 'danger' : fill >= 0.8 ? 'warning' : 'success'
-  return { remaining: usd(rem), used: usd(used), cap: usd(cap), fill, tone }
+  const credit = creditState(b)
+  return { remaining: credit.measured ? usd(rem) : '—', used: usd(used), cap: usd(cap), fill, tone, credit }
+}
+
+/**
+ * FQ-053: a failed run printed the parser code on the card (`GenerationFailed: OUTPUT_NOT_JSON`).
+ * The operator gets what happened and the safe next step; the raw code stays in the title.
+ */
+export function failureHeadline(reason: unknown): { text: string; raw: string } {
+  const raw = String(reason ?? '').trim()
+  if (/OUTPUT_NOT_JSON/i.test(raw)) {
+    return {
+      text: 'The draft could not be generated — the writer’s reply was not in the expected format. Open it and re-run the rewrite.',
+      raw,
+    }
+  }
+  if (/TIMEOUT|TIMED_OUT/i.test(raw)) {
+    return { text: 'The draft could not be generated — the writer timed out. Open it and re-run the rewrite.', raw }
+  }
+  if (/\b(?:RateLimitError|QuotaExceededError|CreditDenied|RATE[_ -]LIMIT(?:ED|[_ -]EXCEEDED)?|QUOTA[_ -](?:EXCEEDED|EXHAUSTED)|INSUFFICIENT[_ -](?:QUOTA|CREDIT)|CREDIT[_ -](?:DENIED|EXHAUSTED)|429)\b/i.test(raw)) {
+    return { text: 'The draft could not be generated — the model allowance blocked this run. Open it to re-run after the allowance resets.', raw }
+  }
+  if (!raw) return { text: 'The last run failed. Open it and re-run the rewrite.', raw: '' }
+  // A reason that is already prose is the best explanation available — keep it (the e2e contract requires the
+  // writer's own words, e.g. "Writer refused: too few cited facts (2 of 6 required)", not a generic sentence).
+  const words = raw.split(/\s+/)
+  const machineCode = /^[A-Z0-9_]+$/.test(raw) || /^[A-Za-z]+(Error|Exception):/.test(raw) || words.length < 3
+  if (!machineCode) return { text: raw, raw }
+  return { text: 'The last run failed. Open it and re-run the rewrite.', raw }
 }
 
 /** Model chip: claude-fable-* → Fable, claude-opus-* → Opus, anything else shown as given (short). */
