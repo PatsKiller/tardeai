@@ -262,7 +262,9 @@
   },
   "ops_process_tiers": {
     "_why": "Operations processes pinned to a credit tier, read by anthropic_routing.tier_for after process_tiers. incident_supervisor: operator 2026-11-02 ~22:10 ET (verbatim): \"We have Anthropic credits... in an emergency like this, to clear up real errors, we can use more Anthropic, but we don't need to use Fable or Opus. We can use Haiku, or lower model, to do this.\" So triage uses tier bulk (claude-haiku-5-5); mid (claude-sonnet-5-5) only when Haiku is not sufficient; never Opus or Fable for this work. Daily model-call cap 240 in config/incident_runbook_actions.json (5 incidents/cycle x 2 calls/hour x 24h); process soft cap 240 and cost cap 2.0 USD/day in config/llm_process_registry.json (240 x ~0.00085 USD/call at Haiku list price is ~0.20 USD/day, so 2.0 is ~10x headroom and still far under the 10 USD daily credit cap).",
-    "incident_supervisor": "bulk"
+    "incident_supervisor": "bulk",
+    "pr_independent_review": "mid",
+    "pr_independent_review_deep": "high"
   },
   "process_tiers": {
     "prospectus_writer": "long_form",
@@ -284,7 +286,9 @@
     "prospectus_cio_news_note": "operator 2026-10-27 news methodology: Sonnet 5.5 CIO note on the credit only; unusable credit or cap -> the note waits for the next window, never DeepSeek",
     "prospectus_accuracy_review": "accuracy audit 2026-10-26: monthly Opus prose-vs-facts sample of written prospectuses, <= $2 per UTC month (scripts/prospectus_accuracy_audit.py --review); skipped when the credit is unusable, never another provider",
     "cio_ask_reanswer": "Automated Opus primary; same shared Ask budget",
-    "cio_ask_web_search": "operator 2026-11-01: Sonnet 5.5 hosted web_search for Ask-the-CIO; unusable credit or cap -> the source reports no_data for that subject, never another provider (a free-tier router result already covers the same query)"
+    "cio_ask_web_search": "operator 2026-11-01: Sonnet 5.5 hosted web_search for Ask-the-CIO; unusable credit or cap -> the source reports no_data for that subject, never another provider (a free-tier router result already covers the same query)",
+    "pr_independent_review": "operator 2026-10-27 D3 (relayed by the coordinator): PR reviews and reviewer answers WAIT when the credit is unusable or expired; no paid fallback, never DeepSeek",
+    "pr_independent_review_deep": "operator 2026-10-27 D3: same; held and shared-infra reviews wait for the credit"
   },
   "tools_processes": [
     "cio_ask_web_search"

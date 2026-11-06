@@ -1,0 +1,25 @@
+[
+ {
+  "lane_id": "pr-independent-review",
+  "owner": "platform",
+  "scheduler": {
+   "kind": "n8n",
+   "expression": "pr-independent-review",
+   "match": "PROPOSED - NOT INSTALLED: no n8n workflow exists yet for this lane",
+   "cadence": "*/5 * * * *",
+   "stage": "draft",
+   "wave": "W4",
+   "timezone": "America/New_York"
+  },
+  "expected_cadence_hours": 0.09,
+  "state": "NEVER_SCHEDULED",
+  "state_since": "<merge date>",
+  "state_reason": "PROPOSED (Design approvals-pr-review/v001, SPEC \u00a77). An advisory, head-bound independent reviewer: ONE PrReview@v1 per (PR, head SHA), never merges, labels, approves, pushes or comments on GitHub. House rule A: scheduling is n8n-only -- this PR ships NO systemd timer and NO crontab line. Cutover follows house rules A-C: draft -> dry run (prints the would-review set and the \u00a729 preflight, calls no model) -> shadow 72h -> cutover with a receipt, and any competing schedule is disabled in the same hour. The 5-minute cadence is the design's, not a spend decision: one review per (PR, head) and a $2/day cap bound the work, not the tick.",
+  "output_signal": {
+   "kind": "file_mtime",
+   "path": "data/coordination/pr_reviews/index.jsonl"
+  },
+  "severity": "Medium",
+  "recommendation": "Install as an n8n workflow, shadow first (operator rule: new schedules are n8n, never cron)."
+ }
+]

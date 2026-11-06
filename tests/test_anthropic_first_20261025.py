@@ -146,8 +146,11 @@ def test_pricing_source_is_config_and_requested_model_ids_are_current():
     # operator 2026-11-01: "sonnet for search" — cio_ask_web_search joins the mid tier (hosted web_search only)
     assert [k for k, t in p["process_tiers"].items() if t == "mid"] == [
         "prospectus_cio_news_note", "cio_ask_web_search"]
-    # operator 2026-11-02: emergency triage runs Haiku first (tier bulk); Sonnet only if insufficient
-    assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {"incident_supervisor": "bulk"}
+    # operator 2026-11-02: emergency triage runs Haiku first (tier bulk); Sonnet only if insufficient.
+    # + the independent PR reviewer (operator D2 2026-10-27, Design approvals-pr-review/v001): Sonnet 5.5 for normal
+    # PRs, Opus 5.5 (tier high) for held and shared-infra PRs
+    assert {k: t for k, t in p["ops_process_tiers"].items() if not k.startswith("_")} == {
+        "incident_supervisor": "bulk", "pr_independent_review": "mid", "pr_independent_review_deep": "high"}
     assert [t for t, m in p["models"].items() if m == "claude-fable-5-1"] == ["premium"]  # operator 2026-10-26
     assert p["expires_at"] == "2026-11-16T00:00:00Z"
 
