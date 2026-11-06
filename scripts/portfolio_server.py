@@ -2809,11 +2809,16 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             if not writer.exists():
                 json_response(self, 404, {"error": "portfolio_yaml_writer.py not found"})
                 return
-            ids_str = " ".join(suggestion_ids)
-            cmd = (f'"{sys.executable}" "{writer}" --apply {ids_str} '
-                   f'--project-root "{PROJECT_ROOT}"')
+            # Injection triage 2026-11-06: the ids came from the request body and were joined into a shell=True
+            # command line. They are now validated and passed as an argument list (scripts/lib/yaml_apply_command.py).
+            from lib.yaml_apply_command import yaml_apply_argv
+            try:
+                argv = yaml_apply_argv(sys.executable, str(writer), suggestion_ids, str(PROJECT_ROOT))
+            except ValueError as _e:
+                json_response(self, 400, {"ok": False, "error": str(_e)})
+                return
             result = subprocess.run(
-                cmd, shell=True, capture_output=True, text=True,
+                argv, capture_output=True, text=True,
                 cwd=str(PROJECT_ROOT))
             json_response(self, 200, {
                 "ok": result.returncode == 0,

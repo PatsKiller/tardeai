@@ -28,7 +28,7 @@ def main():
     # Check rclone
     import subprocess
     try:
-        remotes = subprocess.check_output("rclone listremotes", shell=True, stderr=subprocess.DEVNULL).decode().strip()
+        remotes = subprocess.check_output(["rclone", "listremotes"], stderr=subprocess.DEVNULL).decode().strip()
         rclone_configured = len(remotes) > 0
     except Exception:
         rclone_configured = False

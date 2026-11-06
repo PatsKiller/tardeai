@@ -19,7 +19,9 @@ REQUIRED_DOCS = ["docs/project/PROJECT_DOC_INDEX.md", "docs/v4_1_deployment_log.
 
 
 def _git(cmd, cwd=None):
-    return subprocess.check_output(f"git {cmd}", shell=True, cwd=str(cwd or PROJ),
+    # Argument list, no shell (injection triage 2026-11-06): every caller passes plain git tokens, and the one
+    # variable (the stamped sha) is already restricted to hex by _stamped_sha().
+    return subprocess.check_output(["git", *cmd.split()], cwd=str(cwd or PROJ),
                                    stderr=subprocess.DEVNULL).decode().strip()
 
 

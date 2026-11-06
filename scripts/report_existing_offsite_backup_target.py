@@ -25,15 +25,15 @@ def main():
 
     # Check GOG
     try:
-        gog_path = subprocess.check_output("which gog", shell=True, stderr=subprocess.DEVNULL).decode().strip()
+        gog_path = subprocess.check_output(["which", "gog"], stderr=subprocess.DEVNULL).decode().strip()
         report["candidates"].append({"type": "gog_drive", "path": gog_path, "status": "installed"})
     except Exception:
         report["blockers"].append("gog not found")
 
     # Check GPG
     try:
-        gpg_path = subprocess.check_output("which gpg", shell=True, stderr=subprocess.DEVNULL).decode().strip()
-        gpg_ver = subprocess.check_output("gpg --version", shell=True, stderr=subprocess.DEVNULL).decode().splitlines()[0]
+        gpg_path = subprocess.check_output(["which", "gpg"], stderr=subprocess.DEVNULL).decode().strip()
+        gpg_ver = subprocess.check_output(["gpg", "--version"], stderr=subprocess.DEVNULL).decode().splitlines()[0]
         report["encryption"] = {"tool": "gpg", "path": gpg_path, "version": gpg_ver}
     except Exception:
         report["blockers"].append("gpg not found")
@@ -44,7 +44,7 @@ def main():
         if kp.exists():
             import os
             os.environ["GOG_KEYRING_PASSWORD"] = kp.read_text().strip()
-            result = subprocess.check_output(
+            result = subprocess.check_output(  # nosemgrep: tq-py-subprocess-shell -- constant command, needs the pipe; no variable input
                 'gog drive ls --account john@jwwhiting.com --plain --no-input 2>/dev/null | head -3',
                 shell=True, timeout=15).decode()
             if "Trade_AI" in result:

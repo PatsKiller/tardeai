@@ -48,7 +48,8 @@ RULES = [
 
 def sh(cmd):
     try:
-        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30).stdout
+        return subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- constant crontab/systemctl commands; scope is a fixed tuple
+            cmd, shell=True, capture_output=True, text=True, timeout=30).stdout
     except Exception:
         return ""
 
