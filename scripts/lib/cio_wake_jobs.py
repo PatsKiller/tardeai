@@ -17,7 +17,9 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import logging
 import os
+import threading
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -224,6 +226,24 @@ def _ends_without_newline(path: Path) -> bool:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+class CIOWakeLockTimeout(TimeoutError):
+    """The wake-job store lock was not acquired in time; the caller fails loudly instead of hanging."""
+
+
+_log = logging.getLogger(__name__)
+_HELD: dict[tuple[int, int, str], list[int]] = {}
+_HELD_GUARD = threading.Lock()
+
+
+def _lock_timeout_s() -> float:
+    """Bounded lock wait. Longest measured clean hold is well under a second (one append + fsync); the 120 s default
+    leaves room for a quarantine copy write. Override with CIO_WAKE_JOBS_LOCK_TIMEOUT_S."""
+    try:
+        return max(1.0, float(os.environ.get("CIO_WAKE_JOBS_LOCK_TIMEOUT_S", "120")))
+    except ValueError:
+        return 120.0
+
+
 class CIOWakeJobStore:
     """Deterministic append-only wake job store backed by a JSONL file.
 
@@ -248,12 +268,46 @@ class CIOWakeJobStore:
 
     # ── Locking ────────────────────────────────────────────────────────────
 
+    # flock() locks belong to an open file description, so a second os.open() of the same lock file inside one
+    # process blocks on the first forever. 2026-10-30 05:00 ET: `_append_event` held the lock, a truncated tail
+    # (disk full) sent `_get_last_event` into `quarantine_corrupt_trailing_events`, which opened a second fd and
+    # waited on itself; the reactive cycle and every wake dispatch queued behind it for 31 hours. The lock is now
+    # re-entrant per (process, thread, lock path) and every wait is bounded.
+
     def _acquire_lock(self) -> int:
+        key = (os.getpid(), threading.get_ident(), str(self._lock_path.resolve()))
+        with _HELD_GUARD:
+            held = _HELD.get(key)
+            if held is not None:
+                held[1] += 1
+                return held[0]
         lock_fd = os.open(str(self._lock_path), os.O_CREAT | os.O_RDWR)
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        deadline = time.monotonic() + _lock_timeout_s()
+        while True:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    os.close(lock_fd)
+                    raise CIOWakeLockTimeout(
+                        f"{self._lock_path}: lock not acquired within {_lock_timeout_s():.0f}s "
+                        "(another process holds it; see lslocks)"
+                    ) from None
+                time.sleep(0.05)
+        with _HELD_GUARD:
+            _HELD[key] = [lock_fd, 1]
         return lock_fd
 
     def _release_lock(self, lock_fd: int) -> None:
+        key = (os.getpid(), threading.get_ident(), str(self._lock_path.resolve()))
+        with _HELD_GUARD:
+            held = _HELD.get(key)
+            if held is not None and held[0] == lock_fd:
+                held[1] -= 1
+                if held[1] > 0:
+                    return
+                del _HELD[key]
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
 
@@ -301,6 +355,10 @@ class CIOWakeJobStore:
         operator forensics — we only trim a bad *suffix*, which is what blocks
         `_get_last_event` / enqueue. Code that already holds the lock must call
         `_quarantine_corrupt_tail_locked` instead (see its docstring).
+
+        Works on bytes split on b"\n" only (str.splitlines also breaks on
+        U+2028/U+2029/U+0085, which can sit inside a valid JSON string and would
+        wrongly cut a good record).
         """
         if not self.event_store_path.exists():
             return {"ok": True, "removed": 0, "reason": "missing"}
@@ -324,29 +382,47 @@ class CIOWakeJobStore:
         full disk leaves no 0-byte `.corrupt-tail-*` file behind (41 did), and the
         store is truncated in place rather than rewritten through a second full
         copy, so the trim itself needs no free space.
+
+        2026-11-05 union: records are split on b"\n" only. str.splitlines also
+        breaks on U+2028/U+2029/U+0085, which can sit inside a valid JSON string
+        and would wrongly cut a good record. The quarantine name carries
+        time_ns() and the pid, with a numeric bump if the name is still taken, so
+        a failed trim's cleanup can never remove an earlier trim's copy.
         """
         if not self.event_store_path.exists():
             return {"ok": True, "removed": 0, "reason": "missing"}
         data = self.event_store_path.read_bytes()
-        lines = data.splitlines(keepends=True)
+        lines = data.split(b"\n")
+        if data.endswith(b"\n"):
+            lines.pop()  # the empty segment after the final newline
         removed = 0
         while lines:
             candidate = lines[-1]
             if candidate.strip():
                 try:
-                    json.loads(candidate.strip())
-                    break
+                    row = json.loads(candidate.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     pass
+                else:
+                    if isinstance(row, dict):
+                        break
             removed += 1
             lines.pop()
-        keep_len = sum(len(x) for x in lines)
+        kept = b"\n".join(lines) + (b"\n" if lines else b"")
+        keep_len = len(kept)
         tail = data[keep_len:]
         if not tail:
             return {"ok": True, "removed": 0, "reason": "clean"}
         quarantine = self.event_store_path.with_suffix(
-            self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
+            # ns + pid: unique per call, so a cleanup can never remove an earlier trim's copy (two trims
+            # inside one second used to share a name; 2026-10-31 round-3 review).
+            self.event_store_path.suffix + f".corrupt-tail-{time.time_ns()}-{os.getpid()}"
         )
+        base_name = quarantine.name
+        bump = 0
+        while quarantine.exists():  # never overwrite an earlier trim's copy, even on a frozen clock
+            bump += 1
+            quarantine = quarantine.with_name(f"{base_name}-{bump}")
         partial = quarantine.with_name(quarantine.name + ".partial")
         try:
             _write_durable(partial, tail)
@@ -419,8 +495,9 @@ class CIOWakeJobStore:
                     self._quarantine_corrupt_tail_locked()
                 else:
                     self.quarantine_corrupt_trailing_events()
-            except Exception:
-                pass
+            except Exception as exc:
+                _log.warning("%s: corrupt-tail trim failed: %s: %s", self.event_store_path,
+                             type(exc).__name__, exc)
         return last
 
     def _get_last_event_hash(self, *, lock_held: bool = False) -> str:
