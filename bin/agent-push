@@ -24,9 +24,20 @@ if [[ $# -eq 1 && "$1" =~ $BRANCH_RE ]]; then
     exit 1
   fi
   session="${AGENT_CLAIM_SESSION:-}"
-  self="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]}")"
-  top="$(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/git -C "${self%/*}" rev-parse --show-toplevel 2>/dev/null)" || {
-    echo "agent-push: grant-free push refused: $self is not inside a git work tree" >&2; exit 1; }
+  # The pre-push scan reads the caller's worktree. The helper may live in
+  # the primary checkout, so its own location must never select the pushed tree.
+  top="$(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "agent-push: grant-free push refused: caller is not inside a git work tree" >&2; exit 1; }
+  git_dir="$(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/git -C "$top" rev-parse --absolute-git-dir 2>/dev/null)" || {
+    echo "agent-push: grant-free push refused: cannot resolve caller git directory" >&2; exit 1; }
+  common_dir="$(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/git -C "$top" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || {
+    echo "agent-push: grant-free push refused: cannot resolve caller common directory" >&2; exit 1; }
+  # A linked worktree has its own Git directory; the primary/canonical checkout
+  # owns the common directory and is forbidden even on a feature branch.
+  if [[ "$git_dir" == "$common_dir" ]]; then
+    echo "agent-push: grant-free push refused: primary/canonical checkout; use a linked worktree" >&2
+    exit 1
+  fi
   home="$(/usr/bin/getent passwd "$(/usr/bin/id -u)" | /usr/bin/cut -d: -f6)"
   checker="$(/usr/bin/env -i PATH=/usr/bin:/bin /usr/bin/python3 -I -c '
 import json, os, stat, sys
