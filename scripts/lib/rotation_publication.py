@@ -215,7 +215,7 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         try:
             return is_stale(stamp, now, window * 3600,
                             market_hours_only=capability.freshness_market_hours_only, service=market_service)
-        except Exception:  # noqa: BLE001 - a failed calendar is unavailable evidence
+        except Exception:  # noqa: BLE001 -- a failed calendar is unavailable evidence
             unavailable.append("freshness_calendar_unavailable")
             return False
 

@@ -282,7 +282,7 @@ def classify_account_state(
     try:
         stale = is_stale(sync_dt, now_utc, win * 3600,
                          market_hours_only=market_hours_only is True, service=market_service)
-    except Exception as exc:  # noqa: BLE001 - calendar failure cannot preserve a LIVE label
+    except Exception as exc:  # noqa: BLE001 -- calendar failure cannot preserve a LIVE label
         return {**base, "state": STATE_STALE, "state_as_of": sync_iso,
                 "freshness_error": type(exc).__name__,
                 "state_reason": "freshness calendar unavailable; current observation cannot be certified"}
