@@ -89,13 +89,14 @@ def _source_label(path: Path, repo_root: Path) -> str:
 def discover_legacy_policy_claims(repo_root: Path) -> list[dict[str, Any]]:
     """Inventory material legacy claims without treating them as current policy."""
     claims: list[dict[str, Any]] = []
-    ips_path = repo_root / "config" / "investment_policy_statement.json"
+    from scripts.lib.policy_files import IPS, MODEL_PORTFOLIO, policy_path
+    ips_path = policy_path(IPS, repo_root)
     ips = _read_json(ips_path)
     ips_max = _nested(ips, ("risk", "max_single_position_pct"), ("constraints", "max_single_position_pct"), ("max_single_position_pct",))
     if ips_max is not None:
         claims.append({"field": "max_single_position_pct", "value": ips_max, "source": _source_label(ips_path, repo_root), "status": "LEGACY_UNCONFIRMED"})
 
-    model_path = repo_root / "config" / "model_portfolio.json"
+    model_path = policy_path(MODEL_PORTFOLIO, repo_root)
     model = _read_json(model_path)
     model_max = _nested(model, ("risk_overlay", "max_single_position_var_pct"), ("max_single_position_var_pct",))
     if model_max is not None:
@@ -192,7 +193,8 @@ def build_operator_investment_policy(
     root = repo_root or Path(__file__).resolve().parents[2]
     store = OperatorProfile(store_path)
     from scripts.lib.ips_policy import concentration_policy
-    concentration = concentration_policy(root / "config")
+    from scripts.lib.policy_files import IPS, policy_path
+    concentration = concentration_policy(policy_path(IPS, root))
     fields: dict[str, Any] = {}
     missing: list[str] = []
     for name, spec in FIELD_SPECS.items():

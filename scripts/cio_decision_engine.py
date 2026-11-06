@@ -36,7 +36,8 @@ def _get_conn():
 
 def _ips_position_limit() -> float:
     """Single-position human-review line = the ratified IPS limit
-    (config/investment_policy_statement.json constraints.max_single_position_pct;
+    (effective IPS via lib.policy_files — private data/cio/policy/ overlay, else
+    config/investment_policy_statement.json — constraints.max_single_position_pct;
     operator 2026-10-09). Replaces the hardcoded 8%; the shared helper falls back
     to that stricter 8% with a logged warning when the config is missing."""
     from lib.ips_policy import ips_max_position_pct

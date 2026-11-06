@@ -1178,12 +1178,50 @@ def ips_max_position_pct(config_dir: Path | None = None) -> float:
     """
     from lib import ips_policy
 
-    return ips_policy.ips_max_position_pct(config_dir or CONFIG_DIR)
+    if config_dir is None and CONFIG_DIR != PROJECT_ROOT / "config":
+        config_dir = CONFIG_DIR  # an explicitly re-pointed CONFIG_DIR wins
+    # None → ips_policy resolves the private data/cio/policy/ IPS, else the template.
+    return ips_policy.ips_max_position_pct(config_dir)
+
+
+def _policy_file(name: str) -> Path:
+    """Effective policy file: an explicitly re-pointed CONFIG_DIR wins; otherwise the
+    private ratified copy under data/cio/policy/ when valid, else the config/ template."""
+    if CONFIG_DIR != PROJECT_ROOT / "config":
+        return CONFIG_DIR / name
+    from ..policy_files import policy_path
+
+    return policy_path(name, PROJECT_ROOT)
+
+
+def _load_model_portfolio_doc() -> dict[str, Any]:
+    """The whole effective model-portfolio document (incl. ``_meta``)."""
+    raw = _load_json(_policy_file("model_portfolio.json"))
+    return raw if isinstance(raw, dict) else {}
 
 
 def _load_model_portfolio() -> dict[str, Any]:
-    raw = _load_json(CONFIG_DIR / "model_portfolio.json")
+    raw = _load_model_portfolio_doc()
     return raw.get("strategic_allocation", {}) if raw.get("strategic_allocation") else raw
+
+
+def _model_portfolio_review_state(doc: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Review freshness of the effective model portfolio.
+
+    When ``_meta.next_review`` is in the past the targets are overdue for the
+    operator's review: allocation rows built from them are flagged stale, not
+    presented as current drift.
+    """
+    from ..policy_files import review_overdue, source_for_path
+
+    doc = _load_model_portfolio_doc() if doc is None else doc
+    meta = doc.get("_meta") if isinstance(doc.get("_meta"), dict) else {}
+    return {
+        "stale": review_overdue(doc),
+        "next_review": meta.get("next_review"),
+        "version": meta.get("version"),
+        "policy_source": source_for_path(_policy_file("model_portfolio.json"), PROJECT_ROOT),
+    }
 
 
 def _latest_catalyst_cache_path() -> Path | None:
@@ -1273,7 +1311,7 @@ def _load_rotation() -> dict[str, Any]:
 
 
 def _load_ips() -> dict[str, Any]:
-    raw = _load_json(CONFIG_DIR / "investment_policy_statement.json")
+    raw = _load_json(_policy_file("investment_policy_statement.json"))
     return {
         "state": "AVAILABLE",
         "max_position_pct": ips_max_position_pct(),
@@ -2631,9 +2669,11 @@ def _derive_allocation_rows(
     Scope boundary (v2 §2): states gap size, does not recommend instruments,
     does not reason about Roth conversion/IRMAA/retirement sequencing.
     """
-    model = _load_model_portfolio()
+    model_doc = _load_model_portfolio_doc()
+    model = model_doc.get("strategic_allocation") or model_doc
     if not model or not isinstance(model, dict):
         return []
+    review = _model_portfolio_review_state(model_doc)
 
     # Use portfolio_total_value from holdings (includes CASH)
     total_val = portfolio_total_value or 0
@@ -2752,6 +2792,16 @@ def _derive_allocation_rows(
             "housekeeping_flag": False,
             "housekeeping_reason": None,
         }
+        if review["stale"]:
+            row["policy_stale"] = True
+            row["policy_next_review"] = review["next_review"]
+            row["rationale"] = (
+                f"STALE TARGETS — model portfolio review was due {review['next_review']}; "
+                f"drift below is against unreviewed targets, not current policy. {row_rationale}"
+            )
+        else:
+            row["policy_stale"] = False
+        row["policy_source"] = review["policy_source"]
         rows.append(row)
 
     # Per-account cash rows

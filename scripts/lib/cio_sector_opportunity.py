@@ -120,7 +120,8 @@ def load_sector_target_map(
     """Load GICS sector targets from existing configs — never invent numbers.
 
     Preference order per sector:
-      1. config/model_portfolio.json ``sector_targets`` (canonical Model Portfolio)
+      1. effective model portfolio ``sector_targets`` (private
+         data/cio/policy/model_portfolio.json when valid, else config/ template)
       2. config/rotation_sector_targets.json themes that canonicalize to a GICS sector
          (e.g. theme ``Energy`` → Energy 5%)
       3. no entry → callers fall back to DEFAULT_SECTOR_TARGET_PCT and must label it
@@ -139,10 +140,15 @@ def load_sector_target_map(
     sources: dict[str, str] = {}
     configs_loaded: list[str] = []
 
-    mp = _read_json(root / "config" / "model_portfolio.json")
+    try:
+        from .policy_files import MODEL_PORTFOLIO, policy_label, policy_path
+    except ImportError:  # pragma: no cover - scripts/lib on sys.path
+        from policy_files import MODEL_PORTFOLIO, policy_label, policy_path
+    mp_path = policy_path(MODEL_PORTFOLIO, root)
+    mp = _read_json(mp_path)
     mp_sectors = mp.get("sector_targets") or {}
     if isinstance(mp_sectors, dict) and mp_sectors:
-        configs_loaded.append("config/model_portfolio.json")
+        configs_loaded.append(policy_label(mp_path, root))
         for key, cfg in mp_sectors.items():
             if not isinstance(cfg, dict):
                 continue

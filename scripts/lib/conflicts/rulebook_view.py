@@ -1,6 +1,7 @@
 """Read-only plain-language view of the active conflict rulebook (GET /api/v3/conflicts/rulebook).
 
-Everything a threshold says comes from config/conflict_rulebook.json or config/investment_policy_statement.json
+Everything a threshold says comes from config/conflict_rulebook.json or the effective IPS
+(data/cio/policy/investment_policy_statement.json when present, else config/investment_policy_statement.json)
 (No Hardcoded Values rule); config/conflict_rules_explained.json supplies words only. Coverage is re-checked on
 every read against the files in this tree, so a removed test or rule shows as MISSING instead of a stale claim.
 Pure read: no ledger write, no network, no broker (MBI_BEHAVIOR = 0).
@@ -13,6 +14,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from ..policy_files import IPS, policy_label, policy_path
 from .ledger import ACTIVE, ConflictLedger
 
 SCHEMA = "ConflictRulebookView@v1"
@@ -102,7 +104,7 @@ def _scale(rulebook: dict, names: dict) -> dict:
     return out
 
 
-def _concentration(ips_path: Path, labels: dict) -> dict:
+def _concentration(ips_path: Path, labels: dict, source_label: str = "config/investment_policy_statement.json") -> dict:
     try:
         policy = _json(ips_path)["constraints"]["concentration_policy"]
     except (OSError, ValueError, KeyError, TypeError):
@@ -151,9 +153,14 @@ def _concentration(ips_path: Path, labels: dict) -> dict:
         "approval_ref": policy.get("approval_ref"),
         "as_of": policy.get("as_of"),
         "unknown_classification": policy.get("unknown_classification"),
-        "source": "config/investment_policy_statement.json constraints.concentration_policy",
+        "source": f"{source_label} constraints.concentration_policy",
         "gap": None,
     }
+
+
+def _ips_path(repo: Path) -> Path:
+    """Effective IPS: private data/cio/policy/ overlay when valid, else config/ template."""
+    return policy_path(IPS, repo)
 
 
 def _live(root) -> dict:
@@ -274,7 +281,7 @@ def build(repo: Path = REPO, *, root=None) -> dict:
             "flap_window_days": (rulebook.get("universal") or {}).get("flap_window_days"),
         },
         "concentration": _concentration(
-            repo / "config/investment_policy_statement.json", explained.get("concentration_labels", {})
+            _ips_path(repo), explained.get("concentration_labels", {}), policy_label(_ips_path(repo), repo)
         ),
         "lifecycle": {
             "states": explained.get("lifecycle", []),

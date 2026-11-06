@@ -6,7 +6,7 @@ with no concentration context. This assembles the facts the house already has:
 
 * the name's current holding (per account) from ``holdings.json``,
 * its share of the WHOLE book (incl. cash) and of invested capital,
-* the IPS limits (``config/investment_policy_statement.json`` constraints),
+* the IPS limits (effective IPS constraints: private ``data/cio/policy/`` overlay, else ``config/`` template),
 * correlations from ``state/correlation.json`` — explicitly labelled as covering
   only ``symbols_analyzed`` (that file's sector / concentration numbers are for a
   subset, not the book: on 2026-09-24 it said V=17.2% while V was 3.8% of the
@@ -32,6 +32,8 @@ DEFAULT_PATHS = {
     "holdings": STATE_DIR / "holdings.json",
     "correlation": STATE_DIR / "correlation.json",
     "options_monitor": STATE_DIR / "options_monitor.json",
+    # Template path only; build_portfolio_facts resolves the effective IPS
+    # (private data/cio/policy/ overlay when valid) unless the caller passes one.
     "ips": PROJECT_ROOT / "config" / "investment_policy_statement.json",
 }
 SCHEMA = "BuyReadyPortfolioFacts@v1"
@@ -58,9 +60,19 @@ def _age_minutes(path: Path) -> Optional[float]:
         return None
 
 
+def _policy_label(path: Path) -> str:
+    from scripts.lib.policy_files import policy_label, source_for_path
+    if source_for_path(Path(path), PROJECT_ROOT) == "private":
+        return policy_label(Path(path), PROJECT_ROOT)
+    return "config/investment_policy_statement.json"
+
+
 def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = None) -> dict[str, Any]:
     sym = str(symbol or "").upper().strip()
     p = dict(DEFAULT_PATHS)
+    if "ips" not in (paths or {}):
+        from scripts.lib.policy_files import IPS, policy_path
+        p["ips"] = policy_path(IPS, PROJECT_ROOT)
     p.update(paths or {})
     flags: list[str] = []
     unknowns: list[str] = []
@@ -150,7 +162,7 @@ def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = Non
         "cash_value_reported": round(cash_mv, 2),
         "cash_state": "UNVERIFIED (holdings snapshot; not a broker-confirmed buying-power figure)",
         "ips_limits": {"max_single_position_pct": max_single, "max_sector_concentration_pct": max_sector,
-                       "source": "config/investment_policy_statement.json constraints"},
+                       "source": f"{_policy_label(p['ips'])} constraints"},
         "concentration_policy": position_policy,
         "sector_exposure_whole_book": "UNAVAILABLE (holdings rows carry no sector)",
         "correlations": correlations,

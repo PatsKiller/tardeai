@@ -439,7 +439,8 @@ def _domain_hermes_research() -> dict[str, Any]:
 
 def _domain_investment_policy() -> dict[str, Any]:
     """Load canonical Investment Policy Statement."""
-    ips_path = PROJECT_ROOT / "config" / "investment_policy_statement.json"
+    from ..policy_files import IPS, policy_label, policy_path, source_for_path
+    ips_path = policy_path(IPS, PROJECT_ROOT)  # private data/cio/policy/ overlay, else config/ template
     if not ips_path.exists():
         return {"state": "DATA_UNAVAILABLE", "reason": "IPS config not found"}
     try:
@@ -455,8 +456,10 @@ def _domain_investment_policy() -> dict[str, Any]:
             "max_drawdown_pct": ips.get("risk_tolerance", {}).get("max_drawdown_pct"),
             "primary_objective": ips.get("objectives", {}).get("primary", "")[:120],
             "target_return_pct": ips.get("objectives", {}).get("target_return_annual_pct"),
-            "max_single_position_pct": ips_max_position_pct(ips_path.parent),
-            "concentration_policy": concentration_policy(ips_path.parent),
+            "max_single_position_pct": ips_max_position_pct(ips_path),
+            "concentration_policy": concentration_policy(ips_path),
+            "source": policy_label(ips_path, PROJECT_ROOT),
+            "policy_source": source_for_path(ips_path, PROJECT_ROOT),
             "active_trading_account": ips.get("accounts", {}).get("active_trading_account"),
         }
     except Exception as e:
@@ -465,7 +468,8 @@ def _domain_investment_policy() -> dict[str, Any]:
 
 def _domain_model_portfolio() -> dict[str, Any]:
     """Load canonical model portfolio and compute allocation drift."""
-    mp_path = PROJECT_ROOT / "config" / "model_portfolio.json"
+    from ..policy_files import MODEL_PORTFOLIO, policy_label, policy_path, review_overdue, source_for_path
+    mp_path = policy_path(MODEL_PORTFOLIO, PROJECT_ROOT)  # private overlay, else config/ template
     if not mp_path.exists():
         return {"state": "DATA_UNAVAILABLE", "reason": "Model portfolio config not found"}
 
@@ -524,6 +528,10 @@ def _domain_model_portfolio() -> dict[str, Any]:
             "state": "AVAILABLE",
             "version": mp.get("_meta", {}).get("version"),
             "status": mp.get("_meta", {}).get("status"),
+            "next_review": mp.get("_meta", {}).get("next_review"),
+            "review_overdue": review_overdue(mp),
+            "source": policy_label(mp_path, PROJECT_ROOT),
+            "policy_source": source_for_path(mp_path, PROJECT_ROOT),
             "equity_target_pct": strategic.get("equity", {}).get("target_pct"),
             "fixed_income_target_pct": strategic.get("fixed_income", {}).get("target_pct"),
             "cash_target_pct": strategic.get("cash_and_equivalents", {}).get("target_pct"),
