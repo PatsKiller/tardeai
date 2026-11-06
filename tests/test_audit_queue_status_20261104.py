@@ -608,3 +608,118 @@ def test_the_default_queue_path_follows_the_persistent_state_root(monkeypatch, t
     assert S._default_queue_path() == tmp_path / "data" / "coordination" / "coordinator" / "AUDIT_FIX_QUEUE.json"
     monkeypatch.setenv("AUDIT_FIX_QUEUE_PATH", str(tmp_path / "custom.json"))
     assert S._default_queue_path() == tmp_path / "custom.json"
+
+
+# ── #2640 B1 (post-merge): a row the PR's own text calls OPEN is disclaimed, and the filter applies to a CLAIM ──
+# The merged tool delivered FQ-104 via #2673 although #2673's body says "FQ-104 stays open: this makes the
+# opinions available, it does not yet render them", and it will deliver FQ-114 (#2657 "remains open pending
+# independent and served acceptance") and FQ-076 (#2606 "remains open until served acceptance") on their merges.
+# Two defects, one live class: the disclaimer grammar knew only negation words, and `choose_pr` applied the
+# disclaimer filter only to the recorded association, never to a candidate that CLAIMS the row (a branch name
+# claims unconditionally). "delivered" is a decision state that is never re-derived, so each wrong delivery
+# removes real work from dispatch permanently.
+
+
+@pytest.mark.parametrize("row,body", [
+    # the three live rows, verbatim
+    ("FQ-104", "- FQ-104 stays open: this makes the opinions available, it does not yet render them."),
+    ("FQ-114", "FQ-114 remains open pending independent and served acceptance."),
+    ("FQ-076", "FQ-076 remains open until served acceptance."),
+    # the same declaration in the other common forms
+    ("FQ-077", "FQ-077 is still open; the render half lands in a follow-up PR."),
+    ("FQ-078", "FQ-078 is not yet complete: the second half is a separate PR."),
+    ("FQ-079", "The visible cutover is the next step of FQ-079, not this one."),
+])
+def test_a_row_the_body_calls_open_is_disclaimed_and_not_claimed(row, body):
+    cand = pr(2673, branch="wt/unrelated", body=body)
+    assert row in S._disclaimed_rows(cand), body
+    assert row not in S.rows_claimed_by(cand), body
+
+
+def test_a_merged_pr_does_not_deliver_a_row_its_own_text_calls_open():
+    """The live FQ-104 shape at #2673: the branch names the row, the body says the row stays open."""
+    body = (
+        "The per-symbol aggregate now keeps both opinions instead of only the winner's.\n\n"
+        "The visible cutover is the next step of FQ-104, not this one.\n"
+        "- FQ-104 stays open: this makes the opinions available, it does not yet render them."
+    )
+    cand = pr(2673, state="MERGED", branch="wt/fq104-per-account-opinions-20261104", body=body, merge="f" * 40)
+    rep = S.sync(queue(row("FQ-104", status="fix_in_review", pr=2673)), [cand], now=NOW)
+    assert rep["changed"] == 0, rep["changes"]
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+
+
+def test_the_open_declaration_filters_a_candidate_that_claims_the_row():
+    """The mechanism: a branch-name claim must not outrun the PR's own sentence that the row is open."""
+    cand = pr(2673, state="MERGED", branch="wt/fq104-per-account-opinions-20261104",
+              body="FQ-104 stays open: the next half is a separate PR.", merge="f" * 40)
+    assert S.choose_pr(row("FQ-104", status="fix_in_review", pr=2673), [cand]) is None
+
+
+def test_an_ordinary_claim_still_delivers_the_row():
+    """The control: no open declaration, so a merged claiming PR still delivers (over-tightening would freeze the queue)."""
+    cand = pr(2700, state="MERGED", branch="wt/fq104-finish", body="Closes FQ-104.", merge="f" * 40)
+    rep = S.sync(queue(row("FQ-104")), [cand], now=NOW)
+    assert rep["queue"]["items"][0]["status"] == "delivered"
+
+
+def test_prose_that_merely_says_open_pr_is_not_a_declaration():
+    """An 'open PR' in a sentence about the tool is prose, not a statement about the row."""
+    cand = pr(2701, branch="wt/unrelated", body="An open PR that names FQ-104 still moves it to fix_in_review.")
+    assert S._disclaimed_rows(cand) == set()
+    assert "FQ-104" in S.rows_named_by(cand)
+
+
+@pytest.mark.parametrize("fq,prn,branch,body", [
+    ("FQ-104", 2673, "wt/fq104-per-account-opinions-20261104",
+     "- FQ-104 stays open: this makes the opinions available, it does not yet render them."),
+    ("FQ-114", 2657, "wt/fq114-top-eligibility-20261104",
+     "FQ-114 remains open pending independent and served acceptance."),
+    ("FQ-076", 2606, "wt/fq076-watchlist-reasons",
+     "FQ-076 remains open until served acceptance."),
+])
+def test_each_live_instance_survives_its_pr_merging(fq, prn, branch, body):
+    """The three live rows, end to end and with their real branch names: MERGED at the head that named them.
+
+    Reverting the claim filter must redden all three — before the fix, the branch name claimed the row and
+    `choose_pr` never consulted the disclaimer, so `plan()` delivered it (#2640 B1).
+    """
+    cand = pr(prn, state="MERGED", branch=branch, body=body, merge="f" * 40)
+    rep = S.sync(queue(row(fq, status="fix_in_review", pr=prn)), [cand], now=NOW)
+    assert rep["changed"] == 0, (fq, rep["changes"])
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+
+
+# ── #2640 B1 F1 (deputy, 2026-11-06T0042Z): the row-local negation must span more than one intervening word ──
+# The first attempt anchored the pattern to one optional word ("(?:\s+[a-z]+)?$"), so "not the older FQ-022",
+# "not the earlier FQ-022", "not its duplicate FQ-022" and "not (FQ-022)" stopped disclaiming — a false delivery
+# of live work, the exact failure the fix exists to prevent. The remedy keeps the loose negator but searches only
+# the text after the last clause-internal boundary before the row.
+
+@pytest.mark.parametrize("body,row", [
+    ("Closes FQ-021, not the older FQ-022.", "FQ-022"),
+    ("Closes FQ-021, not the earlier FQ-022.", "FQ-022"),
+    ("Closes FQ-021, not its duplicate FQ-022.", "FQ-022"),
+    ("Closes FQ-021, not (FQ-022).", "FQ-022"),
+    ("Closes FQ-021, not closing FQ-022.", "FQ-022"),
+])
+def test_a_multiword_row_local_negation_still_disclaims(body, row):
+    cand = pr(2673, branch="wt/unrelated", body=body)
+    assert row in S._disclaimed_rows(cand), body
+    assert row not in S.rows_claimed_by(cand), body
+
+
+def test_a_multiword_disclaimer_stops_a_claiming_pr_from_delivering():
+    """End to end with a branch-name claim: the multi-word disclaimer must survive the claim path."""
+    cand = pr(2673, state="MERGED", branch="wt/fq022-labels", body="Closes FQ-021, not the older FQ-022.",
+              merge="f" * 40)
+    rep = S.sync(queue(row("FQ-022", status="fix_in_review", pr=2673)), [cand], now=NOW)
+    assert rep["changed"] == 0, rep["changes"]
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
+
+
+def test_open_source_in_prose_does_not_disclaim_a_row():
+    """N1 (cc-6): 'the repository is open source' is prose, not a statement that the row is open."""
+    cand = pr(2674, branch="wt/unrelated",
+              body="FQ-121 was added because the repository is open source and this line is documentation.")
+    assert "FQ-121" not in S._disclaimed_rows(cand)

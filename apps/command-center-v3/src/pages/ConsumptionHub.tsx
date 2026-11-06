@@ -439,7 +439,9 @@ export default function ConsumptionHub() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {logView.shown.map(l => (
-              <div key={l.id} style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', fontSize: 11 }}>
+              // data-testid marks ONE call row: a test must assert each row's own "Technical detail" disclosure,
+              // not a global <summary> count (the page also renders Source-clocks Diagnostics disclosures).
+              <div key={l.id} data-testid="consumption-call-row" style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', fontSize: 11 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   {/* FQ-029: same fix on the call log — a zoned ET stamp, exact value in the title. */}
                   <span style={{ color: MUTED }} title={l.created_at ?? undefined}>{fmtAsOf(l.created_at) ?? l.created_at}</span>
