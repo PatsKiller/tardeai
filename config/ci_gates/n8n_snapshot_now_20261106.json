@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_snapshot_now_20261106",
+  "files": [
+    "tests/test_n8n_snapshot_now_20261106.py"
+  ],
+  "anchor": "N8N_SNAPSHOT_NOW_20261106",
+  "comment": [
+    "ANCHOR: N8N_SNAPSHOT_NOW_20261106 - n8n 0.2a: scripts/ops/n8n_snapshot_now.sh prints exactly one final JSON line with dump_bytes, volume_bytes, export_bytes and drive_link, and fails with no stdout when the receipt is not ok or a key is missing (the contract the backup_n8n approval action requires)."
+  ]
+}

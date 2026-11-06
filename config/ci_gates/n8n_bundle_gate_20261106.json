@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_bundle_gate_20261106",
+  "files": [
+    "tests/test_n8n_bundle_20261106.py"
+  ],
+  "anchor": "N8N_BACKUP_BUNDLE_20261106",
+  "comment": [
+    "ANCHOR: N8N_BACKUP_BUNDLE_20261106 - n8n program 0.2a: the policy view for the n8n Drive copy, verify-before-prune on a fake Drive, an unverified or unreachable Drive alerting and deleting nothing, the receipt written on failure, and a volume archive without the encryption-key config refused."
+  ]
+}
