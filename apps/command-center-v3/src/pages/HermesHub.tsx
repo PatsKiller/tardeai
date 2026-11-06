@@ -460,7 +460,7 @@ export default function HermesHub({ onDrill }: Props) {
           </div>
           {!isScalp && (
             <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
-              <Link to="/intelligence?tab=command" style={linkStyle}>Intelligence triage →</Link>
+              <Link to="/research-intelligence" style={linkStyle}>Research Intel →</Link>
               <Link to="/cio?tab=research" style={linkStyle}>CIO research desk →</Link>
               <Link to="/research-intelligence" style={linkStyle}>Research Intelligence →</Link>
               <Link to="/trading?tab=Open+Trades" style={linkStyle}>Open Trades →</Link>
