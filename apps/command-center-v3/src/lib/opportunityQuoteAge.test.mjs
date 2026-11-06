@@ -74,6 +74,8 @@ check('the page selects top candidates through the receipt helper', /topEligible
   'the page still takes every row, receipt or not')
 check('the page renders the producer qualification sentence', /home-opportunities-qualification/.test(page),
   'the producer risk/qualification sentence is not rendered')
+check('the page renders the row label through the tested helper', /opportunityRowLabel\(o\)/.test(page),
+  'the middle column still prints a constant claim instead of the tested label')
 
 // ---- 7. what the card may SAY on each transport state (cc-deepseek-8 R1 at f44f21fbe) --------------
 // Behavioural, not string-presence: these are the compositions that produced the false statement.
@@ -129,9 +131,12 @@ const answeredEmpty = opportunitiesCardState({ loading: false, error: false, sta
 check('a real answer with no receipt says the qualification is unavailable', /qualification unavailable/.test(answeredEmpty.emptyText), answeredEmpty.emptyText)
 
 // ---- 8. FQ-114: the producer, not the page, decides who is a top candidate -------------------------
-import { topEligibleRows, topListNotice } from './bestOpportunities.ts'
+// F1 (cc-deepseek-3 at 49d15e5cb): until the producer ships the receipt, a payload with NO receipt must still show the
+// rows it sent. The old rule filtered on a field no served row carries, so Home rendered zero rows on every payload.
+import { topEligibleRows, topListNotice, opportunityRowLabel } from './bestOpportunities.ts'
 const legacy = { items: [{ symbol: 'AAA', conviction: 90 }, { symbol: 'BBB', conviction: 80 }] }
-check('a legacy response (no receipt) yields NO top candidate', topEligibleRows(legacy).length === 0,
+check('a legacy response (no receipt) shows the rows the server sent, not a blank card',
+  topEligibleRows(legacy).length === 2 && topEligibleRows(legacy)[0].symbol === 'AAA',
   JSON.stringify(topEligibleRows(legacy)))
 const mixed = { items: [
   { symbol: 'AAA', top_eligibility: { eligible: true } },
@@ -139,11 +144,67 @@ const mixed = { items: [
   { symbol: 'CCC' },
   { symbol: 'DDD', top_eligibility: { eligible: true } },
 ] }
-check('only rows the producer marked eligible are shown', JSON.stringify(topEligibleRows(mixed).map(r => r.symbol)) === '["AAA","DDD"]',
+check('once ANY row carries the receipt, only rows the producer marked eligible are shown',
+  JSON.stringify(topEligibleRows(mixed).map(r => r.symbol)) === '["AAA","DDD"]',
   JSON.stringify(topEligibleRows(mixed).map(r => r.symbol)))
+check('a producer that sent only its top_list receipt is not widened back to every row',
+  topEligibleRows({ top_list: { notice: 'x' }, items: [{ symbol: 'AAA' }, { symbol: 'BBB' }] }).length === 0)
 for (const junk of [null, undefined, {}, { items: 5 }, { items: [null, 'x'] }]) {
   check(`a malformed body (${JSON.stringify(junk)}) yields no candidate`, topEligibleRows(junk).length === 0, JSON.stringify(junk))
 }
+
+// The shape scripts/api_v3_opportunities.py::get_list() actually serves TODAY (OpportunityList@v1), captured key for
+// key from the served projection; every value is synthetic. A shape mismatch used to pass because the fixture was a
+// two-line `{items:[{symbol}]}` the server never sends. This is the regression pin for F1.
+const served = {
+  ok: true,
+  schema: 'OpportunityList@v1',
+  as_of: '2026-11-04T17:00:00.000000+00:00',
+  run_id: 'opp-TEST00000T000000Z-000000',
+  curated_by: 'cio_opportunity_curator → CIO memory',
+  store: 'data/cio/cio_opportunity_projection.json',
+  universe: 3, total: 3, page: 1, limit: 50, sort: 'conviction',
+  query: { preset: 'top5' },
+  presets: ['top5', 'new', 're_entry', 'add_on', 'exit'],
+  sorts: ['conviction', 'rr'],
+  facets: {}, factor_labels: {},
+  items: [
+    { symbol: 'AAA', type: 'watchlist', stance: 'WATCH', conviction: 88, rank: 1,
+      risk_reward: { rr: 2.4, current_price: 42.5 },
+      inputs_as_of: { quote: '2026-11-04T16:55:00.000000+00:00', stats: null, analyst: null } },
+    { symbol: 'BBB', type: 'new_position', stance: 'WATCH', conviction: 81, rank: 2,
+      risk_reward: { rr: 1.9, current_price: 17.25 },
+      inputs_as_of: { quote: '2026-11-04T16:57:00.000000+00:00' } },
+    { symbol: 'CCC', type: 're_entry', stance: 'HOLD', conviction: 77, rank: 3,
+      risk_reward: { rr: 1.5, current_price: 9.75 }, inputs_as_of: { quote: null } },
+  ],
+  provider_calls: 0,
+  authority: 'READ_ONLY_ADVISORY',
+}
+const servedRows = topEligibleRows(served)
+check('the served producer payload renders EVERY row it sends (F1 regression pin)',
+  servedRows.length === served.items.length && JSON.stringify(servedRows.map(r => r.symbol)) === '["AAA","BBB","CCC"]',
+  JSON.stringify(servedRows.map(r => r.symbol)))
+check('Home takes five at most without inventing a page size', topEligibleRows(served).slice(0, 5).length === 3)
+const servedCard = opportunitiesCardState({ loading: false, error: false, stale: false,
+  itemCount: servedRows.slice(0, 5).length, listLoaded: true, sourceError: false,
+  qualificationPresent: !!served.top_list })
+check('a served list with rows shows no empty-state sentence', servedCard.emptyText === '' && servedCard.retained === false,
+  JSON.stringify(servedCard))
+check('the served row quote is a zoned timestamp the page can age',
+  quoteAge(served.items[0].inputs_as_of.quote, NOW).state === 'current',
+  JSON.stringify(quoteAge(served.items[0].inputs_as_of.quote, NOW)))
+
+// The row's middle column: the stored CIO stance when there is one, otherwise the row's own type — never a constant
+// "CIO review pending" that no review record supports (cc-deepseek-5's F1, reachable again once rows render).
+check('the row label shows the CIO stance when the producer sent one',
+  opportunityRowLabel({ type: 'watchlist', cio_review: { stance: 'HOLD' } }) === 'HOLD')
+check('and without a review record it shows the row type, not a pending claim',
+  opportunityRowLabel({ type: 'new_position' }) === 'new position', opportunityRowLabel({ type: 'new_position' }))
+check('the pending claim is not printed from a null coalesce',
+  opportunityRowLabel({ type: 're_entry' }) !== 'CIO review pending')
+check('a row carrying neither is a dash, not an invented status', opportunityRowLabel({}) === '—')
+
 check('the producer risk sentence is carried verbatim',
   topListNotice({ top_list: { notice: 'Risk hold: RED regime — no new long.' } }) === 'Risk hold: RED regime — no new long.',
   String(topListNotice({ top_list: { notice: 'Risk hold: RED regime — no new long.' } })))

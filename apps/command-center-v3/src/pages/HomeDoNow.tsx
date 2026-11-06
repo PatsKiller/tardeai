@@ -13,7 +13,7 @@
  *  The previous Home stays reachable at ?view=classic for one release. */
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, topEligibleRows, topListNotice } from '../lib/bestOpportunities'
+import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, opportunityRowLabel, topEligibleRows, topListNotice } from '../lib/bestOpportunities'
 import { listAsOfWords, opportunitiesCardState, quoteAge } from '../lib/opportunityQuoteAge'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
@@ -164,7 +164,8 @@ export default function HomeDoNow() {
   const n = dn.numbers
   const oppBody = unwrap(oppTop)
   // FQ-114 (cx-openai-5): the producer decides who is a top candidate; Home renders its receipt and never widens the
-  // list itself. A legacy payload carries no receipt at all, so it shows no candidate rather than a best guess.
+  // list itself. F1 (cc-deepseek-3 at 49d15e5cb): a producer that has not sent the receipt yet gets the list it DID
+  // send, not a blank card — `topEligibleRows` is the one place that decides which of the two it is.
   const opps: any[] = topEligibleRows(oppBody).slice(0, 5)
   const oppNotice = topListNotice(oppBody)
   // FQ-088: the list carries an as-of and every row a quote time. Home discarded both, so a reward-to-risk
@@ -381,7 +382,7 @@ export default function HomeDoNow() {
               title={`${o.symbol}: conviction ${o.conviction != null ? Math.round(o.conviction) : '—'} of 100 · reward-to-risk ${o.risk_reward?.rr != null ? Number(o.risk_reward.rr).toFixed(1) : '—'}× (/api/v3/opportunities, CIO opportunity ranking). Advisory only.`}
               style={{ display: 'grid', gridTemplateColumns: '60px minmax(0, 1fr) 64px 36px', gap: 8, alignItems: 'center', fontSize: TYPE.base, padding: '4px 0', borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: 'none', border: 'none', color: TOKENS.text[0], cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
               <span style={{ ...numStyle, fontWeight: 600 }}>{o.symbol}</span>
-              <span style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>{String(o.cio_review?.stance ?? 'CIO review pending')}</span>
+              <span style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>{opportunityRowLabel(o)}</span>
               <span style={{ ...numStyle, fontSize: TYPE.sm, textAlign: 'right', lineHeight: 1.2 }}>R:R {o.risk_reward?.rr != null ? `${Number(o.risk_reward.rr).toFixed(1)}×` : '—'}
                 <span data-testid={`home-opp-quote-${o.symbol}`} title={captionTitle} style={{ display: 'block', fontSize: TYPE.xs, fontWeight: 400, color: captionTone }}>{caption}</span>
               </span>
