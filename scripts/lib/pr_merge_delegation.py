@@ -227,6 +227,20 @@ def reviewer_artifact(raw):
 RELEASED_CLAIM_STATUSES = frozenset({"done", "abandoned"})
 
 
+def takeover_links(doc):
+    """``(target_id, kind)`` for one claim's ``takeover_of``.
+
+    An UNTAGGED record is the historical meaning: a link written before provenance existed DID declare succession, and
+    every record the board wrote before tonight relies on that. Only a record the board explicitly tags ``overlap`` —
+    the mechanical "we share a file" link it now writes — is read as shared ancestry rather than succession.
+    """
+    pairs = []
+    for item, target in zip(doc.get("takeover_of") or [], takeover_targets(doc)):
+        kind = item.get("kind") if isinstance(item, dict) else None
+        pairs.append((target, "overlap" if kind == "overlap" else "containment"))
+    return pairs
+
+
 def takeover_targets(doc):
     """Claim ids named by one claim's ``takeover_of``; a malformed link is the chain refusal."""
     raw = doc.get("takeover_of") or []
@@ -426,11 +440,15 @@ def validate_takeover_graph(views, board, shared_config=None):
         )
     live = {view.claim_id: claim_is_live(view, board) for view in views}
     claimants = {}
-    for source, targets in edges.items():
+    for source in edges:
         if not live.get(source):
             continue
-        for target in targets:
-            claimants.setdefault(target, set()).add(source)
+        # Only a link that DECLARES succession makes two live claims rivals for one predecessor. A mere shared file
+        # (``overlap``) is history for the state resolver and never a claim of exclusive succession — the docstring's
+        # own line, now enforced instead of assumed.
+        for target, kind in takeover_links(by_id[source].doc):
+            if kind in ("containment", "explicit"):
+                claimants.setdefault(target, set()).add(source)
     # _claim_locked mechanically records EVERY overlapping stale predecessor.
     # Shared ancestry alone is not a declaration of exclusive succession.
     shared = claim_shared_paths(shared_config)

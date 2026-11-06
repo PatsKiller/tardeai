@@ -102,6 +102,9 @@ export function shortPriceStamp(when: string | null, src: string | null | undefi
 const VIX_SOURCE: Record<string, string> = {
   trade_ai_run_summary: 'scanner',
   trade_ai_scanner: 'scanner',
+  // The two values _vix_observation actually returns (scripts/api_v2.py): the run summary, or the regime
+  // collector's vix_close row. Both must read as words, never as a table/column token, on the tile face.
+  'market_regime_indicators.vix_close': 'regime feed',
   finviz: 'Finviz',
   cboe: 'CBOE',
   yahoo: 'Yahoo',
