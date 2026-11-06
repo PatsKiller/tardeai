@@ -53018,6 +53018,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if not q:
                     return 400, {"ok": False, "error": "no question"}
                 return 200, {"ok": True, "alert": _aa.add_alert(q, b.get("context") or {})}
+            except ValueError as e:  # the caller asked for something the monitor cannot watch
+                return 400, {"ok": False, "error": str(e)}
             except Exception as e:
                 return 500, {"ok": False, "error": str(e)}
         if base_path == "/api/v2/snaptrade/credentials":

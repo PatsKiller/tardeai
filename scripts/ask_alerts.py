@@ -19,6 +19,7 @@ blocked by the exact live cron comment; no scheduler or sender authority changed
 from __future__ import annotations
 
 import json
+import math
 import re
 import sys
 from datetime import datetime, timezone
@@ -29,6 +30,16 @@ sys.path.insert(0, str(ROOT / "scripts"))
 STORE = ROOT / "data" / "runtime" / "ask_alerts.json"
 _IPO_KW = ["ipo", "goes public", "going public", "public offering", "files to go public", "direct listing",
            "s-1 filing", "begins trading", "debut", "stock market listing", "to list shares"]
+
+
+class _EvalError(Exception):
+    """An alert could not be evaluated or its firing could not be enqueued.
+
+    The run receipt may only say ok when every active alert was actually evaluated and every hit was durably enqueued.
+    Before this, a database or provider failure was swallowed and the run still reported success (jobs coverage audit,
+    2026-11-03): a failed news query looked like "no news", and an alert whose event row was not written was marked
+    triggered anyway, losing it permanently while the receipt said ok.
+    """
 
 
 def _now():
@@ -42,6 +53,20 @@ def _load():
         return {"alerts": []}
 
 
+def _load_strict():
+    """The store for an EVALUATION run: a missing store is empty, but a corrupt one is an error.
+
+    ``_load`` stays lenient for the API's ``add_alert``/``list_alerts``; an evaluation that silently treated a corrupt
+    store as empty and then saved it would erase every alert.
+    """
+    try:
+        return json.loads(STORE.read_text())
+    except FileNotFoundError:
+        return {"alerts": []}
+    except Exception as exc:
+        raise _EvalError(f"alert store unreadable: {type(exc).__name__}") from exc
+
+
 def _save(d):
     STORE.parent.mkdir(parents=True, exist_ok=True)
     STORE.write_text(json.dumps(d, indent=2))
@@ -52,13 +77,35 @@ def add_alert(question: str, context: dict | None = None) -> dict:
     context = context or {}
     privates = [p["name"] for p in context.get("positions", []) if p.get("private")]
     pubs = [p["symbol"] for p in context.get("positions", []) if not p.get("private") and p.get("held")]
-    m = re.search(r"\$?\s*(\d{2,5}(?:\.\d+)?)", question)
-    kind = "ipo_watch" if privates else ("price" if (m and pubs) else "ipo_watch" if not pubs else "news")
+    # Parse an OPTIONAL currency marker before a THOUSANDS-SEPARATED amount: "$1,000" used to match "000"
+    # and become a 0.0 target, which the evaluator cannot handle (jobs coverage audit 2026-11-03). The
+    # marker must stay optional — "hits 150" was a price alert before the thousands fix, and requiring "$"
+    # turned an operator's previously supported ask into a refused create (codex-cloud review of #2528).
+    # Only a positive finite price is a target; a question with no number still has none.
+    # The `(?<![\w$])` guard (codex-cloud round 2 on #2528) stops the optional marker from turning a
+    # DIGIT INSIDE A NAME into the target: "alert me when L3Harris hits $150" matched the 3 in
+    # L3Harris and produced 3.0. A number embedded in a word is not a price.
+    target = None
+    m = re.search(r"(?<![\w$])(?:\$\s*)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,6}(?:\.\d+)?)", question)
+    if m:
+        try:
+            value = float(m.group(1).replace(",", ""))
+        except ValueError:
+            value = None
+        if value is not None and math.isfinite(value) and value > 0:
+            target = value
+    kind = "ipo_watch" if privates else ("price" if (target is not None and pubs) else "ipo_watch" if not pubs else "news")
+    if kind == "news":
+        # The evaluator has no news branch (an unsupported active alert is an error, cc2's B2). Storing an
+        # alert it can never evaluate would leave the alert permanently inert AND fail every run, so refuse
+        # the create and tell the caller instead of writing it.
+        raise ValueError("this alert would watch news, which the monitor cannot evaluate; "
+                         "ask for an IPO or a price target")
     d = _load()
     alert = {
         "id": f"ask_{abs(hash(question + _now())) % 10**8}",
         "question": question[:300], "kind": kind, "companies": privates, "symbols": pubs,
-        "target_price": float(m.group(1)) if (kind == "price" and m) else None,
+        "target_price": target if kind == "price" else None,
         "created_at": _now(), "status": "active", "triggered_at": None,
     }
     d["alerts"].append(alert)
@@ -85,45 +132,78 @@ def _news_hits(company: str, keywords):
             if any(k in t for k in keywords):
                 out.append({"title": title, "url": url, "at": str(pub)})
         return out
-    except Exception:
-        return []
+    except Exception as exc:
+        # A failed query is not "no news": it is an evaluation that did not happen.
+        raise _EvalError(f"news query failed: {type(exc).__name__}") from exc
 
 
 def _fire(alert, subject, evidence):
     try:
         from alert_event_writer import save_alert_event
-        save_alert_event(alert_type="strategic_alert", severity="urgent", source_script="ask_alerts.py",
-                         raw_text=f"[ask-alert] {subject}: {evidence.get('title','condition met')} — you asked: "
-                                  f"\"{alert['question']}\". {evidence.get('url','')}",
-                         parsed_payload={"kind": "ask_alert", "alert_id": alert["id"], "subject": subject,
-                                         "evidence": evidence})
-        return True
-    except Exception:
-        return False
+        alert_id = save_alert_event(alert_type="strategic_alert", severity="urgent", source_script="ask_alerts.py",
+                                    raw_text=f"[ask-alert] {subject}: {evidence.get('title','condition met')} — you "
+                                             f"asked: \"{alert['question']}\". {evidence.get('url','')}",
+                                    parsed_payload={"kind": "ask_alert", "alert_id": alert["id"], "subject": subject,
+                                                    "evidence": evidence})
+    except Exception as exc:
+        raise _EvalError(f"alert event write failed: {type(exc).__name__}") from exc
+    if alert_id is None:
+        # save_alert_event swallows its own DB error and returns None; the alert must stay active, not be "triggered".
+        raise _EvalError("alert event not saved")
+    return True
 
 
 def check_alerts() -> list:
-    d = _load(); fired = []
-    for a in d.get("alerts", []):
-        if a.get("status") != "active":
-            continue
-        if a["kind"] == "ipo_watch":
-            for name in a.get("companies", []) or ["SpaceX"]:
-                hits = _news_hits(name, _IPO_KW)
-                if hits and _fire(a, name, hits[0]):
-                    a["status"], a["triggered_at"] = "triggered", _now()
-                    fired.append({"id": a["id"], "subject": name, "evidence": hits[0]})
-                    break
-        elif a["kind"] == "price" and a.get("target_price") and a.get("symbols"):
+    """Evaluate every active alert. Returns the alerts that fired.
+
+    Every failure is collected and raised AFTER the store is saved, so the run receipt says failed (with the previous
+    ok_at preserved) instead of claiming a success that did not happen, and an alert that already fired keeps its
+    ``triggered`` state instead of being fired again on the next run. A genuine "nothing fired" is still a success.
+    An active alert this evaluator cannot handle (an unknown kind, or a price alert without a numeric target) is an
+    error, not a silent skip: the lane may only report ok when every active alert was actually evaluated.
+    """
+    d = _load_strict(); fired = []; errors = []
+    alerts = d.get("alerts")
+    if not isinstance(alerts, list):
+        raise _EvalError("alert store has no alert list")
+    try:
+        for a in alerts:
             try:
-                import yfinance as yf
-                px = float(yf.Ticker(a["symbols"][0]).fast_info["last_price"])
-                if px >= a["target_price"] and _fire(a, a["symbols"][0], {"title": f"price ${px:.2f} ≥ ${a['target_price']}"}):
-                    a["status"], a["triggered_at"] = "triggered", _now()
-                    fired.append({"id": a["id"], "subject": a["symbols"][0], "price": px})
-            except Exception:
-                pass
-    _save(d)
+                if not isinstance(a, dict):
+                    raise _EvalError(f"record is not an object ({type(a).__name__})")
+                if a.get("status") != "active":
+                    continue
+                if a["kind"] == "ipo_watch":
+                    for name in a.get("companies", []) or ["SpaceX"]:
+                        hits = _news_hits(name, _IPO_KW)
+                        if hits and _fire(a, name, hits[0]):
+                            a["status"], a["triggered_at"] = "triggered", _now()
+                            fired.append({"id": a["id"], "subject": name, "evidence": hits[0]})
+                            break
+                elif a["kind"] == "price" and a.get("target_price") and a.get("symbols"):
+                    target = float(a["target_price"])  # a non-numeric target is a malformed record, not a skip
+                    if not math.isfinite(target) or target <= 0:
+                        raise _EvalError("target price is not a positive finite number")
+                    try:
+                        import yfinance as yf
+                        px = float(yf.Ticker(a["symbols"][0]).fast_info["last_price"])
+                    except Exception as exc:
+                        raise _EvalError(f"price quote failed: {type(exc).__name__}") from exc
+                    if px >= target and _fire(a, a["symbols"][0], {"title": f"price ${px:.2f} ≥ ${target}"}):
+                        a["status"], a["triggered_at"] = "triggered", _now()
+                        fired.append({"id": a["id"], "subject": a["symbols"][0], "price": px})
+                else:
+                    errors.append(f"{a.get('id')}:unsupported active alert (kind={a.get('kind')!r})")
+            except _EvalError as exc:
+                errors.append(f"{a.get('id') if isinstance(a, dict) else '?'}:{exc}")
+            except Exception as exc:  # a malformed record must never lose state already written
+                errors.append(f"{a.get('id') if isinstance(a, dict) else '?'}:record:{type(exc).__name__}")
+    finally:
+        # Persist whatever completed even if something unexpected escapes the loop: an alert whose event was
+        # already enqueued must not be fired a second time because its status write was skipped.
+        _save(d)
+    if errors:
+        raise _EvalError("; ".join(errors))
     return fired
 
 
@@ -149,10 +229,13 @@ def main(argv=None):
         write_lane_receipt("ask-alerts", ok=False, exit_code=1, started_at=started,
                            error=type(exc).__name__)
         raise
-    write_lane_receipt("ask-alerts", ok=True, exit_code=0, started_at=started,
-                       summary={"checked": a.check,
-                                "fired": len(result["fired"]) if a.check else 0,
-                                "listed": 0 if a.check else len(result)})
+    # The receipt is the lane's health claim: it says the evaluator ran and what it found. `--list` runs
+    # NO evaluation, so writing ok=True here cleared a failed evaluator receipt without checking a single
+    # alert (D52 triage KEEP_BLOCK on #2528, scripts/ask_alerts.py:232). Only an evaluating run may claim
+    # the lane is healthy; a listing leaves the last real evaluation's receipt untouched.
+    if a.check:
+        write_lane_receipt("ask-alerts", ok=True, exit_code=0, started_at=started,
+                           summary={"checked": True, "fired": len(result["fired"]), "listed": 0})
     return 0
 
 
