@@ -88,14 +88,14 @@ def learn(days: int = 180) -> dict:
     warnings = []
     rows = []
     try:
-        cur.execute(f"""
+        cur.execute("""
             SELECT pnl, r_multiple, max_adverse_excursion, max_favorable_excursion,
                    hold_time_min, rvol_at_entry, float_m_at_entry, catalyst_verified,
                    entry_time, discovery_trace_id
             FROM paper_trades
             WHERE strategy_id = 'momentum_scalp' AND status = 'closed'
-              AND entry_time > NOW() - INTERVAL '{int(days)} days'
-        """)
+              AND entry_time > NOW() - %s * INTERVAL '1 day'
+        """, (int(days),))
         cols = [d[0] for d in cur.description]
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     except Exception as e:

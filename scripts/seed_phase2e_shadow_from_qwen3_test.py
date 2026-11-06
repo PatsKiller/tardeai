@@ -18,7 +18,13 @@ def get_conn():
         dbname=env.get("DB_NAME", "trade_ai"), user=env.get("DB_USER", "trade_ai"),
         password=env.get("DB_PASSWORD", ""))
 
+def _table(name):
+    """A table name (optionally schema-qualified) from the command line, quoted as an identifier."""
+    from psycopg2 import sql
+    return sql.Identifier(*name.split("."))
+
 def main():
+    from psycopg2 import sql
     p = argparse.ArgumentParser(description="Seed shadow from qwen3 test")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--dry-run", action="store_true")
@@ -32,10 +38,12 @@ def main():
     conn = get_conn()
     cur = conn.cursor()
 
-    limit_clause = f"LIMIT {args.limit}" if args.limit > 0 else ""
-    cur.execute(f"SELECT COUNT(*) FROM {args.source_table}")
+    src, tgt = _table(args.source_table), _table(args.target_table)
+    limit_clause = sql.SQL("LIMIT %s") if args.limit > 0 else sql.SQL("")
+    limit_params = (args.limit,) if args.limit > 0 else None
+    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(src))
     src_count = cur.fetchone()[0]
-    cur.execute(f"SELECT COUNT(*) FROM {args.target_table}")
+    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(tgt))
     tgt_before = cur.fetchone()[0]
 
     print(f"Source: {args.source_table} ({src_count} rows)")
@@ -46,22 +54,22 @@ def main():
         conn.close()
         return
 
-    cur.execute(f"""
-        INSERT INTO {args.target_table}
+    cur.execute(sql.SQL("""
+        INSERT INTO {tgt}
             (source_type, source_id, title, content_preview, content_hash,
              embedding, embedding_model, embedding_dim, embedding_latency_ms,
              source_created_at, indexed_at)
         SELECT source_type, source_id, title, content_preview, content_hash,
                embedding, embedding_model, embedding_dim, embedding_latency_ms,
                source_created_at, indexed_at
-        FROM {args.source_table}
+        FROM {src}
         {limit_clause}
         ON CONFLICT (source_type, source_id, embedding_model) DO NOTHING
-    """)
+    """).format(tgt=tgt, src=src, limit_clause=limit_clause), limit_params)
     copied = cur.rowcount
     conn.commit()
 
-    cur.execute(f"SELECT COUNT(*) FROM {args.target_table}")
+    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(tgt))
     tgt_after = cur.fetchone()[0]
 
     print(f"Copied: {copied}")
