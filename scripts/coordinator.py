@@ -179,8 +179,10 @@ def _atomic_write(path: Path, text: str) -> None:
     except BaseException:
         try:
             os.unlink(tmp)
-        except OSError:  # nosemgrep: tq-py-except-pass -- cleanup after a failed write: the original exception is re-raised on the next line, so nothing is swallowed; a failed unlink must not mask it
-            pass
+        except OSError as cleanup_error:
+            # Record it rather than swallow it (tq semgrep_error at :180): a temp file that will not unlink is worth
+            # seeing, and the original exception is re-raised below so the failure that got us here still surfaces.
+            print(f"coordinator: could not remove the temporary file {tmp.name}: {cleanup_error}", file=sys.stderr)
         raise
 
 
