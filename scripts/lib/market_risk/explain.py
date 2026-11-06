@@ -62,6 +62,28 @@ def deescalates_if(assessment: c.RiskAssessment, policy: dict) -> str:
     top = next((x for x in contributors if x.category != "other"), None)
     lead = f"; the largest driver is {top.category} ({top.headline})" if top else ""
     market = f"{tier} -> {lower} if {' and '.join(parts)}{lead}."
+    hold = assessment.hysteresis if isinstance(assessment.hysteresis, dict) else {}
+    required = hold.get("need_sessions")
+    completed = hold.get("below_sessions")
+    candidate = hold.get("raw_tier")
+    if (
+        type(required) is int
+        and required > 0
+        and isinstance(completed, list)
+        and all(isinstance(session, str) for session in completed)
+        and len(completed) < required
+        and isinstance(candidate, str)
+        and candidate in SEVERITY
+        and SEVERITY[candidate] < SEVERITY[tier]
+    ):
+        # The scoring engine keeps the higher tier until this configured gate completes.
+        # A score-only exit sentence otherwise contradicts a correctly held tier (FQ-107).
+        supported = "no market alert" if candidate == "NONE" else candidate
+        market += (
+            f" {tier} is held by the completed-session rule: "
+            f"{len(completed)} of {required} completed trading sessions below this tier recorded; "
+            f"current readings support {supported}."
+        )
     up = assessment.uplift or {}
     shown = assessment.tier
     if up and shown != tier:
