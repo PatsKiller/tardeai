@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "session_freshness_20261025",
+  "files": [
+    "tests/test_session_freshness_20261025.py"
+  ],
+  "comment": [
+    "2026-10-25 live page audit (Sunday): Friday-close quotes STALE, CIO market view 'refresh overdue', Ready now hidden by a 48 h wall-clock rule. One market-session-aware helper (scripts/lib/session_freshness.py) with a TS mirror pinned by the same case table."
+  ]
+}
