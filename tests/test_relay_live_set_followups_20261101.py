@@ -196,10 +196,12 @@ def test_hold_recompute_uses_the_gate_against_current(monkeypatch, tmp_path: Pat
 
 
 def test_the_held_release_is_parsed_from_the_deploy_die_line() -> None:
-    root = f"{Path.home()}/rel/abc-main"   # assembled at runtime: no literal home path committed to git
+    # The path is synthetic fixture text, not a real home directory: it is spelled with /home/runner so the
+    # pre-push PII scan can tell it apart from one. (Inherited from main when this branch merged; disclosed in
+    # the merge commit — PR 2307.)
     log = ("RELAY_LIVE_SET_HELD diff_id=0123456789abcdef: x\nERROR: relay live set would change and the operator has "
-           f"not acknowledged this diff_id — promote held ({root}/N8N_RELAY_LIVE_SET_DIFF.json)")
-    assert DM.held_release(log) == root
+           "not acknowledged this diff_id — promote held (/home/runner/rel/abc-main/N8N_RELAY_LIVE_SET_DIFF.json)")
+    assert DM.held_release(log) == "/home/runner/rel/abc-main"
     assert DM.held_release("no die line") == ""
 
 

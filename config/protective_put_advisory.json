@@ -1,0 +1,29 @@
+{
+  "schema": "ProtectivePutAdvisoryConfig@v1",
+  "enabled": true,
+  "_why": "D32 SPEC section 5 (operator APPROVED 2026-11-04 ~18:15 ET): for single-stock positions above a size threshold with an earnings or known event window, the CIO may suggest a protective put or a collar with cost and floor. Advisory only: the system never places, sizes, stops or cancels an order (AGENTS.md rule 1, MBI_BEHAVIOR = 0). Values are config, not hard-coded, so the operator can tune the threshold and the window without a code change.",
+  "min_position_pct_of_book": 2.0,
+  "event_window_days_before": 10,
+  "event_window_days_after": 2,
+  "put_floor_pct_below_spot": 10.0,
+  "collar_cap_pct_above_spot": 15.0,
+  "estimated_cost_pct_of_position": 2.5,
+  "min_days_to_expiry": 7,
+  "max_days_to_expiry": 60,
+  "max_cost_pct_of_position": 25.0,
+  "max_floor_distance_pct_of_target": 5.0,
+  "exclude_symbols": [
+    "CASH"
+  ],
+  "notes": {
+    "threshold": "A position at or above this share of the book is worth hedging; below it the premium is not worth the commission.",
+    "event_window": "The same 10-before/2-after shape the earnings vertical registry uses; days_to_event is negative after the event.",
+    "floor": "When the position carries a broker stop, the put strike targets the stop (the position is already defended there). Otherwise the strike targets spot minus the configured percent.",
+    "cost": "With a usable supplied option chain, cost_per_contract_usd is the quoted ask times the standard 100-share multiplier, per contract. With no chain, the LABELED estimate is estimated_cost_pct_of_position of the value of 100 reference shares at reference_price, and cost_is_estimate is true. No holding-wide premium or selected contract quantity is implied. A quoted floor_price is reported only when a real put strike was chosen.",
+    "cost_gate": "A premium per standard contract above max_cost_pct_of_position of the value of 100 reference shares is refused (cost_exceeds_position_value). The comparison uses the same per-contract reference basis as the quoted premium or estimate; it is not an aggregate holding-cost limit.",
+    "floor_distance": "The chosen strike is compared to the floor the basis names. More than max_floor_distance_pct_of_target away and the suggestion carries floor_target, floor_distance, floor_target_relation, floor_strike_far_from_target and a floor_warning: a 150 put under a 235 broker stop does not defend the stop.",
+    "floor_after_cost": "floor_per_covered_share_after_premium is the quoted put strike less premium per covered share of a standard contract. Premium at or above the strike leaves that field null, with floor_after_premium_note explaining why. position_floor_after_cost is always null; no position-wide protected level is computed.",
+    "never_placed": "No configuration value can make this lane place, size or cancel anything; the module has no broker import path and every suggestion carries placed_by_system: false.",
+    "partial_coverage": "coverage_status is not_selected and coverage_note explains that holding coverage has not been selected. No contract count, covered/uncovered share count or worst-case-per-share figure is produced by design. Unit economics and a per-covered-share put floor never guarantee protection of the holding."
+  }
+}
