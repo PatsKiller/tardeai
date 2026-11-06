@@ -30,7 +30,7 @@ MAIN = "origin/main"
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)  # noqa: S603, S607
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)  # noqa: S603, S607 -- fixed git argv list, no shell; git is resolved from the runner PATH
 
 
 def _out(repo: Path, *args: str) -> str | None:
