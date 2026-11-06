@@ -355,15 +355,19 @@ def _persist(records: list[dict]) -> None:
                          order_type TEXT, status TEXT, stop_price NUMERIC, qty NUMERIC, held_qty NUMERIC,
                          current_price NUMERIC, proximity_pct NUMERIC, coverage TEXT, lifecycle TEXT,
                          health TEXT, flags JSONB, snapshot_at TIMESTAMPTZ DEFAULT NOW())""")
+        # A trailing order has no fixed trigger price: its trail offset IS the protection, so the persisted
+        # snapshot must carry it or a stored-only page cannot recognise the order at all (codex review of PR 2180).
+        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS trail_offset NUMERIC")
         cur.execute("DELETE FROM stop_lifecycle")   # snapshot table — latest scan only
         for r in records:
             cur.execute("""INSERT INTO stop_lifecycle
                 (account,symbol,broker,order_id,order_type,status,stop_price,qty,held_qty,current_price,
-                 proximity_pct,coverage,lifecycle,health,flags)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                 proximity_pct,coverage,lifecycle,health,flags,trail_offset)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (r["account"], r["symbol"], r["broker"], r["order_id"], r["order_type"], r["status"],
                  r.get("stop_price"), r.get("qty"), r.get("held_qty"), r.get("current_price"),
-                 r.get("proximity_pct"), r["coverage"], r["lifecycle"], r["health"], json.dumps(r["flags"])))
+                 r.get("proximity_pct"), r["coverage"], r["lifecycle"], r["health"], json.dumps(r["flags"]),
+                 r.get("trail_offset")))
         conn.commit()
     except Exception:
         pass

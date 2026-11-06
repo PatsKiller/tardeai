@@ -864,7 +864,8 @@ export default function StopManagement({ onFocusHolding, accountFilter = null, o
     setFetchError(null)
     const ctrl = new AbortController()
     const timer = window.setTimeout(() => ctrl.abort(), 90_000)
-    const url = force ? '/api/v2/stops/management?refresh=1' : '/api/v2/stops/management'
+    // Page view = stored stop model, no broker read (page audit 2026-10-25); the operator Refresh is unchanged.
+    const url = force ? '/api/v2/stops/management?refresh=1' : '/api/v2/stops/management?stops=stored'
     fetch(url, { signal: ctrl.signal })
       .then(x => { if (!x.ok) throw new Error(`HTTP ${x.status}`); return x.json() })
       .then(j => {

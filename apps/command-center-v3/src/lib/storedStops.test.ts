@@ -1,0 +1,57 @@
+// node --experimental-strip-types src/lib/storedStops.test.ts
+// Stored broker stops for page views (page audit 2026-10-25): only an ACTIVE stored resting order counts.
+import { storedStopFor, storedStopsAsOf } from './storedStops.ts'
+import { isTrailingBrokerStop, resolveLiveStop } from './stopManagement.ts'
+import { mergeLiveStop } from './stopReviewTooltip.ts'
+declare const process: { exit(code?: number): never }
+
+let failed = 0
+function eq(name: string, got: unknown, want: unknown) {
+  const g = JSON.stringify(got), w = JSON.stringify(want)
+  if (g !== w) { failed++; console.error(`FAIL ${name}: got ${g} want ${w}`) }
+}
+
+const active = { symbol: 'fixa', account: 'fixture_account', stop_source: 'broker_resting', stop_state: 'active',
+  stop_price: 41.5, stop_qty: 10, stop_order_id: 'fixture-order-1', stop_captured_at: '2026-10-24T20:00:00Z' }
+const s = storedStopFor(active)
+eq('active stored stop', [s?.symbol, s?.stop_price, s?.order_id, s?.source, s?.broker_verified, s?.fetched_at],
+  ['FIXA', 41.5, 'fixture-order-1', 'stop_last_known', false, '2026-10-24T20:00:00Z'])
+eq('pending is not protection', storedStopFor({ ...active, stop_state: 'pending_activation' }), undefined)
+eq('filled is not protection', storedStopFor({ ...active, stop_state: 'filled' }), undefined)
+eq('planned level is not a broker stop', storedStopFor({ ...active, stop_source: 'planned' }), undefined)
+eq('a priced order is not flagged unknown', s?.price_unknown, false)
+// An ACTIVE broker order whose trigger price was not recorded (e.g. a trailing stop) stays in the stored page
+// model with an honest unknown price — it is not silently dropped, and no advisory level is substituted.
+const unpriced = storedStopFor({ ...active, stop_price: null, stop_order_type: 'TRAILING_STOP' })
+eq('unpriced active order is preserved',
+  [unpriced?.symbol, unpriced?.stop_price, unpriced?.price_unknown, unpriced?.order_type, unpriced?.order_id],
+  ['FIXA', null, true, 'TRAILING_STOP', 'fixture-order-1'])
+eq('an unpriced stop never reports a protection level',
+  storedStopFor({ ...active, stop_price: 'not-a-number' })?.stop_price, null)
+// The unknown-price note must not name a kind: isTrailingBrokerStop() reads the note, so a fixed order with no
+// recorded price would otherwise be shown as a trailing stop. The kind comes from the broker's order metadata only.
+const unpricedFixed = storedStopFor({ ...active, stop_price: null, stop_order_type: 'STOP' })
+eq('an unpriced fixed order is not trailing', isTrailingBrokerStop(unpricedFixed), false)
+eq('an unpriced fixed order resolves as unknown, not trailing',
+  [resolveLiveStop(unpricedFixed, undefined, 50).isTrailing, resolveLiveStop(unpricedFixed, undefined, 50).price], [false, null])
+eq('a trailing kind still comes from the broker order metadata',
+  isTrailingBrokerStop(storedStopFor({ ...active, stop_price: null, stop_order_type: 'TRAILING_STOP' })), true)
+// The stored observation and a prior operator confirmation can both exist for one holding. The NEWER one is the
+// evidence; the older must not overwrite it. The stored side keeps its own provenance when it wins.
+const confirmedOld = { symbol: 'FIXA', account: 'fixture_account', stop_price: 40, source: 'confirmed',
+  confirmed_at: '2026-10-20T20:00:00Z' }
+const storedNewer = storedStopFor(active)   // captured 2026-10-24T20:00:00Z, price 41.5
+const merged = mergeLiveStop(confirmedOld, storedNewer)
+eq('the newer stored observation wins over an older confirmation',
+  [merged?.stop_price, merged?.source, merged?.broker_verified], [41.5, 'stop_last_known', false])
+eq('a newer confirmation still wins over an older stored observation',
+  mergeLiveStop({ ...confirmedOld, confirmed_at: '2026-10-25T20:00:00Z', stop_price: 40 }, storedNewer)?.stop_price, 40)
+eq('an undated confirmation does not displace a dated stored observation',
+  mergeLiveStop({ ...confirmedOld, confirmed_at: null }, storedNewer)?.stop_price, 41.5)
+eq('no row', storedStopFor(undefined), undefined)
+eq('oldest capture', storedStopsAsOf([active, { ...active, stop_captured_at: '2026-10-23T20:00:00Z' }, { ...active, stop_state: 'filled', stop_captured_at: '2026-10-01T00:00:00Z' }]),
+  '2026-10-23T20:00:00Z')
+eq('no stored stops → null', storedStopsAsOf([{ symbol: 'X', stop_source: 'none' }]), null)
+
+if (failed) { console.error(`${failed} failed`); process.exit(1) }
+console.log('storedStops: all passed')
