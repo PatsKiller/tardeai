@@ -33,7 +33,7 @@ from scripts.lib.cio_ask_memory import SpineAskMemory  # noqa: E402
 from scripts.lib.cio_ask_store import AskEventStore  # noqa: E402
 from scripts.lib.cio_ask_tracking import CioRecordBackend, Tracker, WatchlistFile  # noqa: E402
 
-CHAT = "6993102664"  # hardcode-ok: test chat id fixture, not a credential
+CHAT = "900000001"  # hardcode-ok: test chat id fixture, not a credential
 TSLA_GUID = "11111111-2222-4333-8444-555555555555"
 TSLA_ISSUER = "11111111-2222-4333-8444-666666666666"
 _mid = itertools.count(81000)

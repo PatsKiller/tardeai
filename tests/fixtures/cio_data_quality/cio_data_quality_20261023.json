@@ -1,6 +1,6 @@
 {
  "provenance": {
-  "stop_history": "read-only (enforce_readonly session) SELECT id, account, order_id, order_type, status, stop_price, snapshot_at FROM stop_lifecycle WHERE upper(symbol)='NAVN' ORDER BY id, 2026-10-23 ~14:10 ET; id AS seq exactly as LIFECYCLE_QUERIES['stop_history'] returns it",
+  "stop_history": "read-only (enforce_readonly session) SELECT id, account, order_id, order_type, status, stop_price, snapshot_at FROM stop_lifecycle WHERE upper(symbol)='ZRYX' ORDER BY id, 2026-10-23 ~14:10 ET; id AS seq exactly as LIFECYCLE_QUERIES['stop_history'] returns it; SYNTHETIC for the public repo: symbol renamed, broker order ids and row ids renumbered preserving order, stop prices scaled x1.25",
   "YMAT": "data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl YMAT line (verbatim)",
   "INVE": "data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl INVE line (verbatim)",
   "AARD": "RECONSTRUCTED from the operator's report (AARD resolved to an Archrock headline): the 2026-10-23 day file's surviving AARD line is no_clear_catalyst, so the Archrock source row is shaped like the researcher's output, not copied",
@@ -8,84 +8,84 @@
  },
  "stop_history": [
   {
-   "symbol": "NAVN",
-   "account": "schwab_rollover_ira",
-   "order_id": "1008390164604",
+   "symbol": "ZRYX",
+   "account": "ira_b",
+   "order_id": "9000000007000",
    "order_type": "STOP",
    "status": "filled",
-   "stop_price": 26.02,
+   "stop_price": 32.52,
    "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
-   "seq": 3735550
+   "seq": 50001
   },
   {
-   "symbol": "NAVN",
-   "account": "schwab_rollover_ira",
-   "order_id": "1008390164603",
+   "symbol": "ZRYX",
+   "account": "ira_b",
+   "order_id": "9000000006000",
    "order_type": "STOP",
    "status": "replaced",
-   "stop_price": 25.61,
+   "stop_price": 32.01,
    "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
-   "seq": 3735551
+   "seq": 50002
   },
   {
-   "symbol": "NAVN",
-   "account": "schwab_rollover_ira",
-   "order_id": "1008380699460",
+   "symbol": "ZRYX",
+   "account": "ira_b",
+   "order_id": "9000000005000",
    "order_type": "STOP",
    "status": "replaced",
-   "stop_price": 25.51,
+   "stop_price": 31.89,
    "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
-   "seq": 3735555
+   "seq": 50003
   },
   {
-   "symbol": "NAVN",
-   "account": "schwab_rollover_ira",
-   "order_id": "1008362273101",
+   "symbol": "ZRYX",
+   "account": "ira_b",
+   "order_id": "9000000004000",
    "order_type": "STOP",
    "status": "replaced",
-   "stop_price": 24.97,
+   "stop_price": 31.21,
    "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
-   "seq": 3735556
+   "seq": 50004
   },
   {
-   "symbol": "NAVN",
-   "account": "schwab_rollover_ira",
-   "order_id": "1008345101300",
+   "symbol": "ZRYX",
+   "account": "ira_b",
+   "order_id": "9000000003000",
    "order_type": "STOP",
    "status": "replaced",
-   "stop_price": 24.7,
+   "stop_price": 30.88,
    "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
-   "seq": 3735557
+   "seq": 50005
   },
   {
-   "symbol": "NAVN",
-   "account": "schwab_rollover_ira",
-   "order_id": "1008345101170",
+   "symbol": "ZRYX",
+   "account": "ira_b",
+   "order_id": "9000000002000",
    "order_type": "STOP",
    "status": "replaced",
-   "stop_price": 24.31,
+   "stop_price": 30.39,
    "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
-   "seq": 3735558
+   "seq": 50006
   },
   {
-   "symbol": "NAVN",
-   "account": "schwab_rollover_ira",
-   "order_id": "1008345100877",
+   "symbol": "ZRYX",
+   "account": "ira_b",
+   "order_id": "9000000001000",
    "order_type": "STOP",
    "status": "replaced",
-   "stop_price": 24.59,
+   "stop_price": 30.74,
    "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
-   "seq": 3735559
+   "seq": 50007
   }
  ],
  "expected_stop_path_in_time": [
-  24.59,
-  24.31,
-  24.7,
-  24.97,
-  25.51,
-  25.61,
-  26.02
+  30.74,
+  30.39,
+  30.88,
+  31.21,
+  31.89,
+  32.01,
+  32.52
  ],
  "catalysts": {
   "YMAT": {

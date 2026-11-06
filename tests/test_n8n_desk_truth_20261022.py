@@ -38,11 +38,11 @@ NEVER = lambda _now: False  # noqa: E731
 
 def _store(**over):
     rows = [
-        {"account": "schwab_rollover_ira", "symbol": "SCHD", "shares": 4000, "broker_position_as_of_at": "2026-10-21T17:30:00+00:00"},
-        {"account": "schwab_rollover_ira", "symbol": "SCHG", "shares": 2000},
-        {"account": "schwab_rollover_ira", "symbol": "CASH", "is_cash": True, "market_value": 200000.0},
-        {"account": "schwab_roth", "symbol": "V", "shares": 130.4985},
-        {"account": "fidelity_x", "symbol": "ZZZ", "shares": 5},
+        {"account": "schwab_rollover_ira", "symbol": "ZQCH", "shares": 12000, "broker_position_as_of_at": "2026-10-21T17:30:00+00:00"},
+        {"account": "schwab_rollover_ira", "symbol": "ZQAV", "shares": 6000},
+        {"account": "schwab_rollover_ira", "symbol": "ZQAF", "is_cash": True, "market_value": 600000.0},
+        {"account": "schwab_roth", "symbol": "ZQCE", "shares": 391.4955},
+        {"account": "fidelity_x", "symbol": "ZZZ", "shares": 15},
     ]
     doc = {"holdings": rows, "positions_built_at": "2026-10-10T00:00:00+00:00"}
     doc.update(over)
@@ -50,11 +50,11 @@ def _store(**over):
 
 
 PC = [
-    {"account_key": "schwab_rollover_ira", "symbol": "SCHD", "qty": 6000.2529, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
-    {"account_key": "schwab_rollover_ira", "symbol": "SCHG", "qty": 4000, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
-    {"account_key": "schwab_rollover_ira", "symbol": "NAVN", "qty": 500, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
-    {"account_key": "schwab_rollover_ira", "symbol": "CASH", "qty": 46080.0, "is_cash": True, "as_of": "2026-10-21T17:55:00+00:00"},
-    {"account_key": "schwab_roth_ira", "symbol": "V", "qty": 130.4985, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
+    {"account_key": "schwab_rollover_ira", "symbol": "ZQCH", "qty": 18000.7587, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
+    {"account_key": "schwab_rollover_ira", "symbol": "ZQAV", "qty": 12000, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
+    {"account_key": "schwab_rollover_ira", "symbol": "NAVN", "qty": 1500, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
+    {"account_key": "schwab_rollover_ira", "symbol": "ZQAF", "qty": 138240.0, "is_cash": True, "as_of": "2026-10-21T17:55:00+00:00"},
+    {"account_key": "schwab_roth_ira", "symbol": "ZQCE", "qty": 391.4955, "is_cash": False, "as_of": "2026-10-21T17:55:00+00:00"},
 ]
 
 
@@ -66,12 +66,12 @@ def test_holdings_drift_reports_the_2026_10_22_shape():
     rep = _run("holdings-drift", {"holdings": _store, "positions_current": lambda: PC})
     codes = {(f["code"], f["key"]) for f in rep["findings"]}
     assert ("MISSING_IN_HOLDINGS", "missing:schwab_rollover_ira:NAVN") in codes
-    assert ("QTY_DRIFT", "qty:schwab_rollover_ira:SCHD") in codes
-    assert ("QTY_DRIFT", "qty:schwab_rollover_ira:SCHG") in codes
+    assert ("QTY_DRIFT", "qty:schwab_rollover_ira:ZQCH") in codes
+    assert ("QTY_DRIFT", "qty:schwab_rollover_ira:ZQAV") in codes
     cash = next(f for f in rep["findings"] if f["code"] == "CASH_DRIFT")
-    assert cash["evidence"]["delta"] == 153920.0
-    # the roth alias maps holdings 'schwab_roth' onto positions_current 'schwab_roth_ira': no drift for V
-    assert not any("V" == f["evidence"].get("symbol") for f in rep["findings"])
+    assert cash["evidence"]["delta"] == 461760.0
+    # the roth alias maps holdings 'schwab_roth' onto positions_current 'schwab_roth_ira': no drift for ZQCE
+    assert not any("ZQCE" == f["evidence"].get("symbol") for f in rep["findings"])
     # a non-compared account (fidelity) is ignored
     assert not any("ZZZ" in f["key"] for f in rep["findings"])
     assert rep["holdings_basis"] == "broker_position_as_of_at" and rep["holdings_age_h"] == 0.5
@@ -90,13 +90,13 @@ def test_holdings_stale_in_session_only_and_falls_back_to_positions_built_at():
 
 
 def test_holdings_drift_clean_and_unreadable_sources():
-    same = [{"account_key": "schwab_rollover_ira", "symbol": "SCHD", "qty": 4000, "is_cash": False,
+    same = [{"account_key": "schwab_rollover_ira", "symbol": "ZQCH", "qty": 12000, "is_cash": False,
              "as_of": "2026-10-21T17:55:00+00:00"},
-            {"account_key": "schwab_rollover_ira", "symbol": "SCHG", "qty": 2000, "is_cash": False,
+            {"account_key": "schwab_rollover_ira", "symbol": "ZQAV", "qty": 6000, "is_cash": False,
              "as_of": "2026-10-21T17:55:00+00:00"},
-            {"account_key": "schwab_rollover_ira", "symbol": "CASH", "qty": 200010.0, "is_cash": True,
+            {"account_key": "schwab_rollover_ira", "symbol": "ZQAF", "qty": 600030.0, "is_cash": True,
              "as_of": "2026-10-21T17:55:00+00:00"},
-            {"account_key": "schwab_roth_ira", "symbol": "V", "qty": 130.4985, "is_cash": False,
+            {"account_key": "schwab_roth_ira", "symbol": "ZQCE", "qty": 391.4955, "is_cash": False,
              "as_of": "2026-10-21T17:55:00+00:00"}]
     rep = _run("holdings-drift", {"holdings": _store, "positions_current": lambda: same})
     assert rep["findings"] == [] and rep["fingerprint"] == DTM.fingerprint([])
@@ -142,17 +142,17 @@ def test_desk_staleness_is_quiet_outside_the_session():
 
 SNAP_AT = "2026-10-21T17:58:00+00:00"
 HELD = [
-    {"account_key": "schwab_rollover_ira", "symbol": "SCHD", "qty": 6000, "is_cash": False, "broker_market_value": 210000},
-    {"account_key": "schwab_rollover_ira", "symbol": "NAVN", "qty": 500, "is_cash": False, "broker_market_value": 13555},
-    {"account_key": "schwab_roth_ira", "symbol": "V", "qty": 130, "is_cash": False, "broker_market_value": 53000},
-    {"account_key": "schwab_taxable", "symbol": "PFLT", "qty": 1.1, "is_cash": False, "broker_market_value": 7.3},
-    {"account_key": "schwab_taxable", "symbol": "XYZ", "qty": 10, "is_cash": False, "broker_market_value": None},
-    {"account_key": "schwab_taxable", "symbol": "CASH", "qty": 5000, "is_cash": True},
+    {"account_key": "schwab_rollover_ira", "symbol": "ZQCH", "qty": 18000, "is_cash": False, "broker_market_value": 210000},
+    {"account_key": "schwab_rollover_ira", "symbol": "NAVN", "qty": 1500, "is_cash": False, "broker_market_value": 13555},
+    {"account_key": "schwab_roth_ira", "symbol": "ZQCE", "qty": 390, "is_cash": False, "broker_market_value": 53000},
+    {"account_key": "schwab_taxable", "symbol": "ZQAP", "qty": 3.3, "is_cash": False, "broker_market_value": 7.3},
+    {"account_key": "schwab_taxable", "symbol": "XYZ", "qty": 30, "is_cash": False, "broker_market_value": None},
+    {"account_key": "schwab_taxable", "symbol": "ZQAF", "qty": 15000, "is_cash": True},
 ]
 SNAP = [
     {"account": "schwab_rollover_ira", "symbol": "NAVN", "lifecycle": "working", "snapshot_at": SNAP_AT},
-    {"account": "schwab_rollover_ira", "symbol": "SCHD", "lifecycle": "cancelled", "snapshot_at": SNAP_AT},
-    {"account": "schwab_roth", "symbol": "V", "lifecycle": "near_trigger", "snapshot_at": SNAP_AT},
+    {"account": "schwab_rollover_ira", "symbol": "ZQCH", "lifecycle": "cancelled", "snapshot_at": SNAP_AT},
+    {"account": "schwab_roth", "symbol": "ZQCE", "lifecycle": "near_trigger", "snapshot_at": SNAP_AT},
     {"account": "tradeai_automated", "symbol": "AAPL", "lifecycle": "working", "snapshot_at": SNAP_AT},
 ]
 
@@ -160,7 +160,7 @@ SNAP = [
 def test_exit_coverage_names_uncovered_live_positions_and_tags_paper():
     rep = _run("held-exit-coverage", {"positions_current": lambda: HELD, "stop_lifecycle": lambda: SNAP})
     keys = [f["key"] for f in rep["findings"]]
-    assert keys == ["uncovered:schwab_rollover_ira:SCHD", "uncovered:schwab_taxable:XYZ"]
+    assert keys == ["uncovered:schwab_rollover_ira:ZQCH", "uncovered:schwab_taxable:XYZ"]
     assert all(f["evidence"]["tag"] == "LIVE" for f in rep["findings"])
     assert rep["coverage_verdict"] == "GAPS" and rep["below_value_floor"] == 1
     assert rep["paper_stop_rows"] == 1 and rep["paper_tag"] == "PAPER"
@@ -177,7 +177,7 @@ def test_stale_snapshot_is_not_measured_never_uncovered():
 
 def test_exemptions_are_honoured():
     cfg = json.loads(json.dumps(CFG))
-    cfg["held_exit_coverage"]["exempt"] = [{"account": "schwab_rollover_ira", "symbol": "SCHD", "reason": "t"}]
+    cfg["held_exit_coverage"]["exempt"] = [{"account": "schwab_rollover_ira", "symbol": "ZQCH", "reason": "t"}]
     rep = DTM.run_check("held-exit-coverage", now=NOW, cfg=cfg, trading_day=ALWAYS,
                         sources={"positions_current": lambda: HELD, "stop_lifecycle": lambda: SNAP})
     assert [f["key"] for f in rep["findings"]] == ["uncovered:schwab_taxable:XYZ"] and rep["exempt"] == 1
@@ -198,7 +198,7 @@ def test_alert_queues_only_when_the_finding_set_gains(tmp_path):
                        queue=fake_queue)
     assert a["queued"] and len(calls) == 1
     assert calls[0]["domain"] == "stops" and calls[0]["kind"] == "held_exit_coverage_gap"
-    assert calls[0]["producer"] == "desk_truth_monitor" and "SCHD" in calls[0]["summary"]
+    assert calls[0]["producer"] == "desk_truth_monitor" and "ZQCH" in calls[0]["summary"]
     a = DTM.emit_alert(rep, state_root=str(tmp_path), ledger_path=tmp_path / "l.sqlite", execution_id="r2",
                        queue=fake_queue)
     assert not a["queued"] and len(calls) == 1
@@ -295,12 +295,12 @@ def test_needs_action_desk_truth_rule():
     assert [i["severity"] for i in items] == ["P3"]
     rec = {"lane_id": "held-exit-coverage-monitor", "status": "ok", "ok_at": "2026-10-21T17:00:00+00:00",
            "summary": {"as_of": "x", "findings": [
-               {"code": "UNCOVERED", "key": "uncovered:a:SCHD", "detail": "a SCHD: held 6000, no WORKING stop",
+               {"code": "UNCOVERED", "key": "uncovered:a:ZQCH", "detail": "a ZQCH: held 6000, no WORKING stop",
                 "alert": True},
                {"code": "UNCOVERED", "key": "uncovered:a:Q", "detail": "q", "alert": False}]}}
     items = NA.rule_desk_truth(dict(none, **{"held-exit-coverage-monitor": rec}), NOW)
     sev = sorted(i["severity"] for i in items)
-    assert sev == ["P2", "P3", "P3"] and any("SCHD" in i["title"] for i in items)
+    assert sev == ["P2", "P3", "P3"] and any("ZQCH" in i["title"] for i in items)
     stale = dict(rec, ok_at="2026-10-19T00:00:00+00:00", status="failed", error="db down")
     items = NA.rule_desk_truth(dict(none, **{"held-exit-coverage-monitor": stale}), NOW)
     titles = [i["title"] for i in items]
@@ -328,11 +328,11 @@ def test_api_v2_wires_the_desk_truth_source():
 
 def _desk(tmp_path, cards=None):
     cards = cards if cards is not None else [
-        {"id": "a", "symbol": "SPCX", "expiration": "2026-11-20", "option_type": "put", "strike": 148,
+        {"id": "a", "symbol": "ZQBL", "expiration": "2026-11-20", "option_type": "put", "strike": 148,
          "premium": 9.1, "bid": 9.0, "ask": 9.2, "account": "schwab_rollover_ira"},
-        {"id": "b", "symbol": "SPCX", "expiration": "2026-11-20", "option_type": "put", "strike": 148,
+        {"id": "b", "symbol": "ZQBL", "expiration": "2026-11-20", "option_type": "put", "strike": 148,
          "premium": 9.1, "account": "schwab_taxable"},
-        {"id": "c", "symbol": "SCHG", "expiration": "2026-12-18", "option_type": "put", "short_strike": 30,
+        {"id": "c", "symbol": "ZQAV", "expiration": "2026-12-18", "option_type": "put", "short_strike": 30,
          "long_strike": 28, "account": "schwab_rollover_ira"},
         {"id": "d", "symbol": "XYZ"},
     ]
@@ -343,7 +343,7 @@ def _desk(tmp_path, cards=None):
 
 def _chain(symbol, *, expiration, contract_type=None, all_strikes=False):
     assert all_strikes is True
-    strikes = {"SPCX": [148.0], "SCHG": [30.0, 28.0]}[symbol]
+    strikes = {"ZQBL": [148.0], "ZQAV": [30.0, 28.0]}[symbol]
     return {"status": "ok", "underlying_price": 150.5, "underlying_quote_time": "2026-10-21T13:59:58+00:00",
             "fetched_at": "2026-10-21T14:00:00+00:00",
             "expirations": [{"exp": expiration, "strikes": [
@@ -355,8 +355,8 @@ def test_plan_groups_one_read_per_symbol_expiration_and_bounds_it():
     cards = json.loads(_desk(Path(__import__("tempfile").mkdtemp())).read_text())["proposals"]
     plan = QR.plan_groups(cards, 25)
     assert plan["groups"] == 2 and plan["requests_planned"] == 2 and plan["no_contract"] == ["d"]
-    assert [(g["symbol"], g["contract_type"], len(g["cards"])) for g in plan["read"]] == [("SPCX", "put", 2),
-                                                                                          ("SCHG", "put", 1)]
+    assert [(g["symbol"], g["contract_type"], len(g["cards"])) for g in plan["read"]] == [("ZQBL", "put", 2),
+                                                                                          ("ZQAV", "put", 1)]
     plan = QR.plan_groups(cards, 1)
     assert plan["requests_planned"] == 1 and len(plan["over_budget"]) == 1
 
@@ -383,7 +383,7 @@ def test_apply_writes_live_quote_only_and_stamps_the_session(tmp_path):
     assert rep.get("wrote") and rep["requests_made"] == 2 == len(reads) and rep["cards_requoted"] == 3
     doc = json.loads(p.read_text())
     a, b, c, d = doc["proposals"]
-    assert a["live_quote"]["bid"] == 2.48 and a["live_quote"]["mid"] == 2.58 and a["live_quote"]["occ_symbol"] == "SPCX_148.0"
+    assert a["live_quote"]["bid"] == 2.48 and a["live_quote"]["mid"] == 2.58 and a["live_quote"]["occ_symbol"] == "ZQBL_148.0"
     assert a["premium"] == 9.1 and a["bid"] == 9.0  # the build's economics are untouched
     assert a["live_quote"]["underlying_price"] == 150.5 and a["live_quote"]["provenance"] == "observed_quote"
     assert [leg["leg"] for leg in c["live_quote"]["legs"]] == ["short", "long"]
@@ -509,7 +509,7 @@ def test_review_calls_the_router_with_its_own_task(monkeypatch):
 
     import llm_router
     monkeypatch.setattr(llm_router, "get_llm_response", fake)
-    OCR._default_llm("p", symbol="SPCX", job_key="k")
+    OCR._default_llm("p", symbol="ZQBL", job_key="k")
     assert seen["task"] == "options_thesis_review" and seen["meta"]["task"] == "options_thesis_review"
 
 

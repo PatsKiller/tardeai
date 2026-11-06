@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "fixture_privacy_synthetic_20261025",
+  "files": [
+    "tests/test_fixture_privacy_anonymize_20261025.py"
+  ],
+  "anchor": "FIXTURE_PRIVACY_SYNTHETIC_20261025",
+  "comment": [
+    "ANCHOR: FIXTURE_PRIVACY_SYNTHETIC_20261025 — public test fixtures carry synthetic portfolio data only (scripts/fixture_privacy_anonymize.py); the formerly real fixtures stay free of account ids, account numbers and (on the host) live/historical held symbols."
+  ]
+}

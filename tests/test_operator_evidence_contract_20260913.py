@@ -4,7 +4,7 @@
 given September seasonality and the midterm cycle. The reply came from DeepSeek's
 general knowledge and said "your actual holdings, weights, and cash are not
 available in my current facts (cash_pct, buying_power, holdings_for_symbols all
-empty)". The CIO snapshot at that moment carried total_cash $710,933 (56% of
+empty)". The CIO snapshot at that moment carried total_cash $439,357 (56% of
 $1.268M), sector weights, the investment policy, risk, rotation ladders and 2,088
 promoted research rows.
 
@@ -63,7 +63,7 @@ RESEARCH_ROWS = [
 #: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
 #: which would break these equality assertions and make an offline test depend
 #: on the host.
-OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+OPERATOR_CHAT = "900000001"  # hardcode-ok: routing fixture, not a credential
 
 
 def _snap() -> dict:
@@ -97,7 +97,7 @@ def _offline(monkeypatch, tmp_path):
     monkeypatch.setenv("CIO_OPERATOR_FREEFORM_FLASH", "0")
     monkeypatch.setenv("CIO_REENTRY_FLASH", "0")
     monkeypatch.delenv("GAP_RESOLVER_LIVE", raising=False)
-    monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"SCHG", "NOC", "RTX"}))
+    monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"ZQAU", "ZQBC", "ZQAV"}))
     monkeypatch.setattr(desk, "_held_positions_map", lambda: {})
     monkeypatch.setattr(desk, "PENDING_PATH", tmp_path / "pending.jsonl")
     monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"ok": True})
@@ -155,10 +155,10 @@ def test_1856_snapshot_populates_every_contract_fact_with_zero_findings(_offline
     intent, ev = _freeform_evidence()
     assert intent["intent"] == "freeform" and intent["symbols"] == []
     f = ev["available"]["freeform_context"]
-    assert f["cash"]["total_cash"] == 710933 and f["cash"]["cash_pct"] == 56.1
-    assert f["cash"]["by_account"][0] == {"account": "schwab_rollover_ira", "cash": 661748}
-    assert f["sector_exposure"][0] == {"sector": "Industrials", "weight_pct": 6.77, "value": 85865,
-                                       "symbols": ["NOC", "RTX", "SPCX", "BAH", "XLI", "XAR"]}
+    assert f["cash"]["total_cash"] == 439357 and f["cash"]["cash_pct"] == 56.1
+    assert f["cash"]["by_account"][0] == {"account": "ira_b", "cash": 408960}
+    assert f["sector_exposure"][0] == {"sector": "Industrials", "weight_pct": 6.77, "value": 53065,
+                                       "symbols": ["ZQBC", "ZQAV", "ZQBK", "ZQBE", "ZQBS", "ZQAD"]}
     assert f["investment_policy"]["risk_level"] == "MODERATE_AGGRESSIVE"
     assert f["investment_policy"]["max_single_position_pct"] == 8.0
     assert f["model_portfolio"]["cash_target_pct"] == 5.0
@@ -172,8 +172,8 @@ def test_desk_path_cash_question_reads_total_cash_not_the_keys_that_never_existe
     intent = desk.analyze_operator_intent("how much cash do I have right now")
     assert "cash" in intent["needs"] and intent["intent"] != "freeform", intent
     ev = desk.gather_tradeai_evidence(intent)
-    assert ev["available"]["book_facts"]["cash"]["total_cash"] == 710933
-    assert "cash=$710,933 (56.1% of book)" in ev["available"]["book"]
+    assert ev["available"]["book_facts"]["cash"]["total_cash"] == 439357
+    assert "cash=$439,357 (56.1% of book)" in ev["available"]["book"]
     assert "None" not in ev["available"]["book"]
     assert ev["contract_findings"] == []
 
@@ -203,12 +203,12 @@ def test_a_builder_that_drops_model_portfolio_raises_missing_fact(monkeypatch):
 
 
 def test_the_1856_shape_cash_none_is_a_false_empty_claim(monkeypatch):
-    """facts['cash'] = None while the store had $710,933: exactly what the model read as 'empty'."""
+    """facts['cash'] = None while the store had $439,357: exactly what the model read as 'empty'."""
     monkeypatch.setattr(desk, "_cash_facts", lambda snap, tv: None)
     _, ev = _freeform_evidence()
     hits = [x for x in ev["contract_findings"] if x["domain"] == "cash_buying_power"]
     assert hits and {h["code"] for h in hits} == {"FALSE_EMPTY_CLAIM"}, hits
-    assert hits[0]["store_has"] == "710933"
+    assert hits[0]["store_has"] == "439357"
     out = desk._format_freeform_failsoft(ev["available"]["freeform_context"], ev["gaps"])
     assert "Facts available but not assembled" in out and "cash_buying_power" in out
 
@@ -314,7 +314,7 @@ def test_validator_rejects_unlabelled_seasonality(_offline):
 def test_validator_accepts_labelled_seasonality_with_its_own_numbers(_offline):
     reply = ("General market history (model knowledge, not Trade-AI data): September has averaged about -0.7% "
              "since 1950 and midterm years have tended to rally into Q4.\n\n"
-             "Trade-AI: cash $710,933 (56.1%); Industrials 6.77%.\nREAD_ONLY_ADVISORY")
+             "Trade-AI: cash $439,357 (56.1%); Industrials 6.77%.\nREAD_ONLY_ADVISORY")
     assert desk._validate_freeform_reply(reply, _facts()) is None
 
 
@@ -322,7 +322,7 @@ def test_validator_rejects_an_invented_cash_number_and_accepts_rounded_real_ones
     f = _facts()
     assert desk._validate_freeform_reply("You hold $500,000 in cash.", f) == "unsourced_number:$500,000"
     assert desk._validate_freeform_reply("Industrials are 9.5% of the book.", f) == "unsourced_number:9.5%"
-    assert desk._validate_freeform_reply("You hold about $711K in cash (56%), book $1.27M.", f) is None
+    assert desk._validate_freeform_reply("You hold about $439K in cash (56%), book $0.78M.", f) is None
 
 
 def test_rejected_model_reply_falls_back_to_the_deterministic_reply(monkeypatch):
@@ -341,9 +341,9 @@ def test_rejected_model_reply_falls_back_to_the_deterministic_reply(monkeypatch)
     out = desk.answer_freeform_with_flash(Q_1856, f, [])
     assert calls, "the fake model was called -- no real provider"
     assert out["source"] == "freeform_failsoft" and out["flash_error"].startswith("rejected:false_empty_claim")
-    assert "$710,933" in out["text"] and "Industrials 6.77%" in out["text"]
+    assert "$439,357" in out["text"] and "Industrials 6.77%" in out["text"]
     user = calls[0][1]["content"]
-    assert '"total_cash": 710933' in user and "research_on_topic" in user
+    assert '"total_cash": 439357' in user and "research_on_topic" in user
     assert "Midterm election year sector playbook" in user
 
 
@@ -353,7 +353,7 @@ def test_rejected_model_reply_falls_back_to_the_deterministic_reply(monkeypatch)
 def test_failsoft_renders_sectors_policy_rotation_and_research(_offline):
     out = desk._format_freeform_failsoft(_facts(), [])
     when = _snap()["domains"]["rotation"]["data"]["computed_at"][:16].replace("T", " ")
-    for needle in ("Cash: $710,933 (56.1% of book)", "largest schwab_rollover_ira $661,748",
+    for needle in ("Cash: $439,357 (56.1% of book)", "largest ira_b $408,960",
                    "Sectors: Industrials 6.77%", "Policy: MODERATE_AGGRESSIVE · max single 8.0%",
                    "Model portfolio: equity target 75.0% vs actual 43.9%",
                    f"Rotation ladder (computed {when}): 13 sectors, none measured",
@@ -378,7 +378,7 @@ def test_replay_1856_full_turn_answers_from_house_facts(_offline):
     res = desk.handle_operator_desk_question(Q_1856, chat_id=OPERATOR_CHAT, message_id="1856")
     assert res["kind"] == "answered", res
     txt = res["text"]
-    for needle in ("$710,933", "56.1% of book", "Industrials 6.77%", "MODERATE_AGGRESSIVE",
+    for needle in ("$439,357", "56.1% of book", "Industrials 6.77%", "MODERATE_AGGRESSIVE",
                    "Rotation ladder", "Midterm election year sector playbook", "Sources: "):
         assert needle in txt, needle
     low = txt.lower()
@@ -431,7 +431,7 @@ def test_negative_control_the_promise_stands_only_with_an_open_pending_row_with_
 
 
 def test_soft_queue_line_backed_by_a_pending_row_survives_without_eta():
-    text = "Answer.\n_Queued Trade-AI research for SCHG · Pending `opr_x`_\nREAD_ONLY_ADVISORY"
+    text = "Answer.\n_Queued Trade-AI research for ZQAU · Pending `opr_x`_\nREAD_ONLY_ADVISORY"
     assert desk._drop_unbacked_follow_up(text, {"pending_id": "opr_x", "status": "open"}) == text
 
 

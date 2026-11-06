@@ -2,10 +2,10 @@
 
 ANCHOR: OPEN_TRADES_ACCURACY_20261022
 
-The audit measured, on the served page: the mark was the holdings `price` alias (SRNE $0.0005 from
+The audit measured, on the served page: the mark was the holdings `price` alias (ZQBW $0.0005 from
 10-16) instead of `canonical_mark`; P/L was the broker's cached gain field, priced at another time
 than the mark beside it; the day move showed for marks days old; "last price update" was a lexical
-max over mixed naive-ET and UTC strings; SRNE's −$13k write-off sat inside the headline P/L; "large
+max over mixed naive-ET and UTC strings; ZQBW's −$13k write-off sat inside the headline P/L; "large
 gain unprotected" fired for a mutual fund and for fractional positions too small to take a stop;
 the account column showed raw keys. These tests pin each fix against an in-memory fake store: no
 database, no broker, no file under data/.
@@ -110,9 +110,9 @@ def _row(out, symbol, account=None):
 
 def test_mark_is_canonical_mark_with_its_own_age_not_the_price_alias(monkeypatch):
     out, _ = _build(monkeypatch, [
-        _holding("SPCX", "schwab_rollover_ira", 600, mark=145.75, price=148.515, ingested=_iso(0.5), basis=90855.0, dcp=-8.51),
+        _holding("ZQBL", "schwab_rollover_ira", 600, mark=145.75, price=148.515, ingested=_iso(0.5), basis=90855.0, dcp=-8.51),
     ])
-    p = _row(out, "SPCX")
+    p = _row(out, "ZQBL")
     assert p["current_price"] == 145.75
     assert p["quote_source"].startswith("holdings.canonical_mark")
     assert p["mark_age_hours"] is not None and p["mark_age_hours"] < 1
@@ -122,9 +122,9 @@ def test_mark_is_canonical_mark_with_its_own_age_not_the_price_alias(monkeypatch
 
 def test_pnl_is_shares_times_mark_minus_basis_not_cached_gain(monkeypatch):
     out, _ = _build(monkeypatch, [
-        _holding("SCHD", "schwab_rollover_ira", 6000.2529, mark=35.38, ingested=_iso(0.2), basis=201373.07, dcp=2.09),
+        _holding("ZQCH", "schwab_rollover_ira", 6000.2529, mark=35.38, ingested=_iso(0.2), basis=201373.07, dcp=2.09),
     ])
-    p = _row(out, "SCHD")
+    p = _row(out, "ZQCH")
     assert p["market_value"] == 6000.2529 * 35.38
     assert abs(p["unrealized_pnl"] - (6000.2529 * 35.38 - 201373.07)) < 0.01
     assert p["unrealized_pnl"] != 123456.0
@@ -133,10 +133,10 @@ def test_pnl_is_shares_times_mark_minus_basis_not_cached_gain(monkeypatch):
 
 def test_day_move_hidden_when_mark_is_stale(monkeypatch):
     out, oti = _build(monkeypatch, [
-        _holding("AMANX", "schwab_rollover_ira", 63.366, mark=79.35, mark_as_of="2026-10-16", basis=1229.8, dcp=1.5),
-        _holding("V", "schwab_roth", 130.4985, mark=412.43, ingested=_iso(1), basis=40125.75, dcp=1.12),
+        _holding("ZQCG", "schwab_rollover_ira", 63.366, mark=79.35, mark_as_of="2026-10-16", basis=1229.8, dcp=1.5),
+        _holding("ZQCE", "schwab_roth", 130.4985, mark=412.43, ingested=_iso(1), basis=40125.75, dcp=1.12),
     ])
-    amanx, v = _row(out, "AMANX"), _row(out, "V")
+    amanx, v = _row(out, "ZQCG"), _row(out, "ZQCE")
     assert amanx["mark_stale"] is True and amanx["today_move_pct"] is None
     assert amanx["mark_age_hours"] > oti.PRICE_STALE_HOURS
     assert v["mark_stale"] is False and v["today_move_pct"] == 1.12
@@ -145,8 +145,8 @@ def test_day_move_hidden_when_mark_is_stale(monkeypatch):
 def test_last_price_update_compares_datetimes_not_strings(monkeypatch):
     # Lexically "…T15:00…+00:00" > "…T07:30…" even when the naive ET value is the later instant.
     out, oti = _build(monkeypatch, [
-        _holding("XLB", "schwab_rollover_ira", 10, mark=51.0, mark_as_of="2099-01-01T07:30:00", basis=500.0),
-        _holding("XAR", "schwab_rollover_ira", 10, mark=217.0, mark_as_of="2099-01-01T15:00:00+00:00", basis=2000.0),
+        _holding("ZQBM", "schwab_rollover_ira", 10, mark=51.0, mark_as_of="2099-01-01T07:30:00", basis=500.0),
+        _holding("ZQAD", "schwab_rollover_ira", 10, mark=217.0, mark_as_of="2099-01-01T15:00:00+00:00", basis=2000.0),
     ])
     s = out["summary"]
     # 07:30 ET (naive, host-local) = 12:30 UTC, earlier than 15:00 UTC
@@ -157,27 +157,27 @@ def test_last_price_update_compares_datetimes_not_strings(monkeypatch):
 
 def test_write_off_leaves_headline_totals(monkeypatch):
     out, _ = _build(monkeypatch, [
-        _holding("SRNE", "schwab_rollover_ira", 1000, mark=0.0007, ingested=_iso(0.5), basis=13177.95, mv=0.5),
-        _holding("XLB", "schwab_rollover_ira", 506.3274, mark=51.54, ingested=_iso(0.5), basis=27011.39),
+        _holding("ZQBW", "schwab_rollover_ira", 1000, mark=0.0007, ingested=_iso(0.5), basis=13177.95, mv=0.5),
+        _holding("ZQBM", "schwab_rollover_ira", 506.3274, mark=51.54, ingested=_iso(0.5), basis=27011.39),
     ])
     s = out["summary"]
-    xlb = _row(out, "XLB")
-    assert _row(out, "SRNE")["worthless"] is True
+    xlb = _row(out, "ZQBM")
+    assert _row(out, "ZQBW")["worthless"] is True
     assert s["write_off_count"] == 1 and s["active_positions"] == 1 and s["total_positions"] == 2
     assert abs(s["total_unrealized_pnl"] - xlb["unrealized_pnl"]) < 0.01
     assert s["write_off_unrealized_pnl"] < -13000
-    assert [w["symbol"] for w in out["write_offs"]] == ["SRNE"]
+    assert [w["symbol"] for w in out["write_offs"]] == ["ZQBW"]
 
 
 def test_large_gain_unprotected_suppressed_for_funds_and_small_positions(monkeypatch):
     import holding_family
-    monkeypatch.setattr(holding_family, "is_unstoppable_fund", lambda sym: sym == "AMANX")
+    monkeypatch.setattr(holding_family, "is_unstoppable_fund", lambda sym: sym == "ZQCG")
     out, oti = _build(monkeypatch, [
-        _holding("AMANX", "schwab_rollover_ira", 63.366, mark=79.35, ingested=_iso(0.5), basis=1229.8),
-        _holding("V", "schwab_rollover_ira", 0.7963, mark=412.43, ingested=_iso(0.5), basis=277.89),
+        _holding("ZQCG", "schwab_rollover_ira", 63.366, mark=79.35, ingested=_iso(0.5), basis=1229.8),
+        _holding("ZQCE", "schwab_rollover_ira", 0.7963, mark=412.43, ingested=_iso(0.5), basis=277.89),
         _holding("NVDX", "schwab_roth", 100, mark=50.0, ingested=_iso(0.5), basis=2000.0),
     ])
-    amanx, small_v, big = _row(out, "AMANX"), _row(out, "V"), _row(out, "NVDX")
+    amanx, small_v, big = _row(out, "ZQCG"), _row(out, "ZQCE"), _row(out, "NVDX")
     assert "large_gain_unprotected" not in amanx["risk_flags"]
     assert small_v["small_position"] is True and "large_gain_unprotected" not in small_v["risk_flags"]
     assert "large_gain_unprotected" in big["risk_flags"]
@@ -189,9 +189,9 @@ def test_large_gain_unprotected_suppressed_for_funds_and_small_positions(monkeyp
 
 def test_account_labels_come_from_broker_accounts(monkeypatch):
     out, _ = _build(monkeypatch, [
-        _holding("V", "schwab_roth", 130.4985, mark=412.43, ingested=_iso(0.5), basis=40125.75),
+        _holding("ZQCE", "schwab_roth", 130.4985, mark=412.43, ingested=_iso(0.5), basis=40125.75),
     ])
-    assert _row(out, "V")["account_label"] == "Schwab Roth IRA"
+    assert _row(out, "ZQCE")["account_label"] == "Schwab Roth IRA"
     assert out["summary"]["account_labels"]["schwab_roth"] == "Schwab Roth IRA"
 
 

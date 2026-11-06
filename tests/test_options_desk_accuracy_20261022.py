@@ -5,7 +5,7 @@ freshness, blocked-row expiry, abandon-before-liquidity-skip, watch-only intents
 null avg POP.
 
 Hermetic: no network, broker, database or model. Fixtures mirror the captured production
-payload of 2026-10-22 (SPCX protective put, CIO review POLICY_NOT_ALLOWED x3, quote from the
+payload of 2026-10-22 (ZQBL protective put, CIO review POLICY_NOT_ALLOWED x3, quote from the
 2026-10-21 16:00 close, PRE_MARKET stamped by a 09:29 run). Field contract:
 docs/ops/OPTIONS_DESK_FIELDS.md.
 """
@@ -34,7 +34,7 @@ CRONTAB = """\
 PROJ=/x
 */10 12-15 * * 1-5 cd /x && bash /x/linux_launchers/run_options_monitor.sh  # noon-close
 5 16 * * 1-5 cd /x && bash /x/linux_launchers/run_options_monitor.sh
-# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX) */20 9-16 * * 1-5 cd /x && flock -n /tmp/l.lock bash -c "$PY scripts/options_lifecycle_run.py" >> logs/options_lifecycle.log 2>&1
+# PAUSED 2026-10-14 schwab-app-deactivated (incident ZQBL) */20 9-16 * * 1-5 cd /x && flock -n /tmp/l.lock bash -c "$PY scripts/options_lifecycle_run.py" >> logs/options_lifecycle.log 2>&1
 """
 
 
@@ -45,7 +45,7 @@ def _failed(at: str) -> dict:
 def _spcx(**kw) -> dict:
     card = {
         "id": "opt_protective_put_SPCX_schwab_rollover_ira_148p0000_20261120_d20261022",
-        "strategy": "protective_put", "symbol": "SPCX", "account": "schwab_rollover_ira",
+        "strategy": "protective_put", "symbol": "ZQBL", "account": "schwab_rollover_ira",
         "option_type": "put", "strike": 148.0, "expiration": "2026-11-20", "dte": 29, "contracts": 6,
         "premium": 4.65, "bid": 4.4, "ask": 4.65, "oi": 476, "volume": 0, "bid_ask_spread_pct": 5.52,
         "quote_time": CLOSE_QUOTE, "underlying_price": 154.12, "edge_score": 68.4, "max_loss": 6462.0,
@@ -203,7 +203,7 @@ def test_edge_is_withheld_when_the_liquidity_gate_fails_and_penalised_otherwise(
 # ── 5. CSP on the bid ────────────────────────────────────────────────────────
 
 def _chain(**leg) -> dict:
-    base = {"side": "put", "symbol": "SPCX  261120P00144000", "exp": "2026-11-20", "strike": 144.0, "dte": 29,
+    base = {"side": "put", "symbol": "ZQBL  261120P00144000", "exp": "2026-11-20", "strike": 144.0, "dte": 29,
             "bid": 5.35, "ask": 5.45, "iv": 50.1, "delta": -0.347, "oi": 149, "volume": 6, "spread_pct": 1.9,
             "two_sided": True, "quote_time": "2026-10-22T14:45:01+00:00"}
     base.update(leg)
@@ -247,7 +247,7 @@ def test_engine_csp_premium_and_edge_use_the_bid(monkeypatch):
 # ── 6. both earnings dates ───────────────────────────────────────────────────
 
 def test_matcher_keeps_both_earnings_dates_and_avoids_the_earlier():
-    intent = {"symbol": "SPCX", "earnings_estimate": "2026-11-03", "avoid_earnings_cross": True,
+    intent = {"symbol": "ZQBL", "earnings_estimate": "2026-11-03", "avoid_earnings_cross": True,
               "plays": {"cash_secured_put": {"dte": [25, 45], "delta": [0.15, 0.35]}}}
     m = mt.match_intent(intent, chain_fn=lambda s, side: _chain(), holdings=[],
                         earnings_fn=lambda s: {"date": "2027-02-09", "source": "options desk earnings gate"},
@@ -274,12 +274,12 @@ def test_execution_state_text_is_plain_and_read_only():
 # ── 8. intent vs hedge conflict ──────────────────────────────────────────────
 
 def test_hedge_on_an_accumulate_intent_is_flagged():
-    intents = [{"symbol": "SPCX", "status": "active", "goals": ["accumulate", "income"], "directive_id": 17}]
-    rows = acc.intent_conflicts([_spcx(), _spcx(symbol="XLB", id="x")], intents)
+    intents = [{"symbol": "ZQBL", "status": "active", "goals": ["accumulate", "income"], "directive_id": 17}]
+    rows = acc.intent_conflicts([_spcx(), _spcx(symbol="ZQBM", id="x")], intents)
     assert [r["kind"] for r in rows] == ["HEDGE_VS_ACCUMULATE"]
     assert "accumulate shares and earn income" in rows[0]["text"]
-    rows = acc.intent_conflicts([{"id": "c", "symbol": "V", "strategy": "cash_secured_put"}],
-                                [{"symbol": "V", "status": "active", "goals": ["reduce"]}])
+    rows = acc.intent_conflicts([{"id": "c", "symbol": "ZQCE", "strategy": "cash_secured_put"}],
+                                [{"symbol": "ZQCE", "status": "active", "goals": ["reduce"]}])
     assert rows[0]["kind"] == "ACCUMULATE_VS_HEDGE"
 
 
@@ -287,10 +287,10 @@ def test_hedge_on_an_accumulate_intent_is_flagged():
 
 def test_same_contract_in_two_accounts_is_one_group():
     a, b = _spcx(), _spcx(id="t", account="schwab_taxable", contracts=2)
-    groups = acc.proposal_groups([a, b, _spcx(id="x", symbol="XLB", contract_guid="g2")])
+    groups = acc.proposal_groups([a, b, _spcx(id="x", symbol="ZQBM", contract_guid="g2")])
     assert len(groups) == 1 and groups[0]["account_count"] == 2
     assert {leg["account"] for leg in groups[0]["legs"]} == {"schwab_rollover_ira", "schwab_taxable"}
-    assert a["group_key"] == b["group_key"] == "SPCX|protective_put|f75a0c29" and a["group_size"] == 2
+    assert a["group_key"] == b["group_key"] == "ZQBL|protective_put|f75a0c29" and a["group_size"] == 2
 
 
 # ── 10. honest coverage ──────────────────────────────────────────────────────
@@ -317,14 +317,14 @@ def test_paused_lifecycle_producer_is_named_with_its_date():
     acc.lifecycle_freshness(payload, now=NOW_REGULAR, crontab_text=CRONTAB)
     f = payload["freshness"]
     assert f["state"] == "PAUSED" and f["paused_since"] == "2026-10-14"
-    assert f["text"].startswith("PAUSED since 2026-10-14 (schwab-app-deactivated (incident SPCX))")
+    assert f["text"].startswith("PAUSED since 2026-10-14 (schwab-app-deactivated (incident ZQBL))")
     assert "7.8 days old" in f["text"]
     h = payload["health"][0]
     assert h["ok"] is False and h["detail_at_write"].startswith("lifecycle payload 20 min old")
 
 
 def test_unpaused_lifecycle_payload_goes_stale_by_serve_time_age():
-    live = CRONTAB.replace("# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX) ", "")
+    live = CRONTAB.replace("# PAUSED 2026-10-14 schwab-app-deactivated (incident ZQBL) ", "")
     payload = {"generated_at": "2026-10-22T13:00:00+00:00"}
     acc.lifecycle_freshness(payload, now=NOW_REGULAR, crontab_text=live)
     assert payload["freshness"]["state"] == "STALE"
@@ -385,7 +385,7 @@ def test_liquidity_blocked_idea_is_still_abandoned_after_the_window(tmp_path):
     store = ot.OptionsThesisStore(tmp_path / "t.jsonl")
     store._append({"event_type": "OPTIONS_THESIS_VERSION", "position_guid": "g1", "version": 1,
                    "pin": "opt_g1@v1", "recorded_at": t0.isoformat()})
-    p = {"symbol": "XAR", "strategy": "protective_put", "option_strategy_guid": "g1", "expiration": "2026-11-20",
+    p = {"symbol": "ZQAD", "strategy": "protective_put", "option_strategy_guid": "g1", "expiration": "2026-11-20",
          "options_thesis": {"pin": "opt_g1@v1", "missing_required": ["catalysts"]},
          "enterprise": {"blocks": ["OI 3 < 50"]}}
 
@@ -408,8 +408,8 @@ def test_intent_not_tied_to_a_holding_is_watch_only():
     nflx = {"symbol": "NFLX"}
     assert acc.holding_flags(nflx, {"shares_by_account": {}}, None) == {
         "held": False, "shares_held_total": 0, "watch_only": True, "held_source": "match.shares_by_account"}
-    held = acc.holding_flags({"symbol": "SPCX"}, None, [{"symbol": "SPCX", "shares": 600}, {"symbol": "X", "shares": 1}])
-    assert held["held"] is True and held["watch_only"] is False and held["shares_held_total"] == 600
+    held = acc.holding_flags({"symbol": "ZQBL"}, None, [{"symbol": "ZQBL", "shares": 1800}, {"symbol": "X", "shares": 3}])
+    assert held["held"] is True and held["watch_only"] is False and held["shares_held_total"] == 1800
 
 
 # ── 15. avg POP null, not zero ───────────────────────────────────────────────

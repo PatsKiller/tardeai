@@ -151,7 +151,7 @@ in the Details drawer.
 | `tests/test_packet_invalidation.py` | RTH 4h vs overnight 12h, enrich-churn not TECHNICALS_CHANGED, material RSI band, TTL_EXPIRED at 5h RTH, batch fresh-hours helper |
 | `tests/test_decision_action_policy.py` | `should_be_stale` + RTH 5h STALE, off-hours 5h still current, age/TTL fields |
 | `tests/test_operator_decision_card.mjs` | Operator presentation contract |
-| Playwright e2e | `apps/command-center-v3/e2e/operator-cards-screenshots.spec.ts` + screenshots under `e2e/screenshots/operator-cards/` |
+| Playwright e2e | `apps/command-center-v3/e2e/operator-cards-screenshots.spec.ts` (live captures are written outside the repo; the 2026-07-21 set was archived privately 2026-10-25) |
 
 ## Operator runbook
 

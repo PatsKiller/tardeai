@@ -1,6 +1,6 @@
 {
-"_source": "2026-10-05 XNDU: Alpaca IEX 1-min RTH bars (scalp_shadow_logger.session_rth_bars), Active Trader alert journal rows (message text dropped), operator Schwab fills (trade_transactions). Real data, frozen for replay tests.",
-"symbol": "XNDU",
+"_source": "2026-10-05 ZRZX: Alpaca IEX 1-min RTH bars (scalp_shadow_logger.session_rth_bars), Active Trader alert journal rows (message text dropped), operator Schwab fills (trade_transactions). Market bars and journal frozen for replay tests; symbol renamed to a synthetic ticker and account to a generic label for the public repo.",
+"symbol": "ZRZX",
 "day": "2026-10-05",
 "bars": [
 {
@@ -731,7 +731,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.305714285714286,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "ARMED",
@@ -793,7 +793,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.3586,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "TRIGGERED",
@@ -865,7 +865,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.3586,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "ARMED",
@@ -924,7 +924,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.3586,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "ARMED",
@@ -986,7 +986,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.4661,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "TRIGGERED",
@@ -1055,7 +1055,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.4661,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "ARMED",
@@ -1117,7 +1117,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.4661,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "ARMED",
@@ -1176,7 +1176,7 @@
 "setup_id": null,
 "setup_label": null,
 "stop_ref": 4.4654,
-"symbol": "XNDU"
+"symbol": "ZRZX"
 },
 "contract": "active-trader-momentum-alert-v1",
 "kind": "TRIGGERED",
@@ -1228,8 +1228,8 @@
 "fills": [
 {
 "ts_epoch": 1791209229.0,
-"account": "schwab_rollover_ira",
-"symbol": "XNDU",
+"account": "ira_b",
+"symbol": "ZRZX",
 "side": "Buy",
 "qty": 100.0,
 "price": 4.48,
@@ -1238,8 +1238,8 @@
 },
 {
 "ts_epoch": 1791209295.0,
-"account": "schwab_rollover_ira",
-"symbol": "XNDU",
+"account": "ira_b",
+"symbol": "ZRZX",
 "side": "Sell",
 "qty": 100.0,
 "price": 4.49,

@@ -39,7 +39,7 @@ DIAGNOSTIC = (
     "RAG retrieval is split 8 supporting vs 8 contradictory with zero approved "
     "primary sources; a cited row says buy; sufficiency.sufficient_for_synthesis is false."
 )
-OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+OPERATOR_CHAT = "900000001"  # hardcode-ok: routing fixture, not a credential
 
 
 def test_sufficiency_diagnostic_is_not_execution_language():
