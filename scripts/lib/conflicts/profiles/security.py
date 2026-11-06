@@ -268,7 +268,18 @@ class SecurityStanceProfile:
             delta = abs(conviction - anchor.get("conviction", conviction)) if isinstance(conviction, (int, float)) and isinstance(
                 anchor.get("conviction", conviction), (int, float)) else 0
             if anchor.get("signature") == [list(pair) for pair in signature] and delta < RULEBOOK["hysteresis"]["conviction_delta"]:
-                finding("AGREEMENT", "R15", "Recorded resolution still holds", "—", sides)
+                # The hold belongs to the conflict the decision resolved. Keep that conflict's lineage so ledger
+                # reconciliation can match it, but do not reuse the confirmation observation's identity: a U7
+                # conflict's held result is keyed "<pre>:R15:<source>", which lineage() maps to the same
+                # "<pre>:source:<source>" as the original "<pre>:U7:<source>". Other rules keep their own key.
+                conflict_key = anchor.get("key") or key
+                if conflict_key.startswith(f"{pre}:U7:"):
+                    held_key = f"{pre}:R15:" + conflict_key.split(f"{pre}:U7:", 1)[1]
+                else:
+                    held_key = conflict_key
+                kept = finding("AGREEMENT", "R15", "Recorded resolution still holds", "—", sides)
+                kept.key = held_key
+                kept.holds_recorded_resolution = True
                 return output
             previous = history[-1] if history else {}
             matching = previous.get("key") == key and previous.get("signature") == [list(pair) for pair in signature]

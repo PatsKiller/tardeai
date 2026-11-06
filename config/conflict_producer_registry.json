@@ -1,0 +1,85 @@
+{
+  "schema": "ConflictProducerRegistry@v1",
+  "version": 1,
+  "rule": "EXCEPTIONS_MATRIX.md R1 (binding, 2026-10-24): a side's age is its OLDEST MATERIAL INPUT (inputs_as_of), not its run time. It is superseded when older than min(14 d, 2 x its cadence): review 7 d, synthesis 14 d, curator 2 trading days, plan 7 d, quote per AGENTS.md 7A. Refresh is queued only to a producer that writes the compared input.",
+  "reader": "scripts/lib/conflicts/producer_registry.py (annotate: cadence_days, writes_compared_input, inputs_as_of from the binding material)",
+  "max_supersede_days": 14,
+  "producers": {
+    "CIO record": {
+      "label": "CIO stance (CIO prospect record and curator)",
+      "role": "canonical",
+      "writer": "scripts/lib/cio_instrument_record.py (cio_prospect store) and the cio-prospect-shadow lane",
+      "authority_domain": "cio_prospect",
+      "cadence_days": 1,
+      "cadence_note": "The curator passes every trading day. The canonical's own staleness is judged in trading days by R7b (2 and 10 trading days), not by this cadence.",
+      "inputs_as_of": "oldest weighted conviction_components[].evidence_at (scripts/lib/cio_truth.py _material_clock); the canonical's as_of already carries it",
+      "writes_compared_input": true,
+      "refresh_lane": "cio-prospect-shadow"
+    },
+    "watchlist CIO review": {
+      "label": "CIO watch review",
+      "role": "claim",
+      "writer": "scripts/run_watch_review_workers.py (data/runtime/watchlist_intelligence/artifacts/<SYM>_cio.json)",
+      "cadence_days": 3.5,
+      "cadence_note": "Monday, Wednesday and Friday 16:20 ET; 2 x 3.5 d = the matrix's 7 d review limit.",
+      "inputs_as_of": "artifact inputs_as_of when the worker writes it; completed_at otherwise (the worker does not yet stamp its input snapshot time)",
+      "writes_compared_input": true,
+      "refresh_lane": "watch-review-workers-cio"
+    },
+    "watchlist_final_synthesis": {
+      "label": "Watch desk synthesis",
+      "role": "claim",
+      "writer": "scripts/process_watchlist_agent_jobs.py (watchlist_final_synthesis rows)",
+      "cadence_days": 7,
+      "cadence_note": "2 x 7 d = the matrix's 14 d synthesis limit.",
+      "inputs_as_of": "not exposed by the producer; updated_at is used",
+      "writes_compared_input": false,
+      "writes_compared_input_reason": "Every process_watchlist_agent_jobs lane is RETIRED in config/lane_registry.json, so no running producer rewrites this row. A stale synthesis is shown as superseded and no refresh is queued to a producer that cannot run.",
+      "refresh_lane": null
+    },
+    "trade_ai": {
+      "label": "Trade AI checks",
+      "role": "gate",
+      "writer": "scripts/shadow_decision_service.py (decision_packets) via the shadow-batch-generator-at-15-10 lane",
+      "cadence_days": 7,
+      "cadence_note": "Weekly packet batch. Trade AI is a gate (R3), not a judgment side, except trade-state AVOID.",
+      "inputs_as_of": "decision packet generated_at",
+      "writes_compared_input": true,
+      "refresh_lane": "shadow-batch-generator-at-15-10"
+    },
+    "reentry_decision_desk": {
+      "label": "Re-entry desk",
+      "role": "claim",
+      "writer": "scripts/lib/data_broker/reentry_decision_desk.py (recomputed on read; snapshot data/runtime/reentry_decision_desk_latest.json)",
+      "materials": {
+        "quote": {"source_field": "price_as_of", "authority_domain": "quote_price", "clock": "session"},
+        "plan": {"source_field": "plan_as_of", "cadence_days": 3.5, "refresh_lane": "watchlist-entry-planner-limit"}
+      },
+      "inputs_as_of": "the binding material: the one furthest past its own limit (quote per AGENTS.md 7A in session time, plan 7 d)",
+      "writes_compared_input": false,
+      "writes_compared_input_reason": "The desk state is computed on read; no lane writes it. Its materials are refreshed by their own owners (quotes by the quote writer, plans by the entry planner).",
+      "refresh_lane": null
+    },
+    "plan": {
+      "label": "Entry plan",
+      "role": "material",
+      "writer": "scripts/watchlist_entry_planner.py (watchlist_entry_plans)",
+      "cadence_days": 3.5,
+      "cadence_note": "2 x 3.5 d = the matrix's 7 d plan limit.",
+      "inputs_as_of": "watchlist_entry_plans.created_at",
+      "writes_compared_input": true,
+      "refresh_lane": "watchlist-entry-planner-limit"
+    },
+    "quote": {
+      "label": "Canonical quote",
+      "role": "material",
+      "writer": "scripts/lib/writers/market_quotes_writer.py",
+      "authority_domain": "quote_price",
+      "clock": "session",
+      "cadence_note": "Limit = config/data_source_authority.json quote_price stale_after_hours, measured in session time (a closed market does not age a quote taken at or after the last close).",
+      "inputs_as_of": "quote as_of",
+      "writes_compared_input": true,
+      "refresh_lane": null
+    }
+  }
+}
