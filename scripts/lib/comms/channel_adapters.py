@@ -277,6 +277,29 @@ def _provider_send(
 ) -> dict[str, Any]:
     """Invoke approved underlying adapter. Lazy-import to avoid heavy deps."""
     if channel == "email":
+        # An explicit recipient is the Fi email-to-text transport (AGENTS §24.1): one gateway email intent
+        # addressed to one carrier address, sent through the gog adapter the digests already use. Without an
+        # explicit recipient the channel keeps its SMTP report path and its report recipient.
+        recipient = str(kwargs.get("to") or kwargs.get("email_to") or "").strip()
+        if recipient:
+            from scripts.email_notifier import send_email as send_email_to
+
+            ok = bool(
+                send_email_to(
+                    subject or kwargs.get("email_subject") or "(no subject)",
+                    body,
+                    to=recipient,
+                )
+            )
+            return {
+                "ok": ok,
+                "provider_message_id": None,
+                "provider_coordinates": {
+                    "channel": "email",
+                    "transport": "email_to_text",
+                    "adapter_version": ADAPTER_VERSIONS["email"],
+                },
+            }
         from scripts.alerting import send_email
 
         send_email(
