@@ -18,7 +18,14 @@ Contract reused exactly from #2384:
   futures_open), and only when the payload DATES it to that day -- equities ``regular.regularMarketLastPrice`` with
   ``regularMarketTradeTime``, futures and indices ``quote.closePrice`` with ``settleTime``. Undated or another day:
   premarket/afterhours rows are refused (``no_dated_reference_for_<session>``); overnight/futures_open rows store the
-  LEVEL ONLY (reference columns NULL). A reference is never assumed.
+  LEVEL ONLY (reference columns NULL). A reference is never assumed. One bounded exception, operator 2026-11-01:
+  Schwab dates a futures close to the PRINT's own session day (the live 2026-11-01 open carried settleTime 2026-11-01,
+  not the 2026-10-30 reference), so a futures/index close dated after the reference session and no later than the
+  print is accepted under ``schwab_quote_close_price_settle_same_day``; equities are never widened and the exception
+  can be switched off (``schwab.settle_same_day_reference``). A fresh stamp does not prove a fresh close, and the
+  provider derives ``netChange`` from that same close, so corroboration comes from an INDEPENDENT stored reference
+  for the session date (``reference_lookup``, e.g. a daily bar from another feed); without one, or when it
+  disagrees beyond the configured tolerance, the row is level-only and can never page on a phantom move.
 * ``bar_end`` is when the print became knowable. A Schwab quote is a point in time, so ``bar_end`` = the trade
   instant exactly and ``bar_start`` = ``point_quote_span_ms`` earlier (the contract requires bar_end > bar_start).
 * Futures are stored under their ROOT (``contract_root``). Schwab keys a futures quote by the front-month CONTRACT,
@@ -85,6 +92,22 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
             raise ConfigError(f"{p}: section {key!r} missing")
     if not str((doc["schwab"].get("feed") or "")).strip():
         raise ConfigError(f"{p}: schwab.feed missing (the market_quotes_extended feed label comes from config)")
+    # Fail loud, never fail open: a quoted "false" or a misspelt key must not silently leave the same-day exception
+    # ON during an incident, and a missing basis label must not silently downgrade every futures row to level-only.
+    s = doc["schwab"]
+    if "settle_same_day_reference" in s and not isinstance(s["settle_same_day_reference"], bool):
+        raise ConfigError(f"{p}: schwab.settle_same_day_reference must be true or false, "
+                          f"not {s['settle_same_day_reference']!r}")
+    for key in ("same_day_reference_tolerance_pct", "same_day_reference_tolerance_abs"):
+        # Finite as well as non-negative: YAML `.nan`/`.inf` parse to floats and `nan < 0` is False, so a
+        # non-finite tolerance would make `abs(reference - ref) > tol` False and silently accept any reference.
+        if key in s and (isinstance(s[key], bool) or not isinstance(s[key], (int, float))
+                         or not math.isfinite(float(s[key])) or s[key] < 0):
+            raise ConfigError(f"{p}: schwab.{key} must be a finite non-negative number, not {s[key]!r}")
+    basis = s.get("dated_reference_basis") or {}
+    if s.get("settle_same_day_reference") and not str(basis.get("non_equity_same_day") or "").strip():
+        raise ConfigError(f"{p}: schwab.settle_same_day_reference is true but "
+                          "dated_reference_basis.non_equity_same_day is missing")
     return doc
 
 
@@ -208,8 +231,11 @@ def _num(v: Any) -> float | None:
     return f if math.isfinite(f) and f > 0 else None
 
 
+
 def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
-                ext_cfg: dict[str, Any] | None = None) -> tuple[list[dict], list[dict]]:
+                ext_cfg: dict[str, Any] | None = None,
+                reference_lookup: Callable[[str, date], float | None] | None = None
+                ) -> tuple[list[dict], list[dict]]:
     """Schwab quotes payload -> (rows in the market_quotes_extended contract, skipped with reasons)."""
     ext_cfg = ext_cfg or mqe.load_config()
     s = cfg.get("schwab") or {}
@@ -290,7 +316,19 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
                 continue
             sess, tdate = night
             ref_date = ovn.reference_date(tdate)
-        ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s)
+        # The same-day settlement exception is exactly the scope it was granted for: a FUTURE or INDEX print in a
+        # night session. It never reaches equities, and never widens premarket/afterhours (review of #2478).
+        same_day_ok = (asset.upper() in future_assets or asset.upper() == "INDEX") and sess in ovn.SESSIONS
+        stored = None
+        if same_day_ok and reference_lookup is not None:
+            try:
+                stored = reference_lookup(sym_u, ref_date)
+            except Exception as exc:  # noqa: BLE001 — a lookup failure is "no reference", never a guess
+                print(f"market_quotes_offhours_schwab: reference lookup failed for {sym_u} "
+                      f"({type(exc).__name__})", file=sys.stderr)
+                stored = None
+        ref, ref_basis, why_not = dated_reference(asset, q, reg, ref_date, s, print_at=ts,
+                                                  allow_same_day=same_day_ok, stored_reference=stored)
         row = {"symbol": sym_u, "session": sess, "session_date": tdate, "bar_start": ts - span, "bar_end": ts,
                "price": price, "volume": None, "feed": str(s["feed"])}
         if contract:
@@ -312,16 +350,32 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
 
 
 def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
-                    s: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
+                    s: dict[str, Any], print_at: datetime | None = None,
+                    allow_same_day: bool = False,
+                    stored_reference: float | None = None) -> tuple[float | None, str | None, str | None]:
     """(reference_close, basis, None) when the payload PROVES the close of ``ref_date``, else (None, None, why).
 
     One rule for every session (review of #2416 F4 and #2423 F2/F6, 2026-10-31): equities use
     ``regular.regularMarketLastPrice`` dated by ``regular.regularMarketTradeTime``; futures and indices use
     ``quote.closePrice`` dated by ``quote.settleTime``. The date must be present AND fall on ``ref_date`` (ET): an
     undated price is not proof (a Monday 17:00 regular block can still hold Friday's close), so it is never used.
+
+    One bounded exception, for futures/indices only (operator 2026-11-01: "fix the futures settleTime so they
+    measure"): Schwab dates a futures close to the PRINT's own session day (live: the 2026-11-01 Sunday open carried
+    settleTime 2026-11-01, not the 2026-10-30 reference session), which left every overnight futures row level-only.
+    A close dated AFTER ``ref_date`` and no later than the print ITSELF is accepted only when ``allow_same_day`` is
+    set (the caller sets it only for a futures/index print in an overnight/futures_open session) AND an INDEPENDENT
+    stored reference for ``ref_date`` is present, finite, positive and agrees within a small configured tolerance;
+    it is then stored under its own basis label (``schwab_quote_close_price_settle_same_day``): it is still the
+    provider's last close, it is never older than the reference session and never newer than the print. Equities are
+    never widened, and ``schwab.settle_same_day_reference`` switches the exception off. Because a fresh stamp does not
+    prove a fresh close (Schwab stamped 2026-11-01, a Sunday, when CME does not settle), and because the provider
+    derives netChange FROM that same close so it can never corroborate it, a missing or unusable stored reference (or
+    one beyond tolerance) keeps the row level-only — a stale close with a fresh stamp can never page on a phantom move.
     """
     basis = s.get("dated_reference_basis") or {}
-    if str(asset).upper() == "EQUITY":
+    is_equity = str(asset).upper() == "EQUITY"
+    if is_equity:
         ref, when, label, what = (_num(reg.get("regularMarketLastPrice")), reg.get("regularMarketTradeTime"),
                                   basis.get("equity"), "regular.regularMarketLastPrice/regularMarketTradeTime")
     else:
@@ -334,8 +388,41 @@ def dated_reference(asset: str, q: dict, reg: dict, ref_date: date,
     at = parse_ts(when)
     if at is None:
         return None, None, f"{what}: the close is undated, so it is not proven to be the {ref_date} close"
-    if at.astimezone(ET).date() != ref_date:
-        return None, None, f"{what}: the close is dated {at.astimezone(ET).date()}, not {ref_date}"
+    close_date = at.astimezone(ET).date()
+    if close_date != ref_date:
+        if (allow_same_day and print_at is not None and s.get("settle_same_day_reference", False)
+                and ref_date < close_date and at <= print_at):
+            same_day = basis.get("non_equity_same_day")
+            if not same_day:
+                return None, None, "no dated_reference_basis.non_equity_same_day label configured"
+            # A fresh STAMP does not prove a fresh close: Schwab stamped a 2026-11-01 settle (a Sunday, when CME does
+            # not settle). Schwab also derives netChange FROM closePrice, so netChange can never corroborate it
+            # (round-2 review, 2026-11-02). Accept it only when an INDEPENDENT stored reference for ref_date agrees
+            # within tolerance; otherwise the row stays level-only and can never page on a stale close.
+            tol = max(float(s.get("same_day_reference_tolerance_abs", 0.05)),
+                      float(s.get("same_day_reference_tolerance_pct", 0.25)) / 100.0 * abs(ref))
+            # Defence in depth for a hand-built config that skipped load_config: a non-finite tolerance makes the
+            # comparison below False for every difference, so refuse to corroborate rather than accept everything.
+            if not math.isfinite(tol) or tol < 0.0:
+                return None, None, (f"{what}: the configured same-day tolerance is not usable, so the close cannot "
+                                    "be corroborated: level-only")
+            # A NUMERIC column can hold NaN. `abs(nan - ref) > tol` is False, so a NaN would PASS the corroboration
+            # guard it is supposed to fail (round-3 review, 2026-11-03). Validate the reference BEFORE comparing it:
+            # only a finite, strictly positive stored close is a usable independent reference; anything else is "no
+            # reference" and the row stays level-only.
+            try:
+                reference = float(stored_reference) if stored_reference is not None else None
+            except (TypeError, ValueError):
+                reference = None
+            if reference is None or not math.isfinite(reference) or reference <= 0.0:
+                return None, None, (f"{what}: the close {ref:g} is dated {close_date} (not {ref_date}) and no "
+                                    "independent stored reference exists for that session: level-only")
+            if abs(reference - ref) > tol:
+                return None, None, (f"{what}: the close {ref:g} is dated {close_date} (not {ref_date}) and differs "
+                                    f"from the independent stored reference {reference:g} beyond {tol:g}: "
+                                    "a stale close with a fresh stamp is refused")
+            return ref, same_day, None
+        return None, None, f"{what}: the close is dated {close_date}, not {ref_date}"
     return ref, label, None
 
 
@@ -348,7 +435,8 @@ def _jsonable(r: dict[str, Any]) -> dict[str, Any]:
 
 def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any],
         write: Callable[[list[dict]], Any] | None, dry_run: bool, force_window: bool = False,
-        promoted: Callable[[], bool] = mqe.domain_promoted, root: Path = ROOT) -> dict[str, Any]:
+        promoted: Callable[[], bool] = mqe.domain_promoted, root: Path = ROOT,
+        reference_lookup: Callable[[str, date], float | None] | None = None) -> dict[str, Any]:
     """Collect once. ``fetch(symbols)`` returns the Schwab payload (or ``{"_status": ...}``); ``write(rows)`` writes
     through market_quotes_extended_writer and returns its receipt. A dry run never calls ``write``."""
     receipt: dict[str, Any] = {"schema": RECEIPT_SCHEMA, "provider": "schwab", "store": STORE,
@@ -389,7 +477,7 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
         if errs:
             payload = {k: v for k, v in payload.items() if str(k).strip().lower() != "errors"}
             receipt["provider_errors"] = next(iter(errs.values())) if len(errs) == 1 else errs
-    rows, skipped = schwab_rows(payload, now, cfg)
+    rows, skipped = schwab_rows(payload, now, cfg, reference_lookup=reference_lookup)
     mapped = {r["contract"]: r["symbol"] for r in rows if r.get("contract")}
     if mapped:  # which front-month contract stood behind each root this run (evidence for the roll)
         receipt["symbol_map"] = mapped

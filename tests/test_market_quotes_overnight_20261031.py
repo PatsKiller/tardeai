@@ -467,11 +467,34 @@ def test_reader_returns_level_only_rows_as_none_never_zero():
 
 
 class _Reader:
-    def __init__(self, rows):
+    def __init__(self, rows, opens=None, bars=None):
         self.rows = rows
+        self.opens = opens or []
+        self.bars = bars or []
 
     def quotes(self, symbols, *, start, end):
         return [r for r in self.rows if r["symbol"] in symbols and start <= datetime.fromisoformat(r["as_of"]) <= end]
+
+    def session_opens(self, symbols, *, sessions=1, end=None):
+        return [o for o in self.opens if o["symbol"] in symbols]
+
+    def daily_bars(self, symbols, *, sessions=14, end=None):
+        return [b for b in self.bars if b["symbol"] in symbols]
+
+
+def _gap_session(sym, open_pct, today="2026-11-02", prev_close=670.0):
+    """A regular-session open plus the 16 prior full OHLC bars the ATR needs, so ``_gap_moves`` measures it."""
+    bars = []
+    d = date(2026, 10, 10)
+    while d < date.fromisoformat(today):
+        if d.weekday() < 5:
+            bars.append({"symbol": sym, "date": d.isoformat(), "open": prev_close,
+                         "high": prev_close * 1.015, "low": prev_close * 0.985, "close": prev_close})
+        d += timedelta(days=1)
+    opened = datetime.fromisoformat(today).replace(hour=9, minute=30, tzinfo=ZoneInfo("America/New_York"))
+    opens = [{"symbol": sym, "date": today, "open": prev_close * (1 + open_pct / 100.0),
+              "as_of": opened.isoformat()}]
+    return opens, bars
 
 
 def _q(sym, at, price, prev=None, session="overnight", sdate="2026-11-02", ref_date="2026-10-30", feed="schwab"):
@@ -487,12 +510,140 @@ def _eval(rows, now):
     return extended_hours.evaluate(EvalContext(now=now, reader=_Reader(rows), policy=POLICY, session="closed"))
 
 
-def test_fresh_overnight_futures_drop_is_measured():
+DATED_BASIS = "schwab_quote_close_price_settle_dated"
+SAME_DAY_BASIS = "schwab_quote_close_price_settle_same_day"
+
+
+def test_a_properly_dated_sunday_futures_crash_reaches_stress_and_only_same_day_is_capped():
+    """claude-lead BLOCK at 3dff9e8b0 (#2526): the futures-only WARN cap belongs to a close the provider dates to the
+    PRINT's own session (``settle_same_day``), which can be stale under a fresh stamp. A properly dated reference
+    (the prior session's close) is independently anchored and must not be capped: a Sunday 18:00-20:00 futures crash
+    with no QQQ/SPY print still has to reach STRESS, as it does on main. The same crash on the same-day basis is
+    capped at WARN."""
+    now = _et(2026, 11, 1, 19, 0)
+    dated = _q("/NQ", _et(2026, 11, 1, 18, 55), 25200.0, 25700.0, "futures_open")
+    dated["reference_basis"] = DATED_BASIS
+    obs = _eval([dated], now)
+    assert "/NQ" in obs.headline and obs.state == "STRESS"
+    assert obs.score > 74.0  # the WARN cap's ceiling: a properly dated crash is not held at it
+    assert "capped at WARN" not in obs.headline
+
+    same_day = _q("/NQ", _et(2026, 11, 1, 18, 55), 25200.0, 25700.0, "futures_open")
+    same_day["reference_basis"] = SAME_DAY_BASIS
+    obs = _eval([same_day], now)
+    assert "/NQ" in obs.headline and obs.state == "WARN"
+    assert obs.score <= 74.0
+    assert "capped at WARN" in obs.headline
+
+
+def _same_day_q(sym, at, price, prev, **kw):
+    """A futures row whose close the provider dates to the print's own session -- the shape the cap exists for."""
+    row = _q(sym, at, price, prev, **kw)
+    row["reference_basis"] = SAME_DAY_BASIS
+    return row
+
+
+def test_fresh_same_day_futures_drop_is_measured_but_capped_without_a_proxy():
+    """Round-2 review of #2485: a same-day dated futures close is measured but may not exceed WARN, so a stale
+    closePrice with a fresh stamp can never page on its own."""
     now = _et(2026, 11, 2, 2, 30)
-    obs = _eval([_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)], now)
-    assert obs.state == "STRESS" and "/NQ" in obs.headline  # a real fresh STRESS stands without QQQ/SPY
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)], now)
+    assert obs.state == "WARN" and "/NQ" in obs.headline  # measured, but capped
+    assert "capped at WARN" in obs.headline
     assert obs.evidence[0].label.startswith("/NQ overnight move")
     assert obs.stale_after_hours == pytest.approx(45 / 60)
+
+
+def test_futures_stress_stands_when_an_index_proxy_confirms():
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
+                 _q("SPY", now - timedelta(minutes=2), 670.0, 680.0)], now)  # -1.47% vs -1.56% futures
+    assert obs.state == "STRESS" and "/NQ" in obs.headline
+    assert "capped at WARN" not in obs.headline
+
+
+def test_a_weak_proxy_does_not_confirm_a_same_day_futures_stress():
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0),
+                 _q("SPY", now - timedelta(minutes=2), 678.0, 680.0)], now)  # -0.29%, well under half
+    assert obs.state == "WARN" and "capped at WARN" in obs.headline
+
+
+def test_an_independently_supported_stress_survives_a_same_day_futures_cap():
+    """codex-cloud BLOCK at 83fe9eaa0 (#2526, P1): the cap limits the same-day futures CONTRIBUTION, never the
+    category. A fresh SPY at -1.6% is through the -1.5% stress threshold on its own; adding an unconfirmed same-day
+    /NQ at -4% must not downgrade that independently measured STRESS to WARN (and the futures row must be named as
+    not counted, so the reader can see which evidence the severity rests on)."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24672.0, 25700.0),  # -4.0%, unconfirmed
+                 _q("SPY", now - timedelta(minutes=2), 669.12, 680.0)], now)  # -1.6%: STRESS on its own
+    assert obs.state == "STRESS" and obs.score > 74.0  # the cap's ceiling is not the category's ceiling
+    assert "/NQ not confirmed: not counted above WARN" in obs.headline
+    assert obs.headline.startswith("SPY -1.6% extended")  # the headline names the evidence that carries the state
+
+
+def test_a_confirmed_same_day_futures_row_survives_an_unconfirmed_one_beside_it():
+    """cx-openai D52 triage at ce4d7f89f: confirmation is per contribution. A same-day /ES -4.0% that SPY -2.0%
+    confirms on its own keeps its STRESS when an unrelated same-day /NQ -5.0% (unconfirmed: SPY is under half of it)
+    is the worst mover. Removing every same-day row because one is unconfirmed discards the /ES contribution and
+    leaves the category resting on the proxy alone."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24415.0, 25700.0),  # -5.0%, unconfirmed
+                 _same_day_q("/ES", now - timedelta(minutes=2), 5952.0, 6200.0),  # -4.0%
+                 _q("SPY", now - timedelta(minutes=2), 666.4, 680.0)], now)  # -2.0%: confirms /ES
+    assert obs.state == "STRESS" and obs.score > 74.0
+    assert obs.headline.startswith("/ES -4.0% extended · /NQ not confirmed: not counted above WARN")
+
+
+def test_an_unconfirmed_same_day_row_cannot_downgrade_a_confirmed_one_to_warn():
+    """The downgrade the triage names, in the state itself: /ES -2.0% is confirmed by SPY -1.0% and supports STRESS,
+    but removing every same-day row left only SPY -1.0% (WARN) and the cap held the category at WARN 74. The
+    confirmed /ES must keep the category at STRESS."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24415.0, 25700.0),  # -5.0%, unconfirmed
+                 _same_day_q("/ES", now - timedelta(minutes=2), 6076.0, 6200.0),  # -2.0%
+                 _q("SPY", now - timedelta(minutes=2), 672.0, 680.0)], now)  # -1.2%: over half of /ES
+    assert obs.state == "STRESS" and obs.score > 74.0
+    assert obs.headline.startswith("/ES -2.0% extended")
+
+
+def test_a_properly_dated_futures_selloff_survives_a_same_day_row_beside_it():
+    """The same P1, second half: a properly dated futures selloff is independently anchored and must keep its
+    STRESS even when a worse, unconfirmed same-day futures row happens to be the worst mover."""
+    now = _et(2026, 11, 2, 2, 30)
+    dated = _q("/ES", now - timedelta(minutes=2), 5952.0, 6200.0)  # -4.0%, prior-session reference
+    dated["reference_basis"] = DATED_BASIS
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24415.0, 25700.0), dated], now)  # /NQ -5.0%
+    assert obs.state == "STRESS" and obs.score > 74.0
+    assert obs.headline.startswith("/ES -4.0% extended · /NQ not confirmed: not counted above WARN")
+
+
+def test_a_second_same_day_futures_move_cannot_stand_in_for_an_index_proxy():
+    """Two same-day futures moves are still futures-only evidence: /ES must not become the independent support the
+    confirmation rule asks for just because /NQ is the worst row (codex-cloud P1 corollary)."""
+    now = _et(2026, 11, 2, 2, 30)
+    obs = _eval([_same_day_q("/NQ", now - timedelta(minutes=2), 24672.0, 25700.0),  # -4.0%
+                 _same_day_q("/ES", now - timedelta(minutes=2), 5997.0, 6200.0)], now)  # -3.3%
+    assert obs.state == "WARN" and obs.score <= 74.0
+    assert "capped at WARN" in obs.headline
+
+
+def test_an_independent_opening_gap_stress_survives_the_same_day_futures_cap():
+    """cx-openai D52 triage at dc016b5fe (#2526): the cap removes the same-day futures CONTRIBUTION, so the category
+    has to be re-scored on the evidence that remains -- and an opening gap is an independently printed index-proxy
+    observation, never futures evidence. Here SPY gaps -1.5% (STRESS at the threshold, score 75) while an
+    unconfirmed same-day /NQ -1.7% (score 78.3) happens to be the worst row: removing the /NQ left an empty move
+    set, the cap held the category at WARN 74, and the gap's own STRESS was silently overwritten."""
+    now = _et(2026, 11, 2, 10, 5)
+    opens, bars = _gap_session("SPY", -1.6, today="2026-11-02", prev_close=670.0)
+    rows = [_same_day_q("/NQ", now - timedelta(minutes=2), 25263.1, 25700.0)]  # -1.7%, unconfirmed
+    obs = extended_hours.evaluate(EvalContext(now=now, reader=_Reader(rows, opens, bars), policy=POLICY,
+                                              session="closed"))
+    assert obs.state == "STRESS", (obs.state, obs.score, obs.headline)
+    # the gap's own score, exactly as 318-320 computed it: no threshold is moved to get here
+    assert obs.score == pytest.approx(75.0 + 25.0 * (1.6 - 1.5) / 1.5, abs=0.1)
+    assert obs.headline.startswith("SPY opened -1.6%")
+    assert "/NQ not confirmed: not counted above WARN" in obs.headline
 
 
 def test_sunday_futures_open_print_is_measured_from_friday_close():
@@ -500,6 +651,16 @@ def test_sunday_futures_open_print_is_measured_from_friday_close():
     obs = _eval([_q("/NQ", _et(2026, 11, 1, 18, 5), 25200.0, 25700.0, "futures_open")], now)
     assert obs.state == "STRESS" and obs.evidence[0].label.startswith("/NQ futures_open move")
     assert "2026-10-30 close" in obs.evidence[0].detail
+
+
+def test_a_same_day_dated_close_is_named_in_the_evidence():
+    """#2478 accepts a futures close the provider dates to the print's session. The reading must NAME that
+    assumption, so a wrong closePrice can never look like an ordinary measured move."""
+    now = _et(2026, 11, 2, 2, 30)
+    r = _q("/NQ", now - timedelta(minutes=2), 25300.0, 25700.0)
+    r["reference_basis"] = "schwab_quote_close_price_settle_same_day"
+    obs = _eval([r], now)
+    assert "same-day dated close" in obs.evidence[0].detail
 
 
 def test_stale_overnight_is_unknown_naming_session_and_age_never_calm():

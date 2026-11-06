@@ -138,6 +138,33 @@ def _write(rows: list[dict]) -> dict:
         conn.close()
 
 
+def stored_reference(symbol: str, ref_date, symbols: dict | None = None) -> float | None:
+    """An INDEPENDENT stored close for a futures root on ``ref_date``, or None.
+
+    Read from ``market_ohlcv_bars`` daily bars for the symbol named in ``schwab.reference_symbols`` (e.g. ES=F from
+    another feed). The provider's own ``netChange`` is derived from its ``closePrice`` and is never used to corroborate
+    it (round-2 review of #2485). A missing mapping, a missing bar, or a read error is "no reference": the row stays
+    level-only.
+    """
+    ref_sym = (symbols or {}).get(symbol)
+    if not ref_sym:
+        return None
+    from db_adapter import _get_conn
+
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT close FROM market_ohlcv_bars WHERE symbol = %s AND timeframe = 'daily' "
+            "AND (bar_time AT TIME ZONE 'America/New_York')::date = %s ORDER BY bar_time DESC LIMIT 1",
+            [str(ref_sym), ref_date],
+        )
+        row = cur.fetchone()
+        return float(row[0]) if row and row[0] is not None else None
+    finally:
+        conn.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -165,7 +192,9 @@ def main(argv: list[str] | None = None) -> int:
         r["config_enabled"] = bool(cfg["schwab"].get("enabled"))
         print(json.dumps(r, default=str, indent=1))
         return 0
-    r = oq.run(cfg=cfg, now=now, fetch=lambda syms: live_fetch(syms, cfg), write=_write, dry_run=False)
+    r = oq.run(cfg=cfg, now=now, fetch=lambda syms: live_fetch(syms, cfg), write=_write, dry_run=False,
+               reference_lookup=lambda sym, d: stored_reference(
+                   sym, d, (cfg.get("schwab") or {}).get("reference_symbols") or {}))
     print(json.dumps(r, default=str, indent=1))
     return 0 if r.get("status") in ("ok", "partial", "disabled", "outside_window", "schwab_paused", "refused_domain_proposed") else 1
 
