@@ -384,6 +384,7 @@ class PgStore:
             vals.append(v)
 
         def q(cur):
+            # nosemgrep: tq-py-sql-fstring -- every SET key passed the fixed ("undone_by",) allowlist; values are %s
             cur.execute(f"UPDATE ops_applier_requests SET {', '.join(sets)} WHERE request_id = %s", vals + [request_id])
         self._tx(q)
 

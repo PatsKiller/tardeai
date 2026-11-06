@@ -285,6 +285,7 @@ def read_state(cur) -> dict[str, Any]:
     counts: dict[str, Optional[int]] = {}
     for table in MEMORY_TABLES:
         if table in state["tables"]:
+            # nosemgrep: tq-py-sql-fstring -- SCHEMA is a module constant; table iterates the fixed MEMORY_TABLES tuple
             cur.execute(f"SELECT count(*) FROM {SCHEMA}.{table}")  # noqa: S608 -- fixed allowlist
             counts[table] = int(cur.fetchone()[0])
         else:

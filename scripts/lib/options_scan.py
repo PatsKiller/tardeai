@@ -179,6 +179,7 @@ class ScanStore:
             return []
         with self.connection() as db:
             where = "WHERE status IN ('QUEUED','RUNNING') OR json_extract(payload,'$.projection_state')='PENDING'" if active else ""
+            # nosemgrep: tq-py-sql-fstring -- where is one of two literal strings chosen by the active flag
             runs = [self.row(r) for r in db.execute(
                 f"SELECT * FROM runs {where} ORDER BY created_at DESC LIMIT 50")]
             if not summaries:
