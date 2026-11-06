@@ -27,7 +27,8 @@ def coverage(cur):
     out = {"total": tot}
     for col in ["proposal_id", "signal_id", "source_signal_id", "strategy_card_id", "source_strategy_card_id",
                 "candidate_id", "execution_account", "execution_broker", "execution_environment", "lineage_stamped_at"]:
-        cur.execute(f"select count(*) c from paper_trades where {col} is not null")
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- col iterates the literal column list in this loop
+            f"select count(*) c from paper_trades where {col} is not null")
         n = cur.fetchone()["c"]
         out[col] = f"{n}/{tot} ({100*n/tot:.0f}%)" if tot else "0"
     return out
@@ -57,7 +58,8 @@ def main():
                  "lineage_stamped_at=COALESCE(lineage_stamped_at, NOW())", "lineage_notes=COALESCE(lineage_notes,%s)"]
         vals += [str(r["proposal_id"]), "backfill_exact_proposal", "exact", json.dumps(lin.get("lineage_notes") or {})]
         if apply:
-            cur.execute(f"update paper_trades set {', '.join(sets)} where id=%s", vals + [r["id"]])
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- sets: columns from LINEAGE_COLS + literal fragments
+                f"update paper_trades set {', '.join(sets)} where id=%s", vals + [r["id"]])
         backfilled += 1
     # reverse pointer: proposal.paper_trade_id where exactly one paper_trade maps
     cur.execute("""select proposal_id, count(*) n, min(id) pt from paper_trades
