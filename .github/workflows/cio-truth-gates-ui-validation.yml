@@ -82,7 +82,7 @@ jobs:
         run: |
           npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/cio-truth-gates-ui-preview.log 2>&1 &
           echo $! > /tmp/cio-truth-gates-ui-preview.pid
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do  # tq/actionlint: the loop counter is unused (SC2034)
             if curl --fail --silent http://127.0.0.1:4173/v3/ >/dev/null; then exit 0; fi
             sleep 1
           done
