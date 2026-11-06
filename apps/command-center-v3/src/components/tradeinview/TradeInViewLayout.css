@@ -50,3 +50,7 @@
  .tradeinview [data-testid="calendar-week-total"] { font-size: var(--tradeinview-font-sm); white-space: nowrap; }
  .tradeinview .tradeinview-calendar-day { padding: 5px 3px; min-height: 104px; font-size: var(--tradeinview-font-sm); }
 }
+/* FQ-041: /journal renders this navigation, not JournalHub's classic .hub-tabs. */
+@media (max-width: 420px) {
+ .tradeinview-tabs { flex-wrap: wrap; overflow-x: visible; }
+}
