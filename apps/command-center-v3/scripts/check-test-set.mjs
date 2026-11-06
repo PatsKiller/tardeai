@@ -25,13 +25,16 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', '.vite', 'coverage',
 
 // THE PREDICATE, stated once and total (codex's block at c8c346c35, 2026-11-05):
 //   a file IS a test iff its name matches /\.test\.[^.]+$/ — ANY extension, ANY directory.
-//   the runner EXECUTES only /\.test\.(ts|mjs|js|tsx|jsx)$/ under src/.
+//   the runner EXECUTES only /\.test\.(ts|mjs|cjs|js|tsx|jsx)$/ under src/.
 // The gap between those two sets is the defect this gate exists to close. It used to match only the five executable
 // extensions, so `foo.test.cjs` (or .cts/.mts) was invisible to the walker AND to the gate: a failing one exited 0
 // because nothing ever ran and nothing ever noticed. Now every *.test.* file must be run or explicitly dormant, and a
 // file the runner cannot execute is a build failure until someone decides about it.
+// `cjs` was added here (2026-11-05, PR #2643 merge) so a CommonJS suite an open PR ships
+// (`portfolioProspectusTruth.view.test.cjs`, 63 rendered checks) is actually executed instead of failing the set gate;
+// it was already named explicitly in that PR's build line before main replaced the line with this runner.
 export const ANY_TEST = /\.test\.[^.]+$/
-export const RUNNABLE = /\.test\.(ts|mjs|js|tsx|jsx)$/
+export const RUNNABLE = /\.test\.(ts|mjs|cjs|js|tsx|jsx)$/
 
 function walk(dir, out = [], base = app, predicate = ANY_TEST) {
   // R3 (codex): an unreadable directory is an ERROR, never an empty set. `catch { return out }` made a permission
