@@ -527,3 +527,18 @@ def test_the_hourly_cap_counts_texts_across_repeats_of_one_event(tmp_path):
     stored = json.loads(state.read_text(encoding="utf-8"))
     assert len(stored["sent"]) == 1
     assert sum(entry["texts"] for entry in stored["history"]) == len(calls)
+
+
+def test_the_persistent_root_resolves_when_imported_as_a_package():
+    """Codex cloud at d09950973: `_persistent_root` used an absolute `lib.` import, which only resolves when `scripts/`
+    is on sys.path. Imported as `scripts.lib.critical_texts` — the way this test file and every `scripts.*` caller
+    imports it — it raised ModuleNotFoundError and the channel reported "the persistent state root could not be
+    resolved", so a real critical text could not choose its state file at all."""
+    # pytest's conftest puts `scripts/` on sys.path, which hides the defect; run it isolated, as the caller did.
+    import subprocess
+    root = Path(__file__).resolve().parents[1]
+    code = ("import sys; sys.path.insert(0, %r); "
+            "from scripts.lib.critical_texts import _persistent_root; print(_persistent_root())" % str(root))
+    out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, (out.stderr or out.stdout)[-400:]
+    assert out.stdout.strip(), out.stdout

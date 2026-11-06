@@ -44,7 +44,14 @@ class CriticalTextError(ValueError):
 
 def _persistent_root() -> Path:
     """The durable state root. Resolved, never hardcoded — a channel that cannot find it refuses."""
-    from lib.persistent_state_root import good_persistent_root  # noqa: PLC0415 — resolved at call time
+    # Codex cloud at d09950973: the absolute `lib.` import only resolves when `scripts/` is on sys.path. Imported as
+    # `scripts.lib.critical_texts` (the repo root on sys.path) it raised ModuleNotFoundError and every caller got
+    # "the persistent state root could not be resolved". The relative form resolves in both contexts; the absolute
+    # remains as a fallback for a module executed outside any package.
+    try:
+        from .persistent_state_root import good_persistent_root  # noqa: PLC0415 — resolved at call time
+    except ImportError:
+        from lib.persistent_state_root import good_persistent_root  # noqa: PLC0415
 
     return good_persistent_root()
 
@@ -319,7 +326,11 @@ def _gateway_sender(event_key: str) -> Callable[..., bool]:
     """
 
     def send(subject: str, body: str, to: Optional[str] = None, attachments: Any = None) -> bool:
-        from scripts.lib.comms.channel_adapters import send_via_gateway  # noqa: PLC0415 — call time, not import time
+        # Same mirror as `_persistent_root`: relative resolves under either import path.
+        try:
+            from .comms.channel_adapters import send_via_gateway  # noqa: PLC0415 — call time, not import time
+        except ImportError:
+            from scripts.lib.comms.channel_adapters import send_via_gateway  # noqa: PLC0415
 
         recipient = str(to or "").strip()
         # Per-line subject key without storing the carrier address: the hash is stable for a given line.
