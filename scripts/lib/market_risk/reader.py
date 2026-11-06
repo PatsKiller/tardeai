@@ -34,7 +34,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 from zoneinfo import ZoneInfo
 
+from . import split_guard  # relative: the module is also imported as lib.market_risk.reader
+
 ET = ZoneInfo("America/New_York")
+log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 OVERRIDES_PATH = PROJECT_ROOT / "config" / "macro_calendar_overrides.json"
 REGULAR_CLOSE_CUTOFF_ET = time(16, 0, 59)  # last quote at or before this = the newest session's provisional close
@@ -133,6 +136,7 @@ class PgReader:
         *,
         publication_lag_days: int = 1,
         backfill_grace_days: int = 14,
+        split_guard: dict[str, Any] | bool | None = None,
     ):
         self._factory = conn_factory or _default_conn
         self._conn = None
@@ -141,6 +145,15 @@ class PgReader:
         # it was published before ``end`` even if a later backfill fetched it (review of #2362, M1).
         self.backfill_grace_days = backfill_grace_days
         self.macro_calendar_note = ""
+        # Split guard (split_guard.py, LIVEFIX-S): None = read ``corporate_actions.split_guard`` from the policy file;
+        # False = off; a dict = that block. Results of the last ``daily_bars`` call per symbol are kept here so a
+        # consumer can say why a symbol is missing or adjusted: ``series_gaps[sym]`` is the stated reason a series was
+        # excluded, ``split_adjustments[sym]`` the splits back-adjusted into it.
+        self._split_guard_arg = split_guard
+        self._split_cfg: dict[str, Any] | None | bool = False if split_guard is False else None
+        self._peer_cache: dict[tuple[str, int, str], dict[str, float]] = {}
+        self.series_gaps: dict[str, str] = {}
+        self.split_adjustments: dict[str, list[dict[str, Any]]] = {}
 
     # -- plumbing ---------------------------------------------------------------------------------------------
     def _cur(self):
@@ -277,7 +290,63 @@ class PgReader:
             })
         return out
 
+    def _split_config(self) -> dict[str, Any] | None:
+        if self._split_cfg is False:
+            return None
+        if self._split_cfg is None:
+            arg = self._split_guard_arg
+            if isinstance(arg, dict):
+                block = arg
+            else:
+                from .policy import load_policy
+
+                block = ((load_policy().get("corporate_actions") or {}).get("split_guard")) or {}
+            self._split_cfg = split_guard.config(block) or False
+        return self._split_cfg or None
+
     def daily_bars(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> list[dict[str, Any]]:
+        """Daily closes per symbol, oldest first, the last ``sessions`` per symbol. The quote-derived closes are not
+        split-adjusted at the source, so every series passes the split guard (split_guard.py): a confirmed split is
+        back-adjusted (rows marked ``adjusted_for_split`` and ``+split_adj:<factor>`` in ``source``); an ambiguous jump
+        drops the symbol and records the reason in ``series_gaps``."""
+        end = _aware(end)
+        by_sym = self._merged_daily_bars(symbols, sessions=sessions, end=end)
+        cfg = self._split_config()
+        if cfg is None:
+            return [r for sym in sorted(by_sym) for r in by_sym[sym]]
+        bench = cfg["benchmark"]
+        if bench in by_sym:  # the benchmark was requested too: its rows are the peer, no second read
+            self._peer_cache[(bench, int(sessions), end.isoformat())] = {
+                str(r["date"])[:10]: float(r["close"]) for r in by_sym[bench] if r.get("close") is not None
+            }
+        out: list[dict[str, Any]] = []
+        for sym in sorted(by_sym):
+            if split_guard.exempt(sym, cfg):
+                out.extend(by_sym[sym])
+                continue
+            peer = None if sym == cfg["benchmark"] else (lambda: self._peer_closes(cfg["benchmark"], sessions, end))
+            rows, report = split_guard.guard_series(by_sym[sym], cfg, peer)
+            self.series_gaps.pop(sym, None)
+            self.split_adjustments.pop(sym, None)
+            if report.get("gap"):
+                self.series_gaps[sym] = report["gap"]
+                log.warning("market_risk reader: %s excluded: %s", sym, report["gap"])
+                continue
+            if report["adjustments"]:
+                self.split_adjustments[sym] = report["adjustments"]
+                log.warning("market_risk reader: %s back-adjusted for split(s) %s", sym, report["adjustments"])
+            out.extend(rows)
+        return out
+
+    def _peer_closes(self, bench: str, sessions: int, end: datetime) -> dict[str, float]:
+        key = (bench, int(sessions), end.isoformat())
+        if key not in self._peer_cache:
+            rows = self._merged_daily_bars([bench], sessions=sessions, end=end).get(bench) or []
+            self._peer_cache[key] = {str(r["date"])[:10]: float(r["close"]) for r in rows if r.get("close") is not None}
+        return self._peer_cache[key]
+
+    def _merged_daily_bars(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> dict[str, list[dict[str, Any]]]:
+        """The three sources merged (bars > quote closes > ticker_prices), per symbol, last ``sessions``, unguarded."""
         syms = [s.upper() for s in symbols]
         end = _aware(end)
         out: dict[tuple[str, date], dict[str, Any]] = {}
@@ -318,7 +387,7 @@ class PgReader:
         by_sym: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for (sym, _d), row in sorted(out.items()):
             by_sym[sym].append(row)
-        return [r for sym in sorted(by_sym) for r in by_sym[sym][-int(sessions) :]]
+        return {sym: by_sym[sym][-int(sessions) :] for sym in sorted(by_sym)}
 
     def session_opens(self, symbols: Iterable[str], *, sessions: int, end: datetime) -> list[dict[str, Any]]:
         """Regular-session opening prints from ``market_ohlcv_bars`` (daily), each knowable from 09:30 ET of its session

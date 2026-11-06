@@ -532,6 +532,24 @@ sectors:
     - {key: rates, label: Long Treasuries, kind: macro, symbols: [TLT]}
     - {key: dollar, label: Dollar, kind: macro, symbols: [UUP]}
 
+corporate_actions:
+  # scripts/lib/market_risk/split_guard.py, applied to EVERY series by reader.PgReader.daily_bars (LIVEFIX-S
+  # 2026-11-06). The quote-derived closes are not split-adjusted at the source: SOXX's ~3:1 split on 2026-11-05
+  # (451.20 -> 130.935) showed as semis r5 -42%, STRESS/RED while SMH fell a real ~11.5%. A confirmed split is
+  # back-adjusted; an ambiguous jump excludes the series with a stated reason (never a guessed number).
+  split_guard:
+    enabled: true
+    benchmark: SPY                 # the same-day market move removed before testing a ratio
+    candidate_min_move_pct: 25     # a one-session move smaller than this is never a split candidate (a -12% day is real)
+    split_ratios: [1.5, 2, 3, 4, 5, 8, 10, 15, 20]   # forward k:1; reverse 1:k too when include_reverse
+    include_reverse: true
+    max_residual_move_pct: 15      # after undoing ratio k and the benchmark's move, what is left must be within this,
+                                   # for exactly ONE k (several = ambiguous -> data gap)
+    exempt_prefixes: ["^"]         # indexes never split: ^VIX +62.7% on 2026-11-05 was real (fits 1:1.5 and 1:2)
+    exempt_symbols: []
+    confirm_sessions: 1            # later closes that must hold the new level within max_residual_move_pct
+                                   # (none yet -> unconfirmed gap; leaves it -> reverted bad print gap)
+
 shock_type:
   # scripts/lib/market_risk/shock_type.py — what KIND of stress (operator 2026-10-31: "whether it's a pandemic or is
   # it a certain sector related"). Each class is a list of indicators; its score is the share that hold; the top
