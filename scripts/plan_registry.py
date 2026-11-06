@@ -31,6 +31,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
@@ -40,6 +41,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+_LOG = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "plan_registry.json"
 STATUSES = ("approved", "in_progress", "done", "abandoned", "stalled")
@@ -207,8 +209,8 @@ class Registry:
         except BaseException:
             try:
                 tmp.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                _LOG.warning("plan_registry: could not remove temp file %s: %s", tmp, exc)
             raise
 
     def _event(self, event: str, pid: str, **detail: Any) -> None:
@@ -265,8 +267,9 @@ class Registry:
                     at = _parse_ts(row.get("at"))
                     if at and (last is None or at > last):
                         last = at
-        except OSError:
-            pass
+        except OSError as exc:
+            # An unreadable ledger leaves only the front-matter timestamps; say so rather than looking complete.
+            _LOG.warning("plan_registry: ledger unreadable while computing last activity for %s: %s", pid, exc)
         return last
 
     def _has_add_event(self, pid: str) -> bool:
@@ -334,8 +337,8 @@ class Registry:
         except BaseException:
             try:
                 tmp.unlink()
-            except OSError:
-                pass
+            except OSError as exc:
+                _LOG.warning("plan_registry: could not remove temp file %s: %s", tmp, exc)
             raise
 
     def _queue_notification_unlocked(self, pid: str, message: str) -> None:
