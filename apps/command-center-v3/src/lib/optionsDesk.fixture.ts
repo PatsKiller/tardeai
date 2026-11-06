@@ -43,7 +43,7 @@ export const FIXTURE: Record<string, any> = {
      "PREMIUM_BELOW_FLOOR": {
       "count": 1,
       "symbols": [
-       "SCHD"
+       "ZQCH"
       ]
      },
      "IV_UNKNOWN": {
@@ -62,14 +62,14 @@ export const FIXTURE: Record<string, any> = {
      "THESIS_ABANDONED": {
       "count": 1,
       "symbols": [
-       "V"
+       "ZQCE"
       ]
      }
     },
     "total": 5,
     "drops": [
      {
-      "symbol": "SCHD",
+      "symbol": "ZQCH",
       "strategy": "covered_call",
       "reason": "PREMIUM_BELOW_FLOOR",
       "strike": 36.0,
@@ -101,7 +101,7 @@ export const FIXTURE: Record<string, any> = {
       "session": "PRE_MARKET"
      },
      {
-      "symbol": "V",
+      "symbol": "ZQCE",
       "strategy": "protective_put",
       "reason": "THESIS_ABANDONED",
       "detail": "CIO asked for more research 3 times; archived rather than looping"
@@ -111,9 +111,9 @@ export const FIXTURE: Record<string, any> = {
      "count": 3,
      "session": "PRE_MARKET",
      "symbols": [
-      "SCHG",
-      "XAR",
-      "XLB"
+      "ZQAV",
+      "ZQAD",
+      "ZQBM"
      ],
      "note": "market closed: quotes are not live; liquidity is checked at the open"
     }
@@ -156,21 +156,21 @@ export const FIXTURE: Record<string, any> = {
     {
      "id": "opt_protective_put_SPCX_account_a_148p0000_20261120_d20261022",
      "strategy": "protective_put",
-     "symbol": "SPCX",
+     "symbol": "ZQBL",
      "account": "account_a",
      "side": "BUY",
      "option_type": "put",
      "strike": 148.0,
      "expiration": "2026-11-20",
      "dte": 29,
-     "contracts": 6,
+     "contracts": 18,
      "premium": 4.65,
-     "premium_total": 2790.0,
+     "premium_total": 8370.0,
      "underlying_price": 154.12,
-     "shares_held": 600.0,
+     "shares_held": 1800.0,
      "breakeven": 158.77,
      "put_breakeven": 143.35,
-     "floor_value": 86010.0,
+     "floor_value": 258030.0,
      "edge_score": 68.4,
      "desk_tier": "B",
      "oi": 476,
@@ -313,34 +313,34 @@ export const FIXTURE: Record<string, any> = {
       ]
      },
      "economics": {
-      "floor_value_after_premium": 86010.0,
-      "option_cost_total": 2790.0,
+      "floor_value_after_premium": 258030.0,
+      "option_cost_total": 8370.0,
       "put_breakeven": 143.35,
-      "hedged_max_loss_from_mark": 6462.0,
-      "insured_shares": 600,
+      "hedged_max_loss_from_mark": 19386.0,
+      "insured_shares": 1800,
       "protection_scenarios": [
        {
         "move_pct": -30,
-        "stock_pl": -27741.6,
-        "hedged_pl": -6462.0,
-        "loss_reduction": 21279.6
+        "stock_pl": -83224.8,
+        "hedged_pl": -19386.0,
+        "loss_reduction": 63838.8
        },
        {
         "move_pct": -20,
-        "stock_pl": -18494.4,
-        "hedged_pl": -6462.0,
-        "loss_reduction": 12032.4
+        "stock_pl": -55483.2,
+        "hedged_pl": -19386.0,
+        "loss_reduction": 36097.2
        },
        {
         "move_pct": -10,
-        "stock_pl": -9247.2,
-        "hedged_pl": -6462.0,
-        "loss_reduction": 2785.2
+        "stock_pl": -27741.6,
+        "hedged_pl": -19386.0,
+        "loss_reduction": 8355.6
        }
       ]
      },
      "combined_exposure": {
-      "symbol": "SPCX",
+      "symbol": "ZQBL",
       "ideas": [
        {
         "id": "opt_protective_put_SPCX_account_a_148p0000_20261120_d20261022",
@@ -348,7 +348,7 @@ export const FIXTURE: Record<string, any> = {
         "account": "account_a",
         "strike": 148.0,
         "expiration": "2026-11-20",
-        "contracts": 6
+        "contracts": 18
        },
        {
         "id": "opt_protective_put_SPCX_account_c_148p0000_20261120_d20261022",
@@ -356,50 +356,50 @@ export const FIXTURE: Record<string, any> = {
         "account": "account_c",
         "strike": 148.0,
         "expiration": "2026-11-20",
-        "contracts": 2
+        "contracts": 6
        }
       ],
       "scenarios": [
        {
         "move_pct": -30,
         "price": 107.88,
-        "options_only_pl": 28372.8,
-        "shares_pl": -36988.8,
-        "whole_position_pl": -8616.0
+        "options_only_pl": 85118.4,
+        "shares_pl": -110966.4,
+        "whole_position_pl": -25848.0
        },
        {
         "move_pct": -20,
         "price": 123.3,
-        "options_only_pl": 16043.2,
-        "shares_pl": -24659.2,
-        "whole_position_pl": -8616.0
+        "options_only_pl": 48129.6,
+        "shares_pl": -73977.6,
+        "whole_position_pl": -25848.0
        },
        {
         "move_pct": -10,
         "price": 138.71,
-        "options_only_pl": 3713.6,
-        "shares_pl": -12329.6,
-        "whole_position_pl": -8616.0
+        "options_only_pl": 11140.8,
+        "shares_pl": -36988.8,
+        "whole_position_pl": -25848.0
        },
        {
         "move_pct": 0,
         "price": 154.12,
-        "options_only_pl": -3720.0,
+        "options_only_pl": -11160.0,
         "shares_pl": 0.0,
-        "whole_position_pl": -3720.0
+        "whole_position_pl": -11160.0
        },
        {
         "move_pct": 10,
         "price": 169.53,
-        "options_only_pl": -3720.0,
-        "shares_pl": 12329.6,
-        "whole_position_pl": 8609.6
+        "options_only_pl": -11160.0,
+        "shares_pl": 36988.8,
+        "whole_position_pl": 25828.8
        }
       ],
       "scenario_basis": "Hypothetical if all shown ideas were selected, not existing commitments. Options-only, shares and whole-position P/L at the same price on that expiration date; shares are marked from today's spot, no basis or fees"
      },
      "committee_memo": {
-      "plain_summary": "This is insurance on your SPCX shares. Reduce the risk of shares you already own. You pay $2,790 for the right to sell 600 SPCX at $148 until 2026-11-20, however low the price goes. Breakeven at expiry: $143.35 (-7.0% from today's $154.12)."
+      "plain_summary": "This is insurance on your ZQBL shares. Reduce the risk of shares you already own. You pay $8,370 for the right to sell 1800 ZQBL at $148 until 2026-11-20, however low the price goes. Breakeven at expiry: $143.35 (-7.0% from today's $154.12)."
      },
      "options_decision_packet": {
       "cio_approved": false,
@@ -412,21 +412,21 @@ export const FIXTURE: Record<string, any> = {
     {
      "id": "opt_protective_put_SPCX_account_c_148p0000_20261120_d20261022",
      "strategy": "protective_put",
-     "symbol": "SPCX",
+     "symbol": "ZQBL",
      "account": "account_c",
      "side": "BUY",
      "option_type": "put",
      "strike": 148.0,
      "expiration": "2026-11-20",
      "dte": 29,
-     "contracts": 2,
+     "contracts": 6,
      "premium": 4.65,
-     "premium_total": 930.0,
+     "premium_total": 2790.0,
      "underlying_price": 154.12,
-     "shares_held": 200.0,
+     "shares_held": 600.0,
      "breakeven": 158.77,
      "put_breakeven": 143.35,
-     "floor_value": 28670.0,
+     "floor_value": 86010.0,
      "edge_score": 68.4,
      "desk_tier": "B",
      "oi": 476,
@@ -569,34 +569,34 @@ export const FIXTURE: Record<string, any> = {
       ]
      },
      "economics": {
-      "floor_value_after_premium": 28670.0,
-      "option_cost_total": 930.0,
+      "floor_value_after_premium": 86010.0,
+      "option_cost_total": 2790.0,
       "put_breakeven": 143.35,
-      "hedged_max_loss_from_mark": 2154.0,
-      "insured_shares": 200,
+      "hedged_max_loss_from_mark": 6462.0,
+      "insured_shares": 600,
       "protection_scenarios": [
        {
         "move_pct": -30,
-        "stock_pl": -9247.2,
-        "hedged_pl": -2154.0,
-        "loss_reduction": 7093.2
+        "stock_pl": -27741.6,
+        "hedged_pl": -6462.0,
+        "loss_reduction": 21279.6
        },
        {
         "move_pct": -20,
-        "stock_pl": -6164.8,
-        "hedged_pl": -2154.0,
-        "loss_reduction": 4010.8
+        "stock_pl": -18494.4,
+        "hedged_pl": -6462.0,
+        "loss_reduction": 12032.4
        },
        {
         "move_pct": -10,
-        "stock_pl": -3082.4,
-        "hedged_pl": -2154.0,
-        "loss_reduction": 928.4
+        "stock_pl": -9247.2,
+        "hedged_pl": -6462.0,
+        "loss_reduction": 2785.2
        }
       ]
      },
      "combined_exposure": {
-      "symbol": "SPCX",
+      "symbol": "ZQBL",
       "ideas": [
        {
         "id": "opt_protective_put_SPCX_account_a_148p0000_20261120_d20261022",
@@ -604,7 +604,7 @@ export const FIXTURE: Record<string, any> = {
         "account": "account_a",
         "strike": 148.0,
         "expiration": "2026-11-20",
-        "contracts": 6
+        "contracts": 18
        },
        {
         "id": "opt_protective_put_SPCX_account_c_148p0000_20261120_d20261022",
@@ -612,50 +612,50 @@ export const FIXTURE: Record<string, any> = {
         "account": "account_c",
         "strike": 148.0,
         "expiration": "2026-11-20",
-        "contracts": 2
+        "contracts": 6
        }
       ],
       "scenarios": [
        {
         "move_pct": -30,
         "price": 107.88,
-        "options_only_pl": 28372.8,
-        "shares_pl": -36988.8,
-        "whole_position_pl": -8616.0
+        "options_only_pl": 85118.4,
+        "shares_pl": -110966.4,
+        "whole_position_pl": -25848.0
        },
        {
         "move_pct": -20,
         "price": 123.3,
-        "options_only_pl": 16043.2,
-        "shares_pl": -24659.2,
-        "whole_position_pl": -8616.0
+        "options_only_pl": 48129.6,
+        "shares_pl": -73977.6,
+        "whole_position_pl": -25848.0
        },
        {
         "move_pct": -10,
         "price": 138.71,
-        "options_only_pl": 3713.6,
-        "shares_pl": -12329.6,
-        "whole_position_pl": -8616.0
+        "options_only_pl": 11140.8,
+        "shares_pl": -36988.8,
+        "whole_position_pl": -25848.0
        },
        {
         "move_pct": 0,
         "price": 154.12,
-        "options_only_pl": -3720.0,
+        "options_only_pl": -11160.0,
         "shares_pl": 0.0,
-        "whole_position_pl": -3720.0
+        "whole_position_pl": -11160.0
        },
        {
         "move_pct": 10,
         "price": 169.53,
-        "options_only_pl": -3720.0,
-        "shares_pl": 12329.6,
-        "whole_position_pl": 8609.6
+        "options_only_pl": -11160.0,
+        "shares_pl": 36988.8,
+        "whole_position_pl": 25828.8
        }
       ],
       "scenario_basis": "Hypothetical if all shown ideas were selected, not existing commitments. Options-only, shares and whole-position P/L at the same price on that expiration date; shares are marked from today's spot, no basis or fees"
      },
      "committee_memo": {
-      "plain_summary": "This is insurance on your SPCX shares. Reduce the risk of shares you already own. You pay $930 for the right to sell 200 SPCX at $148 until 2026-11-20, however low the price goes. Breakeven at expiry: $143.35 (-7.0% from today's $154.12)."
+      "plain_summary": "This is insurance on your ZQBL shares. Reduce the risk of shares you already own. You pay $2,790 for the right to sell 600 ZQBL at $148 until 2026-11-20, however low the price goes. Breakeven at expiry: $143.35 (-7.0% from today's $154.12)."
      },
      "options_decision_packet": {
       "cio_approved": false,
@@ -668,21 +668,21 @@ export const FIXTURE: Record<string, any> = {
     {
      "id": "opt_protective_put_SCHG_account_a_35p0000_20261218_d20261022",
      "strategy": "protective_put",
-     "symbol": "SCHG",
+     "symbol": "ZQAV",
      "account": "account_a",
      "side": "BUY",
      "option_type": "put",
      "strike": 35.0,
      "expiration": "2026-12-18",
      "dte": 57,
-     "contracts": 20,
+     "contracts": 60,
      "premium": 1.15,
-     "premium_total": 2300.0,
+     "premium_total": 6900.0,
      "underlying_price": 35.42,
-     "shares_held": 2000.0,
+     "shares_held": 6000.0,
      "breakeven": 36.57,
      "put_breakeven": 33.85,
-     "floor_value": 67700.0,
+     "floor_value": 203100.0,
      "edge_score": 65.6,
      "desk_tier": "B",
      "oi": 9,
@@ -803,29 +803,29 @@ export const FIXTURE: Record<string, any> = {
       "timeline": []
      },
      "economics": {
-      "floor_value_after_premium": 67700.0,
-      "option_cost_total": 2300.0,
+      "floor_value_after_premium": 203100.0,
+      "option_cost_total": 6900.0,
       "put_breakeven": 33.85,
-      "hedged_max_loss_from_mark": 3140.0,
-      "insured_shares": 2000,
+      "hedged_max_loss_from_mark": 9420.0,
+      "insured_shares": 6000,
       "protection_scenarios": [
        {
         "move_pct": -30,
-        "stock_pl": -21252.0,
-        "hedged_pl": -3140.0,
-        "loss_reduction": 18112.0
+        "stock_pl": -63756.0,
+        "hedged_pl": -9420.0,
+        "loss_reduction": 54336.0
        },
        {
         "move_pct": -20,
-        "stock_pl": -14168.0,
-        "hedged_pl": -3140.0,
-        "loss_reduction": 11028.0
+        "stock_pl": -42504.0,
+        "hedged_pl": -9420.0,
+        "loss_reduction": 33084.0
        },
        {
         "move_pct": -10,
-        "stock_pl": -7084.0,
-        "hedged_pl": -3140.0,
-        "loss_reduction": 3944.0
+        "stock_pl": -21252.0,
+        "hedged_pl": -9420.0,
+        "loss_reduction": 11832.0
        }
       ]
      },
@@ -836,7 +836,7 @@ export const FIXTURE: Record<string, any> = {
       "scenario_basis": null
      },
      "committee_memo": {
-      "plain_summary": "This is insurance on your SCHG shares. Reduce the risk of shares you already own. You pay $2,300 for the right to sell 2000 SCHG at $35 until 2026-12-18, however low the price goes. Breakeven at expiry: $33.85 (-4.4% from today's $35.42)."
+      "plain_summary": "This is insurance on your ZQAV shares. Reduce the risk of shares you already own. You pay $6,900 for the right to sell 6000 ZQAV at $35 until 2026-12-18, however low the price goes. Breakeven at expiry: $33.85 (-4.4% from today's $35.42)."
      },
      "options_decision_packet": {
       "cio_approved": false,
@@ -849,21 +849,21 @@ export const FIXTURE: Record<string, any> = {
     {
      "id": "opt_protective_put_XAR_account_a_205p0000_20261218_d20261022",
      "strategy": "protective_put",
-     "symbol": "XAR",
+     "symbol": "ZQAD",
      "account": "account_a",
      "side": "BUY",
      "option_type": "put",
      "strike": 205.0,
      "expiration": "2026-12-18",
      "dte": 57,
-     "contracts": 1,
+     "contracts": 3,
      "premium": 5.6,
-     "premium_total": 560.0,
+     "premium_total": 1680.0,
      "underlying_price": 219.54,
-     "shares_held": 100.0,
+     "shares_held": 300.0,
      "breakeven": 225.14,
      "put_breakeven": 199.4,
-     "floor_value": 19940.0,
+     "floor_value": 59820.0,
      "edge_score": 62.7,
      "desk_tier": "B",
      "oi": 0,
@@ -986,29 +986,29 @@ export const FIXTURE: Record<string, any> = {
       "timeline": []
      },
      "economics": {
-      "floor_value_after_premium": 19940.0,
-      "option_cost_total": 560.0,
+      "floor_value_after_premium": 59820.0,
+      "option_cost_total": 1680.0,
       "put_breakeven": 199.4,
-      "hedged_max_loss_from_mark": 2014.0,
-      "insured_shares": 100,
+      "hedged_max_loss_from_mark": 6042.0,
+      "insured_shares": 300,
       "protection_scenarios": [
        {
         "move_pct": -30,
-        "stock_pl": -6586.2,
-        "hedged_pl": -2014.0,
-        "loss_reduction": 4572.2
+        "stock_pl": -19758.6,
+        "hedged_pl": -6042.0,
+        "loss_reduction": 13716.6
        },
        {
         "move_pct": -20,
-        "stock_pl": -4390.8,
-        "hedged_pl": -2014.0,
-        "loss_reduction": 2376.8
+        "stock_pl": -13172.4,
+        "hedged_pl": -6042.0,
+        "loss_reduction": 7130.4
        },
        {
         "move_pct": -10,
-        "stock_pl": -2195.4,
-        "hedged_pl": -2014.0,
-        "loss_reduction": 181.4
+        "stock_pl": -6586.2,
+        "hedged_pl": -6042.0,
+        "loss_reduction": 544.2
        }
       ]
      },
@@ -1019,7 +1019,7 @@ export const FIXTURE: Record<string, any> = {
       "scenario_basis": null
      },
      "committee_memo": {
-      "plain_summary": "This is insurance on your XAR shares. Reduce the risk of shares you already own. You pay $560 for the right to sell 100 XAR at $205 until 2026-12-18, however low the price goes. Breakeven at expiry: $199.40 (-9.2% from today's $219.54)."
+      "plain_summary": "This is insurance on your ZQAD shares. Reduce the risk of shares you already own. You pay $1,680 for the right to sell 300 ZQAD at $205 until 2026-12-18, however low the price goes. Breakeven at expiry: $199.40 (-9.2% from today's $219.54)."
      },
      "options_decision_packet": {
       "cio_approved": false,
@@ -1032,21 +1032,21 @@ export const FIXTURE: Record<string, any> = {
     {
      "id": "opt_protective_put_XLB_account_a_48p0000_20261218_d20261022",
      "strategy": "protective_put",
-     "symbol": "XLB",
+     "symbol": "ZQBM",
      "account": "account_a",
      "side": "BUY",
      "option_type": "put",
      "strike": 48.0,
      "expiration": "2026-12-18",
      "dte": 57,
-     "contracts": 5,
+     "contracts": 15,
      "premium": 0.67,
-     "premium_total": 335.0,
+     "premium_total": 1005.0,
      "underlying_price": 51.17,
-     "shares_held": 506.327,
+     "shares_held": 1518.981,
      "breakeven": 51.84,
      "put_breakeven": 47.33,
-     "floor_value": 23665.0,
+     "floor_value": 70995.0,
      "edge_score": 58.4,
      "desk_tier": "C",
      "oi": 2766,
@@ -1169,29 +1169,29 @@ export const FIXTURE: Record<string, any> = {
       ]
      },
      "economics": {
-      "floor_value_after_premium": 23665.0,
-      "option_cost_total": 335.0,
+      "floor_value_after_premium": 70995.0,
+      "option_cost_total": 1005.0,
       "put_breakeven": 47.33,
-      "hedged_max_loss_from_mark": 1920.0,
-      "insured_shares": 500,
+      "hedged_max_loss_from_mark": 5760.0,
+      "insured_shares": 1500,
       "protection_scenarios": [
        {
         "move_pct": -30,
-        "stock_pl": -7675.5,
-        "hedged_pl": -1920.0,
-        "loss_reduction": 5755.5
+        "stock_pl": -23026.5,
+        "hedged_pl": -5760.0,
+        "loss_reduction": 17266.5
        },
        {
         "move_pct": -20,
-        "stock_pl": -5117.0,
-        "hedged_pl": -1920.0,
-        "loss_reduction": 3197.0
+        "stock_pl": -15351.0,
+        "hedged_pl": -5760.0,
+        "loss_reduction": 9591.0
        },
        {
         "move_pct": -10,
-        "stock_pl": -2558.5,
-        "hedged_pl": -1920.0,
-        "loss_reduction": 638.5
+        "stock_pl": -7675.5,
+        "hedged_pl": -5760.0,
+        "loss_reduction": 1915.5
        }
       ]
      },
@@ -1202,7 +1202,7 @@ export const FIXTURE: Record<string, any> = {
       "scenario_basis": null
      },
      "committee_memo": {
-      "plain_summary": "This is insurance on your XLB shares. Reduce the risk of shares you already own. You pay $335 for the right to sell 500 XLB at $48 until 2026-12-18, however low the price goes. Breakeven at expiry: $47.33 (-7.5% from today's $51.17)."
+      "plain_summary": "This is insurance on your ZQBM shares. Reduce the risk of shares you already own. You pay $1,005 for the right to sell 1500 ZQBM at $48 until 2026-12-18, however low the price goes. Breakeven at expiry: $47.33 (-7.5% from today's $51.17)."
      },
      "options_decision_packet": {
       "cio_approved": false,
@@ -1242,8 +1242,8 @@ export const FIXTURE: Record<string, any> = {
         0.2
        ],
        "accounts": {
-        "account_c": 1,
-        "account_a": 3
+        "account_c": 3,
+        "account_a": 9
        },
        "min_strike": 230.0
       },
@@ -1260,7 +1260,7 @@ export const FIXTURE: Record<string, any> = {
       }
      },
      "status": "active",
-     "symbol": "SPCX",
+     "symbol": "ZQBL",
      "created_at": "2026-10-05T16:59:53+00:00",
      "updated_at": "2026-10-05T16:59:53+00:00",
      "thesis_source": "Morgan Stanley (Adam Jonas) PT 300, bull 600; street consensus 236.71 (21 analysts)",
@@ -1271,7 +1271,7 @@ export const FIXTURE: Record<string, any> = {
      "matches": {
       "contract": "options-intent-match-v1",
       "directive_id": 17,
-      "symbol": "SPCX",
+      "symbol": "ZQBL",
       "intent_updated_at": "2026-10-05T16:59:53+00:00",
       "as_of": "2026-10-22T14:45:02+00:00",
       "thesis_target": 300.0,
@@ -1282,7 +1282,7 @@ export const FIXTURE: Record<string, any> = {
       "plays": {
        "cash_secured_put": [
         {
-         "contract": "SPCX  261120P00144000",
+         "contract": "ZQBL  261120P00144000",
          "exp": "2026-11-20",
          "strike": 144.0,
          "dte": 29,
@@ -1309,7 +1309,7 @@ export const FIXTURE: Record<string, any> = {
          "next_action": "Account allocation and an account-specific thesis are required before proposal review"
         },
         {
-         "contract": "SPCX  261120P00143000",
+         "contract": "ZQBL  261120P00143000",
          "exp": "2026-11-20",
          "strike": 143.0,
          "dte": 29,
@@ -1336,7 +1336,7 @@ export const FIXTURE: Record<string, any> = {
          "next_action": "Account allocation and an account-specific thesis are required before proposal review"
         },
         {
-         "contract": "SPCX  261120P00142000",
+         "contract": "ZQBL  261120P00142000",
          "exp": "2026-11-20",
          "strike": 142.0,
          "dte": 29,
@@ -1363,7 +1363,7 @@ export const FIXTURE: Record<string, any> = {
          "next_action": "Account allocation and an account-specific thesis are required before proposal review"
         },
         {
-         "contract": "SPCX  261120P00141000",
+         "contract": "ZQBL  261120P00141000",
          "exp": "2026-11-20",
          "strike": 141.0,
          "dte": 29,
@@ -1390,7 +1390,7 @@ export const FIXTURE: Record<string, any> = {
          "next_action": "Account allocation and an account-specific thesis are required before proposal review"
         },
         {
-         "contract": "SPCX  261120P00140000",
+         "contract": "ZQBL  261120P00140000",
          "exp": "2026-11-20",
          "strike": 140.0,
          "dte": 29,
@@ -1420,7 +1420,7 @@ export const FIXTURE: Record<string, any> = {
        "covered_call": [],
        "leap_call": [
         {
-         "contract": "SPCX  281215C00100000",
+         "contract": "ZQBL  281215C00100000",
          "exp": "2028-12-15",
          "strike": 100.0,
          "dte": 785,
@@ -1443,7 +1443,7 @@ export const FIXTURE: Record<string, any> = {
          "next_action": "Account allocation and an account-specific thesis are required before proposal review"
         },
         {
-         "contract": "SPCX  271217C00120000",
+         "contract": "ZQBL  271217C00120000",
          "exp": "2027-12-17",
          "strike": 120.0,
          "dte": 421,
@@ -1466,7 +1466,7 @@ export const FIXTURE: Record<string, any> = {
          "next_action": "Account allocation and an account-specific thesis are required before proposal review"
         },
         {
-         "contract": "SPCX  281215C00130000",
+         "contract": "ZQBL  281215C00130000",
          "exp": "2028-12-15",
          "strike": 130.0,
          "dte": 785,
@@ -1489,7 +1489,7 @@ export const FIXTURE: Record<string, any> = {
          "next_action": "Account allocation and an account-specific thesis are required before proposal review"
         },
         {
-         "contract": "SPCX  271217C00125000",
+         "contract": "ZQBL  271217C00125000",
          "exp": "2027-12-17",
          "strike": 125.0,
          "dte": 421,
@@ -1515,8 +1515,8 @@ export const FIXTURE: Record<string, any> = {
       },
       "errors": [],
       "shares_by_account": {
-       "account_c": 200.0,
-       "account_a": 600.0
+       "account_c": 600.0,
+       "account_a": 1800.0
       },
       "spot": 150.72,
       "quote_time": "2026-10-22T14:45:02.204000+00:00",

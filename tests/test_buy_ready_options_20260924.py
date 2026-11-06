@@ -1,6 +1,6 @@
 """BUY_READY institutional packet — options alternatives, portfolio facts, CIO review.
 
-M5 2026-09-24 (operator: "build options"). The V BUY_READY page (10:20 ET) had
+M5 2026-09-24 (operator: "build options"). The ZQCE BUY_READY page (10:20 ET) had
 no options alternative (the engine skipped held names, never built debit
 verticals, capped LEAPS at 60 DTE, and the packet borrowed a wrong-class covered
 call's structure), no portfolio context (``ATTACH_WHEN_AVAILABLE``), a dollar
@@ -36,7 +36,7 @@ from lib import cio_options_fluency as fl  # noqa: E402
 # stock plan's stop is a quoted thesis level, like equity.stop, not an order stop.
 BEHAVIOR_FIELDS = ("recommended_delta_usd", "size_usd", "qty", "order",
                    "stop", "limit", "target_weight_pct", "trade", "execution")
-V_PLAN = {"symbol": "V", "price": 367.53, "entry_low": 364.50, "entry_high": 369.00,
+V_PLAN = {"symbol": "ZQCE", "price": 367.53, "entry_low": 364.50, "entry_high": 369.00,
           "stop": 357.50, "target": 410.00}
 V_RESULT = {**V_PLAN, "state": "BUY_READY", "rr": 3.57, "plan_source": "reentry_desk",
             "distance_pct": 0.0, "held": True, "market_cap_label": "MEGA", "atr": 5.2}
@@ -93,7 +93,7 @@ def v_chain(spot=367.53, iv=0.22, dtes=(30, 57, 85, 113, 302, 484)):
                              "ask": round(px + half, 2), "last": round(px, 2), "iv": iv * 100,
                              "delta": round(delta, 3), "oi": 900, "volume": 120, "dte": dte})
         exps.append({"exp": f"D{dte}", "dte": dte, "strikes": rows})
-    return {"status": "ok", "symbol": "V", "underlying_price": spot, "expirations": exps}
+    return {"status": "ok", "symbol": "ZQCE", "underlying_price": spot, "expirations": exps}
 
 
 def _liq_ok(c):
@@ -118,14 +118,14 @@ def v_alternatives(held=True, **kw):
 @pytest.fixture
 def book(tmp_path):
     holdings = {"as_of": "2026-09-24", "holdings": [
-        {"symbol": "V", "account": "schwab_roth", "shares": 130.2689, "market_value": 47936.35},
-        {"symbol": "V", "account": "schwab_rollover_ira", "shares": 0.7963, "market_value": 293.02},
-        {"symbol": "MCD", "account": "schwab_rollover_ira", "shares": 300, "market_value": 114271.63},
-        {"symbol": "CASH", "account": "schwab_taxable", "is_cash": True, "market_value": 1099039.0},
+        {"symbol": "ZQCE", "account": "roth_a", "shares": 100.0, "market_value": 36753.0},
+        {"symbol": "ZQCE", "account": "ira_b", "shares": 0.5, "market_value": 183.77},
+        {"symbol": "MCD", "account": "ira_b", "shares": 300, "market_value": 110000.0},
+        {"symbol": "CASH", "account": "taxable_c", "is_cash": True, "market_value": 900000.0},
     ]}
-    corr = {"symbols_analyzed": ["MCD", "V", "WMT"], "total_value": 278905.0, "last_updated": "2026-09-24 07:41",
+    corr = {"symbols_analyzed": ["MCD", "ZQCE", "WMT"], "total_value": 250000.0, "last_updated": "2026-09-24 07:41",
             "sector_exposure": {"Other": 82.8, "Financials": 17.2},
-            "correlation_matrix": {"V": {"MCD": 0.379, "V": 1.0, "WMT": 0.21}}}
+            "correlation_matrix": {"ZQCE": {"MCD": 0.379, "ZQCE": 1.0, "WMT": 0.21}}}
     ips = {"constraints": {"max_single_position_pct": 8.0, "max_sector_concentration_pct": 25.0}}
     mon = {"monitored_at": "2026-09-24T19:40:00Z", "book_greeks": {"leg_count": 0, "net_delta_shares": 0.0,
                                                                  "net_delta_notional": 0.0, "by_underlying": {}}}
@@ -138,7 +138,7 @@ def book(tmp_path):
 
 
 def v_packet(book, review=None, alternatives=None):
-    port = bpf.build_portfolio_facts("V", paths=book)
+    port = bpf.build_portfolio_facts("ZQCE", paths=book)
     return fl.build_buy_ready_packet(
         V_RESULT, {"held": True, "plan_source": "reentry_desk"}, desk={"by_symbol": {}}, goals=[],
         enrichment={"sector": "Financial Services", "pe": 32.1},
@@ -148,11 +148,11 @@ def v_packet(book, review=None, alternatives=None):
 
 RECORDED_REVIEW = {
     "verdict": "MODIFY",
-    "reason": "Setup valid at 367.53 but this is an ADD to a held name at 29.68% of invested capital.",
+    "reason": "Setup valid at 367.53 but this is an ADD to a held name at 25.14% of invested capital.",
     "scores": {k: {"score": 6, "evidence": "from supplied facts"} for k in rv.SCORE_KEYS},
     "equity_view": "Stop 357.5 sits inside normal range; worst-case R:R 3.57, 4.23 at the quote.",
     "options_view": "Prefer the debit call vertical: capped at the 410 target, lower capital per contract.",
-    "portfolio_view": "Held 131.07 shares already; 3.82% of book vs the 8% IPS limit, 29.68% of invested.",
+    "portfolio_view": "Held 100.50 shares already; 3.53% of book vs the 8% IPS limit, 25.14% of invested.",
     "modifications": ["wait for the zone low 364.5", "prefer the debit call vertical over stock"],
     "unknowns": ["IV percentile unavailable (3 history rows)"],
 }
@@ -162,8 +162,8 @@ RECORDED_REVIEW = {
 
 def test_wake_symbols_accepts_plural_and_the_singular_the_runner_used_to_send():
     import cio_reactive_cycle as rc
-    assert rc.wake_symbols({"symbols": ["V"]}) == ["V"]
-    assert rc.wake_symbols({"symbol": "V"}) == ["V"]  # the 09-24 V wake shape
+    assert rc.wake_symbols({"symbols": ["ZQCE"]}) == ["ZQCE"]
+    assert rc.wake_symbols({"symbol": "ZQCE"}) == ["ZQCE"]  # the 09-24 ZQCE wake shape
     assert rc.wake_symbols({"symbols": [], "symbol": None}) == []
     assert rc.wake_symbols(None) == []
 
@@ -186,7 +186,7 @@ def test_runner_emits_symbols_plural_on_the_bus(monkeypatch):
     runner.send_alerts({**V_RESULT, "market_cap_label": "MEGA"},
                        {"portfolio_facts": {"status": "UNAVAILABLE", "flags": [],
                                             "unknowns": ["fixture portfolio facts"]}})
-    assert emitted["symbols"] == ["V"] and emitted["symbol"] == "V"
+    assert emitted["symbols"] == ["ZQCE"] and emitted["symbol"] == "ZQCE"
 
 
 # ── 2. directional alternatives ──────────────────────────────────────────────
@@ -272,8 +272,8 @@ def test_iv_context_labels_a_proxy_and_needs_history_for_percentile():
 # ── 3. packet: no borrowed structure, per-unit only, no sizing ───────────────
 
 def test_the_packet_never_borrows_a_wrong_class_covered_calls_structure(book):
-    desk = {"by_symbol": {"V": [{"strategy": "covered_call", "strike": 390, "iv_rank": 24.5, "dte": 29}]}}
-    port = bpf.build_portfolio_facts("V", paths=book)
+    desk = {"by_symbol": {"ZQCE": [{"strategy": "covered_call", "strike": 390, "iv_rank": 24.5, "dte": 29}]}}
+    port = bpf.build_portfolio_facts("ZQCE", paths=book)
     pkt = fl.build_buy_ready_packet(V_RESULT, {"held": True}, desk=desk, goals=[], enrichment={},
                                     alternatives=None, portfolio=port)
     assert pkt["options_alt"]["reason"] == "WRONG_STRATEGY_CLASS"
@@ -306,13 +306,13 @@ def test_the_packet_carries_no_sizing_keys_and_no_dollar_capital_hint(book):
 
 
 def test_portfolio_facts_flag_an_add_and_label_the_correlation_subset(book):
-    port = bpf.build_portfolio_facts("V", paths=book)
-    assert port["held"] and port["held_units_total"] == pytest.approx(131.0652, abs=1e-3)
-    assert port["pct_of_total_book"] == pytest.approx(3.82, abs=0.01)
-    assert port["pct_of_invested_capital"] == pytest.approx(29.68, abs=0.01)
+    port = bpf.build_portfolio_facts("ZQCE", paths=book)
+    assert port["held"] and port["held_units_total"] == pytest.approx(100.5, abs=1e-3)
+    assert port["pct_of_total_book"] == pytest.approx(3.53, abs=0.01)
+    assert port["pct_of_invested_capital"] == pytest.approx(25.14, abs=0.01)
     assert "ADD_RAISES_CONCENTRATION" in port["flags"]
     assert "ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL" in port["flags"]
-    assert "AT_OR_ABOVE_IPS_SINGLE_NAME_LIMIT" not in port["flags"]  # 3.82% < 8% of the whole book
+    assert "AT_OR_ABOVE_IPS_SINGLE_NAME_LIMIT" not in port["flags"]  # 3.53% < 8% of the whole book
     assert port["correlations"]["coverage"].startswith("subset: 3 symbols")
     assert port["options_book"]["leg_count"] == 0
     assert "UNVERIFIED" in port["cash_state"]
@@ -321,7 +321,7 @@ def test_portfolio_facts_flag_an_add_and_label_the_correlation_subset(book):
 def test_the_house_verdict_names_the_add_and_the_book_share(book):
     pkt = v_packet(book)
     assert "ADD to an existing position" in pkt["cio_verdict"]["rationale"]
-    assert "3.8% of book" in pkt["cio_verdict"]["rationale"]
+    assert "3.5% of book" in pkt["cio_verdict"]["rationale"]
 
 
 # ── 4. CIO review: prompt, validation, modes ─────────────────────────────────
@@ -329,7 +329,7 @@ def test_the_house_verdict_names_the_add_and_the_book_share(book):
 def test_the_review_prompt_is_the_plan_prompt_verbatim_plus_supplied_facts(book):
     facts = rv.build_facts(v_packet(book))
     prompt = rv.render_prompt(facts)
-    assert prompt.startswith("ROLE: You are the Trade-AI CIO reviewing ONE BUY_READY entry packet for V.")
+    assert prompt.startswith("ROLE: You are the Trade-AI CIO reviewing ONE BUY_READY entry packet for ZQCE.")
     assert "You NEVER size, order," in prompt and "SUPPLIED FACTS:" in prompt
     assert facts["portfolio"]["concentration_limit_pct"] == 8.0
     assert facts["options_alternatives"] and facts["options_alternatives"][0]["why_this_strike"]
@@ -339,7 +339,7 @@ def test_dry_mode_makes_no_model_call(book):
     def boom(_prompt):
         raise AssertionError("model called in dry mode")
     out = rv.review_packet(v_packet(book), llm_fn=boom, review_mode="dry", now=NOW)
-    assert out["status"] == "DRY_RUN" and out["facts"]["symbol"] == "V"
+    assert out["status"] == "DRY_RUN" and out["facts"]["symbol"] == "ZQCE"
 
 
 def test_a_recorded_valid_review_passes(book):
@@ -348,7 +348,7 @@ def test_a_recorded_valid_review_passes(book):
                            review_mode="live", now=NOW)
     assert out["status"] == "OK", out.get("errors")
     row = rv.decision_row(out, now=NOW)
-    assert row[0] == "cio-entry-review-v-20260924142000" and row[2] == "MODIFY"
+    assert row[0] == "cio-entry-review-zqce-20260924142000" and row[2] == "MODIFY"
     assert "'entry_review'" in rv.INSERT_SQL
 
 
@@ -382,7 +382,7 @@ GOLDEN = ROOT / "tests" / "fixtures" / "buy_ready_v_golden_20260924.txt"
 
 def _golden_render(book):
     from lib import cio_entry_state as ces
-    port = bpf.build_portfolio_facts("V", paths=book)
+    port = bpf.build_portfolio_facts("ZQCE", paths=book)
     ev = {"held": True, "plan_source": "reentry_desk", "market_cap_label": {"code": "MEGA", "text": "Mega cap · $675.0B"},
           "options_alternatives": v_alternatives(), "portfolio_facts": port,
           "cio_review": {"status": "OK", "agent": "alex", "review": RECORDED_REVIEW}}
@@ -427,18 +427,18 @@ def test_runner_dry_path_builds_the_packet_without_a_model_or_broker_call(book, 
 def test_expired_pending_reviews_are_dropped_not_retried(tmp_path, monkeypatch):
     import cio_entry_state_runner as runner
     ledger = tmp_path / "pending.jsonl"
-    ledger.write_text(json.dumps({"symbol": "V", "state": "BUY_READY", "queued_at": "2026-09-24T10:00:00+00:00",
+    ledger.write_text(json.dumps({"symbol": "ZQCE", "state": "BUY_READY", "queued_at": "2026-09-24T10:00:00+00:00",
                                   "result": V_RESULT, "status": "PENDING"}) + "\n")
     monkeypatch.setattr(runner, "REVIEW_PENDING", ledger)
     monkeypatch.setattr(runner, "prepare_packet_inputs",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("retried an expired review")))
     out = runner.follow_up_pending_reviews(cur=None, evidence={})
-    assert out == [{"symbol": "V", "follow_up": "expired"}]
+    assert out == [{"symbol": "ZQCE", "follow_up": "expired"}]
     assert ledger.read_text() == ""
 
 
 def test_a_liquid_neighbour_beats_a_closer_but_illiquid_strike():
-    """Live V 2026-09-24: the 410 short leg had a 29% spread and the chosen LEAPS strike
+    """Live ZQCE 2026-09-24: the 410 short leg had a 29% spread and the chosen LEAPS strike
     0 OI; the picker must take the nearest strike that passes the liquidity gate."""
     def liq(c):
         bad = (c.get("right") == "call" and float(c.get("strike")) == 410.0)

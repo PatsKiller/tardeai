@@ -4,9 +4,9 @@
   "sources": {
     "operator_conversation_turns": "role='operator' rows, SELECT only, 36 distinct texts 2026-09-06..2026-09-13",
     "cio_events.jsonl operator.message": "20 events, 18 distinct texts",
-    "cio_operator_pending_replies.jsonl": "1 row (opr_5bc20393b457, the SpaceX question) - already in the turns",
+    "cio_operator_pending_replies.jsonl": "1 row (opr_5bc20393b457, the Orbitex question) - already in the turns",
     "cio_telegram_receipts.jsonl": "161 delivery receipts; carries NO operator text (decision_id/dedupe_key/message_ids only)",
-    "litmus_brief_20260913": "the short SpaceX litmus text from the brief, verbatim"
+    "litmus_brief_20260913": "the short Orbitex litmus text from the brief, verbatim"
   },
   "excluded": {
     "approval_tokens": 14,
@@ -14,33 +14,35 @@
   },
   "environment": {
     "book": [
-      "SCHG",
-      "SCHD",
-      "JEPI",
-      "NOC",
-      "V",
+      "ZQAU",
+      "ZQCG",
+      "ZQAJ",
+      "ZQBC",
+      "ZQCD",
       "WMT",
-      "SPCX",
+      "ZQBK",
       "ADBE",
-      "RTX",
-      "XLI",
-      "DIV",
-      "CASH"
+      "ZQAV",
+      "ZQBS",
+      "ZQAG",
+      "CASH",
+      "GOLD",
+      "Q"
     ],
     "registry_symbols": [
-      "SCHG",
-      "SCHD",
-      "JEPI",
-      "NOC",
-      "V",
+      "ZQAU",
+      "ZQCG",
+      "ZQAJ",
+      "ZQBC",
+      "ZQCD",
       "WMT",
-      "SPCX",
+      "ZQBK",
       "ADBE",
-      "RTX",
-      "XLI",
-      "DIV",
+      "ZQAV",
+      "ZQBS",
+      "ZQAG",
       "NSC",
-      "NVDA",
+      "ZQBX",
       "CRWD",
       "REFR",
       "BACK",
@@ -54,19 +56,24 @@
       "GOING",
       "NOW",
       "RIGHT",
-      "DATA"
+      "DATA",
+      "GOLD",
+      "Q"
     ],
     "instruments": {
       "WMT": "WALMART INC",
-      "V": "VISA INC A",
+      "ZQCD": "PAYLANE INC A",
       "NSC": "NORFOLK SOUTHN CORP",
-      "NOC": "NORTHROP GRUMMAN COR",
+      "ZQBC": "GRANITE DEFENSE COR",
       "REFR": "RESEARCH FRONTIERS INC",
       "CRWD": "CROWDSTRIKE HLDGS INC A",
-      "NVDA": "NVIDIA CORP",
+      "ZQBX": "VECTRON CORP",
       "ADBE": "ADOBE INC",
-      "SCHG": "SCHWAB US LARGE CAP GROWTH ETF",
-      "JEPI": "JPMORGAN EQUITY PREMIUM INCOME ETF"
+      "ZQAU": "SYNTH US LARGE CAP GROWTH ETF",
+      "ZQAJ": "BETACORP EQUITY PREMIUM INCOME ETF"
+    },
+    "lockups": {
+      "ZQBK": "Orbitex (Orbital Exploration Systems Corp)"
     }
   },
   "questions": [
@@ -81,11 +88,11 @@
     {
       "id": "q02",
       "source": "cio_events",
-      "text": "What should I watch on SCHD this week? READ_ONLY advisory only.",
+      "text": "What should I watch on ZQCG this week? READ_ONLY advisory only.",
       "intent": "freeform",
       "needs": [],
       "symbols": [
-        "SCHD"
+        "ZQCG"
       ],
       "expected_review": true,
       "note": "was meta_system: the bare word READ_ONLY is a disclaimer, not a question about the bot"
@@ -157,24 +164,24 @@
     {
       "id": "q09",
       "source": "cio_events",
-      "text": "alex does JEPI fit my profolio",
+      "text": "alex does ZQAJ fit my profolio",
       "intent": "freeform",
       "needs": [
         "portfolio"
       ],
       "symbols": [
-        "JEPI"
+        "ZQAJ"
       ],
       "note": "'profolio' is the operator's spelling of portfolio"
     },
     {
       "id": "q10",
       "source": "cio_events",
-      "text": "alex should i do covered calls on jepi",
+      "text": "alex should i do covered calls on zqaj",
       "intent": "freeform",
       "needs": [],
       "symbols": [
-        "JEPI"
+        "ZQAJ"
       ],
       "subjects": [
         {
@@ -252,40 +259,40 @@
     {
       "id": "q16",
       "source": "cio_events+turns+pending",
-      "text": "What's the outlook for SpaceX in the next 3 months and what has its performance been over the last month what are options closing on SpaceX was the end of the year and analysts expectation of targets",
+      "text": "What's the outlook for Orbitex in the next 3 months and what has its performance been over the last month what are options closing on Orbitex was the end of the year and analysts expectation of targets",
       "intent": "analyst_view",
       "needs": [
         "analyst_view"
       ],
       "symbols": [
-        "SPCX"
+        "ZQBK"
       ],
       "subjects": [
         {
           "kind": "company",
-          "symbol": "SPCX",
-          "matched": "SpaceX"
+          "symbol": "ZQBK",
+          "matched": "Orbitex"
         }
       ],
       "answerable": true,
-      "note": "corrected 2026-09-13: SpaceX resolves to SPCX from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
+      "note": "corrected 2026-09-13: Orbitex resolves to ZQBK from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
     },
     {
       "id": "q17",
       "source": "cio_events+turns",
-      "text": "Is now a good time to get back into schg",
+      "text": "Is now a good time to get back into zqau",
       "intent": "reentry",
       "needs": [
         "reentry_ready"
       ],
       "symbols": [
-        "SCHG"
+        "ZQAU"
       ],
       "subjects": [
         {
           "kind": "ticker",
-          "symbol": "SCHG",
-          "matched": "schg"
+          "symbol": "ZQAU",
+          "matched": "zqau"
         }
       ]
     },
@@ -318,42 +325,42 @@
     {
       "id": "q19",
       "source": "litmus_brief_20260913",
-      "text": "what's the outlook for SpaceX, what are options closing, what are analysts expecting",
+      "text": "what's the outlook for Orbitex, what are options closing, what are analysts expecting",
       "intent": "analyst_view",
       "needs": [
         "analyst_view"
       ],
       "symbols": [
-        "SPCX"
+        "ZQBK"
       ],
       "subjects": [
         {
           "kind": "company",
-          "symbol": "SPCX",
-          "matched": "SpaceX"
+          "symbol": "ZQBK",
+          "matched": "Orbitex"
         }
       ],
       "answerable": true,
-      "note": "corrected 2026-09-13: SpaceX resolves to SPCX from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
+      "note": "corrected 2026-09-13: Orbitex resolves to ZQBK from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
     },
     {
       "id": "q20",
       "source": "turns",
       "asked_at": "2026-09-06",
-      "text": "Alex what is the analyst target for Visa, the latest support and resistance, and how far are we from it?",
+      "text": "Alex what is the analyst target for Paylane, the latest support and resistance, and how far are we from it?",
       "intent": "analyst_view",
       "needs": [
         "reentry_levels",
         "analyst_view"
       ],
       "symbols": [
-        "V"
+        "ZQCD"
       ],
       "subjects": [
         {
           "kind": "company",
-          "symbol": "V",
-          "matched": "Visa"
+          "symbol": "ZQCD",
+          "matched": "Paylane"
         }
       ]
     },
@@ -504,23 +511,23 @@
       "id": "q31",
       "source": "turns",
       "asked_at": "2026-09-13",
-      "text": "What analyst singing about SpaceX",
+      "text": "What analyst singing about Orbitex",
       "intent": "analyst_view",
       "needs": [
         "analyst_view"
       ],
       "symbols": [
-        "SPCX"
+        "ZQBK"
       ],
       "subjects": [
         {
           "kind": "company",
-          "symbol": "SPCX",
-          "matched": "SpaceX"
+          "symbol": "ZQBK",
+          "matched": "Orbitex"
         }
       ],
       "answerable": true,
-      "note": "corrected 2026-09-13: SpaceX resolves to SPCX from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
+      "note": "corrected 2026-09-13: Orbitex resolves to ZQBK from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
     },
     {
       "id": "q32",
@@ -544,24 +551,24 @@
       "id": "q34",
       "source": "turns",
       "asked_at": "2026-09-13",
-      "text": "What about SCHD?",
+      "text": "What about ZQCG?",
       "intent": "freeform",
       "needs": [],
       "symbols": [
-        "SCHD"
+        "ZQCG"
       ]
     },
     {
       "id": "q35",
       "source": "turns",
       "asked_at": "2026-09-13",
-      "text": "Thoughts on concentration in SCHD?",
+      "text": "Thoughts on concentration in ZQCG?",
       "intent": "freeform",
       "needs": [
         "risk"
       ],
       "symbols": [
-        "SCHD"
+        "ZQCG"
       ],
       "expected_review": true,
       "note": "concentration is a risk hint; freeform keeps it soft"

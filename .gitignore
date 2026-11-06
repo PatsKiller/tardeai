@@ -215,3 +215,5 @@ apps/command-center-v3/build-meta.json
 
 # UI audit screenshots (PNGs live in Drive/CI artifacts; only manifest.json is committed)
 apps/command-center-v3/e2e/screenshots/ui-audit/**/*.png
+# Operator-card captures of the live site carry real portfolio data: never in the public repo (2026-10-25)
+apps/command-center-v3/e2e/screenshots/operator-cards/

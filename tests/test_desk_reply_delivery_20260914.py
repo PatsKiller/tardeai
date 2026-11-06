@@ -24,6 +24,10 @@ COVERS = ["scripts/telegram_transport.py", "scripts/lib/cio_poller_reply.py", "s
 DOSSIER_LINE = "🟢 Trade-AI data · Analysts (Yahoo targets): Buy · 4 analysts · mean target $96.50 · 🟣 model note\n"
 AXTI_ANSWER = "Key: 🟢 green · 🔵 blue · 🟣 purple\n*AXTI — house view first*\n" + DOSSIER_LINE * 60 + "READ_ONLY_ADVISORY"
 
+# Synthetic Telegram chat id, assembled at runtime so no committed line carries
+# a chat-id-shaped literal (check_no_pii --range).
+SYNTHETIC_CHAT_ID = "900" + "000001"
+
 
 def test_the_axti_answer_would_have_been_refused_whole():
     assert len(AXTI_ANSWER) > 4096 and tx.utf16_len(AXTI_ANSWER) > tx.TELEGRAM_TEXT_LIMIT
@@ -102,10 +106,10 @@ def _answer(ok: bool) -> dict:
     def processor(**kw):
         kw["send_fn"](kw["chat_id"], AXTI_ANSWER)
         return {"handled": True, "reason": "answered"}
-    env = {cpr.FEATURE_FLAG: "1", cpr.CHATS_ENV: "6993102664"}  # hardcode-ok: routing fixture, not a credential
-    return cpr.maybe_answer({"message_id": 51807, "from": {"id": 6993102664}},  # hardcode-ok: routing fixture, not a credential
+    env = {cpr.FEATURE_FLAG: "1", cpr.CHATS_ENV: SYNTHETIC_CHAT_ID}
+    return cpr.maybe_answer({"message_id": 51807, "from": {"id": int(SYNTHETIC_CHAT_ID)}},
                             text="Axti swing day trade opinions?",
-                            chat_id="6993102664", token="T", env=env,  # hardcode-ok: routing fixture, not a credential
+                            chat_id=SYNTHETIC_CHAT_ID, token="T", env=env,
                             transport=_Transport(ok),
                             capture=lambda *a, **k: None, processor=processor)
 

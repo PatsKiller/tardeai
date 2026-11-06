@@ -19,35 +19,35 @@ const P = FIXTURE.proposals
 const raw: any[] = P.data.proposals
 const ideas = buildIdeas(raw, NOW)
 
-// One row per idea: the two SPCX accounts merge.
-eq('5 proposals → 4 ideas (SPCX accounts merged)', ideas.length, 4)
-const spcx = ideas.find(i => i.symbol === 'SPCX')!
-eq('SPCX merged contracts', spcx.contract, 'Nov 20 $148P × 8')
-eq('SPCX merged cost is the summed premium_total', spcx.cost, '$3,720')
-eq('SPCX does', spcx.does, 'Insures 800 shares below $148 for 29 days')
-eq('SPCX lane is your decision (BLOCKED, owner CIO/operator)', spcx.lane, 'you')
-ok('SPCX stuck names the CIO review failures', /CIO review failed 3×/.test(spcx.stuck))
-eq('SPCX next step opens the existing review', [spcx.next.kind, spcx.next.label], ['review', 'Decide'])
-eq('SPCX floor tile sums both accounts', spcx.econ.find(e => e.label === 'Floor')?.value, '$114,680')
-eq('SPCX scenarios come from combined exposure (both accounts)', spcx.scenarios[0], { move: '-10%', stockOnly: '−$12,330', withThis: '−$8,616', saved: '+$3,714' })
-ok('SPCX checklist fails on the stale chain', spcx.checks.some(c => c.mark === '✗' && /stale/i.test(c.text)))
-ok('SPCX checklist ends with your decision and 2FA as not-yet', spcx.checks.slice(-2).every(c => c.mark === '○'))
+// One row per idea: the two ZQBL accounts merge.
+eq('5 proposals → 4 ideas (ZQBL accounts merged)', ideas.length, 4)
+const spcx = ideas.find(i => i.symbol === 'ZQBL')!
+eq('ZQBL merged contracts', spcx.contract, 'Nov 20 $148P × 24')
+eq('ZQBL merged cost is the summed premium_total', spcx.cost, '$11,160')
+eq('ZQBL does', spcx.does, 'Insures 2,400 shares below $148 for 29 days')
+eq('ZQBL lane is your decision (BLOCKED, owner CIO/operator)', spcx.lane, 'you')
+ok('ZQBL stuck names the CIO review failures', /CIO review failed 3×/.test(spcx.stuck))
+eq('ZQBL next step opens the existing review', [spcx.next.kind, spcx.next.label], ['review', 'Decide'])
+eq('ZQBL floor tile sums both accounts', spcx.econ.find(e => e.label === 'Floor')?.value, '$344,040')
+eq('ZQBL scenarios come from combined exposure (both accounts)', spcx.scenarios[0], { move: '-10%', stockOnly: '−$36,989', withThis: '−$25,848', saved: '+$11,141' })
+ok('ZQBL checklist fails on the stale chain', spcx.checks.some(c => c.mark === '✗' && /stale/i.test(c.text)))
+ok('ZQBL checklist ends with your decision and 2FA as not-yet', spcx.checks.slice(-2).every(c => c.mark === '○'))
 eq('group key ignores account', groupKey(raw[0]) === groupKey(raw[1]), true)
 
-const xlb = ideas.find(i => i.symbol === 'XLB')!
-eq('XLB lane needs data', xlb.lane, 'data')
-eq('XLB insures 500 of 506 shares', xlb.does, 'Insures 500 of 506 shares below $48 for 57 days')
-ok('XLB stuck on the wide quote', /Quote too wide/.test(xlb.stuck))
-eq('XLB next step re-quotes through the existing validate flow', xlb.next.kind, 'validate')
+const xlb = ideas.find(i => i.symbol === 'ZQBM')!
+eq('ZQBM lane needs data', xlb.lane, 'data')
+eq('ZQBM insures 1,500 of 1,518 shares', xlb.does, 'Insures 1,500 of 1,518 shares below $48 for 57 days')
+ok('ZQBM stuck on the wide quote', /Quote too wide/.test(xlb.stuck))
+eq('ZQBM next step re-quotes through the existing validate flow', xlb.next.kind, 'validate')
 eq('edge hidden when the liquidity gate fails', xlb.econ.find(e => e.label === 'Edge')?.value, '—')
 ok('edge hidden note says why', /liquidity gate failed/.test(xlb.econ.find(e => e.label === 'Edge')?.note || ''))
 eq('edge shown when liquidity passes', spcx.econ.find(e => e.label === 'Edge')?.value, '68.4')
 
-const schg = ideas.find(i => i.symbol === 'SCHG')!
-eq('SCHG illiquid → pick another strike (read-only chain)', [schg.lane, schg.next.kind], ['data', 'chain'])
-const xar = ideas.find(i => i.symbol === 'XAR')!
-eq('XAR needs research', xar.lane, 'research')
-ok('XAR stuck on the missing exit criteria first', /exit criteria/.test(xar.stuck))
+const schg = ideas.find(i => i.symbol === 'ZQAV')!
+eq('ZQAV illiquid → pick another strike (read-only chain)', [schg.lane, schg.next.kind], ['data', 'chain'])
+const xar = ideas.find(i => i.symbol === 'ZQAD')!
+eq('ZQAD needs research', xar.lane, 'research')
+ok('ZQAD stuck on the missing exit criteria first', /exit criteria/.test(xar.stuck))
 
 // Lanes and counts.
 const plans = buildPlans(FIXTURE.intents, ideas, NOW)
@@ -59,15 +59,15 @@ eq('rejected ideas leave the lanes', laneFor({ review_workflow: { state: 'REJECT
 
 // Served accuracy fields (FIELD_CONTRACT.md) win over derivations.
 const clone = (o: any) => JSON.parse(JSON.stringify(o))
-const sx = raw.filter(p => p.symbol === 'SPCX').map(clone)
+const sx = raw.filter(p => p.symbol === 'ZQBL').map(clone)
 sx.forEach(p => { p.lifecycle_stage = 'REVIEW_FAILURE_CAP'; p.review_failures = 3; p.review_failure_reason = 'POLICY_NOT_ALLOWED' })
 const capped = buildIdeas(sx, NOW)[0]
 ok('capped review says operator reopen', capped.checks.some(c => /stopped after 3 failures.*operator reopen/.test(c.text)))
-const xw = clone(raw.find(p => p.symbol === 'SPCX'))
+const xw = clone(raw.find(p => p.symbol === 'ZQBL'))
 xw.edge_status = 'WITHHELD_LIQUIDITY'; xw.edge_score = null; xw.edge_withheld_reason = 'liquidity gate failed: spread 18.0% > 12%'
 eq('served edge withheld → —', buildIdeas([xw], NOW)[0].econ.find(e => e.label === 'Edge')?.value, '—')
 ok('served withheld reason shown', /spread 18\.0%/.test(buildIdeas([xw], NOW)[0].econ.find(e => e.label === 'Edge')?.note || ''))
-const xo = clone(raw.find(p => p.symbol === 'XLB'))
+const xo = clone(raw.find(p => p.symbol === 'ZQBM'))
 xo.review_workflow.next_action = 'Re-quote after the open (market AFTER_HOURS)'
 eq('outside REGULAR the re-quote is not offered', buildIdeas([xo], NOW)[0].next.kind, 'none')
 const cspCard = { id: 'c1', symbol: 'ZZ', strategy: 'cash_secured_put', option_type: 'put', strike: 100, expiration: '2026-11-20', dte: 29, contracts: 1, premium: 2,
@@ -87,9 +87,9 @@ ok('served conflict text is used', plans2[0].warnings.includes('Conflict: served
 ok('served watch_only badge', plans2[1].badges.includes('Not held · watch only'))
 
 // Plans: conflict, both earnings dates, CSP shown as premium/collateral + simple annualized (never reward/risk).
-const sp = plans.find(p => p.symbol === 'SPCX')!
-ok('SPCX plan warns accumulate vs hedge', sp.warnings.some(w => /wants more SPCX/.test(w) && /hedging/.test(w)))
-ok('SPCX plan shows both earnings dates on conflict', /2027-02-09/.test(sp.facts) && /2026-11-03/.test(sp.facts))
+const sp = plans.find(p => p.symbol === 'ZQBL')!
+ok('ZQBL plan warns accumulate vs hedge', sp.warnings.some(w => /wants more ZQBL/.test(w) && /hedging/.test(w)))
+ok('ZQBL plan shows both earnings dates on conflict', /2027-02-09/.test(sp.facts) && /2026-11-03/.test(sp.facts))
 const bestCsp = sp.best.find(b => b.glossaryKey === 'strategy.cash_secured_put')!
 ok('CSP note: premium/collateral and simple annualized, not repeatable', /3\.75% premium\/collateral/.test(bestCsp.note) && /47\.2% simple annualized \(not repeatable\)/.test(bestCsp.note))
 ok('CSP note never says reward/risk', !/reward|R:R/i.test(bestCsp.note))

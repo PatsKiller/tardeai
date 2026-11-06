@@ -2,9 +2,9 @@
 
 Operator 2026-10-05: "This discrepancy is real, and we need to validate that everything in the command
 center and the portfolio is correct … I need this to be the source of truth. You have to get this right."
-The Command Center showed SPCX $136.46 / value $40,938 / P&L −$8,272 while Schwab had $171.09 / +$2,122:
+The Command Center showed ZQBL $136.46 / value $40,938 / P&L −$8,272 while Schwab had $171.09 / +$2,122:
 the holdings API preferred a stored `current_price` that schwab_position_sync never refreshed (22 of 27
-rows off), scaled stale April cost anchors to today's share counts (SCHD $125,341 vs broker $132,173),
+rows off), scaled stale April cost anchors to today's share counts (ZQCH $125,341 vs broker $132,173),
 measured analyst upside against a snapshot price ($115), counted health-probe rows as trades, and dated an
 after-hours fund sale by order time. Fakes only: no network, no database, no broker, no token store.
 """
@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from lib import portfolio_positions as pp  # noqa: E402
 
 NOW = dt.datetime(2026, 10, 5, 20, 50, tzinfo=dt.timezone.utc)
-SPCX = {"symbol": "SPCX", "account": "schwab_rollover_ira", "shares": 300.0, "price": 171.09,
+ZQBL = {"symbol": "ZQBL", "account": "schwab_rollover_ira", "shares": 300.0, "price": 171.09,
         "current_price": 136.46, "canonical_mark": 171.09, "cost_basis": 49210.13,
         "last_repriced": "2026-10-05 16:45:02 ET", "market_value": 51327.0}
 
@@ -31,31 +31,31 @@ SPCX = {"symbol": "SPCX", "account": "schwab_rollover_ira", "shares": 300.0, "pr
 # ── the accessor ──────────────────────────────────────────────────────────────
 
 def test_data_broker_quote_wins_and_current_price_is_never_read():
-    m = pp.resolve_mark(SPCX, quote={"price": 171.34, "as_of": "2026-10-05T16:45:02-04:00", "source": "market_quotes:alpaca"},
+    m = pp.resolve_mark(ZQBL, quote={"price": 171.34, "as_of": "2026-10-05T16:45:02-04:00", "source": "market_quotes:alpaca"},
                         now=NOW)
     assert m["price"] == 171.34 and m["source"].startswith("data_broker") and m["live"]
-    vp = pp.value_and_pl(SPCX, m)
+    vp = pp.value_and_pl(ZQBL, m)
     assert vp["market_value"] == pytest.approx(51402.0) and vp["gain_loss"] == pytest.approx(2191.87)
 
 
 def test_without_quotes_the_stored_mark_is_used_with_its_age_never_the_fossil():
-    m = pp.resolve_mark(SPCX, now=NOW)
+    m = pp.resolve_mark(ZQBL, now=NOW)
     assert m["price"] == 171.09 and m["source"] == "stored_mark" and not m["live"]
-    assert m["price"] != SPCX["current_price"]
-    only_fossil = {**SPCX, "price": None, "canonical_mark": None}
+    assert m["price"] != ZQBL["current_price"]
+    only_fossil = {**ZQBL, "price": None, "canonical_mark": None}
     assert pp.resolve_mark(only_fossil, now=NOW)["price"] is None     # a fossil alone is never a price
 
 
 def test_stale_marks_are_flagged():
-    old = {**SPCX, "last_repriced": "2026-09-28 16:00:00 ET"}
+    old = {**ZQBL, "last_repriced": "2026-09-28 16:00:00 ET"}
     assert pp.resolve_mark(old, now=NOW)["stale"] is True
-    q = pp.resolve_mark(SPCX, quote={"price": 171.3, "as_of": "2026-10-04T10:00:00-04:00"}, now=NOW)
+    q = pp.resolve_mark(ZQBL, quote={"price": 171.3, "as_of": "2026-10-04T10:00:00-04:00"}, now=NOW)
     assert q["stale"] is True and q["live"] is False
 
 
 def test_cash_and_per_share_cost():
-    assert pp.resolve_mark({"symbol": "CASH", "is_cash": True, "shares": 10}, now=NOW)["price"] == 1.0
-    assert pp.per_share_cost(SPCX) == pytest.approx(164.033767, abs=1e-6)
+    assert pp.resolve_mark({"symbol": "ZQAF", "is_cash": True, "shares": 10}, now=NOW)["price"] == 1.0
+    assert pp.per_share_cost(ZQBL) == pytest.approx(164.033767, abs=1e-6)
 
 
 def test_store_path_resolves_under_the_persistent_root(monkeypatch, tmp_path):
@@ -115,7 +115,7 @@ def test_builder_dates_closes_by_broker_trade_date():
               "d": dt.date(2026, 2, 6)},
              {"side": "Sell", "qty": 10, "price": 26.53, "fees": 0, "t": dt.datetime(2026, 7, 13, 21, 5, tzinfo=tz),
               "d": dt.date(2026, 7, 14)}]
-    trips = b._round_trips("schwab_rollover_ira", "FCNTX", b._group_legs(fills))
+    trips = b._round_trips("schwab_rollover_ira", "ZQBG", b._group_legs(fills))
     assert trips[0]["exit_trade_date"] == dt.date(2026, 7, 14) and trips[0]["entry_trade_date"] == dt.date(2026, 2, 6)
     src = (ROOT / "scripts" / "schwab_journal_builder.py").read_text()
     assert "COALESCE(exit_trade_date, exit_time::date)" in src
@@ -126,35 +126,35 @@ def test_builder_dates_closes_by_broker_trade_date():
 
 import portfolio_reconcile as rc  # noqa: E402
 
-BROKER = [{"account": "schwab_rollover_ira", "symbol": "SPCX", "qty": 300, "avg_price": 164.033767,
+BROKER = [{"account": "schwab_rollover_ira", "symbol": "ZQBL", "qty": 300, "avg_price": 164.033767,
            "market_value": 51297.0, "unrealized_pl": 2086.87, "captured_at": "2026-10-05 16:33"},
-          {"account": "schwab_rollover_ira", "symbol": "543354104", "qty": 3000, "avg_price": 1.58,
+          {"account": "schwab_rollover_ira", "symbol": "000000000", "qty": 3000, "avg_price": 1.58,
            "market_value": 0, "unrealized_pl": -4762.95, "captured_at": "x"}]
-QUOTES = {"SPCX": {"last": 171.34, "as_of": "2026-10-05T16:45:02-04:00"}}
+QUOTES = {"ZQBL": {"last": 171.34, "as_of": "2026-10-05T16:45:02-04:00"}}
 
 
 def test_reconcile_names_the_frozen_field_and_the_value_gap():
-    cc = [{"symbol": "SPCX", "account": "schwab_rollover_ira", "shares": 300, "price": 136.46, "price_source": "schwab",
+    cc = [{"symbol": "ZQBL", "account": "schwab_rollover_ira", "shares": 300, "price": 136.46, "price_source": "schwab",
            "market_value": 40938.0, "cost_basis": 49210.13},
-          {"symbol": "CASH", "account": "schwab_rollover_ira", "is_cash": True, "shares": 803051.28, "market_value": 803051.28}]
-    raw = {("schwab_rollover_ira", "SPCX"): SPCX}
+          {"symbol": "ZQAF", "account": "schwab_rollover_ira", "is_cash": True, "shares": 803051.28, "market_value": 803051.28}]
+    raw = {("schwab_rollover_ira", "ZQBL"): ZQBL}
     rows = {r["symbol"]: r for r in rc.reconcile_positions(BROKER, cc, QUOTES, raw)}
-    issues = " ".join(rows["SPCX"]["issues"])
+    issues = " ".join(rows["ZQBL"]["issues"])
     assert "PRICE" in issues and "current_price" in issues and "VALUE" in issues
-    assert rows["SPCX"]["value_at_quote"] == pytest.approx(51402.0)
-    assert rows["543354104"]["issues"] == [] and "CUSIP" in rows["543354104"]["note"]
-    assert rows["CASH"]["issues"] == [] and rows["CASH"].get("cash")
+    assert rows["ZQBL"]["value_at_quote"] == pytest.approx(51402.0)
+    assert rows["000000000"]["issues"] == [] and "CUSIP" in rows["000000000"]["note"]
+    assert rows["ZQAF"]["issues"] == [] and rows["ZQAF"].get("cash")
 
 
 def test_reconcile_after_fix_is_clean():
-    cc = [{"symbol": "SPCX", "account": "schwab_rollover_ira", "shares": 300, "price": 171.34,
+    cc = [{"symbol": "ZQBL", "account": "schwab_rollover_ira", "shares": 300, "price": 171.34,
            "price_source": "data_broker:market_quotes", "market_value": 51402.0, "cost_basis": 49210.13}]
     rows = rc.reconcile_positions(BROKER[:1], cc, QUOTES, {})
     assert rows[0]["issues"] == []
 
 
 def _tx(d, act, q, px, amt, key, t=None):
-    return {"trade_date": d, "trade_time": t or f"{d}T10:00:00-04:00", "account": "schwab_rollover_ira", "symbol": "SCHG",
+    return {"trade_date": d, "trade_time": t or f"{d}T10:00:00-04:00", "account": "schwab_rollover_ira", "symbol": "ZQAV",
             "action": act, "quantity": q, "price": px, "amount": amt, "fees": 0, "dedupe_key": key,
             "import_source": "schwab_api"}
 
@@ -164,11 +164,11 @@ def test_closed_reconcile_classifies_basis_unknown_and_flags_real_gaps():
             _tx("2026-07-16", "Security Transfer", 5000, 0, 0, "x1"),
             _tx("2026-07-23", "Sell", 6000, 33.37, 200220.0, "s1")]
     sells = [t for t in txns if t["action"] == "Sell"]
-    closed = [{"id": 1, "account": "schwab_rollover_ira", "symbol": "SCHG", "close_date": "2026-07-23", "shares": 1000,
+    closed = [{"id": 1, "account": "schwab_rollover_ira", "symbol": "ZQAV", "close_date": "2026-07-23", "shares": 1000,
                "cost_basis": 29510.0, "pnl": 3860.0, "proceeds": 33370.0, "dedupe_key": "srt:1"},
               {"id": 2, "account": "journal_check", "symbol": "HEALTH", "close_date": "2026-08-07", "shares": 1,
                "cost_basis": 1, "pnl": 0.01, "dedupe_key": ""}]
-    excluded = [{"account": "schwab_rollover_ira", "symbol": "SCHG", "date": "2026-07-23", "qty": 5000, "proceeds": 166850.0}]
+    excluded = [{"account": "schwab_rollover_ira", "symbol": "ZQAV", "date": "2026-07-23", "qty": 5000, "proceeds": 166850.0}]
     rep = rc.reconcile_closed(sells, closed, txns, excluded)
     row = rep["rows"][0]
     assert row["issues"] == [] and row["note"].startswith("PARTIAL_BASIS_UNKNOWN")
@@ -180,7 +180,7 @@ def test_closed_reconcile_classifies_basis_unknown_and_flags_real_gaps():
 
 def test_closed_reconcile_detects_trade_date_shift():
     txns = [_tx("2026-07-14", "Sell", 10, 26.53, 265.3, "s1")]
-    closed = [{"id": 1, "account": "schwab_rollover_ira", "symbol": "SCHG", "close_date": "2026-07-13", "shares": 10,
+    closed = [{"id": 1, "account": "schwab_rollover_ira", "symbol": "ZQAV", "close_date": "2026-07-13", "shares": 10,
                "cost_basis": 200.0, "pnl": 65.3, "dedupe_key": "srt:1"}]
     rep = rc.reconcile_closed(txns, closed, [], [])
     assert any("DATE" in i for r in rep["rows"] for i in r["issues"])
@@ -224,7 +224,7 @@ def test_no_new_direct_position_store_readers():
 
 
 def test_broker_cost_basis_is_truth_by_operator_rule():
-    """Operator 2026-10-05 ("fix all"): broker-reported basis wins over stale anchors (AMANX, XLB, V Roth, PFLT)."""
+    """Operator 2026-10-05 ("fix all"): broker-reported basis wins over stale anchors (ZQCG, ZQBM, ZQCE Roth, ZQAP)."""
     import yaml
 
     cfg = yaml.safe_load((ROOT / "config" / "portfolio_positions.yaml").read_text())
