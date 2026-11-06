@@ -5174,23 +5174,7 @@ def portfolio_performance():
     accounts = perf.get("accounts", {})
     repriced_list = perf.get("reconstructed", [])
 
-    # Overlay 1D with canonical market day (matches header TODAY). The 1D comes from
-    # portfolio_totals.day_change; inject the live per-position day change (Finviz day %) so the
-    # Returns 1D equals the header TODAY instead of the stale repricer $0-undercount (2026-07-21 audit).
-    try:
-        _live_dc = _live_portfolio_day_change(holdings.get("holdings") or [])
-        if _live_dc is not None and _live_dc != 0:
-            _pt = dict(holdings.get("portfolio_totals") or {})
-            _pt["day_change"] = _live_dc
-            try:
-                _tv = float(_pt.get("total_value") or 0)
-            except (TypeError, ValueError):
-                _tv = 0
-            if _tv and (_tv - _live_dc):
-                _pt["day_change_pct"] = round(_live_dc / (_tv - _live_dc) * 100, 4)
-            holdings = {**holdings, "portfolio_totals": _pt}
-    except Exception:
-        pass
+    holdings = _market_day_holdings(holdings)
     try:
         from portfolio_snapshot_sanity import apply_market_day_1d
 
@@ -5321,6 +5305,53 @@ def portfolio_performance():
     # Preserve the existing performance monetary semantics and evidence. The
     # read model adds honest UNKNOWN/coverage/clock metadata, never a new 1D sum.
     return _cio_truth_readers().performance_payload(result, holdings_doc=holdings)
+
+
+def _market_day_holdings(holdings: dict) -> dict:
+    """holdings.json with the live day change overlaid onto portfolio_totals.
+
+    The ONE input behind /portfolio/performance periods.1D (Home Accounts 1D) and
+    /overview today_move (header TODAY), so the two surfaces cannot diverge.
+    portfolio_totals.day_change gets the live per-position day change (Finviz
+    day %) instead of the stale repricer $0-undercount (2026-07-21 audit).
+    """
+    try:
+        _live_dc = _live_portfolio_day_change(holdings.get("holdings") or [])
+        if _live_dc is not None and _live_dc != 0:
+            _pt = dict(holdings.get("portfolio_totals") or {})
+            _pt["day_change"] = _live_dc
+            try:
+                _tv = float(_pt.get("total_value") or 0)
+            except (TypeError, ValueError):
+                _tv = 0
+            if _tv and (_tv - _live_dc):
+                _pt["day_change_pct"] = round(_live_dc / (_tv - _live_dc) * 100, 4)
+            holdings = {**holdings, "portfolio_totals": _pt}
+    except Exception:
+        pass
+    return holdings
+
+
+def _overview_with_today_move():
+    """GET /api/v2/overview: the CIO read model plus today_move (LIVEFIX-H 2026-11-06).
+
+    today_move republishes the performance market-day 1D (the Accounts-table
+    figure) with its mark session and coverage census; it never adds a new sum.
+    """
+    truth = _cio_truth_readers()
+    out = truth.overview_payload(overview(), db_query=_db_query)
+    try:
+        from portfolio_snapshot_sanity import account_market_days, portfolio_market_day
+
+        md_holdings = _market_day_holdings(_load_json(STATE_DIR / "holdings.json") or {})
+        out["today_move"] = truth.today_move_payload(
+            portfolio_market_day(md_holdings), account_market_days(md_holdings), out.get("today_pnl") or {}
+        )
+    except Exception as exc:  # noqa: BLE001 -- UNKNOWN is explicit, never a guessed figure
+        out["today_move"] = {"contract_version": "TodayMove@v1", "status": "UNKNOWN", "change": None,
+                             "session_date": None,
+                             "gap": {"reason": f"market-day move unavailable: {type(exc).__name__}: {exc}"[:200]}}
+    return out
 
 
 def research_ticker(symbol: str):
@@ -48735,7 +48766,7 @@ ROUTES = {
     "/api/v2/atm/protection-advisory-outcomes": lambda: _atm_advisory_outcomes(),
     "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
-    "/api/v2/overview": lambda: _cio_truth_readers().overview_payload(overview(), db_query=_db_query),
+    "/api/v2/overview": lambda: _overview_with_today_move(),
     "/api/v2/portfolio/holdings": lambda: _cio_truth_readers().holdings_payload(
         portfolio_holdings(), db_query=_db_query
     ),

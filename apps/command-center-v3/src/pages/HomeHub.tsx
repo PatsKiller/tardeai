@@ -27,6 +27,7 @@ import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import HomeDoNow from './HomeDoNow'
 import { factLine, unwrapMarketRisk } from '../lib/marketRisk'
 import { TOKENS, toneVars } from '../lib/designTokens'
+import { deriveTodayPnlState } from '../lib/todayPnlState'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -91,7 +92,8 @@ function HomeClassic({ onDrill }: Props) {
   const healthFindings: any[] = (health?.findings ?? []).filter((f: any) => f.severity === 'critical' || f.severity === 'warning').slice(0, 3)
 
   const pv = overview?.portfolio_value
-  const todayChg = overview?.today_change
+  // Same rule as the header TODAY tile: proven economic total, else the reported market-day move.
+  const todayChg = deriveTodayPnlState(overview).change
   const journal = overview?.journal ?? {}
   const lastRepriced = overview?.last_repriced
   const pipelineCompleted = overview?.pipeline_completed

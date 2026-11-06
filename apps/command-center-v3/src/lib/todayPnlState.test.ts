@@ -186,5 +186,34 @@ check('absent legacy nested field can use explicitly named top backend reference
 const invalidMarketDate = deriveTodayPnlState(overview({ ...currentPnl, market_session: { status: 'KNOWN', latest_open_session: '2026-02-30' } }), NOW)
 check('impossible source date never becomes a validated latest opened session', invalidMarketDate.sessionUnknown && invalidMarketDate.latestOpenSession === null)
 
+// ---- LIVEFIX-H 2026-11-06: economic UNKNOWN must not hide the reported market-day move ----
+// Live: header TODAY read "ECONOMIC UNKNOWN · P&L session UNDATED" and Home "Today —" while the
+// Accounts table showed a dated 1D. The backend's today_move carries that same 1D figure.
+{
+  const unknownPnl = { status: 'UNKNOWN', complete: false, session_date: null, mark_session_date: '2026-11-04',
+    gap: { reason: 'synthetic economic gap', ticket: 'OI-044' },
+    market_session: { status: 'KNOWN', latest_open_session: '2026-11-04' } } as TodayPnlPayload
+  const move = { status: 'REPORTED', change: 4321.5, change_pct: 0.41234, session_date: '2026-11-04',
+    session_source: 'holdings.last_repriced', complete: true, missing_accounts: [], partial_accounts: [],
+    note: 'synthetic note' }
+  const base = { today_change: null, today_pct: null, today_pnl: unknownPnl }
+  const shown = deriveTodayPnlState({ ...base, today_move: move }, NOW)
+  check('H: reported move is the TODAY figure', shown.change === 4321.5 && shown.pct === 0.41)
+  check('H: reported move carries its session date (not UNDATED)', shown.sessionDate === '2026-11-04')
+  check('H: no ECONOMIC UNKNOWN label hides a reported move', !(shown.label ?? '').includes('ECONOMIC UNKNOWN'))
+  check('H: complete current move is ok tone', shown.tone === 'ok' && shown.reportedMove && shown.economicUnknown)
+  check('H: the economic caveat travels as a note', shown.moveNote === 'synthetic note')
+  const partial = deriveTodayPnlState({ ...base, today_move: { ...move, complete: false, partial_accounts: ['synthetic_b'], unknown_rows: 2 } }, NOW)
+  check('H: partial coverage shows the number WITH a coverage label', partial.change === 4321.5 && partial.label === 'INCOMPLETE COVERAGE' && partial.tone === 'warn')
+  const aged = deriveTodayPnlState({ ...base, today_move: { ...move, session_date: '2026-11-03' } }, NOW)
+  check('H: an older move session is shown and labelled AGED SOURCE', aged.change === 4321.5 && aged.agedSource && aged.label === 'AGED SOURCE')
+  const noMove = deriveTodayPnlState({ ...base, today_move: { status: 'UNKNOWN', change: null } }, NOW)
+  check('H: no reported move still shows nothing (never invented)', noMove.change === null && noMove.label?.includes('ECONOMIC UNKNOWN') === true)
+  const nonFinite = deriveTodayPnlState({ ...base, today_move: { ...move, change: Number.NaN } }, NOW)
+  check('H: non-finite move is not shown', nonFinite.change === null && !nonFinite.reportedMove)
+  const proven = deriveTodayPnlState({ ...overview(currentPnl), today_move: move }, NOW)
+  check('H: proven economic total still wins over the move', proven.change === 1234.56 && !proven.reportedMove)
+}
+
 console.log(`\ntodayPnlState: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)
