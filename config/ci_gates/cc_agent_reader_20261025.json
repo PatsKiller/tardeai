@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cc_agent_reader_20261025",
+  "files": [
+    "tests/test_cc_agent_reader_20261025.py"
+  ],
+  "comment": [
+    "Read-only agent identity: GET/HEAD on the loopback listener only; every write refused; never an operator; logged."
+  ]
+}

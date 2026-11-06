@@ -10,15 +10,21 @@
  *   - side-effect GET routes (/v2/morning-brief, /v2/bot-morning-brief, ?refresh=, ?force=) are aborted too;
  *   - buttons whose text/aria matches WRITE_WORDS are never clicked; confirm()/alert() are dismissed.
  *
- * Load protection: one page, one context; portfolio-server MemoryCurrent checked before every route
- * (pause 30s above 1.2 GB, abort above 1.3 GB). Refuses production 04:00–16:15 ET Mon–Fri (§28.8).
+ * Load protection: one page, one context; 4 s pacing between route×viewport navigations on a production
+ * base (SWEEP_PACE_MS, default 4000; 0 off-production); portfolio-server MemoryCurrent checked before every
+ * route (pause 30s above 1.2 GB, abort above 1.3 GB). Refuses production 04:00–16:15 ET Mon–Fri (§28.8).
  *
  * Run through scripts/site_sweep.sh. Env:
  *   SWEEP_BASE_URL   default http://127.0.0.1:7777
  *   SWEEP_OUT_DIR    output directory (findings.json, summary.md, shots/)
  *   SWEEP_ROUTES     optional comma list of route substrings to restrict the sweep
  *   SWEEP_VIEWPORTS  optional comma list of viewport names (m412,m390,d1440)
+ *   SWEEP_PACE_MS    ms between route×viewport navigations (default 4000 for a production base, 0 otherwise)
  *   SWEEP_NO_ROUTER_ONLY=1  skip routes that exist only in the router source (not on the nav rail)
+ *   SWEEP_READER_HEADER / SWEEP_READER_TOKEN_FILE  read-only agent identity (config/cc_auth.yaml agent_reader;
+ *                    scripts/site_sweep.sh fills both). The header is added ONLY to GET/HEAD requests to SWEEP_BASE_URL,
+ *                    never to other hosts and never to a write (writes are aborted before that). The server refuses
+ *                    any non-GET that presents it, so authenticated pages are swept and decisions stay impossible.
  */
 import { chromium, type Page, type BrowserContext, type Request } from '@playwright/test'
 import fs from 'node:fs'
@@ -32,6 +38,19 @@ const SHOTS = path.join(OUT, 'shots')
 const ROUTE_FILTER = (process.env.SWEEP_ROUTES || '').split(',').map((s: string) => s.trim()).filter(Boolean)
 const VP_FILTER = (process.env.SWEEP_VIEWPORTS || '').split(',').map((s: string) => s.trim()).filter(Boolean)
 const SKIP_ROUTER_ONLY = process.env.SWEEP_NO_ROUTER_ONLY === '1'
+const READER_HEADER = (process.env.SWEEP_READER_HEADER || '').trim()
+const READER_TOKEN = (() => {
+  const file = (process.env.SWEEP_READER_TOKEN_FILE || '').trim()
+  if (!READER_HEADER || !file) return ''
+  try { return fs.readFileSync(file, 'utf8').trim() } catch { return '' }
+})()
+const BASE_ORIGIN = new URL(BASE).origin
+/** Same-origin GET/HEAD get the read-only reader header; every other method is aborted; other hosts never see it. */
+function readerHeaders(req: Request): Record<string, string> | null {
+  const m = req.method()
+  if (!READER_TOKEN || (m !== 'GET' && m !== 'HEAD') || new URL(req.url()).origin !== BASE_ORIGIN) return null
+  return { ...req.headers(), [READER_HEADER.toLowerCase()]: READER_TOKEN }
+}
 const APP_SRC = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'App.tsx')
 
 const VIEWPORTS: Array<{ name: string; width: number; height: number; mobile: boolean }> = [
@@ -87,6 +106,16 @@ function etParts(d = new Date()) {
 }
 function isProduction(base: string): boolean {
   return /\/\/(127\.0\.0\.1|localhost|\[::1\]):7777\b/.test(base) || /ms01-openclaw\./.test(base)
+}
+// Operator live-crawl condition: 4 s pacing between pages. A production base defaults to 4000 ms; a
+// non-production base defaults to no pacing. SWEEP_PACE_MS overrides either way.
+const PACE_MS = (() => {
+  const raw = (process.env.SWEEP_PACE_MS || '').trim()
+  if (raw) { const n = Number(raw); return Number.isFinite(n) && n >= 0 ? n : 0 }
+  return isProduction(BASE) ? 4_000 : 0
+})()
+async function pace(): Promise<void> {
+  if (PACE_MS > 0) await new Promise(r => setTimeout(r, PACE_MS))
 }
 function marketWindowRefusal(): string | null {
   if (!isProduction(BASE)) return null
@@ -342,7 +371,7 @@ async function shoot(page: Page, route: string, tab: string, vp: string, list: F
   try {
     await page.screenshot({ path: p, type: 'jpeg', quality: 60, fullPage: true, timeout: 15_000 })
     for (const f of list) f.screenshot = path.relative(OUT, p)
-  } catch { /* screenshot best-effort */ }
+  } catch (e) { console.warn(`[sweep] no screenshot for ${route} ${tab} ${vp}: ${(e as Error).message}`) }
 }
 
 // ---------------------------------------------------------------- tabs, detail, dead buttons
@@ -435,7 +464,9 @@ async function sweepRoute(ctx: BrowserContext, route: string, vp: typeof VIEWPOR
     const m = req.method()
     if (!['GET', 'HEAD', 'OPTIONS'].includes(m)) { writes.push({ tab: currentTab, by: lastClick.label, req: `${m} ${req.url().replace(BASE, '')}` }); return r.abort('blockedbyclient') }
     if (SIDE_EFFECT_URL.test(req.url())) { sideEffects.push(req.url().replace(BASE, '')); return r.abort('blockedbyclient') }
-    return r.continue()
+    // Read-only agent identity: same-origin GET/HEAD only (the token never leaves the swept origin).
+    const headers = readerHeaders(req)
+    return headers ? r.continue({ headers }) : r.continue()
   })
   const url = BASE + route
   const t0 = Date.now()
@@ -624,12 +655,18 @@ async function main() {
   const ctx = await browser.newContext({ deviceScaleFactor: 1, serviceWorkers: 'block' })
   ctx.on('page', async p => { if (await p.opener()) p.close().catch(() => {}) }) // popups/target=_blank never stay open
   const probe = await ctx.newPage()
+  await probe.route('**/*', async r => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(r.request().method())) return r.abort('blockedbyclient')
+    const headers = readerHeaders(r.request())
+    return headers ? r.continue({ headers }) : r.continue()
+  })
   await probe.setViewportSize({ width: 1440, height: 900 })
   const nav = await navRoutes(probe)
   await probe.close()
   const routes: Array<{ route: string; source: string }> = nav.map(r => ({ route: r, source: 'nav' }))
   if (!SKIP_ROUTER_ONLY) for (const r of routerRoutes()) if (!routes.some(x => x.route === r)) routes.push({ route: r, source: 'router-only' })
   const todo = routes.filter(r => !SKIP_ROUTES.some(re => re.test(r.route)) && (!ROUTE_FILTER.length || ROUTE_FILTER.some((f: string) => r.route.includes(f))))
+  console.log(READER_TOKEN ? `[sweep] authenticated as read-only agent reader (${READER_HEADER})` : '[sweep] unauthenticated (no agent reader token): authenticated pages may show refusals')
   console.log(`[sweep] ${todo.length} routes (${nav.length} nav) × ${VIEWPORTS.length} viewports → ${OUT}`)
   const onSig = () => { aborted = aborted || 'interrupted'; writeReport(todo); process.exit(130) }
   process.on('SIGINT', onSig); process.on('SIGTERM', onSig)
@@ -638,6 +675,7 @@ async function main() {
     const vps = r.source === 'nav' ? VIEWPORTS : VIEWPORTS.filter(v => v.name === 'm412').concat(VIEWPORTS.length && !VIEWPORTS.some(v => v.name === 'm412') ? [VIEWPORTS[0]] : [])
     for (const vp of vps) {
       if (!await memoryGate()) { console.error(`[sweep] ABORT: ${aborted}`); break outer }
+      await pace() // operator live-crawl condition: 4 s between route×viewport navigations on production
       await sweepRoute(ctx, r.route, vp, r.source)
       writeReport(todo) // incremental: a crash keeps what was found
     }
@@ -647,4 +685,4 @@ async function main() {
   console.log(`[sweep] done in ${((Date.now() - startedAt) / 60000).toFixed(1)} min; ${findings.length} findings → ${OUT}/summary.md`)
   if (aborted) process.exit(2) // partial sweep: never report success
 }
-main().catch(e => { console.error(e); try { writeReport([]) } catch { /* */ } process.exit(1) })
+main().catch(e => { console.error(e); try { writeReport([]) } catch (w) { console.error('[sweep] could not write the empty report:', w) } process.exit(1) })
