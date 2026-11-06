@@ -127,7 +127,8 @@ P_CUR3 = [
     "NVDA could lose 5.0 percent.",
     "NVDA could lose 5.0%.",
 ]
-ALLOWED = ["Risk is 50 with 32 points from options flow, 3.97 P/C.", "Options flow scores 32 at 3.85x."]
+# Template mode: what passes is a phrase CHOICE rendered from the card's own names and figures, never model prose.
+ALLOWED = ['{"phrases": [{"id": "lead"}]}', '{"phrases": [{"id": "score"}, {"id": "detail"}]}']
 
 
 def _cfg():

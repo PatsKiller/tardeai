@@ -38,7 +38,8 @@ def _mr(tier="ORANGE", state="evaluated", score=63, as_of=None):
 
 
 ASSESS = {
-    "tier": "RED",
+    # YELLOW: RED is refused by the code floor before any config (review #2406 F2), so the prose checks run on YELLOW
+    "tier": "YELLOW",
     "score": 83,
     "confirming": {"n": 5, "of": 9},
     # the contributor's displayed figures are the ONLY grounding material besides the score (review of #2362, B3)
@@ -62,12 +63,15 @@ def test_grounded_rewrite_replaces_only_the_why_line():
     out = cur.curate(
         CARD,
         ASSESS,
-        call_model=lambda p, t: ("Futures fell 1.6% after hours and options hedging hit 3.31.", "grok"),
+        call_model=lambda p, t: ('{"phrases": [{"id": "lead"}, {"id": "detail"}]}', "grok"),
         cfg=_cfg(),
     )
     assert out["curated"] is True and out["lane"] == "grok"
     lines = out["text"].splitlines()
-    assert lines[1] == "Why: Futures fell 1.6% after hours and options hedging hit 3.31."
+    # template mode (review #2383 round 2): the model chooses phrases; the sentence is rendered from the card's figures
+    assert lines[1] == (
+        "Why: Futures carries the largest share of the score at 18 points. NQ -1.6% after hours ; QQQ P/C vol 3.31."
+    )
     assert lines[0] == CARD.splitlines()[0] and lines[2:] == CARD.splitlines()[2:]
 
 
@@ -76,7 +80,7 @@ def test_new_number_is_rejected_and_card_unchanged():
         CARD, ASSESS, call_model=lambda p, t: "Futures fell 4.7% and the index lost 212 points.", cfg=_cfg()
     )
     assert out["curated"] is False and out["text"] == CARD
-    assert out["reason"] == "ungrounded numbers rejected" and out["rejected"]
+    assert out["reason"].startswith("not a phrase choice")  # free prose never reaches the number check
 
 
 @pytest.mark.parametrize(
@@ -85,11 +89,11 @@ def test_new_number_is_rejected_and_card_unchanged():
 )
 def test_behaviour_wording_is_rejected(answer):
     out = cur.curate(CARD, ASSESS, call_model=lambda p, t: answer, cfg=_cfg())
-    assert out["curated"] is False and out["text"] == CARD and out["reason"] == "behaviour wording rejected"
+    assert out["curated"] is False and out["text"] == CARD and out["reason"].startswith("not a phrase choice")
 
 
 def test_timeout_sends_deterministic_card_without_waiting():
-    cfg = _cfg(timeout_s={"RED": 0.2, "default": 0.2})
+    cfg = _cfg(timeout_s={"YELLOW": 0.2, "default": 0.2})
 
     def slow(p, t):
         time.sleep(2)
@@ -113,14 +117,19 @@ def test_skip_tiers_and_disabled_never_call_the_model():
     def never(p, t):
         raise AssertionError("model must not be called")
 
-    assert cur.curate(CARD, ASSESS, call_model=never, cfg=_cfg(skip_tiers=["RED"]))["reason"].startswith("tier RED")
+    assert cur.curate(CARD, ASSESS, call_model=never, cfg=_cfg(skip_tiers=["YELLOW"]))["reason"].startswith(
+        "tier YELLOW"
+    )
+    red = dict(ASSESS, tier="RED")  # the code floor refuses RED even with skip_tiers empty (review #2406 F2)
+    assert cur.curate(CARD, red, call_model=never, cfg=_cfg(skip_tiers=[]))["reason"] == "tier RED is never curated"
     assert cur.curate(CARD, ASSESS, call_model=never, cfg=_cfg(enabled=False))["reason"] == "curation disabled"
 
 
 def test_card_without_why_line_gets_one_after_the_header():
     card = "\n".join(l for l in CARD.splitlines() if not l.startswith("Why:"))
-    out = cur.curate(card, ASSESS, call_model=lambda p, t: "Futures fell 1.6% after hours.", cfg=_cfg())
-    assert out["curated"] and out["text"].splitlines()[1] == "Why: Futures fell 1.6% after hours."
+    out = cur.curate(card, ASSESS, call_model=lambda p, t: '{"phrases": [{"id": "lead"}]}', cfg=_cfg())
+    assert out["curated"]
+    assert out["text"].splitlines()[1] == "Why: Futures carries the largest share of the score at 18 points."
 
 
 def test_policy_file_and_registry_row_exist():
