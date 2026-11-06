@@ -300,6 +300,9 @@ def check_empty_join_inputs(conn, pairs: Iterable[tuple[str, str]]) -> list[dict
     cur = conn.cursor()
     for consumer, table in pairs:
         try:
+            if not _SQL_IDENT.fullmatch(str(table)):
+                raise ValueError("table name is not a plain identifier")
+            # nosemgrep: tq-py-sql-fstring -- table fullmatches _SQL_IDENT above
             cur.execute(f"SELECT count(*) FROM {table}")
             n = cur.fetchone()[0]
         except Exception as exc:
@@ -322,6 +325,9 @@ def check_empty_join_inputs(conn, pairs: Iterable[tuple[str, str]]) -> list[dict
 #: is discovered rather than assumed.
 _TS_COLUMNS = ("created_at", "inserted_at", "scanned_at", "fetched_at",
                "collected_at", "recorded_at", "updated_at", "run_date", "ts")
+
+#: A table name may be interpolated into SQL only when it fullmatches this (checked at each use).
+_SQL_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _columns(cur, table: str) -> set[str]:
@@ -395,6 +401,9 @@ def check_declared_output_not_produced(conn, owner_map: dict[str, Any],
                     "add a created_at, or name the real column in the owner map"))
                 continue
             try:
+                if not (_SQL_IDENT.fullmatch(str(t)) and col in _TS_COLUMNS):
+                    raise ValueError("table or column is not a plain identifier")
+                # nosemgrep: tq-py-sql-fstring -- t fullmatches _SQL_IDENT, col in _TS_COLUMNS
                 cur.execute(f"SELECT max({col}) FROM {t}")
                 newest = cur.fetchone()[0]
             except Exception:
@@ -432,6 +441,9 @@ def check_stale_stores(conn, max_age_days: int = 14,
     """, (min_rows,))
     for (t,) in cur.fetchall():
         try:
+            if not _SQL_IDENT.fullmatch(str(t)):
+                continue
+            # nosemgrep: tq-py-sql-fstring -- t fullmatches _SQL_IDENT above
             cur.execute(f"SELECT max(created_at), count(*) FROM {t}")
             newest, n = cur.fetchone()
         except Exception:

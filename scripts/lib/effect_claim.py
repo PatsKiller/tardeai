@@ -305,6 +305,7 @@ class EffectClaimStore:
                 cols = {r[1] for r in self._l._conn.execute("PRAGMA table_info(effect_claims)").fetchall()}
                 for name, decl in (("pre_effect", "INTEGER NOT NULL DEFAULT 0"), ("fence_passed_at", "TEXT")):
                     if name not in cols:
+                        # nosemgrep: tq-py-sql-fstring -- name/decl come from the literal tuple above
                         self._l._conn.execute(f"ALTER TABLE effect_claims ADD COLUMN {name} {decl}")
 
     # -- owners --

@@ -71,6 +71,9 @@ AUTHORITY_REL = Path("config") / "data_source_authority.json"
 MAX_FILES = 12
 CACHE_TTL_S = 60
 TABLE_TIMEOUT_MS = 2000
+# Identifier shapes pg_table_probe accepts before interpolating a name (the same shapes measure_freshness checks).
+_PROBE_TABLE_RE = re.compile(r"[a-z_][a-z0-9_.]*")
+_PROBE_COL_RE = re.compile(r"[a-z_][a-z0-9_]*")
 
 #: The readiness criteria, in display order. ``source`` is where the check already lives.
 CRITERIA: tuple[dict, ...] = (
@@ -249,6 +252,7 @@ def pg_table_probe(conn_factory: Callable[[], Any]) -> Callable[[str, list[str]]
         try:
             with conn.cursor() as cur:
                 cur.execute("SET TRANSACTION READ ONLY")
+                # nosemgrep: tq-py-sql-fstring -- constant
                 cur.execute(f"SET LOCAL statement_timeout = {int(TABLE_TIMEOUT_MS)}")
                 cur.execute(
                     "SELECT to_regclass(%s) IS NOT NULL, "
@@ -279,7 +283,11 @@ def pg_table_probe(conn_factory: Callable[[], Any]) -> Callable[[str, list[str]]
                         )
                         out["declared_signal_mismatch"] = True
                         return out
-                    # identifiers come from the registry and are validated to [a-z0-9_] above
+                    # identifiers come from the registry; re-checked here, in this function, before use
+                    if not (_PROBE_COL_RE.fullmatch(col) and _PROBE_TABLE_RE.fullmatch(table)):
+                        out["detail"] = f"identifier refused: {table!r}.{col!r} is not [a-z0-9_]"
+                        return out
+                    # nosemgrep: tq-py-sql-fstring -- col/table fullmatch the identifier regexes just above
                     cur.execute(f'SELECT max("{col}") FROM "{table}"')
                     newest = cur.fetchone()[0]
                     out.update(
