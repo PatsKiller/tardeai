@@ -537,3 +537,27 @@ def test_the_rate_falls_back_to_the_window_only_when_no_sample_time_exists():
     assert row["growth_interval_source"] == "window", row["growth_interval_source"]
     assert row["growth_interval_hours"] == 24.0
     assert row["rate_bytes_per_day"] == 120.0, row["rate_bytes_per_day"]   # 120 bytes over the 24h window
+
+
+def test_an_unmeasured_size_is_not_printed_as_a_confident_zero():
+    """tq taxonomy #2 at this module: `(n or 0)` printed an unmeasured directory as `0.0G`.
+
+    A zero here is not "nothing there" — it is "we never got a size", and an alert that says 0.0G tells the operator a
+    directory is empty when the `du` that would have measured it failed. The text must say what it does not know, and a
+    real zero must still read as zero.
+    """
+    assert DMON._gb(None) == "size unknown"
+    assert DMON._gb(0) == "0.0G"        # a measured zero IS a measurement
+    assert DMON._gb(1024 ** 3) == "1.0G"
+    assert DMON._gb_delta(None) == "change unknown"
+    assert DMON._gb_delta(2 * 1024 ** 3) == "+2.0G"
+
+    text = DMON.hotspot_alert_text(
+        {"id": "hot", "bytes": None, "baseline_bytes": 5 * 1024 ** 3, "purge": "none"})
+    assert "size unknown" in text and "change unknown" in text
+    assert "0.0G" not in text, text
+
+    # a hotspot with both ends measured still prints the numbers, so the guard did not swallow the real case
+    measured = DMON.hotspot_alert_text(
+        {"id": "hot", "bytes": 6 * 1024 ** 3, "baseline_bytes": 4 * 1024 ** 3, "purge": "none"})
+    assert "6.0G" in measured and "+2.0G" in measured, measured
