@@ -136,6 +136,26 @@ def test_a_check_needs_a_different_active_coordinator(tmp_path):
     assert kinds.count("check_request") == 1 and kinds.count("check_ok") == 1
 
 
+def test_a_check_answers_the_request_the_panel_shows_as_pending(tmp_path):
+    """codex-cloud P2 at :1248: `pending_checks` keeps the OLDEST unanswered request per (subject, sha) and THAT is
+    what the panel shows; the resolution lookup took the NEWEST. With a duplicate request, the different-coordinator
+    guard judged the newer one, so the reader was refused for answering a request they were never shown."""
+    assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
+    assert appoint(tmp_path, "codex-a", "member", "agents") == 0
+    assert run(tmp_path, "check", "request", "pr:9", "--sha", "deadbeef", "--by", "claude-lead",
+               "--reason", "raised by the lead") == 0
+    assert run(tmp_path, "check", "request", "pr:9", "--sha", "deadbeef", "--by", "codex-a",
+               "--reason", "duplicate") == 0
+    shown = C.pending_checks(ledger(tmp_path))
+    assert [(e["coordinator"], e.get("detail")) for e in shown] == [("claude-lead", "raised by the lead")]
+    # codex-a answers the request the panel displays; it must be accepted, not refused as self-approval.
+    assert run(tmp_path, "check", "ok", "pr:9", "--sha", "deadbeef", "--by", "codex-a") == 0
+    assert C.pending_checks(ledger(tmp_path)) == []
+    # The self-approval guard still holds when the ONLY request is your own.
+    assert run(tmp_path, "check", "request", "pr:10", "--sha", "cafe", "--by", "codex-a") == 0
+    assert run(tmp_path, "check", "ok", "pr:10", "--sha", "cafe", "--by", "codex-a") == 2
+
+
 def test_a_stale_coordinator_cannot_answer_a_check(tmp_path):
     assert appoint(tmp_path, "claude-lead", "lead", "release") == 0
     assert appoint(tmp_path, "codex-a", "member", "agents") == 0

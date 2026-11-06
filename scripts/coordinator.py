@@ -1258,8 +1258,12 @@ def cmd_check(args) -> int:
             event = {"schema": SCHEMA_EVENT, "ts": now_iso(), "coordinator": args.by, "territory": None,
                      "kind": kind, "subject": subject, "sha": sha, "detail": args.reason or None}
         else:
-            req = next((e for e in reversed(events) if str(e.get("kind")) == "check_request"
-                        and str(e.get("subject")) == subject and str(e.get("sha") or "") == sha), None)
+            # Answer the request the panel SHOWS as pending (codex-cloud P2 at :1248). ``pending_checks`` keeps the
+            # OLDEST unanswered request per (subject, sha) and this lookup took the NEWEST, so a duplicate request
+            # could make the panel show one coordinator's request while the different-coordinator guard judged
+            # another's -- the reader was refused for answering a request they never saw.
+            req = next((e for e in pending_checks(events)
+                        if str(e.get("subject")) == subject and str(e.get("sha") or "") == sha), None)
             if not req:
                 print(f"error: no check_request for {subject} @ {sha[:12]}", file=sys.stderr)
                 return 2
