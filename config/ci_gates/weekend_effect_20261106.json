@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "weekend_effect_20261106",
+  "files": [
+    "tests/test_weekend_effect_20261106.py"
+  ],
+  "anchor": "WEEKEND_EFFECT_20261106",
+  "comment": [
+    "ANCHOR: WEEKEND_EFFECT_20261106 — the Friday-close to Monday close/open effect is measured from the base-rate table",
+    "under the same stress conditions, beside every other session on those conditions, and stated with n, median, share",
+    "lower and date range (Friday to Sunday only), or as too few with the count. Never assumed, never scored."
+  ]
+}
