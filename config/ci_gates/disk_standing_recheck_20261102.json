@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_standing_recheck_20261102",
+  "files": [
+    "tests/test_disk_standing_recheck_20261102.py"
+  ],
+  "anchor": "DISK_STANDING_RECHECK_20261102",
+  "comment": [
+    "ANCHOR: DISK_STANDING_RECHECK_20261102 — apply-time evidence recheck: a transiently opaque process is retried (bounded) instead of refusing the pass; the refusing check is named in refusal_detail and the operator digest. Fixtures only, no host paths."
+  ]
+}

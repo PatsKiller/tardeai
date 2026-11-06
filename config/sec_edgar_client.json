@@ -1,0 +1,10 @@
+{
+  "_comment": "SEC EDGAR fair-access client settings (DSN-20261101-issuer-segment-lookthrough §2.6). Every SEC caller reads the User-Agent through scripts/lib/sec_edgar_client.py. 'contact' ships as the placeholder and is NEVER filled in this committed file (public repo): the operator sets it in the local override named by local_override_path (or the SEC_EDGAR_CLIENT_LOCAL environment variable), which is never committed. An empty, placeholder or invalid contact makes every SEC caller refuse to send; there is no fallback address.",
+  "app": "TradeAI",
+  "contact": "REQUIRED: project contact address (operator)",
+  "max_rps": 8,
+  "spacing_s": 0.15,
+  "timeout_s": 20,
+  "local_override_path": "~/.config/tradeai/sec_edgar_client.local.json",
+  "local_override_keys": ["contact"]
+}

@@ -1,5 +1,16 @@
 /**
- * Watchlist Intelligence Board (shadow) — Street rating primary;
+ * RETIRED shadow page — nothing mounts it, and this file is not what the operator sees.
+ *
+ * `/watchlist` is a compatibility redirect to `/watch?tab=intelligence&view=top_ideas` (App.tsx, where the
+ * comment reads "Legacy watchlist/screener nav → primary Intelligence (not the old card wall)"), and the
+ * surface that serves that URL is `WatchIntelligenceUnified.tsx`. The plain-word wording the retired page never
+ * received now lives there, landed by FQ-078 (PR 2611, cc-deepseek-4) in the component that renders it; this file
+ * is kept for reference under the never-delete rule and must not be read as a fix.
+ *
+ * `watchlistPlainWords.view.test.mjs` enforces the retirement: it fails if any non-test module imports this
+ * component, so mounting it again is a deliberate act that moves the gate with it.
+ *
+ * Original purpose: Watchlist Intelligence Board (shadow) — Street rating primary;
  * CIO/Maria only COMPLETE with immutable provenance. Zero provider calls on load.
  */
 import { useMemo, useState } from 'react'
@@ -122,14 +133,32 @@ function ReviewBox({ title, rev, deep }: { title: string; rev?: ReviewStatus; de
           <div style={{ fontSize: TYPE.sm, color: BB.amber, marginTop: 3, fontWeight: 800 }}>
             {rev?.display?.label || `${title}: NOT RUN`}
           </div>
+          {/* FQ-075: plain words, not policy/scheduling codes. Nothing is removed — the same facts are stated, and an
+              unfamiliar reason code is still shown, de-coded rather than shouted. */}
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
-            Provider NONE · Model NONE · Policy NO_CALL · Cost $0
-            {rev?.reason_code ? ` · ${rev.reason_code}` : ''}
+            No provider or model assigned · no external call · no cost yet
+            {rev?.reason_code ? ` · ${plainReason(rev.reason_code)}` : ''}
           </div>
         </>
       )}
     </div>
   )
+}
+
+// FQ-075: audit codes (NOT_SCHEDULED, NO_CALL, …) are for logs, not for the operator. Known codes get real sentences;
+// anything unknown is shown as lower-case words so a new code can never arrive shouting.
+const PLAIN_REASON: Record<string, string> = {
+  NOT_SCHEDULED: 'not scheduled',
+  NO_CALL: 'no external call',
+  NOT_RUN: 'not run yet',
+  NO_PROVIDER: 'no provider assigned',
+  NO_MODEL: 'no model assigned',
+  PENDING: 'waiting to run',
+}
+export function plainReason(code: string): string {
+  const key = String(code || '').trim().toUpperCase()
+  if (!key) return ''
+  return PLAIN_REASON[key] ?? key.toLowerCase().replace(/_/g, ' ')
 }
 
 export default function WatchlistIntelligenceBoard() {

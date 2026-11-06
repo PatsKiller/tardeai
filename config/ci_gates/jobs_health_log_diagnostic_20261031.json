@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_health_log_diagnostic_20261031",
+  "files": [
+    "tests/test_jobs_health_log_diagnostic_20261031.py"
+  ],
+  "anchor": "JOBS_HEALTH_LOG_DIAGNOSTIC_20261031",
+  "comment": [
+    "ANCHOR: JOBS_HEALTH_LOG_DIAGNOSTIC_20261031 — a host-cron failure whose wrapper event has only exit_code 1",
+    "shows the last error line of the job's declared log (written within 5 minutes of the failure), instead of",
+    "\"stderr diagnostic was not retained\". Hermetic."
+  ]
+}

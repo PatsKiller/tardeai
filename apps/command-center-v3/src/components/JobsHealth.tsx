@@ -19,7 +19,12 @@ export interface JobsHealthWire {
   summary: JobsSummary & Record<string, unknown>; coverage_gaps: string[]; incident_count: number
   data_errors?: { section: ConflictSection | null; unavailable_reason: string | null }
   monitor: { observed_at: string | null; status: string; cause: string | null; notification?: { status?: string; delivered?: boolean } | null }
+  watchers?: WatcherLight[]
 }
+export type WatcherStatus = 'ok' | 'degraded' | 'down' | 'absent'
+export interface WatcherLight { id: string; label: string; status: WatcherStatus; cause: string | null }
+const watcherTone = (status: WatcherStatus): Tone => status === 'ok' ? 'success' : status === 'degraded' ? 'warning' : 'danger'
+const watcherLabel: Record<WatcherStatus, string> = { ok: 'Watching', degraded: 'Not armed', down: 'Down', absent: 'Not registered' }
 const filters = [['attention', 'Needs attention'], ['all', 'All jobs'], ['market', 'Market hours only'], ['n8n', 'n8n'], ['cron', 'Host cron (moving to n8n)']] as const
 const panel: CSSProperties = { padding: 14, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0 }
 const tone = (result: JobResult): Tone => result === 'failed' ? 'danger' : result === 'missed' || result === 'unknown' ? 'warning' : result === 'succeeded' ? 'success' : 'neutral'
@@ -59,6 +64,18 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       <Link to="/ops/jobs" style={{ color: TOKENS.info, fontSize: TYPE.sm, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs</Link>
     </div>
     {error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>Jobs could not be read: {error}. {data ? 'The last observation remains visible below.' : 'Execution health is not measured.'}</div>}
+    <section aria-label="Watchers and alerts" data-testid="jobs-watchers" style={{ ...panel, display: 'grid', gap: 8 }}>
+      <h3 style={{ margin: 0, fontSize: TYPE.base }}>Watchers &amp; alerts</h3>
+      {data?.watchers?.length
+        ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 8 }}>
+            {data.watchers.map(w => <div key={w.id} role="status" style={{ padding: 10, borderRadius: RADIUS.sm, border: `1px solid ${toneVars(watcherTone(w.status)).border}`, background: toneVars(watcherTone(w.status)).bg, minWidth: 0 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: '50%', background: toneVars(watcherTone(w.status)).color, flexShrink: 0 }} /><strong style={{ fontSize: TYPE.base }}>{w.label}</strong></div>
+              <div style={{ fontSize: TYPE.sm, color: toneVars(watcherTone(w.status)).color, marginTop: 4 }}>{watcherLabel[w.status]}</div>
+              {w.cause && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginTop: 4, overflowWrap: 'anywhere' }}>{w.cause}</div>}
+            </div>)}
+          </div>
+        : <p style={{ margin: 0, color: TOKENS.text[2] }}>{loading ? 'Loading watchers…' : 'Watchers are not measured.'}</p>}
+    </section>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
       {metrics.map(([key, label, t]) => <CountTile key={key} testId={`jobs-tile-${key}`} label={label} tone={t} style={{ padding: 14 }}
         count={key === 'missed' ? jobsMissed(data?.summary) : jobsCount(data?.summary, key)} />)}

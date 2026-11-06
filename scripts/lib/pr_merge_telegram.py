@@ -29,6 +29,11 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+try:
+    from scripts.lib import pr_all_checks_green as pacg
+except ImportError:  # pragma: no cover — run from scripts/
+    from lib import pr_all_checks_green as pacg  # type: ignore
+
 SCHEMA = "PrMergeTelegramApproval@v1"
 LABEL = "operator-merge"
 DEFAULT_REPO = os.environ.get("TRADEAI_GITHUB_REPO", "PatsKiller/tardeai")
@@ -90,10 +95,41 @@ def _new_id() -> str:
     return secrets.token_hex(8)
 
 
+def _is_retired_bridge_row(r: dict[str, Any]) -> bool:
+    """A row the old guard bridge made: its prompt carried ``gapprove`` buttons, which now refuse."""
+    return bool(r.get("guard_bridge_request_id")) and guard_bridge_retired()
+
+
+def supersede_guard_bridge_rows(pr_number: int | None = None) -> int:
+    """Mark PENDING guard-bridge rows SUPERSEDED (all, or one PR's). Returns how many.
+
+    Such a row stays PENDING and delivered for up to 24 h, so without this a re-run would answer
+    ``already_notified`` and never send the native ``prmapprove`` buttons (review, 2026-10-28).
+    """
+    if not guard_bridge_retired():
+        return 0
+    rows = _load()
+    n = 0
+    for r in rows:
+        if r.get("status") != "PENDING" or not r.get("guard_bridge_request_id"):
+            continue
+        if pr_number is not None and int(r.get("pr_number") or 0) != int(pr_number):
+            continue
+        r["status"] = "SUPERSEDED"
+        r["settled_at"] = time.time()
+        r["settled_by"] = {"via": "guard_bridge_retired", "note": "re-sent with native prmapprove buttons"}
+        n += 1
+    if n:
+        _save(rows)
+    return n
+
+
 def find_pending(pr_number: int, head_sha: str | None = None) -> Optional[dict[str, Any]]:
     now = time.time()
     for r in _load():
         if r.get("status") != "PENDING":
+            continue
+        if _is_retired_bridge_row(r):
             continue
         if int(r.get("pr_number") or 0) != int(pr_number):
             continue
@@ -116,6 +152,7 @@ def mint_request(
     ttl: int = DEFAULT_TTL_SECONDS,
 ) -> dict[str, Any]:
     """Create a PENDING row. Does not send Telegram (caller sends)."""
+    supersede_guard_bridge_rows(pr_number)
     existing = find_pending(pr_number, head_sha)
     if existing:
         return existing
@@ -403,29 +440,36 @@ def mint_and_notify(
 
 
 def pr_check_rollup_green(pr_number: int, *, repo: str = DEFAULT_REPO) -> tuple[bool, dict[str, str]]:
-    """Return (all required success, {check: conclusion})."""
+    """(required checks completed SUCCESS and every executed check green, {check: conclusion}).
+
+    Every check counts, not only branch protection's required four: #2465 merged with `secret-scan`
+    red on four heads because every merge path read only the required list. A missing required check
+    is not evidence and blocks. The installed `gh` has no `--json` on `gh pr checks`, so this reads
+    the PR's own ``statusCheckRollup`` — which is the rollup for its current head.
+    """
     proc = subprocess.run(
-        ["gh", "pr", "checks", str(pr_number), "--repo", repo, "--json", "name,state,bucket"],
+        ["gh", "pr", "view", str(pr_number), "--repo", repo, "--json", "headRefOid,statusCheckRollup"],
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
     )
-    statuses: dict[str, str] = {}
-    if proc.returncode == 0 and proc.stdout.strip():
+    doc: dict[str, Any] = {}
+    if proc.stdout.strip():
         try:
-            rows = json.loads(proc.stdout)
+            doc = json.loads(proc.stdout) or {}
         except json.JSONDecodeError:
-            rows = []
-        for row in rows:
-            name = str(row.get("name") or "")
-            bucket = str(row.get("bucket") or row.get("state") or "").lower()
-            if name in REQUIRED_CHECKS:
-                statuses[name] = "SUCCESS" if bucket in ("pass", "success") else bucket.upper()
-    if not statuses:
+            doc = {}
+    rollup = doc.get("statusCheckRollup") or []
+    run_rows = pacg.normalize_rollup(rollup)
+    statuses = {row["name"]: (row["conclusion"].upper() or "PENDING") for row in run_rows}
+    if not run_rows:
         return False, {c: "UNKNOWN" for c in REQUIRED_CHECKS}
-    missing = [c for c in REQUIRED_CHECKS if statuses.get(c) != "SUCCESS"]
-    return (not missing), statuses
+    result = pacg.evaluate_merge_rollup(rollup, required=REQUIRED_CHECKS)
+    missing = [c for c in REQUIRED_CHECKS if c not in statuses]
+    for c in missing:
+        statuses[c] = "MISSING"
+    return (bool(result["ok"]) and not missing), statuses
 
 
 def label_names(pr: dict[str, Any]) -> set[str]:
@@ -465,6 +509,21 @@ def parse_guard_reason(reason: str) -> Optional[dict[str, str]]:
     return None
 
 
+def guard_bridge_retired() -> bool:
+    """True while Telegram remote guard grants are retired (operator-ratified on PR #2185).
+
+    The bridge asks for a short ``telegram`` guard grant and a tap issues it through
+    ``bin/guard grant`` — a Telegram-issued guard grant, which is exactly what the
+    retirement refuses. Callers default to the native ``prmapprove`` path instead,
+    which grants nothing (AGENTS.md §25.10: the digest, or a per-PR Approve).
+    """
+    try:
+        from scripts.lib import guard_remote_approval as gra
+    except ImportError:
+        from lib import guard_remote_approval as gra  # type: ignore
+    return bool(gra.telegram_remote_grants_retired())
+
+
 def mint_and_notify_via_guard(
     *,
     pr_number: int,
@@ -480,7 +539,21 @@ def mint_and_notify_via_guard(
 
     The short ``telegram`` grant proves the tap; it is not used for anything else.
     A waiter (``wait_guard_and_apply``) then adds ``operator-merge``.
+
+    RETIRED with Telegram remote guard grants (PR #2185): refuses before minting
+    anything, so no undelivered PENDING row is left behind. Use ``mint_and_notify``.
     """
+    if guard_bridge_retired():
+        return {
+            "ok": False,
+            "pr_number": pr_number,
+            "via": "guard",
+            "reason": "GUARD_BRIDGE_RETIRED",
+            "telegram": "not sent: the guard bridge needs a Telegram guard grant, which is retired "
+            "(PR #2185); use the native prmapprove path (--native / PR_MERGE_TELEGRAM_VIA_GUARD=0) "
+            "or the PR merge digest",
+            **({"dry_run": True, "would_send": False} if dry_run else {}),
+        }
     if dry_run:
         return {
             "ok": True,
@@ -504,9 +577,7 @@ def mint_and_notify_via_guard(
     except ImportError:
         from lib import guard_remote_approval as gra  # type: ignore
 
-    g_reason = guard_reason(
-        pr_number=pr_number, request_id=rec["request_id"], head_sha=head_sha
-    )
+    g_reason = guard_reason(pr_number=pr_number, request_id=rec["request_id"], head_sha=head_sha)
     try:
         greq = gra.mint_request(
             GUARD_BRIDGE_SCOPE,

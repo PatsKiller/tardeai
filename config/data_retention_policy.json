@@ -1990,11 +1990,11 @@
     "scripts/weekly_disk_cleanup_notify.py"
    ],
    "kind": "FILE_PRUNE",
-   "targets": "old release dirs (keep 2; release-local data/ + state/ files CURRENT does not hold byte-identically are archived first), ~/backups >45/60 d, preclean dirs >7 d",
-   "scheduler": "systemd tradeai-disk-hygiene-enforcer.timer 04:15 + tradeai-weekly-disk-cleanup.timer Sun 06:30",
-   "archive": "release-local data: archive-then-unlink to archive/file_prune/release_local_data (D8.3); stale backup piles: none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "2026-10-21 operator D8.3: release-local data archived before a release is removed (a failed archive keeps the release); backup piles unchanged (DEPLOY/BACKUP); D6 2026-10-21: weekly_disk_cleanup_notify.py runs NO DB retention (its librarian + db_retention steps were removed)"
+   "targets": "none since 2026-10-27 (plan only: old release dirs keep 2, ~/backups >45/60 d and preclean dirs >7 d are reported, never removed)",
+   "scheduler": "systemd tradeai-disk-hygiene-enforcer.timer 04:15 (its --apply is refused: plan + exit 77) + tradeai-weekly-disk-cleanup.timer Sun 06:30 (report only)",
+   "archive": "n/a (deletes nothing)",
+   "state": "RETIRED",
+   "note": "2026-10-27 AGENTS.md \u00a724.12 + \u00a70 rule 6: both scripts remove nothing. disk_hygiene_enforcer.py --apply returns REFUSED_OUTSIDE_24_12 (exit 77) with the dry-run plan; weekly_disk_cleanup_notify.py runs the enforcer --dry-run and lists preclean dirs without removing them. Release-dir removal is scripts/disk_hygiene.py's (n8n lane disk-hygiene / operator CLI); backups are operator-only. Earlier: 2026-10-21 operator D8.3 (release-local data archived before a release is removed) and D6 (no DB retention in the weekly job)."
   },
   {
    "id": "backup_rotation",

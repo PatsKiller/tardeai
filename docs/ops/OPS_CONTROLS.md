@@ -18,6 +18,22 @@ Operator decisions (2026-10-22): all ops configuration editable from a CC Ops pa
 API contract: docs/ops/OPS_CONTROLS_API.md
 ```
 
+
+## 2026-10-27: release-train kinds removed (operator directive)
+
+The retired release train's Ops → Controls kinds are gone: `release_train.pause`, `.arm`, `.run_now`,
+`.change_scope`, `.revoke`. What remains for deploys, under new names:
+
+| Kind | Direction | Executor | What it does |
+|---|---|---|---|
+| `deploy.stop` | safe | cc | `deploy_stop.request_stop` — latches the deploy STOP the host `deploy_on_main` poller refuses on |
+| `deploy.resume` | risky | applier | `ReleaseControl.resume` with a fresh-passkey `PasskeyProof`; phrase `RESUME EPOCH <n>`; archives the STOP latch |
+
+The state section `release_train` is now `deploy` (`mode`, `epoch`, `latch`, `stop_phase`, `stop_reason`, `error`;
+no `run_now`). `config/ops_controls.json` key `release_train.state_dir` is now `deploy.state_dir`. A request row
+recorded under an old `release_train.*` kind is history; a new request with one is refused as an unknown kind.
+Sections below are history.
+
 ## 1. What it is
 
 The Command Center page **System → Ops Controls** (`/v3/system/ops-controls`) shows six tabs from the mockup — Jobs &

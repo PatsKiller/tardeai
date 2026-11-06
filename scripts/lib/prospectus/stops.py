@@ -86,6 +86,18 @@ def read_broker_rows(sources: Any, sym: str) -> Optional[list[dict]]:
     return [dict(r) for r in rows] if isinstance(rows, (list, tuple)) else None
 
 
+def read_fills(sources: Any, rows: Optional[list[dict]]) -> Optional[dict]:
+    """Ledger settlement of filled stop observations (cio_truth.fill_ledger). None = ledger unreadable."""
+    if hasattr(sources, "stop_fills"):
+        return sources.stop_fills(rows)
+    truth = _mod("lib.cio_truth", "scripts.lib.cio_truth")
+    try:
+        db = sources.db()
+    except Exception:  # noqa: BLE001 - no ledger means filled states say so, never an error page
+        return None
+    return truth.fill_ledger(rows, db_query=db)
+
+
 def read_planned(sources: Any) -> dict:
     if hasattr(sources, "planned_stops"):
         return sources.planned_stops() or {}
@@ -146,7 +158,7 @@ def policy_band(sym: str, *, atr_pct: Optional[float], position_value: Optional[
 
 # ── the block ─────────────────────────────────────────────────────────────────────────────────────────────────
 def broker_view(rows: Optional[list[dict]], planned: dict, accounts: list[str], sym: str, *,
-                now: datetime, label_fn: Callable[[Any], str]) -> dict:
+                now: datetime, label_fn: Callable[[Any], str], fills: Optional[dict] = None) -> dict:
     """One state for the name across its accounts, from the same stop_for Risk uses."""
     if rows is None:
         return {"level": None, "state": "unknown", "as_of": None, "source": BROKER_SOURCE,
@@ -154,12 +166,12 @@ def broker_view(rows: Optional[list[dict]], planned: dict, accounts: list[str], 
     truth = _mod("lib.cio_truth", "scripts.lib.cio_truth")
     per = []
     for account in accounts or []:
-        st = truth.stop_for(account, sym, broker_rows=rows, planned=planned, now=now)
+        st = truth.stop_for(account, sym, broker_rows=rows, planned=planned, now=now, fills=fills)
         cat = st.get("stop_state") if st.get("stop_state") in ("active", "pending_activation", "filled", "unknown") else (
             "planned" if st.get("stop_source") == "planned" and st.get("stop_price") is not None else "none")
         per.append({"account": label_fn(account), "category": cat, "state": _CONTRACT_STATE[cat],
                     "level": _f(st.get("stop_price")), "as_of": _iso(st.get("stop_captured_at")),
-                    "raw_status": st.get("stop_status_raw")})
+                    "raw_status": st.get("stop_status_raw"), "note": st.get("stop_note")})
     best = min(per, key=lambda p: _STATE_ORDER.index(p["category"]), default=None)
     if best is None:
         return {"level": None, "state": "none", "as_of": None, "source": BROKER_SOURCE, "accounts": []}
@@ -225,6 +237,10 @@ def recommended_view(advisory: Optional[dict], band: Optional[dict], *, last: Op
 def comparison(rec: dict, broker: dict, *, last: Optional[float]) -> str:
     h, b, state = rec.get("level"), broker.get("level"), broker.get("state")
     if state == "filled":
+        note = next((a.get("note") for a in broker.get("accounts") or [] if a.get("category") == "filled" and a.get("note")),
+                    None)
+        if note:
+            return f"The broker {note}."
         return (f"The broker stop filled{(' on ' + str(broker.get('as_of'))[:10]) if broker.get('as_of') else ''}; "
                 "holdings may not have synced yet.")
     if b is not None and state in ("active", "resting", "unknown") and h:
@@ -283,8 +299,9 @@ def build(sources: Any, bundle: Any, *, holding: Optional[dict], cfg: dict | Non
         rec, gaps = recommended_view(read_advisory(sources, sym), band, last=last, shares=shares, now=now,
                                      max_age_days=float(conf.get("advisory_max_age_days", ADVISORY_MAX_AGE_DAYS)))
         label_fn = _mod("lib.account_display", "scripts.lib.account_display").account_label
-        broker = broker_view(read_broker_rows(sources, sym), read_planned(sources), list(holding.get("accounts") or []),
-                             sym, now=now, label_fn=label_fn)
+        broker_rows = read_broker_rows(sources, sym)
+        broker = broker_view(broker_rows, read_planned(sources), list(holding.get("accounts") or []),
+                             sym, now=now, label_fn=label_fn, fills=read_fills(sources, broker_rows))
     except Exception as exc:  # noqa: BLE001 - the stop plan never blocks the prospectus
         return {"recommended": {"level": None, "method": None, "distance_pct": None, "usd_at_risk": None,
                                 "policy": POLICY, "as_of": None},

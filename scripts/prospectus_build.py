@@ -128,7 +128,8 @@ def apply(args: argparse.Namespace, sources, cfg: dict, base: Path) -> dict:
         from scripts.lib.prospectus.pipeline import handle_blocked
         summary["batch_collect"] = batch.collect(base, cfg, now=datetime.now(timezone.utc))
         summary["batch_submit"] = batch.submit_due(base, sources, cfg, now=datetime.now(timezone.utc),
-                                                   force=args.batch_now, on_blocked=handle_blocked)
+                                                   force=args.batch_now,
+                                                   on_blocked=lambda sym, exc: handle_blocked(base, sym, exc))
     signal = {"ok_at": datetime.now(timezone.utc).isoformat(), "lane": LANE, "enqueued": queued, **summary,
               "queue_depth": len(store.read_queue(base)["items"])}
     store.write_json(Path(state_root()) / "data/runtime" / f"{LANE}_last.json", signal)

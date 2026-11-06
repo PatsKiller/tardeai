@@ -13,8 +13,9 @@ intent consumer turns into an incident fan-in incident and the incident notifier
 queued through CommsIntentStore directly (:func:`queue_host_intent`, same rows/dedupe/cap as host_comms_intents): that
 module's import closure reaches broker modules via the gateway, which an n8n lane must not
 (tests/test_lane_transitive_capabilities_20261015.py). Staying in a
-band sends nothing: dedupe is by band, never by the raw percent. The intent carries the top consumers by category
-and the reclaimable estimate from the latest disk_hygiene manifest.
+band sends nothing: dedupe is by band, never by the raw percent. A bounded hourly category snapshot is kept in
+the existing state and receipt even when the band stays unchanged. Unknown/partial sizes stay explicit.
+The intent carries the measured top consumers and the reclaimable estimate from the latest hygiene manifest.
 
 INODES (operator 2026-10-19, after /tmp, a tmpfs, reached 97% inodes with 20G of bytes free and tools failed with
 ENOSPC): every mount is also banded by inode use% (statvfs f_files / f_ffree; used = f_files - f_ffree) against
@@ -38,12 +39,15 @@ MBI_BEHAVIOR = 0. No broker, no network, no Telegram import, no DB.
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import json
 import os
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
@@ -63,6 +67,11 @@ SCRIPT = "scripts/disk_usage_monitor.py"
 STATE_SCHEMA = "DiskUsageMonitorState@v1"
 BANDS = ("ok", "warn", "critical")
 SKIP_DEPENDENCY = "dependency_unavailable"
+# Diagnostic work fits inside the existing 180s lane cap; these never widen it.
+CONSUMER_REFRESH_SECONDS = 3600
+CONSUMER_SCAN_BUDGET_SECONDS = 30
+CONSUMER_PATH_MAX_SECONDS = 10
+CONSUMER_RUN_DEADLINE_SECONDS = 120
 
 
 def measure(mount: str) -> Optional[dict[str, Any]]:
@@ -173,6 +182,95 @@ def transition(prev: Optional[str], cur: str) -> Optional[str]:
     return cur
 
 
+_INHERITED_SETTINGS = ("realert_minutes", "warn_pct", "critical_pct")
+
+
+def metric_policy(mon: Mapping[str, Any], band: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """The effective settings for ONE band. A band inherits every inherited setting from its parent monitor and may
+    override it — it cannot MISS one.
+
+    2026-11-04 (cx-openai-4): `monitor.inodes` never carried `realert_minutes`, so the inode band alerted on first
+    entry and then said nothing for as long as it stayed bad — the same 23-hour silence this change exists to end,
+    still present on the second band. Resolving every band through this ONE function is what makes a third band
+    inherit by construction: there is no path that reads a band's own dict for these settings.
+    """
+    if not isinstance(mon, Mapping) or "realert_minutes" not in mon:
+        raise ValueError("monitor.realert_minutes is required: a band with no re-alert interval is a one-shot")
+    merged = dict(mon)
+    merged.update({k: v for k, v in dict(band or {}).items() if k in _INHERITED_SETTINGS})
+    return merged
+
+
+def _minutes_since(stamp: Any, now: datetime) -> Optional[float]:
+    """Minutes from an ISO stamp to now; None when there is no usable stamp."""
+    if not stamp:
+        return None
+    try:
+        then = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=timezone.utc)
+    elapsed = (now - then).total_seconds() / 60.0
+    # A stamp in the FUTURE is a clock correction, not a reason to stay silent (cx-openai-4 R2): a run that really
+    # happened under a skewed clock left a stamp ahead of now, and treating the negative elapsed as "not due" made an
+    # ongoing critical band emit nothing for 25 hours — the exact defect this PR exists to fix. Unknown timing is
+    # reported as unknown, and every caller treats unknown as DUE.
+    return None if elapsed < 0 else elapsed
+
+
+def _minutes_since_last_alert(entry: Mapping[str, Any], now: datetime) -> Optional[float]:
+    return _minutes_since(entry.get("alerted_at"), now)
+
+
+def alert_for(prev: Optional[str], cur: str, entry: Mapping[str, Any], now: datetime,
+              mon: Mapping[str, Any]) -> Optional[str]:
+    """One decision point, ONE clock, ONE named exception, and a PENDING state that is not lost.
+
+    Four measured defects shaped it, all 2026-11-04:
+    * alerting only on a band CHANGE let `/` sit critical for 23 hours on a single alert;
+    * throttling only the unchanged path let an ok<->critical flap produce 96 alerts in 24 hours;
+    * letting a recovery OR ANY severity increase bypass the interval produced 65 alerts in 24 hours against a promise
+      of 25 (`critical,critical,ok` repeated: each recovery reset the clock, so the next critical called itself an
+      escalation);
+    * comparing against the PREVIOUSLY OBSERVED band DISCARDED a recovery: the run records `band = ok` every poll, so a
+      recovery throttled at +75 made every later poll look "unchanged ok" and it was never sent. The last REPORTED
+      band stayed critical and was ignored.
+
+    The comparison is against the band last REPORTED (`alerted_band`), not the band last seen. Inside the window
+    nothing is said and the pending state is kept, so it goes out the moment the interval allows — delayed, never
+    discarded.
+
+    WARN -> CRITICAL IS THE ONE EXCEPTION (cc-deepseek-2's measurement, cx-openai-4 R6). A blanket interval made the
+    escalation itself silent: a mount at 85% is reported WARN, crosses 90% at the next poll, and the operator heard
+    nothing for a full interval — 45 minutes at the shipped 15-minute poll and 60-minute interval, long enough for the
+    mount to reach 100%, and the ledger this lane writes lives on that mount. "You were told it is bad, now it is
+    worse" is not a restatement and must not wait.
+
+    It is narrow on purpose, and the narrowness is what keeps the bound: the bypass needs `alerted_band == "warn"`
+    exactly, and delivering it sets `alerted_band = "critical"`, so every later critical is a REPEAT and stays
+    interval-gated, and a re-cross after a recovery is interval-gated too because only a *reported* recovery can set
+    the band back. Measured over 24 h at 15-minute polls: 24-25 on two- and four-band cycles, and **up to 33 on a
+    three-band cycle** (`warn,critical,ok` repeating every 45 minutes), because such a cycle pays a warn, an escalation
+    and a recovery every 90 minutes and neither the escalation nor the recovery may be suppressed. That is the stated
+    ceiling and the reason for it (cc-deepseek-5's re-read, 2026-11-04); a promise of 25 on every shape would require
+    dropping one of those two guarantees.
+
+    `prev` is kept for call-site symmetry and is deliberately NOT consulted: only the last REPORTED band decides.
+    """
+    interval = float(mon["realert_minutes"])       # metric_policy guarantees it; a band cannot miss it
+    reported = str(entry.get("alerted_band") or "")
+    if reported == "warn" and cur == "critical":
+        return cur      # escalation: said now, not at the end of the window (see above; bounded by construction)
+    since = _minutes_since_last_alert(entry, now)
+    if since is not None and since < interval:
+        return None                                 # inside the window: silence, and the pending state is retained
+    if cur == "ok":
+        # A recovery is owed only if something bad was actually reported; an all-quiet mount says nothing.
+        return "ok" if reported and reported != "ok" else None
+    return cur                                      # due, and the band is bad: say it (restated or newly reached)
+
+
 def latest_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) -> Optional[dict[str, Any]]:
     try:
         p = DH.manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
@@ -206,22 +304,109 @@ def latest_tmp_manifest(rules: Mapping[str, Any], state_root: Optional[Path]) ->
     }
 
 
-def top_consumers(rules: Mapping[str, Any], mon: Mapping[str, Any], manifest: Optional[Mapping[str, Any]]) -> list:
-    """[(category, bytes)] largest first: du of the configured category paths plus the git-tree total from the
-    latest manifest (candidates + excluded), never a guess (an unmeasurable path is left out)."""
-    sizes: dict[str, int] = {}
-    to = float(mon.get("du_timeout_s") or 60)
-    for c in mon.get("consumer_categories") or []:
+def _consumer_config_digest(mon: Mapping[str, Any]) -> str:
+    raw = json.dumps(mon.get("consumer_categories") or [], sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def consumer_snapshot_due(snapshot: Any, mon: Mapping[str, Any], now: datetime) -> bool:
+    """Legacy, malformed, changed-config, future and expired snapshots are not prior measurements."""
+    if not isinstance(snapshot, dict) or type(snapshot.get("version")) is not int or snapshot["version"] != 1:
+        return True
+    if snapshot.get("config_digest") != _consumer_config_digest(mon) or not isinstance(snapshot.get("categories"), list):
+        return True
+    for row in snapshot["categories"]:
+        if not isinstance(row, dict) or row.get("status") not in {"measured", "partial", "unknown"}:
+            return True
+        if not isinstance(row.get("category"), str) or "bytes" not in row or type(row.get("known_bytes")) is not int or row["known_bytes"] < 0:
+            return True
+        paths = row.get("paths")
+        if not isinstance(paths, list) or not paths:
+            return True
+        for p in paths:
+            if not isinstance(p, dict) or p.get("status") not in {"measured", "unavailable", "budget_exhausted"}:
+                return True
+            if p["status"] == "measured":
+                if type(p.get("bytes")) is not int or p["bytes"] < 0:
+                    return True
+            elif p.get("bytes") is not None:
+                return True
+        good = sum(p["status"] == "measured" for p in paths)
+        expected_status = "measured" if good == len(paths) else "partial" if good else "unknown"
+        if row["status"] != expected_status or row["known_bytes"] != sum(p["bytes"] for p in paths if p["status"] == "measured"):
+            return True
+        if row["status"] == "measured":
+            if type(row.get("bytes")) is not int or row["bytes"] != row["known_bytes"]:
+                return True
+        elif row.get("bytes") is not None:
+            return True
+    expected = {c["category"] for c in mon.get("consumer_categories") or []}
+    if len(snapshot["categories"]) != len(expected) or {r["category"] for r in snapshot["categories"]} != expected:
+        return True
+    try:
+        captured = datetime.fromisoformat(snapshot["captured_at"])
+        age = (now - captured).total_seconds()
+    except (KeyError, TypeError, ValueError):
+        return True
+    return not 0 <= age < CONSUMER_REFRESH_SECONDS
+
+
+def collect_consumer_snapshot(
+    rules: Mapping[str, Any], mon: Mapping[str, Any], now: datetime, *, deadline: Optional[float] = None,
+) -> dict[str, Any]:
+    """One shared bounded capture, including failed/unstarted paths and partial category totals."""
+    started = time.monotonic()
+    deadline = min(started + CONSUMER_SCAN_BUDGET_SECONDS, deadline if deadline is not None else float("inf"))
+    paths = list(mon.get("consumer_categories") or [])
+    categories: dict[str, dict[str, Any]] = {}
+    for i, c in enumerate(paths):
+        row = categories.setdefault(c["category"], {"category": c["category"], "known_bytes": 0, "paths": []})
         p = DH._expand(str(c["path"]), rules["_home"])
-        if p.exists():
-            b = DH.du_bytes(p, to)
-            if b is not None:
-                sizes[c["category"]] = sizes.get(c["category"], 0) + b
+        remaining = deadline - time.monotonic()
+        measured, status = None, "budget_exhausted"
+        if remaining > 0:
+            timeout = max(0.0, min(float(mon.get("du_timeout_s", 60)), CONSUMER_PATH_MAX_SECONDS,
+                                   remaining / (len(paths) - i)))
+            try:
+                p.lstat()
+                if timeout > 0:
+                    measured = DH.du_bytes(p, timeout)
+                    status = "measured" if type(measured) is int and measured >= 0 else "unavailable"
+            except OSError:
+                status = "unavailable"
+        if status == "measured":
+            row["known_bytes"] += measured
+        else:
+            measured = None
+        row["paths"].append({"path": str(p), "bytes": measured, "status": status})
+    for row in categories.values():
+        good = sum(p["status"] == "measured" for p in row["paths"])
+        row["status"] = "measured" if good == len(row["paths"]) else "partial" if good else "unknown"
+        row["bytes"] = row["known_bytes"] if row["status"] == "measured" else None
+    elapsed = max(0.0, time.monotonic() - started)
+    # Internal nested monitor state, read by consumer_snapshot_due/top_consumers;
+    # no separate store or authoritative contract is introduced.
+    return {"version": 1, "captured_at": now.isoformat(),
+            "finished_at": (now + timedelta(seconds=elapsed)).isoformat(),
+            "elapsed_seconds": round(elapsed, 3), "budget_seconds": max(0.0, deadline - started),
+            "config_digest": _consumer_config_digest(mon), "categories": list(categories.values()),
+            "complete": all(r["status"] == "measured" for r in categories.values())}
+
+
+def top_consumers(
+    rules: Mapping[str, Any], mon: Mapping[str, Any], manifest: Optional[Mapping[str, Any]],
+    snapshot: Optional[Mapping[str, Any]] = None,
+) -> list:
+    """Rank complete measurements; keep every unknown category outside the ranking cap."""
+    snapshot = snapshot if snapshot is not None else collect_consumer_snapshot(rules, mon, datetime.now(timezone.utc))
+    sizes = {r["category"]: r["bytes"] for r in snapshot["categories"]}
     if manifest and manifest.get("by_kind"):
         git = sum(v.get("bytes") or 0 for k, v in manifest["by_kind"].items() if k.startswith("G:"))
         if git:
             sizes["git_trees_reclaimable"] = git
-    return sorted(sizes.items(), key=lambda kv: -kv[1])[: int(mon.get("top_consumers") or 5)]
+    known = sorted(((c, b) for c, b in sizes.items() if b is not None), key=lambda kv: -kv[1])
+    unknown = sorted((c, b) for c, b in sizes.items() if b is None)
+    return known[: int(mon.get("top_consumers") or 5)] + unknown
 
 
 def _gb(n: Optional[int]) -> str:
@@ -229,7 +414,8 @@ def _gb(n: Optional[int]) -> str:
 
 
 def intent_text(
-    m: Mapping[str, Any], band: str, mon: Mapping[str, Any], consumers: list, manifest: Optional[Mapping[str, Any]]
+    m: Mapping[str, Any], band: str, mon: Mapping[str, Any], consumers: list, manifest: Optional[Mapping[str, Any]],
+    consumer_captured_at: Optional[str] = None,
 ) -> tuple[str, str]:
     """(subject, summary). The subject is band-stable (no percent) so the store's own dedupe agrees with ours."""
     mount = m["mount"]
@@ -239,8 +425,14 @@ def intent_text(
         thr = float(mon["critical_pct"] if band == "critical" else mon["warn_pct"])
         subject = f"Disk {mount} {band.upper()}: at or above {thr:.0f}% used"
     parts = [f"{m['used_pct']:.1f}% used, {_gb(m['avail_bytes'])} free of {_gb(m['size_bytes'])}"]
-    if consumers:
-        parts.append("top: " + ", ".join(f"{c} {_gb(b)}" for c, b in consumers))
+    unknown = [c for c, b in consumers if b is None]
+    known = [(c, b) for c, b in consumers if b is not None]
+    if unknown:
+        parts.append("unmeasured: " + ", ".join(unknown))
+    if known:
+        parts.append("top: " + ", ".join(f"{c} {_gb(b)}" for c, b in known))
+    if consumer_captured_at:
+        parts.append("category sizes as of " + consumer_captured_at)
     if manifest and manifest.get("reclaimable_bytes") is not None:
         parts.append(
             f"reclaimable {_gb(manifest['reclaimable_bytes'])} in {manifest.get('candidates')} items per hygiene"
@@ -449,6 +641,30 @@ def standing_hygiene_status(rules: Mapping, state_root: Optional[Path], previous
     return result
 
 
+@contextmanager
+def _state_lock(state_path: Path):
+    """Serialise the WHOLE read / decide / queue / write transition for this state identity.
+
+    cx-openai-2 (2026-11-04): two supported `--apply` processes could interleave, and atomic replacement only prevents
+    TORN json — it does not prevent a read-modify-write from overwriting a snapshot written by another process in
+    between. A run paused between its read and its write erased a `critical` band another run had just reported, so the
+    recovery was never emitted. The n8n wrapper flocks its own launcher; the documented direct CLI and the exported
+    run() take no lock, so they can race each other and the wrapped job.
+
+    The lock is keyed to the state FILE, so every entrypoint that writes this state takes the same lock — a new caller
+    inherits it by writing the same state, not by remembering to ask. Wall-clock time is never used to order writers:
+    a legitimate clock rollback is supported and must keep working.
+    """
+    lock_path = state_path.with_name(state_path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+", encoding="utf-8") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
 def run(
     *,
     rules: Mapping[str, Any],
@@ -458,11 +674,28 @@ def run(
     now: datetime,
     wall_start: Optional[datetime] = None,
 ) -> int:
+    """Every apply path goes through here, so it takes the state lock before reading the snapshot."""
+    state_path = R.runtime_dir(state_root) / rules["monitor"]["state_name"]
+    with _state_lock(state_path):
+        return _run_locked(rules=rules, state_root=state_root, ledger=ledger, apply=apply, now=now,
+                           wall_start=wall_start, state_path=state_path)
+
+
+def _run_locked(
+    *,
+    rules: Mapping[str, Any],
+    state_root: Optional[Path],
+    ledger: Optional[Path],
+    apply: bool,
+    now: datetime,
+    wall_start: Optional[datetime] = None,
+    state_path: Path,
+) -> int:
+    run_started = time.monotonic()
     # the receipt's started_at is the real start (the executor binds it to the attempt window); `now` is the
     # logical clock for bands and idle math and may be injected
     wall_start = wall_start or datetime.now(timezone.utc)
     mon = rules["monitor"]
-    state_path = R.runtime_dir(state_root) / mon["state_name"]
     try:
         state = json.loads(state_path.read_text(encoding="utf-8"))
         if state.get("schema") != STATE_SCHEMA:
@@ -499,7 +732,7 @@ def run(
             continue
         cur = band_of(m["inodes_used_pct"], ino)
         prev = (inodes_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, inodes_state.get(mount) or {}, now, metric_policy(mon, ino))
         row: dict[str, Any] = {**m, "metric": "inodes", "band": cur, "previous_band": prev, "alert": alert}
         if alert:
             top_cfg = ino.get("top_dirs") or {}
@@ -526,6 +759,16 @@ def run(
             inodes_state[mount] = entry
         inode_results.append(row)
 
+    consumer_snapshot = state.get("consumer_snapshot")
+    refreshed = False
+    if mon.get("measure_consumers_on") == "alert":
+        if consumer_snapshot_due(consumer_snapshot, mon, now):
+            consumer_snapshot = collect_consumer_snapshot(
+                rules, mon, now, deadline=run_started + CONSUMER_RUN_DEADLINE_SECONDS)
+            refreshed = True
+    else:
+        consumer_snapshot = None
+
     for mount in mon["mounts"]:
         m = measure(mount)
         if m is None:
@@ -534,11 +777,12 @@ def run(
             continue
         cur = band_of(m["used_pct"], mon)
         prev = (mounts_state.get(mount) or {}).get("band")
-        alert = transition(prev, cur)
+        alert = alert_for(prev, cur, mounts_state.get(mount) or {}, now, metric_policy(mon, mon))
         row: dict[str, Any] = {**m, "band": cur, "previous_band": prev, "alert": alert}
         if alert:
-            consumers = top_consumers(rules, mon, manifest) if mon.get("measure_consumers_on") == "alert" else []
-            subject, summary = intent_text(m, cur, mon, consumers, manifest)
+            consumers = top_consumers(rules, mon, manifest, consumer_snapshot) if consumer_snapshot is not None else []
+            captured_at = consumer_snapshot["captured_at"] if consumer_snapshot is not None else None
+            subject, summary = intent_text(m, cur, mon, consumers, manifest, captured_at)
             row.update(subject=subject, summary=summary)
             if apply:
                 try:
@@ -606,7 +850,9 @@ def run(
                 failures += 1
     if measured_pct and not current_pressure:
         pressure_active = False
-    summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing, "standing_pressure": pressure, "failures": failures}
+    summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing,
+               "standing_pressure": pressure, "consumer_snapshot": consumer_snapshot,
+               "consumer_snapshot_refreshed": refreshed, "failures": failures}
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=[str(state_path)], receipt=R.receipt_path(LANE_ID, state_root))
         return 0 if not failures else 1
@@ -617,7 +863,9 @@ def run(
 
         atomic_write_json(
             state_path,
-            {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state, "standing_hygiene": standing_previous, "standing_pressure_active": pressure_active, "standing_pressure_epoch": pressure_epoch},
+            {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state,
+             "standing_hygiene": standing_previous, "standing_pressure_active": pressure_active,
+             "standing_pressure_epoch": pressure_epoch, "consumer_snapshot": consumer_snapshot},
             indent=1,
         )
     except OSError as exc:
@@ -681,7 +929,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         rules = DH.load_rules(Path(a.rules) if a.rules else None, home=Path(a.home) if a.home else None)
         mon = rules["monitor"]
-        for key in ("mounts", "warn_pct", "critical_pct", "state_name", "producer", "intent_domain", "intent_kinds"):
+        # `realert_minutes` is required at RUNTIME by metric_policy, so it is required at STARTUP too: otherwise a
+        # rules file missing it passes validation and then dies inside the mount loop with a traceback, exit 1, no
+        # JSON error line, no receipt and no state write (cc-deepseek-2 R6). Refuse it before the lane runs.
+        for key in ("mounts", "warn_pct", "critical_pct", "realert_minutes", "state_name", "producer",
+                    "intent_domain", "intent_kinds"):
             if key not in mon:
                 raise DH.RulesError(f"rules_missing:monitor.{key}")
         if not float(mon["warn_pct"]) < float(mon["critical_pct"]):

@@ -9,6 +9,48 @@ Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 Approval:    operator 2026-10-22 ("perfect approved"), mockup gate3 Pipeline.dc.html
 ```
 
+## Novice operator — Deploys tab (2026-10-30)
+
+You do **not** need to know GitHub to use this page. There are two jobs:
+
+| Job | What you do | What it does **not** do |
+|-----|-------------|-------------------------|
+| **A — Approve a merge** | Click **Approve** on a READY row (or Telegram Approve). | Does **not** put the change on your live site. |
+| **B — Put on the site** | When main is ahead of serving and CI is green (and STOP is off), promote (auto-poller or Push Live). | Does **not** merge open PRs. |
+
+**READY** means the same as Telegram: plain-English block present, the four required checks green
+(`cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`) **and** no other check red or pending
+(the digest's `every_check_green` gate, not the four labels alone), not draft/held/conflict, and a complete,
+usable changed-file view whose paths match the at-issue hold rules. A missing, partial, malformed or unreadable
+file view stays **files_unverified** — Approve stays off. The displayed check chips still name the four required
+contexts; the Approve decision uses the wider gate.
+**Hold** takes Approve back. **Update branch** (Advanced only) pushes to the PR’s GitHub branch —
+it is **not** “push live.” Use **? Help** on the Deploys tab for the glossary.
+
+The coach and promote panels never turn an absence into a green: a missing board, a STALE/retained read, an
+unread next-release comparison, a stale CI receipt or an unread deploy STOP latch each render as **unknown**
+with the thing that could not be read, never as “0 READY”, “Site matches main” or “STOP off — promote allowed”.
+A retained historical value is labelled `stale — not current`; it does not count as present readiness.
+
+In-flight data: `GET /api/v2/ops/in-flight`. Serving / main / STOP: `GET /api/v2/ops/releases-schedules`.
+Design: `docs/designs/DSN-20261029-deploy-console.md` (Operator clarity phase).
+
+## 2026-10-27: release-train sections removed (operator directive)
+
+The operator directed "Remove everything about the old train ... from the Command Center and from the code"
+(2026-10-27). Mergify merges and the host `deploy_on_main` poller promotes (AGENTS.md §25.10). This page changed:
+
+- The **Release train** tab is now **Deploys** (`?tab=` absent; serving, main HEAD, release history, release errors).
+- The `windows` and `queue` sections (and the `next_window` KPI) are gone from the response and the page; the
+  read model no longer imports `release_train_view` / `release_train_window` (both archived under
+  `archive/release_train_20261026/`). `run_probes`, `field` and `read_stop` are local to
+  `scripts/lib/releases_schedules_view.py`.
+- The deploy STOP lives on Home → **Deploys** (`components/home/DeploysPanel.tsx`, `components/DeployStopControl.tsx`,
+  `GET /api/v2/ops/deploys`, `GET|POST /api/v2/ops/deploys/stop`) and Ops → Controls. This page stays read-only.
+- Open PRs waiting to merge are on the Mergify dashboard; the PR-hygiene census lane (`pr-hygiene-audit`) is unchanged.
+
+Sections below are history.
+
 ## What it is
 
 One page, **System → Releases & schedules** (`/v3/system/releases`, NavRail Ops → "Releases & Schedules"), answering:

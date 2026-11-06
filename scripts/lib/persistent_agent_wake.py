@@ -725,6 +725,50 @@ def source_sha() -> str:
 
 # ── Memory loading ──────────────────────────────────────────────────────────
 
+_VERSION_FIELDS = frozenset({"last_confirmed_at", "confirmations", "status", "superseded_by", "disputed_at",
+                             "dispute_reason", "expires_at", "updated_at", "confidence", "subject_guids",
+                             "retraction_reason", "retracted_at"})
+
+
+def _fold_record_versions(rows: list) -> tuple[list, dict[str, str]]:
+    """Fold re-persisted versions of one memory record to its latest version.
+
+    ``agent_durable_memory`` is an append log: confirming, disputing or superseding a memory re-appends the whole
+    record with the same ``memory_id`` (the store's own reader keeps the last). Until 2026-10-31 this loader called
+    any repeated id a "duplicate memory identity" and refused the whole subject as MEMORY_MALFORMED, so a subject
+    whose memory was re-confirmed was refused every hour (61 of 3,835 ids repeat in the live store). Versions that
+    differ only in lifecycle fields fold, last wins. Two rows with the same id but different content still fail
+    closed, but only for the subject that loads that record: one conflicting record must not refuse every
+    subject in the store. Returns the folded rows and ``{memory_id: reason}`` for the conflicting ids.
+    """
+    order: list = []
+    latest: dict[str, dict] = {}
+    conflicts: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            order.append(row)
+            continue
+        fid, err = _resolve_memory_identity(row)
+        if err or not fid:
+            order.append(row)
+            continue
+        prev = latest.get(fid)
+        if prev is None:
+            latest[fid] = row
+            order.append(fid)
+            continue
+        # A later version may fill a field the earlier one left empty (e.g. a subject_guid backfill); only two
+        # different non-empty values for the same content field are a conflict.
+        clash = [
+            k for k in (set(prev) | set(row)) - _VERSION_FIELDS
+            if prev.get(k) is not None and row.get(k) is not None and prev.get(k) != row.get(k)
+        ]
+        if clash:
+            conflicts[fid] = f"duplicate memory identity {fid} with conflicting content"
+        latest[fid] = row
+    return [latest[x] if isinstance(x, str) and x in latest else x for x in order], conflicts
+
+
 class MemoryLoader:
     """Loads durable subject memory before any decision.
 
@@ -760,6 +804,7 @@ class MemoryLoader:
 
     def _build(self, rows, subject_guid, snap_id, now, metrics, facts, seen_ids, newest):
         resolver_error: str | None = None
+        rows, conflicts = _fold_record_versions(rows)
         for row in rows:
             if not isinstance(row, dict):
                 return MemorySnapshot(
@@ -791,6 +836,12 @@ class MemoryLoader:
                 metrics.resolved_by_symbol += 1
 
             fid, id_err = _resolve_memory_identity(row)
+            if fid and fid in conflicts:
+                metrics.rejected += 1
+                return MemorySnapshot(
+                    snapshot_id=snap_id, subject_guid=subject_guid, facts=[],
+                    loaded_at=now, malformed=True, error=conflicts[fid], metrics=metrics,
+                )
             if id_err or not fid:
                 metrics.malformed_rows += 1
                 return MemorySnapshot(
@@ -1083,6 +1134,7 @@ class WakeEngine:
         if snap.malformed:
             wake["lifecycle_state"] = "MEMORY_MALFORMED"
             wake["provenance"]["policy_decisions"].append("refuse_malformed_memory")
+            wake["provenance"]["memory_error"] = snap.error
             self.store.upsert_by_key("wakes", "wake_id", wake, preserve_terminal=True,
                                      terminal_states=TERMINAL_WAKE)
             return {"ok": False, "wake": wake, "state": "MEMORY_MALFORMED", "inserted": inserted}

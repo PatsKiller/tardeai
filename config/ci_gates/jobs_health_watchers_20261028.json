@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_health_watchers_20261028",
+  "files": [
+    "tests/test_jobs_health_watchers_20261028.py"
+  ],
+  "comment": [
+    "2026-10-28 operator request: a command-center stoplight for the operations watchers (missed-run watchdog, self-heal fixer, merge notifier, failure pager) alongside the alerts. Absent/unwired renders red or amber, never silently green."
+  ]
+}

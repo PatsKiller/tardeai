@@ -7,8 +7,8 @@ import ListPager, { useListOffset } from '../components/ListPager'
  *
  *  Actions reuse existing operator flows only: Propose → WatchlistProposeModal (POST /api/v2/watchlist/:sym/propose,
  *  you size it, it goes to Proposals for approval); Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
- *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
- *  Nothing here sizes, orders or stops on its own. */
+ *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v2/cio/ask, then the thesis queue
+ *  as a secondary note. Nothing here sizes, orders or stops on its own. */
 import ProspectusLink from '../components/prospectus/ProspectusLink'
 import './WatchLayout.css'
 import './W9Mobile.css'
@@ -19,19 +19,21 @@ import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetail
 import { WatchCompanyFacts, companyDisplayName } from '../components/watch/WatchCompanyFacts'
 import WatchRecordCard, { WatchCardHeader } from '../components/watch/WatchRecordCard'
 import WatchMarketFacts from '../components/watch/WatchMarketFacts'
-import { CioReviewPanel, ReviewStateChip, currentReviewState, useCioReview, type CioReviewController } from '../components/watch/CioReview'
+import { AskPhaseStatus, CioMemoryChip, CioReviewPanel, ReviewStateChip, currentReviewState, useCioReview, type CioReviewController } from '../components/watch/CioReview'
 import { blockingReasons, cardRail, rowMarketFacts, rowZone } from '../lib/watchRecordCardModel'
 import { AccountChip } from '../components/AccountChip'
 import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { fmtAsOf } from '../lib/asOfDisplay'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneFromVerdict, toneVars, type Tone } from '../lib/designTokens'
 import {
-  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionTone, drawers, headerChips, laneById,
-  proposeSeed, stanceLabel, stanceTone, stepTone, tieAlerts, unwrap,
+  LANE_ORDER, LANE_TONE, TOOLTIPS, ageDays, alertIntel, alertLabel, asksCio, convictionPlainText, convictionTone, detailNextLine, drawers, etStamp,
+  freshnessLine, headerChips, laneById, proposeSeed, stanceLabel, stancePlainText, stanceTone, stepTone, tieAlerts, unwrap,
   type LaneId, type ProspectRow, type ProspectsPayload, type TiedAlerts,
 } from '../lib/watchProspectsModel'
+import WatchWorkflowStrip from '../components/watch/WatchWorkflowStrip'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
@@ -81,7 +83,7 @@ export function legacyConflicts(row: ProspectRow) {
 function LegacyConflictFlags({ r, cio }: { r: ProspectRow; cio: CioReviewController }) {
   const flags = legacyConflicts(r)
   if (!flags.length) return null
-  const when = (at: string | null) => at ? at.slice(0, 16).replace('T', ' ') : 'time unknown'
+  const when = (at: string | null) => etStamp(at) || 'time unknown'
   return <div data-testid="watch-detail-conflicts" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
     <span style={label} title={TOOLTIPS.conflicts}>Flags from the current Watch check — shown until the conflict engine ships</span>
     {flags.map((c, i) => <div key={i} data-testid="watch-detail-conflict" style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
@@ -151,6 +153,35 @@ function Chip({ tone, children, tip, testId }: { tone: Tone; children: ReactNode
   )
 }
 
+/** Whole hours since a row's own `expires_at` — the one timestamp the server marks `stale` against.
+ *  Returns null when the age cannot be derived, so the badge falls back to a bare "STALE". */
+function staleAgeHours(expiresAt: string | null | undefined, now: Date): number | null {
+  if (!expiresAt) return null
+  const t = Date.parse(String(expiresAt))
+  if (!Number.isFinite(t)) return null
+  const h = Math.floor((now.getTime() - t) / 3_600_000)
+  return h < 0 ? null : h
+}
+
+/** A visible "STALE · N h ago" badge in the row list, from the row's own expiry. Display-only: never
+ *  hides the row (a held name stays visible), never writes, re-runs, or calls a broker. */
+function StaleBadge({ expiresAt }: { expiresAt: string | null }) {
+  const h = staleAgeHours(expiresAt, new Date())
+  const age = h == null ? '' : h < 1 ? ' · <1 h ago' : ` · ${h} h ago`
+  return (
+    <span data-testid="watch-row-stale"
+      title={`Review expired ${fmtAsOf(expiresAt) ?? '—'}. Still shown — a held name stays visible until new evidence arrives.`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start',
+        whiteSpace: 'normal', textAlign: 'left', fontSize: TYPE.sm, fontWeight: 700, lineHeight: 1.35,
+        padding: '3px 8px', borderRadius: RADIUS.pill,
+        background: toneVars('warning').bg, color: toneVars('warning').color, border: `1px solid ${toneVars('warning').border}`,
+      }}>
+      STALE{age}
+    </span>
+  )
+}
+
 export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra, retained = false, onAlert, onOpenConflict, cio }: {
   r: ProspectRow; selected: boolean; onSelect: () => void; onStep: (r: ProspectRow) => void; alerts: number
   cio?: CioReviewController
@@ -184,6 +215,10 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
     company={<WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="company" ticker={ticker} ownership={ownershipNode} />}
     setup={<>
       <div style={{ fontSize: TYPE.md, color: TOKENS.text[0] }}><b style={{ fontWeight: 600 }}>{stage}</b> · <span className="watch-card-why" title={r.why}>{r.why}</span></div>
+      {r.stale && <StaleBadge expiresAt={r.expires_at} />}
+      <span data-testid="watch-row-freshness" title={TOOLTIPS.freshness} style={{ fontSize: TYPE.sm, color: TOKENS.text[2], lineHeight: 1.35 }}>
+        {freshnessLine(r)}
+      </span>
       <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} part="catalyst" />
       {reasons.length > 0 && <div className="watch-card-block" data-testid="watch-blocking-reason" style={{ background: warning.bg, color: warning.color,
         border: `1px solid ${warning.border}`, borderRadius: RADIUS.sm, padding: '6px 10px', fontSize: TYPE.base }}>
@@ -192,13 +227,17 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
       </div>}
       <ConflictLine section={section} onOpen={key => onOpenConflict ? onOpenConflict(r, key) : onSelect()} />
       <ReviewStateChip state={currentReviewState(r, cio)} testId="watch-row-review-state" compact />
+      {cio?.entries[r.symbol] && <AskPhaseStatus entry={cio.entries[r.symbol]} testId="watch-row-ask-phase" />}
+      <CioMemoryChip state={currentReviewState(r, cio)} testId="watch-row-cio-memory" />
       {r.whats_missing.length > 0 && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Missing: {r.whats_missing.join(' · ')}</div>}
     </>}
     market={<WatchMarketFacts facts={rowMarketFacts(lr)} retained={retained} zone={rowZone(lr)} ownership={phoneOwnership} testId={lr.market_facts ? 'watch-market-facts' : 'watch-record-market'} />}
     conviction={<>
-      <div><span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600 }} data-testid="watch-conviction">{score == null ? 'n/a' : score.toFixed(0)}</span> <span className="watch-card-score-denominator" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>/ 100</span></div>
+      <div><span style={{ ...numStyle, fontSize: TYPE.xl, fontWeight: 600 }} data-testid="watch-conviction" title={TOOLTIPS.conviction}>{score == null ? 'n/a' : score.toFixed(0)}</span> <span className="watch-card-score-denominator" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>/ 100</span></div>
       {score != null && <div className="watch-card-score-bar" aria-label={`Conviction ${score} of 100`}><span style={{ width: `${Math.max(0, Math.min(100, score))}%`, background: score >= 75 ? TOKENS.success : TOKENS.warning }} /></div>}
-      <span className="watch-card-stance" style={{ color: stance.color, background: stance.bg, borderRadius: RADIUS.sm, fontSize: TYPE.base, fontWeight: 600, padding: '3px 8px' }}>{r.stance ? stanceLabel(r.stance) : 'no stance'}</span>
+      <span className="watch-card-stance" title={TOOLTIPS.stance} style={{ color: stance.color, background: stance.bg, borderRadius: RADIUS.sm, fontSize: TYPE.base, fontWeight: 600, padding: '3px 8px' }}>{r.stance ? stanceLabel(r.stance) : 'no stance'}</span>
+      {stancePlainText(r.stance) && <span data-testid="watch-row-stance-plain" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], lineHeight: 1.35 }}>{stancePlainText(r.stance)}</span>}
+      <span data-testid="watch-row-conviction-plain" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], lineHeight: 1.35 }}>{convictionPlainText(score)}</span>
     </>}
     primary={<StepButton row={r} onStep={onStep} />}
     secondary={<>{onAlert && <button type="button" onClick={() => onAlert(r)} style={{ ...chipStyle('info', 'outline', 'md'), cursor: 'pointer' }}>Set alert</button>}{extra}
@@ -226,7 +265,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         <span style={label} title={TOOLTIPS.conviction}>
           Conviction {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)} — what it's made of
         </span>
-        {r.conviction_components.length === 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>No components — not in the CIO curator universe yet.</span>}
+        {r.conviction_components.length === 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>Conviction factors not recorded.</span>}
         {r.conviction_components.map(c => (
           <div key={c.key} title={[c.detail, c.source ? `source: ${c.source}` : null, c.weight != null ? `weight ${Math.round(c.weight * 100)}%` : null].filter(Boolean).join(' · ')}
             style={{ display: 'grid', gridTemplateColumns: '120px 1fr 40px', gap: 8, alignItems: 'center', fontSize: TYPE.base }}>
@@ -237,6 +276,7 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         ))}
         {r.conviction_missing.length > 0 && <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>Not scored: {r.conviction_missing.join(', ')}</span>}
       </div>
+      <WatchWorkflowStrip row={r} />
       <section aria-label="What disagrees">
         <h2 tabIndex={-1} data-detail-focus style={{fontSize: TYPE.lg}}>What disagrees</h2>
         <ConflictLine section={conflictSection(r)} onOpen={onOpenConflict ?? sheet.open} />
@@ -260,15 +300,16 @@ export function Detail({ r, onOpenConflict, cio: shared }: { r: ProspectRow | nu
         </div>
       )}
       <div data-testid="watch-detail-next" style={{ display: 'grid', gap: 8, fontSize: TYPE.base + 1, lineHeight: 1.5, background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 10 }}>
-        <span><b>Next:</b> {r.next_action.label === '—' ? 'nothing until new evidence arrives.' : `${r.next_action.label} — ${r.next_action.reason}`}</span>
+        <span><b>Next:</b> {detailNextLine(r.next_action, conflictSection(r))}</span>
         {/* Never a dead end: a step that asks the CIO always carries the button (the flags block carries it when shown). */}
-        {asksCio(r.next_action.kind) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
-        {!asksCio(r.next_action.kind) && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
+        {(asksCio(r.next_action.kind) || currentReviewState(r, cio)?.publication_verified) && !legacyConflicts(r).length && <CioReviewPanel row={r} cio={cio} conflictKey={conflictSection(r).findings[0]?.key} />}
+        {!asksCio(r.next_action.kind) && !currentReviewState(r, cio)?.publication_verified && !legacyConflicts(r).length && <ReviewStateChip state={currentReviewState(r, cio)} />}
       </div>
-      <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>
-        Evidence {r.evidence_at ? r.evidence_at.slice(0, 16).replace('T', ' ') : '—'} · expires {r.expires_at ? r.expires_at.slice(0, 16).replace('T', ' ') : '—'}
-        {r.stale ? ' · stale' : ''}. The CIO sets stance and priority; it never sizes or places orders.
-      </span>
+      <div data-testid="watch-detail-freshness" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={label} title={TOOLTIPS.freshness}>What's current now</span>
+        <span data-testid="watch-detail-freshness-line" style={{ fontSize: TYPE.base, color: TOKENS.text[1], lineHeight: 1.4 }}>{freshnessLine(r)}</span>
+        <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>The CIO sets stance and priority; it never sizes or places orders.</span>
+      </div>
     </div>
   )
 }

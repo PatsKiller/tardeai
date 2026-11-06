@@ -4107,20 +4107,23 @@
         "TRADEAI_RELEASES_BASE"
       ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "scripts/disk_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0), du, crontab -l. No DB, no network, no send. Standing disk-hygiene source adds the sanctioned agent_claim_lifecycle.GitHubReader GET module to the static closure (tmp-hygiene imports disk_hygiene): its sibling source/release readers declare CANONICAL_SOURCE, TRADEAI_AGENT_CLAIMS_REPO and TRADEAI_RELEASES_BASE, all root-path settings, not credentials. These exact literal reads are inventoried even though the standing caller supplies an explicit repository and does not invoke the sibling readers; no values are created or secret variables added.",
-      "source": "n8n-native host lane (operator 2026-10-18; packet docs/ops/packets/disk-hygiene-n8n-20261018): fired by tradeai-dispatcher at 0 4 * * 0; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--plan\"]; dry_run_arg --dry-run (prints only, writes nothing) kept for clamp/rollback. --apply (deletion) is never an argv here: AGENTS.md §23.14.",
+      "env_evidence": "scripts/disk_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0), du, crontab -l. No DB, no network, no send. Standing disk-hygiene source adds the sanctioned agent_claim_lifecycle.GitHubReader GET module to the static closure (tmp-hygiene imports disk_hygiene): its sibling source/release readers declare CANONICAL_SOURCE, TRADEAI_AGENT_CLAIMS_REPO and TRADEAI_RELEASES_BASE, all root-path settings, not credentials. These exact literal reads are inventoried even though the standing caller supplies an explicit repository and does not invoke the sibling readers; no values are created or secret variables added. 2026-10-31: the standing path reads no further env: fresh local cron/units/proc/fds/coordination/pointers plus the sanctioned gh api GET PR capture; the manual grant stays manual only (never in the executor env).",
+      "source": "n8n-native host lane (operator 2026-10-18; standing apply approved by the operator 2026-10-31, direct session): fired by tradeai-dispatcher hourly (17 * * * *); no cron line, no unit, so the lock is the lane's own. live_arg --standing --apply --scheduled (daily full run + pressure; AGENTS.md §0 rule 6 (a) and §24.12 admit this lane's reviewed removals); dry_run_arg --standing --dry-run prints only. One attempt per fire, no automatic destructive retry. timeout_s 3600 covers up to pressure.max_passes passes.",
       "command": [
         "$PY",
         "scripts/disk_hygiene.py"
       ],
       "lock": "/tmp/tradeai_disk_hygiene.lock",
       "lock_kind": "flock",
-      "timeout_s": 1800,
+      "timeout_s": 3600,
       "dry_run_arg": [
+        "--standing",
         "--dry-run"
       ],
       "live_arg": [
-        "--plan"
+        "--standing",
+        "--apply",
+        "--scheduled"
       ],
       "market_gate": false,
       "output_signal": "data/runtime/disk-hygiene_last.json",
@@ -4208,118 +4211,6 @@
       "env_evidence": "scripts/refresh_advisory_maturity_evidence.py _env_values copies only the literal _ENV_KEYS (DB_*) from the environment, then from the release .env for a missing name; scripts/lib/lane_last_receipt.py reads TRADEAI_STATE_ROOT (an executor base name). No model, provider or broker credential.",
       "source": "operator 2026-10-21 'yes rebuild 1417' (rebuild of closed PR #1417 as n8n dispatcher lanes; cron freeze 2026-10-09 in force, no crontab line). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR): [].",
       "env_report_reason": "report until the collectors' closure (scripts/ops_tree_pin_audit.py, scripts/lib/current_pin_integrity.py, scripts/audit_no_local_generative_routing.py) is re-inventoried for enforce; the script's own reads are the literal _ENV_KEYS (DB_*). No model, provider or broker name."
-    },
-    {
-      "lane_id": "release-train-request-1800",
-      "command": [
-        "$PY",
-        "scripts/release_train_window_request.py",
-        "--window",
-        "1800"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": [
-        "--append",
-        "--shadow-only"
-      ],
-      "lock": "/tmp/tradeai_release_train_request_1800.lock",
-      "lock_kind": "safe_flock",
-      "timeout_s": 60,
-      "market_gate": false,
-      "output_signal": "data/runtime/release-train-request-1800_last.json",
-      "env_names": [
-        "TRADEAI_RELEASE_WINDOW_STATE_DIR"
-      ],
-      "env_allowlist_mode": "report",
-      "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
-      "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 18:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
-    },
-    {
-      "lane_id": "release-train-request-0000",
-      "command": [
-        "$PY",
-        "scripts/release_train_window_request.py",
-        "--window",
-        "0000"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": [
-        "--append",
-        "--shadow-only"
-      ],
-      "lock": "/tmp/tradeai_release_train_request_0000.lock",
-      "lock_kind": "safe_flock",
-      "timeout_s": 60,
-      "market_gate": false,
-      "output_signal": "data/runtime/release-train-request-0000_last.json",
-      "env_names": [
-        "TRADEAI_RELEASE_WINDOW_STATE_DIR"
-      ],
-      "env_allowlist_mode": "report",
-      "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
-      "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 00:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
-    },
-    {
-      "lane_id": "release-train-request-0600",
-      "command": [
-        "$PY",
-        "scripts/release_train_window_request.py",
-        "--window",
-        "0600"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": [
-        "--append",
-        "--shadow-only"
-      ],
-      "lock": "/tmp/tradeai_release_train_request_0600.lock",
-      "lock_kind": "safe_flock",
-      "timeout_s": 60,
-      "market_gate": false,
-      "output_signal": "data/runtime/release-train-request-0600_last.json",
-      "env_names": [
-        "TRADEAI_RELEASE_WINDOW_STATE_DIR"
-      ],
-      "env_allowlist_mode": "report",
-      "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
-      "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 06:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
-    },
-    {
-      "lane_id": "release-train-request-0800",
-      "command": [
-        "$PY",
-        "scripts/release_train_window_request.py",
-        "--window",
-        "0800"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": [
-        "--append",
-        "--shadow-only"
-      ],
-      "lock": "/tmp/tradeai_release_train_request_0800.lock",
-      "lock_kind": "safe_flock",
-      "timeout_s": 60,
-      "market_gate": false,
-      "output_signal": "data/runtime/release-train-request-0800_last.json",
-      "env_names": [
-        "TRADEAI_RELEASE_WINDOW_STATE_DIR"
-      ],
-      "env_allowlist_mode": "report",
-      "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
-      "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 08:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
     },
     {
       "lane_id": "calibration-shadow-harness",
@@ -4558,7 +4449,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/cio_ask_lifecycle.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
@@ -4575,16 +4466,19 @@
         ]
       },
       "env_names": [
+        "BRAVE_ROUTER_LIVE",
         "DB_HOST",
         "DB_NAME",
         "DB_PASSWORD",
         "DB_USER",
-        "POSTGRES_PASSWORD"
+        "POSTGRES_PASSWORD",
+        "SEARCH_ROUTING_ENGINE",
+        "TRADEAI_ANTHROPIC_WEB_SEARCH"
       ],
       "env_allowlist_mode": "report",
-      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. 2026-11-01 operator (verbatim: 'enable SEARCH_ROUTING_ENGINE for cio-ask-lifecycle and enable web search', 'also brave search'): the search routing engine and the Brave paid arm are admitted for this lane so web.search contributes cited facts; spend is bounded by config/search_routing_policy.json (operator pool reserved, $20 account cap, $18 local ceiling, $12 non-priority stop). TRADEAI_ANTHROPIC_WEB_SEARCH (default-off) is the operator switch for the paid hosted web-search source web.anthropic, whose bridge process is cio_ask_web_search. Closure/env report must be rechecked before enforce.",
       "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
-      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
+      "source": "Canary-stage live admission (DSN-20261026-ask-hourly P1-T4; operator 2026-10-26 \"Checks need to run hourly, not once a day\"). live_arg [] — the script default (--once / --once --events-only) is the live run; --dry-run stays the dry_run_arg. llm_route process_ids cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} are registered (config/llm_process_registry.json, automated). The verified per-thread check + memory/readback/delivery is runtime evidence from the canary run and natural slots, operator-reviewed before cutover."
     },
     {
       "lane_id": "cio-ask-material-events",
@@ -4597,7 +4491,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/cio_ask_lifecycle.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
@@ -4618,12 +4512,44 @@
         "DB_NAME",
         "DB_PASSWORD",
         "DB_USER",
-        "POSTGRES_PASSWORD"
+        "POSTGRES_PASSWORD",
+        "TRADEAI_ANTHROPIC_WEB_SEARCH"
       ],
       "env_allowlist_mode": "report",
-      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. Closure/env report must be rechecked before enforce.",
+      "env_evidence": "Runner reads the canonical Ask ledger/material feeds via governed readers and calls the bridge using cio_ask_reanswer plus the three separately registered provider-pinned critique processes; the executor binds that exact process_ids set and provider secrets remain bridge-side. TRADEAI_ANTHROPIC_WEB_SEARCH (default-off) is the operator switch for the paid hosted web-search source web.anthropic, whose bridge process is cio_ask_web_search. Closure/env report must be rechecked before enforce.",
       "env_report_reason": "Candidate closure awaits root integration; no unverified enforce declaration.",
-      "source": "Operator: Implement the plan. Checks need to run hourly, not once a day. Packet only; live_arg remains null. Both native branches request authenticated relay /due then /run with server-minted d: keys. No caller p: key, public webhook or global EVENT_MODES widening."
+      "source": "Canary-stage live admission (DSN-20261026-ask-hourly P1-T4; operator 2026-10-26 \"Checks need to run hourly, not once a day\"). live_arg [] — the script default (--once / --once --events-only) is the live run; --dry-run stays the dry_run_arg. llm_route process_ids cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} are registered (config/llm_process_registry.json, automated). The verified per-thread check + memory/readback/delivery is runtime evidence from the canary run and natural slots, operator-reviewed before cutover."
+    },
+    {
+      "lane_id": "conflict-rule-proposals",
+      "env_names": [
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_GOVERNED_BRIDGE_URL",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "conflict_rule_proposals.py -> lib/conflicts/proposals.py (rulebook + config reads), n8n_model_job.bridge_governed_call (TRADEAI_GOVERNED_BRIDGE_URL, intelligence_context), lib/deepseek_offpeak (LLM_DEFER_OFFPEAK is a base child-env name, no DB), host_comms_intents (coordination ledger path). report until intelligence_context's closure is inventoried.",
+      "env_report_reason": "intelligence_context (read by n8n_model_job.bridge_governed_call for the context header) and the rulebook profile imports are not yet inventoried as literal reads; report until that closure is bounded.",
+      "source": "PROPOSED 2026-10-25 (PR #2103 + this [shared-infra] PR): no cron line, no unit, no workflow imported; registry row PAUSED without dispatch until the operator activates it after conflict-resolver shadow. --dry-run prints due patterns and prompt sizes (no model call, no write); --apply calls the governed bridge within caps and appends proposals.",
+      "command": [
+        "$PY",
+        "scripts/conflict_rule_proposals.py",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "lock": "/tmp/tradeai_conflict_rule_proposals.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/conflict-rule-proposals_last.json"
     },
     {
       "lane_id": "prospectus-build",
@@ -4650,6 +4576,74 @@
       "env_evidence": "scripts/prospectus_window.py resolves the state root (PROJECT_ROOT / TRADEAI_STATE_ROOT via anthropic_routing.state_root, TRADEAI_PERSISTENT_STATE_ROOT via portfolio_positions); a live window reaches the governed Anthropic transport, which reads ANTHROPIC_API_KEY by name. The dry run opens read-only DB queries and no provider. No broker, messaging or order credential name: delivery is the host sender prospectus-deliver.",
       "env_report_reason": "New lane (2026-10-26): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing.",
       "source": "operator 2026-10-26 (Ticker Prospectus contract: 'Cadence (scheduler: n8n lane per the cutover directive, registered in lane_registry)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. Canary live_arg (separate change, after review): [\"--apply\"]. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0). Run windows 2026-10-26: command is scripts/prospectus_window.py (windows 17:45 / 07:00 ET; off-window fires drain only operator rewrites); it writes a delivery outbox and sends nothing."
+    },
+    {
+      "lane_id": "conflict-resolver",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/conflict_resolver.py --dry-run --state-root reads canonical W1 truth (cio_truth.resolve / stances_for_symbols) and data-broker projections (watch_intelligence.compose_universe and watch_decision.reentry_rows -> db_adapter._execute; cio_prospect shadow JSON). DB names from db_adapter.py. The LaneRunReceipt writes through lane_last_receipt to <state-root>/data/runtime/conflict-resolver_last.json (state root passed explicitly as --state-root $STATE_ROOT).",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file (tmpfs or disk) into the child, so the import closure (compose_universe/reentry_rows -> db_adapter/lane_registry) is not bounded by literal reads; report until that loader is bounded.",
+      "source": "CANARY-stage live flip (W10 conflict engine; docs/designs/DSN-20261028-cio-review-transparency.md §5 gate 4, docs/ops/W8_WRITERS_20261024.md §Conflict-resolver addendum). No cron line: the dispatcher fires the ledger-writing --shadow mode live (live_arg), which writes the conflict ledger, CIO memory and the ConflictResolverReceipt@v1 comparison report; the runner has no notification mode. dry_run_arg runs --dry-run --state-root $STATE_ROOT (write-free). lock = /tmp/conflict_resolver.lock (allowlist /tmp lock; the runner's own internal fcntl.flock is state-root-relative data/conflicts/conflict_resolver.lock — the W10 lock-alignment handoff remains open, so canary lock coverage is the executor's /tmp lock while the runner's internal shadow lock is a separate path). MBI_BEHAVIOR=0: no broker, order, stop, sender or secret.",
+      "command": [
+        "$PY",
+        "scripts/conflict_resolver.py"
+      ],
+      "lock": "/tmp/conflict_resolver.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "live_arg": [
+        "--shadow",
+        "--state-root",
+        "$STATE_ROOT"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/conflict-resolver_last.json",
+      "output_receipt": "v2"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "env_names": [
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_AUDIT_QUEUE",
+        "TRADEAI_COORD_DIR",
+        "TRADEAI_NUDGER_LEDGER",
+        "TRADEAI_NUDGER_STATE",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/agent_nudger.py: the literal reads are TRADEAI_STATE_ROOT (state default), TRADEAI_NUDGER_STATE and TRADEAI_NUDGER_LEDGER (per-file overrides), TRADEAI_COORD_DIR (the coordinator dir named in the prompt) and TRADEAI_AUDIT_QUEUE (the queue file the next row is drawn from, read at load_queue — the only way to point a run at a non-default queue); the safe_flock wrapper adds PROJECT_ROOT and SAFE_FLOCK_LOG_DIR, and HOME/PATH come from the executor's base set. Standard library only, no .env loader, no DB, no network. Seven declared names, all literals at module scope. A LIVE run also writes its LaneRunReceipt@v2 through scripts/lib/lane_last_receipt.py, whose state-root resolution reads TRADEAI_PERSISTENT_STATE_ROOT.",
+      "source": "Board item 16 / P2 of docs/ops/NUDGER_N8N_MIGRATION_PROPOSAL_20261103.md (2026-11-03). output_receipt v2: a LIVE run writes LaneRunReceipt@v2 and the immutable per-attempt receipt, which is what scripts/n8n_run_executor.py::apply_output_verdict evaluates — without this key the declared rule is skipped as declared_not_enforced. SHADOW ONLY: scheduler.stage shadow in config/lane_registry.json, dispatch.mode dry_run, live_arg is null: while the row is shadow there is NO live argv at all, so no fire can type even if the stage clamp were bypassed; the stage-flip PR sets live_arg to --apply and its own test (the stage clamp in scripts/lib/lane_stage_clamp.py forces dry_run whatever is requested). The live host timer keeps doing the real work throughout P2; this lane only records what it would have done. The script's own default is dry run and --dry-run names it explicitly, because the dispatcher's shadow step requires a non-empty dry_run_arg.",
+      "command": [
+        "$PY",
+        "scripts/agent_nudger.py",
+        "--config",
+        "$CODE_ROOT/config/agent_nudger.json"
+      ],
+      "lock": "/tmp/agent_nudge.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 120,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/coordination/agent_nudger/state.json",
+      "output_receipt": "v2"
     }
   ],
   "blocked_reasons": {
@@ -4783,24 +4777,6 @@
   },
   "never": "broker/positions/stops/orders/paper lanes, every sender, sm-render, guard, release deploy, destructive retention stages, CIO/persona/OpenClaw agent loops (rails §0 and §17): never, under any class, by any amendment inside a program window (AGENTS.md §23.14). Memory/learning writers, price and research ingest writers and LLM jobs: never, EXCEPT as the AGENTS.md 4.3.0 §23.18 (R1) dispatch classes `learn`, `ingest` and `llm`, and only once 4.3.0 is ACTIVE (scripts/lib/lane_dispatch.py R1_STATUS; PROPOSED until APPROVE_AGENTS_POLICY_4_3_0), only for a dispatcher row at stage shadow/canary/cutover (or, once AGENTS.md 4.4.0 is ACTIVE, the §23.11 cron row at stage shadow with dispatch.mode dry_run and a null live_arg, or at stage canary with dispatch.mode live, a set live_arg and a flock lock equal to the cron line's lock; lane_dispatch.R1_SHADOW_SHAPE_STATUS) with a dry_run_arg and a LaneRunReceipt@v1 output_signal, with no broker credential in env_names, and an `llm` job only through llm_route via cio-governed-bridge with a registered process_id (lane_dispatch.r1_class_admission). An alert_events row is not a send and backtest fields on paper_trade_proposals are not paper execution (R1 ruling 4, operator 2026-10-10 ~00:20 ET); neither admits a sender or a paper-execution lane. Sole exception: trade-ai-scalp-live (AGENTS.md 4.0.0 §23.3, APPROVE_AGENTS_POLICY_4_0_0, operator 2026-10-09) Second exception class (AGENTS.md 7.0.0 §23.20, ACTIVE: APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1): advisory market-data lanes in lane_dispatch.ADVISORY_MARKET_DATA_LANES that pass advisory_md_admission and advisory_md_static_errors (market data only, advisory writes only, sends through the host chokepoint, no secret through n8n); no other sender and no order, stop, position, account, paper-execution, secret or daemon lane.",
   "pending_changes": {
-    "disk-hygiene-standing-apply-20261024": {
-      "status": "PENDING_OPERATOR_REVIEW_DISABLED",
-      "lane_id": "disk-hygiene",
-      "command": [
-        "$PY",
-        "scripts/disk_hygiene.py"
-      ],
-      "live_arg": [
-        "--standing",
-        "--apply"
-      ],
-      "dry_run_arg": [
-        "--standing",
-        "--dry-run"
-      ],
-      "dependency_closure": "Read-only gh api GET through existing sanctioned GitHubReader; configured gh identity/availability required. No new credential values/env requested. Other reads: cron, unit files, proc cwd/fds, pointer files, coordination documents; writes: bound manifests/reports, non-force worktree remove/prune or exact approved archive/RTC item removal. No direct sender/provider/model/broker.",
-      "requires": "Review new closure/env/rules; current operative --plan remains accepted"
-    },
     "w8-writer-restoration-20261024": {
       "status": "DRAFT_PENDING_OWNER_REVIEW",
       "operative": false,

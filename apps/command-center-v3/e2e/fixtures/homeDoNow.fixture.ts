@@ -6,7 +6,7 @@ const iso = (ago = 0) => new Date(NOW - ago).toISOString()
 const action = (id: string, category = 'fix') => ({ id, category, severity: 'P2', title: `Example action ${id}`,
   why: `Synthetic evidence ${id}`, action: { label: 'Review', where: '/v3/health' }, sources: ['fixture'] })
 
-export function currentCio(stale = false) {
+export function currentCio(stale = false, filledReason?: string) {
   return { positions: { source: 'Synthetic CIO positions', as_of: iso(), unprotected_value_usd: 2400,
     rows: [
       { symbol: 'DEMOA', account_id: 'example_income', account_label: 'Example Income', stop_category: 'none', market_value: 2400 },
@@ -15,17 +15,28 @@ export function currentCio(stale = false) {
       { symbol: 'DEMOD', account_id: 'example_growth', account_label: 'Example Growth', stop_category: 'active', market_value: 800 },
     ] }, stops: { unprotected_count: 1, stale, last_broker_read_at: iso(),
       gap: stale ? { reason: 'Synthetic broker read is old; review the source clock.' } : null,
-      filled_awaiting_sync: [{ symbol: 'DEMOC', account_label: 'Example Income' }] } }
+      filled_awaiting_sync: [{ symbol: 'DEMOC', account_label: 'Example Income', ...(filledReason ? { reason: filledReason } : {}) }] } }
 }
 
-export async function homeFixtures(page: Page, opts: { stale?: boolean; unavailable?: boolean } = {}) {
+/** Synthetic Deploys status (GET /api/v2/ops/deploys): latest DeployOnMainReceipt@v1 + the deploy STOP latch. */
+export function deploysFixture(latch: 'ABSENT' | 'SET' = 'ABSENT') {
+  const r = (ago: number, outcome: string) => ({ schema: 'DeployOnMainReceipt@v1', as_of: iso(ago), path: 'poller', outcome,
+    main_sha: 'f'.repeat(40), current_sha_before: 'e'.repeat(9), current_sha_after: outcome === 'verified' ? 'f'.repeat(9) : '', reason: '', detail: {} })
+  return { schema: 'DeploysStatus@v1', generated_at: iso(), latest: r(60_000, 'verified'), latest_error: null,
+    recent: [r(60_000, 'verified'), r(600_000, 'noop')],
+    stop: { schema: 'DeployStopStatus@v1', as_of: iso(), latch: { status: latch, body: latch === 'SET' ? { reason: 'fixture hold' } : null },
+      window_run_lock: 'FREE', resume: { command: 'python3 scripts/release_window.py clear-stop --reason "<why>"' } },
+    stop_error: null, stop_effective: latch !== 'ABSENT', how: 'fixture' }
+}
+
+export async function homeFixtures(page: Page, opts: { stale?: boolean; unavailable?: boolean; filledReason?: string } = {}) {
   const writes: string[] = []
   await page.clock.install({ time: new Date(NOW) })
   await page.route('**/api/**', route => {
     const req = route.request(), p = new URL(req.url()).pathname
     if (req.method() !== 'GET') { writes.push(`${req.method()} ${p}`); return route.abort() }
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
-    if (p === '/api/v2/cio/pages') return opts.unavailable ? json({}, 503) : json({ ok: true, data: currentCio(opts.stale) })
+    if (p === '/api/v2/cio/pages') return opts.unavailable ? json({}, 503) : json({ ok: true, data: currentCio(opts.stale, opts.filledReason) })
     if (p === '/api/v2/home/do-now') return opts.unavailable ? json({}, 503) : json({ schema: 'HomeDoNow@v1', as_of: iso(),
       all_sources_answered: true, sources: { fixture: { status: 'OK', as_of: iso() } },
       // These two obsolete assertions must lose to the categorized Risk/CIO record.
@@ -44,6 +55,8 @@ export async function homeFixtures(page: Page, opts: { stale?: boolean; unavaila
     if (p === '/api/v2/trade-ai/summary') return json({ vix: 18, run_label: '0900', run_date: iso().slice(0, 10) })
     if (p === '/api/v2/defense/posture') return json({ momentum: { rows: [{ sector: 'Example sector', state: 'LAGGING', book_pct: 12 }] } })
     if (p === '/api/v3/opportunities') return json({ ok: true, data: { items: [{ symbol: 'DEMOW', type: 'new_position', conviction: 82, risk_reward: { rr: 3.2 } }] } })
+    if (p === '/api/v2/ops/deploys') return json({ ok: true, data: deploysFixture() })
+    if (p === '/api/v2/ops/deploys/stop') return json({ ok: true, data: deploysFixture().stop })
     if (p === '/api/v2/command') return json({ llm_intelligence: { portfolio_risk: 'Synthetic briefing for fixture proof.' }, agent_health: [{ agent: 'Example analyst', total_30d: 3 }] })
     return json({ ok: true, items: [], rows: [], data: {} })
   })

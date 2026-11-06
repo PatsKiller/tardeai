@@ -55,11 +55,8 @@ def _read_env() -> dict[str, str]:
 
 
 def _mask(v: str | None) -> str | None:
-    if not v:
-        return None
-    if len(v) <= 6:
-        return "•" * len(v)
-    return f"{v[:4]}…{v[-2:]}"
+    """Presence word only — never any character (or the length) of the value (page audit 2026-10-25)."""
+    return "set" if v else None
 
 
 def status() -> dict:

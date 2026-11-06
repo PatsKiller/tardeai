@@ -703,6 +703,34 @@ def probe_wrapper_watchdog(deps: Deps) -> list[dict]:
                   None if status == "OK" else "inspect independent watchdog findings / coverage", _iso(observed), detail)]
 
 
+STAGED_UNITS_SPEC = ("schedulers.staged_units", "host", "staged host unit install",
+                     "StagedUnitsInstall@v1 receipt (scripts/install_staged_units.py at promote)")
+
+
+def probe_staged_units(deps: Deps) -> list[dict]:
+    """Readback of the release's staged-unit install. ok=false is CRIT; absent is UNKNOWN (never healthy)."""
+    root = deps.state_root or _default_state_root()
+    path = Path(root) / "data/runtime/staged_units_install_latest.json"
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("oversized")
+        report = json.loads(raw)
+        if not isinstance(report, dict) or report.get("schema") != "StagedUnitsInstall@v1":
+            raise ValueError("schema")
+    except (OSError, ValueError, TypeError):
+        return [_unknown(STAGED_UNITS_SPEC, "install receipt unavailable; no staged-unit install proven yet", None)]
+    groups = [g for g in report.get("groups") or [] if isinstance(g, dict)]
+    detail = {"mode": report.get("mode"), "release": report.get("release"), "notification": report.get("notification"),
+              "groups": {str(g.get("id")): g.get("status") for g in groups}, "href": "/v3/system?tab=Jobs"}
+    value = ", ".join(f"{g.get('id')} {g.get('status')}" for g in groups) or "no groups"
+    status = "OK" if report.get("ok") is True else "CRIT"
+    return [_item(*STAGED_UNITS_SPEC, status, value,
+                  None if status == "OK" else "staged unit install failed; the unit is not running as reviewed",
+                  report.get("at"), detail)]
+
+
 # ── collection ───────────────────────────────────────────────────────────────
 
 #: (probe, the item specs it owns — used to emit UNKNOWN rows when the probe itself times out or raises).
@@ -736,6 +764,7 @@ PROBES: list[tuple[Callable[[Deps], list], list[tuple]]] = [
     (probe_backup_unit, [BACKUP_UNIT_SPEC]),
     (probe_postgres, [PG_SPEC]),
     (probe_wrapper_watchdog, [WRAPPER_WATCHDOG_SPEC]),
+    (probe_staged_units, [STAGED_UNITS_SPEC]),
     (probe_job_execution, [JOB_EXECUTION_SPEC]),
     (probe_anthropic, [ANTHROPIC_SPEC]),
 ]

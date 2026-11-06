@@ -2,9 +2,9 @@
   "schema": "MergeHoldPaths@v1",
   "as_of": "2026-10-27",
   "_note": [
-    "Single source for paths Mergify must never merge (AGENTS.md §0 rules 1-3, §20, §24.7, §25.10).",
+    "Single source for paths Mergify must never merge (AGENTS.md \u00a70 rules 1-3, \u00a720, \u00a724.7, \u00a725.10).",
     ".mergify.yml's first pull_request_rule ('Hold ...') carries exactly mergify_regexes() of these classes;",
-    "tests/test_pr_merge_digest_20261027.py fails when the two drift, when a §0 / §25.10 path class is not covered,",
+    "tests/test_pr_merge_digest_20261027.py fails when the two drift, when a \u00a70 / \u00a725.10 path class is not covered,",
     "or when a module that places/submits orders is outside the hold (order_scan). Regenerate the rule with",
     "`python scripts/lib/merge_hold_paths.py --print-mergify`. The PR merge digest lists these PRs as",
     "'needs operator merge' and never offers Approve-all for them."
@@ -17,7 +17,7 @@
   "classes": [
     {
       "id": "broker_order",
-      "source": "AGENTS.md §0 rules 1-2, §22, §28.6",
+      "source": "AGENTS.md \u00a70 rules 1-2, \u00a722, \u00a728.6",
       "reason": "Broker / Active Trader / MBI / order placement code",
       "globs": [
         "scripts/active_trader/**",
@@ -42,7 +42,7 @@
     },
     {
       "id": "secrets",
-      "source": "AGENTS.md §0 rule 2, §24.7",
+      "source": "AGENTS.md \u00a70 rule 2, \u00a724.7",
       "reason": "Secrets and credential registry",
       "globs": [
         "**/.env",
@@ -52,18 +52,21 @@
     },
     {
       "id": "agents_policy",
-      "source": "AGENTS.md §20, §25.10 exclusions",
-      "reason": "Agent policy text and adapters are operator-ratified",
+      "source": "AGENTS.md \u00a720, \u00a725.10 exclusions",
+      "reason": "Agent policy text and every tool adapter (operator-ratified; \u00a70 is byte-identical in the adapters)",
       "globs": [
         "**/AGENTS.md",
         "AI_WORK_POLICY.md",
         "CLAUDE.md",
-        "GEMINI.md"
+        "GEMINI.md",
+        ".cursor/rules/**",
+        ".github/copilot-instructions.md",
+        ".goosehints"
       ]
     },
     {
       "id": "hooks_guard",
-      "source": "AGENTS.md §25.10 exclusions (hooks / guard)",
+      "source": "AGENTS.md \u00a725.10 exclusions (hooks / guard)",
       "reason": "Push hooks, agent hooks and the guard grant tooling",
       "globs": [
         ".githooks/**",
@@ -71,13 +74,17 @@
         "scripts/hooks/**",
         "bin/guard",
         "scripts/lib/guard*",
-        "scripts/guard_*"
+        "scripts/guard_*",
+        "install-guardrails.sh",
+        "scripts/install_ai_work_policy.sh",
+        "scripts/agent_claim_precommit.sh",
+        "scripts/lib/tradeai_push_budget.py"
       ]
     },
     {
       "id": "merge_deploy_control",
-      "source": "AGENTS.md §25.10 (Mergify + deploy_on_main + emergency), §17",
-      "reason": "The merge go-signal, the Mergify config, the promote poller and the release grant binding",
+      "source": "AGENTS.md \u00a725.10 (Mergify + deploy_on_main + emergency), \u00a717",
+      "reason": "The merge go-signal, the Mergify config, CI workflows and repo settings under .github/, the promote poller, the STOP/lock latch (release_control) and the release grant binding",
       "globs": [
         ".mergify.yml",
         "config/merge_hold_paths.json",
@@ -97,7 +104,17 @@
         "scripts/lib/deploy_delegation_binding.py",
         "scripts/release_grant_preflight.py",
         "config/systemd/user/tradeai-deploy-on-main.*",
-        "config/systemd/user/tradeai-pr-merge-*"
+        "config/systemd/user/tradeai-pr-merge-*",
+        ".github/**",
+        "scripts/lib/release_control.py",
+        "config/agent_standing_authority.json",
+        "scripts/lib/pr_merge_delegation.py",
+        "scripts/lib/pr_all_checks_green.py",
+        "tests/test_pr_merge_delegation_20261102.py",
+        "tests/test_pr_all_checks_standing_20261102.py",
+        "config/ci_gates/agents_policy_30_0_0.json",
+        "config/ci_gates/guard_item8_grant_free_push_20261025.json",
+        "tests/test_agents_policy_30_0_0.py"
       ]
     }
   ],
@@ -115,7 +132,7 @@
       },
       {
         "glob": "scripts/api_v2.py",
-        "reason": "API monolith (~88 commits/week): one order route calls schwab_transport.place_order, which is held, behind the read-only Schwab baseline and trading locks (§28.6). Holding the whole file would hold most UI PRs; the digest flags it as a risk note instead. Coordinator decision recorded in PR body."
+        "reason": "API monolith (~88 commits/week): one order route calls schwab_transport.place_order, which is held, behind the read-only Schwab baseline and trading locks (\u00a728.6). Holding the whole file would hold most UI PRs; the digest flags it as a risk note instead. Coordinator decision recorded in PR body."
       }
     ]
   },

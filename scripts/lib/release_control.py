@@ -1,8 +1,28 @@
-"""Release-train STOP / pause / resume / revoke state machine (ReleaseControl@v1). Library only; wired into nothing.
+"""The deploy STOP latch, the global release lock and the ReleaseControl@v1 state machine.
 
-Release Train v2, Phase 2 (plan `joyful-skipping-wilkes.md`; enhanced design 2026-10-21 §7). Operator decisions
-2026-10-21: D1 standing revocable authorization; D3 resume and scope changes only via the host CLI or a Telegram
-button confirmation (TOTP declined). The Command Center may only *request* STOP or pause.
+LIVE: this module is on the production deploy path (AGENTS.md §25.10). The release train it was built for was
+retired 2026-10-27 (operator directive: "Remove everything about the old train from the AGENTS.md, and from the
+Command Center and from the code."); what remains in use is:
+
+* ``read_latch`` / ``LATCH_*`` / ``LATCH_NAME``: the STOP latch reader. ``scripts/lib/deploy_on_main.py`` (the host
+  poller, every 2 minutes) and ``scripts/lib/deploy_delegation_binding.py`` refuse while STOP is SET or UNREADABLE.
+* ``GlobalReleaseLock`` / ``LockBusy`` / ``GLOBAL_LOCK_NAME``: the one global release mutation lock, taken by the
+  poller and by ``scripts/emergency_manual_promote.sh``.
+* ``ReleaseControl.view`` / ``.resume`` with a ``PasskeyProof``: Ops -> Controls ``deploy.resume`` and the deploy view
+  (``scripts/lib/ops_controls_core.py``, ``scripts/lib/ops_controls_api.py``).
+* ``scripts/release_control_cli.py``: the host CLI (``status`` / ``stop`` / ``resume`` on the same latch).
+
+Train-era surface still here: pause / claim / train-terminal, ``current_train_id`` and ``mutation_refusal``. They
+are read by the host CLI and by the train capability binding, which is still ACTIVE in code
+(``release_grant_binding.CAPABILITY_BINDING_STATUS = "ACTIVE"``): ``scripts/release_grant_preflight.py`` calls
+``release_grant_binding.decide_capability`` (which uses ``release_capability`` and this module) when no grant binds
+a prepare / promote whose campaign is ``release-train-<train id>``. The poller never reaches it, because
+``deploy_on_main.run_deploy_script`` strips ``TRADEAI_RELEASE_CAMPAIGN`` (and the train SHA and emergency env)
+before running the deploy script. Their removal is a separate change (it moves the tests that exercise them).
+
+Origin: Release Train v2, Phase 2 (enhanced design 2026-10-21 §7). Operator decisions 2026-10-21: D1 standing
+revocable authorization; D3 resume and scope changes only via the host CLI or a confirmed operator proof (TOTP
+declined). The Command Center may only *request* STOP.
 
 State (one directory, the same one ``scripts/release_window.py`` uses as its state dir):
 
@@ -22,12 +42,12 @@ Fail closed: a missing control.json means "never armed" (not authorized); a corr
 non-integer epoch is ``CORRUPT`` (not authorized). A SET or UNREADABLE latch is a STOP whatever control.json says.
 
 Epoch: STOP increments it; resume, re-arm and scope change each issue a NEW epoch; nothing ever lowers it, so a
-capability bound to an older epoch never becomes valid again. Pause does not change the epoch (the current train
-may finish); revoke increments it.
+capability bound to an older epoch never becomes valid again. Pause does not change the epoch; revoke increments it.
 
 Who may call what (``Actor.kind``):
   request_stop, request_pause          cc, host_cli, telegram, controller
-  acknowledge / settle (controller)    controller
+  acknowledge / settle (controller)    controller (retired 2026-10-27; ``resume(settle_if_idle=True)`` now lets the
+                                       verified operator settle a STOP while it holds the GlobalReleaseLock)
   arm (also re-arms after revoke),     host_cli (a ``HostCliProof``) or telegram (a ``TelegramConfirmation``
   resume, change_scope, revoke         verified by the hook; the shipped hook is a stub that always refuses) or
                                        passkey (a ``PasskeyProof`` vouched for by a ``PasskeyApprovalHook``; the
@@ -54,31 +74,31 @@ SCHEMA = "ReleaseControl@v1"
 LATCH_NAME = "STOP.json"
 CONTROL_NAME = "control.json"
 CONTROL_LOCK_NAME = "control.lock"
-GLOBAL_LOCK_NAME = ".lock"            # == scripts/release_window.py Runner.run's lock file
+GLOBAL_LOCK_NAME = ".lock"  # == scripts/release_window.py Runner.run's lock file
 JOURNAL_NAME = "control_journal.jsonl"
 
 # Modes
-UNARMED = "UNARMED"                   # no control.json: never armed (derived, never written)
-CORRUPT = "CORRUPT"                   # control.json unreadable / invalid (derived, never written)
+UNARMED = "UNARMED"  # no control.json: never armed (derived, never written)
+CORRUPT = "CORRUPT"  # control.json unreadable / invalid (derived, never written)
 RUNNING = "RUNNING"
-PAUSE_REQUESTED = "PAUSE_REQUESTED"   # current train may finish; no later train is claimed
+PAUSE_REQUESTED = "PAUSE_REQUESTED"  # train-era (retired 2026-10-27): the claimed train may finish
 PAUSED = "PAUSED"
 STOP_REQUESTED = "STOP_REQUESTED"
 STOP_ACKNOWLEDGED = "STOP_ACKNOWLEDGED"
 SETTLING = "SETTLING"
 STOPPED = "STOPPED"
 REVOKED = "REVOKED"
-WRITTEN_MODES = frozenset({RUNNING, PAUSE_REQUESTED, PAUSED, STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING,
-                           STOPPED, REVOKED})
+WRITTEN_MODES = frozenset(
+    {RUNNING, PAUSE_REQUESTED, PAUSED, STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING, STOPPED, REVOKED}
+)
 STOP_MODES = frozenset({STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING, STOPPED})
 #: UI vocabulary (enhanced design §7): requested → acknowledged → settling → stopped.
-STOP_PHASE = {STOP_REQUESTED: "requested", STOP_ACKNOWLEDGED: "acknowledged", SETTLING: "settling",
-              STOPPED: "stopped"}
+STOP_PHASE = {STOP_REQUESTED: "requested", STOP_ACKNOWLEDGED: "acknowledged", SETTLING: "settling", STOPPED: "stopped"}
 
 LATCH_ABSENT, LATCH_SET, LATCH_UNREADABLE = "ABSENT", "SET", "UNREADABLE"
 
 ACTOR_KINDS = frozenset({"cc", "host_cli", "telegram", "controller", "passkey"})
-REQUEST_KINDS = frozenset({"cc", "host_cli", "telegram", "controller"})   # STOP / pause: the safe direction
+REQUEST_KINDS = frozenset({"cc", "host_cli", "telegram", "controller"})  # STOP / pause: the safe direction
 #: D3 (host CLI, Telegram) plus the Ops -> Controls passkey proof that AGENTS.md 19.0.0 §25.4 / §27.3 name for
 #: resume, arm, re-arm, scope changes and revoke ("a WebAuthn passkey and a typed confirmation phrase"). A
 #: ``passkey`` actor is accepted only when its ``PasskeyApprovalHook`` vouches for the proof; the shipped hook is a
@@ -138,6 +158,7 @@ def _append_jsonl(path: Path, row: dict) -> None:
 
 # ── latch (release_window.py compatible) ─────────────────────────────────────────────────────────────
 
+
 def read_latch(path: Path) -> tuple[str, Optional[dict]]:
     """release_window's STOP latch, fail closed (same contract as ``State.read_latch`` on 9dde41745).
 
@@ -157,6 +178,7 @@ def read_latch(path: Path) -> tuple[str, Optional[dict]]:
 
 # ── locks ────────────────────────────────────────────────────────────────────────────────────────────
 
+
 class _Flock:
     def __init__(self, path: Path, timeout_s: float) -> None:
         self.path = Path(path)
@@ -167,7 +189,7 @@ class _Flock:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fh = open(self.path, "a+")  # noqa: SIM115 - held across the critical section
-        except OSError as exc:      # a directory, a permission problem, a broken parent: fail closed
+        except OSError as exc:  # a directory, a permission problem, a broken parent: fail closed
             raise ControlRefused("LOCK_ERROR", f"{self.path}: {type(exc).__name__}: {exc}") from exc
         deadline = time.monotonic() + max(0.0, self.timeout_s)
         while True:
@@ -214,10 +236,11 @@ class GlobalReleaseLock(_Flock):
 
 # ── actors and operator proofs (D3) ──────────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class Actor:
-    kind: str                 # cc | host_cli | telegram | controller
-    identity: str             # server-derived (CC: tailnet login; host: uid/login; controller: unit name)
+    kind: str  # cc | host_cli | telegram | controller
+    identity: str  # server-derived (CC: tailnet login; host: uid/login; controller: unit name)
 
     def __post_init__(self) -> None:
         if self.kind not in ACTOR_KINDS:
@@ -303,7 +326,7 @@ class ControlView:
         if self.mode in STOP_PHASE:
             return STOP_PHASE[self.mode]
         if self.latch_state != LATCH_ABSENT:
-            return "stopped"       # latched by release_window itself, or unreadable: stopped, fail closed
+            return "stopped"  # latched by release_window itself, or unreadable: stopped, fail closed
         return None
 
     def mutation_refusal(self, train_id: Optional[str] = None) -> Optional[str]:
@@ -332,10 +355,15 @@ class ControlView:
 
 
 class ReleaseControl:
-    def __init__(self, state_dir: Path, *, clock: Callable[[], float] = time.time,
-                 telegram_hook: Optional[TelegramConfirmationHook] = None,
-                 passkey_hook: Optional[PasskeyApprovalHook] = None,
-                 lock_timeout_s: float = 5.0) -> None:
+    def __init__(
+        self,
+        state_dir: Path,
+        *,
+        clock: Callable[[], float] = time.time,
+        telegram_hook: Optional[TelegramConfirmationHook] = None,
+        passkey_hook: Optional[PasskeyApprovalHook] = None,
+        lock_timeout_s: float = 5.0,
+    ) -> None:
         self.root = Path(state_dir)
         self.latch_path = self.root / LATCH_NAME
         self.path = self.root / CONTROL_NAME
@@ -353,18 +381,43 @@ class ReleaseControl:
         try:
             body = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            return ControlView(CORRUPT, None, None, latch_state, latch, None, None, None, None,
-                               error=f"{type(exc).__name__}: {str(exc)[:160]}")
+            return ControlView(
+                CORRUPT,
+                None,
+                None,
+                latch_state,
+                latch,
+                None,
+                None,
+                None,
+                None,
+                error=f"{type(exc).__name__}: {str(exc)[:160]}",
+            )
         err = _validate_control(body)
         if err:
             return ControlView(CORRUPT, None, None, latch_state, latch, None, None, None, None, error=err)
-        return ControlView(body["mode"], body["epoch"], body["version"], latch_state, latch,
-                           body.get("accepted_policy_digest"), body.get("current_train_id"), body.get("stop"),
-                           body.get("pause"), raw=body)
+        return ControlView(
+            body["mode"],
+            body["epoch"],
+            body["version"],
+            latch_state,
+            latch,
+            body.get("accepted_policy_digest"),
+            body.get("current_train_id"),
+            body.get("stop"),
+            body.get("pause"),
+            raw=body,
+        )
 
     # -- the safe direction: anyone authenticated may request STOP or pause ------------------------------
-    def request_stop(self, actor: Actor, reason: str, *, idempotency_key: Optional[str] = None,
-                     expected_version: Optional[int] = None) -> dict:
+    def request_stop(
+        self,
+        actor: Actor,
+        reason: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        expected_version: Optional[int] = None,
+    ) -> dict:
         """Persist the STOP latch and increment the epoch. Never blocks on the global mutation lock: the
         controller acknowledges at its next mutation boundary. Works even when control.json is corrupt or
         missing (the latch alone stops release_window and every capability reservation)."""
@@ -378,37 +431,67 @@ class ReleaseControl:
             v = self.view()
             # The latch first: if anything below fails, the system is already stopped.
             if v.latch_state == LATCH_ABSENT:
-                _atomic_write_json(self.latch_path, {
-                    "latched_at": utc_iso(now), "window_id": None, "outcome": "STOP_REQUESTED",
-                    "source": "release_control", "actor": {"kind": actor.kind, "identity": actor.identity},
-                    "reason": reason,
-                    "detail": "release train STOP; operator resumes via scripts/release_control_cli.py resume"})
+                _atomic_write_json(
+                    self.latch_path,
+                    {
+                        "latched_at": utc_iso(now),
+                        "window_id": None,
+                        "outcome": "STOP_REQUESTED",
+                        "source": "release_control",
+                        "actor": {"kind": actor.kind, "identity": actor.identity},
+                        "reason": reason,
+                        "detail": "deploy STOP; operator resumes via scripts/release_control_cli.py resume",
+                    },
+                )
             if v.mode in (UNARMED, CORRUPT):
-                result = {"outcome": "STOP_LATCHED", "mode": v.mode, "latch": "SET",
-                          "detail": "control state is not readable/armed; latch written, epoch unchanged"}
+                result = {
+                    "outcome": "STOP_LATCHED",
+                    "mode": v.mode,
+                    "latch": "SET",
+                    "detail": "control state is not readable/armed; latch written, epoch unchanged",
+                }
                 self._journal("request_stop", actor, result, idempotency_key)
                 return result
             self._check_version(v, expected_version, "request_stop", actor)
             body = dict(v.raw)
             if v.mode in STOP_MODES or v.mode == REVOKED:
-                result = {"outcome": "ALREADY_STOPPING" if v.mode != REVOKED else "ALREADY_REVOKED",
-                          "mode": v.mode, "epoch": v.epoch}
+                result = {
+                    "outcome": "ALREADY_STOPPING" if v.mode != REVOKED else "ALREADY_REVOKED",
+                    "mode": v.mode,
+                    "epoch": v.epoch,
+                }
                 self._journal("request_stop", actor, result, idempotency_key)
                 return result
             body["prior_mode"] = v.mode
             body["mode"] = STOP_REQUESTED
             body["epoch"] = int(v.epoch or 0) + 1
-            body["stop"] = {"requested_at": utc_iso(now), "requested_ts": now, "acknowledged_at": None,
-                            "settling_at": None, "stopped_at": None, "reason": reason,
-                            "actor": {"kind": actor.kind, "identity": actor.identity}}
+            body["stop"] = {
+                "requested_at": utc_iso(now),
+                "requested_ts": now,
+                "acknowledged_at": None,
+                "settling_at": None,
+                "stopped_at": None,
+                "reason": reason,
+                "actor": {"kind": actor.kind, "identity": actor.identity},
+            }
             self._commit(body, v)
-            result = {"outcome": "STOP_REQUESTED", "mode": STOP_REQUESTED, "epoch": body["epoch"],
-                      "version": body["version"]}
+            result = {
+                "outcome": "STOP_REQUESTED",
+                "mode": STOP_REQUESTED,
+                "epoch": body["epoch"],
+                "version": body["version"],
+            }
             self._journal("request_stop", actor, result, idempotency_key)
             return result
 
-    def request_pause(self, actor: Actor, reason: str, *, idempotency_key: Optional[str] = None,
-                      expected_version: Optional[int] = None) -> dict:
+    def request_pause(
+        self,
+        actor: Actor,
+        reason: str,
+        *,
+        idempotency_key: Optional[str] = None,
+        expected_version: Optional[int] = None,
+    ) -> dict:
         """Pause after the current train: no later train is claimed; the current one may reach its bounded
         verified / rolled-back terminal state. Epoch unchanged."""
         self._require(actor, REQUEST_KINDS, "request_pause")
@@ -426,11 +509,20 @@ class ReleaseControl:
                 return result
             body = dict(v.raw)
             body["mode"] = PAUSE_REQUESTED if v.current_train_id else PAUSED
-            body["pause"] = {"requested_at": utc_iso(now), "reason": reason, "train_may_finish": v.current_train_id,
-                             "actor": {"kind": actor.kind, "identity": actor.identity}}
+            body["pause"] = {
+                "requested_at": utc_iso(now),
+                "reason": reason,
+                "train_may_finish": v.current_train_id,
+                "actor": {"kind": actor.kind, "identity": actor.identity},
+            }
             self._commit(body, v)
-            result = {"outcome": body["mode"], "mode": body["mode"], "epoch": body["epoch"],
-                      "current_train_may_finish": v.current_train_id, "version": body["version"]}
+            result = {
+                "outcome": body["mode"],
+                "mode": body["mode"],
+                "epoch": body["epoch"],
+                "current_train_may_finish": v.current_train_id,
+                "version": body["version"],
+            }
             self._journal("request_pause", actor, result, idempotency_key)
             return result
 
@@ -525,38 +617,117 @@ class ReleaseControl:
             if v.latch_state != LATCH_ABSENT:
                 raise ControlRefused("STOP_LATCH_PRESENT", "resume or clear the latch first")
             body = dict(v.raw) if v.mode == REVOKED else {"schema": SCHEMA, "version": 0, "epoch": 0}
-            body.update(mode=RUNNING, epoch=int(body.get("epoch") or 0) + 1, accepted_policy_digest=policy_digest,
-                        current_train_id=None, stop=None, pause=None,
-                        armed={"at": utc_iso(self.clock()), "reason": reason,
-                               "actor": {"kind": actor.kind, "identity": actor.identity}})
+            body.update(
+                mode=RUNNING,
+                epoch=int(body.get("epoch") or 0) + 1,
+                accepted_policy_digest=policy_digest,
+                current_train_id=None,
+                stop=None,
+                pause=None,
+                armed={
+                    "at": utc_iso(self.clock()),
+                    "reason": reason,
+                    "actor": {"kind": actor.kind, "identity": actor.identity},
+                },
+            )
             self._commit(body, v)
             result = {"outcome": "ARMED", "epoch": body["epoch"], "policy_digest": policy_digest}
             self._journal("arm", actor, result)
             return result
 
-    def resume(self, actor: Actor, proof: Any, *, reason: str, readiness: dict) -> dict:
+    def resume(self, actor: Actor, proof: Any, *, reason: str, readiness: dict, settle_if_idle: bool = False) -> dict:
         """Clear STOP / pause: archive the latch (rename, never delete), issue a NEW epoch, RUNNING. Requires the
-        caller to have shown the stop reason, current state and fresh readiness (recorded verbatim)."""
+        caller to have shown the stop reason, current state and fresh readiness (recorded verbatim).
+
+        A STOP that has not reached ``stopped`` is refused (STOP_NOT_SETTLED) unless ``settle_if_idle``: then, and
+        only while this call holds the GlobalReleaseLock (``<state_dir>/.lock``, which the deploy_on_main poller
+        holds for its whole prepare / promote / tester run), the operator's own verified actor acknowledges and
+        settles the STOP with ``in_flight=False``, records itself as the settler, and the resume proceeds. A busy
+        lock means a deploy is in flight: still STOP_NOT_SETTLED, nothing written but the journal line. The
+        controller that used to settle was retired 2026-10-27."""
         self._operator(actor, proof, "resume")
         reason = _reason(reason)
         if not isinstance(readiness, dict) or not readiness.get("checked_at"):
             raise ControlRefused("READINESS_MISSING", "resume shows fresh readiness first")
+        if not settle_if_idle:
+            return self._resume_locked(actor, reason, readiness, settled=None)
+        mode = self.view().mode
+        if mode not in (STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING):
+            return self._resume_locked(actor, reason, readiness, settled=None)
+        try:
+            gl = GlobalReleaseLock(self.root, timeout_s=0.0).acquire()
+        except LockBusy as exc:
+            self._journal(
+                "resume",
+                actor,
+                {"outcome": "REFUSED", "code": "STOP_NOT_SETTLED", "in_flight": True, "signal": GLOBAL_LOCK_NAME},
+            )
+            raise ControlRefused(
+                "STOP_NOT_SETTLED", f"{mode}: a deploy holds the global release lock (in flight); retry when it ends"
+            ) from exc
+        try:
+            return self._resume_locked(actor, reason, readiness, settled=self._settle_idle_held(actor))
+        finally:
+            gl.release()
+
+    def _settle_idle_held(self, actor: Actor) -> Optional[dict]:
+        """Caller holds the GlobalReleaseLock: nothing is in flight. Acknowledge and settle the STOP as the operator
+        (the retired controller's step), recorded in control.json ``stop`` and the journal."""
+        with _Flock(self.root / CONTROL_LOCK_NAME, self.lock_timeout_s):
+            v = self.view()
+            if v.mode not in (STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING):
+                return None
+            body = dict(v.raw)
+            stop = dict(body.get("stop") or {})
+            now = utc_iso(self.clock())
+            stop["acknowledged_at"] = stop.get("acknowledged_at") or now
+            stop["settling_at"] = stop.get("settling_at") or now
+            stop["stopped_at"] = now
+            settled = {
+                "at": now,
+                "actor": {"kind": actor.kind, "identity": actor.identity},
+                "via": "resume",
+                "from_mode": v.mode,
+                "in_flight": False,
+                "signal": f"{GLOBAL_LOCK_NAME} acquired (no deploy in flight)",
+            }
+            stop["settled_by"] = settled
+            body.update(mode=STOPPED, stop=stop, current_train_id=None)
+            self._commit(body, v)
+            self._journal("operator_settle", actor, {"outcome": STOPPED, **settled})
+            return settled
+
+    def _resume_locked(self, actor: Actor, reason: str, readiness: dict, *, settled: Optional[dict]) -> dict:
         with _Flock(self.root / CONTROL_LOCK_NAME, self.lock_timeout_s):
             v = self.view()
             if v.mode in (UNARMED, CORRUPT, REVOKED):
                 raise ControlRefused("RESUME_NOT_APPLICABLE", f"{v.mode}: use arm/reinstate")
             if v.mode in (STOP_REQUESTED, STOP_ACKNOWLEDGED, SETTLING):
-                raise ControlRefused("STOP_NOT_SETTLED", f"{v.mode}: the controller has not reached stopped")
+                self._journal("resume", actor, {"outcome": "REFUSED", "code": "STOP_NOT_SETTLED", "mode": v.mode})
+                raise ControlRefused("STOP_NOT_SETTLED", f"{v.mode}: the deploy STOP has not reached stopped")
             if v.mode == RUNNING and v.latch_state == LATCH_ABSENT:
                 raise ControlRefused("NOT_STOPPED", "nothing to resume")
             archived = self._archive_latch(v, reason) if v.latch_state != LATCH_ABSENT else None
             body = dict(v.raw)
-            body.update(mode=RUNNING, epoch=int(v.epoch or 0) + 1, stop=None, pause=None,
-                        resumed={"at": utc_iso(self.clock()), "reason": reason, "readiness": readiness,
-                                 "prior_mode": v.mode, "prior_stop": v.stop, "latch_archived": archived,
-                                 "actor": {"kind": actor.kind, "identity": actor.identity}})
+            body.update(
+                mode=RUNNING,
+                epoch=int(v.epoch or 0) + 1,
+                stop=None,
+                pause=None,
+                resumed={
+                    "at": utc_iso(self.clock()),
+                    "reason": reason,
+                    "readiness": readiness,
+                    "prior_mode": v.mode,
+                    "prior_stop": v.stop,
+                    "latch_archived": archived,
+                    "actor": {"kind": actor.kind, "identity": actor.identity},
+                },
+            )
             self._commit(body, v)
             result = {"outcome": "RESUMED", "epoch": body["epoch"], "latch_archived": archived}
+            if settled is not None:
+                result["settled_by"] = settled
             self._journal("resume", actor, result)
             return result
 
@@ -570,10 +741,16 @@ class ReleaseControl:
             if v.mode == REVOKED:
                 raise ControlRefused("REVOKED", "reinstate with arm")
             body = dict(v.raw)
-            body.update(epoch=int(v.epoch or 0) + 1, accepted_policy_digest=policy_digest,
-                        scope_changed={"at": utc_iso(self.clock()), "reason": reason,
-                                       "from_digest": v.accepted_policy_digest,
-                                       "actor": {"kind": actor.kind, "identity": actor.identity}})
+            body.update(
+                epoch=int(v.epoch or 0) + 1,
+                accepted_policy_digest=policy_digest,
+                scope_changed={
+                    "at": utc_iso(self.clock()),
+                    "reason": reason,
+                    "from_digest": v.accepted_policy_digest,
+                    "actor": {"kind": actor.kind, "identity": actor.identity},
+                },
+            )
             self._commit(body, v)
             result = {"outcome": "SCOPE_CHANGED", "epoch": body["epoch"], "policy_digest": policy_digest}
             self._journal("change_scope", actor, result)
@@ -586,9 +763,17 @@ class ReleaseControl:
         with _Flock(self.root / CONTROL_LOCK_NAME, self.lock_timeout_s):
             v = self._writable_view("revoke", actor)
             body = dict(v.raw)
-            body.update(mode=REVOKED, epoch=int(v.epoch or 0) + 1, current_train_id=None,
-                        revoked={"at": utc_iso(self.clock()), "reason": reason, "prior_mode": v.mode,
-                                 "actor": {"kind": actor.kind, "identity": actor.identity}})
+            body.update(
+                mode=REVOKED,
+                epoch=int(v.epoch or 0) + 1,
+                current_train_id=None,
+                revoked={
+                    "at": utc_iso(self.clock()),
+                    "reason": reason,
+                    "prior_mode": v.mode,
+                    "actor": {"kind": actor.kind, "identity": actor.identity},
+                },
+            )
             self._commit(body, v)
             result = {"outcome": "REVOKED", "epoch": body["epoch"]}
             self._journal("revoke", actor, result)
@@ -598,8 +783,11 @@ class ReleaseControl:
     def _require(self, actor: Actor, kinds: Any, command: str) -> None:
         if not isinstance(actor, Actor) or actor.kind not in kinds:
             kind = getattr(actor, "kind", type(actor).__name__)
-            self._journal(command, actor if isinstance(actor, Actor) else None,
-                          {"outcome": "REFUSED", "code": "ACTOR_NOT_PERMITTED", "kind": kind})
+            self._journal(
+                command,
+                actor if isinstance(actor, Actor) else None,
+                {"outcome": "REFUSED", "code": "ACTOR_NOT_PERMITTED", "kind": kind},
+            )
             raise ControlRefused("ACTOR_NOT_PERMITTED", f"{kind} may not {command}")
 
     def _operator(self, actor: Actor, proof: Any, command: str) -> None:
@@ -618,13 +806,16 @@ class ReleaseControl:
         elif actor.kind == "passkey" and isinstance(proof, PasskeyProof):
             try:
                 ok = proof.confirmation == expected and bool(
-                    self.passkey_hook.verify(proof, command=command, expected_phrase=expected))
+                    self.passkey_hook.verify(proof, command=command, expected_phrase=expected)
+                )
             except Exception:  # noqa: BLE001 - a hook failure is a refusal
                 ok = False
         if not ok:
             self._journal(command, actor, {"outcome": "REFUSED", "code": "OPERATOR_PROOF_REFUSED"})
-            raise ControlRefused("OPERATOR_PROOF_REFUSED", f"{command} needs a host CLI, Telegram or passkey "
-                                                           f"confirmation of {expected!r}")
+            raise ControlRefused(
+                "OPERATOR_PROOF_REFUSED",
+                f"{command} needs a host CLI, Telegram or passkey confirmation of {expected!r}",
+            )
 
     def _writable_view(self, command: str, actor: Actor) -> ControlView:
         v = self.view()
@@ -651,15 +842,22 @@ class ReleaseControl:
         stamp = datetime.fromtimestamp(self.clock(), timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         windows = self.root / "windows"
         windows.mkdir(parents=True, exist_ok=True)
-        _atomic_write_json(windows / f"STOP-cleared-{stamp}.json",
-                           {**(v.latch or {}), "latch_state": v.latch_state, "cleared_at": stamp,
-                            "cleared_reason": reason, "cleared_by": "release_control.resume"})
+        _atomic_write_json(
+            windows / f"STOP-cleared-{stamp}.json",
+            {
+                **(v.latch or {}),
+                "latch_state": v.latch_state,
+                "cleared_at": stamp,
+                "cleared_reason": reason,
+                "cleared_by": "release_control.resume",
+            },
+        )
         dest = windows / f"STOP-{stamp}.json.archived"
         n = 1
         while os.path.lexists(dest):
             dest = windows / f"STOP-{stamp}-{n}.json.archived"
             n += 1
-        os.rename(self.latch_path, dest)          # archived, never deleted (AGENTS §0 rule 6)
+        os.rename(self.latch_path, dest)  # archived, never deleted (AGENTS §0 rule 6)
         return str(dest)
 
     def _advance_stop(self, actor: Actor, frm: str, to: str, stamp_key: str) -> dict:
@@ -693,16 +891,21 @@ class ReleaseControl:
             return None
         return None
 
-    def _journal(self, command: str, actor: Optional[Actor], result: dict,
-                 idempotency_key: Optional[str] = None) -> None:
-        row = {"at": utc_iso(self.clock()), "command": command, "result": result,
-               "actor": {"kind": actor.kind, "identity": actor.identity} if actor else None}
+    def _journal(
+        self, command: str, actor: Optional[Actor], result: dict, idempotency_key: Optional[str] = None
+    ) -> None:
+        row = {
+            "at": utc_iso(self.clock()),
+            "command": command,
+            "result": result,
+            "actor": {"kind": actor.kind, "identity": actor.identity} if actor else None,
+        }
         if idempotency_key:
             row["idempotency_key"] = idempotency_key
         try:
             _append_jsonl(self.journal_path, row)
         except OSError:
-            pass   # the journal is audit; the state transition itself is in control.json / STOP.json
+            pass  # the journal is audit; the state transition itself is in control.json / STOP.json
 
 
 def _validate_control(body: Any) -> Optional[str]:
