@@ -118,7 +118,9 @@ def build_portfolio_snapshot() -> dict[str, Any]:
     """Compute a fresh snapshot from current JSON state. Never raises -- returns a
     best-effort partial snapshot (with `errors`) rather than crashing a caller/timer."""
     errors: list[str] = []
-    h = _load_json(STATE_DIR / "holdings.json")
+    from ..holdings_document import load_document
+    # DB first (operator 2026-11-06); holdings.json is the stated fallback (document_source says which).
+    h = load_document(STATE_DIR / "holdings.json")
     perf = _load_json(STATE_DIR / "performance_history.json")
     risk = _load_json(STATE_DIR / "risk_management.json")
 

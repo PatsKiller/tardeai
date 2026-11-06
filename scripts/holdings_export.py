@@ -333,8 +333,12 @@ def _iso_or_raw(value: Any) -> Any:
 
 
 def _row_identity(row: Mapping[str, Any]) -> tuple[str, str]:
-    """(canonical account, symbol) with every cash spelling collapsed to CASH (the sync writes both)."""
-    account = _canonical_account(row.get("account_key") or row.get("account") or row.get("account_id"))
+    """(canonical account, symbol) with every cash spelling collapsed to CASH (the sync writes both).
+
+    The store's own label (`account`) decides for a stored row; an `account_key` on a stored row is only an
+    earlier export's copy of a DB fact and is never trusted over the label.
+    """
+    account = _canonical_account(row.get("account") or row.get("account_id") or row.get("account_key"))
     symbol = str(row.get("symbol") or "").upper()
     if row.get("is_cash") or symbol in ("CASH", "SPAXX", "FDRXX"):
         symbol = "CASH"
@@ -396,7 +400,7 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
         symbol = row.get("symbol")
         account_key = str(row.get("account_key"))
         label = aliases.get(account_key, account_key)
-        identity = _row_identity({"account_key": account_key, "symbol": symbol, "is_cash": is_cash})
+        identity = _row_identity({"account": account_key, "symbol": symbol, "is_cash": is_cash})
         db_accounts.add(identity[0])
         before = previous.get(identity)
         out: dict[str, Any] = copy.deepcopy(before) if before is not None else {}
@@ -539,6 +543,11 @@ def render_document(rows: Iterable[Mapping[str, Any]], *, generated_at: datetime
         merged = dict(summaries.get(target) or {})
         merged.update(block)
         summaries[target] = merged
+    # A carried account with no summary still needs one: the repricer's totals sum the summaries.
+    for r in foreign:
+        label = str(r.get("account") or r.get("account_id") or "")
+        if label and _canonical_account(label) not in {_canonical_account(k) for k in summaries}:
+            summaries[label] = {"account_key": label, "source": "carried_without_db_observation"}
     data_clock = _compute_data_as_of(holdings)
     document.update({
         "schema": SCHEMA,
@@ -832,7 +841,8 @@ def export(*, conn, store: Path | str | None = None, backups: Path | str | None 
     resolved_backups = Path(os.path.realpath(backups))
     if not resolved_backups.is_relative_to(resolved_root):
         raise ExportError(f"backups directory escapes the state root: {resolved_backups} not under {resolved_root}")
-    with (lock() if lock is not None else contextlib.nullcontext()):
+    # A dry run writes nothing, so it never queues behind the other writers for the lock.
+    with (lock() if (lock is not None and not dry_run) else contextlib.nullcontext()):
         prior, prior_state = read_prior(store)
         document, binding = build_document(conn, prior=prior, now=now)
         document["export_provenance"]["prior_state"] = prior_state

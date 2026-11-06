@@ -983,10 +983,10 @@ def _build_account_rows(account_key, live, existing_by_key):
                     # rows beneath it kept updating daily, and every freshness consumer
                     # read a 18-day-old stamp on same-day data. The broker sync is the
                     # only writer that knows the real confirmation time; it stamps it.
-                    # broker_position_as_of stays date-only (existing readers compare it to a date); the
-                    # _at twin carries the full UTC datetime so same-day staleness is visible (2026-10-14:
-                    # Schwab rows froze at 14:52 ET yet read "fresh" until the next day).
-                    "broker_position_as_of": as_of, "broker_position_as_of_at": now})
+                    # broker_position_as_of is the full ISO-8601 UTC instant (2026-11-06): date-only, it
+                    # parsed as 00:00 UTC (lib/account_state.parse_time) and aged a same-day book by up to a
+                    # day. Readers that want the date take [:10]. The _at twin is kept for its readers.
+                    "broker_position_as_of": now, "broker_position_as_of_at": now})
         # Schwab's own P/L Day, with the mark it was computed at, so the repricer can check its
         # fill-aware day change against the broker at the SAME price (a later mark differs).
         # The broker's own average cost per share for THIS account, so the basis check compares like with like.
@@ -1074,7 +1074,7 @@ def _cash_rows_for_account(label: str, hold: list, account_key: str, st) -> list
         "source": "schwab_api",
         "updated_at": now,
         "as_of": as_of,
-        "broker_position_as_of": as_of,   # see the equity-row note above
+        "broker_position_as_of": now,     # full ISO-8601 UTC, see the equity-row note above
         "broker_position_as_of_at": now,  # datetime twin (2026-10-14), see the equity-row note above
         "day_change": 0,
         "day_change_pct": 0,
