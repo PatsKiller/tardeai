@@ -343,13 +343,34 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
                 if not handoff.get("accepted"):
                     log.error("[watchdog] orchestrator handoff failed: %s", handoff)
                 continue
+            # Injection triage 21 (2026-11-06): pipeline_schedule.command is a DB row, so only the narrow
+            # remediation grammar may reach the shell. A refused line is a failed retry, so it still escalates.
+            # The seeded rows `cd` into the dev checkout (pipeline_registry.seed_schedule).
+            from lib.live_project_root import DEV_ROOT
+            from lib.shell_command_guard import check_command
+
+            _ok, _why = check_command(issue["command"], roots=(PROJECT_ROOT, str(DEV_ROOT)))
+            if not _ok:
+                # A refused line never starts a retry run, so the retry count would never reach MAX_RETRIES:
+                # escalate now (hourly dedupe) instead of refusing silently every cycle.
+                log.warning(f"[watchdog] Retry refused for {script}: {_why}")
+                refused = f"command_refused_by_guard: {_why}"[:100]
+                log_action(conn, "retry_refused", script, issue["issue"], False, refused)
+                if not no_telegram and not was_alerted_recently(conn, script):
+                    send_telegram(
+                        f"CRITICAL: {script} retry command refused by the shell guard ({_why[:120]}). "
+                        "Manual check of pipeline_schedule.command needed.",
+                        urgent=True,
+                    )
+                    log_action(conn, "alert", script, "retry_refused", True, "")
+                continue
             rid = None
             run_fail = None
             try:
                 from pipeline_registry import run_start, run_complete, run_fail
 
                 rid = run_start(script, run_label=f"retry_{retries_today + 1}", triggered_by="watchdog")
-                result = subprocess.run(
+                result = subprocess.run(  # nosemgrep: tq-py-subprocess-shell -- command passed shell_command_guard
                     issue["command"], shell=True, timeout=300, capture_output=True, text=True, cwd=PROJECT_ROOT
                 )
                 if result.returncode == 0:
