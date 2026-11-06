@@ -129,7 +129,7 @@ class FakeDocker:
             if "json_build_object" in stdin:
                 return ok(json.dumps(self.state()) + "\n")
             if self.psql_fail:
-                return subprocess.CompletedProcess(argv, 3, "", f"ERROR: boom PASSWORD 'SCRAM-SHA-256$4096:zz$yy:xx'")
+                return subprocess.CompletedProcess(argv, 3, "", "ERROR: boom PASSWORD 'SCRAM-SHA-256$4096:zz$yy:xx'")
             if "OWNER TO n8n_app" in stdin:
                 self.role_state = {"login": True, "super": False, "createrole": False, "createdb": False,
                                    "replication": False, "bypassrls": False}

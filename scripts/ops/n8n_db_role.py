@@ -282,7 +282,7 @@ def _recreate(base_env: Path, app_env: Path | None, run: Runner, healthy: Callab
               settle: Callable[[], None]) -> dict:
     before = cut.active_workflows(_argv_only(run))
     cp = run(_compose(base_env, app_env, "up", "-d", "--no-deps", "--force-recreate", "n8n"))
-    is_up = cp.returncode == 0 and (healthy or (lambda: cut._healthy(180, time.sleep)))()  # noqa: SLF001
+    is_up = cp.returncode == 0 and (healthy or (lambda: cut._healthy(180, time.sleep)))()  # noqa: SLF001 -- sibling ops module, same package 0.1a health probe
     if is_up:
         settle()
     after = cut.active_workflows(_argv_only(run)) if is_up else None
