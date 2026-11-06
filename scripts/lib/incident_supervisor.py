@@ -50,8 +50,8 @@ except ImportError:  # noqa: SIM105
 
 try:
     from scripts.lib.telegram_batch import batch_text as _batch_message
-except ImportError:  # noqa: SIM105
-    from telegram_batch import batch_text as _batch_message  # type: ignore[no-redef]
+except ImportError:  # noqa: SIM105 -- two import spellings, not a suppressible error
+    from telegram_batch import batch_text as _batch_message  # type: ignore[no-redef] -- script-dir import fallback when run without the repo root on sys.path
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0

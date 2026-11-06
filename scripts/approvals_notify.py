@@ -292,7 +292,7 @@ def run(*, requests_path: Path = DEFAULT_REQUESTS, state_root: Path | None = Non
         return receipt
 
     if notify is None:  # pragma: no cover - exercised only against the real transport
-        from telegram_alert import send_telegram  # type: ignore
+        from telegram_alert import send_telegram  # type: ignore -- script-dir import fallback when run without the repo root on sys.path
 
         def notify(body: str, *, priority: str = PRIORITY_P2) -> bool:
             return bool(send_telegram(body, priority=priority))

@@ -121,7 +121,7 @@ class NudgeState:
 def in_quiet_hours(now: datetime | None = None) -> bool:
     """The operator's quiet window, from the ONE definition in telegram_alert_router (22:00–07:00 ET)."""
     try:
-        from telegram_alert_router import intent_in_quiet_hours  # type: ignore
+        from telegram_alert_router import intent_in_quiet_hours  # type: ignore -- script-dir import fallback when run without the repo root on sys.path
     except Exception:  # noqa: BLE001 — a missing router must not turn night into day
         return False
     return bool(intent_in_quiet_hours(now))
