@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { locateIn } from '../lib/navLocate'
 import { RADIUS } from '../lib/designTokens'
+import { useApi } from '../hooks/useApi'
+import { HOME_APPROVALS, titledWithCount, type NeedsYouSummary } from '../lib/homeApprovals'
 
 type Hub = { to: string; label: string; exact?: boolean; hardNav?: boolean; restored?: boolean }
 
@@ -98,6 +100,14 @@ export default function NavRail() {
   const showControlPlane = previewFlag || pathname.startsWith('/control-plane')
   const sections = showControlPlane ? [...SECTIONS, CONTROL_PLANE_PREVIEW] : SECTIONS
   const here = locate(pathname)
+  // Home v008 "Needs you" (spec §1): open-decision count on the Home item and in the tab title. Background priority so
+  // the page's own reads go first; a 403 or an unreadable store simply shows no badge.
+  const needsYou = useApi<NeedsYouSummary>(`${HOME_APPROVALS}/summary`, 60_000, { priority: 'background' })
+  const needsYouCount = typeof needsYou.data?.count === 'number' ? needsYou.data.count : null
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.title = titledWithCount(document.title, needsYouCount)
+  }, [needsYouCount, pathname])
   const panelRef = useRef<HTMLDivElement | null>(null)
 
   // Close on navigation — the sheet must never survive a route change.
@@ -169,6 +179,7 @@ export default function NavRail() {
                 style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
                 {h.label}
+                {h.to === '/' && needsYouCount != null && needsYouCount > 0 && <span data-testid="nav-needs-you-badge" aria-hidden="true" title={`${needsYouCount} decision${needsYouCount === 1 ? '' : 's'} need you`} style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, padding: '1px 7px', borderRadius: 999, background: 'var(--warning-bg)', color: 'var(--warning-color)' }}>{needsYouCount}</span>}
                 {h.restored && Date.now() >= RESTORED_AT && Date.now() < RESTORED_UNTIL && <span aria-hidden="true" style={{ marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: RADIUS.md, background: 'var(--info-bg)', color: 'var(--info-color)' }}>back</span>}
               </NavLink>
             ),
