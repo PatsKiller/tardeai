@@ -52,6 +52,7 @@ export type CoordinatorsPayload = {
   registry_error?: string | null
   registry_unreadable?: boolean
   divergent?: boolean
+  registry_problems?: string[]
   stale_after_minutes?: number
   lead?: string | null
   coordinators?: CoordinatorRow[]
@@ -87,6 +88,23 @@ export function joinLineForSelection(
 ): string {
   if (!data || data.id !== id || data.vendor !== vendor) return ''
   return data.line || ''
+}
+
+/** The line a READABLE but divergent registry must show, or null.
+ *
+ *  The server already publishes `divergent` and `registry_problems` (two leads, a top-level lead that disagrees with
+ *  the role, duplicate ids …); the panel drew the cards and said nothing, so a registry that cannot be trusted looked
+ *  exactly like a healthy one. An unreadable registry has its own banner (`registry_error`) and is not repeated here.
+ *  Nothing on this page repairs a divergence (codex-cloud P2, CoordinatorsPanel). */
+export function divergenceLine(p?: {
+  divergent?: boolean; registry_error?: string | null; registry_problems?: string[]
+} | null): string | null {
+  if (!p || p.registry_error) return null
+  if (p.divergent !== true) return null
+  const problems = (p.registry_problems || []).map(x => String(x || '').trim()).filter(Boolean)
+  return problems.length
+    ? `The coordinator registry disagrees with itself: ${problems.join('; ')} — nothing here repairs it.`
+    : 'The coordinator registry disagrees with itself — nothing here repairs it.'
 }
 
 export function stateTone(state?: string): Tone {

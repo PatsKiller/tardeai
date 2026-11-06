@@ -8,7 +8,7 @@ import { Chip, ChipRow } from '../components/primitives'
 import AddCoordinatorModal from '../components/AddCoordinatorModal'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
 import {
-  byTerritory, heartbeatLabel, sortCoordinators, stateLabel, stateTone,
+  byTerritory, divergenceLine, heartbeatLabel, sortCoordinators, stateLabel, stateTone,
   type AgentRow, type BoardPayload, type CoordinatorsPayload, type DocsPayload,
 } from '../lib/coordinators'
 
@@ -66,6 +66,7 @@ export default function CoordinatorsPanel() {
   const decisions = d?.pending_decisions || []
   const inbox = d?.inbox || {}
   const agents: AgentRow[] = d?.agents || []
+  const divergence = divergenceLine(d)
 
   if (coordApi.loading && !d) return <div style={panel} data-testid="coordination-coordinators">Loading coordinators…</div>
   if (coordApi.error && !d) return <div style={panel} data-testid="coordination-coordinators">Coordinators unavailable.</div>
@@ -91,6 +92,12 @@ export default function CoordinatorsPanel() {
         ) : d?.registry_present === false ? (
           <div role="alert" style={{ marginTop: 8, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, color: TOKENS.text[2], background: TOKENS.bg[2] }}>
             No coordinator registry yet. The operator appoints with <code>scripts/coordinator.py appoint --id … --quote “…”</code>.
+          </div>
+        ) : null}
+        {/* A registry that DECODES but disagrees with itself used to draw the cards and say nothing (codex-cloud P2). */}
+        {divergence ? (
+          <div role="status" data-testid="coordinators-registry-divergent" style={{ marginTop: 8, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, color: TOKENS.warning, background: TOKENS.bg[2] }}>
+            {divergence}
           </div>
         ) : null}
         <ChipRow style={{ marginTop: 8 }}>
