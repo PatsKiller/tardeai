@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "home_approvals_api_20261103",
   "files": [
-    "tests/test_home_approvals_api_20261103.py"
+    "tests/test_home_approvals_api_20261103.py",
+    "tests/test_home_approvals_api_real_20261103.py"
   ],
   "anchor": "HOME_APPROVALS_API_20261103",
   "comment": [
