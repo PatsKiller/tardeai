@@ -967,7 +967,7 @@ class PgSources:
         try:
             from scripts.lib.data_broker.analyst_detail import consensus_shift
         except ImportError:  # pragma: no cover -- hub import path
-            from lib.data_broker.analyst_detail import consensus_shift  # type: ignore
+            from lib.data_broker.analyst_detail import consensus_shift  # type: ignore -- hub path: scripts/ is on sys.path, same module
         now_rows = consensus_shift(self._rows, list(symbols), written_by=end, lookback_days=20)
         out = []
         for r in now_rows:

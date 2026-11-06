@@ -640,7 +640,7 @@ class PgReader:
         try:
             from scripts.lib.data_broker.analyst_detail import history_window
         except ImportError:  # pragma: no cover -- hub import path
-            from lib.data_broker.analyst_detail import history_window  # type: ignore
+            from lib.data_broker.analyst_detail import history_window  # type: ignore -- hub path: scripts/ is on sys.path, same module
         d0, d1 = _aware(start).astimezone(ET).date(), _aware(end).astimezone(ET).date()
         return history_window(
             self._rows, start_date=d0, end_date=d1, written_by=_aware(end), symbols=list(symbols) if symbols is not None else None
