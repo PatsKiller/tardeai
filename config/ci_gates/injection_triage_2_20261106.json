@@ -8,6 +8,6 @@
   "comment": [
     "ANCHOR: INJECTION_TRIAGE_2_20261106 — tq-py-sql-fstring batch 2: agent_outcome_scorer.rebuild_calibration",
     "passes its INTERVAL window and strategy filter as driver params; the other flagged calls interpolate only",
-    "module-constant identifiers and carry a reasoned nosemgrep. A hostile value reaches params, never SQL text."
+    "module-constant identifiers and carry a reasoned scanner suppression. A hostile value reaches params, never SQL text."
   ]
 }
