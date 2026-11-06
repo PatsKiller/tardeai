@@ -16,6 +16,7 @@ Two rules it keeps:
 """
 from __future__ import annotations
 
+import contextlib
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -85,16 +86,14 @@ def acknowledge(incident_id: str, by: str, *, conn: Any = None, connect: Optiona
         return {"ok": True, "outcome": ACKED, "incident_id": incident, "acknowledged_by": who,
                 "acknowledged_at": stamp}
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             conn.rollback()
-        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
-            pass
         raise
     finally:
-        try:
+        # A failure while closing must never mask the exception that is already propagating; suppressing it is the
+        # intent, and contextlib.suppress says so instead of an empty `pass` that reads like an oversight.
+        with contextlib.suppress(Exception):
             cur.close()
-        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
-            pass
 
 
 def stops_repeats(incident: dict[str, Any]) -> bool:

@@ -111,7 +111,7 @@ def _telegram_alert_module() -> Any:
     try:
         from scripts import telegram_alert
     except ImportError:  # scripts/ on sys.path in the lanes
-        import telegram_alert  # type: ignore[no-redef]
+        import telegram_alert  # type: ignore[no-redef] -- the two module paths are the same file on different sys.path entries
     return telegram_alert
 
 
@@ -295,7 +295,7 @@ def deliver(
             status = "sent" if _confirms(provider) else "failed"
             out.receipts.append(Receipt("email", status, None if status == "sent" else "sender_returned_no_receipt",
                                         provider_receipt=str(provider) if provider else None))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- a failed sender becomes a failed RECEIPT, never a silent success
             out.receipts.append(Receipt("email", "failed", _safe_reason(exc)))
 
     # Text gateway — the primitive owns the allowlist, the cap and the dedupe, so this module only hands it the event.
@@ -327,7 +327,7 @@ def deliver(
         except ImportError:
             # The primitive is not on this branch yet. Refusing is the safe direction: no text, and the receipt says why.
             out.receipts.append(Receipt("text_gateway", "skipped", "text_primitive_not_available"))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 -- a failed text send becomes a failed RECEIPT, never a silent success
             out.receipts.append(Receipt("text_gateway", "failed", _safe_reason(exc)))
 
     return out

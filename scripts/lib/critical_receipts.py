@@ -17,6 +17,7 @@ Two rules, the same two the ack writer keeps:
 """
 from __future__ import annotations
 
+import contextlib
 from typing import Any, Optional
 
 #: The table's own vocabulary (alert_notification_deliveries.delivery_status CHECK constraint).
@@ -102,16 +103,14 @@ def record(alert_id: str, receipts: list[dict[str, Any]], *, conn: Any = None, c
         connection.commit()
         return {"ok": True, "written": written, "outcome": "recorded"}
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             connection.rollback()
-        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
-            pass
         raise
     finally:
-        try:
+        # A failure while closing must never mask the exception that is already propagating; suppressing it is the
+        # intent, and contextlib.suppress says so instead of an empty `pass` that reads like an oversight.
+        with contextlib.suppress(Exception):
             cur.close()
-        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
-            pass
 
 
 def for_alert(alert_id: str, *, conn: Any = None, connect: Optional[Any] = None) -> list[dict[str, Any]]:
@@ -131,10 +130,10 @@ def for_alert(alert_id: str, *, conn: Any = None, connect: Optional[Any] = None)
         )
         rows = cur.fetchall() or []
     finally:
-        try:
+        # A failure while closing must never mask the exception that is already propagating; suppressing it is the
+        # intent, and contextlib.suppress says so instead of an empty `pass` that reads like an oversight.
+        with contextlib.suppress(Exception):
             cur.close()
-        except Exception:  # noqa: S110 - cleanup path: the exception is re-raised or the resource is closing; nothing to log
-            pass
     return [{"channel": r[0], "status": r[1], "reason": r[2], "provider_receipt": r[3], "created_at": r[4]} for r in rows]
 
 
