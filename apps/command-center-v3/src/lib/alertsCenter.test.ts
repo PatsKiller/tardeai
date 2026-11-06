@@ -82,5 +82,24 @@ const ops = rowsFromOpsIncidents({ as_of: '2026-10-23T16:20:00Z', incidents: [{i
 eq('ops source works without notifier or communications', ops.length, 1)
 eq('ops incident links to jobs', ops[0].href, '/v3/ops/jobs')
 eq('ops filter is independent', filterAlerts([...all, ...ops], {kind: 'ops'}).length, 1)
+// FQ-096: the packet index serves one row per (symbol, account). Two accounts' packets for the same symbol in the
+// same state must be two alerts with two ids, and the modal's `find(r => r.id === selectedId)` must return the row
+// that id names -- never the first account's price under the second account's alert (codex-cloud P1).
+const twoAccounts = rowsFromBuyReadyPackets({ rows: [
+  { symbol: 'SPCX', account: 'schwab_ira', state: 'BUY_READY', price: 76.19, zone: { position: 'in_zone', distance_pct: 0 } },
+  { symbol: 'SPCX', account: 'schwab_taxable', state: 'BUY_READY', price: 19.05, zone: { position: 'in_zone', distance_pct: 0 } },
+]})
+eq('two accounts are two alerts', twoAccounts.length, 2)
+ok('two accounts have two ids', twoAccounts[0].id !== twoAccounts[1].id)
+ok('the first alert names its account', String(twoAccounts[0].subtitle).includes('Schwab IRA'))
+ok('the second alert names its account', String(twoAccounts[1].subtitle).includes('Schwab Individual'))
+ok('the id selects its own row, not the first match',
+  String(twoAccounts.find(r => r.id === twoAccounts[1].id)?.subtitle).includes('$19.05'))
+ok('the first id still selects the first account',
+  String(twoAccounts.find(r => r.id === twoAccounts[0].id)?.subtitle).includes('$76.19'))
+// one row with no account keeps the old shape and still works
+const noAccount = rowsFromBuyReadyPackets({ rows: [{ symbol: 'ADV', state: 'BUY_READY' }] })
+eq('an unscoped packet still has an id', noAccount[0].id, 'entry:ADV:-:BUY_READY')
+
 if (failed) throw new Error(`alertsCenter: ${failed} failed`)
 console.log('[alertsCenter] ok')

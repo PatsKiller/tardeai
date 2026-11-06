@@ -1,5 +1,5 @@
 // node src/lib/entryAlerts.test.ts — the visible options chip state for entry alerts (no node:assert)
-import { optionsAltChip } from './entryAlerts.ts'
+import { entryRowKey, optionsAltChip } from './entryAlerts.ts'
 
 let failed = 0
 function eq(name: string, got: unknown, want: unknown) { const g = JSON.stringify(got), w = JSON.stringify(want); if (g !== w) { failed++; console.error(`FAIL ${name}: got ${g} want ${w}`) } }
@@ -13,6 +13,13 @@ eq('OK with one is the only green', optionsAltChip({ status: 'OPTIONS_ALT_OK', q
 eq('none qualified reason', optionsAltChip({ status: 'OPTIONS_ALT_NONE', reason: 'NONE_QUALIFIED', considered: 3 }).label, 'options: none qualified · 3 considered')
 eq('legacy claim alone is never green', optionsAltChip({ status: 'OPTIONS_ALT_OK', qualified_count: 0, claimed: { qualified: ['long_call'] } }).tone, 'neutral')
 eq('null', optionsAltChip(null).tone, 'neutral')
+
+// (symbol, account) is one card's identity: two accounts' packets for one symbol are two cards, never one
+eq('two accounts are two card keys', [entryRowKey({ symbol: 'SPCX', account: 'schwab_ira' }),
+  entryRowKey({ symbol: 'SPCX', account: 'schwab_taxable' })], ['SPCX|schwab_ira', 'SPCX|schwab_taxable'])
+eq('the same row keeps one key', entryRowKey({ symbol: 'spcx', account: 'schwab_ira' }), entryRowKey({ symbol: 'SPCX', account: 'schwab_ira' }))
+eq('no account falls back to the symbol', entryRowKey({ symbol: 'SPCX' }), 'SPCX')
+eq('a missing row is one empty key, not a guess', entryRowKey(null), '')
 
 if (failed) throw new Error(`entryAlerts: ${failed} failed`)
 console.log('[entryAlerts] ok')
