@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 from urllib.parse import quote, unquote
 
@@ -73,7 +74,8 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
     if method != "POST" or not deciding:
         return 405, {"error": "METHOD_NOT_ALLOWED"}
     body = body if isinstance(body, dict) else {}
-    if set(body) - {"expected_revision", "chosen_side", "reason", "evidence_refs", "expires_at"}:
+    if set(body) - {"expected_revision", "chosen_side", "reason", "evidence_refs", "expires_at",
+                    "anchor_conviction"}:
         return 400, {"error": "UNKNOWN_OR_ACTOR_FIELD"}
     if type(body.get("expected_revision")) is not int:
         return 400, {"error": "EXPECTED_REVISION_REQUIRED"}
@@ -86,6 +88,18 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
         return 400, {"error": "EVIDENCE_REQUIRED"}
     if not isinstance(body.get("chosen_side"), str) or not body["chosen_side"].strip():
         return 400, {"error": "CHOSEN_SIDE_REQUIRED"}
+    # R15: the anchor must record the conviction at DECISION time. The persisted record's context is only the
+    # conviction at the last finding change (reconcile never rewrites unchanged findings), so the deciding surface
+    # supplies the current value; without it the decision would immediately invalidate on the next unchanged run.
+    persisted = ((record.get("subject") or {}).get("context") or {}).get("conviction")
+    anchors = record["subject"]["kind"] == "security" and record.get("kind") == "CONFLICT"
+    if anchors and persisted is not None and "anchor_conviction" not in body:
+        return 400, {"error": "ANCHOR_CONVICTION_REQUIRED"}
+    anchor_conviction = body.get("anchor_conviction")
+    if anchor_conviction is not None and (isinstance(anchor_conviction, bool) or
+                                          not isinstance(anchor_conviction, (int, float)) or
+                                          not math.isfinite(anchor_conviction)):
+        return 400, {"error": "ANCHOR_CONVICTION_INVALID"}
     at = now or datetime.now(timezone.utc)
     decision = {"schema": DECISION_SCHEMA, "actor_kind": "operator", "actor": actor,
                 "chosen_side": body["chosen_side"], "reason": body["reason"].strip(),
@@ -93,7 +107,8 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
                 "expires_at": body.get("expires_at"), "clears_when": record.get("clears_when"),
                 "key": key, "subject": record["subject"]}
     try:
-        event = ledger.transition(key, "decided", at=at, expected_revision=record["revision"], decision=decision, apply=True)
+        event = ledger.transition(key, "decided", at=at, expected_revision=record["revision"], decision=decision,
+                                  anchor_conviction=anchor_conviction, apply=True)
     except ValueError as exc:
         return 409, {"error": "DECISION_REFUSED", "reason": str(exc)}
     except RuntimeError:

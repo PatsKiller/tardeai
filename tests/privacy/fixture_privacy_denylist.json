@@ -1,0 +1,9 @@
+{
+ "schema": "FixturePrivacyDenylist@v1",
+ "why": "The repository is public. Test fixtures must never carry the operator's account ids or the symbols of live holdings.",
+ "account_id_patterns": [
+  "(?i)\\b(schwab|moomoo|fidelity|alpaca|snaptrade|robinhood|vanguard|etrade|ibkr|webull)_[a-z0-9_]*(ira|roth|taxable|rollover|brokerage|401k|hsa|individual|joint)[a-z0-9_]*\\b"
+ ],
+ "host_check": "On a host that has persistent-state/data/portfolios/state/holdings.json the guard also checks the live held symbols and account ids (computed at test time, never committed).",
+ "preexisting_set": "Derived at test time from `git ls-tree -r --name-only origin/main -- tests/fixtures`; not listed here, so there is one source of truth and a fixture main gained from another branch can never be reported as this branch's leak. If origin/main cannot be resolved the guard fails closed with that reason."
+}

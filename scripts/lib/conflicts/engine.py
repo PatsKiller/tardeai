@@ -71,6 +71,9 @@ class Finding:
     next_run: str = "Not measured"
     never_auto: bool = False
     tier: int = 4
+    # R15: this AGREEMENT is the recorded resolution still holding — not a first observation awaiting a second run.
+    # Only this variant may clear the conflict it resolved (ledger.reconcile); the observation never clears.
+    holds_recorded_resolution: bool = False
 
     def as_dict(self) -> dict:
         return {"schema": "ConflictFinding@v1", "engine": ENGINE_VERSION, **self.__dict__}

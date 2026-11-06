@@ -23,7 +23,7 @@ def get_entry_plans(db_query, symbols: list[str]) -> dict[str, dict[str, Any]]:
         """SELECT DISTINCT ON (upper(symbol))
                   upper(symbol) AS symbol, entry_zone_low, entry_zone_high,
                   stop_price, target_price, risk_reward, urgency,
-                  proposal_tag
+                  proposal_tag, created_at
            FROM watchlist_entry_plans
            WHERE upper(symbol) = ANY(%s) AND entry_zone_low IS NOT NULL
            ORDER BY upper(symbol), created_at DESC""",
@@ -41,6 +41,8 @@ def get_entry_plans(db_query, symbols: list[str]) -> dict[str, dict[str, Any]]:
                 "risk_reward": row.get("risk_reward"),
                 "urgency": row.get("urgency"),
                 "proposal_tag": row.get("proposal_tag"),
+                # R1 (conflict matrix): the plan's own time is a material input of the re-entry desk (plan_as_of).
+                "created_at": row.get("created_at"),
             }
     return out
 

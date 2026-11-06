@@ -15,11 +15,20 @@ SecurityResearchSpine API with silo=cio, tag=conflict and security GUID.
 Decisions contain server-derived actor, reason, evidence, expiry and expected
 record revision. T0/T1 facts and safety cannot be picked by a decision; numeric
 and schedule defects require repair at their source. A decision advances DECIDED,
-which still flags until a valid engine re-evaluation clears it. Never-auto
-findings are retained. Missing producers, failed opinions and R15 confirmation
-observations cannot clear a flag. A review queue transition requires an actual
-request receipt. `complete_review` records the decision, calls the producer's
-update callback and verifies exact persisted readback before review_completed.
+which still flags until a valid engine re-evaluation clears it. The R15 held
+resolution is that re-evaluation: the decision anchor is bound to the conflict
+key the decision resolved, and the held `AGREEMENT/R15` finding is keyed into
+that conflict's lineage (`<subject>:R15:<source>` maps to the same
+`<subject>:source:<source>` as the original `<subject>:U7:<source>`) and marked
+`holds_recorded_resolution`. Reconciliation clears the original record with the
+held finding as evidence, so the served projection stops reading as an active
+conflict while the decision, its reason and its anchor stay on the record.
+Never-auto findings are retained. Missing producers, failed opinions and R15
+confirmation observations cannot clear a flag: an observation keeps the
+conflict key but carries no held-resolution mark. A review queue transition
+requires an actual request receipt. `complete_review` records the decision,
+calls the producer's update callback and verifies exact persisted readback
+before review_completed.
 It never assigns a model draft to the CIO's canonical stance.
 
 The SQL migration and `postgres_sink(connection_factory)` are source-only. PG
@@ -40,10 +49,22 @@ decision. The module handler is `scripts.lib.conflicts.api.handle`; the current
 route owner must register it. No v2 alias is needed.
 
 `POST /api/v3/conflicts/{encoded-key}/decision` accepts expected_revision,
-chosen_side, reason, evidence_refs and expires_at. It checks the authenticated
-operator tailnet identity, serve-proxy listener and same-origin CSRF. Agents,
-n8n and service tokens are refused. Writer activation defaults false; a body or
-claimed actor cannot activate it. No endpoint changes broker behavior.
+chosen_side, reason, evidence_refs, expires_at and anchor_conviction. It checks
+the authenticated operator tailnet identity, serve-proxy listener and
+same-origin CSRF. Agents, n8n and service tokens are refused. Writer activation
+defaults false; a body or claimed actor cannot activate it. No endpoint changes
+broker behavior.
+
+`anchor_conviction` is the R15 anchor's conviction at DECISION time. The
+persisted conflict context only holds the value from the last finding change —
+`ConflictLedger.reconcile()` does not rewrite an unchanged finding's context —
+so anchoring to it would record the opening conviction (say 70) for a decision
+taken at 80 and immediately re-flag `NEEDS_OPERATOR:R11` on the next unchanged
+evaluation. A conflict that carries a conviction is therefore refused with
+`ANCHOR_CONVICTION_REQUIRED` unless the caller supplies the decision-time value;
+`complete_review(..., conviction=...)` carries the same requirement for the CIO
+publication path. Conflicts with no persisted conviction remain decidable without
+it, and the anchor records `conviction_source: "decision caller"` when supplied.
 
 `records_section` and `data_error_section` own lifecycle filtering, paging,
 headline order, gaps and record conversion. Missing/corrupt ledgers remain gaps.
