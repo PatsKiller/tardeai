@@ -54,6 +54,16 @@ def _constitution() -> list:
     ]
 
 
+def _signed(v) -> str:
+    """'+1.2' or 'not measured' — the sector engine leaves rs20/s20 None when a window is missing (D5: the
+    format spec on None raised 'unsupported format string passed to NoneType.__format__' and skipped oversight)."""
+    return f"{v:+.1f}" if isinstance(v, (int, float)) and not isinstance(v, bool) else "not measured"
+
+
+def _k(v) -> str:
+    return f"${v / 1000:.0f}K" if isinstance(v, (int, float)) and not isinstance(v, bool) else "value not on file"
+
+
 def build_oversight_brief() -> dict:
     recs = json.loads((ROOT / "data" / "runtime" / "defense_recommendations_latest.json").read_text())
     sect = json.loads((ROOT / "data" / "runtime" / "sector_momentum_latest.json").read_text())
@@ -72,7 +82,7 @@ def build_oversight_brief() -> dict:
     for st in recs.get("stances", []):
         cards.append({
             "id": f"stance-{st['symbol']}-{st['account']}", "group": "stance",
-            "title": f"{st['symbol']} {st['stance']} (${st['value']/1000:.0f}K, {st.get('account_label')})",
+            "title": f"{st['symbol']} {st['stance']} ({_k(st.get('value'))}, {st.get('account_label')})",
             "reason": st.get("reason"), "on_trigger": st.get("on_trigger"),
             "is_core": st.get("is_core"),
             "question": "Judge the STANCE itself: is this the right posture for this position "
@@ -84,9 +94,9 @@ def build_oversight_brief() -> dict:
         "id": "posture-current", "group": "posture",
         "title": "THE ROTATION READ — is the desk's market interpretation right?",
         "state_line": mkt.get("state_line"),
-        "claims": [f"{r['sector']}: {r['state']} (RS20 {r['rs20']:+.1f}, breadth {r.get('breadth_pct')}%)"
+        "claims": [f"{r['sector']}: {r.get('state') or 'not classified'} (RS20 {_signed(r.get('rs20'))}, breadth {r.get('breadth_pct')}%)"
                    for r in sect.get("rows", [])] +
-                  [f"style {st['key']}: {st['state']} ({st['s20']:+.1f})"
+                  [f"style {st['key']}: {st.get('state') or 'not classified'} ({_signed(st.get('s20'))})"
                    for st in mkt.get("styles", [])],
         "question": "Judge the INTERPRETATION: is this a rotation worth chasing, a bear-market "
                     "head-fake, late-cycle breadth-thinning, or something else? CONCUR = the "
@@ -99,9 +109,9 @@ def build_oversight_brief() -> dict:
     brief = {
         "constitution": _constitution(),
         "posture": {"state_line": (sect.get("market") or {}).get("state_line"),
-                    "sectors": [{"s": r["sector"], "state": r["state"], "rs20": r["rs20"],
+                    "sectors": [{"s": r["sector"], "state": r.get("state"), "rs20": r.get("rs20"),
                                  "book_eff_pct": r.get("book_pct")} for r in sect.get("rows", [])],
-                    "styles": [{"k": s["key"], "state": s["state"], "s20": s["s20"]}
+                    "styles": [{"k": s["key"], "state": s.get("state"), "s20": s.get("s20")}
                                for s in (sect.get("market") or {}).get("styles", [])]},
         "cards": cards,
         "in_play": {"ladders": [{"sym": l["symbol"], "t1": f"{l['t1_fraction']}% {l['t1_status']}",

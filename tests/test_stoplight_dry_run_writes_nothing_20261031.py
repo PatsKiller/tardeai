@@ -114,11 +114,29 @@ def test_dry_run_still_previews_the_card_without_sending(lane, monkeypatch):
     monkeypatch.setattr(telegram_alert, "send_telegram", lambda *a, **k: sent.append(a) or True)
     desk = lane / "data" / "runtime"
     desk.mkdir(parents=True)
-    (desk / "defense_recommendations_latest.json").write_text(
-        '{"data": {"groups": {"short_side": [{"title": "HEDGE QQQ exposure with PSQ"}]}}}'
-    )  # the desk's own HEDGE card → THESIS GREEN, a notifiable transition
+    from datetime import datetime as _dt, timezone as _tz
+    import json as _json
+    (desk / "defense_engine_latest.json").write_text(_json.dumps({
+        "schema": "DefenseProjection@v1", "generated_at": _dt.now(_tz.utc).isoformat(),
+        "hedge_readiness": {"inverse_triggers": {"QQQ": {"trigger": True, "exposure_pct": 50.0}}}}))
+    # the engine's QQQ trigger (look-through tech share over threshold) → THESIS GREEN, a notifiable transition
     conn = FakeConn(strict=True)
     out = dis.evaluate_all(conn.cursor(), conn, notify=True, dry_run=True)
     assert conn.writes == [] and conn.commits == 0 and sent == []
     assert out["notifications"], "the would-be cards are still rendered in dry run"
     assert all(n["sent"] is False for n in out["notifications"])
+
+
+def test_latest_close_is_the_inverse_tickers_own_price_d9(lane, monkeypatch):
+    """D9 (design defense/v001): the card's close was the benchmark's bar; it is now the inverse ETF's own."""
+    def bars_by_symbol(cur, sym, n=80):
+        b = _bars(n)
+        if sym in ("SH", "PSQ", "DOG", "RWM"):
+            b[-1] = {**b[-1], "c": 12.34}
+        return b
+    monkeypatch.setattr(dis, "_bars", bars_by_symbol)
+    conn = FakeConn(strict=True)
+    out = dis.evaluate_all(conn.cursor(), conn, notify=False, dry_run=True)
+    for card in out["candidates"]:
+        assert card["latest_close"]["c"] == 12.34, card["inverse"]
+        assert card["benchmark_close"]["c"] != 12.34

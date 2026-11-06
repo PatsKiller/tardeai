@@ -80,8 +80,30 @@ def _enrich() -> dict:
         return {}
 
 
+HOLDINGS_SOURCE: dict = {}
+
+
+def _holdings_document() -> dict:
+    """DB first (lib.holdings_document: positions_current, the file only as the stated fallback). D4: the 10:10
+    run read a stale holdings.json and built MOVE-OUT cards for names already sold."""
+    store = ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    try:
+        from lib.holdings_document import load_document
+        doc = load_document(store)
+    except Exception as e:  # noqa: BLE001 -- the file read below is the documented fallback
+        doc = {"document_source": "holdings_json_fallback", "document_fallback_reason": f"loader failed: {type(e).__name__}"}
+    if not isinstance(doc.get("holdings"), list):
+        reason = doc.get("document_fallback_reason")
+        doc = json.loads(store.read_text())
+        doc.setdefault("document_source", "holdings_json_fallback")
+        doc.setdefault("document_fallback_reason", reason or "document carried no holdings list")
+    HOLDINGS_SOURCE.clear()
+    HOLDINGS_SOURCE.update({"source": doc.get("document_source"), "fallback_reason": doc.get("document_fallback_reason")})
+    return doc
+
+
 def _holdings() -> list:
-    h = json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
+    h = _holdings_document()
     out = []
     for r in h.get("holdings", []):
         if r.get("is_cash") or not r.get("symbol"):
@@ -941,8 +963,9 @@ def main() -> int:
     equities = account_equities(holdings)
     total_book = sum(equities.values())
 
-    h_raw = json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
-    as_of_label = f"prices as of {str(h_raw.get('as_of', ''))[:16]} (holdings snapshot)"
+    h_raw = _holdings_document()
+    as_of_label = (f"prices as of {str(h_raw.get('as_of', ''))[:16]} (holdings "
+                   f"{'database' if h_raw.get('document_source') == 'positions_current' else 'snapshot'})")
 
     cards = []
     cards += rotate_in(sectors, cur, enrich, as_of, equities=equities)
@@ -1136,6 +1159,7 @@ def main() -> int:
             "sectors": sector_snap.get("generated_at"),
             "industries": industries.get("captured_at"),
             "hedging_radar": (_load("hedging_radar_latest.json") or {}).get("captured_at"),
+            "holdings": dict(HOLDINGS_SOURCE),
         },
     }
     if not args.dry_run:
