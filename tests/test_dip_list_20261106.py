@@ -290,6 +290,7 @@ def test_screen_states_each_hold_back_reason_and_ranks_by_upside():
         "NOTREND": dict(eps=[{"index": "0q", "current": 1.0}]),
         "REVDN": dict(revs=(1, 4)),
         "SOON": dict(earn=(TODAY + timedelta(days=3)).isoformat()),
+        "NOREV": dict(revs=None),  # unknown revision counts must not pass "up at least down"
     }
     cands = [cand(s) for s in names]
     rows = [yrow(s, TODAY, **kw) for s, kw in names.items()]
@@ -305,6 +306,7 @@ def test_screen_states_each_hold_back_reason_and_ranks_by_upside():
     assert held["no next-year EPS trend in the analyst record"] == ["NOTREND"]
     assert held["more EPS revisions down than up in 30 days"] == ["REVDN"]
     assert held["earnings within 7 days"] == ["SOON"]
+    assert held["EPS revision counts unknown"] == ["NOREV"]
     text = dl.render(p)
     assert "Narrower screen (stated; ranked by distance to the consensus target)" in text
     assert text.index("**UP2**", text.index("Narrower screen")) < text.index("**UP1**", text.index("Narrower screen"))
@@ -333,7 +335,7 @@ def test_summary_counts_eps_targets_revisions_and_the_median_pe_change_with_n():
     s = build([cand("AAA"), cand("BBB")], rows, {"AAA": bars, "BBB": bars})["summary"]
     assert (s["eps_estimate_raised"], s["eps_estimate_cut"], s["eps_estimate_n"]) == (1, 1, 2)
     assert (s["targets_raised"], s["targets_cut"], s["targets_n"]) == (1, 1, 2)
-    assert (s["revisions_up"], s["revisions_down"]) == (3, 3)
+    assert (s["revisions_up"], s["revisions_down"], s["revisions_n"]) == (3, 3, 2)
     # AAA 12.5 -> 8.0 (-36%), BBB 10.0 -> 8.9 (-11%, P/E rounded first): median -23.5
     assert s["median_fpe_change_pct"] == -23.5 and s["fpe_pairs_n"] == 2
 
@@ -501,3 +503,8 @@ def test_deep_brief_says_unknown_rather_than_zero_when_the_history_is_missing():
     missing = {u["what"] for u in p.unknown}
     assert {"analyst revisions", "eps estimates"} <= missing
     assert "analyst_change" not in out and "eps_estimate_raised" not in out
+
+
+def test_an_unknown_analyst_count_is_excluded_as_unknown_never_read_as_zero():
+    p = build([cand("NOCOUNT")], [yrow("NOCOUNT", TODAY, analysts=None)], {"NOCOUNT": path(100.0, 80.0)})
+    assert p["excluded"] == {"analyst count unknown": ["NOCOUNT"]} and p["rows"] == []

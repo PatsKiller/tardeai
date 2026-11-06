@@ -99,13 +99,14 @@ def parse_record(row: dict[str, Any]) -> Optional[dict[str, Any]]:
         for e in ext.get("earnings_dates") or []
         if isinstance(e, dict) and e.get("index") and e.get("Reported EPS") is None
     )
+    n_analysts = _f(row.get("number_of_analyst_opinions"))
     return {
         "snapshot": snap,
         "price": _f(row.get("current_price")),
         "target": _f(row.get("target_mean_price")),
         "rating": _f(row.get("recommendation_mean")),
         "rating_key": row.get("recommendation_key"),
-        "analysts": int(_f(row.get("number_of_analyst_opinions")) or 0),
+        "analysts": int(n_analysts) if n_analysts is not None else None,  # unknown stays unknown, never 0
         "eps_trend": trend,
         "eps_revisions": revs,
         "earnings_upcoming": upcoming,
@@ -225,7 +226,9 @@ def _row(
     px_s, px = window[-1]
     if px < float(cfg["min_price"]):
         return None, f"price under ${cfg['min_price']:.0f}"
-    if now.get("analysts", 0) < int(cfg["min_analysts"]):
+    if now["analysts"] is None:
+        return None, "analyst count unknown"
+    if now["analysts"] < int(cfg["min_analysts"]):
         return None, f"fewer than {cfg['min_analysts']} analysts"
     if len(window) < int(cfg["min_sessions"]):
         return None, f"fewer than {cfg['min_sessions']} daily closes"
@@ -245,6 +248,8 @@ def _row(
     eps30 = _eps(now, "30daysAgo")
     rev = (now.get("eps_revisions") or {}).get(EPS_KEY) or {}
     upcoming = [d for d in now.get("earnings_upcoming") or [] if d >= today.isoformat()]
+    up, down = _f(rev.get("upLast30days")), _f(rev.get("downLast30days"))
+    revisions = {"up": int(up), "down": int(down)} if up is not None and down is not None else None  # both or none
     rets = [(window[i][0], _pct(window[i][1], window[i - 1][1]), window[i - 1][0]) for i in range(1, len(window))]
     if eps_pre is None:
         pre_missing = basis
@@ -275,7 +280,7 @@ def _row(
         "fpe_change_pct": _pct(fpe_now, fpe_pre),
         "eps_next_fy": eps_now,
         "eps_next_fy_30d_change_pct": _pct(eps_now, eps30),
-        "revisions_30d": {"up": _f(rev.get("upLast30days")), "down": _f(rev.get("downLast30days"))} if rev else None,
+        "revisions_30d": revisions,
         "consensus_target": now.get("target"),
         "consensus_target_at_high": at_high.get("target") if at_high else None,
         "target_change_pct": _pct(now.get("target"), at_high.get("target")) if at_high else None,
@@ -331,7 +336,7 @@ def _screen(r: dict[str, Any], scr: dict[str, Any], today: date) -> Optional[str
     """None when the row passes the narrower screen, else the first reason it does not."""
     if r["drawdown_pct"] > float(scr["max_drawdown_pct"]):
         return f"drawdown shallower than {scr['max_drawdown_pct']:.0f}%"
-    if (r["analysts"] or 0) < int(scr["min_analysts"]):
+    if r["analysts"] < int(scr["min_analysts"]):  # never None here: the quality filter drops an unknown count
         return f"fewer than {scr['min_analysts']} analysts"
     if r["rating"] is None or r["rating"] > float(scr["max_rating"]):
         return f"consensus rating weaker than {scr['max_rating']:.1f}"
@@ -340,8 +345,10 @@ def _screen(r: dict[str, Any], scr: dict[str, Any], today: date) -> Optional[str
         return "no next-year EPS trend in the analyst record"
     if ch < -100.0 * float(scr["eps_not_cut_tolerance"]):
         return "next-year EPS estimate lowered in 30 days"
-    rv = r["revisions_30d"] or {}
-    if (rv.get("up") or 0) < (rv.get("down") or 0):
+    rv = r["revisions_30d"]
+    if rv is None:
+        return "EPS revision counts unknown"
+    if rv["up"] < rv["down"]:
         return "more EPS revisions down than up in 30 days"
     if r["fpe_now"] is None:
         return "no forward P/E"
@@ -441,7 +448,7 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Is it earnings or the multiple? Counted over the listed names, each figure with its n."""
     eps = [r["eps_next_fy_30d_change_pct"] for r in rows if r["eps_next_fy_30d_change_pct"] is not None]
     tgt = [r["target_change_pct"] for r in rows if r["target_change_pct"] is not None]
-    fpe = [r["fpe_change_pct"] for r in rows if r["fpe_change_pct"] is not None and (r["fpe_pre"] or 0) < 200]
+    fpe = [r["fpe_change_pct"] for r in rows if r["fpe_change_pct"] is not None and r["fpe_pre"] < 200]
     rv = [r["revisions_30d"] for r in rows if r["revisions_30d"]]
     return {
         "listed": len(rows),
@@ -451,8 +458,9 @@ def summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "targets_raised": sum(1 for x in tgt if x > 0.5),
         "targets_cut": sum(1 for x in tgt if x < -0.5),
         "targets_n": len(tgt),
-        "revisions_up": int(sum(r.get("up") or 0 for r in rv)),
-        "revisions_down": int(sum(r.get("down") or 0 for r in rv)),
+        "revisions_up": sum(r["up"] for r in rv),
+        "revisions_down": sum(r["down"] for r in rv),
+        "revisions_n": len(rv),
         "median_fpe_change_pct": round(st.median(fpe), 1) if fpe else None,
         "fpe_pairs_n": len(fpe),
     }
@@ -486,9 +494,7 @@ def line(r: dict[str, Any]) -> str:
     if r["eps_next_fy_30d_change_pct"] is not None:
         parts.append(f"next-year EPS estimate {_p(r['eps_next_fy_30d_change_pct'])} in 30 days")
     if r["revisions_30d"]:
-        parts.append(
-            f"revisions 30d up {int(r['revisions_30d']['up'] or 0)} / down {int(r['revisions_30d']['down'] or 0)}"
-        )
+        parts.append(f"revisions 30d up {r['revisions_30d']['up']} / down {r['revisions_30d']['down']}")
     if r["consensus_target"]:
         was = (
             f", was ${_n(r['consensus_target_at_high'], 0)} at the high"
@@ -541,7 +547,8 @@ def render(p: dict[str, Any], *, limit: int = 30) -> str:
     A(f"## Summary ({s['listed']} of {p['members']} group members listed)")
     A(
         f"- Next-year EPS estimates over 30 days: raised in {s['eps_estimate_raised']}, cut in {s['eps_estimate_cut']}"
-        f" (n={s['eps_estimate_n']}). EPS revisions 30d: up {s['revisions_up']}, down {s['revisions_down']}."
+        f" (n={s['eps_estimate_n']}). EPS revisions 30d: up {s['revisions_up']}, down {s['revisions_down']}"
+        f" (n={s['revisions_n']})."
     )
     A(
         f"- Consensus targets since each name's high: raised in {s['targets_raised']}, cut in {s['targets_cut']}"

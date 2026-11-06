@@ -579,11 +579,8 @@ def _catalysts(p: Pack, reader: Any, now: datetime, held: list[str], sources: An
             "analyst revisions",
             "no consensus target 20 days back in the Yahoo analyst history for the names",
         )
-    eps = [
-        _f(r.get("eps_next_fy")) / _f(r.get("eps_next_fy_30d_ago")) - 1.0
-        for r in rev
-        if _f(r.get("eps_next_fy")) is not None and (_f(r.get("eps_next_fy_30d_ago")) or 0) > 0
-    ]
+    pairs = [(_f(r.get("eps_next_fy")), _f(r.get("eps_next_fy_30d_ago"))) for r in rev]
+    eps = [now_ / then - 1.0 for now_, then in pairs if now_ is not None and then is not None and then > 0]
     if eps:
         up, down = sum(1 for x in eps if x > 0.005), sum(1 for x in eps if x < -0.005)
         out["eps_estimate_raised"], out["eps_estimate_cut"] = up, down
