@@ -1,0 +1,31 @@
+{
+  "schema": "SessionFreshnessCases@v1",
+  "comment": "Shared by tests/test_session_freshness_20261025.py and apps/command-center-v3/src/lib/marketSessionFreshness.test.ts so the Python and TypeScript helpers cannot drift. Dates only, no portfolio data.",
+  "phrases": [
+    {"now": "2026-10-25T20:00:00Z", "phrase": "Market closed · last close Fri 4:00 PM ET · next update Mon", "why": "Sunday afternoon"},
+    {"now": "2026-10-24T14:00:00Z", "phrase": "Market closed · last close Fri 4:00 PM ET · next update Mon", "why": "Saturday morning"},
+    {"now": "2026-10-26T12:00:00Z", "phrase": "Market closed · last close Fri 4:00 PM ET · next update today 9:30 AM ET", "why": "Monday pre-market"},
+    {"now": "2026-10-27T01:00:00Z", "phrase": "Market closed · last close today 4:00 PM ET · next update Tue", "why": "Monday evening ET"},
+    {"now": "2026-11-26T17:00:00Z", "phrase": "Market closed · last close Wed 4:00 PM ET · next update Fri", "why": "Thanksgiving (holiday)"},
+    {"now": "2026-11-27T19:00:00Z", "phrase": "Market closed · last close today 1:00 PM ET · next update Mon", "why": "day after Thanksgiving, after the 1 PM early close"},
+    {"now": "2026-04-03T15:00:00Z", "phrase": "Market closed · last close Thu 4:00 PM ET · next update Mon", "why": "Good Friday 2026"},
+    {"now": "2026-10-26T15:00:00Z", "phrase": null, "why": "Monday regular hours: open"}
+  ],
+  "evaluate": [
+    {"why": "Friday close print on Sunday is the latest possible", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-23T20:05:00Z", "max_age_h": 26, "state": "latest_close"},
+    {"why": "Friday 15:46 quote within the 30 min close grace on Sunday", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-23T19:46:00Z", "max_age_h": 1.5, "grace_minutes": 30, "state": "latest_close"},
+    {"why": "Friday 09:15 quote predates Friday's close: still stale", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-23T13:15:00Z", "max_age_h": 1.5, "grace_minutes": 30, "state": "stale"},
+    {"why": "pre-close stamp inside the declared closed threshold stays fresh", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-23T13:15:00Z", "max_age_h": 26, "closed_max_age_h": 72, "state": "fresh"},
+    {"why": "Thursday stamp on Sunday missed Friday's session", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-22T20:30:00Z", "max_age_h": 26, "state": "stale"},
+    {"why": "market open: wall-clock age applies", "now": "2026-10-26T15:00:00Z", "as_of": "2026-10-23T20:05:00Z", "max_age_h": 26, "state": "stale"},
+    {"why": "market open, recent", "now": "2026-10-26T15:00:00Z", "as_of": "2026-10-26T14:30:00Z", "max_age_h": 1.5, "state": "fresh"},
+    {"why": "naive stamp is unknown, never guessed", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-23T16:00:00", "max_age_h": 26, "state": "unknown"},
+    {"why": "future stamp needs review", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-25T21:00:00Z", "max_age_h": 26, "state": "unknown"}
+  ],
+  "trading_age": [
+    {"why": "Friday 10:00 ET to Sunday 16:00 ET: the weekend does not count", "now": "2026-10-25T20:00:00Z", "as_of": "2026-10-23T14:00:00Z", "hours": 14.0},
+    {"why": "Friday 10:00 ET to Tuesday 11:00 ET", "now": "2026-10-27T15:00:00Z", "as_of": "2026-10-23T14:00:00Z", "hours": 49.0},
+    {"why": "Wednesday to Friday over Thanksgiving", "now": "2026-11-27T15:00:00Z", "as_of": "2026-11-25T15:00:00Z", "hours": 24.0},
+    {"why": "same trading day", "now": "2026-10-26T18:00:00Z", "as_of": "2026-10-26T14:00:00Z", "hours": 4.0}
+  ]
+}

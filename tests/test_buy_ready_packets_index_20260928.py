@@ -40,7 +40,7 @@ def test_index_lists_states_in_priority_with_zone_and_both_ratios(tmp_path):
     d = tmp_path / "pk"; d.mkdir()
     (d / "AXTI.json").write_text(json.dumps(_packet("AXTI", "ENTRY_NEAR", 73.32, 62.0, 66.0, 60.0, 90.0, 4.07, (NOW - timedelta(hours=3)).isoformat())))
     (d / "PEW.json").write_text(json.dumps(_packet("PEW", "BUY_READY", 2.155, 2.15, 2.22, 2.07, 2.65, 2.87, (NOW - timedelta(hours=4.5)).isoformat())))
-    (d / "OLD.json").write_text(json.dumps(_packet("OLD", "BUY_READY", 10, 9, 11, 8, 14, 2.0, (NOW - timedelta(days=4)).isoformat())))
+    (d / "OLD.json").write_text(json.dumps(_packet("OLD", "BUY_READY", 10, 9, 11, 8, 14, 2.0, (NOW - timedelta(days=5)).isoformat())))  # Wed → Mon: 72 trading-day hours (2026-10-25: weekends no longer count)
     (d / "junk.json").write_text("{not json")
     proposals = [{"id": "opt_axti_1", "symbol": "AXTI", "strategy": "long_call", "approvable": False, "severity": "blocked"}]
     dropped = [{"symbol": "PEW", "entry_state": "BUY_READY", "reason": "EDGE_BELOW", "edge_attempted": True}]
