@@ -30898,6 +30898,10 @@ def _home_do_now(query=None):
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
         # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
         "held": _home_held,
+        # FQ-097 (operator 2026-11-04): the CIO's own verdict per (symbol, account) — the same capital plan the
+        # CIO desk renders. Do-now stop items print it and add none of their own. Side-effect free: the read-only
+        # probe never records decisions from a GET (codex-cloud at 8802d4da9).
+        "cio": _cio_capital_plan_probe,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
@@ -36721,12 +36725,28 @@ def _cio_capital_plan(query=None):
     return _cio_capital_plan_build(query)
 
 
-def _cio_capital_plan_build(query=None):
+def _cio_capital_plan_probe():
+    """Side-effect-free capital-plan read for Home's Do-now queue.
+
+    The Do-now queue only DISPLAYS the plan. Its GET must never append to the
+    authoritative decision journal: a GET that writes durable state is forbidden
+    (AGENTS.md §28.9), and §28.11 forbids new side-effecting GET exceptions
+    (codex-cloud at 8802d4da9). Build the same plan with recording disabled — a
+    read-only projection never calls the recording handler.
+    """
+    return _request_memoized("cio_capital_plan_readonly", lambda: _cio_capital_plan_build(record=False))
+
+
+def _cio_capital_plan_build(query=None, *, record=True):
     """GET /api/v2/cio/capital-plan — Alex's Capital Plan + Position Decision table.
 
     READ_ONLY_ADVISORY. Deterministic sources-and-uses arithmetic composed from
     canonical state (holdings.json + redeploy capital book + opportunity queue +
     sector opportunities + thesis risk posture). Never promotes or executes.
+
+    ``record=False`` skips appending unseen position decisions to the
+    authoritative decision journal, for read-only consumers such as the Home
+    Do-now queue.
     """
     try:
         from scripts.lib.cio_capital_plan import build_capital_plan_from_sources
@@ -36753,12 +36773,13 @@ def _cio_capital_plan_build(query=None):
             risk_posture=posture,
             investment_policy=_ratified_investment_policy(),
         )
-        try:
-            from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
+        if record:
+            try:
+                from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
 
-            record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
-        except Exception:
-            pass
+                record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
+            except Exception:
+                pass
         return {"ok": True, **plan}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
