@@ -4,6 +4,7 @@ import { pageTab } from '../lib/w9PageModel'
 import JobsHealth from '../components/JobsHealth'
 import { useApi } from '../hooks/useApi'
 import { StateCard } from '../components/StateCard'
+import { componentLabel, sentenceIdentifiers } from '../lib/operatorLanguage.ts'
 import { StatusBadge } from '../components/StatusBadge'
 import CoderDispatchLedger from '../components/health/CoderDispatchLedger'
 import RiskHealthStrip from '../components/risk/RiskHealthStrip'
@@ -12,7 +13,6 @@ import OpsAutonomyDashboard from './OpsAutonomyDashboard'
 import { AutonomyLoopPanel, DailyIntelligencePanel, MemoryPanel } from './MaturityPanels'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
-import { humanizeCode } from '../lib/displayLabels'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 
@@ -43,7 +43,9 @@ const CAT_HELP: Record<string, string> = {
   data_quality: 'Freshness of holdings, risk, dividends, news, CIO decisions, agent jobs + open data gaps.',
   execution_health: 'Pipeline failures, stuck agent jobs, critical execution escalations, orphaned stops.',
   intelligence_quality: 'Local LLM reachability, ensemble failures, stale research backlog.',
-  risk_protection: 'Unprotected open positions, stops in alert state, recent P0/P1 SIEM alerts.',
+  // FQ-036: the score grades the health agent's own findings, not stop coverage. The old wording
+  // claimed it counted unprotected positions, which is why a green card could sit beside a red gauge.
+  risk_protection: 'Stops in alert state, stops above the Street mean, and unresolved urgent incidents (24h). Whether each position has a stop is not scored here — that is the Unprotected gauge.',
   retirement_planning: 'Golden Window present, dividend income consistency, dividend calendar freshness.',
   pipeline_freshness: 'Data pipeline output recency — ticker snapshots, setup advisories, rotation summaries, backtest results.',
 }
@@ -299,17 +301,19 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 132, overflowY: 'auto' }}>
                 {(activity.activity || []).map((a: any, i: number) => (
-                  <div key={i} style={{ fontSize: 10.5, padding: '3px 0' }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div key={i} style={{ fontSize: 10.5, padding: '3px 0', minWidth: 0 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', rowGap: 2 }}>
                       <span style={{ color: 'var(--text3)', width: 116, flexShrink: 0 }}>{fmtWhen(a.at)}</span>
-                      <span style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: 10, color: STATUS_COLOR[a.action] || 'var(--text3)', width: 88, flexShrink: 0 }}>{a.action}</span>
-                      <span style={{ color: 'var(--text1)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.component}</span>
-                      <span style={{ color: 'var(--accent)', flexShrink: 0 }}>{a.actor}</span>
+                      <span title={a.action} style={{ fontWeight: 800, textTransform: 'uppercase', fontSize: 10, color: STATUS_COLOR[a.action] || 'var(--text3)', width: 88, flexShrink: 0, overflowWrap: 'anywhere' }}>{sentenceIdentifiers(a.action)}</span>
+                      {/* FQ-035: the row used to print the raw component key (`data_quality:data_source_stale`).
+                          The face is operator words; the raw key stays in the hover title. */}
+                      <span title={a.component} style={{ color: 'var(--text1)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{componentLabel(a.component)}</span>
+                      <span title={a.actor} style={{ color: 'var(--accent)', flexShrink: 0 }}>{componentLabel(a.actor)}</span>
                       {a.pr_url?.startsWith('http') && <a href={a.pr_url} style={{ color: 'var(--accent)', fontSize: 10 }}>PR ↗</a>}
                       {a.artifact_url && !a.pr_url?.startsWith('http') && <a href={a.artifact_url} style={{ color: 'var(--accent)', fontSize: 10 }}>diff ↓</a>}
                     </div>
                     {(a.detail || a.resolution) && (
-                      <div style={{ marginLeft: 124, marginTop: 2, color: 'var(--text3)', fontSize: 10, lineHeight: 1.4 }}>
+                      <div title={[a.detail, a.resolution].filter(Boolean).join(' · ')} style={{ marginLeft: 124, marginTop: 2, color: 'var(--text3)', fontSize: 10, lineHeight: 1.4, overflowWrap: 'anywhere' }}>
                         {a.detail}{a.resolution ? ` · ${a.resolution}` : ''}
                       </div>
                     )}
@@ -363,11 +367,12 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
             const rem = f.remediation || {}
             const sc = STATUS_COLOR[rem.status] || 'var(--text3)'
             const when = rem.at || f.detected_at || ''
-            // Raw producer identifiers, not sentence text (BOARD row 38). The raw pair stays recoverable in a title.
-            const whoRaw = rem.by ? `${f.detected_by || 'health_agent'} → ${rem.by}` : (f.detected_by || 'health_agent')
+            const whoRaw = rem.by
+              ? `${f.detected_by || 'health_agent'} → ${rem.by}`
+              : (f.detected_by || 'health_agent')
             const who = rem.by
-              ? `${humanizeCode(f.detected_by || 'health_agent')} → ${humanizeCode(rem.by)}`
-              : humanizeCode(f.detected_by || 'health_agent')
+              ? `${componentLabel(f.detected_by || 'health_agent')} → ${componentLabel(rem.by)}`
+              : componentLabel(f.detected_by || 'health_agent')
             const lab: CSSProperties = {
               fontSize: 10, fontWeight: 800, color: 'var(--text3)', textTransform: 'uppercase',
               letterSpacing: 0.3, marginBottom: 2,
@@ -386,24 +391,27 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
                 style={{ padding: '10px 12px', background: 'var(--bg1)', border: '1px solid var(--border)',
                   borderRadius: 6, marginBottom: 6, borderLeft: `3px solid ${SEV_COLOR[f.severity] || 'var(--border)'}`,
                   cursor: onDrill ? 'pointer' : 'default' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity] }}>{f.severity}</span>
-                  <span style={{ fontSize: 10, color: 'var(--text3)' }} title={f.category}>{CAT_LABEL[f.category] || humanizeCode(f.category)}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
-                    color: sc, background: 'var(--bg2)', padding: '2px 8px', borderRadius: 9 }}>{rem.status || 'detected'}</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, textTransform: 'uppercase', color: SEV_COLOR[f.severity] }}>{sentenceIdentifiers(f.severity)}</span>
+                  <span title={f.category} style={{ fontSize: 10, color: 'var(--text3)' }}>{CAT_LABEL[f.category] || componentLabel(f.category)}</span>
+                  <span title={rem.status || 'detected'} style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+                    color: sc, background: 'var(--bg2)', padding: '2px 8px', borderRadius: 9 }}>{sentenceIdentifiers(rem.status || 'detected')}</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                {/* FQ-037: a full-span cell (WHAT / HOW) made the grid's min-content wider than the
+                    phone column, so the whole page scrolled sideways. `overflow-wrap: anywhere` lets the
+                    long unbroken tokens (file paths, key=value blobs) wrap inside their own cell. */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(140px, 100%), 1fr))', gap: 10, overflowWrap: 'anywhere' }}>
                   <div style={{ gridColumn: '1 / -1' }}>
                     <div style={lab}>What</div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)' }}>{f.message}</div>
                   </div>
                   <div>
                     <div style={lab}>Why / root cause</div>
-                    <div style={{ fontSize: 11, color: 'var(--text2)' }}>{f.why || '—'}</div>
+                    <div title={f.why || ''} style={{ fontSize: 11, color: 'var(--text2)' }}>{sentenceIdentifiers(f.why) || '—'}</div>
                   </div>
                   <div>
                     <div style={lab}>Who</div>
-                    <div style={{ fontSize: 11, color: 'var(--text1)' }} title={whoRaw}>{who}</div>
+                    <div title={whoRaw} style={{ fontSize: 11, color: 'var(--text1)', fontFamily: 'ui-monospace, monospace' }}>{who}</div>
                   </div>
                   <div>
                     <div style={lab}>When</div>
@@ -464,7 +472,7 @@ export default function HealthHub({ onDrill, jobsHealth }: Props) {
               <div key={kind} title={`Preference: ${(r.preference || []).join(' → ')}`}
                 style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 11, padding: '5px 10px',
                   background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 4, marginBottom: 3 }}>
-                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }} title={kind}>{humanizeCode(kind)}</span>
+                <span style={{ width: 110, flexShrink: 0, color: 'var(--text2)', fontWeight: 700 }}>{kind.replace(/_/g, ' ')}</span>
                 <span style={{ color: 'var(--text3)' }}>→</span>
                 <span style={{ color: r.active ? 'var(--green)' : 'var(--red)', fontWeight: 700, width: 150, flexShrink: 0 }}>
                   {r.active || 'none available'}
