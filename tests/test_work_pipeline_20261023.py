@@ -8,6 +8,7 @@ idle), the grouping (task > PR > claim > design), the next-step owner, and the m
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import threading
@@ -21,7 +22,10 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from scripts.lib import work_pipeline as W  # noqa: E402
+_spec = importlib.util.spec_from_file_location("work_pipeline_census_under_test", ROOT / "scripts/lib/work_pipeline.py")
+W = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = W
+_spec.loader.exec_module(W)
 
 NOW = datetime(2026, 10, 23, 17, 30, tzinfo=timezone.utc)
 
@@ -146,7 +150,8 @@ def test_merged_released_verified():
     )
     assert bad["rag"] == "red"
     v = W.derive(
-        pr={**merged, "released": rel}, health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=50)}, now=NOW
+        pr={**merged, "released": rel, "served_contains": True},
+        health={"ok": True, "sha": "a" * 40, "served_sha": "a" * 40, "at": ago(minutes=50)}, now=NOW
     )
     assert v["stage"] == "verified" and v["finished"] and all(c["rag"] == "green" for c in v["cells"])
 
@@ -293,13 +298,18 @@ class FakeGh:
             return json.dumps({"contexts": ["ci-gate"]}), None
         if argv[:3] == ["gh", "pr", "list"] and "open" in argv:
             return json.dumps([
-                {"number": 2018, "title": "batch", "headRefName": "release/batch-9-x", "baseRefName": "main", "statusCheckRollup": [
+                {"number": 2018, "headRefOid": "head2018", "title": "batch", "headRefName": "release/batch-9-x", "baseRefName": "main", "statusCheckRollup": [
                     {"name": "ci-gate", "status": "COMPLETED", "conclusion": "FAILURE"}]},
-                {"number": 2005, "title": "x", "headRefName": "feat/x", "baseRefName": "main", "statusCheckRollup": [
+                {"number": 2005, "headRefOid": "head2005", "title": "x", "headRefName": "feat/x", "baseRefName": "main", "statusCheckRollup": [
                     {"name": "ci-gate", "status": "COMPLETED", "conclusion": "SUCCESS", "completedAt": "2026-10-23T15:00:00Z"}]},
             ]), None  # fmt: skip
         if argv[:3] == ["gh", "pr", "list"]:
             return "[]", None
+        if argv[:3] == ["gh", "pr", "view"] and "statusCheckRollup" in argv[-1]:
+            number = int(argv[3])
+            return json.dumps({"headRefOid": f"head{number}", "statusCheckRollup": [
+                {"name": "ci-gate", "status": "COMPLETED", "conclusion": "SUCCESS" if number == 2005 else "FAILURE"}
+            ]}), None
         if argv[:3] == ["gh", "pr", "view"]:
             return json.dumps({"body": "## Included\n| #2012 | x | y |\n"}), None
         return None, "unexpected"
@@ -328,13 +338,69 @@ def test_census_single_flight_and_min_interval():
     assert next(p for p in val["open"] if p["number"] == 2005)["ci"]["state"] == "green"
 
 
-def test_census_failure_keeps_last_good():
+def test_census_repo_scoped_and_light_lists(monkeypatch):
+    monkeypatch.setattr(W.LC, "default_repo", lambda: "example/synthetic")
+    gh = FakeGh()
+    c = W.PrCensus(runner=gh, now=lambda: NOW)
+    c.kick(background=False)
+    value, meta = c.snapshot()
+    assert meta["warning"] is None
+    for argv in gh.calls:
+        if argv[:2] == ["gh", "pr"]:
+            assert argv[argv.index("--repo") + 1] == "example/synthetic"
+        if argv[:3] == ["gh", "pr", "list"]:
+            assert "statusCheckRollup" not in argv[-1]
+    details = [a for a in gh.calls if a[:3] == ["gh", "pr", "view"] and "statusCheckRollup" in a[-1]]
+    assert sorted(a[3] for a in details) == ["2005", "2018"]
+    assert value["open"][1]["ci"]["state"] == "green"
+
+
+@pytest.mark.parametrize("failure", ["timeout", "invalid", "head_changed"])
+def test_census_detail_failure_cannot_reuse_green_list_checks(failure):
+    gh = FakeGh()
+
+    def runner(argv):
+        if argv[:3] == ["gh", "pr", "view"] and argv[3] == "2005" and "statusCheckRollup" in argv[-1]:
+            if failure == "timeout":
+                return None, "gh timed out after 25s"
+            if failure == "invalid":
+                return "[]", None
+            return json.dumps({"headRefOid": "new-head", "statusCheckRollup": []}), None
+        return gh(argv)
+
+    c = W.PrCensus(runner=runner, now=lambda: NOW)
+    c.kick(background=False)
+    value, meta = c.snapshot()
+    assert value is not None
+    assert next(p for p in value["open"] if p["number"] == 2005)["ci"]["state"] == "unknown"
+    assert "PR #2005 checks unavailable" in meta["warning"]
+    assert next(p for p in value["open"] if p["number"] == 2018)["ci"]["state"] == "failing"
+
+
+def test_gh_runner_release_directory_needs_no_git(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    gh = tmp_path / "gh"
+    gh.write_text("#!/usr/bin/env python3\nimport json, sys\na = sys.argv\n"
+                  "if '--repo' not in a: sys.exit('fatal: not a git repository')\n"
+                  "print(json.dumps([]))\n")
+    gh.chmod(0o700)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{__import__('os').environ['PATH']}")
+    out, warning = W._gh_runner(["gh", "pr", "list", "--repo", "example/synthetic", "--json", "number"])
+    assert json.loads(out) == [] and warning is None
+    out, warning = W._gh_runner(["gh", "pr", "list", "--json", "number"])
+    assert out is None and "not a git repository" in warning
+
+
+@pytest.mark.parametrize("outage", ["all", "merged_only"])
+def test_census_failure_keeps_last_good(outage):
     gh = FakeGh()
     t = [0.0]
     c = W.PrCensus(runner=gh, clock=lambda: t[0], now=lambda: NOW)
     c.kick(background=False)
     good = c.snapshot()[0]
-    c.runner = lambda argv: (None, "gh timed out after 25s")
+    c.runner = lambda argv: (
+        (None, "gh timed out after 25s") if outage == "all" or "merged" in argv else gh(argv)
+    )
     t[0] = 120.0
     c.kick(background=False)
     val, meta = c.snapshot()
@@ -391,9 +457,9 @@ def test_release_health_reads_receipt(tmp_path):
 def test_claim_without_pr_is_matched_to_its_branch_pr_not_stale():
     c = claim(state="stale", hb_min=240, branch="release/batch-8-20261023")
     merged = {**open_pr(2002, branch="release/batch-8-20261023"), "state": "merged", "merged_at": ago(hours=2), "merge_sha": "80e93c99f", "ci": None,
-              "released": {"at": ago(hours=1), "sha": "80e93c99f", "basis": "served CURRENT/BUILD_SHA"}}  # fmt: skip
+              "released": {"at": ago(hours=1), "sha": "80e93c99f", "basis": "served CURRENT/BUILD_SHA"}, "served_contains": True}  # fmt: skip
     items = W.build_items(tasks=[], claims=[c], census={"open": [], "merged": [merged], "batches": {}},
-                          health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=30)}, now=NOW)  # fmt: skip
+                          health={"ok": True, "sha": "a" * 40, "served_sha": "a" * 40, "at": ago(minutes=30)}, now=NOW)  # fmt: skip
     assert [i["id"] for i in items] == ["PR-2002"]
     assert items[0]["stage"] == "verified" and not items[0]["stale"] and items[0]["how"]["claim_ids"] == [c["claim_id"]]
 
@@ -441,3 +507,399 @@ def test_transient_exclusion_waits_for_batch_not_operator():
                       "excluded": {1953: "failing required checks.", 1997: "touch scripts/active_trader/**. The operator merges those."}}}  # fmt: skip
     assert W.derive(pr=open_pr(1953), batches=batches, now=NOW)["label"] == "waiting for batch"
     assert W.derive(pr=open_pr(1997), batches=batches, now=NOW)["label"] == "operator merge"
+
+
+@pytest.mark.parametrize("contains,served_sha,release_at,verified_at", [
+    (False, "a" * 40, ago(hours=1), ago(minutes=30)),
+    (None, "a" * 40, ago(hours=1), ago(minutes=30)),
+    (True, "b" * 40, ago(hours=1), ago(minutes=30)),
+    (True, "a" * 40, None, ago(minutes=30)),
+    (True, "a" * 40, ago(hours=1), None),
+    (True, "a" * 40, ago(hours=1), ago(hours=2)),
+])
+def test_historical_release_and_unrelated_health_never_prove_live(contains, served_sha, release_at, verified_at):
+    pr = {**open_pr(), "state": "merged", "merged_at": ago(hours=2),
+          "released": {"sha": "c" * 40, "at": release_at, "basis": "release_pins/old.json"},
+          "served_contains": contains}
+    data = W.derive(pr=pr, health={"ok": True, "sha": "a" * 40, "served_sha": served_sha,
+                                 "at": verified_at}, now=NOW)
+    assert data["stage"] == "released"
+    assert not data["finished"]
+    assert cell(data, "verified")["rag"] == "grey"
+
+
+def test_source_join_receives_same_census_and_preserves_aged_owner_history(tmp_path):
+    stale = claim(hb_min=25 * 60, session="synthetic-worker")
+    census = W.PrCensus(runner=lambda argv: (None, "no network"), now=lambda: NOW)
+    census.value = {"open": [], "merged": [], "serving": {"sha": "a" * 40}}
+    calls = []
+    def joined(root, prs, claims, at, **kwargs):
+        calls.append((root, prs, claims, at, kwargs))
+        return {"by_pr": {}, "active_claim_ids": [], "sources": {}, "gaps": []}
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [stale], "tasks": [], "awaiting": []},
+                              health=lambda: {"sha": "a" * 40, "ok": True}, now=lambda: NOW,
+                              state_root=tmp_path, coordination=joined)
+    data = pipeline._build()
+    assert calls[0][:4] == (tmp_path, [], [stale], NOW)
+    assert calls[0][4]["serving"]["sha"] == "a" * 40
+    assert len(data["items"]) == 1  # history is retained
+    assert data["items"][0]["in_flight"] is False
+    assert data["summary"]["in_flight"] == 0
+
+
+def test_failed_source_is_named_instead_of_suppressing_board(tmp_path):
+    def unavailable(*args, **kwargs):
+        raise OSError("private exception text")
+    pipeline = W.WorkPipeline(sources=lambda: {"claims": [], "tasks": [], "awaiting": []},
+                              health=lambda: {}, now=lambda: NOW, state_root=tmp_path, coordination=unavailable)
+    data = pipeline._build()
+    assert {"source": "coordination", "reason": "OSError"} in data["coordination"]["gaps"]
+    assert data["coordination"]["complete"] is False
+    assert "private exception text" not in json.dumps(data)
+
+
+def test_displayed_work_owner_uses_latest_claim_in_shared_projection(tmp_path):
+    from scripts.lib import work_pipeline_sources as shared
+    stale = claim("20261023T140000Z-claude-11111111", hb_min=8 * 60, session="old-worker", branch="feat/2005")
+    fresh = claim("20261023T150000Z-codex-22222222", hb_min=5, session="current-worker", branch="feat/2005")
+    census = W.PrCensus(runner=lambda argv: (None, "no network"), now=lambda: NOW)
+    census.value = {"open": [open_pr()], "merged": []}
+    def joined(root, prs, claims, now, **kwargs):
+        return shared.build(prs, claims, [], [], [], now, **kwargs)
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [stale, fresh], "tasks": [], "awaiting": []},
+                              health=lambda: {}, now=lambda: NOW, state_root=tmp_path, coordination=joined)
+    item = pipeline._build()["items"][0]
+    assert item["who"]["session"] == "current-worker"
+    assert item["who"]["as_of"] == ago(minutes=5)
+    assert item["coordination"]["owner"]["value"]["session"] == item["who"]["session"]
+
+
+@pytest.mark.parametrize("release_at,health_at", [
+    ("2026-10-23T17:00:00Z", "2026-10-23T18:00:00Z"),
+    ("2026-10-23T17:45:00Z", "2026-10-23T18:00:00Z"),
+    ("2026-10-23T17:00:00", "2026-10-23T17:15:00Z"),
+    ("2026-10-23T17:00:00.900000Z", "2026-10-23T17:00:00.100000Z"),
+])
+def test_live_clocks_are_aware_past_and_correctly_ordered(release_at, health_at):
+    pr = {**open_pr(), "released": {"at": release_at, "sha": "c" * 40}, "served_contains": True}
+    data = W.derive(pr=pr, health={"ok": True, "sha": "a" * 40, "served_sha": "a" * 40, "at": health_at}, now=NOW)
+    assert data["stage"] == "released" and not data["finished"]
+
+
+def test_receipt_producers_preserve_subsecond_order(tmp_path):
+    (tmp_path / "release_pins").mkdir()
+    basis = "release_pins/apply-20261023T170000Z.json"
+    (tmp_path / basis).write_text(json.dumps({"at": "2026-10-23T17:00:00.900000Z"}))
+    (tmp_path / "deploy_receipt.json").write_text(json.dumps({
+        "at": "2026-10-23T17:00:00.100000Z", "ok": True, "health": "ok", "deployed_sha": "a" * 40}))
+    release = W.release_source_clock({"at": "2026-10-23T17:00:00Z", "sha": "c" * 40, "basis": basis}, tmp_path, {})
+    health = W.release_health(tmp_path)
+    assert release["at"] == "2026-10-23T17:00:00.900000Z"
+    assert health["at"] == "2026-10-23T17:00:00.100000Z"
+    data = W.derive(pr={**open_pr(), "released": release, "served_contains": True},
+                    health={**health, "served_sha": "a" * 40}, now=NOW)
+    assert data["stage"] == "released"
+
+
+def test_waiting_on_you_uses_canonical_members_and_count_without_old_inference():
+    members = [{"id": "policy:2501", "next_actor": "operator", "source_sha": "a" * 40}]
+    summary = {"actionable_items": members, "actionable_count": 1, "known_actionable_count": 1,
+               "pending_count": 1, "complete": True, "gaps": [], "as_of": iso(NOW)}
+    calls = []
+    def approvals(**kwargs):
+        calls.append(kwargs)
+        return summary
+    source = {"claims": [], "tasks": [{"task_id": "old-op-task", "title": "OPERATOR: old duplicate",
+                                        "status": "free"}], "awaiting": []}
+    pipeline = W.WorkPipeline(sources=lambda: source, health=lambda: {}, approvals=approvals, now=lambda: NOW)
+    data = pipeline._build()
+    assert data["waiting_on_you"] is summary
+    assert data["waiting_on_you"]["actionable_items"] is members
+    assert data["summary"]["needs_me"] == 1
+    assert data["summary"]["known_needs_me"] == 1
+    assert len(calls) == 1 and calls[0]["now"] == NOW
+
+
+def test_incomplete_or_missing_shared_members_never_look_like_financial_zero():
+    for summary in ({"pending_count": 12}, {"actionable_items": [], "actionable_count": 12}):
+        pipeline = W.WorkPipeline(sources=lambda: {}, health=lambda: {}, approvals=lambda **kw: summary, now=lambda: NOW)
+        data = pipeline._build()
+        assert data["summary"]["needs_me"] is None
+        assert data["waiting_on_you"]["complete"] is False
+        assert data["waiting_on_you"]["gaps"]
+
+
+def test_default_reader_refuses_unsafe_claims_before_board_design_or_approval_reads(tmp_path, monkeypatch):
+    from scripts.lib import agent_claim_board as board
+    from scripts.lib import design_registry as designs
+    from scripts.lib import releases_coordination as releases
+    calls = []
+    def bounded(root):
+        calls.append("bounded")
+        return [claim()], "claims_unsafe_or_over_budget"
+    def forbidden(*args, **kwargs):
+        raise AssertionError("unsafe legacy reader reached")
+    monkeypatch.setattr(releases, "read_claims", bounded)
+    monkeypatch.setattr(board, "board_view", forbidden)
+    monkeypatch.setattr(designs, "work_board", forbidden)
+    pipeline = W.WorkPipeline(claims_dir=tmp_path, state_root=tmp_path, health=lambda: {}, now=lambda: NOW,
+                              approvals=forbidden)
+    source = pipeline._read_sources()
+    assert calls == ["bounded"]
+    assert source["source_gaps"]["claims"] == "claims_unsafe_or_over_budget"
+    assert source["claims"][0]["session"] == claim()["session"]
+    data = pipeline._build()
+    assert data["summary"]["in_flight"] is None
+    assert data["waiting_on_you"]["pending_count"] is None
+    assert data["waiting_on_you"]["gaps"][0]["reason"] == "claim_store_unavailable"
+
+
+def test_healthy_claim_preflight_runs_before_existing_board_projection(tmp_path, monkeypatch):
+    from scripts.lib import agent_claim_board as board
+    from scripts.lib import design_registry as designs
+    from scripts.lib import releases_coordination as releases
+    calls = []
+    monkeypatch.setattr(releases, "read_claims", lambda root: (calls.append("bounded") or [], None))
+    def existing(*args, **kwargs):
+        calls.append("board")
+        return {"claims": [], "task_board": {"tasks": []}, "claims_dir": str(tmp_path)}
+    monkeypatch.setattr(board, "board_view", existing)
+    class Designs:
+        def designs(self):
+            calls.append("designs")
+            return {"awaiting_approval": []}
+    monkeypatch.setattr(designs, "work_board", lambda: Designs())
+    monkeypatch.setattr(W, "tier2_context", lambda: {})
+    monkeypatch.setattr(W, "open_approval_packages", lambda: [])
+    source = W.WorkPipeline(claims_dir=tmp_path, state_root=tmp_path, now=lambda: NOW)._read_sources()
+    assert calls == ["bounded", "board", "designs"]
+    assert source["source_gaps"] == {}
+
+
+def test_measured_check_counts_include_missing_required_context_and_preserve_latest_clock():
+    runs = [
+        {"name": "one", "status": "COMPLETED", "conclusion": "SUCCESS", "startedAt": "2026-10-23T14:00:00.900000Z", "completedAt": "2026-10-23T14:01:00Z"},
+        {"name": "one", "status": "COMPLETED", "conclusion": "FAILURE", "startedAt": "2026-10-23T15:00:00.950000+01:00", "completedAt": "2026-10-23T14:02:00Z"},
+        {"name": "two", "status": "COMPLETED", "conclusion": "SUCCESS", "completedAt": "2026-10-23T14:01:00Z"},
+    ]
+    counts = W.ci_from_rollup(runs, required=["one", "two", "missing"])
+    assert counts["passed"] == 1 and counts["total"] == 3
+    assert counts["failing"] == ["one"] and counts["pending"] == ["missing"]
+    assert counts["scope"] == "required" and counts["state"] == "failing"
+    assert W.ci_from_rollup(None)["passed"] is None
+
+
+def test_review_floor_is_exact_head_and_complete_file_metadata_not_operator_authority():
+    base = {"number": 42, "title": "Synthetic", "headRefOid": "a" * 40, "baseRefName": "main",
+            "files": [{"path": "scripts/lib/sample.py"}], "changedFiles": 1, "labels": [],
+            "statusCheckRollup": [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}]}
+    ordinary = W._norm_open_pr(base, None)
+    assert ordinary["review_required_count"] == 1
+    assert ordinary["ci"]["head_sha"] == "a" * 40
+    assert ordinary["ci"]["passed"] == ordinary["ci"]["total"] == 1
+    held = W._norm_open_pr({**base, "files": [{"path": "AGENTS.md"}]}, None)
+    assert held["review_required_count"] == 2 and held["held_classes"]
+    assert "next_actor" not in held  # a held label/path is no operator decision
+    incomplete = W._norm_open_pr({**base, "changedFiles": 2}, None)
+    assert incomplete["review_required_count"] is None and incomplete["review_required_gap"]
+    duplicate = W._norm_open_pr({**base, "files": base["files"] * 2, "changedFiles": 2}, None)
+    assert duplicate["review_required_count"] is None
+    assert W._norm_open_pr({**base, "headRefOid": "short"}, None)["review_required_count"] is None
+
+
+def test_merged_head_retains_native_ci_metadata_without_current_required_context_substitution():
+    pr = W._norm_merged_pr({"number": 42, "headRefOid": "a" * 40, "baseRefName": "main",
+                            "mergeCommit": {"oid": "b" * 40}, "files": [], "changedFiles": 0,
+                            "statusCheckRollup": [{"name": "oldcheck", "status": "COMPLETED", "conclusion": "SUCCESS",
+                                                   "completedAt": "2026-10-23T14:00:00.123456Z"}]})
+    assert pr["head_sha"] == "a" * 40
+    assert pr["ci"]["passed"] == pr["ci"]["total"] == 1
+    assert pr["ci"]["completed_at"] == "2026-10-23T14:00:00.123456Z"
+
+
+def test_merged_detail_cache_keeps_its_observation_clock_and_expires_without_reusing_failed_green():
+    ticks, clocks, calls = [0.0], [NOW], []
+    def runner(argv):
+        calls.append(argv)
+        if ticks[0] > 300:
+            return None, "synthetic outage"
+        return json.dumps({"headRefOid": "a" * 40, "statusCheckRollup": [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}],
+                           "files": [], "labels": [], "changedFiles": 0}), None
+    census = W.PrCensus(runner=runner, clock=lambda: ticks[0], now=lambda: clocks[0])
+    pr = {"number": 42, "headRefOid": "a" * 40, "baseRefName": "main", "_merged": True}
+    first, warning = census._detail(pr, "example/synthetic")
+    assert warning is None and first["_checks_observed_at"] == iso(NOW)
+    ticks[0], clocks[0] = 200, NOW + timedelta(minutes=3)
+    cached, warning = census._detail(pr, "example/synthetic")
+    assert len(calls) == 1 and cached["_checks_observed_at"] == first["_checks_observed_at"]
+    ticks[0] = 301
+    failed, warning = census._detail(pr, "example/synthetic")
+    assert warning and "statusCheckRollup" not in failed and "_checks_observed_at" not in failed
+    assert W._norm_open_pr(failed, None)["ci"]["state"] == "unknown"
+
+
+def test_visible_optional_failure_cannot_hide_behind_green_required_checks():
+    row = {"number": 42, "headRefOid": "a" * 40, "baseRefName": "main", "files": [], "changedFiles": 0,
+           "statusCheckRollup": [{"name": "required", "status": "COMPLETED", "conclusion": "SUCCESS"},
+                                  {"name": "optional", "status": "COMPLETED", "conclusion": "FAILURE"}]}
+    ci = W._norm_open_pr(row, ["required"])["ci"]
+    assert ci["state"] == "failing" and ci["failing"] == ["optional"]
+    assert ci["passed"] == 1 and ci["total"] == 2
+    missing = W._norm_open_pr({**row, "statusCheckRollup": row["statusCheckRollup"][:1]}, ["required", "not-run"])["ci"]
+    assert missing["state"] == "pending" and missing["pending"] == ["not-run"]
+
+
+@pytest.mark.parametrize("flag,expected", [("truncated", "claim_board_truncated"), ("unreadable", "claim_board_schema_or_read_failure")])
+def test_legacy_board_completeness_flags_reach_shared_model(tmp_path, monkeypatch, flag, expected):
+    from scripts.lib import agent_claim_board as board
+    from scripts.lib import design_registry as designs
+    from scripts.lib import releases_coordination as releases
+    monkeypatch.setattr(releases, "read_claims", lambda root: ([], None))
+    seen = []
+    def legacy(*args, **kwargs):
+        seen.append(kwargs["limit"])
+        return {"claims": [], "task_board": {"tasks": []}, "claims_dir": str(tmp_path),
+                flag: ["schema-invalid.json"] if flag == "unreadable" else True}
+    monkeypatch.setattr(board, "board_view", legacy)
+    class Designs:
+        def designs(self): return {"awaiting_approval": []}
+    monkeypatch.setattr(designs, "work_board", lambda: Designs())
+    monkeypatch.setattr(W, "tier2_context", lambda: {})
+    monkeypatch.setattr(W, "open_approval_packages", lambda: [])
+    pipeline = W.WorkPipeline(claims_dir=tmp_path, state_root=tmp_path, health=lambda: {}, now=lambda: NOW)
+    data = pipeline._build()
+    assert seen == [1000]
+    assert data["coordination"]["sources"]["claims"]["gap"] == expected
+    assert data["summary"]["in_flight"] is None
+
+
+def test_work_item_cap_is_explicit_unknown_global_count(tmp_path, monkeypatch):
+    monkeypatch.setattr(W, "MAX_ITEMS", 1)
+    source = {"claims": [], "tasks": [{"task_id": "one", "title": "First", "status": "free", "created_at": ago(hours=1)},
+                                        {"task_id": "two", "title": "Second", "status": "free", "created_at": ago(hours=1)}], "awaiting": []}
+    data = W.WorkPipeline(sources=lambda: source, health=lambda: {}, now=lambda: NOW)._build()
+    assert len(data["items"]) == 1 and data["item_limits"]["candidate_count"] == 2
+    assert data["item_limits"]["truncated"] is True and data["summary"]["in_flight"] is None
+    assert data["coordination"]["sources"]["work_items"]["gap"] == "work_item_limit_exceeded"
+
+
+def test_board_view_internal_limit_is_configurable_without_changing_old_default(tmp_path, monkeypatch):
+    from scripts.lib import agent_claim_board as board
+    class Cache:
+        def snapshot(self, *args, **kwargs): return {}, {"observed_at": None, "warning": None}
+    monkeypatch.setattr(board, "_api_observer", lambda: Cache())
+    for n in range(2):
+        cid = f"20261023T150000Z-codex-{n:08x}"
+        (tmp_path / (cid + ".json")).write_text(json.dumps({"schema": board.SCHEMA, "claim_id": cid,
+            "status": "active", "session": "synthetic", "vendor": "codex", "paths": [], "heartbeat_at": ago(minutes=1)}))
+    clipped = board.board_view(tmp_path, limit=1, background=False)
+    full = board.board_view(tmp_path, limit=1000, background=False)
+    assert len(clipped["claims"]) == 1 and clipped["truncated"] is True
+    assert len(full["claims"]) == 2 and full["truncated"] is False and full["unreadable"] == []
+
+
+def test_agent_current_item_uses_exact_current_claim_before_shared_session(tmp_path):
+    from scripts.lib import work_pipeline_sources as shared
+    older = claim("20261023T140000Z-claude-11111111", stage="building", session="same-worker",
+                  hb_min=8, branch="wt/old", worktree_head_sha="a" * 40)
+    newer = claim("20261023T150000Z-claude-22222222", stage="building", session="same-worker",
+                  hb_min=2, branch="wt/new", worktree_head_sha="b" * 40)
+    events = [{"kind": "branch_uploaded", "claim_id": older["claim_id"], "head_sha": "a" * 40, "ts": ago(minutes=6)}]
+    def joined(root, prs, claims, now, **kwargs):
+        return shared.build(prs, claims, events, [], [], now, **kwargs)
+    pipeline = W.WorkPipeline(sources=lambda: {"claims": [older, newer]}, coordination=joined,
+                              state_root=tmp_path, now=lambda: NOW, health=lambda: {})
+    data = pipeline._build()
+    agent = data["coordination"]["agents"][0]
+    assert agent["current_claim_id"] == newer["claim_id"]
+    assert agent["item_id"] == newer["claim_id"]
+    assert agent["stage"] == "building"
+    assert agent["item_binding_source"] == "current_claim_id"
+    assert agent["item_binding_gap"] is None
+    assert next(i for i in data["items"] if i["id"] == older["claim_id"])["coordination"]["current_stage"]["value"] == "uploaded"
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_agent_binding_never_guesses_missing_or_ambiguous_current_item(tmp_path, ambiguous):
+    from scripts.lib import work_pipeline_sources as shared
+    first = claim(session="same-worker", branch="wt/shared", stage="building")
+    second = claim("20261023T150000Z-claude-bbbbbbbb", session="same-worker", branch="wt/shared", stage="building")
+    def joined(root, prs, claims, now, **kwargs):
+        result = shared.build(prs, claims, [], [], [], now, **kwargs)
+        # A source without a recorded current claim must prove a unique session+branch.
+        agent = result["agents"][0]
+        agent["current_claim_id"] = None if ambiguous else "20261023T150000Z-claude-cccccccc"
+        return result
+    pipeline = W.WorkPipeline(sources=lambda: {"claims": [first, second]}, coordination=joined,
+                              state_root=tmp_path, now=lambda: NOW, health=lambda: {})
+    agent = pipeline._build()["coordination"]["agents"][0]
+    assert agent["item_id"] is None and agent["stage"] is None
+    expected = "current_work_item_ambiguous" if ambiguous else "current_work_item_not_visible"
+    assert agent["item_binding_gap"] == expected and expected in agent["gaps"]
+
+
+def test_known_broadcast_state_is_not_a_claim_but_wrong_claim_schema_stays_visible(tmp_path):
+    from scripts.lib import agent_claim_board as board, releases_coordination as releases
+    ident = "20261023T150000Z-claude-aaaaaaaa"
+    (tmp_path / f"{ident}.json").write_text(json.dumps({**claim(), "schema": board.SCHEMA}))
+    (tmp_path / "policy_broadcast_state.json").write_text('{"schema":"PolicyBroadcastState@v1"}')
+    docs, bad = board.ClaimBoard(tmp_path).read_all()
+    raw, gap = releases.read_claims(tmp_path)
+    assert len(docs) == len(raw) == 1 and not bad and gap is None
+    (tmp_path / "20261023T150000Z-claude-bbbbbbbb.json").write_text('{"schema":"wrong"}')
+    _, bad = board.ClaimBoard(tmp_path).read_all()
+    assert bad == ["20261023T150000Z-claude-bbbbbbbb.json"]
+
+
+@pytest.mark.parametrize("count", [0, 2, 3, 4])
+def test_open_census_overflow_is_named_without_extra_detail_calls(monkeypatch, count):
+    monkeypatch.setattr(W, "MAX_OPEN_PRS", 2)
+    calls = []
+    def runner(argv):
+        calls.append(argv)
+        if argv[:3] == ["gh", "pr", "list"]:
+            if "open" not in argv:
+                return "[]", None
+            assert argv[argv.index("--limit") + 1] == "3"  # one lightweight overflow probe
+            return json.dumps([{"number": n, "headRefOid": f"{n:040x}", "headRefName": f"wt/synthetic-{n}",
+                                "createdAt": ago(hours=2), "updatedAt": ago(minutes=1)} for n in range(1, count + 1)]), None
+        if argv[:3] == ["gh", "pr", "view"]:
+            return json.dumps({"headRefOid": f"{int(argv[3]):040x}", "statusCheckRollup": [],
+                               "files": [], "labels": [], "changedFiles": 0}), None
+        return json.dumps({"contexts": [], "sha": "a" * 40}), None
+    census = W.PrCensus(runner=runner, now=lambda: NOW)
+    census.kick(background=False)
+    value, meta = census.snapshot()
+    overflow = count > 2
+    assert len(value["open"]) == min(count, 2)
+    assert value["open_truncated"] is meta["open_truncated"] is overflow
+    assert sum(a[:3] == ["gh", "pr", "view"] for a in calls) == min(count, 2)
+    assert ("open_pr_limit_exceeded" in (meta["warning"] or "")) is overflow
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [], "tasks": []},
+                              health=lambda: {}, now=lambda: NOW)
+    result = pipeline._build()
+    assert result["summary"]["in_flight"] == (None if overflow else count)
+    assert result["summary"]["known_in_flight"] == min(count, 2)
+    if overflow:
+        assert any(g["source"] == "census" and "open_pr_limit_exceeded" in g["reason"]
+                   for g in result["coordination"]["gaps"])
+
+
+@pytest.mark.parametrize("failed_list", ["open", "merged", "all"])
+@pytest.mark.parametrize("with_claim", [False, True])
+def test_first_census_failure_keeps_global_count_unknown_and_observed_claims(failed_list, with_claim):
+    def runner(argv):
+        if argv[:3] == ["gh", "pr", "list"]:
+            state = argv[argv.index("--state") + 1]
+            return (None, "synthetic source outage") if failed_list in (state, "all") else ("[]", None)
+        return json.dumps({"contexts": [], "sha": "a" * 40}), None
+    census = W.PrCensus(runner=runner, now=lambda: NOW)
+    census.kick(background=False)
+    pipeline = W.WorkPipeline(census=census, sources=lambda: {"claims": [claim()] if with_claim else [], "tasks": []},
+                              health=lambda: {}, now=lambda: NOW)
+    result = pipeline._build()
+    assert census.snapshot()[0] is None and result["sources"]["open_prs"] is None
+    assert result["summary"]["in_flight"] is None
+    assert result["summary"]["known_in_flight"] == int(with_claim)
+    assert len(result["items"]) == int(with_claim)
+    assert any(g["source"] == "census" for g in result["coordination"]["gaps"])

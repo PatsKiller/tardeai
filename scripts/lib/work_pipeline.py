@@ -51,6 +51,7 @@ import re
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
@@ -107,6 +108,7 @@ CENSUS_MIN_INTERVAL_S = 60.0
 GH_CALL_TIMEOUT_S = 25.0
 MAX_GH_OUTPUT_BYTES = 6 * 1024 * 1024
 MAX_OPEN_PRS = 100
+MAX_PR_DETAIL_WORKERS = 4
 MAX_MERGED_PRS = 40
 MAX_BATCHES = 3
 MAX_ITEMS = 400
@@ -137,6 +139,20 @@ def _iso(dt: datetime | None) -> str | None:
     return LC._iso(dt)
 
 
+def _observed_at(value: Any) -> datetime | None:
+    """Evidence timestamps require an explicit zone and retain subsecond ordering."""
+    try:
+        parsed = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo is not None else None
+
+
+def _source_time(value: Any) -> str | None:
+    observed = _observed_at(value)
+    return observed.isoformat().replace("+00:00", "Z") if observed is not None else None
+
+
 def _max_iso(*values: Any) -> str | None:
     got = [d for d in (_parse(v) for v in values) if d is not None]
     return _iso(max(got)) if got else None
@@ -156,7 +172,8 @@ def ci_from_rollup(rollup: Iterable[Mapping[str, Any]] | None, required: Iterabl
     CheckRun entries carry name/status/conclusion/completedAt; StatusContext entries carry context/state. Only the
     latest entry per name counts. When ``required`` is known, only those names decide the state."""
     if rollup is None:
-        return {"state": "unknown", "failing": [], "pending": [], "total": 0, "completed_at": None}
+        return {"state": "unknown", "failing": [], "pending": [], "total": 0, "passed": None,
+                "completed_at": None, "gap": "checks_unavailable", "scope": "required" if required else "all_observed"}
     latest: dict[str, Mapping[str, Any]] = {}
     for r in rollup:
         if not isinstance(r, Mapping):
@@ -165,8 +182,9 @@ def ci_from_rollup(rollup: Iterable[Mapping[str, Any]] | None, required: Iterabl
         if not name:
             continue
         prev = latest.get(name)
-        key = str(r.get("startedAt") or r.get("completedAt") or "")
-        if prev is None or key >= str(prev.get("startedAt") or prev.get("completedAt") or ""):
+        key = _observed_at(r.get("startedAt") or r.get("createdAt") or r.get("completedAt"))
+        previous_key = _observed_at((prev or {}).get("startedAt") or (prev or {}).get("createdAt") or (prev or {}).get("completedAt"))
+        if prev is None or (key or datetime.min.replace(tzinfo=timezone.utc)) >= (previous_key or datetime.min.replace(tzinfo=timezone.utc)):
             latest[name] = r
     req = sorted(set(required or ()))
     names = [n for n in req if n in latest] if req else sorted(latest)
@@ -202,7 +220,11 @@ def ci_from_rollup(rollup: Iterable[Mapping[str, Any]] | None, required: Iterabl
         "failing": failing[:12],
         "pending": pending[:12],
         "total": len(names) + len(missing),
-        "completed_at": _max_iso(*done_at) if state == "green" else None,
+        "passed": len(names) + len(missing) - len(failing) - len(pending) if names or missing else None,
+        "completed_at": _source_time(max((stamp for value in done_at if (stamp := _observed_at(value))), default=None)) if state == "green" else None,
+        "started_at": _source_time(min((stamp for name in names if (stamp := _observed_at(latest[name].get("startedAt") or latest[name].get("createdAt")))), default=None)),
+        "scope": "required" if req else "all_observed",
+        "gap": "checks_not_observed" if state == "unknown" else None,
     }
 
 
@@ -232,19 +254,44 @@ def parse_batch_body(body: str | None) -> dict[str, Any]:
 
 
 def _norm_open_pr(p: Mapping[str, Any], required: list[str] | None) -> dict[str, Any]:
+    from scripts.lib import merge_hold_paths
+    head = p.get("headRefOid")
+    paths = [row.get("path") for row in p.get("files") or [] if isinstance(row, Mapping) and isinstance(row.get("path"), str)]
+    labels = {row.get("name") if isinstance(row, Mapping) else row for row in p.get("labels") or []}
+    held_labels = sorted(labels.intersection(merge_hold_paths.hold_labels()))
+    changed = p.get("changedFiles")
+    complete_files = (isinstance(p.get("files"), list) and isinstance(changed, int) and not isinstance(changed, bool) and changed >= 0
+                      and len(paths) == changed and len(set(paths)) == changed)
+    held_classes = sorted(merge_hold_paths.held_classes(paths))
+    exact_head = bool(re.fullmatch(r"[0-9a-f]{40}", str(head or "")))
+    quota_known = exact_head and (bool(held_labels or held_classes) or complete_files)
+    rollup = p.get("statusCheckRollup")
+    known_required = required if p.get("baseRefName") == "main" else None
+    observed_names = {str(row.get("name") or row.get("context")) for row in rollup or []
+                      if isinstance(row, Mapping) and (row.get("name") or row.get("context"))}
+    # Optional failing checks still matter; also retain required names that have not appeared.
+    all_expected = sorted(observed_names.union(known_required or []))
+    ci = ci_from_rollup(rollup, all_expected or None)
+    ci.update(head_sha=head, source="github_pr_snapshot", as_of=p.get("_checks_observed_at"),
+              scope="all_observed_and_required" if known_required else "all_observed",
+              required_contexts=known_required)
     return {
         "number": int(p.get("number") or 0),
         "title": str(p.get("title") or "")[:200],
         "url": p.get("url"),
         "branch": p.get("headRefName"),
-        "head_sha": p.get("headRefOid"),
+        "head_sha": head,
         "base": p.get("baseRefName"),
         "draft": bool(p.get("isDraft")),
         "author": ((p.get("author") or {}).get("login") if isinstance(p.get("author"), Mapping) else None),
-        "created_at": LC._norm_iso(p.get("createdAt")),
-        "updated_at": LC._norm_iso(p.get("updatedAt")),
-        "state": "open",
-        "ci": ci_from_rollup(p.get("statusCheckRollup"), required if p.get("baseRefName") == "main" else None),
+        "created_at": _source_time(p.get("createdAt")),
+        "updated_at": _source_time(p.get("updatedAt")),
+        "state": "open", "ci": ci,
+        "review_required_count": (2 if held_labels or held_classes else 1) if quota_known else None,
+        "review_required_source": "config/merge_hold_paths.json + active review floor",
+        "review_required_as_of": p.get("_checks_observed_at"),
+        "review_required_gap": None if quota_known else "complete_changed_file_snapshot_unavailable",
+        "held_classes": held_classes, "held_labels": held_labels, "changed_files_complete": complete_files,
     }
 
 
@@ -255,6 +302,7 @@ def _norm_merged_pr(p: Mapping[str, Any]) -> dict[str, Any]:
         "title": str(p.get("title") or "")[:200],
         "url": p.get("url"),
         "branch": p.get("headRefName"),
+        "head_sha": p.get("headRefOid"),
         "base": p.get("baseRefName"),
         "draft": False,
         "author": ((p.get("author") or {}).get("login") if isinstance(p.get("author"), Mapping) else None),
@@ -263,7 +311,9 @@ def _norm_merged_pr(p: Mapping[str, Any]) -> dict[str, Any]:
         "merged_at": LC._norm_iso(p.get("mergedAt")),
         "merge_sha": (mc or {}).get("oid"),
         "state": "merged",
-        "ci": None,
+        **({key: value for key, value in _norm_open_pr(p, None).items()
+            if key == "ci" or key.startswith("review_required_") or key in ("held_classes", "held_labels", "changed_files_complete")}
+           if p.get("headRefOid") else {"ci": None}),
     }
 
 
@@ -295,6 +345,7 @@ class PrCensus:
         self._running = False
         self._lock = threading.Lock()
         self._required: tuple[float, list[str] | None] | None = None
+        self._merged_details: dict[tuple[int, str], tuple[float, dict[str, Any]]] = {}
 
     def kick(self, *, background: bool = True) -> bool:
         """Start one refresh if due and none is running. Returns True when a refresh started."""
@@ -318,6 +369,7 @@ class PrCensus:
                 "refreshing": self._running,
                 "min_interval_s": self.min_interval_s,
                 "refreshes": self.refreshes,
+                "open_truncated": bool((self.value or {}).get("open_truncated")),
             }
 
     def _json(self, argv: list[str]) -> tuple[Any, str | None]:
@@ -344,24 +396,50 @@ class PrCensus:
         self._required = (self.clock(), req)
         return req
 
+    def _detail(self, pr: dict[str, Any], repo: str) -> tuple[dict[str, Any], str | None]:
+        # Never reuse checks carried by the list if the detail query fails.
+        clean = {k: v for k, v in pr.items() if k not in ("statusCheckRollup", "files", "labels", "changedFiles", "_checks_observed_at")}
+        number = int(pr.get("number") or 0)
+        cache_key = (number, str(pr.get("headRefOid") or ""))
+        if pr.get("_merged"):
+            with self._lock:
+                cached = self._merged_details.get(cache_key)
+            if cached and self.clock() - cached[0] < 300.0:
+                return {**clean, **cached[1]}, None
+        doc, warning = self._json(
+            ["gh", "pr", "view", str(number), "--repo", repo, "--json", "headRefOid,statusCheckRollup,files,labels,changedFiles"]
+        )
+        if not isinstance(doc, dict) or not isinstance(doc.get("statusCheckRollup"), list):
+            return clean, f"PR #{number} checks unavailable: {warning or 'invalid detail response'}"
+        if not pr.get("headRefOid") or doc.get("headRefOid") != pr["headRefOid"]:
+            return clean, f"PR #{number} checks unavailable: head changed during census"
+        observed = {"statusCheckRollup": doc["statusCheckRollup"], "files": doc.get("files"),
+                    "labels": doc.get("labels"), "changedFiles": doc.get("changedFiles"),
+                    "_checks_observed_at": _source_time(self.now())}
+        if pr.get("_merged") and not warning:
+            with self._lock:
+                self._merged_details[cache_key] = (self.clock(), observed)
+                if len(self._merged_details) > MAX_ITEMS:
+                    self._merged_details.pop(next(iter(self._merged_details)))
+        return {**clean, **observed}, warning
+
     def _refresh(self) -> None:
         warnings: list[str] = []
         try:
             required = self._required_contexts()
+            repo = LC.default_repo()
             opened, w = self._json(
                 [
-                    "gh", "pr", "list", "--repo", LC.default_repo(), "--state", "open",
-                    "--limit", str(MAX_OPEN_PRS), "--json",
-                    "number,title,url,headRefName,headRefOid,baseRefName,isDraft,author,createdAt,updatedAt,statusCheckRollup",
+                    "gh", "pr", "list", "--repo", repo, "--state", "open", "--limit", str(MAX_OPEN_PRS + 1), "--json",
+                    "number,title,url,headRefName,headRefOid,baseRefName,isDraft,author,createdAt,updatedAt",
                 ]
             )  # fmt: skip
             if w:
                 warnings.append(w)
             merged, w = self._json(
                 [
-                    "gh", "pr", "list", "--repo", LC.default_repo(), "--state", "merged",
-                    "--limit", str(MAX_MERGED_PRS), "--json",
-                    "number,title,url,headRefName,baseRefName,author,createdAt,mergedAt,mergeCommit",
+                    "gh", "pr", "list", "--repo", repo, "--state", "merged", "--limit", str(MAX_MERGED_PRS), "--json",
+                    "number,title,url,headRefName,headRefOid,baseRefName,author,createdAt,mergedAt,mergeCommit",
                 ]
             )  # fmt: skip
             if w:
@@ -370,37 +448,80 @@ class PrCensus:
             main_sha = main_doc.get("sha") if isinstance(main_doc, dict) else None
             if not isinstance(opened, list):
                 raise RuntimeError(warnings[0] if warnings else "open PR list unavailable")
-            open_prs = [_norm_open_pr(p, required) for p in opened[:MAX_OPEN_PRS] if isinstance(p, dict)]
-            merged_prs = [_norm_merged_pr(p) for p in (merged or [])[:MAX_MERGED_PRS] if isinstance(p, dict)]
+            if not isinstance(merged, list):
+                raise RuntimeError(warnings[-1] if warnings else "merged PR list unavailable")
+            open_truncated = len(opened) > MAX_OPEN_PRS
+            if open_truncated:
+                warnings.append(f"open_pr_limit_exceeded: more than {MAX_OPEN_PRS} open PRs; observed subset retained")
+            # Keep the list cheap: large nested rollups time out on GitHub. Each bounded detail query
+            # is head-bound, so a push between the list and detail cannot lend green checks to an old head.
+            candidates = [p for p in opened[:MAX_OPEN_PRS] if isinstance(p, dict)]
+            with ThreadPoolExecutor(max_workers=MAX_PR_DETAIL_WORKERS) as pool:
+                enriched = list(pool.map(lambda p: self._detail(p, repo), candidates))
+            for _p, warning in enriched:
+                if warning:
+                    warnings.append(warning)
+            open_prs = [_norm_open_pr(p, required) for p, _warning in enriched]
+            # Each detail retains its own successful observation clock.
+            merged_rows = [p for p in merged[:MAX_MERGED_PRS] if isinstance(p, dict)]
+            with ThreadPoolExecutor(max_workers=MAX_PR_DETAIL_WORKERS) as pool:
+                merged_details = list(pool.map(lambda p: self._detail({**p, "_merged": True}, repo) if p.get("headRefOid") else (p, None), merged_rows))
+            for _p, warning in merged_details:
+                if warning:
+                    warnings.append(warning)
+            merged_prs = [_norm_merged_pr(p) for p, _warning in merged_details]
+            for current_pr in merged_prs:
+                if isinstance(current_pr.get("ci"), dict):
+                    current_pr["ci"]["scope"] = "observed_at_merged_head"
             batches: dict[int, dict[str, Any]] = {}
             for p in [p for p in open_prs if BATCH_BRANCH_RE.match(str(p.get("branch") or ""))][:MAX_BATCHES]:
-                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--repo", LC.default_repo(), "--json", "body"])
+                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--repo", repo, "--json", "body"])
                 if w:
                     warnings.append(w)
                 parsed = parse_batch_body((doc or {}).get("body") if isinstance(doc, dict) else None)
                 batches[p["number"]] = {**parsed, "number": p["number"], "title": p["title"], "ci": p["ci"]}
             # the last merged batches still carry standing exclusions ("the operator merges those")
             for p in [p for p in merged_prs if BATCH_BRANCH_RE.match(str(p.get("branch") or ""))][:2]:
-                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--repo", LC.default_repo(), "--json", "body"])
+                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--repo", repo, "--json", "body"])
                 if w:
                     warnings.append(w)
                 parsed = parse_batch_body((doc or {}).get("body") if isinstance(doc, dict) else None)
                 batches[p["number"]] = {"members": [], "excluded": parsed["excluded"], "number": p["number"],
                                         "title": p["title"], "ci": None, "merged": True}  # fmt: skip
+            serving = {}
             if self.release is not None:
+                # All ancestry probes stay in this background refresh, never in a page request.
+                try:
+                    serving = self.release.serving()
+                    receipt_root = getattr(self.release, "deploy_state_dir", None)
+                    if receipt_root:
+                        receipt = release_health(Path(receipt_root))
+                        if receipt.get("sha") == serving.get("sha"):
+                            serving = {**serving, "since": receipt.get("at")}
+                except Exception as exc:  # noqa: BLE001 -- membership remains explicitly unavailable
+                    warnings.append(f"served identity unavailable ({type(exc).__name__})")
                 for p in merged_prs:
                     if p.get("merge_sha"):
                         try:
                             p["released"] = self.release.released(str(p["merge_sha"]), p.get("merged_at"))
+                            receipt_root = getattr(self.release, "deploy_state_dir", None)
+                            if p["released"] and receipt_root:
+                                p["released"] = release_source_clock(p["released"], Path(receipt_root), serving)
+                            p["served_contains"] = (
+                                self.release.ancestor(str(p["merge_sha"]), str(serving["sha"]))
+                                if serving.get("sha") else None
+                            )
                         except Exception as exc:  # noqa: BLE001 - release detection degrades, never raises
                             warnings.append(f"release detection failed ({type(exc).__name__})")
                             break
             value = {
                 "open": open_prs,
+                "open_truncated": open_truncated,
                 "merged": merged_prs,
                 "batches": batches,
                 "required": required,
                 "main_sha": main_sha,
+                "serving": serving,
             }
             with self._lock:
                 self.value = value
@@ -440,11 +561,40 @@ def _gh_runner(argv: list[str]) -> tuple[str | None, str | None]:
 # --------------------------------------------------------------------------------------------- release health
 
 
+def _receipt_document(path: Path) -> dict[str, Any]:
+    if path.is_symlink():
+        raise ValueError("receipt is a symlink")
+    with path.open("rb") as handle:
+        raw = handle.read(128 * 1024 + 1)
+    if len(raw) > 128 * 1024:
+        raise ValueError("receipt exceeds read budget")
+    doc = json.loads(raw)
+    if not isinstance(doc, dict):
+        raise ValueError("receipt is not an object")
+    return doc
+
+
+def release_source_clock(released: Mapping[str, Any], root: Path, serving: Mapping[str, Any]) -> dict[str, Any]:
+    """Restore exact receipt precision after the legacy lifecycle reader's second-rounded clock."""
+    result = dict(released)
+    basis = str(result.get("basis") or "")
+    if re.fullmatch(r"release_pins/apply-\d{8}T\d+Z\.json", basis):
+        try:
+            result["at"] = _source_time(_receipt_document(root / basis).get("at"))
+        except (OSError, ValueError):
+            result["at"] = None
+    elif basis == "served CURRENT/BUILD_SHA":
+        result["at"] = serving.get("since") if result.get("sha") == serving.get("sha") else None
+    else:
+        result["at"] = None
+    return result
+
+
 def release_health(deploy_state_dir: Path | None = None) -> dict[str, Any]:
     """The last deploy receipt: served SHA, when, and whether its health check passed. Never raises."""
     d = Path(deploy_state_dir or Path.home() / ".local" / "state" / "cio-phase2-exact-main")
     try:
-        rec = json.loads((d / "deploy_receipt.json").read_text(encoding="utf-8"))
+        rec = _receipt_document(d / "deploy_receipt.json")
     except (OSError, ValueError):
         return {"sha": None, "ok": None, "at": None, "basis": "deploy_receipt.json unreadable"}
     ok = bool(rec.get("ok")) and str(rec.get("health") or "").lower() == "ok" and not rec.get("rolled_back")
@@ -452,7 +602,7 @@ def release_health(deploy_state_dir: Path | None = None) -> dict[str, Any]:
         "sha": rec.get("deployed_sha"),
         "ok": ok,
         "health": rec.get("health"),
-        "at": LC._norm_iso(rec.get("at")),
+        "at": _source_time(rec.get("at")),
         "basis": "deploy_receipt.json",
     }
 
@@ -637,9 +787,11 @@ def derive(
     # --- stage ---------------------------------------------------------------------------------------------------
     t_status = (task or {}).get("status")
     verified = False
-    if released and health and health.get("ok") and health.get("sha"):
-        r_at, h_at = _parse(released.get("at")), _parse(health.get("at"))
-        verified = r_at is None or h_at is None or h_at >= r_at
+    if (released and health and health.get("ok") is True
+            and re.fullmatch(r"[0-9a-f]{40}", str(health.get("sha") or ""))
+            and health.get("served_sha") == health.get("sha") and (pr or {}).get("served_contains") is True):
+        r_at, h_at = _observed_at(released.get("at")), _observed_at(health.get("at"))
+        verified = r_at is not None and h_at is not None and r_at <= h_at <= now
     if released and verified:
         stage, rag, label = "verified", "green", "live"
         times["verified"] = (health or {}).get("at")
@@ -1013,6 +1165,7 @@ def build_items(
     latest_line: Callable[[str | None], str | None] = latest_worklog_line,
     queue: Mapping[str, Any] | None = None,
     tier2: Mapping[str, Any] | None = None,
+    collection_meta: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Group the sources into work items (task > PR > claim > design) and derive each one."""
     now = now or _utc_now()
@@ -1090,6 +1243,8 @@ def build_items(
     items = []
     # Designs awaiting the operator are appended last; a plain [:MAX_ITEMS] cut dropped every one of them (and its
     # Tier 2 Approve, the only path design_registry reads) once tasks/PRs/claims filled the page (2026-10-31: 400/400).
+    if collection_meta is not None:
+        collection_meta.update(candidate_count=len(groups), limit=MAX_ITEMS, truncated=len(groups) > MAX_ITEMS)
     waiting = [g for g in groups if (g.get("design") or {}).get("awaiting")][:MAX_ITEMS]
     rest = [g for g in groups if not (g.get("design") or {}).get("awaiting")]
     for g in rest[: MAX_ITEMS - len(waiting)] + waiting:
@@ -1331,9 +1486,20 @@ class WorkPipeline:
         health: Callable[[], dict[str, Any]] | None = None,
         ttl: float = REFRESH_S,
         now: Callable[[], datetime] = _utc_now,
+        state_root: Path | None = None,
+        coordination: Callable[..., dict[str, Any]] | None = None,
+        approvals: Callable[..., dict[str, Any]] | None = None,
+        stale_claim_hours: float = 24.0,
+        stuck_after_minutes: float = 120.0,
     ):
+        self.state_root = state_root
+        self.coordination = coordination
+        self.approvals = approvals
+        self.stale_claim_hours = stale_claim_hours
+        self.stuck_after_minutes = stuck_after_minutes
+        self._owns_default_sources = sources is None
         self.claims_dir = claims_dir
-        self.census = census or PrCensus(release=LC.ReleaseReader())
+        self.census = census or PrCensus(release=LC.ReleaseReader(), min_interval_s=max(CENSUS_MIN_INTERVAL_S, 120.0))
         self.sources = sources or self._read_sources
         self.health = health or release_health
         self.now = now
@@ -1361,7 +1527,28 @@ class WorkPipeline:
         except ImportError:
             from lib import agent_claim_board as B  # type: ignore[no-redef]
             from lib import design_registry as DR  # type: ignore[no-redef]
-        view = B.board_view(self.claims_dir, include_finished=True)
+        from scripts.lib.lane_last_receipt import runtime_dir
+        from scripts.lib.releases_coordination import read_claims
+        claim_root = Path(self.claims_dir or B.default_claims_dir())
+        raw_claims, claims_gap = read_claims(claim_root)
+        if claims_gap:
+            # Do not enter legacy board/design readers after a bounded input refusal.
+            from scripts.lib import work_pipeline_sources as shared_sources
+            public = shared_sources.build([], raw_claims, [], [], [], self.now())["claims"]
+            return {
+                "state_root": str(self.state_root or runtime_dir().parents[1]),
+                "source_gaps": {"claims": claims_gap, "task_board": "claim_store_unavailable",
+                                "designs": "claim_store_unavailable", "command_queue": "claim_store_unavailable"},
+                "claims": public, "tasks": [], "awaiting": [], "tier2": {}, "queue": {},
+                "stale_hours": DEFAULT_STALE_HOURS,
+                "lifecycle": {"availability": "UNAVAILABLE", "warnings": [claims_gap]},
+            }
+        view = B.board_view(self.claims_dir, include_finished=True, limit=1000)
+        board_gaps = {}
+        if view.get("truncated"):
+            board_gaps["claims"] = "claim_board_truncated"
+        if view.get("unreadable"):
+            board_gaps["claims"] = "claim_board_schema_or_read_failure"
         try:
             awaiting = DR.work_board().designs().get("awaiting_approval") or []
         except Exception:  # noqa: BLE001 - designs are additive
@@ -1373,6 +1560,8 @@ class WorkPipeline:
         tier2 = tier2_context()
         packages = open_approval_packages()
         return {
+            "state_root": str(self.state_root or runtime_dir().parents[1]),
+            "source_gaps": board_gaps,
             "tier2": tier2,
             "queue": WPC.read_queue(self.claims_dir or view.get("claims_dir")),
             "claims": view.get("claims") or [],
@@ -1386,11 +1575,34 @@ class WorkPipeline:
         now = self.now()
         src = self.sources()
         census, meta = self.census.snapshot()
-        health = self.health()
+        health = {**self.health(), "served_sha": ((census or {}).get("serving") or {}).get("sha")}
+        now = self.now()  # acquisition may finish after source building began
         state_path = self.source_state_path
         readers = read_coordination_sources(coord_dir=self.coord_dir, last_success=_load_source_state(state_path),
                                             now=now)
         _save_source_state(state_path, readers)
+        from scripts.lib import work_pipeline_sources as shared_sources
+        prs = [*((census or {}).get("open") or []), *((census or {}).get("merged") or [])]
+        try:
+            if self.coordination is not None or src.get("state_root") or self.state_root:
+                coordination = (self.coordination or shared_sources.load)(
+                    Path(self.state_root or src.get("state_root") or "."), prs, src.get("claims") or [], now,
+                    serving=(census or {}).get("serving") or {}, health=health,
+                    source_gaps=src.get("source_gaps") or {}, stale_claim_hours=self.stale_claim_hours,
+                )
+            else:
+                # Injected sources remain hermetic and must name the unconfigured joins.
+                coordination = shared_sources.build(
+                    prs, src.get("claims") or [], [], [], [], now,
+                    serving=(census or {}).get("serving") or {}, health=health,
+                    source_gaps={"coordinator_ledger": "source_not_configured",
+                                 "digest_approvals": "source_not_configured", "plans": "source_not_configured"},
+                )
+        except Exception as exc:  # noqa: BLE001 -- source failures remain visible without taking the board down
+            coordination = {"schema": shared_sources.SCHEMA, "by_pr": {}, "active_claim_ids": [],
+                            "sources": {}, "as_of": None, "captured_at": _iso(now),
+                            "gaps": [{"source": "coordination", "reason": type(exc).__name__}]}
+        item_limits: dict[str, Any] = {}
         items = build_items(
             tasks=src.get("tasks") or [],
             claims=src.get("claims") or [],
@@ -1400,8 +1612,75 @@ class WorkPipeline:
             now=now,
             stale_hours=float(src.get("stale_hours") or DEFAULT_STALE_HOURS),
             queue=src.get("queue"),
-            tier2=src.get("tier2"),
+            tier2=src.get("tier2"), collection_meta=item_limits,
         )
+        if item_limits.get("truncated"):
+            coordination = {**coordination,
+                            "sources": {**(coordination.get("sources") or {}), "work_items": {
+                                "source": "work_pipeline_grouping", "as_of": _source_time(now),
+                                "status": "PARTIAL", "gap": "work_item_limit_exceeded"}},
+                            "gaps": [*(coordination.get("gaps") or []),
+                                     {"source": "work_items", "reason": "work_item_limit_exceeded"}]}
+        try:
+            if (src.get("source_gaps") or {}).get("claims"):
+                raise ValueError("claim store unavailable")
+            if self.approvals is not None or (self._owns_default_sources and src.get("state_root")):
+                from scripts.lib.operator_approvals_api import queue_summary
+                waiting = (self.approvals or queue_summary)(
+                    state_root=Path(self.state_root or src.get("state_root") or "."), now=now,
+                )
+                members = waiting.get("actionable_items")
+                if (not isinstance(members, list) or len(members) > 5000
+                        or waiting.get("actionable_count") != len(members)):
+                    raise ValueError("canonical approval members unavailable")
+            else:
+                raise ValueError("canonical approval source not configured")
+        except Exception as exc:  # noqa: BLE001 -- a missing adapter never restores the old financial-only count
+            waiting = {"actionable_items": [], "actionable_count": None, "known_actionable_count": None,
+                       "pending_count": None, "complete": False, "as_of": None,
+                       "scope": "all_operator_approvals", "source": "operator_approvals_api.queue_summary",
+                       "gaps": [{"source": "operator_approvals", "reason": "claim_store_unavailable"
+                                 if (src.get("source_gaps") or {}).get("claims") else type(exc).__name__}]}
+        active_ids = set(coordination.get("active_claim_ids") or [])
+        for item in items:
+            item["coordination"] = (coordination.get("by_pr") or {}).get(item.get("pr_number"))
+            owner_fact = (item["coordination"] or {}).get("owner") or {}
+            owner = owner_fact.get("value") or {}
+            if owner.get("session"):
+                item["who"] = {
+                    "kind": "agent", "label": f"{owner.get('vendor') or '?'}/{owner.get('agent') or owner['session']}",
+                    "vendor": owner.get("vendor"), "agent": owner.get("agent"), "session": owner["session"],
+                    "source": owner_fact.get("source"), "as_of": owner_fact.get("as_of"),
+                }
+            claim_ids = (item.get("how") or {}).get("claim_ids") or []
+            item["in_flight"] = not item.get("finished") and (
+                bool(item.get("pr_number")) or not claim_ids or bool(active_ids.intersection(claim_ids))
+            )
+        from scripts.lib.work_pipeline_flow_facts import enrich
+        coordination = enrich(items, coordination, prs, waiting, now,
+                              census_as_of=meta.get("refreshed_at"), census_warning=meta.get("warning"),
+                              stuck_after_minutes=self.stuck_after_minutes)
+        coordination["agents"] = [dict(agent) for agent in coordination.get("agents") or []]
+        for agent in coordination["agents"]:
+            current = agent.get("current_claim_id")
+            if current:
+                matches = [item for item in items if item.get("in_flight")
+                           and current in ((item.get("how") or {}).get("claim_ids") or [])]
+            else:
+                matches = [item for item in items if item.get("in_flight") and agent.get("session")
+                           and agent["session"] == ((((item.get("coordination") or {}).get("owner") or {}).get("value") or {}).get("session"))
+                           and (not agent.get("branch") or agent["branch"] == (item.get("where") or {}).get("branch"))]
+            agent["item_id"], agent["stage"] = None, None
+            agent["item_binding_source"] = "current_claim_id" if current else "unique_session_and_branch"
+            agent["item_binding_gap"] = None
+            if len(matches) == 1:
+                item = matches[0]
+                agent["item_id"] = item["id"]
+                agent["stage"] = ((item.get("coordination") or {}).get("current_stage") or {}).get("value")
+            elif agent.get("active"):
+                gap = "current_work_item_ambiguous" if len(matches) > 1 else "current_work_item_not_visible"
+                agent["item_binding_gap"] = gap
+                agent["gaps"] = [*(agent.get("gaps") or []), gap]
         t2 = src.get("tier2") or {}
         merged_waiting = sum(1 for i in items if i["stage"] in ("merged",))
         q = src.get("queue") or {}
@@ -1427,8 +1706,14 @@ class WorkPipeline:
             "stages": list(STAGES),
             "stage_label": dict(STAGE_LABEL),
             "stage_help": dict(STAGE_HELP),
-            "summary": summarize(items),
+            "summary": {**summarize(items),
+                        "in_flight": None if census is None or (src.get("source_gaps") or {}).get("claims") or item_limits.get("truncated") or (census or {}).get("open_truncated") else sum(bool(i["in_flight"]) for i in items),
+                        "known_in_flight": sum(bool(i["in_flight"]) for i in items),
+                        "needs_me": waiting.get("pending_count"), "known_needs_me": waiting.get("actionable_count")},
             "items": items,
+            "item_limits": item_limits,
+            "coordination": coordination,
+            "waiting_on_you": waiting,
             "sources": {
                 "readers": {name: {k: row.get(k) for k in ("label", "path", "ok", "as_of", "last_success_at", "error")}
                             for name, row in readers.items()},
