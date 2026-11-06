@@ -22,8 +22,13 @@ const SHEET_CSS = `
 
 /** A tap-friendly (i): 16 px glyph, 44 × 44 hit area, opens a short sheet (phone) or dialog (desktop), rendered in a
  *  portal on document.body (no ancestor transform or overflow can clip it) with Tab kept inside. Not hover. */
-export function Explain({ term }: { term: string }) {
-  const g = useContext(GlossaryContext)[term]
+/*  ``detail`` adds this row's own reason under the glossary text (operator 2026-11-06: every "not measured" says why).
+ *  ``fallback`` is used only when the API sent no glossary entry for ``term`` (e.g. a page outside the market-risk
+ *  card), so the (i) never silently disappears there. */
+export function Explain({ term, detail, fallback }: { term: string; detail?: string | null; fallback?: GlossaryTerm }) {
+  // no glossary entry but a row reason: still tappable, showing the reason alone (a glossary-less projection must not
+  // hide the only explanation the row has)
+  const g = useContext(GlossaryContext)[term] ?? fallback ?? (detail ? { label: 'Why this is shown', text: '' } : undefined)
   const [open, setOpen] = useState(false)
   const btn = useRef<HTMLButtonElement>(null)
   const closeBtn = useRef<HTMLButtonElement>(null)
@@ -46,7 +51,12 @@ export function Explain({ term }: { term: string }) {
       <button ref={btn} type="button" data-testid="mr-explain" data-term={term} aria-label={`What is ${g.label.replace(/\?$/, '')}?`} aria-haspopup="dialog"
         onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(true) }}
         style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, margin: '-14px -14px', padding: 0, border: 0, background: 'transparent', cursor: 'pointer', verticalAlign: 'middle', flex: '0 0 auto' }}>
-        <span aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', border: `1px solid ${TOKENS.text[3]}`, color: TOKENS.text[2], fontSize: 10, fontWeight: 700, fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1 }} data-mr-i="" />
+        {/* drawn, not text: no CSS needed (works on pages without EXPLAIN_CSS) and never joins the surrounding copy */}
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" style={{ display: 'block', color: TOKENS.text[2] }}>
+          <circle cx="8" cy="8" r="7.5" fill="none" stroke={TOKENS.text[3]} strokeWidth="1" />
+          <rect x="7.1" y="3.6" width="1.8" height="1.8" rx="0.9" fill="currentColor" />
+          <rect x="7.1" y="6.6" width="1.8" height="5.8" rx="0.6" fill="currentColor" />
+        </svg>
       </button>
       {open && typeof document !== 'undefined' && createPortal(
         <>
@@ -54,7 +64,8 @@ export function Explain({ term }: { term: string }) {
           <div data-testid="mr-explain-scrim" onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,.55)' }} />
           <div data-mr-sheet="" data-testid="mr-explain-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}>
             <div id={titleId} style={{ fontSize: TYPE.md + 1, fontWeight: 700, marginBottom: 6, textTransform: 'none', letterSpacing: 0 }}>{g.label}</div>
-            <p style={{ margin: '0 0 12px', fontSize: TYPE.md, lineHeight: 1.5, color: TOKENS.text[1], textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>{g.text}</p>
+            {g.text ? <p style={{ margin: '0 0 12px', fontSize: TYPE.md, lineHeight: 1.5, color: TOKENS.text[1], textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>{g.text}</p> : null}
+            {detail ? <p data-testid="mr-explain-detail" style={{ margin: '0 0 12px', fontSize: TYPE.md, lineHeight: 1.5, color: TOKENS.text[1], textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>{detail}</p> : null}
             <button ref={closeBtn} type="button" data-testid="mr-explain-close" onClick={close}
               style={{ minHeight: 44, width: '100%', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0], fontWeight: 700, fontSize: TYPE.md, cursor: 'pointer' }}>Close</button>
           </div>
@@ -71,7 +82,7 @@ const sub: CSSProperties = { fontSize: TYPE.sm, color: TOKENS.text[3], lineHeigh
 const tap: CSSProperties = { minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.info, fontWeight: 700, fontSize: TYPE.base + 1, textDecoration: 'none', whiteSpace: 'nowrap' }
 const signed = (n: number | null): CSSProperties => ({ ...numStyle, color: n == null ? TOKENS.text[3] : n < 0 ? toneVars('danger').color : toneVars('success').color })
 
-/** The (i) glyph is CSS content so it never joins the surrounding text (copy, tests, screen readers use aria-label). */
+/** Kept for importers; the (i) glyph is now an inline SVG (no text node), so this rule no longer matches anything. */
 export const EXPLAIN_CSS = `[data-mr-i]::before{content:"i"}`
 
 const ACTIONS_CSS = `${EXPLAIN_CSS}
