@@ -247,6 +247,55 @@ def check_restore_store(record: Mapping[str, Any], *, packet_root: Optional[Path
     return True, ""
 
 
+N8N_BACKUP_SCRIPT = Path("scripts/ops/n8n_backup_now.sh")
+N8N_BACKUP_RECEIPT_KEYS = ("dump_bytes", "volume_bytes", "export_bytes", "drive_link")
+
+
+def _n8n_backup_script(script: Optional[Path] = None) -> Path:
+    if script is not None:
+        return Path(script)
+    env = os.environ.get("TRADEAI_N8N_BACKUP_SCRIPT")
+    return Path(env) if env else Path(__file__).resolve().parents[2] / N8N_BACKUP_SCRIPT
+
+
+def check_backup_n8n(record: Mapping[str, Any], *, script: Optional[Path] = None) -> tuple[bool, str]:
+    """A backup writes only new files, so the one thing to prove before the tap is that the reviewed script is there."""
+    path = _n8n_backup_script(script)
+    if not (path.is_file() and os.access(path, os.X_OK)):
+        return False, ("The n8n backup script is not installed on this host, so nothing will be backed up. "
+                       "The lead will re-ask.")
+    return True, ""
+
+
+def execute_backup_n8n(record: Mapping[str, Any], actor: str, progress: Any, deadline: Any, *,
+                       script: Optional[Path] = None, run: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
+    """Run the reviewed backup script once. It must print one JSON line with the sizes and the Drive link.
+
+    No shell, no arguments from the request: the script path is fixed, so a request cannot change what runs. A receipt
+    that lacks a size or the Drive link is a failure, not a success with blanks.
+    """
+    path = _n8n_backup_script(script)
+    deadline.check()
+    progress.reached("backup_started")
+    proc = run([str(path)], capture_output=True, text=True, timeout=deadline.subprocess_timeout(600.0), check=False,
+               shell=False)
+    progress.reached("backup_returned")
+    if proc.returncode != 0:
+        raise ha.Refused("backup_failed", f"The backup script exited with code {proc.returncode}; no backup is recorded.")
+    lines = [ln for ln in (proc.stdout or "").splitlines() if ln.strip()]
+    try:
+        receipt = json.loads(lines[-1])
+    except (IndexError, ValueError):
+        receipt = None
+    if not isinstance(receipt, dict) or any(receipt.get(k) in (None, "") for k in N8N_BACKUP_RECEIPT_KEYS):
+        raise ha.Refused("backup_receipt_incomplete",
+                         "The backup script finished but did not report every size and the Drive link, so it is not "
+                         "counted as a backup.")
+    out = {k: receipt[k] for k in N8N_BACKUP_RECEIPT_KEYS}
+    out["actor"] = actor
+    return out
+
+
 def check_grant(record: Mapping[str, Any], *, grants_root: Optional[Path] = None) -> tuple[bool, str]:
     """A grant request must name a grant that does not already exist, or it would silently re-issue one."""
     facts = record.get("facts") or {}
@@ -267,6 +316,7 @@ CHECKS: dict[str, Callable[..., tuple[bool, str]]] = {
     "install_schedule": check_install_schedule,
     "restore_store": check_restore_store,
     "policy_approval": check_policy_approval,
+    "backup_n8n": check_backup_n8n,
 }
 
 
