@@ -389,7 +389,7 @@ it. Merging these files is mechanical, so they are now a **shared-additive** cla
   |---|---|---|
   | `docs/INDEX.md` | regenerate | `python3 scripts/report_docs_inventory.py --write-index` (CI runs `--check-index`) |
   | `docs/DOCUMENTATION_INDEX.md` | append rows | keep both sides' rows on a rebase conflict |
-  | `apps/command-center-v3/package.json` | union_build | the batch builder unions the `"build"` line entries |
+  | `apps/command-center-v3/package.json` | take_main_build | the `"build"` line names no test files (`scripts/run-tests.mjs` discovers them, #2686); on a conflict take main's `"build"` line exactly and never add a test name |
   | `DOCS_AND_AGENTS_UPDATE_BACKLOG.md` (also `~/n8n-maturity-verification/…`) | append rows | append one row; never rewrite another's |
 
 - **Semantics:**

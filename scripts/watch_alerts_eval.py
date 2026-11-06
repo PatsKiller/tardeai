@@ -169,6 +169,58 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
     return lines, fired_ids
 
 
+def _recovery_snapshot(ex, case: dict, technical_by_symbol: dict | None = None) -> dict | None:
+    """The market fields the recovery state machine needs, from their registered sources.
+
+    The close and its OWN timestamp come from the quote ledger (``market_quotes``); the technical input that
+    carries R4 — SMA20 — comes from the registered technical projection (``recovery_state.technical_inputs``). The quote
+    table has no sma20 column and its only writer cannot write one, so searching that row for the level is how
+    R4 stayed permanently false. An absent projection leaves R4 unfired; the engine says so rather than guessing.
+    """
+    symbol = str(case.get("symbol") or "").upper().strip()
+    if not symbol:
+        return None
+    try:
+        row = ex("SELECT * FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
+                 (symbol,), fetch="one")
+    except Exception:
+        return None
+    try:
+        from lib import recovery_state as _R
+    except ImportError:
+        from scripts.lib import recovery_state as _R  # type: ignore
+    if technical_by_symbol is None:
+        # A caller that has no batch (a single-case probe): one projection read, still the registered source.
+        technical_by_symbol = _R.technical_inputs([symbol])
+    technical = technical_by_symbol.get(symbol) if isinstance(technical_by_symbol, dict) else None
+    return _R.quote_snapshot(row, technical)
+
+
+def _recovery_state_pass(ex) -> dict:
+    """One pass of the recovery state machine (piece B). Reports absence honestly; never a silent skip."""
+    try:
+        from lib import recovery_state as R
+    except ImportError:
+        try:
+            from scripts.lib import recovery_state as R
+        except ImportError:
+            return {"store": "module_absent", "considered": 0, "changed": 0}
+    try:
+        _engine_db = __import__("db_adapter")._get_conn()  # the CaseStore takes a connection
+    except Exception:
+        _engine_db = None
+    store = R.store_accessor(_engine_db, None)
+    if store is None:
+        return {"store": "absent", "considered": 0, "changed": 0}
+    # ONE read-only listing just for the symbols: the technical projection is then a single batch call.
+    try:
+        rows = store.list_open(limit=200) if hasattr(store, "list_open") else store.list()
+    except Exception:
+        rows = []
+    technical_by_symbol = R.technical_inputs(R.technical_symbols(rows))
+    return R.run_pass(store, lambda c: _recovery_snapshot(ex, c, technical_by_symbol), dry_run=False)
+
+
 def main() -> int:
     from db_adapter import _execute as ex, USE_DB
     if not USE_DB:
@@ -240,6 +292,12 @@ def main() -> int:
         except Exception:
             pass
 
+    try:
+        recovery = _recovery_state_pass(ex)
+    except Exception as error:  # noqa: BLE001 — a recovery pass failure never stops the alert lane
+        recovery = {"store": "error", "considered": 0, "changed": 0, "error": str(error)[:200]}
+        print(f"[watch-alerts] recovery state machine error: {recovery['error']}")
+
     print(
         f"[watch-alerts] {len(alerts)} single-condition armed · "
         f"{len(fired_ids)} fired: {fired_ids} · "
@@ -247,7 +305,9 @@ def main() -> int:
         f"{composite.get('fired') or []} · "
         f"{exit_count} full exit rows refreshed · "
         f"{resistance_count} resistance rows refreshed · "
-        f"{shared_context_count} shared context rows refreshed"
+        f"{shared_context_count} shared context rows refreshed · "
+        f"recovery store {recovery.get('store')}: {recovery.get('considered', 0)} cases, "
+        f"{recovery.get('changed', 0)} state changes"
     )
     return 0
 
