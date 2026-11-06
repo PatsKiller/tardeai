@@ -73,7 +73,7 @@ def atomic_write_bytes(path: Path | str, data: bytes) -> Path:
             os.fsync(fh.fileno())
         os.replace(tmp, path)
     finally:
-        try:
+        try:  # nosemgrep: tq-py-except-pass -- best-effort temp cleanup in finally; the write error (if any) still propagates
             if tmp.exists():
                 tmp.unlink()
         except OSError:
