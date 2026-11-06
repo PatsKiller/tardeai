@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_compose_cutover_20261106",
+  "files": [
+    "tests/test_n8n_compose_cutover_20261106.py"
+  ],
+  "anchor": "N8N_COMPOSE_CUTOVER_20261106",
+  "comment": [
+    "ANCHOR: N8N_COMPOSE_CUTOVER_20261106 — n8n program package 0.1a. The production n8n compose lives in ops/n8n/",
+    "with no literal secret, the project name that keeps the existing volumes, and a JSON NODES_EXCLUDE. The cutover",
+    "tool's dry run refuses unless the repo compose resolves to the running containers' config hashes; --apply refuses",
+    "without a passing dry run and fails unless the active-workflow count is unchanged. Hermetic: a fake docker runner."
+  ]
+}
