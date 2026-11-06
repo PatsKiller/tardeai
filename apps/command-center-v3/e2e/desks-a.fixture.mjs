@@ -51,6 +51,18 @@ try {
         if (state === 'unavailable') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'FixtureUnavailable' }) })
         return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: fixture.projections[desk] }) })
       }
+      // Strategy (intel/v001): synthetic broker round trips and holdings; one paper row proves paper is excluded.
+      if (url.pathname === '/api/v2/rec-intel/lifecycle-performance' && state === 'unavailable') return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'FixtureUnavailable' }) })
+      if (url.pathname === '/api/v2/rec-intel/lifecycle-performance') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, positions: [
+        { symbol: 'FXA', account: 'Fixture Brokerage', origin: 'fixture_screen', setup: 'fixture_breakout', close_date: '2026-10-20', pnl: 300, pnl_pct: 6 },
+        { symbol: 'FXB', account: 'Fixture Brokerage', origin: 'fixture_screen', setup: 'fixture_breakout', close_date: '2026-10-10', pnl: -100, pnl_pct: -2 },
+        { symbol: 'FXC', account: 'Fixture IRA', origin: 'fixture_digest', setup: null, close_date: '2026-06-01', pnl: 50, pnl_pct: 1 },
+        { symbol: 'FXP', account: 'Alpaca Paper', origin: 'fixture_screen', setup: 'fixture_paper_only', close_date: '2026-10-21', pnl: 999, pnl_pct: 9 },
+      ] }) })
+      if (url.pathname === '/api/v2/portfolio/holdings') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: { as_of: '2026-10-25T13:00:00Z', holdings: [
+        { symbol: 'FXA', company: 'Fixture A Corp', sector: 'Fixture', pe: 30, forward_pe: 20, peg: 1.2 },
+        { symbol: 'FXF', company: 'Fixture Fund', sector: 'Fund', pe: null, forward_pe: null },
+      ] } }) })
       if (url.pathname === '/api/v2/desk-sources') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, data: fixture.desk_sources }) })
       // Retained legacy panels (Backtests, Legacy analytics) read other routes: answer an empty fixture.
       return route.fulfill({ contentType: 'application/json', body: '{}' })
@@ -112,24 +124,28 @@ try {
     assert.equal(new URL(page.url()).pathname, '/v3/portfolio/re-entry/classic')
     flows.push('re-entry: ready-now detail sheet + Back, deep-linked detail, exits tab + detail, owner link, symbol deep link → classic')
 
-    // Board 2 · Strategy (?tab=planner deep link from Risk)
+    // Board 2 · Strategy (intel/v001: Setups + Earnings quality; retired ?tab= deep links land on Setups)
     await page.goto(`${ORIGIN}/v3/strategy?tab=planner`)
-    await expect(page.getByRole('navigation', { name: 'Strategy views' }).getByRole('button', { name: 'Planner', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.getByTestId('desk-panel-planner')).toContainText('Classic planner')
-    await shot('2', 'planner')
-    await tabTo('Strategy', 'Leaderboard')
-    const board = page.getByTestId('desk-panel-leaderboard')
-    await expect(board).toContainText('fixture breakout · win 58.3% · 12 trades')
-    await expect(page.getByTestId('desk-panel-readiness')).toContainText('157 / 2,000')
-    await shot('2', 'leaderboard')
-    sheet = await openSheet(board.getByRole('button', { name: /fixture breakout/ }), 'fixture breakout · rank 1')
-    await expect(sheet).toContainText('Closed paper trades')
+    await expect(page.getByRole('navigation', { name: 'Strategy views' }).getByRole('button', { name: 'Setups', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    const setups = page.getByTestId('strategy-setups')
+    await expect(setups).toContainText('fixture breakout')
+    await expect(setups).not.toContainText('paper only')
+    await expect(page.getByTestId('strategy-by-source')).toContainText('fixture screen')
+    await shot('2', 'setups')
+    sheet = await openSheet(page.getByTestId('setup-fixture_breakout'), 'fixture breakout')
+    await expect(sheet).toContainText('Recent closes')
+    await expect(sheet).not.toContainText('FXP')
+    await shot('2', 'setup-detail')
     await back(sheet)
-    await tabTo('Strategy', 'Backtests')
-    await expect(page.getByTestId('desk-panel-backtests')).toContainText('Backtest results on file')
-    await expect(page.getByTestId('strategy-backtest-detail')).toBeVisible()
-    await shot('2', 'backtests')
-    flows.push('strategy: ?tab=planner, leaderboard detail + Back, backtests home with retained panels')
+    sheet = await openSheet(page.getByTestId('origin-fixture_digest'), 'fixture digest')
+    await back(sheet)
+    await tabTo('Strategy', 'Earnings quality')
+    await expect(page.getByTestId('strategy-earnings')).toContainText('Forward multiple implies EPS +50%')
+    await expect(page.getByTestId('strategy-earnings')).toContainText('No earnings data on file')
+    await shot('2', 'earnings')
+    sheet = await openSheet(page.getByTestId('eq-FXA'), 'FXA · earnings quality')
+    await back(sheet)
+    flows.push('strategy: retired ?tab=planner → Setups, setup + discovery-source detail sheets + Back, paper row excluded, earnings quality detail')
 
     // Board 3 · Defense
     await page.goto(`${ORIGIN}/v3/defense`)
@@ -193,7 +209,8 @@ try {
     state = 'unavailable'
     for (const [board, url, title] of [['1', '/v3/portfolio/re-entry', 'Re-Entry'], ['2', '/v3/strategy', 'Strategy'], ['3', '/v3/defense', 'Defense'], ['4', '/v3/agents', 'Agents']]) {
       await page.goto(ORIGIN + url)
-      await expect(page.getByText(`${title} unavailable`, { exact: true })).toBeVisible()
+      if (board === '2') await expect(page.getByRole('region', { name: 'Source clocks' })).toContainText('Unavailable')
+      else await expect(page.getByText(`${title} unavailable`, { exact: true })).toBeVisible()
       await shot(board, 'unavailable')
     }
     state = 'fresh'

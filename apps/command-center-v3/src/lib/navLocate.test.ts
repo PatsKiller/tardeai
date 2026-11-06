@@ -6,7 +6,7 @@ const at = (p: string, s = '', prefer?: 'home' | 'intel' | 'ops') => { const r =
 check('home is Home · Today', at('/') === 'Home·Today')
 check('holdings', at('/portfolio') === 'Portfolio·Holdings')
 check('releases', at('/system/releases') === 'Ops·Releases & Schedules')
-check('/intelligence is not Home', at('/intelligence') === 'Intel·Intelligence')
+check('/intelligence is not Home', at('/intelligence') === 'Intel·Research Intel') // intel/v001: Intelligence folded into Research Intel
 check('/portfolio/re-entry is Re-Entry, not Holdings', at('/portfolio/re-entry') === 'Portfolio·Re-Entry')
 check('/portfolio/re-entry/classic stays Re-Entry', at('/portfolio/re-entry/classic') === 'Portfolio·Re-Entry')
 check('/watch/intelligence/AAPL stays Watch', at('/watch/intelligence/AAPL') === 'Trade·Watch')
@@ -19,7 +19,7 @@ check('Retirement and Redeploy on the menu under Portfolio', at('/retirement') =
 check('/approvals defaults to Ops', at('/approvals') === 'Ops·Approvals')
 check('/approvals?tab=waiting is Home · Needs you', at('/approvals', '?tab=waiting') === 'Home·Needs you')
 check('/approvals from Ops stays Ops even on ?tab=waiting', at('/approvals', '?tab=waiting', 'ops') === 'Ops·Approvals')
-check('/cio/questions defaults to Intel', at('/cio/questions') === 'Intel·My questions')
+check('/cio/questions defaults to Intel', at('/cio/questions') === 'Intel·CIO Desk') // intel/v001: a CIO Desk tab
 check('/cio/questions from Home stays Home', at('/cio/questions/abc', '', 'home') === 'Home·My questions')
 check('/cio is CIO Desk, exact', at('/cio') === 'Intel·CIO Desk')
 check('control plane page', at('/control-plane/audit') === 'Ops·CP · Audit')

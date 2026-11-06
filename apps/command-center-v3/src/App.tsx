@@ -17,7 +17,7 @@ import TradingHub from './pages/TradingHub'
 import ActiveTraderHub from './pages/ActiveTraderHub'
 import AgentRuntimeHub from './pages/AgentRuntimeHub'
 import IntelligenceHub from './pages/IntelligenceHub'
-import ClosedLoopPanel from './pages/ClosedLoopPanel'
+import { IntelligenceRedirect, KeepQueryRedirect, RecIntelRedirect } from './components/intel/IntelRedirects'
 import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
 import TradeInViewPage from './pages/TradeInViewPage'
@@ -265,11 +265,14 @@ function Shell() {
             <Route path="strategy/classic" element={<RouteErrorBoundary route="/v3/strategy/classic"><StrategyHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="agents" element={<RouteErrorBoundary route="/v3/agents"><AgentsDesk onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="agents/classic" element={<RouteErrorBoundary route="/v3/agents/classic"><AgentRuntimeHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="intelligence" element={<RouteErrorBoundary route="/v3/intelligence"><IntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="closed-loop" element={<RouteErrorBoundary route="/v3/closed-loop"><ClosedLoopPanel /></RouteErrorBoundary>} />
+            {/* Intel consolidation (intel/v001, 2026-11-06): retired pages redirect to their new home; the old page stays at /classic until removal is approved. */}
+            <Route path="intelligence" element={<RouteErrorBoundary route="/v3/intelligence"><IntelligenceRedirect /></RouteErrorBoundary>} />
+            <Route path="intelligence/classic" element={<RouteErrorBoundary route="/v3/intelligence/classic"><IntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="closed-loop" element={<RouteErrorBoundary route="/v3/closed-loop"><Navigate to="/research-intelligence?tab=lineage" replace /></RouteErrorBoundary>} />
             <Route path="research-intelligence" element={<RouteErrorBoundary route="/v3/research-intelligence"><ResearchIntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="research" element={<RouteErrorBoundary route="/v3/research"><Navigate to="/research-intelligence" replace /></RouteErrorBoundary>} />
-            <Route path="hermes" element={<RouteErrorBoundary route="/v3/hermes"><HermesHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="hermes" element={<RouteErrorBoundary route="/v3/hermes"><KeepQueryRedirect to="/ops/engines" /></RouteErrorBoundary>} />
+            <Route path="ops/engines" element={<RouteErrorBoundary route="/v3/ops/engines"><HermesHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="retirement" element={<RouteErrorBoundary route="/v3/retirement"><RetirementHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="journal" element={<RouteErrorBoundary route="/v3/journal"><TradeInViewPage onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trade-in-view" element={<RouteErrorBoundary route="/v3/trade-in-view"><Navigate to="/journal" replace /></RouteErrorBoundary>} />
@@ -290,13 +293,15 @@ function Shell() {
             <Route path="advisor-changes" element={<RouteErrorBoundary route="/v3/advisor-changes"><Navigate to="/rotation?tab=advisor-guide" replace /></RouteErrorBoundary>} />
             <Route path="prospectus" element={<RouteErrorBoundary route="/v3/prospectus"><ProspectusPage /></RouteErrorBoundary>} />
             <Route path="prospectus/:symbol" element={<RouteErrorBoundary route="/v3/prospectus/:symbol"><ProspectusPage /></RouteErrorBoundary>} />
-            <Route path="rec-intel" element={<RouteErrorBoundary route="/v3/rec-intel"><RecommendationIntelligence /></RouteErrorBoundary>} />
-            <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="rec-intel" element={<RouteErrorBoundary route="/v3/rec-intel"><RecIntelRedirect /></RouteErrorBoundary>} />
+            <Route path="rec-intel/classic" element={<RouteErrorBoundary route="/v3/rec-intel/classic"><RecommendationIntelligence /></RouteErrorBoundary>} />
+            <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><Navigate to="/cio?tab=holdings" replace /></RouteErrorBoundary>} />
+            <Route path="advisory/classic" element={<RouteErrorBoundary route="/v3/advisory/classic"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="cio" element={<RouteErrorBoundary route="/v3/cio"><CioHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="cio/questions" element={<RouteErrorBoundary route="/v3/cio/questions"><MyQuestions /></RouteErrorBoundary>} />
             <Route path="cio/questions/:threadId" element={<RouteErrorBoundary route="/v3/cio/questions/:threadId"><MyQuestions /></RouteErrorBoundary>} />
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="ops/jobs" element={<RouteErrorBoundary route="/v3/ops/jobs"><JobsPage /></RouteErrorBoundary>} />
+            <Route path="ops/jobs" element={<RouteErrorBoundary route="/v3/ops/jobs"><JobsPage onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="ops/incidents" element={<RouteErrorBoundary route="/v3/ops/incidents"><OpsIncidents /></RouteErrorBoundary>} />
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />
