@@ -173,6 +173,119 @@ def test_env_unchanged():
     assert not offenders, f"market_regime_classifier.py writes a .env-shaped path: {offenders}"
 
 
+def test_env_is_never_written_at_runtime(tmp_path, monkeypatch):
+    """BEHAVIOURAL canary for the same rule, and the reason it exists is the AST half's blind spot.
+
+    ``test_env_unchanged`` reads the module's syntax tree, which catches a write spelled in this file — a literal
+    ``Path(".env").write_text(...)`` or a name bound to one. It cannot see a write that happens somewhere else:
+    ``dotenv.set_key(...)``, a helper module the script imports, a path built by concatenation, an alias, ``os.replace``
+    or a subprocess redirect. Those are exactly the false negatives a reviewer named at PR 2700.
+
+    So this runs the real module in a temp tree whose ``.env`` is a sentinel, with every write primitive wrapped, and
+    asserts two things: the sentinel comes back byte-identical, and no write primitive was handed a ``.env``-shaped path.
+    The AST half is the fast first line; this half is the proof.
+
+    What each half proves:
+      * AST  — for any write written in this file, the target is not ``.env`` (static, instant, no execution).
+      * canary — for everything the module actually does when it is loaded, nothing touched ``.env`` at runtime,
+        whatever spelling or indirection was used.
+    Importing is the boundary: the module's import-time work (including ``load_dotenv``) is exercised; ``main()`` is not
+    run here because it reads live state, so a write added inside ``main`` is covered by the AST half only.
+    """
+    import builtins
+    import importlib.util
+    import os as _os
+    from pathlib import Path as _Path
+
+    # set_key lives on `dotenv.main`; a venv without the package leaves only the write-primitive spies, which the
+    # set_key mutation below demonstrates are not the whole story either.
+    try:
+        from dotenv import main as _dotenv_main
+    except ImportError:  # pragma: no cover - the project venv has python-dotenv
+        _dotenv_main = None
+
+    source = (SCRIPTS / "market_regime_classifier.py").read_text()
+    (tmp_path / "scripts").mkdir()
+    target = tmp_path / "scripts" / "market_regime_classifier.py"
+    target.write_text(source)
+    sentinel = b"ALPACA_MODE=paper\nSENTINEL=do-not-touch\n"
+    env_path = tmp_path / ".env"
+    env_path.write_bytes(sentinel)
+
+    touched: list[str] = []
+    ENVISH = re.compile(r"(?:^|[\\/])[.]env(?:[\\/]|$)|['\"]\.env['\"]|[.]env[.]", re.I)
+
+    def note(args, kwargs):
+        for value in list(args) + list(kwargs.values()):
+            if isinstance(value, (str, bytes)) or hasattr(value, "__fspath__"):
+                try:
+                    text = _os.fspath(value)
+                except TypeError:
+                    continue
+                text = text.decode() if isinstance(text, bytes) else str(text)
+                if ENVISH.search(text):
+                    touched.append(text)
+
+    real_open = builtins.open
+
+    def spy_open(file, mode="r", *a, **k):
+        # `load_dotenv` legitimately OPENS .env for reading; only a write mode is an offence, so a read is ignored
+        # rather than recorded — otherwise the canary would fail on the module's normal behaviour.
+        writing = any(ch in str(mode) for ch in "wax+")
+        if writing:
+            note((file,), {})
+            if isinstance(file, (str, _os.PathLike)) and ENVISH.search(_os.fspath(file)):
+                raise AssertionError(f"the module opened {_os.fspath(file)!r} for writing")
+        return real_open(file, mode, *a, **k)
+
+    real_write_text = _Path.write_text
+    real_write_bytes = _Path.write_bytes
+
+    def spy_write_text(self, *a, **k):
+        note((self,), {})
+        if ENVISH.search(str(self)):
+            raise AssertionError(f"the module wrote {self}")
+        return real_write_text(self, *a, **k)
+
+    def spy_write_bytes(self, *a, **k):
+        note((self,), {})
+        if ENVISH.search(str(self)):
+            raise AssertionError(f"the module wrote {self}")
+        return real_write_bytes(self, *a, **k)
+
+    real_replace, real_write = _os.replace, _os.write
+
+    def spy_replace(src, dst, *a, **k):
+        note((src, dst), {})
+        if ENVISH.search(str(src)) or ENVISH.search(str(dst)):
+            raise AssertionError(f"the module replaced {src} -> {dst}")
+        return real_replace(src, dst, *a, **k)
+
+    real_set_key = _dotenv_main.set_key if _dotenv_main is not None and hasattr(_dotenv_main, "set_key") else None
+
+    def spy_set_key(dotenv_path=None, *a, **k):
+        note((dotenv_path,), {})
+        raise AssertionError(f"the module called set_key on {dotenv_path!r}")
+
+    monkeypatch.setattr(builtins, "open", spy_open)
+    monkeypatch.setattr(_Path, "write_text", spy_write_text)
+    monkeypatch.setattr(_Path, "write_bytes", spy_write_bytes)
+    monkeypatch.setattr(_os, "replace", spy_replace)
+    if real_set_key is not None:
+        monkeypatch.setattr(_dotenv_main, "set_key", spy_set_key)
+
+    spec = importlib.util.spec_from_file_location("_canary_market_regime_classifier", target)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+
+    assert env_path.read_bytes() == sentinel, "the module modified .env when it was loaded"
+    assert not touched, f"the module handed a .env-shaped path to a write primitive: {touched}"
+
+
 def test_live_trading_disabled():
     """Check .env safety markers."""
     env_path = PROJ / ".env"
