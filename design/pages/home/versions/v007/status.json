@@ -1,0 +1,49 @@
+{
+  "schema": "DesignVersionStatus@v1",
+  "page": "home",
+  "version": "v007",
+  "state": "APPROVED",
+  "title": "Home: market-risk card context pass \u2014 what changed, per-section clocks, tap-to-explain on every remaining term, phone collapsible sections",
+  "created": "2026-11-02",
+  "approval": {
+    "by": "operator",
+    "at": "2026-11-02",
+    "ref": "https://claude.ai/artifact/4dG8NHVfxscDxR36q3L2cQ",
+    "kind": "operator in-session words, verbatim: \"why don't you create the design? I approve the design. And you leave the design and markup for Codex. I like your markups better.\" Recorded by claude (observer) under AGENTS.md section 20, as for v002/v004/v005/v006; the Approvals -> Designs tap did not record a ledger decision.",
+    "source": [
+      "persistent-state/handoffs/SPEC_HOME_MARKET_RISK_CARD_V7_20261102.md",
+      "persistent-state/data/design/pages/home → v007/APPROVAL.json"
+    ],
+    "ledger": null
+  },
+  "request": {
+    "by": "operator",
+    "at": "2026-11-02",
+    "kind": "in-session words to the coordinator, verbatim: \"look at everything else on the card that could be enhanced. Give the design to Codex to distribute out to agents and sub-agents. Also implement tooling tips where appropriate and make sure this is all mobile responsive.\" Earlier on the same card: \"it's not giving us the current price points. It's not telling us the current catalyst ... Shouldn't we get a little bit more information and context here?\""
+  },
+  "spec": "SPEC.md",
+  "design": "DSN-20261031-market-risk-ui",
+  "base": "v006",
+  "depends_on": [
+    "home/v006 (APPROVED 2026-11-01)",
+    "config/market_risk_glossary.json (v006; v007 adds keys, reuses texts, adds no duplicate)",
+    "GET /api/v2/market-risk/latest additions listed in SPEC 'Data the projection must add' \u2014 Part A owns them",
+    "the stopped-out 'now' bug fix (ships separately, before this mockup is approved)"
+  ],
+  "private_assets": {
+    "root": "persistent-state/data/design/pages/home",
+    "mockup": {
+      "path": "v007/mockups/HomeV007MarketRisk.html",
+      "sha256": "afca9e470ea560cb129aa7af002cc805851b9df6b62d9dba879283e967cb491b",
+      "bytes": 34537,
+      "review_link": "https://claude.ai/artifact/4dG8NHVfxscDxR36q3L2cQ"
+    },
+    "note": "Private store, never committed (design/README.md rule 7). The approved mockup is the design of record; this REPO SPEC transcribes it with placeholder values only. Purple 'sample' values and NEW tags in the mockup are the fields Part A must fill from live data."
+  },
+  "removals": [],
+  "moves": [
+    "v006's single 'as of' line under the verdict becomes per-section as-of in each section header (mixed clocks made visible)",
+    "v006's flat Protect / Hedge / Rotate block becomes three collapsible sections on phone with one-line collapsed summaries",
+    "the 'Since you were stopped out' long SEC citation collapses into an (i) on the row"
+  ]
+}

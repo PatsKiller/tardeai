@@ -67,6 +67,13 @@ Default directory `~/trade-ai-releases/persistent-state/data/coordination/claims
 - **Stale = no heartbeat for 2 hours** (`--stale-hours`, `TRADEAI_AGENT_CLAIMS_STALE_HOURS`). A stale claim
   stops blocking. A new claim over it records `takeover_of`. The old owner's next `heartbeat` is refused
   ("taken over … stop and coordinate").
+- **Succession is containment, not overlap** (2026-11-04). A new claim records a stale predecessor mechanically
+  only when it holds **every** path that predecessor held; two agents touching one shared file are siblings, not
+  a chain. Deliberate partial succession is explicit: `claim --takeover <claim_id>` (repeatable), which refuses a
+  target that is not stale or shares none of the new claim's paths and must work across sessions too — a declared
+  takeover of a stale predecessor owned by another session records `explicit`, not `overlap`. Why: overlap-only
+  recording gave 397 claims 2,628 predecessors of which 98 (3.7 %) were real successions, and two live claims on
+  one file refused every merge (PR #2614).
 - **Shared-additive paths never conflict** (2026-10-23; §15). The files listed in
   `config/agent_claim_shared_paths.json` (docs/INDEX.md, docs/DOCUMENTATION_INDEX.md,
   apps/command-center-v3/package.json, the docs/AGENTS update backlog) can be claimed by any number of sessions.
@@ -389,7 +396,7 @@ it. Merging these files is mechanical, so they are now a **shared-additive** cla
   |---|---|---|
   | `docs/INDEX.md` | regenerate | `python3 scripts/report_docs_inventory.py --write-index` (CI runs `--check-index`) |
   | `docs/DOCUMENTATION_INDEX.md` | append rows | keep both sides' rows on a rebase conflict |
-  | `apps/command-center-v3/package.json` | union_build | the batch builder unions the `"build"` line entries |
+  | `apps/command-center-v3/package.json` | take_main_build | the `"build"` line names no test files (`scripts/run-tests.mjs` discovers them, #2686); on a conflict take main's `"build"` line exactly and never add a test name |
   | `DOCS_AND_AGENTS_UPDATE_BACKLOG.md` (also `~/n8n-maturity-verification/…`) | append rows | append one row; never rewrite another's |
 
 - **Semantics:**

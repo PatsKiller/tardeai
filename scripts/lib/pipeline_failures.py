@@ -78,7 +78,11 @@ def load(hours: int = 24) -> dict[str, Any]:
             sys.path.insert(0, scripts)
         from db_adapter import USE_DB, _execute  # type: ignore
     except Exception as exc:  # noqa: BLE001
-        return project(lambda s, p: (_ for _ in ()).throw(exc), hours=hours)
+        # `exc` is cleared when the except block ends, so a lambda that reads it later raised
+        # "NameError: cannot access free variable 'exc'" and the operator saw that instead of the real
+        # import error. Bind the exception before building the deferred callable (2026-11-03).
+        failure = exc
+        return project(lambda s, p: (_ for _ in ()).throw(failure), hours=hours)
     if not USE_DB:
         return project(lambda s, p: None, hours=hours)
     return project(lambda s, p: _execute(s, p, fetch="all"), hours=hours)

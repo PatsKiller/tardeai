@@ -126,4 +126,7 @@ jobs:
         working-directory: apps/command-center-v3
         run: |
           npm ci
+          # The test runner discovers src/**/*.test.mjs, which includes the hermetic desk
+          # disclosure browser suite (esbuild + @playwright/test chromium).
+          npx playwright install --with-deps chromium
           npm run build

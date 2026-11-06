@@ -50,6 +50,18 @@ def fetch_brief():
         return None
 
 
+def market_risk_line():
+    """Market Risk Engine tier line (DSN-20261031-market-risk-engine P3-T3); never a tier the engine did not compute."""
+    try:
+        from lib.market_risk import cio_context as _mr_cio
+    except ImportError:
+        from scripts.lib.market_risk import cio_context as _mr_cio
+    try:
+        return _mr_cio.tier_line(_mr_cio.load_market_risk())
+    except Exception as exc:  # noqa: BLE001 — the brief/digest always goes out; the line says what failed
+        return f"Market risk: not yet evaluated (tier line failed: {type(exc).__name__})"
+
+
 def format_telegram(data):
     """Format brief data as compact Telegram message (<1500 chars)."""
     if not data:
@@ -65,6 +77,7 @@ def format_telegram(data):
 
     lines = []
     lines.append("TRADE AI BRIEF -- " + (data.get("generated_at", "")[:10] or "today"))
+    lines.append(market_risk_line())
     lines.append("")
 
     # Holdings

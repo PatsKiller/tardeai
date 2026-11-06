@@ -32,6 +32,8 @@ eq('TRADING face without a journal win rate', tradingTileValue(null, 3, '$1'), '
 
 // Header price stamp and VIX provenance (captured /api/v2/overview + trade-ai/summary 2026-10-22).
 eq('price source short', shortPriceSource('finviz_afterhours'), 'after-hours')
+eq('price source short premarket', shortPriceSource('finviz_premarket'), 'pre-market')
+eq('price source short overnight', shortPriceSource('finviz_overnight'), 'overnight')
 eq('unknown price source readable', shortPriceSource('some_feed'), 'some feed')
 eq('price stamp face', shortPriceStamp('16:45 ET', 'finviz_afterhours', 12, 12, false), 'Prices 16:45 ET · after-hours · 12/12')
 check('price stamp face fits the 210 px stamp column (≤ 40 chars)', shortPriceStamp('16:45 ET', 'finviz_afterhours', 12, 12, false).length <= 40)
@@ -40,6 +42,7 @@ eq('price stamp without coverage', shortPriceStamp(null, 'schwab'), 'Prices · S
 eq('slot clock', [slotClock('1730'), slotClock('0700'), slotClock('premarket'), slotClock(null)], ['17:30', '07:00', 'premarket', null])
 eq('VIX from a scanner run', vixProvenance('trade_ai_run_summary', '1730', '22:21 ET'), 'scanner · 17:30 run')
 eq('VIX from a feed', vixProvenance('cboe', null, '15:59 ET'), 'CBOE · 15:59 ET')
+eq('VIX from the regime feed', vixProvenance('market_regime_indicators.vix_close', null, '15:59 ET'), 'regime feed · 15:59 ET')
 eq('VIX source unknown', vixProvenance(null, null, null), 'source —')
 
 // Rotation withheld notice chips (captured rotation/summary publication, 2026-10-23).
