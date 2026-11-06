@@ -22,6 +22,7 @@ one Approve button, and the click is bound to exact facts and leaves a receipt.
 | `install_schedule` | install one reviewed scheduler line already in the lane registry |
 | `restore_store` | run a reviewed restore packet (dry-run diff shown, evidence copy, rollback) |
 | `policy_approval` | record the APPROVE line for an AGENTS/policy PR at its exact head |
+| `backup_n8n` | take one n8n backup now (database dump, data volume, workflow export, Drive copy); needs `scripts/ops/n8n_backup_now.sh` from package 0.2a, which prints one JSON line with `dump_bytes`, `volume_bytes`, `export_bytes`, `drive_link` |
 
 The list is a literal in `scripts/lib/home_approvals.py`, not configuration. A request naming anything else is refused
 at creation and never stored — there is no object to render as a button. Broker orders, credentials, live trading flags,
@@ -115,7 +116,7 @@ defaults to `/tmp`.
 
 ## Read-only adapters
 
-`scripts/lib/home_approvals_adapters.py` answers "is this still true?" for all seven types without performing anything:
+`scripts/lib/home_approvals_adapters.py` answers "is this still true?" for all eight types without performing anything:
 PR head/state, run head, `/proc` start time and command hash, unit absence, packet sha256, grant id. `register_read_only()`
 wires the check and leaves execute fail-closed, so a click on an unwired type records "no reviewed wiring yet".
 

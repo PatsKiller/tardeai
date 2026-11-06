@@ -183,9 +183,9 @@ def test_an_action_outside_the_list_cannot_even_be_stored(tmp_path, kind):
     assert store.all() == []
 
 
-def test_the_action_list_is_exactly_the_seven_reviewed_types():
+def test_the_action_list_is_exactly_the_eight_reviewed_types():
     assert set(ha.ACTION_TYPES) == {"merge_pr", "rerun_ci", "grant", "stop_job", "install_schedule",
-                                    "restore_store", "policy_approval"}
+                                    "restore_store", "policy_approval", "backup_n8n"}
 
 
 def test_every_type_declares_the_facts_it_requires():
@@ -203,6 +203,7 @@ def test_every_type_declares_the_facts_it_requires():
     ("install_schedule", {"lane_id": "x", "schedule_expression": "* * * * *"}),
     ("restore_store", {"packet_sha256": "short"}),
     ("policy_approval", {"head_sha": HEAD}),
+    ("backup_n8n", {}),
 ])
 def test_bad_or_missing_facts_are_refused_with_a_plain_reason(tmp_path, kind, facts):
     with pytest.raises(ha.Refused) as caught:
