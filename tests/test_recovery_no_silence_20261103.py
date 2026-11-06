@@ -26,6 +26,17 @@ import telegram_alert_router as router  # noqa: E402
 
 COVERS = ["scripts/lib/recovery_notify.py", "scripts/telegram_alert_router.py", "scripts/telegram_alert.py"]
 
+#: Per-test nudge-ledger path. One shared literal path under the system temp dir let one test's recorded page
+#: become the next test's repeat floor once lib.telegram_batch is importable (PR 2552), so a T1 that must go
+#: out was held — and the ledger persisted across runs.
+_STATE = {"path": ""}
+
+
+@pytest.fixture(autouse=True)
+def _isolated_nudge_state(tmp_path):
+    _STATE["path"] = str(tmp_path / "recovery_nudge_state.json")
+    yield
+
 
 @pytest.fixture(autouse=True)
 def _isolated_recovery_ledger(tmp_path, monkeypatch):
@@ -122,7 +133,7 @@ def test_unknown_materiality_resolves_loud():
 def test_t1_sends_as_p1_through_the_batch_module(monkeypatch):
     _fake_batch(monkeypatch)
     send = _Sender()
-    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/does-not-matter.json")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path=_STATE["path"])
     assert out["tier"] == "T1" and out["priority"] == "P1"
     assert out["sent"] is True and out["suppressed"] is False and out["path"] == "batch"
     assert len(send.calls) == 1
@@ -135,7 +146,7 @@ def test_t1_without_telegram_batch_falls_back_to_a_direct_p1(monkeypatch):
     # telegram_batch is not on this checkout until its own PR lands; the T1 page must still go out.
     monkeypatch.setitem(sys.modules, "lib.telegram_batch", None)
     send = _Sender()
-    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path=_STATE["path"])
     assert out["path"] == "direct" and out["sent"] is True and out["suppressed"] is False
     _msg, kwargs = send.calls[0]
     assert kwargs.get("priority") == "P1"
@@ -182,7 +193,7 @@ def test_nan_materiality_resolves_loud():
     import math
     send = _Sender()
     case = _case(realized_loss_usd=float("nan"), pre_exit_weight_pct=float("nan"))
-    out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path="/tmp/x.json")
+    out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path=_STATE["path"])
     assert out["tier"] == "T1" and out["sent"] is True and send.calls, out
 
 
@@ -191,7 +202,7 @@ def test_partial_unknown_materiality_resolves_loud():
     for case in (_case(realized_loss_usd=None, pre_exit_weight_pct=0.5),
                  _case(realized_loss_usd=500, pre_exit_weight_pct=None)):
         send = _Sender()
-        out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path="/tmp/x.json")
+        out = rn.notify_recovery_case(case, policy=POLICY, sender=send, state_path=_STATE["path"])
         assert out["tier"] == "T1" and send.calls, (case, out)
 
 
@@ -199,7 +210,7 @@ def test_nonfinite_policy_thresholds_are_unusable_and_resolve_loud():
     """F2: an infinite configured threshold is not a usable number."""
     policy = {"materiality": {"t1": {"loss_usd": float("inf"), "weight_pct": float("inf")}}}
     send = _Sender()
-    out = rn.notify_recovery_case(_case(), policy=policy, sender=send, state_path="/tmp/x.json")
+    out = rn.notify_recovery_case(_case(), policy=policy, sender=send, state_path=_STATE["path"])
     assert out["tier"] == "T1" and send.calls, out
 
 
@@ -211,7 +222,7 @@ def test_an_unverified_negative_batch_decision_falls_through_to_direct(monkeypat
     mod.nudge_decision = lambda **kw: {"send": False, "reason": "QUIET_HOURS"}
     monkeypatch.setitem(sys.modules, "lib.telegram_batch", mod)
     send = _Sender()
-    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path=_STATE["path"])
     assert out["path"] == "direct" and out["sent"] is True and send.calls, out
 
 
@@ -227,7 +238,7 @@ def test_a_verified_repeat_floor_still_holds(monkeypatch):
     mod.nudge_decision = lambda **kw: {"send": False, "reason": "repeat floor"}
     monkeypatch.setitem(sys.modules, "lib.telegram_batch", mod)
     send = _Sender()
-    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path=_STATE["path"])
     assert out["path"] == "batch" and out["sent"] is False and out["deduped_by_floor"] is True
     assert send.calls == []
 
@@ -282,9 +293,9 @@ def test_two_accounts_same_symbol_and_state_are_two_cases(monkeypatch):
     _fake_batch(monkeypatch)
     send = _Sender()
     one = rn.notify_recovery_case(_case(case_id="spcx-taxable", account="schwab_taxable"),
-                                  policy=POLICY, sender=send, state_path="/tmp/x.json")
+                                  policy=POLICY, sender=send, state_path=_STATE["path"])
     two = rn.notify_recovery_case(_case(case_id="spcx-ira", account="schwab_roth_ira"),
-                                  policy=POLICY, sender=send, state_path="/tmp/x.json")
+                                  policy=POLICY, sender=send, state_path=_STATE["path"])
     assert one["sent"] is True and two["sent"] is True and len(send.calls) == 2
 
 
@@ -295,7 +306,7 @@ def test_the_batched_body_carries_the_case_key(monkeypatch):
     monkeypatch.setattr(sys.modules["lib.telegram_batch"], "batch_text",
                         lambda *, header, items, footer=None: sent.append(header) or header)
     out = rn.notify_recovery_case(_case(case_id="spcx-20261030"), policy=POLICY,
-                                  sender=_Sender(), state_path="/tmp/x.json")
+                                  sender=_Sender(), state_path=_STATE["path"])
     assert rn.parse_case_token(sent[0]) == "spcx-20261030" and out["sent"] is True
 
 
@@ -616,7 +627,7 @@ def test_one_unusable_threshold_does_not_delete_its_dimension():
     policy = {"materiality": {"t1": {"loss_usd": float("inf"), "weight_pct": 20}}}
     send = _Sender()
     out = rn.notify_recovery_case(_case(realized_loss_usd=250, pre_exit_weight_pct=1.0),
-                                  policy=policy, sender=send, state_path="/tmp/x.json")
+                                  policy=policy, sender=send, state_path=_STATE["path"])
     assert out["tier"] == "T1" and send.calls, out
 
 
@@ -624,7 +635,7 @@ def test_a_huge_integer_materiality_resolves_loud():
     """F7: a JSON-legal 10**1000 integer must not raise before the page."""
     send = _Sender()
     out = rn.notify_recovery_case(_case(realized_loss_usd=10 ** 1000, pre_exit_weight_pct=1.0),
-                                  policy=POLICY, sender=send, state_path="/tmp/x.json")
+                                  policy=POLICY, sender=send, state_path=_STATE["path"])
     assert out["tier"] == "T1" and send.calls, out
 
 
@@ -644,7 +655,7 @@ def test_a_transport_that_returns_false_is_recorded_not_treated_as_success(monke
         return False
 
     caplog.set_level("WARNING", logger="scripts.lib.recovery_notify")
-    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path=_STATE["path"])
     assert calls and out["sent"] is False and out["suppressed"] is False and out["priority"] == "P1"
     assert "not accepted by the direct transport" in caplog.text
 
@@ -656,7 +667,7 @@ def test_a_consumed_dedupe_key_is_recorded_as_a_floor_hold(monkeypatch, caplog):
                         lambda **kw: {"send": False, "reason": "nothing due", "keys": []})
     send = _Sender()
     caplog.set_level("WARNING", logger="scripts.lib.recovery_notify")
-    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path="/tmp/x.json")
+    out = rn.notify_recovery_case(_case(), policy=POLICY, sender=send, state_path=_STATE["path"])
     assert out["sent"] is False and out["deduped_by_floor"] is True and send.calls == []
     assert "held by the verified repeat floor" in caplog.text
 
@@ -669,7 +680,7 @@ def test_a_batch_delivery_that_raises_is_loud_not_empty_success(monkeypatch):
         raise RuntimeError("transport down")
 
     with pytest.raises(RuntimeError, match="transport down"):
-        rn.notify_recovery_case(_case(), policy=POLICY, sender=boom, state_path="/tmp/x.json")
+        rn.notify_recovery_case(_case(), policy=POLICY, sender=boom, state_path=_STATE["path"])
 
 
 def test_a_p1_intent_is_delivered_even_in_quiet_hours():
@@ -747,7 +758,7 @@ def test_a_present_but_null_threshold_is_not_absent():
     policy = {"materiality": {"t1": {"loss_usd": None, "weight_pct": 20}}}
     send = _Sender()
     out = rn.notify_recovery_case(_case(realized_loss_usd=250, pre_exit_weight_pct=1.0),
-                                  policy=policy, sender=send, state_path="/tmp/x.json")
+                                  policy=policy, sender=send, state_path=_STATE["path"])
     assert out["tier"] == "T1" and send.calls, out
 
 
