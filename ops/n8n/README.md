@@ -55,3 +55,24 @@ Start from the kept old compose; nothing in the volumes changed:
     $C ps            # state
     $C logs --tail 100 n8n
     $C stop          # stop both containers (volumes kept)
+
+## Least-privilege database role (0.1e; after the cutover, an operator go-ahead)
+
+n8n connects to its Postgres as the bootstrap superuser `n8n`. Package 0.1e moves it onto `n8n_app`: LOGIN, no
+SUPERUSER/CREATEDB/CREATEROLE/REPLICATION/BYPASSRLS, owner of n8n's tables and sequences in `public`, and able to
+connect only to database `n8n`. `n8n` stays as the break-glass superuser and is not removed. The base compose is
+unchanged; `docker-compose.n8n-app-role.yml` is layered on top and sets only the database user and password.
+
+    S=scripts/ops/n8n_db_role.py
+    .venv/bin/python $S                  # dry run, read-only: role state, owners, connections, redacted SQL preview
+    .venv/bin/python $S --prepare-secret # writes ~/.config/tradeai/n8n/n8n-app-role.env (0600) once; never prints it
+    .venv/bin/python $S --apply-db       # creates/updates n8n_app, moves ownership, narrows CONNECT; no restart
+    .venv/bin/python $S --switch         # restart: recreates n8n with the override; outside market hours
+    .venv/bin/python $S --verify         # n8n_app cannot CREATE ROLE or reach database postgres, can read workflows
+
+Only a SCRAM verifier reaches psql, on stdin; the password never sits in argv, logs or receipts. `--switch` refuses
+before the 0.1a cutover or before `--apply-db`, and fails unless n8n is healthy, the active-workflow count is
+unchanged and every n8n connection is `n8n_app`. Receipts: `~/.cache/tradeai/n8n-db-role-<step>-<UTC>.json`.
+
+Rollback: `.venv/bin/python $S --rollback` recreates n8n from the base compose (as `n8n`), hands ownership back to
+`n8n`, restores the PUBLIC database grants and sets `n8n_app` NOLOGIN. Nothing is dropped.
