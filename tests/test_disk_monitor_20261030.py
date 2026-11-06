@@ -357,7 +357,8 @@ def test_hotspot_flag_new_growing_and_ok():
 
 
 def test_growth_reference_prefers_the_window_sample_and_falls_back_to_baseline():
-    mon_cfg = {"growth_window_hours": 24}
+    mon_cfg = {"growth_window_hours": 24, "warn_pct": 80.0, "critical_pct": 90.0,
+               "grow_warn_bytes": 10 ** 18, "grow_critical_bytes": 10 ** 18}
     now = T0
     base = {"mounts": {"/": {"used_bytes": 100}}, "samples": [
         {"at": (now - timedelta(hours=30)).isoformat(), "mounts": {"/": 100}},  # outside window
@@ -475,3 +476,34 @@ def test_monitor_imports_no_sender_or_broker():
     src = (ROOT / "scripts" / "disk_monitor.py").read_text()
     for bad in ("requests", "urllib", "psycopg", "place_order", "alpaca", "schwab"):
         assert bad not in src, bad
+
+
+def test_a_four_hour_old_sample_is_not_reported_as_a_24_hour_rate():
+    """Cloud ticket at 8aaa00c45: the reference sample is the earliest in the window, but the rate divided by the
+    CONFIGURED window. A sample four hours old measures four hours of growth: 20 GiB there is 120 GiB/day, and
+    "20 GiB/day over 24h" is an operator alert that says something false about the disk (D51)."""
+    now = T0
+    mon_cfg = {"growth_window_hours": 24, "warn_pct": 80.0, "critical_pct": 90.0,
+               "grow_warn_bytes": 10 ** 18, "grow_critical_bytes": 10 ** 18}
+    base = {"mounts": {"/": {"used_bytes": 100}}, "samples": [
+        {"at": (now - timedelta(hours=4)).isoformat(), "mounts": {"/": 100}},
+    ]}
+    mounts = [{"mount": "/", "used_pct": 50.0, "used_bytes": 120.0, "avail_bytes": 80.0, "size_bytes": 200.0}]
+    row = DMON.evaluate(base, mounts, [], mon_cfg, now)["mounts"][0]
+    assert row["growth_interval_hours"] == 4.0, row["growth_interval_hours"]
+    assert row["growth_interval_source"] == "sample", row["growth_interval_source"]
+    assert row["rate_bytes_per_day"] == 120.0, row["rate_bytes_per_day"]   # 20 bytes / 4h * 24, not / 24h * 24
+
+
+def test_the_rate_falls_back_to_the_window_only_when_no_sample_time_exists():
+    """The baseline mount value carries no clock of its own: the configured window is then the only interval there
+    is, and the row says so instead of pretending a sample supplied it."""
+    now = T0
+    mon_cfg = {"growth_window_hours": 24, "warn_pct": 80.0, "critical_pct": 90.0,
+               "grow_warn_bytes": 10 ** 18, "grow_critical_bytes": 10 ** 18}
+    base = {"mounts": {"/": {"used_bytes": 100}}, "samples": []}
+    mounts = [{"mount": "/", "used_pct": 50.0, "used_bytes": 220.0, "avail_bytes": 80.0, "size_bytes": 200.0}]
+    row = DMON.evaluate(base, mounts, [], mon_cfg, now)["mounts"][0]
+    assert row["growth_interval_source"] == "window", row["growth_interval_source"]
+    assert row["growth_interval_hours"] == 24.0
+    assert row["rate_bytes_per_day"] == 120.0, row["rate_bytes_per_day"]   # 120 bytes over the 24h window

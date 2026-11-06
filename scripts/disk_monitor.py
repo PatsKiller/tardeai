@@ -239,9 +239,16 @@ def load_baseline(state_root: Optional[Path], mon: Mapping[str, Any]) -> dict[st
     return doc if isinstance(doc, dict) and doc.get("schema") == BASELINE_SCHEMA else {}
 
 
-def growth_reference(baseline: Mapping[str, Any], mon: Mapping[str, Any], now: datetime, mount: str) -> Optional[int]:
-    """The reference ``used_bytes`` to measure growth against: the earliest sample within growth_window_hours (so the
-    delta spans the whole window), else the baseline mount value. None when neither exists."""
+def growth_reference_sample(baseline: Mapping[str, Any], mon: Mapping[str, Any], now: datetime,
+                            mount: str) -> Optional[tuple[int, Optional[float]]]:
+    """The reference ``used_bytes`` and the epoch it was measured at — the elapsed time is the rate's denominator.
+
+    The sample is the earliest within growth_window_hours, so the delta spans as much of the window as the samples
+    allow. That does not make the interval the window: a sample four hours old measures four hours of growth, and
+    dividing it by 24 understates the rate six-fold (cloud ticket at 8aaa00c45: 20 GiB over 4h reported as
+    "20 GiB/day over 24h" when the truth is 120 GiB/day). The baseline mount value carries no time of its own, so its
+    epoch is None and the caller falls back to the configured window — saying so, not guessing.
+    """
     window = float(mon.get("growth_window_hours") or 24) * 3600.0
     best: Optional[tuple[float, int]] = None
     for s in baseline.get("samples") or []:
@@ -254,11 +261,17 @@ def growth_reference(baseline: Mapping[str, Any], mon: Mapping[str, Any], now: d
             if best is None or at < best[0]:
                 best = (at, int(v))
     if best is not None:
-        return best[1]
+        return best[1], best[0]
     m = (baseline.get("mounts") or {}).get(mount) or {}
     if isinstance(m.get("used_bytes"), (int, float)) and not isinstance(m.get("used_bytes"), bool):
-        return int(m["used_bytes"])
+        return int(m["used_bytes"]), None
     return None
+
+
+def growth_reference(baseline: Mapping[str, Any], mon: Mapping[str, Any], now: datetime, mount: str) -> Optional[int]:
+    """The reference ``used_bytes`` only. See :func:`growth_reference_sample` for the epoch the rate needs."""
+    sample = growth_reference_sample(baseline, mon, now, mount)
+    return sample[0] if sample is not None else None
 
 
 def evaluate(baseline: Mapping[str, Any], mounts: list[dict], hotspots: list[dict],
@@ -269,16 +282,27 @@ def evaluate(baseline: Mapping[str, Any], mounts: list[dict], hotspots: list[dic
         if "used_pct" not in m:
             rows.append({"mount": m["mount"], "error": m["error"]})
             continue
-        ref = growth_reference(baseline, mon, now, m["mount"])
+        sample = growth_reference_sample(baseline, mon, now, m["mount"])
+        ref, ref_at = sample if sample is not None else (None, None)
         delta = (m["used_bytes"] - ref) if ref is not None else None
         window = float(mon.get("growth_window_hours") or 24)
-        rate = (delta / window * 24) if delta is not None else None
+        # The denominator is the interval actually observed. With no reference time (the baseline mount value, or a
+        # sample with no readable clock) it is the configured window, and `growth_interval_source` says which.
+        elapsed_hours = ((now.timestamp() - ref_at) / 3600.0) if ref_at is not None else window
+        interval_source = "sample" if ref_at is not None else "window"
+        if elapsed_hours <= 0:
+            # A zero-length observation cannot express a per-day rate; say unknown instead of dividing by it.
+            rate, elapsed_hours, interval_source = None, None, "unknown"
+        else:
+            rate = (delta / elapsed_hours * 24) if delta is not None else None
         rows.append({
             **m,
             "used_band": band_of(m["used_pct"], mon),
             "growth_band": growth_band(delta, mon),
             "delta_bytes": delta,
             "rate_bytes_per_day": rate,
+            "growth_interval_hours": elapsed_hours,
+            "growth_interval_source": interval_source,
         })
     base_hs: dict[str, Any] = {}
     for hid, entry in (baseline.get("hotspots") or {}).items():
@@ -392,8 +416,14 @@ def mount_alert_text(m: Mapping[str, Any], mon: Mapping[str, Any],
         subject = f"Disk {mount} {sev.upper()}: " + " and ".join(triggers)
     parts = [f"{m['used_pct']:.1f}% used, {_gb(m['avail_bytes'])} free of {_gb(m['size_bytes'])}"]
     if m.get("delta_bytes") is not None:
-        parts.append(f"growth {_gb(m['delta_bytes'])} over {float(mon.get('growth_window_hours') or 24):.0f}h"
-                     f" (rate {_gb(m.get('rate_bytes_per_day'))}/day)")
+        # The interval named here is the one actually observed, not the configured window: a four-hour-old sample
+        # reported "over 24h" states a rate six times too low, and that is the claim the operator reads.
+        interval = m.get("growth_interval_hours")
+        if interval is None:
+            parts.append(f"growth {_gb(m['delta_bytes'])} (rate unknown: no elapsed interval was observed)")
+        else:
+            parts.append(f"growth {_gb(m['delta_bytes'])} over {interval:.1f}h"
+                         f" (rate {_gb(m.get('rate_bytes_per_day'))}/day)")
     if hotspots:
         parts.append("top: " + ", ".join(f"{h['id']} {_gb(h['bytes'])}" for h in hotspots))
     if manifest and manifest.get("reclaimable_bytes") is not None:
