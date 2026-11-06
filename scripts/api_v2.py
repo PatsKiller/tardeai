@@ -3044,7 +3044,8 @@ def _today_pnl_provenance(
     funded = linked - len(empty)
     represented = len(contributing) + len(zero_change)
     try:
-        total = round(float(total_change or 0), 2)
+        # None is an UNKNOWN day, not a flat one (cc-deepseek-5 D51, #2588).
+        total = round(float(total_change), 2) if total_change is not None else None
     except (TypeError, ValueError):
         total = None
 
@@ -3478,12 +3479,36 @@ def _weighted_beta(positions):
     return round(beta_sum, 3)
 
 
+def _measured_day_change_sum(rows):
+    """Σ day_change over rows that MEASURED one; None when no row did.
+
+    ``None`` means "unknown", not "flat": a Fidelity statement row, a CSV import with no
+    day-change column, or a broker reload that dropped the field contributes no evidence.
+    The old ``or 0`` made an unmeasured day read as a confident $0 — a headline money number
+    that was never measured (cc-deepseek-5 D51, #2588).
+    """
+    import math as _math
+
+    total = 0.0
+    measured = False
+    for row in rows or []:
+        value = row.get("day_change")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if not _math.isfinite(float(value)):
+            continue
+        measured = True
+        total += float(value)
+    return round(total, 2) if measured else None
+
+
 def _live_portfolio_day_change(holdings_list):
     """Portfolio day change = Σ per-holding day $ recomputed from the fresh Finviz day % at the live
     Finviz price. The stored portfolio_totals.day_change and per-row day_change go $0 whenever the
     repricer wrote prev_price == new_price, so summing them silently under-counts (the header read
     +$171 while the book had moved ~+$5,258). Shared by /overview (header TODAY) and
-    /portfolio/performance (Returns 1D) so both surfaces agree. Returns None if it cannot compute."""
+    /portfolio/performance (Returns 1D) so both surfaces agree. Returns None if it cannot compute,
+    including when NO row contributed a measured value — an unmeasured day is unknown, never $0."""
     try:
         import sys as _s
 
@@ -3510,6 +3535,7 @@ def _live_portfolio_day_change(holdings_list):
                 except (TypeError, ValueError):
                     pass
         _tc = 0.0
+        _measured = False
         for _p in holdings_list or []:
             if _p.get("is_cash") or _p.get("is_loan"):
                 continue
@@ -3519,8 +3545,11 @@ def _live_portfolio_day_change(holdings_list):
             _mv = (_sh * _fvpx) if (_fvpx and _sh) else float(_p.get("market_value") or 0)
             _pxp = _fvpx or float(_p.get("price") or 0)
             _dc, _ = _rhdc(_p, market_value=_mv, price=_pxp, stale_price=_pxp, finviz_day_pct=_day.get(_u))
-            _tc += _dc or 0
-        return round(_tc, 2)
+            if _dc is None:
+                continue  # unknown is not a flat position
+            _measured = True
+            _tc += _dc
+        return round(_tc, 2) if _measured else None
     except Exception:
         return None
 
@@ -3600,18 +3629,30 @@ def overview():
     ).get("cnt", 0)
     pending_rows = {"cnt": aq_cnt + jdq_cnt}
 
-    # Today's change — from broker snapshot (uses same _day_change logic as _live_portfolio_day_change)
+    # Today's change — from the live per-row recompute first (it is the only value that knows
+    # which rows were measured), then a stored NON-ZERO snapshot/total. A stored $0 is the
+    # repricer's prev_price == new_price artifact, not evidence of a flat day, so it may not
+    # stand in for measurement. When no row contributed a measured value the day is UNKNOWN:
+    # today_change is None and /overview publishes null, never a confident $0
+    # (cc-deepseek-5 D51, #2588).
     total_val = snap_totals.get("total_value", 0) or totals.get("total_value", 0) or 0
-    today_change = snap_totals.get("day_change") or 0
-    today_pct = snap_totals.get("day_change_pct", 0) or 0
-    if today_change is None or today_change == 0:
-        today_change = _live_portfolio_day_change(holdings)
-        if today_change is None or today_change == 0:
-            today_change = totals.get("day_change")
-            if today_change is None:
-                today_change = sum(p.get("day_change") or 0 for p in holdings)
-        if today_change is not None:
-            today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change or 0) else 0
+    _live_dc = _live_portfolio_day_change(holdings)
+    _snap_dc = snap_totals.get("day_change")
+    _stored_dc = totals.get("day_change")
+    if _live_dc is not None:
+        today_change = _live_dc
+    elif _snap_dc:
+        today_change = _snap_dc
+    elif _stored_dc:
+        today_change = _stored_dc
+    else:
+        today_change = None
+    if today_change is not None:
+        today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else (
+            snap_totals.get("day_change_pct") or 0
+        )
+    else:
+        today_pct = None
 
     # per-account breakdown — from broker snapshot, with per-account top-movers from holdings
     from lib.account_display import canonical_key as _canon_acct
@@ -3779,8 +3820,11 @@ def overview():
     _total_drift = round(_derived_total - (total_val or 0), 2) if _derived_total > 0 else 0
     if _derived_total > 0 and not total_val:
         total_val = _derived_total
-        today_change = round(sum(p.get("day_change") or 0 for p in holdings), 2)
-        today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else 0
+        # Same rule as above: no measured row means UNKNOWN, not a flat $0.
+        today_change = _measured_day_change_sum(holdings)
+        today_pct = (today_change / (total_val - today_change) * 100) if (
+            today_change is not None and total_val > abs(today_change)
+        ) else None
     _fv_meta = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get("_meta") or {}
     # Cash = sum of the actual CASH positions. The stored portfolio_totals.total_cash had drifted to
     # $478k while the real cash was $186k. The read-site recompute that used to
@@ -3888,8 +3932,10 @@ def overview():
         # UI may show a subtle "repricing…" hint but the total never flips
         "total_value_drift": _total_drift if abs(_total_drift) > 500 else 0,
         "total_cash": _total_cash,
-        "today_change": round(today_change, 2),
-        "today_pct": round(today_pct, 2),
+        # null is the contract for "no row measured a day change"; the UI renders the word
+        # "unknown" rather than a $0 that reads as a flat day (cc-deepseek-5 D51, #2588).
+        "today_change": round(today_change, 2) if today_change is not None else None,
+        "today_pct": round(today_pct, 2) if today_pct is not None else None,
         "reprice_source": h.get("reprice_source", ""),
         "pricing": {
             "last_repriced": h.get("last_repriced", ""),
@@ -4760,10 +4806,12 @@ def portfolio_holdings():
             _day_pct = p.get("day_change_pct")
             if (_day_pct is None or float(_day_pct or 0) == 0) and _fv_day_pct is not None:
                 _day_pct = _fv_day_pct
+            _stored_day = p.get("day_change")
             _day_chg = (
                 round(_mv * float(_day_pct or 0) / 100, 2)
                 if (_day_pct is not None and _mv)
-                else float(p.get("day_change") or 0)
+                # Same rule as the resolver: an absent stored change stays unknown.
+                else (float(_stored_day) if _stored_day is not None else None)
             )
         rows.append(
             {
@@ -4931,11 +4979,13 @@ def portfolio_holdings():
     # Per-row day_change is recomputed live from the day % (holding_day_change), so the
     # row-sum is authoritative. The stored portfolio_totals.day_change comes from the same
     # repricer that writes $0 when prev_price == new_price at write time, so it can silently
-    # under-count (it once read +$171 while the rows truly summed to ~+$5,258). Only fall back
-    # to the stored total when we have NO per-row signal at all (row-sum ~0 but a total exists).
-    _day_total = round(sum(r.get("day_change") or 0 for r in rows), 2)
+    # under-count (it once read +$171 while the rows truly summed to ~+$5,258). Only a stored
+    # NON-ZERO total may stand in for a row sum: a $0 there is the write-time artifact, and
+    # when NO row measured a change the day is UNKNOWN (None), never a confident $0
+    # (cc-deepseek-5 D51, #2588).
+    _day_total = _measured_day_change_sum(rows)
     _totals_day = (h.get("portfolio_totals") or {}).get("day_change")
-    if abs(_day_total) < 0.01 and _totals_day is not None:
+    if (_day_total is None or abs(_day_total) < 0.01) and _totals_day:
         try:
             _day_total = round(float(_totals_day), 2)
         except (TypeError, ValueError):
