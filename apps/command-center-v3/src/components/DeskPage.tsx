@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
+import { writerStateWords } from '../lib/deskWriterState'
 import ReadableTime from './ReadableTime'
 import { cioPageDataFrom, HomeBoardMount, withHomeClocks } from './homeDeskMount'
 
@@ -20,24 +21,6 @@ export type DeskSource = {
   clockOnly?: boolean
 }
 export type DeskDecision = { id: string; title: string; detail?: string; href?: string }
-/** FQ-023 (2026-11-04): the panel printed the writer's own vocabulary — "Writer ACTIVE", "Writer · 2", "Last successful
- *  run: not measured". That is the producer's state, not the operator's. These two helpers say what the writer is and
- *  what it costs when it has not run; the raw lane id and state stay in the element's title. */
-// ACTIVE is the lane registry's enablement flag, not evidence that the writer has run. Rendering it as "running"
-// claimed a liveness the record does not establish; the row's own "last succeeded …" / "No successful run is
-// recorded" line is what speaks about liveness.
-const WRITER_STATE: Record<string, string> = {
-  ACTIVE: 'enabled', PAUSED: 'paused', RETIRED: 'retired', NONE: 'not set up', ERROR: 'failing', STALE: 'overdue',
-}
-export function writerStateLabel(state: string | null | undefined): string {
-  const k = String(state ?? '').trim().toUpperCase()
-  return WRITER_STATE[k] ?? (k ? k.replace(/_/g, ' ').toLowerCase() : 'state not reported')
-}
-export function laneName(laneId: string | null | undefined): string {
-  const text = String(laneId ?? '').replace(/[-_]+/g, ' ').trim()
-  return text ? text.charAt(0).toUpperCase() + text.slice(1) : 'an unnamed source'
-}
-
 export type DeskWriter = {
   lane_id: string
   state: 'ACTIVE' | 'PAUSED' | 'RETIRED' | 'NONE' | null
@@ -125,9 +108,16 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
     if (el && el.getBoundingClientRect().top > window.innerHeight * 0.5) el.scrollIntoView({ block: 'start' })
   }, [active])
   const [now, setNow] = useState(Date.now)
-  // FQ-034 (2026-11-04): on a phone the writer/schedule diagnostics sat between the tab bar and the tab's own content,
-  // so "Where to act" opened below a long block of source clocks. The decision content leads on a phone and the clocks
-  // collapse into a disclosure at the end; the desktop order is unchanged.
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id) }, [])
+  const laneIds = [...new Set(pageSources.flatMap(source => source.laneIds ?? []))].sort()
+  const { data, loading, error, stale, refetch } = useApi<SourceResponse>(`/api/v2/desk-sources?lanes=${encodeURIComponent(laneIds.join(','))}`, 60_000, { enabled: laneIds.length > 0 })
+  const payload: SourcePayload | undefined = data && 'writers' in data ? data : (data as { data?: SourcePayload } | null)?.data
+  const sourceReadFailed = Boolean(data) && (('ok' in (data as object) && (data as { ok: boolean }).ok !== true) || !Array.isArray(payload?.writers))
+  const writerRows = Array.isArray(payload?.writers) ? payload!.writers : []
+  const writers = new Map(writerRows.filter(writer => writer && typeof writer.lane_id === 'string').map(writer => [writer.lane_id, writer]))
+  // FQ-034 (2026-11-04, re-applied over main's writer row): on a phone the writer/schedule diagnostics sat between the
+  // tab bar and the tab's own content, so "Where to act" opened below a long block of source clocks. The decision
+  // content leads on a phone and the clocks collapse into a disclosure at the end; the desktop order is unchanged.
   const [phone, setPhone] = useState(() => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     && window.matchMedia('(max-width: 820px)').matches)
   useEffect(() => {
@@ -137,14 +127,6 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
     media.addEventListener('change', update)
     return () => media.removeEventListener('change', update)
   }, [])
-  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id) }, [])
-  const laneIds = [...new Set(pageSources.flatMap(source => source.laneIds ?? []))].sort()
-  const { data, loading, error, stale, refetch } = useApi<SourceResponse>(`/api/v2/desk-sources?lanes=${encodeURIComponent(laneIds.join(','))}`, 60_000, { enabled: laneIds.length > 0 })
-  const payload: SourcePayload | undefined = data && 'writers' in data ? data : (data as { data?: SourcePayload } | null)?.data
-  const sourceReadFailed = Boolean(data) && (('ok' in (data as object) && (data as { ok: boolean }).ok !== true) || !Array.isArray(payload?.writers))
-  const writerRows = Array.isArray(payload?.writers) ? payload!.writers : []
-  const writers = new Map(writerRows.filter(writer => writer && typeof writer.lane_id === 'string').map(writer => [writer.lane_id, writer]))
-
   const clocksSection = (
     <section aria-label="Source clocks" style={panel}>
       <h2 style={{ margin: '0 0 12px', fontSize: TYPE.md }}>Source clocks</h2>
@@ -162,24 +144,29 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
             <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
             {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
             {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
-            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>This source does not say which part of the system updates it.</p>}
-            {sourceWriters.map((writer, index) => <div key={source.laneIds![index]} data-testid="desk-source-writer" title={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
-              <div style={{ color: writer?.state === 'ACTIVE' ? BB.text2 : BB.amber }}>
-                {laneName(source.laneIds![index])} is {writer ? writerStateLabel(writer.state) : (loading ? 'being checked' : 'not reporting a state')}
-                {writer?.last_success_at ? ` · last succeeded ${clock(writer.last_success_at, now).text}` : ''}
+            {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
+            {sourceWriters.map((writer, index) => {
+              // FQ-051: the operator needs one fact — is this source still being refreshed, and what it costs if not.
+              // The writer's own state code, its last successful run and the execution-evidence capture are how that is
+              // worked out, not what a person reads: they move one tap away, none of them removed.
+              const st = writer?.state
+              // Every declared state gets its own true sentence: PAUSED and NONE are read successfully, so neither may
+              // be reported as "State unavailable". See lib/deskWriterState.ts and its test.
+              const words = writerStateWords(st, loading)
+              return <div key={source.laneIds![index]} style={{ borderTop: `1px solid ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
+                <div data-testid="source-writer-state" style={{ color: st === 'ACTIVE' ? BB.text2 : BB.amber }}>{words}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
+                <details data-testid="source-writer-diagnostics" style={{ marginTop: 4 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: TYPE.sm, color: BB.text3, minHeight: 44, display: 'flex', alignItems: 'center' }}>Diagnostics</summary>
+                  <div style={{ color: BB.text3, fontSize: TYPE.sm, display: 'grid', gap: 2 }}>
+                    <div>Writer state: {st ?? (loading ? 'loading' : 'unavailable')}</div>
+                    <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
+                    {writer?.last_success_at && <div>At <ReadableTime value={writer.last_success_at} /></div>}
+                    {writer?.evidence_as_of && <div>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
+                    {(writer?.reason || !writer) && <div style={{ color: BB.amber }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
+                  </div>
+                </details>
               </div>
-              {!writer?.last_success_at && (
-                <div style={{ color: BB.amber, marginTop: 2 }}>
-                  {loading ? 'Checking whether it has ever run.' : `No successful run is recorded, so ${source.label} cannot be confirmed current.`}
-                </div>
-              )}
-              {writer?.last_success_at && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>At <ReadableTime value={writer.last_success_at} /></div>}
-              {writer?.evidence_as_of && <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
-              {/* A past success is evidence the lane once worked, not an explanation of why it is not current now, so it
-                  must not suppress the producer's reason. The producer's own "no successful run" wording is skipped in
-                  the one case the amber line above already states it; a NONE/unreadable registry state always explains. */}
-              {writer?.reason && (writer?.last_success_at || writer?.state === 'NONE' || !writer?.state) && <div style={{ color: BB.text3, marginTop: 2, fontSize: TYPE.sm }}>{writer.reason}</div>}
-            </div>)}
+            })}
             {gap && <div role="note" style={{ color: BB.amber, borderTop: `1px dashed ${BB.border}`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
           </article>
         })}
