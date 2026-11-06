@@ -16,9 +16,9 @@
     },
     {
       "path": "apps/command-center-v3/package.json",
-      "merge": "union_build",
-      "how": "the release batch builder unions the \"build\" line entries (union_build); on a rebase conflict keep both sides' entries",
-      "reason": "Almost every UI PR adds one check/guard to the \"build\" script line."
+      "merge": "take_main_build",
+      "how": "the \"build\" line names NO test files: scripts/run-tests.mjs discovers every *.test.* under src/ (#2686). On a conflict take main's \"build\" line exactly and keep your other package.json changes. Never add a test name to it: a new test file runs because it exists; a dormant one is listed in scripts/tests.dormant.json",
+      "reason": "Until #2686 every UI PR appended its test to one shared \"build\" line, so each merge re-conflicted every open UI PR. On 2026-11-05 a 'keep both sides' resolution put 108 names back after #2686 and 27 PRs conflicted on this line alone."
     },
     {
       "path": "DOCS_AND_AGENTS_UPDATE_BACKLOG.md",

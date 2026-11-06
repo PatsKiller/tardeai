@@ -111,7 +111,7 @@ def _rgb(value: str) -> tuple[float, float, float]:
     match = re.fullmatch(r"#([0-9a-fA-F]{6})", value.strip())
     assert match, f"cannot parse colour {value!r} as a 6-digit hex token"
     digits = match.group(1)
-    return tuple(int(digits[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+    return tuple(int(digits[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value] -- tuple of three floats from a generator; the width is fixed by the 3-step range
 
 
 def _linear(channel: float) -> float:

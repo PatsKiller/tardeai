@@ -91,7 +91,7 @@ async function mockApi(page: Page) {
 /** Set the theme the way main.tsx/useTheme does: localStorage choice + <html data-theme>. */
 async function openPlans(page: Page, theme: 'light' | 'dark') {
   await page.addInitScript((value: string) => {
-    try { window.localStorage.setItem('cc.ui.theme', value) } catch { /* private mode */ }
+    try { window.localStorage.setItem('cc.ui.theme', value) } catch (err) { console.warn('plans-theme: could not persist the theme choice (private mode?)', String(err)) }
     // At document-start documentElement can be null; the app's initTheme() sets it on mount.
     if (document.documentElement) document.documentElement.dataset.theme = value
   }, theme)

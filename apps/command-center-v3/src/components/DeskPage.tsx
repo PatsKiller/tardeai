@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
+import { writerStateWords } from '../lib/deskWriterState'
 import ReadableTime from './ReadableTime'
 import { cioPageDataFrom, HomeBoardMount, withHomeClocks } from './homeDeskMount'
 
@@ -142,14 +143,29 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
             {source.asOf && <div style={{ fontSize: TYPE.sm, color: 'var(--text-3)' }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
             {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: 'var(--text-2)', marginTop: 6 }}>{source.note}</div>}
             {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: 'var(--warning-color)', fontSize: TYPE.base }}>Writer not identified for this source.</p>}
-            {sourceWriters.map((writer, index) => <div key={source.laneIds![index]} style={{ borderTop: '1px solid var(--border-color)', paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
-              <div style={{ color: writer?.state === 'ACTIVE' ? 'var(--text-2)' : 'var(--warning-color)' }}>Writer {writer?.state ?? (loading ? 'loading' : 'state unavailable')}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
-              <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
-              {writer?.last_success_at && <div style={{ color: 'var(--text-3)', fontSize: TYPE.sm }}>At <ReadableTime value={writer.last_success_at} /></div>}
-              {writer?.evidence_as_of && <div style={{ color: 'var(--text-3)', fontSize: TYPE.sm }}>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
-              {(writer?.reason || !writer) && <div style={{ color: 'var(--warning-color)', marginTop: 4 }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
-            </div>)}
-            {gap && <div role="note" style={{ color: 'var(--warning-color)', borderTop: '1px dashed var(--border-color)', paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
+            {sourceWriters.map((writer, index) => {
+              // FQ-051: the operator needs one fact — is this source still being refreshed, and what it costs if not.
+              // The writer's own state code, its last successful run and the execution-evidence capture are how that is
+              // worked out, not what a person reads: they move one tap away, none of them removed.
+              const st = writer?.state
+              // Every declared state gets its own true sentence: PAUSED and NONE are read successfully, so neither may
+              // be reported as "State unavailable". See lib/deskWriterState.ts and its test.
+              const words = writerStateWords(st, loading)
+              return <div key={source.laneIds![index]} style={{ borderTop: `1px solid var(--border-color)`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>
+                <div data-testid="source-writer-state" style={{ color: st === 'ACTIVE' ? 'var(--text-2)' : 'var(--warning-color)' }}>{words}{sourceWriters.length > 1 ? ` · ${index + 1}` : ''}</div>
+                <details data-testid="source-writer-diagnostics" style={{ marginTop: 4 }}>
+                  <summary style={{ cursor: 'pointer', fontSize: TYPE.sm, color: 'var(--text-3)', minHeight: 44, display: 'flex', alignItems: 'center' }}>Diagnostics</summary>
+                  <div style={{ color: 'var(--text-3)', fontSize: TYPE.sm, display: 'grid', gap: 2 }}>
+                    <div>Writer state: {st ?? (loading ? 'loading' : 'unavailable')}</div>
+                    <div>Last successful run: {writer?.last_success_at ? clock(writer.last_success_at, now).text : 'not measured'}</div>
+                    {writer?.last_success_at && <div>At <ReadableTime value={writer.last_success_at} /></div>}
+                    {writer?.evidence_as_of && <div>Evidence captured: {clock(writer.evidence_as_of, now).text}</div>}
+                    {(writer?.reason || !writer) && <div style={{ color: 'var(--warning-color)' }}>{writer?.reason ?? (loading ? 'Loading execution evidence.' : 'Execution evidence is unavailable for this writer.')}</div>}
+                  </div>
+                </details>
+              </div>
+            })}
+            {gap && <div role="note" style={{ color: 'var(--warning-color)', borderTop: `1px dashed var(--border-color)`, paddingTop: 8, marginTop: 8, fontSize: TYPE.base }}>{gap}</div>}
           </article>
         })}
       </div>
