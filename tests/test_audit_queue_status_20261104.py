@@ -668,3 +668,23 @@ def test_prose_that_merely_says_open_pr_is_not_a_declaration():
     cand = pr(2701, branch="wt/unrelated", body="An open PR that names FQ-104 still moves it to fix_in_review.")
     assert S._disclaimed_rows(cand) == set()
     assert "FQ-104" in S.rows_named_by(cand)
+
+
+@pytest.mark.parametrize("fq,prn,branch,body", [
+    ("FQ-104", 2673, "wt/fq104-per-account-opinions-20261104",
+     "- FQ-104 stays open: this makes the opinions available, it does not yet render them."),
+    ("FQ-114", 2657, "wt/fq114-top-eligibility-20261104",
+     "FQ-114 remains open pending independent and served acceptance."),
+    ("FQ-076", 2606, "wt/fq076-watchlist-reasons",
+     "FQ-076 remains open until served acceptance."),
+])
+def test_each_live_instance_survives_its_pr_merging(fq, prn, branch, body):
+    """The three live rows, end to end and with their real branch names: MERGED at the head that named them.
+
+    Reverting the claim filter must redden all three — before the fix, the branch name claimed the row and
+    `choose_pr` never consulted the disclaimer, so `plan()` delivered it (#2640 B1).
+    """
+    cand = pr(prn, state="MERGED", branch=branch, body=body, merge="f" * 40)
+    rep = S.sync(queue(row(fq, status="fix_in_review", pr=prn)), [cand], now=NOW)
+    assert rep["changed"] == 0, (fq, rep["changes"])
+    assert rep["queue"]["items"][0]["status"] == "fix_in_review"
