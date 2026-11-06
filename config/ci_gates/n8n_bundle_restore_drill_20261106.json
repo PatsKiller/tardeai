@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_bundle_restore_drill_20261106",
+  "files": [
+    "tests/test_n8n_bundle_restore_drill_20261106.py"
+  ],
+  "anchor": "N8N_BUNDLE_RESTORE_DRILL_20261106",
+  "comment": [
+    "ANCHOR: N8N_BUNDLE_RESTORE_DRILL_20261106 - n8n program 0.2c: the bundle restore drill fails on a tampered member, a volume without the encryption-key config, a wrong workflow count, an undecryptable credential or a leaked drill database, and writes its receipt on failure."
+  ]
+}
