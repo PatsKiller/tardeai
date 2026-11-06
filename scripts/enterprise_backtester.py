@@ -124,7 +124,8 @@ def get_proposals_from_db(exclude_scalps=True) -> List[Dict]:
     if exclude_scalps:
         exclude = "AND strategy_id NOT IN ('momentum_scalp','gap_and_go','social_scalp')"
 
-    cur.execute(f"""SELECT id, symbol, strategy_id, proposed_entry, proposed_stop,
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- exclude is "" or a fixed literal clause
+        f"""SELECT id, symbol, strategy_id, proposed_entry, proposed_stop,
         proposed_target1, proposed_shares, proposed_rr, status, created_at
         FROM paper_trade_proposals
         WHERE proposed_entry > 0 AND proposed_stop > 0 AND proposed_target1 > 0

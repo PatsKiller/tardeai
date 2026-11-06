@@ -378,7 +378,8 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
     flag; ``reconcile_directive_watch_flag`` does, with a backup."""
     cur = conn.cursor()
     creators = list(OPERATOR_DIRECTIVE_CREATORS)
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the module constant _OPERATOR_DIRECTIVE_SQL is interpolated
+        f"""
         UPDATE watchlist_items SET
             origin_system = COALESCE(origin_system, %s),
             origin_detail = %s::jsonb,
@@ -413,7 +414,8 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
           directive_id, creators, directive_id, creators,
           source_tier, provenance_reason, symbol))
     if cur.rowcount == 0:
-        cur.execute(f"""
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- only module constant _OPERATOR_DIRECTIVE_SQL
+            f"""
             INSERT INTO watchlist_items
                 (symbol, source, status, origin_system, origin_detail, directive_id,
                  in_directive_watch, source_tier, first_seen_at, last_validated_at,
@@ -471,7 +473,8 @@ def plan_directive_watch_flag_reconcile(cur, *, sample=20):
     watch_universe.directive_symbols() returns (flag true, status <> 'removed', symbol not null).
     """
     p = {"creators": list(OPERATOR_DIRECTIVE_CREATORS)}
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the module constant FLAG_KEEP_SQL is interpolated
+        f"""
         SELECT count(*) AS rows,
                count(DISTINCT wi.symbol) FILTER (WHERE wi.status <> 'removed' AND wi.symbol IS NOT NULL) AS symbols,
                count(*) FILTER (WHERE {FLAG_KEEP_SQL}) AS keep_rows,
@@ -481,7 +484,8 @@ def plan_directive_watch_flag_reconcile(cur, *, sample=20):
          WHERE wi.in_directive_watch = true
     """, p)
     c = _rowdict(cur, cur.fetchone() or (0, 0, 0, 0))
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the module constant FLAG_KEEP_SQL is interpolated
+        f"""
         SELECT wi.id, wi.symbol, wi.status, wi.source, wi.directive_id,
                wd.created_by AS directive_created_by, wd.status AS directive_status, wd.kind AS directive_kind
           FROM watchlist_items wi
@@ -538,7 +542,8 @@ def apply_directive_watch_flag_reconcile(conn, plan, *, backup_path, max_clear=N
         return {"cleared": 0, "attempted": 0, "backup": None}
     backup = _write_flag_backup(backup_path, rows, reason=reason)
     cur = conn.cursor()
-    cur.execute(f"""
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only the module constant FLAG_KEEP_SQL is interpolated
+        f"""
         UPDATE watchlist_items wi SET in_directive_watch = false, updated_at = NOW()
          WHERE wi.id = ANY(%(ids)s) AND wi.in_directive_watch = true AND NOT {FLAG_KEEP_SQL}
     """, {"ids": [r["id"] for r in rows], "creators": list(OPERATOR_DIRECTIVE_CREATORS)})

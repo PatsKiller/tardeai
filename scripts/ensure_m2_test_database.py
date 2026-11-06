@@ -63,7 +63,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.dry_run:
                 print(f"ensure_m2_test_database: DRY-RUN would CREATE DATABASE {name}")
                 return 0
-            cur.execute(f'CREATE DATABASE "{name}"')  # name matched TEST_DATABASE_RE above
+            # name fullmatched TEST_DATABASE_RE (^m2_shadow_test(_[a-z0-9_]{1,40})?$) above; refused otherwise
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- name passed the TEST_DATABASE_RE check above
+                f'CREATE DATABASE "{name}"')
             print(f"ensure_m2_test_database: created {name}")
             return 0
     finally:

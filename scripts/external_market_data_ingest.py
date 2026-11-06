@@ -923,7 +923,7 @@ def test():
     conn = _get_conn()
     cur = conn.cursor()
     for t in ["market_quotes", "fundamental_data", "fred_economic_series"]:
-        cur.execute(f"SELECT count(*) FROM {t}")
+        cur.execute(f"SELECT count(*) FROM {t}")  # nosemgrep: tq-py-sql-fstring -- t from the literal 3-table list
         print(f"  {t}: {cur.fetchone()[0]} rows")
     conn.close()
 

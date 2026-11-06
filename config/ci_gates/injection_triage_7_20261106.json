@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "injection_triage_7_20261106",
+  "files": [
+    "tests/test_injection_triage_7_20261106.py"
+  ],
+  "anchor": "INJECTION_TRIAGE_7_20261106",
+  "comment": [
+    "ANCHOR: INJECTION_TRIAGE_7_20261106 — SQL injection triage, batch 7 (tq-py-sql-fstring, operator-approved security",
+    "item 2026-11-06). Every flagged line interpolates only module constants, %s placeholders or an identifier checked",
+    "against a fixed regex; finviz_screener_runner now refuses a savepoint name that does not fullmatch _SAVEPOINT_RE",
+    "before it reaches SQL. Hermetic: a recording fake cursor, no database."
+  ]
+}
