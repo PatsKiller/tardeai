@@ -11,6 +11,21 @@ import threading
 from pathlib import Path
 from typing import Any, Iterator
 
+try:
+    from . import jsonl_tail
+except ImportError:  # pragma: no cover - flat import layout
+    import jsonl_tail  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
+
+try:
+    from . import ops_notify_owner
+except ImportError:  # pragma: no cover - flat import layout
+    import ops_notify_owner  # type: ignore[no-redef] -- flat import layout (served scripts/ path), the package import is tried first
+
+# The wake consumer is an already-authorised notification owner: register it so a store-damage
+# diagnostic from jsonl_tail reaches the operator. The planner never imports this module, so the
+# sender stays out of the advisory lane's reach (AGENTS.md §23.20).
+ops_notify_owner.install()
+
 
 class JsonlStore:
     def __init__(self, root: Path | str):
@@ -28,16 +43,27 @@ class JsonlStore:
     def path(self, name: str) -> Path:
         return self.root / f"{name}.jsonl"
 
+    def _rows(self, p: Path, *, repair: bool = False) -> list[dict]:
+        """Parse the store. A half-written FINAL record (disk full mid-write) is skipped with a warning and one
+        P1 alert per file per day; with ``repair`` (writers, under the store lock) its bytes are archived beside
+        the store first so the next append starts on a clean line. Any other bad line still raises."""
+        raw = p.read_bytes()
+        tail = jsonl_tail.truncated_tail(raw)
+        if tail is not None:
+            if repair:
+                jsonl_tail.quarantine_tail(p, *tail)
+                jsonl_tail.report(p, len(tail[1]), action="archived beside the store by the next write")
+            else:
+                jsonl_tail.report(p, len(tail[1]), action="skipped by readers until the next write archives it")
+            raw = raw[: tail[0]]
+        return [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
+
     def append_unique(self, name: str, key_field: str, record: dict) -> tuple[bool, dict]:
         """Append if key absent. Returns (inserted, existing_or_new)."""
         with self._lock(name):
             p = self.path(name)
-            existing = None
             if p.exists():
-                for line in p.read_text().splitlines():
-                    if not line.strip():
-                        continue
-                    row = json.loads(line)
+                for row in self._rows(p, repair=True):
                     if row.get(key_field) == record.get(key_field):
                         return False, row
             with p.open("a") as fh:
@@ -53,10 +79,7 @@ class JsonlStore:
             rows: list[dict] = []
             found = False
             if p.exists():
-                for line in p.read_text().splitlines():
-                    if not line.strip():
-                        continue
-                    row = json.loads(line)
+                for row in self._rows(p, repair=True):
                     if row.get(key_field) == record.get(key_field):
                         found = True
                         if preserve_terminal and row.get("lifecycle_state") in terminal_states:
@@ -97,10 +120,7 @@ class JsonlStore:
         p = self.path(name)
         if not p.exists():
             return None
-        for line in p.read_text().splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
+        for row in self._rows(p):
             if row.get(key_field) == key:
                 return row
         return None
@@ -109,9 +129,7 @@ class JsonlStore:
         p = self.path(name)
         if not p.exists():
             return
-        for line in p.read_text().splitlines():
-            if line.strip():
-                yield json.loads(line)
+        yield from self._rows(p)
 
     def count(self, name: str) -> int:
         return sum(1 for _ in self.iter(name))
