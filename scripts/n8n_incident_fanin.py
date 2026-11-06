@@ -462,7 +462,7 @@ def collect(root: Path, now: datetime, prev: dict[str, Any] | None = None) -> li
 
         _pq, NOTES["poison_quarantine_source"] = _poison_findings(root, now=now)
         out.extend(_pq)
-    except Exception as exc:  # noqa: BLE001 - a broken source is a note on the receipt, not a crash
+    except Exception as exc:  # noqa: BLE001 -- a broken source is a note on the receipt, not a crash
         NOTES["poison_quarantine_source"] = f"unavailable:{type(exc).__name__}"
     doc = _load(root / "backups" / "n8n" / "n8n_lab_backup_last.json")
     if doc:

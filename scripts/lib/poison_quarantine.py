@@ -147,7 +147,7 @@ def held_findings(
         rel = f"{cfg['store_dir_rel']}/{p.name}"
         try:
             doc = read_store(p)
-        except Exception as exc:  # noqa: BLE001 - PoisonStoreCorrupt and anything else: this file only
+        except Exception as exc:  # noqa: BLE001 -- PoisonStoreCorrupt and anything else: this file only
             broken += 1
             out.append(_broken(f"{p.stem}:store_corrupt", rel, f"poison quarantine store unreadable: {exc}"))
             continue
