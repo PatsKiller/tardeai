@@ -69,3 +69,31 @@
 
 - 2026-11-01 APPROVED v006. The operator, verbatim: "I approve version 6." Recorded from the message under AGENTS.md §20
   (as for v002, v004 and v005). Build follows in a PR stacked on this one, citing `Design: home/v006`.
+
+- 2026-11-02 APPROVED v007 (builds on v006; same card). The operator, verbatim: "why don't you create the design? I approve the design. And you leave the design and markup for Codex. I like your markups better." Approved mockup (private store, never committed): `v007/mockups/HomeV007MarketRisk.html` sha256 afca9e47…, review link <https://claude.ai/artifact/4dG8NHVfxscDxR36q3L2cQ>. The operator asked for it — "look at everything else on the
+  card that could be enhanced. Give the design to Codex to distribute out to agents and sub-agents. Also implement
+  tooling tips where appropriate and make sure this is all mobile responsive." — after asking on the same card for
+  "the current price points" and "the current catalyst".
+  - **Mixed clocks made visible:** each section states its own as-of and source; a section older than its cadence is
+    amber with its age, and never shows "now".
+  - **Header context:** today's score trend (real points only), the delta and which categories moved, one plain-English
+    "what this means for you" line, an Acknowledge tooltip that says exactly what it silences, and the next evaluation
+    time.
+  - **Every row gets a clock and a price:** current price + day change with its session label, plain-word stop status,
+    distance to the stop in % and $, and why the row is listed. The account-% denominator is named (it appears twice on
+    Home with different bases today).
+  - **Hedge progress** bars toward each trigger, with the missing input named instead of a bar when the denominator is
+    absent.
+  - **Rotate + sectors:** what you hold in each group, trend arrow, tap-to-see held members, "not a buy list" as a
+    tooltip.
+  - **Since you were stopped out:** the "now = Friday's close" bug is fixed first and separately; the rows add price +
+    session + time, since-exit $/%, distance to invalidation and Stage-2 triggers, guarded headlines, CIO stance with
+    age, volume vs 20-day, and a since-exit sparkline marking the exit and the invalidation level.
+  - **Stressed groups / budget breaches / multi-segment issuer:** day change and stop distance; a plain-English line
+    per breach plus what clears it and an "intentional until <date>" operator record; citations behind the (i).
+  - **Score breakdown:** all nine categories with OK / WARN / STRESS / not measured and their as-of, plain-English
+    notes for odd-but-correct readings, and "De-escalates if" rewritten as live progress in words.
+  - **Phone:** collapsible sections with a one-line collapsed summary, sticky section headers, stacked tables under
+    600 px, 44 px targets, no horizontal page scroll at 412 or 390.
+
+  No size, order or stop level anywhere. Build order: the stopped-out "now" bug first, then the data fields, then the UI per the approved mockup, then tests and phone screenshots at 412/390.
