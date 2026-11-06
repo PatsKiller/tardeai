@@ -33,7 +33,9 @@ def list_sources(conn):
     cur = conn.cursor()
     for name, cfg in SOURCES.items():
         try:
-            cur.execute(f"SELECT COUNT(*), COUNT(DISTINCT {cfg['symbol_col']}), MIN({cfg['date_col']}), MAX({cfg['date_col']}) FROM {cfg['table']}")
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- cfg comes from the module constant SOURCES
+                f"SELECT COUNT(*), COUNT(DISTINCT {cfg['symbol_col']}), MIN({cfg['date_col']}), "
+                f"MAX({cfg['date_col']}) FROM {cfg['table']}")
             row = cur.fetchone()
             results.append({"source": name, "table": cfg["table"], "rows": row[0],
                            "symbols": row[1], "start": str(row[2]), "end": str(row[3])})
@@ -47,10 +49,13 @@ def build_dataset(conn, source_name, dry_run=True):
         return {"error": f"Unknown source: {source_name}"}
     cfg = SOURCES[source_name]
     cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*), COUNT(DISTINCT {cfg['symbol_col']}), MIN({cfg['date_col']}), MAX({cfg['date_col']}) FROM {cfg['table']}")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- cfg = SOURCES[source_name], checked against SOURCES above
+        f"SELECT COUNT(*), COUNT(DISTINCT {cfg['symbol_col']}), MIN({cfg['date_col']}), "
+        f"MAX({cfg['date_col']}) FROM {cfg['table']}")
     row = cur.fetchone()
     symbols = []
-    cur.execute(f"SELECT DISTINCT {cfg['symbol_col']} FROM {cfg['table']} WHERE {cfg['symbol_col']} IS NOT NULL ORDER BY 1")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- cfg = SOURCES[source_name], checked against SOURCES above
+        f"SELECT DISTINCT {cfg['symbol_col']} FROM {cfg['table']} WHERE {cfg['symbol_col']} IS NOT NULL ORDER BY 1")
     symbols = [r[0] for r in cur.fetchall()]
 
     dataset = {

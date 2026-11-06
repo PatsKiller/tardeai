@@ -129,13 +129,16 @@ def _db():
 
 def add_columns(cur, table: str, *, apply: bool) -> list[str]:
     """Idempotent. Returns the columns that were (or would be) added."""
+    if table not in TARGETS:
+        raise ValueError(f"unknown table {table!r}: not in TARGETS")
     cur.execute(
         "SELECT column_name FROM information_schema.columns WHERE table_name=%s", (table,))
     have = {r[0] for r in cur.fetchall()}
     missing = [(c, t) for c, t in IDENTITY_COLUMNS if c not in have]
     for col, typ in missing:
         if apply:
-            cur.execute(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "{col}" {typ}')
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked in TARGETS; col/typ from IDENTITY_COLUMNS
+                f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "{col}" {typ}')
     return [c for c, _ in missing]
 
 

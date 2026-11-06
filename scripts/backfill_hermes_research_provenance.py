@@ -44,6 +44,17 @@ EXTRA_EXTERNAL_TIER = {"manual_test": "T1"}
 
 TTL_HOURS = {"T0": 12, "T1": 12, "T2": 24, "T3": 72, "T4": 0, "UNMAPPED": 24}
 
+#: The only (table, source_expr, lane_expr) triples this script interpolates into SQL. Identifiers and
+#: expressions cannot be driver parameters, so every function checks its arguments against this first.
+EXTERNAL_TARGET = ("hermes_external_research", "split_part(COALESCE(trigger_reason,'manual'),':',1)", "lane")
+INTEL_TARGET = ("hermes_research_intelligence", "COALESCE(research_type,'manual')", "model_used")
+ALLOWED_TARGETS = frozenset({EXTERNAL_TARGET, INTEL_TARGET})
+
+
+def _check_target(table, source_expr, lane_expr=None):
+    if not any(t[0] == table and t[1] == source_expr and lane_expr in (None, t[2]) for t in ALLOWED_TARGETS):
+        raise ValueError(f"table/expression not in ALLOWED_TARGETS: {table!r}")
+
 
 def _load_external_map():
     import yaml
@@ -61,8 +72,10 @@ def _conn():
 
 def _tier_buckets(conn, table, source_expr, tier_map, fallback_intel=False):
     """Return {tier: [source values]} for distinct sources in `table` with NULL budget_tier."""
+    _check_target(table, source_expr)
     cur = conn.cursor()
-    cur.execute(f"SELECT DISTINCT {source_expr} src FROM {table} WHERE budget_tier IS NULL")
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- table/source_expr checked against ALLOWED_TARGETS above
+        f"SELECT DISTINCT {source_expr} src FROM {table} WHERE budget_tier IS NULL")
     buckets = {}
     for (src,) in cur.fetchall():
         s = src or "manual"
@@ -72,20 +85,21 @@ def _tier_buckets(conn, table, source_expr, tier_map, fallback_intel=False):
 
 
 def backfill(conn, table, source_expr, lane_expr, tier_map, fallback_intel=False, apply=True):
+    _check_target(table, source_expr, lane_expr)
     cur = conn.cursor()
     report = {"table": table, "by_tier": {}, "rows_updated": 0}
     buckets = _tier_buckets(conn, table, source_expr, tier_map, fallback_intel)
     for tier, sources in buckets.items():
         ttl = TTL_HOURS.get(tier, 24)
         # count first (for dry-run + report)
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- table/source_expr checked against ALLOWED_TARGETS above
             f"SELECT COUNT(*) FROM {table} WHERE budget_tier IS NULL AND {source_expr} = ANY(%s)",
             (sources,))
         n = cur.fetchone()[0]
         report["by_tier"][tier] = {"rows": n, "distinct_sources": len(sources)}
         if not apply or n == 0:
             continue
-        cur.execute(
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- table/source/lane exprs checked against ALLOWED_TARGETS
             f"""UPDATE {table}
                    SET trigger_source = {source_expr},
                        budget_tier = %s,
@@ -109,12 +123,8 @@ def main():
     ext_map = _load_external_map()
 
     out = {"applied": not a.dry_run, "tables": []}
-    out["tables"].append(backfill(
-        conn, "hermes_external_research",
-        "split_part(COALESCE(trigger_reason,'manual'),':',1)", "lane", ext_map, apply=not a.dry_run))
-    out["tables"].append(backfill(
-        conn, "hermes_research_intelligence",
-        "COALESCE(research_type,'manual')", "model_used", INTEL_TIER, fallback_intel=True, apply=not a.dry_run))
+    out["tables"].append(backfill(conn, *EXTERNAL_TARGET, ext_map, apply=not a.dry_run))
+    out["tables"].append(backfill(conn, *INTEL_TARGET, INTEL_TIER, fallback_intel=True, apply=not a.dry_run))
 
     # Retrospective what-if: T3 -> would be METADATA_ONLY, T4 -> would be BLOCK under current policy.
     whatif = {"metadata_only_T3": 0, "blocked_T4": 0, "allowed_T0_T2": 0, "unmapped": 0}

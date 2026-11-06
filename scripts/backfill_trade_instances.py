@@ -69,7 +69,8 @@ def main():
         c.commit()
         # link consumers by exact paper_trade_id
         for tbl, col in PAPER_LINKS:
-            cur.execute(f"""UPDATE {tbl} t SET trade_instance_id = ti.id FROM trade_instances ti
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- tbl/col from the module constant PAPER_LINKS
+                f"""UPDATE {tbl} t SET trade_instance_id = ti.id FROM trade_instances ti
                 WHERE ti.source_table='paper_trades' AND ti.source_trade_id = t.{col}::text
                   AND t.{col} IS NOT NULL AND t.trade_instance_id IS NULL""")
         # hermes via related_trade_id (paper_trades.id)

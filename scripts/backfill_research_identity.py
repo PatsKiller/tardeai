@@ -98,6 +98,8 @@ def preflight(cur, table: str) -> list[str]:
 def run(table: str, limit: int, apply: bool) -> dict:
     from lib import research_identity as RI
 
+    if table not in TABLES:
+        raise ValueError(f"unknown table {table!r}: not in TABLES")
     doc = RI.load_registry()
     conn = _conn()
     cur = conn.cursor()
@@ -109,7 +111,8 @@ def run(table: str, limit: int, apply: bool) -> dict:
                 "skipped_no_downgrade": 0, "written": 0}
     sectors = _sector_map(cur)
 
-    cur.execute(f"""SELECT id, symbol, identity_status
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked against the fixed TABLES tuple above
+        f"""SELECT id, symbol, identity_status
                       FROM {table}
                      WHERE symbol IS NOT NULL
                        AND (subject_guid IS NULL OR gics_sector IS NULL)
@@ -147,7 +150,8 @@ def run(table: str, limit: int, apply: bool) -> dict:
             if gics:
                 sets.append("gics_sector=%s"); vals.append(gics)
             vals.append(rid)
-            cur.execute(f"UPDATE {table} SET {', '.join(sets)} WHERE id=%s", vals)
+            cur.execute(  # nosemgrep: tq-py-sql-fstring -- table checked against TABLES; sets are literal fragments
+                f"UPDATE {table} SET {', '.join(sets)} WHERE id=%s", vals)
             stat["written"] += 1
             if stat["written"] % 500 == 0:
                 conn.commit()
