@@ -275,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         state = {}
     now = time.time()
     out, plan = [], []
+    would_type: list[tuple[str, str]] = []
     sessions, discovery_ok = list_sessions(cfg)
     wanted = 0
     failed = 0
@@ -304,6 +305,10 @@ def main(argv: list[str] | None = None) -> int:
         elif not a.apply:
             wanted += 1
             plan.append(ledger_line(s, detail, cfg))          # shown as "would:" — nothing is typed or written
+            # CX1 (codex-cloud 2026-11-05): the ledger detail names only the row id and page; the ACCEPTANCE text
+            # exists only inside the message. AGENTS.md §6 requires a dry run to report the message it would send,
+            # and a preview that does not vary with the acceptance cannot be reviewed before permitting keystrokes.
+            would_type.append((s, {"NUDGE": nudge_text, "RESUME": RESUME, "ENTER": "<Enter>"}.get(action, "")))
         elif action == "RESUME":
             if send(s, RESUME, run=subprocess.run):
                 rec["nudged_at"] = now
@@ -338,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
     if not a.apply:
         for ln in plan:
             print("would: " + ln)
+        for session, message in would_type:
+            print(f"would type to {session}: {message}")
     # LaneOutput@v1 (scripts/lib/lane_output.py): ONE bounded line on stderr in every mode, so the executor can bind a
     # run to what it produced and the contract's expected_output rule has something executable to read. A dry run
     # reports what it WOULD have typed; `nothing_due` is the honest empty reason when no session needed a nudge.
