@@ -276,36 +276,44 @@ def collect(
         except Exception as exc:  # noqa: BLE001 — never use a different snapshot's volume
             failed("market_quotes_exact_observation_fields", exc)
         try:
+            from scripts.lib.data_broker.catalyst_record import get_news_bulk
             from scripts.news_symbol_guard import headline_matches_symbol
 
-            rows = read_rows(
-                "SELECT upper(symbol) AS symbol, title, summary, source, source_url, published_at "
-                "FROM news_articles WHERE upper(symbol) = ANY(%s) AND published_at >= %s "
-                "AND published_at <= %s AND COALESCE(is_duplicate, false) = false "
-                "ORDER BY published_at DESC LIMIT 400",
-                [symbols, now - timedelta(hours=72), now],
+            # Headlines are read through the registered catalyst_news projection (data_broker.catalyst_record),
+            # never a second news_articles query: that projection owns the canonical not_news_sql() exclusions
+            # (quote/forecast/option-listing pages) and normalized-title de-duplication. The window is passed
+            # explicitly so the fact is bounded and clocked by the articles, not by the database's now().
+            window_start = now - timedelta(hours=72)
+            articles = get_news_bulk(
+                lambda sql, params=None: read_rows(sql, params or []),
+                symbols,
+                since=window_start,
+                until=now,
+                per_symbol=8,
             )
             news = {symbol: {"rows": [], "as_of": None} for symbol in symbols}
-            for row in rows:
-                symbol = str(row.get("symbol") or "").upper()
-                at = stamp(row.get("published_at"))
-                if symbol not in news or at is None or not now - timedelta(hours=72) <= at <= now:
-                    continue
-                guarded, _ = headline_matches_symbol(symbol, row.get("title") or "", row.get("summary") or "")
-                if guarded and len(news[symbol]["rows"]) < 2:
-                    if news[symbol]["as_of"] is None:
-                        # The fact is clocked by the newest headline it actually carries. Query time is
-                        # not an observation of the articles and must never reset their age to zero.
-                        news[symbol]["as_of"] = iso(at)
-                    news[symbol]["rows"].append(
-                        {
-                            "title": row.get("title"),
-                            "source": row.get("source"),
-                            "url": row.get("source_url"),
-                            "published_at": iso(at),
-                            "guarded": True,
-                        }
+            for symbol in symbols:
+                for article in articles.get(symbol) or []:
+                    at = stamp(article.get("published_at"))
+                    if at is None or not window_start <= at <= now:
+                        continue
+                    guarded, _ = headline_matches_symbol(
+                        symbol, article.get("title") or "", article.get("summary") or ""
                     )
+                    if guarded and len(news[symbol]["rows"]) < 2:
+                        if news[symbol]["as_of"] is None:
+                            # The fact is clocked by the newest headline it actually carries. Query time is
+                            # not an observation of the articles and must never reset their age to zero.
+                            news[symbol]["as_of"] = iso(at)
+                        news[symbol]["rows"].append(
+                            {
+                                "title": article.get("title"),
+                                "source": article.get("source"),
+                                "url": article.get("url"),
+                                "published_at": iso(at),
+                                "guarded": True,
+                            }
+                        )
         except Exception as exc:  # noqa: BLE001 — missing guard is fail closed
             news = {}
             failed("guarded_symbol_headlines", exc)
@@ -572,7 +580,11 @@ def build(
         canonical_cio = (cio_stances or {}).get(symbol)
         canonical_cio = canonical_cio if isinstance(canonical_cio, dict) else {}
         cio_source = "cio_prospect:" + str((canonical_cio.get("source") or {}).get("kind") or "unavailable")
-        cio_clock = canonical_cio.get("inputs_as_of") or canonical_cio.get("as_of")
+        # The material-input clock is the evidence clock. The record's own assembly `as_of` is NOT a
+        # substitute: cio_truth.stance_for() returns inputs_as_of=None with an explicit input_time_gap when
+        # the oldest material input has no usable time. Falling back to the assembly clock would publish a
+        # stance and a conviction as measured (age zero, or the record's age) when their age is unknown.
+        cio_clock = canonical_cio.get("inputs_as_of")
         cio_value = {
             key: canonical_cio.get(key)
             for key in ("stance", "conviction", "stale", "identity_status", "as_of", "inputs_as_of")
@@ -580,6 +592,11 @@ def build(
         cio_reason = (canonical_cio.get("gap") or {}).get("reason")
         if canonical_cio.get("identity_status") != "CONFIRMED":
             cio_reason = "Canonical CIO identity is unresolved; no ticker-based stance substitution"
+        elif cio_clock is None or canonical_cio.get("input_time_gap"):
+            cio_reason = (
+                (canonical_cio.get("input_time_gap") or {}).get("reason")
+                or "Material input clock is unavailable; the record assembly time is not an observation of this stance"
+            )
         news = (headlines or {}).get(symbol)
         event = (events or {}).get(symbol)
         per_symbol[symbol] = {
