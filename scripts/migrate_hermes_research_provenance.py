@@ -61,6 +61,7 @@ def main():
                 report["would_add"].append(f"{table}.{name} {typ}")
                 continue
             cur = conn.cursor()
+            # nosemgrep: tq-py-sql-fstring -- table, column and type all come from the module constant COLUMNS
             cur.execute(f'ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "{name}" {typ}')
             conn.commit()
             report["applied"].append(f"{table}.{name} {typ}")

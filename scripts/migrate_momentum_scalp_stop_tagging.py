@@ -50,7 +50,9 @@ def main():
     try:
         cur.execute("SET lock_timeout='5s'")
         for c, (typ, comment) in todo.items():
+            # nosemgrep: tq-py-sql-fstring -- column name and type come from the module constant NEW_COLUMNS
             cur.execute(f"ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS {c} {typ}")
+            # nosemgrep: tq-py-sql-fstring -- column name from NEW_COLUMNS; the comment text is a parameter
             cur.execute(f"COMMENT ON COLUMN paper_trades.{c} IS %s", (comment,))
         conn.commit()
         print(f"\nAPPLIED — added {len(todo)} columns: {', '.join(todo)}")
