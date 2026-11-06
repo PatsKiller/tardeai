@@ -7469,6 +7469,11 @@ def _ops_audit():
 
 def ops_summary():
     fresh = _load_json(STATE_DIR / "_freshness.json") or {}
+    # The manifest proves a producer ran; it does not prove the store it describes
+    # is healthy. A 0-byte holdings.json must never render FRESH from cached metadata.
+    from lib.authoritative_store_guard import effective_status as _effective_status, guard as _holdings_guard
+
+    _store_guard = _holdings_guard(STATE_DIR)
     health_rows = (
         _db_query(
             """
@@ -7484,7 +7489,8 @@ def ops_summary():
 
     return {
         "pipeline": {
-            "status": fresh.get("status", "unknown"),
+            "status": _effective_status(fresh.get("status", "unknown"), _store_guard),
+            "authoritative_store": _store_guard,
             "completed_at": fresh.get("completed_at", ""),
             "duration_seconds": fresh.get("pipeline_duration_seconds", 0),
             "steps": fresh.get("steps_completed", 0),
@@ -30890,6 +30896,10 @@ def _home_do_now(query=None):
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
         # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
         "held": _home_held,
+        # FQ-097 (operator 2026-11-04): the CIO's own verdict per (symbol, account) — the same capital plan the
+        # CIO desk renders. Do-now stop items print it and add none of their own. Side-effect free: the read-only
+        # probe never records decisions from a GET (codex-cloud at 8802d4da9).
+        "cio": _cio_capital_plan_probe,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
@@ -36713,12 +36723,28 @@ def _cio_capital_plan(query=None):
     return _cio_capital_plan_build(query)
 
 
-def _cio_capital_plan_build(query=None):
+def _cio_capital_plan_probe():
+    """Side-effect-free capital-plan read for Home's Do-now queue.
+
+    The Do-now queue only DISPLAYS the plan. Its GET must never append to the
+    authoritative decision journal: a GET that writes durable state is forbidden
+    (AGENTS.md §28.9), and §28.11 forbids new side-effecting GET exceptions
+    (codex-cloud at 8802d4da9). Build the same plan with recording disabled — a
+    read-only projection never calls the recording handler.
+    """
+    return _request_memoized("cio_capital_plan_readonly", lambda: _cio_capital_plan_build(record=False))
+
+
+def _cio_capital_plan_build(query=None, *, record=True):
     """GET /api/v2/cio/capital-plan — Alex's Capital Plan + Position Decision table.
 
     READ_ONLY_ADVISORY. Deterministic sources-and-uses arithmetic composed from
     canonical state (holdings.json + redeploy capital book + opportunity queue +
     sector opportunities + thesis risk posture). Never promotes or executes.
+
+    ``record=False`` skips appending unseen position decisions to the
+    authoritative decision journal, for read-only consumers such as the Home
+    Do-now queue.
     """
     try:
         from scripts.lib.cio_capital_plan import build_capital_plan_from_sources
@@ -36745,12 +36771,13 @@ def _cio_capital_plan_build(query=None):
             risk_posture=posture,
             investment_policy=_ratified_investment_policy(),
         )
-        try:
-            from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
+        if record:
+            try:
+                from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
 
-            record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
-        except Exception:
-            pass
+                record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
+            except Exception:
+                pass
         return {"ok": True, **plan}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}
@@ -36786,6 +36813,10 @@ def _capital_plan_compact():
                 {
                     "symbol": d.get("symbol"),
                     "stance": d.get("cio_stance"),
+                    # FQ-098 (cc-deepseek-9 F2 at b1b38341): the stance's own generation time travels WITH the stance, so
+                    # a board can say how old the call is. Without it every rendered stance read "no evidence date —
+                    # treat as unverified", a false claim in the opposite direction. Never a page-build clock.
+                    "stance_as_of": d.get("decision_generated_at") or d.get("as_of") or d.get("generated_at"),
                     "recommended_delta_usd": d.get("recommended_delta_usd"),
                     "tax_account_constraint": d.get("tax_account_constraint"),
                     "actionable": d.get("actionable"),

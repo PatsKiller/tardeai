@@ -11,6 +11,8 @@ Top risks, Platform). It is a READ projection over sources that already exist; i
   desk_truth    needs_action.probe_desk_truth (lane receipts, files)     no WORKING stop findings (held-exit-coverage)
   proposals     paper_trade_proposals COUNT (read-only, this module)     pending paper proposals
   deploy        api_v2._deploy_events (open post-sale redeploys)         redeploy decisions
+  cio           api_v2._cio_capital_plan (position_decisions)             the CIO's verdict per (symbol, account):
+                                                                          the only course of action a stop item shows
 
 Each item: ``{id, category: protect|decide|fix, severity: P0..P3, title, why, action: {label, where}, money_at_risk_usd,
 money_basis, sources[], since, evidence}``. ``id`` is the dedupe key: the same fact from two sources (a symbol with no
@@ -72,6 +74,7 @@ STALE_AFTER_S = {
     "proposals": 300,
     "deploy": 3600,
     "held": 259200,  # positions_store reader batch #3: the held reader carries its own stale verdict (used below)
+    "cio": 900,  # the CIO capital plan: its own as_of is when the plan was computed
 }
 
 # Inbox SQL row limits (api_v2._inbox): a count equal to its limit is a floor, never a total.
@@ -258,9 +261,115 @@ def held_filter(held: Any) -> tuple[Optional[set[str]], str, Optional[str]]:
     return None, f"the holdings file via data_broker.risk_snapshot (fallback: {reason})", reason
 
 
-def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any = None) -> tuple[list[dict], dict]:
+def cio_verdict_index(payload: Any) -> dict[tuple[str, Optional[str]], dict[str, Any]]:
+    """The CIO's own verdict per (symbol, account) from its capital plan.
+
+    FQ-097 (operator 2026-11-04): a Do-now stop item must render the CIO verdict for that (symbol, account) and
+    introduce none of its own. This reads the same `position_decisions` the CIO desk renders — no second opinion is
+    computed here. Raises SourceUnavailable rather than returning an empty map, so "no verdict on record" and
+    "the plan could not be read" can never be confused.
+    """
+    p = _unwrap(payload)
+    rows = p.get("position_decisions") if isinstance(p, dict) else None
+    if not isinstance(rows, list):
+        raise SourceUnavailable("CIO capital plan has no position_decisions list")
+    out: dict[str, dict[Any, dict[str, Any]]] = {"by_account": {}, "aggregate": {}}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        sym = str(r.get("symbol") or "").strip().upper()
+        if not sym:
+            continue
+        verdict = {
+            "stance": r.get("cio_stance") or r.get("action") or r.get("stance"),
+            "why": r.get("why_now"),
+            "funding": r.get("funding"),
+            # The decision's OWN evidence clock. The plan envelope says when the plan was built; using it here stamped
+            # a decision made in 2029 as if it were made now (cx-openai-2, P1 FAIL 3). No fallback.
+            # F1 (cc-deepseek-5 / claude-lead at 906e746d5): the served plan's row is the AGGREGATED row, and
+            # aggregate_position_decisions keeps the evidence clock as `generated_at` — it does not preserve
+            # `decision_generated_at`. Reading only the pre-aggregation key made as_of None on every real row.
+            "as_of": (r.get("decision_generated_at") or r.get("generated_at") or r.get("decided_at")
+                      or r.get("evidence_as_of") or r.get("decision_as_of") or r.get("as_of")),
+        }
+        accounts = r.get("accounts") if isinstance(r.get("accounts"), list) else []
+        accounts = [a for a in accounts if a] or ([r.get("account")] if r.get("account") else [])
+        if len(accounts) == 1:
+            # Only an explicitly single-account decision is that account's verdict.
+            out["by_account"][(sym, str(accounts[0]))] = verdict
+        else:
+            # A decision covering several accounts, or none, is an aggregate: it is NOT any one account's verdict, and
+            # copying its stance onto each account is the cross-account bleed the operator ruled out (FAIL 2).
+            out["aggregate"].setdefault(sym, {**verdict, "accounts": list(accounts)})
+            # F1 (cx-openai-3 at 3d118f247): the real producer's aggregated row carries every account's OWN opinion
+            # in `per_account` (aggregate_position_decisions, FQ-104). Consume those opinions as each account's
+            # verdict — never the aggregate's stance. The producer's per-account opinion carries no decision clock
+            # of its own (the aggregate row keeps the only one), so its clock stays honest: the opinion's own clock
+            # when it has one, otherwise None ("decision time not recorded"), never the aggregate's or the plan's.
+            per_account = r.get("per_account")
+            if isinstance(per_account, list):
+                for o in per_account:
+                    if not isinstance(o, dict):
+                        continue
+                    acct = o.get("account")
+                    opinion = o.get("cio_stance") or o.get("action") or o.get("stance")
+                    if not acct or not opinion:
+                        continue
+                    out["by_account"].setdefault((sym, str(acct)), {
+                        "stance": opinion,
+                        "why": o.get("why_now"),
+                        "funding": o.get("funding"),
+                        "as_of": (o.get("decision_generated_at") or o.get("generated_at")
+                                  or o.get("decided_at") or o.get("as_of")),
+                    })
+    return out
+
+
+def cio_clause(index: Optional[dict], symbol: str, accounts: Any, as_of: Optional[str] = None) -> str:
+    """One sentence naming the CIO verdict for each account, or saying there is none.
+
+    ``index is None`` means the CIO source could not be read: say that, never a verdict of our own.
+    Only an explicit per-account verdict is ever attributed to an account. A decision that covers several accounts or
+    none is reported as an aggregate and is never presented as this account's verdict.
+    """
+    sym = str(symbol or "").upper()
+    if index is None:
+        return "The CIO verdict for this position could not be read (capital plan unavailable)."
+    by_account = index.get("by_account") or {}
+    aggregate = (index.get("aggregate") or {}).get(sym)
+    accts = [a for a in (accounts or []) if a]
+    if not accts:
+        accts = [None]
+    seen: list[str] = []
+    when = ""
+    for a in accts:
+        v = by_account.get((sym, str(a))) if a else None
+        label = _acct_name(a) if a else "account unknown"
+        if v and v.get("stance"):
+            # Each verdict carries its OWN clock (cx-openai D52 triage on #2612): one account's as_of must never be
+            # stamped across verdicts taken at other times or at no recorded time, which made older or clockless
+            # opinions look current.
+            clock = str(v.get("as_of") or "").strip() or "decision time not recorded"
+            seen.append(f"{label}: {v['stance']} ({clock})")
+        else:
+            seen.append(f"{label}: no per-account CIO verdict on record")
+    text = "CIO verdict — " + "; ".join(seen) + "."
+    covered = {str(a) for a in accts if a and by_account.get((sym, str(a)))}
+    agg_accounts = {str(a) for a in (aggregate.get("accounts") or []) if a} if aggregate else set()
+    # The aggregate is still named whenever it speaks for an account not shown above (including the case where no
+    # per-account verdict was found at all): it is the plan's summary, never any one account's verdict.
+    if aggregate and aggregate.get("stance") and (not covered or (agg_accounts - covered)):
+        agg_when = f" ({aggregate['as_of']})" if aggregate.get("as_of") else " (time not recorded)"
+        text += (f" The plan carries an aggregate {aggregate['stance']}{agg_when}"
+                 " that is not attributable to an account.")
+    return text
+
+
+def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any = None,
+              cio: Any = None) -> tuple[list[dict], dict]:
     """Protect items from the risk snapshot (+ working-stop coverage when measured). Returns (items, numbers).
-    ``held`` is the positions_store reader batch #3 answer (watch_domains.held_positions(surface=HOME_SURFACE))."""
+    ``held`` is the positions_store reader batch #3 answer (watch_domains.held_positions(surface=HOME_SURFACE)).
+    ``cio`` is the verdict index (cio_verdict_index) or None when the capital plan could not be read."""
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("positions"), list):
         raise SourceUnavailable("risk snapshot has no positions list")
     as_of = snapshot.get("computed_at")
@@ -325,7 +434,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                     "protect",
                     "P0",
                     f"{sym} is below its stop",
-                    f"Price is through the stop on record ({accts}). Verify the broker executed it.",
+                    f"Price is through the stop on record ({accts}). "
+                    f"{cio_clause(cio, sym, r['accounts'], as_of)}",
                     f"Review {sym}",
                     f"{R_RISK}?symbol={sym}",
                     "risk",
@@ -342,7 +452,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                     "protect",
                     "P2",
                     f"{sym} stop {r['near']:.1f}% away",
-                    f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}).",
+                    f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}). "
+                    f"{cio_clause(cio, sym, r['accounts'], as_of)}",
                     f"Open {sym}",
                     f"{R_RISK}?symbol={sym}",
                     "risk",
@@ -401,7 +512,8 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                 "protect",
                 "P1",
                 f"{sym} {_usd(v)} has no stop",
-                f"{accts}{share}{day_txt}. Basis: {basis}.",
+                f"{accts}{share}{day_txt}. Basis: {basis}. "
+                f"{cio_clause(cio, sym, r.get('accounts'), as_of if src != 'desk_truth' else cov.get('as_of'))}",
                 f"Review {sym}",
                 f"{R_RISK}?symbol={sym}",
                 src,
@@ -426,7 +538,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
                 "P1",
                 f"{len(no_stop)} position{'s' if len(no_stop) != 1 else ''} with no stop",
                 f"{shown} · {_usd(unprot_value)} in total. Basis: {basis}.",
-                "Set stops",
+                "Open risk",
                 R_RISK,
                 src,
                 money=unprot_value,
@@ -545,7 +657,7 @@ def rule_needs_action(p: Any, now: datetime) -> list[dict]:
     return out
 
 
-def rule_inbox(p: Any, now: datetime) -> list[dict]:
+def rule_inbox(p: Any, now: datetime, cio: Any = None) -> list[dict]:
     p = _unwrap(p)
     if not isinstance(p, dict) or not isinstance(p.get("items"), list):
         raise SourceUnavailable("inbox payload has no items list")
@@ -562,7 +674,8 @@ def rule_inbox(p: Any, now: datetime) -> list[dict]:
                 "protect",
                 "P0",
                 f"{sym} stop alert",
-                f"Stop alert in the last 2 days: {str(latest.get('detail') or '')[:120]}. Verify at the broker.",
+                f"Stop alert in the last 2 days: {str(latest.get('detail') or '')[:120]}. "
+                f"{cio_clause(cio, sym, [latest.get('account')] if latest.get('account') else None, latest.get('at'))}",
                 f"Review {sym}",
                 f"{R_RISK}?symbol={sym}",
                 "inbox",
@@ -779,6 +892,8 @@ def source_meta(name: str, payload: Any, now: datetime, read_at: datetime) -> di
         as_of, basis = p.get("as_of"), "payload.as_of"
     elif name == "risk" and isinstance(p, dict):
         as_of, basis = p.get("computed_at"), "risk_snapshot.computed_at"
+    elif name == "cio" and isinstance(p, dict):
+        as_of, basis = p.get("as_of") or p.get("computed_at"), "capital_plan.as_of"
     elif name == "held" and isinstance(p, dict):
         as_of, basis = p.get("as_of"), f"held.{p.get('source') or 'unavailable'}"
     elif name == "desk_truth" and isinstance(p, dict):
@@ -870,6 +985,49 @@ def build(
             sources["desk_truth"]["coverage"] = {k: coverage.get(k) for k in ("measured", "verdict", "reason")}
         except Exception as exc:  # noqa: BLE001
             sources["desk_truth"].update(status="UNAVAILABLE", error=str(exc)[:200])
+    cio_index: Optional[dict] = None
+    if "cio" in sources and sources["cio"].get("status") == "OK":
+        try:
+            cio_index = cio_verdict_index(payloads.get("cio"))
+            sources["cio"]["verdicts"] = len(cio_index["by_account"])
+            sources["cio"]["aggregate_verdicts"] = len(cio_index["aggregate"])
+            # F2 (cx-openai-3 at 3d118f247): cio_clause also renders the AGGREGATE row, so the aggregate's decision
+            # clock is displayed evidence and must be aged like any per-account clock. F3: the oldest clock is chosen
+            # by INSTANT, not by ISO text — `min(clocks)` picked 10:24-05:00 over 14:00+00:00 and concealed an
+            # 85-minute-old decision. Every displayed clock is parsed; an unparseable, missing or future clock is
+            # explicit and never counts as fresh.
+            # cx2 (codex-cloud at 8802d4da9): a displayed verdict with no clock of its own is missing evidence even
+            # when a better-dated sibling (the aggregate row) has a valid clock. Test every indexed verdict, never
+            # only the ones whose clock happened to parse — a fresh aggregate must not mask an unknown member.
+            verdicts = list(cio_index["by_account"].values()) + list(cio_index["aggregate"].values())
+            displayed = bool(verdicts)
+            clocks = [str(v.get("as_of")) for v in verdicts if v.get("as_of")]
+            if any(not v.get("as_of") for v in verdicts):
+                sources["cio"]["evidence_as_of_missing"] = True
+                sources["cio"]["stale"] = True
+            stamped = [(c, _parse(c)) for c in clocks]
+            parsed = [t for _, t in stamped if t is not None]
+            if any(t is None for _, t in stamped):
+                sources["cio"]["evidence_as_of_unparseable"] = True
+                sources["cio"]["stale"] = True
+            if parsed:
+                oldest_t = min(parsed)  # datetime ordering: the actual instant, never ISO text order
+                sources["cio"]["evidence_as_of"] = oldest_t.isoformat()
+                age = (now - oldest_t).total_seconds()
+                if age > STALE_AFTER_S.get("cio", 900):
+                    sources["cio"]["evidence_stale"] = True
+                    sources["cio"]["stale"] = True
+                # A clock ahead of now is untrustworthy whether or not it is the oldest one.
+                if any((now - t).total_seconds() < -300 for t in parsed):
+                    sources["cio"]["evidence_as_of_future"] = True
+                    sources["cio"]["stale"] = True
+            elif displayed and not clocks:
+                # A displayed verdict with no clock at all is missing evidence, not fresh evidence. (The loop above
+                # already flags it; this keeps the no-clocks-at-all case explicit.)
+                sources["cio"]["evidence_as_of_missing"] = True
+                sources["cio"]["stale"] = True
+        except Exception as exc:  # noqa: BLE001 — a malformed plan is UNAVAILABLE, never "no verdicts"
+            sources["cio"].update(status="UNAVAILABLE", error=str(exc)[:200])
     if "risk" in payloads:
 
         def _risk() -> list[dict]:
@@ -879,6 +1037,7 @@ def build(
                 coverage,
                 now,
                 held=payloads["held"] if "held" in payloads else ("unavailable" if "held" in sources else None),
+                cio=cio_index,
             )
             numbers = {**numbers, "status": "OK", "stale": sources["risk"].get("stale", False)}
             return got
@@ -888,7 +1047,7 @@ def build(
     # proposals before inbox: on a merge the first title of equal severity wins, and the count belongs to proposals.
     run("proposals", lambda: rule_proposals(payloads["proposals"], now))
     run("deploy", lambda: rule_deploy(payloads["deploy"], now))
-    run("inbox", lambda: rule_inbox(payloads["inbox"], now))
+    run("inbox", lambda: rule_inbox(payloads["inbox"], now, cio_index))
 
     for name, s in sources.items():
         if s.get("status") == "UNAVAILABLE":

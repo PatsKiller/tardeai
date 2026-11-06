@@ -373,13 +373,14 @@
     }
   },
   "monitor": {
-    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). One host comms intent per band CHANGE (dedupe by band, never by raw percent). Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
+    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). Alerts are throttled on EVERY path by realert_minutes: the first thing ever said about a mount is immediate, and after that a band change (severity increase, recovery or repeat) and an unchanged bad band ALL wait for the interval. 2026-11-04: (/ sat critical 23 hours on one alert because only CHANGES alerted; the first repair then throttled only the unchanged path, and an ok<->critical flap every 15 min produced 96 alerts in 24h). Bound: one clock governs every alert, with ONE named exception - a WARN -> CRITICAL escalation is said at once, because a mount at 85% can reach 100% inside an interval and the ledger lives on that mount (cc-deepseek-2 block, 2026-11-04). Everything else (repeats and recoveries) waits for realert_minutes; the first thing ever said about a mount is immediate. Measured 24-hour ceilings at the 60-minute default and 15-minute polls: 24-25 alerts on two-band cycles (ok<->critical, warn<->critical) and on four-band cycles, and up to 33 on a three-band cycle (warn,critical,ok repeating every 45 minutes) - such a cycle carries a warn, an escalation and a recovery, and neither the escalation nor the recovery may be suppressed. A hard 25 on every shape would require dropping one of those two guarantees (cc-deepseek-5 re-read, 2026-11-04). Dedupe is by band and interval, never by raw percent. Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
     "mounts": [
       "/",
       "/tmp"
     ],
     "warn_pct": 80.0,
     "critical_pct": 90.0,
+    "realert_minutes": 60.0,
     "host_backstop_pct": 95.0,
     "state_name": "disk_usage_monitor_state.json",
     "producer": "disk_usage_monitor",
