@@ -778,8 +778,9 @@ def main(argv: list[str] | None = None) -> int:
             write_lane_receipt("persistent-wake-hourly", ok=True, exit_code=0,
                                summary={"agent_id": args.agent_id},
                                script="scripts/run_persistent_wake.py")
-        except Exception:
-            pass
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[persistent-wake-hourly] lane receipt write failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
     return code
 
 

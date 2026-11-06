@@ -898,8 +898,9 @@ def _entry() -> int:
             write_lane_receipt("due-diligence-questions", ok=True, exit_code=0,
                                summary={"entry": "due_diligence_questions"},
                                script="scripts/due_diligence_questions.py")
-        except Exception:
-            pass
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[due-diligence-questions] lane receipt write failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
     return code
 
 

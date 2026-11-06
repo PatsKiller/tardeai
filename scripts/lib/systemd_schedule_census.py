@@ -75,27 +75,48 @@ def parse_duration(value: object) -> timedelta | None:
 
 
 def next_elapse(props: dict, *, now: datetime, tz: str = DEFAULT_TZ) -> datetime | None:
-    """The next fire the host reports, from the realtime field or the embedded next_elapse=."""
+    """The next fire the host reports, from the realtime field or every embedded next_elapse=.
+
+    ``systemctl show`` prints one ``TimersCalendar=`` / ``TimersMonotonic=`` line per timer
+    entry, so every entry is a candidate: the next fire is the EARLIEST of them, never
+    whichever line systemd printed last.
+    """
     realtime = parse_instant(props.get("NextElapseUSecRealtime"), tz)
     if realtime:
         return realtime
+    candidates: list[datetime] = []
     for key in ("TimersCalendar", "TimersMonotonic"):
         text = props.get(key)
+        if isinstance(text, list):
+            text = "\n".join(str(value) for value in text)
         if not isinstance(text, str):
             continue
-        for raw in re.findall(r"next_elapse=([^;}]*)", text):
+        for raw in re.findall(r"next_elapse=([^;}\n]*)", text):
             raw = raw.strip()
             absolute = parse_instant(raw, tz)
             if absolute:
-                return absolute
+                candidates.append(absolute)
+                continue
             delta = parse_duration(raw)
             if delta:
-                return now + delta
-    return None
+                candidates.append(now + delta)
+    return min(candidates) if candidates else None
 
 
 def _props(block: str) -> dict:
-    return dict(line.split("=", 1) for line in block.splitlines() if "=" in line)
+    """k=v lines, accumulating repeated keys instead of keeping only the last one.
+
+    systemd prints one ``TimersMonotonic=`` line per timer entry (and likewise
+    ``TimersCalendar=``), so a plain dict kept the last entry and dropped every earlier one.
+    Repeated values are newline-joined; single-valued properties are unchanged.
+    """
+    collected: dict[str, list[str]] = {}
+    for line in block.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        collected.setdefault(key, []).append(value)
+    return {key: "\n".join(values) for key, values in collected.items()}
 
 
 def _systemctl(scope: str, names: list[str]) -> str:

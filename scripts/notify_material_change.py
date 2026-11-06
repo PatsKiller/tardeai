@@ -1587,8 +1587,9 @@ def _entry() -> int:
             write_lane_receipt("material-change-notifier-stage2", ok=True, exit_code=0,
                                summary={"entry": "notify_material_change"},
                                script="scripts/notify_material_change.py")
-        except Exception:
-            pass
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[material-change-notifier-stage2] lane receipt write failed: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
     return code
 
 

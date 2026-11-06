@@ -339,8 +339,9 @@ def main():
                      "enabled": enabled},
             script="scripts/process_reaper.py",
         )
-    except Exception:
-        pass
+    except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+        print(f"[process-reaper] lane receipt write failed: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
 
 
 if __name__ == "__main__":

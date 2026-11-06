@@ -48,6 +48,8 @@ in every tool adapter, because an agent that reads fifteen lines and stops must 
    must not require a separate `git-push` grant for an approved-scope fast-forward push of the
    agent's own non-`main` branch (it logs the push); the per-branch budget and the never-`main`/
    `release/*` ban still bind.
+   Ratified standing authority (§25.10.4, §28.15 item 8) also supplies intent for approved engineering work on
+   an agent's own wt/* branch or a clean delegated upload under §28.17, without a per-branch grant.
    Never push `main` or `release/*`, force-push, rewrite pushed history or delete a remote branch.
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.

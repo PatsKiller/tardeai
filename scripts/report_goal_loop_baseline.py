@@ -439,8 +439,9 @@ def main() -> int:
             write_lane_receipt("goal-loop-baseline", ok=True, exit_code=0,
                                summary={"artifact_written": True},
                                script="scripts/report_goal_loop_baseline.py")
-        except Exception:
-            pass
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[goal-loop-baseline] lane receipt write failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
     return 0
 
 

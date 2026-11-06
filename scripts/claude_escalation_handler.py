@@ -1754,8 +1754,9 @@ def _write_run_receipt() -> None:
         write_lane_receipt("claude-escalation-handler", ok=True, exit_code=0,
                            summary={"entry": "claude_escalation_handler"},
                            script="scripts/claude_escalation_handler.py")
-    except Exception:
-        pass
+    except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+        log.warning("claude-escalation-handler lane receipt write failed: %s: %s",
+                    type(exc).__name__, exc)
 
 
 if __name__ == "__main__":

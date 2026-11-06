@@ -154,8 +154,9 @@ def main():
         write_lane_receipt("hermes-score-alerts", ok=True, exit_code=0,
                            summary={"new_alerts": (result or {}).get("new_alerts")},
                            script="scripts/hermes_score_alerts.py")
-    except Exception:
-        pass
+    except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+        print(f"[hermes-score-alerts] lane receipt write failed: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -607,8 +607,8 @@ def main(argv: list[str] | None = None):
             summary={"dispatched": result.get("dispatched_count"), "errors": result.get("error_count")},
             script="scripts/cio_wake_dispatch_entrypoint.py",
         )
-    except Exception:
-        pass
+    except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+        log.warning("cio-wake-dispatch lane receipt write failed: %s: %s", type(exc).__name__, exc)
 
 
 if __name__ == "__main__":

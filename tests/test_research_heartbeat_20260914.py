@@ -148,14 +148,22 @@ def test_queue_lane_fires_on_a_stalled_request_and_is_quiet_when_healthy(tmp_pat
     stalled = qh.collect_cio_hermes_queue_health(
         now=NOW, path=_ledger(tmp_path, [{"research_id": "q", "status": "queued", "ts": _ts(5)}]))
     assert "queue_stalled:1" in stalled["firing"]
+    # A readable lane needs BOTH inputs: the ledger and the projection. An unreadable projection is
+    # "I could not tell", never "nothing is lost" (lead ruling, 2026-11-03).
+    (tmp_path / "hermes_research_projection.json").write_text("{}", encoding="utf-8")
     healthy = qh.collect_cio_hermes_queue_health(now=NOW, path=_ledger(tmp_path, [
         {"research_id": f"c{i}", "status": "completed", "ts": _ts(2)} for i in range(6)]))
     assert healthy["ok"] is True and healthy["firing"] == []
+    assert healthy["ledger_state"] == "ok" and healthy["projection_state"] == "ok"
 
 
-def test_queue_lane_is_ok_without_a_ledger(tmp_path):
+def test_a_missing_ledger_is_unreadable_not_healthy(tmp_path):
+    """Missing input is not "no requests": say it could not read, and publish no count."""
     lane = qh.collect_cio_hermes_queue_health(now=NOW, path=tmp_path / "absent.jsonl")
-    assert lane["ok"] is True and lane["ledger_present"] is False
+    assert lane["ok"] is False and lane["ledger_present"] is False
+    assert lane["ledger_state"] == "absent"
+    assert "request_ledger_unreadable:absent" in lane["firing"]
+    assert lane["lost_n"] is None and lane["lost"] is None
 
 
 def test_lane_hint_names_the_cause(tmp_path):

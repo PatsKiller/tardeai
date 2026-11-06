@@ -159,8 +159,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             write_lane_receipt("deepseek-balance-snapshot", ok=True, exit_code=0,
                                summary={"mode": "apply"},
                                script="scripts/deepseek_balance_snapshot.py")
-        except Exception:
-            pass
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[deepseek-balance-snapshot] lane receipt write failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
     return 0 if out.get("ok") else 2
 
 

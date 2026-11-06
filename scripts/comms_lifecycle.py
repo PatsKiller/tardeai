@@ -227,8 +227,9 @@ def _entry() -> int:
             from lib.lane_last_receipt import write_lane_receipt
             write_lane_receipt("comms-lifecycle", ok=True, exit_code=0, summary={"mode": "apply"},
                                script="scripts/comms_lifecycle.py")
-        except Exception:
-            pass
+        except Exception as exc:  # a failed receipt write must leave a trace, never read as "never ran"
+            print(f"[comms-lifecycle] lane receipt write failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
     return code
 
 
