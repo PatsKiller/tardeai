@@ -1,0 +1,27 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CATALYST_SEARCH_TIER_20261107",
+  "files": [
+    "tests/test_catalyst_search_tier_20261107.py"
+  ],
+  "anchor": "CATALYST_SEARCH_TIER_20261107",
+  "comment": [
+    "ANCHOR: CATALYST_SEARCH_TIER_20261107 — the overnight catalyst lane staged no momentum_catalyst row",
+    "after 2026-10-29 while its runs kept reporting candidates 4 / catalyst_confirmed 0 / search_errors 0.",
+    "Measured on the live SearXNG instance 2026-11-07: the fallback query asked categories=news with",
+    "time_range=day and engines=google news,bing news,duckduckgo. time_range=day returns 0 results for",
+    "EVERY category on this instance (general 33 results collapses to 0), and the allowlist named a",
+    "CAPTCHA-suspended engine, an engine with a parse error, and duckduckgo, which is not a news engine",
+    "(duckduckgo news is). SearXNG answers HTTP 200 with results [] and unresponsive_engines populated",
+    "when every engine fails, and the old code read that as a quiet market.",
+    "The gate pins: the request asks for the news category with no time window and no engine allowlist;",
+    "a news tier that reports failed engines falls back once to the instance's whole engine set; a news",
+    "tier that answers nothing with NO failed engine is an honest empty and costs exactly one request",
+    "(the 2026-10-10 legacy contract); nothing from either tier while every enabled engine is",
+    "unresponsive returns the error row the lane's accuracy gate already reads, so a dead tier becomes",
+    "search_errors rather than a silent zero; a failed news request still lets the general tier answer;",
+    "and an unreadable /config never invents a dead tier.",
+    "Hermetic: a fake urlopen answering /config and the search tiers, stubbed routing engine and env",
+    "loader, synthetic symbol. No network, no database, no credential."
+  ]
+}
