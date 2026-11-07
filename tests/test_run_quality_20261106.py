@@ -181,7 +181,12 @@ def test_empty_output_not_written_this_run():
 
 
 def test_empty_zero_items_nothing_due_vs_unexpected():
+    # RUNQFIX 2026-11-07: a stated, reviewed idle reason is a correct run (GOOD · idle); see test_runqfix_20261107.py
     q = g(row(run()), lane(), ev(receipt=receipt(produced_count=0, empty_reason="nothing_due")))
+    assert (q["grade"], q["sub"]) == ("GOOD", "idle")
+    # a contract-allowed empty that is not an idle reason stays EMPTY · nothing_due
+    contract = {"expected_output": {"empty_allowed_reasons": ["credit_cap_reached"]}}
+    q = g(row(run()), lane(), ev(receipt=receipt(produced_count=0, empty_reason="credit_cap_reached"), contract=contract))
     assert (q["grade"], q["sub"]) == ("EMPTY", "nothing_due")
     q = g(row(run()), lane(), ev(receipt=receipt(produced_count=0)))
     assert (q["grade"], q["sub"]) == ("EMPTY", "unexpected")

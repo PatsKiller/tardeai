@@ -56,6 +56,10 @@ WRITE_TOLERANCE = timedelta(seconds=5)
 SAME_RUN = timedelta(minutes=2)
 MIN_COUNT_HISTORY = 3
 MIN_DURATION_HISTORY = 5
+#: A runtime median below this is too short to judge a slow run against ("far above its median 0 s" is noise).
+MIN_DURATION_MEDIAN_S = 5.0
+#: Reasons a receipt may state for a correct zero-output run (GOOD, sub idle). Config, not code.
+IDLE_REASONS_FILE = "config/run_quality_idle_reasons.json"
 COUNT_DROP = 0.5
 DRY_MODES = {"dry_run", "dry-run", "dryrun", "preflight", "rehearsal", "plan"}
 SHADOW_MODES = {"shadow", "shadow_only", "shadow-only"}
@@ -164,6 +168,36 @@ def skip_reason(receipt: dict | None, run: dict | None = None) -> str | None:
                 texts.append(doc[key])
     for text in texts:
         return _SKIP_REASON.get(text.strip().lower(), text.strip()[:200])
+    return None
+
+
+_IDLE_CACHE: dict = {}
+
+
+def idle_reasons(path: Path | None = None) -> dict[str, str]:
+    """{reason token: plain words} from config/run_quality_idle_reasons.json; unreadable → {} (nothing is idle)."""
+    path = path or Path(__file__).resolve().parents[2] / IDLE_REASONS_FILE
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return {}
+    hit = _IDLE_CACHE.get(str(path))
+    if hit and hit[0] == mtime:
+        return hit[1]
+    doc = _read_json(path) or {}
+    reasons = doc.get("reasons") if isinstance(doc.get("reasons"), dict) else {}
+    out = {str(k).strip().lower(): str(v) for k, v in reasons.items() if str(k).strip()}
+    _IDLE_CACHE[str(path)] = (mtime, out)
+    return out
+
+
+def stated_idle_reason(receipt: dict | None) -> str | None:
+    """The reason token a receipt itself states for producing nothing (top level, then summary)."""
+    summary = (receipt or {}).get("summary") if isinstance((receipt or {}).get("summary"), dict) else {}
+    for doc in (receipt or {}, summary):
+        for key in ("empty_reason", "skip_reason", "no_op_reason"):
+            if isinstance(doc.get(key), str) and doc[key].strip():
+                return doc[key].strip()
     return None
 
 
@@ -346,9 +380,11 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     r_finish = receipt_finish(receipt) if receipt else None
     graded = None
     r_when = r_start or r_finish
+    # a document that states only a time (no start, status or exit) never displaces a recorded run
+    doc_only = bool(receipt) and r_start is None and receipt_status(receipt) == "unknown"
     use_receipt = bool(receipt) and r_mode == "live" and r_when is not None and (
-        run is None or run_start is None or run.get("source") == "run receipt (last run only)"
-        or r_when > run_start + SAME_RUN)
+        run is None or run_start is None or run.get("source") in {"run receipt (last run only)", "lane receipt"}
+        or (r_when > run_start + SAME_RUN and not doc_only))
     if run is not None and not use_receipt:
         graded = {"source": run.get("source"), "started_at": run.get("started_at"), "finished_at": run.get("finished_at"),
                   "mode": "live", "result": run.get("result"), "run_id": run.get("run_id")}
@@ -362,6 +398,18 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     same_receipt = bool(receipt) and r_mode == "live" and run_start is not None and (
         use_receipt or (r_start is not None and abs(r_start - run_start) <= SAME_RUN)
         or (r_start is None and r_finish is not None and r_finish >= run_start - WRITE_TOLERANCE))
+
+    # 2a. the only evidence is a document's own time: no start, no status, no exit. That is an output write, not a
+    # run record, so never say "Ran live".
+    if use_receipt and graded is not None and doc_only \
+            and (run is None or run.get("source") in {"run receipt (last run only)", "lane receipt"}):
+        written_at = max([t for t in (r_finish, evidence.get("output_at")) if t], default=None)
+        reasons.append(f"Output written {_ago(written_at, now)}; no run record proves it ran (the file states a time "
+                       "but no run start, status or exit code)"
+                       + (f" ({row['history_gap']})" if row.get("history_gap") else ""))
+        checks["ran_live"] = _check("unknown", None, "output file time only")
+        checks["output_written"] = _check("unknown", _iso(written_at), "file time only")
+        return result("UNPROVEN", "no_run_record")
 
     # 2. nothing live at all
     if graded is None:
@@ -378,9 +426,11 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
             checks["ran_live"] = _check("fail", sub)
             return result("NOT_LIVE", sub)
         output_at = evidence.get("output_at")
-        reasons.append("No run of this job is recorded (no ledger row, wrapper journal entry, unit run or run receipt)"
-                       + (f"; its output file was last written {_ago(output_at, now)}, but a file time does not prove a "
-                          "run or what it produced" if output_at else "; and no output file was found")
+        reasons.append((f"Output written {_ago(output_at, now)}; no run record proves it ran (no ledger row, wrapper "
+                        "journal entry, unit run or run receipt; a file time does not prove a run or what it produced)")
+                       if output_at else
+                       "No run of this job is recorded (no ledger row, wrapper journal entry, unit run or run receipt)"
+                       "; and no output file was found"
                        + (f" ({row['history_gap']})" if row.get("history_gap") else ""))
         checks["ran_live"] = _check("unknown", None)
         checks["output_written"] = _check("unknown", _iso(output_at), "file write time only")
@@ -456,6 +506,7 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
         checks["ran_live"] = _check("fail", "shadow")
         return result("NOT_LIVE", "shadow", graded=graded)
     checks["run_result"] = _check("pass" if graded["result"] == "succeeded" else "unknown", graded["result"])
+    exited = " and exited ok" if graded["result"] == "succeeded" else ""
 
     # 5. output written by this run?
     written, written_detail = None, None
@@ -500,13 +551,31 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     checks["item_count"] = _check("unknown" if count is None else ("fail" if count == 0 else "pass"), count, count_key)
 
     if written is False:
-        reasons.append(f"Ran live {_ago(when, now)} and exited ok, but its output was not written by that run"
+        reasons.append(f"Ran live {_ago(when, now)}{exited}, but its output was not written by that run"
                        + (f" ({written_detail})" if written_detail else ""))
         return result("EMPTY", "not_written", graded=graded, count=count_info)
     if count == 0:
-        idle = bool(empty_reason) and (empty_reason in allowed or _BENIGN_SKIP.search(str(empty_reason).lower()))
-        reasons.append(f"Ran live {_ago(when, now)} and exited ok but produced nothing ({count_key} = 0"
-                       + (f"; receipt says: {empty_reason}" if empty_reason else "; the receipt does not say why") + ")")
+        stated = (empty_reason or stated_idle_reason(receipt)) if same_receipt else None
+        idle_words = idle_reasons().get(str(stated or "").lower())
+        if idle_words and graded["result"] == "succeeded":
+            # A correct idle run: its own receipt states a reviewed idle reason (config/run_quality_idle_reasons.json).
+            # Upstream starvation still shows: a stale or implausible input makes it DEGRADED, never GOOD.
+            fresh, plaus = evidence.get("freshness") or [], evidence.get("plausibility") or []
+            checks["item_count"] = _check("pass", 0, f"{count_key}; idle: {stated}")
+            checks["input_freshness"] = _check("fail" if fresh else "unknown" if not evidence.get("freshness_known") else "pass",
+                                               len(fresh), "; ".join(fresh) or None)
+            checks["data_plausibility"] = _check("fail" if plaus else ("pass" if evidence.get("plausibility_known") else "unknown"),
+                                                 len(plaus), "; ".join(plaus) or None)
+            if fresh or plaus:
+                bad = fresh + plaus
+                reasons.append(f"Ran live {_ago(when, now)} and had nothing to do ({idle_words}), but: {bad[0]}")
+                reasons += [f"Also: {d}" for d in bad[1:]]
+                return result("DEGRADED", None, graded=graded, count=count_info)
+            reasons.append(f"Ran live {_ago(when, now)}{exited}; nothing to do: {idle_words} (receipt says {stated})")
+            return result("GOOD", "idle", graded=graded, count=count_info)
+        idle = bool(empty_reason) and empty_reason in allowed
+        reasons.append(f"Ran live {_ago(when, now)}{exited} but produced nothing ({count_key} = 0"
+                       + (f"; receipt says: {stated}" if stated else "; the receipt does not say why") + ")")
         return result("EMPTY", "nothing_due" if idle else "unexpected", graded=graded, count=count_info)
     if same_receipt is False and receipt and receipt_is_output and r_mode == "live" and r_start and run_start \
             and r_start < run_start - SAME_RUN and written is None:
@@ -545,16 +614,24 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     dmed = _median(durations)
     limit = _num(((contract.get("baseline") or {}).get("duration_degraded_above_s")))
     dur_flag = None
-    if duration is not None and dmed is not None and len(durations) >= MIN_DURATION_HISTORY:
+    judgeable = dmed is not None and len(durations) >= MIN_DURATION_HISTORY and dmed >= MIN_DURATION_MEDIAN_S
+    if duration is not None and judgeable:
         if duration > max(3 * dmed, dmed + 60):
             dur_flag = f"took {duration:.0f} s, far above its median {dmed:.0f} s"
         elif dmed >= 30 and duration < dmed / 10:
             dur_flag = f"took {duration:.1f} s, far below its median {dmed:.0f} s (did it do its work?)"
     if dur_flag is None and duration is not None and limit and duration > limit:
         dur_flag = f"took {duration:.0f} s, above its contract's {limit:.0f} s degraded limit"
+    if dur_flag:
+        dur_detail = dur_flag
+    elif dmed is None or len(durations) < MIN_DURATION_HISTORY:
+        dur_detail = f"only {len(durations)} earlier timed runs (needs {MIN_DURATION_HISTORY})"
+    elif dmed < MIN_DURATION_MEDIAN_S:
+        dur_detail = f"median {dmed:.1f} s is under the {MIN_DURATION_MEDIAN_S:g} s floor; too short to judge against"
+    else:
+        dur_detail = f"median {dmed:.1f} s over {len(durations)} runs"
     checks["duration_vs_history"] = _check("fail" if dur_flag else ("unknown" if duration is None or
-                                           (dmed is None and not limit) else "pass"), duration,
-                                           dur_flag or (f"median {dmed:.1f} s over {len(durations)} runs" if dmed is not None else None))
+                                           (not judgeable and not limit) else "pass"), duration, dur_detail)
     if dur_flag:
         degraded.append(dur_flag)
     fresh = evidence.get("freshness") or []
@@ -572,11 +649,11 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
 
     # 8. unproven vs good
     if written is None and count is None:
-        reasons.append(f"Ran live {_ago(when, now)} and exited ok, but nothing lets us check what it produced: "
+        reasons.append(f"Ran live {_ago(when, now)}{exited}, but nothing lets us check what it produced: "
                        + checks["output_written"]["detail"] + "; and its receipt reports no item count")
         return result("UNPROVEN", "output_unverifiable", graded=graded, count=count_info)
     if receipt_is_output and count is None:
-        reasons.append(f"Ran live {_ago(when, now)} and exited ok, but its only output signal is its own receipt and the "
+        reasons.append(f"Ran live {_ago(when, now)}{exited}, but its only output signal is its own receipt and the "
                        "receipt reports no item count, so what it produced is unproven")
         return result("UNPROVEN", "output_unverifiable", graded=graded, count=count_info)
     if graded["result"] != "succeeded":

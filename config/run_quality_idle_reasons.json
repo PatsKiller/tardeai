@@ -1,0 +1,16 @@
+{
+  "schema": "RunQualityIdleReasons@v1",
+  "about": "Reasons a live run may produce nothing and still be a correct run (graded GOOD, sub idle) when its own receipt STATES the reason (empty_reason / skip_reason / no_op_reason, top level or summary). Read by scripts/lib/run_quality.py. A zero-output run with no stated reason, or a reason not listed here, stays EMPTY. An idle run with a stale or implausible input is DEGRADED. Tokens follow the expected_output closed enum in scripts/check_n8n_workflow_framework.py; deferred_to_batch, credit_cap_reached and data_blocked are deliberately not idle.",
+  "reasons": {
+    "market_closed": "the market was closed",
+    "not_trading_day": "it was not a trading day",
+    "holiday": "it was a market holiday",
+    "nothing_due": "nothing was due",
+    "not_due": "nothing was due",
+    "window_not_reached": "its window had not opened yet",
+    "no_new_input": "there was no new input",
+    "no_new_events": "there were no new events",
+    "no_tracked_threads": "there were no tracked threads",
+    "no_due_threads": "no thread was due for a check"
+  }
+}

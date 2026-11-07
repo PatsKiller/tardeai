@@ -17,9 +17,9 @@ export interface RunQuality {
 
 /** The six grades in the mockup's order, with the tile label, tone, `?quality=` key and the one-line definition. */
 export const QUALITY_GRADES: ReadonlyArray<{ grade: QualityGrade; key: string; label: string; tone: Tone; means: string }> = [
-  { grade: 'GOOD', key: 'good', label: 'Good', tone: 'success', means: 'Ran live, exited ok, wrote its output this run, item count in its normal range, no partial or gap flags, inputs fresh.' },
+  { grade: 'GOOD', key: 'good', label: 'Good', tone: 'success', means: 'Ran live, exited ok, wrote its output this run, item count in its normal range, no partial or gap flags, inputs fresh. Also a run that stated it had nothing to do (market closed, nothing due, no new input) with fresh inputs: "Good · nothing due".' },
   { grade: 'DEGRADED', key: 'degraded', label: 'Degraded', tone: 'warning', means: 'Ran and wrote output, but something is off: partial or fallback receipt, count far below its own median, runtime far outside history, or a stale or implausible input (garbage in).' },
-  { grade: 'EMPTY', key: 'empty', label: 'Empty', tone: 'warning', means: 'Said ok but produced nothing: zero items, or its output was not touched by this run (garbage out).' },
+  { grade: 'EMPTY', key: 'empty', label: 'Empty', tone: 'warning', means: 'Said ok but produced nothing and did not state a known idle reason: zero items, or its output was not touched by this run (garbage out).' },
   { grade: 'FAILED', key: 'failed', label: 'Failed', tone: 'danger', means: 'Errored, lost its executor, or exited 0 while its own receipt says it failed.' },
   { grade: 'NOT_LIVE', key: 'not_live', label: 'Not live', tone: 'neutral', means: 'The last run was a dry run, a shadow or a skip, or the job is paused or retired. Never shown as OK.' },
   { grade: 'UNPROVEN', key: 'unproven', label: 'Unproven', tone: 'info', means: 'It ran, but nothing can check its output. The reason names what is missing.' },
@@ -31,13 +31,13 @@ export const isQualityKey = (s: string | null | undefined): boolean => !!s && s 
 export const qualityKeyLabel = (key: string): string | null => BY_KEY[key]?.label ?? null
 export const qualityMeans = (g: QualityGrade): string => BY_GRADE[g]?.means ?? ''
 
-const SUB_WORD: Record<string, string> = { inactive: 'paused or retired', dry_run: 'dry run', shadow: 'shadow', skipped: 'skipped' }
+const SUB_WORD: Record<string, string> = { inactive: 'paused or retired', dry_run: 'dry run', shadow: 'shadow', skipped: 'skipped', idle: 'nothing due' }
 
-/** "Not live · skipped", "Degraded", …; null quality → null (the caller shows nothing, never a made-up grade). */
+/** "Not live · skipped", "Good · nothing due", "Degraded", …; null quality → null (never a made-up grade). */
 export function gradeChip(q: RunQuality | null | undefined): { label: string; tone: Tone } | null {
   if (!q || !BY_GRADE[q.grade]) return null
   const g = BY_GRADE[q.grade]
-  const sub = q.grade === 'NOT_LIVE' && q.sub ? SUB_WORD[q.sub] ?? q.sub.replace(/_/g, ' ') : null
+  const sub = q.sub && (q.grade === 'NOT_LIVE' || (q.grade === 'GOOD' && q.sub === 'idle')) ? SUB_WORD[q.sub] ?? q.sub.replace(/_/g, ' ') : null
   return { label: sub ? `${g.label} · ${sub}` : g.label, tone: g.tone }
 }
 
