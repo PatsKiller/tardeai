@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "UPDATE_LOCKUP_EARNINGS_DATES_354_20261107",
+  "files": [
+    "tests/test_update_lockup_earnings_dates_354_20261107.py"
+  ],
+  "anchor": "LOCKUP_SNAP_NEAREST_354_20261107",
+  "comment": [
+    "ANCHOR: LOCKUP_SNAP_NEAREST_354_20261107 — scripts/update_lockup_earnings_dates.py snapped the",
+    "earliest still-approx earnings tranche instead of the one the announcement belongs to, so on",
+    "2026-11-07 it could only ever rewrite a Q2 tranche estimated 2026-08-05 and returned changed=[]",
+    "for every real announcement. The test proves an announcement five days before or after its own",
+    "estimate snaps that group, and keeps absent controls: no announcement, no estimate inside the",
+    "75-day window, an already-correct group, and an unparseable date."
+  ]
+}

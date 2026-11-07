@@ -3,8 +3,9 @@
 
 Several SpaceX lockup tranches release on "the second full trading day following" a quarterly earnings
 release. Those dates are estimates (approx:true) until the company announces. This watches yfinance for the
-next earnings date and, when one appears, updates the earliest still-approx earnings tranche group to
-(earnings_date + 2 trading days), flips approx:false, and logs/alerts the change. Idempotent; runs on a
+next earnings date and, when one appears, updates the still-approx earnings tranche group whose
+estimate is nearest that date to (earnings_date + 2 trading days), flips approx:false, and logs/alerts
+the change. Idempotent; runs on a
 schedule. Conservative: only snaps when the announced date is within ±75 days of the current estimate.
 
   python3 scripts/update_lockup_earnings_dates.py            # live: rewrite the config + alert rows
@@ -79,11 +80,19 @@ def _next_earnings(symbol: str):
     return None
 
 
+def _tranche_day(t: dict) -> date | None:
+    """The tranche's estimate as a date, or None when it is absent or unparseable."""
+    try:
+        return date.fromisoformat(str(t.get("date") or ""))
+    except ValueError:
+        return None
+
+
 def plan_snaps(cfg: dict) -> list[dict]:
     """Mutates `cfg` in memory only; returns the snaps (one per symbol). Never writes."""
     changed = []
     for sym, rec in cfg.get("lockups", {}).items():
-        # earnings-tied tranches still approximate, grouped by current estimated date (earliest first)
+        # earnings-tied tranches still approximate
         approx = [t for t in rec.get("tranches", [])
                   if t.get("approx") and "earnings" in (t.get("desc", "").lower())]
         if not approx:
@@ -91,15 +100,24 @@ def plan_snaps(cfg: dict) -> list[dict]:
         ed = _next_earnings(sym)
         if not ed:
             continue
-        approx.sort(key=lambda t: t.get("date") or "9999")
-        target_date = approx[0]["date"]
+        # The group to snap is the one the announced date belongs to: the estimate nearest the
+        # announcement, inside ±WINDOW_DAYS. The old rule took the earliest still-approx estimate,
+        # which on 2026-11-07 was a Q2 tranche from 2026-08-05 — so the window then rejected every
+        # announced date and the lane could only ever snap a three-month-old tranche (measured:
+        # announced 2026-11-12 and 2027-01-28 both produced changed=[], LQ-20261107-354).
+        today = date.today()
+        window = [(d, t) for t in approx if (d := _tranche_day(t)) is not None
+                  and abs((ed - d).days) <= WINDOW_DAYS]
+        if not window:
+            continue   # announced date is near no estimate — likely a different quarter; skip
+        # Nearest wins; on an equal distance prefer a still-future estimate, because an announcement
+        # usually precedes the estimate it replaces. A passed estimate stays the candidate when it is
+        # the nearer one: a delayed report belongs to the quarter whose estimate has slipped past, and
+        # preferring any future estimate over it would snap the wrong quarter.
+        est, first = min(window, key=lambda pair: (abs((ed - pair[0]).days),
+                                                   pair[0] < today, pair[0]))
+        target_date = first["date"]
         group = [t for t in approx if t.get("date") == target_date]
-        try:
-            est = date.fromisoformat(target_date)
-        except Exception:
-            continue
-        if abs((ed - est).days) > WINDOW_DAYS:
-            continue   # announced date too far from the estimate — likely a different quarter; skip
         release = _plus_trading_days(ed, 2).isoformat()   # "second full trading day following"
         if release == target_date:
             continue
