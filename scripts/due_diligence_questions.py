@@ -768,6 +768,15 @@ def route(cur, limit: int) -> dict:
     if not lanes:
         out["detail"].append("no research lane met the minimum success rate")
         return out
+    # A lane that refuses BEFORE attempting (budget guard, open circuit breaker, not a bridge
+    # provider) exits with this code. That is a fact about the LANE, not the question, so the
+    # next ranked lane is tried. Measured 2026-11-07: every question was gated on lane 1 with
+    # exit 0 and no stored row, this loop read that as "the question cannot be asked" and
+    # stopped — lanes 2 and 3 were never called and nothing routed for a month.
+    try:
+        from hermes_external_researcher import EXIT_LANE_GATED as _GATED
+    except Exception:  # noqa: BLE001 -- an import can fail for any reason; the literal is the same 75
+        _GATED = 75
     for qguid, symbol, question in rows:
         # Best lane first, then down the ranking. A lane that fails on THIS question
         # is not evidence the question is unanswerable.
@@ -780,11 +789,17 @@ def route(cur, limit: int) -> dict:
             try:
                 r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
                                    timeout=int(os.getenv("DDQ_ROUTE_TIMEOUT", "300")))
-                # The researcher exits zero for budget/auth/cache skips too.
                 # A stored row closes this attempt; reconciliation reports its real status.
+                # Exit 75 is the lane refusing before it attempted (EXIT_LANE_GATED) — the
+                # next lane may still answer this question. Exit 0 with no row is the older
+                # contract (dry run, or a conclusion that stores nothing): it is NOT evidence
+                # the lane refused, so the chain stops rather than re-spending across lanes.
                 cur.execute("SELECT id FROM hermes_external_research WHERE trigger_reason=%s ORDER BY id DESC LIMIT 1",
                             (f"due_diligence_question:{qguid}",))
                 ok = bool(cur.fetchone())
+                if r.returncode == _GATED:
+                    out["detail"].append(f"{symbol}:{lane} gated before attempting — next lane")
+                    continue
                 if r.returncode == 0 and not ok:
                     break
             except Exception as exc:  # noqa: BLE001

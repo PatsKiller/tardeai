@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "DDQ_ROUTE_GATE_20261107",
+  "files": [
+    "tests/test_due_diligence_route_gate_20261107.py"
+  ],
+  "anchor": "DDQ_ROUTE_GATE_20261107",
+  "comment": [
+    "ANCHOR: DDQ_ROUTE_GATE_20261107 — LQ-20261107-208. due_diligence_questions.route() shells",
+    "hermes_external_researcher.py with --trigger due_diligence_question:<guid>; the researcher hands the",
+    "first colon token to hermes_research_budget_guard.decide(), whose trigger_source_tier map never named",
+    "it, so every question was refused with tier=UNKNOWN before a provider was chosen. The researcher",
+    "exited 0 without storing a row and route() read that as a question-level verdict, so its ranked lane",
+    "chain was never walked either. DB truth 2026-11-07: 4125 ASKED questions, max(routed_at)=2026-10-05,",
+    "and ZERO hermes_external_research rows carrying that trigger. This file pins both halves: the trigger",
+    "resolves to a capped tier while the paid/broad-universe invariants still hold, a lane that refuses",
+    "before attempting falls through to the next lane, and a question that cannot be asked still stops the",
+    "chain.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}

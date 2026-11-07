@@ -133,6 +133,12 @@ trigger_source_tier:
   feedback_seed: T2
   manual: T1                  # operator-initiated research is actionable by definition
   operator_telegram: T1
+  due_diligence_question: T1  # scripts/due_diligence_questions.py --route. The trigger is a material
+                              # change on a name we carry a dossier for (held / operator-preferred /
+                              # watchlist / reentry), curated by magnitude — actionable research, not the
+                              # 20k-row broad driver, so T1 and its 300-call cap. It was unmapped until
+                              # 2026-11-07; fail-closed BLOCK is correct, but it meant routing had never
+                              # once fired (hermes_external_research: 0 rows carrying this trigger).
 
 # Duplicate-suppression: same (symbol, research_type, lane) inside this window -> DEFER.
 dedup:

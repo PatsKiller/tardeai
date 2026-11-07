@@ -35,6 +35,20 @@ from lib.curation_lineage import (
 
 ROOT = Path(__file__).resolve().parent.parent
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
+
+#: Exit code for a LANE-level refusal: the lane would not even attempt (budget guard, open
+#: circuit breaker, not a bridge provider). A caller holding a ranked lane list must try the
+#: next one. Exit 0 stays what it was — the run reached its own conclusion (dry run, or this
+#: question cannot be asked at all, e.g. stale inputs) — because that is a fact about the
+#: QUESTION and stops the chain.
+#:
+#: Measured 2026-11-07: due-diligence routing had never once fired. The budget guard refused
+#: every question with tier=UNKNOWN and exited 0 having stored no row, and
+#: due_diligence_questions.route() read "exit 0, no row" as a question-level verdict, so its
+#: ranked lanes 2 and 3 were never called. Not being able to tell a lane that refused from a
+#: question that could not be asked is what made a month-long outage look like a quiet queue.
+EXIT_LANE_GATED = 75  # EX_TEMPFAIL
+
 # Per-lane config. key_env read at call-time only (never stored/logged). Cost-aware default models;
 # operator may override with --model.
 HERMES_CLI = str(Path.home() / ".local" / "bin" / "hermes")
@@ -627,7 +641,7 @@ def main():
     if via_bridge() and args.lane == "claude":
         print("\n[governed-bridge] the paid claude lane is not a bridge provider — no call (n8n path)")
         account("SKIP_GATED", reason="CLAUDE_NOT_ON_GOVERNED_BRIDGE")
-        return
+        return EXIT_LANE_GATED
     try:
         from hermes_research_budget_guard import decide as _bdecide
         _trig = (args.trigger or "manual").split(":")[0]   # normalize 'paper_postmortem:13' -> 'paper_postmortem'
@@ -642,7 +656,7 @@ def main():
             print(f"\n[budget-guard] {args.lane}/{_trig} -> {_gd['decision']} (tier={_gd['tier']}): {_gd['reason']}")
             print("  broad-universe / cold / unknown trigger — no external LLM call. (metadata-only path elsewhere.)")
             account("SKIP_GATED", reason=f"BUDGET_GUARD_{_gd['decision']}", metadata={"tier": _gd["tier"]})
-            return
+            return EXIT_LANE_GATED
     except Exception as _be:
         print(f"[budget-guard] advisory check skipped: {_be}")
 
@@ -727,7 +741,7 @@ def main():
         except Exception:
             pass
         account("SKIP_GATED", reason="LANE_CIRCUIT_OPEN")
-        return
+        return EXIT_LANE_GATED
 
     import psycopg2
     _load_env()
@@ -864,4 +878,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # The return value is the caller's signal (EXIT_LANE_GATED = "this lane refused; try the
+    # next one"), so it must reach the process exit status. A bare main() dropped it and every
+    # refusal looked like success to every caller that shells this script.
+    raise SystemExit(main())
