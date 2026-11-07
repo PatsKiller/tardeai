@@ -28,6 +28,8 @@ and the superseded row does not jump to the top.
 
 from __future__ import annotations
 
+import contextlib
+
 # Candidate predicate. ``health:%`` matches the components the handler writes and
 # the ones the activity feed lists. Rows already closed are excluded by status.
 _CANDIDATES_SQL = """
@@ -123,9 +125,7 @@ def reconcile_superseded(conn, *, window_hours: int = DEFAULT_WINDOW_HOURS, limi
         return result
     finally:
         if cur is not None:
-            try:
+            # Closing a cursor has no caller-visible failure mode: the outcome is already
+            # in `result`, and a close error cannot undo or change what was committed.
+            with contextlib.suppress(Exception):
                 cur.close()
-            except Exception:
-                # nosemgrep: tq-py-except-pass -- closing a cursor has no caller-visible
-                # failure mode; the outcome was already committed to result above.
-                pass
