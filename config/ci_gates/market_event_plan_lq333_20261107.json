@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_plan_lq333_20261107",
+  "anchor": "MARKET_EVENT_PLAN",
+  "files": [
+    "tests/test_market_event_plan_lq333_20261107.py"
+  ],
+  "comment": [
+    "LQ-20261107-333: market-event WP3 plan + GET /api/v2/market-event/active|history (MarketEvent@v1).",
+    "Gates, state machine, advisory per-account sizing; labels only; no broker/order/write path. Synthetic fixtures."
+  ]
+}

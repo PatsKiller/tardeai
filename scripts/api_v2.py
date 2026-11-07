@@ -49253,7 +49253,39 @@ def _cio_truth_readers():
     return cio_truth
 
 
+def _market_event_active_api(query=None):
+    """GET /api/v2/market-event/active — MarketEvent@v1 (LQ-20261107-333, spec §4.4). Advisory, read-only:
+    episode, market gate, top candidates with their gates/state, per-account plan by account LABEL only."""
+    from lib import account_display as _ad
+    from lib import market_event_api as _me
+    from lib import wash_sale as _ws
+    from lib.market_risk_projection import load_snapshot as _mr_load
+
+    _snap = _mr_load(lambda _rel: _load_json(PROJECT_ROOT / _rel), lambda _rel: (PROJECT_ROOT / _rel).exists())
+    _hold = (_load_json(STATE_DIR / "holdings.json") or {}).get("holdings") or []
+    return _json_clean(
+        _me.build_active(db_query=lambda s, p=None: _db_query(s, p), snapshot=_snap, holdings_rows=_hold,
+                         label=_ad.account_label, facts=_ad.location_facts, taxable=_ws.account_taxable)
+    )
+
+
+def _market_event_history_api(query=None):
+    """GET /api/v2/market-event/history — past and open episodes with candidate counts by state (LQ-20261107-333)."""
+    from lib import market_event_api as _me
+
+    q = query or {}
+    raw = q.get("limit")
+    raw = raw[0] if isinstance(raw, list) else raw
+    try:
+        limit = int(raw) if raw else 50
+    except (TypeError, ValueError):
+        limit = 50
+    return _json_clean(_me.build_history(db_query=lambda s, p=None: _db_query(s, p), limit=limit))
+
+
 ROUTES = {
+    "/api/v2/market-event/active": lambda q=None: _market_event_active_api(q),
+    "/api/v2/market-event/history": lambda q=None: _market_event_history_api(q),
     "/api/v2/hermes/discovery-inbox": lambda q=None: _hermes_discovery_inbox_list(q),
     "/api/v2/hermes/discovery-gaps": lambda q=None: _hermes_discovery_gaps(q),
     "/api/v2/hermes/discovery-scorecard": lambda: _hermes_discovery_scorecard_api(),
