@@ -120,13 +120,31 @@ const wire = {
     'syn-unv': lane('syn-unv', { verdict: 'UNVERIFIABLE' }),
   },
   work_items: { 'LQ-9': { id: 'LQ-20261107-9', owner: 'syn-owner', status: 'in_progress' } },
+  llm: { as_of: '2026-11-07T17:00:00+00:00', window: '24h', note: '', spend_note: 'Spend is the estimate each call recorded.',
+    groups: [
+      { key: 'ops', label: 'Operations: self-heal, diagnosis, data quality', calls: 12, failures: 2, spend_usd: 0.5, active: 1, red: 0, total: 2, items: [
+        { process_id: 'syn_diag', label: 'Lane diagnosis', models: ['syn-model'], calls: 12, failures: 2, spend_usd: 0.5, last_at: '2026-11-07T16:30:00+00:00', status: 'active', red: false, next: 'synthetic next step',
+          lanes: [{ lane: 'claude', models: ['syn-model'], calls: 12, failures: 2, spend_usd: 0.5, last_at: '2026-11-07T16:30:00+00:00', all_failed: false }] },
+        { process_id: 'self_heal_fixer', label: 'Code self-fix', models: [], lanes: [], calls: 0, failures: 0, spend_usd: null, status: 'not_in_log', red: false,
+          not_in_log: 'Runs outside the log.', fixer: { armed: false, why: 'no active grant', waiting: 6, oldest: '2026-10-29T00:02:00+00:00' } }] },
+      { key: 'content', label: 'Content: research, drafts, briefs', calls: 40, failures: 40, spend_usd: null, active: 0, red: 1, total: 1, items: [
+        { process_id: 'syn_curator', label: 'Topic <script>curator', models: ['syn-gpt'], calls: 40, failures: 40, spend_usd: null, last_at: '2026-11-07T16:00:00+00:00', status: 'all_failed', red: true,
+          lanes: [{ lane: 'chatgpt', models: ['syn-gpt'], calls: 40, failures: 40, spend_usd: null, last_at: '2026-11-07T16:00:00+00:00', all_failed: true, last_error: 'synthetic 401' }] }] }] },
+  fixes: { as_of: '2026-11-07T17:00:00+00:00', ledger: 'LEAD-WORK-LEDGER-20261107.json', notes: [],
+    fixer: { armed: false, why: 'no active grant', waiting: 6, oldest: '2026-10-29T00:02:00+00:00', receipt_at: '2026-11-07T16:55:00+00:00', grant_href: '/v3/system/ops-controls?tab=grants' },
+    self_heal: [
+      { kind: 'fixer', key: 'shf-1', lane: 'syn-fail', state: 'fix_requested', since: '2026-10-29T00:02:00+00:00', plain: 'Self-heal is not armed.', action: 'Issue the grant.', grant_href: '/v3/system/ops-controls?tab=grants' },
+      { kind: 'escalation', key: 'syn-run|sig|ep2', lane: 'syn-run', at: '2026-10-26T05:18:00+00:00', priority: 'P1', plain: 'Not confident enough.', cause: 'no output', tried: 'diag:0.66', action: 'Check the last runs.', grant_href: null }],
+    work: [
+      { id: 'LQ-20261107-01', owner: 'syn-owner', priority: 'P0', status: 'ASSIGNED', title: 'n8n cutover: syn', lanes: [], audit_fix: false },
+      { id: 'LQ-20261107-9', owner: 'syn-owner', priority: 'P1', status: 'in_progress', title: 'fix syn-fail', lanes: ['syn-fail'], audit_fix: true }] },
 }
 const tipsOf = html => [...html.matchAll(/data-tip="([^"]*)"/g)].map(m => m[1])
 const btns = html => (html.match(/<button[^>]*>/g) || [])
 check(A.resolveSub('lanes') === 'lanes' && A.resolveSub('bogus') === 'overview' && A.resolveSub(null) === 'overview', 'sub resolves, unknown -> overview')
-for (const sub of ['overview', 'lanes', 'audit']) {
+for (const sub of ['overview', 'lanes', 'audit', 'llm', 'fixes']) {
   const page = A.pageHtml(wire, sub)
-  check((page.match(/role="tab"/g) || []).length === 3, `${sub}: three subtabs`)
+  check((page.match(/role="tab"/g) || []).length === 5, `${sub}: five subtabs`)
   check(new RegExp(`data-sub="${sub}" aria-selected="true"`).test(page) && (page.match(/aria-selected="true"/g) || []).length === 1, `${sub}: exactly its own pill selected`)
   check(tipsOf(page).every(t => t.trim().length > 10), `${sub}: every ⓘ has tip text`)
   check(!/>(Run|Retry|Pause|Resume|Re-run|Rerun|Approve)\b/.test(page), `${sub}: no write button`)
@@ -156,6 +174,27 @@ const auF = A.auditHtml(wire, 'FAIL_RUN')
 check([...auF.matchAll(/<li data-lane="([^"]+)"/g)].map(m => m[1]).join() === 'syn-run' && auF.includes('data-filter="FAIL_RUN" aria-pressed="true"'), 'audit: verdict filter')
 const unk = A.auditHtml({ ...wire, work_items: {} })
 check(unk.includes('fix LQ-9 · status unknown'), 'audit: a fix id the ledger lacks says status unknown')
+const lm = A.llmHtml(wire)
+check(lm.includes('<b>The rule for every lane:</b> the LLM diagnoses, drafts, proposes and checks claims. Deterministic code makes the actual change and validates it. Nothing an LLM writes reaches data, schedules or code without a deterministic check and a receipt.'), 'llm: the approved rule paragraph, verbatim')
+check(lm.includes('as of Sat, Nov 7, 12:00 PM ET'), 'llm: as-of ET stamp')
+check(lm.indexOf('Operations: self-heal') < lm.indexOf('Content: research'), 'llm: operations split from content')
+check(/<h3 class="bad">Content[^<]*· 40 calls · 40 failed · —<\/h3>/.test(lm), 'llm: content group red, unknown spend reads —')
+check(lm.includes('All 40 failed') && lm.includes('<div class="def">Every call on chatgpt failed in 24 h. Last error: synthetic 401</div>'), 'llm: failures == calls flagged red with the last error')
+check(lm.includes('12 calls · 2 failed') && lm.includes('last Sat, Nov 7, 11:30 AM ET') && lm.includes('$0.5000'), 'llm: calls, failures, last call ET, spend per lane')
+check(lm.includes('Fixer: not armed (no active grant) · 6 fixes waiting since'), 'llm: the fixer shows its own state, not zero')
+check(lm.includes('Topic &lt;script&gt;curator'), 'llm: escaped')
+check(A.llmHtml({ llm: { ...wire.llm, groups: null, note: 'LLM use could not be read; not shown (not zero).' } }).includes('not shown (not zero)'), 'llm: unreadable log -> note, never zeros')
+const fx = A.fixesHtml(wire)
+const rr = btns(fx).filter(b => b.includes('class="rerun"'))
+check(rr.length === 2 && rr.every(b => b.includes('aria-disabled="true"') && (attr(b, 'data-tip') || '').includes('needs operator grant')), 'fixes: each self-heal item has a disabled re-run with the grant tooltip')
+check(btns(fx).every(b => b.includes('aria-disabled="true"') || b.includes('data-tip')), 'fixes: no enabled action button')
+check(fx.includes("Self-heal couldn't fix · 2") && fx.includes('Self-heal is not armed:</b> no active grant. 6 fixes waiting since'), 'fixes: self-heal list and the fixer banner')
+check(fx.includes('href="/v3/system/ops-controls?tab=grants"') && fx.includes('fixer job shf-1 · fix requested · since'), 'fixes: grant link and fixer state in words')
+check(fx.includes('Open fix items · P0 · 1') && fx.includes('Open fix items · P1 · 1') && fx.indexOf('Open fix items · P0') < fx.indexOf('Open fix items · P1'), 'fixes: open items grouped by priority, P0 first')
+check(fx.includes('LQ-20261107-9 · in_progress · syn-owner') && fx.includes('data-lane-link="syn-fail"') && fx.includes('audit fix ⓘ'), 'fixes: id, status, owner and lane link')
+check(fx.includes('as of Sat, Nov 7, 12:00 PM ET') && fx.includes('LEAD-WORK-LEDGER-20261107.json'), 'fixes: as-of ET stamp and ledger name')
+check(A.fixesHtml({ fixes: { ...wire.fixes, work: null, notes: ['synthetic ledger note'] } }).includes('could not be read, so open items are not shown') , 'fixes: unreadable ledger -> note')
+check(A.llmHtml({}).includes('not reported yet') && A.fixesHtml({}).includes('not reported yet'), 'llm/fixes: missing section says not reported')
 const none = A.pageHtml({ notes: ['synthetic note'] }, 'overview')
 check(none.includes('synthetic note') && none.includes('<b class="live">— / —</b>') && none.includes('Not audited yet.') && /FAIL DATA <b>—<\/b>/.test(none) && none.includes('incl. — weekend-idle'), 'missing data reads — (never 0) and the note shows')
 

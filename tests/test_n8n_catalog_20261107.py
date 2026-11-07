@@ -12,6 +12,13 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib import n8n_catalog as N  # noqa: E402
+from scripts.lib import n8n_catalog_ops as OPS  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_db(monkeypatch):
+    """Hermetic: no test reaches the real llm_consumption_log; an unreachable DB reads as None."""
+    monkeypatch.setattr(OPS, "default_llm_query", lambda sql, params=None: None)
 
 CATS = [{"key": "research", "label": "Research & intel", "blurb": "News and filings."},
         {"key": "ops", "label": "Ops, health & self-heal", "blurb": "Watchdogs."}]
@@ -230,3 +237,123 @@ def test_compute_carries_work_items_for_verdict_refs(tmp_path):
     _ledger(tmp_path, [{"id": "LQ-20261107-57", "owner": "cc-x", "status": "open"}])
     out = _compute(tmp_path)
     assert out["work_items"]["LQ-57"]["owner"] == "cc-x"
+
+
+# ── LQ-180 commit 2: llm + fixes ───────────────────────────────────────────────────────────────────────────────
+from datetime import datetime, timezone  # noqa: E402
+
+NOW = datetime(2026, 11, 7, 17, 0, tzinfo=timezone.utc)
+
+
+def _llm_rows():
+    def r(pid, lane, calls, fails, cat, models=(), err=None, spend=0):
+        return {"process_id": pid, "process_name": pid.title(), "category": cat, "model_lane": lane,
+                "models": list(models), "calls": calls, "failures": fails,
+                "last_at": datetime(2026, 11, 7, 16, 0, tzinfo=timezone.utc), "last_ok_at": None,
+                "spend_usd": spend, "last_error": err}
+    return [r("topic_curator", "chatgpt", 67, 67, "Research", err="401  unauthorized\n token"),
+            r("topic_curator", "grok", 558, 145, "Research"),
+            r("cio_plan_enrichment", "fast", 67, 0, "CIO", ("deepseek-flash", "grok-3-mini"), spend="0.067453"),
+            r("incident_supervisor", "grok", 202, 2, "Operations"),
+            r("n8n_lane_failure_diagnosis", "fast", 13, 0, "N8nCoordination", ("grok-3-mini",))]
+
+
+def _query(rows, seen=None):
+    calls = []
+
+    def q(sql, params=None):
+        calls.append((sql, params))
+        if "INTERVAL '24 hours'" in sql:
+            return rows
+        return [{"process_id": k, "last_at": v} for k, v in (seen or {}).items()]
+    q.calls = calls
+    return q
+
+
+def test_llm_splits_ops_and_content_and_flags_all_failed_lanes():
+    q = _query(_llm_rows(), {"gap_resolver": datetime(2026, 11, 6, 21, 0, tzinfo=timezone.utc)})
+    out = OPS.llm_section(q, fixer={"armed": False, "why": "no active git-push guard grant", "waiting": 6}, now=NOW)
+    assert out["note"] is None and out["window"] == "24h" and out["as_of"] == NOW.isoformat()
+    for sql, _ in q.calls:  # read-only
+        assert sql.lstrip().upper().startswith("SELECT")
+    g = {x["key"]: x for x in out["groups"]}
+    ops = {i["process_id"]: i for i in g["ops"]["items"]}
+    content = {i["process_id"]: i for i in g["content"]["items"]}
+    assert set(OPS.OPS_ITEMS) <= set(ops) and "incident_supervisor" in ops and "topic_curator" in content
+    tc = content["topic_curator"]
+    assert tc["red"] and tc["status"] == "lane_all_failed" and (tc["calls"], tc["failures"]) == (625, 212)
+    assert tc["lanes"][0]["lane"] == "chatgpt" and tc["lanes"][0]["all_failed"] is True
+    assert tc["lanes"][0]["last_error"] == "401 unauthorized token"
+    assert g["content"]["items"][0]["process_id"] == "topic_curator"  # red first
+    cio = content["cio_plan_enrichment"]
+    assert not cio["red"] and cio["models"] == ["deepseek-flash", "grok-3-mini"] and cio["spend_usd"] == 0.067453
+    assert ops["gap_resolver"]["calls"] == 0 and ops["gap_resolver"]["status"] == "no_calls_24h"
+    assert ops["gap_resolver"]["last_at"].startswith("2026-11-06T21:00")
+    assert ops["prospectus_fact_check"]["last_at"] is None
+    fx = ops["self_heal_fixer"]
+    assert fx["status"] == "not_in_log" and fx["fixer"]["waiting"] == 6 and fx["label"] == "Code self-fix"
+    assert g["ops"]["red"] == 0 and g["content"]["red"] == 1
+
+
+def test_llm_all_calls_failed_is_red_and_unreadable_log_is_none_not_zero():
+    rows = [{"process_id": "x", "model_lane": "chatgpt", "calls": 3, "failures": 3, "category": "Research"}]
+    out = OPS.llm_section(_query(rows), now=NOW)
+    x = next(i for g in out["groups"] for i in g["items"] if i["process_id"] == "x")
+    assert x["status"] == "all_failed" and x["red"] and x["spend_usd"] is None
+    out = OPS.llm_section(lambda sql, params=None: None, now=NOW)
+    assert out["groups"] is None and "not zero" in out["note"]
+
+
+def _fixer_files(tmp_path, armed=False):
+    rt = tmp_path / "data/runtime"
+    rt.mkdir(parents=True, exist_ok=True)
+    jobs = {"a": {"job_id": "a", "lane": "lane-a", "state": "fix_requested", "created_at": "2026-11-01T00:00:00+00:00",
+                  "history": [{"at": "2026-11-01T00:00:00+00:00", "state": "fix_requested"}]},
+            "b": {"job_id": "b", "lane": "lane-b", "state": "fix_requested", "created_at": "2026-11-07T16:30:00+00:00"},
+            "c": {"job_id": "c", "lane": "lane-c", "state": "fix_failed", "created_at": "2026-11-05T00:00:00+00:00"},
+            "d": {"job_id": "d", "lane": "lane-d", "state": "fixed", "created_at": "2026-11-05T00:00:00+00:00"}}
+    (rt / "self_heal_fixer_state.json").write_text(json.dumps({"jobs": jobs}), encoding="utf-8")
+    (rt / "self_heal_fixer_last.json").write_text(json.dumps(
+        {"finished_at": "2026-11-07T16:50:00+00:00",
+         "arming": {"armed": armed, "why": "no active git-push guard grant"}}), encoding="utf-8")
+    (rt / "n8n_failure_diagnosis_state.json").write_text(json.dumps({"escalations": {
+        "k1": {"lane": "lane-e", "reason": "p1_floor:P1;suggest_only", "priority": "P1", "at": "2026-11-07T10:00:00+00:00",
+               "detail": "x cause=the feed returned 0 rows"}}}), encoding="utf-8")
+
+
+def test_fixes_lists_what_self_heal_could_not_fix_with_disabled_rerun(tmp_path):
+    _fixer_files(tmp_path)
+    _ledger(tmp_path, [
+        {"id": "LQ-20261107-57", "owner": "cc-x", "priority": "P1", "status": "ASSIGNED", "title": "fix the feed"},
+        {"id": "LQ-20261107-60", "owner": "cc-y", "priority": "P0", "status": "QUEUED", "title": "n8n cutover wave"},
+        {"id": "LQ-20261107-61", "owner": "cc-z", "priority": "P2", "status": "ASSIGNED", "title": "lane-a output gap"},
+        {"id": "LQ-20261107-62", "owner": "cc-z", "priority": "P0", "status": "DONE_LIVE", "title": "n8n done"},
+        {"id": "LQ-20261107-63", "owner": "cc-z", "priority": "P0", "status": "QUEUED", "title": "broker docs"}])
+    lanes = {"lane-a": {"work_item": None}, "n8n-relay": {"work_item": "LQ-57"}}
+    refs = {"LQ-57": {"id": "LQ-20261107-57"}}
+    fixes, summary = OPS.fixes_section(tmp_path, lanes, refs, now=NOW)
+    assert fixes["notes"] == [] and fixes["ledger"] == "LEAD-WORK-LEDGER-20261107.json"
+    assert [w["id"] for w in fixes["work"]] == ["LQ-20261107-60", "LQ-20261107-57", "LQ-20261107-61"]
+    w = {x["id"]: x for x in fixes["work"]}
+    assert w["LQ-20261107-57"]["audit_fix"] and w["LQ-20261107-57"]["lanes"] == ["n8n-relay"]
+    assert w["LQ-20261107-61"]["lanes"] == ["lane-a"]
+    sh = {x["key"]: x for x in fixes["self_heal"]}
+    assert set(sh) == {"a", "c", "k1"}  # b is < 24 h old, d is fixed
+    assert sh["a"]["grant_href"] == OPS.GRANTS_HREF and "not armed" in sh["a"]["plain"]
+    assert sh["c"]["grant_href"] is None and "failed" in sh["c"]["plain"]
+    assert sh["k1"]["cause"] == "the feed returned 0 rows" and sh["k1"]["plain"].startswith("Severity P1")
+    assert all(x["rerun"] == {"enabled": False, "why": "needs operator grant"} for x in fixes["self_heal"])
+    assert summary["waiting"] == 2 and summary["armed"] is False
+
+
+def test_fixes_missing_stores_are_notes_and_none_not_empty(tmp_path):
+    fixes, summary = OPS.fixes_section(tmp_path, {}, {}, now=NOW)
+    assert fixes["work"] is None and summary["waiting"] is None
+    assert len(fixes["notes"]) == 3
+
+
+def test_compute_carries_llm_and_fixes(tmp_path):
+    _fixer_files(tmp_path)
+    out = _compute(tmp_path)
+    assert out["llm"]["groups"] is None and "not zero" in out["llm"]["note"]  # hermetic: DB unreachable
+    assert {x["key"] for x in out["fixes"]["self_heal"]} == {"a", "c", "k1"}

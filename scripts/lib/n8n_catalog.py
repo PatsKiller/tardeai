@@ -237,7 +237,8 @@ def state_root(environ: Mapping[str, str]) -> Path:
 
 
 def compute(*, environ: Optional[Mapping[str, str]] = None, root: Optional[Path] = None,
-            state: Optional[Path] = None, snapshot_fn: Optional[Callable[[], Mapping[str, Any]]] = None) -> dict:
+            state: Optional[Path] = None, snapshot_fn: Optional[Callable[[], Mapping[str, Any]]] = None,
+            llm_query: Optional[Callable[[str, Any], Optional[list]]] = None) -> dict:
     environ = os.environ if environ is None else environ
     root = Path(root or ROOT)
     explicit_state = state is not None
@@ -259,6 +260,14 @@ def compute(*, environ: Optional[Mapping[str, str]] = None, root: Optional[Path]
     out["work_items"], wnote = read_work_items(state, (v.get("work_item") for v in verdicts.values()))
     if wnote:
         out["notes"].append(wnote)
+    # LQ-180 commit 2: the llm and fixes subtabs (read-only; a failed reader is a note on its own tab).
+    from scripts.lib import n8n_catalog_ops as ops
+
+    try:
+        out.update(ops.build_ops(state, out.get("lanes") or {}, out["work_items"], query=llm_query))
+    except Exception as exc:  # noqa: BLE001 -- the llm/fixes tabs must never take down the catalog
+        out["notes"].append(f"LLM use and fixes could not be built ({type(exc).__name__}).")
+        out["llm"], out["fixes"] = None, None
     return out
 
 

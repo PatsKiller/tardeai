@@ -21,8 +21,14 @@ export const SUBTAB_CSS = `
 .tally{color:var(--muted);font-size:.8rem;margin:0}
 a.lane{color:inherit;text-decoration:none;display:flex;flex-direction:column;gap:1px;min-height:44px;justify-content:center}
 .empty{color:var(--muted);font-size:.9rem;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin:0}
+.lanes{display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.banner{margin:0;padding:8px 10px;border-left:4px solid var(--shadow);background:var(--card);font-size:.88rem}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.rerun,.acts a{min-height:44px;display:inline-flex;align-items:center;padding:0 14px;border-radius:8px;font:600 .8rem "IBM Plex Sans",system-ui,sans-serif}
+.rerun{border:1px dashed var(--line);background:var(--chip);color:var(--muted)}
+.acts a{border:1px solid var(--line);background:var(--card);color:var(--fg);text-decoration:none}
 `
-export const SUBTABS = [['overview', 'Overview'], ['lanes', 'Lanes'], ['audit', 'Audit']] as const
+export const SUBTABS = [['overview', 'Overview'], ['lanes', 'Lanes'], ['audit', 'Audit'], ['llm', 'LLM use'], ['fixes', 'Fixes']] as const
 export type SubKey = typeof SUBTABS[number][0]
 export const resolveSub = (s: string | null | undefined): SubKey => (SUBTABS.some(([k]) => k === s) ? s as SubKey : 'overview')
 
@@ -168,12 +174,73 @@ export function auditHtml(w: Wire, filter = ''): string {
 <details open><summary><h2>${filter ? esc(vl(filter)) : 'All audited lanes'} · ${auditRows(w, filter).length}</h2></summary><div class="body"><ul>${rows || '<li class="d">No lane has this verdict.</li>'}</ul></div></details>`
 }
 
+/** The approved rule, verbatim from the approved artifact. */
+export const LLM_RULE = '<b>The rule for every lane:</b> the LLM diagnoses, drafts, proposes and checks claims. Deterministic code makes the actual change and validates it. Nothing an LLM writes reaches data, schedules or code without a deterministic check and a receipt.'
+export const RERUN_TIP = 'Re-run needs operator grant: lane re-runs are a separate, grant-gated step. Nothing on this page can start a run.'
+export const usd = (v: unknown): string => (typeof v === 'number' ? '$' + v.toFixed(v >= 1 ? 2 : 4) : '—')
+const LLM_STATUS: Record<string, [string, string]> = {
+  all_failed: ['bad', 'Every call in the last 24 h failed.'],
+  lane_all_failed: ['bad', 'At least one model lane failed on every call in the last 24 h; the other lanes carried the work.'],
+  active: ['live', 'Called in the last 24 h.'],
+  no_calls_24h: ['shadow', 'No call in the last 24 h. The time shown is its last call within 30 days.'],
+  not_in_log: ['dry', 'Runs outside the consumption log, so its own state is shown instead.'],
+}
+function llmItem(i: Wire): string {
+  const [cls, tip] = LLM_STATUS[i.status] || ['none', 'Status not reported.']
+  const label = i.status === 'all_failed' ? `All ${i.calls} failed` : i.status === 'lane_all_failed' ? `${i.failures} of ${i.calls} failed`
+    : i.status === 'active' ? `${i.calls} calls · ${i.failures} failed` : i.status === 'no_calls_24h' ? `No calls in 24 h · last ${etFmt(i.last_at)}` : 'Not in the log'
+  const lanes = (i.lanes || []).map((l: Wire) => `<span class="c${l.all_failed ? ' bad' : ''}">${esc(l.lane)}${l.models && l.models.length ? ' (' + esc(l.models.join(', ')) + ')' : ''}: ${l.calls} calls · ${l.failures} failed · last ${esc(etFmt(l.last_at))} · ${usd(l.spend_usd)}</span>${l.all_failed ? `<div class="def">Every call on ${esc(l.lane)} failed in 24 h.${l.last_error ? ' Last error: ' + esc(l.last_error) : ''}</div>` : ''}`).join('')
+  const fx = i.fixer
+  const fixer = i.status === 'not_in_log' ? `<div class="d">${esc(i.not_in_log)}${fx ? ` Fixer: ${fx.armed === false ? 'not armed (' + esc(fx.why || 'no reason recorded') + ')' : fx.armed ? 'armed' : 'arming unknown'} · ${typeof fx.waiting === 'number' ? fx.waiting : '—'} fixes waiting${fx.oldest ? ' since ' + esc(etFmt(fx.oldest)) : ''}.` : ' Fixer state could not be read.'}</div>` : ''
+  return `<li data-proc="${esc(i.process_id)}"><div class="row"><span class="t">${esc(i.label)}</span><span class="c">${esc(i.process_id)}${i.models && i.models.length ? ' · ' + esc(i.models.join(', ')) : ''}${i.spend_usd !== null && i.spend_usd !== undefined ? ' · ' + usd(i.spend_usd) : ''}</span><span class="vb ${cls}" ${tipAttr(tip)}>${esc(label)} ⓘ</span></div>${lanes ? `<div class="lanes">${lanes}</div>` : ''}${fixer}${i.next ? `<div class="d">Next: ${esc(i.next)}</div>` : ''}</li>`
+}
+export function llmHtml(w: Wire): string {
+  const L = w.llm
+  if (!L) return `<p class="empty">LLM use is not reported yet.</p>`
+  const head = `<p class="asof">LLM calls in the last 24 h, from the consumption log · as of ${esc(etFmt(L.as_of))} · refreshes every minute</p>${L.note ? `<p class="empty" role="status" style="color:var(--shadow)">${esc(L.note)}</p>` : ''}`
+  const groups: Wire[] = L.groups || []
+  const pill = (g: Wire) => `<span class="pill ${g.red || g.active * 2 < g.total ? 'bad' : 'live'}" ${tipAttr(`${g.label}: ${g.active} of ${g.total} purposes had a successful call in 24 h; ${g.red} have a model lane where every call failed.`)}>${g.key === 'ops' ? 'operations' : 'content'}: ${g.active}/${g.total} active ⓘ</span>`
+  const reds = groups.reduce((n, g) => n + (g.red || 0), 0)
+  const body = groups.map(g => `<div><h3 class="${g.red ? 'bad' : 'live'}">${esc(g.label)} · ${g.calls} calls · ${g.failures} failed · ${usd(g.spend_usd)}</h3><ul>${(g.items || []).map(llmItem).join('') || '<li class="d">No calls in 24 h.</li>'}</ul></div>`).join('')
+  return `${head}<details open><summary><h2>How LLMs are used</h2><span class="bar">${groups.map(pill).join('')}${reds ? `<span class="pill bad" ${tipAttr('Purposes with a model lane where every call in the last 24 h failed. They are listed first, in red.')}>${reds} failing on a lane ⓘ</span>` : ''}</span></summary><div class="body">
+<p class="blurb">Every governed LLM call writes a row to the consumption log; this view groups the last 24 h by purpose and model lane. A lane where every call failed is red, with its last error.</p>
+<p class="blurb">${LLM_RULE}</p>
+<p class="blurb">${esc(L.spend_note || '')}</p>${groups.length ? body : '<p class="empty">LLM use could not be read.</p>'}</div></details>`
+}
+
+const rerunBtn = () => `<button type="button" class="rerun" aria-disabled="true" data-rerun-disabled ${tipAttr(RERUN_TIP)}>Lane re-run · needs operator grant ⓘ</button>`
+function healLi(x: Wire): string {
+  const where = x.kind === 'fixer' ? `fixer job ${x.key} · ${String(x.state || '').replace(/_/g, ' ')} · since ${etFmt(x.since)}` : `diagnosis escalation${x.priority ? ' · ' + x.priority : ''} · ${etFmt(x.at)}`
+  return `<li data-heal="${esc(x.key)}"><div class="row"><span class="t">${esc(x.lane || '(no lane)')}</span><span class="c">${esc(where)}</span></div><div class="def">${esc(x.plain)}</div>${x.cause ? `<div class="d">Cause: ${esc(x.cause)}</div>` : ''}${x.tried ? `<div class="d">Tried: ${esc(x.tried)}</div>` : ''}<div class="d">What you can do: ${esc(x.action)}</div><div class="acts">${x.grant_href ? `<a href="${esc(x.grant_href)}">Open Grants</a>` : ''}${x.lane ? `<a href="${esc(laneLink(x.lane))}" data-lane-link="${esc(x.lane)}">Open lane</a>` : ''}${rerunBtn()}</div></li>`
+}
+function workLi(x: Wire): string {
+  return `<li data-work="${esc(x.id)}"><div class="row"><span class="t">${esc(x.title || x.id)}</span></div><div class="row"><span class="vb ${x.priority === 'P0' ? 'bad' : x.priority === 'P1' ? 'shadow' : 'none'}">${esc(x.priority || 'no priority')}</span><span class="c">${esc(x.id)} · ${esc(x.status || 'status unknown')} · ${esc(x.owner || 'no owner')}</span>${x.audit_fix ? `<span class="c" ${tipAttr('This item is the fix assigned to a failed lane in the audit.')}>audit fix ⓘ</span>` : ''}</div>${(x.lanes || []).length ? `<div class="acts">${x.lanes.map((l: string) => `<a href="${esc(laneLink(l))}" data-lane-link="${esc(l)}">${esc(l)}</a>`).join('')}</div>` : ''}</li>`
+}
+export function fixesHtml(w: Wire): string {
+  const F = w.fixes
+  if (!F) return `<p class="empty">Fixes are not reported yet.</p>`
+  const fx = F.fixer || {}
+  const heal: Wire[] = F.self_heal || []
+  const work: Wire[] | null = F.work
+  const banner = fx.armed === false
+    ? `<p class="banner"><b>Self-heal is not armed:</b> ${esc(fx.why || 'no reason recorded')}. ${typeof fx.waiting === 'number' ? fx.waiting : '—'} fixes waiting${fx.oldest ? ' since ' + esc(etFmt(fx.oldest)) : ''}. Last fixer check ${esc(etFmt(fx.receipt_at))}.${fx.grant_href ? ` <a href="${esc(fx.grant_href)}">Issue the grant in Ops Controls → Grants</a>.` : ''}</p>`
+    : fx.armed ? `<p class="banner" style="border-left-color:var(--live)">Self-heal is armed. Last fixer check ${esc(etFmt(fx.receipt_at))}.</p>` : ''
+  const byP = new Map<string, Wire[]>()
+  for (const x of work || []) { const k = x.priority || 'no priority'; byP.set(k, [...(byP.get(k) || []), x]) }
+  const workHtml = work === null ? '<p class="empty">The lead work ledger could not be read, so open items are not shown.</p>'
+    : [...byP.entries()].map(([p, xs], i) => `<details${i === 0 ? ' open' : ''}><summary><h2>Open fix items · ${esc(p)} · ${xs.length}</h2></summary><div class="body"><ul>${xs.map(workLi).join('')}</ul></div></details>`).join('') || '<p class="empty">No open item touches an n8n lane.</p>'
+  return `<p class="asof">Read-only · as of ${esc(etFmt(F.as_of))} · fix items from ${esc(F.ledger || 'no ledger')} · refreshes every minute</p>
+${(F.notes || []).map((n: string) => `<p class="empty" role="status" style="color:var(--shadow)">${esc(n)}</p>`).join('')}${banner}
+<details open><summary><h2>Self-heal couldn't fix · ${heal.length}</h2><span class="bar"><span class="pill none" ${tipAttr(RERUN_TIP)}>re-run needs operator grant ⓘ</span></span></summary><div class="body"><p class="blurb">Fixer jobs that were refused, failed, cut off, or waited more than 24 h, and diagnosis escalations that need a person. Oldest first.</p><ul>${heal.map(healLi).join('') || '<li class="d">Nothing is waiting on a person.</li>'}</ul></div></details>
+<section aria-label="Open fix items" style="display:flex;flex-direction:column;gap:10px"><h3>Open lead-ledger items that touch n8n lanes${work ? ' · ' + work.length : ''}</h3>${workHtml}</section>`
+}
+
 export function notesHtml(w: Wire): string {
   return (w.notes || []).map((n: string) => `<p class="empty" role="status" style="color:var(--shadow)">${esc(n)}</p>`).join('')
 }
 
 export function pageHtml(w: Wire, sub: SubKey, opts: { filter?: string; q?: string } = {}): string {
-  const body = sub === 'lanes' ? lanesHtml(w, opts.q) : sub === 'audit' ? auditHtml(w, opts.filter) : overviewHtml(w)
+  const body = sub === 'lanes' ? lanesHtml(w, opts.q) : sub === 'audit' ? auditHtml(w, opts.filter) : sub === 'llm' ? llmHtml(w) : sub === 'fixes' ? fixesHtml(w) : overviewHtml(w)
   return `<main>${tabsHtml(sub)}${notesHtml(w)}<div role="tabpanel" style="display:flex;flex-direction:column;gap:16px">${body}</div></main>`
 }
 
