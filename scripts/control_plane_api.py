@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -275,24 +276,138 @@ def _empty_page(query: dict[str, Any]) -> dict[str, Any]:
     return {"items": [], "pagination": {"limit": limit, "offset": offset, "total": 0}}
 
 
+#: The 21 keys the Agent Office detail panel reads (``AgentOfficePage.tsx``, ``AgentDetailPanel``).
+#: A row that cannot fill them all states how many it fills instead of presenting four as the whole.
+AGENT_CONTRACT_FIELDS = (
+    "agent_id", "role", "runtime_state", "trigger_classes", "last_wake", "wake_reason",
+    "current_task", "entity_refs", "queue_depth", "last_success", "last_failure", "last_artifact",
+    "research_route", "model_route", "latency", "cost", "next_eligible_wake", "evidence_class",
+    "status", "data_quality", "source_sha",
+)
+
+#: Explicit status vocabularies. A trace status outside both sets is neither a success nor a
+#: failure, and is recorded as neither -- an unrecognised word must not become a green tick.
+_TRACE_SUCCESS_STATUSES = frozenset({"completed", "complete", "ok", "success", "succeeded", "done"})
+_TRACE_FAILURE_STATUSES = frozenset({
+    "failed", "failure", "error", "errored", "aborted", "timeout", "timed_out", "crashed", "exception",
+})
+
+
+def _coalesce(*values: Any) -> Any:
+    """The first value that is actually present; a null stays null when nothing fills it."""
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _later(a: Any, b: Any) -> Any:
+    """The later of two ISO timestamps; the present one when the other is absent."""
+    sa, sb = str(a or ""), str(b or "")
+    if not sb:
+        return a
+    if not sa:
+        return b
+    return a if sa >= sb else b
+
+
+def _iso_seconds(start: Any, end: Any) -> float | None:
+    """Seconds between two ISO timestamps, or None when either is absent or unparseable."""
+    def parse(value: Any) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+    first, last = parse(start), parse(end)
+    if first is None or last is None:
+        return None
+    # Six decimals: a sub-millisecond wake must not round to a plausible 0.0.
+    return round((last - first).total_seconds(), 6)
+
+
+def _trace_latency(row: dict[str, Any]) -> Any:
+    """started_at → ended_at for a live trace row; a compacted projection carries its own latency."""
+    latency = _iso_seconds(row.get("started_at"), row.get("ended_at"))
+    return latency if latency is not None else row.get("latency")
+
+
+def _agent_contract_markers(row: dict[str, Any]) -> dict[str, Any]:
+    """State how much of the 21-key contract a row fills; `data_quality` follows the count.
+
+    ``data_quality`` was a hard-coded AVAILABLE default, so a trace row carrying four of the
+    twenty-one keys was served exactly like a complete one. The marker is recomputed on every row
+    this module builds; a quality some other producer set (anything but this function's own
+    AVAILABLE/PARTIAL) is left alone.
+    """
+    total = len(AGENT_CONTRACT_FIELDS)
+    missing = [key for key in AGENT_CONTRACT_FIELDS if key != "data_quality" and row.get(key) in (None, "")]
+    prior = row.get("data_quality")
+    if prior in (None, "", "AVAILABLE", "PARTIAL"):
+        row["data_quality"] = "AVAILABLE" if not missing else "PARTIAL"
+    row["contract_fields_present"] = f"{total - len(missing)}/{total}"
+    row["contract_fields_missing"] = missing
+    return row
+
+
 def _agents_from_traces(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Unique `agent` field → {agent_id, role, last_wake, runtime_state}."""
+    """One row per agent, read from the agent's own trace rows.
+
+    The trace store is the only source behind the agents collection, and the source row carries
+    ``trigger``, ``decision.current_action``, ``trace_id``, ``status`` and a start/end pair. Those
+    fill ``wake_reason``, ``current_task``, ``last_artifact``, ``status`` and ``latency`` with what
+    the row says; everything the row does not carry stays null. Before 2026-11-07 this kept four
+    keys and the detail panel rendered the other seventeen as null under an AVAILABLE envelope.
+
+    Idempotent: ``_read_jsonl`` compacts with this function every few thousand rows, so a row this
+    function produced is a legal input. That is why its own keys are read as fallbacks, and why
+    ``last_success``/``last_failure`` are the max over the agent's rows rather than the latest row's.
+    """
     by_agent: dict[str, dict[str, Any]] = {}
     for row in rows:
         agent_id = str(row.get("agent") or row.get("agent_id") or "")
         if not agent_id:
             continue
-        last_wake = row.get("ended_at") or row.get("started_at") or row.get("last_wake")
+        decision = row.get("decision") if isinstance(row.get("decision"), dict) else {}
+        status = _coalesce(row.get("status"), row.get("runtime_state"))
+        last_wake = _coalesce(row.get("ended_at"), row.get("started_at"), row.get("last_wake"))
+        stamp = _coalesce(row.get("ended_at"), last_wake)
+        success = row.get("last_success")
+        failure = row.get("last_failure")
+        verdict = str(status or "").lower()
+        if verdict in _TRACE_SUCCESS_STATUSES:
+            success = _later(success, stamp)
+        elif verdict in _TRACE_FAILURE_STATUSES:
+            failure = _later(failure, stamp)
         candidate = {
             "agent_id": agent_id,
-            "role": row.get("role"),
+            "role": _coalesce(row.get("role")),
             "last_wake": last_wake,
-            "runtime_state": row.get("status") or row.get("runtime_state"),
+            "runtime_state": status,
+            "wake_reason": _coalesce(row.get("trigger"), row.get("wake_reason")),
+            "current_task": _coalesce(decision.get("current_action"), row.get("current_task")),
+            "last_artifact": _coalesce(row.get("trace_id"), row.get("last_artifact")),
+            "latency": _trace_latency(row),
+            "last_success": success,
+            "last_failure": failure,
+            "status": status,
+            # Every row reaching this projection came out of the trace store: a live runtime row,
+            # not a fixture and not a declaration.
+            "evidence_class": _coalesce(row.get("evidence_class"), "CURRENT_SMOKE"),
+            "source_sha": _coalesce(row.get("source_sha"), _sha()),
         }
         existing = by_agent.get(agent_id)
+        if existing is not None:
+            # Successes and failures accumulate across the agent's whole history, not just the
+            # newest row: a failure keeps showing after the next wake succeeds.
+            candidate["last_success"] = _later(existing.get("last_success"), candidate["last_success"])
+            candidate["last_failure"] = _later(existing.get("last_failure"), candidate["last_failure"])
         if existing is None or str(last_wake or "") >= str(existing.get("last_wake") or ""):
             by_agent[agent_id] = candidate
-    return list(by_agent.values())
+    return [_agent_contract_markers(row) for row in by_agent.values()]
 
 
 def _is_agent_trace_source(path: Path) -> bool:
@@ -451,9 +566,12 @@ def _agent_detail(agent_id: str, query: dict[str, Any]) -> tuple[dict[str, Any],
         "agent_id": agent_id,
         "role": match.get("role"),
         "runtime_state": match.get("runtime_state", "REGISTERED_NO_RUNTIME"),
-        "trigger_classes": match.get("trigger_classes", []),
+        # Absent is absent: an empty list here would read as "this agent declares none", which the
+        # source never said. The completeness marker below counts a null as missing and a [] as
+        # present, so the default must not manufacture one.
+        "trigger_classes": match.get("trigger_classes"),
         "last_wake": match.get("last_wake"), "wake_reason": match.get("wake_reason"),
-        "current_task": match.get("current_task"), "entity_refs": match.get("entity_refs", []),
+        "current_task": match.get("current_task"), "entity_refs": match.get("entity_refs"),
         "queue_depth": match.get("queue_depth"), "last_success": match.get("last_success"),
         "last_failure": match.get("last_failure"), "last_artifact": match.get("last_artifact"),
         "recent_artifacts": _paged([a for a in match.get("recent_artifacts", []) if isinstance(a, dict)], query),
@@ -461,10 +579,11 @@ def _agent_detail(agent_id: str, query: dict[str, Any]) -> tuple[dict[str, Any],
         "process_route": match.get("process_route"), "latency": match.get("latency"),
         "cost": match.get("cost"), "next_eligible_wake": match.get("next_eligible_wake"),
         "evidence_class": match.get("evidence_class", "CURRENT_SMOKE"),
-        "source_sha": match.get("source_sha", _sha()), "as_of": match.get("as_of", _now()),
-        "data_quality": match.get("data_quality", "AVAILABLE"),
+        "source_sha": _coalesce(match.get("source_sha"), _sha()), "as_of": match.get("as_of") or _now(),
+        # No AVAILABLE default: the marker fills it from how much of the contract this row carries.
+        "data_quality": match.get("data_quality"),
     }
-    return detail, quality
+    return _agent_contract_markers(detail), quality
 
 
 NODE_TYPES = {
@@ -794,8 +913,48 @@ def _maturity_truth(query: dict[str, Any] | None = None) -> tuple[dict[str, Any]
     return page, "AVAILABLE"
 
 
+#: `source_store` labels that name a host- or database-scoped fact, not a file in a state root.
+_HOST_SCOPED_STORE_PREFIXES = (
+    "user crontab", "crontab", "systemd", "postgresql:", "postgres:", "/run/user/", "/etc/", "/proc/", "/sys/",
+)
+_STORE_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:")
+
+
+def _store_is_about_root(store: object, root: Path) -> bool:
+    """Whether a ``source_store`` label names something under the root being reported.
+
+    The builder labels its stores three ways: an absolute path, a bare path relative to the served
+    tree (``data/persistent_wake/state/wakes.jsonl``), and a host/DB scope (``postgresql:...``,
+    ``user crontab``, ``systemd drop-in ...``). Only the first two can be evidence about this root.
+
+    Before 2026-11-07 the test was ``startswith(root)``, which no relative label can satisfy, so
+    every qualifying item was skipped and the surface answered EMPTY at every root -- including the
+    live one with 4029 recorded wakes. The absolute branch now compares path components instead of
+    string prefixes, so ``/state2`` is not "under" ``/state``.
+    """
+    label = str(store or "").strip()
+    if not label:
+        return False
+    lowered = label.lower()
+    if _STORE_SCHEME.match(lowered) or lowered.startswith(_HOST_SCOPED_STORE_PREFIXES):
+        return False
+    path = Path(label)
+    if not path.is_absolute():
+        # The builder reads a relative label as ``root / label`` -- it IS this root's store.
+        # On the live host ``data/persistent_wake`` is a symlink out of the release tree, so
+        # resolving it would call the root's own store "outside the root". A label that tries
+        # to climb out with ``..`` is not one the builder emits.
+        return ".." not in path.parts
+    # Absolute: compare path components, not string prefixes, so /state2 is not under /state.
+    try:
+        Path(os.path.normpath(path)).relative_to(Path(os.path.normpath(root)))
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _maturity_has_evidence(payload: dict[str, Any]) -> bool:
-    """True iff the computed truth rests on at least one real observation.
+    """True iff the computed truth rests on at least one real observation about this root.
 
     Counts evidence, not shape. Deliberately does NOT trust
     ``evidence_timestamp``: the builder stamps that with generation time on every
@@ -803,7 +962,7 @@ def _maturity_has_evidence(payload: dict[str, Any]) -> bool:
     only honest signal is a dimension with a non-zero count and an evidence_class
     that is not 'absent'.
     """
-    root = str(_state_root())
+    root = _state_root()
     for item in payload.get("items") or []:
         if not isinstance(item, dict):
             continue
@@ -817,7 +976,7 @@ def _maturity_has_evidence(payload: dict[str, Any]) -> bool:
         # postgresql:communication_deliveries, which would render the surface LIVE
         # for a state root containing nothing. Out-of-root evidence is real, but
         # it is not evidence about THIS root.
-        if not str(item.get("source_store") or "").startswith(root):
+        if not _store_is_about_root(item.get("source_store"), root):
             continue
         try:
             if int(item.get("count") or 0) > 0:

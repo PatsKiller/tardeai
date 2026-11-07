@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "control_plane_agents_maturity_20261107",
+  "files": [
+    "tests/test_control_plane_agents_maturity_20261107.py"
+  ],
+  "anchor": "CONTROL_PLANE_AGENTS_MATURITY_20261107",
+  "comment": [
+    "ANCHOR: CONTROL_PLANE_AGENTS_MATURITY_20261107 — LQ-20261107-177: the control-plane agents row must keep",
+    "the fields its trace row carries and state how much of the 21-key Agent Office contract it fills, instead of",
+    "serving four keys under an AVAILABLE envelope; and the maturity envelope must accept the builder's relative",
+    "store labels as evidence about the reported root while a host/DB scope, a sibling path that merely shares a",
+    "string prefix, or a live database behind an empty root must not make that root LIVE."
+  ]
+}
