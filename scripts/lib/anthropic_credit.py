@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 import fcntl
 import hashlib
 import json
@@ -42,6 +42,21 @@ MAX_UNAVAILABLE_COOLDOWN_MINUTES = 1440
 # ONLY on the cheap tiers. No other tier may appear in an override.
 CHEAP_TIERS = frozenset({"bulk", "mid"})
 OPUS_FABLE_TIERS = frozenset({"standard", "high", "highest", "long_form", "premium"})
+# LQ-20261107-196 (DSN-20261107-ANTHROPIC-FIRST-ROUTING §3A): per-tier daily sub-caps so Opus cannot eat the
+# day. Every Opus/Fable tier shares the "standard" bucket; a share is a fraction of the UTC-day cap in force.
+TIER_BUCKETS = frozenset({"bulk", "mid", "standard"})
+TIER_CAP_REFUSAL = "ANTHROPIC_CREDIT_TIER_CAP"
+# Monthly renewal: the daily cap is the monthly credit spread over 30 days.
+MONTHLY_PACING_DAYS = 30
+
+
+def tier_bucket(tier: Any) -> str | None:
+    """The sub-cap bucket a credit tier spends from, or None for a tier outside every bucket."""
+    if tier in CHEAP_TIERS:
+        return str(tier)
+    if tier in OPUS_FABLE_TIERS:
+        return "standard"
+    return None
 
 
 class CreditDenied(RuntimeError):
@@ -158,19 +173,70 @@ def _daily_overrides(raw: Any) -> list[tuple[date, date, Decimal]]:
 
 def _renewal(raw: Any) -> dict[str, Any]:
     """``one_time`` (default): one total cap for the promotion. ``monthly``: a fresh
-    ``monthly_allowance_usd`` each UTC month from ``renews_on_day`` (default 1); the
-    journal keeps every period, only the current period counts toward the total."""
+    allowance each UTC month; the journal keeps every period, only the current period
+    counts toward the total.
+
+    Two monthly shapes are read:
+
+    * ``monthly_credit_usd`` + ``period_start`` (LQ-20261107-196, the operator's renewing
+      credit): total = the monthly credit, daily cap = monthly / 30 (rounded down to the cent,
+      ``daily_cap_usd`` is not used), periods run from ``period_start`` to the same day each
+      month, and nothing is admitted before ``period_start``.
+    * ``monthly_allowance_usd`` + ``renews_on_day`` (2026-10-26 shape): total = the allowance,
+      ``daily_cap_usd`` still paces the day.
+
+    Naming both amounts, or a ``renews_on_day`` that disagrees with ``period_start``, is ambiguous
+    and refuses the configuration rather than guessing which one the operator meant.
+    """
     if raw is None:
-        return {"mode": "one_time", "monthly_allowance_usd": None, "renews_on_day": None}
+        return {"mode": "one_time", "monthly_allowance_usd": None, "renews_on_day": None,
+                "period_start": None, "daily_from_monthly": False}
     if not isinstance(raw, dict) or raw.get("mode") not in {"one_time", "monthly"}:
         raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
     day = raw.get("renews_on_day")
     if day is not None and (isinstance(day, bool) or not isinstance(day, int) or not 1 <= day <= 28):
         raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    credit = raw.get("monthly_credit_usd")
     allowance = raw.get("monthly_allowance_usd")
-    if raw["mode"] == "monthly" and (allowance is None or amount(allowance) <= 0):
+    if raw["mode"] == "monthly" and credit is not None and allowance is not None:
         raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
-    return {"mode": raw["mode"], "monthly_allowance_usd": allowance, "renews_on_day": day}
+    start = raw.get("period_start")
+    anchor = None
+    if start is not None:
+        try:
+            anchor = date.fromisoformat(str(start))
+        except ValueError as exc:
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID") from exc
+        # Day 29-31 does not exist every month; the period must start on the same day each month.
+        if anchor.day > 28 or (day is not None and day != anchor.day):
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+        day = anchor.day
+    monthly = credit if credit is not None else allowance
+    if raw["mode"] == "monthly" and (monthly is None or amount(monthly) <= 0):
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    return {"mode": raw["mode"], "monthly_allowance_usd": monthly, "renews_on_day": day,
+            "period_start": anchor, "daily_from_monthly": credit is not None}
+
+
+def _tier_shares(raw: Any) -> dict[str, Decimal]:
+    """``{"bulk": "0.40", "mid": "0.45", "standard": "0.15"}``: each bucket's share of the UTC-day cap.
+
+    Absent means no sub-caps. Unknown buckets, a share outside (0, 1] or shares summing above 1
+    refuse the whole policy instead of silently dropping a cap.
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not raw:
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    shares: dict[str, Decimal] = {}
+    for bucket, value in raw.items():
+        share = amount(value)
+        if bucket not in TIER_BUCKETS or not 0 < share <= 1:
+            raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+        shares[bucket] = share
+    if sum(shares.values(), Decimal(0)) > 1:
+        raise CreditDenied("CREDIT_CONFIGURATION_INVALID")
+    return shares
 
 
 class CreditBook:
@@ -188,6 +254,12 @@ class CreditBook:
             self.renewal = _renewal(policy.get("renewal"))
             if self.renewal["mode"] == "monthly":
                 self.total = amount(self.renewal["monthly_allowance_usd"])
+                if self.renewal["daily_from_monthly"]:
+                    self.daily = (self.total / MONTHLY_PACING_DAYS).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                anchor = self.renewal["period_start"]
+                if anchor is not None:
+                    self.start = max(self.start, datetime(anchor.year, anchor.month, anchor.day, tzinfo=timezone.utc))
+            self.tier_shares = _tier_shares(policy.get("tier_daily_cap_shares"))
             caps = policy["per_call_caps_usd"]
             if (not isinstance(self.promotion, str) or not self.promotion.strip()
                     or not isinstance(caps, dict) or not caps
@@ -344,6 +416,26 @@ class CreditBook:
                     request["status"] = "uncertain"
         return requests
 
+    @staticmethod
+    def _counts_today(request: dict[str, Any], now: datetime) -> bool:
+        """A settled call paces the UTC day it settled on; an open hold the day it was reserved."""
+        stamp = request["settled_at"] if request["status"] == "settled" else request["at"]
+        return utc(stamp).date() == utc(now).date()
+
+    def tier_caps(self, now: datetime) -> dict[str, Decimal]:
+        """Each bucket's UTC-day sub-cap at ``now`` (shares of the cap in force, overrides included)."""
+        daily = self.daily_cap(now)
+        return {bucket: (daily * share).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+                for bucket, share in self.tier_shares.items()}
+
+    def _tier_used_today(self, requests: dict[str, dict[str, Any]], now: datetime) -> dict[str, Decimal]:
+        used = {bucket: Decimal(0) for bucket in self.tier_shares}
+        for request in requests.values():
+            bucket = tier_bucket(request.get("tier"))
+            if bucket in used and self._counts_today(request, now):
+                used[bucket] += amount(request.get("actual", request["projected"]))
+        return used
+
     def _resets(self, rows: list[dict[str, Any]], scope: str) -> int:
         latest = 0
         for row in self._own(rows):
@@ -392,7 +484,12 @@ class CreditBook:
                   else "EXHAUSTED" if exhausted or spent + held >= self.total
                   else "PAUSED_TODAY" if today + held_today >= daily else "OK")
         resets = [r for r in own if r["event"] == "operator_reset"]
+        tier_caps = tier_used = None
+        if self.tier_shares:
+            tier_caps = {b: money(v) for b, v in self.tier_caps(now).items()}
+            tier_used = {b: money(v) for b, v in self._tier_used_today(requests, now).items()}
         return {"status": status, "promotion_id": self.promotion,
+                "tier_daily_caps_usd": tier_caps, "tier_today_used_usd": tier_used,
                 "credit_used_usd": money(spent), "reserved_usd": money(held),
                 "reserved_today_usd": money(held_today), "expired_unsettled_usd": money(expired),
                 "today_used_usd": money(today), "total_cap_usd": money(self.total),
@@ -471,18 +568,16 @@ class CreditBook:
                 raise CreditDenied("EXHAUSTED")
             if amount(snapshot["today_used_usd"]) + amount(snapshot["reserved_today_usd"]) + projected > self.daily_cap(now):
                 raise CreditDenied("PAUSED_TODAY")
+            if self.tier_shares:
+                # A tier outside every configured bucket is refused, never uncapped.
+                bucket = tier_bucket(tier)
+                cap = self.tier_caps(now).get(bucket) if bucket else None
+                if cap is None or self._tier_used_today(requests, now)[bucket] + projected > cap:
+                    raise CreditDenied(TIER_CAP_REFUSAL)
             effective_cap = self.effective_process_cap(process_id, tier, process_cap)
             if effective_cap is not None:
-                day = utc(now)
-
-                def counts_today(r: dict[str, Any]) -> bool:
-                    if r["status"] == "settled":
-                        return utc(r["settled_at"]).date() == day.date()
-                    at = utc(r["at"])
-                    return at.date() == day.date()
-
                 used = sum((amount(r.get("actual", r["projected"])) for r in requests.values()
-                            if r.get("process") == process_id and counts_today(r)), Decimal(0))
+                            if r.get("process") == process_id and self._counts_today(r, now)), Decimal(0))
                 if used + projected > effective_cap:
                     raise CreditDenied("CREDIT_PROCESS_CAP")
             self._append(rows, "reserve", now, request=key, process=process_id,
@@ -526,7 +621,7 @@ class CreditBook:
         # writes no reserve row, so the fallback carries the caller identity too;
         # an omitted id still becomes unknown:<pid>, never null.
         permitted = {"NOT_CONFIGURED", "EXPIRED", "EXHAUSTED", "PAUSED_TODAY", "UNAVAILABLE",
-                     "CREDIT_PER_CALL_CAP", "CREDIT_PROCESS_CAP", "EMERGENCY_TIER_REFUSED",
+                     "CREDIT_PER_CALL_CAP", "CREDIT_PROCESS_CAP", TIER_CAP_REFUSAL, "EMERGENCY_TIER_REFUSED",
                      "CALL_COST_CEILING", "RATE_LIMITED",
                      "OVERLOADED", "AUTH_FAILURE", "BILLING_ERROR", "TOOLS_UNSUPPORTED",
                      "OUTPUT_INVALID", "DEADLINE_EXCEEDED", "TIMEOUT", "MODEL_MISMATCH"}

@@ -67,14 +67,18 @@ def test_real_bridge_adapter_ledger_and_credit_settlement_are_correlated(monkeyp
         monkeypatch.setenv('PROJECT_ROOT',str(tmp_path))
         monkeypatch.setenv('ANTHROPIC_API_KEY','synthetic-transport-key')
         usage={'input_tokens':30,'output_tokens':12,'cache_read_input_tokens':2000,'cache_creation_input_tokens':1000}
+        sent=[]
         def http(method,path,payload,**kwargs):
             if path.endswith('count_tokens'):return 200,{'input_tokens':100},{}
+            sent.append(payload['model'])
             return 200,{'id':'fixture-correlated','model':payload['model'],
                 'content':[{'type':'text','text':json.dumps(VALID)}],'usage':usage},{}
         monkeypatch.setattr(promo,'AnthropicTransport',functools.partial(AnthropicTransport,request=http,now=lambda:NOW))
         result=bridge.execute_governed_call([{'role':'user','content':'synthetic'}],process_id=DIAG,max_tokens=32)
         assert result.get('_tradeai',{}).get('governance_pass') is True,json.dumps(result)
-        expected=float(price_usage(usage,load_policy()['pricing'][load_policy()['models']['standard']]))
+        # Priced at the model actually sent: the tier map changed under LQ-20261107-196, the correlation did not.
+        assert sent and len(set(sent))==1
+        expected=float(price_usage(usage,load_policy()['pricing'][sent[0]]))
         assert led['settle'].call_args.args[1]==expected
         events=[json.loads(line) for line in (tmp_path/'data/runtime/provider_cost/events.jsonl').read_text().splitlines()]
         assert len(events)==1 and events[0]['provider']=='anthropic'

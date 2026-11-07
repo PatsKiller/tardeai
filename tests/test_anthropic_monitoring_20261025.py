@@ -53,7 +53,7 @@ def test_continuous_auth_and_premature_billing_use_p1(tmp_path):
 
 def test_milestone_keys_are_stable_and_expiry_is_independent(tmp_path):
     p=dict(load_policy(),enabled=True)
-    p['daily_cap_usd']='190';p['per_call_caps_usd']['bulk']='190'
+    p['daily_cap_usd']='190';p['per_call_caps_usd']['bulk']='190';p['tier_daily_cap_shares']=None  # milestones, not LQ-196 sub-caps
     book=CreditBook(tmp_path,p)
     book.reserve('fixture','fixture-process',Decimal(165),tier='bulk',now=NOW)
     book.settle('fixture',Decimal(165),now=NOW)
@@ -92,7 +92,7 @@ def test_disabled_provider_does_not_page_as_configured_first_failure(tmp_path):
 
 
 def test_milestone_messages_are_stable_for_notification_intent_dedupe(tmp_path):
-    p=dict(load_policy(),enabled=True);p['daily_cap_usd']='190';p['per_call_caps_usd']['bulk']='190'
+    p=dict(load_policy(),enabled=True);p['daily_cap_usd']='190';p['per_call_caps_usd']['bulk']='190';p['tier_daily_cap_shares']=None  # milestones, not LQ-196 sub-caps
     book=CreditBook(tmp_path,p)
     book.reserve('a','fixture',Decimal(110),tier='bulk',now=NOW);book.settle('a',Decimal(110),now=NOW)
     first=due_notes(snapshot(tmp_path,policy=p,now=NOW,configured=True),p)

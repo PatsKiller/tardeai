@@ -100,13 +100,14 @@ def test_daily_cap_override_window_is_utc_and_until_exclusive(tmp_path, now, cap
 
 
 def test_override_lets_the_day_spend_past_the_base_cap_then_pauses(tmp_path):
-    book = CreditBook(tmp_path, policy())
+    # Day-cap pacing only; the LQ-20261107-196 Opus sub-cap is tested in test_anthropic_tier_policy_20261107.py.
+    book = CreditBook(tmp_path, policy(tier_daily_cap_shares=None))
     for i in range(6):
         book.reserve(f"r{i}", "prospectus_writer", Decimal("2.00"), tier="long_form", now=D26)
         book.settle(f"r{i}", Decimal("2.00"), now=D26)
     assert book.snapshot(now=D26)["status"] == "OK"  # $12 used: past the $10 base, inside the $25 override
     with pytest.raises(CreditDenied) as exc:
-        later = CreditBook(tmp_path, policy(daily_cap_overrides=[]))
+        later = CreditBook(tmp_path, policy(daily_cap_overrides=[], tier_daily_cap_shares=None))
         later.reserve("over", "prospectus_writer", Decimal("1"), tier="long_form", now=D26)
     assert exc.value.reason == "PAUSED_TODAY"
 
@@ -128,7 +129,7 @@ def test_invalid_override_or_renewal_refuses_configuration(tmp_path, bad):
 
 def test_monthly_renewal_starts_a_fresh_period_and_keeps_the_journal(tmp_path):
     monthly = {"mode": "monthly", "monthly_allowance_usd": "5", "renews_on_day": None}
-    p = policy(renewal=monthly, daily_cap_overrides=[], expires_at="2027-06-01T00:00:00Z")
+    p = policy(renewal=monthly, daily_cap_overrides=[], expires_at="2027-06-01T00:00:00Z", tier_daily_cap_shares=None)
     book = CreditBook(tmp_path, p)
     oct30 = datetime(2026, 10, 30, 12, tzinfo=timezone.utc)
     for i in range(2):
@@ -243,7 +244,7 @@ def test_processes_registered_with_declared_caps_and_anthropic_only_routing():
     p = policy()
     assert promo.tier_for("PRO_THINK", process_id="prospectus_writer", policy=p) == "long_form"
     assert promo.tier_for("PRO_THINK", process_id="prospectus_writer_premium", policy=p) == "premium"
-    assert promo.tier_for("PRO_THINK", process_id="some_other", policy=p) == "high"
+    assert promo.tier_for("PRO_THINK", process_id="some_other", policy=p) == "standard"  # Opus (LQ-20261107-196)
     cfg = {"registered": True, "anthropic_first": True, "daily_cost_cap_usd": 22, "daily_soft_cap": 80}
     plan = promo.configured_plan("prospectus_writer", cfg, {"requested_policy": "PRO_THINK", "credit_tier": "long_form"},
                                  enabled={"anthropic", "grok", "chatgpt", "deepseek"},

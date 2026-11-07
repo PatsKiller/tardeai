@@ -50,6 +50,7 @@ def test_nonusable_credit_does_not_replace_existing_route(tmp_path, state):
     elif state == 'billing': book.record_failure('billing_error', now=NOW)
     elif state == 'paused':
         p['daily_cap_usd'] = '0.10'
+        p['tier_daily_cap_shares'] = None  # the day cap, not an LQ-196 tier sub-cap, pauses this fixture
         book = CreditBook(tmp_path, p)
         book.reserve('fixture', 'fixture', __import__('decimal').Decimal('0.10'), tier='bulk', now=NOW)
     else:
@@ -128,15 +129,18 @@ def test_active_promotion_keeps_ask_cio_preprovider_budgets(monkeypatch, scope):
     assert grok.calls == [] and chat.calls == [] and ds.calls == []
 
 
-def test_general_calls_use_opus_and_named_bulk_calls_use_haiku():
+def test_general_calls_use_the_lq196_tiers_and_named_bulk_calls_use_haiku():
+    # LQ-20261107-196 (DSN-20261107-ANTHROPIC-FIRST-ROUTING 3A): FAST is Haiku, PRO is Sonnet, PRO_THINK is Opus.
     from scripts.lib import anthropic_routing as promo
     policy = activated_policy()
-    assert promo.tier_for('FAST', policy=policy, process_id='portfolio_ask') == 'standard'
-    assert policy['models']['standard'] == 'claude-opus-5-5'
+    assert promo.tier_for('FAST', policy=policy, process_id='portfolio_ask') == 'bulk'
     assert promo.tier_for('FAST', policy=policy, process_id='hermes_tag_engine') == 'bulk'
     assert policy['models']['bulk'] == 'claude-haiku-5-5'
-    assert promo.tier_for('PRO_THINK', policy=policy) == 'high'
-    assert policy['models']['high'] == 'claude-opus-5-5'
+    assert promo.tier_for('PRO', policy=policy) == 'mid'
+    assert policy['models']['mid'] == 'claude-sonnet-5-5'
+    assert promo.tier_for('PRO_THINK', policy=policy) == 'standard'
+    assert promo.tier_for('PRO', policy=policy, reasoning_tier='high') == 'high'
+    assert policy['models']['standard'] == policy['models']['high'] == 'claude-opus-5-5'
 
 
 def test_paid_fallback_cannot_subtract_old_promotional_hold_from_paid_cap(monkeypatch):

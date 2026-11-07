@@ -335,7 +335,8 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
         assert by_id[pid]['advisory_only'] is True and by_id[pid]['tools_allowed'] is False
         assert by_id[pid]['fallback_allowed'] is False
         assert by_id[pid]['anthropic_first'] is (pid=='cio_ask_reanswer')
-    assert routed['cio_ask_reanswer']['new']=='anthropic / claude-opus-5-5'
+    # LQ-20261107-196: FAST resolves to Haiku (DSN-20261107-ANTHROPIC-FIRST-ROUTING Appendix A).
+    assert routed['cio_ask_reanswer']['new']=='anthropic / claude-haiku-5-5'
     critics={'cio_ask_critique_deepseek':'deepseek', 'cio_ask_critique_grok':'grok', 'cio_ask_critique_chatgpt':'chatgpt'}
     for pid,provider in critics.items():
         assert routed[pid]['new']=='EXCLUDED / unchanged'
@@ -345,7 +346,7 @@ def test_real_layout_dry_run_reads_only_temp_project_configs(tmp_path,monkeypatc
     prospectus={r['process']:r for r in rows if r['process'].startswith('prospectus_writer')}
     assert prospectus['prospectus_writer_premium']['new']=='anthropic / claude-fable-5-1'
     assert {r['no_key_or_expired'] for r in prospectus.values()}=={'QUEUED (anthropic-only)'}
-    assert total==Decimal('5.050121')
+    assert total==Decimal('0.7226378')  # was 5.050121 with FAST on Opus (LQ-20261107-196)
     assert before=={str(p.relative_to(tmp_path)):p.read_bytes() for p in tmp_path.rglob('*') if p.is_file()}
 
 

@@ -288,7 +288,11 @@ def credit_config(root: Path, policy: dict, credit: dict) -> dict:
         'daily_cap_override_active': bool(credit.get('daily_cap_override_active')),
         'daily_cap_overrides': [{k: row.get(k) for k in ('usd', 'from', 'until')}
                                 for row in policy.get('daily_cap_overrides') or [] if isinstance(row, dict)],
-        'renewal': {k: renewal.get(k) for k in ('mode', 'monthly_allowance_usd', 'renews_on_day')},
+        'renewal': {k: renewal.get(k) for k in ('mode', 'monthly_allowance_usd', 'renews_on_day',
+                                                'monthly_credit_usd', 'period_start')},
+        'tier_daily_cap_shares': dict(policy.get('tier_daily_cap_shares') or {}),
+        'tier_daily_caps_usd': credit.get('tier_daily_caps_usd'),
+        'tier_today_used_usd': credit.get('tier_today_used_usd'),
         'period_start': credit.get('period_start'),
         'total_cap_usd': credit.get('total_cap_usd', policy.get('total_cap_usd')),
         'models': dict(policy.get('models') or {}),

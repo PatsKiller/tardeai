@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "anthropic_tier_policy_20261107",
+  "files": [
+    "tests/test_anthropic_tier_policy_20261107.py"
+  ],
+  "anchor": "ANTHROPIC_TIER_POLICY_20261107",
+  "comment": [
+    "ANCHOR: ANTHROPIC_TIER_POLICY_20261107 — Anthropic-first policy step 1 (LQ-20261107-196, DSN-20261107-ANTHROPIC-FIRST-ROUTING 3A): FAST resolves to Haiku, FAST_THINK and PRO to Sonnet, PRO_THINK to Opus; per-tier UTC-day sub-caps (bulk 40%, mid 45%, every Opus/Fable tier 15%) refuse at CreditBook admission with ANTHROPIC_CREDIT_TIER_CAP; the monthly_credit_usd + period_start renewal paces the day at monthly/30 and rolls over on the anniversary; a torn journal tail still fails closed with CREDIT_UNAVAILABLE until the fragment is archived. Synthetic amounts under tmp_path; no network, no real journal."
+  ]
+}

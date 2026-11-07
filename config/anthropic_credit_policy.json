@@ -23,7 +23,7 @@
     "mode": "one_time",
     "monthly_allowance_usd": "190",
     "renews_on_day": null,
-    "note": "one_time: one total cap for the promotion. Operator may switch mode to monthly: a fresh monthly_allowance_usd each UTC month from renews_on_day (default 1); the journal keeps every period."
+    "note": "one_time: one total cap for the promotion. Operator may switch mode to monthly. Preferred monthly shape (LQ-20261107-196): replace monthly_allowance_usd/renews_on_day with monthly_credit_usd (OPERATOR VALUE) and period_start (YYYY-MM-DD, day 1-28); the daily cap is then monthly_credit_usd / 30 and daily_cap_usd is not used. The older monthly_allowance_usd shape keeps daily_cap_usd. Naming both amounts in monthly mode refuses the policy. The journal keeps every period; expires_at still ends the credit and must be rolled."
   },
   "admin_cost_verification": {
     "enabled": true,
@@ -51,12 +51,19 @@
     "mid": "claude-sonnet-5-5"
   },
   "policy_tiers": {
-    "FAST": "standard",
-    "FAST_THINK": "standard",
-    "PRO": "standard",
-    "PRO_THINK": "high",
+    "FAST": "bulk",
+    "FAST_THINK": "mid",
+    "PRO": "mid",
+    "PRO_THINK": "standard",
     "PRO_MAX": "highest"
   },
+  "policy_tiers_note": "LQ-20261107-196 / DSN-20261107-ANTHROPIC-FIRST-ROUTING 3A: FAST -> Haiku, FAST_THINK and PRO -> Sonnet, PRO_THINK -> Opus. A process pin in process_tiers / ops_process_tiers still wins.",
+  "tier_daily_cap_shares": {
+    "bulk": "0.40",
+    "mid": "0.45",
+    "standard": "0.15"
+  },
+  "tier_daily_cap_shares_note": "Share of the UTC-day cap in force (overrides included) each bucket may spend; standard covers every Opus/Fable tier (standard, high, highest, long_form, premium). Over the share, CreditBook refuses with ANTHROPIC_CREDIT_TIER_CAP. A tier outside every bucket is refused, never uncapped.",
   "per_call_caps_usd": {
     "bulk": "0.10",
     "standard": "2.00",
