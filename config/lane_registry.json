@@ -2931,7 +2931,7 @@
         "wave": "W4",
         "class": "ingest",
         "priority": 5,
-        "retry_policy": "none"
+        "retry_policy": "transient-1-ingest"
       },
       "scheduler_before_cutover": {
         "kind": "cron",
@@ -2988,7 +2988,7 @@
         "wave": "W4",
         "class": "ingest",
         "priority": 5,
-        "retry_policy": "none"
+        "retry_policy": "transient-1-ingest"
       },
       "output_signal_note": "Source proposal only: the revised producer writes this receipt on real work. Cron has not been deployed; freshness of this proposed artifact is NOT_MEASURED.",
       "canary": {
@@ -3219,7 +3219,7 @@
         "wave": "W4",
         "class": "ingest",
         "priority": 4,
-        "retry_policy": "none"
+        "retry_policy": "transient-1-ingest"
       },
       "canary": {
         "wave": "canary-wave-20261014",
@@ -6998,7 +6998,7 @@
         "wave": "W3",
         "class": "ingest",
         "priority": 5,
-        "retry_policy": "none"
+        "retry_policy": "transient-1-ingest"
       },
       "scheduler_before_cutover": {
         "kind": "cron",
@@ -15349,7 +15349,7 @@
         "wave": "W4",
         "class": "ingest",
         "priority": 4,
-        "retry_policy": "none"
+        "retry_policy": "transient-1-ingest"
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
@@ -15408,7 +15408,7 @@
         "wave": "W4",
         "class": "ingest",
         "priority": 4,
-        "retry_policy": "none"
+        "retry_policy": "transient-1-ingest"
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
@@ -15909,7 +15909,7 @@
         "wave": "W4",
         "class": "ingest",
         "priority": 4,
-        "retry_policy": "none"
+        "retry_policy": "transient-1-ingest"
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
@@ -16286,7 +16286,7 @@
       },
       "dispatch": {
         "class": "monitor",
-        "retry_policy": "none",
+        "retry_policy": "transient-2",
         "mode": "dry_run",
         "cron": [
           "*/5 * * * *"
@@ -17497,7 +17497,7 @@
         "wave": "W1",
         "class": "hygiene",
         "priority": 3,
-        "retry_policy": "none"
+        "retry_policy": "transient-2"
       }
     },
     {
@@ -18692,7 +18692,7 @@
         "wave": "W4",
         "class": "hygiene",
         "priority": 3,
-        "retry_policy": "none"
+        "retry_policy": "transient-2"
       }
     },
     {
