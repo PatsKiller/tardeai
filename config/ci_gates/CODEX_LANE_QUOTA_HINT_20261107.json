@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CODEX_LANE_QUOTA_HINT_20261107",
+  "files": [
+    "tests/test_codex_lane_quota_hint_20261107.py"
+  ],
+  "anchor": "CODEX_LANE_QUOTA_HINT_20261107",
+  "comment": [
+    "ANCHOR: CODEX_LANE_QUOTA_HINT_20261107 — hermes-deep-research-local failed 13 consecutive runs",
+    "(2026-11-05 22:35 → 2026-11-06 22:36), three rows each, with 'CODEX_HEADLESS_UNAVAILABLE: …",
+    "did not finalize a response even under a pseudo-TTY (proxy at :8646 also unavailable — re-login:",
+    "hermes auth add openai-codex --type oauth)'.",
+    "The session was fine. The lane's keepalive had been recording data/runtime/oauth_lane_status.json",
+    "chatgpt.kind=rate_limited (429 upstream, 56 consecutive failures, last ok 28 h earlier) the whole",
+    "time. The proxy answered with no content, the pseudo-TTY CLI (same OAuth session) produced nothing,",
+    "and the empty output was reported as an auth failure the operator cannot fix.",
+    "The fix: before the CLI fallback — and again if the CLI's output is empty — read the lane's own",
+    "fresh verdict and raise CODEX_UNAVAILABLE_RATE_LIMITED with the quota wall, the failing count and",
+    "no re-login hint. Stale, absent, unparseable or non-rate-limit verdicts change nothing, so a real",
+    "AUTH_PENDING still reaches the operator.",
+    "The gate pins both branches plus the healthy path. Hermetic: monkeypatched state file, proxy and",
+    "subprocess; no network, no proxy, no CLI, no OAuth session, no quota spend."
+  ]
+}

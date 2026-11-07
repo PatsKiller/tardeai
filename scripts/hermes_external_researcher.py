@@ -353,6 +353,48 @@ def _call_codex_proxy(model, prompt, timeout=240):
         return None
 
 
+#: The keepalive's per-lane verdict, written every few minutes by scripts/oauth_lane_keepalive.py.
+OAUTH_LANE_STATUS = ROOT / "data" / "runtime" / "oauth_lane_status.json"
+#: A verdict older than this says nothing about the lane now — an idle keepalive must not be read as a quota wall.
+LANE_STATUS_FRESH_S = 2 * 3600
+
+
+def _chatgpt_lane_rate_limited(now: float | None = None) -> dict | None:
+    """The ChatGPT lane's own verdict, when it is fresh and says the upstream quota wall is up.
+
+    Why this exists (2026-11-07): hermes-deep-research-local failed 13 runs in a row, three rows each,
+    with ``CODEX_HEADLESS_UNAVAILABLE … re-login: hermes auth add openai-codex --type oauth`` — while
+    the session was perfectly logged in. The proxy is authenticated and serving; its upstream answers
+    429, and that is exactly what the keepalive recorded (`kind: rate_limited`, 56 consecutive
+    failures, last ok 28 h earlier). The proxy then returns no content, this module falls to the
+    pseudo-TTY CLI, and the CLI's empty output is dressed up as an auth problem the operator cannot fix.
+    A quota wall is not an auth failure, and re-login does not clear it.
+    """
+    import time
+    try:
+        doc = json.loads(OAUTH_LANE_STATUS.read_text())
+        row = doc.get("chatgpt") or {}
+        checked = float(row.get("last_check") or 0)
+        if row.get("kind") != "rate_limited" or not checked:
+            return None
+        if (now if now is not None else time.time()) - checked > LANE_STATUS_FRESH_S:
+            return None
+        return row
+    except Exception:
+        return None
+
+
+def _rate_limited_error(row: dict, detail: str = "") -> RuntimeError:
+    """The honest message for a quota wall: what is wrong, what will not fix it, and what will."""
+    behind = f" ({detail})" if detail else ""
+    return RuntimeError(
+        "CODEX_UNAVAILABLE_RATE_LIMITED: the ChatGPT OAuth lane is rate limited upstream, not logged "
+        f"out{behind}: {row.get('detail') or 'no detail'}; {row.get('consec_fail') or 0} consecutive "
+        "keepalive failures. Re-login will not help and the CLI fallback shares the same session, so it "
+        "was not attempted. The lane resumes when the quota window resets; the overnight policy's "
+        "LANE_CHATGPT lane is unavailable until then.")
+
+
 def call_codex_cli(model, prompt):
     """ChatGPT via the FREE openai-codex OAuth (no API key, no metered billing). Prefers the local ChatGPT
     OAuth proxy (:8646, works headless for any Hermes task); falls back to the pseudo-TTY one-shot CLI."""
@@ -368,7 +410,13 @@ def call_codex_cli(model, prompt):
             f"{exc}") from exc
     if via_proxy:
         return via_proxy
-    # 2) Fallback: direct CLI under a pseudo-TTY.
+    # 2) A proxy that answered with nothing is not necessarily a broken login. Before spending the
+    #    pseudo-TTY fallback (15-240 s per call) and before handing the operator a re-login hint, read
+    #    the lane's own verdict: a fresh `rate_limited` is a quota wall, and no CLI attempt can clear it.
+    limited = _chatgpt_lane_rate_limited()
+    if limited:
+        raise _rate_limited_error(limited, detail="proxy returned no content")
+    # 3) Fallback: direct CLI under a pseudo-TTY.
     import subprocess
     if not _codex_authed():
         raise RuntimeError("AUTH_PENDING: openai-codex not logged in. Operator must run: "
@@ -384,9 +432,17 @@ def call_codex_cli(model, prompt):
                        env={**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"})
     out = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", r.stdout or "").replace("\r", "").strip()
     if (not out) or out.lower().startswith("hermes -z:") or "no final response" in out.lower() or "treating the run as failed" in out.lower():
+        # The CLI shares the OAuth session, so its silence has the same two causes as the proxy's:
+        # a quota wall (state says rate_limited) or a session that really did stop working. Only the
+        # second is a re-login, and the old message asserted it unconditionally.
+        limited = _chatgpt_lane_rate_limited()
+        if limited:
+            raise _rate_limited_error(limited, detail="the pseudo-TTY CLI produced no final response")
         raise RuntimeError("CODEX_HEADLESS_UNAVAILABLE: openai-codex is authed but did not finalize a "
-                           "response even under a pseudo-TTY (proxy at :8646 also unavailable — re-login: "
-                           "hermes auth add openai-codex --type oauth).")
+                           "response even under a pseudo-TTY, and the lane state does not report a quota "
+                           "wall (check: GET :8646/health, then data/runtime/oauth_lane_status.json). If "
+                           "both look healthy this is an upstream session problem — re-login: "
+                           "hermes auth add openai-codex --type oauth.")
     return out
 
 
