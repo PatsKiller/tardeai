@@ -60,7 +60,8 @@ def governed_model(timeout_s: int = 90):
         request = {"lane": payload.get("lane"), "record_key": payload.get("record_key"),
                    "claims": payload.get("claims") or [], "sources": sources}
         try:
-            from llm_consumption import gate_and_generate  # type: ignore
+            # scripts/ is on sys.path inside the lane (the executor runs the script), so this module is top-level
+            from llm_consumption import gate_and_generate  # type: ignore[import-not-found] -- lane import path
             text = gate_and_generate(INSTRUCTION + "\n\n" + json.dumps(request, ensure_ascii=False),
                                      lane=LLM_LANE, process_id=PROCESS_ID,
                                      task_summary=f"ai claim check {payload.get('record_key')}",

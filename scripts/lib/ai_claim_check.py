@@ -20,6 +20,7 @@ MBI_BEHAVIOR = 0: no broker, no order, no send. AUTHORITY: READ_ONLY_ADVISORY ov
 """
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import re
@@ -154,13 +155,13 @@ def data_checks(target: Mapping[str, Any], records: Sequence[Mapping[str, Any]],
     max_age_h = target.get("max_age_h")
     ranges = target.get("ranges") or {}
     counts = target.get("count_matches") or {}
-    seen: dict[tuple, int] = {}
+    seen: collections.Counter = collections.Counter()
     for index, rec in enumerate(records):
         key = "|".join(str(_dig(rec, f)) for f in key_fields)
         for field in required:
             if _dig(rec, field) in (None, "", [], {}):
                 findings.append({"kind": "null_field", "target": tid, "record": index, "key": key, "field": field})
-        seen[key] = seen.get(key, 0) + 1
+        seen[key] += 1
         for field, (lo, hi) in ranges.items():
             val = _dig(rec, field)
             if isinstance(val, (int, float)) and not isinstance(val, bool) and not (lo <= val <= hi):
@@ -262,7 +263,8 @@ def check_target(target: Mapping[str, Any], root: Path, *, now: datetime,
     if error:
         return {"id": tid, "verdict": "FAIL", "checked": 0, "findings": [
             {"kind": "missing_artifact", "target": tid, "why": error, "path": str(target.get("path"))}],
-            "claims": [], "claim_verdicts": {}, "claim_records": 0, "claim_records_skipped": 0}
+            "claims": [], "claim_verdicts": {}, "claim_records": 0, "claim_records_skipped": 0,
+            "missing_artifacts": 1}
     findings = data_checks(target, records, now=now)
     claims: list[dict] = []
     claim_field = target.get("claim_field")
@@ -298,6 +300,7 @@ def check_target(target: Mapping[str, Any], root: Path, *, now: datetime,
     return {"id": tid, "verdict": verdict, "checked": len(records), "findings": findings, "claims": claims,
             # the cap is reported, never silent: how many claim-bearing records were graded and how many were not
             "claim_records": len(picked), "claim_records_skipped": len(candidates) - len(picked),
+            "missing_artifacts": 0,
             "claim_verdicts": {"supported": sum(1 for c in claims if c["verdict"] == "supported"),
                                "refuted": sum(1 for c in claims if c["verdict"] == "refuted"),
                                "HALLUCINATION": hallucinated, "unverifiable": unverifiable,
@@ -318,10 +321,11 @@ def build_verdicts(targets: Iterable[Mapping[str, Any]], root: Path, *, now: dat
         "claims": sum(len(r["claims"]) for r in results),
         "hallucinations": sum(r["claim_verdicts"].get("HALLUCINATION", 0) for r in results),
         "unverifiable_claims": sum(r["claim_verdicts"].get("unverifiable", 0) for r in results),
-        "claim_records": sum(r.get("claim_records", 0) for r in results),
-        "claim_records_skipped": sum(r.get("claim_records_skipped", 0) for r in results),
-        "missing_artifacts": sum(1 for r in results
-                                 if any(f["kind"] == "missing_artifact" for f in r["findings"])),
+        # direct indexing on purpose: every check_target row carries these counters, and a result that lost one is a
+        # bug that must raise here rather than be summed as a confident zero (the producer flattens failure trap)
+        "claim_records": sum(r["claim_records"] for r in results),
+        "claim_records_skipped": sum(r["claim_records_skipped"] for r in results),
+        "missing_artifacts": sum(r["missing_artifacts"] for r in results),
     }
     return {"schema": SCHEMA, "generated_at": now.isoformat(), "run_id": run_id,
             "verdict": ("FAIL" if counts["failing_targets"] else
@@ -338,7 +342,8 @@ def write_verdicts(root: Path | str, doc: Mapping[str, Any]) -> Path:
     try:
         from scripts.lib.data_broker.atomic_json import atomic_write_json
     except ImportError:  # scripts/ on sys.path, repo root not
-        from lib.data_broker.atomic_json import atomic_write_json  # type: ignore[no-redef]
+        # the same module under its top-level name when only scripts/ is importable -- the fallback is deliberate
+        from lib.data_broker.atomic_json import atomic_write_json  # type: ignore[no-redef] -- fallback import path
 
     target = verdicts_path(root)
     atomic_write_json(target, dict(doc), indent=1)
