@@ -88,11 +88,10 @@ def plan_lane(lane_id: str, observation: Mapping[str, Any], root: Path) -> dict[
         return {"fired": True, "idempotency_key": "apr-" + _key(rr["run_id"]), "subject_key": f"approval-reminder:{rr['run_id']}",
                 "artifact_rel": rel, "store": "data/runtime", "at": rr.get("started_at") or rr.get("ended_at")}
     if lane_id == "llm-spend-report-daily":
-        if o.get("artifact_status") != "OBSERVED" or not o.get("report_key"):
-            return {"fired": False, "why": "no daily spend receipt"}
-        rel = "data/runtime/llm_spend_report_last_daily.json"
-        return {"fired": True, "idempotency_key": "llm-" + _key(o["report_key"]), "subject_key": f"llm-spend:{o['report_key']}",
-                "artifact_rel": rel, "store": "data/runtime", "at": o.get("ran_at")}
+        # LQ-20261107-279 (decision on LQ-268): no software consumer exists for this event. The operator already
+        # gets the same figure on Telegram from llm_spend_report.py --send, and a row that stops at
+        # ARTIFACT_WRITTEN can never be settled. The report keeps running; only the ledger event is held back.
+        return {"fired": False, "why": "no software consumer; Telegram is the consumer"}
     if lane_id == "morning-brief-0730":
         if o.get("artifact_status") != "OBSERVED" or not o.get("session_date"):
             return {"fired": False, "why": "no publish claim for the session"}
