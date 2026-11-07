@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "catalyst_graph_typed_nodes_20261107",
+  "files": [
+    "tests/test_catalyst_graph_typed_nodes_20261107.py"
+  ],
+  "anchor": "CATALYST_GRAPH_TYPED_NODES_20261107",
+  "comment": [
+    "ANCHOR: CATALYST_GRAPH_TYPED_NODES_20261107 — a lifecycle node is an EVENT. A catalyst_events row typed",
+    "'other' (classifier fallback, or news_ingestion's legacy keyword pass) names no catalyst, so the graph",
+    "does not bind it and the ingest path stops writing it. Guards the served projection's 11,300-of-21,165",
+    "untyped nodes from coming back. Listing it schedules nothing."
+  ]
+}

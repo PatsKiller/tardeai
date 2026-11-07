@@ -61,11 +61,23 @@ MBI = 0
 SCHEMA = "CatalystEntityBinding@v1"
 TRACE_SCHEMA = "CatalystTrace@v1"
 
+#: ``catalyst_type`` values that name no catalyst. ``other`` is what the classifier returns when no
+#: pattern matched and the LLM residual did not answer (confidence 0.2), so it means "this is not a
+#: catalyst", not "a catalyst we could not name". A blank value says the same thing.
+UNTYPED_CATALYST_TYPES = frozenset({"", "other", "unknown", "none", "null"})
+
+
+def is_catalyst_type(value: Any) -> bool:
+    """True when ``catalyst_type`` names an actual catalyst event (anything but the untyped tokens)."""
+    return str(value or "").strip().lower() not in UNTYPED_CATALYST_TYPES
+
+
 def bind_catalyst(row: Mapping[str, Any], registry: Mapping[str, Any]) -> dict[str, Any] | None:
     """One catalyst → one `SecurityEvent@v1` node plus its entity edge.
 
     Returns None when the catalyst cannot be bound honestly: an unregistered
-    symbol, an entity with no issuer identity, or an unusable timestamp.
+    symbol, an entity with no issuer identity, an unusable timestamp, or a row
+    that names no catalyst at all (``catalyst_type`` empty or ``other``).
     """
     symbol = normalize_symbol(row.get("symbol"))
     if not symbol:
@@ -76,6 +88,16 @@ def bind_catalyst(row: Mapping[str, Any], registry: Mapping[str, Any]) -> dict[s
     if is_research_directive_slug(symbol):
         return None
 
+    # A lifecycle node is an EVENT. A row typed ``other`` is an article whose classifier found no
+    # catalyst at all (``catalyst_classifier`` fallback, confidence 0.2; or ``news_ingestion``'s legacy
+    # keyword pass, which writes one row per article above a relevance floor). Binding those minted
+    # 11,300 of 21,165 nodes -- 53% of the served projection -- as unclassified "events" (LQ-20261107-111).
+    # Measured 2026-11-07: re-running the deterministic classifier over the 20,481 bound untyped rows
+    # recovers a real type for 1.9% of them, so this is not a typing bug to backfill around.
+    if not is_catalyst_type(row.get("catalyst_type")):
+        return None
+
+    ctype = str(row.get("catalyst_type")).strip().lower()
     entity = lookup_symbol(registry, symbol)
     if not entity:
         return None
@@ -86,7 +108,7 @@ def bind_catalyst(row: Mapping[str, Any], registry: Mapping[str, Any]) -> dict[s
         # anyway would key the event on the alias, which is what this exists to stop.
         return None
 
-    ctype = str(row.get("catalyst_type") or "other")
+    ctype = str(row.get("catalyst_type")).strip().lower()
     period = period_for(ctype, row.get("published_at") or row.get("created_at"))
     if not period:
         return None
@@ -144,6 +166,9 @@ def build_graph(rows: Iterable[Mapping[str, Any]],
                 skipped["no_symbol"] += 1
             elif is_research_directive_slug(sym):
                 skipped["research_directive_slug"] += 1
+            elif not is_catalyst_type(row.get("catalyst_type")):
+                # a news article whose classifier named no catalyst: not an event, never a node
+                skipped["untyped_not_an_event"] += 1
             elif not lookup_symbol(reg, sym):
                 skipped["symbol_not_registered"] += 1
             elif not (lookup_symbol(reg, sym) or {}).get("issuer_guid"):

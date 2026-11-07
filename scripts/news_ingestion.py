@@ -369,12 +369,23 @@ def _fetch_benzinga_api(symbol: str, api_key: str) -> list:
     return articles
 
 
-def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, scores: dict, tags: dict):
+def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, scores: dict, tags: dict) -> bool:
+    """Write the catalyst/sentiment rows for one article. Returns True when a catalyst row was written.
+
+    ``catalyst_events`` is a store of EVENTS. This path uses the legacy keyword classifier, which returns
+    ``other`` for any article it cannot type -- and it ran for every article above a 0.3 relevance floor, so
+    77.6% of the rows it wrote were untyped (2026-11-07, LQ-20261107-111). Binding those to entities made the
+    catalyst graph mostly unclassified. An article that names no catalyst is news, not an event: it still gets
+    its ``news_articles`` and ``sentiment_observations`` row, and the skip is counted by the caller rather than
+    silently dropped. The hybrid classifier (``catalyst_classifier``) is not used here on purpose -- this path
+    runs per symbol and must stay offline.
+    """
     cur = conn.cursor()
     title = article.get("title", "")[:500]
     summary = article.get("summary", "")[:1000]
     source = article.get("source", "unknown")
     relevance = scores.get("relevance_score", 0)
+    wrote_catalyst = False
 
     if relevance > 0.3:
         try:
@@ -382,23 +393,27 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
             ctype = _classify(title, summary)
             severity = _severity_from_weight(float(relevance))
         except Exception:
-            ctype, severity = "news", "low"
-        try:
-            cur.execute("SAVEPOINT ds_cat")
-            cur.execute("""INSERT INTO catalyst_events
-                    (symbol, strategy_type, catalyst_type, headline, description,
-                     severity, confidence, impact_score, source, published_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (symbol, headline) DO NOTHING""",
-                (symbol, strategy_type, ctype, title, summary,
-                 severity, round(float(relevance), 2), round(float(relevance) * 10, 1),
-                 source, article.get("published_at")))
-            cur.execute("RELEASE SAVEPOINT ds_cat")
-        except Exception:
+            ctype, severity = "other", "low"   # an unimportable classifier types nothing: not a catalyst
+        if str(ctype or "").strip().lower() in {"", "other", "unknown", "none"}:
+            ctype = None                        # not an event; the sentiment row below is still written
+        if ctype:
             try:
-                cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
+                cur.execute("SAVEPOINT ds_cat")
+                cur.execute("""INSERT INTO catalyst_events
+                        (symbol, strategy_type, catalyst_type, headline, description,
+                         severity, confidence, impact_score, source, published_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (symbol, headline) DO NOTHING""",
+                    (symbol, strategy_type, ctype, title, summary,
+                     severity, round(float(relevance), 2), round(float(relevance) * 10, 1),
+                     source, article.get("published_at")))
+                cur.execute("RELEASE SAVEPOINT ds_cat")
+                wrote_catalyst = True
             except Exception:
-                pass
+                try:
+                    cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
+                except Exception:
+                    pass
 
     try:
         from content_scoring import SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE
@@ -418,6 +433,8 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
         except Exception:
             pass
 
+    return wrote_catalyst
+
 
 def _company_description(cur, sym: str) -> str | None:
     try:
@@ -436,6 +453,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
     total_scanned = 0
     source_counts: dict[str, int] = {}
     skipped_mismatch = 0
+    skipped_not_a_catalyst = 0
 
     for sym, strategy_type in symbols:
         company_desc = _company_description(cur, sym)
@@ -492,7 +510,8 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
             }], source=a["source"])
             if not receipt.rows_written:
                 continue
-            _feed_downstream(conn, sym, strategy_type, a, _scores, _tags)
+            if not _feed_downstream(conn, sym, strategy_type, a, _scores, _tags):
+                skipped_not_a_catalyst += 1
             source_counts[a["source"]] = source_counts.get(a["source"], 0) + 1
             total_new += 1
         total_scanned += 1
@@ -508,6 +527,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
         "scanned": total_scanned,
         "new_articles": total_new,
         "skipped_symbol_mismatch": skipped_mismatch,
+        "skipped_not_a_catalyst": skipped_not_a_catalyst,
         "by_source": {s: c for s, c in source_counts.items() if c > 0},
     }
 
