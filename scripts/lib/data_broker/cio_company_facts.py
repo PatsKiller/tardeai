@@ -23,13 +23,25 @@ def load_snapshot(root: Path | str | None = None, *, records: list[dict] | None 
     for guid, rs in grouped.items():
         canonical, violation = select_canonical_record(rs)
         if violation:
+            # Two judged prospects (e.g. HELD + WATCH) is a judgment conflict, not a facts conflict.
+            # Company facts are not judgments and live on the fact-only SECURITY record by design, so
+            # still render them from there; the review lifecycle keeps the violation visible.
+            # (2026-11-06: this dropped ~$267k of direct stocks from Look-through/Allocation.)
             out[guid] = {
-                "company_facts": missing("", guid, violation),
+                "company_facts": _fact_only_facts(rs, guid) or missing("", guid, violation),
                 "review_lifecycle": {"status": "MISSING", "missing_reason": violation},
             }
             continue
         out[guid] = public_research(_with_facts_fallback(canonical, rs, guid), guid)
     return out
+
+
+def _fact_only_facts(records: list[dict], guid: str) -> dict | None:
+    """Available company facts from exactly one fact-only record for this GUID, else None."""
+    from scripts.lib.cio_instrument_record import is_fact_only_record
+    found = [public_research(r, guid)["company_facts"] for r in records if is_fact_only_record(r)]
+    found = [f for f in found if f.get("status") != "MISSING"]
+    return found[0] if len(found) == 1 else None
 
 
 def _with_facts_fallback(canonical: dict, records: list[dict], guid: str) -> dict:
