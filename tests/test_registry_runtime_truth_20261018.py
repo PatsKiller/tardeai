@@ -601,7 +601,14 @@ def test_the_committed_schwab_position_sync_row_tells_the_truth():
     2026-10-15 for incident SPCX). Operator 2026-10-22, verbatim: "keep step (a) as-is and resume it on cron now"."""
     row = REG["schwab-position-sync"]
     assert row["state"] == "ACTIVE" and row["scheduler"]["kind"] == "cron"
-    assert row["scheduler"]["expression"] == "7,22,37,52 9-16 * * 1-5"
+    # 2026-11-07: the crontab gained an off-hours pair (L1104 `3,33 0-8,17-23 * * *`, L1105 `3,33 9-16 * * 0,6`), so
+    # the row declares every observed line; the operator's resumed market-hours line is still the first of them.
+    assert row["scheduler"]["schedules"] == [
+        "7,22,37,52 9-16 * * 1-5",
+        "3,33 0-8,17-23 * * *",
+        "3,33 9-16 * * 0,6",
+    ]
+    assert "7,22,37,52 9-16 * * 1-5" in row["scheduler"]["expression"]
     assert row["state_since"] == "2026-10-22" and "review_by" not in row
     assert "keep step (a) as-is and resume it on cron now" in row["state_reason"]
     assert "PAUSED 2026-10-15" in row["state_reason"]          # the pause history is kept

@@ -684,5 +684,129 @@
         }
       ]
     }
+  },
+  "census_20261107T0510Z": {
+    "source": "inbox/cc-deepseek-6/20261107T0450Z-cc-deepseek-3-census-corrections.json (base 79e893b8a) — the lead's registry mandate says census rows that pass the registry tests are mine to apply.",
+    "applied": [
+      {
+        "lane_id": "moomoo-live-read-sync",
+        "paths": [
+          "scheduler.schedules",
+          "expected_cadence_hours",
+          "state_reason"
+        ],
+        "why": "the crontab gained an off-hours pair (L1109 `9,39 0-8,17-23 * * *`, L1110 `9,39 9-16 * * 0,6`, read on the host 2026-11-07T04:5xZ); the row declared market hours only, so both lines read as unregistered. Cadence 24h -> 0.5h (the loosest observed gap)."
+      },
+      {
+        "lane_id": "schwab-position-sync",
+        "paths": [
+          "scheduler.schedules",
+          "expected_cadence_hours",
+          "state_reason"
+        ],
+        "why": "same shape; the off-hours pair is crontab L1104/L1105 (read on the host). The operator's 2026-10-22 resume text is kept verbatim."
+      },
+      {
+        "lane_id": "social-ingest-stocktwits",
+        "paths": [
+          "note"
+        ],
+        "why": "census note only; the match stays at the corrected `--discover` form, which is what keeps this row and social-ingest-scalp-hot mapping one line each."
+      },
+      {
+        "lane_id": "finviz-sector-research",
+        "paths": [
+          "note"
+        ],
+        "why": "records the host state (n8n canary, crontab L527 N8N-CUTOVER 2026-11-05) instead of flipping the stage; the flip is withdrawn by the census author and needs an operator decision."
+      },
+      {
+        "lane_id": "hermes-watchlist-scorer",
+        "paths": [
+          "note"
+        ],
+        "why": "same withdrawal, same reason."
+      },
+      {
+        "lane_id": "tradeai-incident-watchers",
+        "paths": [
+          "output_signal"
+        ],
+        "why": "scripts/incident_watchers.py writes watchers_last.json beside the incident ledger (data/coordination/incidents/watchers_last.json, verified on disk, 2026-11-07T04:50Z)."
+      },
+      {
+        "lane_id": "tradeai-n8n-breaker-probe",
+        "paths": [
+          "output_signal"
+        ],
+        "why": "config/n8n_breaker_probe.json state_rel = data/governance/n8n_breaker_probe_state.json; file verified on disk 2026-11-07T04:50Z. (My earlier row cited the unit as journal-only; the census was right.)"
+      },
+      {
+        "lane_id": "tradeai-incident-daily",
+        "paths": [
+          "output_signal"
+        ],
+        "why": "census reason JOURNAL_ONLY: incident_daily_brief.py prints to stdout and the unit sets no StandardOutput=append: (read in the unit)."
+      },
+      {
+        "lane_id": "tradeai-incident-supervisor",
+        "paths": [
+          "output_signal"
+        ],
+        "why": "same shape."
+      },
+      {
+        "lane_id": "ai-usage-governor",
+        "paths": [
+          "scheduler.command_text",
+          "output_signal",
+          "value_class",
+          "recommendation"
+        ],
+        "why": "census measured the crontab line (L1112) and the action-only log; my row had a generic UNVERIFIED_OUTPUT reason, theirs is the specific one."
+      },
+      {
+        "lane_id": "agent-nudger / social-ingest-scalp-hot",
+        "paths": [
+          "value_class",
+          "recommendation"
+        ],
+        "why": "census values joined to those rows; both hand rows already existed here so only the two classification fields were taken."
+      }
+    ],
+    "found_myself": {
+      "note": "While checking the census's 'no artifact' claims I found five lanes whose receipt already existed and whose row did not name it — the same defect class as the ten rows fixed in the earlier coverage update.",
+      "rows": {
+        "tradeai-health-tick": "json_key data/runtime/health_tick_last.json key as_of (scripts/health_tick.py:116 RECEIPT_REL; host as_of 2026-11-07T04:55:01Z)",
+        "tradeai-n8n-lab-watchdog": "json_key data/runtime/n8n_lab_watchdog_last.json key checked_at (the unit's own --receipt argument; host checked_at 2026-11-07T04:51:26Z)",
+        "tradeai-platform-maintenance-nightly": "json_key data/runtime/platform_maintenance_nightly_last.json key as_of (run_platform_maintenance_pipeline.sh:25/:196; as_of 2026-11-06T06:15:59Z)",
+        "tradeai-platform-maintenance-monthly": "same, monthly; as_of 2026-11-01T11:00:03Z",
+        "tradeai-platform-maintenance-weekly": "same, weekly; as_of 2026-11-01T08:00:15Z"
+      }
+    },
+    "corrected": [
+      {
+        "file": "tests/test_registry_runtime_truth_20261018.py",
+        "why": "test_the_committed_schwab_position_sync_row_tells_the_truth pinned a single expression that the 2026-11-07 crontab superseded. It now asserts the three declared schedules (market-hours line first) — the operator's resume assertions are unchanged. Red on base, green here."
+      },
+      {
+        "file": "docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md",
+        "why": "every ACTIVE row with output_signal.kind none must be documented there (enforced by test_coverage_report_lists_every_active_signal_free_lane). Added the census rows: five now declare a receipt, nine keep kind none with the reason that makes them honest."
+      },
+      {
+        "file": "config/lane_registry.json: tradeai-telegram-callback-poller",
+        "why": "its detail now names the log the unit appends to (both stdout and stderr), instead of the generic sentence."
+      }
+    ],
+    "rejected": [
+      {
+        "item": "the census's five `openclaw-agent-job-*` new rows",
+        "why": "the same five OpenClaw jobs are already declared in this registry under the shorter ids openclaw-aegis-evening-surveillance / openclaw-<guid>; adding the census ids would double-declare each job and give reconcile two rows for one schedule."
+      },
+      {
+        "item": "hermes-watchlist-scorer + finviz-sector-research stage flips",
+        "why": "withdrawn by the census author for the reasons already recorded: STAGE_DRIFT, the paired contract re-take, and tests/test_hermes_scorer_n8n_canary_20261021.py."
+      }
+    ]
   }
 }
