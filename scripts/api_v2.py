@@ -56003,6 +56003,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # ── /v3/catalyst — CatalystSymbolImpact@v1 (GET only, LQ-20261107-135) ─
+    if base_path.startswith("/api/v3/catalyst"):
+        try:
+            import api_v3_catalyst as _cat
+
+            p = base_path[len("/api/v3/catalyst") :].strip("/")
+            if method != "GET":
+                return 405, {"ok": False, "error": "method_not_allowed", "message": "catalyst impact API is GET-only"}
+            return _cat.handle_get(p, query if isinstance(query, dict) else None)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # ── /v3/cio — CIO Command Center dashboard + plan deep links ──────────
     # Read-only cross-surface links (HermesResearchLinks@v1 / AgentRuntimeProof@v1).
     if method == "GET" and base_path == "/api/v3/hermes/research-links":

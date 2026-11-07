@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "api_v2_catalyst_mount_20261107",
+  "files": [
+    "tests/test_api_v2_catalyst_mount_20261107.py"
+  ],
+  "anchor": "API_V2_CATALYST_MOUNT_20261107",
+  "comment": [
+    "ANCHOR: API_V2_CATALYST_MOUNT_20261107 — api_v2.handle mounts GET /api/v3/catalyst on api_v3_catalyst.handle_get (LQ-20261107-135): GET only (405 otherwise), a failed import is a 500 never an empty 200, other paths fall through."
+  ]
+}
