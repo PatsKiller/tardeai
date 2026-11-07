@@ -3,7 +3,7 @@
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/consumptionPresentation.test.ts
 import {
   DESK_LOG_PREVIEW, DESK_PROCESS_PREVIEW, PHONE_LOG_PREVIEW, PHONE_PROCESS_PREVIEW,
-  activityCensus, callDetailText, callPrimaryText, failedCalls, hiddenLabel, isOpaqueId, previewRows, readableSummary,
+  activityCensus, callDetailText, budgetRefusals, callPrimaryText, failedCalls, hiddenLabel, isOpaqueId, previewRows, readableSummary,
 } from './consumptionPresentation.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -18,6 +18,15 @@ const log = (id: number, success: boolean, extra: Record<string, unknown> = {}) 
   task_summary: 'You are an institutional prop desk analyst. Analyze this paper trade proposal.',
   trigger_mode: 'automated', success, ...extra,
 })
+
+// --- LQ-241: budget refusals are their own class, not provider failures -------------------
+{
+  const mix = [log(1, false, { failure_class: 'provider_failure' }), log(2, false, { failure_class: 'budget_refusal' }),
+               log(3, true, { failure_class: null }), log(4, false)]
+  eq('refusals leave the failure list', failedCalls(mix).map(l => l.id).join(), '1,4')
+  eq('refusals listed apart', budgetRefusals(mix).map(l => l.id).join(), '2')
+  eq('a failure without a class stays a failure', failedCalls([log(5, false)]).length, 1)
+}
 
 // --- FQ-030: the page must lead with failed calls ---------------------------------------
 eq('no failures', failedCalls([log(1, true), log(2, true)]).length, 0)

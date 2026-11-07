@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CONSUMPTION_BUDGET_REFUSALS_20261107",
+  "files": ["tests/test_consumption_budget_refusals_20261107.py"],
+  "anchor": "CONSUMPTION_BUDGET_REFUSALS_20261107",
+  "comment": ["ANCHOR: CONSUMPTION_BUDGET_REFUSALS_20261107 — LQ-20261107-241: spend-cap refusals are counted as their own class, apart from provider failures, on the consumption overview and log rows."]
+}

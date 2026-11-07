@@ -16,6 +16,8 @@ export type ConsumptionLog = {
   task_summary: string
   trigger_mode: string
   success: boolean
+  /** LQ-241: null for a success; 'budget_refusal' for a spend-cap refusal; 'provider_failure' otherwise. */
+  failure_class?: 'budget_refusal' | 'provider_failure' | null
 }
 
 /** How many rows stay visible before the reader asks for the rest. Phones get fewer. */
@@ -25,8 +27,13 @@ export const DESK_PROCESS_PREVIEW = 12
 export const DESK_LOG_PREVIEW = 10
 
 /** Calls that failed. The page leads with these, so they must keep their original order. */
-export function failedCalls<T extends { success: boolean }>(logs: T[]): T[] {
-  return logs.filter(l => !l.success)
+export function failedCalls<T extends { success: boolean; failure_class?: string | null }>(logs: T[]): T[] {
+  return logs.filter(l => !l.success && l.failure_class !== 'budget_refusal')
+}
+
+/** LQ-241: calls a spend cap refused. The budget doing its job — counted apart from provider failures. */
+export function budgetRefusals<T extends { success: boolean; failure_class?: string | null }>(logs: T[]): T[] {
+  return logs.filter(l => !l.success && l.failure_class === 'budget_refusal')
 }
 
 /** Slice a list for display, and say how many rows the collapse is holding back. */

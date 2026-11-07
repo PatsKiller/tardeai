@@ -9,7 +9,7 @@ import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import { fmtAsOf } from '../lib/asOfDisplay'
 import {
   DESK_LOG_PREVIEW, DESK_PROCESS_PREVIEW, PHONE_LOG_PREVIEW, PHONE_PROCESS_PREVIEW,
-  callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows, activityCensus,
+  budgetRefusals, callDetailText, callPrimaryText, failedCalls, hiddenLabel, previewRows, activityCensus,
 } from '../lib/consumptionPresentation'
 import SpendPanel from '../components/SpendPanel'
 import AnthropicCreditPanel from '../components/AnthropicCreditPanel'
@@ -43,6 +43,7 @@ type LogRow = {
   trigger_mode: string
   relative_units?: number
   success: boolean
+  failure_class?: 'budget_refusal' | 'provider_failure' | null
 }
 
 /** FQ-030: phones get the shorter preview, so the page is not a 78,000px scroll. */
@@ -157,7 +158,9 @@ export default function ConsumptionHub() {
   // says how much it is holding back. Collapsing hides rows; it never removes them.
   const census = useMemo(() => activityCensus(logRead as any), [logRead])
   const failures = useMemo(() => failedCalls(logs), [logs])
-  const orderedLogs = useMemo(() => [...failures, ...logs.filter(l => l.success)], [failures, logs])
+  // LQ-241: a spend-cap refusal is the budget working, so it is counted as its own class and kept off the failure list.
+  const refusals = useMemo(() => budgetRefusals(logs), [logs])
+  const orderedLogs = useMemo(() => [...failures, ...refusals, ...logs.filter(l => l.success)], [failures, refusals, logs])
   const processView = previewRows(processes, processesExpanded, phone ? PHONE_PROCESS_PREVIEW : DESK_PROCESS_PREVIEW)
   const logView = previewRows(orderedLogs, logsExpanded, phone ? PHONE_LOG_PREVIEW : DESK_LOG_PREVIEW)
   const processMore = hiddenLabel('processes', processView.hidden, processesExpanded)
@@ -217,6 +220,16 @@ export default function ConsumptionHub() {
               : failures.length
                 ? <><b>{failures.length} failed {failures.length === 1 ? 'call' : 'calls'}</b> in the last {logs.length}. They are listed first below.</>
                 : <>No failed calls in the last {logs.length}. Paid spend is in the Spend panel just below.</>}
+      </div>
+      {/* LQ-241: budget refusals are not provider failures; they get their own line and counts (today / 7d). */}
+      <div data-testid="budget-refusal-census"
+           style={{ borderRadius: RADIUS.md, padding: '8px 12px', marginBottom: 12, fontSize: 12, lineHeight: 1.45,
+                    background: 'var(--bg1)', border: '1px solid var(--border)', color: MUTED }}>
+        <b style={{ color: AMBER }}>{overview?.by_class?.week?.budget_refusal ?? '—'} budget refusals</b> in 7 days
+        {' '}({overview?.by_class?.today?.budget_refusal ?? '—'} today) — a spend cap turned the call away; no provider failed.
+        {' '}<b style={{ color: RED }}>{overview?.by_class?.week?.provider_failure ?? '—'} provider failures</b> in 7 days
+        {' '}({overview?.by_class?.today?.provider_failure ?? '—'} today).
+        {refusals.length ? <> {refusals.length} of the last {logs.length} calls were refusals.</> : null}
       </div>
 
       {/* Real paid spend: provider · model · process · peak/off-peak (operator ask 2026-09-14) */}
@@ -306,8 +319,10 @@ export default function ConsumptionHub() {
             const label = lane === 'deepseek-v4-pro' ? 'DeepSeek V4 Pro' : lane
             const failToday = Number(t?.failures ?? 0)
             const failWeek = Number(w?.failures ?? 0)
-            const okToday = Math.max(0, Number(t?.calls ?? 0) - failToday)
-            const okWeek = Math.max(0, Number(w?.calls ?? 0) - failWeek)
+            const refToday = Number(t?.budget_refusals ?? 0)
+            const refWeek = Number(w?.budget_refusals ?? 0)
+            const okToday = Math.max(0, Number(t?.calls ?? 0) - failToday - refToday)
+            const okWeek = Math.max(0, Number(w?.calls ?? 0) - failWeek - refWeek)
             return [
               <div key={`${lane}-today`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid color-mix(in srgb, ${laneColor} 27%, transparent)` }}>
                 <div style={{ fontSize: 10, color: laneColor }}>{label} today</div>
@@ -317,6 +332,7 @@ export default function ConsumptionHub() {
                   <span style={{ color: GREEN }}>{okToday} ok</span>
                   {' · '}
                   <span style={{ color: failToday ? RED : MUTED }}>{failToday} fail</span>
+                  {refToday ? <>{' · '}<span style={{ color: AMBER }}>{refToday} budget</span></> : null}
                 </div>
               </div>,
               <div key={`${lane}-week`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid color-mix(in srgb, ${laneColor} 27%, transparent)` }}>
@@ -327,6 +343,7 @@ export default function ConsumptionHub() {
                   <span style={{ color: GREEN }}>{okWeek} ok</span>
                   {' · '}
                   <span style={{ color: failWeek ? RED : MUTED }}>{failWeek} fail</span>
+                  {refWeek ? <>{' · '}<span style={{ color: AMBER }}>{refWeek} budget</span></> : null}
                 </div>
               </div>,
             ]

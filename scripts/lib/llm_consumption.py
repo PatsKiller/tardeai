@@ -1652,6 +1652,19 @@ def gate_and_generate(
     return text
 
 
+#: LQ-20261107-241: a call refused by a spend cap is the budget doing its job, not a provider failing.
+#: The consumption page counts these as their own class. The pattern is anchored on the stored error text.
+BUDGET_REFUSAL_RE = r"^(ANTHROPIC_CREDIT_(PROCESS_CAP|PER_CALL_CAP|PAUSED_TODAY)|COST_CAP_EXCEEDED)"
+
+
+def failure_class(success: bool, error_message: str | None) -> str | None:
+    """None for a success, 'budget_refusal' for a cap refusal, 'provider_failure' for every other failure."""
+    if success:
+        return None
+    import re
+    return "budget_refusal" if re.match(BUDGET_REFUSAL_RE, error_message or "") else "provider_failure"
+
+
 def overview(*, days: int = 30) -> dict:
     ensure_schema()
     cur = _conn().cursor()
@@ -1662,20 +1675,24 @@ def overview(*, days: int = 30) -> dict:
     }
     by_lane: dict[str, dict] = {}
     for label, (where, where_params) in periods.items():
-        # nosemgrep: tq-py-sql-fstring -- where is one of three literal predicates; days is a param
+        # nosemgrep: tq-py-sql-fstring -- where is one of three literal predicates and BUDGET_REFUSAL_RE a module constant; days is a param
         cur.execute(f"""
             SELECT model_lane,
                    COUNT(*) AS calls,
                    COALESCE(SUM(prompt_chars + response_chars), 0) AS chars,
                    COALESCE(SUM(estimated_cost_usd), 0) AS rel_units,
-                   COUNT(*) FILTER (WHERE NOT success) AS failures
+                   COUNT(*) FILTER (WHERE NOT success
+                                    AND COALESCE(error_message, '') !~ '{BUDGET_REFUSAL_RE}') AS failures,
+                   COUNT(*) FILTER (WHERE NOT success
+                                    AND COALESCE(error_message, '') ~ '{BUDGET_REFUSAL_RE}') AS budget_refusals
             FROM llm_consumption_log WHERE {where}
             GROUP BY model_lane
         """, where_params)
-        for lane, calls, chars, units, fails in cur.fetchall():
+        for lane, calls, chars, units, fails, refusals in cur.fetchall():
             by_lane.setdefault(lane, {})[label] = {
                 "calls": int(calls), "chars": int(chars), "relative_units": float(units or 0),
-                "failures": int(fails),
+                # `failures` now means provider failures only; cap refusals are counted apart.
+                "failures": int(fails), "budget_refusals": int(refusals),
             }
     cur.execute("""
         SELECT process_id, process_name, COUNT(*) AS calls,
@@ -1696,8 +1713,14 @@ def overview(*, days: int = 30) -> dict:
         anthropic = anthropic_snapshot(state_root())
     except Exception:  # noqa: BLE001 -- additive monitor cannot break the native report
         anthropic = unavailable_snapshot()
-    return {"by_lane": by_lane, "top_processes": top, "generated_at": datetime.now(timezone.utc).isoformat(),
-            "anthropic": anthropic}
+    by_class: dict[str, dict] = {}
+    for label in periods:
+        by_class[label] = {
+            "provider_failure": sum(v.get(label, {}).get("failures", 0) for v in by_lane.values()),
+            "budget_refusal": sum(v.get(label, {}).get("budget_refusals", 0) for v in by_lane.values()),
+        }
+    return {"by_lane": by_lane, "by_class": by_class, "top_processes": top,
+            "generated_at": datetime.now(timezone.utc).isoformat(), "anthropic": anthropic}
 
 
 def list_processes() -> list[dict]:
@@ -1756,20 +1779,26 @@ def recent_logs(*, limit: int = 50, process_id: str | None = None) -> list[dict]
     if process_id:
         cur.execute("""
             SELECT id, created_at, model_lane, model_name, process_id, process_name, task_summary,
-                   trigger_mode, prompt_chars, response_chars, estimated_cost_usd, success, duration_ms
+                   trigger_mode, prompt_chars, response_chars, estimated_cost_usd, success, duration_ms,
+                   error_message
             FROM llm_consumption_log WHERE process_id=%s
             ORDER BY created_at DESC LIMIT %s
         """, (process_id, limit))
     else:
         cur.execute("""
             SELECT id, created_at, model_lane, model_name, process_id, process_name, task_summary,
-                   trigger_mode, prompt_chars, response_chars, estimated_cost_usd, success, duration_ms
+                   trigger_mode, prompt_chars, response_chars, estimated_cost_usd, success, duration_ms,
+                   error_message
             FROM llm_consumption_log ORDER BY created_at DESC LIMIT %s
         """, (limit,))
     cols = ["id", "created_at", "model_lane", "model_name", "process_id", "process_name", "task_summary",
             "trigger_mode", "prompt_chars", "response_chars", "relative_units", "success", "duration_ms"]
-    return [dict(zip(cols, (str(v) if k == "created_at" and v else v for k, v in zip(cols, row))))
-            for row in cur.fetchall()]
+    out = []
+    for row in cur.fetchall():
+        rec = dict(zip(cols, (str(v) if k == "created_at" and v else v for k, v in zip(cols, row))))
+        rec["failure_class"] = failure_class(bool(rec["success"]), row[len(cols)])
+        out.append(rec)
+    return out
 
 
 def registry_lane_map() -> dict:
