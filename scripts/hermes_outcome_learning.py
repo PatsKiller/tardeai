@@ -55,6 +55,26 @@ def _live_weights():
     return load(seed=WEIGHTS_FILE)[0]["weights"]
 
 
+def _weights_fingerprint(weights: dict) -> str:
+    from lib.hermes_score_weights import weights_fingerprint
+    return weights_fingerprint(weights)
+
+
+def _inputs_fingerprint(pairs) -> str:
+    """12-hex identity of the evidence: per pair, the factor scores and the standardized outcome, order-free."""
+    import hashlib
+    rows = []
+    for comp, out in pairs:
+        comp = comp if isinstance(comp, dict) else {}
+        scores = [comp[f].get("score") if isinstance(comp.get(f), dict) else None for f in FACTORS]
+        rows.append(f"{scores}|{float(out):.6f}")
+    h = hashlib.sha256()
+    for r in sorted(rows):
+        h.update(r.encode())
+        h.update(b"\n")
+    return h.hexdigest()[:12]
+
+
 # ── 3.1 weights ───────────────────────────────────────────────────────────────
 def _pairs(cur, trade_weight):
     """(components, outcome) pairs from the ledger. Price claims use 20d excess; trades use
@@ -131,6 +151,10 @@ def calibrate_weights(cur, cfg, apply):
     live_spread = _spread(pairs, live, w["quantile"])
     shadow_spread = _spread(pairs, sugg, w["quantile"])
     eligible = (live_spread is not None and shadow_spread is not None and shadow_spread >= live_spread)
+    # LQ-20261107-213: name the baseline and the evidence. The graft gate counts only rows measured against
+    # the weights live at graft time, once per distinct input set (an unchanged rerun is not a new day).
+    weights_fp = _weights_fingerprint(live)
+    inputs_fp = _inputs_fingerprint(pairs)
 
     if apply:
         for f in FACTORS:
@@ -138,10 +162,11 @@ def calibrate_weights(cur, cfg, apply):
                            (factor, current_weight, suggested_weight, predictiveness, sample_n, rationale)
                            VALUES (%s,%s,%s,%s,%s,%s)""",
                         (f, live.get(f), sugg.get(f), pred.get(f), len(pairs),
-                         f"{MARKER}|eligible={1 if eligible else 0}|live_spread={live_spread}|shadow_spread={shadow_spread}"))
+                         f"{MARKER}|eligible={1 if eligible else 0}|live_spread={live_spread}|shadow_spread={shadow_spread}"
+                         f"|weights={weights_fp}|inputs={inputs_fp}"))
     return {"status": "ok", "pairs": len(pairs), "factors_measured": sorted(pred),
             "factors_below_gate": gated, "live_spread": live_spread, "shadow_spread": shadow_spread,
-            "graft_eligible": eligible,
+            "graft_eligible": eligible, "weights_fingerprint": weights_fp, "inputs_fingerprint": inputs_fp,
             "suggested": {f: sugg[f] for f in sorted(sugg)}}
 
 

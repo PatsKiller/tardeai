@@ -72,6 +72,7 @@ class FakeConn:
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    monkeypatch.setenv("HERMES_SCORE_WEIGHTS_DB", "0")  # LQ-213: clamp pressure resolves the live weights; never the live store
     monkeypatch.setattr(hcg, "KILL_SWITCH", tmp_path / "HERMES_DISABLED")
     conn = FakeConn()
     alerts = []

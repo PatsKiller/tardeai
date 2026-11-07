@@ -158,16 +158,28 @@ def auto_graft_weights(cur, apply: bool, *, audit_present: bool = True) -> dict:
 
     ``audit_present`` False (a dry run on a database that never had the audit table): the weekly drift reads 0
     instead of querying a table the read-only session may not create."""
-    # persistence gate: eligible outcome suggestions on >= N distinct days in the window
-    cur.execute("""SELECT count(DISTINCT created_at::date) FROM hermes_weight_calibration
-                   WHERE rationale LIKE 'OUTCOME_LEDGER|eligible=1%%'
-                     AND created_at > NOW() - make_interval(days => %s)""",
-                (GRAFT_ELIGIBLE_WINDOW_DAYS,))
+    from lib.hermes_score_weights import (ELIGIBLE_EVIDENCE_DAYS_SQL, eligible_evidence_pattern,
+                                          weights_fingerprint)
+
+    # LQ-20261107-213: the evidence must have been measured against the weights this graft would change.
+    # Rows measured against another baseline (a release that served the seed, an older store version) or
+    # without a baseline tag (pre-fix) never count, and an unchanged rerun is one day, not two.
+    doc, source = _load_weights()
+    if source != "config_documents":
+        print(f"  WARN weights answered by {source} — the DB store is not serving "
+              f"(see lib.hermes_score_weights.resolve() for the named errors)", file=sys.stderr)
+    cur_w = dict(doc.get("weights") or {})
+    fp = weights_fingerprint(cur_w)
+    pattern = eligible_evidence_pattern(fp)
+    # persistence gate: eligible outcome evidence, new inputs, on >= N distinct days in the window
+    cur.execute(ELIGIBLE_EVIDENCE_DAYS_SQL, (pattern, GRAFT_ELIGIBLE_WINDOW_DAYS, pattern))
     eligible_days = cur.fetchone()[0] or 0
     if eligible_days < GRAFT_ELIGIBLE_DAYS:
         return {"status": "gated_persistence",
                 "eligible_days": eligible_days, "required": GRAFT_ELIGIBLE_DAYS,
-                "note": "drift-ratchet frozen; grafts require sustained outcome-eligible suggestions"}
+                "weights_fingerprint": fp, "weights_source": source,
+                "note": "drift-ratchet frozen; grafts require sustained outcome-eligible suggestions "
+                        "measured against the live weights"}
     # weekly drift cap from the audit trail
     if audit_present:
         cur.execute("""SELECT COALESCE(SUM((c->>'to')::numeric - (c->>'from')::numeric), 0),
@@ -182,16 +194,11 @@ def auto_graft_weights(cur, apply: bool, *, audit_present: bool = True) -> dict:
                 "cap": GRAFT_WEEKLY_DRIFT_CAP}
     cur.execute("""SELECT DISTINCT ON (factor) factor, suggested_weight, predictiveness
                    FROM hermes_weight_calibration
-                   WHERE rationale LIKE 'OUTCOME_LEDGER|eligible=1%%'
-                   ORDER BY factor, id DESC""")
+                   WHERE rationale LIKE %s
+                   ORDER BY factor, id DESC""", (pattern,))
     rows = cur.fetchall()
     if not rows:
         return {"status": "no_outcome_suggestions"}
-    doc, source = _load_weights()
-    if source != "config_documents":
-        print(f"  WARN weights answered by {source} — the DB store is not serving "
-              f"(see lib.hermes_score_weights.resolve() for the named errors)", file=sys.stderr)
-    cur_w = dict(doc.get("weights") or {})
     new_w = dict(cur_w)
     changes = []
     for factor, sug, pred in rows:

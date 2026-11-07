@@ -115,6 +115,37 @@ def checksum(doc: dict) -> str:
     return hashlib.sha256(json.dumps(doc, sort_keys=True, default=str).encode()).hexdigest()[:16]
 
 
+# ── outcome-evidence identity (LQ-20261107-213) ───────────────────────────────
+#: hermes_weight_calibration.rationale carries two tags after the spreads. A row without them predates the
+#: fix and was measured against an unknown baseline, so the graft gate never counts it.
+EVIDENCE_MARKER = "OUTCOME_LEDGER"
+
+
+def weights_fingerprint(weights: dict) -> str:
+    """12-hex identity of a weight vector (factor -> weight at 4 dp). Two runs that ranked with the same
+    weights share it; a release that served the seed instead of the store does not."""
+    norm = {str(k): round(float(v), 4) for k, v in (weights or {}).items()}
+    return hashlib.sha256(json.dumps(norm, sort_keys=True).encode()).hexdigest()[:12]
+
+
+def eligible_evidence_pattern(fingerprint: str) -> str:
+    """SQL LIKE pattern (pass it as a parameter) for graft-eligible rows measured against ``fingerprint``."""
+    return f"{EVIDENCE_MARKER}|eligible=1|%|weights={fingerprint}|inputs=%"
+
+
+#: Distinct days on which a NEW input set produced graft-eligible evidence against one baseline. A rerun on
+#: unchanged inputs (weekends, a manual rerun) is the same evidence, counted once on the day it first appeared.
+#: Parameters: (pattern, window_days, pattern).
+ELIGIBLE_EVIDENCE_DAYS_SQL = """
+    SELECT count(DISTINCT created_at::date) FROM hermes_weight_calibration c
+    WHERE c.rationale LIKE %s AND c.created_at > NOW() - make_interval(days => %s)
+      AND NOT EXISTS (
+          SELECT 1 FROM hermes_weight_calibration e
+          WHERE e.rationale LIKE %s
+            AND substring(e.rationale from 'inputs=([0-9a-f]+)') = substring(c.rationale from 'inputs=([0-9a-f]+)')
+            AND e.created_at::date < c.created_at::date)"""
+
+
 # ── DB tier ───────────────────────────────────────────────────────────────────
 def db_enabled() -> bool:
     return os.environ.get(DB_ENV, "1").strip().lower() not in ("0", "false", "no", "off")

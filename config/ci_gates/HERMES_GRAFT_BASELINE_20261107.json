@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_GRAFT_BASELINE_20261107",
+  "files": [
+    "tests/test_hermes_graft_baseline_20261107.py"
+  ],
+  "anchor": "HERMES_GRAFT_BASELINE_20261107",
+  "comment": [
+    "ANCHOR: HERMES_GRAFT_BASELINE_20261107 — LQ-20261107-213. The self-tune persistence gate counted any",
+    "OUTCOME_LEDGER|eligible=1 day, whatever weights the outcome writer had compared against. Releases served",
+    "different weight files (the v9 git seed, a carried v19), so eligible days were mostly artifacts of a weak",
+    "baseline; weekend reruns on unchanged inputs counted as extra days; and the tuner grafted suggestions",
+    "computed against one baseline onto another. Each calibration row now carries weights=<fingerprint> and",
+    "inputs=<fingerprint>; the gate, the graft and the governor clamp-pressure check read only rows measured",
+    "against the live weights, counting a day only when its input set is new.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}

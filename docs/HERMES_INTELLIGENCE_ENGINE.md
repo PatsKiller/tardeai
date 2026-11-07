@@ -70,7 +70,12 @@ predictiveness from **graded 20-session excess returns + realized R (2x)** in
 `hermes_outcome_ledger`, additive suggestions clamped ±0.02, shadow-vs-live spread check →
 `hermes_weight_calibration` rows tagged `OUTCOME_LEDGER`. Self-tune grafts **only** eligible rows,
 needs ≥5 eligible days in 14, and respects a 0.10 weekly total-drift cap — all audited in
-`hermes_autotune_audit`. Gated `insufficient_samples` until ≥10 high + ≥10 low graded pairs exist
+`hermes_autotune_audit`. Each row's rationale ends `|weights=<fp>|inputs=<fp>` (LQ-20261107-213): the
+fingerprint of the live weight vector the shadow was compared against, and of the graded input set. The
+gate, the graft and the governor's clamp-pressure check count only rows whose `weights=` is the weights
+live now, and a day only when its input set is new (an unchanged weekend rerun is one day). Untagged
+pre-fix rows never count. After any graft the fingerprint changes, so the next graft needs 5 fresh days.
+Gated `insufficient_samples` until ≥10 high + ≥10 low graded pairs exist
 per factor. The same nightly run also learns **promotion thresholds** per research_type
 (`hermes_promotion_thresholds`, enforced by the coordinator — momentum_catalyst measured 0.32
 precision → 0.75 confidence gate), **source retirement on outcome yield**, and **lane usefulness**

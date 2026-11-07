@@ -154,14 +154,26 @@ def detect(cur, apply) -> list:
         )
 
     # ── weight clamp pressure ────────────────────────────────────────────────
+    # LQ-20261107-213: only evidence measured against the weights live now, one day per new input set — the
+    # same rule the graft gate uses, so a proposal never cites suggestions made against another baseline.
+    from lib.hermes_score_weights import eligible_evidence_pattern, load, weights_fingerprint
+
+    live_doc, _live_source = load(seed=PROJECT_ROOT / "config" / "hermes_score_weights.yaml")
+    pattern = eligible_evidence_pattern(weights_fingerprint(live_doc.get("weights") or {}))
     cur.execute("""SELECT factor, count(DISTINCT created_at::date) days,
                           avg(ABS(suggested_weight - current_weight)) avg_gap
-                   FROM hermes_weight_calibration
-                   WHERE rationale LIKE 'OUTCOME_LEDGER|eligible=1%%'
+                   FROM hermes_weight_calibration c
+                   WHERE rationale LIKE %s
                      AND created_at > NOW() - interval '14 days'
+                     AND NOT EXISTS (
+                         SELECT 1 FROM hermes_weight_calibration e
+                         WHERE e.factor = c.factor AND e.rationale LIKE %s
+                           AND substring(e.rationale from 'inputs=([0-9a-f]+)')
+                               = substring(c.rationale from 'inputs=([0-9a-f]+)')
+                           AND e.created_at::date < c.created_at::date)
                    GROUP BY factor
                    HAVING count(DISTINCT created_at::date) >= 7
-                      AND avg(ABS(suggested_weight - current_weight)) >= 0.04""")
+                      AND avg(ABS(suggested_weight - current_weight)) >= 0.04""", (pattern, pattern))
     for factor, days, gap in cur.fetchall():
         out.append(
             _propose(
