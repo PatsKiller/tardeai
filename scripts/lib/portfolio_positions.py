@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+import re
 from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -217,6 +218,36 @@ def _backup_ok(source: Any, cfg: dict) -> bool:
     return any(p in s for p in cfg.get("backup_quote_providers") or _DEFAULTS["backup_quote_providers"])
 
 
+# ── what a STORED mark's own provenance says about it ─────────────────────────────────────────────
+# The stored branch is the last rung, so whatever it accepts becomes the number a page shows. Two
+# provenances are not a price, for the same reasons the live rungs already refuse them:
+#   * "yfinance" — operator 2026-11-07: never yfinance, and `_backup_ok` already refuses a live one;
+#   * "finviz_quote_cache" — the cache naming itself, written when get_price_batch overlays a cache row
+#     and the repricer writes the overlay's source back (`finviz_cache`, LQ-20261107-03's argument).
+#     Whatever priced that row is unknown, so it is not evidence of a mark.
+_MARK_SOURCE_UNUSABLE = re.compile(r"yfinance|finviz_quote_cache", re.IGNORECASE)
+# The repricer's non-price stand-ins: a NAV (or other proxy) is written as canonical_mark with
+# canonical_mark_type "proxy" and not_for_valuation, and it must never value a holding.
+_PROXY_MARK_TYPES = frozenset({"proxy", "foreign_proxy", "nav_proxy"})
+# A stored `price` has no quote time of its own except these two. `updated_at` is the ROW's write time
+# (the repricer touches every row each pass), so timing a legacy price by it makes an hours-old quote
+# look fresh forever — the opposite of what the stored rung is for.
+_PRICE_QUOTE_TIME_FIELDS = ("price_bar_end", "price_as_of")
+
+
+def mark_source_usable(source: Any) -> bool:
+    """False when the source names a provider that cannot price a holding (yfinance, the cache itself)."""
+    return not _MARK_SOURCE_UNUSABLE.search(str(source or ""))
+
+
+def not_for_valuation(position: dict) -> bool:
+    """True when the row says its mark may not value the holding (a NAV/proxy stand-in)."""
+    flag = position.get("not_for_valuation")
+    if flag is True or str(flag).strip().lower() in ("true", "1", "yes"):
+        return True
+    return str(position.get("canonical_mark_type") or "").strip().lower() in _PROXY_MARK_TYPES
+
+
 def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Any = _AUTO,
                  now: Optional[datetime] = None, cfg: Optional[dict] = None) -> dict:
     """The one price for a position. quote = data-broker {price, as_of|fetched_at, source};
@@ -252,16 +283,18 @@ def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Any = 
     # The repricer's named mark first. `price` is the position build's copy (holdings_export rebuilds it from the
     # morning positions run as market_value ÷ shares, price_field_role "derived_from_broker_mv"), so it lags the
     # repricer all day. Data-truth audit 2026-11-07: preferring `price` showed 24 of 30 holdings at stale prices
-    # (PFE 27.56 vs close 29.39 while canonical_mark held 29.39). `price` serves only when no canonical_mark exists.
+    # (PFE 27.56 vs close 29.39 while canonical_mark held 29.39). `price` serves only when no usable canonical_mark
+    # exists, and is timed by its own quote field — never by `updated_at` (see _PRICE_QUOTE_TIME_FIELDS).
     canon = _f(position.get("canonical_mark"))
-    if canon and canon > 0:
+    stored_ok = not not_for_valuation(position)
+    if canon and canon > 0 and stored_ok and mark_source_usable(position.get("canonical_mark_source")):
         cands.append((canon, "stored_mark", position.get("canonical_mark_ingested_at") or position.get("last_repriced")
-                      or position.get("updated_at") or position.get("as_of"), False))
+                      or position.get("as_of"), False))
     else:
         stored = _f(position.get("price"))
-        if stored and stored > 0:
-            cands.append((stored, "stored_mark", position.get("last_repriced") or position.get("updated_at")
-                          or position.get("as_of"), False))
+        if stored and stored > 0 and stored_ok:
+            cands.append((stored, "stored_mark",
+                          next((position.get(f) for f in _PRICE_QUOTE_TIME_FIELDS if position.get(f)), None), False))
     if not cands:
         return {"price": None, "source": "none", "as_of": None, "age_s": None, "live": False, "stale": True}
     price, source, as_of, live = cands[0]
