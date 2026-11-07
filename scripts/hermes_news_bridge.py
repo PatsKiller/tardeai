@@ -21,6 +21,15 @@ write_news_articles / commit are reachable, listing what it would bridge (the wr
 is not evaluated, so "would_bridge" is an upper bound). A real run writes
 data/runtime/hermes_news_bridge_last.json (LaneRunReceipt@v1; ok_at only on success) under the
 persistent state root and exits 1 when the run failed or every insert attempt errored.
+
+2026-11-07 (LQ-20261107-112): the lane reported ``no_new_input``/OK on every run from 2026-10-29 to
+2026-11-07 while writing nothing at all — its upstream (research_type='momentum_catalyst' rows from
+catalyst_momentum_engine, whose SearXNG news engines were unresponsive) had died, and a per-run zero
+is a legitimate, allowed empty. The contract already declares the answer — N8nExpectedOutput
+``per_window``, min_produced 1, window_h 48 — so the run now also reads its own window from the
+output store (``hermes_rows_in_window``) and fails with ``no_input_in_window`` (plus a fatal
+``dependency_unavailable`` skip) when nothing at all has been produced inside it. Per-run zeros stay
+``no_new_input``; a 48 h zero becomes RUN_FAILED ``empty_output`` at the executor.
 """
 import os, sys, json
 from datetime import datetime, timezone
@@ -33,6 +42,11 @@ from lib.writers.news_articles_writer import write_news_articles  # noqa: E402  
 BRIDGE_TYPES = ("momentum_catalyst",)
 RECEIPT_NAME = "hermes_news_bridge"
 LANE_ID = "hermes-news-bridge"
+# The lane's N8nExpectedOutput window (config/n8n_health_contracts.json: rule per_window, min_produced 1,
+# window_h 48). Per run a zero is legitimate and allowed as ``no_new_input``; across the window it is not.
+WINDOW_HOURS = 48
+WINDOW_EMPTY_REASON = "no_input_in_window"
+WINDOW_UNKNOWN_REASON = "window_unreadable"
 
 
 # Names this bridge reads. The env file also holds broker credentials; those are not copied.
@@ -84,6 +98,26 @@ def _strategy_type(strategy_tags):
     except Exception:
         pass
     return None
+
+
+def hermes_rows_in_window(cur, hours=WINDOW_HOURS):
+    """Rows this lane really produced inside its contract window, read from the store (source='hermes').
+
+    The per-run counters below cannot see a feed that has been dead for days: with no candidates every run
+    reports ``no_new_input``, which the contract allows, so the lane looks green while producing nothing
+    (2026-10-29 -> 2026-11-07: 0 rows for 9 days, every run DONE in 0.2 s). The window is the rule the
+    contract already declares; this reads it from the output store instead of trusting this run's zero.
+
+    Returns the count and never a default: ``count(*)`` cannot be NULL, so an empty or NULL reply means the
+    read itself is broken. "Unknown" must not arrive at the caller as 0 — that would report a dead feed as
+    the answer instead of a broken query.
+    """
+    cur.execute("SELECT count(*) FROM news_articles "
+                "WHERE source = 'hermes' AND created_at > now() - interval '%s hours'", (int(hours),))
+    row = cur.fetchone()
+    if not row or row[0] is None:
+        raise RuntimeError("news_articles source='hermes' window count returned no value")
+    return int(row[0])
 
 
 def run(limit=200, lookback_hours=48, as_json=False, dry_run=False):
@@ -173,15 +207,19 @@ def run(limit=200, lookback_hours=48, as_json=False, dry_run=False):
                 print(f"  {w['symbol']:>8} | {w['type']:<18} | would bridge hermes#{w['hermes_id']}")
         return report
     conn.commit()
+    # Read AFTER the commit so this run's own inserts count; read-only, and it is the only number that can
+    # see a feed that has been dead for longer than one run.
+    window_rows = hermes_rows_in_window(cur)
     report = {"run_at": datetime.now(timezone.utc).isoformat(),
               "candidates": len(rows), "bridged": len(bridged),
-              "skipped_dup": skipped_dup, "insert_errors": insert_errors, "rows": bridged[:20]}
+              "skipped_dup": skipped_dup, "insert_errors": insert_errors,
+              "window_hours": WINDOW_HOURS, "window_rows": window_rows, "rows": bridged[:20]}
     conn.close()
     if as_json:
         print(json.dumps(report, indent=2, default=str))
     else:
         print(f"[hermes-bridge] {len(bridged)} bridged, {skipped_dup} dup-skipped, "
-              f"{len(rows)} candidates")
+              f"{len(rows)} candidates; source=hermes rows in the last {WINDOW_HOURS} h: {window_rows}")
         for b in bridged[:15]:
             print(f"  {b['symbol']:>8} | {b['type']:<18} | news#{b['news_id']} <- hermes#{b['hermes_id']}")
     return report
@@ -210,21 +248,57 @@ def main(argv=None) -> int:
         print(f"[hermes-bridge] FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     summary = {k: rep[k] for k in ("candidates", "bridged", "skipped_dup", "insert_errors")}
+    # Unknown is not zero: if the window count did not come back, the contract's per_window rule was not
+    # verified, so the run fails with that sentence instead of claiming either outcome.
+    window_rows = rep.get("window_rows")
+    window_unknown = window_rows is None
     # Every attempted insert errored (none bridged, none a clean dup-skip): the run did not work.
-    failed = rep["insert_errors"] > 0 and rep["bridged"] == 0 and rep["skipped_dup"] == 0
-    write_receipt(RECEIPT_NAME, ok=not failed, summary=summary, started_at=started,
-                  error="every news_articles insert errored" if failed else None, output=lane_output(summary))
+    inserts_failed = rep["insert_errors"] > 0 and rep["bridged"] == 0 and rep["skipped_dup"] == 0
+    # The contract's window rule (per_window 48 h, min_produced 1): zero output across the whole window is a
+    # failure even though zero output in one run is allowed as no_new_input. This is the 2026-10-29..11-07 hole.
+    window_empty = (not window_unknown) and int(window_rows) == 0
+    failed = inserts_failed or window_empty or window_unknown
+    if window_unknown:
+        error = (f"the source=hermes window count could not be read, so the contract's per_window rule "
+                 f"({WINDOW_HOURS} h, min_produced=1) is unverified for this run")
+    elif window_empty:
+        error = (f"no source=hermes rows in the last {WINDOW_HOURS} h (contract per_window min_produced=1): "
+                 f"the bridge runs but its input feed produces nothing; {rep['candidates']} candidates this run")
+    elif inserts_failed:
+        error = "every news_articles insert errored"
+    else:
+        error = None
+    write_receipt(RECEIPT_NAME, ok=not failed, summary=summary, started_at=started, error=error,
+                  output=lane_output(summary, window_rows=window_rows))
+    if failed:
+        print(f"[hermes-bridge] FAILED: {error}", file=sys.stderr)
     return 1 if failed else 0
 
 
-def lane_output(summary: dict) -> dict:
+def lane_output(summary: dict, window_rows=None) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: news_articles rows inserted, source=hermes).
-    attempted = unbridged Hermes research rows read; no candidate or only duplicates = ``no_new_input``."""
-    bridged = int(summary.get("bridged") or 0)
-    return {"produced_count": bridged, "attempted_count": max(int(summary.get("candidates") or 0), bridged),
-            "skipped_reasons": {"duplicate": int(summary.get("skipped_dup") or 0),
-                                "insert_error": int(summary.get("insert_errors") or 0)},
-            "empty_reason": "no_new_input" if bridged == 0 else None}
+    attempted = unbridged Hermes research rows read; no candidate or only duplicates = ``no_new_input``, which
+    the contract allows PER RUN. ``window_rows == 0`` is the different, failing case: nothing at all has been
+    produced across the contract window, so the empty reason is ``no_input_in_window`` (not allowed) and the
+    upstream dependency is recorded as a fatal skip. ``window_rows is None`` (unreadable) is its own reason,
+    never folded into zero."""
+    bridged = int(summary["bridged"])
+    empty = bridged == 0
+    window_unknown = window_rows is None
+    window_empty = (not window_unknown) and int(window_rows) == 0
+    skipped = {"duplicate": int(summary["skipped_dup"]),
+               "insert_error": int(summary["insert_errors"])}
+    if window_empty or window_unknown:
+        skipped["dependency_unavailable"] = 1
+    if window_empty:
+        empty_reason = WINDOW_EMPTY_REASON
+    elif window_unknown:
+        empty_reason = WINDOW_UNKNOWN_REASON
+    else:
+        empty_reason = "no_new_input"
+    return {"produced_count": bridged, "attempted_count": max(int(summary["candidates"]), bridged),
+            "skipped_reasons": skipped,
+            "empty_reason": empty_reason if empty else None}
 
 
 if __name__ == "__main__":

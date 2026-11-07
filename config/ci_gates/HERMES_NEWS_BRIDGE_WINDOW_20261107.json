@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_NEWS_BRIDGE_WINDOW_20261107",
+  "files": [
+    "tests/test_hermes_news_bridge_window_20261107.py"
+  ],
+  "anchor": "HERMES_NEWS_BRIDGE_WINDOW_20261107",
+  "comment": [
+    "ANCHOR: HERMES_NEWS_BRIDGE_WINDOW_20261107 — LQ-20261107-112: hermes-news-bridge exited 0 with no_new_input",
+    "on every run from 2026-10-29 to 2026-11-07 while news_articles source='hermes' gained nothing, because its",
+    "upstream momentum_catalyst feed had died and a per-run zero is a legitimately allowed empty. The lane now",
+    "reads its own contract window (per_window 48 h, min_produced 1) from the output store and fails with",
+    "no_input_in_window — or window_unreadable when the count itself cannot be read, never a silent zero.",
+    "Hermetic: fake cursor, no database, no network, synthetic symbols."
+  ]
+}
