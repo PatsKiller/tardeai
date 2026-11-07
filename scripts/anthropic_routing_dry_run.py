@@ -23,7 +23,9 @@ def report(root: Path, observations: dict) -> tuple[list[dict], Decimal]:
     routes=routing['policies'][routing['default_policy_id']]['processes']
     rows=[];total=Decimal(0)
     for process in registry['processes']:
-        pid=process['id'];row=routes[pid];old=row['primary'];logical=old['policy']
+        pid=process['id'];row=routes.get(pid)
+        # A registered process without a routing row (11-07: ai_claim_check, LQ-20261107-154) is reported, not a crash.
+        old=row['primary'] if row else {'provider':'NO_ROUTING_ROW','policy':'FAST'};logical=old['policy']
         tier=(credit.get('process_tiers') or {}).get(pid) or ('high' if process.get('reasoning_tier')=='high' else ('bulk' if logical=='FAST' and pid in credit.get('bulk_processes',[]) else credit['policy_tiers'][logical]))
         eligible=process.get('anthropic_first') is True and pid not in credit['excluded_processes']
         new=credit['models'][tier] if eligible else 'unchanged'
@@ -33,7 +35,9 @@ def report(root: Path, observations: dict) -> tuple[list[dict], Decimal]:
             # Comparable-token estimate only: not a forecast of Claude thinking/output.
             cost=price_usage({'input_tokens':observed['input_tokens'],'output_tokens':observed['output_tokens']},credit['pricing'][new])
             total+=cost
-        if old['provider']=='deepseek':
+        if not row:
+            old_model='not routed (registry only)'
+        elif old['provider']=='deepseek':
             spec=models['logical_policies'][logical]
             old_model=models['providers']['deepseek']['models'][spec['model']]['model_id']
         else:
