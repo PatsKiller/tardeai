@@ -789,15 +789,44 @@ def _dependency_refresh(clocks: dict[str, Any], run_now: dict[str, Any] | None =
         "unknown_clock": unknown,
         "stale": stale,
         "not_refreshed_by_run_now": not_refreshed,
-        "summary": "; ".join(parts) if parts else "every dependency clock is at or after the synthesis",
+        "summary": _dependency_summary(parts, clocks, stale),
     }
+
+
+def _dependency_summary(parts: list[str], clocks: dict[str, Any], stale: list[str]) -> str:
+    """One honest sentence. "Nothing older than the synthesis" is not "everything is current":
+    when the synthesis is itself past its limit, every other clock can be newer and still stale."""
+    if parts:
+        return "; ".join(parts)
+    if not stale:
+        return "every dependency clock is at or after the synthesis"
+    ages = []
+    for n in stale:
+        c = clocks.get(n) or {}
+        age = c.get("age_seconds")
+        ages.append(f"{c.get('label') or n} {_fmt_lag(age)} old" if isinstance(age, (int, float)) else f"{c.get('label') or n} past its limit")
+    return "no clock is older than the synthesis, but past their stale limit: " + ", ".join(ages)
+
+
+def _synthesis_schedule_reason(schedule: dict[str, Any]) -> str:
+    """Why the synthesis has no next run: a retired producer says so (and that Run now is the only refresh)."""
+    unit = str(schedule.get("timer_unit") or "")
+    lane_id = unit[:-len(".timer")] if unit.endswith(".timer") else unit
+    try:
+        from lib.cio_source_clocks import next_scheduled_run
+        why = (next_scheduled_run([lane_id]).get("reason") or "") if lane_id else ""
+    except Exception:  # noqa: BLE001
+        why = ""
+    if "RETIRED" in why.upper():
+        return f"synthesis producer {lane_id} is retired (operator); it refreshes only when Run now is used"
+    return "advisory schedule unavailable"
 
 
 def _dependency_next_runs(schedule: dict[str, Any]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {
         "advisory_synthesis": {
             "next_run_at": schedule.get("next_run_at"),
-            "reason": None if schedule.get("next_run_at") else "advisory schedule unavailable",
+            "reason": None if schedule.get("next_run_at") else _synthesis_schedule_reason(schedule),
             "lane_id": schedule.get("timer_unit"),
         }
     }
