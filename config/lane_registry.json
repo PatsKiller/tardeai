@@ -5570,8 +5570,9 @@
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/sec_fundamentals_ingest.log"
+        "kind": "json_key",
+        "path": "data/runtime/sec-fundamentals-ingest_last.json",
+        "key": "ok_at"
       },
       "note": "Operator 2026-09-27 fundamentals plan F1: SEC company facts -> sec_xbrl for priority requests, options desk and the debt-ordered queue (ETFs skipped). The only writer of sec_xbrl.",
       "value_class": "Operationally Important",
@@ -6250,7 +6251,7 @@
         "kind": "cron",
         "expression": "5 12 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
-        "match": "scripts/active_trader/session_review.py --apply"
+        "match": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -6284,7 +6285,7 @@
         "kind": "cron",
         "expression": "10 16 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
-        "match": "scripts/active_trader/session_review.py --apply"
+        "match": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -7371,7 +7372,7 @@
         "kind": "cron",
         "expression": "30 17 * * 1-5",
         "command_text": "run_orchestrator_slot.sh",
-        "match": "scripts/run_orchestrator_slot.sh",
+        "match": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
         "schedules": [
           "30 17 * * 1-5"
         ]
@@ -9869,9 +9870,9 @@
       "expected_cadence_hours": 61.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/watchlist_strategy_cards.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/materialize_watchlist_strategy_cards_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -9992,10 +9993,10 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "json_key",
-        "path": "~/trade-ai-releases/portfolio-server/CURRENT/data/monitoring/classifier_health.json",
+        "path": "data/monitoring/classifier_health.json",
         "key": "checked_at",
         "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/monitoring/classifier_health_check.py:41 writes data/monitoring/classifier_health.json (cwd CURRENT; NOT under the state root, release-local dir) every run; host mtime 2026-10-09T07:55:01-04:00, checked_at 2026-10-09T11:55:01Z"
+        "evidence_ref": "2026-11-07 cc-deepseek-3: supersedes the 2026-10-09 'release-local, cwd CURRENT' note. classifier_health_check.py RESULT_REL writes data/monitoring/classifier_health.json through lib.persistent_state_root.durable_write_targets every run — the served persistent-state copy first, then the checkout. Host: <state_root>/data/monitoring/classifier_health.json mtime 2026-11-06T12:55:01Z. Declared state-root relative because scripts/lib/run_quality.py resolves output only under <state_root>/data."
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P12",
@@ -10497,9 +10498,9 @@
       "expected_cadence_hours": 57.17,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_governance_warm.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-governance-api_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P10",
@@ -12601,7 +12602,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "30 8,10,13 * * 1-5",
-        "match": "scripts/social_ingest.py --source stocktwits"
+        "match": "scripts/social_ingest.py --source stocktwits --discover"
       },
       "expected_cadence_hours": 67.0,
       "state": "ACTIVE",
@@ -20561,9 +20562,9 @@
       "expected_cadence_hours": 4.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/rag_indexer.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/rag-indexer_last.json",
+        "key": "ok_at"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -21350,9 +21351,9 @@
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/holdings_llm_refresh.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/holdings_llm_refresh_last.json",
+        "key": "ok_at"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -24495,9 +24496,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/backlog_health/latest_backlog_health_summary.json",
+        "path": "data/hermes/backlog_health/latest_backlog_health_summary.json",
         "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_backlog_health_check.py:153 write_text latest_backlog_health_summary.json (OUT=PROJECT_ROOT/docs/hermes/backlog_health, :20); host mtime 2026-10-09T02:45:15 (timer 06:45 UTC)"
+        "evidence_ref": "2026-11-07 cc-deepseek-3: hermes_backlog_health_check.py RESULT_REL + write_summary write latest_backlog_health_summary.json through durable_write_targets every real run — state root first, then checkout; the docs copy (:22) is kept for readers. Declared state-root relative because scripts/lib/run_q"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P12",
@@ -24565,9 +24566,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json",
+        "path": "data/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json",
         "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/hermes_autonomous_librarian_backlog_loop.py:212 write_text latest_librarian_loop_dryrun.json in both dry-run and apply modes; host mtime 2026-10-09T03:46:25 (timer 07:45 UTC)"
+        "evidence_ref": "2026-11-07 cc-deepseek-3: hermes_autonomous_librarian_backlog_loop.py RESULT_REL + write_report write latest_librarian_loop_dryrun.json through durable_write_targets in dry-run and apply modes — state root first, then checkout; the docs copy (:22) is kept for readers. Declared state-root relative be"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P14",
@@ -26348,7 +26349,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "*/10 6-10 * * 1-5",
-        "match": "social_ingest.py --source stocktwits --scalp-list",
+        "match": "scripts/social_ingest.py --source stocktwits --scalp-list",
         "command_text": "cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/social_ingest_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/social_ingest.py --source stocktwits --scalp-list >> logs/social_ingest_scalp_hot.log 2>&1"
       },
       "expected_cadence_hours": 1.0,

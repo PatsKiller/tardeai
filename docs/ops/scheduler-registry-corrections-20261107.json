@@ -1,6 +1,6 @@
 {
   "schema": "LaneRegistryCorrections@v1",
-  "as_of": "2026-11-07T05:10Z",
+  "as_of": "2026-11-07T04:55Z",
   "author": "cc-deepseek-6",
   "source": "live /api/v2/scheduler-operations?view=checks (a8c5c04fe, 2026-11-07T02:34Z) + read-only crontab/systemd/journal/OpenClaw jobs.json/n8n ledger; new rows: this session's census on the host, plus cc-deepseek-3's census rows that no existing lane already declares (agent-nudger = crontab L1098; tradeai-deploy-on-main). cc-deepseek-3's openclaw-agent-job-* rows are NOT taken: the same five OpenClaw gateway jobs are already declared here as openclaw-aegis-evening-surveillance / openclaw-<job id>, and a second row per job would give one job two owners.",
   "blocked_by": "claim released 2026-11-07 by claude-lead; applying under the lead's single-owner instruction (cc-deepseek-6 owns config/lane_registry.json) in wt/livefix-cc-deepseek-6-registry",
@@ -484,5 +484,205 @@
       "action": "none today",
       "why": "the three disabled jobs (steph weekly/monthly, gemma weekly, INTC follow-up) already read EXPECTED_SILENT and need no row until enabled."
     }
-  ]
+  ],
+  "followup_20261107T0455Z": {
+    "taken_from": "peers' inbox requests to the registry owner: cc-deepseek-3 2026-11-07T0440Z, cc-deepseek-4 2026-11-07T0440Z, cc-deepseek-5 2026-11-07T0409Z. cc-deepseek's patch was withdrawn by its author (both halves already live).",
+    "edits": [
+      {
+        "lane_id": "classifier-health-check",
+        "path": "output_signal",
+        "old": {
+          "kind": "json_key",
+          "path": "~/trade-ai-releases/portfolio-server/CURRENT/data/monitoring/classifier_health.json",
+          "key": "checked_at",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/monitoring/classifier_health_check.py:41 writes data/monitoring/classifier_health.json (cwd CURRENT; NOT under the state root, release-local dir) every run; host mtime 2026-10-09T07:55:01-04:00, checked_at 2026-10-09T11:55:01Z"
+        },
+        "new": {
+          "kind": "json_key",
+          "path": "data/monitoring/classifier_health.json",
+          "key": "checked_at",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "2026-11-07 cc-deepseek-3: supersedes the 2026-10-09 'release-local, cwd CURRENT' note. classifier_health_check.py RESULT_REL writes data/monitoring/classifier_health.json through lib.persistent_state_root.durable_write_targets every run — the served persistent-state copy first, then the checkout. Host: <state_root>/data/monitoring/classifier_health.json mtime 2026-11-06T12:55:01Z. Declared state-root relative because scripts/lib/run_quality.py resolves output only under <state_root>/data."
+        },
+        "why": "cc-deepseek-3 (inbox 2026-11-07T0440Z) + cc-deepseek-2 (0415Z): scripts/lib/run_quality.py resolves a declared path only under <state_root>/data or /logs, and has no expanduser(), so the ~/-rooted release-local path could never resolve and the lane graded EMPTY ('declared output file is missing') on every run; the state-root copy is written every run (checked_at 2026-11-06T12:55:01Z). Adopted row, so this hand edit is regeneration-stable."
+      },
+      {
+        "lane_id": "materialize-watchlist-strategy-cards",
+        "path": "output_signal",
+        "old": {
+          "kind": "file_mtime",
+          "path": "logs/watchlist_strategy_cards.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "new": {
+          "kind": "json_key",
+          "path": "data/runtime/materialize_watchlist_strategy_cards_last.json",
+          "key": "ok_at"
+        },
+        "why": "cc-deepseek-4 (inbox 2026-11-07T0440Z): logs/watchlist_strategy_cards.log frozen since 2026-10-22T20:30Z; the underscored receipt data/runtime/materialize_watchlist_strategy_cards_last.json advanced 2026-11-06T21:30:23Z and the live grade is GOOD 'produced 5686 by produced_count'. Adopted row."
+      },
+      {
+        "lane_id": "hermes-governance-api",
+        "path": "output_signal",
+        "old": {
+          "kind": "file_mtime",
+          "path": "logs/hermes_governance_warm.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "new": {
+          "kind": "json_key",
+          "path": "data/runtime/hermes-governance-api_last.json",
+          "key": "ok_at"
+        },
+        "why": "cc-deepseek-4: logs/hermes_governance_warm.log frozen since 2026-10-16T00:50Z; the hyphen receipt data/runtime/hermes-governance-api_last.json advanced 2026-11-07T01:50:05Z — the file the lane's own write_lane_receipt writes. Adopted row. (The lane still grades DEGRADED on its summary status; that is not a signal problem.)"
+      },
+      {
+        "lane_id": "hermes-backlog-health-check",
+        "path": "output_signal",
+        "old": {
+          "kind": "file_mtime",
+          "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/backlog_health/latest_backlog_health_summary.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/hermes_backlog_health_check.py:153 write_text latest_backlog_health_summary.json (OUT=PROJECT_ROOT/docs/hermes/backlog_health, :20); host mtime 2026-10-09T02:45:15 (timer 06:45 UTC)"
+        },
+        "new": {
+          "kind": "file_mtime",
+          "path": "data/hermes/backlog_health/latest_backlog_health_summary.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "2026-11-07 cc-deepseek-3: hermes_backlog_health_check.py RESULT_REL + write_summary write latest_backlog_health_summary.json through durable_write_targets every real run — state root first, then checkout; the docs copy (:22) is kept for readers. Declared state-root relative because scripts/lib/run_q"
+        },
+        "why": "cc-deepseek-3: the row is generated, so the value here is the generator's own output with the corrected evidence file (branch wt/livefix-cc-deepseek-3-lane-output-evidence f4d268a05): state-root-relative path; the checkout docs/ copy it declared is what graded EMPTY. Verified in-process WITH cc-deepseek-3's evidence file applied: the registry is a fixed point of reconcile (0 problems, this row identical to the generated one). On this branch alone, without that file, regeneration still emits the ~/ path — so this half MUST MERGE WITH the evidence file change."
+      },
+      {
+        "lane_id": "hermes-librarian-backlog-loop",
+        "path": "output_signal",
+        "old": {
+          "kind": "file_mtime",
+          "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/hermes_autonomous_librarian_backlog_loop.py:212 write_text latest_librarian_loop_dryrun.json in both dry-run and apply modes; host mtime 2026-10-09T03:46:25 (timer 07:45 UTC)"
+        },
+        "new": {
+          "kind": "file_mtime",
+          "path": "data/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "2026-11-07 cc-deepseek-3: hermes_autonomous_librarian_backlog_loop.py RESULT_REL + write_report write latest_librarian_loop_dryrun.json through durable_write_targets in dry-run and apply modes — state root first, then checkout; the docs copy (:22) is kept for readers. Declared state-root relative be"
+        },
+        "why": "cc-deepseek-3: same as hermes-backlog-health-check — the generator's own output with the corrected evidence file; state-root-relative path for the artifact the loop writes in dry-run and apply modes. MUST MERGE WITH the evidence file change."
+      },
+      {
+        "lane_id": "holdings-llm-refresh",
+        "path": "output_signal",
+        "old": {
+          "kind": "file_mtime",
+          "path": "logs/holdings_llm_refresh.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "new": {
+          "kind": "json_key",
+          "path": "data/runtime/holdings_llm_refresh_last.json",
+          "key": "ok_at"
+        },
+        "why": "cc-deepseek-5 (inbox 2026-11-07T0409Z): the lane writes its own LaneRunReceipt every run; the declared cron-redirect log only the cron arm writes, so out-of-band runs graded EMPTY 'output was not written by that run'. Simulated on the live state root: EMPTY -> GOOD/idle once the receipt states no_new_input. Generated row: DURABILITY PENDING — see durability.note below."
+      },
+      {
+        "lane_id": "rag-indexer",
+        "path": "output_signal",
+        "old": {
+          "kind": "file_mtime",
+          "path": "logs/rag_indexer.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "new": {
+          "kind": "json_key",
+          "path": "data/runtime/rag-indexer_last.json",
+          "key": "ok_at"
+        },
+        "why": "cc-deepseek-5: receipt-repointing row; live before EMPTY 'not_written', after GOOD 'produced 162 by summary.total'. Generated row: DURABILITY PENDING."
+      },
+      {
+        "lane_id": "sec-fundamentals-ingest",
+        "path": "output_signal",
+        "old": {
+          "kind": "file_mtime",
+          "path": "~/trade-ai-releases/persistent-state/logs/sec_fundamentals_ingest.log"
+        },
+        "new": {
+          "kind": "json_key",
+          "path": "data/runtime/sec-fundamentals-ingest_last.json",
+          "key": "ok_at"
+        },
+        "why": "cc-deepseek-5: receipt-repointing row; live before EMPTY 'not_written', after GOOD 'produced 13 by summary.symbols'. Hand-written row, so the edit is regeneration-stable."
+      },
+      {
+        "lane_id": "social-ingest-stocktwits",
+        "path": "scheduler.match",
+        "old": "scripts/social_ingest.py --source stocktwits",
+        "new": "scripts/social_ingest.py --source stocktwits --discover",
+        "why": "adding the scalp-hot row exposed that the generated marker also occurs in the scalp-hot line, so one cron line mapped to two rows (reconcile LINE_MAPS_TO_2_ROWS). This is the generator's own current derivation for that line; the scalp-hot row takes '--scalp-list'. Reconcile plan problems after the pair: 0 (was 3)."
+      },
+      {
+        "lane_id": "social-ingest-scalp-hot",
+        "path": "scheduler.match",
+        "old": "social_ingest.py --source stocktwits --scalp-list",
+        "new": "scripts/social_ingest.py --source stocktwits --scalp-list",
+        "why": "same pair: the full script path is what the live line contains and what choose_match() derives; without the scripts/ prefix the marker was the only thing tying the row to its line."
+      }
+    ],
+    "reverted": [
+      {
+        "lane_id": "active-trader-session-review",
+        "path": "scheduler.match",
+        "restored": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply",
+        "rejected": "scripts/active_trader/session_review.py --apply",
+        "why": "my 2026-11-07 correction shortened these markers on the belief that the schedule-embedded marker could never match the live line. The reconcile plan proves the opposite: the base markers ARE exact live-line prefixes (0 problems), and the shortened markers made each of the two session_review lines map to two rows. check_lane_registry.py stayed green throughout, which is why the gate alone did not catch it."
+      },
+      {
+        "lane_id": "active-trader-session-review-close",
+        "path": "scheduler.match",
+        "restored": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply",
+        "rejected": "scripts/active_trader/session_review.py --apply",
+        "why": "my 2026-11-07 correction shortened these markers on the belief that the schedule-embedded marker could never match the live line. The reconcile plan proves the opposite: the base markers ARE exact live-line prefixes (0 problems), and the shortened markers made each of the two session_review lines map to two rows. check_lane_registry.py stayed green throughout, which is why the gate alone did not catch it."
+      },
+      {
+        "lane_id": "orchestrator-slot",
+        "path": "scheduler.match",
+        "restored": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
+        "rejected": "scripts/run_orchestrator_slot.sh",
+        "why": "my 2026-11-07 correction shortened these markers on the belief that the schedule-embedded marker could never match the live line. The reconcile plan proves the opposite: the base markers ARE exact live-line prefixes (0 problems), and the shortened markers made each of the two session_review lines map to two rows. check_lane_registry.py stayed green throughout, which is why the gate alone did not catch it."
+      }
+    ],
+    "withheld": [
+      {
+        "item": "jcm.catalyst_momentum_engine split into a receipt liveness contract + a jcm.catalyst_research_output research-store contract (cc-deepseek-2 0415Z)",
+        "why": "it cannot land alone: monitor_fold_parity.py compares both directions, and cc-deepseek-2's 8a2559484 carries the registry rows plus the pair test. Their dbd47e01e (the ('json', rel, key) signal kind) is green alone and can land first. Their follow-up correction (both monitor rows bind lane_id catalyst-momentum-engine-overnight, source lines :49-50 and :154-155) is accepted in principle."
+      },
+      {
+        "item": "finviz-sector-research + hermes-watchlist-scorer stage canary -> cutover (cc-deepseek-2 0415Z)",
+        "why": "the rows already declare scheduler.kind n8n / expression dispatcher / cadence here. The stage flip needs the matching config/n8n_health_contracts.json re-take (STAGE_DRIFT gate, registry first, contract second), and that file has four open draft PRs per cc-deepseek-2. Half a flip would trade one drift for another."
+      },
+      {
+        "item": "cc-deepseek-3's request to land all three output signals myself",
+        "why": "taken for classifier-health-check and for the two hermes rows (generator-emitted values), so their evidence branch f4d268a05 must merge with this branch. Their evidence file is not mine to edit (they hold a live claim on it, and draft PR #2528 also touches it)."
+      }
+    ],
+    "durability": {
+      "note": "Roughly a fifth of the registry is rebuilt from the crontab, the units and docs/implementation/n8n-maturity/data/lane_output_evidence.json on every reconcile. A hand edit to a generated_by row survives only if the row is adopted (generated_by dropped, adopted_from_generator kept) or the evidence file is corrected. Measured with an in-process reconcile against the live host, 2026-11-07T04:50Z:",
+      "would_revert_on_next_regeneration": [
+        {
+          "lane_id": "systemd-tmpfiles-clean",
+          "detail": "scheduler.scope 'system' is dropped: build_unit_rows emits {kind, expression} only, and discovery cannot say which manager the unit lives in. The fix is generator support for scope (a code change in scripts/reconcile_lane_registry.py), not a registry row."
+        },
+        {
+          "lane_id": "tradeai-iris-taxonomy",
+          "detail": "the appended re-check sentence is rebuilt from observed unit state. The durable record of the 2026-11-07 observation is this artifact, not the row."
+        },
+        {
+          "lane_id": "holdings-llm-refresh, rag-indexer, sec-fundamentals-ingest (two of three are generated)",
+          "detail": "the receipt signal needs a lane_output_evidence.json entry per lane (verified_token + source_file + evidence). Requested from cc-deepseek-3, who owns that file this round."
+        }
+      ]
+    }
+  }
 }
