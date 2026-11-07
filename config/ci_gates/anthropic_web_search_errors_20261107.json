@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "anthropic_web_search_errors_20261107",
+  "files": [
+    "tests/test_anthropic_web_search_errors_20261107.py"
+  ],
+  "anchor": "ANTHROPIC_WEB_SEARCH_ERRORS_20261107",
+  "comment": [
+    "ANCHOR: ANTHROPIC_WEB_SEARCH_ERRORS_20261107 — a web-search bridge failure carries its cause, not just its exception type (LQ-20261107-212).",
+    "Live 2026-11-07: every sampled cio-ask-material-events run over 24 h recorded web.anthropic as",
+    "\"reason\": \"HTTPError\" because search() kept only type(exc).__name__. These tests pin that an HTTPError",
+    "keeps its status (401/403/404/429/5xx are now separable), that a URLError keeps its socket reason, that",
+    "the response body is never echoed into the run row (it can quote the question or an auth error page),",
+    "that a bridge refusal code is unchanged, and that the success shape is unchanged. Hermetic: injected",
+    "transports only, no network, no bridge, no credit."
+  ]
+}

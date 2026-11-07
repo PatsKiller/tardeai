@@ -9,6 +9,8 @@ the audit could only grade the lane DEGRADED without naming a cause.
 These tests pin the two transport failures that used to collapse into a bare type name, and pin that
 nothing from the response body (which can quote the question or a credential error page) reaches the
 run row.
+
+ANCHOR: ANTHROPIC_WEB_SEARCH_ERRORS_20261107
 """
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ URL = "http://127.0.0.1:8766/v1/chat/completions"
 
 
 def _http_error(code: int, reason: str, body: bytes):
-    def transport(url, payload, timeout_s):  # noqa: ANN001
+    def transport(url, payload, timeout_s):  # noqa: ANN001 -- must match search()'s call shape, not a protocol
         raise HTTPError(url, code, reason, {}, io.BytesIO(body))
 
     return transport
@@ -57,7 +59,7 @@ def test_http_error_never_echoes_the_response_body():
 
 
 def test_unreachable_bridge_keeps_its_reason():
-    def transport(url, payload, timeout_s):  # noqa: ANN001
+    def transport(url, payload, timeout_s):  # noqa: ANN001 -- must match search()'s call shape, not a protocol
         raise URLError(ConnectionRefusedError(111, "Connection refused"))
 
     out = ws.search("q", transport=transport)
