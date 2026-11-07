@@ -16,7 +16,7 @@ def test_missing_monitor_is_read_only_and_never_claims_live_success(tmp_path):
     status=snapshot(tmp_path, policy=p, now=NOW, configured=False)
     assert status['status']=='NOT_CONFIGURED'
     assert status['last_success_at'] is None
-    assert status['routing_order']==['grok','chatgpt','deepseek']
+    assert status['routing_order']==['grok','deepseek']  # no chatgpt (LQ-20261107-196)
     assert not list(tmp_path.iterdir())
     assert snapshot(tmp_path,policy=p,now=NOW,configured=True)['status']=='DEGRADED'
 

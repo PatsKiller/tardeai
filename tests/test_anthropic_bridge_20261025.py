@@ -26,7 +26,7 @@ class Provider:
                 "_tradeai": {"estimated_cost_usd": 0.0001}}
 
 
-@pytest.mark.parametrize("failing", [0, 1, 2, 3])
+@pytest.mark.parametrize("failing", [0, 1, 2])
 def test_real_bridge_walks_promotion_oauth_then_single_paid(monkeypatch, failing):
     from lib import anthropic_routing as promo
     from lib.anthropic_transport import AnthropicError
@@ -39,7 +39,7 @@ def test_real_bridge_walks_promotion_oauth_then_single_paid(monkeypatch, failing
         monkeypatch.setenv('ANTHROPIC_API_KEY', 'synthetic-key-not-a-credential')
         # One confirmed response per candidate; no provider HTTP, key file or DB.
         providers = {}
-        order = ['anthropic', 'grok', 'chatgpt', 'deepseek']
+        order = ['anthropic', 'grok', 'deepseek']  # chatgpt left the order (LQ-20261107-196)
         for i, name in enumerate(order):
             providers[name] = Provider(fail=AnthropicError('RATE_LIMITED') if i < failing else None)
             bridge.set_transport_override(name, providers[name])

@@ -244,7 +244,7 @@ def test_plan_uses_pinned_clock_and_never_calls_provider_for_missing_key():
     cfg = {'registered': True, 'anthropic_first': True, 'allowed_lanes': ['anthropic','grok','chatgpt']}
     plan = r.configured_plan('fixture', cfg, {'requested_policy':'FAST'}, enabled={'grok','chatgpt','deepseek'},
         model_for_provider=lambda provider, tier: provider, policy=p, env={}, now=NOW)
-    assert [x['provider'] for x in plan] == ['anthropic','grok','chatgpt','deepseek']
+    assert [x['provider'] for x in plan] == ['anthropic','grok','deepseek']  # no chatgpt (LQ-20261107-196)
     assert plan[0]['skip'] == 'not_configured'
     expired = r.configured_plan('fixture', cfg, {'requested_policy':'FAST'}, enabled={'grok'},
         model_for_provider=lambda provider, tier: provider, policy=p, env={'ANTHROPIC_API_KEY':'synthetic'},

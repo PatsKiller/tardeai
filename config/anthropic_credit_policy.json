@@ -38,7 +38,6 @@
   "provider_order": [
     "anthropic",
     "grok",
-    "chatgpt",
     "deepseek"
   ],
   "models": {

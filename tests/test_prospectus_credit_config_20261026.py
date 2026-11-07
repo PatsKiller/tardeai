@@ -251,7 +251,7 @@ def test_processes_registered_with_declared_caps_and_anthropic_only_routing():
                                  model_for_provider=lambda prov, name: f"{prov}-model",
                                  env={"ANTHROPIC_API_KEY": True}, policy=p, now=D26)
     assert plan[0]["provider"] == "anthropic" and plan[0]["skip"] is None and plan[0]["model_id"] == "claude-opus-5-5"
-    assert [c["skip"] for c in plan[1:]] == ["anthropic_only_process"] * 3
+    assert [c["skip"] for c in plan[1:]] == ["anthropic_only_process"] * 2  # grok, deepseek (LQ-20261107-196)
     other = promo.configured_plan("x", cfg, {"requested_policy": "FAST", "credit_tier": "standard"},
                                   enabled={"anthropic", "grok", "chatgpt", "deepseek"},
                                   model_for_provider=lambda prov, name: "m", env={"ANTHROPIC_API_KEY": True},
