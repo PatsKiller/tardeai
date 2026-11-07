@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "STALE_N8N_WRITERS_LQ104_20261107",
+  "files": [
+    "tests/test_stale_n8n_writers_lq104_20261107.py"
+  ],
+  "anchor": "STALE_N8N_WRITERS_LQ104_20261107",
+  "comment": [
+    "ANCHOR: STALE_N8N_WRITERS_LQ104_20261107 — LQ-20261107-104, five scheduled writers whose stores stopped moving",
+    "while their logs said everything was fine: the agenda's duplicate scheduler fire flipped a good receipt to",
+    "failed; the incubator screener screened 0 of 10 and exited 0; both reconcilers called a permanently empty",
+    "input a clean run; and the RI queue left a row 'running' for 89 days with no process behind it. Each is pinned",
+    "here by the decision it now makes. Hermetic: fake cursors/modules, no database, no network, no model call."
+  ]
+}

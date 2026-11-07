@@ -50,6 +50,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 LOCK_PATH = "/tmp/ri_research_queue.lock"
 DRAIN_CAP_DEFAULT = 10
 PER_TOPIC_TIMEOUT_S = 900
+# A topic run is bounded by PER_TOPIC_TIMEOUT_S (15 min). A row still 'running' after this long was left by a
+# process that died between the 'running' UPDATE and the finishing UPDATE — measured 2026-11-07: id 148,
+# started 2026-08-10, still 'running' 89 days later, and nothing in the code ever looked at it again.
+STALE_RUNNING_HOURS = 6
 
 DDL = """
 CREATE TABLE IF NOT EXISTS ri_research_queue (
@@ -149,6 +153,27 @@ def list_queue(limit: int = 50) -> list[dict]:
     ) or []
 
 
+def settle_stale_running(ex, hours: int = STALE_RUNNING_HOURS) -> list[int]:
+    """Fail rows a dead process left 'running', so the queue never holds a phantom forever.
+
+    A drain marks each row 'running' before it calls topic_ingestion and rewrites it when the call returns; if
+    the drain itself is killed in between (OOM, host restart, a refused effect claim mid-run), the row stays
+    'running' with no process behind it. Those rows are invisible to the drain (it selects status='queued') and
+    to the operator page. Settling them as 'failed' keeps the row (nothing is deleted), records why, and leaves
+    the topic re-queueable.
+    """
+    note = f"stale: still 'running' after {int(hours)}h — the drain that started it never finished"
+    rows = ex(
+        """UPDATE ri_research_queue
+              SET status = 'failed', finished_at = NOW(),
+                  result_note = LEFT(COALESCE(result_note || ' | ', '') || %s, 400)
+            WHERE status = 'running' AND COALESCE(started_at, requested_at) < NOW() - (%s * interval '1 hour')
+            RETURNING id""",
+        (note, int(hours)), fetch="all",
+    ) or []
+    return [r["id"] for r in rows]
+
+
 def drain(cap: int = DRAIN_CAP_DEFAULT) -> dict:
     """Run queued topics through topic_ingestion --topic, one at a time,
     lockfile-guarded, capped per run. Telegram digest on completion."""
@@ -159,6 +184,10 @@ def drain(cap: int = DRAIN_CAP_DEFAULT) -> dict:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         return {"ok": False, "error": "drain already running (lock held)"}
+
+    stale = settle_stale_running(ex)
+    if stale:
+        print(f"[ri-queue] settled {len(stale)} stale 'running' row(s) as failed: {stale}", file=sys.stderr)
 
     rows = ex(
         "SELECT id, topic_id FROM ri_research_queue WHERE status = 'queued' ORDER BY requested_at ASC LIMIT %s",
@@ -211,7 +240,7 @@ def drain(cap: int = DRAIN_CAP_DEFAULT) -> dict:
         pass
 
     return {"ok": True, "processed": len(done) + len(failed), "done": done,
-            "failed": failed, "still_queued": remaining.get("n")}
+            "failed": failed, "still_queued": remaining.get("n"), "settled_stale": stale}
 
 
 def main() -> int:
@@ -244,7 +273,8 @@ def main() -> int:
         from lib.lane_last_receipt import write_lane_receipt
         write_lane_receipt("research-intelligence-queue", ok=bool(out.get("ok")), started_at=started_at,
                            script="scripts/research_intelligence_queue.py",
-                           summary={"processed": out.get("processed"), "still_queued": out.get("still_queued")},
+                           summary={"processed": out.get("processed"), "still_queued": out.get("still_queued"),
+                                    "settled_stale": out.get("settled_stale")},
                            error=out.get("error"))
 
     print(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), **out},

@@ -17,6 +17,14 @@ Verdicts (21d horizon):
 Usage:
   python scripts/reconcile_exit_advisory_outcomes.py            # reconcile due advisories
   python scripts/reconcile_exit_advisory_outcomes.py --self-test  # fixture verdict tests
+
+2026-11-07 (LQ-20261107-104): every weekly run printed "no published exit advisories due — clean run on zero
+rows" and exit_advisory_outcomes has held **0 rows ever**, because nothing produces its input: it reads
+``hermes_research_intelligence.research_type='exit_intelligence'``, which only
+``lib/gain_guardian_publish.publish_run`` writes, and that path is unreachable while
+``config/gain_guardian_thresholds.json`` has ``published: false`` (Gain Guardian in shadow). The run now names
+that dependency (``dependency_unavailable``, exit 1) instead of calling a permanently empty input clean, and
+writes a LaneRunReceipt either way.
 """
 from __future__ import annotations
 
@@ -77,6 +85,70 @@ CREATE TABLE IF NOT EXISTS exit_advisory_outcomes (
 """
 
 
+LANE_ID = "reconcile-exit-advisory-outcomes"
+
+
+def producer_state(ex) -> dict:
+    """How much input exists at all: ``ever`` rows of the type it reconciles, and ``due`` ones older than 5 days.
+
+    A count that did not come back stays unknown (None), never 0: ``ever == 0`` is the evidence that the producer
+    is switched off, so a failed read must not be able to masquerade as that evidence."""
+    row = ex("""SELECT count(*) AS ever,
+                       count(*) FILTER (WHERE created_at < now() - interval '5 days') AS due
+                FROM hermes_research_intelligence WHERE research_type='exit_intelligence'""",
+             fetch="one") or {}
+    ever, due = row.get("ever"), row.get("due")
+    if ever is None or due is None:
+        return {"ever": None, "due": None}
+    return {"ever": int(ever), "due": int(due)}
+
+
+def gain_guardian_published() -> bool | None:
+    """The switch that decides whether exit advisories are ever published (None when the config is unreadable)."""
+    path = ROOT / "config" / "gain_guardian_thresholds.json"
+    try:
+        return bool(json.loads(path.read_text()).get("published"))
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def empty_input_reason(state: dict, published: bool | None) -> tuple[str, str]:
+    """Why there was nothing to reconcile: the producer is switched off, genuinely quiet, or unattributable.
+
+    A permanently empty input is not a clean week. ``exit_intelligence`` rows come only from
+    ``gain_guardian_publish.publish_run``, which returns early while ``published`` is false, so with 0 rows ever
+    and the switch off the answer is ``dependency_unavailable``, naming the switch the operator can flip. When
+    either fact could not be read (a failed count, an unreadable config) the zero cannot be attributed at all:
+    ``input_unreadable``, never ``nothing_due``.
+    """
+    ever = state.get("ever")
+    if ever is None:
+        return ("input_unreadable",
+                "the exit_intelligence row count did not come back, so an empty result cannot be attributed"
+                " to a quiet week")
+    if ever == 0 and published is None:
+        return ("input_unreadable",
+                "no exit_intelligence rows exist but config/gain_guardian_thresholds.json could not be read,"
+                " so the producer's switch state is unknown")
+    if ever == 0 and published is False:
+        return ("dependency_unavailable",
+                "no exit_intelligence rows exist and Gain Guardian is unpublished "
+                "(config/gain_guardian_thresholds.json published=false): nothing has ever been published to "
+                "reconcile; promote Gain Guardian or retire this lane")
+    return "nothing_due", ""
+
+
+def _receipt(*, ok: bool, produced: int, empty_reason=None, skipped=None, error=None) -> None:
+    """LaneRunReceipt (data/runtime/reconcile-exit-advisory-outcomes_last.json). Never raises."""
+    try:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+        write_lane_receipt(LANE_ID, ok=ok, started_at=now_iso(), script="reconcile_exit_advisory_outcomes.py",
+                           produced_count=max(0, int(produced)), skipped_reasons=skipped or {},
+                           empty_reason=empty_reason, error=error)
+    except Exception as exc:  # noqa: BLE001 -- a receipt problem must not change the run's verdict
+        print(f"[exit-outcomes] receipt not written: {exc}", file=sys.stderr)
+
+
 def verdict_for(*, symbol_return_pct: float | None, spy_return_pct: float | None,
                 max_drawdown_atr: float | None) -> str:
     """Pure verdict logic — unit-tested with fixtures below."""
@@ -128,7 +200,13 @@ def reconcile() -> int:
         fetch="all",
     ) or []
     if not advisories:
-        print("[exit-outcomes] no published exit advisories due — clean run on zero rows")
+        reason, why = empty_input_reason(producer_state(ex), gain_guardian_published())
+        if reason != "nothing_due":
+            print(f"[exit-outcomes] {reason} — {why}", file=sys.stderr)
+            _receipt(ok=False, produced=0, empty_reason=reason, skipped={reason: 1}, error=why)
+            return 1
+        print("[exit-outcomes] no published exit advisories due — clean run (producer live)")
+        _receipt(ok=True, produced=0, empty_reason=reason)
         return 0
 
     done = 0
@@ -191,6 +269,7 @@ def reconcile() -> int:
             )
             done += 1
     print(f"[exit-outcomes] evaluated {done} advisory-horizon pairs")
+    _receipt(ok=True, produced=done)
     return 0
 
 

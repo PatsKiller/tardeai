@@ -6,6 +6,13 @@ Every anchored watch_candidate_events row ≥21 trading-ish days old gets +21d
 OUTPERFORM (α>+3%) / MARKET (−3..+3) / UNDERPERFORM (α<−3%) / NOT_EVALUABLE.
 Unanchored events stay NOT_EVALUABLE — attribution is never guessed.
 Weekly cron (Sunday); per-run cap keeps bar fetches bounded.
+
+2026-11-07 (LQ-20261107-104): the lane printed "no anchored events due — clean run" every week and wrote no
+receipt, so it graded FAILING (evaluated_at max 2026-09-27) with nothing to show whether the week was quiet or
+the input had died. It had died: ``watch_candidate_events`` has had **no producer** since 2026-07-16 (declared in
+``scripts/lib/data_broker/watch_discovery.py``, class ``dead_feed``). Every run now writes a LaneRunReceipt and
+attributes a zero: ``nothing_due`` while the feed is live, ``dependency_unavailable`` (exit 1) once no candidate
+event has been emitted for ``INPUT_DEAD_DAYS``.
 """
 from __future__ import annotations
 
@@ -43,6 +50,28 @@ except Exception:
     pass
 
 CAP_EVENTS = 400
+LANE_ID = "reconcile-watch-outcomes"
+# The reconciler's own horizon is 30 days and it runs weekly, so a feed with no new candidate event for 45 days
+# is not a quiet week — it has no producer. Measured 2026-11-07: newest emitted_on 2026-07-16, 114 days.
+INPUT_DEAD_DAYS = 45
+
+
+def _input_state(ex) -> dict:
+    """The feed's own last word: newest candidate event date and how many days ago that was."""
+    row = ex("""SELECT max(emitted_on)::text AS last_on, (CURRENT_DATE - max(emitted_on)) AS age_days
+                FROM watch_candidate_events""", fetch="one") or {}
+    return {"last_on": row.get("last_on"), "age_days": row.get("age_days")}
+
+
+def _receipt(*, ok: bool, produced: int, empty_reason=None, skipped=None, error=None) -> None:
+    """LaneRunReceipt (data/runtime/reconcile-watch-outcomes_last.json). Never raises: the run's result first."""
+    try:
+        from lib.lane_last_receipt import now_iso, write_lane_receipt
+        write_lane_receipt(LANE_ID, ok=ok, started_at=now_iso(), script="reconcile_watch_outcomes.py",
+                           produced_count=max(0, int(produced)), skipped_reasons=skipped or {},
+                           empty_reason=empty_reason, error=error)
+    except Exception as exc:  # noqa: BLE001 -- a receipt problem must not change the run's verdict
+        print(f"[watch-outcomes] receipt not written: {exc}", file=sys.stderr)
 
 
 def _closes(symbol: str, bars_cache: dict) -> list[tuple[dt.date, float]]:
@@ -84,7 +113,21 @@ def main() -> int:
     ex("""UPDATE watch_candidate_events SET verdict='NOT_EVALUABLE', evaluated_at=NOW()
           WHERE verdict IS NULL AND anchor_price IS NULL AND emitted_on <= CURRENT_DATE - 30""", fetch=None)
     if not rows:
-        print("[watch-outcomes] no anchored events due — clean run")
+        state = _input_state(ex)
+        age = state["age_days"]
+        dead = age is None or age > INPUT_DEAD_DAYS
+        if dead:
+            # The zero is the input's, not the week's: watch_candidate_events has had no producer since
+            # 2026-07-16 (data_broker class dead_feed). Saying "clean run" here hid that for months.
+            msg = (f"no producer: newest watch_candidate_events.emitted_on is {state['last_on'] or 'none'}"
+                   f" ({age if age is not None else 'no'} days old, limit {INPUT_DEAD_DAYS}) — nothing can be"
+                   " reconciled until a candidate-event producer runs again")
+            print(f"[watch-outcomes] dependency_unavailable — {msg}", file=sys.stderr)
+            _receipt(ok=False, produced=0, empty_reason="dependency_unavailable",
+                     skipped={"dependency_unavailable": 1}, error=msg)
+            return 1
+        print("[watch-outcomes] no anchored events due — clean run (feed live)")
+        _receipt(ok=True, produced=0, empty_reason="nothing_due")
         return 0
     cache: dict = {}
     spy = _closes("SPY", cache)
@@ -113,6 +156,7 @@ def main() -> int:
                FROM watch_candidate_events WHERE alpha_21d IS NOT NULL GROUP BY 1 ORDER BY 1""", fetch="all") or []
     print(f"[watch-outcomes] evaluated {done} events · league:",
           " / ".join(f"{r['source_type']} α{r['median_a21']:+} (n={r['n']})" for r in lg))
+    _receipt(ok=True, produced=done)
     return 0
 
 

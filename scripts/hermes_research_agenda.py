@@ -112,6 +112,23 @@ def _gate_check() -> str | None:
     return None
 
 
+#: Gate reasons are not all failures. A cadence gate means a SIBLING run of this lane applied inside the 12 h
+#: floor seconds earlier (this lane is dual-scheduled: cron 07:45 + the n8n dispatcher), so there is nothing to do
+#: and the run must not touch the sibling's receipt. A kill switch is an operator stop: it stays a failed receipt.
+SKIP_CADENCE = "cadence"
+SKIP_DISABLED = "disabled"
+
+
+def skip_kind(reason: str | None) -> str:
+    """Classify a gate reason: ``cadence``, ``disabled``, or ``blocked`` (an unrecognised gate stays a failure)."""
+    reason = str(reason or "")
+    if reason.startswith("cadence_gate"):
+        return SKIP_CADENCE
+    if reason in ("HERMES_DISABLED", "HERMES_AGENDA_DISABLED"):
+        return SKIP_DISABLED
+    return "blocked"
+
+
 def _today_action_count(conn, decision):
     cur = conn.cursor()
     cur.execute("""SELECT COUNT(*) FROM hermes_research_agenda_audit
@@ -508,7 +525,8 @@ def run_agenda(*, apply=False, limit=15):
     """Full agenda pipeline: gate → build → rank → apply."""
     gate = _gate_check()
     if gate:
-        return {"status": "blocked", "reason": gate, "creates": 0, "retires": 0, "boosts": 0}
+        return {"status": "skipped", "skip_kind": skip_kind(gate), "reason": gate,
+                "creates": 0, "retires": 0, "boosts": 0}
 
     conn = get_db()
     try:
@@ -588,10 +606,18 @@ def main(argv=None):
 
     if apply:
         completed = result.get("status") == "ok"
-        write_lane_receipt(LANE_ID, ok=completed, exit_code=0, started_at=started,
-                           script="hermes_research_agenda.py",
-                           summary={k: result.get(k) for k in ("status", "reason", "candidates_found", "creates", "retires", "boosts")},
-                           error=None if completed else "agenda_blocked")
+        if result.get("skip_kind") == SKIP_CADENCE:
+            # 2026-11-07 07:45: the cron run applied at :01.93 and wrote status ok; the dispatcher's fire at :04.21
+            # hit the 12 h cadence gate and wrote status failed/agenda_blocked over it, so a lane that had just
+            # done its work graded FAILED. A skip is not a run and must not claim the receipt slot: leave the
+            # applied run's receipt (and its ok_at) untouched, and say so here and in the lane's JSON output.
+            print(f"[agenda] skipped: {result.get('reason')}; receipt left untouched — the applied run owns ok_at",
+                  file=sys.stderr)
+        else:
+            write_lane_receipt(LANE_ID, ok=completed, exit_code=0, started_at=started,
+                               script="hermes_research_agenda.py",
+                               summary={k: result.get(k) for k in ("status", "reason", "candidates_found", "creates", "retires", "boosts")},
+                               error=None if completed else str(result.get("reason") or "agenda_blocked"))
     return 0
 
 
