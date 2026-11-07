@@ -132,7 +132,9 @@ export default function SystemRollupTab() {
         </div>
 
         <div style={panelCard}>
-          <PanelHead title="Research & reports" corpus={corpus('research')} drill="/v3/research-intel" drillLabel="Research Intel" />
+          {/* The route is /research-intelligence; /research-intel was declared nowhere, so the drill rendered a
+              blank page (LQ-20261107-175). appRoutes.view.test.mjs now resolves every /v3 link against App.tsx. */}
+          <PanelHead title="Research & reports" corpus={corpus('research')} drill="/v3/research-intelligence" drillLabel="Research Intel" />
           <Row label="hermes research items" value={research.hermes_items ?? 0} />
           <Row label="topic iterations" value={research.topic_iterations ?? 0} />
           {reports.map((r: any, i: number) => <Row key={i} label={`report · ${r.report_type}`} value={r.n} />)}

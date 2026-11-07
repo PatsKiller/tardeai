@@ -58,6 +58,7 @@ import FinvizCookieBanner from './components/FinvizCookieBanner'
 import YoutubeCookieBanner from './components/YoutubeCookieBanner'
 import AdvisoryDeskHub from './pages/AdvisoryDeskHub'
 import CioHub from './pages/CioHub'
+import NotFoundPage from './pages/NotFoundPage'
 import ReEntryDesk from './pages/desks/ReEntryDesk'
 import StrategyDesk from './pages/desks/StrategyDesk'
 import DefenseDesk from './pages/desks/DefenseDesk'
@@ -331,6 +332,9 @@ function Shell() {
             <Route path="control-plane/learning" element={<RouteErrorBoundary route="/v3/control-plane/learning"><><SurfaceModeBanner route="/v3/control-plane/learning" /><LearningPage /></></RouteErrorBoundary>} />
             <Route path="control-plane/maturity" element={<RouteErrorBoundary route="/v3/control-plane/maturity"><><SurfaceModeBanner route="/v3/control-plane/maturity" /><MaturityPage /></></RouteErrorBoundary>} />
             <Route path="control-plane/audit" element={<RouteErrorBoundary route="/v3/control-plane/audit"><><SurfaceModeBanner route="/v3/control-plane/audit" /><AuditPage /></></RouteErrorBoundary>} />
+            {/* An unknown inner path used to match nothing and render an empty outlet — a blank page reads as
+                "no data". The Reports system rollup drilled to /v3/research-intel and landed here (LQ-20261107-175). */}
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
           <div style={{ marginTop: 18, paddingTop: 8, borderTop: '1px solid rgba(148,163,184,.16)', fontSize: 11, color: 'var(--text3)' }}>
             <BuildMarker />
