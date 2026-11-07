@@ -73,7 +73,8 @@ def test_the_declared_output_document_is_also_a_receipt(module_name, lane_id, re
 
     row, lane, ev = _evidence(doc, rel, start)
     q = Q.grade(row, lane, ev, now=NOW)
-    assert (q["grade"], q["sub"]) == ("EMPTY", "nothing_due"), q["reasons"]
+    # RUNQFIX (2026-11-07): a live run whose receipt states a reviewed idle reason grades GOOD · idle.
+    assert (q["grade"], q["sub"]) == ("GOOD", "idle"), q["reasons"]
 
 
 def test_governance_warm_files_the_audit_verdict_as_the_subject_not_the_run(monkeypatch):
