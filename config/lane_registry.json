@@ -18928,9 +18928,11 @@
       "scheduler": {
         "kind": "systemd",
         "expression": "tradeai-health-tick.timer step premarket-delivery-deadman (*/15 06-11 ET Mon-Fri, market_day_gate)",
+        "cadence": "*/15 6-11 * * 1-5",
         "match": "scripts/check_premarket_delivery.py"
       },
       "expected_cadence_hours": 0.25,
+      "respect_calendar": true,
       "state": "ACTIVE",
       "state_since": "2026-10-31",
       "state_reason": "New health-tick step (config/health_tick_steps.json) added by DSN-20261031-market-risk-engine-P0-T4 after the 2026-10-30 selloff RCA finding 7 (premarket pipeline ENOSPC + morning brief failure, zero operator sends 06:00-09:45 ET). It is served the moment this PR's table is promoted; the digest approval of the PR is the AGENTS.md §17 decision for the schedule (§28.15 item 2). Runs only 06:00-11:59 ET on market days.",

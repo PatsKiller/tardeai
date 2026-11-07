@@ -459,7 +459,12 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
     elif not history:
         # Evidence is a single receipt or an output file time: judge lateness against the schedule, never call it a run.
         latest_due = elapsed[-1]["at"] if elapsed else None
-        if latest_due is None and cadence["every_hours"] and evidence_at:
+        # A lane with no wall-clock schedule (on-demand / event-driven) has no slot to be late for. Its
+        # expected_cadence_hours is a freshness target for work that is asked for, not a firing schedule,
+        # so "Nothing recorded for 24 h × 1.5" would charge it for a slot that never existed.
+        if kind in {"none", "event"} and not cadence["expressions"]:
+            status = "ok" if last and last["result"] == "succeeded" else "ok_unverified"
+        elif latest_due is None and cadence["every_hours"] and evidence_at:
             if now - evidence_at > timedelta(hours=cadence["every_hours"] * 1.5) + SLOT_GRACE:
                 status, why = "late", f"Nothing recorded for {cadence['every_hours']:g} h × 1.5"
         elif latest_due and (evidence_at is None or evidence_at < latest_due - EARLY_TOLERANCE):
