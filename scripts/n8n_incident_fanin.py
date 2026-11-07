@@ -1455,6 +1455,26 @@ def occurrence_key(key: str, occurrence: int) -> str:
     return key if occurrence <= 0 else f"{key}-r{occurrence}"
 
 
+def _resume_occurrences(prev: dict[str, Any]) -> dict[str, int]:
+    """``{base day key: occurrence}`` the previous receipt already reached. Pure.
+
+    Every key below a row's occurrence was CONSUMED by this script's own recovery closure (that is the only way
+    the walk in ``main`` gets past it) and CONSUMED is terminal, so re-reading them proves nothing new. Starting
+    the walk at the recorded occurrence gives the same key with one status call instead of ``occurrence + 1``.
+    Measured 2026-11-07 (LQ-20261107-209): 100 dead-letter groups reached ``-r6`` while the DLQ-recovery source
+    flipped every tick, the walk then cost ~880 status calls per run, and the 5-minute lane went from ~40 s to
+    ~110-180 s and hit its 180 s timeout. The base key carries the UTC day, so a new day starts at 0 again."""
+    out: dict[str, int] = {}
+    for r in (prev or {}).get("incidents") or []:
+        key, occ = r.get("idempotency_key"), r.get("occurrence")
+        if not isinstance(key, str) or isinstance(occ, bool) or not isinstance(occ, int) or occ <= 0:
+            continue
+        suffix = f"-r{occ}"
+        if key.endswith(suffix):
+            out[key[: -len(suffix)]] = min(occ, MAX_OCCURRENCES)
+    return out
+
+
 def _closed_by_recovery(status: dict[str, Any]) -> bool:
     """True when the gateway holds this key CONSUMED by this script's own recovery closure — the earlier
     occurrence ended and the finding is back, so the caller opens the next occurrence key. An operator ack (any
@@ -1609,11 +1629,14 @@ def main(argv: list[str] | None = None) -> int:
         client = GatewayClient(caller_id="tradeai-incident-fanin")
         gateway = {"url": client.url, "has_key": client.has_key, "healthz": client.healthz()}
     current_keys: set[str] = set()
+    resume = _resume_occurrences(prev)
     if args.apply:
         write_lane_registry_receipt(root, [f for f in findings if f["source"] == "lane_registry"], now, sha)
     for f in findings:
         ev = build_event(f, day=day, now=now, sha=sha)
-        occurrence = 0
+        occurrence = resume.get(ev["idempotency_key"], 0) if client is not None else 0
+        if occurrence:  # resume where the previous receipt stopped (``_resume_occurrences``)
+            ev = build_event(f, day=day, now=now, sha=sha, occurrence=occurrence)
         st: dict[str, Any] = {}
         if client is not None:
             st = client.status(ev["idempotency_key"])
