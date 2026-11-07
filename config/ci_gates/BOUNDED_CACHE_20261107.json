@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "BOUNDED_CACHE_20261107",
+  "files": ["tests/test_bounded_cache_20261107.py"],
+  "anchor": "BOUNDED_CACHE_20261107",
+  "comment": ["ANCHOR: BOUNDED_CACHE_20261107 — LQ-20261107-202: caches keyed by request or symbol input are capped (scripts/lib/bounded_cache.py)."]
+}

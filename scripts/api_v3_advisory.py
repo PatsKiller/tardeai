@@ -21,6 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:
+    from scripts.lib.bounded_cache import cap_dict
+except ImportError:  # run with scripts/ on sys.path
+    from lib.bounded_cache import cap_dict
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CACHE_FILE = PROJECT_ROOT / "data" / "runtime" / "advisory_desk_latest.json"
 OPINIONS_CACHE = PROJECT_ROOT / "data" / "runtime" / "advisory_opinion_cache.json"
@@ -818,6 +823,7 @@ import time as _time
 
 _DESK_VIEW_TTL_S = float(_os.environ.get("TRADEAI_ADVISORY_DESK_TTL_S") or 30)
 _DESK_VIEW_LOCK = _threading.RLock()
+_DESK_VIEW_MAX = 16  # row_class comes from the query string; a page walk must not grow this
 _DESK_VIEW_CACHE: dict[Any, tuple[float, tuple, dict[str, Any]]] = {}
 
 
@@ -841,6 +847,7 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         if isinstance(out, dict) and out.get("ok") is not False:
             # Signature after the build: the build itself may rewrite the desk cache file.
             _DESK_VIEW_CACHE[key] = (_time.monotonic(), (_file_sig(CACHE_FILE), _file_sig(OPINIONS_CACHE)), out)
+            cap_dict(_DESK_VIEW_CACHE, _DESK_VIEW_MAX)
             return dict(out)
         return out
 
