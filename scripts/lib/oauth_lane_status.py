@@ -103,8 +103,88 @@ def lane_status(lane: str, *, use_cache: bool = True) -> dict:
     return snap
 
 
+# ── Cooldown after a rate limit / timeout (LQ-20261107-236) ─────────────────────────────────────────
+# A proxy that answers 429 or stops answering keeps being called by every scheduled caller, and each call
+# is a failed row on the consumption page. After such a failure the lane is held out of ``lane_available``
+# for a short, growing interval; the next caller then skips it (generate_cloud moves to the next lane)
+# instead of adding another failure. A success clears it. This never changes a spend cap.
+COOLDOWN_BASE_S = {"rate_limited": 120.0, "unreachable": 60.0}
+COOLDOWN_MAX_S = 900.0
+_COOLDOWN_FILE = (Path(__file__).resolve().parent.parent.parent / "data" / "runtime" / "oauth_lane_cooldown.json")
+_RATE_MARKERS = ("429", "too many requests", "rate limit", "rate_limit")
+_UNREACHABLE_MARKERS = ("read timed out", "timed out", "max retries exceeded", "connection refused",
+                        "remotedisconnected", "remote end closed", "connection aborted", "connection reset")
+
+
+def classify_failure(error: str | None) -> str | None:
+    """'rate_limited' / 'unreachable' for the errors worth backing off from; None for everything else."""
+    text = (error or "").lower()
+    if any(m in text for m in _RATE_MARKERS):
+        return "rate_limited"
+    if any(m in text for m in _UNREACHABLE_MARKERS):
+        return "unreachable"
+    return None
+
+
+def _read_cooldowns(path: Path | None = None) -> dict:
+    try:
+        data = json.loads((path or _COOLDOWN_FILE).read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001 - an unreadable file means no cooldown, never a blocked lane
+        return {}
+
+
+def _write_cooldowns(data: dict, path: Path | None = None) -> None:
+    target = path or _COOLDOWN_FILE
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+        os.replace(tmp, target)
+    except Exception:  # noqa: BLE001 - best effort; losing a cooldown only restores the old behaviour
+        pass
+
+
+def note_failure(lane: str, error: str | None, *, now: float | None = None, path: Path | None = None) -> dict | None:
+    """Start or extend the cooldown for a lane after a rate-limit/timeout failure. Returns the entry or None."""
+    lane = (lane or "").strip().lower()
+    kind = classify_failure(error)
+    if lane not in ("grok", "chatgpt") or kind is None:
+        return None
+    now = time.time() if now is None else now
+    data = _read_cooldowns(path)
+    prev = data.get(lane) or {}
+    streak = int(prev.get("streak") or 0) + 1 if float(prev.get("until") or 0) > now - COOLDOWN_MAX_S else 1
+    wait = min(COOLDOWN_MAX_S, COOLDOWN_BASE_S[kind] * (2 ** min(streak - 1, 3)))
+    entry = {"kind": kind, "streak": streak, "until": now + wait, "set_at": now, "error": (error or "")[:120]}
+    data[lane] = entry
+    _write_cooldowns(data, path)
+    _CACHE.pop(lane, None)
+    return entry
+
+
+def note_success(lane: str, *, path: Path | None = None) -> None:
+    lane = (lane or "").strip().lower()
+    data = _read_cooldowns(path)
+    if lane in data:
+        data.pop(lane, None)
+        _write_cooldowns(data, path)
+
+
+def cooldown_remaining(lane: str, *, now: float | None = None, path: Path | None = None) -> float:
+    """Seconds left on the lane's cooldown, 0.0 when it is not cooling down."""
+    now = time.time() if now is None else now
+    entry = _read_cooldowns(path).get((lane or "").strip().lower()) or {}
+    try:
+        return max(0.0, float(entry.get("until") or 0) - now)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def lane_available(lane: str) -> bool:
-    """True when the free OAuth proxy is authenticated and token is not expired."""
+    """True when the free OAuth proxy is authenticated, token is not expired and it is not cooling down."""
+    if cooldown_remaining(lane) > 0:
+        return False
     return bool(lane_status(lane).get("ready"))
 
 

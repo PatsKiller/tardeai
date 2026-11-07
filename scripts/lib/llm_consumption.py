@@ -1546,6 +1546,12 @@ def gate_and_generate(
             text, prov = result[0], (result[1] or {})
         else:
             text = result
+        if lane in ("grok", "chatgpt"):
+            try:
+                from lib.oauth_lane_status import note_success as _lane_note_success
+                _lane_note_success(lane)
+            except Exception:  # noqa: BLE001
+                pass
         tradeai_ok = (prov.get("_tradeai") or {}) if isinstance(prov, dict) else {}
         # Success implies the network request completed
         billable_attempt = bool(
@@ -1556,6 +1562,12 @@ def gate_and_generate(
     except Exception as e:
         ok = False
         err = str(e)[:300]
+        if lane in ("grok", "chatgpt"):
+            try:  # rate-limited / unreachable proxy: hold the lane out so callers stop adding failed rows
+                from lib.oauth_lane_status import note_failure as _lane_note_failure
+                _lane_note_failure(lane, err)
+            except Exception:  # noqa: BLE001
+                pass
         # AUTH/policy before send → request_sent False → release
         # timeout/network after send → possibly_billable True → settle projected
         billable_attempt = bool(
