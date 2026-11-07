@@ -6,7 +6,7 @@ import DeskPage, { type DeskDecision, type DeskSource } from './DeskPage'
  *  from config/lane_registry.json (via /api/v2/desk-sources), in-panel gaps and the Decisions band. Each page keeps
  *  its own URL-synced tabs and every panel it had (change control): the frame is added around them, nothing is
  *  removed. Lane ids are registry ids; a source whose update time the page does not supply says so. */
-export type OpsPageKey = 'health' | 'llm' | 'coordination' | 'broker' | 'releases' | 'controls' | 'system' | 'jobs' | 'incidents'
+export type OpsPageKey = 'health' | 'llm' | 'coordination' | 'broker' | 'releases' | 'controls' | 'system' | 'jobs' | 'incidents' | 'jobsN8n'
 
 type SourceSpec = Omit<DeskSource, 'asOf' | 'gap'>
 type PageSpec = { title: string; purpose: string; sources: SourceSpec[] }
@@ -18,6 +18,14 @@ const PAGES: Record<OpsPageKey, PageSpec> = {
     sources: [
       { id: 'watchers', label: 'Incident watchers (host timer, 5 min)', laneIds: [] },
       { id: 'supervisor', label: 'Incident supervisor (host timer, 10 min)', laneIds: [] },
+    ],
+  },
+  jobsN8n: {
+    title: 'Jobs & n8n',
+    purpose: 'Did it run, did it fail, did it get fixed — every job, every n8n lane and the incidents in one read-only place. The switches stay in Ops Controls.',
+    sources: [
+      { id: 'receipts', label: 'Run receipts and wrapper events', laneIds: ['n8n-pilot-dispatch', 'n8n-incident-fanin'] },
+      { id: 'registry', label: 'Job registry snapshot', laneIds: ['crontab-snapshot-for-health-agent'] },
     ],
   },
   jobs: {

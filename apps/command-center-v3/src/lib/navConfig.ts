@@ -111,7 +111,8 @@ export const NAV: NavSection[] = [
     id: 'ops', label: 'Ops', groups: [
       { label: 'Is it running', pages: [
         { to: '/health', label: 'Health', strip: true },
-        { to: '/ops/jobs', label: 'Jobs & health', strip: true },
+        { to: '/ops/jobs-n8n', label: 'Jobs & n8n', strip: true },
+        { to: '/ops/jobs', label: 'Jobs & health' },
         { to: '/ops/incidents', label: 'Incidents', strip: true },
       ] },
       { label: 'Agents & cost', pages: [

@@ -18,9 +18,17 @@ export type PortfolioSignalTab = (typeof PORTFOLIO_SIGNAL_TABS)[number]
 
 export const PORTFOLIO_TABS = [
   'Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends',
-  'Forecast', 'Tax', 'Redeploy', 'Stop Management',
+  'Forecast', 'Tax', 'Stop Management',
 ] as const
 export type PortfolioTab = (typeof PORTFOLIO_TABS)[number]
+
+/** Retired hub tabs that now live on their own desk (design pages/jobs v002, operator-approved 2026-11-06: the
+ *  Redeploy sub-tab became a link to the /redeploy desk). An old `?tab=` link is sent there instead of to Holdings. */
+export const PORTFOLIO_TAB_REDIRECTS: Readonly<Record<string, string>> = { redeploy: '/redeploy' }
+export function portfolioTabRedirect(raw: string | null | undefined): string | null {
+  const t = String(raw ?? '').trim().replace(/\+/g, ' ').toLowerCase()
+  return t ? PORTFOLIO_TAB_REDIRECTS[t] ?? null : null
+}
 
 export interface PortfolioDeepLink {
   tab: PortfolioTab
