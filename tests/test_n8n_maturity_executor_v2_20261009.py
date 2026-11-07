@@ -266,6 +266,10 @@ def test_reaper_finishes_a_dead_pid_with_stale_heartbeat_as_executor_lost_retrya
     assert got["state"] == "RUN_TIMEOUT" and got["verdict"] == "retryable"
     assert got["receipt"]["reason"] == "executor_lost" and got["receipt"]["schema"] == "RunReceipt@v2"
     assert got["receipt"]["worker_id"] == prev and got["receipt"]["lost"]["pid"] == child.pid
+    # LQ-20261107-378: the executor died under the run well inside its 60 s timeout; the row is executor_lost
+    # either way, so the receipt must say which reaper branch fired.
+    assert got["receipt"]["lost"]["kind"] == "executor_gone"
+    assert got["receipt"]["lost"]["owner_worker_id"] == prev
     assert rig.store.list_dead_letters() == [] and ex.reaped_total == 1
     assert (rig.state / X.RUNS_REL / "run-lost-00000000001.json").is_file()
 
@@ -279,6 +283,7 @@ def test_reaper_spares_live_pids_until_overdue_and_never_reaps_its_own_workers(r
     assert ex.reap(T0 + 120) == []                          # stale beat but pid alive, not overdue (60+120)
     assert [r["run_id"] for r in ex.reap(T0 + 181)] == ["run-slow-00000000001"]   # started + timeout + 120 < now
     assert rig.store.get("run-slow-00000000001")["receipt"]["lost"]["overdue"] is True
+    assert rig.store.get("run-slow-00000000001")["receipt"]["lost"]["kind"] == "lane_timeout"
     alive["v"] = False
     rig.request("run-mine-00000000002", "mine", priority=0, at=T0 + 200)
     rig.clock.t = T0 + 200
@@ -302,6 +307,35 @@ def test_reaper_takes_a_v1_orphan_without_pid_or_heartbeat_only_once_overdue(rig
     got = rig.store.get("run-orph-00000000001")
     assert got["state"] == "RUN_TIMEOUT" and got["receipt"]["reason"] == "executor_lost"
     assert got["receipt"]["lost"]["overdue"] is True
+    assert got["receipt"]["lost"]["kind"] == "lane_timeout"
+    assert got["receipt"]["lost"]["owner_worker_id"] is None
+
+
+def test_reaper_calls_the_2026_11_06_restart_kill_executor_gone_not_a_lane_timeout(rig):
+    """LQ-20261107-378, the incident this lane was paged for. On 2026-11-06 finviz-screener-runner ran 1233 s
+    of its 1800 s timeout when a release promote restarted tradeai-n8n-run-executor.service: systemd's
+    control-group SIGTERM killed the lane child, and the next executor reaped the row 2 min later. The row is
+    RUN_TIMEOUT / executor_lost, which reads as "the lane overran its timeout" — it had not. The receipt must
+    say the executor died under the run and name the executor generation that died."""
+    ex = rig.make(_allow(rig.tmp, "screener", heavy=("screener",)), workers=2)
+    rig.request("run-screen-0000000001", "screener", slot_key="d:screener:live:20261106T1000", attempt=1)
+    child = subprocess.Popen(["sleep", "30"])
+    prev = f"{os.uname().nodename}:{child.pid}:w0"
+    row = rig.store.claim_next_v2(worker_id=prev, now=T0)
+    try:
+        assert rig.store.touch_heartbeat(row["run_id"], child.pid, T0 + 1200)
+        os.kill(child.pid, signal.SIGKILL)
+        child.wait(5)
+        reaped = ex.reap(T0 + 1300)                         # 1300 s of 1800: inside the timeout, so not overdue
+    finally:
+        if child.poll() is None:
+            child.kill()
+    assert [r["run_id"] for r in reaped] == ["run-screen-0000000001"]
+    got = rig.store.get("run-screen-0000000001")
+    assert got["state"] == "RUN_TIMEOUT" and got["receipt"]["reason"] == "executor_lost"
+    lost = got["receipt"]["lost"]
+    assert lost["overdue"] is False and lost["kind"] == "executor_gone"
+    assert lost["owner_worker_id"] == prev and lost["pid"] == child.pid
 
 
 # ── verdicts, DLQ, breaker ──────────────────────────────────────────────────────────────────────────────────────

@@ -2156,7 +2156,16 @@ class ExecutorV2:
     def reap(self, now: float) -> list[dict[str, Any]]:
         """RUNNING rows not owned here (live slot or pending completion) finish RUN_TIMEOUT / executor_lost when
         started_at + timeout_s + grace has passed, or — only for rows whose owning executor is known dead (this
-        executor's id, or a dead executor pid of this host) — when the heartbeat is stale and the child pid dead."""
+        executor's id, or a dead executor pid of this host) — when the heartbeat is stale and the child pid dead.
+
+        LQ-20261107-378: the receipt's ``lost.kind`` says which of the two fired, because the ledger row cannot
+        (both are RUN_TIMEOUT / executor_lost). ``lane_timeout`` = the run outlived its lane timeout plus the lost
+        grace. ``executor_gone`` = the run was still inside its timeout when its owning executor stopped
+        heartbeating and its child died: a promote restart, an executor crash or an OOM kill, which the receipt
+        cannot tell apart (the unit's journal can). Measured 2026-11-07T23:05Z: 79 executor_lost rows on this host,
+        78 with ``overdue`` false — the executor died under the run, not a lane timeout. 68 were terminal and 41
+        slots were dead-lettered, every one of them a lane on ``retry_policy: none`` or with no dispatch block at
+        all. ``lost.owner_worker_id`` names the executor generation that died."""
         with self._lock:
             own = {s["run_id"] for s in self._slots if s is not None} | set(self._pending)
         reaped: list[dict[str, Any]] = []
@@ -2193,7 +2202,15 @@ class ExecutorV2:
                 "stdout_tail": None,
                 "stderr_tail": None,
                 "authority": "READ_ONLY_ADVISORY",
-                "lost": {"pid": r.get("pid"), "heartbeat_at": r.get("heartbeat_at"), "overdue": overdue},
+                "lost": {
+                    "pid": r.get("pid"),
+                    "heartbeat_at": r.get("heartbeat_at"),
+                    "overdue": overdue,
+                    # LQ-20261107-378: which reaper branch fired. Both write RUN_TIMEOUT / executor_lost, so the
+                    # row alone cannot say whether the lane timed out or its executor died under it.
+                    "kind": "lane_timeout" if overdue else "executor_gone",
+                    "owner_worker_id": r.get("worker_id"),
+                },
             }
             prio = r.get("priority")
             reaped.append(
