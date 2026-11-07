@@ -275,6 +275,44 @@ VIEWS = {
     },
 }
 
+#: Columns read from ANY view when the view happens to carry them, never demanded.
+#
+# LQ-20261107-185. "Recom" — Finviz's 1-5 analyst recommendation — is not in the
+# header of any view above: the lists were captured live from the six views this
+# module fetches on 2026-09-13 and not one of them returns a Recom column. It is
+# a column of the *saved view*, so where it lives is an operator choice on
+# elite.finviz.com, not something this file can declare. Accepting it from any
+# view means adding it to any one saved view starts feeding recom_score on the
+# next run, with no deploy. It is optional because demanding an absent column
+# would print SCHEMA DRIFT on every run and teach everyone to ignore it.
+OPTIONAL_COLUMNS: Dict[str, str] = {
+    "Recom": "recom",
+}
+
+
+def _with_optional_columns(col_map: Dict[str, str]) -> Dict[str, str]:
+    """``col_map`` plus the optional columns it does not already map.
+
+    Pure. A view that maps a field explicitly keeps its own header for it.
+    """
+    out = dict(col_map)
+    for column, field in OPTIONAL_COLUMNS.items():
+        if column not in out and field not in out.values():
+            out[column] = field
+    return out
+
+
+def recom_collecting_views(view_results: Dict[int, Dict[str, Dict]]) -> List[int]:
+    """The views, of the ones fetched, that actually returned a Recom column.
+
+    Empty is a finding, not a nothing: it means ``recom_score`` cannot be
+    produced from what we collect (LQ-20261107-185: empty since 2026-08-18).
+    """
+    return sorted(
+        v for v, rows in (view_results or {}).items() if any((r or {}).get("recom") for r in (rows or {}).values())
+    )
+
+
 # Fields that are percentages — strip % and convert to float
 PCT_FIELDS = {
     "change_pct",
@@ -668,6 +706,8 @@ def _fetch_view(
                 continue
             header = [h.strip().strip('"') for h in rows[0]]
             index_of = {name: i for i, name in enumerate(header)}
+            # Columns we will read if the view returns them but never demand: see OPTIONAL_COLUMNS.
+            parse_map = _with_optional_columns(col_map)
 
             # An expected column that is absent is reported once, loudly, and
             # then left unset. It is never back-filled from a neighbouring
@@ -693,7 +733,7 @@ def _fetch_view(
                 if not sym:
                     continue
                 record: Dict[str, Any] = {}
-                for col_name, field in col_map.items():
+                for col_name, field in parse_map.items():
                     if field in SKIP_DUPLICATES:
                         continue
                     idx = index_of.get(col_name)
@@ -801,6 +841,15 @@ def enrich_tickers(
             view_results[v] = vr
             _RUN_STATS["views"][v] = len(vr)
             print(f"  [finviz-enrich] v={v}: {len(vr)} tickers")
+
+        # LQ-20261107-185: say out loud when nothing we fetched can produce recom_score,
+        # instead of leaving the column silently empty for months.
+        if not recom_collecting_views(view_results):
+            print(
+                f"  [finviz-enrich] recom NOT collected: no fetched view {sorted(view_results)} returns a "
+                f"'Recom' column, so analyst_consensus_history.recom_score cannot be produced. "
+                f"Add 'Recom' to any saved Finviz view and it is picked up on the next run, no deploy needed."
+            )
         # n8n expected_output: stale tickers with data from at least one view (the lane's produced unit)
         _RUN_STATS["refreshed"] = sum(1 for s in stale if any(s in (view_results.get(v) or {}) for v in views))
 

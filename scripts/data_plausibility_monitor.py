@@ -167,6 +167,10 @@ def _violation_predicate(contract: dict) -> str:
     if rule == "required_fields":
         # A threshold over a window, not a per-row verdict: see _check_required_fields.
         return ""
+    if rule == "null_rate":
+        # A share of absent values over a window, not a per-row verdict: see _check_null_rate.
+        # NULL is never "wrong", so no per-row predicate can express this rule.
+        return ""
     if rule == "retired_store":
         # Rows written after the store was retired: see _check_retired_store.
         return ""
@@ -237,6 +241,80 @@ def _check_required_fields(cur, contract: dict) -> dict:
             f"{empty:,} of {total:,} rows in the last {days}d have an empty payload"
             f" ({pct:.1f}%; contract allows {max_pct:g}%)"
             + (f"; required fields {contract['fields']}" if contract.get("fields") else "")
+        ),
+        "samples": [],
+    }
+
+
+def _safe_fragment(fragment: str) -> str:
+    """A contract's ``where`` clause comes from config, not from input — but it is still text.
+
+    Anything carrying a statement terminator or a comment marker is refused: the
+    monitor runs one SELECT on a read-only session and must not be talked into
+    running a second statement by a copy-pasted line.
+    """
+    text = " ".join(str(fragment or "").split())
+    for token in (";", "--", "/*", "*/"):
+        if token in text:
+            raise ValueError(f"contract where-clause may not contain {token!r}: {text!r}")
+    return text
+
+
+def _null_rate_sql(contract: dict) -> str:
+    """The one query _check_null_rate runs. Separated so it can be asserted without a database."""
+    table = contract["table"]
+    col = f'"{contract["column"]}"'
+    win_col = f'"{contract.get("window_column") or "created_at"}"'
+    days = int(contract.get("window_days") or 30)
+    where = f" WHERE {win_col} > now() - interval '{days} days'"
+    clause = _safe_fragment(contract.get("where") or "")
+    if clause:
+        where += f" AND ({clause})"
+    return f"SELECT count(*) FILTER (WHERE {col} IS NULL), count(*) FROM {table}{where}"
+
+
+def _check_null_rate(cur, contract: dict) -> dict:
+    """A produced column must actually be PRODUCED, not merely well-scaled.
+
+    LQ-20261107-185. The only contract this table had on ``recom_score`` was a
+    1-5 ``range`` rule, and a range rule deliberately treats NULL as "absent
+    data, a different problem from wrong data". It is different -- until the
+    producer stops writing the column at all. Then every row passes the range
+    rule vacuously, the column is 100% NULL, and the audit reports green while
+    the value is gone. Measured 2026-11-07: 1,512 of 1,512 rows in the last 30
+    days were NULL and the last non-NULL value was 2026-08-18.
+
+    ``min_rows`` closes the other half of that hole: a window with no rows at
+    all also has a 0% null rate, so a producer that stops writing rows entirely
+    would turn this contract green. It stays red until the producer writes.
+    """
+    cur.execute(_null_rate_sql(contract))
+    nulls, total = cur.fetchone()
+    nulls, total = int(nulls or 0), int(total or 0)
+    days = int(contract.get("window_days") or 30)
+    max_pct = float(contract.get("max_null_pct", 0.0))
+    min_rows = int(contract.get("min_rows") or 0)
+    scope = _safe_fragment(contract.get("where") or "") or "all"
+    if total < min_rows:
+        # Count the rows that exist, not the rows missing: severity bands are a
+        # share of the window, and a violation count above the row count renders
+        # as "15 of 5 rows (300%)".
+        return {
+            "violations": max(total, 1),
+            "total": total,
+            "detail": (
+                f"{total:,} rows ({scope}) in the last {days}d; contract requires at least "
+                f"{min_rows:,} — the producer wrote nothing to measure"
+            ),
+            "samples": [],
+        }
+    pct = (100.0 * nulls / total) if total else 0.0
+    return {
+        "violations": nulls if (total and pct > max_pct) else 0,
+        "total": total,
+        "detail": (
+            f'{nulls:,} of {total:,} rows ({scope}) in the last {days}d have a NULL '
+            f'"{contract["column"]}" ({pct:.1f}%; contract allows {max_pct:g}%)'
         ),
         "samples": [],
     }
@@ -370,6 +448,8 @@ def _check(cur, contract: dict, policy: dict | None = None) -> dict | None:
         result = _check_single_scale(cur, contract, win)
     elif contract["rule"] == "required_fields":
         result = _check_required_fields(cur, contract)
+    elif contract["rule"] == "null_rate":
+        result = _check_null_rate(cur, contract)
     elif contract["rule"] == "retired_store":
         result = _check_retired_store(cur, contract)
     else:

@@ -487,7 +487,10 @@ class _PlausCursor:
         if "count(*) FILTER (WHERE" in self.sql and "<= 1)" in self.sql:
             return (10, 0, 10)
         if "count(*) FILTER" in self.sql:
-            return (0, 5)
+            # 500 rows, not 5: a clean measurement must also be a POPULATED one, or it
+            # violates analyst_consensus_history.recom_score's null_rate min_rows
+            # contract (LQ-20261107-185) and this fixture stops meaning "healthy".
+            return (0, 500)
         return (0,)
 
     def fetchall(self):

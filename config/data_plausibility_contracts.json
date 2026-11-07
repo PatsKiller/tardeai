@@ -42,6 +42,18 @@
       "_why": "Finviz 'Recom' is a 1-5 analyst scale. Anything off it is not a recommendation. This is the contract that would have caught the column shift on day one: 97.9% of rows violated it."
     },
     {
+      "table": "analyst_consensus_history",
+      "column": "recom_score",
+      "rule": "null_rate",
+      "max_null_pct": 80.0,
+      "min_rows": 20,
+      "where": "source = 'finviz'",
+      "window_column": "snapshot_date",
+      "window_days": 30,
+      "severity": "BLOCK",
+      "_why": "LQ-20261107-185 (found 2026-11-07, live since 2026-08-18): the range contract above deliberately treats NULL as absent rather than invalid, so a producer that stops writing the column at ALL passes it vacuously. Measured on the day: 1,512 of 1,512 finviz rows in the last 30 days were NULL, the last non-NULL recom_score was 2026-08-18, and no finviz row had been written since 2026-10-20 because the writer skips records with no analyst field. Cause: after the 2026-09-13 header-keyed rewrite no configured Finviz view carries a 'Recom' column, so the enrichment never collects one. This contract is the presence half of the pair; range is the scale half. min_rows keeps the producer alive as a separate question: an empty window also has a 0% null rate."
+    },
+    {
       "table": "indicator_confluence_cache",
       "column": "stop_price",
       "rule": "min",

@@ -1161,6 +1161,14 @@ def build_analyst_consensus_rows(
         "refused_by_reason": {},
         "refused_symbols": [],
         "refused_records": [],
+        # LQ-20261107-185: "wrote nothing" and "wrote rows with no recommendation"
+        # are different facts, and both were silent. recom_score stopped being
+        # produced on 2026-08-18 and nobody saw it for eleven weeks.
+        "skipped_no_analyst_data": 0,
+        "with_recom": 0,
+        "with_recom_score": 0,
+        "with_analyst_rating": 0,
+        "with_target": 0,
     }
     rows = []
     _qc = quote_cache or {}
@@ -1195,7 +1203,12 @@ def build_analyst_consensus_rows(
                 target_price = float(_tp)
         # Only store if ticker has any analyst-related data
         if recom_raw is None and recom_score is None and analyst_rating is None and target_price is None:
+            receipt["skipped_no_analyst_data"] += 1
             continue
+        receipt["with_recom"] += int(recom_raw is not None)
+        receipt["with_recom_score"] += int(recom_score is not None)
+        receipt["with_analyst_rating"] += int(analyst_rating is not None)
+        receipt["with_target"] += int(target_price is not None)
         _analyst_data = {
             "recom": recom_raw,
             "recom_score": recom_score,
@@ -1243,6 +1256,14 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
         )
     if not rows:
         receipt.update(storage_status="no_rows", rows_committed=0)
+        # LQ-20261107-185: this path returned a receipt nobody read and printed
+        # nothing, so a writer that had stopped writing was indistinguishable
+        # from a quiet day. One line names the reason.
+        print(
+            f"  [analyst-consensus] NO ROWS persisted: {receipt['considered']} records considered, "
+            f"{receipt['skipped_no_analyst_data']} carried no recommendation, rating, score or target; "
+            f"{receipt['recom_refused']} refused {receipt['refused_by_reason']}"
+        )
         return receipt
     conn = _get_conn()
     if conn:
@@ -1266,6 +1287,11 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
                 )
             conn.commit()
             receipt.update(storage_status="committed", rows_committed=len(rows))
+            print(
+                f"  [analyst-consensus] committed {len(rows)} rows; recom_score present on "
+                f"{receipt['with_recom_score']}, analyst_rating on {receipt['with_analyst_rating']}, "
+                f"target on {receipt['with_target']}"
+            )
         except Exception as e:
             # A commit error may be ambiguous. Prepared rows are not proof that
             # the database committed them; do not report a recovered write.

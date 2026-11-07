@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "analyst_recom_null_rate_20261107",
+  "files": [
+    "tests/test_analyst_recom_null_rate_20261107.py"
+  ],
+  "anchor": "ANALYST_RECOM_NULL_RATE_20261107",
+  "comment": [
+    "ANCHOR: ANALYST_RECOM_NULL_RATE_20261107 — LQ-20261107-185: analyst_consensus_history.recom_score had only a",
+    "1-5 range contract, and a range rule treats NULL as absent rather than invalid, so a producer that stopped",
+    "writing the column entirely passed it vacuously. Measured live 2026-11-07: 1,140 of 1,140 finviz rows in the",
+    "last 30 days NULL, last non-NULL value 2026-08-18, last finviz row written 2026-10-20. Cause: after the",
+    "2026-09-13 header-keyed rewrite no configured Finviz view returns a 'Recom' column. This gate pins the",
+    "null_rate rule (with min_rows, so an empty window cannot fail open), the optional any-view Recom column map,",
+    "the writer's skip/presence counts, and a backfill that classifies every NULL row and has no write path."
+  ]
+}

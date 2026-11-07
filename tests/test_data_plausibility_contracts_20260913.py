@@ -26,11 +26,13 @@ import data_plausibility_monitor as dpm  # noqa: E402
 
 CONTRACTS = json.loads((ROOT / "config" / "data_plausibility_contracts.json").read_text())["contracts"]
 
-VALID_RULES = {"range", "min", "max", "finite", "single_scale", "required_fields", "retired_store"}  # retired_store: 2026-10-18
+VALID_RULES = {"range", "min", "max", "finite", "single_scale", "required_fields", "retired_store", "null_rate"}  # retired_store: 2026-10-18; null_rate: 2026-11-07
 # Rules that are a property of the population, not of any one row: they have no
 # per-row predicate. single_scale since 09-13 a.m.; required_fields since 09-13
-# p.m. (analyst_data_history: 18,772 `{}` payloads that looked fresh).
-POPULATION_RULES = {"single_scale", "required_fields", "retired_store"}
+# p.m. (analyst_data_history: 18,772 `{}` payloads that looked fresh);
+# null_rate 2026-11-07 (analyst_consensus_history.recom_score: 1,512 of 1,512
+# rows NULL in 30 days while the 1-5 range contract stayed green).
+POPULATION_RULES = {"single_scale", "required_fields", "retired_store", "null_rate"}
 VALID_SEVERITIES = {"BLOCK", "WARN"}
 
 
@@ -52,15 +54,23 @@ def test_contract_is_well_formed(c):
         assert c.get("window_column"), "required_fields is measured inside a window; name the timestamp column"
         assert 0 <= float(c.get("max_empty_pct", -1)) < 100, "max_empty_pct is a share of rows, 0..100"
         assert int(c.get("window_days", 0)) > 0
+    if c["rule"] == "null_rate":
+        assert c.get("window_column"), "null_rate is measured inside a window; name the timestamp column"
+        assert 0 <= float(c.get("max_null_pct", -1)) < 100, "max_null_pct is a share of rows, 0..100"
+        assert int(c.get("window_days", 0)) > 0
 
 
 def test_every_contract_has_a_distinct_target():
-    seen = [(c["table"], c["column"]) for c in CONTRACTS]
+    # (table, column, rule), not (table, column): one column can need BOTH a scale
+    # contract and a presence contract, and the alert fingerprint is already keyed
+    # (table.column:rule) for exactly that reason (config alert_policy).
+    seen = [(c["table"], c["column"], c["rule"]) for c in CONTRACTS]
     assert len(seen) == len(set(seen)), f"duplicate contract targets: {seen}"
 
 
 def test_the_recom_score_contract_is_the_one_that_would_have_caught_it():
-    c = next(c for c in CONTRACTS if c["table"] == "analyst_consensus_history" and c["column"] == "recom_score")
+    c = next(c for c in CONTRACTS
+             if c["table"] == "analyst_consensus_history" and c["column"] == "recom_score" and c["rule"] == "range")
     assert (c["min"], c["max"]) == (1.0, 5.0)
     assert c["severity"] == "BLOCK"
 
@@ -110,6 +120,8 @@ def test_column_names_are_quoted_so_a_reserved_word_cannot_break_the_sql():
                 assert f'"{c["column"]}"' in dpm._required_fields_sql(c)
             if c["rule"] == "retired_store":  # 2026-10-18
                 assert f'"{c["column"]}"' in dpm._retired_store_sql(c)
+            if c["rule"] == "null_rate":  # 2026-11-07
+                assert f'"{c["column"]}"' in dpm._null_rate_sql(c)
             continue
         assert f'"{c["column"]}"' in dpm._violation_predicate(c)
 
