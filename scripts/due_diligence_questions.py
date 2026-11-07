@@ -88,6 +88,9 @@ sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 SCHEMA_NARRATIVE = "SubjectStateNarrative@v1"
 SCHEMA_QUESTION = "DueDiligenceQuestion@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
+#: Registry lane id (config/lane_registry.json). The lane receipt is keyed by it:
+#: data/runtime/<LANE_ID>_last.json, the output_signal the allowlist declares.
+LANE_ID = "due-diligence-questions"
 
 MAX_CHANGES = int(os.getenv("DDQ_MAX_CHANGES", "5"))
 MAX_ROUTED = int(os.getenv("DDQ_MAX_ROUTED", "2"))
@@ -781,7 +784,26 @@ def route(cur, limit: int) -> dict:
     return out
 
 
+def _write_lane_receipt(*, produced_count: int, empty_reason: str | None = None,
+                        started_at: datetime | None = None) -> None:
+    """LaneRunReceipt for data/runtime/due-diligence-questions_last.json — a REAL run only.
+
+    The cron twin's ``>> logs/due_diligence_questions.log`` redirect proves only that cron opened a file
+    (AGENTS.md §9.3, §0 rail 8), so the registry output_signal is this receipt's ``ok_at`` instead. Never
+    called from the ``--dry-run`` branch above: a dry run cannot reach the write (AGENTS.md §6). The helper
+    never raises into the caller, so a receipt failure cannot change this run's result or exit code.
+    """
+    try:
+        from lib.lane_last_receipt import write_lane_receipt
+    except ImportError:  # imported from the repo root rather than with scripts/ on sys.path
+        from scripts.lib.lane_last_receipt import write_lane_receipt
+    write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started_at,
+                       script="due_diligence_questions.py", produced_count=produced_count,
+                       empty_reason=empty_reason)
+
+
 def main(argv=None) -> int:
+    started = datetime.now(timezone.utc)
     ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--dry-run", action="store_true", help="offline plan; takes precedence over --apply/--route")
     ap.add_argument("--apply", action="store_true")
@@ -836,6 +858,7 @@ def main(argv=None) -> int:
             conn.commit()
         conn.close()
         print("RESULT: " + json.dumps(result, default=str))
+        _write_lane_receipt(produced_count=0, empty_reason="nothing_due", started_at=started)
         return 0
 
     from lib.llm_escalation import EscalationStopped
@@ -887,6 +910,8 @@ def main(argv=None) -> int:
         conn.commit()
     conn.close()
     print("\nRESULT: " + json.dumps(result, default=str))
+    _write_lane_receipt(produced_count=total_q, empty_reason=None if total_q else "nothing_due",
+                        started_at=started)
     return 0
 
 

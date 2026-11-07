@@ -149,7 +149,12 @@ def test_every_command_token_passes_both_forbidden_lists_and_names_no_authority_
 #: Inline cron env knobs a command may set through a leading `env NAME=VALUE ...` (the executor has no per-lane env
 #: values; the cron line sets these inline). Non-secret switches only, each pinned to the cron line's literal value
 #: (2026-10-14, n8nmat/scalp-premarket-onboard-20261014: the scalp hot-tier lanes).
-INLINE_ENV_KNOBS = {"SCALP_HOT_TIER": {"1"}, "MOMENTUM_SCALP_OUTER_DEADLINE_S": {"100"}}
+#: 2026-11-07 (LQ-20261107-27, due-diligence-questions): its cron line sets the DeepSeek spend cap inline —
+#: `LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/ddq.lock bash scripts/run_with_deepseek_offpeak.sh …` — and the cap
+#: check runs in the lane's own process (scripts/due_diligence_questions.py cap_env_warning), so dropping the
+#: assignment would make every governed call refuse with COST_CAP_EXCEEDED. Pinned to the value on the line.
+INLINE_ENV_KNOBS = {"SCALP_HOT_TIER": {"1"}, "MOMENTUM_SCALP_OUTER_DEADLINE_S": {"100"},
+                    "LLM_GLOBAL_DAILY_USD_CAP": {"2.00"}}
 
 
 def _strip_inline_env(lane_id, cmd):
