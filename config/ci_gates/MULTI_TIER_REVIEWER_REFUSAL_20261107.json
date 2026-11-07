@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "MULTI_TIER_REVIEWER_REFUSAL_20261107",
+  "files": [
+    "tests/test_multi_tier_reviewer_refusal_20261107.py"
+  ],
+  "anchor": "MULTI_TIER_REVIEWER_REFUSAL_20261107",
+  "comment": [
+    "ANCHOR: MULTI_TIER_REVIEWER_REFUSAL_20261107 — the weekly lane (multi-tier-trade-reviewer-weekly)",
+    "ran 2 failures in a row with exit 1, and its only cause was a log line: 'Governed ChatGPT lane",
+    "gpt-4o-mini failed: manual approval required for multi_tier_trade_reviewer (chatgpt)'. Every",
+    "generator swallowed its exception and returned None, so a lane REFUSAL and an empty completion",
+    "both became 'empty_response' and the receipt said 'one or more trade reviews failed'; the monthly",
+    "tier writes no per-trade results, so a refused monthly summary left the receipt at exit 0 with",
+    "trades_reviewed > 0 and no summary at all. Three boundaries must hold: a governed lane raises",
+    "LaneRefused carrying the gate's own words; review_trade returns that reason while an empty",
+    "completion still says empty_response; run_outcome and the receipt fail on a refused summary and",
+    "the receipt carries failed_reasons/summary_error. Hermetic: synthetic fixtures, no DB, no network,",
+    "no API key read. The operator decision (automate the chatgpt lane for this process or re-route",
+    "the weekly tier) is NOT in this gate — it is a PROPOSAL."
+  ]
+}
