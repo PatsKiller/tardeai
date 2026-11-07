@@ -428,6 +428,8 @@ EXIT_NO_SCREENS = 4
 
 #: The governor could not be asked at all. An explicit unknown, never a falsey "no".
 UNREADABLE = "unreadable"
+#: The credit policy is importable but unreadable: the run cannot say which lane will serve it.
+ROUTE_LABEL_UNKNOWN = "unknown (credit policy unreadable; the gate decides per call)"
 
 
 def governor_decision(process_id=LLM_PROCESS_ID):
@@ -458,6 +460,8 @@ def promo_route_label(process_id=LLM_PROCESS_ID):
         from lib import anthropic_routing as promo
         from lib import llm_consumption as lc
     except ImportError:  # pragma: no cover - flat layout
+        # No credit module at all: the gate imports the same module, so it cannot serve the credit lane either and
+        # the paid-lane label is the accurate one, not a guess.
         return ""
     try:
         cfg = lc.get_process_config(process_id)
@@ -467,7 +471,9 @@ def promo_route_label(process_id=LLM_PROCESS_ID):
         model = str((promo.load_policy().get("models") or {}).get(tier) or "")
         return f"anthropic promotional credit [{tier}:{model}]" if model else "anthropic promotional credit"
     except Exception:  # noqa: BLE001 -- a label must never change the run
-        return ""
+        # The policy WAS importable but could not be read: that is an unknown route, not a known paid one. Saying
+        # "deepseek-flash paid" here would be the confident-zero defect in prose, so name the unknown instead.
+        return ROUTE_LABEL_UNKNOWN
 
 
 def paid_route_label():

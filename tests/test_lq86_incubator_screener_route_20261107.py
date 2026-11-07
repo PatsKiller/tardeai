@@ -149,14 +149,16 @@ def test_an_unreadable_governor_does_not_invent_a_refusal(monkeypatch):
     assert "unknown" in label
 
 
-def test_an_unreadable_credit_book_is_never_reported_as_a_route(monkeypatch):
-    """promo_route_label must answer '' (unknown), not raise and not claim the credit lane."""
+def test_an_unreadable_credit_book_is_reported_unknown_not_as_the_paid_lane(monkeypatch):
+    """A policy that cannot be READ is an unknown route: claiming the paid DeepSeek lane would be a guess."""
     import lib.anthropic_routing as promo
     import lib.llm_consumption as lc
 
     monkeypatch.setattr(lc, "get_process_config", lambda _pid: {"registered": True})
     monkeypatch.setattr(promo, "active", lambda *a, **k: (_ for _ in ()).throw(OSError("book gone")))
-    assert ils.promo_route_label() == ""
+    label = ils.promo_route_label()
+    assert label == ils.ROUTE_LABEL_UNKNOWN
+    assert label != ils.paid_route_label()
 
 
 # ── main: the exit code, the receipt and the log line, not just the loop ────
