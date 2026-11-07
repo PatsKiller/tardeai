@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ROTATION_PUBLICATION_ACCOUNT_ALIAS",
+  "files": [
+    "tests/test_rotation_publication_account_alias_20261107.py"
+  ],
+  "anchor": "ROTATION_PUBLICATION_ACCOUNT_ALIAS",
+  "comment": [
+    "ANCHOR: ROTATION_PUBLICATION_ACCOUNT_ALIAS - 2026-11-07 LQ-20261107-74: the rotation publication finds a holding's",
+    "account_summaries entry by account_key, then by the row's own account field."
+  ]
+}

@@ -62,6 +62,17 @@ def account_key(row: dict) -> str | None:
     return value
 
 
+def account_summary(summaries: dict, row: dict) -> dict | None:
+    """The row's account_summaries entry. A holdings row carries two identity fields that can differ in spelling
+    (LQ-20261107-74: V/CASH account='schwab_roth' vs account_key='schwab_roth_ira'); account_summaries is keyed by one
+    of them. Try the row's own fields, account_key first; no inferred joins, never a guess from the symbol or type."""
+    for field in ("account_key", "account"):
+        value = row.get(field)
+        if isinstance(value, str) and value.strip() and isinstance(summaries.get(value), dict):
+            return summaries[value]
+    return None
+
+
 def exact_position(rows: list[dict], symbol: str, account: str | None) -> dict:
     if not account:
         raise PublicationError("missing_account_identity")
@@ -230,7 +241,7 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         if not acct:
             unavailable.append("missing_account_identity")
             continue
-        raw = summaries.get(acct)
+        raw = account_summary(summaries, row)
         if not isinstance(raw, dict):
             unavailable.append("missing_account_state")
             continue
