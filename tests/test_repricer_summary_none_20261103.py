@@ -133,8 +133,9 @@ def test_the_cli_prints_the_computed_day_change_after_a_successful_reprice(tmp_p
     _no_lock(monkeypatch)
     state, target = _state(tmp_path, total_value=1_000)
 
-    def fake_reprice(portfolio, state_dir, stats=None):
-        # ``stats`` is the caller-owned run summary main() hands to the lane run receipt (2026-11-07).
+    def fake_reprice(portfolio, state_dir, stats=None, dry_run=False):
+        # ``stats`` is the caller-owned run summary main() hands to the lane run receipt (2026-11-07);
+        # ``dry_run`` is main()'s write-free proof mode (LQ-20261107-01 n8n cutover).
         out = json.loads(json.dumps(portfolio))
         out["portfolio_totals"]["day_change"] = 10.0
         if stats is not None:

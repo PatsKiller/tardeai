@@ -597,10 +597,15 @@ def _update_quote_cache(
     live_prices: Dict[str, Dict],
     cache_path: Path,
     now_str: str,
+    dry_run: bool = False,
 ) -> int:
     """
     Read existing cache, apply delta updates (only changed fields), write back.
     Returns number of symbols updated.
+
+    ``dry_run`` computes the same delta and returns the same count but writes nothing: it is the
+    write-free proof path for the n8n cutover (§23 onboarding step 5), and it must never create
+    the cache directory, the file, or a temp file.
     """
     # Load existing cache
     existing: Dict[str, Any] = {}
@@ -635,11 +640,16 @@ def _update_quote_cache(
         if old_vol == 0 or (old_vol > 0 and abs(new_vol - old_vol) / old_vol >= VOLUME_CHANGE_THRESHOLD):
             changed["volume"] = new_data["volume"]
 
-        # Performance / volatility fields — update if any change (daily values)
+        # Performance / volatility fields — update if any change (daily values).
+        # Only fields the SOURCE actually provided may be written: the data-broker supplement
+        # (``_fetch_data_broker_quotes``) supplies price/change/volume/source and nothing else, so a pass
+        # where Finviz is down and the broker fills every gap used to raise KeyError('analyst') here — the
+        # whole lane failed before its cache write (found by the 2026-11-07 ``--dry-run``). Absent is not
+        # "changed to None": a missing field must leave the cached Finviz value alone, not erase it.
         for fld in ["analyst", "target", "perf_week", "perf_month", "perf_quarter",
                     "perf_halfyr", "perf_ytd", "perf_year", "volatility_w",
                     "volatility_m", "rvol"]:
-            if new_data.get(fld) != old.get(fld):
+            if fld in new_data and new_data[fld] != old.get(fld):
                 changed[fld] = new_data[fld]
 
         if changed or not old:
@@ -672,6 +682,8 @@ def _update_quote_cache(
         "update_policy":  "delta fields + always refresh last_fetched timestamp",
     }
 
+    if dry_run:
+        return updated_count
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(existing, indent=2, default=str), encoding="utf-8")
     return updated_count
@@ -1251,7 +1263,8 @@ def _min_live_coverage(root: Path) -> float:
 
 
 def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path,
-                      stats: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                      stats: Optional[Dict[str, Any]] = None,
+                      dry_run: bool = False) -> Dict[str, Any]:
     """
     Full reprice cycle:
       1. Fetch Finviz prices for all portfolio + watchlist symbols
@@ -1358,10 +1371,11 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path,
     # ── 2. Delta-write to quote cache ──────────────────────────────────────────
     cache_path = state_dir / "finviz_quote_cache.json"
     if live_prices:
-        n_updated = _update_quote_cache(live_prices, cache_path, now_str)
+        n_updated = _update_quote_cache(live_prices, cache_path, now_str, dry_run=dry_run)
         if stats is not None:
             stats["quote_symbols_updated"] = n_updated
-        print(f"  [repricer] Quote cache: {n_updated} symbols updated -> finviz_quote_cache.json")
+        verb = "would update" if dry_run else "updated"
+        print(f"  [repricer] Quote cache: {n_updated} symbols {verb} -> finviz_quote_cache.json")
 
     # ── 3. Apply to portfolio holdings ────────────────────────────────────────
     fidelity_prices: Dict[str, Any] = {}
@@ -1447,9 +1461,12 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path,
     day   = portfolio["portfolio_totals"]["day_change"]
 
     try:
-        from ticker_snapshot_builder import build_ticker_snapshot
-        out = build_ticker_snapshot(portfolio, root)
-        print(f"  [repricer] Ticker snapshot → {out}")
+        if dry_run:
+            print("  [repricer] Ticker snapshot: would rebuild (dry run writes nothing)")
+        else:
+            from ticker_snapshot_builder import build_ticker_snapshot
+            out = build_ticker_snapshot(portfolio, root)
+            print(f"  [repricer] Ticker snapshot → {out}")
     except Exception as e:
         print(f"  [repricer] WARNING: ticker snapshot build failed: {e}")
 
@@ -1460,7 +1477,10 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path,
 
     # ── Follow-up B: unify ticker_prices for held symbols so ALL surfaces agree with the portfolio view ──
     try:
-        _sync_ticker_prices(portfolio, root)
+        if dry_run:
+            print("  [repricer] ticker_prices: would sync (dry run writes nothing)")
+        else:
+            _sync_ticker_prices(portfolio, root)
     except Exception as e:
         print(f"  [repricer] WARNING: ticker_prices sync failed: {e}")
 
@@ -1616,7 +1636,7 @@ def _write_run_receipt(state_dir: Path, *, ok: bool, exit_code: int,
     )
 
 
-def main(state_dirs) -> None:
+def main(state_dirs, dry_run: bool = False) -> None:
     """The CLI guarantee path: read, reprice, write — or write nothing at all.
 
     Pulled out of `if __name__ == "__main__"` so the no-write guarantee has an EXECUTION test (cc-deepseek-8
@@ -1626,6 +1646,11 @@ def main(state_dirs) -> None:
 
     Every exit path writes its own run receipt (``_write_run_receipt``), so the operator can tell a refusal or
     a failed write from a healthy pass without reading the published holdings store.
+
+    ``dry_run`` (n8n cutover onboarding, §23 step 5) runs the same read -> reprice path and prints the same
+    before/after totals, but performs no write of any kind: no holdings write lock, no holdings copy, no quote
+    cache, no ticker snapshot, no ticker_prices sync, no watchlist-membership sync and no run receipt. It is the
+    allowlist's ``--dry-run`` proof, so it must be safe to run against the live state root at any time.
     """
     state_dir = state_dirs[0]
     hp        = state_dir / "holdings.json"
@@ -1634,8 +1659,10 @@ def main(state_dirs) -> None:
 
     if not hp.exists():
         print("holdings.json not found — run run_portfolio.bat first")
-        _write_run_receipt(state_dir, started_at=_started_at, ok=False, exit_code=1, error="holdings.json not found",
-                           summary={"reason": "holdings_missing", "state_dir": str(state_dir)})
+        if not dry_run:
+            _write_run_receipt(state_dir, started_at=_started_at, ok=False, exit_code=1,
+                               error="holdings.json not found",
+                               summary={"reason": "holdings_missing", "state_dir": str(state_dir)})
         raise SystemExit(1)
 
     if len(state_dirs) > 1:
@@ -1646,9 +1673,12 @@ def main(state_dirs) -> None:
     # between read and write) clobbers a faster writer's fresh rows. Manual
     # enter/exit keeps this a minimal diff (a `with` block would re-indent ~30
     # lines and trip the line-ending churn guard).
+    # A dry run writes nothing, so it takes no lock: it must not queue behind a live writer, and taking the lock
+    # would create /tmp/holdings_write.lock — a write, which the proof forbids.
+    from contextlib import nullcontext
     from scripts.lib.holdings_write_lock import holdings_write_lock
     from scripts.lib.atomic_json_store import atomic_write_bytes
-    _holdings_lock = holdings_write_lock()
+    _holdings_lock = nullcontext() if dry_run else holdings_write_lock()
     _holdings_lock.__enter__()
 
     portfolio = json.loads(hp.read_text(encoding="utf-8"))
@@ -1656,15 +1686,38 @@ def main(state_dirs) -> None:
     print(_summary_line("Before", portfolio))
 
     try:
-        portfolio = reprice_portfolio(portfolio, state_dir, _stats)
+        portfolio = reprice_portfolio(portfolio, state_dir, _stats, dry_run=dry_run)
     except RepriceRefused as _refusal:
         # Nothing was repriced; do not rewrite the file (another writer may have landed since our read).
         # FQ-2532-R: the refusal is an exception now (cc-deepseek-8's F1/F2), so no caller can receive a document
         # from a refused pass and write it. The CLI keeps its long-standing exit 3 and its no-write guarantee.
         _holdings_lock.__exit__(None, None, None)
-        _write_run_receipt(state_dir, started_at=_started_at, ok=False, exit_code=3, error="RepriceRefused",
-                           summary={**_stats, "reason": "reprice_refused", "detail": str(_refusal)[:300]})
+        if not dry_run:
+            _write_run_receipt(state_dir, started_at=_started_at, ok=False, exit_code=3, error="RepriceRefused",
+                               summary={**_stats, "reason": "reprice_refused", "detail": str(_refusal)[:300]})
         raise SystemExit(3) from None
+
+    if dry_run:
+        # The proof path ends here, before the first write. Same before/after totals as a real pass, one
+        # LaneOutput@v1 line on stderr (produced 0, empty_reason dry_run) so the executor can bind the attempt
+        # without a receipt, and nothing on disk touched.
+        print(_summary_line("After", portfolio))
+        print("  [repricer] DRY RUN — nothing written: holdings.json, quote cache, ticker snapshot, "
+              "ticker_prices, watchlist membership, run receipt")
+        try:
+            from scripts.lib import lane_output
+            lane_output.emit(
+                LANE_ID, "dry_run",
+                lane_output.output_block(
+                    produced=0, attempted=int(_stats.get("holdings") or 0),
+                    skipped={"dry_run": int(_stats.get("holdings") or 0)},
+                    empty_reason="dry_run", unit="holdings"),
+                started_at=_started_at,
+            )
+        except Exception as _e:  # noqa: BLE001 — evidence printing must never fail the run
+            print(f"  [repricer] WARN lane output unavailable: {_e}")
+        _holdings_lock.__exit__(None, None, None)
+        return
 
     _payload = json.dumps(portfolio, indent=2, default=str)
     _written, _skipped = [], []
@@ -1742,4 +1795,7 @@ if __name__ == "__main__":
             print(f"{_t}\t{'exists' if (_t / 'holdings.json').exists() else 'absent'}")
         raise SystemExit(0)
 
-    main(state_dirs)
+    # n8n cutover (LQ-20261107-01): the allowlist's write-free proof. Same read -> reprice path, no write.
+    dry_run = "--dry-run" in sys.argv
+
+    main(state_dirs, dry_run=dry_run)
