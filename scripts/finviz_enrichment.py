@@ -71,6 +71,7 @@ import csv
 import io
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -82,6 +83,9 @@ try:  # GAP 14 (2026-10-10): one shared ticker check before any Finviz request
     from lib.provider_ticker_guard import partition as _ticker_partition
 except ImportError:  # imported as scripts.finviz_enrichment
     from scripts.lib.provider_ticker_guard import partition as _ticker_partition
+
+# LQ-20261107-157: 5-letter symbols ending in X are open-end mutual funds (AMANX). Finviz cannot return them.
+_MUTUAL_FUND_RE = re.compile(r"^[A-Z]{4}X$")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 CACHE_FILE = "data/state/ticker_enrichment_cache.json"
@@ -722,6 +726,22 @@ def _fetch_view(
     return results
 
 
+def _split_equities(symbols: List[str]) -> tuple:
+    """LQ-20261107-157: drop what Finviz cannot return BEFORE any request is planned.
+
+    Returns ``(equities, skipped_non_equity)``. Guard rejects (CUSIP/ISIN/non-ticker shape, provider_ticker_guard)
+    come first; then 5-letter symbols ending in X (mutual funds). Each skipped item is ``{symbol, reason}``.
+    """
+    equities, skipped = _ticker_partition(symbols, "finviz")
+    kept: List[str] = []
+    for sym in equities:
+        if _MUTUAL_FUND_RE.match(sym):
+            skipped.append({"symbol": sym, "reason": "mutual_fund_x"})
+        else:
+            kept.append(sym)
+    return kept, skipped
+
+
 def enrich_tickers(
     symbols: List[str],
     project_root: str = ".",
@@ -751,17 +771,25 @@ def enrich_tickers(
 
     # Not a ticker -> no request and no cache record (GAP 14: 12507E201 was cached as a symbol).
     requested = len(symbols)
-    symbols, rejected = _ticker_partition(symbols, "finviz")
+    symbols, rejected = _split_equities(symbols)
     if rejected:
         print(
-            f"  [finviz-enrich] refused {len(rejected)} non-ticker symbol(s) before any request: "
+            f"  [finviz-enrich] skipped {len(rejected)} non-equity symbol(s) before any request: "
             f"{[r['symbol'] + ':' + r['reason'] for r in rejected[:10]]}"
         )
 
     # Find tickers that need refreshing
     stale = _stale_symbols(symbols, cache, force_refresh)
     _RUN_STATS.clear()
-    _RUN_STATS.update({"symbols": requested, "stale": len(stale), "views": {}, "rejected_non_ticker": len(rejected)})
+    _RUN_STATS.update(
+        {
+            "symbols": requested,
+            "stale": len(stale),
+            "views": {},
+            "rejected_non_ticker": len(rejected),
+            "skipped_non_equity": list(rejected),
+        }
+    )
 
     if stale:
         print(f"  [finviz-enrich] Fetching {len(stale)} tickers ({len(symbols) - len(stale)} cached) views={views}")
@@ -1167,16 +1195,22 @@ def default_universe_symbols(
 
 
 def dry_run_plan(symbols: List[str], project_root: str = ".") -> Dict[str, Any]:
-    """What a real run would fetch and write. Reads the cache file only; no request, no write."""
+    """What a real run would fetch and write. Reads the cache file only; no request, no write.
+
+    Non-equity symbols (CUSIPs, mutual funds) are dropped before planning, exactly as a real run drops them
+    (LQ-20261107-157), so the request count matches what would be spent."""
     root = Path(project_root)
     cache = _read_cache_readonly(root)
     views = _default_views()
-    stale = _stale_symbols(symbols, cache)
+    equities, skipped = _split_equities(symbols)
+    stale = _stale_symbols(equities, cache)
     batches = -(-len(stale) // BATCH_SIZE)
     return {
         "symbols": len(symbols),
+        "equities": len(equities),
+        "skipped_non_equity": skipped,
         "stale": len(stale),
-        "fresh_in_cache": len(symbols) - len(stale),
+        "fresh_in_cache": len(equities) - len(stale),
         "cache_file": str(root / CACHE_FILE),
         "cache_exists": (root / CACHE_FILE).is_file(),
         "cache_tickers": len(cache),
