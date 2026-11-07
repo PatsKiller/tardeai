@@ -108,69 +108,135 @@ def _normalize_rs(scores: dict[str, float]) -> dict[str, int]:
             for k in scores}
 
 
-def _sector_momentum_returns(db_query, symbols: list[str]) -> dict[str, list[float | None]]:
-    """Fetch trailing returns for symbols at 1m/3m/6m lookback from market_quotes daily closes."""
-    results: dict[str, list[float | None]] = {s: [None, None, None] for s in symbols}
-    now = datetime.now(timezone.utc)
+# A day-over-day close ratio outside this band is not a market move for a sector/industry ETF;
+# it is a share split (or a bad print) that market_quotes does not adjust for. 2026-11-06:
+# ITA and SOXX showed -66%..-75% "momentum" from unadjusted splits.
+_SPLIT_JUMP_LO = 0.6
+_SPLIT_JUMP_HI = 1.0 / _SPLIT_JUMP_LO
+_SPLIT_FACTOR_TOL = 0.04  # ratio must sit within 4% of 1/k or k (k integer 2..20) to be adjusted
+_LOOKBACKS_DAYS = (21, 63, 126)
 
-    for idx, lookback_days in enumerate([21, 63, 126]):
-        cutoff = now - timedelta(days=lookback_days + 7)  # pad for weekends
+
+def _split_factor(ratio: float) -> float | None:
+    """Return the split factor k (price after = price before / k) if ratio looks like a split."""
+    if ratio <= 0:
+        return None
+    for k in range(2, 21):
+        if abs(ratio * k - 1.0) <= _SPLIT_FACTOR_TOL:
+            return float(k)          # forward split: price drops to 1/k
+        if abs(ratio / k - 1.0) <= _SPLIT_FACTOR_TOL:
+            return 1.0 / k           # reverse split: price rises k-fold
+    return None
+
+
+def _as_dt(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str) and value:
         try:
-            rows = db_query(
-                """SELECT DISTINCT ON (symbol) symbol, price, fetched_at
-                   FROM market_quotes
-                   WHERE upper(symbol) = ANY(%s)
-                     AND fetched_at > %s
-                   ORDER BY symbol, fetched_at ASC""",
-                (symbols, cutoff.isoformat()),
-                fetch="all",
-            ) or []
-            # For each symbol, we need earliest close in window
-            by_sym: dict[str, float] = {}
-            seen: set[str] = set()
-            for row in rows:
-                sym = str(row.get("symbol") or "").upper()
-                if sym in seen:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def _adjusted_series(
+    points: list[tuple[datetime, float]],
+) -> tuple[list[tuple[datetime, float]], list[int], int]:
+    """Back-adjust closes for split-like jumps.
+
+    Returns (series, indexes of unresolved jumps, number of splits adjusted)."""
+    adj = [px for _, px in points]
+    unresolved: list[int] = []
+    n_adjusted = 0
+    for i in range(1, len(adj)):
+        prev, cur = points[i - 1][1], points[i][1]
+        if prev <= 0:
+            continue
+        ratio = cur / prev
+        if _SPLIT_JUMP_LO <= ratio <= _SPLIT_JUMP_HI:
+            continue
+        factor = _split_factor(ratio)
+        if factor is None:
+            unresolved.append(i)
+            continue
+        n_adjusted += 1
+        for j in range(i):
+            adj[j] = adj[j] / factor
+    return [(points[i][0], adj[i]) for i in range(len(points))], unresolved, n_adjusted
+
+
+def _sector_momentum_returns(
+    db_query, symbols: list[str], quality: dict[str, dict] | None = None,
+) -> dict[str, list[float | None]]:
+    """Trailing split-adjusted returns at 1m/3m/6m lookback from market_quotes daily closes.
+
+    One query pulls the last quote per symbol per day over the longest window. Split-like
+    day-over-day jumps are back-adjusted when they match an integer split ratio; any other
+    implausible jump inside a lookback window makes that return UNKNOWN (None) rather than
+    a fake crash. ``quality`` (optional) receives per-symbol notes for the read model.
+    """
+    import logging
+    log = logging.getLogger(__name__)
+    syms = [s.upper() for s in symbols]
+    results: dict[str, list[float | None]] = {s: [None, None, None] for s in syms}
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=max(_LOOKBACKS_DAYS) + 7)  # pad for weekends
+    try:
+        rows = db_query(
+            """SELECT DISTINCT ON (upper(symbol), (fetched_at AT TIME ZONE 'America/New_York')::date)
+                      upper(symbol) AS symbol, price, fetched_at
+               FROM market_quotes
+               WHERE upper(symbol) = ANY(%s)
+                 AND fetched_at > %s
+               ORDER BY upper(symbol), (fetched_at AT TIME ZONE 'America/New_York')::date, fetched_at DESC""",
+            (syms, cutoff.isoformat()),
+            fetch="all",
+        ) or []
+    except Exception as exc:  # read model: degrade to UNKNOWN, but say why
+        log.warning("rotation_ladders: market_quotes read failed: %s", exc)
+        if quality is not None:
+            for s in syms:
+                quality[s] = {"status": "UNKNOWN", "reason": "market_quotes_read_failed"}
+        return results
+
+    series: dict[str, list[tuple[datetime, float]]] = {}
+    for row in rows:
+        sym = str(row.get("symbol") or "").upper()
+        dt = _as_dt(row.get("fetched_at"))
+        try:
+            px = float(row.get("price"))
+        except (TypeError, ValueError):
+            continue
+        if sym in results and dt is not None and px > 0:
+            series.setdefault(sym, []).append((dt, px))
+
+    fresh_after = now - timedelta(hours=24)
+    for sym in syms:
+        pts = sorted(series.get(sym, []))
+        note: dict[str, Any] = {"status": "OK"}
+        if not pts or pts[-1][0] <= fresh_after:
+            note = {"status": "UNKNOWN", "reason": "no_quote_in_24h"}
+        else:
+            adj, unresolved, adjusted = _adjusted_series(pts)
+            if adjusted:
+                note["split_adjusted"] = adjusted
+            latest = adj[-1][1]
+            for idx, days in enumerate(_LOOKBACKS_DAYS):
+                start_cut = now - timedelta(days=days + 7)
+                start_i = next((i for i, (d, _) in enumerate(adj) if d > start_cut), None)
+                if start_i is None or start_i == len(adj) - 1:
                     continue
-                seen.add(sym)
-                px = row.get("price")
-                if px is not None:
-                    try:
-                        by_sym[sym] = float(px)
-                    except (TypeError, ValueError):
-                        pass
-
-            # Get latest close
-            latest_rows = db_query(
-                """SELECT DISTINCT ON (symbol) symbol, price, fetched_at
-                   FROM market_quotes
-                   WHERE upper(symbol) = ANY(%s)
-                     AND fetched_at > now() - interval '24 hours'
-                   ORDER BY symbol, fetched_at DESC""",
-                (symbols,),
-                fetch="all",
-            ) or []
-            latest: dict[str, float] = {}
-            lseen: set[str] = set()
-            for row in latest_rows:
-                sym = str(row.get("symbol") or "").upper()
-                if sym in lseen:
+                if any(start_i < u <= len(adj) - 1 for u in unresolved):
+                    note["status"] = "PARTIAL"
+                    note["reason"] = "unexplained_price_jump"
                     continue
-                lseen.add(sym)
-                px = row.get("price")
-                if px is not None:
-                    try:
-                        latest[sym] = float(px)
-                    except (TypeError, ValueError):
-                        pass
-
-            for sym in symbols:
-                s = sym.upper()
-                if s in by_sym and s in latest and by_sym[s] > 0:
-                    results[s][idx] = round((latest[s] - by_sym[s]) / by_sym[s] * 100, 2)
-        except Exception:
-            pass
-
+                base = adj[start_i][1]
+                if base > 0:
+                    results[sym][idx] = round((latest - base) / base * 100, 2)
+        if quality is not None:
+            quality[sym] = note
     return results
 
 
@@ -180,7 +246,8 @@ def _build(db_query) -> dict[str, Any]:
 
     # 1. Sector RS20 rankings
     sector_symbols = [s[0] for s in SECTOR_ETFS]
-    sector_returns = _sector_momentum_returns(db_query, sector_symbols)
+    sector_quality: dict[str, dict] = {}
+    sector_returns = _sector_momentum_returns(db_query, sector_symbols, sector_quality)
 
     sectors = []
     for etf, name in SECTOR_ETFS:
@@ -194,6 +261,7 @@ def _build(db_query) -> dict[str, Any]:
             "return_6m": rets[2] if len(rets) > 2 else None,
             "rs_raw": rs_raw,
             "data_quality": sum(1 for r in rets if r is not None),
+            "price_quality": sector_quality.get(etf.upper()),
         })
 
     rs_norm = _normalize_rs({s["etf"]: s["rs_raw"] for s in sectors})
@@ -204,7 +272,8 @@ def _build(db_query) -> dict[str, Any]:
 
     # 2. Industry rankings within sectors
     industry_symbols = [s[0] for s in INDUSTRY_GROUP_ETFS]
-    industry_returns = _sector_momentum_returns(db_query, industry_symbols)
+    industry_quality: dict[str, dict] = {}
+    industry_returns = _sector_momentum_returns(db_query, industry_symbols, industry_quality)
 
     by_sector_industries: dict[str, list[dict]] = {}
     for etf, name, parent_sector in INDUSTRY_GROUP_ETFS:
@@ -218,6 +287,7 @@ def _build(db_query) -> dict[str, Any]:
             "return_6m": rets[2] if len(rets) > 2 else None,
             "rs_raw": rs_raw,
             "data_quality": sum(1 for r in rets if r is not None),
+            "price_quality": industry_quality.get(etf.upper()),
         }
         by_sector_industries.setdefault(parent_sector, []).append(item)
 
