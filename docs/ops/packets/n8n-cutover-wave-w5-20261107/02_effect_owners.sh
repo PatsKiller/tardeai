@@ -6,7 +6,7 @@
 set -euo pipefail
 SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
 PY=${PY:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python}
-for lane in reconcile-pullback-outcomes directive-keyword-enhancer finviz-market-movers hermes-usefulness-backfill sec-filings-feed aegis-evening-packet validate-expense-ratios journal-review-builder proposal-llm-review-worker social-scalp-scanner enrich-proposal-technicals hermes-discovery-ingestors news-ingestion-tail sec-fundamentals-ingest agent-calibration-engine reclassify-momentum-proposals generate-analyst-reports-autonomous-weekly due-diligence-questions; do
+for lane in reconcile-pullback-outcomes directive-keyword-enhancer finviz-market-movers hermes-usefulness-backfill sec-filings-feed aegis-evening-packet validate-expense-ratios journal-review-builder proposal-llm-review-worker social-scalp-scanner enrich-proposal-technicals hermes-discovery-ingestors news-ingestion-tail sec-fundamentals-ingest agent-calibration-engine reclassify-momentum-proposals generate-analyst-reports-autonomous-weekly due-diligence-questions reconcile-exit-advisory-outcomes reconcile-watch-outcomes tmp-scratch-cleanup active-trader-session-review fee-efficiency-analyzer overnight-batch-tax ask-alerts; do
   proc=$("$PY" "$SERVED/scripts/lib/effect_claim.py" lane-spec --lane "$lane" 2>/dev/null | cut -f1 || true)
   [[ -n "$proc" ]] || proc=$lane
   cur=$("$PY" "$SERVED/scripts/lib/effect_claim.py" show --process "$proc" | "$PY" -c 'import json,sys; o=json.load(sys.stdin).get("owner"); print("none none" if not o else "%s %s" % (o["owner"], o["epoch"]))')

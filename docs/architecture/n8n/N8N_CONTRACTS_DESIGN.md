@@ -332,8 +332,8 @@ on refusal. Both tables live in the coordination ledger, one `BEGIN IMMEDIATE`.
   `finviz-screener-runner` declare `late_write_fenced: true` and call `effect_claim.fence_before_write()` right before
   their first target write (a no-op without `TRADEAI_EFFECT_FENCE`, so cron runs are unchanged). A failure before
   the fence is a proven pre-effect FAILED and a slot-bound retry may re-claim it.
-- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** the other 70 effect-keyed lanes in
-  `config/n8n_effect_keys.json` (70 since 2026-10-29: `hermes-watchlist-scorer` joined as an inert *staged* key with its
+- **Effect-keyed lanes that do NOT call `assert_fence` (not late-write safe):** the other 102 effect-keyed lanes in
+  `config/n8n_effect_keys.json` (102 since 2026-11-07, LQ-361 added seven staged keys; 70 on 2026-10-29: `hermes-watchlist-scorer` joined as an inert *staged* key with its
   canary promotion, #1904, and `conflict-resolver` joined with its shadow→canary live flip, #2293, and `cio-ask-lifecycle` +
   `cio-ask-material-events` joined with their shadow→canary live admission, #2294; none armed, no `n8n_claim`/`cron_claim`). The six whose executor side is armed
   (`n8n_claim` default true): `hermes-learning-outcome-grader`, `hermes-learning-outcome-learning`,

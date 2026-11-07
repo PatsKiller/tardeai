@@ -1356,6 +1356,107 @@
       "wave": "OVN-3b",
       "n8n_claim": true,
       "cron_claim": true
+    },
+    "reconcile-exit-advisory-outcomes": {
+      "process": "reconcile-exit-advisory-outcomes",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 9 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "yes: INSERT ... ON CONFLICT (advisory_id, horizon_days) DO NOTHING",
+      "wave": "LQ-361",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "reconcile-watch-outcomes": {
+      "process": "reconcile-watch-outcomes",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "50 9 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "overwrite"
+      ],
+      "idempotent_today": "yes: UPDATE only rows with verdict IS NULL; a second run finds none due",
+      "wave": "LQ-361",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "tmp-scratch-cleanup": {
+      "process": "tmp-scratch-cleanup",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 3 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "filesystem"
+      ],
+      "idempotent_today": "yes: archives then removes only items past the age rule; a second run finds none",
+      "wave": "LQ-361",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "active-trader-session-review": {
+      "process": "active-trader-session-review",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": [
+        "5 12 * * 1-5",
+        "10 16 * * 1-5"
+      ],
+      "slot_tz": "America/New_York",
+      "effects": [
+        "send"
+      ],
+      "idempotent_today": "no: sends a Telegram session review per run; one per slot is enforced by this key",
+      "wave": "LQ-361",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "fee-efficiency-analyzer": {
+      "process": "fee-efficiency-analyzer",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "25 7 * * 1",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: save_alert_event appends findings per --emit run; one per slot is enforced by this key",
+      "wave": "LQ-361",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "overnight-batch-tax": {
+      "process": "overnight-batch-tax",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "35 6 * * 1",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: queues priority-1 tax_agent jobs per run; one per slot is enforced by this key",
+      "wave": "LQ-361",
+      "n8n_claim": false,
+      "cron_claim": false
+    },
+    "ask-alerts": {
+      "process": "ask-alerts",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/30 8-18 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "send"
+      ],
+      "idempotent_today": "partial: a fired alert keeps its triggered state; one per slot is enforced by this key",
+      "wave": "LQ-361",
+      "n8n_claim": false,
+      "cron_claim": false
     }
   },
   "_comment_process_steps": "2026-10-15 (n8n fabric process hermes-learning, packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): one key per process STEP, process = the step lane id, slot = the stage's business slot <YYYYMMDD>T<HHMM of the stage cron minute> (America/New_York), the same string the cron stage runner computes (pipeline_manifest.py --effect-slot) and the process workflow sends. pipeline/stage/step_id map the key to the manifest step. cron_claim false = the cron stage runner does NOT claim yet (scripts/pipelines/_manifest_runner.sh); the cutover packet flips it to true only after effect_claim.py set-owner --owner cron has created the owner row, then moves the owner to n8n. Executor side: inert for dry_run; a LIVE run with a p: key is refused effect_slot_unknown until the gateway validates p: keys (cutover prerequisite).",

@@ -232,6 +232,14 @@ def test_no_key_outside_scope_except_reviewed_process_steps():
         "run-research-intelligence-overnight",
         # shadow wave LD-W1 (2026-10-15): the wave's appending lane, keyed and staged before any canary.
         "incubator-rolloff-engine",
+        # LQ-20261107-361: seven relay-live lanes with no owner row, keyed staged (n8n_claim/cron_claim false).
+        "reconcile-exit-advisory-outcomes",
+        "reconcile-watch-outcomes",
+        "tmp-scratch-cleanup",
+        "active-trader-session-review",
+        "fee-efficiency-analyzer",
+        "overnight-batch-tax",
+        "ask-alerts",
     }
 
 
