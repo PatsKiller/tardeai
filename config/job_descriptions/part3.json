@@ -1,0 +1,1388 @@
+{
+ "schwab-econfirm-reconcile": {
+  "title": "Schwab trade confirm check",
+  "category": "portfolio",
+  "does": "Matches Schwab's trade confirmations against the system's own order records after the close.",
+  "breaks": "Order records could drift from what the broker actually filled, unnoticed."
+ },
+ "broker-stop-reconcile": {
+  "title": "Broker stop reconciliation",
+  "category": "risk",
+  "does": "Compares the protective stop orders at the broker with the stops the system expects.",
+  "breaks": "A missing or wrong stop order at the broker could go unnoticed."
+ },
+ "sweep-schwab-instruments": {
+  "title": "Schwab instrument sweep",
+  "category": "market_data",
+  "does": "Looks up Schwab's instrument details (symbols, types) for names the system tracks.",
+  "breaks": "Symbol details go stale and some names may not resolve to broker data."
+ },
+ "sync-docs-to-drive": {
+  "title": "Docs to Drive sync",
+  "category": "hygiene",
+  "does": "Old job that copied documentation to Google Drive.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "ops-controls-applier": {
+  "title": "Ops Controls applier",
+  "category": "ops",
+  "does": "Applies switches you flip on the Ops Controls page to the host machine.",
+  "breaks": "Toggles on the Ops Controls page would not take effect."
+ },
+ "calibration-shadow-harness": {
+  "title": "Calibration shadow test",
+  "category": "learning",
+  "does": "Runs candidate scoring calibrations in the background to compare them with the live one.",
+  "breaks": "Calibration improvements can't be tested safely before going live."
+ },
+ "cio-prospect-shadow": {
+  "title": "CIO prospect shadow build",
+  "category": "cio",
+  "does": "Builds a trial list of CIO prospects alongside the live list for comparison.",
+  "breaks": "New prospect-selection logic loses its safe side-by-side check."
+ },
+ "cio-company-facts-populate": {
+  "title": "CIO company facts loader",
+  "category": "cio",
+  "does": "Planned job to fill company fact sheets used by the CIO; not scheduled.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "jsonl-archive-rotate": {
+  "title": "Log archive rotation",
+  "category": "hygiene",
+  "does": "Rotates and archives large append-only data logs so they stay small.",
+  "breaks": "Log files keep growing and can eventually fill the disk."
+ },
+ "yfinance-info-snapshot": {
+  "title": "Company info snapshot",
+  "category": "market_data",
+  "does": "Refreshes a saved snapshot of company profile data from Yahoo Finance.",
+  "breaks": "Company details (sector, size, ratios) shown on pages go stale."
+ },
+ "holdings-drift-monitor": {
+  "title": "Holdings drift check",
+  "category": "portfolio",
+  "does": "Checks whether the holdings the system shows still match what the brokers report.",
+  "breaks": "Your holdings view could quietly differ from reality."
+ },
+ "options-desk-staleness-monitor": {
+  "title": "Options desk freshness check",
+  "category": "ops",
+  "does": "Checks that the options desk data is recent and flags it when it is old.",
+  "breaks": "You might act on stale options data without a warning."
+ },
+ "held-exit-coverage-monitor": {
+  "title": "Exit coverage check",
+  "category": "risk",
+  "does": "Checks that every held position has an exit plan or stop in place.",
+  "breaks": "A held position could sit with no stop or exit plan unnoticed."
+ },
+ "options-desk-quote-refresh": {
+  "title": "Options desk quote refresh",
+  "category": "market_data",
+  "does": "Planned refresh of option quotes for the options desk; built but not scheduled.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "cio-ask-research": {
+  "title": "CIO ask research",
+  "category": "cio",
+  "does": "Researches open questions the CIO has raised so they can be answered.",
+  "breaks": "CIO questions pile up without supporting research."
+ },
+ "cio-ask-lifecycle": {
+  "title": "CIO ask lifecycle",
+  "category": "cio",
+  "does": "Moves CIO questions through their stages: open, answered, expired, closed.",
+  "breaks": "CIO asks go stale and the question list becomes cluttered."
+ },
+ "cio-ask-material-events": {
+  "title": "CIO ask event triggers",
+  "category": "cio",
+  "does": "Reopens or flags CIO questions when material news or events affect them.",
+  "breaks": "Important events would not update the questions the CIO is tracking."
+ },
+ "pr-merge-telegram-notify": {
+  "title": "Merge-ready Telegram ping",
+  "category": "alerts",
+  "does": "Planned Telegram alert when a code change is ready for you to approve.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "pr-merge-digest": {
+  "title": "Merge approval digest",
+  "category": "alerts",
+  "does": "Planned digest listing code changes that are waiting for your approval.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "pr-merge-reconcile": {
+  "title": "Merge status reconcile",
+  "category": "ops",
+  "does": "Planned job that reconciles merge-approval records with what was actually merged.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "disabled-features-reminder": {
+  "title": "Disabled feature reminder",
+  "category": "alerts",
+  "does": "Planned daily reminder when a switched-off feature is past its review date.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "prospectus-build": {
+  "title": "Prospectus report build",
+  "category": "research",
+  "does": "Builds the periodic prospectus report on holdings and candidates.",
+  "breaks": "The prospectus report is not refreshed or produced."
+ },
+ "prospectus-deliver": {
+  "title": "Prospectus delivery",
+  "category": "alerts",
+  "does": "Planned sender that delivers the prospectus as Word and PDF by Telegram and email.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "conflict-rule-proposals": {
+  "title": "Conflict rule proposals",
+  "category": "ops",
+  "does": "Paused feature: asks AI to propose new resolution rules when none match a conflict.",
+  "breaks": "Paused — conflicts needing a new rule are handled by hand."
+ },
+ "conflict-resolver": {
+  "title": "Conflict resolver",
+  "category": "ops",
+  "does": "Resolves data conflicts between sources using the approved rules.",
+  "breaks": "Conflicting records stay unresolved and can show inconsistent numbers."
+ },
+ "premarket-delivery-deadman": {
+  "title": "Premarket delivery check",
+  "category": "alerts",
+  "does": "Checks that the pre-market briefing was actually delivered and alerts if not.",
+  "breaks": "A missing morning briefing could go unnoticed."
+ },
+ "market-risk-evaluate": {
+  "title": "Market risk evaluation",
+  "category": "risk",
+  "does": "Scores overall market stress on a schedule and updates the risk tier.",
+  "breaks": "Early warning of market-wide stress would be missing."
+ },
+ "market-quotes-extended": {
+  "title": "Extended-hours quotes",
+  "category": "market_data",
+  "does": "Fetches pre-market and after-hours prices for tracked names.",
+  "breaks": "Pre- and post-market prices go stale."
+ },
+ "market-quotes-offhours-schwab": {
+  "title": "Off-hours Schwab quotes",
+  "category": "market_data",
+  "does": "Pulls off-hours quotes from Schwab (read-only) for tracked names.",
+  "breaks": "Off-hours price coverage from Schwab drops out."
+ },
+ "main-red-autoheal": {
+  "title": "Failed build auto-rerun",
+  "category": "ops",
+  "does": "Planned job that re-runs failed infrastructure checks on the main code branch once.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "nightly-security-scan": {
+  "title": "Nightly security scan",
+  "category": "ops",
+  "does": "Planned nightly scan of the code and its libraries for security problems.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "agent_nudge": {
+  "title": "Agent nudger (shadow)",
+  "category": "agents_llm",
+  "does": "Shadow-mode job that would remind idle AI agents about unfinished work; changes nothing.",
+  "breaks": "Paused — agents are not nudged; no direct effect on trading."
+ },
+ "stuck-work-monitor": {
+  "title": "Stuck work monitor",
+  "category": "ops",
+  "does": "Planned monitor for stuck locks, stalled queues, and silent jobs.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "mcporter-token-refresh": {
+  "title": "MCP token refresh",
+  "category": "ops",
+  "does": "Old job that refreshed a tool-connector token; turned off by the operator.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "site-audit": {
+  "title": "Site audit capture",
+  "category": "ops",
+  "does": "Planned periodic capture and audit of the web pages, at most every two days.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "run-scheduled-quote-refresh-incubator": {
+  "title": "Incubator quote refresh",
+  "category": "market_data",
+  "does": "Refreshes prices for ideas in the incubator.",
+  "breaks": "Incubator ideas show stale prices."
+ },
+ "run-watchlist-agent-jobs-offpeak": {
+  "title": "Off-peak watchlist agents",
+  "category": "agents_llm",
+  "does": "Runs watchlist-related AI agent jobs during off-peak hours.",
+  "breaks": "Watchlist analysis falls behind overnight."
+ },
+ "run-scheduled-quote-refresh-pending": {
+  "title": "Pending ideas quote refresh",
+  "category": "market_data",
+  "does": "Refreshes prices for trade ideas that are pending review.",
+  "breaks": "Pending ideas show stale prices."
+ },
+ "paper-execution-sweep": {
+  "title": "Paper execution sweep",
+  "category": "other",
+  "does": "Old paper-trading order sweep.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "multi-tier-trade-reviewer-weekly": {
+  "title": "Weekly trade review",
+  "category": "signals",
+  "does": "Weekly multi-level review of open trade ideas and positions.",
+  "breaks": "Weekly review of trade quality is skipped."
+ },
+ "cleanup-stale-proposals": {
+  "title": "Stale proposal cleanup",
+  "category": "hygiene",
+  "does": "Removes or closes trade proposals that are too old to act on.",
+  "breaks": "Old proposals clutter the lists and may look actionable."
+ },
+ "youtube-channel-discovery": {
+  "title": "YouTube channel discovery",
+  "category": "research",
+  "does": "Finds new finance YouTube channels worth following.",
+  "breaks": "New research sources stop being discovered."
+ },
+ "agent-router-cron-light": {
+  "title": "Agent router (light)",
+  "category": "agents_llm",
+  "does": "Light-weight pass that routes work to the right AI agents.",
+  "breaks": "Frequent small agent tasks are not routed."
+ },
+ "alpaca-paper-adapter": {
+  "title": "Alpaca paper adapter",
+  "category": "other",
+  "does": "Old Alpaca paper-trading connector.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "multi-tier-trade-reviewer-monthly": {
+  "title": "Monthly trade review",
+  "category": "signals",
+  "does": "Monthly multi-level review of trade ideas and positions.",
+  "breaks": "Monthly review of trade quality is skipped."
+ },
+ "youtube-transcript-ingest": {
+  "title": "YouTube transcript ingest",
+  "category": "research",
+  "does": "Downloads transcripts of followed YouTube videos for analysis.",
+  "breaks": "New video research stops flowing in."
+ },
+ "auto-research": {
+  "title": "Automatic research",
+  "category": "research",
+  "does": "Runs automated research on topics and names of interest.",
+  "breaks": "Research notes stop refreshing on their own."
+ },
+ "set-purge-dates": {
+  "title": "Transcript purge dates",
+  "category": "hygiene",
+  "does": "Sets deletion dates on stored transcripts so they are cleaned up on time.",
+  "breaks": "Old transcripts may be kept longer than intended."
+ },
+ "telegram-smart-alerts": {
+  "title": "Telegram smart alerts",
+  "category": "alerts",
+  "does": "Sends selected, filtered alerts to you on Telegram.",
+  "breaks": "Telegram alerts stop arriving."
+ },
+ "incubator-proposal-promoter": {
+  "title": "Incubator promoter",
+  "category": "signals",
+  "does": "Moves qualifying incubator ideas up into formal trade proposals.",
+  "breaks": "Good incubator ideas stay stuck and never become proposals."
+ },
+ "external-market-data-ingest-fundamentals": {
+  "title": "Fundamentals ingest",
+  "category": "market_data",
+  "does": "Loads company fundamentals from outside data providers.",
+  "breaks": "Fundamental figures go stale."
+ },
+ "iterate-research-topics": {
+  "title": "Research topic iteration",
+  "category": "research",
+  "does": "Takes the next step on active research topics to deepen them.",
+  "breaks": "Research topics stall."
+ },
+ "paper-performance-governance": {
+  "title": "Paper performance governance",
+  "category": "other",
+  "does": "Old paper-trading performance check.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "agent-router-cron-full": {
+  "title": "Agent router (full)",
+  "category": "agents_llm",
+  "does": "Full pass that routes work to the right AI agents.",
+  "breaks": "Agent task routing falls behind."
+ },
+ "external-market-data-ingest": {
+  "title": "Quotes ingest",
+  "category": "market_data",
+  "does": "Loads price quotes from outside data providers.",
+  "breaks": "Prices across the system go stale."
+ },
+ "llm-intelligence-enrichment": {
+  "title": "AI intelligence enrichment",
+  "category": "agents_llm",
+  "does": "Uses an AI model to add notes and context to tracked names.",
+  "breaks": "Names lose their AI-written context."
+ },
+ "run-scheduled-watchpool-alerts-diagnostic": {
+  "title": "Watch pool diagnostic alerts",
+  "category": "signals",
+  "does": "Checks the watch pool and reports diagnostics on alert health.",
+  "breaks": "Problems in watch alerts are harder to spot."
+ },
+ "news-ingestion": {
+  "title": "News ingestion",
+  "category": "research",
+  "does": "Pulls in priority financial news for tracked names.",
+  "breaks": "News feeds go stale and news-based signals fade."
+ },
+ "run-scheduled-watchpool-alerts-maturity": {
+  "title": "Watch pool maturity alerts",
+  "category": "signals",
+  "does": "Checks watch-pool names for ones whose setup has matured and alerts.",
+  "breaks": "You may miss a watched name reaching its setup."
+ },
+ "run-afterhours-candidate-preparation": {
+  "title": "After-hours candidate prep",
+  "category": "signals",
+  "does": "Prepares candidate trade ideas after the close for the next day.",
+  "breaks": "Next-day candidates are not ready by morning."
+ },
+ "agent-router-cron-deep": {
+  "title": "Agent router (deep)",
+  "category": "agents_llm",
+  "does": "Deep pass that routes heavier work to the right AI agents.",
+  "breaks": "Heavy agent tasks are not routed."
+ },
+ "watchlist-hygiene": {
+  "title": "Watchlist hygiene",
+  "category": "hygiene",
+  "does": "Cleans the watchlist of duplicates, dead symbols, and stale entries.",
+  "breaks": "The watchlist gets cluttered and inaccurate."
+ },
+ "alpaca-paper-reconciler": {
+  "title": "Alpaca paper reconciler",
+  "category": "other",
+  "does": "Old Alpaca paper-trading reconciliation.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "intel-auto-discovery": {
+  "title": "Intel auto-discovery",
+  "category": "research",
+  "does": "Automatically finds new research items and names for the Intel pages.",
+  "breaks": "Intel pages stop surfacing new items."
+ },
+ "portfolio-level-qa": {
+  "title": "Portfolio quality check",
+  "category": "portfolio",
+  "does": "Runs quality checks across the whole portfolio view.",
+  "breaks": "Errors in portfolio data may go unnoticed."
+ },
+ "send-telegram-proposal-alert": {
+  "title": "Proposal Telegram alert",
+  "category": "alerts",
+  "does": "Sends new trade proposals to you on Telegram.",
+  "breaks": "You may not hear about new proposals."
+ },
+ "eod-open-trade-alert": {
+  "title": "End-of-day open trade alert",
+  "category": "alerts",
+  "does": "Sends an end-of-day summary of trades still open.",
+  "breaks": "No end-of-day reminder of open trades."
+ },
+ "auto-enrichment-runner": {
+  "title": "Auto enrichment runner",
+  "category": "research",
+  "does": "Automatically adds missing data to records that need it.",
+  "breaks": "Records stay incomplete."
+ },
+ "atm-auto-approver": {
+  "title": "ATM auto-approver",
+  "category": "risk",
+  "does": "Auto-approves routine protective at-the-money actions within set rules.",
+  "breaks": "Routine protection steps wait on manual approval."
+ },
+ "unified-stop-supervisor": {
+  "title": "Stop supervisor",
+  "category": "risk",
+  "does": "Watches protective stops across accounts and flags problems.",
+  "breaks": "Stop problems could go unnoticed."
+ },
+ "social-scalp-scanner": {
+  "title": "Social scalp scanner",
+  "category": "signals",
+  "does": "Scans social chatter for short-term scalp opportunities.",
+  "breaks": "Social-driven scalp ideas stop appearing."
+ },
+ "rag-indexer": {
+  "title": "Knowledge indexer",
+  "category": "agents_llm",
+  "does": "Indexes documents so AI agents can search them.",
+  "breaks": "Agents lose up-to-date search over the knowledge base."
+ },
+ "premarket-watcher": {
+  "title": "Premarket watcher",
+  "category": "signals",
+  "does": "Watches pre-market moves in tracked names.",
+  "breaks": "Pre-market movers are not flagged."
+ },
+ "agent-watchlist-engine": {
+  "title": "Agent watchlist engine",
+  "category": "signals",
+  "does": "Lets AI agents evaluate and update watchlist names.",
+  "breaks": "Agent-driven watchlist updates stop."
+ },
+ "proposal-enrichment-loop": {
+  "title": "Proposal enrichment",
+  "category": "signals",
+  "does": "Adds data and context to trade proposals as they sit in the queue.",
+  "breaks": "Proposals show thin or missing detail."
+ },
+ "proposal-lifecycle": {
+  "title": "Proposal lifecycle",
+  "category": "signals",
+  "does": "Moves trade proposals through their stages and expires old ones.",
+  "breaks": "Proposals linger in wrong states."
+ },
+ "strategy-weekly-review": {
+  "title": "Weekly strategy review",
+  "category": "learning",
+  "does": "Weekly review of how each strategy has performed.",
+  "breaks": "You lose the weekly strategy performance read."
+ },
+ "alert-dispatcher-unified": {
+  "title": "Unified alert dispatcher",
+  "category": "alerts",
+  "does": "Single sender that routes alerts to Telegram, email, and other channels.",
+  "breaks": "Alerts may not be delivered."
+ },
+ "topic-curator-at-30-9-13": {
+  "title": "Topic curator (daytime)",
+  "category": "research",
+  "does": "Daytime pass that picks and updates research topics.",
+  "breaks": "Research topic list stops being curated."
+ },
+ "topic-curator-ensemble": {
+  "title": "Topic curator (ensemble)",
+  "category": "research",
+  "does": "Curates research topics using several models together.",
+  "breaks": "Topic curation quality drops."
+ },
+ "aegis-synthesis": {
+  "title": "Aegis synthesis",
+  "category": "research",
+  "does": "Combines Aegis agent findings into a single summary.",
+  "breaks": "Aegis summaries stop updating."
+ },
+ "agent-event-router": {
+  "title": "Agent event router",
+  "category": "agents_llm",
+  "does": "Sends system events to the AI agents that should react to them.",
+  "breaks": "Agents do not react to events."
+ },
+ "agent-recommendation-normalizer": {
+  "title": "Agent recommendation cleanup",
+  "category": "agents_llm",
+  "does": "Puts different agents' recommendations into one consistent format.",
+  "breaks": "Agent recommendations become inconsistent."
+ },
+ "event-detector": {
+  "title": "Event detector",
+  "category": "signals",
+  "does": "Detects notable market and company events.",
+  "breaks": "Notable events are not flagged."
+ },
+ "paper-execution-quality-analyzer": {
+  "title": "Paper execution analyzer",
+  "category": "other",
+  "does": "Old paper-trading fill analysis.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "paper-execution-quality": {
+  "title": "Paper execution quality",
+  "category": "other",
+  "does": "Old paper-trading fill quality report.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "claude-escalation-handler": {
+  "title": "Claude escalation handler",
+  "category": "agents_llm",
+  "does": "Hands hard problems from other agents up to Claude.",
+  "breaks": "Hard cases stay stuck at lower-tier agents."
+ },
+ "health-agent-llm-review": {
+  "title": "Health agent AI review",
+  "category": "ops",
+  "does": "Has an AI model review health-check findings for real problems.",
+  "breaks": "Health findings get less intelligent triage."
+ },
+ "trade-close-llm-analyzer-source": {
+  "title": "Closed-trade analysis (sources)",
+  "category": "learning",
+  "does": "AI review of which sources fed trades that closed.",
+  "breaks": "You lose lessons about which sources work."
+ },
+ "run-protection-pipeline-at-x-30-9-16": {
+  "title": "Protection pipeline (daytime)",
+  "category": "risk",
+  "does": "Runs the position-protection checks during the trading day.",
+  "breaks": "Protection suggestions go stale intraday."
+ },
+ "run-protection-pipeline-at-30-20": {
+  "title": "Protection pipeline (evening)",
+  "category": "risk",
+  "does": "Runs the position-protection checks in the evening.",
+  "breaks": "Evening protection review is missed."
+ },
+ "trade-close-llm-analyzer-structured": {
+  "title": "Closed-trade analysis (structured)",
+  "category": "learning",
+  "does": "AI review of closed trades in a structured scorecard form.",
+  "breaks": "Closed-trade lessons are not recorded."
+ },
+ "hermes-coordinator": {
+  "title": "Hermes coordinator",
+  "category": "research",
+  "does": "Coordinates Hermes research agents and their task queue.",
+  "breaks": "Hermes research stalls."
+ },
+ "portfolio-server-watchdog": {
+  "title": "Portfolio site watchdog",
+  "category": "ops",
+  "does": "Checks the portfolio website is up and restarts or alerts if not.",
+  "breaks": "The site could be down without anyone noticing."
+ },
+ "holdings-llm-refresh": {
+  "title": "Holdings AI refresh",
+  "category": "portfolio",
+  "does": "Refreshes AI-written notes for your holdings.",
+  "breaks": "Holding notes grow stale."
+ },
+ "hermes-youtube-discovery": {
+  "title": "Hermes YouTube discovery",
+  "category": "research",
+  "does": "Hermes finds relevant YouTube content for research.",
+  "breaks": "YouTube research leads dry up."
+ },
+ "trade-integrity-audit": {
+  "title": "Trade integrity audit",
+  "category": "portfolio",
+  "does": "Audits trade records for gaps, duplicates, and mismatches.",
+  "breaks": "Bad trade records could stay hidden."
+ },
+ "multi-tier-trade-reviewer-overnight": {
+  "title": "Overnight trade review",
+  "category": "signals",
+  "does": "Overnight multi-level review of trade ideas and positions.",
+  "breaks": "Morning starts without an overnight review."
+ },
+ "run-profit-capture-refresh": {
+  "title": "Profit capture refresh",
+  "category": "signals",
+  "does": "Refreshes the profit-taking suggestions for open positions.",
+  "breaks": "Profit-taking guidance goes stale."
+ },
+ "pro-analyst-fetch": {
+  "title": "Analyst ratings fetch",
+  "category": "market_data",
+  "does": "Fetches professional analyst ratings and targets.",
+  "breaks": "Analyst data on pages goes stale."
+ },
+ "watch-directives-service": {
+  "title": "Watch directives service",
+  "category": "signals",
+  "does": "Keeps the watch directive rules (what to watch for) up to date and running.",
+  "breaks": "Watch rules stop being evaluated."
+ },
+ "hermes-directive-discovery": {
+  "title": "Hermes directive discovery",
+  "category": "research",
+  "does": "Hermes proposes new watch directives from research.",
+  "breaks": "New watch ideas stop being proposed."
+ },
+ "hermes-score-alerts": {
+  "title": "Hermes score alerts",
+  "category": "alerts",
+  "does": "Alerts when Hermes scores change notably.",
+  "breaks": "Notable Hermes score changes go unannounced."
+ },
+ "generate-max-hold-exit-proposals": {
+  "title": "Max-hold exit proposals",
+  "category": "signals",
+  "does": "Proposes exits for positions held longer than the allowed maximum.",
+  "breaks": "Overdue positions are not flagged for exit."
+ },
+ "schwab-transaction-ingest-classifier": {
+  "title": "Schwab transactions (classify)",
+  "category": "portfolio",
+  "does": "Loads Schwab transactions and labels them (buy, sell, dividend, etc.).",
+  "breaks": "Your trade history falls behind or is mislabeled."
+ },
+ "schwab-transaction-ingest-at-3-18-33-48-9-16": {
+  "title": "Schwab transactions (frequent)",
+  "category": "portfolio",
+  "does": "Frequent pull of new Schwab transactions during the trading day.",
+  "breaks": "Intraday trades appear late."
+ },
+ "journal-review-builder": {
+  "title": "Journal review builder",
+  "category": "learning",
+  "does": "Builds trade journal reviews from recent activity.",
+  "breaks": "Journal reviews stop being prepared."
+ },
+ "ingest-tos-watchlists": {
+  "title": "ThinkOrSwim watchlist import",
+  "category": "portfolio",
+  "does": "Imports watchlists saved in your ThinkOrSwim platform.",
+  "breaks": "Watchlist changes made there don't show up here."
+ },
+ "compute-source-weights": {
+  "title": "Source weight scoring",
+  "category": "learning",
+  "does": "Recomputes how much to trust each information source based on results.",
+  "breaks": "Source trust levels stop adjusting to results."
+ },
+ "holding-protection-advisor-at-5-17": {
+  "title": "Protection advisor (daily)",
+  "category": "risk",
+  "does": "Suggests stops or trims for current holdings.",
+  "breaks": "Protection advice for holdings goes stale."
+ },
+ "monthly-protection-meta-review": {
+  "title": "Monthly protection review",
+  "category": "risk",
+  "does": "Monthly look back at whether protection advice actually helped.",
+  "breaks": "You lose the monthly check on protection quality."
+ },
+ "technicals-gap-backfill": {
+  "title": "Technicals gap backfill",
+  "category": "market_data",
+  "does": "Fills in missing technical-indicator history.",
+  "breaks": "Charts and signals can have gaps."
+ },
+ "holding-protection-advisor-lane": {
+  "title": "Protection advisor (lane)",
+  "category": "risk",
+  "does": "Protection advice run for the dedicated advisory lane.",
+  "breaks": "Lane-based protection advice stops."
+ },
+ "snaptrade-sync": {
+  "title": "SnapTrade sync",
+  "category": "portfolio",
+  "does": "Reads account balances and positions from SnapTrade-linked brokers.",
+  "breaks": "Linked-broker holdings go stale."
+ },
+ "snaptrade-activity-ingest": {
+  "title": "SnapTrade activity ingest",
+  "category": "portfolio",
+  "does": "Reads recent account activity from SnapTrade-linked brokers.",
+  "breaks": "Recent trades at linked brokers are missed."
+ },
+ "portfolio-lookthrough-themes": {
+  "title": "Portfolio theme look-through",
+  "category": "portfolio",
+  "does": "Breaks funds down to show the themes and exposures inside your portfolio.",
+  "breaks": "Hidden concentration inside funds is not shown."
+ },
+ "ask-alerts": {
+  "title": "Ask alerts",
+  "category": "alerts",
+  "does": "Alerts you when the CIO needs an answer or decision.",
+  "breaks": "You may miss a CIO question awaiting you."
+ },
+ "ipo-lockup-alert": {
+  "title": "IPO lock-up alerts",
+  "category": "alerts",
+  "does": "Warns before IPO lock-up expirations affecting tracked names.",
+  "breaks": "Lock-up expirations arrive without warning."
+ },
+ "stop-health-check": {
+  "title": "Stop health check",
+  "category": "risk",
+  "does": "Verifies protective stops are present and sensible.",
+  "breaks": "Broken or missing stops are not caught."
+ },
+ "oauth-lane-keepalive": {
+  "title": "AI login keepalive",
+  "category": "agents_llm",
+  "does": "Keeps the AI service logins alive so agents don't lose access.",
+  "breaks": "AI lanes can silently lose login and stop working."
+ },
+ "strategy-tilt": {
+  "title": "Strategy tilt",
+  "category": "signals",
+  "does": "Computes which strategies the market currently favors.",
+  "breaks": "Strategy emphasis doesn't follow the market."
+ },
+ "directive-keyword-enhancer": {
+  "title": "Directive keyword enhancer",
+  "category": "signals",
+  "does": "Improves the keywords watch directives use to match news.",
+  "breaks": "Watch directives match less accurately."
+ },
+ "run-inference-cycle-preopen": {
+  "title": "Inference cycle (pre-open)",
+  "category": "agents_llm",
+  "does": "Runs the AI inference round before the market opens.",
+  "breaks": "Pre-open AI assessments are missing."
+ },
+ "run-inference-cycle-midday": {
+  "title": "Inference cycle (midday)",
+  "category": "agents_llm",
+  "does": "Runs the AI inference round at midday.",
+  "breaks": "Midday AI assessments are missing."
+ },
+ "run-inference-cycle-postclose": {
+  "title": "Inference cycle (post-close)",
+  "category": "agents_llm",
+  "does": "Runs the AI inference round after the close.",
+  "breaks": "Post-close AI assessments are missing."
+ },
+ "run-ensemble-worker": {
+  "title": "Ensemble worker",
+  "category": "agents_llm",
+  "does": "Runs multi-model ensemble jobs where several AIs vote.",
+  "breaks": "Ensemble opinions stop being produced."
+ },
+ "options-iv-snapshot": {
+  "title": "Options volatility snapshot",
+  "category": "market_data",
+  "does": "Saves a snapshot of options implied volatility.",
+  "breaks": "Options volatility history develops gaps."
+ },
+ "run-broker-queue-autocal": {
+  "title": "Broker queue auto-calibration",
+  "category": "signals",
+  "does": "Auto-tunes limits on the broker proposal queue.",
+  "breaks": "Broker queue settings drift out of tune."
+ },
+ "run-broker-proposal-curator": {
+  "title": "Broker proposal curator",
+  "category": "signals",
+  "does": "Curates the list of proposals aimed at brokers.",
+  "breaks": "Broker proposal list gets noisy."
+ },
+ "analyst-urgent-refresh": {
+  "title": "Urgent analyst refresh",
+  "category": "market_data",
+  "does": "Quick refresh of analyst data when something changes sharply.",
+  "breaks": "Analyst data lags urgent changes."
+ },
+ "generate-analyst-reports-autonomous-weekly": {
+  "title": "Weekly analyst reports",
+  "category": "research",
+  "does": "Generates the weekly analyst-style reports by AI.",
+  "breaks": "Weekly analyst reports stop."
+ },
+ "generate-analyst-reports-autonomous-full": {
+  "title": "Full analyst reports",
+  "category": "research",
+  "does": "Generates the full set of analyst-style reports by AI.",
+  "breaks": "Full analyst reports stop refreshing."
+ },
+ "reporting-engine": {
+  "title": "Reporting engine",
+  "category": "alerts",
+  "does": "Checks which reports are eligible to go out.",
+  "breaks": "Scheduled reports may not be built or sent."
+ },
+ "prewarm-finviz-strip-map": {
+  "title": "Finviz strip map warm-up",
+  "category": "market_data",
+  "does": "Pre-loads the Finviz strip map so the page opens fast.",
+  "breaks": "The strip map loads slowly or shows stale data."
+ },
+ "hermes-think-tank": {
+  "title": "Hermes think tank",
+  "category": "research",
+  "does": "Hermes agents discuss and synthesize broader research themes.",
+  "breaks": "Broad theme research stops."
+ },
+ "build-hermes-canonical-status": {
+  "title": "Hermes status builder",
+  "category": "research",
+  "does": "Builds the official Hermes status snapshot.",
+  "breaks": "Hermes status pages go stale."
+ },
+ "llm-intelligence-enrichment-section": {
+  "title": "AI enrichment (section)",
+  "category": "agents_llm",
+  "does": "Runs AI enrichment for one targeted section of the intelligence pages.",
+  "breaks": "That section loses fresh AI context."
+ },
+ "process-reaper": {
+  "title": "Process reaper",
+  "category": "hygiene",
+  "does": "Ends stuck or leftover background processes.",
+  "breaks": "Stuck processes pile up and slow the machine."
+ },
+ "paper-trade-advisory": {
+  "title": "Paper trade advisory",
+  "category": "other",
+  "does": "Old paper-trading advice job.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "enrich-proposal-technicals": {
+  "title": "Proposal technicals",
+  "category": "signals",
+  "does": "Adds technical indicators to trade proposals.",
+  "breaks": "Proposals lack technical context."
+ },
+ "compute-intraday-vwap": {
+  "title": "Intraday VWAP",
+  "category": "market_data",
+  "does": "Calculates intraday volume-weighted average price.",
+  "breaks": "Intraday price-vs-average signals stop."
+ },
+ "reclassify-momentum-proposals": {
+  "title": "Momentum reclassifier",
+  "category": "signals",
+  "does": "Re-labels proposals that behave like momentum plays.",
+  "breaks": "Proposals sit under the wrong strategy label."
+ },
+ "run-pullback-macd-screener": {
+  "title": "Pullback MACD screener",
+  "category": "signals",
+  "does": "Screens for pullbacks that show a MACD turn.",
+  "breaks": "Pullback setups are not found."
+ },
+ "watchlist-proposal-bridge": {
+  "title": "Watchlist-to-proposal bridge",
+  "category": "signals",
+  "does": "Turns qualifying watchlist names into trade proposals.",
+  "breaks": "Good watchlist names don't become proposals."
+ },
+ "run-pullback-macd-monitor": {
+  "title": "Pullback MACD monitor",
+  "category": "signals",
+  "does": "Monitors known pullback setups for their MACD trigger.",
+  "breaks": "Pullback triggers are missed."
+ },
+ "protection-atm-pass": {
+  "title": "Protection ATM pass",
+  "category": "risk",
+  "does": "Routine pass applying approved protection actions.",
+  "breaks": "Routine protection steps are delayed."
+ },
+ "proposal-monitor": {
+  "title": "Proposal monitor",
+  "category": "signals",
+  "does": "Watches live proposals for price moves and invalidation.",
+  "breaks": "Proposals aren't checked as markets move."
+ },
+ "run-scheduled-strategy-audits": {
+  "title": "Strategy audits",
+  "category": "learning",
+  "does": "Runs scheduled audits of each strategy's behavior.",
+  "breaks": "Strategy drift goes unchecked."
+ },
+ "journal-annotation-reminder": {
+  "title": "Journal annotation reminder",
+  "category": "alerts",
+  "does": "Reminds you to annotate recent trades in the journal.",
+  "breaks": "Journal notes get skipped and lessons are lost."
+ },
+ "news-ingestion-tail": {
+  "title": "News ingestion (tail)",
+  "category": "research",
+  "does": "Sweeps less-priority news sources in rotation.",
+  "breaks": "Lower-priority news coverage lapses."
+ },
+ "proposal-llm-review-worker": {
+  "title": "Proposal AI review",
+  "category": "signals",
+  "does": "Has an AI model review proposals before they reach you.",
+  "breaks": "Proposals reach you without AI review."
+ },
+ "hermes-discovery-ingestors": {
+  "title": "Hermes discovery ingest",
+  "category": "research",
+  "does": "Loads items Hermes discovers into the system.",
+  "breaks": "Hermes findings don't reach the system."
+ },
+ "run-options-monitor": {
+  "title": "Options monitor",
+  "category": "signals",
+  "does": "Monitors options positions and ideas for notable changes.",
+  "breaks": "Options changes go unflagged."
+ },
+ "run-options-paper-position-monitor": {
+  "title": "Options paper monitor",
+  "category": "other",
+  "does": "Old paper options position monitor.",
+  "breaks": "Retired — nothing depends on it"
+ },
+ "hermes-analyst-coverage": {
+  "title": "Hermes analyst coverage",
+  "category": "research",
+  "does": "Hermes tracks which analysts cover which names.",
+  "breaks": "Analyst coverage view goes stale."
+ },
+ "fidelity-stop-sync": {
+  "title": "Fidelity stop sync",
+  "category": "risk",
+  "does": "Syncs protective stop information for Fidelity accounts.",
+  "breaks": "Fidelity stop status goes stale."
+ },
+ "run-warrior-weekly-audit": {
+  "title": "Weekly Warrior audit",
+  "category": "learning",
+  "does": "Weekly audit of the Warrior-style day-trading rules.",
+  "breaks": "Weekly rule-compliance audit is missed."
+ },
+ "deploy-detect": {
+  "title": "Deployment detector",
+  "category": "ops",
+  "does": "Detects when a new software release has been deployed.",
+  "breaks": "New releases aren't recognized."
+ },
+ "deploy-recompute": {
+  "title": "Deployment recompute",
+  "category": "ops",
+  "does": "Recomputes derived data after a new release.",
+  "breaks": "Data may stay computed under old logic."
+ },
+ "deploy-monitor": {
+  "title": "Deployment monitor",
+  "category": "ops",
+  "does": "Watches the health of the system right after a release.",
+  "breaks": "Post-release problems go unnoticed."
+ },
+ "research-intelligence-queue": {
+  "title": "Research intelligence queue",
+  "category": "research",
+  "does": "Processes the queue of items for the Research Intel desk.",
+  "breaks": "Research Intel stops receiving new items."
+ },
+ "holdings-gain-guardian": {
+  "title": "Gain Guardian",
+  "category": "risk",
+  "does": "Watches gains on holdings and advises trims or protection when they erode.",
+  "breaks": "Warnings about giving back gains are missing."
+ },
+ "watch-directive-hygiene": {
+  "title": "Watch directive cleanup",
+  "category": "hygiene",
+  "does": "Removes duplicate or expired watch directives.",
+  "breaks": "Watch rules pile up and duplicate alerts appear."
+ },
+ "watch-alerts-eval": {
+  "title": "Watch alerts evaluation",
+  "category": "signals",
+  "does": "Evaluates watch rules against current data and raises alerts.",
+  "breaks": "Watch triggers are not evaluated."
+ },
+ "prewarm-trade-ai": {
+  "title": "Trade AI page warm-up",
+  "category": "ops",
+  "does": "Pre-loads the main Trade AI page data so it opens fast.",
+  "breaks": "The main page loads slowly."
+ },
+ "defense-recommendations": {
+  "title": "Defense recommendations",
+  "category": "risk",
+  "does": "Produces defensive recommendations for the portfolio.",
+  "breaks": "Defensive guidance stops updating."
+ },
+ "defense-weekly-paid-review": {
+  "title": "Weekly defense review",
+  "category": "risk",
+  "does": "Weekly deeper review of the defensive posture using a paid AI model.",
+  "breaks": "Weekly defense review is missed."
+ },
+ "oversight-weekly-digest": {
+  "title": "Weekly oversight digest",
+  "category": "alerts",
+  "does": "Sends a weekly digest of system oversight findings.",
+  "breaks": "You lose the weekly oversight summary."
+ },
+ "defense-inverse-stoplights": {
+  "title": "Inverse stoplights",
+  "category": "risk",
+  "does": "Computes stoplight signals for inverse (hedge) positions.",
+  "breaks": "Hedge status lights go stale."
+ },
+ "iris-taxonomy-agent-at-0-10": {
+  "title": "Iris taxonomy agent",
+  "category": "research",
+  "does": "Classifies research items into categories on a schedule.",
+  "breaks": "Research items lose categorization."
+ },
+ "iris-taxonomy-agent-freshness": {
+  "title": "Iris taxonomy freshness",
+  "category": "research",
+  "does": "Checks that the Iris categorization is up to date.",
+  "breaks": "Stale categories go unflagged."
+ },
+ "incubator-llm-screener": {
+  "title": "Incubator AI screener",
+  "category": "signals",
+  "does": "AI screening of incubator ideas.",
+  "breaks": "Incubator ideas aren't screened."
+ },
+ "alpaca-live-read-sync": {
+  "title": "Alpaca read-only sync",
+  "category": "portfolio",
+  "does": "Reads Alpaca account data (read-only) into the portfolio view.",
+  "breaks": "Alpaca holdings data goes stale."
+ },
+ "run-scalp-volume-profile-refresh": {
+  "title": "Scalp volume profile",
+  "category": "signals",
+  "does": "Refreshes volume profiles used by the scalp scanner.",
+  "breaks": "Scalp levels are based on old volume data."
+ },
+ "run-scalp-shadow-logger": {
+  "title": "Scalp shadow logger",
+  "category": "learning",
+  "does": "Logs what scalp signals would have done, without trading.",
+  "breaks": "Scalp tuning loses its practice record."
+ },
+ "start-trade-ai-lab-moomoo-opend": {
+  "title": "Start moomoo gateway",
+  "category": "services",
+  "does": "Starts the moomoo market-data gateway used by the lab.",
+  "breaks": "moomoo market data is unavailable."
+ },
+ "hermes-cross-source-synthesizer": {
+  "title": "Hermes cross-source synthesis",
+  "category": "research",
+  "does": "Hermes merges findings from many sources into one view.",
+  "breaks": "Cross-source research summaries stop."
+ },
+ "run-scheduled-two-way-curation-options": {
+  "title": "Options two-way curation",
+  "category": "signals",
+  "does": "Curates options-edge ideas with AI in both directions.",
+  "breaks": "Options idea list loses curation."
+ },
+ "run-scheduled-two-way-curation-desk": {
+  "title": "Desk two-way curation",
+  "category": "signals",
+  "does": "Curates ideas emitted for the desk with AI in both directions.",
+  "breaks": "Desk ideas lose curation."
+ },
+ "drain-discovery-backlog": {
+  "title": "Discovery backlog drain",
+  "category": "research",
+  "does": "Works through the backlog of discovered items.",
+  "breaks": "Discovered items pile up unprocessed."
+ },
+ "run-governed-symbol-thesis-acquisition": {
+  "title": "Symbol thesis acquisition",
+  "category": "research",
+  "does": "Gathers an investment thesis for symbols under governed rules.",
+  "breaks": "Symbols lack written theses."
+ },
+ "cio-lineage-completion-report": {
+  "title": "CIO lineage report",
+  "category": "cio",
+  "does": "Reports whether CIO decisions have complete audit trails.",
+  "breaks": "Gaps in CIO decision records go unseen."
+ },
+ "refresh-operator-product": {
+  "title": "Operator product refresh",
+  "category": "alerts",
+  "does": "Refreshes the operator-facing reports and pages.",
+  "breaks": "Operator pages show old content."
+ },
+ "aegis-overnight": {
+  "title": "Aegis overnight run",
+  "category": "research",
+  "does": "Overnight run of the Aegis analysis agent.",
+  "breaks": "Overnight Aegis analysis is missing."
+ },
+ "aegis-surveillance": {
+  "title": "Aegis surveillance",
+  "category": "risk",
+  "does": "Aegis keeps a watch on names and conditions.",
+  "breaks": "Surveillance flags stop."
+ },
+ "db-retention-timer": {
+  "title": "Database retention",
+  "category": "hygiene",
+  "does": "Deletes old database rows past their retention period.",
+  "breaks": "The database grows without limit."
+ },
+ "hermes-backlog-health-check": {
+  "title": "Hermes backlog check",
+  "category": "ops",
+  "does": "Checks that the Hermes work backlog is not stuck.",
+  "breaks": "A stuck Hermes backlog goes unnoticed."
+ },
+ "hermes-deep-research-local": {
+  "title": "Hermes local deep research",
+  "category": "research",
+  "does": "Runs deep research with a local model.",
+  "breaks": "Deep local research stops."
+ },
+ "hermes-librarian-backlog-loop": {
+  "title": "Hermes librarian loop",
+  "category": "research",
+  "does": "Hermes librarian files and organizes backlog items.",
+  "breaks": "Research items stay unfiled."
+ },
+ "hermes-observation-check": {
+  "title": "Hermes observation check",
+  "category": "ops",
+  "does": "Checks that Hermes is recording its observations.",
+  "breaks": "Silent Hermes gaps go unnoticed."
+ },
+ "hermes-shadow-scorer": {
+  "title": "Hermes shadow scorer",
+  "category": "learning",
+  "does": "Scores Hermes calls in the background to measure accuracy.",
+  "breaks": "Hermes accuracy is not tracked."
+ },
+ "launchpadlib-cache-clean": {
+  "title": "Ubuntu cache cleanup",
+  "category": "hygiene",
+  "does": "Cleans an Ubuntu package-tool cache.",
+  "breaks": "Minor disk clutter builds up."
+ },
+ "recovery-watch": {
+  "title": "Recovery watch",
+  "category": "risk",
+  "does": "Watches names that dropped to see if they are recovering and may be re-entered.",
+  "breaks": "Recovery and re-entry chances may be missed."
+ },
+ "snap-firmware-updater-firmware-notifier": {
+  "title": "Firmware update notifier",
+  "category": "ops",
+  "does": "Ubuntu service that notifies about firmware updates.",
+  "breaks": "No firmware update notices; minor."
+ },
+ "systemd-tmpfiles-clean": {
+  "title": "Temp file cleanup",
+  "category": "hygiene",
+  "does": "Ubuntu job that clears old temporary files.",
+  "breaks": "Temporary files accumulate and use disk."
+ },
+ "trade-ai-news-monitor": {
+  "title": "News monitor",
+  "category": "research",
+  "does": "Watches news feeds for items about tracked names.",
+  "breaks": "Breaking news may be missed."
+ },
+ "tradeai-advisory-notif-broker": {
+  "title": "Advisory notifier",
+  "category": "alerts",
+  "does": "Passes advisory notifications on to delivery channels.",
+  "breaks": "Advisory notices don't reach you."
+ },
+ "tradeai-agent-runtime-producer": {
+  "title": "Agent runtime producer",
+  "category": "agents_llm",
+  "does": "Creates work items for the agent runtime.",
+  "breaks": "Agents get no new tasks."
+ },
+ "tradeai-agent-runtime-alex": {
+  "title": "Agent runtime: Alex",
+  "category": "agents_llm",
+  "does": "Runs the Alex agent's tasks.",
+  "breaks": "Alex agent work stops."
+ },
+ "tradeai-agent-runtime-atlas": {
+  "title": "Agent runtime: Atlas",
+  "category": "agents_llm",
+  "does": "Runs the Atlas agent's tasks.",
+  "breaks": "Atlas agent work stops."
+ },
+ "tradeai-agent-runtime-concierge": {
+  "title": "Agent runtime: Concierge",
+  "category": "agents_llm",
+  "does": "Runs the Concierge agent's tasks.",
+  "breaks": "Concierge agent work stops."
+ },
+ "tradeai-agent-runtime-hermes": {
+  "title": "Agent runtime: Hermes",
+  "category": "agents_llm",
+  "does": "Runs the Hermes agent's tasks.",
+  "breaks": "Hermes agent work stops."
+ },
+ "tradeai-agent-runtime-morgan": {
+  "title": "Agent runtime: Morgan",
+  "category": "agents_llm",
+  "does": "Runs the Morgan agent's tasks.",
+  "breaks": "Morgan agent work stops."
+ },
+ "tradeai-agent-runtime-pulse": {
+  "title": "Agent runtime: Pulse",
+  "category": "agents_llm",
+  "does": "Runs the Pulse agent's tasks.",
+  "breaks": "Pulse agent work stops."
+ },
+ "tradeai-agent-runtime-steph": {
+  "title": "Agent runtime: Steph",
+  "category": "agents_llm",
+  "does": "Runs the Steph agent's tasks.",
+  "breaks": "Steph agent work stops."
+ },
+ "tradeai-backup-enforcer": {
+  "title": "Backup enforcer",
+  "category": "hygiene",
+  "does": "Makes sure required backups are taken and current.",
+  "breaks": "Backups could lapse unnoticed."
+ },
+ "tradeai-hermes-cio-worker": {
+  "title": "Hermes CIO worker",
+  "category": "cio",
+  "does": "Does Hermes research work requested by the CIO.",
+  "breaks": "CIO requests to Hermes go unserved."
+ },
+ "tradeai-iris-taxonomy": {
+  "title": "Iris taxonomy service",
+  "category": "research",
+  "does": "Runs the Iris classification service.",
+  "breaks": "Research categorization stops."
+ },
+ "tradeai-maturity-feeds": {
+  "title": "Maturity feeds",
+  "category": "signals",
+  "does": "Feeds data used to judge how mature a setup is.",
+  "breaks": "Setup maturity readings go stale."
+ },
+ "tradeai-watch-decision-scheduler": {
+  "title": "Watch decision scheduler",
+  "category": "signals",
+  "does": "Schedules and triggers watch-desk decisions.",
+  "breaks": "Watch decisions are not triggered."
+ },
+ "ubuntu-insights-collect": {
+  "title": "Ubuntu insights collect",
+  "category": "other",
+  "does": "Ubuntu telemetry collection.",
+  "breaks": "Nothing for trading; ignorable."
+ },
+ "ubuntu-insights-upload": {
+  "title": "Ubuntu insights upload",
+  "category": "other",
+  "does": "Ubuntu telemetry upload.",
+  "breaks": "Nothing for trading; ignorable."
+ },
+ "chatgpt-oauth-proxy-service": {
+  "title": "ChatGPT login proxy",
+  "category": "services",
+  "does": "Always-on gateway that lets agents use the ChatGPT subscription.",
+  "breaks": "ChatGPT-based agent work fails."
+ },
+ "cio-governed-bridge-service": {
+  "title": "CIO governed bridge",
+  "category": "services",
+  "does": "Always-on bridge that passes CIO requests through governance rules.",
+  "breaks": "CIO requests can't be processed."
+ },
+ "dof-dashboard-service": {
+  "title": "NYC DOF dashboard",
+  "category": "side",
+  "does": "Always-on dashboard for the NYC DOF auction side project.",
+  "breaks": "The auction dashboard is unavailable."
+ },
+ "grok-oauth-proxy-service": {
+  "title": "Grok login proxy",
+  "category": "services",
+  "does": "Always-on gateway that lets agents use the Grok subscription.",
+  "breaks": "Grok-based agent work fails."
+ },
+ "heartbeat-receiver-service": {
+  "title": "Heartbeat receiver",
+  "category": "services",
+  "does": "Always-on receiver for health pulses from other jobs.",
+  "breaks": "Health pulses are lost and jobs look dead."
+ },
+ "openclaw-gateway-service": {
+  "title": "OpenClaw gateway",
+  "category": "services",
+  "does": "Always-on gateway connecting OpenClaw and your messaging apps.",
+  "breaks": "OpenClaw chat and commands stop working."
+ },
+ "portfolio-server-service": {
+  "title": "Portfolio website server",
+  "category": "services",
+  "does": "The always-on server behind the Trade AI website.",
+  "breaks": "The whole Trade AI site goes down."
+ },
+ "power-watch-service": {
+  "title": "Power watch",
+  "category": "services",
+  "does": "Always-on watcher for power outages and supply problems.",
+  "breaks": "Power problems go unflagged."
+ },
+ "trade-ai-lab-moomoo-opend-service": {
+  "title": "moomoo gateway service",
+  "category": "services",
+  "does": "Always-on moomoo gateway for market data in the lab.",
+  "breaks": "moomoo market data stops."
+ },
+ "tradeai-active-trader-motion-service": {
+  "title": "Active trader motion",
+  "category": "services",
+  "does": "Always-on service that tracks fast-moving active-trading names.",
+  "breaks": "Fast-mover tracking stops."
+ },
+ "tradeai-cio-telegram-service": {
+  "title": "CIO Telegram bot",
+  "category": "services",
+  "does": "Always-on Telegram bot for talking to the CIO.",
+  "breaks": "You can't chat with the CIO on Telegram."
+ },
+ "tradeai-health-agent-service": {
+  "title": "Health agent",
+  "category": "services",
+  "does": "Always-on agent that checks system health.",
+  "breaks": "Health checks stop."
+ },
+ "tradeai-lab-postgres-service": {
+  "title": "Lab database",
+  "category": "services",
+  "does": "Always-on database holding the lab's data.",
+  "breaks": "Most pages and jobs fail."
+ },
+ "tradeai-n8n-coordination-gateway-service": {
+  "title": "n8n coordination gateway",
+  "category": "services",
+  "does": "Always-on gateway that coordinates n8n scheduler workflows.",
+  "breaks": "n8n scheduled work can't coordinate."
+ },
+ "tradeai-n8n-run-executor-service": {
+  "title": "n8n run executor",
+  "category": "services",
+  "does": "Always-on worker that carries out jobs n8n schedules.",
+  "breaks": "Scheduled jobs from n8n don't run."
+ },
+ "tradeai-n8n-run-relay-service": {
+  "title": "n8n run relay",
+  "category": "services",
+  "does": "Always-on relay passing job requests from n8n to the host.",
+  "breaks": "n8n jobs never reach the machine."
+ },
+ "tradeai-ops-agent-service": {
+  "title": "Ops agent",
+  "category": "services",
+  "does": "Always-on agent handling operations tasks.",
+  "breaks": "Automated ops handling stops."
+ },
+ "plan-registry-stale": {
+  "title": "Stale plan flagger",
+  "category": "ops",
+  "does": "Planned job that flags approved plans with no activity.",
+  "breaks": "Not installed yet — nothing depends on it today"
+ },
+ "self-heal-fixer-shadow": {
+  "title": "Self-heal fixer (dry run)",
+  "category": "ops",
+  "does": "Runs the self-repair routine in dry-run mode so it only reports what it would fix.",
+  "breaks": "Self-repair previews stop; nothing is changed either way."
+ }
+}
