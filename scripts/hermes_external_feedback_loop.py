@@ -8,6 +8,13 @@ grounding), enhanced by the symbol's realized outcome AFTER the research date wh
 usefulness_score + a feedback note into evidence_json. NEVER touches broker/order/stop/proposal/scoring —
 the per-lane usefulness aggregate is advisory input to lane routing only.
 
+RESEARCH_REFUSAL_20261107: a reply that declines the task ("I cannot provide the requested market verdict…")
+is not research. The researcher now stores it as status='refused' and this loop never rates it. Rows still
+carrying status='sent' from before that change are skipped the same way and, only with the explicit
+``--reclassify-refusals`` backfill, flipped to 'refused' — that status is the per-lane success rate every
+router reads, so it does not move as a side effect of an hourly run. The rows it skips are reported as
+``excluded_reasons`` on the receipt — never as produced or skipped.
+
   python3 scripts/hermes_external_feedback_loop.py            # dry-run
   python3 scripts/hermes_external_feedback_loop.py --apply
 
@@ -26,6 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"
 sys.path.insert(0, str(ROOT / "scripts"))
+from lib.research_refusal import REFUSED_STATUS, classify_refusal  # RESEARCH_REFUSAL_20261107
 _ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 #: The n8n path's own process (advisory_desk / hermes_usefulness_score_n8n); the cron line keeps hermes_usefulness_score.
 N8N_PROCESS_ID = "hermes_usefulness_score_n8n"
@@ -34,6 +42,12 @@ VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
 #: The idle reason a run with nothing to score states in its receipt (reviewed token, see
 #: config/run_quality_idle_reasons.json and the expected_output closed enum in check_n8n_workflow_framework.py).
 NO_ELIGIBLE_REASON = "no_new_input"
+
+#: RESEARCH_REFUSAL_20261107 — how many candidate rows to read per row we are willing to rate. A
+#: refusal costs no model call, so a batch full of them must not starve the rows that do have
+#: research in them; over-fetching lets one pass reach past them. The rating budget is still
+#: ``--max-rows`` (see ``_run_feedback``): this only widens the window it is chosen from.
+REFUSAL_OVERFETCH = 4
 
 
 def _via_bridge():
@@ -121,6 +135,10 @@ def main(argv=None):
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--model", default="deepseek-flash")
     ap.add_argument("--max-rows", type=int, default=25)
+    ap.add_argument("--reclassify-refusals", action="store_true",
+                    help="also flip rows written before RESEARCH_REFUSAL_20261107 from status='sent' to "
+                         "'refused' (they are never rated either way; this is the one-off backfill, and it "
+                         "changes the per-lane success rate every router reads — see the DONE note)")
     args = ap.parse_args(argv)
     if args.dry_run:
         print(f"DRY-RUN hermes-usefulness-backfill: would score up to {args.max_rows} research rows through the existing governed process; no env load, DB, model or writes")
@@ -144,7 +162,13 @@ def main(argv=None):
     # zero-work run is indistinguishable from a silent failure on the Jobs page (LQ-20261107-120).
     write_lane_receipt("hermes-usefulness-backfill", ok=rc == 0, exit_code=rc,
                        started_at=started, script="hermes_external_feedback_loop.py", summary=result,
-                       produced_count=result["scored"], attempted_count=result["selected"],
+                       produced_count=result["scored"],
+                       attempted_count=result["scored"] + result["failed"],
+                       # A refusal is not a piece of research the run chose to skip: it was never
+                       # rateable. Stated as excluded, so it neither counts as produced nor reads
+                       # as a skip against the rows that were.
+                       excluded_reasons=({"REFUSED_BY_PROFILE": result["refusals_skipped"]}
+                                         if result["refusals_skipped"] else None),
                        empty_reason=result.get("empty_reason"))
     return rc
 
@@ -153,17 +177,40 @@ def _run_feedback(args):
     if KILL.exists():
         print("ABORT: kill-switch present"); sys.exit(2)
     c = _db(); cur = c.cursor()
+    # Over-fetch by REFUSAL_OVERFETCH: the rows this lane must skip (a reply that declined the
+    # task) are still status='sent' until the one-off backfill flips them, and a plain LIMIT
+    # would let a window of them delay every row that actually carries research.
     cur.execute("""SELECT id, lane, symbol, question, recommendation, dissent, created_at
                    FROM hermes_external_research
                    WHERE status='sent' AND usefulness_score IS NULL AND recommendation IS NOT NULL
-                   ORDER BY id ASC LIMIT %s""", (args.max_rows,))
+                   ORDER BY id ASC LIMIT %s""", (max(1, args.max_rows) * REFUSAL_OVERFETCH,))
     rows = cur.fetchall()
     print(f"Hermes External Feedback Loop — eligible={len(rows)} apply={args.apply} model={args.model}")
     scored = 0
     failed = 0
+    refusals_skipped = 0
+    reclassified = 0
     consecutive_failures = 0
     aborted = None
     for rid, lane, symbol, question, rec, dissent, created in rows:
+        # A refusal is not a piece of research: never rate it. Flipping its stored status is the
+        # one-off backfill (--reclassify-refusals), not part of every hourly run: that status feeds
+        # the per-lane success rate every router ranks on, so it moves only when someone asks.
+        is_refusal, refusal_reason = classify_refusal(rec)
+        if is_refusal:
+            refusals_skipped += 1
+            print(f"  id={rid} lane={lane} sym={symbol or '-'} REFUSED ({refusal_reason}) — not scored")
+            if args.apply and getattr(args, "reclassify_refusals", False):
+                cur.execute("""UPDATE hermes_external_research
+                               SET status=%s, learning_candidate=%s
+                               WHERE id=%s AND status='sent'""",
+                            (REFUSED_STATUS,
+                             f"refused:{refusal_reason} — declined the task; nothing to rate"[:500], rid))
+                c.commit()
+                reclassified += 1
+            continue
+        if scored + failed >= args.max_rows:
+            break
         outcome = _outcome(cur, symbol, created)
         try:
             u, rationale, pack = _rate(question, rec, dissent, outcome)
@@ -205,9 +252,13 @@ def _run_feedback(args):
         print(f"  stopped after {scored} scored; {len(rows) - scored} eligible rows left unscored "
               f"(still eligible — they were never written)")
     c.close()
-    print("RESULT:", json.dumps({"scored_now": scored, "per_lane_usefulness": agg}))
-    result = {"selected": len(rows), "scored": scored, "failed": failed, "aborted": bool(aborted)}
-    if not rows:
+    print("RESULT:", json.dumps({"scored_now": scored, "refusals_skipped": refusals_skipped,
+                                 "refusals_reclassified": reclassified,
+                                 "per_lane_usefulness": agg}))
+    result = {"selected": len(rows), "scored": scored, "failed": failed,
+              "refusals_skipped": refusals_skipped, "reclassified": reclassified,
+              "aborted": bool(aborted)}
+    if not rows or (not scored and not failed):
         # Nothing eligible is a CORRECT outcome for this hourly lane, not a failure: every sent research row that
         # can be scored already is (this loop is the only writer of usefulness_score; the researcher's INSERT
         # leaves it NULL and the loop rates the row at the next tick). State it, so the Jobs page can grade the

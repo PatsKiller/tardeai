@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "research_refusal_20261107",
+  "files": [
+    "tests/test_research_refusal_20261107.py"
+  ],
+  "anchor": "RESEARCH_REFUSAL_20261107",
+  "comment": [
+    "ANCHOR: RESEARCH_REFUSAL_20261107 — a refusal is not research (LQ-20261107-316). lib/research_refusal.classify_refusal is the one classifier, anchored at the opening sentence; hermes_external_researcher.classify_reply_status stores a declining reply as status='refused' (COMPLETED/REFUSED_BY_PROFILE, not a lane error); hermes_external_feedback_loop never rates a refused row, reclassifies the rows written before the fix, and states them on the receipt as excluded_reasons — never as produced or skipped."
+  ]
+}

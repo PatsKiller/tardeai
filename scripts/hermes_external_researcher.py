@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from cio_agent_contract import build_external_research_json_schema, parse_external_research_result
 from llm_net import urlopen_retry  # retry transient network/DNS/5xx; surfaces 4xx (e.g. credit) immediately
 from lib.research_call_accounting import accounting_identity, append_event as append_call_event
+from lib.research_refusal import REFUSED_STATUS, classify_refusal
 from lib.curation_lineage import (
     grounding_instruction_text,
     new_research_guid,
@@ -573,6 +574,28 @@ def cache_blocks_lane(cap, force_retest):
     return True   # known-blocked and (no retest date, or not yet due)
 
 
+def classify_reply_status(status, parsed, raw):
+    """The status this reply is stored with, after the refusal check (RESEARCH_REFUSAL_20261107).
+
+    Only a reply that reached ``sent`` is examined; an HTTP error, a budget skip or a rejected
+    quality gate is already classified by its cause. A refusal gets ``REFUSED_STATUS`` and its
+    parsed block is annotated in place (risk flag, operator action, learning note) so the row
+    explains itself without re-reading the prose. Idempotent and side-effect free otherwise.
+    """
+    if status != "sent":
+        return status
+    is_refusal, refusal_reason = classify_refusal(parsed.get("recommendation") or raw)
+    if not is_refusal:
+        return status
+    flags = parsed.get("risk_flags")
+    flags = list(flags) if isinstance(flags, (list, tuple)) else ([flags] if flags else [])
+    parsed["risk_flags"] = flags + [refusal_reason]
+    parsed["operator_action"] = parsed.get("operator_action") or "REPROMPT_WITH_RESEARCH_PROFILE"
+    parsed["learning_candidate"] = f"refused:{refusal_reason} — declined the task; nothing to rate"
+    print(f"[research-refusal] the reply declined the task ({refusal_reason}); storing status={REFUSED_STATUS}")
+    return REFUSED_STATUS
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--lane", default="claude", choices=["claude", "chatgpt", "grok", "deepseek"])
@@ -808,6 +831,12 @@ def main():
             status = ("auth_pending" if "AUTH_PENDING" in msg else
                       "unavailable" if "UNAVAILABLE" in msg else "error")
             parsed = {"recommendation": f"[{status.upper()}] {msg}", "error": msg}
+    # RESEARCH_REFUSAL_20261107: a model that declines the task ("I cannot provide the requested
+    # market verdict…") used to be stored as 'sent', so the usefulness backfill scored the
+    # refusal, the outcome grader read a direction out of it and the answer readers counted it
+    # as research. One classification here, before either write path (--no-store and the INSERT),
+    # so there is a single place that decides what a refusal is.
+    status = classify_reply_status(status, parsed, raw)
     if getattr(args, "no_store", False):
         print(json.dumps({
             "stored": False,
@@ -826,6 +855,9 @@ def main():
             account("COST_CAP_EXCEEDED", reason=parsed.get("error") or "COST_CAP_EXCEEDED", attempt_no=1)
         elif status in {"sent", "rejected_data_quality"}:
             account("COMPLETED", reason=status, attempt_no=1)
+        elif status == REFUSED_STATUS:
+            # The provider answered; the answer was a refusal. That is not a lane error.
+            account("COMPLETED", reason="REFUSED_BY_PROFILE", attempt_no=1)
         else:
             account("ERROR", reason=f"provider_status:{status}", attempt_no=1)
         return
@@ -873,6 +905,11 @@ def main():
             print(f"research_thesis_reconciliation: ERROR {type(exc).__name__}:{exc}")
     elif status == "rejected_data_quality":
         account("COMPLETED", reason="REJECTED_DATA_QUALITY", attempt_no=1, metadata={"research_id": rid})
+    elif status == REFUSED_STATUS:
+        # The provider answered; the answer was a refusal. That is not a lane error, and it is
+        # not a completed piece of research — the row carries status='refused'.
+        account("COMPLETED", reason="REFUSED_BY_PROFILE", attempt_no=1, metadata={"research_id": rid})
+        print("refused:", (parsed.get("recommendation") or "")[:200])
     else:
         account("ERROR", reason=f"provider_status:{status}", attempt_no=1, metadata={"research_id": rid})
 
