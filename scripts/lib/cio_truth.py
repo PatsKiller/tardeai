@@ -884,8 +884,13 @@ def regime_for(*, db_query=None, projection=None, now=None) -> dict:
     vix = _number(row.get("vix"))
     vix_at = row.get("generated_at") or row.get("created_at")
     if vix is None and row.get("snapshot_id"):
-        values = _query_rows(db_query, "SELECT value, created_at FROM market_regime_indicators "
-                             "WHERE snapshot_id=%s AND indicator_key='vix_close' ORDER BY created_at DESC LIMIT 1",
+        # The classifier snapshot (RS_...) records the collector's indicator snapshot (SNAP_...) in
+        # inputs->>'_indicator_snapshot_id'; indicators are keyed by that id, never by the RS_ id.
+        values = _query_rows(db_query, "SELECT i.value, i.created_at FROM market_regime_indicators i "
+                             "JOIN market_regime_snapshots s ON i.snapshot_id IN "
+                             "(s.snapshot_id, s.inputs->>'_indicator_snapshot_id') "
+                             "WHERE s.snapshot_id=%s AND i.indicator_key='vix_close' "
+                             "ORDER BY i.created_at DESC LIMIT 1",
                              (row["snapshot_id"],))
         if values:
             vix, vix_at = _number(values[0].get("value")), values[0].get("created_at")

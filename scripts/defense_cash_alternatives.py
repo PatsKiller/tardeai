@@ -6,14 +6,31 @@ market instruments, and covered-call income ETFs against live market data.
 Produces a ranked JSON snapshot consumed by the defense desk frontend.
 
 Scoring: Yield (30%), Capital preservation (35%), Liquidity (20%), Tax efficiency (15%).
+
+Data (fixed 2026-11-06, operator decision "stale sources -> n8n lanes"):
+  * price / day change / volume: ``market_quotes`` (latest row per symbol; columns ``price``,
+    ``day_change_pct``, ``volume``, ``fetched_at``), else ``ticker_prices.close_price``.
+  * yield: ``ticker_dividend_data.annual_dividend_per_share`` (yfinance, written by
+    ``sync_dividend_data.py``, which now includes this universe) divided by the quote price. A
+    missing, stale (> ``MAX_DIVIDEND_AGE_DAYS``), retired-provider or implausible row is a named
+    ``yield_gap`` and the yield stays unknown -- never a number made up here.
+
+``--dry-run`` (default) reads the DB and prints the ranking; nothing is written. ``--apply`` writes
+``<TRADEAI_STATE_ROOT>/data/runtime/defense_cash_alternatives_latest.json`` and a LaneRunReceipt v2.
+Read-only: no broker, order or notification code is reachable from this script.
 """
+import argparse
 import json
+import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUTPUT = ROOT / "data" / "runtime" / "defense_cash_alternatives_latest.json"
+LANE_ID = "defense-cash-alternatives"
+OUTPUT_NAME = "defense_cash_alternatives_latest.json"
+MAX_DIVIDEND_AGE_DAYS = 14
+MAX_PLAUSIBLE_YIELD_PCT = 25.0
 
 # Universe: conservative vehicles suitable as cash substitutes
 UNIVERSE = {
@@ -47,67 +64,128 @@ UNIVERSE = {
 }
 
 
-def _load_json(path: Path):
+def _scripts_on_path() -> None:
+    for p in (str(ROOT / "scripts"), str(ROOT)):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+
+
+def universe_symbols() -> list[str]:
+    return [e["symbol"] for entries in UNIVERSE.values() for e in entries]
+
+
+def _db_query():
+    """Read-only query callable ``(sql, params) -> list[dict]``; a failed SELECT is rolled back (never poisons)."""
+    _scripts_on_path()
+    import psycopg2.extras
+    # session13_db, not db_adapter: db_adapter's module reaches holdings_guard -> schwab_position_sync ->
+    # schwab_transport (tests/test_lane_transitive_capabilities_20261015.py); this lane must not.
+    from session13_db import get_conn
+    conn = get_conn(connect_timeout=10)
+
+    def query(sql, params=None):
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                rows = [dict(r) for r in cur.fetchall()]
+            conn.rollback()  # read-only: end the transaction, write nothing
+            return rows
+        except Exception:
+            conn.rollback()
+            raise
+    return query
+
+
+def _num(value):
     try:
-        return json.loads(path.read_text())
-    except Exception:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
         return None
 
 
-def _get_price(symbol: str) -> dict | None:
-    """Get latest price + dividend data from market quotes DB."""
+def _aware(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        cur.execute("""SELECT close_price, day_change_pct, volume, symbol
-                       FROM market_quotes WHERE symbol=%s
-                       ORDER BY date_scraped DESC LIMIT 1""", (symbol,))
-        row = cur.fetchone()
-        if row:
-            return {"price": float(row[0]), "change_pct": float(row[1]) if row[1] else None,
-                    "volume": row[2], "symbol": row[3]}
-    except Exception:
-        pass
-    # Fallback: try ticker_prices table
-    try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        cur.execute("""SELECT close_price FROM ticker_prices WHERE symbol=%s
-                       ORDER BY price_date DESC LIMIT 1""", (symbol,))
-        row = cur.fetchone()
-        if row:
-            return {"price": float(row[0]), "change_pct": None, "volume": None, "symbol": symbol}
-    except Exception:
-        pass
-    return None
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def _get_yield_data(symbol: str) -> dict | None:
-    """Get dividend yield from broker or Finviz snapshots."""
-    result = {"div_yield": None, "sec_yield": None, "payout_ratio": None}
+def load_prices(query, symbols: list[str]) -> dict:
+    """{symbol: {price, change_pct, volume, as_of, source}} from market_quotes, else ticker_prices."""
+    out = {}
     try:
-        from db_adapter import _get_conn
-        cur = _get_conn().cursor()
-        # Check market_quote_snapshots for yield data
-        cur.execute("""SELECT dividend_yield, pe_ratio FROM market_quote_snapshots
-                       WHERE symbol=%s ORDER BY created_at DESC LIMIT 1""", (symbol,))
-        row = cur.fetchone()
-        if row:
-            result["div_yield"] = float(row[0]) if row[0] else None
-            result["pe_ratio"] = float(row[1]) if row[1] else None
+        rows = query("SELECT DISTINCT ON (symbol) symbol, price, day_change_pct, volume, fetched_at "
+                     "FROM market_quotes WHERE symbol = ANY(%s) AND price IS NOT NULL "
+                     "ORDER BY symbol, fetched_at DESC", (symbols,))
     except Exception:
-        pass
-    # Bond/MM ETF yield from Finviz
+        rows = []
+    for r in rows:
+        price = _num(r.get("price"))
+        if price and price > 0:
+            out[r["symbol"]] = {"symbol": r["symbol"], "price": price, "change_pct": _num(r.get("day_change_pct")),
+                                "volume": r.get("volume"), "as_of": _aware(r.get("fetched_at")), "source": "market_quotes"}
+    missing = [s for s in symbols if s not in out]
+    if missing:
+        try:
+            rows = query("SELECT DISTINCT ON (symbol) symbol, close_price, price_date FROM ticker_prices "
+                         "WHERE symbol = ANY(%s) AND close_price IS NOT NULL ORDER BY symbol, price_date DESC",
+                         (missing,))
+        except Exception:
+            rows = []
+        for r in rows:
+            price = _num(r.get("close_price"))
+            if price and price > 0:
+                out[r["symbol"]] = {"symbol": r["symbol"], "price": price, "change_pct": None, "volume": None,
+                                    "as_of": _aware(r.get("price_date")), "source": "ticker_prices"}
+    return out
+
+
+def load_dividends(query, symbols: list[str]) -> dict:
+    """{symbol: ticker_dividend_data row}; a read failure returns {} (every yield becomes a named gap)."""
     try:
-        snap = _load_json(ROOT / "data" / "runtime" / "finviz_etfs_latest.json")
-        if snap:
-            etfs = {e["symbol"]: e for e in (snap.get("etfs") or [])}
-            if symbol in etfs:
-                e = etfs[symbol]
-                result["div_yield"] = result["div_yield"] or (float(e["div_yield"]) if e.get("div_yield") else None)
+        rows = query("SELECT symbol, annual_dividend_per_share, dividend_yield_pct, source, updated_at "
+                     "FROM ticker_dividend_data WHERE symbol = ANY(%s)", (symbols,))
     except Exception:
-        pass
-    return result
+        return {}
+    return {r["symbol"]: r for r in rows}
+
+
+def _retired(source) -> bool:
+    _scripts_on_path()
+    try:
+        from lib.dividend_source_trust import is_retired_source
+    except ImportError:  # pragma: no cover
+        from scripts.lib.dividend_source_trust import is_retired_source
+    return is_retired_source(source)
+
+
+def yield_for(symbol: str, price_data: dict | None, row: dict | None, now: datetime) -> dict:
+    """Trailing yield % = annual dividend / price, or a named gap. Never a guessed number."""
+    out = {"div_yield": None, "annual_dividend": None, "source": None, "as_of": None, "yield_gap": None}
+    if not row:
+        out["yield_gap"] = "no dividend row (sync_dividend_data has not covered this symbol)"
+        return out
+    out["source"], out["as_of"] = row.get("source"), _aware(row.get("updated_at"))
+    annual = _num(row.get("annual_dividend_per_share"))
+    price = (price_data or {}).get("price")
+    if _retired(row.get("source")):
+        out["yield_gap"] = f"dividend row is from a retired provider ({row.get('source')})"
+    elif out["as_of"] is None or now - out["as_of"] > timedelta(days=MAX_DIVIDEND_AGE_DAYS):
+        out["yield_gap"] = f"dividend row older than {MAX_DIVIDEND_AGE_DAYS} days"
+    elif not annual or annual <= 0:
+        out["yield_gap"] = "no annual dividend on the dividend row"
+    elif not price:
+        out["yield_gap"] = "no price to divide the annual dividend by"
+    else:
+        value = round(annual / price * 100, 2)
+        if value > MAX_PLAUSIBLE_YIELD_PCT:
+            out["yield_gap"] = f"implausible yield {value}% (annual {annual} / price {price})"
+        else:
+            out["div_yield"], out["annual_dividend"] = value, annual
+    return out
 
 
 def score_candidate(c: dict, price_data: dict | None, yield_data: dict | None) -> dict:
@@ -195,38 +273,101 @@ def _generate_thesis(c: dict) -> str:
     return c
 
 
-def screen() -> dict:
-    """Screen all candidates, score them, rank by total score, and save."""
+def screen(query, *, now: datetime | None = None) -> dict:
+    """Score and rank every candidate. Pure given ``query``; writes nothing."""
+    now = now or datetime.now(timezone.utc)
+    symbols = universe_symbols()
+    prices = load_prices(query, symbols)
+    dividends = load_dividends(query, symbols)
     candidates = []
-    for group, entries in UNIVERSE.items():
+    for entries in UNIVERSE.values():
         for e in entries:
             c = dict(e)
-            price_data = _get_price(c["symbol"])
-            yield_data = _get_yield_data(c["symbol"])
+            price_data = prices.get(c["symbol"])
+            yield_data = yield_for(c["symbol"], price_data, dividends.get(c["symbol"]), now)
             c["price"] = price_data
             c["yield_data"] = yield_data
             c = score_candidate(c, price_data, yield_data)
             c = _generate_thesis(c)
             candidates.append(c)
-
     candidates.sort(key=lambda x: x.get("total_score", 0), reverse=True)
-
-    result = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+    with_yield = sum(1 for c in candidates if c["yield_data"]["div_yield"] is not None)
+    return {
+        "generated_at": now.isoformat(),
         "candidates": candidates,
         "top3": candidates[:3],
         "risk_free_rate": 4.5,  # approximate 4-week T-bill, update periodically
+        "coverage": {"universe": len(candidates), "priced": sum(1 for c in candidates if c["price"]),
+                     "with_yield": with_yield},
         "note": "Advisory only — the desk presents alternatives; allocation requires operator decision + 2FA.",
     }
-    OUTPUT.write_text(json.dumps(result, default=str, indent=1))
-    return result
 
 
-def main() -> int:
-    result = screen()
-    print(f"[cash-alternatives] screened {len(result['candidates'])} vehicles, top: "
-          f"{', '.join(c['symbol'] for c in result['top3'])}")
-    return 0
+def _receipt_lib():
+    _scripts_on_path()
+    try:
+        from lib import lane_last_receipt
+    except ImportError:  # pragma: no cover
+        from scripts.lib import lane_last_receipt
+    return lane_last_receipt
+
+
+def output_path() -> Path:
+    return _receipt_lib().runtime_dir() / OUTPUT_NAME
+
+
+def write_output(result: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
+    tmp.write_text(json.dumps(result, default=str, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _line(result: dict) -> str:
+    cov = result["coverage"]
+    top = ", ".join(f"{c['symbol']} {c['total_score']} (yield {c['yield_data']['div_yield']})" for c in result["top3"])
+    return (f"screened {cov['universe']} vehicles, priced {cov['priced']}, yield known {cov['with_yield']}; "
+            f"top: {top}")
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="read and rank; write nothing (default)")
+    mode.add_argument("--apply", action="store_true", help="write the snapshot + lane receipt")
+    ap.add_argument("--json", action="store_true", help="print the full result as JSON")
+    args = ap.parse_args(argv)
+    lib = _receipt_lib()
+    started = lib.now_iso()
+    try:
+        result = screen(_db_query())
+    except Exception as exc:
+        if args.apply:
+            lib.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                   script="defense_cash_alternatives.py", error=f"{type(exc).__name__}: {exc}")
+        print(f"[cash-alternatives] FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(result, default=str, indent=1))
+    gaps = {}
+    for c in result["candidates"]:
+        gap = c["yield_data"]["yield_gap"]
+        if gap:
+            gaps[gap.split(" (")[0]] = gaps.get(gap.split(" (")[0], 0) + 1
+    if not args.apply:
+        print(f"DRY-RUN {LANE_ID}: {_line(result)}; yield gaps {gaps or 'none'}; would write {output_path()}; nothing written")
+        return 0
+    path = output_path()
+    write_output(result, path)
+    ok = result["coverage"]["priced"] > 0
+    lib.write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=started,
+                           script="defense_cash_alternatives.py", summary={**result["coverage"], "yield_gaps": gaps},
+                           produced_count=result["coverage"]["universe"] if ok else 0,
+                           attempted_count=result["coverage"]["universe"], skipped_reasons=gaps,
+                           output_evidence=[{"path": str(path), "kind": "file"}],
+                           empty_reason=None if ok else "no candidate could be priced")
+    print(f"[cash-alternatives] {_line(result)}; wrote {path}")
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

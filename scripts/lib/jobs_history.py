@@ -352,7 +352,7 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
     component = W.component(lane)
     signal = lane.get("output_signal") or {}
     runs = sorted(ledger + journal, key=lambda r: r["_start"] or datetime.min.replace(tzinfo=timezone.utc))
-    sources = [s for s, rows in (("n8n run ledger", ledger), ("cron wrapper journal", journal)) if rows]
+    sources = list(dict.fromkeys(r["source"] for r in ledger + journal))
     covered = [t for t, rows in ((ledger_since, ledger), (journal_since, journal)) if rows and t]
     history_gap = None
     if not runs:
@@ -360,7 +360,7 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
             runs = [receipt]
             sources = ["run receipt (last run only)"]
         if kind == "systemd":
-            history_gap = "systemd runs are not written to a store this page reads (its journal is not read)"
+            history_gap = "no finished run recorded by the systemd unit snapshot (unit-run-snapshot lane) for this job yet"
         elif kind == "cron" and not component:
             history_gap = "this cron line is not wrapped by safe_flock, so its runs are not journaled"
         elif kind == "cron":
@@ -451,6 +451,7 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
     for row in inputs.get("ledger_runs") or []:
         ledger_by_lane[row.get("lane_id")].append(ledger_run(row))
     journal_by_component = journal_runs(inputs.get("journal_events") or [])
+    unit_by_lane = unit_runs_by_lane(inputs.get("unit_runs") or [])
     group = lambda rows, key: {k: [r for r in rows if r.get(key) == k] for k in {r.get(key) for r in rows}}
     dead = group(inputs.get("dead_letters") or [], "lane_id")
     breakers = group(inputs.get("breakers") or [], "lane_id")
@@ -471,7 +472,7 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
         component = W.component(lane)
         keys = {lane_id} | ({component} if component else set())
         ledger = ledger_by_lane.get(lane_id, [])
-        journal = journal_by_component.get(component, []) if component else []
+        journal = (journal_by_component.get(component, []) if component else []) + unit_by_lane.get(lane_id, [])
         fixes = fix_events(lane_id, keys, runs=ledger, dead=dead.get(lane_id, []), breakers=breakers.get(lane_id, []),
                            incidents=[r for k in keys for r in incidents_by_job.get(k, [])],
                            fixer_jobs=[j for k in keys for j in fixer_by_lane.get(k, [])],
@@ -598,6 +599,59 @@ def read_journal(path: Path) -> dict:
     return out
 
 
+UNIT_RUNS_TAIL_BYTES = 8 * 1024 * 1024
+
+
+def read_unit_runs(path: Path) -> dict:
+    """The tail of ``data/runtime/unit_runs.jsonl`` (UnitRun@v1, written by the unit-run-snapshot lane)."""
+    out = {"unit_runs": [], "newest": None}
+    try:
+        with path.open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            start = max(0, size - UNIT_RUNS_TAIL_BYTES)
+            stream.seek(start)
+            raw = stream.read(UNIT_RUNS_TAIL_BYTES)
+    except FileNotFoundError:
+        return out
+    except OSError:
+        out["gap"] = "the systemd unit run snapshot could not be read"
+        return out
+    lines = raw.split(b"\n")[1:] if start else raw.split(b"\n")
+    for line in lines:
+        try:
+            row = json.loads(line) if line.strip() else None
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("schema") == "UnitRun@v1" and row.get("lane_id"):
+            out["unit_runs"].append(row)
+    out["newest"] = out["unit_runs"][-1].get("observed_at") if out["unit_runs"] else None
+    return out
+
+
+def unit_runs_by_lane(rows: list[dict]) -> dict[str, list[dict]]:
+    """UnitRun@v1 rows -> page runs per lane (one per InvocationID)."""
+    out: dict[str, list[dict]] = defaultdict(list)
+    seen = set()
+    for row in rows:
+        start, end = _at(row.get("started_at")), _at(row.get("finished_at"))
+        key = (row["lane_id"], row.get("invocation_id") or row.get("started_at"))
+        if start is None or end is None or key in seen:
+            continue
+        seen.add(key)
+        code = row.get("exit_status")
+        result = "succeeded" if row.get("succeeded") else "timed_out" if row.get("result") == "timeout" else "failed"
+        out[row["lane_id"]].append({
+            "run_id": row.get("invocation_id"), "source": "systemd unit snapshot", "mode": "live", "result": result,
+            "requested_at": None, "started_at": _iso(start), "finished_at": _iso(end),
+            "exit_code": code if type(code) is int else None, "duration_s": round((end - start).total_seconds(), 3),
+            "attempt": None, "retry_of": None, "requested_by": "systemd timer", "inline_attempts": None,
+            "reason": None if row.get("succeeded") else _text(f"systemd result {row.get('result')}"), "_start": start})
+    for runs in out.values():
+        runs.sort(key=lambda r: r["_start"])
+    return out
+
+
 def read_receipts(registry: dict, root: Path) -> tuple[dict, dict]:
     """Declared JSON receipts (last run) and declared output files' write times, inside data/ and logs/ only."""
     receipts, outputs = {}, {}
@@ -635,7 +689,8 @@ def _load(root: Path, registry_path: Path, now: datetime) -> dict:
     ledger = read_ledger(root / "data/governance/n8n_coordination_ledger.sqlite", now)
     journal = read_journal(root / "logs/safe_flock_events.jsonl")
     receipts, outputs = read_receipts(registry, root)
-    for name, part in (("n8n run ledger", ledger), ("cron wrapper journal", journal)):
+    units = read_unit_runs(root / "data/runtime/unit_runs.jsonl")
+    for name, part in (("n8n run ledger", ledger), ("cron wrapper journal", journal), ("systemd unit snapshot", units)):
         if part.get("gap"):
             gaps.append(part["gap"])
         sources.append({"name": name, "newest_record_at": part.get("newest"),
@@ -663,6 +718,7 @@ def _load(root: Path, registry_path: Path, now: datetime) -> dict:
                     "covers_from": None, "note": f"{len(receipts)} receipts, {len(outputs)} output files"})
     inputs = {**{k: ledger[k] for k in ("ledger_runs", "dead_letters", "breakers", "last_live_success", "ledger_since")},
               "journal_events": journal["journal_events"], "journal_since": journal["journal_since"],
+              "unit_runs": units["unit_runs"],
               "receipts": receipts, "output_times": outputs, "incidents": incidents,
               "fixer_jobs": [j for j in (fixer.get("jobs") or {}).values() if isinstance(j, dict)],
               "episodes": episodes, "actions": actions, "cron_heal": cron_heal, "sources": sources, "gaps": gaps}
