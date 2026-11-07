@@ -1356,23 +1356,58 @@ def _narrative_is_clean(text: Any) -> bool:
         return False
 
 
-def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dict[str, Any]:
-    """Prefer the record's cc_narrative; fall back deterministically."""
+def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str, *,
+                   label: Optional[str] = None,
+                   now: Optional[datetime] = None,
+                   held_symbols: Optional[set[str]] = None,
+                   max_age_hours: Optional[float] = None) -> dict[str, Any]:
+    """Prefer the record's cc_narrative; fall back deterministically.
+
+    2026-11-07 data-truth audit (defect 7): the record's prose is only *current* while it is
+    inside the narrative age bound. An expired narrative is not rendered as today's view —
+    the row says which record it has and how old it is, and keeps the prose under
+    ``superseded_narrative`` so nothing is lost. A ``HELD:<SYM>`` key is skipped when the
+    symbol is not in ``held_symbols`` (the record is a leftover, not a view of the book).
+    """
     if store is not None:
         try:
-            from scripts.lib.cio_record_narrative import narrative_for
+            from scripts.lib.cio_record_narrative import NARRATIVE_MAX_AGE_HOURS, narrative_for
         except Exception:                                        # noqa: BLE001
             narrative_for = None                                 # type: ignore[assignment]
+            NARRATIVE_MAX_AGE_HOURS = 168                        # type: ignore[assignment]
+        bound = NARRATIVE_MAX_AGE_HOURS if max_age_hours is None else max_age_hours
         if narrative_for is not None:
             for key in keys:
+                if (held_symbols is not None and str(key).upper().startswith("HELD:")
+                        and str(key).split(":", 1)[1].upper() not in held_symbols):
+                    continue
                 try:
                     nar = narrative_for(key, store=store)
                 except Exception:                                # noqa: BLE001
                     nar = None
                 if nar and _str(nar.get("what")).strip():
                     if _narrative_is_clean(nar.get("what")):
+                        age = _narrative_age_hours(nar.get("as_of"), now=now)
+                        if age is not None and age > bound:
+                            days = max(1, round(age / 24.0))
+                            basis = label or _subject_label(key, fallback_what)
+                            return {
+                                "subject_key": key,
+                                "what": (f"{basis}. The record narrative is from "
+                                         f"{_str(nar.get('as_of'))[:10]} ({days} day"
+                                         f"{'s' if days != 1 else ''} old) and is not shown as current."),
+                                "writer": "deterministic_fallback",
+                                "author": "deterministic_fallback",
+                                "from_record": False,
+                                "narrative_source": "record_expired",
+                                "record_as_of": nar.get("as_of"),
+                                "record_age_days": round(age / 24.0, 1),
+                                "record_max_age_days": round(bound / 24.0, 1),
+                                "superseded_narrative": nar.get("what"),
+                            }
                         out = dict(nar)
                         out["narrative_source"] = "record"
+                        out["record_age_days"] = None if age is None else round(age / 24.0, 1)
                         # W3c / AGENTS §9.2 — writer names the author, not the
                         # migration copy step. Strip migration: if present.
                         try:
@@ -1410,13 +1445,33 @@ def _row_narrative(store: Any, keys: tuple[str, ...], fallback_what: str) -> dic
     }
 
 
-def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]:
+def _narrative_age_hours(as_of: Any, *, now: Optional[datetime] = None) -> Optional[float]:
+    try:
+        from scripts.lib.holding_intel_freshness import age_hours
+        return age_hours(as_of, now=now)
+    except Exception:                                            # noqa: BLE001
+        return None
+
+
+def _subject_label(key: str, fallback_what: str) -> str:
+    """"SPCX: Trim" from the deterministic fallback line, which is "<SYM>: <stance>. …"."""
+    head = _str(fallback_what).split(". ", 1)[0].strip().rstrip(".")
+    return head or _str(key)
+
+
+def attach_record_narratives(home: dict[str, Any], store: Any, *,
+                             now: Optional[datetime] = None,
+                             held_symbols: Optional[set[str]] = None) -> dict[str, Any]:
     """Attach `cc_narrative` to the CC sections the spec names.
 
     position/book row · watch row · re-entry row · sector row. (The SLEEVE:CASH
     letter is built separately by `build_cash_letter_section`, which enforces a
     much tighter shape.) Returns a small coverage object so the page can say how
     much of what it shows came from memory rather than from a template.
+
+    ``held_symbols`` (when known) keeps a HELD record for a since-sold symbol off the row,
+    and ``now`` bounds how old a record narrative may be before the row says so instead of
+    rendering it as current.
     """
     try:
         from scripts.lib.cio_instrument_record import subject_key as _sk
@@ -1424,12 +1479,14 @@ def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]
         def _sk(kind: str, name: str) -> str:                    # type: ignore[misc]
             return f"{str(kind).upper()}:{str(name).strip().upper()}"
 
-    counts = {k: {"rows": 0, "from_record": 0} for k in RECORD_NARRATIVE_SECTIONS}
+    counts = {k: {"rows": 0, "from_record": 0, "record_expired": 0} for k in RECORD_NARRATIVE_SECTIONS}
 
     def _tally(section: str, nar: dict[str, Any]) -> None:
         counts[section]["rows"] += 1
         if nar.get("from_record"):
             counts[section]["from_record"] += 1
+        elif nar.get("narrative_source") == "record_expired":
+            counts[section]["record_expired"] += 1
 
     # Position / book rows — HELD first, EXIT for a name already being unwound.
     for row in (home.get("cio_now") or {}).get("decisions") or []:
@@ -1443,6 +1500,7 @@ def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]
             store,
             (_sk("HELD", sym), _sk("EXIT", sym)),
             f"{sym}: {stance}. No record narrative attached yet.",
+            label=f"{sym}: {stance}", now=now, held_symbols=held_symbols,
         )
         row["cc_narrative"] = nar
         row["narrative_source"] = nar.get("narrative_source")
@@ -1464,6 +1522,7 @@ def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]
                 store,
                 tuple(_sk(k, sym) for k in section_keys),
                 f"{sym}: {signal}. No record narrative attached yet.",
+                label=f"{sym}: {signal}", now=now, held_symbols=held_symbols,
             )
             row["cc_narrative"] = nar
             row["narrative_source"] = nar.get("narrative_source")
@@ -1480,6 +1539,7 @@ def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]
             store,
             (_sk("SECTOR", name),),
             f"{name}: {state}. No record narrative attached yet.",
+            label=f"{name}: {state}", now=now, held_symbols=held_symbols,
         )
         row["cc_narrative"] = nar
         row["narrative_source"] = nar.get("narrative_source")
@@ -1503,6 +1563,8 @@ def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]
         "rows": rows_n,
         "from_record": rec_n,
         "from_deterministic_fallback": rows_n - rec_n,
+        "record_expired": sum(c.get("record_expired") or 0 for c in counts.values()),
+        "held_symbols_known": held_symbols is not None,
         "store_available": store is not None,
         "store_records": store_records,
         "authority": "READ_ONLY_ADVISORY",
@@ -1510,7 +1572,9 @@ def attach_record_narratives(home: dict[str, Any], store: Any) -> dict[str, Any]
         "product": "DETERMINISTIC_PRODUCT",
         "note": (
             "CC prefers InstrumentRecord.cc_narrative and falls back "
-            "deterministically. The composer renders prose; it never calls a model."
+            "deterministically. The composer renders prose; it never calls a model. "
+            "A record narrative outside its age bound is reported as expired, not shown "
+            "as current."
         ),
     }
 
@@ -1868,12 +1932,26 @@ def build_office_home(
         seasonality=home.get("seasonality"),
         now=now,
     )
+    # The book as the holdings document sees it, so a HELD record for a since-sold symbol
+    # (ARKX on 2026-11-06) is not published as a holding narrative. None = unknown book.
+    _held = _held_symbols()
     try:
-        from scripts.lib.cio_record_narrative import record_narratives
-        home["instrument_narratives"] = record_narratives(_store) if _store else {}
+        from scripts.lib.cio_record_narrative import record_narratives_report
+        _nar_report = (record_narratives_report(_store, held_symbols=_held, now=now)
+                       if _store else {"narratives": {}, "phantom_held": [], "expired": [], "counts": {}})
+        home["instrument_narratives"] = _nar_report["narratives"]
     except Exception:                                            # noqa: BLE001
+        _nar_report = {"narratives": {}, "phantom_held": [], "expired": [], "counts": {}}
         home["instrument_narratives"] = {}
-    home["record_narrative_coverage"] = attach_record_narratives(home, _store)
+    home["record_narrative_coverage"] = attach_record_narratives(
+        home, _store, now=now, held_symbols=_held)
+    # The narrative block names what it withheld, so a drop is never silent.
+    home["record_narrative_coverage"]["instrument_narratives"] = {
+        "count": len(home["instrument_narratives"]),
+        "phantom_held_dropped": list(_nar_report.get("phantom_held") or []),
+        "expired": list(_nar_report.get("expired") or []),
+        "held_symbols_known": _held is not None,
+    }
     home["telegram_sent"] = False
     home["delivery"] = "dashboard"
     # Stale-guidance gate (Board row 33 piece E): a suppressed advisory must be COUNTED on the surface,
@@ -1941,21 +2019,15 @@ def _trust_aegis() -> dict[str, Any]:
     }
 
 
-def _trust_holdings() -> dict[str, Any]:
-    try:
-        from scripts.lib.holdings_sanity import validate_payload, REASON_VALID_COMPLETE
-    except Exception:
-        try:
-            from holdings_sanity import validate_payload, REASON_VALID_COMPLETE
-        except Exception as exc:
-            return {"available": False, "reason_code": "DATA_UNAVAILABLE", "detail": str(exc)[:160]}
+def _holdings_doc() -> dict[str, Any]:
+    """The canonical holdings document, or {}. Read-only: never reprices, never writes."""
     from pathlib import Path
     try:
         from scripts.lib.maturity_control.store import resolve_root
         root = resolve_root(None)
-    except Exception:
+    except Exception:                                            # noqa: BLE001
         root = Path(__file__).resolve().parents[2]
-    doc = {}
+    doc: Any = {}
     for rel in (
         "data/portfolios/state/holdings.json",
         "data/state/holdings.json",
@@ -1965,10 +2037,42 @@ def _trust_holdings() -> dict[str, Any]:
             import json
             try:
                 doc = json.loads(p.read_text(encoding="utf-8", errors="replace"))
-            except Exception:
+            except Exception:                                    # noqa: BLE001
                 doc = {}
             if doc:
                 break
+    return doc if isinstance(doc, dict) else {}
+
+
+def _held_symbols(doc: Optional[dict[str, Any]] = None) -> Optional[set[str]]:
+    """Symbols the book actually holds, or None when the holdings document is unavailable.
+
+    None is deliberately different from an empty set: "we cannot see the book" must not read
+    as "nothing is held", or every HELD narrative would vanish on one bad read.
+    """
+    doc = _holdings_doc() if doc is None else doc
+    rows = doc.get("holdings") if isinstance(doc, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return None
+    out = set()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("is_cash"):
+            continue
+        sym = _str(row.get("symbol") or row.get("ticker")).upper().strip()
+        if sym:
+            out.add(sym)
+    return out or None
+
+
+def _trust_holdings() -> dict[str, Any]:
+    try:
+        from scripts.lib.holdings_sanity import validate_payload, REASON_VALID_COMPLETE
+    except Exception:
+        try:
+            from holdings_sanity import validate_payload, REASON_VALID_COMPLETE
+        except Exception as exc:
+            return {"available": False, "reason_code": "DATA_UNAVAILABLE", "detail": str(exc)[:160]}
+    doc = _holdings_doc()
     try:
         v = validate_payload(doc, last_good=doc if doc else None)
     except TypeError:

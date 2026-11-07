@@ -61,10 +61,56 @@ def is_material(a: dict[str, Any], policy: dict[str, Any]) -> bool:
     return False
 
 
+_PROSE_FIELDS = ("rationale", "description", "why", "thesis")
+_ACTION_WORDS = {
+    "buy", "sell", "trim", "add", "exit", "avoid", "hold", "hedge", "re_enter",
+    "reenter", "re_enter_if", "watch", "watchlist", "no_action", "wait",
+}
+
+
+def _norm(text: Any) -> str:
+    return " ".join(str(text or "").upper().replace("-", "_").split())
+
+
+def _is_action_echo(value: Any, action: dict[str, Any], *, source: Optional[str] = None) -> bool:
+    """True when ``value`` only repeats the action token instead of explaining it.
+
+    2026-11-07 data-truth audit (defect 8): the advisory body read
+    "WATCH NUAI — WATCH / RE_ENTER_IF MU — RE_ENTER_IF". ``recommended_action`` carried the
+    verb, so the reason slot echoed the verb and the operator got no reason at all.
+    """
+    token = _norm(value)
+    if not token:
+        return True
+    if token in _ACTION_WORDS or token.replace(" ", "_") in _ACTION_WORDS:
+        return True
+    for field in ("action_type", "recommended_action", "title", "label", "signal"):
+        if field == source:
+            continue
+        other = _norm(action.get(field))
+        if other and token == other:
+            return True
+    title = _norm(action.get("title"))
+    if title and token in title.split() and len(token) <= 16:
+        return True
+    return False
+
+
 def _why(a: dict[str, Any]) -> str:
-    for k in ("recommended_action", "rationale", "description", "recommendation"):
+    """The reason for the advice, never the advice restated.
+
+    Order: the writer's prose first (rationale, description, why, thesis), then
+    recommended_action/recommendation only when they carry more than the verb, then the
+    evidence basis, then an explicit "no rationale recorded" — because a blank is a lie
+    and an echoed verb reads like a reason while saying nothing.
+    """
+    for k in _PROSE_FIELDS:
         v = str(a.get(k) or "").strip()
         if v:
+            return v[:180]
+    for k in ("recommended_action", "recommendation"):
+        v = str(a.get(k) or "").strip()
+        if v and not _is_action_echo(v, a, source=k):
             return v[:180]
     refs = [r for r in (a.get("evidence_refs") or []) if r]
     return f"basis: {', '.join(refs[:3])}" if refs else "no rationale recorded"

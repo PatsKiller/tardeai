@@ -39176,7 +39176,11 @@ def _hermes_intel(symbol):
 def _hermes_external_intel_map(query=None):
     """GET /api/v2/hermes/external-intel-map — per-symbol external-LLM curation (which lane curated it +
     when + verdict) from hermes_external_research (last 14d). Powers the watchlist 'curated by
-    ChatGPT/Grok' badges + tooltip dates. Read-only; advisory."""
+    ChatGPT/Grok' badges + tooltip dates. Read-only; advisory.
+
+    Same rule as subject-intel-map (2026-11-07 data-truth audit, defect 8): a row that is the
+    model declining is not a curation verdict, so it is not served as one. It is listed under
+    ``declined`` with its kind and reason instead."""
     rows = (
         _db_query("""SELECT DISTINCT ON (symbol, lane) symbol, lane, model, created_at, recommendation, confidence
                         FROM hermes_external_research
@@ -39185,8 +39189,9 @@ def _hermes_external_intel_map(query=None):
                         ORDER BY symbol, lane, created_at DESC""")
         or []
     )
+    usable, declined = _split_refusals(rows)
     out = {}
-    for r in rows:
+    for r in usable:
         out.setdefault(r["symbol"], []).append(
             {
                 "lane": r["lane"],
@@ -39196,7 +39201,21 @@ def _hermes_external_intel_map(query=None):
                 "confidence": _json_clean(r.get("confidence")),
             }
         )
-    return {"map": out, "symbols": len(out)}
+    declined_by_key = {}
+    for r, kind, reason in declined:
+        declined_by_key.setdefault(r["symbol"], []).append(
+            {
+                "lane": r["lane"], "model": r.get("model"),
+                "refusal_kind": kind, "reason": reason,
+                "text": r.get("recommendation"), "at": _json_clean(r.get("created_at")),
+            }
+        )
+    return {
+        "map": out,
+        "symbols": len(out),
+        "declined": declined_by_key,
+        **{f"declined_{k}": v for k, v in _refusal_counts(declined_by_key).items()},
+    }
 
 
 def _hermes_subject_intel(query=None):
@@ -39237,6 +39256,17 @@ def _hermes_subject_intel(query=None):
             }
     except Exception:
         pass
+    _usable, _declined = _split_refusals(rows)
+    # The per-subject query selects no ``symbol`` column (its WHERE clause already scopes the
+    # rows to ``key``), so a declined row is attributed to the queried key, not to a field.
+    declined_rows = [
+        {
+            "lane": r["lane"],
+            "model": r.get("model"), "refusal_kind": kind, "reason": reason,
+            "text": r.get("recommendation"), "at": _json_clean(r.get("created_at")),
+        }
+        for r, kind, reason in _declined
+    ]
     return {
         "type": ttype,
         "key": key,
@@ -39252,17 +39282,59 @@ def _hermes_subject_intel(query=None):
                 "risk_flags": r.get("risk_flags"),
                 "at": _json_clean(r.get("created_at")),
             }
-            for r in rows
+            for r in _usable
         ],
+        "declined_intel": declined_rows,
+        "declined_count": len(declined_rows),
+    }
+
+
+def _split_refusals(rows, *, recommend_field="recommendation"):
+    """Split stored external-research rows into (usable, declined).
+
+    2026-11-07 data-truth audit (defect 8): rows written before the admission gate learned
+    to reject refusals are still stored with a success status, so the read path must not
+    hand a "**Decline.** This request asks for trading signals…" back as a recommendation.
+    A declined row keeps its text and gains ``refusal_kind`` + ``reason`` so the surface can
+    say the model declined instead of silently showing nothing.
+    """
+    try:
+        from lib.research_data_quality import refusal_kind, refusal_reason
+    except ImportError:  # pragma: no cover - scripts/ on sys.path
+        from scripts.lib.research_data_quality import refusal_kind, refusal_reason
+    usable, declined = [], []
+    for r in rows:
+        kind = refusal_kind(r.get(recommend_field))
+        if kind:
+            declined.append((r, kind, refusal_reason(kind)))
+        else:
+            usable.append(r)
+    return usable, declined
+
+
+def _refusal_counts(declined_by_key):
+    return {
+        "count": sum(len(v) for v in declined_by_key.values()),
+        "keys": len(declined_by_key),
+        "kinds": {
+            k: sum(1 for rows in declined_by_key.values() for row in rows if row.get("refusal_kind") == k)
+            for k in ("refused", "boundary")
+        },
     }
 
 
 def _hermes_subject_intel_map(query=None):
     """GET /api/v2/hermes/subject-intel-map?type= — per-key {lane, recommendation, at} for a subject type
-    (last 14d). Powers the per-surface ✦ Grok / ✦ ChatGPT badges."""
+    (last 14d). Powers the per-surface ✦ Grok / ✦ ChatGPT badges.
+
+    ``map`` carries only rows that are actually an answer. ``declined`` carries the rows that
+    declined (``refused``) or answered under the default profile (``boundary``), with their
+    text and the reason, so a surface can say "Grok declined" rather than wearing advice
+    that is not there."""
     ttype = (query or {}).get("type", "")
     if not ttype:
-        return {"map": {}, "keys": 0}
+        return {"map": {}, "keys": 0, "declined": {},
+                **{f"declined_{k}": v for k, v in _refusal_counts({}).items()}}
     rows = (
         _db_query(
             """SELECT DISTINCT ON (symbol, lane) symbol, lane, model, recommendation, created_at
@@ -39273,8 +39345,9 @@ def _hermes_subject_intel_map(query=None):
         )
         or []
     )
+    usable, declined = _split_refusals(rows)
     out = {}
-    for r in rows:
+    for r in usable:
         out.setdefault(r["symbol"], []).append(
             {
                 "lane": r["lane"],
@@ -39283,7 +39356,25 @@ def _hermes_subject_intel_map(query=None):
                 "at": _json_clean(r["created_at"]),
             }
         )
-    return {"type": ttype, "map": out, "keys": len(out)}
+    declined_by_key = {}
+    for r, kind, reason in declined:
+        declined_by_key.setdefault(r["symbol"], []).append(
+            {
+                "lane": r["lane"],
+                "model": r.get("model"),
+                "refusal_kind": kind,
+                "reason": reason,
+                "text": r.get("recommendation"),
+                "at": _json_clean(r["created_at"]),
+            }
+        )
+    return {
+        "type": ttype,
+        "map": out,
+        "keys": len(out),
+        "declined": declined_by_key,
+        **{f"declined_{k}": v for k, v in _refusal_counts(declined_by_key).items()},
+    }
 
 
 def _discovery_run(body):

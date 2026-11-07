@@ -51,3 +51,30 @@ def test_policy_is_config():
     import json
     cfg = json.loads((ROOT / "config" / "cio_notification_policy.json").read_text(encoding="utf-8"))
     assert cfg["repeat_suppress_days"] > 0 and "RE_ENTER" in cfg["material_title_verbs"]
+
+
+def test_the_reason_slot_never_echoes_the_verb():
+    """2026-11-07 data-truth audit (defect 8): "WATCH NUAI — WATCH / RE_ENTER_IF MU — RE_ENTER_IF".
+
+    ``recommended_action`` held the action token, so the reason slot repeated it and the
+    operator got no reason. The reader must get prose, the evidence basis, or an explicit
+    "no rationale recorded" — never the verb back.
+    """
+    msg = n.render([
+        _a("WATCH NUAI", recommended_action="WATCH", evidence_refs=["scan:nuai:rvol"]),
+        _a("RE_ENTER_IF MU", recommended_action="RE_ENTER_IF"),
+        _a("TRIM SPCX", recommended_action="Trim", rationale="Weight 8.7% against a 6.0% cap."),
+        _a("AVOID NUAI", action_type="AVOID", recommended_action="AVOID"),
+    ], POLICY)
+    body = msg["body"]
+    assert "• WATCH NUAI — basis: scan:nuai:rvol" in body
+    assert "• RE_ENTER_IF MU — no rationale recorded" in body
+    assert "• TRIM SPCX — Weight 8.7% against a 6.0% cap." in body
+    assert "• AVOID NUAI — no rationale recorded" in body
+    assert "— WATCH\n" not in body and "— RE_ENTER_IF\n" not in body and "— AVOID\n" not in body
+
+
+def test_prose_beats_an_action_token_even_when_both_are_present():
+    msg = n.render([_a("WATCH NUAI", recommended_action="WATCH",
+                       description="Catalyst unverified; size down before adding.")], POLICY)
+    assert "• WATCH NUAI — Catalyst unverified; size down before adding." in msg["body"]
