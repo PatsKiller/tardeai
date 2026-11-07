@@ -80,6 +80,13 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--lane", required=True)
     parser.add_argument("--step")
+    parser.add_argument(
+        "--failed-step",
+        action="append",
+        default=[],
+        help="a step of this compound lane that failed in this run (repeatable). Without it the run's own receipt "
+        "says only 'status: failed' with step null, and the failing step exists only in the log",
+    )
     parser.add_argument("--exit", type=int, required=True, dest="exit_code")
     parser.add_argument(
         "--output-receipt",
@@ -95,18 +102,24 @@ def main(argv=None) -> int:
 
     lane = args.lane + ("--step-" + args.step if args.step else "")
     output = aggregate_outputs(args.output_receipt, args.since) if args.output_receipt else None
+    status = "RUN_SKIPPED_LOCK" if args.exit_code == 75 else ("completed" if args.exit_code == 0 else "failed")
+    summary: dict = {"step": args.step, "status": status}
+    error = None
+    failed = [str(s).strip() for s in args.failed_step if str(s).strip()]
+    if failed and args.exit_code not in (0, 75):
+        # Name the step(s), not just the outcome: "failed step(s): narrative" is what a reader — and the Quality
+        # grade, which reads receipt.error — needs. A step list on a successful or lock-skipped run would
+        # contradict its status.
+        summary["failed_steps"] = failed
+        error = "failed step(s): " + ", ".join(failed)
     result = write_lane_receipt(
         lane,
         ok=args.exit_code == 0,
         exit_code=args.exit_code,
         script="completion_compound_receipt.py",
         started_at=args.since,
-        summary={
-            "step": args.step,
-            "status": "RUN_SKIPPED_LOCK"
-            if args.exit_code == 75
-            else ("completed" if args.exit_code == 0 else "failed"),
-        },
+        error=error,
+        summary=summary,
         output=output,
     )
     return 0 if result else 1

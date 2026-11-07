@@ -104,6 +104,7 @@ log "START phase=$PHASE session=$session"
 
 STATUS=0
 OUTPUT_RECEIPTS=()
+FAILED=()
 run_step() {
   local name="$1"; shift
   log ">>> $name"
@@ -111,7 +112,7 @@ run_step() {
   flock -n -E 75 "/tmp/ri_overnight_${name}.lock" "$@" || rc=$?
   if (( rc == 0 )); then log "OK $name";
   elif (( rc == 75 )); then log "SKIP_LOCK $name"; if (( STATUS == 0 )); then STATUS=75; fi;
-  else log "FAIL $name exit=$rc"; STATUS=1; fi
+  else log "FAIL $name exit=$rc"; STATUS=1; FAILED+=("$name"); fi
   "$PY" scripts/completion_compound_receipt.py --lane "$LANE" --step "$name" --exit "$rc" || true
 }
 
@@ -162,7 +163,9 @@ if in_phase ingest; then
   OUTPUT_RECEIPTS+=(--output-receipt "$PROJ/data/runtime/topic_ingestion_run_latest.json")
 fi
 
-log "DONE phase=$PHASE status=$STATUS"
+FAILED_ARGS=()
+for step in ${FAILED[@]+"${FAILED[@]}"}; do FAILED_ARGS+=(--failed-step "$step"); done
+log "DONE phase=$PHASE status=$STATUS${FAILED_ARGS:+ failed=${FAILED[*]}}"
 "$PY" scripts/completion_compound_receipt.py --lane "$LANE" --exit "$STATUS" --since "$STARTED_AT" \
-  "${OUTPUT_RECEIPTS[@]}" || true
+  ${FAILED_ARGS[@]+"${FAILED_ARGS[@]}"} "${OUTPUT_RECEIPTS[@]}" || true
 exit "$STATUS"
