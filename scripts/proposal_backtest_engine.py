@@ -507,6 +507,11 @@ def main(argv=None) -> int:
                 print(json.dumps(result, indent=2, default=str))
                 if result.get("error"):
                     stats["load_errors"] += 1
+                else:
+                    # LQ-20261107-288: a single-proposal run computed (and, live, wrote) one proposal, but the
+                    # counter stayed 0, so the --dry-run report — the artifact a reviewer reads as the proof of
+                    # the preview — said "processed 0" beside a full result. Count what was processed.
+                    stats["processed"] = 1
             else:
                 print("Usage: --proposal-id N or --pending --apply or --strategy swing_breakout --pending --apply")
                 return 2

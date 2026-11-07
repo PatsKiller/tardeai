@@ -351,6 +351,23 @@ def test_minimum_sample_boundary_is_inclusive(monkeypatch):
     assert res["win_rate"] == 0.6 and res["profit_factor"] == 2.5 and res["expectancy"] == 18.0
 
 
+def test_a_single_proposal_dry_run_counts_what_it_computed(monkeypatch, capsys):
+    """LQ-20261107-288: the DRY-RUN line is the proof a reviewer reads. A --proposal-id preview used to report
+    "processed": 0 beside a fully computed result, because the counter was only set on the --all-pending branch."""
+    _pbe_env(monkeypatch)
+    assert pbe.main(["--proposal-id", "7", "--dry-run"]) == 0
+    line = _dry_line(capsys.readouterr().err)
+    assert line["summary"] == {"processed": 1, "load_errors": 0, "persist_failures": 0}, line["summary"]
+
+
+def test_a_single_proposal_that_cannot_load_is_counted_as_a_load_error(monkeypatch, capsys):
+    """The other half of the same counter: a proposal that does not load must not read as processed."""
+    _pbe_env(monkeypatch)
+    assert pbe.main(["--proposal-id", "404", "--dry-run"]) == 1  # a load error is a nonzero exit
+    line = _dry_line(capsys.readouterr().err)
+    assert line["summary"] == {"processed": 0, "load_errors": 1, "persist_failures": 0}, line["summary"]
+
+
 # ── agent_outcome_linker ─────────────────────────────────────────────────────────────────────────────
 def _aol_env(monkeypatch, n_props=2, n_trades=1):
     t = datetime(2026, 10, 1, tzinfo=timezone.utc)
