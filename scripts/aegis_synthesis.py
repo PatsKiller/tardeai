@@ -1104,43 +1104,52 @@ def build_evidence_ledger(symbols: list[str]) -> int:
     return written
 
 
-def _resolve_price(sym: str, holdings_by_sym: dict, enrichment: dict,
-                    finviz_cache: dict, rm_price: float) -> tuple:
-    """Canonical price resolver. Returns (price, source, valid).
+def _resolve_price(sym: str, holdings_by_sym: dict, finviz_cache: dict, rm_price: float,
+                   quote: dict | None = None) -> tuple:
+    """(price, source, valid, as_of, stale) — the one price for a stop-protected symbol.
 
-    Resolution order:
-    1. holdings.json (repriced daily via Finviz/Yahoo)
-    2. finviz_quote_cache.json (latest Finviz fetch)
-    3. enrichment cache
-    4. risk_management.json
-    5. unavailable
+    The operator price rule (2026-11-07): a live price comes from Finviz (cache entry at most 30 minutes
+    old); if Finviz is down or stale, a fresh Schwab/Alpaca/moomoo quote from the data broker; a stored
+    mark is the last resort and is always flagged stale, so a stored price is never presented as live.
+
+    This used to take the holdings row's ``price`` first. That field is a copy the holdings build derives
+    from the morning positions run, so it lags the repricer all day — the data-truth audit on 2026-11-07
+    found 24 of 30 holdings shown at a stale price. Resolution now belongs to the shared helper, which
+    reads the Finviz cache itself instead of trusting a stored value.
     """
-    # 1. Holdings price (most recently repriced)
-    sym_holdings = holdings_by_sym.get(sym, [])
-    for hh in sym_holdings:
-        p = hh.get("price", 0)
-        if p and p > 0:
-            return p, "holdings", True
+    from lib.portfolio_positions import resolve_mark
 
-    # 2. Finviz quote cache
-    fq = finviz_cache.get(sym, {})
-    if isinstance(fq, dict):
-        fp = fq.get("price", 0)
-        if isinstance(fp, (int, float)) and fp > 0:
-            return fp, "finviz_cache", True
+    rows = holdings_by_sym.get(sym) or []
+    pos = dict(rows[0]) if rows else {"symbol": sym, "price": rm_price}
+    pos.setdefault("symbol", sym)
+    fq = finviz_cache.get(sym) if isinstance(finviz_cache, dict) else None
+    mark = resolve_mark(pos, quote=quote, finviz=fq if isinstance(fq, dict) else None)
+    price = mark.get("price") or 0
+    return (price, mark.get("source") or "unavailable", bool(price and price > 0),
+            mark.get("as_of"), bool(mark.get("stale")))
 
-    # 3. Enrichment cache
-    ec = enrichment.get(sym, {})
-    if isinstance(ec, dict):
-        ep = ec.get("price", 0)
-        if ep and ep > 0:
-            return ep, "enrichment", True
 
-    # 4. Risk management
-    if rm_price and rm_price > 0:
-        return rm_price, "risk_mgmt", True
+def _broker_quotes(symbols: list) -> dict:
+    """{SYMBOL: {price, as_of, source}} from the data broker, or {} when it cannot answer.
 
-    return 0, "unavailable", False
+    A quote is the rule's second rung: it serves only when it is FRESH, which ``resolve_mark`` enforces.
+    The helper never raises: a broker outage degrades to Finviz/stale marks, not to a failed run.
+    """
+    try:
+        from lib.data_broker.market_quote import get_price_batch
+        return get_price_batch(_db_query, [s for s in symbols if s], max_age_hours=0.5)
+    except Exception:
+        return {}
+
+
+def _holdings_document() -> dict:
+    """The holdings document, DB first; the file is the fallback. Never raises."""
+    store = STATE_DIR / "holdings.json"
+    try:
+        from lib.holdings_document import load_document
+        return load_document(store)
+    except Exception:
+        return _load_json(store) or {}
 
 
 def generate_stop_coverage_briefs() -> dict:
@@ -1150,9 +1159,12 @@ def generate_stop_coverage_briefs() -> dict:
     Returns coverage stats dict.
     """
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    h = _load_json(STATE_DIR / "holdings.json") or {}
-    enrichment = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
-    finviz_cache = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
+    h = _holdings_document()
+    # The shared reader, not a raw json.load: it drops a row whose own `source` names a provider that is
+    # not Finviz (SRNE and AMANX carried `data_broker.market_quote:get_best_quote:yfinance` rows), so a
+    # fallback provider can never be read back as a Finviz mark.
+    from lib.portfolio_positions import finviz_cache as _finviz_cache
+    finviz_cache = _finviz_cache(STATE_DIR / "finviz_quote_cache.json")
 
     positions = rm.get("positions", [])
     with_stop = [p for p in positions if p.get("stop_price")]
@@ -1178,9 +1190,11 @@ def generate_stop_coverage_briefs() -> dict:
 
     print(f"  [stop-coverage] Evaluating {len(unique_stops)} stop-protected positions...")
 
+    quotes = _broker_quotes([p.get("symbol", "") for p in unique_stops])
+
     stats = {"total": len(unique_stops), "fresh": 0, "failed": 0,
              "triggered": 0, "danger": 0, "warning": 0, "intact": 0,
-             "price_unavailable": 0, "steph_escalated": 0}
+             "price_unavailable": 0, "price_stale": 0, "steph_escalated": 0}
 
     for p in unique_stops:
         sym = p.get("symbol", "")
@@ -1188,9 +1202,13 @@ def generate_stop_coverage_briefs() -> dict:
         rm_price = p.get("current_price", 0)
         rm_status = (p.get("status") or "OK").upper()
 
-        # ── Canonical price resolution ──
-        price, price_source, price_valid = _resolve_price(
-            sym, holdings_by_sym, enrichment, finviz_cache, rm_price)
+        # ── Canonical price resolution (Finviz <= 30 min, else a fresh broker quote) ──
+        price, price_source, price_valid, price_as_of, price_stale = _resolve_price(
+            sym, holdings_by_sym, finviz_cache, rm_price, quotes.get(sym))
+        if price_valid and price_stale:
+            stats["price_stale"] += 1
+        as_of_txt = f"as of {price_as_of}" if price_as_of else "undated"
+        stale_txt = " — STALE, not a live price" if price_stale else ""
 
         # Holdings market value
         sym_holdings = holdings_by_sym.get(sym, [])
@@ -1242,7 +1260,7 @@ def generate_stop_coverage_briefs() -> dict:
             prompt = f"""/no_think
 Assess this stop-protected position. One sentence each.
 
-{sym}: ${price:.2f} (from {price_source}), stop ${stop_price:.2f}, {stop_status}, ${total_mv:,.0f} position
+{sym}: ${price:.2f} (from {price_source}, {as_of_txt}{stale_txt}), stop ${stop_price:.2f}, {stop_status}, ${total_mv:,.0f} position
 
 Reply ONLY JSON:
 {{"what_changed":"assessment","why_it_matters":"risk impact","confidence":0.5}}"""
@@ -1254,18 +1272,20 @@ Reply ONLY JSON:
                     why = obj.get("why_it_matters", "")
                     conf = float(obj.get("confidence", 0.5))
                 except (json.JSONDecodeError, ValueError):
-                    what_changed = f"{sym} {stop_status} — ${price:.2f} vs stop ${stop_price:.2f}"
+                    what_changed = f"{sym} {stop_status} — ${price:.2f} vs stop ${stop_price:.2f} ({price_source}, {as_of_txt}{stale_txt})"
                     why = raw[:200]
                     conf = 0.4
             else:
                 dist_str = f"{distance_pct:.1f}% from stop" if distance_pct is not None else ""
-                what_changed = f"{sym} {stop_status} — ${price:.2f} vs stop ${stop_price:.2f} {dist_str}".strip()
+                what_changed = (f"{sym} {stop_status} — ${price:.2f} vs stop ${stop_price:.2f} {dist_str} "
+                                f"({price_source}, {as_of_txt}{stale_txt})").strip()
                 why = f"Position ${total_mv:,.0f}. Requires review."
                 conf = 0.3
         else:
             # Warning/intact: template
             dist_str = f"{distance_pct:.1f}%" if distance_pct is not None else "N/A"
-            what_changed = f"{sym} stop intact — ${price:.2f} vs stop ${stop_price:.2f}, distance {dist_str}"
+            what_changed = (f"{sym} stop intact — ${price:.2f} vs stop ${stop_price:.2f}, distance {dist_str} "
+                            f"({price_source}, {as_of_txt}{stale_txt})")
             why = "Position within normal parameters"
             conf = 0.7
 
@@ -1275,6 +1295,8 @@ Reply ONLY JSON:
             "stop_price": stop_price,
             "resolved_current_price": price,
             "price_source": price_source,
+            "price_as_of": price_as_of,
+            "price_stale": price_stale,
             "price_valid": price_valid,
             "raw_rm_price": rm_price,
             "distance_pct": distance_pct,
@@ -1312,7 +1334,7 @@ Reply ONLY JSON:
                    ON CONFLICT (run_id, symbol, category) DO NOTHING""",
                 (RUN_ID, sym, "stop_review",
                  what_changed[:200],
-                 f"Stop ${stop_price:.2f}, price ${price:.2f} ({price_source}), value ${total_mv:,.0f}",
+                 f"Stop ${stop_price:.2f}, price ${price:.2f} ({price_source}, {as_of_txt}{stale_txt}), value ${total_mv:,.0f}",
                  f"Is {sym} stop still valid? Should John hold, exit, or adjust the stop?",
                  conf,
                  json.dumps({"agent": AGENT, "source": "aegis:stop-coverage-escalation",
@@ -1324,7 +1346,7 @@ Reply ONLY JSON:
 
     coverage_pct = round(stats["fresh"] / max(stats["total"], 1) * 100, 1)
     print(f"  [stop-coverage] Complete: {stats['fresh']}/{stats['total']} covered ({coverage_pct}%)")
-    print(f"  [stop-coverage] Triggered:{stats['triggered']} Danger:{stats['danger']} Warning:{stats['warning']} Intact:{stats['intact']} Failed:{stats['failed']} Escalated:{stats['steph_escalated']}")
+    print(f"  [stop-coverage] Triggered:{stats['triggered']} Danger:{stats['danger']} Warning:{stats['warning']} Intact:{stats['intact']} StalePrice:{stats['price_stale']} Failed:{stats['failed']} Escalated:{stats['steph_escalated']}")
 
     _db_write(
         """INSERT INTO aegis_portfolio_briefs

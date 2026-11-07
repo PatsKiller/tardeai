@@ -111,17 +111,36 @@ def _cio_product() -> dict:
     }
 
 
+PRICE_BASIS = ("Finviz live cache when its entry is at most 30 min old; otherwise a fresh Schwab/Alpaca/moomoo "
+               "quote from the data broker; a stored mark is the last resort and is labelled STALE — never "
+               "presented as a live price (operator price rule, 2026-11-07)")
+
+
 def _holdings_protection() -> dict:
-    p = ROOT / "data" / "portfolios" / "state" / "holdings.json"
-    d = _read_json(p) or {}
+    """The holdings document (DB first, file fallback) with every price resolved by the shared helper."""
+    from lib.holdings_document import load_document
+    from lib.portfolio_positions import finviz_cache, resolve_mark
+
+    store = ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    try:
+        d = load_document(store) or {}
+    except Exception as exc:  # noqa: BLE001 — reported in the packet, never fatal
+        d = _read_json(store) or {}
+        d.setdefault("document_source", "file")
+        d.setdefault("document_fallback_reason", type(exc).__name__)
+    fv = finviz_cache(store.parent / "finviz_quote_cache.json")
     holds = d.get("holdings") or []
     tot = (d.get("portfolio_totals") or {}).get("total_value")
     near_stop = []
+    stale_prices = 0
     for h in holds:
         if not isinstance(h, dict):
             continue
-        px = h.get("price") or h.get("current_price")
+        mark = resolve_mark(h, finviz=fv.get(str(h.get("symbol") or "").upper()))
+        px = mark.get("price")
         stop = h.get("stop") or h.get("stop_price") or h.get("stop_loss")
+        if mark.get("stale"):
+            stale_prices += 1
         try:
             if px and stop and float(px) > 0:
                 dist = abs(float(px) - float(stop)) / float(px)
@@ -130,6 +149,10 @@ def _holdings_protection() -> dict:
                         "symbol": h.get("symbol"),
                         "account": h.get("account"),
                         "price": px,
+                        "price_source": mark.get("source"),
+                        "price_as_of": mark.get("as_of"),
+                        "price_age_s": mark.get("age_s"),
+                        "price_stale": bool(mark.get("stale")),
                         "stop": stop,
                         "distance_pct": round(dist * 100, 2),
                     })
@@ -137,9 +160,13 @@ def _holdings_protection() -> dict:
             continue
     return {
         "as_of": d.get("as_of") or d.get("generated_at") or d.get("last_repriced"),
+        "document_source": d.get("document_source"),
+        "document_fallback_reason": d.get("document_fallback_reason"),
         "position_count": len(holds),
         "total_value": tot,
         "accounts": sorted({h.get("account") for h in holds if isinstance(h, dict) and h.get("account")}),
+        "price_basis": PRICE_BASIS,
+        "stale_prices": stale_prices,
         "near_stop": near_stop[:MAX_FINDINGS],
         "freshness_note": d.get("_freshness_note"),
     }

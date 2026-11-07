@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "aegis_prices_live_20261107",
+  "files": [
+    "tests/test_aegis_prices_live_20261107.py"
+  ],
+  "anchor": "AEGIS_PRICES_LIVE_20261107",
+  "comment": [
+    "ANCHOR: AEGIS_PRICES_LIVE_20261107 — Aegis prices are live marks and say where they came from.",
+    "aegis_synthesis._resolve_price and aegis_evening_packet._holdings_protection both priced a holding from a",
+    "stored value (holdings row 'price', holdings.json read directly). They now resolve through the shared",
+    "resolve_mark helper (Finviz cache at most 30 min, else a fresh Schwab/Alpaca/moomoo quote from the data",
+    "broker) and carry source + as-of into the brief text; a stored mark is a last resort flagged STALE. The",
+    "packet reads its holdings document DB-first. Listing it schedules nothing."
+  ]
+}
