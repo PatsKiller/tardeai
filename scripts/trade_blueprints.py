@@ -141,6 +141,17 @@ def staged_shares(*, symbol: str, current_price: float, atr: float,
     breakout = round(res * 1.005, 2)          # a close ABOVE resistance
     invalidation = round(sup - 0.5 * atr, 2)  # below support, not at it
 
+    # A ladder that cannot be traded is not a plan. 2026-11-01 PARA: a NaN bar zeroed its
+    # ATR (since fixed at the bar boundary), and the first finite ATR over a corporate-action
+    # discontinuity was 1.31 on an $0.115 price — one ATR below spot is negative. Finite and
+    # persisted is not the same as executable, so refuse rather than publish a $-0.54 entry.
+    if min(pull_lo, pull_hi, breakout, invalidation) <= 0:
+        raise BlueprintRejected("STAGED_SHARES", [
+            f"computed levels are not executable (entry {pull_lo}-{pull_hi}, invalidation "
+            f"{invalidation}): the ATR {atr} is {atr / current_price:.1f}x the price "
+            f"{current_price} — a corporate action or a bad bar, not a volatility measure. "
+            f"No staged ladder exists at these inputs."])
+
     # Extended tape gets a smaller starter — the discipline that "do not chase"
     # is supposed to encode, expressed as an allocation rather than a refusal.
     extended = timing in ("EXTENDED", "WAIT_FOR_PULLBACK", "BREAKOUT_CONFIRMATION")

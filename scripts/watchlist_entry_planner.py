@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -103,6 +104,25 @@ def _broker_db_query():
     return _q
 
 
+def _bar(high, low, close):
+    """One {high, low, close} bar, or None when any leg is missing or not finite.
+
+    2026-11-01: yfinance returned a NaN high/low/close row for PARA (one bar in ninety — the
+    session was halted or absent). ``float(nan)`` does not raise, so the row passed every check
+    and then silently poisoned every sum in ``_tech``: ATR, RSI and SMA50 all came back NaN while
+    swing_low/swing_high stayed finite, which defeated the "no ATR" gates (NaN is truthy) and
+    produced a staged-share ladder whose prices were NaN. The jsonb write at the far end then
+    rejected the packet and the batch counted PARA as failed. A bar with no price is not a bar.
+    """
+    try:
+        h, lo_, c = float(high), float(low), float(close)
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(h) and math.isfinite(lo_) and math.isfinite(c)):
+        return None
+    return {"high": h, "low": lo_, "close": c}
+
+
 def _bars_data_broker(symbol, days=70):
     """Daily OHLC from the host Data Broker (lib.data_broker.ohlc_bars.get_daily_ohlc — market_ohlcv_bars,
     read-only, zero provider calls). Fallback bars source so entry plans keep generating when Yahoo is
@@ -121,8 +141,8 @@ def _bars_data_broker(symbol, days=70):
     age = res.get("age_hours")
     if not res.get("ok") or res.get("kind") != "candles" or age is None or age > BROKER_BARS_MAX_AGE_HOURS:
         return None
-    bars = [{"high": b["high"], "low": b["low"], "close": b["close"]} for b in res.get("bars") or []
-            if b.get("high") is not None and b.get("low") is not None and b.get("close") is not None]
+    bars = [b for b in (_bar(x.get("high"), x.get("low"), x.get("close"))
+                        for x in res.get("bars") or []) if b]
     return bars[-days:] if len(bars) >= 50 else None
 
 
@@ -132,8 +152,8 @@ def _bars(symbol, days=70):
     try:
         import yfinance as yf
         h = yf.Ticker(symbol).history(period="1y")
-        bars = [{"high": float(hi), "low": float(lo), "close": float(c)}
-                for hi, lo, c in zip(h["High"], h["Low"], h["Close"])]
+        bars = [b for b in (_bar(hi, lo, c)
+                            for hi, lo, c in zip(h["High"], h["Low"], h["Close"])) if b]
         if len(bars) >= 50:
             return bars[-days:]
     except Exception:
