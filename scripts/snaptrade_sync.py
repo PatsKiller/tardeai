@@ -129,15 +129,21 @@ def _save_state(state: dict) -> None:
         pass
 
 
-def _load_account_map() -> dict:
-    """{ snaptrade_account_id: internal_account_key }."""
-    if not ACCOUNTS_MAP_PATH.exists():
-        return {}
+def _searched() -> str:
     try:
-        cfg = json.loads(ACCOUNTS_MAP_PATH.read_text())
-        return cfg.get("accounts", cfg) if isinstance(cfg, dict) else {}
-    except Exception:
-        return {}
+        from lib import snaptrade_account_map as _m
+    except ImportError:  # pragma: no cover
+        from scripts.lib import snaptrade_account_map as _m
+    return _m.searched(repo_root=PROJECT_ROOT)
+
+
+def _load_account_map() -> dict:
+    """{ snaptrade_account_id: internal_account_key }. Looks in the state root as well as the repo (LQ-251)."""
+    try:
+        from lib import snaptrade_account_map as _m
+    except ImportError:  # pragma: no cover
+        from scripts.lib import snaptrade_account_map as _m
+    return _m.load(repo_root=PROJECT_ROOT)
 
 
 def _merge(current: dict, synced_by_account: dict[str, list[dict]]) -> dict:
@@ -195,7 +201,7 @@ def run(apply: bool = False) -> dict:
 
     acct_map = _load_account_map()
     if not acct_map:
-        return {"ok": False, "error": f"no account mapping — fill {ACCOUNTS_MAP_PATH}"}
+        return {"ok": False, "error": f"no account mapping — fill one of: {_searched()}"}
 
     try:
         user = sr.SnapTradeUser.from_env()

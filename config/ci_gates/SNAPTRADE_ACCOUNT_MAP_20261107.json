@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "SNAPTRADE_ACCOUNT_MAP_20261107",
+  "files": ["tests/test_snaptrade_account_map_20261107.py"],
+  "anchor": "SNAPTRADE_ACCOUNT_MAP_20261107",
+  "comment": ["ANCHOR: SNAPTRADE_ACCOUNT_MAP_20261107 — LQ-20261107-251: the gitignored SnapTrade account map is found in the persistent state root, not only the repo checkout a release never contains."]
+}

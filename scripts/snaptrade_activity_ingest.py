@@ -30,15 +30,21 @@ def _conn():
     return _get_conn()
 
 
-def _load_account_map() -> dict[str, str]:
-    if not ACCOUNTS_MAP_PATH.exists():
-        return {}
+def _searched() -> str:
     try:
-        cfg = json.loads(ACCOUNTS_MAP_PATH.read_text())
-        raw = cfg.get("accounts", cfg) if isinstance(cfg, dict) else {}
-        return {str(k): str(v) for k, v in raw.items()}
-    except Exception:
-        return {}
+        from lib import snaptrade_account_map as _m
+    except ImportError:  # pragma: no cover
+        from scripts.lib import snaptrade_account_map as _m
+    return _m.searched(repo_root=PROJECT_ROOT)
+
+
+def _load_account_map() -> dict[str, str]:
+    """Looks in the state root as well as the repo (LQ-251)."""
+    try:
+        from lib import snaptrade_account_map as _m
+    except ImportError:  # pragma: no cover
+        from scripts.lib import snaptrade_account_map as _m
+    return _m.load(repo_root=PROJECT_ROOT)
 
 
 def _pick(d: dict, *keys):
@@ -191,7 +197,7 @@ def run(apply: bool = False, days: int = 45) -> dict:
         return {"ok": False, "error": "no connected SnapTrade user"}
     acct_map = _load_account_map()
     if not acct_map:
-        return {"ok": False, "error": f"no account mapping in {ACCOUNTS_MAP_PATH}"}
+        return {"ok": False, "error": f"no account mapping in any of: {_searched()}"}
 
     user = sr.SnapTradeUser.from_env()
     accounts = sr.list_accounts(user)

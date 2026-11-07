@@ -614,12 +614,17 @@ def moomoo_row(holdings: dict, cfg: dict, state_root: Path, log: dict, now: date
 def snaptrade_row(state_root: Path, log: dict) -> dict:
     st_path = state_root / RUNTIME_REL / "snaptrade_sync_state.json"
     st = _read_json(st_path)
-    mapping = PROJECT_ROOT / "config" / "snaptrade_accounts.json"
-    mapped = mapping.is_file()
+    from .. import snaptrade_account_map as _m
+    mapping = _m.map_path(repo_root=PROJECT_ROOT, state_root=state_root)
+    mapped = mapping is not None
     step = _log_step(log, "snaptrade")
     sig = set((step or {}).get("signals") or [])
-    if "no account mapping" in sig or not mapped:
-        state, reason = DEGRADED, "no account mapping (config/snaptrade_accounts.json) — SnapTrade sync cannot run"
+    if not mapped:
+        state, reason = DEGRADED, (
+            "no account mapping — SnapTrade sync cannot run. Looked in: "
+            + _m.searched(repo_root=PROJECT_ROOT, state_root=state_root))
+    elif "no account mapping" in sig:
+        state, reason = DEGRADED, "the map exists now, but the last operator sync step reported no account mapping — wait for the next sync"
     elif step and step.get("rc") not in (0, None):
         state, reason = DEGRADED, f"last operator sync step exited rc={step.get('rc')}"
     elif st is None:
