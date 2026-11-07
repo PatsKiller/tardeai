@@ -382,6 +382,75 @@ def _sources_from_row(r: dict) -> list[dict]:
     return sources[:8]
 
 
+#: Served in place of the text of a model-written brief that grounded on nothing. The stored row is
+#: kept (the desk can still name it, and --reground can re-synthesize it once sources exist); only the
+#: assertion written from memory stops reaching the operator.
+WITHHELD_SUMMARY = (
+    "Withheld — this brief was generated with no sources, so it is not published as research. "
+    "It returns to the desk only after it can be grounded on real articles."
+)
+
+
+def is_withheld_synth(model: Any, evidence_json: Any) -> bool:
+    """Public name for the desk's withholding rule, for report builders that read the store directly.
+
+    Any surface that renders a stored research summary must ask this question, not restate it: a
+    report with its own copy of the rule drifts from the desk and starts publishing what the desk
+    hides (hermes:44896, 2026-11-07 DATA TRUTH audit).
+    """
+    return _is_ungrounded_synth(model, evidence_json)
+
+
+def _is_ungrounded_synth(model: Any, evidence_json: Any) -> bool:
+    """True when a grounding-tracked model brief recorded zero sources.
+
+    ``grounded_count`` must be PRESENT and zero. An absent key means the brief is not grounding-tracked
+    and an unreadable value means it cannot be read — neither is evidence of zero sources, and treating
+    them as zero would withhold every brief of every other research type (rule: unknown is not zero).
+    """
+    if not str(model or "").lower().startswith("synth:"):
+        return False
+    ev = _parse_jsonish(evidence_json)
+    if not isinstance(ev, dict):
+        return False
+    gc = ev.get("grounded_count")
+    if gc is None:
+        return False
+    try:
+        return int(gc) <= 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _withhold_ungrounded(item: dict, stored_status: Any) -> dict:
+    """Replace a withheld brief's body and label it honestly, keeping the stored status visible."""
+    item["summary"] = WITHHELD_SUMMARY
+    item["thesis"] = None
+    item["executive_summary"] = [WITHHELD_SUMMARY]
+    item["key_takeaways"] = []
+    item["bull_case"] = None
+    item["bear_case"] = None
+    item["lede"] = WITHHELD_SUMMARY
+    item["sources"] = []
+    item["source_count"] = 0
+    # Nothing derived from the withheld text stays on the card — a confidence score or a question list
+    # would keep advertising content the desk is not publishing.
+    item["confidence"] = None
+    item["key_questions"] = []
+    item["data_gaps"] = []
+    item["provenance_grade"] = "ungrounded"
+    item["provenance_reason"] = "no_sources"
+    item["publish_state"] = "withheld_ungrounded"
+    item["quality_tier"] = "ungrounded"
+    item["grounding"] = {"grounded_count": 0, "withheld": True, "stored_status": stored_status}
+    item["actionability"] = "Withheld — no sources"
+    item["next_action"] = {"label": "None — brief withheld",
+                           "detail": "No sources; nothing here is verified. Do not act on it."}
+    item["next_action_label"] = item["next_action"]["label"]
+    item["next_action_detail"] = item["next_action"]["detail"]
+    return item
+
+
 def _evidence_questions(ev: Any) -> list[str]:
     ev = _parse_jsonish(ev) or {}
     if not isinstance(ev, dict):
@@ -642,6 +711,7 @@ def build_feed(
             pass
         age = _age_hours(r.get("updated_at") or r.get("created_at") or r.get("freshness_date"))
         sources = _sources_from_row(r)
+        ungrounded = _is_ungrounded_synth(r.get("model_used"), r.get("evidence_json"))
         ev_q = _evidence_questions(r.get("evidence_json"))
         iid = f"hermes:{r.get('id')}"
         act = (
@@ -657,8 +727,10 @@ def build_feed(
             source_table="hermes_research_intelligence",
             source_id=r.get("id"),
             title=r.get("topic") or "Research finding",
-            summary=r.get("summary") or "",
-            thesis=r.get("thesis"),
+            # A withheld brief is narrated from its notice, never from its own unsourced text — and its
+            # stored narrative (evidence_json.narrative*) must not leak the claim back onto the desk.
+            summary=WITHHELD_SUMMARY if ungrounded else (r.get("summary") or ""),
+            thesis=None if ungrounded else r.get("thesis"),
             symbol=sym,
             cats=cats,
             conf=conf,
@@ -672,9 +744,11 @@ def build_feed(
             actionability=act,
             policy=policy,
             feedback=fb_map.get(iid),
-            evidence_json=r.get("evidence_json"),
+            evidence_json=None if ungrounded else r.get("evidence_json"),
             extra={"key_questions": ev_q or []},
         )
+        if ungrounded:
+            item = _withhold_ungrounded(item, r.get("status"))
         items.append(item)
 
     # ── Auto-research / user topics ────────────────────────────────────

@@ -13,6 +13,10 @@ articles tagged symbol=topic_id, or a keyword fallback — and grounds the LLM o
 catalogs the sites it used into evidence_json.grounded_on (provenance, surfaced on the RetirementHub).
 GRADE FILTER: only grounds on graded-good articles — excludes anything the curator (topic_curator.py)
 marked low_quality/blocked or that was demoted — so research never cites garbage.
+NO SOURCES, NO BRIEF: a topic whose articles all fail the relevance gate is refused rather than written
+from the model's memory, and a brief whose claims trace to none of its cited sources is refused too. A
+stored synth brief with grounded_count 0 is withheld by the Research Intelligence desk (2026-11-07
+DATA TRUTH: hermes:44896 was synthesized on nothing, promoted, and asserted a false SSDI/MAGI rule).
 
   python3 scripts/topic_research_synthesizer.py [--max 20] [--apply]   (fill placeholders; default dry-run)
   python3 scripts/topic_research_synthesizer.py --reground [--max 20] --apply   (upgrade rows that
@@ -54,6 +58,64 @@ def _prompt(topic, context, articles=None):
 #: or global cap, no consumption log row -- the RI overnight topic_synth (--max 40) and reground (--max 25)
 #: steps and the hourly synth line spent with nothing counting them.
 PROCESS_ID = "topic_research_synthesizer"
+
+#: Words that carry no topic signal, used both by the relevance gate below and by the claim trace.
+_STOP = {"and", "for", "the", "with", "from", "into", "strategies", "strategy", "ideas",
+         "investment", "investor", "management", "monitoring", "plan", "planning", "tax",
+         "taxes", "income", "market", "markets", "stock", "stocks", "sector", "rules",
+         "best", "top", "2024", "2025", "2026", "2027", "2028"}
+
+#: Refusal reasons recorded on the run summary. A reason, never a silent skip: the caller must be able
+#: to tell "the model had nothing to read" from "the model did not answer".
+NO_SOURCES = "no_sources"
+NO_TRACEABLE_CLAIMS = "no_traceable_claims"
+
+
+def _claim_tokens(text):
+    """Distinctive lowercase words in a claim (same token shape the relevance gate uses)."""
+    return {w for w in re.sub(r"[^a-z0-9 ]", " ", str(text or "").lower()).split()
+            if len(w) > 3 and not w.isdigit() and w not in _STOP}
+
+
+def _claim_traces(claim, articles):
+    """True when a claim shares at least two distinctive tokens with ONE cited source.
+
+    A trace, not a proof: it answers "did the model read a source that says this?" Two tokens from a
+    single article is the bar because one token is how a homonym slips through (see the relevance gate)
+    and zero is how an unsourced assertion gets published (2026-11-07, hermes:44896).
+    """
+    toks = _claim_tokens(claim)
+    if not toks:
+        return False
+    for a in articles or []:
+        blob = f"{a.get('title') or ''} {a.get('summary') or ''}".lower()
+        if sum(1 for t in toks if t in blob) >= 2:
+            return True
+    return False
+
+
+def _claim_trace(result, articles):
+    """Count the brief's claims that trace back to the sources the model was grounded on.
+
+    Claims are the ``evidence[]`` entries plus the summary's own substantive sentences — the false
+    SSDI/MAGI sentence that reached the desk was summary prose, not an evidence row, so evidence alone
+    is not enough to check.
+    """
+    claims = [str(e.get("text") or "").strip() for e in (result.get("evidence") or [])
+              if isinstance(e, dict)]
+    for sent in re.split(r"(?<=[.!?])\s+", str(result.get("summary") or "")):
+        sent = sent.strip()
+        if len(_claim_tokens(sent)) >= 4:
+            claims.append(sent)
+    seen, uniq = set(), []
+    for c in claims:
+        if c and c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    traced = [c for c in uniq if _claim_traces(c, articles)]
+    untraced = [c for c in uniq if c not in traced]
+    return {"claims": len(uniq), "traced": len(traced), "untraced": len(untraced),
+            "untraced_samples": [c[:160] for c in untraced[:3]]}
 
 
 def _synthesize(topic, context, articles=None):
@@ -114,7 +176,7 @@ def run(apply=False, max_rows=20, reground=False, ids=None):
                          AND summary ILIKE 'Research topic%%'
                        ORDER BY created_at DESC LIMIT %s""", (max_rows,))
     rows = cur.fetchall()
-    done, skipped = [], 0
+    done, skipped, no_sources, untraced = [], 0, 0, 0
     for rid, topic, ev in rows:
         ev = ev if isinstance(ev, dict) else (json.loads(ev) if ev else {})
         # personal context from the linked topic_monitor row
@@ -131,10 +193,6 @@ def run(apply=False, max_rows=20, reground=False, ids=None):
         # Distinctive topic tokens — from the topic's OWN (good) search queries + display name,
         # minus generic words. Used below to ground only on ON-topic articles, so generic matches
         # ("2026") and mis-tagged off-topic news (AI/semiconductor) can't pollute retirement research.
-        _STOP = {"and", "for", "the", "with", "from", "into", "strategies", "strategy", "ideas",
-                 "investment", "investor", "management", "monitoring", "plan", "planning", "tax",
-                 "taxes", "income", "market", "markets", "stock", "stocks", "sector", "rules",
-                 "best", "top", "2024", "2025", "2026", "2027", "2028"}
         _toks = set()
         for _q in list(sq) + [disp, topic or ""]:
             for _w in re.sub(r"[^a-z0-9 ]", " ", str(_q).lower()).split():
@@ -182,17 +240,42 @@ def run(apply=False, max_rows=20, reground=False, ids=None):
                 print(f"  [relevance] {(topic or '')[:40]}: kept {len(_kept)}/{len(articles)} "
                       f"articles (need>={_need} tokens)")
             articles = _kept
+        # Zero sources is a refusal, not an invitation to write from memory. On 2026-11-07 a brief with
+        # sources=[] was synthesized, promoted and labelled "wire"; it asserted that SSDI is excluded from
+        # MAGI, which is false. Nothing is written here: the row stays a placeholder (or, on --reground,
+        # keeps its stored text, which the desk withholds because grounded_count is 0), and the run
+        # repeats cheaply once the crawler has something real for this topic.
+        if not articles:
+            print(f"  [{NO_SOURCES}] {(topic or '')[:60]}: no source article passed the relevance gate; "
+                  f"refusing to synthesize")
+            no_sources += 1
+            continue
         res = _synthesize(topic, ctx, articles)
         if not res:
             skipped += 1
             continue
+        # Every claim must trace to a source the model actually read. A brief whose claims trace to
+        # nothing is the same lie as a sourceless one, only harder to see, so it is not written either.
+        res["claim_trace"] = _claim_trace(res, articles)
+        if res["claim_trace"]["claims"] and not res["claim_trace"]["traced"]:
+            print(f"  [{NO_TRACEABLE_CLAIMS}] {(topic or '')[:60]}: none of "
+                  f"{res['claim_trace']['claims']} claims traces to a cited source; refusing to write")
+            untraced += 1
+            continue
+        if res["claim_trace"]["untraced"]:
+            note = (f"{res['claim_trace']['untraced']} of {res['claim_trace']['claims']} claims could not "
+                    f"be traced to the cited sources — verify before acting")
+            prior = (res.get("data_i_doubt") or "").strip()
+            res["data_i_doubt"] = note if prior in ("", "none") else f"{prior}; {note}"
         done.append({"id": rid, "topic": (topic or "")[:50], "lane": res["lane"],
-                     "len": len(res["summary"]), "grounded_on": len(res.get("grounded_on") or [])})
+                     "len": len(res["summary"]), "grounded_on": len(res.get("grounded_on") or []),
+                     "claim_trace": res["claim_trace"]})
         if apply:
             # catalog the sites that informed this research into evidence_json (source provenance)
             ev["grounded_on"] = res.get("grounded_on") or []
             ev["grounded_count"] = len(ev["grounded_on"])
             ev["cio_evidence"] = res.get("evidence") or []
+            ev["claim_trace"] = res.get("claim_trace")
             ev["data_i_doubt"] = res.get("data_i_doubt")
             ev["agent_contract"] = res.get("agent_contract")
             # Engine Room v1 (WS-3): universe guard at generation — resolve every entity
@@ -226,6 +309,7 @@ def run(apply=False, max_rows=20, reground=False, ids=None):
         conn.commit()
     print(json.dumps({"mode": "APPLIED" if apply else "DRY-RUN", "candidates": len(rows),
                       "synthesized": len(done), "no_lane_result": skipped,
+                      "refused_no_sources": no_sources, "refused_untraceable": untraced,
                       "sample": done[:6]}, indent=2))
     return 0
 
