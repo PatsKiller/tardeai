@@ -218,23 +218,30 @@ def aggregate_windows(events, window_days=90):
     results = []
     for agent, w in windows.items():
         resolved = w["resolved"]
-        w["accuracy"] = round(w["correct"] / resolved, 4) if resolved > 0 else None
+        # A tier is earned on outcomes that can be right or wrong. `resolved` also counts
+        # `neutral` (a hold, or a rejected proposal: no directional claim), so an agent
+        # that only ever emitted `hold` reached 506 "resolved" with 0 correct and 0
+        # incorrect and was promoted to proposal_allowed on 2026-11-01 — maria's window.
+        graded = w["correct"] + w["incorrect"] + w.get("partially_correct", 0)
+        w["graded"] = graded
+        w["accuracy"] = round(w["correct"] / graded, 4) if graded > 0 else None
         w["avg_confidence"] = round(sum(w["confidences"]) / len(w["confidences"]), 4) if w["confidences"] else None
         w["calibration_error"] = round(sum(w["cal_errors"]) / len(w["cal_errors"]), 4) if w["cal_errors"] else None
         w["overconfidence_score"] = round(sum(w["overconfs"]) / len(w["overconfs"]), 4) if w["overconfs"] else None
         w["underconfidence_score"] = round(sum(w["underconfs"]) / len(w["underconfs"]), 4) if w["underconfs"] else None
         w["avg_outcome_score"] = round(sum(w["outcome_scores"]) / len(w["outcome_scores"]), 4) if w["outcome_scores"] else None
         w["avg_r_multiple"] = round(sum(w["r_multiples"]) / len(w["r_multiples"]), 4) if w["r_multiples"] else None
-        w["low_sample_size"] = resolved < AGENT_SAMPLE_INSIGHT
-        if resolved < AGENT_SAMPLE_INSIGHT:
+        w["low_sample_size"] = graded < AGENT_SAMPLE_INSIGHT
+        if graded < AGENT_SAMPLE_INSIGHT:
             w["sample_size_status"] = "insight_only"
-        elif resolved < AGENT_SAMPLE_SHADOW:
+        elif graded < AGENT_SAMPLE_SHADOW:
             w["sample_size_status"] = "shadow_only"
         else:
             w["sample_size_status"] = "proposal_allowed"
 
         relist_note = f", {w.get('relist_neutral', 0)} relist-excluded" if w.get("relist_neutral", 0) > 0 else ""
-        w["learning_summary"] = f"{agent}: {resolved} resolved{relist_note}, acc={w['accuracy']}, cal_err={w['calibration_error']}"
+        w["learning_summary"] = (f"{agent}: {resolved} resolved, {graded} graded{relist_note}, "
+                                 f"acc={w['accuracy']}, cal_err={w['calibration_error']}")
         w["recommendation"] = "insufficient_data" if resolved < 10 else (
             "review_overconfidence" if (w["overconfidence_score"] or 0) > 0.3 else "maintain_current")
 
@@ -284,7 +291,10 @@ def save_windows(conn, windows, dry_run=True):
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (agent_name, window_start, window_end, domain, strategy_id) DO UPDATE SET
                 resolved=EXCLUDED.resolved, correct=EXCLUDED.correct, accuracy=EXCLUDED.accuracy,
-                calibration_error=EXCLUDED.calibration_error, recommendation=EXCLUDED.recommendation
+                calibration_error=EXCLUDED.calibration_error, recommendation=EXCLUDED.recommendation,
+                low_sample_size=EXCLUDED.low_sample_size,
+                sample_size_status=EXCLUDED.sample_size_status,
+                learning_summary=EXCLUDED.learning_summary
         """, [w["window_id"], w["agent_name"], w["window_start"], w["window_end"],
               w.get("domain"), w["recommendations"], w["resolved"], w["correct"],
               w["incorrect"], w["neutral"], w["partially_correct"], w["unresolved"],

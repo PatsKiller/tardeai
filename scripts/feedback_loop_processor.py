@@ -2,8 +2,11 @@
 """feedback_loop_processor.py — Close feedback loops across the system.
 
 Runs daily. Connects:
-  1. Proposals → paper trades → P&L outcomes → agent calibration
-  2. CIO decisions → alert effectiveness scoring
+  1. Proposals → their OWN paper trade (paper_trades.proposal_id) → P&L outcomes → agent
+     calibration. Every stored chain is re-evaluated against that FK on every run; a
+     proposal with no chain row is picked up oldest-first.
+  2. CIO decisions → alert effectiveness scoring. A score is written only where a rule and
+     a live evidence source exist; otherwise the row is NULL with a named reason.
   3. Strategy performance snapshots (weekly)
   4. Agent sample size tracking
   5. Recovery watch outcome detection
@@ -85,21 +88,118 @@ def _get_conn():
 
 # ── 1. Proposal → Trade → Outcome Chain ─────────────────────────────────
 
-def link_proposal_outcomes(conn, dry_run=False):
-    """Find proposals that have been linked to paper trades and track outcomes."""
+# ── The authoritative link ───────────────────────────────────────────────
+# A proposal's outcome is its OWN paper trade: the row that names the proposal in
+# paper_trades.proposal_id (source_proposal_id is the legacy text twin for rows written
+# before the integer FK existed). The old symbol+strategy_id+created_at heuristic matched
+# lookalike trades: on 2026-11-07 it had 966 of 1458 chains pointing at a trade that names
+# a DIFFERENT proposal, 114 chains that could be closed still read `linked`, and 8 chains
+# read `closed` for a trade that is now cancelled/dedup_removed. It is no longer used.
+_NO_TRADE_STATUSES = ("REJECTED", "EXPIRED", "expired")
+_CHAIN_BACKLOG_LIMIT = 5000
+
+_OWN_TRADE_CTE = """
+    WITH own_trade AS (
+        SELECT DISTINCT ON (pid) pid, trade_id, status, pnl, pnl_pct, r_multiple
+        FROM (
+            SELECT proposal_id AS pid, id AS trade_id, status, pnl, pnl_pct, r_multiple, created_at
+            FROM paper_trades
+            WHERE proposal_id IS NOT NULL
+            UNION ALL
+            SELECT NULLIF(source_proposal_id, '')::int, id, status, pnl, pnl_pct, r_multiple, created_at
+            FROM paper_trades
+            WHERE proposal_id IS NULL AND source_proposal_id ~ '^[0-9]+$'
+        ) t
+        ORDER BY pid, (status = 'closed') DESC, created_at DESC
+    )
+"""
+
+_NEW_STATE_SQL = """
+    CASE WHEN o.trade_id IS NOT NULL AND o.status = 'closed' THEN 'closed'
+         WHEN o.trade_id IS NOT NULL THEN 'linked'
+         WHEN c.proposal_status IN ('REJECTED', 'EXPIRED', 'expired') THEN 'orphaned'
+         ELSE 'pending' END
+"""
+
+
+def _chain_state(proposal_status, own_status, has_trade: bool) -> str:
+    """Chain status is a function of the proposal's own trade, never of a lookalike trade."""
+    if has_trade:
+        return "closed" if own_status == "closed" else "linked"
+    return "orphaned" if proposal_status in _NO_TRADE_STATUSES else "pending"
+
+
+def link_proposal_outcomes(conn, dry_run=False, plan_out=None):
+    """Track every proposal's outcome through its own paper trade.
+
+    Two populations, one rule:
+      1. every existing chain whose stored state disagrees with its proposal's own trade
+         (this is what re-closes the 114 chains the old matcher left `linked`, and what
+         un-links the 966 chains that point at another proposal's trade);
+      2. every eligible proposal with no chain row yet, oldest first — the old
+         ``ORDER BY created_at DESC LIMIT 100`` could only ever see the newest 100, so
+         1644 eligible proposals (June–August 2026) were permanently starved.
+    """
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Find proposals not yet in the chain
-    cur.execute("""
-        SELECT p.id, p.symbol, p.strategy_id, p.status, p.proposed_by, p.created_at
+    # ── 1. Re-evaluate existing chains against the authoritative FK ──────
+    cur.execute(_OWN_TRADE_CTE + f"""
+        SELECT c.id, c.proposal_id, c.symbol, c.strategy_id, c.proposing_agent,
+               c.proposal_created, c.proposal_status,
+               c.paper_trade_id, c.trade_status, c.trade_pnl, c.trade_r_multiple,
+               c.chain_status, c.outcome_fed_back,
+               o.trade_id, o.status AS own_status, o.pnl, o.pnl_pct, o.r_multiple,
+               {_NEW_STATE_SQL} AS new_status
+        FROM proposal_outcome_chain c
+        LEFT JOIN own_trade o ON o.pid = c.proposal_id
+        WHERE o.trade_id IS DISTINCT FROM c.paper_trade_id
+           OR o.status IS DISTINCT FROM c.trade_status
+           OR o.pnl IS DISTINCT FROM c.trade_pnl
+           OR o.r_multiple IS DISTINCT FROM c.trade_r_multiple
+           OR c.chain_status IS DISTINCT FROM {_NEW_STATE_SQL}
+    """)
+    revalued = cur.fetchall()
+
+    revalued_count = 0
+    for c in revalued:
+        new_status = c["new_status"]
+        # A chain that stops being closed stops being a fed outcome: when the trade really
+        # closes, the true pnl must be fed, not the fabricated one already recorded.
+        fed_back = c["outcome_fed_back"] if new_status == "closed" else False
+        if plan_out is not None:
+            plan_out.setdefault("revalued", []).append({
+                "chain_id": c["id"], "proposal_id": c["proposal_id"],
+                "from_status": c["chain_status"], "to_status": new_status,
+                "paper_trade_id": c["trade_id"],
+                "previous_trade_id": c["paper_trade_id"],
+                "trade_pnl": _f(c["pnl"]), "pnl_pct": _f(c["pnl_pct"]),
+            })
+        if not dry_run:
+            cur.execute("""
+                UPDATE proposal_outcome_chain
+                SET paper_trade_id = %s, trade_status = %s, trade_pnl = %s,
+                    trade_r_multiple = %s, chain_status = %s, outcome_fed_back = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, (c["trade_id"], c["own_status"], _f(c["pnl"]), _f(c["r_multiple"]),
+                  new_status, fed_back, c["id"]))
+        revalued_count += 1
+    if not dry_run:
+        conn.commit()
+
+    # ── 2. Proposals with no chain row yet: oldest first, so a backlog drains ──
+    cur.execute(_OWN_TRADE_CTE + """
+        SELECT p.id, p.symbol, p.strategy_id, p.status, p.proposed_by, p.created_at,
+               o.trade_id, o.status AS own_status, o.pnl, o.r_multiple
         FROM paper_trade_proposals p
+        LEFT JOIN own_trade o ON o.pid = p.id
         WHERE NOT EXISTS (
             SELECT 1 FROM proposal_outcome_chain poc WHERE poc.proposal_id = p.id
         )
         AND p.status IN ('APPROVED', 'APPROVED_FOR_PAPER_TEST', 'REJECTED', 'EXPIRED', 'expired')
-        ORDER BY p.created_at DESC LIMIT 100
-    """)
+        ORDER BY p.created_at ASC LIMIT %s
+    """, (_CHAIN_BACKLOG_LIMIT,))
     proposals = cur.fetchall()
 
     # Slice A — optional GUID columns (additive migration). Fail soft if absent.
@@ -117,33 +217,12 @@ def link_proposal_outcomes(conn, dry_run=False):
 
     linked = 0
     for p in proposals:
-        # Try to find a matching paper trade
-        cur.execute("""
-            SELECT id, status, pnl, r_multiple
-            FROM paper_trades
-            WHERE symbol = %s AND strategy_id = %s
-            AND created_at >= %s
-            ORDER BY created_at ASC LIMIT 1
-        """, (p["symbol"], p["strategy_id"], p["created_at"]))
-        trade = cur.fetchone()
-
-        chain_status = "pending"
-        trade_id = None
-        trade_pnl = None
-        trade_r = None
-        trade_status = None
-
-        if trade:
-            trade_id = trade["id"]
-            trade_status = trade["status"]
-            trade_pnl = _f(trade.get("pnl"))
-            trade_r = _f(trade.get("r_multiple"))
-            if trade_status == "closed":
-                chain_status = "closed"
-            else:
-                chain_status = "linked"
-        elif p["status"] in ("REJECTED", "EXPIRED", "expired"):
-            chain_status = "orphaned"
+        trade_id = p["trade_id"]
+        own_status = p["own_status"]
+        chain_status = _chain_state(p["status"], own_status, trade_id is not None)
+        trade_pnl = _f(p["pnl"]) if trade_id is not None else None
+        trade_r = _f(p["r_multiple"]) if trade_id is not None else None
+        trade_status = own_status if trade_id is not None else None
 
         # Attribution keys only — never invent PnL. Compose from proposal fields
         # when present (options desk rows); equity scalp proposals leave NULL.
@@ -165,6 +244,11 @@ def link_proposal_outcomes(conn, dry_run=False):
                 opt_guid = None
                 contract_guid = None
 
+        if plan_out is not None:
+            plan_out.setdefault("new_chains", []).append({
+                "proposal_id": p["id"], "symbol": p["symbol"], "chain_status": chain_status,
+                "paper_trade_id": trade_id, "trade_pnl": trade_pnl,
+            })
         if not dry_run:
             if has_guid_cols:
                 cur.execute("""
@@ -175,6 +259,7 @@ def link_proposal_outcomes(conn, dry_run=False):
                          option_strategy_guid, contract_guid)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (proposal_id) DO UPDATE SET
+                        paper_trade_id = EXCLUDED.paper_trade_id,
                         trade_status = EXCLUDED.trade_status,
                         trade_pnl = EXCLUDED.trade_pnl,
                         trade_r_multiple = EXCLUDED.trade_r_multiple,
@@ -198,6 +283,7 @@ def link_proposal_outcomes(conn, dry_run=False):
                          trade_status, trade_pnl, trade_r_multiple, chain_status)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (proposal_id) DO UPDATE SET
+                        paper_trade_id = EXCLUDED.paper_trade_id,
                         trade_status = EXCLUDED.trade_status,
                         trade_pnl = EXCLUDED.trade_pnl,
                         trade_r_multiple = EXCLUDED.trade_r_multiple,
@@ -210,65 +296,129 @@ def link_proposal_outcomes(conn, dry_run=False):
 
     if not dry_run:
         conn.commit()
-    return linked
+    return revalued_count + linked
 
 
 # ── 2. Feed closed outcomes back to agent calibration ────────────────────
 
-def feed_outcomes_to_agents(conn, dry_run=False):
-    """For closed chains, feed P&L back to agent calibration."""
+def _verdict_for(pnl):
+    """P&L sign decides the verdict. Zero is a neutral outcome, never a wrong one."""
+    if pnl is None:
+        return None, None
+    if pnl > 0:
+        return "CORRECT", 1.0
+    if pnl < 0:
+        return "WRONG", -1.0
+    return "NEUTRAL", 0.0
+
+
+def feed_outcomes_to_agents(conn, dry_run=False, plan_out=None):
+    """Feed each closed chain's own trade outcome to agent calibration.
+
+    The row carries the trade's REAL pnl_pct (paper_trades.pnl_pct) and its own dates.
+    The old code invented ``pnl / 100`` for pnl_pct and stamped NOW() as both the
+    recommendation and entry date, so the ten rows it ever wrote are not comparable
+    to any other outcome in the table.
+    """
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("""
-        SELECT id, proposal_id, symbol, strategy_id, proposing_agent,
-               trade_pnl, trade_r_multiple
-        FROM proposal_outcome_chain
-        WHERE chain_status = 'closed' AND outcome_fed_back = false
-        AND trade_pnl IS NOT NULL
+        SELECT c.id, c.proposal_id, c.symbol, c.strategy_id, c.proposing_agent,
+               c.trade_pnl, c.trade_r_multiple, c.paper_trade_id, c.proposal_created,
+               t.pnl_pct AS trade_pnl_pct, t.entry_time, t.exit_time
+        FROM proposal_outcome_chain c
+        LEFT JOIN paper_trades t ON t.id = c.paper_trade_id
+        WHERE c.chain_status = 'closed' AND c.outcome_fed_back = false
+        AND c.trade_pnl IS NOT NULL
     """)
     closed = cur.fetchall()
 
     fed = 0
+    skipped = {"no_proposing_agent": 0, "already_recorded": 0}
     for c in closed:
         agent = c.get("proposing_agent")
         if not agent:
+            # Named, not silent: the chain keeps outcome_fed_back=false and the count
+            # reaches the receipt, so a NULL agent cannot look like "nothing to do".
+            skipped["no_proposing_agent"] += 1
+            continue
+        # Idempotent by the trade the outcome belongs to (the table has no natural
+        # unique key, and ON CONFLICT DO NOTHING with none is inert).
+        cur.execute("""
+            SELECT 1 FROM agent_recommendation_outcomes
+            WHERE agent_name = %s AND symbol = %s AND recommendation = 'approve_trade'
+              AND trade_id = %s LIMIT 1
+        """, (agent, c["symbol"], c["paper_trade_id"]))
+        if cur.fetchone():
+            # Nothing new to record, but the chain is settled — do not retry forever.
+            if not dry_run:
+                cur.execute("""
+                    UPDATE proposal_outcome_chain
+                    SET outcome_fed_back = true, feedback_at = NOW() WHERE id = %s
+                """, (c["id"],))
+            skipped["already_recorded"] += 1
             continue
 
-        pnl = _f(c.get("trade_pnl", 0))
-        verdict = "CORRECT" if pnl > 0 else "WRONG"
+        pnl = _f(c.get("trade_pnl"))
+        verdict, verdict_score = _verdict_for(pnl)
+        pnl_pct = _f(c.get("trade_pnl_pct"))
+
+        if plan_out is not None:
+            plan_out.setdefault("fed", []).append({
+                "chain_id": c["id"], "proposal_id": c["proposal_id"], "agent": agent,
+                "symbol": c["symbol"], "trade_id": c["paper_trade_id"],
+                "realized_pnl": pnl, "pnl_pct": pnl_pct,
+                "verdict": verdict, "verdict_score": verdict_score,
+            })
 
         if not dry_run:
-            # Update the chain record
             cur.execute("""
                 UPDATE proposal_outcome_chain
                 SET outcome_fed_back = true, feedback_at = NOW()
                 WHERE id = %s
             """, (c["id"],))
 
-            # Insert into agent_recommendation_outcomes if not exists
             cur.execute("""
                 INSERT INTO agent_recommendation_outcomes
                     (agent_name, symbol, recommendation, recommendation_date,
-                     entry_date, realized_pnl, pnl_pct, verdict, verdict_score)
-                VALUES (%s, %s, 'approve_trade', NOW(), NOW(), %s, %s, %s, %s)
-                ON CONFLICT DO NOTHING
-            """, (agent, c["symbol"], pnl,
-                  round(pnl / 100, 2) if pnl else 0,  # rough pnl_pct
-                  verdict, 1.0 if verdict == "CORRECT" else -1.0))
+                     trade_id, entry_date, exit_date, realized_pnl, pnl_pct,
+                     verdict, verdict_score, scoring_method)
+                VALUES (%s, %s, 'approve_trade', %s::date, %s, %s::date, %s::date,
+                        %s, %s, %s, %s, 'feedback_loop')
+            """, (agent, c["symbol"], c["proposal_created"], c["paper_trade_id"],
+                  c["entry_time"], c["exit_time"], pnl, pnl_pct,
+                  verdict, verdict_score))
         fed += 1
 
     if not dry_run:
         conn.commit()
+    if skipped["no_proposing_agent"]:
+        print(f"  outcomes skipped: {skipped['no_proposing_agent']} closed chain(s) "
+              f"with no proposing_agent")
+    if skipped["already_recorded"]:
+        print(f"  outcomes already recorded: {skipped['already_recorded']} "
+              f"(chain marked settled)")
     return fed
 
 
 # ── 3. Alert Effectiveness Scoring ───────────────────────────────────────
 
-def score_alert_effectiveness(conn, dry_run=False):
-    """Score alerts from the last 7 days based on whether action was taken."""
+def score_alert_effectiveness(conn, dry_run=False, plan_out=None):
+    """Score alerts only where a live evidence source can testify.
+
+    The old rule wrote ``action_taken=false, effectiveness_score=0.0`` for every
+    notification type, including the fourteen with no action rule at all, and both of its
+    two sources are dead (john_decision_queue has never held a row; agent_feedback_log's
+    last row is 2026-07-18). All 1057 rows it wrote say "John ignored this" about an
+    alert nobody could have answered. A score is now NULL with a named reason unless a
+    rule exists AND its source has produced a row in the 30 days before that alert;
+    AVG() in the dashboard consumer ignores NULL instead of reading a false 0.00.
+    Rows that become measurable later are filled in; a measured row is never overwritten.
+    """
     import psycopg2.extras
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    _liveness_cache.clear()
 
     # Get alerts sent in last 7 days
     cur.execute("""
@@ -286,57 +436,142 @@ def score_alert_effectiveness(conn, dry_run=False):
         ntype = alert["notification_type"]
         ndate = alert["notification_date"]
 
-        # Check if already scored
+        # An existing measured row is permanent; an existing unmeasured row may be retried.
         cur.execute("""
-            SELECT 1 FROM alert_effectiveness
-            WHERE notification_type = %s AND alert_date = %s
-            LIMIT 1
+            SELECT id, action_taken, effectiveness_score FROM alert_effectiveness
+            WHERE notification_type = %s AND alert_date = %s AND symbol IS NULL
+            ORDER BY id LIMIT 1
         """, (ntype, ndate))
-        if cur.fetchone():
+        row = cur.fetchone()
+        if row and row["action_taken"] is not None:
             continue
 
-        # Determine if action was taken based on type
-        action_taken = False
-        action_desc = None
-
-        # Check john_decision_queue for responses
-        if ntype in ("urgent_alert", "draft_alert", "recovery_escalation"):
-            cur.execute("""
-                SELECT COUNT(*) as cnt FROM john_decision_queue
-                WHERE status != 'pending_john'
-                AND created_at::date = %s
-            """, (ndate,))
-            row = cur.fetchone()
-            if row and row["cnt"] > 0:
-                action_taken = True
-                action_desc = f"{row['cnt']} decision(s) resolved"
-
-        # Check agent_feedback_log for proposal responses
-        elif ntype == "proposal_aging":
-            cur.execute("""
-                SELECT COUNT(*) as cnt FROM agent_feedback_log
-                WHERE created_at::date = %s
-            """, (ndate,))
-            row = cur.fetchone()
-            if row and row["cnt"] > 0:
-                action_taken = True
-                action_desc = f"{row['cnt']} proposal feedback"
-
-        score = 1.0 if action_taken else 0.0
-
+        action_taken, action_desc, score = _alert_measurement(cur, ntype, ndate)
+        if plan_out is not None:
+            plan_out.setdefault("alerts", []).append({
+                "notification_type": ntype, "alert_date": str(ndate),
+                "action_taken": action_taken, "effectiveness_score": score,
+                "action_description": action_desc, "update": row is not None,
+            })
         if not dry_run:
-            cur.execute("""
-                INSERT INTO alert_effectiveness
-                    (notification_type, alert_date, action_taken,
-                     action_description, effectiveness_score)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (notification_type, symbol, alert_date) DO NOTHING
-            """, (ntype, ndate, action_taken, action_desc, score))
+            if row:
+                cur.execute("""
+                    UPDATE alert_effectiveness
+                    SET action_taken = %s, action_description = %s,
+                        effectiveness_score = %s, scored_at = NOW()
+                    WHERE id = %s
+                """, (action_taken, action_desc, score, row["id"]))
+            else:
+                cur.execute("""
+                    INSERT INTO alert_effectiveness
+                        (notification_type, symbol, alert_date, action_taken,
+                         action_description, effectiveness_score)
+                    VALUES (%s, NULL, %s, %s, %s, %s)
+                """, (ntype, ndate, action_taken, action_desc, score))
         scored += 1
+
+    repaired = repair_unmeasurable_alert_scores(cur, dry_run=dry_run, plan_out=plan_out)
 
     if not dry_run:
         conn.commit()
-    return scored
+    if repaired:
+        print(f"  legacy alert zeros re-marked unmeasurable: {repaired}")
+    return scored + repaired
+
+
+# ── 3b. The measurement itself ───────────────────────────────────────────
+
+# The two rules the lane actually has. Everything else has no evidence source, and a
+# notification type with no rule cannot honestly be scored 0. Both SQL strings are
+# constants: nothing is interpolated into a statement.
+_ACTION_RULES = {
+    "urgent_alert": {
+        "source": "john_decision_queue", "label": "decision(s) resolved",
+        "count_sql": "SELECT COUNT(*) AS cnt FROM john_decision_queue "
+                     "WHERE status != 'pending_john' AND created_at::date = %s"},
+    "draft_alert": {
+        "source": "john_decision_queue", "label": "decision(s) resolved",
+        "count_sql": "SELECT COUNT(*) AS cnt FROM john_decision_queue "
+                     "WHERE status != 'pending_john' AND created_at::date = %s"},
+    "recovery_escalation": {
+        "source": "john_decision_queue", "label": "decision(s) resolved",
+        "count_sql": "SELECT COUNT(*) AS cnt FROM john_decision_queue "
+                     "WHERE status != 'pending_john' AND created_at::date = %s"},
+    "proposal_aging": {
+        "source": "agent_feedback_log", "label": "proposal feedback",
+        "count_sql": "SELECT COUNT(*) AS cnt FROM agent_feedback_log "
+                     "WHERE created_at::date = %s"},
+}
+_LIVE_SQL = {
+    "john_decision_queue": "SELECT 1 FROM john_decision_queue "
+                           "WHERE created_at::date > %s::date - 30 "
+                           "AND created_at::date <= %s::date LIMIT 1",
+    "agent_feedback_log": "SELECT 1 FROM agent_feedback_log "
+                          "WHERE created_at::date > %s::date - 30 "
+                          "AND created_at::date <= %s::date LIMIT 1",
+}
+_liveness_cache: dict = {}
+
+
+def _source_is_live(cur, table: str, ndate) -> bool:
+    """Does the evidence table have any row in the 30 days before (and including) ndate?"""
+    key = (table, str(ndate))
+    if key in _liveness_cache:
+        return _liveness_cache[key]
+    cur.execute(_LIVE_SQL[table], (ndate, ndate))
+    live = cur.fetchone() is not None
+    _liveness_cache[key] = live
+    return live
+
+
+def _alert_measurement(cur, ntype, ndate):
+    """(action_taken, action_description, effectiveness_score) — NULL score when unmeasurable."""
+    rule = _ACTION_RULES.get(ntype)
+    if rule is None:
+        return None, f"unmeasurable: no action rule for notification type '{ntype}'", None
+    if not _source_is_live(cur, rule["source"], ndate):
+        return (None,
+                f"unmeasurable: evidence source {rule['source']} has no rows in the "
+                f"30 days before {ndate}", None)
+    cur.execute(rule["count_sql"], (ndate,))
+    cnt = (cur.fetchone() or {}).get("cnt") or 0
+    return cnt > 0, f"{cnt} {rule['label']}", 1.0 if cnt > 0 else 0.0
+
+
+def repair_unmeasurable_alert_scores(cur, dry_run=False, plan_out=None):
+    """Re-mark legacy 0.00 rows that no evidence source could have testified to.
+
+    The old writer set score 0 and left action_description NULL on every row it wrote,
+    so a NULL description on a zero is its own fingerprint. A row is repaired only when
+    the same test that now writes NULL says it is unmeasurable; a zero from a live
+    source on that date is a real measurement and is left alone.
+    """
+    cur.execute("""
+        SELECT id, notification_type, alert_date, action_taken, effectiveness_score
+        FROM alert_effectiveness
+        WHERE effectiveness_score = 0 AND action_taken = false
+          AND action_description IS NULL
+    """)
+    candidates = cur.fetchall()
+    repaired = 0
+    for row in candidates:
+        action, desc, score = _alert_measurement(cur, row["notification_type"], row["alert_date"])
+        if action is not None:
+            continue  # a live source on that date: the zero is a real observation
+        if plan_out is not None:
+            plan_out.setdefault("alert_repairs", []).append({
+                "id": row["id"], "notification_type": row["notification_type"],
+                "alert_date": str(row["alert_date"]), "reason": desc,
+            })
+        if not dry_run:
+            cur.execute("""
+                UPDATE alert_effectiveness
+                SET action_taken = NULL, effectiveness_score = NULL,
+                    action_description = %s, scored_at = NOW()
+                WHERE id = %s
+            """, (f"{desc} (legacy row recorded a score of 0.00)", row["id"]))
+        repaired += 1
+    return repaired
 
 
 # ── 4. Strategy Performance Snapshots ────────────────────────────────────
@@ -415,7 +650,7 @@ def track_agent_samples(conn, dry_run=False):
 
     cur.execute("""
         SELECT agent_name,
-               recommendations, resolved, correct, incorrect,
+               recommendations, resolved, correct, incorrect, partially_correct,
                accuracy, sample_size_status
         FROM agent_calibration_windows
         WHERE window_end::date >= CURRENT_DATE - 7
@@ -435,16 +670,21 @@ def track_agent_samples(conn, dry_run=False):
         resolved = w.get("resolved", 0) or 0
         correct = w.get("correct", 0) or 0
         wrong = w.get("incorrect", 0) or 0
+        partially = w.get("partially_correct", 0) or 0
         accuracy = _f(w.get("accuracy")) if w.get("accuracy") is not None else None
         tier = w.get("sample_size_status", "insight_only")
+        # The tier is earned on GRADED outcomes (correct + incorrect + partial), the same
+        # count agent_calibration_engine promotes on. `resolved` also counts neutral, and a
+        # flood of neutral recommendations must not project a promotion.
+        graded = correct + wrong + partially
 
         # Estimate days to next tier
-        daily_rate = max(resolved / 90, 0.1)  # average resolved per day
+        daily_rate = max(graded / 90, 0.1)  # average graded outcome per day
         if tier == "insight_only":
-            needed = 25 - resolved
+            needed = 25 - graded
             days_to_next = max(0, round(needed / daily_rate))
-        elif tier == "shadow_allowed":
-            needed = 100 - resolved
+        elif tier in ("shadow_only", "shadow_allowed"):  # engine writes shadow_only
+            needed = 100 - graded
             days_to_next = max(0, round(needed / daily_rate))
         else:
             days_to_next = 0
@@ -458,7 +698,8 @@ def track_agent_samples(conn, dry_run=False):
                 ON CONFLICT (agent_name, snapshot_date) DO NOTHING
             """, (agent, today, w.get("recommendations", 0), resolved,
                   correct, wrong, tier,
-                  round(accuracy * 100, 2) if accuracy else None, days_to_next))
+                  # 0.0 accuracy is a measured zero, not an unknown: keep it.
+                  round(accuracy * 100, 2) if accuracy is not None else None, days_to_next))
         tracked += 1
 
     if not dry_run:
@@ -530,9 +771,9 @@ STEPS = (
     ("recovery_outcomes_logged", "Recovery outcomes logged", detect_recovery_outcomes),
 )
 WOULD_WRITE = [
-    "proposal_outcome_chain (upsert) x proposal_chains_linked",
+    "proposal_outcome_chain (upsert + own-trade re-evaluation) x proposal_chains_linked",
     "proposal_outcome_chain (update) + agent_recommendation_outcomes (insert) x outcomes_fed",
-    "alert_effectiveness (insert) x alerts_scored",
+    "alert_effectiveness (insert/update) x alerts_scored",
     "strategy_performance_snapshots (insert) x strategy_snapshots",
     "agent_sample_tracking (insert) x agent_samples_tracked",
     "recovery_outcome_log (insert) x recovery_outcomes_logged",
@@ -543,18 +784,25 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Feedback Loop Processor", allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true",
                         help="SELECT and count only (READ ONLY session); no write, no receipt")
+    parser.add_argument("--plan", action="store_true",
+                        help="with --dry-run: print the exact rows that would be written")
     args = parser.parse_args(argv)
 
     started = datetime.now().astimezone().isoformat()
     print(f"[feedback_loop] Starting — {datetime.now().isoformat()}")
     counts: dict = {}
+    plan: dict = {}
+    planned = (link_proposal_outcomes, feed_outcomes_to_agents, score_alert_effectiveness)
     conn = None
     try:
         conn = _get_conn()
         if args.dry_run:
             _receipt_lib().enforce_readonly(conn)
         for key, label, fn in STEPS:
-            counts[key] = fn(conn, dry_run=args.dry_run)
+            if args.plan and fn in planned:
+                counts[key] = fn(conn, dry_run=args.dry_run, plan_out=plan)
+            else:
+                counts[key] = fn(conn, dry_run=args.dry_run)
             print(f"  {label}{' (would)' if args.dry_run else ''}: {counts[key]}")
     except Exception as exc:
         print(f"[feedback_loop] FAILED: {type(exc).__name__}: {exc}")
@@ -576,6 +824,10 @@ def main(argv=None) -> int:
 
     if args.dry_run:
         _receipt_lib().dry_run_report(LANE_ID, counts, would_write=WOULD_WRITE)
+        if args.plan:
+            # The rows a live run would write, computed from the same structures it would
+            # write from. This is the evidence a read-only account can produce.
+            print("PLAN " + json.dumps(plan, default=str, sort_keys=True))
         print(f"[feedback_loop] DRY-RUN complete — {datetime.now().isoformat()}")
         return 0
     _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,

@@ -323,7 +323,11 @@ def test_lie_source_order_dry_run_returns_before_llm():
 
 
 def _flp_conn(n_props=2, fail_on=None):
+    """The lane now resolves a proposal's trade from paper_trades.proposal_id, so the
+    candidate query carries the own-trade columns and makes no lookalike lookup."""
     def responder(sql, params):
+        if "FROM proposal_outcome_chain c" in sql and "LEFT JOIN own_trade o" in sql:
+            return {"all": [], "one": None}      # no stored chains to re-evaluate
         if "FROM paper_trade_proposals p" in sql:
             return {
                 "all": [
@@ -334,6 +338,10 @@ def _flp_conn(n_props=2, fail_on=None):
                         "status": "REJECTED",
                         "proposed_by": "a",
                         "created_at": "2026-10-01",
+                        "trade_id": None,
+                        "own_status": None,
+                        "pnl": None,
+                        "r_multiple": None,
                     }
                     for i in range(n_props)
                 ]

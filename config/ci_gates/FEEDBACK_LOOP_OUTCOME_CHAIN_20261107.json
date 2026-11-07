@@ -1,0 +1,30 @@
+{
+  "schema": "CiGate@v1",
+  "name": "FEEDBACK_LOOP_OUTCOME_CHAIN_20261107",
+  "files": [
+    "tests/test_feedback_loop_chain_20261107.py",
+    "tests/test_alert_effectiveness_honesty_20261107.py",
+    "tests/test_calibration_tier_graded_20261107.py"
+  ],
+  "anchor": "FEEDBACK_LOOP_OUTCOME_CHAIN_20261107",
+  "comment": [
+    "ANCHOR: FEEDBACK_LOOP_OUTCOME_CHAIN_20261107 — LQ-20261107-48. feedback-loop-processor was",
+    "DEGRADED: 0 outcomes fed, 1057/1057 alert scores 0.00, 8300 orphan chains, and maria promoted to",
+    "proposal_allowed with 506 resolved and 0 graded. Root cause, measured read-only on 2026-11-07:",
+    "(1) the chain matcher ignored paper_trades.proposal_id and took the first same-symbol/strategy",
+    "trade after the proposal — 966 of 1458 chains named ANOTHER proposal's trade, 114 closable chains",
+    "stayed `linked`, 8 read `closed` for a trade now cancelled/dedup_removed, and ORDER BY created_at",
+    "DESC LIMIT 100 starved 1644 eligible June-August proposals forever;",
+    "(2) alert scoring wrote action_taken=false / score 0.00 for the 14 notification types that have no",
+    "rule at all, and both of its sources are dead (john_decision_queue: 0 rows ever; agent_feedback_log:",
+    "last row 2026-07-18), so 1057 rows assert John ignored alerts nobody could answer;",
+    "(3) agent_calibration_engine counted `neutral` (a hold or a rejected proposal) as `resolved`, so a",
+    "flood of holds earned a tier with no graded evidence.",
+    "The gate pins: an outcome is the proposal's own FK trade; pnl_pct is the trade's own, never pnl/100;",
+    "a flat pnl is NEUTRAL not WRONG; a chain that stops being closed becomes feedable again; the backlog",
+    "drains oldest-first; an unmeasurable alert is NULL with a named reason while a live source's zero is",
+    "kept; a measured alert row is never overwritten; and a calibration tier is earned on",
+    "correct+incorrect+partially_correct, never on neutral.",
+    "Hermetic: scripted cursors and pure functions. No DB, no network."
+  ]
+}
