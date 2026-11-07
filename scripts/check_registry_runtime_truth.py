@@ -17,6 +17,8 @@ Host evidence (read-only, each source optional; an unreadable source is NOT_MEAS
                                                             else is read into memory; only lane names are printed
   `crontab -l`                                              active (uncommented) lines, matched by substring
   n8n workflow_entity (docker exec psql SELECT, read-only)  active workflow ids (scripts/lib/n8n_live_inventory.py)
+  `systemctl --user is-active <unit>`                       (2026-11-07) only the units a registry row names in
+                                                            scheduler.host_twin_units — no other unit is asked about
 
 Contradiction codes (rules are pure functions over the two sides; tests/test_registry_runtime_truth_20261018.py):
   DECLARED_OFF_BUT_RUNS_LIVE     state NEVER_SCHEDULED/RETIRED/PAUSED, but live RUN_DONE runs exist in the window
@@ -34,6 +36,12 @@ Contradiction codes (rules are pure functions over the two sides; tests/test_reg
                                  (a commented/paused line: the registry says the job runs and it does not)
   DECLARED_OFF_CRON_LINE_ACTIVE  (2026-10-22) kind-cron row declared NEVER_SCHEDULED/RETIRED/PAUSED, but an active
                                  crontab line runs scheduler.match
+  N8N_LANE_HOST_TWIN_ACTIVE      (2026-11-07) the row declares an n8n live path AND names a host systemd unit in
+                                 scheduler.host_twin_units that is ACTIVE: two schedulers run the same lane, so the
+                                 n8n cutover is not exclusive and the shared artifact is written twice
+                                 (data-plausibility 2026-11-07: n8n wrote n8n-data-plausibility-audit_last.json
+                                 while tradeai-data-plausibility.timer rewrote data_plausibility_last_run.json,
+                                 the file GET /api/v2/system/data-plausibility serves)
 
     python3 scripts/check_registry_runtime_truth.py              # --dry-run (default): print, write nothing
     python3 scripts/check_registry_runtime_truth.py --json       # dry run, JSON only
@@ -81,6 +89,10 @@ DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
 DEFAULT_LIVE_LANES_ENV = Path.home() / ".config" / "tradeai" / "n8n-live-lanes.env"
 LEDGER_REL = Path("data") / "governance" / "n8n_coordination_ledger.sqlite"
 DISPATCHER_EXPRESSIONS = frozenset({"dispatcher", "tradeai-dispatcher"})
+#: A registry row's declared host twin: the systemd unit that still runs the same lane from the host side
+#: (``scheduler.host_twin_units``). Declaring it is what lets this checker see a double-run at all — it asks the host
+#: about these units and nothing else.
+HOST_TWIN_FIELD = "host_twin_units"
 OFF_STATES = ("NEVER_SCHEDULED", "RETIRED", "PAUSED")
 LIVE_STAGES = ("canary", "cutover")
 DEFAULT_WINDOW_DAYS = 7
@@ -164,6 +176,48 @@ def read_n8n_active(reader: Optional[Callable[[], list[dict]]] = None) -> tuple[
         return SOURCE_UNAVAILABLE, [], type(exc).__name__
     ids = sorted({str(r.get("id") or r.get("expression") or "") for r in rows or []} - {""})
     return SOURCE_OK, ids, f"{len(ids)} active workflows (read-only SELECT)"
+
+
+#: ``systemctl is-active`` exits 0 when every unit is active and non-zero otherwise; 3 is "inactive", and a failed
+#: unit reports 3 as well. Any other code is systemd itself refusing, which is NOT_MEASURED, never "not running".
+_SYSTEMCTL_OK_RCS = (0, 3)
+
+
+def read_systemd_states(units: Iterable[str], runner: Optional[Callable[[list[str]], tuple[int, str]]] = None
+                        ) -> tuple[str, dict[str, str], str]:
+    """{unit: state} for exactly the units a registry row declares. Read-only, user scope, no sudo, no ``--now``.
+
+    ``systemctl is-active a b c`` prints one state line per unit in argv order. A count mismatch means we cannot bind
+    states to units, so the source is NOT_MEASURED rather than guessed."""
+    wanted = sorted({str(u) for u in units if str(u).strip()})
+    if not wanted:
+        return SOURCE_OK, {}, "no declared host twin"
+    try:
+        if runner is not None:
+            rc, out = runner(wanted)
+        else:
+            p = subprocess.run(["systemctl", "--user", "is-active", *wanted],
+                               capture_output=True, text=True, timeout=20, check=False)
+            rc, out = p.returncode, p.stdout
+    except (OSError, subprocess.SubprocessError) as exc:
+        return SOURCE_UNAVAILABLE, {}, type(exc).__name__
+    if rc not in _SYSTEMCTL_OK_RCS:
+        return SOURCE_UNAVAILABLE, {}, f"systemctl is-active rc {rc}"
+    states = out.split()
+    if len(states) != len(wanted):
+        return SOURCE_UNAVAILABLE, {}, f"{len(states)} state line(s) for {len(wanted)} unit(s)"
+    return SOURCE_OK, dict(zip(wanted, states)), f"{len(wanted)} declared host twin(s)"
+
+
+def declared_host_twins(rows: Mapping[str, Mapping[str, Any]]) -> list[str]:
+    """Every unit any row names in scheduler.host_twin_units. Pure."""
+    out: set[str] = set()
+    for row in rows.values():
+        sched = row.get("scheduler") if isinstance(row.get("scheduler"), Mapping) else {}
+        for unit in sched.get(HOST_TWIN_FIELD) or ():
+            if isinstance(unit, str) and unit.strip():
+                out.add(unit.strip())
+    return sorted(out)
 
 
 def connect_ro(path: Path) -> sqlite3.Connection:
@@ -272,6 +326,7 @@ def evaluate(
     live_lanes: Optional[Iterable[str]],
     cron_lines: Optional[list[str]],
     n8n_active: Optional[Iterable[str]],
+    timers: Optional[Mapping[str, str]] = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     """(contradictions, not_measured rule codes, accepted debt). A source passed as None was not readable: its rules
     are skipped and named in not_measured. Pure."""
@@ -280,6 +335,27 @@ def evaluate(
     accepted: list[dict[str, Any]] = []
     out: list[dict[str, Any]] = []
     not_measured: list[str] = []
+
+    twin_rows = {lane: row for lane, row in rows.items()
+                 if [u for u in (_sched(row).get(HOST_TWIN_FIELD) or ()) if isinstance(u, str) and u.strip()]}
+    if not twin_rows:
+        pass  # no row declares a host twin: the rule has nothing to ask about, so it is neither clean nor unmeasured
+    elif timers is None:
+        not_measured.append("N8N_LANE_HOST_TWIN_ACTIVE")
+    else:
+        for lane, row in sorted(twin_rows.items()):
+            s = _sched(row)
+            twins = [u.strip() for u in (s.get(HOST_TWIN_FIELD) or ()) if isinstance(u, str) and u.strip()]
+            if (row.get("dispatch") or {}).get("mode") != "live" or not _stage_is_live(row):
+                continue  # no live n8n path: the host unit is the only scheduler, which is the declared state
+            for unit in twins:
+                state = str(timers.get(unit, "absent"))
+                if state == "active":
+                    out.append(_c("N8N_LANE_HOST_TWIN_ACTIVE", lane,
+                                  f"n8n dispatch is live and host unit {unit} is active: two schedulers run this "
+                                  "lane and the shared artifact is written twice",
+                                  unit=unit, unit_state=state, dispatch_mode=(row.get("dispatch") or {}).get("mode"),
+                                  registry_kind=s.get("kind"), registry_stage=s.get("stage")))
 
     if ledger is None:
         not_measured += ["DECLARED_OFF_BUT_RUNS_LIVE", "EFFECT_OWNER_N8N_KIND_NOT_N8N", "EFFECT_OWNER_N8N_NOT_LIVE",
@@ -481,8 +557,10 @@ def build_report(
     window_days: int,
     cron_runner: Optional[Callable[[], tuple[int, str]]] = None,
     n8n_reader: Optional[Callable[[], list[dict]]] = None,
+    systemd_runner: Optional[Callable[[list[str]], tuple[int, str]]] = None,
     skip_cron: bool = False,
     skip_n8n: bool = False,
+    skip_systemd: bool = False,
 ) -> dict[str, Any]:
     report: dict[str, Any] = {"schema": SCHEMA, "authority": AUTHORITY, "as_of": now.isoformat(),
                               "window_days": window_days, "sources": {}}
@@ -514,8 +592,16 @@ def build_report(
         st, ids, note = read_n8n_active(n8n_reader)
         report["sources"]["n8n_workflows"] = {"status": st, "note": note}
         n8n = ids if st == SOURCE_OK else None
+    twins = declared_host_twins(decl["rows"])
+    if skip_systemd:
+        report["sources"]["systemd_timers"] = {"status": SOURCE_SKIPPED, "note": "--no-systemd"}
+        timers = None
+    else:
+        st, states, note = read_systemd_states(twins, systemd_runner)
+        report["sources"]["systemd_timers"] = {"status": st, "note": note, "units": dict(states)}
+        timers = states if st == SOURCE_OK else None
     contradictions, not_measured, accepted = evaluate(decl, ledger=ledger, live_lanes=live, cron_lines=cron,
-                                                      n8n_active=n8n)
+                                                      n8n_active=n8n, timers=timers)
     report.update(
         accepted_debt=accepted,
         contradictions=contradictions,
@@ -680,6 +766,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--window-days", type=int, default=DEFAULT_WINDOW_DAYS)
     ap.add_argument("--no-crontab", action="store_true", help="skip crontab -l (its rule is NOT_MEASURED)")
     ap.add_argument("--no-n8n", action="store_true", help="skip the n8n DB SELECT (its rule is NOT_MEASURED)")
+    ap.add_argument("--no-systemd", action="store_true",
+                    help="skip systemctl is-active on the declared host twins (its rule is NOT_MEASURED)")
     ap.add_argument("--root", help=argparse.SUPPRESS)  # tests: a fixture repo root
     ap.add_argument("--now", help=argparse.SUPPRESS)  # tests: pin the clock
     try:
@@ -699,6 +787,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         window_days=a.window_days,
         skip_cron=a.no_crontab,
         skip_n8n=a.no_n8n,
+        skip_systemd=a.no_systemd,
     )
     ok = not report.get("error")
     from scripts.lib import lane_last_receipt as R

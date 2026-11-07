@@ -342,7 +342,105 @@ def test_unreadable_sources_are_not_measured_never_clean():
     found, nm, _ = RT.evaluate(_pre_fix_shape(), ledger=None, live_lanes=None, cron_lines=None, n8n_active=None)
     assert {"DECLARED_OFF_BUT_RUNS_LIVE", "LIVE_LIST_REGISTRY_NOT_LIVE", "ACTIVE_N8N_WORKFLOW_INACTIVE",
             "CUTOVER_CRON_LINE_ACTIVE", "EFFECT_OWNERSHIP_DRIFT"} <= set(nm)
+    # no row declares a host twin, so the twin rule is inapplicable rather than unmeasured (an unconditional entry
+    # would make every deployment report a rule it cannot ever fire)
+    assert "N8N_LANE_HOST_TWIN_ACTIVE" not in nm
     assert "registry/runtime truth: clean" not in RT.render({"sources": {}, "not_measured": nm, "contradiction_count": 0})
+
+
+# ── 2026-11-07: a declared host twin (systemd) that still runs an n8n-live lane ──────────────────────────────────
+#
+# LQ-20261107-43: tradeai-data-plausibility.timer and tradeai-gap-resolution.timer run the same scripts the n8n
+# workflows run, so both write the same receipt within minutes of each other. The repo cannot see the n8n command,
+# so the durable form of the check is declarative: a row that names its host twin in scheduler.host_twin_units and is
+# n8n-live while that unit is ACTIVE is a contradiction; stopping the unit is the switch that clears it.
+
+TWIN = "tradeai-data-plausibility.timer"
+
+
+def _twin_row(lane="n8n-data-plausibility-audit", *, kind="n8n", stage="canary", dispatch="live", units=None):
+    row = _row(lane, kind=kind, stage=stage, dispatch=dispatch)
+    row["scheduler"]["host_twin_units"] = [TWIN] if units is None else list(units)
+    return row
+
+
+def test_an_active_host_twin_on_a_live_n8n_lane_is_a_double_run():
+    found, _, _ = RT.evaluate(_decl([_twin_row()]), ledger=None, live_lanes=None, cron_lines=None, n8n_active=None,
+                              timers={TWIN: "active"})
+    assert _codes(found) == [("N8N_LANE_HOST_TWIN_ACTIVE", "n8n-data-plausibility-audit")]
+    ev = found[0]["evidence"]
+    assert (ev["unit"], ev["unit_state"], ev["dispatch_mode"]) == (TWIN, "active", "live")
+    assert "two schedulers run this lane" in found[0]["detail"]
+
+
+def test_the_same_row_is_clean_once_the_host_twin_is_stopped():
+    """Disabling the timer is the whole operator fix; the rule must clear itself and not become permanent noise."""
+    for state in ("inactive", "failed", "unknown"):
+        found, _, _ = RT.evaluate(_decl([_twin_row()]), ledger=None, live_lanes=None, cron_lines=None,
+                                  n8n_active=None, timers={TWIN: state})
+        assert found == [], state
+    # a unit systemd does not know is not ACTIVE either, and must not be reported as a double run
+    found, _, _ = RT.evaluate(_decl([_twin_row()]), ledger=None, live_lanes=None, cron_lines=None, n8n_active=None,
+                              timers={})
+    assert found == []
+
+
+def test_a_host_twin_with_no_live_n8n_path_is_the_declared_single_owner():
+    """A shadow/cron row's unit is the declared owner of the effect: running it is the truthful state, not a defect."""
+    for kw in ({"dispatch": "dry_run"}, {"kind": "cron", "stage": "shadow"}, {"kind": "cron", "stage": None},
+               {"kind": "n8n", "stage": "shadow"}):
+        found, _, _ = RT.evaluate(_decl([_twin_row(**kw)]), ledger=None, live_lanes=None, cron_lines=None,
+                                  n8n_active=None, timers={TWIN: "active"})
+        assert found == [], kw
+
+
+def test_a_row_that_declares_no_host_twin_is_never_asked_about():
+    found, _, _ = RT.evaluate(_decl([_row("plain", dispatch="live")]), ledger=None, live_lanes=None, cron_lines=None,
+                              n8n_active=None, timers={TWIN: "active"})
+    assert found == []
+
+
+def test_an_unreadable_systemd_never_reports_a_clean_lane():
+    found, nm, _ = RT.evaluate(_decl([_twin_row()]), ledger=None, live_lanes=None, cron_lines=None, n8n_active=None,
+                               timers=None)
+    assert found == [] and "N8N_LANE_HOST_TWIN_ACTIVE" in nm
+
+
+def test_declared_host_twins_collects_exactly_the_declared_units():
+    rows = {"a": _twin_row(), "b": _twin_row(lane="b", units=["tradeai-gap-resolution.timer", TWIN, ""]),
+            "c": _row("c")}
+    rows["d"] = {"lane_id": "d", "scheduler": "not-a-mapping"}  # a malformed row contributes nothing and cannot raise
+    assert RT.declared_host_twins(rows) == ["tradeai-data-plausibility.timer", "tradeai-gap-resolution.timer"]
+
+
+def test_read_systemd_states_binds_one_state_per_unit_in_sorted_argv_order():
+    seen = []
+
+    def runner(units):
+        seen.append(list(units))
+        return 0, "active\ninactive\n"
+
+    st, states, note = RT.read_systemd_states(["b.timer", "a.timer"], runner)
+    assert seen == [["a.timer", "b.timer"]]  # deterministic argv: a short answer can be bound to units
+    assert (st, states) == (RT.SOURCE_OK, {"a.timer": "active", "b.timer": "inactive"})
+    assert note == "2 declared host twin(s)"
+
+
+def test_read_systemd_states_treats_a_count_mismatch_and_a_refusal_as_not_measured():
+    st, states, note = RT.read_systemd_states([TWIN, "other.timer"], lambda units: (0, "active\n"))
+    assert (st, states) == (RT.SOURCE_UNAVAILABLE, {}) and "state line" in note
+    # rc 3 is systemd's "inactive" answer and is a readable source; anything else is systemd refusing
+    assert RT.read_systemd_states([TWIN], lambda units: (3, "inactive\n"))[0] == RT.SOURCE_OK
+    st3, _, note3 = RT.read_systemd_states([TWIN], lambda units: (1, ""))
+    assert st3 == RT.SOURCE_UNAVAILABLE and "rc 1" in note3
+    assert RT.read_systemd_states([TWIN], lambda units: (_ for _ in ()).throw(OSError("boom")))[0] == \
+        RT.SOURCE_UNAVAILABLE
+
+
+def test_no_declared_twin_means_no_systemd_call():
+    calls = []
+    st, states, note = RT.read_systemd_states([], lambda units: calls.append(units) or (0, ""))
+    assert (st, states, note, calls) == (RT.SOURCE_OK, {}, "no declared host twin", [])
 
 
 def test_parse_live_lanes_reads_only_its_key():
