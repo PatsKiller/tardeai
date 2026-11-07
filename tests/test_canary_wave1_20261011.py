@@ -38,6 +38,7 @@ from tests.support import disk_hygiene_n8n as DHN  # noqa: E402
 from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
 from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from tests.support import hermes_scorer_canary as HSC  # noqa: E402
+from tests.support import n8n_native_lane_stage as NLS  # noqa: E402
 from tests.support import pr_hygiene_audit_canary as PHA  # noqa: E402
 from tests.support import cio_prospect_canary_20261025 as CPC  # noqa: E402
 from tests.support import macro_calendar_canary_20261026 as MCC  # noqa: E402
@@ -158,7 +159,7 @@ def test_no_other_shadow_row_gained_a_live_argv():
     # 2026-10-15 cutover waves (scripts/n8n_cutover_wave.py) add their promoted lanes (tests/support/n8n_cutover_waves.py).
     assert canary == sorted(({"heartbeat-watch", *CANARY_WAVE_20261014} | {
         lane for lane in CW.PROMOTED if (ROWS[lane].get("scheduler") or {}).get("stage") == "canary"}
-        | set(HL.LIVE) | set(CIL.LIVE) | set(DHN.LIVE) | set(DIM.LIVE) | set(ATMW.LIVE) | set(RRT.LIVE) | set(HSC.LIVE) | set(PHA.LIVE) | set(CPC.LIVE) | set(MCC.LIVE)
+        | set(HL.LIVE) | set(CIL.LIVE) | set(DHN.LIVE) | set(DIM.LIVE) | set(ATMW.LIVE) | set(RRT.LIVE) | set(HSC.LIVE) | set(PHA.LIVE) | set(CPC.LIVE) | set(MCC.LIVE) | set(NLS.LIVE)
         | {"cio-ask-lifecycle", "cio-ask-material-events", "conflict-resolver"}) - set(CW.CUT_OVER))  # + hermes-learning cutover PR-2
     # (tests/support/hermes_learning_cutover.py) + comms-intent consumer live 2026-10-17
     # (tests/support/comms_intent_consumer_live.py) + disk hygiene / disk-usage monitor 2026-10-18
@@ -170,6 +171,7 @@ def test_no_other_shadow_row_gained_a_live_argv():
     # (tests/support/hermes_scorer_canary.py; operator waiver, verbatim: "push live now").
     # + pr-hygiene-audit canary 2026-10-22 (tests/support/pr_hygiene_audit_canary.py; the release-train request lanes
     # that shared it were removed 2026-10-27).
+    # + four native n8n lanes 2026-11-06 (tests/support/n8n_native_lane_stage.py; n8n program 0.4b-fix, #2418's fix).
     cut = sorted(r for r, row in ROWS.items() if (row.get("scheduler") or {}).get("stage") == "cutover")
     assert set(CUTOVER) <= set(cut), cut
 
