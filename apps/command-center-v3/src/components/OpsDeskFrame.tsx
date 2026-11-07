@@ -6,7 +6,7 @@ import DeskPage, { type DeskDecision, type DeskSource } from './DeskPage'
  *  from config/lane_registry.json (via /api/v2/desk-sources), in-panel gaps and the Decisions band. Each page keeps
  *  its own URL-synced tabs and every panel it had (change control): the frame is added around them, nothing is
  *  removed. Lane ids are registry ids; a source whose update time the page does not supply says so. */
-export type OpsPageKey = 'health' | 'llm' | 'coordination' | 'broker' | 'releases' | 'controls' | 'system' | 'jobs' | 'incidents' | 'jobsN8n'
+export type OpsPageKey = 'health' | 'llm' | 'coordination' | 'broker' | 'releases' | 'controls' | 'system' | 'jobs' | 'incidents' | 'jobsN8n' | 'jobsCatalog'
 
 type SourceSpec = Omit<DeskSource, 'asOf' | 'gap'>
 type PageSpec = { title: string; purpose: string; sources: SourceSpec[] }
@@ -26,6 +26,14 @@ const PAGES: Record<OpsPageKey, PageSpec> = {
     sources: [
       { id: 'receipts', label: 'Run receipts and wrapper events', laneIds: ['n8n-pilot-dispatch', 'n8n-incident-fanin'] },
       { id: 'registry', label: 'Job registry snapshot', laneIds: ['crontab-snapshot-for-health-agent'] },
+    ],
+  },
+  jobsCatalog: {
+    title: 'Job catalog',
+    purpose: 'Every job grouped by what it is for, with a plain-English line on what each one does and what breaks if it fails. Read-only.',
+    sources: [
+      { id: 'registry', label: 'Job registry snapshot', laneIds: ['crontab-snapshot-for-health-agent'] },
+      { id: 'receipts', label: 'Run receipts and wrapper events', laneIds: ['n8n-pilot-dispatch', 'n8n-incident-fanin'] },
     ],
   },
   jobs: {

@@ -4,7 +4,7 @@
 // (/api/v2/ops/incidents). Pure: no React, no DOM, no fetch. Nothing here writes; the switches stay in Ops Controls.
 import type { HistoryFilter, HistoryListWire } from './jobRunHistory.ts'
 import {
-  healthView, isFailing, lastRunView, nextRunView, readinessView, stageView, type N8nRowX, type N8nSummary, type Tone,
+  healthView, isFailing, isReady, lastRunView, nextRunView, readinessView, stageView, type N8nRowX, type N8nSummary, type Tone,
 } from './opsControlsN8n.ts'
 
 export const JOBS_N8N_PATH = '/ops/jobs-n8n'
@@ -33,23 +33,24 @@ export function tabLabel(label: string, count: number | null | undefined): strin
 }
 
 /** Tiles for the job tabs, from the jobs-history summary. A missing key renders "—", never 0. */
-export type Tile = { label: string; value: number | null; tone: Tone }
+/** `key` is the `?status=` value the tile filters to (tapping it again clears it). */
+export type Tile = { label: string; value: number | null; tone: Tone; key?: string }
 export function historyTiles(s: HistoryListWire['summary'] | null | undefined, tab: 'needs' | 'all' | 'fixes'): Tile[] {
   const v = (k: string): number | null => (s && typeof s[k] === 'number' ? s[k] : null)
   if (tab === 'fixes') {
     return [
-      { label: 'Fixed · 14 d', value: v('fixed_14d'), tone: 'success' },
-      { label: 'Failed now', value: v('failed'), tone: 'danger' },
-      { label: 'Missed a run', value: v('with_missed'), tone: 'warning' },
+      { label: 'Fixed · 14 d', value: v('fixed_14d'), tone: 'success', key: 'fixed' },
+      { label: 'Failed now', value: v('failed'), tone: 'danger', key: 'failed' },
+      { label: 'Missed a run', value: v('with_missed'), tone: 'warning', key: 'missed' },
     ]
   }
   return [
-    { label: 'Failed', value: v('failed'), tone: 'danger' },
-    { label: 'Missed a run', value: v('with_missed'), tone: 'warning' },
-    { label: 'Late', value: v('late'), tone: 'warning' },
-    { label: 'Ran OK', value: v('ok'), tone: 'success' },
-    { label: 'Ran, unproven', value: v('ok_unverified'), tone: 'neutral' },
-    { label: 'Fixed · 14 d', value: v('fixed_14d'), tone: 'success' },
+    { label: 'Failed', value: v('failed'), tone: 'danger', key: 'failed' },
+    { label: 'Missed a run', value: v('with_missed'), tone: 'warning', key: 'missed' },
+    { label: 'Late', value: v('late'), tone: 'warning', key: 'late' },
+    { label: 'Ran OK', value: v('ok'), tone: 'success', key: 'ok' },
+    { label: 'Ran, unproven', value: v('ok_unverified'), tone: 'neutral', key: 'ok_unverified' },
+    { label: 'Fixed · 14 d', value: v('fixed_14d'), tone: 'success', key: 'fixed' },
   ]
 }
 
@@ -58,13 +59,30 @@ export function historyTiles(s: HistoryListWire['summary'] | null | undefined, t
 export function n8nTiles(summary: N8nSummary | null, rows: N8nRowX[]): Tile[] {
   const cutOver = typeof summary?.cut_over === 'number' ? summary.cut_over : rows.length ? rows.filter(r => r.stage === 'cutover').length : null
   return [
-    { label: 'Live, healthy', value: summary?.live_healthy ?? null, tone: 'success' },
-    { label: 'Live, failing', value: summary?.live_failing ?? null, tone: 'danger' },
-    { label: 'Rehearsing', value: summary?.rehearsing ?? null, tone: 'info' },
-    { label: 'Cut over', value: cutOver, tone: 'neutral' },
-    { label: 'Ready to promote', value: summary?.ready_to_promote ?? null, tone: 'info' },
-    { label: 'Never ran', value: summary?.never_ran ?? null, tone: 'warning' },
+    { label: 'Live, healthy', value: summary?.live_healthy ?? null, tone: 'success', key: 'live_healthy' },
+    { label: 'Live, failing', value: summary?.live_failing ?? null, tone: 'danger', key: 'live_failing' },
+    { label: 'Rehearsing', value: summary?.rehearsing ?? null, tone: 'info', key: 'rehearsing' },
+    { label: 'Cut over', value: cutOver, tone: 'neutral', key: 'cut_over' },
+    { label: 'Ready to promote', value: summary?.ready_to_promote ?? null, tone: 'info', key: 'ready_to_promote' },
+    { label: 'Never ran', value: summary?.never_ran ?? null, tone: 'warning', key: 'never_ran' },
   ]
+}
+
+/** The n8n tile keys (`?status=` on the n8n lanes tab). */
+export const N8N_STATUS_KEYS = ['live_healthy', 'live_failing', 'rehearsing', 'cut_over', 'ready_to_promote', 'never_ran'] as const
+export type N8nStatusKey = typeof N8N_STATUS_KEYS[number]
+export const isN8nStatus = (s: string | null | undefined): s is N8nStatusKey => !!s && (N8N_STATUS_KEYS as readonly string[]).includes(s)
+/** A lane is in a tile's set by the same rules summaryOf counts it (so the list length equals the tile). */
+export function matchesN8nStatus(r: N8nRowX, key: N8nStatusKey): boolean {
+  const eff = r.outcome?.effective_mode, h = r.outcome?.health
+  switch (key) {
+    case 'live_healthy': return eff === 'live' && h === 'OK'
+    case 'live_failing': return eff === 'live' && (h === 'FAILING' || h === 'STALE')
+    case 'rehearsing': return eff === 'dry_run'
+    case 'cut_over': return r.stage === 'cutover'
+    case 'ready_to_promote': return isReady(r)
+    case 'never_ran': return h === 'NEVER_RAN'
+  }
 }
 
 /** "71 of 131 lanes run for real through n8n; 54 rehearse (dry run) while cron still does the work; 16 are fully cut

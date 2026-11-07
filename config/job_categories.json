@@ -1,0 +1,16 @@
+[
+  {"key": "market_data", "label": "Market data & prices", "blurb": "Quotes, bars, options chains and reference data that every other job reads."},
+  {"key": "portfolio", "label": "Portfolio & accounts", "blurb": "Holdings, balances, stops and broker syncs for each account."},
+  {"key": "signals", "label": "Scanners & trade signals", "blurb": "Screeners, watchlists, scalps and trade proposals."},
+  {"key": "cio", "label": "CIO & advice", "blurb": "The CIO verdicts, briefs and advice you read on the desks."},
+  {"key": "research", "label": "Research & intel", "blurb": "News, filings, transcripts and research briefs."},
+  {"key": "risk", "label": "Risk & defense", "blurb": "Market risk, stop protection and defensive moves."},
+  {"key": "alerts", "label": "Alerts & delivery", "blurb": "Texts, emails, Telegram and digests that reach you."},
+  {"key": "learning", "label": "Learning & scoring", "blurb": "Grading past calls and tuning the scores from outcomes."},
+  {"key": "agents_llm", "label": "Agents & LLM", "blurb": "Agent coordination, model calls and LLM spend control."},
+  {"key": "ops", "label": "Ops, health & self-heal", "blurb": "Watchdogs, health checks, incidents and automatic repair."},
+  {"key": "hygiene", "label": "Hygiene, backups & retention", "blurb": "Backups, log rotation, disk cleanup and data retention."},
+  {"key": "services", "label": "Always-on services", "blurb": "Long-running servers and daemons that must stay up."},
+  {"key": "side", "label": "Side projects", "blurb": "Jobs outside trading, such as the NYC auction tracker."},
+  {"key": "other", "label": "Other", "blurb": "Jobs not yet placed in a category."}
+]

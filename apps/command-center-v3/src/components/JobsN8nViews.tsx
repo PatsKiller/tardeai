@@ -3,11 +3,15 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import DetailHeader from './DetailHeader'
-import { HistoryCard, HistoryDetail } from './JobRunHistory'
-import { detailQuery, etTime, historyQuery, type HistoryDetailWire, type HistoryListWire } from '../lib/jobRunHistory'
+import { HistoryDetail } from './JobRunHistory'
+import { JobCard, JobDescription } from './JobCatalogViews'
+import { detailQuery, etTime, type HistoryDetailWire } from '../lib/jobRunHistory'
 import {
-  ALL_JOBS_FILTERS, N8N_FILTERS, OPS_CONTROLS_PATH, TAB_HISTORY_FILTER, historyTiles, laneCard, matchesN8nFilter, matchesN8nQuery,
-  moveToN8nSentence, n8nFilterCounts, n8nTiles, sortLanes, summaryOf, type LaneCard, type Tile,
+  JOB_CATALOG_PATH, describedHistoryQuery, effectiveHistoryFilter, jobTitle, toggleStatus, type Category, type DescribedListWire, type DescribedRow,
+} from '../lib/jobCatalog'
+import {
+  ALL_JOBS_FILTERS, N8N_FILTERS, OPS_CONTROLS_PATH, TAB_HISTORY_FILTER, historyTiles, isN8nStatus, laneCard, matchesN8nFilter,
+  matchesN8nQuery, matchesN8nStatus, moveToN8nSentence, n8nFilterCounts, n8nTiles, sortLanes, summaryOf, type LaneCard, type Tile,
 } from '../lib/jobsN8n'
 import type { N8nFilter, N8nRowX } from '../lib/opsControlsN8n'
 import type { OpsControlsState } from '../lib/opsControls'
@@ -28,14 +32,48 @@ const openBtn: CSSProperties = { minHeight: 44, width: '100%', borderRadius: RAD
 const sheet: CSSProperties = { position: 'fixed', inset: 0, zIndex: 1500, background: TOKENS.bg[0], color: TOKENS.text[0], display: 'flex', flexDirection: 'column', padding: 16, boxSizing: 'border-box', overflowY: 'auto', overflowX: 'hidden', fontFamily: FONT.sans }
 const searchInput: CSSProperties = { minHeight: 44, padding: '0 12px', borderRadius: RADIUS.sm, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[1], color: TOKENS.text[0], fontSize: TYPE.base, boxSizing: 'border-box', width: '100%' }
 
-/** Three tiles per row on a phone (the mockup's 3 × 2 grid), wider on a desktop. A null value renders "—". */
-export function TileGrid({ tiles, label }: { tiles: Tile[]; label: string }) {
+/** Three tiles per row on a phone (the mockup's 3 × 2 grid), wider on a desktop. A null value renders "—".
+ *  With `onPick`, each keyed tile is a 44 px toggle button that filters the list below (operator 2026-11-06: "You
+ *  can't click on the statuses to filter"); the active one is pressed, outlined and ticked. */
+export function TileGrid({ tiles, label, active = null, onPick }: { tiles: Tile[]; label: string; active?: string | null; onPick?: (key: string) => void }) {
   return <div role="group" aria-label={label} data-testid="jobs-n8n-tiles" className="jobs-n8n-tiles">
-    {tiles.map(t => <div key={t.label} data-testid="jobs-n8n-tile" style={{ ...panel, padding: '8px 10px', borderColor: toneVars(t.value ? t.tone : 'neutral').border }}>
-      <strong style={{ display: 'block', fontFamily: FONT.mono, fontSize: TYPE.lg, color: toneVars(t.value ? t.tone : 'neutral').color }}>{t.value ?? '—'}</strong>
-      <span style={{ ...muted, display: 'block', textTransform: 'uppercase', letterSpacing: '.04em', fontSize: TYPE.xs }}>{t.label}</span>
-    </div>)}
+    {tiles.map(t => {
+      const tone = t.value ? t.tone : 'neutral'
+      const on = !!t.key && t.key === active
+      const body = <>
+        <strong style={{ display: 'block', fontFamily: FONT.mono, fontSize: TYPE.lg, color: toneVars(on ? t.tone : tone).color }}>{t.value ?? '—'}</strong>
+        <span style={{ ...muted, display: 'block', textTransform: 'uppercase', letterSpacing: '.04em', fontSize: TYPE.xs, color: on ? TOKENS.text[0] : TOKENS.text[2] }}>{on ? '✓ ' : ''}{t.label}</span>
+      </>
+      const base: CSSProperties = { ...panel, padding: '8px 10px', borderColor: toneVars(on ? t.tone : tone).border }
+      if (!onPick || !t.key) return <div key={t.label} data-testid="jobs-n8n-tile" style={base}>{body}</div>
+      return <button key={t.label} type="button" data-testid="jobs-n8n-tile" data-status={t.key} aria-pressed={on}
+        aria-label={`${t.label}: ${t.value ?? 'not measured'}${on ? ', filtering the list; tap to clear' : ', tap to filter the list'}`}
+        onClick={() => onPick(t.key!)}
+        style={{ ...base, minHeight: 44, width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit', color: TOKENS.text[0], boxSizing: 'border-box',
+          background: on ? toneVars(t.tone).bg : TOKENS.bg[1], borderWidth: on ? 2 : 1, padding: on ? '7px 9px' : '8px 10px' }}>{body}</button>
+    })}
   </div>
+}
+
+/** "Showing Failed · 3 jobs  [Clear]": what the tapped tile filters, with a 44 px way out. */
+function StatusFilterBar({ label, count, onClear }: { label: string; count: number | null; onClear: () => void }) {
+  return <div role="status" data-testid="jobs-n8n-status-filter" style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', ...panel, padding: '4px 4px 4px 12px', background: toneVars('info').bg, borderColor: toneVars('info').border }}>
+    <span style={{ ...wrap, fontSize: TYPE.base }}>Showing <strong>{label}</strong>{count != null ? ` · ${count} ${count === 1 ? 'job' : 'jobs'}` : ''}</span>
+    <button type="button" onClick={onClear} style={pill(false)}>Clear filter</button>
+  </div>
+}
+
+/** `?status=` read and written on the current URL (shareable); replace, so Back leaves the page rather than a tile. */
+function useStatusParam(valid: (s: string) => boolean): [string | null, (key: string | null) => void] {
+  const [params, setParams] = useSearchParams()
+  const raw = params.get('status')
+  const status = raw && valid(raw) ? raw : null
+  const set = (key: string | null) => {
+    const next = new URLSearchParams(params)
+    if (key) next.set('status', key); else next.delete('status')
+    setParams(next, { replace: true })
+  }
+  return [status, set]
 }
 
 /** The shared style block for this page's grids (phone 3-up tiles; card list 1-up on a phone). */
@@ -52,13 +90,16 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('history')
   const title = useRef<HTMLHeadingElement>(null)
+  const tiles = historyTiles(null, tab)
+  const [status, setStatus] = useStatusParam(s => tiles.some(t => t.key === s))
   useEffect(() => { const t = setTimeout(() => { setDebounced(query); setOffset(0) }, 300); return () => clearTimeout(t) }, [query])
-  const list = useApi<HistoryListWire>(historyQuery(filter, offset, debounced), 60_000)
+  useEffect(() => { setOffset(0) }, [status])
+  const list = useApi<DescribedListWire>(describedHistoryQuery({ filter: effectiveHistoryFilter(tab, filter, status), offset, q: debounced, status }), 60_000)
   const detail = useApi<HistoryDetailWire>(detailQuery(selectedId || ''), 60_000, { enabled: !!selectedId })
   const data = list.data
   useEffect(() => {
-    if (data && onTotal && filter === TAB_HISTORY_FILTER[tab] && !debounced) onTotal(tab, data.total)
-  }, [data, filter, debounced, tab, onTotal])
+    if (data && onTotal && filter === TAB_HISTORY_FILTER[tab] && !debounced && !status) onTotal(tab, data.total)
+  }, [data, filter, debounced, status, tab, onTotal])
   useEffect(() => { if (selectedId) title.current?.focus() }, [selectedId, detail.data])
   const select = (id: string | null) => {
     const next = new URLSearchParams(params)
@@ -66,13 +107,17 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
     setParams(next, id ? undefined : { replace: true })
   }
   const row = detail.data?.row && detail.data.row.lane_id === selectedId ? detail.data.row : null
-  const listName = data?.rows.find(r => r.lane_id === selectedId)?.job
+  const listRow = data?.rows.find(r => r.lane_id === selectedId)
+  const listName = listRow ? jobTitle(listRow) : undefined
+  const detailRow = row as (typeof row & Partial<DescribedRow>) | null
+  const activeTile = status ? historyTiles(data?.summary, tab).find(t => t.key === status) ?? null : null
   const intro = tab === 'needs' ? 'Failed, missed and late jobs, worst first.'
     : tab === 'fixes' ? 'Jobs with a retry, heal, incident or code fix in the last 14 days.' : 'Every registered job and where it runs.'
   return <section aria-label={tab === 'needs' ? 'Needs you' : tab === 'fixes' ? 'Fixes' : 'All jobs'} data-testid={`jobs-n8n-${tab}`} style={{ display: 'grid', gap: 10, minWidth: 0 }}>
     <p style={muted}>{intro}{data ? ` Checked ${etTime(data.computed_at)}.` : ''}</p>
     {list.error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>Run history could not be read: {list.error}.{data ? ' The last observation remains below.' : ''}</div>}
-    <TileGrid tiles={historyTiles(data?.summary, tab)} label="Run history summary" />
+    <TileGrid tiles={historyTiles(data?.summary, tab)} label="Run history summary — tap a status to filter" active={status} onPick={k => setStatus(toggleStatus(status, k))} />
+    {activeTile && <StatusFilterBar label={activeTile.label} count={data && data.status === status ? data.total : null} onClear={() => setStatus(null)} />}
     {tab === 'all' && <>
       <div role="group" aria-label="Filter jobs by scheduler" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
         {ALL_JOBS_FILTERS.map(([k, label]) => <button key={k} type="button" aria-pressed={k === filter} onClick={() => { setFilter(k); setOffset(0) }} style={pill(k === filter)}>{label}</button>)}
@@ -82,9 +127,9 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
       </label>
     </>}
     <div className="jobs-n8n-list">
-      {data?.rows.map(r => <HistoryCard key={r.lane_id} row={r} computedAt={data.computed_at} onOpen={select} />)}
+      {data?.rows.map(r => <JobCard key={r.lane_id} row={r} computedAt={data.computed_at} categories={data.categories} onOpen={select} />)}
     </div>
-    {!data?.rows.length && <p style={{ ...panel, ...muted }}>{list.loading ? 'Loading run history…' : data ? (tab === 'needs' ? 'Nothing needs you: no failed, missed or late job.' : 'No jobs in this view.') : 'No run history is available.'}</p>}
+    {!data?.rows.length && <p style={{ ...panel, ...muted }}>{list.loading ? 'Loading run history…' : data ? (status ? 'No jobs with this status.' : tab === 'needs' ? 'Nothing needs you: no failed, missed or late job.' : 'No jobs in this view.') : 'No run history is available.'}</p>}
     {data && data.total > data.rows.length && <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', ...muted }}>
       <button type="button" style={pill(false)} disabled={data.offset === 0} onClick={() => setOffset(Math.max(0, data.offset - data.limit))}>Previous</button>
       <span>{data.offset + 1}–{data.offset + data.rows.length} of {data.total}</span>
@@ -93,22 +138,27 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
     {data && !!data.gaps.length && <p style={{ ...muted, color: TOKENS.warning }}>Unavailable: {data.gaps.join('; ')}</p>}
     {selectedId && <div role="dialog" aria-modal="true" aria-labelledby="jobs-n8n-history-title" data-testid="jobs-n8n-history-sheet"
       onKeyDown={e => { if (e.key === 'Escape') select(null) }} style={sheet}>
-      <DetailHeader back="Jobs & n8n" title={row?.job || listName || 'Job run history'} titleId="jobs-n8n-history-title" titleRef={title} onClose={() => select(null)} style={{ margin: '-16px -16px 12px' }} />
+      <DetailHeader back="Jobs & n8n" title={(detailRow && jobTitle(detailRow)) || listName || 'Job run history'} titleId="jobs-n8n-history-title" titleRef={title} onClose={() => select(null)} style={{ margin: '-16px -16px 12px' }} />
+      {detailRow && <div style={{ marginBottom: 12, maxWidth: 760 }}><JobDescription row={detailRow} categories={(detail.data as (HistoryDetailWire & { categories?: Category[] }) | null)?.categories} /></div>}
       {row && detail.data ? <HistoryDetail row={row} computedAt={detail.data.computed_at} />
         : <p role="status">{detail.error ? 'Run history for this job could not be read.' : detail.loading ? 'Loading run history…' : 'This job is not in the job list.'}</p>}
-      <p style={{ ...muted, marginTop: 16 }}>Read-only page. No Run, Retry or Pause buttons here; those stay in <Link to={OPS_CONTROLS_PATH} style={{ color: TOKENS.info }}>Ops Controls</Link> behind your sign-in.</p>
+      <p style={{ ...muted, marginTop: 16 }}>See every job by category in the <Link to={JOB_CATALOG_PATH} style={{ color: TOKENS.info }}>Job catalog</Link>. Read-only page. No Run, Retry or Pause buttons here; those stay in <Link to={OPS_CONTROLS_PATH} style={{ color: TOKENS.info }}>Ops Controls</Link> behind your sign-in.</p>
     </div>}
   </section>
 }
 
 // ── n8n lanes tab (GET /api/v2/ops/controls/state → n8n) ─────────────────────────────────────────────────────────
 /** One lane as a phone card. Pure. */
-export function LaneCardView({ card, onOpen }: { card: LaneCard; onOpen: (id: string) => void }) {
-  return <article aria-label={card.id} data-testid="jobs-n8n-lane" style={{ ...panel, display: 'grid', gap: 8 }}>
+export function LaneCardView({ card, onOpen, info }: { card: LaneCard; onOpen: (id: string) => void; info?: DescribedRow | null }) {
+  return <article aria-label={info?.title || card.id} data-testid="jobs-n8n-lane" style={{ ...panel, display: 'grid', gap: 8 }}>
     <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-      <strong style={{ ...wrap, fontSize: TYPE.md, flex: '1 1 180px' }}>{card.id}</strong>
+      <span style={{ minWidth: 0, flex: '1 1 180px' }}>
+        <strong style={{ ...wrap, fontSize: TYPE.md, display: 'block' }}>{info?.title || card.id}</strong>
+        {info?.title && <span style={{ ...muted, ...wrap, display: 'block', fontFamily: FONT.mono }}>{card.id}</span>}
+      </span>
       <span style={chip(card.health.tone)}>{card.health.label}</span>
     </div>
+    {info !== undefined && <JobDescription row={info ?? { does: null, breaks: null }} />}
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
       <span style={chip(card.stage.tone)}>{card.stage.label}</span>
       <span style={chip(card.liveList.tone)}>{card.liveList.label}</span>
@@ -166,13 +216,22 @@ export function N8nLanesTab({ state, loading, error }: { state: OpsControlsState
   const rows = (n?.rows || []) as N8nRowX[]
   const [filter, setFilter] = useState<N8nFilter>('all')
   const [q, setQ] = useState('')
+  const [status, setStatus] = useStatusParam(isN8nStatus)
+  // Plain-English names and descriptions for the lanes (one cached jobs-history read; n8n has < 200 lanes).
+  const described = useApi<DescribedListWire>(describedHistoryQuery({ filter: 'n8n', limit: 200 }), 300_000)
+  const info = new Map((described.data?.rows ?? []).map(r => [r.lane_id, r]))
+  const infoOf = (id: string): DescribedRow | null | undefined => (described.data ? info.get(id) ?? null : undefined)
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('lane')
   const title = useRef<HTMLHeadingElement>(null)
   useEffect(() => { if (selectedId) title.current?.focus() }, [selectedId])
   const nowMs = Date.parse(String(n?.outcomes_as_of || state?.as_of || '')) || Date.now()
   const counts = n8nFilterCounts(rows)
-  const shown = sortLanes(rows.filter(r => matchesN8nFilter(r, filter) && matchesN8nQuery(r, q)))
+  const qq = q.trim().toLowerCase()
+  const shown = sortLanes(rows.filter(r => matchesN8nFilter(r, filter) && (!status || !isN8nStatus(status) || matchesN8nStatus(r, status))
+    && (matchesN8nQuery(r, q) || (!!qq && (info.get(r.lane_id)?.title || '').toLowerCase().includes(qq)))))
+  const laneTiles = n8nTiles(summaryOf(rows, n?.summary), rows)
+  const activeTile = status ? laneTiles.find(t => t.key === status) ?? null : null
   const select = (id: string | null) => {
     const next = new URLSearchParams(params)
     if (id) next.set('lane', id); else next.delete('lane')
@@ -185,7 +244,8 @@ export function N8nLanesTab({ state, loading, error }: { state: OpsControlsState
     {error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>n8n lanes could not be read: {error}.{state ? ' The last observation remains below.' : ''}</div>}
     {n && n.state && n.state !== 'OK' && <div role="status" style={{ ...panel, color: TOKENS.warning }}>n8n lanes are {n.state}{n.reason ? `: ${n.reason}` : ''}.</div>}
     {n?.outcomes_state === 'UNAVAILABLE' && <div role="status" style={{ ...panel, color: TOKENS.warning }}>Run outcomes unavailable{n.outcomes_reason ? `: ${n.outcomes_reason}` : ''}. Last run and health are not measured; nothing is assumed.</div>}
-    <TileGrid tiles={n8nTiles(summaryOf(rows, n?.summary), rows)} label="n8n lane summary" />
+    <TileGrid tiles={laneTiles} label="n8n lane summary — tap a status to filter" active={status} onPick={k => { setFilter('all'); setStatus(toggleStatus(status, k)) }} />
+    {activeTile && <StatusFilterBar label={activeTile.label} count={rows.length ? shown.length : null} onClear={() => setStatus(null)} />}
     {sentence && <div data-testid="jobs-n8n-move-sentence" style={{ ...wrap, fontSize: TYPE.base, color: TOKENS.text[1], background: TOKENS.bg[2], borderRadius: RADIUS.sm, padding: '8px 10px' }}>Move to n8n: {sentence}</div>}
     <div role="group" aria-label="Filter n8n lanes" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
       {N8N_FILTERS.map(([k, label]) => <button key={k} type="button" aria-pressed={k === filter} onClick={() => setFilter(k)} style={pill(k === filter)}>{label} · {counts[k]}</button>)}
@@ -194,13 +254,14 @@ export function N8nLanesTab({ state, loading, error }: { state: OpsControlsState
       <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Lane id" style={searchInput} />
     </label>
     <div className="jobs-n8n-list">
-      {shown.map(r => <LaneCardView key={r.lane_id} card={laneCard(r, nowMs)} onOpen={select} />)}
+      {shown.map(r => <LaneCardView key={r.lane_id} card={laneCard(r, nowMs)} onOpen={select} info={infoOf(r.lane_id)} />)}
     </div>
     {!shown.length && <p style={{ ...panel, ...muted }}>{loading && !state ? 'Loading n8n lanes…' : rows.length ? 'No lanes match.' : 'No n8n lane is reported.'}</p>}
     <p style={muted} data-testid="jobs-n8n-switches-link">To add or remove a lane from the live list, use <Link to={`${OPS_CONTROLS_PATH}?tab=n8n`} style={{ color: TOKENS.info }}>Ops Controls › n8n lanes</Link> (passkey and typed phrase).</p>
     {selectedId && <div role="dialog" aria-modal="true" aria-labelledby="jobs-n8n-lane-title" data-testid="jobs-n8n-lane-sheet"
       onKeyDown={e => { if (e.key === 'Escape') select(null) }} style={sheet}>
-      <DetailHeader back="n8n lanes" title={selectedId} titleId="jobs-n8n-lane-title" titleRef={title} onClose={() => select(null)} style={{ margin: '-16px -16px 12px' }} />
+      <DetailHeader back="n8n lanes" title={info.get(selectedId)?.title || selectedId} titleId="jobs-n8n-lane-title" titleRef={title} onClose={() => select(null)} style={{ margin: '-16px -16px 12px' }} />
+      {info.get(selectedId) && <div style={{ marginBottom: 12, maxWidth: 760 }}><JobDescription row={info.get(selectedId)!} /></div>}
       {selected ? <LaneDetail row={selected} card={laneCard(selected, nowMs)} />
         : <p role="status">{loading ? 'Loading lane…' : 'This lane is not in the n8n lane list.'}</p>}
     </div>}

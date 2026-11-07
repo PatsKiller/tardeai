@@ -6,6 +6,7 @@ import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import { JOBS_N8N_TABS, OPS_CONTROLS_PATH, resolveJobsN8nTab, tabLabel, type JobsN8nTab } from '../lib/jobsN8n'
 import { opsApi, type OpsControlsState } from '../lib/opsControls'
+import { JOB_CATALOG_PATH } from '../lib/jobCatalog'
 
 const tabStyle = (on: boolean): CSSProperties => ({
   minHeight: 44, padding: '6px 14px', borderRadius: RADIUS.pill, fontSize: TYPE.base, cursor: 'pointer', whiteSpace: 'nowrap', flex: '0 0 auto',
@@ -35,6 +36,7 @@ export default function JobsN8nPage() {
           {JOBS_N8N_TABS.map(([k, label]) => <button key={k} type="button" role="tab" aria-selected={k === tab} data-testid={`jobs-n8n-tab-${k}`}
             onClick={() => pick(k)} style={tabStyle(k === tab)}>{tabLabel(label, k === 'n8n' ? laneCount : counts[k])}</button>)}
         </nav>
+        <Link to={JOB_CATALOG_PATH} data-testid="jobs-n8n-catalog-link" style={{ minHeight: 44, display: 'flex', alignItems: 'center', color: TOKENS.info, fontSize: TYPE.base, textDecoration: 'none' }}>Browse every job by category and what it does → Job catalog</Link>
         <div role="tabpanel" style={{ minWidth: 0 }}>
           {(tab === 'needs' || tab === 'all' || tab === 'fixes') && <JobsHistoryTab key={tab} tab={tab} onTotal={onTotal} />}
           {tab === 'n8n' && <N8nLanesTab state={controls.data ?? null} loading={controls.loading} error={controls.error ?? null} />}
