@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "warm_read_endpoints_20261107",
+  "files": [
+    "tests/test_warm_read_endpoints_20261107.py"
+  ],
+  "anchor": "WARM_READ_ENDPOINTS_20261107",
+  "comment": [
+    "ANCHOR: WARM_READ_ENDPOINTS_20261107 — the post-restart warm lane warms once per boot identity, leaves a receipt every fire, does no HTTP work when it has nothing to do, and can only ever GET a reviewed read-only path"
+  ]
+}
