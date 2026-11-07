@@ -60,10 +60,11 @@ Contradiction codes (rules are pure functions over the two sides; tests/test_reg
   CRON_ROW_RUNS_UNDER_TIMER      (2026-11-07) kind-cron row declared ACTIVE with no active crontab line, but a live
                                  systemd timer runs the same script: the lane runs, the declared MECHANISM is wrong
                                  (reported instead of ACTIVE_CRON_LINE_ABSENT, which would invent a contradiction)
-  DUPLICATE_SCHEDULER           (2026-11-07) one program under two live schedulers at once: an n8n lane whose entry
-                                 script imports the module a live timer runs, or a cron row whose script a live timer
-                                 also runs. Two writers for one lane receipt and one effect (2026-11-07 finding:
-                                 data-plausibility-audit + n8n-data-plausibility-audit, and gap-resolution)
+  DUPLICATE_SCHEDULER           (2026-11-07) one program reachable from two schedulers at once: an n8n lane (registry
+                                 ACTIVE, dispatch live) whose entry script imports the module a live timer runs, or
+                                 a cron row whose script a live timer also runs. Two writers for one lane receipt
+                                 and one effect (2026-11-07 finding: data-plausibility-audit +
+                                 n8n-data-plausibility-audit, and gap-resolution)
 
     python3 scripts/check_registry_runtime_truth.py              # --dry-run (default): print, write nothing
     python3 scripts/check_registry_runtime_truth.py --json       # dry run, JSON only
@@ -853,8 +854,9 @@ def evaluate(
             hit = _live_timer_for(live_timers, modules.get(entry) or ())
             if hit is not None:
                 out.append(_c("DUPLICATE_SCHEDULER", lane,
-                              f"n8n lane {entry} imports the module the live timer {hit[0]} runs: one lane, two "
-                              f"live schedulers", n8n_entry=entry, timer_unit=hit[0], command=hit[1],
+                              f"n8n lane {entry} (registry ACTIVE, dispatch {((row.get('dispatch') or {}).get('mode') or 'unset')}) "
+                              f"imports the module the live timer {hit[0]} runs: one lane reachable from two schedulers",
+                              n8n_entry=entry, timer_unit=hit[0], command=hit[1],
                               registry_state=row.get("state")))
         if cron_lines is not None:
             for lane, row in sorted(rows.items()):
