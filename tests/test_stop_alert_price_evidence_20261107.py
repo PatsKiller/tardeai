@@ -141,6 +141,29 @@ def test_a_yfinance_row_in_the_finviz_cache_is_never_served_as_a_finviz_mark(tmp
     assert got["ZQALP"]["source"] == "finviz_elite" and got["ZQCAP"]["source"] is None
 
 
+def test_a_row_the_cache_labelled_itself_is_not_evidence_of_a_finviz_mark(tmp_path):
+    """Observed live 2026-11-07: SRNE held 0.0003 labelled `…get_best_quote:yfinance` at 00:15 ET and
+    `finviz_quote_cache` at 00:45 ET. get_price_batch overlays the cache row and the repricer writes that label
+    back, so the provider is gone. Matching "finviz" in the name would resurrect exactly the value the rule bars."""
+    import json
+
+    from lib import portfolio_positions as pp
+
+    cache = tmp_path / "finviz_quote_cache.json"
+    cache.write_text(json.dumps({
+        "ZQSRNE": {"price": 0.0003, "last_fetched": "2026-11-07 00:45:02 ET", "source": "finviz_quote_cache"},
+        "ZQAMX": {"price": 79.07, "last_fetched": "2026-11-07 00:45:02 ET", "source": "finviz_quote_cache"},
+        "ZQALP": {"price": 10.0, "last_fetched": "2026-11-07 00:45:02 ET", "source": "finviz_elite"},
+    }))
+    got = pp.finviz_cache(cache)
+    assert set(got) == {"ZQALP"}
+    # and the dropped row does not come back through resolve_mark: the stored mark serves, labelled stale
+    mark = pp.resolve_mark({"symbol": "ZQSRNE", "canonical_mark": 0.2954,
+                            "canonical_mark_ingested_at": _iso(300)},
+                           finviz=got.get("ZQSRNE"), now=NOW)
+    assert mark["price"] == 0.2954 and mark["source"] == "stored_mark" and mark["stale"] is True
+
+
 # ── stop_lifecycle_monitor: the map, the record, the persisted evidence ────
 
 def test_the_holdings_map_keys_by_account_and_symbol_with_evidence():

@@ -147,6 +147,24 @@ def is_cash(position: dict) -> bool:
 _AUTO = object()   # resolve_mark(finviz=...) default: read the Finviz live cache for this symbol
 _FV_MEMO: dict = {}
 
+#: The cache naming itself. Written by market_quote.get_price_batch's Finviz overlay, then persisted by the
+#: repricer — a round trip that erases the real provider (SRNE: yfinance at 00:15 ET, this label at 00:45 ET).
+_SELF_SOURCE = "finviz_quote_cache"
+
+
+def _finviz_row_source(source: str) -> bool:
+    """True only when a cache row's own ``source`` is evidence of a Finviz price.
+
+    Empty = a row written before the stamp (kept). ``finviz_quote_cache`` = provenance already lost (dropped).
+    Any other provider named (yfinance, Schwab, a NAV cache, …) is not a Finviz mark (dropped).
+    """
+    if not source:
+        return True
+    low = source.lower()
+    if _SELF_SOURCE in low:
+        return False
+    return "finviz" in low
+
 
 def finviz_cache(path: Optional[Path] = None) -> dict:
     """{SYMBOL: {price, as_of, source}} from finviz_quote_cache.json beside the position store (the repricer
@@ -158,6 +176,10 @@ def finviz_cache(path: Optional[Path] = None) -> dict:
     Finviz, then a fresh Schwab/Alpaca/moomoo quote, never yfinance). The live cache carried two such rows —
     SRNE and AMANX, `data_broker.market_quote:get_best_quote:yfinance` — the repricer's fallback for symbols
     Finviz cannot price. Rows with no ``source`` predate the stamp and are kept.
+
+    ``finviz_quote_cache`` is dropped too, although it contains "finviz": it is the cache naming itself, written
+    when ``data_broker.market_quote.get_price_batch`` overlays a cache row and the repricer writes the overlay's
+    source back. Whatever priced that row is then unknown, so it is not evidence of a Finviz mark.
     """
     import json
     p = Path(path) if path is not None else store_path().parent / "finviz_quote_cache.json"
@@ -176,7 +198,7 @@ def finviz_cache(path: Optional[Path] = None) -> dict:
     for sym, row in (raw.items() if isinstance(raw, dict) else []):
         if isinstance(row, dict) and (_f(row.get("price")) or 0) > 0:
             source = str(row.get("source") or "").strip()
-            if source and "finviz" not in source.lower():
+            if not _finviz_row_source(source):
                 continue
             out[str(sym).upper()] = {"price": _f(row["price"]),
                                      "as_of": row.get("last_fetched") or row.get("last_updated"),
