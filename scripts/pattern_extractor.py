@@ -187,6 +187,12 @@ def _trade_key(row: dict) -> tuple:
     )
 
 
+def _id_order(row: dict) -> tuple:
+    """Lowest id first; a row that carries none sorts after every real id, never as id 0."""
+    rid = row.get('id')
+    return (1, float('inf')) if rid is None else (0, rid)
+
+
 def dedupe_to_trades(rows: list[dict]) -> list[dict]:
     """Collapse outcome rows to one per underlying trade, deterministically (lowest id survives).
 
@@ -197,7 +203,7 @@ def dedupe_to_trades(rows: list[dict]) -> list[dict]:
     trade rather than once per recommendation.
     """
     kept: dict[tuple, dict] = {}
-    for row in sorted(rows, key=lambda r: (r.get('id') is None, r.get('id') or 0)):
+    for row in sorted(rows, key=_id_order):
         kept.setdefault(_trade_key(row), row)
     return list(kept.values())
 
