@@ -624,6 +624,21 @@ def _openclaw_job_for(sched: dict[str, Any], jobs_by_id: dict[str, Any]) -> dict
     return None
 
 
+def _n8n_live_run_now(run: dict[str, Any], now: datetime, *, days: int = 7) -> bool:
+    """A live run the n8n dispatcher requested within ``days``: real duplicate work, not a shadow dry_run.
+
+    The coordination ledger is the n8n lane ledger but it records every caller and every mode: 78 lanes have
+    only dry_run rows (the dispatcher shadow), and host/agent callers appear as `host:...`. Only a live,
+    n8n-requested run inside the window means the work is executing twice right now.
+    """
+    if run.get("mode") != "live":
+        return False
+    if not str(run.get("requested_by") or run.get("caller_id") or "").startswith("n8n:"):
+        return False
+    at = timestamp(run.get("requested_at"))
+    return bool(at and 0 <= (now - at).total_seconds() <= days * 86400)
+
+
 def _base_row(lane: dict[str, Any]) -> dict[str, Any]:
     sched = lane.get("scheduler") or {}
     return {
@@ -705,16 +720,13 @@ def build_projection(
                 row["scheduler_observations"] = same_commands
                 claimed_cron.update(e["id"] for e in same_commands)
             # The reverse of the n8n branch: a lane kept on cron while the n8n dispatcher also fires it is the
-            # "scheduled twice" case. A ledger row proves it only when n8n asked for the run: this is the n8n
-            # coordination ledger, but `requested_by` also records host/agent callers (host:cc-wave-c), and
-            # keying on lane_id alone marked every cron lane whose run was requested by an agent (2026-11-07).
-            if measured and any(
-                str(r.get("lane_id")) == str(row["lane_id"])
-                and str(r.get("requested_by") or r.get("caller_id") or "").startswith("n8n:")
-                for r in runs or []
-            ):
+            # "scheduled twice" case. Evidence must be live work, not the dispatcher's shadow: the ledger also
+            # records dry_run rows (78 lanes) and host/agent callers (`requested_by` host:cc-wave-c), and keying
+            # on lane_id alone marked every such lane DRIFT (2026-11-07). Require the cron line to be present
+            # now — an ORPHANED lane with n8n runs is moved, not doubled — and a live n8n run in the last week.
+            if measured and present and any(_n8n_live_run_now(r, now) for r in runs or [] if str(r.get("lane_id")) == str(row["lane_id"])):
                 row["duplicate_scheduler"] = True
-                row["duplicate_reason"] = "also fired by the n8n dispatcher: the run ledger has n8n-requested runs for this lane"
+                row["duplicate_reason"] = "also fired live by the n8n dispatcher in the last 7 days while its crontab line is still present"
             if host_matches and not matched:
                 row["schedule_drift"] = True
                 row["scheduler_observations"] = host_matches

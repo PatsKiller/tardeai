@@ -610,23 +610,45 @@ def test_host_line_at_an_undeclared_window_is_a_duplicate(tmp_path):
 
 
 def test_host_requested_run_does_not_make_a_cron_lane_n8n_scheduled(tmp_path):
-    """The coordination ledger also records host/agent callers; only an n8n-requested run is double scheduling."""
-    host_run = {
+    """The coordination ledger also records host callers and dry runs; only live n8n work is double scheduling."""
+    base = {
         "lane_id": "test-lane",
         "mode": "live",
         "state": "RUN_DONE",
         "exit_code": 0,
-        "requested_by": "host:cc-wave-c",
+        "requested_at": NOW.isoformat(),
         "finished_at": NOW.isoformat(),
     }
     text = "*/5 * * * * python scripts/test_lane.py"
+
+    host_run = dict(base, requested_by="host:cc-wave-c")
     row = project(tmp_path, [lane()], observations(text), [host_run])["rows"][0]
     assert row["duplicate_scheduler"] is False
 
-    n8n_run = dict(host_run, requested_by="n8n:workflow:tradeai-dispatcher")
+    shadow = dict(base, requested_by="n8n:workflow:tradeai-dispatcher", mode="dry_run")
+    row = project(tmp_path, [lane()], observations(text), [shadow])["rows"][0]
+    assert row["duplicate_scheduler"] is False
+
+    n8n_run = dict(base, requested_by="n8n:workflow:tradeai-dispatcher")
     row = project(tmp_path, [lane()], observations(text), [n8n_run])["rows"][0]
     assert row["duplicate_scheduler"] is True
     assert "n8n" in row["duplicate_reason"]
+
+
+def test_an_orphaned_cron_lane_fired_by_n8n_is_moved_not_doubled(tmp_path):
+    """No crontab line now + n8n runs = the lane moved; calling it 'scheduled twice' hides the registry fix."""
+    run = {
+        "lane_id": "test-lane",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "requested_at": NOW.isoformat(),
+        "finished_at": NOW.isoformat(),
+        "requested_by": "n8n:workflow:tradeai-dispatcher",
+    }
+    row = project(tmp_path, [lane()], observations("*/5 * * * * python scripts/other.py"), [run])["rows"][0]
+    assert row["duplicate_scheduler"] is False
+    assert row["runtime_state"] == "ORPHANED"
 
 
 def test_inactive_lane_on_the_shared_dispatcher_is_not_reported_running(tmp_path):
