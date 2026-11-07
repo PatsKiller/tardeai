@@ -429,6 +429,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_mon
             if not (_SAVEPOINT_RE.fullmatch(sp) and _SAVEPOINT_RE.fullmatch(sp_mem)):
                 raise ValueError(f"unsafe savepoint name for screener {sid!r}")
             _fence_before_first_write()   # first membership/classification write of the run (2026-10-16)
+            added: list[str] = []         # tickers this screener inserted; counted only once committed
             try:
                 cur.execute(f"SAVEPOINT {sp}")  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
 
@@ -475,9 +476,7 @@ def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_mon
                             ON CONFLICT DO NOTHING
                         """, (ticker,))
 
-                        total_new += 1
-                        known.add(ticker)
-
+                        added.append(ticker)
                     cur.execute("""
                         INSERT INTO portfolio_intelligence_events (event_type, severity, source, payload)
                         VALUES ('screener_discovery', 'info', 'finviz_screener_runner.py', %s)
@@ -492,7 +491,6 @@ def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_mon
 
                 cur.execute(  # nosemgrep: tq-py-sql-fstring -- sp fullmatched _SAVEPOINT_RE above
                     f"RELEASE SAVEPOINT {sp}")
-                screener_result["db_ok"] = True
             except Exception as _dbe:
                 db_write_failures += 1
                 try:
@@ -504,6 +502,37 @@ def run_screener(screener_id: str = None, dry_run: bool = False, *, deadline_mon
                 print(f"  [screener] DB write failed for {sid}: {str(_dbe)[:120]}")
                 screener_result["db_error"] = str(_dbe)[:160]
                 screener_result["db_ok"] = False
+            else:
+                # Commit this screener's work HERE, before the next fetch replaces the handle.
+                # _refresh_conn() is db_adapter.ensure_conn(), which probes with SELECT 1 and then
+                # conn.rollback(): a SAVEPOINT that was only RELEASEd still belongs to that
+                # transaction, so the next screener's refresh silently discarded everything the
+                # earlier ones wrote. That is why 41 of 45 screeners kept a 2026-08-27 last_run
+                # while the run reported ok / 2062 new tickers with 0 write failures
+                # (LQ-20261107-129). A per-screener commit also means a run killed mid-loop
+                # (executor_lost at 1233 s on 11-06) keeps the screeners it finished.
+                try:
+                    conn.commit()
+                except Exception as _ce:
+                    db_write_failures += 1
+                    try:
+                        conn.rollback()
+                    except Exception as _rbe:
+                        # The handle is unusable, not merely dirty: name it, and let the next
+                        # screener's _refresh_conn replace it. The failure is already counted.
+                        print(f"  [screener] rollback after the failed commit also failed for {sid}:"
+                              f" {str(_rbe)[:120]}")
+                        screener_result["rollback_error"] = str(_rbe)[:160]
+                    print(f"  [screener] commit failed for {sid}: {str(_ce)[:120]}")
+                    screener_result["db_error"] = str(_ce)[:160]
+                    screener_result["db_ok"] = False
+                else:
+                    # Counted only now: the summary must describe what the database took, and a
+                    # ticker whose commit failed is left unknown so a later screener can still
+                    # discover it.
+                    screener_result["db_ok"] = True
+                    total_new += len(added)
+                    known.update(added)
 
         time.sleep(1)  # Rate limit between screeners
 

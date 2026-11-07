@@ -1,0 +1,25 @@
+{
+  "schema": "CiGate@v1",
+  "name": "finviz_screener_txn_20261107",
+  "files": [
+    "tests/test_finviz_screener_txn_20261107.py"
+  ],
+  "anchor": "finviz_screener_txn_20261107",
+  "comment": [
+    "ANCHOR: finviz_screener_txn_20261107 — the screener runner reported success for work the database",
+    "never received. Read-only DB check 2026-11-07: of 45 active screeners, last_run was 2026-08-27 for 38,",
+    "2026-08-26 for 3, and only 4 held any screener_symbol_membership row newer than 2026-08-27, while the",
+    "11-05 receipt said {\"screeners_run\": 45, \"total_new_tickers\": 2062, \"membership_failures\": 0,",
+    "\"db_write_failures\": 0} status ok (and the 11-06 run died executor_lost at 1233 s). Cause in",
+    "scripts/finviz_screener_runner.py: each screener's rows are written inside a SAVEPOINT that is only",
+    "RELEASEd, and the loop then calls _refresh_conn() -> db_adapter.ensure_conn(), which probes with",
+    "SELECT 1 and then conn.rollback() (scripts/db_adapter.py:283-284): the next screener's fetch discarded",
+    "every earlier screener's work, and the single commit after the loop persisted only the last screener —",
+    "or nothing when its tail returned no rows. The gate pins the contract: each screener's writes are",
+    "committed before the next fetch refreshes the handle, the summary counts only what the database took",
+    "(total_new_tickers equals the committed classification inserts), a failed commit is db_ok False plus a",
+    "db_write_failure and its tickers are not counted, and an empty screener does not hide the earlier ones.",
+    "Hermetic: fake connection modelling commit/rollback/SAVEPOINT, fake fetcher; no DB, no network, no",
+    "credential read."
+  ]
+}
