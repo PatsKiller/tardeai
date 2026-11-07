@@ -864,13 +864,17 @@ def _dropin_unit(path: Path) -> Optional[str]:
     return unit if unit.endswith(_UNIT_SUFFIXES) and _UNIT_NAME.match(unit) else None
 
 
-def _sealed_dropin_evidence(path: Path, root: Path, home: Path, runner) -> dict:
+def _sealed_dropin_evidence(path: Path, root: Path, home: Path, runner, sealed_file: Optional[Path] = None) -> dict:
     """Text for an unlistable drop-in directory, from the unit systemd actually loaded.
 
     `systemctl show` is a read-only manager query; it never starts, reloads or enables.
     It is admitted only when the manager proves the on-disk drop-ins equal what it
     loaded (NeedDaemonReload=no, LoadState=loaded) and every drop-in it loaded from
     this directory is a `.conf` file directly inside it. Anything else fails closed.
+
+    ``sealed_file`` (DISKHYG 2026-11-06): the directory is listable but one `.conf` in it is root 0600
+    (/etc/systemd/system/ollama.service.d/tradeai.conf, created 2026-11-06 03:25Z, made every standing capture
+    refuse `evidence_incomplete:units`). Same proof, plus that exact file must be one systemd loaded.
     """
     unit = _dropin_unit(path)
     scope = ["--user"] if root == home or home in root.parents else []
@@ -891,7 +895,10 @@ def _sealed_dropin_evidence(path: Path, root: Path, home: Path, runner) -> dict:
         raise ValueError("sealed_dropin_not_loaded:" + str(path))
     if any(p.parent == path and p.suffix != ".conf" for p in loaded):
         raise ValueError("sealed_dropin_unexpected:" + str(path))
-    return {"path": str(path), "text": proc.stdout, "source": "systemctl_show_loaded_unit", "unit": unit,
+    if sealed_file is not None and sealed_file not in loaded:
+        # An unreadable file systemd did not load is unknown text; it never proves absence.
+        raise ValueError("sealed_dropin_file_not_loaded:" + str(sealed_file))
+    return {"path": str(sealed_file or path), "text": proc.stdout, "source": "systemctl_show_loaded_unit", "unit": unit,
             "command": command}
 
 
@@ -1069,7 +1076,14 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
                 for name in names:
                     path = Path(parent) / name
                     if path.suffix in (".service", ".timer", ".conf", ".path", ".socket", ".target"):
-                        out.append({"path": str(path), "text": path.read_text()})
+                        try:
+                            out.append({"path": str(path), "text": path.read_text()})
+                        except PermissionError:
+                            # A root 0600 drop-in file in a listable `<unit>.d`: known from the loaded unit or
+                            # fatal. Any other unreadable unit file stays fatal.
+                            if path.suffix != ".conf" or not _dropin_unit(path.parent):
+                                raise
+                            out.append(_sealed_dropin_evidence(path.parent, root, rules["_home"], runner, sealed_file=path))
             for path in sealed:
                 out.append(_sealed_dropin_evidence(path, root, rules["_home"], runner))
         return out
@@ -1904,8 +1918,19 @@ def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *,
         raise RulesError(str(exc)) from exc
     rows = standing_results(rules, ctx)
     if measure:
+        # 2026-11-06 DISKHYG: this loop ran `du` serially over every row, candidates AND protected excluded rows
+        # (~2,000 rows / ~200 GB on this host), and was 28-34 min of each 26-60 min standing run (manifest
+        # 20261102T141703Z: plan 14:17:03 -> manifest 14:45:05, then 81 removals in 6 min). `du` is read-only, so
+        # run it on the same bounded pool the legacy plan uses (git.size_workers); per-path timeout and the
+        # None-on-failure contract are unchanged, and the result is identical row for row.
+        workers = max(1, int((rules.get("git") or {}).get("size_workers") or 4))
+        targets = [item for item in rows if item["kind"] != "archive_ref"]
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            sizes = list(pool.map(lambda item: du_bytes(Path(item["path"]), 60), targets))
         for item in rows:
-            item["size_bytes"] = None if item["kind"] == "archive_ref" else du_bytes(Path(item["path"]), 60)
+            item["size_bytes"] = None
+        for item, size in zip(targets, sizes):
+            item["size_bytes"] = size
     scratch_budget = {}
     t_cfg = (rules.get("standing_apply") or {}).get("agent_scratch")
     if isinstance(t_cfg, Mapping) and ("max_total_gb" in t_cfg or "keep_younger_than_hours" in t_cfg):

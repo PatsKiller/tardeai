@@ -1205,3 +1205,95 @@ def test_recheck_refuses_and_names_a_persistent_opaque_process(world, monkeypatc
     assert report["refused"] == "evidence_recheck_unavailable"
     assert report["refusal_detail"] == "evidence_opaque_processes", "the receipt must name the refusing check"
     assert calls == [], "an opaque capture never authorizes a removal"
+
+
+def test_standing_plan_measures_rows_in_parallel_with_identical_sizes(world, monkeypatch):
+    """DISKHYG 2026-11-06: standing_plan sized ~2,000 rows serially (28-34 min a run). It now uses the bounded
+    git.size_workers pool; sizes, the 60 s per-path timeout and archive_ref=None are unchanged."""
+    import threading
+    import time as _time
+
+    home, rules, _, _ = world
+    dumps(home)
+    serial = DH.standing_plan(rules, NOW, evidence())
+    lock, live, peak, timeouts = threading.Lock(), [0], [0], set()
+
+    def slow_du(p, timeout_s):
+        timeouts.add(timeout_s)
+        with lock:
+            live[0] += 1
+            peak[0] = max(peak[0], live[0])
+        _time.sleep(0.02)
+        with lock:
+            live[0] -= 1
+        return p.stat().st_size
+
+    monkeypatch.setattr(DH, "du_bytes", slow_du)
+    parallel = DH.standing_plan(rules, NOW, evidence())
+    assert peak[0] > 1, "du must run concurrently"
+    assert peak[0] <= int(rules["git"]["size_workers"])
+    assert timeouts == {60}
+    size = lambda m: sorted((r["path"], r.get("size_bytes")) for r in m["items"] + m["excluded"])
+    assert size(parallel) == size(serial)
+    assert parallel["protected_excluded_bytes"] == serial["protected_excluded_bytes"]
+
+
+def test_standing_plan_unmeasured_row_stays_none(world, monkeypatch):
+    home, rules, _, _ = world
+    dumps(home)
+    monkeypatch.setattr(DH, "du_bytes", lambda *_: None)
+    m = DH.standing_plan(rules, NOW, evidence())
+    assert all(r.get("size_bytes") is None for r in m["items"] + m["excluded"])
+
+
+def _sealed_file_fixture(world, monkeypatch):
+    rules = collector_fixture(world)
+    dropin = rules["_unit_dirs"][0] / "fixture.service.d"
+    dropin.mkdir()
+    sealed = dropin / "tradeai.conf"
+    sealed.write_text("[Service]\n")
+    real_read = Path.read_text
+
+    def read_text(self, *a, **kw):
+        # Root 0600 file inside a listable drop-in dir, as /etc/systemd/system/ollama.service.d/tradeai.conf.
+        if self == sealed:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read(self, *a, **kw)
+    monkeypatch.setattr(Path, "read_text", read_text)
+    return rules, sealed
+
+
+def test_sealed_dropin_file_is_known_from_the_loaded_unit(world, monkeypatch):
+    rules, sealed = _sealed_file_fixture(world, monkeypatch)
+    loaded = f"LoadState=loaded\nNeedDaemonReload=no\nDropInPaths={sealed}\nEnvironment=X={world[0]}/held-tree\n"
+    runner, calls = _runner_for(_show(loaded))
+    snap = COLLECT(rules, NOW, runner=runner, github=FixtureGithub())
+    units = snap["sources"]["units"]
+    assert units["complete"], units
+    entry = next(u for u in units["data"] if u["path"] == str(sealed))
+    assert entry["source"] == "systemctl_show_loaded_unit" and str(world[0] / "held-tree") in entry["text"]
+    assert ["systemctl", "--user", "show", "--no-pager", "fixture.service"] in calls
+
+
+@pytest.mark.parametrize("show", [
+    _show("", rc=1),
+    _show("LoadState=loaded\nNeedDaemonReload=yes\nDropInPaths=SEALED\n"),
+    _show("LoadState=loaded\nNeedDaemonReload=no\nDropInPaths=DIR/other.conf\n"),  # loaded a sibling, not this file
+])
+def test_sealed_dropin_file_without_proof_still_refuses(world, monkeypatch, show):
+    rules, sealed = _sealed_file_fixture(world, monkeypatch)
+    show.stdout = show.stdout.replace("SEALED", str(sealed)).replace("DIR", str(sealed.parent))
+    snap = COLLECT(rules, NOW, runner=_runner_for(show)[0], github=FixtureGithub())
+    assert not snap["sources"]["units"]["complete"]
+    with pytest.raises(ValueError, match="evidence_incomplete:units"):
+        SR.evidence_context(snap, NOW)
+
+
+def test_unreadable_unit_file_outside_a_dropin_still_refuses(world, monkeypatch):
+    rules = collector_fixture(world)
+    unit = rules["_unit_dirs"][0] / "fixture.service"
+    unit.write_text("[Service]\n")
+    real_read = Path.read_text
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **kw: (_ for _ in ()).throw(PermissionError(13, "denied", str(self))) if self == unit else real_read(self, *a, **kw))
+    snap = COLLECT(rules, NOW, runner=_runner_for(_show("LoadState=loaded\nNeedDaemonReload=no\n"))[0], github=FixtureGithub())
+    assert not snap["sources"]["units"]["complete"]
