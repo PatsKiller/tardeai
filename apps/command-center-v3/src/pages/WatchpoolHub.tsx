@@ -6,7 +6,7 @@ import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubPanel, BB, T, TYPE, RAIL, numStyle, terminalButton, focusStyle } from '../lib/watchTokens'
 import { Chip } from '../components/TerminalChip'
-import { PromoteUnavailableNote } from '../lib/watchpoolPromoteNote'
+import { PromoteUnavailableNote, divergenceReason, liveDivergence } from '../lib/watchpoolPromoteNote'
 
 // v3 Watchpool & Directives — operator watch directives (ticker/sector/trend) + the unified
 // strategy_watchpool, with the shared provenance pill row. Advisory; Hermes-firewall preserved.
@@ -118,6 +118,15 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const { data: wp, error: wpError, loading: wpLoading, refetch: refetchWp } = useApi<any>(`/api/v2/watchpool?status=${encodeURIComponent(fStatus)}&offset=${poolPaging.offset}&limit=50`, 60_000)
   const { data: mergePlan, refetch: refetchPlan } = useApi<any>('/api/v2/watch/directives/merge-plan', 0)
   const { data: finds } = useApi<any>('/api/v2/screener-finds/candidates', 300_000)
+  // LQ-20261107-250: the live professional-analyst read model, one fetch for every row. The stored
+  // watch_directive_hits.divergence is written once at insert and never refreshed, so a row could keep a
+  // verdict (and an explanation) the pills file no longer holds. The map also carries the two sides the
+  // reason is derived from (`street`, `internal`) — the drawer already reads this file live.
+  const { data: pillsMap, error: pillsError } = useApi<any>('/api/v2/pro-analyst/pills?map=1', 120_000)
+  const pillBySymbol: Record<string, any> = pillsMap?.map ?? {}
+  // The endpoint answers a read failure with a note and no map; that is a data error, not an absence of coverage.
+  const pillsUnreadable = !!pillsError || (!!pillsMap && !pillsMap.map)
+  const pillsPending = !pillsMap && !pillsError
   const directiveId = params.get('directive')
   const drawerId = directiveId && /^\d+$/.test(directiveId) ? Number(directiveId) : null
   const setDrawerId = (id: number | null) => setParams(p => { if (id != null) p.set('directive', String(id)); else p.delete('directive'); return p })
@@ -214,7 +223,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
 
   return (
     <div className="w2-watchpool" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <style>{`@media(max-width:820px){.w2-watchpool button,.w2-watchpool input,.w2-watchpool select{min-height:44px;min-width:44px}.w2-watchpool [data-directive-row]{min-height:44px}.w2-watchpool [data-pool-row]{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-height:44px;overflow-wrap:anywhere}.w2-watchpool [data-pool-header]{display:none!important}.w2-directive-sheet{width:100%!important;max-width:none!important}.w2-directive-overlay{z-index:1200!important}}`}</style>
+      <style>{`@media(max-width:820px){.w2-watchpool button,.w2-watchpool input,.w2-watchpool select{min-height:44px;min-width:44px}.w2-watchpool [data-directive-row]{min-height:44px}.w2-watchpool [data-pool-row]{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-height:44px;overflow-wrap:anywhere}.w2-watchpool [data-pool-header]{display:none!important}.w2-directive-sheet{width:100%!important;max-width:none!important}.w2-directive-overlay{z-index:1200!important}.w2-watchpool [data-desk-suggestion] [data-testid="wp-promote-unavailable"]{flex:1 1 100%;order:9;margin-left:0!important}}`}</style>
       {(wdError || wpError) && <div role="status" style={{ color: BB.amber, fontSize: TYPE.sm }}>Latest list read failed. Any displayed rows and counts are retained from the last successful response.</div>}
       {!embedded && (
         <div>
@@ -281,8 +290,12 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
           </div>
         ) : (
           <div>
-            {deskSuggestions.map((h: any, i: number) => (
-              <div key={`${h.hit_id || h.symbol}-${i}`}
+            {deskSuggestions.map((h: any, i: number) => {
+              const pill = pillBySymbol[String(h.symbol || '').toUpperCase()]
+              const divergence = liveDivergence(h.divergence, pill)
+              const reason = divergenceReason(divergence, pill, pillsUnreadable)
+              return (
+              <div key={`${h.hit_id || h.symbol}-${i}`} data-desk-suggestion
                 style={{
                   display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
                   padding: '6px 4px', borderBottom: `1px solid ${BB.borderHair}`,
@@ -299,14 +312,16 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                 <span style={{ fontSize: TYPE.xs, color: BB.text2, flex: '1 1 160px' }}>
                   {h.label || h.directive_label || `directive #${h.directive_id}`}
                 </span>
-                {h.divergence && <Chip kind="state" tone={divTone(h.divergence)}>{h.divergence}</Chip>}
+                {divergence && <Chip kind="state" tone={divTone(divergence)}>{divergence}</Chip>}
                 <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>
                   {String(h.surfaced_at || '').slice(0, 16).replace('T', ' ')}
                 </span>
                 {/* FQ-079: two unavailable facts, one component — extracted so the rendered words can be asserted
                     (cc-deepseek-3's review of PR 2660 at a098e91b: a source grep passed while the producer-shaped case
-                    was never rendered). Neither branch disables Promote or changes eligibility. */}
-                <PromoteUnavailableNote directiveId={h.directive_id} divergence={h.divergence} />
+                    was never rendered). LQ-250: the reason comes from the live read model, and the sentence names the
+                    missing side. Neither branch disables Promote or changes eligibility. */}
+                <PromoteUnavailableNote directiveId={h.directive_id} divergence={divergence} reason={reason}
+                  pending={pillsPending} />
                 <button
                   disabled={busy || !h.directive_id}
                   onClick={() => promote(h.symbol, h.directive_id, h.surfaced_by)}
@@ -316,7 +331,8 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
                     : 'Unavailable: this suggestion has no directive, so there is nothing to promote'}
                 >Promote</button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
         <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }}>

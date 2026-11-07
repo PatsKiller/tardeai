@@ -5,7 +5,8 @@ ADVISORY/READ-ONLY. One row per symbol (actionable + held universe) combining:
   - Yahoo analyst consensus (PREFERRED): recommendation_key/mean, analyst count, targets, upside.
   - Finviz target_price (SUPPLEMENTAL only — its rating is target-distance, NOT consensus; never used as rating).
   - Latest analyst_upgrade/analyst_downgrade catalyst headline (EVENT pill, not consensus).
-  - Internal-vs-professional divergence (fused_signals direction vs Street consensus): aligned/mixed/divergent/unavailable.
+  - Internal-vs-professional divergence (internal direction vs Street consensus): aligned/mixed/divergent/unavailable,
+    plus WHY it is unavailable (`divergence_reason`) and where the internal side came from (`internal_direction_source`).
   - confidence, stale flag, raw provenance.
 Writes data/runtime/pro_analyst_pills_latest.json (+ coverage by tier). No scoring/trade/holdings change.
 
@@ -86,19 +87,28 @@ def main(argv=None):
         return cur.fetchone()
 
     def internal_dir(sym):
-        # Prefer fused_signals.direction; it's currently unpopulated upstream, so fall back to the catalyst
-        # classifier's directional consensus (majority of recent catalyst_events directions) — a real internal
-        # directional view that can be compared to Street consensus.
-        cur.execute("SELECT direction FROM fused_signals WHERE symbol=%s AND direction IS NOT NULL AND direction<>'' ORDER BY created_at DESC LIMIT 1", (sym,))
+        # The internal side of the comparison. Kept as a dict so the pill can say WHERE the direction came
+        # from and WHEN — an empty internal side was indistinguishable from a comparison failure.
+        #
+        # fused_signals.direction is the preferred source, but measured 2026-11-07: the column has NEVER been
+        # written by any code path (`signal_fusion._persist` does not include it; read-only count = 0 non-empty
+        # rows over 60 days). It stays first so a future producer needs no change here; until then the catalyst
+        # fallback below is the operative source for every name, and the pill labels it as such.
+        cur.execute("SELECT direction, created_at FROM fused_signals WHERE symbol=%s AND direction IS NOT NULL AND direction<>'' ORDER BY created_at DESC LIMIT 1", (sym,))
         r = cur.fetchone()
         if r and r["direction"]:
-            return r["direction"].lower()
-        cur.execute("""SELECT raw_payload->>'direction' dir, count(*) FROM catalyst_events
+            return {"direction": r["direction"].lower(), "source": "fused_signals", "as_of": r.get("created_at")}
+        # Catalyst classifier's directional consensus (majority of recent catalyst_events directions) over a
+        # 14-day window — its coverage is therefore partial, and the window end is carried as ``as_of``.
+        cur.execute("""SELECT raw_payload->>'direction' dir, count(*) AS n, max(created_at) AS as_of
+                       FROM catalyst_events
                        WHERE symbol=%s AND created_at>now()-interval '14 days'
                          AND raw_payload->>'direction' IN ('bullish','bearish')
                        GROUP BY 1 ORDER BY 2 DESC LIMIT 1""", (sym,))
         r = cur.fetchone()
-        return r["dir"] if r else None
+        if r and r["dir"]:
+            return {"direction": r["dir"], "source": "catalyst_events_14d", "as_of": r["as_of"]}
+        return {"direction": None, "source": None, "as_of": None}
 
     now = datetime.now(timezone.utc)
     pills, cov = [], {"held": [0, 0], "open_paper": [0, 0], "open_proposal": [0, 0], "scalp": [0, 0], "watchlist": [0, 0]}
@@ -106,7 +116,8 @@ def main(argv=None):
         y = latest_yahoo(sym)
         fv = finviz_target(sym)
         ev = latest_event(sym)
-        idir = internal_dir(sym)
+        idir_info = internal_dir(sym)
+        idir = idir_info["direction"]
         has_consensus = bool(y and (y["recommendation_key"] not in (None, "none") or y["number_of_analyst_opinions"]))
         hm = None if has_consensus else hermes_consensus(sym)
         if hm:
@@ -136,6 +147,17 @@ def main(argv=None):
             divergence = "mixed"
         else:
             divergence = "divergent"
+        # Which side is missing. 'unavailable' alone conflated "no Street coverage" with "the system's own
+        # directional read is missing" (measured 2026-11-07: 930/1200 covered names had a Street view but no
+        # internal direction, so the UI sentence about 'no professional-analyst view' was false for them).
+        if divergence != "unavailable":
+            divergence_reason = None
+        elif not has_consensus:
+            divergence_reason = "no_professional_coverage"
+        elif not street:
+            divergence_reason = "no_street_direction"
+        else:
+            divergence_reason = "no_internal_direction"
         pill = {
             "symbol": sym, "tiers": [k for k in ("held", "open_paper", "open_proposal", "scalp", "watchlist") if mem.get(k)],
             "analyst_rating_source": ("hermes" if hm else "yahoo") if has_consensus else ("finviz_target" if fv else "none"),
@@ -152,6 +174,9 @@ def main(argv=None):
             "latest_event_source": (ev or {}).get("source"),
             "latest_event_at": str(ev["created_at"]) if ev else None,
             "internal_direction": idir, "street_direction": street, "divergence": divergence,
+            "divergence_reason": divergence_reason,
+            "internal_direction_source": idir_info["source"],
+            "internal_direction_at": str(idir_info["as_of"]) if idir_info["as_of"] else None,
             "confidence": "high" if (has_consensus and (y["number_of_analyst_opinions"] or 0) >= 5 and not stale)
                           else "low" if has_consensus else "none",
             "stale": stale, "has_professional_coverage": has_consensus,

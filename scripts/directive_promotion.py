@@ -19,10 +19,13 @@ Matched to real Phase-0 signatures:
 """
 from __future__ import annotations
 import json
+import logging
 import os
 import sys
 import threading
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -109,31 +112,61 @@ def get_source_tier(source_system, conn=None):
     return "candidate"
 
 
+#: Last failure while reading the pro-analyst read model (None = the last read parsed).
+#: A read error used to be swallowed by `except: pass`, so an unreadable/malformed file looked exactly like
+#: "no professional coverage" — the two are different facts and the surfaces now report which one it is.
+_PILLS_READ_ERROR = None
+
+
+def _note_pills_error(exc):
+    """Record and log a read-model failure once per distinct message (calls are per symbol)."""
+    global _PILLS_READ_ERROR
+    msg = f"{type(exc).__name__}: {exc}"
+    if msg != _PILLS_READ_ERROR:
+        logger.warning(
+            "pro-analyst read model unreadable at %s — %s; divergence is reported 'unavailable' and is NOT "
+            "evidence of an absent Street view", _PILLS_JSON, msg,
+        )
+    _PILLS_READ_ERROR = msg
+
+
+def pro_analyst_pills_error():
+    """The last read-model read failure (``"Type: message"``), or None when the file last parsed.
+
+    Lets a surface distinguish a data error from a genuine absence of coverage, both of which
+    return ``unavailable`` from :func:`get_divergence_status`."""
+    return _PILLS_READ_ERROR
+
+
 def get_divergence_status(symbol, conn=None):
     """Latest pro_analyst_monitor snapshot -> aligned|mixed|divergent|unavailable.
     No Street coverage / no pill -> 'unavailable' (not divergent — see governor)."""
+    global _PILLS_READ_ERROR
     try:
         d = json.loads(_PILLS_JSON.read_text())
+        _PILLS_READ_ERROR = None
         for p in d.get("pills", []):
             if str(p.get("symbol", "")).upper() == symbol.upper():
                 return p.get("divergence") or "unavailable"
-    except Exception:
-        pass
+    except Exception as exc:
+        _note_pills_error(exc)
     return "unavailable"
 
 
 def get_street_consensus(symbol):
     """Yahoo-authoritative consensus block for the provenance pill (D-3 reuse). None if uncovered."""
+    global _PILLS_READ_ERROR
     try:
         d = json.loads(_PILLS_JSON.read_text())
+        _PILLS_READ_ERROR = None
         for p in d.get("pills", []):
             if str(p.get("symbol", "")).upper() == symbol.upper() and p.get("has_professional_coverage"):
                 return {"recommendation_mean": p.get("recommendation_mean"),
                         "recommendation_key": p.get("recommendation_key"),
                         "target_mean": p.get("target_mean_price"),
                         "count": p.get("number_of_analyst_opinions")}
-    except Exception:
-        pass
+    except Exception as exc:
+        _note_pills_error(exc)
     return None
 
 

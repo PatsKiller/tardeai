@@ -22,10 +22,14 @@ VIEW_TEST = ROOT / "apps/command-center-v3/src/lib/watchpool.promoteNote.view.te
 
 
 def test_the_page_renders_the_extracted_note():
-    assert "import { PromoteUnavailableNote } from '../lib/watchpoolPromoteNote'" in SRC, (
+    assert "import { PromoteUnavailableNote, divergenceReason, liveDivergence } from '../lib/watchpoolPromoteNote'" in SRC, (
         "the page must render the extracted component, so the rendered test exercises what ships"
     )
-    assert "<PromoteUnavailableNote directiveId={h.directive_id} divergence={h.divergence} />" in SRC
+    # LQ-250: the row feeds the component the LIVE pill value and the reason derived from it, not the
+    # stored-at-insert divergence alone.
+    assert "<PromoteUnavailableNote directiveId={h.directive_id} divergence={divergence} reason={reason}" in SRC
+    assert "pending={pillsPending} />" in SRC
+    assert "/api/v2/pro-analyst/pills?map=1" in SRC, "the row's divergence must be refreshed from the live read model"
 
 
 def test_the_note_normalises_the_producer_case():

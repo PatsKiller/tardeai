@@ -34,7 +34,7 @@ function compile(path) {
   return url
 }
 
-const { PromoteUnavailableNote } = await import(compile(join(app, 'src/lib/watchpoolPromoteNote.tsx')))
+const { PromoteUnavailableNote, divergenceReason, liveDivergence } = await import(compile(join(app, 'src/lib/watchpoolPromoteNote.tsx')))
 const text = (m) => m.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"')
   .replace(/\s+/g, ' ').trim()
 const render = (props) => text(renderToStaticMarkup(React.createElement(PromoteUnavailableNote, props)))
@@ -73,6 +73,64 @@ check('both branches carry the same test id, so the page has one selector', () =
   const b = renderToStaticMarkup(React.createElement(PromoteUnavailableNote, { directiveId: 7, divergence: 'unavailable' }))
   assert.match(a, /data-testid="wp-promote-unavailable"/)
   assert.match(b, /data-testid="wp-promote-unavailable"/)
+})
+
+// ── LQ-20261107-250: 'unavailable' was two facts; the sentence must name the missing side ────────────
+check('a Street view with no internal direction says THAT, not that no view is attached', () => {
+  const t = render({ directiveId: 42, divergence: 'unavailable', reason: 'no_internal_direction' })
+  assert.match(t, /the Street view exists/)
+  assert.match(t, /system's own directional read is missing/)
+  assert.doesNotMatch(t, /no professional-analyst view is attached/)
+  assert.match(t, /Promote still attaches it to your watchlist/)
+})
+
+check('no professional coverage keeps the coverage sentence', () => {
+  const t = render({ directiveId: 42, divergence: 'unavailable', reason: 'no_professional_coverage' })
+  assert.match(t, /no professional-analyst view is attached/)
+  assert.doesNotMatch(t, /the Street view exists/)
+})
+
+check('coverage without a usable Street direction says so', () => {
+  const t = render({ directiveId: 42, divergence: 'unavailable', reason: 'no_street_direction' })
+  assert.match(t, /coverage exists for this name but no Street direction is attached/)
+  assert.doesNotMatch(t, /no professional-analyst view is attached/)
+})
+
+check('an unreadable read model is named a data error, not an absence of coverage', () => {
+  const t = render({ directiveId: 42, divergence: 'unavailable', reason: 'read_model_unreadable' })
+  assert.match(t, /could not be read just now/)
+  assert.match(t, /data error, not an absence of coverage/)
+})
+
+check('the reason is a rendered attribute, so the page can be asserted by cause', () => {
+  const m = renderToStaticMarkup(React.createElement(PromoteUnavailableNote,
+    { directiveId: 7, divergence: 'unavailable', reason: 'no_internal_direction' }))
+  assert.match(m, /data-divergence-reason="no_internal_direction"/)
+})
+
+check('before the live map arrives nothing is asserted', () => {
+  assert.equal(render({ directiveId: 42, divergence: 'unavailable', pending: true }), '')
+})
+
+check('the reason is derived from the live pill sides the API map carries', () => {
+  const has = { has: true, street: 'bullish', internal: null }
+  const noCoverage = { has: false, street: null, internal: null }
+  const coveredNoStreet = { has: true, street: null, internal: 'bullish' }
+  const aligned = { has: true, street: 'bullish', internal: 'bullish' }
+  assert.equal(divergenceReason('unavailable', has), 'no_internal_direction')
+  assert.equal(divergenceReason('unavailable', noCoverage), 'no_professional_coverage')
+  assert.equal(divergenceReason('unavailable', coveredNoStreet), 'no_street_direction',
+    'coverage without a usable consensus key is its own reason, as in the read model')
+  assert.equal(divergenceReason('unavailable', aligned), null, 'only an unavailable comparison explains anything')
+  assert.equal(divergenceReason('unavailable', undefined), null, 'a name with no pill invents no cause')
+  assert.equal(divergenceReason('divergent', has), null)
+  assert.equal(divergenceReason('unavailable', has, true), 'read_model_unreadable')
+})
+
+check('the row prefers the live pill verdict over the stored-at-insert hit value', () => {
+  assert.equal(liveDivergence('unavailable', { divergence: 'aligned' }), 'aligned')
+  assert.equal(liveDivergence('unavailable', undefined), 'unavailable')
+  assert.equal(liveDivergence('unavailable', {}), 'unavailable')
 })
 
 const out = { results, passed: results.filter((r) => r.passed).length, failed: results.filter((r) => !r.passed).length }
