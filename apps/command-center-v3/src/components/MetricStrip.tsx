@@ -505,6 +505,8 @@ export default function MetricStrip({ onDrill }: Props) {
       valueSize: VALUE_BIG,
       minWidth: 175, maxWidth: 265,
       undated: !posNewest && !overviewFresh.dataAsOf,
+      undatedReason: !posNewest && !overviewFresh.dataAsOf
+        ? (overviewFresh.reason || 'the holdings payload carries no observation time') : null,
       color: portfolioSurfaceStale ? BB.amber : 'var(--text0)',
       tip: `Total portfolio equity — an ALL-ACCOUNTS aggregate${portfolioAgg?.included_account_count != null ? ` of ${portfolioAgg.included_account_count} account(s)` : ''} (Schwab, Alpaca, Moomoo). No single account is the source of the total.\n\nACCOUNTS (hover):\n · ${portfolioHoverAccounts ?? '—'}\n\nFOUR SEPARATE CLOCKS:\n · ${clockLines.join('\n · ')}\n\nThe newest position observation dates ${cov?.at_newest_pct ?? '—'}% of the aggregate value; ${cov?.value_fresh_pct ?? '—'}% is within ${cov?.stale_after_hours ?? 48}h.${clockDivergences.length ? `\n\nCLOCK DIVERGENCE — two copies of the position clock disagree:\n · ${clockDivergences.map(d => `${d.account}: ${d.detail}`).join('\n · ')}\naccount_summaries.as_of is not maintained by the loader; the position rows are. Neither copy is edited.` : ''} Refreshes every 2 min via /api/v2/overview.${portfolioSurfaceStale ? ` · ${overviewFresh.reason}` : ''}`,
       drill: { title: 'Portfolio (ALL ACCOUNTS)', subtitle: portfolioSurfaceStale ? `STALE · ${oldestLine}` : `All-account aggregate · ${portfolioAgg?.included_account_count ?? '?'} account(s)${coverageMark}`, endpoint: '/api/v2/overview',
@@ -519,12 +521,18 @@ export default function MetricStrip({ onDrill }: Props) {
       asOfLabel: todayState.reportedMove ? 'market-day session' : 'P&L session',
       // The value is the holdings market-day move, not proven economic P&L: say so beside it.
       asOfNote: todayState.reportedMove ? 'holdings move · economic P&L unproven' : null,
+      // An absent session date is a fact about the payload, not a blank: say why, and never let an
+      // undated money figure read as a dated one (operator 2026-11-03, clock fix 4; PR 2542).
+      undatedReason: todayState.sessionDate ? null
+        : todayPnl?.mark_source || portfolioAgg?.quote_observation_time
+          ? 'the P&L carries marks but no session date'
+          : 'no quote clock on the holdings document (last_repriced absent), so the P&L session is unknown',
       tone: todayState.tone,
       valueSize: VALUE_BIG,
       minWidth: 150, maxWidth: 225,
       undated: !todayState.sessionDate,
       color: todayState.tone === 'warn' ? BB.amber : todayChange == null ? 'var(--text3)' : todayChange >= 0 ? BB.green : BB.red,
-      drill: { title: "Today's Move", subtitle: `${todayState.sessionDate ? `session ${todayState.sessionDate}` : 'session UNDATED'}${todayState.reportedMove ? ' · market-day move (= Accounts 1D)' : ''} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
+      drill: { title: "Today's Move", subtitle: `${todayState.sessionDate ? `session ${todayState.sessionDate}` : 'session UNAVAILABLE — no session date on the payload'}${todayState.reportedMove ? ' · market-day move (= Accounts 1D)' : ''} · ${todayHoverAccounts ?? todayPnl?.coverage_reason ?? 'coverage unknown'}`, endpoint: '/api/v2/overview',
         rows: overview ? [
           { today_status: todayPnl?.status ?? 'UNKNOWN', today_gap: todayPnl?.gap ?? null, legacy_evidence: todayPnl?.legacy_evidence ?? null, stored_row_evidence: todayPnl?.stored_row_evidence ?? null, market_session_reference: todayMarketSession, market_latest_open_session: todayState.latestOpenSession, today_change: todayChange, today_pct: todayPct, today_complete: todayPnl?.complete, partial_accounts: todayPartial, unknown_rows: todayUnknownRows, pnl_session_date: todayPnl?.session_date, pnl_session_source: todayPnl?.session_source, displayed_session_date: todayState.sessionDate, displayed_session_source: todayState.sessionSource, reported_move: todayState.reportedMove ? overview.today_move : null, pnl_calculated_at: todayPnl?.calculated_at, pnl_mark_source: todayPnl?.mark_source, scope: todayPnl?.scope, linked_accounts: todayLinked, funded_accounts: todayFunded, represented_accounts: todayRepresented, contributing_accounts: todayPnl?.contributing_accounts, zero_change_accounts: todayPnl?.zero_change_accounts, empty_accounts: todayEmpty, missing_accounts: todayMissing, portfolio_value: overview.portfolio_value, surface_stale: todayState.tone === 'warn', surface_state: todayState.label, surface_reason: todayState.reason },
           ...Object.entries(overview.today_by_account ?? {})
@@ -791,10 +799,11 @@ export default function MetricStrip({ onDrill }: Props) {
         const asOfRaw = (t as any).asOf
         const metaUndated = !asOfRaw && !!(t as any).undated
         const metaLabel = (t as any).asOfLabel || 'as_of'
+        const undatedReason = (t as any).undatedReason as string | null | undefined
         const metaText = metaUndated
-          // An undated tile may still have something to say. Before this, the UNDATED mark replaced the whole line and
-          // a fault's explanation vanished with it (FQ-086 review, cx-openai-3 F1).
-          ? `${metaLabel} UNDATED${(t as any).asOfNote ? ` · ${(t as any).asOfNote}` : ''}`
+          // An undated tile says why (PR 2542) and keeps anything else it has to say: before FQ-086 the UNDATED mark
+          // replaced the whole line and a fault's explanation vanished with it (cx-openai-3 F1).
+          ? `${metaLabel} UNAVAILABLE${undatedReason ? ` · ${undatedReason}` : ''}${(t as any).asOfNote ? ` · ${(t as any).asOfNote}` : ''}`
           : asOfRaw
             // A date-only clock widened to UTC midnight is shown as its date, never as "00:00" (P3).
             ? `${metaLabel} ${dateOnlyPart(asOfRaw) ?? String(asOfRaw).slice(0, 16).replace('T', ' ')}` +

@@ -172,7 +172,7 @@ export function visibleItems(m: DoNowModel, tab: Tab, showAll: boolean, topN = T
  * positions as Risk, and the approval total comes from the same overview field as MetricStrip. A missing
  * current source is a gap, never permission to revive the old risk-snapshot stop claims. No writes. */
 export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: any, sourceError?: unknown,
-  retained: { positionsStale?: boolean; approvalsStale?: boolean } = {}): DoNowModel {
+  retained: { positionsStale?: boolean; approvalsStale?: boolean; nowMs?: number } = {}): DoNowModel {
   const isStop = (i: DoNowItem) => /^(?:stop:|stops:|protection:)/.test(i.id)
     || i.sources.some(s => s === 'risk' || s.includes('desk_truth')) && i.category === 'protect'
   const isApproval = (i: DoNowItem) => i.id.startsWith('approvals:') || i.sources.some(s => s.includes('approvals'))
@@ -181,9 +181,13 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
   const stops = pages?.stops
   const positionsStale = !!stops?.stale || !!retained.positionsStale
   const answered = rows !== null && !sourceError && !pages?.positions?.gap
+  const positionsClock = str(stops?.last_broker_read_at ?? stops?.as_of ?? pages?.positions?.as_of)
   const missing = [...model.unavailableSources]
   const sources = [...model.sources, { name: 'cio_positions', status: answered ? 'OK' : 'UNAVAILABLE',
-    asOf: str(stops?.last_broker_read_at ?? stops?.as_of), basis: 'CIO positions · same categories as Risk', ageS: null,
+    // The stop read is the freshest clock when it exists; otherwise the position rows' own observation time is
+    // the only honest clock this source has. Null age is for a source with NO clock, not for one we did not read.
+    asOf: positionsClock,
+    basis: 'CIO positions · same categories as Risk', ageS: ageFromClock(positionsClock, retained.nowMs),
     stale: positionsStale, error: answered ? null : 'Current stop categories unavailable' }]
   if (!answered) missing.push('cio_positions')
   if (answered) for (const row of rows!) {
@@ -203,7 +207,8 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
   const approvals = num(overview?.pending_approvals ?? overview?.approvals_count)
   if (approvals === null) missing.push('approvals')
   sources.push({ name: 'approvals', status: approvals === null ? 'UNAVAILABLE' : 'OK', asOf: str(overview?.as_of),
-    basis: 'overview.pending_approvals / approvals_count · same as header', ageS: null, stale: !!retained.approvalsStale,
+    basis: 'overview.pending_approvals / approvals_count · same as header',
+    ageS: ageFromClock(str(overview?.as_of), retained.nowMs), stale: !!retained.approvalsStale,
     error: approvals === null ? 'Approval count unavailable' : null })
   if (approvals !== null && approvals > 0) items.push({ id: 'approvals:pending', category: 'decide', severity: 'P2',
     title: `${approvals} approvals waiting`, why: 'Review the approval queue', actionLabel: 'Review approvals', where: '/approvals',
@@ -231,6 +236,17 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
 
 export function severityTone(s: Severity): 'danger' | 'warning' | 'info' {
   return s === 'P0' || s === 'P1' ? 'danger' : s === 'P2' ? 'warning' : 'info'
+}
+
+/** Seconds since a source clock, or null when the source has no clock we can read.
+ *
+ *  `ageLabel(null)` already says "age unknown"; this keeps that honest by only returning null when the clock is
+ *  genuinely absent or unparsable, never because a caller forgot to pass it. */
+export function ageFromClock(asOf: string | null, nowMs?: number): number | null {
+  if (!asOf || nowMs == null) return null
+  const t = parseObservedTime(asOf)
+  if (!Number.isFinite(t)) return null
+  return Math.max(0, (nowMs - t) / 1000)
 }
 
 export function ageLabel(s: number | null): string {
@@ -356,6 +372,40 @@ export function moversBars(overview: any, max = 6): { bars: MoverBar[]; shownSum
       accounts, multi, accountLabel: !multi && accounts[0]?.label ? accounts[0].label : '' }
   })
   return { bars, shownSum: Math.round(bars.reduce((s: number, b: MoverBar) => s + b.amount, 0) * 100) / 100, total: num(overview?.today_change) }
+}
+
+export interface MoversHeading {
+  /** The card heading. Says "today" only when the holdings were observed on today's New York date. */
+  title: string
+  /** 'today' | 'last session' | 'unknown'; used in the row tooltips and the empty-state line. */
+  when: 'today' | 'last session' | 'unknown'
+  sameDay: boolean
+  tip: string
+}
+
+function etDateKey(ms: number): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms))
+}
+
+/** FU-006 (operator screenshot 07:12 ET 2026-11-06): before the day's first broker read the movers are the PRIOR
+ *  session's day changes (holdings as of Thu 20:55 ET), but the card said "What moved your book today". The heading
+ *  now says "today" only when the holdings were observed on today's New York date; otherwise it names the last
+ *  session and its date, and with no observation time it claims no day at all. Same observation time as the
+ *  Positions badge (positionsFreshness), so the two can never disagree. */
+export function moversHeading(overview: any, nowMs: number): MoversHeading {
+  const env = overview?.observation?.envelopes?.holdings
+  const observed = str(env?.freshness?.observed_at_utc) ?? str(env?.observed_at) ?? str(overview?.last_repriced)
+  const t = observed ? parseObservedTime(observed) : NaN
+  if (!Number.isFinite(t)) {
+    return { title: 'What moved your book', when: 'unknown', sameDay: false,
+      tip: `Holdings observation time ${observed ? `unreadable (${observed})` : 'missing'}, so these day changes cannot be dated.` }
+  }
+  if (etDateKey(t) === etDateKey(nowMs)) {
+    return { title: 'What moved your book today', when: 'today', sameDay: true, tip: `Holdings observed ${observed} (today, New York time).` }
+  }
+  const day = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(t))
+  return { title: `What moved your book last session (${day})`, when: 'last session', sameDay: false,
+    tip: `Holdings observed ${observed}; no broker read yet today, so these are the last session's day changes.` }
 }
 
 export interface AccountRow { key: string; name: string; value: number | null; d1: number | null; ytd: number | null; ytdApprox: boolean; tip: string }

@@ -1,5 +1,5 @@
 import {
-  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, briefingProvenance, parseObservedTime,
+  doNowFrom, homeWithCurrentTruth, visibleItems, routerPath, positionsFreshness, moversBars, moversHeading, accountRows, cashPct, inMarketHours, money, pct, ageLabel, ageFromClock, briefingSummary, briefingProvenance, parseObservedTime,
 } from './homeDoNow.ts'
 import { BEST_OPPORTUNITIES_API, BEST_OPPORTUNITIES_PATH, opportunitiesQuery, isHomeBestOpportunities } from './bestOpportunities.ts'
 declare const process: { exit(code?: number): never }
@@ -194,6 +194,44 @@ const emptyCurrent = { positions: { source: 'fixture CIO', rows: [] }, stops: { 
 const retainedEmpty = homeWithCurrentTruth(doNowFrom({ ...ok, items: [] }, { nowMs: now }), emptyCurrent,
   { pending_approvals: 0 }, undefined, { positionsStale: true })
 check('restoration: an empty retained answer is never a fresh all-clear', retainedEmpty.state === 'STALE')
+
+// ---- clock fixes (operator list 4, 2026-11-03): an age is measured from the source's own clock, and a source with
+// no clock says so; "age unknown" must never be what an unread clock silently becomes.
+check('clock: an ET-suffixed observation time parses', ageFromClock('2026-10-22 10:59:30 ET', now) === 30)
+check('clock: a microsecond ISO clock parses', (() => { const a = ageFromClock('2026-10-22T14:59:30.230481+00:00', now); return a != null && a > 29.7 && a < 30 })())
+check('clock: a future clock never renders as a negative age', (ageFromClock('2026-10-22T15:00:30Z', now) ?? -1) === 0)
+check('clock: no clock and no now both answer null, never a guessed age', ageFromClock(null, now) === null && ageFromClock('2026-10-22T14:59:30Z') === null)
+check('clock: an unparsable clock answers null', ageFromClock('not a time', now) === null)
+const stoplessCurrent = { positions: { source: 'fixture CIO', as_of: '2026-10-22T14:58:00Z', rows: current.positions.rows },
+  stops: { unprotected_count: 3, stale: false } }
+const clocked = homeWithCurrentTruth(m, stoplessCurrent, { pending_approvals: 0, as_of: '2026-10-22T14:59:00Z' },
+  undefined, { nowMs: now })
+const cioSrc = clocked.sources.find(s => s.name === 'cio_positions')!
+check('clock: cio_positions falls back to the positions observation time when no stop read exists',
+  cioSrc.asOf === '2026-10-22T14:58:00Z')
+check('clock: cio_positions gets a measured age, not age unknown', cioSrc.ageS === 120)
+check('clock: approvals gets a measured age from the overview clock',
+  clocked.sources.find(s => s.name === 'approvals')!.ageS === 60)
+const noClocks = homeWithCurrentTruth(m, { positions: { source: 'fixture CIO', rows: current.positions.rows }, stops: {} },
+  { pending_approvals: 0 }, undefined, { nowMs: now })
+check('clock: a source with genuinely no clock keeps a null age (the page says UNAVAILABLE)',
+  noClocks.sources.find(s => s.name === 'cio_positions')!.asOf === null
+  && noClocks.sources.find(s => s.name === 'cio_positions')!.ageS === null)
+// FU-006: the movers heading says "today" only after a same-day (New York) holdings observation
+const mvOv = (observed?: string) => (observed ? { observation: { envelopes: { holdings: { freshness: { observed_at_utc: observed, status: 'FRESH' } } } } } : {})
+const preOpen = Date.parse('2026-11-06T12:12:00Z') // Fri 07:12 ET
+const mhPrior = moversHeading(mvOv('2026-11-06T01:55:00Z'), preOpen) // Thu 20:55 ET
+check('FU-006: before the first read the heading names the last session, not today',
+  mhPrior.when === 'last session' && !mhPrior.sameDay && !/today/i.test(mhPrior.title) && mhPrior.title.includes('Nov 5'))
+const mhToday = moversHeading(mvOv('2026-11-06T14:40:00Z'), Date.parse('2026-11-06T15:00:00Z'))
+check('FU-006: a same-day read says today', mhToday.when === 'today' && mhToday.sameDay && mhToday.title === 'What moved your book today')
+const mhNone = moversHeading({}, preOpen)
+check('FU-006: no observation time claims no day', mhNone.when === 'unknown' && !mhNone.sameDay && !/today|session/i.test(mhNone.title))
+const mhEt = moversHeading(mvOv('2026-11-05 20:55 ET'), preOpen)
+check('FU-006: an ET-labelled prior-evening time is the last session', mhEt.when === 'last session' && mhEt.title.includes('Nov 5'))
+const mhLate = moversHeading(mvOv('2026-11-06T03:30:00Z'), Date.parse('2026-11-06T04:30:00Z')) // both Thu ET, different UTC dates
+check('FU-006: the day boundary is New York, not UTC', mhLate.when === 'today')
+check('FU-006: an unreadable time claims no day', moversHeading(mvOv('not a time'), preOpen).when === 'unknown')
 
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

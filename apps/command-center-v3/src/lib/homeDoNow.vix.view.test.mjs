@@ -70,7 +70,9 @@ let tradeAi = null
 globalThis.__apiFixture = (url) => {
   const u = String(url)
   if (u.includes('/api/v2/trade-ai')) return { data: tradeAi, loading: false, error: null, stale: false, receivedAt: NOW }
-  if (u.includes('/api/v2/risk-regime/latest')) return { data: { regime_label: 'calm' }, loading: false, error: null, stale: false, receivedAt: NOW }
+  // A CURRENT regime with its envelope clock (FQ-085, PR 2642): this test is about the VIX clock, so the regime must
+  // read as current; a clockless regime row now correctly renders "(clock not reported)".
+  if (u.includes('/api/v2/risk-regime/latest')) return { data: { regime_label: 'calm' }, envelope: { ok: true, stale: false, as_of: ago(0.5), age_hours: 0.5 }, loading: false, error: null, stale: false, receivedAt: NOW }
   return { data: null, loading: false, error: null, stale: false, receivedAt: NOW }
 }
 
