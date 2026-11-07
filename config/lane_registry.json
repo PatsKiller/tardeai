@@ -19230,7 +19230,7 @@
         "match": "scripts/prospectus_window.py",
         "cadence": "*/15 * * * *",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 0.25,
@@ -19258,7 +19258,7 @@
       "severity": "Low",
       "note": "Ticker Prospectus run windows (docs/ops/PROSPECTUS_SCHEDULE_DELIVERY.md). Fires every 15 min; a window runs once per day (config/prospectus.json run_windows, ET): 17:45 after the close (holdings + watch; |day move| >= 8% on the close, material news, stop event, CIO stance change, promoted to proposal, earnings-after, monthly / quarterly due, weekly delta) and 07:00 pre-market (holdings only). Triggers only enqueue; a window drains by priority (operator, holdings by $ value, watch) up to max_reports inside the governed Anthropic credit cap; leftovers wait. Other fires drain only operator 'Rewrite now' rows. Each run leaves an outbox record for the host sender prospectus-deliver; this lane sends nothing. Lock /tmp/prospectus_build.lock.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/15 * * * *"
         ],
