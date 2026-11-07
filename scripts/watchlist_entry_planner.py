@@ -132,8 +132,8 @@ QUOTE_MAX_AGE_S = 30 * 60
 
 def _quote_age_seconds(as_of) -> float | None:
     """Seconds since the quote's own stamp, or None when it cannot be read (an unreadable stamp is not a price)."""
-    # nosemgrep: tq-py-broad-except-returns-default -- None means "cannot date this quote", which the
-    # caller treats as no quote; an undated price is exactly what the operator rule forbids.
+    # None means "cannot date this quote", which the caller treats as no quote.
+    # nosemgrep: tq-py-broad-except-returns-default -- an undated price is what the operator rule forbids
     try:
         if isinstance(as_of, (int, float)):
             stamp = datetime.fromtimestamp(float(as_of), timezone.utc)
@@ -156,8 +156,9 @@ def _fresh_price(symbol: str) -> dict | None:
     None means: no quote satisfies the operator rule right now. The caller must not fall back to the
     bars' last close — that fallback is the defect this function exists to remove.
     """
-    # nosemgrep: tq-py-broad-except-returns-default -- None already means "no quote that satisfies the
-    # rule", and the caller skips the symbol as no_fresh_price rather than planning off a close.
+    # None already means "no quote that satisfies the rule", and the caller skips the symbol as
+    # no_fresh_price rather than planning off a close.
+    # nosemgrep: tq-py-broad-except-returns-default -- the caller skips the symbol, never plans off a close
     try:
         try:
             from lib.data_broker.market_quote import get_price_batch

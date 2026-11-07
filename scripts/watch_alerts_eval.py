@@ -98,8 +98,8 @@ def _price_quotes(ex, symbols: list[str]) -> dict[str, dict]:
     """
     if not symbols:
         return {}
-    # nosemgrep: tq-py-broad-except-returns-default -- "" is the safe state and it is not silent: the
-    # handler logs the cause, and an alert on an unread price must not fire.
+    # "" is the safe state and it is not silent: the handler logs the cause.
+    # nosemgrep: tq-py-broad-except-returns-default -- logged, and no alert beats an alert on an unread price
     try:
         try:
             from lib.data_broker.market_quote import get_price_batch
