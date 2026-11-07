@@ -14621,6 +14621,14 @@ def _health_activity():
                     "component": comp,
                     "action": r.get("status"),
                     "detail": (r.get("solution") or r.get("diagnosis") or "")[:200],
+                    # A superseded row keeps its own text (it did fail at that instant) but says
+                    # out loud that a later remediation cleared the component — otherwise the
+                    # dead count in the detail reads as a live failure (LQ-20261107-377).
+                    "resolution": (
+                        "a later remediation verified this component clear"
+                        if r.get("status") == "superseded"
+                        else None
+                    ),
                     "lane": "retry_or_llm",
                     "pr_url": None,
                 }

@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "health_intervention_reconcile_lq377_20261107",
+  "files": [
+    "tests/test_health_intervention_reconcile_lq377_20261107.py"
+  ],
+  "anchor": "HEALTH_INTERVENTION_RECONCILE_LQ377_20261107",
+  "comment": [
+    "ANCHOR: HEALTH_INTERVENTION_RECONCILE_LQ377_20261107 — LQ-20261107-377.",
+    "/v3 showed 'unrecovered=1' hours after the pipeline recovered: claude_interventions 24557 (failed,",
+    "14:01:30 ET) was never revisited after 24558 verified the same component clear at 14:06:46 ET, and the",
+    "Health Hub feed lists interventions for 7 days. Pins the reconciliation sweep: supersede a failed or",
+    "investigating row only when a LATER row for the SAME component is fixed, keep resolved_at at that later",
+    "fix so the feed does not re-sort, never re-close a row another pass already closed, write nothing on a",
+    "dry run, and never let a reconciliation error stop the escalation pass. Also pins the wiring (the sweep",
+    "runs BEFORE process_queue's empty-queue early return, the only state the handler is in once a condition",
+    "clears) and the feed's annotation of a superseded row. Hermetic: fake connections, stubbed query, tmp",
+    "queue paths. The two host_state checks are a read-only SELECT over the live schema — the candidate",
+    "predicate and the UPDATE's own SET expressions — never an UPDATE."
+  ]
+}

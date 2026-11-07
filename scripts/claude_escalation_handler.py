@@ -898,6 +898,29 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         f"no_llm={no_llm} skip_llm={skip_llm} root={PROJECT_ROOT}",
         flush=True,
     )
+
+    # ── Reconciliation sweep: close interventions a later fix superseded ──
+    # BEFORE the queue read, on purpose. process_queue returns early when the queue
+    # is empty, and an empty queue is exactly the state we are in once a finding has
+    # cleared — the moment a terminal 'failed' row still sits on the Health Hub feed
+    # with a dead count in its detail (LQ-20261107-377).
+    try:
+        from lib.health_intervention_reconcile import reconcile_superseded
+
+        _rec = reconcile_superseded(_get_conn(), dry_run=dry_run)
+        if _rec.get("error"):
+            log.warning(f"  reconcile: skipped ({_rec['error']})")
+        elif _rec.get("closed"):
+            log.info(f"  reconcile: closed {_rec['closed']} superseded intervention(s)")
+            print(f"[claude-escalation] reconcile: closed {_rec['closed']} superseded", flush=True)
+        elif _rec.get("candidates") and dry_run:
+            print(
+                f"[claude-escalation] reconcile: {_rec['candidates']} candidate(s), dry-run — would close",
+                flush=True,
+            )
+    except Exception as e:  # reconciliation must never stop the escalation pass
+        log.warning(f"  reconcile: skipped ({e})")
+
     # Collect items from both queues (flock-guarded reads)
     items = []
     try:
