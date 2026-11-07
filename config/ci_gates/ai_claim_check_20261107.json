@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ai_claim_check_20261107",
+  "files": [
+    "tests/test_ai_claim_check_20261107.py"
+  ],
+  "anchor": "AI_CLAIM_CHECK_20261107",
+  "comment": [
+    "ANCHOR: AI_CLAIM_CHECK_20261107 — LQ-20261107-154 / DSN-20261107-LLM-AUTOMATION-PROGRAM.md: deterministic data checks (null / duplicate / stale / out-of-range / count disagreement on a lane's natural key) and the closed claim protocol (a model verdict is recorded only behind a verbatim quote from the stored source rows; an invented quote or a refuted claim is a HALLUCINATION and fails the target). No model, no database, no network: the model is an injected callable."
+  ]
+}

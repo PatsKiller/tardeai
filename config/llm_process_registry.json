@@ -2534,6 +2534,33 @@
       "circuit_breaker": true,
       "registered_by": "pr-review-build-20261027 (Design approvals-pr-review/v001; operator 2026-10-27 relayed by the coordinator: \"Markups approved.\" and \"D1-D7 as recommended\")",
       "registered_at": "2026-10-27T20:00:00Z"
+    },
+    {
+      "id": "ai_claim_check",
+      "name": "AI Claim Check (nightly data + hallucination audit of AI-written lanes)",
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "LQ-20261107-154 / DSN-20261107-LLM-AUTOMATION-PROGRAM.md ('the LLM proposes, deterministic code disposes'): scripts/n8n_ai_claim_check.py takes up to three claims from each registered AI-written artifact's claim field and asks this lane to support or refute each one against the STORED source rows, with a verbatim quote. The answer is only recorded when the quote is a substring of the stored text; a non-verbatim quote, or a claim refuted with evidence, is recorded HALLUCINATION. Deterministic checks (null / duplicate / stale / out-of-range / count disagreement on the target's natural key) run regardless and need no model. READ_ONLY_ADVISORY: no store, schedule or code changes on the answer. No tools. No fallback.",
+      "allowed_lanes": [
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 6000,
+      "max_output_tokens": 700,
+      "daily_soft_cap": 120,
+      "daily_cost_cap_usd": 0.5,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "cc-deepseek-3 (LQ-20261107-154; operator DSN 2026-11-07)",
+      "registered_at": "2026-11-07T16:50:00Z",
+      "notes": "default_mode manual on purpose: the deterministic half is free, and the claim half spends money every night, so the operator flips this to automated in CC Ops (LLM caps) after reviewing the first dry run. Caps: one call per record, <= 25 records per target per run (config/ai_claim_check_targets.json max_claim_records), so <= $0.50/day well inside the deepseek_flash price. A refusal (manual mode, breaker, cap) is recorded as the claim verdict 'unverifiable / model_unavailable:<Exc>' and never fails the lane run."
     }
   ],
   "default_deepseek_policy": "FAST",

@@ -1,0 +1,51 @@
+{
+  "schema": "AiClaimCheckTargets@v1",
+  "updated_at": "2026-11-07T16:50:00Z",
+  "why": "LQ-20261107-154 / DSN-20261107-LLM-AUTOMATION-PROGRAM.md: the LLM proposes, deterministic code disposes. Every AI-written lane listed here is re-audited nightly by scripts/n8n_ai_claim_check.py: null / duplicate / stale / out-of-range / count-disagreement on its own natural key over EVERY record, plus up to three claims per record verified against the STORED source rows (scripts/lib/ai_claim_check.py). Results feed data/quality/ai_claim_check_verdicts.json. A target added here is not scheduled until its allowlist entry and health contract are applied; adding a target spends model calls, so the cap fields are part of the registration.",
+  "field_notes": {
+    "kind": "json = one document (records under records_path); jsonl_dir = the newest file matching file_glob in the directory",
+    "path": "relative to the persistent state root, never absolute",
+    "natural_key": "the fields whose tuple must be unique and is quoted as the record's key in every finding",
+    "required": "fields that must not be null/empty; a miss is a null_field finding (FAIL)",
+    "timestamp_field + max_age_h": "staleness is INFO, not FAIL: an old artifact is a lane question, not a data defect",
+    "ranges": "field -> [lo, hi]; a number outside is out_of_range (FAIL)",
+    "count_matches": "declared-int field -> list field it counts; a mismatch is count_disagrees (FAIL)",
+    "claim_field": "the AI-written prose whose sentences are the claims, or null to skip the claim check",
+    "claim_skip_when": "field -> values that make a record claim-free (an honest 'no catalyst' is not a claim)",
+    "source_text_fields": "stored fields the model must quote VERBATIM; a.b, rows[] or rows[].field",
+    "max_claim_records": "hard cap on model calls per target per run; records are spread across the artifact"
+  },
+  "targets": [
+    {
+      "id": "momentum-catalysts",
+      "title": "Hermes momentum catalysts (AI-written catalyst_summary)",
+      "kind": "jsonl_dir",
+      "path": "data/hermes/momentum_catalysts",
+      "file_glob": "*_catalysts.jsonl",
+      "natural_key": ["symbol", "research_timestamp"],
+      "required": ["symbol", "research_timestamp", "catalyst_type", "catalyst_summary", "confidence"],
+      "timestamp_field": "research_timestamp",
+      "max_age_h": 96,
+      "ranges": {"confidence": [0, 1]},
+      "count_matches": {"source_count": "sources"},
+      "claim_field": "catalyst_summary",
+      "claim_skip_when": {"catalyst_type": ["no_clear_catalyst"]},
+      "source_text_fields": ["sources[].title", "sources[].content"],
+      "max_claim_records": 25,
+      "notes": "research_timestamp is stamped in host-local time without an offset; read as UTC it is at most 4-5 h old-er, which the 96 h bound absorbs (and staleness is INFO anyway). Seven of the 25 rows on 2026-11-06 are no_clear_catalyst with confidence 0.2 and no sources: honest absences, skipped by claim_skip_when, never failed for it."
+    },
+    {
+      "id": "cio-prospect-shadow",
+      "title": "CIO prospect shadow build (stage / next action / cognition prose)",
+      "kind": "json",
+      "path": "data/cio/cio_prospect_shadow.json",
+      "records_path": "prospects",
+      "natural_key": ["security_guid", "symbol"],
+      "required": ["security_guid", "symbol", "stage", "as_of"],
+      "timestamp_field": "as_of",
+      "max_age_h": 96,
+      "claim_field": null,
+      "notes": "Deterministic checks only for now: the prospect rows carry nested prose whose source rows are themselves CIO memory (a retrieval graph), not a quotable source list, so a verbatim-quote claim check here would grade 'no source stored' on every row. The pair key is security_guid+symbol because the artifact's own counts declare duplicate_guid (6 shared guids across two symbols each, 2026-11-06) as a known identity condition; a repeated PAIR is a genuine duplication and is what this target fails on."
+    }
+  ]
+}
