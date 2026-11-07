@@ -3,7 +3,7 @@
    Generated from the approved HTML; only the data source changed: live GET /api/v2/ops/n8n-catalog. Read-only.
    LQ-20261107-180: the page is split into deep-linkable subtabs (?tab=catalog&sub=overview|lanes|audit). Every number
    and time comes from the live GET (refreshed each minute) and the page states its own "as of" time in ET. */
-export const APPROVED_CSS = "\n:host{--bg:#f6f7f5;--fg:#1c2320;--muted:#5c6862;--line:#d7dcd8;--card:#fff;--live:#1f7a4d;--shadow:#a5650b;--dry:#4f6f8f;--chip:#eef1ee;--bad:#b3261e}\n@media (prefers-color-scheme:dark){:host(:not([data-theme=\"light\"])){--bg:#131715;--fg:#e3e8e4;--muted:#98a49d;--line:#2b332f;--card:#1a1f1c;--live:#5cc28d;--shadow:#e0a84a;--dry:#8fb3d6;--chip:#232a26;--bad:#f2867c;color-scheme:dark}}\n:host([data-theme=\"dark\"]){--bg:#131715;--fg:#e3e8e4;--muted:#98a49d;--line:#2b332f;--card:#1a1f1c;--live:#5cc28d;--shadow:#e0a84a;--dry:#8fb3d6;--chip:#232a26;--bad:#f2867c;color-scheme:dark}\n.page{background:var(--bg);color:var(--fg);font:15px/1.5 \"IBM Plex Sans\",system-ui,sans-serif;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}\nmain{max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:16px}\nh1{font-size:1.5rem;margin:0;text-wrap:balance}.sub{color:var(--muted);font-size:.85rem}\n.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}\n.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}\n.stat b{display:block;font:500 1.5rem \"IBM Plex Mono\",monospace}.stat span{font-size:.78rem;color:var(--muted)}\n.key{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:.88rem;display:flex;flex-direction:column;gap:4px}\ndetails{background:var(--card);border:1px solid var(--line);border-radius:8px}\nsummary{cursor:pointer;padding:12px 14px;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;list-style:none}\nsummary::-webkit-details-marker{display:none}\nsummary h2{font-size:1.02rem;margin:0;flex:1 1 200px}\n.bar{display:flex;gap:6px;flex-wrap:wrap;font:500 .78rem \"IBM Plex Mono\",monospace}\n.pill{padding:2px 8px;border-radius:99px;background:var(--chip)}\n.live{color:var(--live)}.shadow{color:var(--shadow)}.dry{color:var(--dry)}.none{color:var(--muted)}\n.body{padding:0 14px 12px;display:flex;flex-direction:column;gap:12px}\n.blurb{color:var(--muted);font-size:.86rem;margin:0}\nh3{font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;margin:0 0 4px}\nul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\nli{padding:7px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:1px;min-width:0}\n.row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}\n.t{font-weight:600}.c{font:.76rem \"IBM Plex Mono\",monospace;color:var(--muted);overflow-wrap:anywhere}\n.d{font-size:.86rem;color:var(--muted)}\n.flag{font-size:.72rem;color:var(--shadow)}\n.bad{color:var(--bad)}.vb{font:600 .7rem \"IBM Plex Mono\",monospace;padding:1px 6px;border-radius:4px;background:var(--chip)}.def{font-size:.8rem;color:var(--fg);border-left:3px solid var(--bad);padding-left:8px;margin-top:2px;overflow-wrap:anywhere}\n[data-tip]{cursor:help}.tipbox{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));max-width:640px;margin:0 auto;background:var(--fg);color:var(--bg);border-radius:10px;padding:12px 40px 12px 14px;font-size:.9rem;line-height:1.45;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:20}.tipbox button{position:absolute;top:6px;right:8px;background:none;border:0;color:inherit;font-size:1.2rem;cursor:pointer}"
+export const APPROVED_CSS = "\n:host{--bg:#f6f7f5;--fg:#1c2320;--muted:#5c6862;--line:#d7dcd8;--card:#fff;--live:#1f7a4d;--shadow:#a5650b;--dry:#4f6f8f;--chip:#eef1ee;--bad:#b3261e}\n@media (prefers-color-scheme:dark){:host(:not([data-theme=\"light\"])){--bg:#131715;--fg:#e3e8e4;--muted:#98a49d;--line:#2b332f;--card:#1a1f1c;--live:#5cc28d;--shadow:#e0a84a;--dry:#8fb3d6;--chip:#232a26;--bad:#f2867c;color-scheme:dark}}\n:host([data-theme=\"dark\"]){--bg:#131715;--fg:#e3e8e4;--muted:#98a49d;--line:#2b332f;--card:#1a1f1c;--live:#5cc28d;--shadow:#e0a84a;--dry:#8fb3d6;--chip:#232a26;--bad:#f2867c;color-scheme:dark}\n.page{background:var(--bg);color:var(--fg);font:15px/1.5 \"IBM Plex Sans\",system-ui,sans-serif;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}\nmain{max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:16px}\nh1{font-size:1.5rem;margin:0;text-wrap:balance}.sub{color:var(--muted);font-size:.85rem}\n.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}\n.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}\n.stat b{display:block;font:500 1.5rem \"IBM Plex Mono\",monospace}.stat span{font-size:.78rem;color:var(--muted)}\n.key{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;font-size:.88rem;display:flex;flex-direction:column;gap:4px}\ndetails{background:var(--card);border:1px solid var(--line);border-radius:8px}\nsummary{cursor:pointer;padding:12px 14px;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;list-style:none}\nsummary::-webkit-details-marker{display:none}\nsummary h2{font-size:1.02rem;margin:0;flex:1 1 200px}\n.bar{display:flex;gap:6px;flex-wrap:wrap;font:500 .78rem \"IBM Plex Mono\",monospace}\n.pill{padding:2px 8px;border-radius:99px;background:var(--chip)}\n.live{color:var(--live)}.shadow{color:var(--shadow)}.dry{color:var(--dry)}.none{color:var(--muted)}\n.body{padding:0 14px 12px;display:flex;flex-direction:column;gap:12px}\n.blurb{color:var(--muted);font-size:.86rem;margin:0}\nh3{font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;margin:0 0 4px}\nul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}\nli{padding:7px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:1px;min-width:0}\n.row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}\n.t{font-weight:600}.c{font:.76rem \"IBM Plex Mono\",monospace;color:var(--muted);overflow-wrap:anywhere}\n.d{font-size:.86rem;color:var(--muted)}\n.flag{font-size:.72rem;color:var(--shadow)}\n.bad{color:var(--bad)}.vb{font:600 .7rem \"IBM Plex Mono\",monospace;padding:1px 6px;border-radius:4px;background:var(--chip)}.def{font-size:.8rem;color:var(--fg);border-left:3px solid var(--bad);padding-left:8px;margin-top:2px;overflow-wrap:anywhere}\n[data-tip]{cursor:help}.tipbox{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(76px + env(safe-area-inset-bottom,0px));max-width:640px;margin:0 auto;background:var(--fg);color:var(--bg);border-radius:10px;padding:12px 40px 12px 14px;font-size:.9rem;line-height:1.45;box-shadow:0 6px 24px rgba(0,0,0,.3);z-index:20}.tipbox button{position:absolute;top:6px;right:8px;background:none;border:0;color:inherit;font-size:1.2rem;cursor:pointer}"
 /** Additions for the subtab layout (LQ-20261107-180), in the approved palette and type only. */
 export const SUBTAB_CSS = `
 .tabs{display:flex;gap:6px;overflow-x:auto;padding:2px 0 4px;margin:0;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
@@ -20,6 +20,10 @@ export const SUBTAB_CSS = `
 .health span{padding:1px 7px;border-radius:4px;background:var(--chip)}
 .tally{color:var(--muted);font-size:.8rem;margin:0}
 a.lane{color:inherit;text-decoration:none;display:flex;flex-direction:column;gap:1px;min-height:44px;justify-content:center}
+button.stat{font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%;display:flex;flex-direction:column;gap:2px;min-height:44px}
+button.stat:active{border-color:var(--fg)}
+.stat .ib{font-style:normal;padding:0 4px;cursor:help}
+.stat .hint{font-style:normal;font-size:.72rem;color:var(--muted)}
 .empty{color:var(--muted);font-size:.9rem;padding:12px 14px;background:var(--card);border:1px solid var(--line);border-radius:8px;margin:0}
 .lanes{display:flex;flex-direction:column;gap:2px;margin-top:2px}
 .banner{margin:0;padding:8px 10px;border-left:4px solid var(--shadow);background:var(--card);font-size:.88rem}
@@ -58,11 +62,13 @@ export const VTIP: Record<string, string> = {
   HALLUCINATION: 'Hallucination: an AI-written claim had no source or contradicted its source.',
   UNVERIFIABLE: 'Not provable yet: evidence is missing (no live run since the cutover, or no independent source). It gets re-audited at its next run.',
 }
+const MODE_KEYS = ['live', 'shadow', 'dry']
 const NAMES: Record<string, string> = { live: 'Live on n8n', shadow: 'n8n + cron (both) · cutover pending', dry: 'Dry run on n8n' }
 /** The per-verdict counts row, in the operator's order. */
 export const VERDICT_ORDER = ['PASS', 'PASS_IDLE', 'FAIL_DATA', 'FAIL_RUN', 'FAIL_CONFIG', 'FAIL_NO_OUTPUT', 'FAIL_CONSUMER', 'HALLUCINATION', 'UNVERIFIABLE'] as const
 export const vc = (v: string): string => (v.startsWith('PASS') ? 'live' : v === 'UNVERIFIABLE' ? 'dry' : 'bad')
-export const vl = (v: string): string => ({ PASS: 'PASS', PASS_IDLE: 'PASS · weekend idle', UNVERIFIABLE: 'NOT PROVABLE YET' } as Record<string, string>)[v] || v.replace(/_/g, ' ')
+export const vmatch = (v: string, f: string): boolean => !f || (f === 'PASS_ALL' ? String(v).startsWith('PASS') : f === 'FAIL_ALL' ? String(v).startsWith('FAIL') : v === f)
+export const vl = (v: string): string => ({ PASS: 'PASS', PASS_IDLE: 'PASS · weekend idle', UNVERIFIABLE: 'NOT PROVABLE YET', PASS_ALL: 'PASS · all', FAIL_ALL: 'FAIL · all' } as Record<string, string>)[v] || v.replace(/_/g, ' ')
 /** Job-catalog health, same keys and order as GET /api/v2/jobs-catalog status_mix. */
 export const HEALTH: Array<[string, string, string, string]> = [
   ['failed', 'failed', 'bad', 'The last run failed.'], ['missed', 'missed', 'bad', 'A scheduled slot passed with no run.'],
@@ -101,10 +107,10 @@ export function overviewHtml(w: Wire): string {
   return `<header><h1>What n8n is configured to handle</h1><p style="margin:6px 0 0;padding:8px 10px;border-left:4px solid var(--shadow);background:var(--card)"><b>${when}</b> Each of the ${n(a.audited)} n8n-only lanes was checked on six points: config, runs, output, data accuracy against an independent source, AI claims against sources, and what the page shows. Only <b>PASS</b> means working. Every failure has a fix assigned (LQ id).</p>
 <p class="sub">Configuration plus audit verdicts · jobs as of ${esc(etFmt(w.computed_at))} · relay live-lane list: ${n(w.relay && w.relay.lanes)} lanes · refreshes every minute</p></header>
 <section class="stats">
-<div class="stat" ${tipAttr(`Scheduled on n8n alone and passed all six audit checks (${idle} of these are correctly idle for the weekend; their last weekday run passed).`)}><span>n8n alone · audit PASS (incl. ${idle} weekend-idle) ⓘ</span><b class="live">${n(a.pass)} / ${n(a.audited)}</b></div><div class="stat" ${tipAttr('Scheduled on n8n alone but failed at least one audit check. Each has a fix work item assigned. Open the Audit tab to see the defect.')}><span>n8n alone · FAIL (fix assigned) ⓘ</span><b class="bad">${n(a.fail)}</b></div><div class="stat" ${tipAttr('Scheduled on n8n alone, but there is no evidence yet (no live run since the cutover, or no independent source to check against). Re-audited at the next run.')}><span>n8n alone · not provable yet ⓘ</span><b class="dry">${n(a.not_provable)}</b></div>
-<div class="stat" ${tipAttr(TIP.shadow)}><span>n8n + cron both (cutover pending) ⓘ</span><b class="shadow">${n(m.both)}</b></div>
-<div class="stat" ${tipAttr(TIP.dry)}><span>Dry run on n8n ⓘ</span><b class="dry">${n(m.dry)}</b></div>
-<div class="stat" ${tipAttr(TIP.none)}><span>Not on n8n ⓘ</span><b class="none">${n(m.none)}</b></div>
+<button type="button" class="stat go" data-sub="audit" data-filter="PASS_ALL"><span>n8n alone · audit PASS (incl. ${idle} weekend-idle) <i class="ib" role="button" aria-label="What this means" ${tipAttr(`Scheduled on n8n alone and passed all six audit checks (${idle} of these are correctly idle for the weekend; their last weekday run passed).`)}>ⓘ</i></span><b class="live">${n(a.pass)} / ${n(a.audited)}</b><em class="hint">List them ›</em></button><button type="button" class="stat go" data-sub="audit" data-filter="FAIL_ALL"><span>n8n alone · FAIL (fix assigned) <i class="ib" role="button" aria-label="What this means" ${tipAttr('Scheduled on n8n alone but failed at least one audit check. Each has a fix work item assigned. Open the Audit tab to see the defect.')}>ⓘ</i></span><b class="bad">${n(a.fail)}</b><em class="hint">List them ›</em></button><button type="button" class="stat go" data-sub="audit" data-filter="UNVERIFIABLE"><span>n8n alone · not provable yet <i class="ib" role="button" aria-label="What this means" ${tipAttr('Scheduled on n8n alone, but there is no evidence yet (no live run since the cutover, or no independent source to check against). Re-audited at the next run.')}>ⓘ</i></span><b class="dry">${n(a.not_provable)}</b><em class="hint">List them ›</em></button>
+<button type="button" class="stat go" data-sub="lanes" data-mode="shadow"><span>n8n + cron both (cutover pending) <i class="ib" role="button" aria-label="What this means" ${tipAttr(TIP.shadow)}>ⓘ</i></span><b class="shadow">${n(m.both)}</b><em class="hint">List them ›</em></button>
+<button type="button" class="stat go" data-sub="lanes" data-mode="dry"><span>Dry run on n8n <i class="ib" role="button" aria-label="What this means" ${tipAttr(TIP.dry)}>ⓘ</i></span><b class="dry">${n(m.dry)}</b><em class="hint">List them ›</em></button>
+<button type="button" class="stat go" data-path="/ops/jobs-catalog"><span>Not on n8n <i class="ib" role="button" aria-label="What this means" ${tipAttr(TIP.none)}>ⓘ</i></span><b class="none">${n(m.none)}</b><em class="hint">Open the Job catalog ›</em></button>
 </section>
 <section aria-label="Audit verdicts"><h3>Audit verdicts · tap one to list its lanes</h3><div class="counts">${counts}</div></section>
 <div class="key">
@@ -133,12 +139,14 @@ export function healthHtml(c: Wire): string {
   return `<div class="health" aria-label="Job health">${chips}</div>${tally}`
 }
 
-export function lanesHtml(w: Wire, q = ''): string {
+export function lanesHtml(w: Wire, q = '', mode = ''): string {
+  const only = MODE_KEYS.includes(mode) ? mode : ''
   const cats = (w.categories || []).map((c: Wire, i: number) => {
-    const jobs: Lane[] = (c.lanes || []).map((id: string) => (w.lanes || {})[id]).filter((l: Lane) => l && MODE[l.mode])
+    const jobs: Lane[] = (c.lanes || []).map((id: string) => (w.lanes || {})[id]).filter((l: Lane) => l && MODE[l.mode] && (!only || MODE[l.mode] === only))
+    if (only && !jobs.length) return ''
     const n = (m: string) => jobs.filter(j => MODE[j.mode] === m).length
     const other: number | string = c.modes && typeof c.modes.none === 'number' ? c.modes.none : '—'
-    let h = `<details data-cat="${esc(c.key)}"${jobs.length && i < 3 ? ' open' : ''}><summary><h2>${esc(c.label)}</h2><span class="bar"><span class="pill live" ${tipAttr(TIP.live)}>${n('live')} live ⓘ</span><span class="pill shadow" ${tipAttr(TIP.shadow)}>${n('shadow')} both ⓘ</span><span class="pill dry" ${tipAttr(TIP.dry)}>${n('dry')} dry run ⓘ</span><span class="pill none" ${tipAttr(TIP.none)}>${other} not on n8n ⓘ</span></span></summary><div class="body">${c.blurb ? `<p class="blurb">${esc(c.blurb)}</p>` : ''}${healthHtml(c)}`
+    let h = `<details data-cat="${esc(c.key)}"${jobs.length && (only || i < 3) ? ' open' : ''}><summary><h2>${esc(c.label)}</h2><span class="bar"><span class="pill live" ${tipAttr(TIP.live)}>${n('live')} live ⓘ</span><span class="pill shadow" ${tipAttr(TIP.shadow)}>${n('shadow')} both ⓘ</span><span class="pill dry" ${tipAttr(TIP.dry)}>${n('dry')} dry run ⓘ</span><span class="pill none" ${tipAttr(TIP.none)}>${other} not on n8n ⓘ</span></span></summary><div class="body">${c.blurb ? `<p class="blurb">${esc(c.blurb)}</p>` : ''}${healthHtml(c)}`
     if (!jobs.length) h += `<p class="blurb">Nothing in this bucket is on n8n. All ${other} jobs run on cron or systemd.</p>`
     for (const m of ['live', 'shadow', 'dry']) {
       const js = jobs.filter(j => MODE[j.mode] === m)
@@ -146,14 +154,16 @@ export function lanesHtml(w: Wire, q = ''): string {
     }
     return h + '</div></details>'
   }).join('')
-  return `<input class="search" type="search" placeholder="Search lanes, defects, fix ids" aria-label="Search lanes" value="${esc(q)}" data-search>
+  const total = only ? (Object.values(w.lanes || {}) as Lane[]).filter(l => MODE[l.mode] === only).length : 0
+  const banner = only ? `<p class="banner">Showing only ${esc(NAMES[only])} · ${total} lanes. <button type="button" class="rerun" data-sub="lanes" data-filter="">Show all lanes</button></p>` : ''
+  return `${banner}<input class="search" type="search" placeholder="Search lanes, defects, fix ids" aria-label="Search lanes" value="${esc(q)}" data-search>
 <div id="cats" style="display:flex;flex-direction:column;gap:10px">${cats || '<p class="empty">No categories are reported.</p>'}</div><p class="empty" data-noresult hidden>No lane matches the search.</p>`
 }
 
 /** FAIL first, then hallucination, not provable, then pass; within a group, newest audit first. */
 export function auditRows(w: Wire, filter = ''): Lane[] {
   const rank = (v: string) => (v.startsWith('FAIL') ? 0 : v === 'HALLUCINATION' ? 1 : v === 'UNVERIFIABLE' ? 2 : 3)
-  return auditedLanes(w).filter(l => !filter || l.verdict === filter)
+  return auditedLanes(w).filter(l => vmatch(l.verdict, filter))
     .sort((a, b) => rank(a.verdict) - rank(b.verdict) || String(a.verdict).localeCompare(String(b.verdict)) || String(b.audited_at || '').localeCompare(String(a.audited_at || '')) || String(a.lane_id).localeCompare(String(b.lane_id)))
 }
 
@@ -239,8 +249,8 @@ export function notesHtml(w: Wire): string {
   return (w.notes || []).map((n: string) => `<p class="empty" role="status" style="color:var(--shadow)">${esc(n)}</p>`).join('')
 }
 
-export function pageHtml(w: Wire, sub: SubKey, opts: { filter?: string; q?: string } = {}): string {
-  const body = sub === 'lanes' ? lanesHtml(w, opts.q) : sub === 'audit' ? auditHtml(w, opts.filter) : sub === 'llm' ? llmHtml(w) : sub === 'fixes' ? fixesHtml(w) : overviewHtml(w)
+export function pageHtml(w: Wire, sub: SubKey, opts: { filter?: string; q?: string; mode?: string } = {}): string {
+  const body = sub === 'lanes' ? lanesHtml(w, opts.q, opts.mode) : sub === 'audit' ? auditHtml(w, opts.filter) : sub === 'llm' ? llmHtml(w) : sub === 'fixes' ? fixesHtml(w) : overviewHtml(w)
   return `<main>${tabsHtml(sub)}${notesHtml(w)}<div role="tabpanel" style="display:flex;flex-direction:column;gap:16px">${body}</div></main>`
 }
 
@@ -259,9 +269,9 @@ export function applySearch(S: ParentNode, q: string): void {
   if (nr) nr.hidden = !t || shown > 0
 }
 
-export type Nav = { sub?: SubKey; filter?: string; lane?: string }
+export type Nav = { sub?: SubKey; filter?: string; lane?: string; mode?: string; path?: string }
 /** Render into a shadow root. Navigation (subtab, verdict filter, lane tap) goes back to React through onNav. */
-export function mountApproved(S: ShadowRoot, w: Wire, sub: SubKey = 'overview', opts: { filter?: string; q?: string } = {}, onNav: (n: Nav) => void = () => {}): void {
+export function mountApproved(S: ShadowRoot, w: Wire, sub: SubKey = 'overview', opts: { filter?: string; q?: string; mode?: string } = {}, onNav: (n: Nav) => void = () => {}): void {
   S.innerHTML = '<style>' + APPROVED_CSS + SUBTAB_CSS + '</style><div class="page">' + pageHtml(w, sub, opts) + '</div>'
   S.querySelectorAll('[data-tip]').forEach((e: any) => { e.title = e.dataset.tip; e.tabIndex = 0 })
   const search = S.querySelector('[data-search]') as HTMLInputElement | null
@@ -280,8 +290,10 @@ export function mountApproved(S: ShadowRoot, w: Wire, sub: SubKey = 'overview', 
     if (tb && !ev.target.closest('.tipbox')) tb.hidden = true
     const link = ev.target.closest('[data-lane-link]')
     if (link && !ev.metaKey && !ev.ctrlKey && ev.button === 0) { ev.preventDefault(); onNav({ lane: link.dataset.laneLink }); return }
+    const go = ev.target.closest('[data-path]')
+    if (go) { ev.preventDefault(); onNav({ path: go.dataset.path }); return }
     const nav = ev.target.closest('[data-sub],[data-filter]')
-    if (nav) { ev.preventDefault(); onNav({ sub: (nav.dataset.sub || sub) as SubKey, filter: nav.dataset.filter ?? '' }) }
+    if (nav) { ev.preventDefault(); onNav({ sub: (nav.dataset.sub || sub) as SubKey, filter: nav.dataset.filter ?? '', mode: nav.dataset.mode || '' }) }
   }, true)
   S.addEventListener('keydown', (ev: any) => {
     const e = ev.target.closest && ev.target.closest('[data-tip]')

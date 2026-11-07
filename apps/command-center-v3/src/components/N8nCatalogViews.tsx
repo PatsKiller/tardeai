@@ -114,7 +114,7 @@ export function N8nCatalogView({ data, loading, error }: { data: N8nCatalogWire 
 /** The operator-approved design (artifact "n8n Lane Configuration"), rendered verbatim in a shadow root so its CSS
  *  matches the approved page exactly and cannot leak into the app. Fed by the same live read-only GET. Subtabs
  *  (LQ-20261107-180) live in the URL: ?tab=catalog&sub=overview|lanes|audit[&verdict=FAIL_DATA]. */
-export function N8nCatalogApprovedView({ data, sub, filter, onNav }: { data: N8nCatalogWire; sub: SubKey; filter: string; onNav: (n: Nav) => void }) {
+export function N8nCatalogApprovedView({ data, sub, filter, mode = '', onNav }: { data: N8nCatalogWire; sub: SubKey; filter: string; mode?: string; onNav: (n: Nav) => void }) {
   const ref = useRef<HTMLDivElement>(null)
   const navRef = useRef(onNav)
   navRef.current = onNav
@@ -127,11 +127,11 @@ export function N8nCatalogApprovedView({ data, sub, filter, onNav }: { data: N8n
     if (theme) host.dataset.theme = theme
     box.replaceChildren(host)
     const shadow = host.attachShadow({ mode: 'open' })
-    mountApproved(shadow, data, sub, { filter, q: query.current }, n => navRef.current(n))
+    mountApproved(shadow, data, sub, { filter, mode, q: query.current }, n => navRef.current(n))
     // The search survives the minute refresh: remember what was typed.
     const input = shadow.querySelector<HTMLInputElement>('[data-search]')
     input?.addEventListener('input', () => { query.current = input.value })
-  }, [data, sub, filter])
+  }, [data, sub, filter, mode])
   return <div ref={ref} data-testid="n8n-catalog-approved" data-sub={sub} style={{ minWidth: 0 }} />
 }
 
@@ -143,12 +143,14 @@ export function N8nCatalogTab() {
   const filter = params.get('verdict') ?? ''
   const onNav = (n: Nav) => {
     if (n.lane) { navigate(laneHref(n.lane)); return }
+    if (n.path) { navigate(n.path); return }
     const next = new URLSearchParams(params)
     next.set('tab', 'catalog')
     if (n.sub && n.sub !== 'overview') next.set('sub', n.sub); else next.delete('sub')
     if (n.filter) next.set('verdict', n.filter); else next.delete('verdict')
+    if (n.mode) next.set('mode', n.mode); else next.delete('mode')
     setParams(next)
   }
-  if (api.data) return <N8nCatalogApprovedView data={api.data} sub={sub} filter={sub === 'audit' ? filter : ''} onNav={onNav} />
+  if (api.data) return <N8nCatalogApprovedView data={api.data} sub={sub} filter={sub === 'audit' ? filter : ''} mode={sub === 'lanes' ? params.get('mode') ?? '' : ''} onNav={onNav} />
   return <N8nCatalogView data={null} loading={api.loading} error={api.error ?? null} />
 }
