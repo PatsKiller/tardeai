@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deploy_schema_no_lock_20261107",
+  "files": [
+    "tests/test_deploy_schema_no_lock_20261107.py"
+  ],
+  "anchor": "DEPLOY_SCHEMA_NO_LOCK_20261107",
+  "comment": [
+    "ANCHOR: DEPLOY_SCHEMA_NO_LOCK_20261107 — LQ-20261107-176: ensure_deploy_tables re-ran the whole deploy migration on every upsert (once per detected sale, inside a transaction held open across per-event enrichment). CREATE TABLE IF NOT EXISTS takes an ACCESS EXCLUSIVE lock on an existing table, so the loop locked deploy_events out from every reader and they failed after lock_timeout ('Sell history could not be read.'). The check is now a catalog lookup with no DDL once the schema exists. No database is touched: the cursor is a fake that records statements."
+  ]
+}

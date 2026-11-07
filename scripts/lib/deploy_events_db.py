@@ -13,9 +13,43 @@ _VALID_STATUS = frozenset({"open", "settled", "dismissed", "approved"})
 _VALID_SOURCE = frozenset({"live_detect", "backfill", "manual"})
 
 
+REQUIRED_TABLES = ("deploy_events", "deploy_plans", "deploy_oversight_runs")
+
+
+def _schema_present(cur) -> bool:
+    """True when every object this migration creates already exists.
+
+    ``CREATE TABLE IF NOT EXISTS`` is not free on an existing table: PostgreSQL takes an ACCESS EXCLUSIVE
+    lock on the relation before it discovers it is already there, and ``CREATE INDEX IF NOT EXISTS`` takes
+    a share lock. That is fine once at first run and ruinous on a hot path.
+    """
+    cur.execute(
+        "SELECT to_regclass(%s) IS NOT NULL AND to_regclass(%s) IS NOT NULL AND to_regclass(%s) IS NOT NULL",
+        REQUIRED_TABLES,
+    )
+    row = cur.fetchone()
+    if isinstance(row, dict):
+        row = next(iter(row.values()), None)
+    elif isinstance(row, (list, tuple)):
+        row = row[0] if row else None
+    return row is True
+
+
 def ensure_deploy_tables(cur) -> None:
-    if MIGRATION.is_file():
-        cur.execute(MIGRATION.read_text())
+    """Create the deploy schema if it is missing — and do nothing at all when it is already there.
+
+    LQ-20261107-176: this used to re-execute the whole migration on EVERY upsert. ``upsert_deploy_event``
+    runs once per detected sale inside ``sync_deploy_events``, whose transaction stays open across the
+    per-event LLM enrichment, so the ACCESS EXCLUSIVE lock the DDL takes on ``deploy_events`` was held for
+    the length of that loop. Every concurrent reader then failed after ``lock_timeout`` (3 s) with
+    "canceling statement due to lock timeout", which the reentry desk showed as "Sell history could not be
+    read." A catalog lookup costs one cheap SELECT and takes no lock.
+    """
+    if not MIGRATION.is_file():
+        return
+    if _schema_present(cur):
+        return
+    cur.execute(MIGRATION.read_text())
 
 
 def _json(v: Any) -> str:
