@@ -11,8 +11,8 @@ import json
 import pytest
 
 from scripts import disk_hygiene as DH
-from tests.test_disk_workspace_lifecycle_20261031 import pworld  # noqa: F401
-from tests.test_disk_standing_apply_20261024 import world  # noqa: F401
+from tests.test_disk_workspace_lifecycle_20261031 import pworld  # noqa: F401 -- fixture imported for pytest
+from tests.test_disk_standing_apply_20261024 import world  # noqa: F401 -- fixture imported for pytest
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def slow_passes(monkeypatch):
     monkeypatch.setattr(DH.time, "monotonic", fake)
 
 
-def test_loop_stops_when_the_next_pass_cannot_finish_inside_the_budget(pworld, slow_passes):  # noqa: F811
+def test_loop_stops_when_the_next_pass_cannot_finish_inside_the_budget(pworld, slow_passes):  # noqa: F811 -- fixture parameter shadows the import
     make, run, calls, *_ = pworld
     make(6)
     rc, rep = run("--until-target", "50")
@@ -36,7 +36,7 @@ def test_loop_stops_when_the_next_pass_cannot_finish_inside_the_budget(pworld, s
     assert 1 <= len(p["passes"]) < 5  # old code ran all max_passes (5) while items remained
 
 
-def test_budget_is_configurable_and_validated(pworld):  # noqa: F811
+def test_budget_is_configurable_and_validated(pworld):  # noqa: F811 -- fixture parameter shadows the import
     make, run, calls, state, rules_path, home = pworld
     cfg = json.loads(rules_path.read_text())
     cfg["standing_apply"]["pressure"]["run_budget_s"] = 3300
