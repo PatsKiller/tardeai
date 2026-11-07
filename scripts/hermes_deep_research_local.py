@@ -30,6 +30,45 @@ KILL = ROOT / "data" / "runtime" / "HERMES_DISABLED"   # live kill-switch (NOT t
 AGENT = "deep_research_local"
 RTYPE = "deep_research_local"
 
+#: Why each failed target failed, keyed by symbol. ``counts: {"failed": 3}`` was all the receipt said, so a
+#: 13-run streak read on the Quality tab as "its receipt says status failed" with no cause. A quota exhaustion,
+#: an auth prompt and a dead proxy need three different operator actions and must not collapse into one word
+#: (2026-11-07: ChatGPT OAuth answered 429 for 28 h and every overnight run failed the same silent way).
+_FAILURE_REASONS: dict[str, str] = {}
+
+
+def classify_failure(exc, text: str = "") -> str:
+    """A typed reason for a failed target, read from the provider's own message — never a guess beyond it."""
+    blob = f"{text} {exc}"
+    if "CODEX_UNAVAILABLE_RATE_LIMITED" in blob:
+        return "provider_rate_limited"
+    if "AUTH_PENDING" in blob:
+        return "provider_auth_pending"
+    if "CODEX_HEADLESS_UNAVAILABLE" in blob:
+        return "provider_headless_unavailable"
+    if "forbidden_model" in blob:
+        return "forbidden_model"
+    return f"error_{type(exc).__name__}" if isinstance(exc, BaseException) else "unknown"
+
+
+def _failed(sym: str, reason: str, detail: str = "") -> str:
+    """Record a target's failure reason and return the row's result key (``failed``)."""
+    _FAILURE_REASONS[sym] = reason
+    print(f"  {sym}: FAILED {reason}" + (f" ({detail[:120]})" if detail else ""))
+    return "failed"
+
+
+def failure_summary(counts: dict, reasons: dict) -> str:
+    """One sentence naming every reason (most frequent first): the receipt's ``error`` for a failed run."""
+    failed = sum(v for k, v in counts.items() if str(k).startswith("failed"))
+    if not failed or not reasons:
+        return ""
+    tally: dict[str, int] = {}
+    for reason in reasons.values():
+        tally[reason] = tally.get(reason, 0) + 1
+    named = ", ".join(f"{r} x{n}" for r, n in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0])))
+    return f"{failed} of {sum(counts.values())} targets failed: {named}"
+
 
 def db():
     from hermes_staging_ingest import get_db_connection
@@ -94,7 +133,7 @@ def run_one(conn, sym, model, apply):
             from hermes_external_researcher import call_codex_cli
             content = call_codex_cli("gpt-5.4", prompt)
             if not content:
-                print(f"  {sym}: FAILED chatgpt oauth empty"); return "failed"
+                return _failed(sym, "provider_empty_response", "chatgpt oauth returned no content")
             pack = {"content": content, "model": "chatgpt-oauth", "provider": "chatgpt_oauth"}
             try:
                 parsed = json.loads(content)
@@ -117,10 +156,9 @@ def run_one(conn, sym, model, apply):
             else:
                 print(f"  {sym}: LLM {pack.get('provider')} {pack.get('model')}")
         else:
-            print(f"  {sym}: FAILED forbidden_model={model}")
-            return "failed"
+            return _failed(sym, "forbidden_model", f"model={model}")
     except Exception as e:
-        print(f"  {sym}: FAILED ({str(e)[:80]})"); return "failed"
+        return _failed(sym, classify_failure(e), str(e))
     # deterministic fields stamped from code (never rely on LLM to echo)
     out["hermes_agent_name"] = AGENT
     out["research_type"] = RTYPE
@@ -303,6 +341,7 @@ def _execute():
                 r = run_one(conn, sym, args.model, args.apply)
             except Exception as exc:
                 print(f"  {sym}: FAILED_RETRYABLE {type(exc).__name__}: {exc}")
+                _FAILURE_REASONS[sym] = f"error_{type(exc).__name__}"
                 r = "failed_retryable"
                 try:
                     conn.close()
@@ -318,6 +357,10 @@ def _execute():
         failed = sum(v for k, v in counts.items() if k.startswith("failed"))
         _LAST_RUN.update(completed=not failed, counts=counts, apply=args.apply,
                          status="RUN_FAILED" if failed else "completed")
+        if failed:
+            # `counts` alone says how many failed, never why; the reasons are what the operator acts on.
+            _LAST_RUN["failure_reasons"] = dict(_FAILURE_REASONS)
+            _LAST_RUN["failure_summary"] = failure_summary(counts, _FAILURE_REASONS)
         return 1 if failed else 0
     finally:
         LOCK.unlink(missing_ok=True)
@@ -348,6 +391,7 @@ def main(argv=None) -> int:
         from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
     _LAST_RUN.clear()
+    _FAILURE_REASONS.clear()
     previous = sys.argv
     sys.argv = [previous[0], *argv]
     try:
@@ -363,7 +407,11 @@ def main(argv=None) -> int:
     finally:
         sys.argv = previous
     summary = dict(_LAST_RUN) if _LAST_RUN else {"completed": rc == 0}
-    write_lane_receipt(lane, ok=rc == 0 and bool(summary.get("completed")), exit_code=rc, started_at=started, script="hermes_deep_research_local.py", summary=summary)
+    ok = rc == 0 and bool(summary.get("completed"))
+    # The Quality tab reads receipt.error to say WHY a run failed; without it the row reads only
+    # "(its receipt says status failed)" and a 13-run streak is a mystery in the UI.
+    write_lane_receipt(lane, ok=ok, exit_code=rc, started_at=started, script="hermes_deep_research_local.py",
+                       summary=summary, error=None if ok else (summary.get("failure_summary") or None))
     return rc
 
 
