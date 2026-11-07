@@ -26983,7 +26983,7 @@
         "expression": "dispatcher",
         "match": "scripts/market_event_detect.py",
         "cadence": "*/30 * * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
         "timezone": "America/New_York"
       },
@@ -27013,7 +27013,7 @@
       "note": "Advisory only (MBI_BEHAVIOR = 0): reads market_quotes (alpaca/finviz only), ticker_snapshot_daily, positions/watchlist/stop-out tables, catalyst_events, sec_xbrl and the MRE snapshot; writes market_event_episodes / market_event_candidates on --apply. No broker, sender, model or network. Exit 2 on --apply when the tables are missing.",
       "severity": "Medium",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/30 * * * *"
         ],
@@ -27047,13 +27047,13 @@
         "kind": "n8n",
         "expression": "dispatcher",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "match": "scripts/market_event_brief.py"
       },
       "dispatch": {
         "class": "report",
         "retry_policy": "none",
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "0 20 * * 0",
           "0 7,9 * * 1-5",
