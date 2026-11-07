@@ -9,7 +9,7 @@ can't catch two failure modes that bit us 2026-06-03:
      invalid arg, errored every run).
 
 This monitor keeps a REGISTRY of jobs that are SUPPOSED to run, and for each checks:
-  - SCHEDULED?  — does the crontab, an n8n lane run in the ledger, or its systemd timer say so?
+  - SCHEDULED?  — does the crontab (including the wrapper a lane declares — a job's own script name is not always what the crontab line says), an n8n lane run in the ledger (``runs`` or ``run_outcomes``), or its systemd timer say so?
   - RUNNING?    — has it RUN within its cadence (the n8n ledger, else its own log) —
                   and is what it WRITES still fresh (a DB row)? Two clocks, never one.
 Status: OK / STALE (no fresh run) / STALE_OUTPUT (ran, output old) / NOT_SCHEDULED / NO_SIGNAL.
@@ -156,6 +156,13 @@ REGISTRY = [
 RESULTS_REL = Path("data") / "runtime" / "job_coverage_monitor_results.json"
 RESULTS_SCHEMA = "JobCoverageResults@v1"
 ALLOWLIST_REL = Path("config") / "n8n_run_allowlist.json"
+LANE_REGISTRY_REL = Path("config") / "lane_registry.json"
+#: The ledger tables that record a finished run, and the column each names the run state in.
+#: `runs` is the scheduler-of-record row; `run_outcomes` is the outcome journal written beside it.
+#: Measured 2026-11-07: 79,820 `runs` rows against 71,852 `run_outcomes` rows, 0 outcomes without a
+#: matching run and the same state vocabulary — they agree today, so reading both costs one indexed
+#: query each and means a prune or a write lag in either one is not blindness.
+LEDGER_RUN_TABLES = (("runs", "state"), ("run_outcomes", "run_state"))
 
 # Set by _crontab_lines() when `crontab -l` could not be read: the run is blind, not "nothing scheduled".
 CRONTAB_ERROR = None
@@ -188,13 +195,14 @@ def _timer_active(unit):
         return False
 
 
-def _cron_exprs(match, cron_lines):
-    """The schedule expressions of the active crontab lines that run this job."""
+def _cron_exprs(markers, cron_lines):
+    """The schedule expressions of the active crontab lines that run this job (any of its markers)."""
     from lib.cron_schedule import REBOOT, cron_fields  # the shared 5-field extractor
 
+    markers = [markers] if isinstance(markers, str) else list(markers or [])
     out = []
     for ln in cron_lines:
-        if match not in ln:
+        if not any(mk in ln for mk in markers):
             continue
         fields = cron_fields(ln)
         if fields and fields != REBOOT:
@@ -250,27 +258,114 @@ def _log_age_h(fname):
     return min(ages) if ages else None
 
 
-def _lane_map():
-    """job name -> n8n lane id, derived from the allowlist commands (the script name is the key).
-
-    Derived, never hand-listed: a lane whose command names this job's script IS this job's scheduler. A job with no
-    such lane keeps its crontab/log evidence and is never silently upgraded to "scheduled"; an unreadable allowlist
-    reports the error and leaves every job to the old evidence.
-    """
-    path = PROJECT_ROOT / ALLOWLIST_REL
+def _lane_registry():
+    """lane_id -> lane row from config/lane_registry.json. Never raises; unreadable -> ({}, error)."""
+    path = PROJECT_ROOT / LANE_REGISTRY_REL
     try:
-        lanes = json.loads(path.read_text(encoding="utf-8")).get("lanes") or []
+        doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return {}, type(exc).__name__
+    lanes = doc.get("lanes") if isinstance(doc, dict) else doc
+    if not isinstance(lanes, list):
+        return {}, "NO_LANES"
+    return ({str(e["lane_id"]): e for e in lanes if isinstance(e, dict) and e.get("lane_id")}, None)
+
+
+def _lane_names_script(lane, match):
+    """Does this lane's declared scheduler or command name `match` (a script or wrapper path)?
+
+    `scheduler.match` may be a LIST (one lane, several crontab lines): a str-only test misses the rest.
+    `command` is how the lane records the script it actually runs, which is the only place a wrapper
+    scheduler shows up (`run_family_slot.py --family topic-ingestion` runs `topic_ingestion.py`).
+    """
+    sched = lane.get("scheduler") or {}
+    m = sched.get("match")
+    texts = list(m) if isinstance(m, list) else ([m] if m else [])
+    texts += [sched.get("command_text"), lane.get("exec_start")]
+    cmd = lane.get("command")
+    texts += cmd if isinstance(cmd, list) else [cmd]
+    return any(match in str(t) for t in texts if t)
+
+
+def _lane_map():
+    """job name -> [lane ids] that run it, derived from the lane registry and the allowlist.
+
+    Derived, never hand-listed: a lane whose declared command runs this job's script IS this job's
+    scheduler. Two catalogues are read because they answer different questions.
+    config/lane_registry.json is the scheduler-of-record catalogue (718 lanes) and the only place a
+    WRAPPER scheduler is written down. `topic_ingestion` is the case that proves it: the live crontab
+    runs it twice a day as `run_family_slot.py --family topic-ingestion` (lane `topic-ingestion`,
+    ACTIVE), so a match on this registry's `schedule_match` (`topic_ingestion.py`) finds no line and
+    the job read NOT_SCHEDULED although cron was running it — measured 2026-11-07 against the head's
+    own results file. config/n8n_run_allowlist.json is still read: an n8n lane can exist there before
+    the registry catches up.
+
+    Several lanes for one job is kept rather than dropped as ambiguous: three catalyst bands, two
+    news lanes and two protection-pipeline slots are ONE job each, and the newest run across its
+    lanes is evidence while a single chosen lane would be a guess. A job with no such lane keeps its
+    crontab/log evidence and is never silently upgraded to "scheduled"; an unreadable catalogue
+    reports its error and leaves every job to the old evidence.
+    """
+    registry, reg_err = _lane_registry()
+    try:
+        allow = json.loads((PROJECT_ROOT / ALLOWLIST_REL).read_text(encoding="utf-8")).get("lanes") or []
+        allow_err = None
+    except (OSError, ValueError) as exc:
+        allow, allow_err = [], type(exc).__name__
+    except AttributeError:  # a document that is not an object has no .get
+        allow, allow_err = [], "NO_LANES"
     out = {}
     for job in REGISTRY:
         match = job["schedule_match"]
-        hits = sorted(str(e.get("lane_id")) for e in lanes if isinstance(e, dict)
-                      and match in " ".join(str(x) for x in (list(e.get("command") or [])
-                                                             + list(e.get("live_arg") or []))))
-        if len(hits) == 1:  # ambiguous = unmapped: a wrong lane would hide a job that never runs
-            out[job["name"]] = hits[0]
-    return out, None
+        hits = [lane_id for lane_id, lane in registry.items() if _lane_names_script(lane, match)]
+        hits += [str(e.get("lane_id")) for e in allow if isinstance(e, dict)
+                 and match in " ".join(str(x) for x in (list(e.get("command") or [])
+                                                        + list(e.get("live_arg") or [])))]
+        if hits:
+            out[job["name"]] = sorted({h for h in hits if h and h != "None"})
+    return out, (reg_err or allow_err)
+
+
+def _lane_is_active(lane_id, registry):
+    """True unless the lane registry explicitly says the lane is not ACTIVE.
+
+    Unknown is not retired: a lane the registry has never heard of (an allowlist-only n8n lane, or an
+    unreadable registry) keeps the run evidence it has today. A lane the registry marks RETIRED does
+    not schedule a job by having run once — `hermes-industry-novelty-discovery` is RETIRED and its
+    last ledger row is a single dry run from 2026-10-14, which would otherwise have turned a job
+    nothing schedules into a green row as soon as its log was fresher than that row.
+    """
+    lane = (registry or {}).get(str(lane_id)) if lane_id else None
+    if lane is None:
+        return True
+    return str(lane.get("state") or "ACTIVE").upper() == "ACTIVE"
+
+
+def _job_schedulers(job, lane_ids, registry=None):
+    """(cron markers, systemd units) that can legitimately schedule this job.
+
+    The job's own `schedule_match` and timer always count. A lane contributes only while it is
+    ACTIVE: a RETIRED lane still names the script, and letting it schedule the job would turn an
+    honest NOT_SCHEDULED into a false OK (`hermes-industry-novelty-discovery` is RETIRED and its last
+    ledger run is 2026-10-14). A cron lane contributes its `match` string — never its bare schedule
+    expression, which another job's line can share and would schedule this job by coincidence.
+    """
+    markers = [job["schedule_match"]]
+    units = [job["systemd_timer"]] if job.get("systemd_timer") else []
+    if registry is None:
+        registry = _lane_registry()[0]
+    for lane_id in lane_ids:
+        lane = registry.get(lane_id) or {}
+        if str(lane.get("state") or "ACTIVE").upper() != "ACTIVE":
+            continue
+        sched = lane.get("scheduler") or {}
+        kind = str(sched.get("kind") or "")
+        m = sched.get("match")
+        if kind == "cron":
+            markers += [str(x) for x in (m if isinstance(m, list) else [m]) if x]
+        elif kind == "systemd" and sched.get("expression"):
+            units.append(str(sched["expression"]))
+    return markers, sorted(set(units))
 
 
 def _age_h(ts, now=None):
@@ -288,17 +383,135 @@ def _age_h(ts, now=None):
     return round(max(0.0, (ref - dt).total_seconds() / 3600), 1)
 
 
-def _ledger_last_run(lane_map, job):
-    """The newest finished n8n run for this job's lane, or None. Read-only, never raises."""
-    lane = lane_map.get(job["name"])
-    if not lane:
-        return None
+def _ts_key(ts):
+    """An ISO stamp as a comparable datetime (naive read as UTC), or None."""
+    from datetime import datetime, timezone
     try:
-        from lib.lane_registry import n8n_last_run
-        hit = n8n_last_run(lane)
-    except (ImportError, OSError):  # a missing ledger is "no evidence", not a crash
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
         return None
-    return {**hit, "lane_id": lane} if hit else None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _newer(candidate, held):
+    """True when `candidate`'s finished_at is later than `held`'s (an unparsable stamp never wins)."""
+    a, b = _ts_key(candidate.get("finished_at")), _ts_key(held.get("finished_at"))
+    if b is None:
+        return True
+    return a is not None and a > b
+
+
+def _ledger_newest(lane_ids, *, root=None):
+    """lane_id -> newest finished run across BOTH ledger tables. Read-only, never raises.
+
+    One query per table for every lane in the run, not one connection per lane: the ledger is 80k
+    rows and the monitor is dispatched twice a day, so the cost has to stay a single indexed read.
+    """
+    out = {}
+    lanes = sorted({str(x) for x in lane_ids if x})
+    if not lanes:
+        return out
+    try:
+        from lib.lane_registry import N8N_RUN_STATES_PRESENT, n8n_ledger_path
+        states, path = tuple(N8N_RUN_STATES_PRESENT), n8n_ledger_path(root)
+    except (ImportError, OSError, TypeError):  # a missing module or ledger is "no evidence", not a crash
+        return out
+    if not Path(path).is_file():
+        return out
+    try:
+        import sqlite3
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+        try:
+            for table, state_col in LEDGER_RUN_TABLES:
+                sql = ("SELECT lane_id, run_id, mode, {c} AS state, finished_at, exit_code FROM {t} "
+                       "WHERE lane_id IN ({l}) AND finished_at IS NOT NULL AND {c} IN ({s})").format(
+                    t=table, c=state_col, l=",".join("?" * len(lanes)), s=",".join("?" * len(states)))
+                for lane_id, run_id, mode, state, finished_at, exit_code in conn.execute(
+                        sql, (*lanes, *states)):
+                    hit = {"run_id": run_id, "lane_id": lane_id, "mode": mode, "state": state,
+                           "finished_at": finished_at, "exit_code": exit_code,
+                           "table": table, "source": "ledger"}
+                    if lane_id not in out or _newer(hit, out[lane_id]):
+                        out[lane_id] = hit
+        finally:
+            conn.close()
+    except sqlite3.Error:  # absent table / locked / not a db: fall back to receipts
+        return out
+    return out
+
+
+def _receipt_newest(lane_ids, *, root=None):
+    """lane_id -> newest finished RunReceipt for lanes the ledger has no row for. Never raises.
+
+    The lane is read from the FILE NAME (`<mode>:<lane_id>:<stamp>.json`), not by parsing every
+    receipt: the folder holds ~80,000 files (measured 2026-11-07), so a glob that names the lane is
+    the difference between a bounded read and a full scan repeated for every unmapped lane.
+    """
+    out = {}
+    try:
+        from lib.lane_registry import N8N_RUN_STATES_PRESENT, n8n_runs_dir
+        states, folder = set(N8N_RUN_STATES_PRESENT), Path(n8n_runs_dir(root))
+    except (ImportError, OSError, TypeError):
+        return out
+    if not folder.is_dir():
+        return out
+    for lane_id in lane_ids:
+        if not lane_id or lane_id in out:
+            continue
+        try:
+            candidates = list(folder.glob(f"*:{lane_id}:*.json"))
+        except OSError:
+            continue
+        for p in candidates:
+            try:
+                doc = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(doc, dict) or str(doc.get("lane_id") or "") != lane_id:
+                continue
+            if states and str(doc.get("state") or "") not in states:
+                continue
+            hit = {"run_id": doc.get("run_id") or p.stem, "lane_id": lane_id,
+                   "mode": doc.get("mode"), "state": doc.get("state"),
+                   "finished_at": doc.get("finished_at"), "exit_code": doc.get("exit_code"),
+                   "table": "receipt", "source": "receipt"}
+            if lane_id not in out or _newer(hit, out[lane_id]):
+                out[lane_id] = hit
+    return out
+
+
+def _lane_ids(lane_map, job):
+    """This job's lane ids, accepting both the old single-id map and today's list."""
+    hit = lane_map.get(job["name"]) if isinstance(lane_map, dict) else None
+    if not hit:
+        return []
+    return [hit] if isinstance(hit, str) else [str(x) for x in hit if x]
+
+
+def _ledger_last_run(lane_map, job, *, newest=None):
+    """The newest finished n8n run across this job's lanes (ledger first, else a RunReceipt), or None."""
+    lanes = _lane_ids(lane_map, job)
+    if not lanes:
+        return None
+    newest = _ledger_newest(lanes) if newest is None else newest
+    hits = [newest[l] for l in lanes if l in newest]
+    if not hits:
+        hits = list(_receipt_newest(lanes).values())
+    if not hits:
+        return None
+    best = hits[0]
+    for hit in hits[1:]:
+        if _newer(hit, best):
+            best = hit
+    return best
+
+
+def _run_source_label(last):
+    """`n8n ledger (RUN_DONE)` — which table the run record came from, and the state it recorded."""
+    table = str((last or {}).get("table") or (last or {}).get("source") or "ledger")
+    label = {"runs": "n8n ledger", "run_outcomes": "n8n run_outcomes",
+             "receipt": "n8n receipt"}.get(table, f"n8n {table}")
+    return f"{label} ({(last or {}).get('state') or '?'})"
 
 
 def _db_age_h(sql):
@@ -320,7 +533,8 @@ def _db_age_h(sql):
 FAIL_STATUSES = ("NOT_SCHEDULED", "STALE", "STALE_OUTPUT")
 
 
-def evaluate(*, now=None, cron_lines=None, log_age=None, db_age=None, last_run=None, lane_map=None):
+def evaluate(*, now=None, cron_lines=None, log_age=None, db_age=None, last_run=None, lane_map=None,
+             schedulers=None):
     """One row per registered job. Every dependency is injectable so a test never reads the host.
 
     Two clocks, never mixed (LQ-20261107-145): ``run_age_hours`` answers "when did it last RUN" from a run record
@@ -333,11 +547,19 @@ def evaluate(*, now=None, cron_lines=None, log_age=None, db_age=None, last_run=N
     log_age = _log_age_h if log_age is None else log_age
     db_age = _db_age_h if db_age is None else db_age
     lane_map = (_lane_map()[0] if lane_map is None else lane_map)
-    last_run = ((lambda job: _ledger_last_run(lane_map, job)) if last_run is None else last_run)
+    registry = None if schedulers is not None else _lane_registry()[0]
+    if last_run is None:
+        # One read for every lane in the run, then a dict lookup per job (see _ledger_newest).
+        newest = _ledger_newest([l for v in lane_map.values() for l in
+                                 ([v] if isinstance(v, str) else list(v or []))])
+        last_run = lambda job: _ledger_last_run(lane_map, job, newest=newest)  # noqa: E731
     results = []
     for job in REGISTRY:
-        timer = job.get("systemd_timer")
-        in_cron = _is_scheduled(job["schedule_match"], cron_lines)
+        markers, units = (schedulers(job) if schedulers is not None
+                          else _job_schedulers(job, _lane_ids(lane_map, job), registry))
+        cron_marker = next((mk for mk in markers if _is_scheduled(mk, cron_lines)), None)
+        in_cron = cron_marker is not None
+        timer_on = next((u for u in units if _timer_active(u)), None)
         last = last_run(job)
         kind, arg = job["signal"]
         run_age, run_source = None, None
@@ -348,14 +570,19 @@ def evaluate(*, now=None, cron_lines=None, log_age=None, db_age=None, last_run=N
             run_age, run_source = log_age(arg), "log"
         ledger_age = _age_h((last or {}).get("finished_at"), now)
         if ledger_age is not None and (run_age is None or ledger_age < run_age):
-            run_age, run_source = ledger_age, f"n8n ledger ({last.get('state') or '?'})"
-        scheduled = in_cron or bool(timer and _timer_active(timer)) or last is not None
-        idle = _hours_since_due(job.get("schedule_exprs") or _cron_exprs(job["schedule_match"], cron_lines), now)
+            run_age, run_source = ledger_age, _run_source_label(last)
+        # A run schedules only when its lane is not retired: the scheduler-of-record, not the pulse.
+        run_schedules = last is not None and _lane_is_active((last or {}).get("lane_id"), registry)
+        scheduled = in_cron or bool(timer_on) or run_schedules
+        schedule_source = (f"crontab:{cron_marker}" if in_cron else f"systemd:{timer_on}" if timer_on
+                           else "n8n ledger" if run_schedules else None)
+        idle = _hours_since_due(job.get("schedule_exprs") or _cron_exprs(markers, cron_lines), now)
         # Never looser than the cadence while the job is in its window; outside it, the heartbeat only has to
         # postdate the last due fire (plus up to 1h of run time).
         allowed = max(job["cadence_h"], idle + min(job["cadence_h"], 1.0))
         if not scheduled:
-            where = f"crontab, {timer}, or an n8n ledger run" if timer else "crontab or an n8n ledger run"
+            where = (f"crontab, {', '.join(units)}, or an n8n ledger run" if units
+                     else "crontab or an n8n ledger run")
             beat = run_age if run_age is not None else output_age
             status, detail = "NOT_SCHEDULED", (f"not in {where} (last signal {beat}h ago)" if beat is not None
                                               else f"not in {where}, no heartbeat")
@@ -381,7 +608,7 @@ def evaluate(*, now=None, cron_lines=None, log_age=None, db_age=None, last_run=N
                         "run_age_hours": run_age, "run_source": run_source,
                         "output_age_hours": output_age, "cadence_hours": job["cadence_h"],
                         "allowed_hours": round(allowed, 1), "idle_hours": round(idle, 1),
-                        "scheduled": scheduled})
+                        "scheduled": scheduled, "schedule_source": schedule_source})
     return results
 
 

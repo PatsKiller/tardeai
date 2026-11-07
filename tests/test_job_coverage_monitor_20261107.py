@@ -21,11 +21,11 @@ def _job(name="lane-a", *, cadence=30, signal=("db", "SELECT 1")):
     return {"name": name, "schedule_match": f"{name}.py", "cadence_h": cadence, "signal": signal}
 
 
-def _evaluate(jobs, *, cron=(), log_age=None, db_age=None, last_runs=None, lane_map=None):
+def _evaluate(jobs, *, cron=(), log_age=None, db_age=None, last_runs=None, lane_map=None, schedulers=None):
     hits = last_runs or {}
     return jcm.evaluate(cron_lines=list(cron), log_age=(log_age or (lambda _a: None)),
                         db_age=(db_age or (lambda _a: None)), last_run=lambda job: hits.get(job["name"]),
-                        lane_map=(lane_map or {}), now=NOW)
+                        lane_map=(lane_map or {}), schedulers=schedulers, now=NOW)
 
 
 @pytest.fixture(autouse=True)
@@ -90,8 +90,9 @@ def test_an_output_only_clock_without_a_run_record_is_named_output(monkeypatch):
     assert row["status"] == "STALE_OUTPUT" and "no run record" in row["detail"]
 
 
-def test_the_lane_map_is_derived_from_the_allowlist_and_ambiguous_lanes_stay_unmapped(monkeypatch, tmp_path):
-    jobs = [_job("one"), _job("two"), _job("ambiguous")]
+def test_the_lane_map_is_derived_from_the_allowlist_and_several_lanes_are_kept(monkeypatch, tmp_path):
+    """Several lanes for one job is normal (three catalyst bands), and the newest run settles it."""
+    jobs = [_job("one"), _job("two")]
     monkeypatch.setattr(jcm, "REGISTRY", jobs)
     monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
     (tmp_path / "config").mkdir()
@@ -101,14 +102,169 @@ def test_the_lane_map_is_derived_from_the_allowlist_and_ambiguous_lanes_stay_unm
         {"lane_id": "two-a", "command": ["$PY", "scripts/two.py"]},
     ]}))
     lane_map, error = jcm._lane_map()
-    assert error is None
-    assert lane_map == {"one": "one-lane"}, "two.py has two lanes: ambiguity must not become a guess"
+    assert lane_map == {"one": ["one-lane"], "two": ["two-a", "two-lane"]}, lane_map
+    assert error.endswith("Error"), f"the missing lane registry is reported, not hidden: {error}"
 
 
-def test_an_unreadable_allowlist_reports_an_error_and_maps_nothing(monkeypatch, tmp_path):
+def test_the_lane_map_reads_the_lane_registry_so_a_wrapper_scheduler_is_found(monkeypatch, tmp_path):
+    """The live case: cron runs `run_family_slot.py --family topic-ingestion`, not `topic_ingestion.py`."""
+    jobs = [_job("topic_ingestion"), _job("multi")]
+    monkeypatch.setattr(jcm, "REGISTRY", jobs)
+    monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config/lane_registry.json").write_text(json.dumps({"lanes": [
+        {"lane_id": "topic-ingestion", "state": "ACTIVE",
+         "scheduler": {"kind": "cron", "match": "scripts/run_family_slot.py --family topic-ingestion"},
+         "command": ["bash gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries"]},
+        {"lane_id": "multi-a", "state": "ACTIVE",
+         "scheduler": {"kind": "cron", "match": ["scripts/multi.py --band open", "scripts/multi.py --band close"]}},
+        {"lane_id": "unrelated", "state": "ACTIVE", "scheduler": {"kind": "cron", "match": "scripts/other.py"}},
+    ]}))
+    lane_map, error = jcm._lane_map()
+    assert error.endswith("Error"), f"the missing allowlist is reported: {error}"
+    assert lane_map == {"topic_ingestion": ["topic-ingestion"], "multi": ["multi-a"]}, lane_map
+
+
+def test_an_unreadable_catalogue_reports_an_error_and_maps_nothing(monkeypatch, tmp_path):
     monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
     lane_map, error = jcm._lane_map()
     assert lane_map == {} and error in ("FileNotFoundError", "JSONDecodeError")
+
+
+def _registry(tmp_path, lanes):
+    (tmp_path / "config").mkdir(exist_ok=True)
+    (tmp_path / "config/lane_registry.json").write_text(json.dumps({"lanes": lanes}))
+
+
+def test_a_wrapper_lane_schedules_the_job_it_runs(monkeypatch, tmp_path):
+    """LQ-20261107-355: the crontab names the wrapper. topic_ingestion was NOT_SCHEDULED with cron running it."""
+    job = _job("topic_ingestion", cadence=42, signal=("log", "topic_ingestion.log"))
+    monkeypatch.setattr(jcm, "REGISTRY", [job])
+    monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
+    _registry(tmp_path, [{"lane_id": "topic-ingestion", "state": "ACTIVE",
+                          "scheduler": {"kind": "cron",
+                                        "match": "scripts/run_family_slot.py --family topic-ingestion"},
+                          "command": ["$PY scripts/topic_ingestion.py --use-llm-queries"]}])
+    row = _rows(monkeypatch, [job],
+                cron=["45 20 * * 1-5 cd $PROJ && $PY scripts/run_family_slot.py --family topic-ingestion"],
+                lane_map={"topic_ingestion": ["topic-ingestion"]}, log_age=lambda _a: 14.3)["topic_ingestion"]
+    assert row["scheduled"] is True and row["status"] == "OK", row
+    assert row["schedule_source"] == "crontab:scripts/run_family_slot.py --family topic-ingestion", row
+
+
+def test_a_retired_lane_does_not_schedule_a_job(monkeypatch, tmp_path):
+    """A RETIRED lane still names the script; letting it schedule the job would turn NOT_SCHEDULED into a false OK."""
+    job = _job("hermes_industry_novelty_discovery")
+    monkeypatch.setattr(jcm, "REGISTRY", [job])
+    monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
+    _registry(tmp_path, [{"lane_id": "hermes-industry-novelty-discovery", "state": "RETIRED",
+                          "scheduler": {"kind": "cron",
+                                        "match": "scripts/hermes_industry_novelty_discovery.py"}}])
+    runs = {"hermes_industry_novelty_discovery": {
+        "lane_id": "hermes-industry-novelty-discovery", "state": "RUN_DONE",
+        "finished_at": (NOW - timedelta(hours=2)).isoformat()}}
+    row = _rows(monkeypatch, [job], cron=[], last_runs=runs, log_age=lambda _a: 15.1,
+                lane_map={"hermes_industry_novelty_discovery": ["hermes-industry-novelty-discovery"]}
+                )["hermes_industry_novelty_discovery"]
+    assert row["status"] == "NOT_SCHEDULED" and row["scheduled"] is False, row
+    assert row["run_age_hours"] == 2.0, "a retired lane's run is still printed as a heartbeat: " + str(row)
+
+
+def test_an_active_lane_run_schedules_and_a_retired_lane_run_alone_does_not(monkeypatch, tmp_path):
+    live, dead = _job("live-lane"), _job("dead-lane")
+    monkeypatch.setattr(jcm, "REGISTRY", [live, dead])
+    monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
+    _registry(tmp_path, [{"lane_id": "live-lane", "state": "ACTIVE", "scheduler": {"kind": "n8n"}},
+                         {"lane_id": "dead-lane", "state": "RETIRED", "scheduler": {"kind": "n8n"}}])
+    runs = {name: {"lane_id": name, "state": "RUN_DONE", "finished_at": (NOW - timedelta(hours=1)).isoformat()}
+            for name in ("live-lane", "dead-lane")}
+    rows = _rows(monkeypatch, [live, dead], cron=[], last_runs=runs,
+                 lane_map={"live-lane": ["live-lane"], "dead-lane": ["dead-lane"]})
+    assert rows["live-lane"]["status"] == "OK" and rows["live-lane"]["schedule_source"] == "n8n ledger", rows
+    assert rows["dead-lane"]["status"] == "NOT_SCHEDULED" and rows["dead-lane"]["scheduled"] is False, rows
+
+
+def test_the_systemd_unit_comes_from_the_lane_not_only_the_registry_field(monkeypatch, tmp_path):
+    """aegis_overnight read NOT_SCHEDULED while its ACTIVE lane's unit was a different name from the hard-coded one."""
+    job = {**_job("aegis_overnight", signal=("log", "aegis-overnight.log")),
+           "systemd_timer": "aegis-overnight.timer"}
+    monkeypatch.setattr(jcm, "REGISTRY", [job])
+    monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(jcm, "_timer_active", lambda unit: unit == "aegis-surveillance.timer")
+    _registry(tmp_path, [{"lane_id": "aegis-overnight", "state": "ACTIVE",
+                          "scheduler": {"kind": "systemd", "expression": "aegis-surveillance.timer"}}])
+    row = _rows(monkeypatch, [job], cron=[], lane_map={"aegis_overnight": ["aegis-overnight"]},
+                log_age=lambda _a: 8.0)["aegis_overnight"]
+    assert row["scheduled"] is True and row["schedule_source"] == "systemd:aegis-surveillance.timer", row
+    assert row["status"] == "OK", row
+
+
+def test_the_newest_run_across_a_jobs_lanes_is_the_heartbeat(monkeypatch):
+    job = _job("catalyst_momentum_engine")
+    runs = {"catalyst_momentum_engine": {"state": "RUN_DONE",
+                                         "finished_at": (NOW - timedelta(hours=2)).isoformat()}}
+    row = _rows(monkeypatch, [job], cron=[], last_runs=runs,
+                lane_map={"catalyst_momentum_engine": ["band-a", "band-b"]})["catalyst_momentum_engine"]
+    assert row["status"] == "OK" and row["run_age_hours"] == 2.0, row
+
+
+def _ledger(path, *, runs=(), outcomes=()):
+    import sqlite3
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE runs (run_id TEXT, lane_id TEXT, mode TEXT, state TEXT, "
+                 "finished_at TEXT, exit_code INTEGER)")
+    conn.execute("CREATE TABLE run_outcomes (run_id TEXT, lane_id TEXT, mode TEXT, status TEXT, "
+                 "run_state TEXT, finished_at TEXT, exit_code INTEGER)")
+    conn.executemany("INSERT INTO runs VALUES (?,?,?,?,?,?)", runs)
+    conn.executemany("INSERT INTO run_outcomes (run_id,lane_id,mode,status,run_state,finished_at,exit_code) "
+                     "VALUES (?,?,?,?,?,?,?)", outcomes)
+    conn.commit()
+    conn.close()
+
+
+def test_a_run_outcomes_row_is_a_run_even_when_runs_has_none(monkeypatch, tmp_path):
+    """The ledger writes a finished run twice; reading only `runs` makes one table's lag into blindness."""
+    ledger = tmp_path / "ledger.sqlite"
+    _ledger(ledger, outcomes=[("r1", "lane-x", "live", "success", "RUN_DONE", "2026-11-07T15:00:00+00:00", 0)])
+    monkeypatch.setenv("TRADEAI_N8N_COORDINATION_LEDGER", str(ledger))
+    newest = jcm._ledger_newest(["lane-x"])
+    assert newest["lane-x"]["table"] == "run_outcomes" and newest["lane-x"]["state"] == "RUN_DONE", newest
+    assert jcm._run_source_label(newest["lane-x"]) == "n8n run_outcomes (RUN_DONE)"
+
+
+def test_the_newer_of_the_two_ledger_tables_wins_and_a_failed_run_is_not_a_heartbeat(monkeypatch, tmp_path):
+    ledger = tmp_path / "ledger.sqlite"
+    _ledger(ledger,
+            runs=[("r1", "lane-x", "live", "RUN_DONE", "2026-11-07T10:00:00+00:00", 0),
+                  ("r2", "lane-x", "live", "RUN_FAILED", "2026-11-07T16:00:00+00:00", 1)],
+            outcomes=[("r3", "lane-x", "live", "success", "RUN_DONE", "2026-11-07T14:00:00+00:00", 0)])
+    monkeypatch.setenv("TRADEAI_N8N_COORDINATION_LEDGER", str(ledger))
+    hit = jcm._ledger_newest(["lane-x"])["lane-x"]
+    assert (hit["run_id"], hit["table"]) == ("r3", "run_outcomes"), "a failed run is not a healthy heartbeat"
+    assert jcm._ledger_newest(["lane-y"]) == {}, "an unknown lane has no evidence, not a guess"
+
+
+def test_a_missing_ledger_is_no_evidence_and_never_a_crash(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRADEAI_N8N_COORDINATION_LEDGER", str(tmp_path / "absent.sqlite"))
+    assert jcm._ledger_newest(["lane-x"]) == {}
+
+
+def test_a_run_receipt_is_evidence_when_the_ledger_has_no_row(monkeypatch, tmp_path):
+    """The 80k-file receipts folder is read by a glob that names the lane, never by parsing every file."""
+    import lib.lane_registry as lr  # the module the monitor imports (scripts/ is on sys.path)
+    folder = tmp_path / "n8n_runs"
+    folder.mkdir()
+    (folder / "d:lane-x:dry_run:20261107T1400.json").write_text(json.dumps(
+        {"run_id": "d:lane-x:dry_run:20261107T1400", "lane_id": "lane-x", "mode": "dry_run",
+         "state": "RUN_DONE", "finished_at": "2026-11-07T14:00:00+00:00", "exit_code": 0}))
+    (folder / "d:lane-xy:dry_run:20261107T1500.json").write_text(json.dumps(
+        {"lane_id": "lane-xy", "state": "RUN_DONE", "finished_at": "2026-11-07T15:00:00+00:00"}))
+    (folder / "d:lane-x:dry_run:20261107T1600.json").write_text(json.dumps(
+        {"lane_id": "lane-x", "state": "RUN_FAILED", "finished_at": "2026-11-07T16:00:00+00:00"}))
+    monkeypatch.setenv("TRADEAI_N8N_COORDINATION_LEDGER", str(tmp_path / "absent.sqlite"))
+    monkeypatch.setattr(lr, "n8n_runs_dir", lambda root=None: folder)
+    hit = jcm._receipt_newest(["lane-x"])["lane-x"]
+    assert (hit["finished_at"], hit["table"]) == ("2026-11-07T14:00:00+00:00", "receipt"), hit
 
 
 def test_the_durable_record_carries_every_row_and_the_summary(monkeypatch, tmp_path):
