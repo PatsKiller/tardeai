@@ -28,7 +28,7 @@ import {
   VERDICT_TIP, verdictView, writerText, type DataFilter, type DataRow, type FileList,
 } from '../lib/opsControlsData'
 import {
-  failuresBadge, GLOSSARY, healthView, lastRunView, matchesN8nFilter, matchesN8nQuery, N8N_FILTERS, n8nFilterCounts, nextRunView,
+  failuresBadge, GLOSSARY, healthView, lastRunView, liveSourceText, matchesN8nFilter, matchesN8nQuery, N8N_FILTERS, n8nFilterCounts, nextRunView,
   readinessView, runsText, sortRows as sortN8nRows, stageView, summaryOf, type N8nFilter, type N8nRowX,
 } from '../lib/opsControlsN8n'
 import OpsDeskFrame from '../components/OpsDeskFrame'
@@ -657,8 +657,12 @@ function N8nTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
                   <td style={cell}><Tooltip content={<span style={pl}>{rv.tip}</span>}><Chip tone={rv.tone}>{rv.label}</Chip></Tooltip></td>
                   <td style={cell}>
                     <span style={{ display: 'inline-grid', gap: 4, minWidth: 0 }}>
-                      <Chip tone={r.on_live_list ? 'info' : 'neutral'}>{r.on_live_list === null || r.on_live_list === undefined ? 'unknown' : r.on_live_list ? 'on list' : 'not listed'}</Chip>
-                      {r.on_live_list ? <ActionButton state={d} kind="n8n_live_list.remove" text="Remove" params={{ lane_id: r.lane_id }} title={`Remove ${r.lane_id} from the n8n live list`} run={run} />
+                      <Chip tone={r.on_live_list ? 'info' : 'neutral'}>{r.on_live_list === null || r.on_live_list === undefined ? 'unknown' : r.on_live_list ? 'live' : 'not live'}</Chip>
+                      {r.on_live_list === false && (r.live_exclusion_text || r.live_exclusion)
+                        ? <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], overflowWrap: 'anywhere' }} data-testid="ops-n8n-exclusion">{r.live_exclusion_text || r.live_exclusion}</span> : null}
+                      {/* The host-file add/remove only changes the fallback list; while the registry render is the
+                          source it cannot make a lane live, so the buttons are not offered (ops audit P0-2). */}
+                      {n?.live_source === 'registry_render' ? null : r.on_live_list ? <ActionButton state={d} kind="n8n_live_list.remove" text="Remove" params={{ lane_id: r.lane_id }} title={`Remove ${r.lane_id} from the n8n live list`} run={run} />
                         : <ActionButton state={d} kind="n8n_live_list.add" text="Add to live list" params={{ lane_id: r.lane_id }} title={`Add ${r.lane_id} to the n8n live list`} run={run} />}
                     </span>
                   </td>
@@ -685,7 +689,7 @@ function N8nTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
           </tbody>
         </table>
       </div>
-      <p style={muted}>Live list <span style={mono}>{s(n?.live_list_path)}</span> · {(n?.live_lanes || []).length} lane(s). Changing it restarts the relay and gateway.</p>
+      <p style={muted} data-testid="ops-n8n-live-source">{liveSourceText(n)}</p>
     </SectionGate>
   </Panel>
 }
