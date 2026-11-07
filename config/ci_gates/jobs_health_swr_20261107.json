@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_health_swr_20261107",
+  "files": [
+    "tests/test_jobs_health_swr_20261107.py"
+  ],
+  "comment": [
+    "jobs-health serves the last good body and refreshes in the background (LQ-20261107-219)."
+  ]
+}

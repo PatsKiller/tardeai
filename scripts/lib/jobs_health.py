@@ -24,6 +24,7 @@ SCHEMA = "JobsHealth@v1"
 ROOT = Path(__file__).resolve().parents[2]
 _CACHE = {}
 _LOCK = threading.Lock()
+_SINGLE = threading.Lock()
 _FAILURES = {"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED"}
 #: The generic text cause() returns when a failure carries no stderr and no specific reason.
 NO_DIAGNOSTIC = "Failure recorded; stderr diagnostic was not retained"
@@ -436,21 +437,102 @@ def _load(root: Path, registry_path: Path, now: datetime):
     return report
 
 
+FRESH_S = 60.0           # a body this young is served as is
+MAX_STALE_S = 6 * 3600.0  # an older last-good body is not served; the request computes inline
+_REFRESHING: set = set()
+LAST_GOOD_REL = "data/runtime/jobs_health_last_good.json"
+
+
+def _store_last_good(root: Path, result: dict, as_of: str) -> None:
+    """Atomic 0600 copy of the last good body so a portfolio-server restart does not start cold."""
+    try:
+        path = root / LAST_GOOD_REL
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            json.dump({"as_of": as_of, "result": result}, fh, default=str)
+        os.replace(tmp, path)
+    except Exception:
+        pass  # a cache write failing never fails the read
+
+
+def _read_last_good(root: Path):
+    try:
+        raw = json.loads((root / LAST_GOOD_REL).read_text())
+        at = datetime.fromisoformat(raw["as_of"])
+        if isinstance(raw.get("result"), dict) and "rows" in raw["result"]:
+            return time.time() - at.timestamp(), raw["result"], raw["as_of"]
+    except Exception:
+        pass
+    return None
+
+
+def _compute(root: Path, registry: Path, key) -> tuple:
+    result = _load(root, registry, datetime.now(timezone.utc))
+    as_of = datetime.now(timezone.utc).isoformat()
+    with _LOCK:
+        _CACHE.clear()
+        _CACHE[key] = (time.time(), result, as_of)
+    _store_last_good(root, result, as_of)
+    return result, as_of
+
+
+def _refresh(root: Path, registry: Path, key) -> None:
+    try:
+        _compute(root, registry, key)
+    except Exception:
+        pass
+    finally:
+        with _LOCK:
+            _REFRESHING.discard(key)
+
+
+def _start_refresh(root: Path, registry: Path, key) -> bool:
+    """One background refresh per key; the caller holds _LOCK."""
+    if key in _REFRESHING:
+        return True
+    _REFRESHING.add(key)
+    threading.Thread(target=_refresh, args=(root, registry, key), daemon=True, name="jobs-health-refresh").start()
+    return True
+
+
 def get_jobs_health(query=None, *, state_root=None, registry_path=None, now=None):
+    """Stale-while-revalidate (LQ-20261107-219): the full projection takes 15-33 s cold, past the 30 s browser
+    limit, so a body up to MAX_STALE_S old is served at once (stamped _swr) while ONE background thread
+    recomputes; no caller waits on a held lock. With no last-good body (cold start, nothing on disk) the
+    request computes inline, as before. An explicit ``now`` bypasses all caching (tests)."""
     root = Path(state_root or os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases/persistent-state")
     registry = Path(registry_path or ROOT / "config/lane_registry.json")
     query = query or {}
-    clock = now or datetime.now(timezone.utc)
     key = (str(root), str(registry))
-    with _LOCK:
-        cached = _CACHE.get(key)
-        if now is not None or cached is None or time.monotonic() - cached[0] > 60:
-            result = _load(root, registry, clock)
-            if now is None:
-                _CACHE.clear()
-                _CACHE[key] = (time.monotonic(), result)
+    if now is not None:
+        result = _load(root, registry, now)
+        swr = None
+    else:
+        with _LOCK:
+            cached = _CACHE.get(key)
+        source = "memory"
+        if cached is None:
+            disk = _read_last_good(root)
+            if disk is not None and disk[0] <= MAX_STALE_S:
+                cached = (time.time() - disk[0], disk[1], disk[2])
+                source = "disk"
+        if cached is not None and time.time() - cached[0] <= MAX_STALE_S:
+            age = time.time() - cached[0]
+            result, as_of = cached[1], cached[2]
+            stale = age > FRESH_S
+            with _LOCK:
+                refreshing = _start_refresh(root, registry, key) if stale else key in _REFRESHING
+            swr = {"as_of": as_of, "age_s": round(age, 1), "stale": stale, "refreshing": refreshing, "source": source}
         else:
-            result = cached[1]
+            with _SINGLE:  # concurrent cold callers share one compute
+                cached = _CACHE.get(key)
+                if cached is not None and time.time() - cached[0] <= FRESH_S:
+                    result, as_of = cached[1], cached[2]
+                else:
+                    result, as_of = _compute(root, registry, key)
+            swr = {"as_of": as_of, "age_s": 0.0, "stale": False, "refreshing": False, "source": "computed"}
     scope = query.get("filter", "attention")
     rows = [r for r in result["rows"] if scope == "all" or scope == "attention" and r["result"] in {"failed", "missed", "unknown"}
             or scope == "market" and r["market_hours_only"] or scope in {"n8n", "cron"} and r["scheduler"] == scope]
@@ -462,5 +544,8 @@ def get_jobs_health(query=None, *, state_root=None, registry_path=None, now=None
         limit = max(1, min(100, int(query.get("limit", 50))))
     except (ValueError, TypeError):
         offset, limit = 0, 50
-    return {**result, "rows": rows[offset:offset+limit], "total": len(rows), "offset": offset, "limit": limit,
-            "has_more": offset + limit < len(rows)}
+    out = {**result, "rows": rows[offset:offset+limit], "total": len(rows), "offset": offset, "limit": limit,
+           "has_more": offset + limit < len(rows)}
+    if swr:
+        out["_swr"] = swr
+    return out
