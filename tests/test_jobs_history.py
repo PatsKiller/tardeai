@@ -71,6 +71,7 @@ def test_n8n_failure_then_retry_shows_as_fixed_and_slot_ran():
     row = row_of(out, lane)
     assert row["status"] == "ok"
     assert row["missed_count"] == 0
+    assert out["summary"]["failed"] == 0 and out["summary"]["late"] == 0  # counted zeros are present, never absent
     assert row["last_run"]["run_id"].endswith(":a2") and row["last_run"]["result"] == "succeeded"
     assert row["last_success_at"] == retry["finished_at"].replace("+00:00", "Z")
     retries = [f for f in row["fixes"] if f["kind"] == "retry"]

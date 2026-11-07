@@ -482,8 +482,11 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
                                  last_live_success=_at((inputs.get("last_live_success") or {}).get(lane_id)),
                                  receipt=(inputs.get("receipts") or {}).get(lane_id),
                                  output_at=(inputs.get("output_times") or {}).get(lane_id), fixes=fixes))
-    counts = defaultdict(int)
+    # Every status key is present (a counted 0 is a real 0), so the page never has to default a missing count.
+    counts = {k: 0 for k in ("ok", "ok_unverified", "failed", "missed", "late", "running", "not_measured", "paused",
+                             "retired", "never_scheduled")}
     for row in rows:
+        counts.setdefault(row["status"], 0)
         counts[row["status"]] += 1
     active = [r for r in rows if r["state"] == "ACTIVE"]
     return {

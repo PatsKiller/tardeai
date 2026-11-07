@@ -119,7 +119,7 @@ export function HistoryListView({ data, loading, error, filter, onFilter, query,
 }) {
   const s = data?.summary
   const tiles: [string, number | null | undefined, Tone][] = [
-    ['Failed', s?.failed ?? 0, 'danger'], ['Missed a run', s?.with_missed, 'warning'], ['Late', s?.late ?? 0, 'warning'],
+    ['Failed', s?.failed, 'danger'], ['Missed a run', s?.with_missed, 'warning'], ['Late', s?.late, 'warning'],
     ['Fixed in 14 days', s?.fixed_14d, 'info'], ['No per-run history', s?.no_run_history, 'neutral'],
   ]
   return <section aria-label="Job run history" data-testid="job-run-history" style={{ display: 'grid', gap: 12, color: TOKENS.text[0], fontFamily: FONT.sans, minWidth: 0 }}>
