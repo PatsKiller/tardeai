@@ -3,7 +3,7 @@
 import {
   agentStateSentence, checkSentence, coordinationNote, coordinationSource, engineerPanelProps, flightFreshnessNote,
   flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction,
-  needsYouFacts, PANEL_NONE, panelSentence, plainReason, plainText, stuck, type Panel,
+  needsYouFacts, PANEL_NONE, panelSentence, plainReason, plainText, runningBuild, stuck, type Panel,
 } from './releasesOperatorView.ts'
 import type { SectionView } from './releasesSchedules.ts'
 import { normalizeRow } from './deployInFlight.ts'
@@ -267,6 +267,39 @@ const approvedRed = { number: 7, title: 't', url: 'u', head_sha: 'a'.repeat(40),
 const g = goingLive([approvedRed as any])
 check('approved-but-red is NOT shown as merging', !g.some(x => x.stage === 'merging'))
 check('approved-but-red says something honest', g.length === 1 && g[0].label !== 'Merging in the next window')
+
+// ---- LQ-20261107-239: the running build is named from the local release record; main inside it is not "unknown"
+const integ = { short_sha: '9aac539a1', release_name: '9aac539a1-live-integration-20261107-144752',
+  since: '2026-11-07T19:49:18Z', since_basis: 'CURRENT symlink mtime', build_branch: 'live-integration',
+  deploy_receipt_matches: false }
+const rb = runningBuild(integ, when)
+check('the running build is named by folder, short SHA, line and activation time',
+  rb.known && rb.text.includes('build 9aac539a1') && rb.text.includes('folder 9aac539a1-live-integration-20261107-144752')
+  && rb.text.includes('from the live-integration line') && rb.text.includes('live since at 2026-11-07T19:49:18Z')
+  && rb.text.includes('when CURRENT was pointed at it'))
+check('a deploy receipt for another build is called history, not the running build', /older build/.test(rb.note ?? ''))
+check('a matching receipt adds no note', runningBuild({ ...integ, deploy_receipt_matches: true }, when).note === null)
+check('no activation time is said, not invented', /activation time not recorded/.test(runningBuild({ ...integ, since: null }, when).text))
+check('no local record is "not identified", never a guessed name', runningBuild(null, when).known === false
+  && /not identified/.test(runningBuild(null, when).text) && runningBuild({ short_sha: null, release_name: null }, when).known === false)
+const containsMain = { is_serving: false, commits_ahead: 0, serving_contains_main: true, prs_since_serving: [], prs_reason: null }
+const inside = mergedWaiting(containsMain as any, integ as any, when)
+check('main inside the running build is a known "nothing waiting"', inside.known === true && inside.waiting === false
+  && inside.tone === 'success' && /already running/.test(inside.headline))
+check('it never says the running version could not be identified', !/could not be identified/.test(inside.detail))
+const notMeasured = mergedWaiting({ ...containsMain, serving_contains_main: null } as any, integ as any, when)
+check('zero ahead with containment unmeasured stays unknown, and blames the measurement, not the identity',
+  notMeasured.known === false && notMeasured.waiting === false && !/could not be identified/.test(notMeasured.detail)
+  && /is identified but is not main/.test(notMeasured.detail))
+const notInside = mergedWaiting({ ...containsMain, serving_contains_main: false } as any, integ as any, when)
+check('zero ahead but main NOT inside the build is still unknown, never an all-clear',
+  notInside.known === false && notInside.tone === 'warning')
+check('no serving identity still says so', /could not be identified/.test(mergedWaiting(containsMain as any, null, when).detail))
+const liveInteg = liveNow({ serving: sec(integ), next_release: sec(containsMain), release_errors: sec({ rows: [] }) }, null, when)
+check('main inside the running build is not "the newest change is not live yet"', !/not live yet/.test(liveInteg.detail)
+  && liveInteg.tone === 'success')
+const liveBehind = liveNow({ serving: sec(integ), next_release: sec({ ...containsMain, serving_contains_main: false }), release_errors: sec({ rows: [] }) }, null, when)
+check('main outside the running build still says the newest change is not live', /not live yet/.test(liveBehind.detail))
 
 console.log(`releasesOperatorView: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

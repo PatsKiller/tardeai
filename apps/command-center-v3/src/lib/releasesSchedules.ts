@@ -13,10 +13,13 @@ export type Section<T> = { value: T | null; as_of: string | null; freshness: Fre
 
 export type Kpi = { key: string; label: string; value: string | number | null; detail: string | null; tone: Tone; freshness: Freshness | null; as_of: string | null }
 export type Serving = { sha: string; short_sha: string; release_name: string | null; since: string | null; since_basis: string | null; pins_agree: boolean
+  // LQ-20261107-239: read from the release's own stamp files; null when the file is absent
+  build_branch?: string | null; build_stamped_at?: string | null; release_dir?: string | null; deploy_receipt_matches?: boolean | null
   pins: Record<string, { value: string | null; matches_current: boolean | null }>
   deploy_receipt: { ok?: boolean; mode?: string; health?: string; at?: string; deployed_sha?: string; readback_errors?: string[] } | null }
 export type NextRelease = { sha: string; short_sha: string; subject: string | null; committed_at: string | null; fetched_at: string | null; is_serving: boolean
   commits_ahead: number | null; prs_since_serving: number[] | null; prs_reason: string | null
+  serving_contains_main?: boolean | null  // LQ-20261107-239: main is an ancestor of the running build (null = not measured)
   ci: MainCi }
 // Exact-SHA CI of main HEAD: SUCCESS | FAILURE | PENDING from the main-ci-watch receipt (scripts/main_ci_watch.py),
 // OK | NOT_GREEN from post_merge_ci.json, else UNAVAILABLE with the reason.

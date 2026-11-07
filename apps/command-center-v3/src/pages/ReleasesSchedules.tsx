@@ -25,7 +25,7 @@ import { releaseRowModel } from '../lib/releaseRow'
 import { ReleaseHistoryCard } from '../lib/releaseHistoryCard'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import { IN_FLIGHT_PATH, KNOWN_SCHEMAS, normalizeCoordination, normalizeRows, type DeployInFlightWire, type InFlightPr } from '../lib/deployInFlight'
-import { agentStateSentence, coordinationSource, engineerPanelProps, flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, panelSentence, plainText, stuck } from '../lib/releasesOperatorView'
+import { agentStateSentence, coordinationSource, engineerPanelProps, flightSource, goingLive, goingLiveSentence, jobsLine, liveNow, mergedWaiting, needsYou, needsYouAction, needsYouFacts, panelSentence, plainText, runningBuild, stuck } from '../lib/releasesOperatorView'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0, display: 'grid', gap: 8 }
 const h2: CSSProperties = { margin: 0, fontSize: TYPE.md, fontWeight: 800, color: TOKENS.text[0] }
@@ -264,13 +264,18 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
   const flightClock = flightAsOf ? `checked ${when(flightAsOf)}` : 'as of unknown — the open-change source did not record when it checked'
   const coordClock = coordAsOf ? `last agent report ${when(coordAsOf)}` : 'as of unknown — the agent list did not record when it last checked'
   const status = liveNow(s as any, generatedAt, when)
+  // LQ-20261107-239: the running build is named from this host's release record alone, so it shows even when every
+  // GitHub-backed source below is down. A STALE or UNAVAILABLE serving section is handled by liveNow's headline.
+  const build = s.serving?.state === 'UNAVAILABLE' ? null : runningBuild(s.serving?.value as any, when)
   const ask = needsYou(rows)
   const groups = goingLive(rows)
   const blocked = stuck(rows)
   const td = s.n8n_today
   const jobs = jobsLine(td as any, when)
   const hist = s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null
-  const notChecked = flightError ? `The open-change list could not be read (${plainText(flightError, 'no reason given')}); anything below is from the sources that answered, and this is not an all-clear.` : null
+  // The open-change list comes from GitHub and is optional on this page (LQ-20261107-239): its outage is stated, and
+  // never touches what the page says about the running build, which is read from this host.
+  const notChecked = flightError ? `The open-change list comes from GitHub, which could not be read right now (${plainText(flightError, 'no reason given')}). It is optional: what is live above is read from this host and does not depend on it. Anything below is from the sources that answered, and this is not an all-clear.` : null
   // One sentence per SOURCE STATE, reused by every list. Nothing here claims a measured zero unless the source
   // answered and the answer was empty (codex R4).
   // THE GENERAL PROPERTY (codex third read): every panel derives its own source state, and may assert "none" only
@@ -289,6 +294,8 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
       <ChipRow><Chip tone={status.tone} variant="solid">{status.tone === 'success' ? 'All good' : status.tone === 'danger' ? 'Needs attention' : 'Watch'}</Chip></ChipRow>
       <h2 style={{ ...h2, fontSize: TYPE.lg }}>{loading ? 'Checking what is live…' : status.headline}</h2>
       <p style={{ ...muted, color: TOKENS.text[1] }}>{loading ? 'This is not an all-clear yet — the sources have not answered.' : status.detail}</p>
+      {!loading && build ? <p data-testid="rs-running-build" style={{ ...muted, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{build.text}</p> : null}
+      {!loading && build?.note ? <p data-testid="rs-running-build-note" style={muted}>{build.note}</p> : null}
       <p style={muted}>{loading ? 'no clock yet' : status.clock}</p>
       {ask.length ? <a href="#rs-needs-you" style={{ minHeight: 44, display: 'inline-flex', alignItems: 'center', color: TOKENS.primary, fontWeight: 700 }}>{ask.some(p => needsYouAction(p).kind === 'inspect') ? 'Check the recorded items below ↓'
         : `${ask.length} thing${ask.length === 1 ? '' : 's'} need you ↓`}</a> : null}
@@ -320,7 +327,9 @@ export function OperatorView({ s, rows, agents, generatedAt, flightAsOf, coordAs
       {flightNote ? <p role="status" style={{ ...muted, color: toneVars('warning').color }}>{flightNote}</p> : null}
       {/* codex R5: this section is fed by RELEASE data as well as open changes, so a merge that is not live yet is
           representable even when the open-change list is empty or unreadable. */}
-      {waiting.waiting || waiting.tone !== 'success'
+      {/* LQ-20261107-239: when the open-change list (GitHub) cannot speak, the release data's own answer is still
+          shown — it is read from this host, so a GitHub outage must not hide it. */}
+      {waiting.waiting || waiting.tone !== 'success' || !flightSrc.canAssertEmpty
         ? <div data-testid="rs-merged-not-live" style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
             <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 700 }}>{waiting.headline}</div>
             <div style={{ ...muted, color: waiting.tone === 'warning' ? toneVars('warning').color : TOKENS.text[1] }}>{waiting.detail}</div>

@@ -99,7 +99,7 @@ export function liveNow(sections: Record<string, SectionView<any>>, generatedAt:
   if (!errors || errors.state !== 'OK') unknowns.push('whether any release failed could not be read')
   else if (Array.isArray(errors.value?.rows) && errors.value.rows.length) problems.push(`${errors.value.rows.length} release error(s) recorded`)
   if (!next || next.state !== 'OK') unknowns.push('whether anything newer is waiting could not be read')
-  else if (next.value?.is_serving !== true) problems.push('the newest change is not live yet')
+  else if (next.value?.is_serving !== true && next.value?.serving_contains_main !== true) problems.push('the newest change is not live yet')
   const detail = problems.length ? `${problems.join(' · ')}.`
     : unknowns.length ? `Nothing known is wrong. ${unknowns.join(' · ')}.`
       : `Nothing is waiting to go live.${since}`
@@ -109,6 +109,36 @@ export function liveNow(sections: Record<string, SectionView<any>>, generatedAt:
     detail,
     clock,
   }
+}
+
+/** The running build, named from the release's own local record (LQ-20261107-239).
+ *
+ *  Everything here comes from the activated directory on this host: its name, its BUILD_SHA pin, the line it was
+ *  stamped from, and when CURRENT was pointed at it. None of it needs GitHub, so it is shown even when every
+ *  GitHub-backed panel is unavailable. This one line deliberately carries the build ID: the operator asked for the
+ *  running build to be NAMED, and the folder name and short SHA are that name. Every other operator sentence stays
+ *  free of identifiers.
+ */
+export type RunningBuild = { known: boolean; text: string; note: string | null }
+
+export function runningBuild(
+  serving: { short_sha?: string | null; release_name?: string | null; since?: string | null; since_basis?: string | null
+    build_branch?: string | null; build_stamped_at?: string | null; deploy_receipt_matches?: boolean | null } | null | undefined,
+  when: (v: string | null | undefined) => string,
+): RunningBuild {
+  if (!serving || !(serving.short_sha || serving.release_name)) {
+    return { known: false, text: 'Running build: not identified — the local release record could not be read.', note: null }
+  }
+  const id = serving.short_sha ? `build ${serving.short_sha}` : 'a build with no recorded SHA'
+  const line = serving.build_branch ? ` from the ${serving.build_branch} line` : ''
+  const folder = serving.release_name ? ` (folder ${serving.release_name})` : ''
+  const basis = serving.since_basis === 'CURRENT symlink mtime' ? ', when CURRENT was pointed at it'
+    : serving.since_basis === 'deploy_receipt.at' ? ', per the deploy receipt' : ''
+  const since = serving.since ? `, live since ${when(serving.since)}${basis}` : ', activation time not recorded'
+  const note = serving.deploy_receipt_matches === false
+    ? 'The last deploy receipt names an older build; this one was activated another way, so that receipt is history, not the running build.'
+    : null
+  return { known: true, text: `Running build: ${id}${line}${folder}${since}.`, note }
 }
 
 /** Merged-but-not-live, derived from the RELEASE data rather than from a list of open PRs (codex R5, PR 2541).
@@ -125,7 +155,8 @@ export type MergedWaiting = { known: boolean; waiting: boolean; headline: string
 
 export function mergedWaiting(
   next: { is_serving?: boolean | null; commits_ahead?: number | null; subject?: string | null
-    committed_at?: string | null; prs_since_serving?: number[] | null; prs_reason?: string | null } | null | undefined,
+    committed_at?: string | null; prs_since_serving?: number[] | null; prs_reason?: string | null
+    serving_contains_main?: boolean | null } | null | undefined,
   serving: { release_name?: string | null; since?: string | null } | null | undefined,
   when: (v: string | null | undefined) => string,
 ): MergedWaiting {
@@ -145,17 +176,32 @@ export function mergedWaiting(
       detail: `Nothing merged is waiting to be promoted. The version running is ${running}.` }
   }
   const ahead = next.commits_ahead
+  const servingIdentified = Boolean(serving && (serving.since || serving.release_name))
+  // LQ-20261107-239: a build activated from the integration line is not main, but it can hold all of main. The
+  // producer measured that (main is an ancestor of the running build), so it is a known "nothing waiting", not an
+  // unknown — and it must not be described as an unidentified running version.
+  if (servingIdentified && next.serving_contains_main === true && ahead === 0) {
+    return { known: true, waiting: false, tone: 'success',
+      headline: 'Everything merged to main is already running',
+      detail: `The version running is ${running}. It is not main itself: it holds all of main plus work that has not `
+        + 'been merged to main yet. Nothing merged is waiting to be promoted.' }
+  }
   // cx-openai D52 at ea9442610: the backend emits `is_serving: false` whenever the serving SHA is UNAVAILABLE
   // (`head == serving_sha` is False when serving_sha is missing), together with `commits_ahead: null` and a
   // `prs_reason` that names it. Nothing was compared in that shape, so this may not turn it into "A merge is not live
   // yet": the serving identity must be known AND the distance measured before the page claims a merge is waiting.
   const measured = typeof ahead === 'number' && ahead > 0
-  const servingIdentified = Boolean(serving && (serving.since || serving.release_name))
   if (!measured || !servingIdentified) {
+    // Name the part that is actually missing (LQ-20261107-239): blaming the running version's identity when it was
+    // read fine sent the operator after the wrong problem.
+    const why = !servingIdentified
+      ? 'The version that is running could not be identified'
+      : ahead === 0
+        ? 'The version that is running is identified but is not main, and whether it already holds all of main was not measured'
+        : 'The version that is running is identified, but how far main is ahead of it was not measured'
     return { known: false, waiting: false, tone: 'warning',
       headline: 'Whether merged work is still waiting cannot be read',
-      detail: 'The version that is running could not be identified, or how far main is ahead of it was not measured, so '
-        + 'nothing here says a merge is not live yet — treat it as unknown.' }
+      detail: `${why}, so nothing here says a merge is not live yet — treat it as unknown.` }
   }
   const count = `${ahead} merged change${ahead === 1 ? '' : 's'} ${ahead === 1 ? 'is' : 'are'} not live yet`
   const merged = next.committed_at ? ` The newest of them was merged ${when(next.committed_at)}.` : ''

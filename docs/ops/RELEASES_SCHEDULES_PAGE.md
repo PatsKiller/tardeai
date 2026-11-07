@@ -35,6 +35,27 @@ A retained historical value is labelled `stale — not current`; it does not cou
 In-flight data: `GET /api/v2/ops/in-flight`. Serving / main / STOP: `GET /api/v2/ops/releases-schedules`.
 Design: `docs/designs/DSN-20261029-deploy-console.md` (Operator clarity phase).
 
+## 2026-11-07: the running build is named from this host alone (LQ-20261107-239)
+
+A sprint ran with GitHub unavailable (`/api/v2/ops/in-flight` returned `gh pr list failed: HTTP 504`) and a build
+activated from the integration line, not main. The page then said "The version that is running could not be
+identified", although `serving` had read it fine. The cause: main was an ancestor of the running build, so
+`commits_ahead` was 0 while `is_serving` was false, and the operator view read that pair as unknown identity.
+
+- `serving` now also carries `build_branch` / `build_stamped_at` (the release's own `BUILD_BRANCH` /
+  `BUILD_STAMPED_AT` files; null when absent) and `deploy_receipt_matches` (false when `deploy_receipt.json`
+  names another build: that receipt is written only by the main deploy path).
+- `next_release.serving_contains_main` is `git merge-base --is-ancestor <main> <serving>` on the canonical checkout
+  (true / false / null = not measured). The git runner allows `merge-base`; it still refuses anything that writes.
+- Operator view: the "Live now" block has a **Running build** line (short SHA, line, folder name, activation time
+  and its basis). It is shown with every GitHub-backed source down. Main inside the build reads as "Everything merged
+  to main is already running", a known answer. Zero-ahead with containment unmeasured stays unknown, and the sentence
+  names the missing measurement rather than blaming identity.
+- The open-change list is labelled as coming from GitHub and optional; its outage never reaches the "Live now" block.
+- Tests: `tests/test_releases_schedules_local_identity_20261107.py`, plus the LQ-239 cases in
+  `releasesOperatorView.test.ts` and `releasesOperatorView.render.test.mjs`.
+- Not changed: `history` still lists release-pin receipts only, so an activation outside the pin path is not in it.
+
 ## 2026-10-27: release-train sections removed (operator directive)
 
 The operator directed "Remove everything about the old train ... from the Command Center and from the code"

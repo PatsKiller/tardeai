@@ -71,6 +71,8 @@ def _git(head: str = SHA_MAIN, subjects: dict | None = None):
             if rng in subjects:
                 return 0, "\n".join(subjects[rng]) + "\n"
             return 128, ""
+        if args[:2] == ["merge-base", "--is-ancestor"]:  # LQ-20261107-239: main is not inside these fixtures' builds
+            return 1, ""
         raise AssertionError(args)
     return run
 

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "releases_schedules_local_identity_20261107",
+  "files": [
+    "tests/test_releases_schedules_local_identity_20261107.py"
+  ],
+  "comment": [
+    "The releases page names the running build from the local release record (stamp files, CURRENT) and measures main inside it with no GitHub call (LQ-20261107-239)."
+  ]
+}

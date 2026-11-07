@@ -27,7 +27,7 @@ and the host deploy_on_main poller promotes (AGENTS.md §25.10). Every source is
 worker with its own deadline; a source that misses it or fails is UNAVAILABLE with a reason. Cached 30 s.
 
 AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0. Nothing here writes, merges, releases, arms, sends or calls a
-broker. The only subprocesses are ``git`` (rev-parse / log on the local canonical checkout) and ``crontab -l``.
+broker. The only subprocesses are ``git`` (rev-parse / log / merge-base on the local canonical checkout) and ``crontab -l``.
 """
 from __future__ import annotations
 
@@ -184,9 +184,9 @@ def default_paths(env: Optional[Mapping[str, str]] = None) -> dict[str, Path]:
 
 
 def git_runner(canonical: Path) -> Callable[[list[str]], tuple[int, str]]:
-    """Local, read-only git on the canonical checkout (rev-parse / log only; no fetch, no network)."""
+    """Local, read-only git on the canonical checkout (rev-parse / log / merge-base only; no fetch, no network)."""
     def run(args: list[str]) -> tuple[int, str]:
-        if not args or args[0] not in ("rev-parse", "log"):
+        if not args or args[0] not in ("rev-parse", "log", "merge-base"):
             raise ValueError("git subcommand not allowed here")
         env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"}
         p = subprocess.run(["git", "-C", str(canonical), *args], capture_output=True, text=True, timeout=3,
@@ -257,11 +257,20 @@ def read_serving(releases_base: Path, deploy_state_dir: Path, now: datetime) -> 
             since_basis = "CURRENT symlink mtime"
         except OSError:
             since_basis = None
+    # LQ-20261107-239: the release's own stamp files say which line it was built from and when. They are local
+    # files in the activated directory, so the running build is named with no GitHub call at all.
+    stamp = {}
+    for key, name in (("build_branch", "BUILD_BRANCH"), ("build_stamped_at", "BUILD_STAMPED_AT")):
+        text = _read_text(Path(release_dir) / name, 256) if release_dir else None
+        stamp[key] = text.strip() if text and text.strip() else None
     value = {"sha": ident["sha"], "short_sha": ident["sha"][:9], "release_dir": release_dir,
              "release_name": Path(release_dir).name if release_dir else None, "source_pr": ident.get("source_pr"),
-             "since": since, "since_basis": since_basis, "pins": pins,
+             **stamp, "since": since, "since_basis": since_basis, "pins": pins,
              "pins_agree": all(p["matches_current"] is True for p in pins.values()),
-             "deploy_receipt": deploy, "deploy_receipt_path": str(Path(deploy_state_dir) / "deploy_receipt.json")}
+             "deploy_receipt": deploy, "deploy_receipt_path": str(Path(deploy_state_dir) / "deploy_receipt.json"),
+             # The deploy receipt is written by the main deploy path only; an activation by another path (the
+             # integration line) leaves it naming an older build. Say so instead of letting it read as current.
+             "deploy_receipt_matches": (deploy.get("deployed_sha") == ident.get("sha")) if deploy else None}
     reason = None if value["pins_agree"] else "ACTIVE_RELEASE / EXPECTED_RELEASE do not both name CURRENT"
     return field(value, _iso(now), "OK" if value["pins_agree"] else "STALE", src, reason, now=now)
 
@@ -321,11 +330,15 @@ def read_next_release(canonical: Path, deploy_state_dir: Path, serving_sha: Opti
     rc, out = git(["log", "-1", "--format=%cI%x1f%s", head])
     committed_at, subject = (out.strip().split("\x1f", 1) + [None])[:2] if rc == 0 and out.strip() else (None, None)
     fetched_at = _mtime_iso(Path(canonical) / ".git" / "FETCH_HEAD")
-    prs, ahead, pr_reason = None, None, None
+    prs, ahead, pr_reason, contains = None, None, None, None
     if serving_sha and SHA_RE.match(serving_sha):
         if serving_sha == head:
-            prs, ahead = [], 0
+            prs, ahead, contains = [], 0, True
         else:
+            # LQ-20261107-239: a build from the integration line is not main, yet can hold all of main. Zero commits
+            # ahead then means "nothing merged is waiting", which is a measured answer, not an unknown one.
+            rc_anc, _ = git(["merge-base", "--is-ancestor", head, serving_sha])
+            contains = True if rc_anc == 0 else False if rc_anc == 1 else None
             subjects = _first_parent_subjects(git, serving_sha, head)
             if subjects is None:
                 pr_reason = "git log serving..main failed (serving SHA not in the canonical checkout?)"
@@ -347,6 +360,7 @@ def read_next_release(canonical: Path, deploy_state_dir: Path, serving_sha: Opti
               + "; GitHub is not called from this page"}
     value = {"sha": head, "short_sha": head[:9], "subject": subject, "committed_at": committed_at,
              "fetched_at": fetched_at, "is_serving": head == serving_sha, "commits_ahead": ahead,
+             "serving_contains_main": contains,
              "prs_since_serving": prs, "prs_reason": pr_reason, "ci": ci}
     as_of = fetched_at or _iso(now)
     fetched = _parse(fetched_at)
@@ -853,6 +867,7 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
     nx_detail = None
     if nx:
         nx_detail = ("same as serving" if nx.get("is_serving") else
+                     "already inside the serving build" if nx.get("serving_contains_main") is True else
                      f"{nx.get('commits_ahead') if nx.get('commits_ahead') is not None else '?'} commits ahead"
                      ) + f" · main CI {ci.get('state', 'UNAVAILABLE')}"
     by_mode = td.get("by_mode") or {}
@@ -861,7 +876,7 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
              (f"since {sv.get('since')}" if sv.get("since") else None), "success" if sv.get("pins_agree") else "warning",
              sections["serving"]),
         _kpi("next_release", "Releasing next", nx.get("short_sha"), nx_detail,
-             "neutral" if nx.get("is_serving") else ("success" if ci.get("state") in ("OK", "SUCCESS") else
+             "neutral" if nx.get("is_serving") or nx.get("serving_contains_main") is True else ("success" if ci.get("state") in ("OK", "SUCCESS") else
                                                      "danger" if ci.get("state") in ("FAILURE", "NOT_GREEN") else
                                                      "warning"),
              sections["next_release"]),

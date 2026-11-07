@@ -272,5 +272,30 @@ for (const approved of [false, true]) {
     ? output.includes('Merging in the next window') : />Ready\s*·/.test(output))
 }
 
+// ---- LQ-20261107-239: the build serving this host is named from the local release record, with GitHub down
+{
+  const ghDown = 'RuntimeError: gh pr list failed: HTTP 504: 504 Gateway Timeout'
+  const out = render({ flightAnswered: false, flightError: ghDown, rows: [], s: {
+    serving: sec({ short_sha: '9aac539a1', release_name: '9aac539a1-live-integration-20261107-144752',
+      since: '2026-11-07T19:49:18Z', since_basis: 'CURRENT symlink mtime', build_branch: 'live-integration',
+      pins_agree: true, deploy_receipt_matches: false }),
+    next_release: sec({ is_serving: false, commits_ahead: 0, serving_contains_main: true, prs_since_serving: [] }) } })
+  const live = out.slice(out.indexOf('data-testid="rs-what-is-live"'), out.indexOf('data-testid="rs-needs-you"'))
+  check('the live block names the running build with GitHub unavailable',
+    live.includes('data-testid="rs-running-build"') && live.includes('build 9aac539a1')
+    && live.includes('9aac539a1-live-integration-20261107-144752') && live.includes('live-integration line'))
+  check('the stale deploy receipt is called history', live.includes('older build'))
+  check('the page no longer says the running version could not be identified', !out.includes('could not be identified'))
+  check('main inside the running build reads as already running', out.includes('Everything merged to main is already running'))
+  check('the GitHub list is labelled optional with an honest unavailable state',
+    out.includes('comes from GitHub, which could not be read right now') && out.includes('It is optional'))
+  check('the GitHub outage does not reach the live block', !live.includes('GitHub'))
+}
+{
+  const out = render({ s: { serving: sec(null, 'UNAVAILABLE') } })
+  check('an unreadable local record shows no running-build line, only the unknown headline',
+    !out.includes('data-testid="rs-running-build"') && out.includes('Cannot tell what is live right now'))
+}
+
 console.log(`releasesOperatorView.render: ${pass} passed, ${fail} failed`)
 process.exit(fail > 0 ? 1 : 0)
