@@ -1372,10 +1372,21 @@ def main() -> int:
 def lane_output(symbols: int, stats: dict, *, universe_failed: bool = False) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: stale tickers refreshed into the enrichment cache
     with data from at least one Finviz view). attempted = the stale tickers; nothing stale = ``no_new_input``; an
-    empty default universe is fatal (``universe_empty_unexpected``), a universe read error ``dependency_unavailable``."""
+    empty default universe is fatal (``universe_empty_unexpected``), a universe read error ``dependency_unavailable``.
+
+    ``skipped_reasons`` PARTITIONS ``attempted_count`` — produced + skipped == attempted. ``rejected_non_ticker`` is
+    counted over the whole requested universe BEFORE the stale set exists (``_split_equities`` runs first), so a
+    rejected symbol is never attempted; it belongs in ``excluded_reasons`` (a candidate a gate refused before the
+    run could attempt it), exactly as news-to-catalyst does. Counting it as a skip made the 2026-11-06 receipt read
+    produced 3 / attempted 6 / skipped 6 and graded the lane DEGRADED: "skipped 6 items, more than it produced (3)".
+    """
     stale = int(stats.get("stale") or 0)
     refreshed = min(int(stats.get("refreshed") or 0), stale)
-    skipped = {"no_view_data": stale - refreshed, "rejected_non_ticker": int(stats.get("rejected_non_ticker") or 0)}
+    # A count the caller did not report is UNKNOWN, not zero: no key means no claim, so the excluded block is
+    # omitted rather than stating "rejected_non_ticker = 0" (tq-py-missing-as-zero).
+    _rejected = stats.get("rejected_non_ticker")
+    excluded = {"rejected_non_ticker": int(_rejected)} if _rejected else {}
+    skipped = {"no_view_data": stale - refreshed}
     if universe_failed:
         skipped["dependency_unavailable"] = 1
     elif symbols == 0:
@@ -1384,6 +1395,7 @@ def lane_output(symbols: int, stats: dict, *, universe_failed: bool = False) -> 
         "produced_count": refreshed,
         "attempted_count": stale,
         "skipped_reasons": skipped,
+        "excluded_reasons": excluded,
         "empty_reason": "no_new_input" if symbols and not stale else None,
     }
 

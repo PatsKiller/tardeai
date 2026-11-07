@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "finviz_enrichment_skipped_account_20261107",
+  "files": [
+    "tests/test_finviz_enrichment_skipped_account_20261107.py",
+    "tests/test_lane_produced_count_cw_2_20261015.py",
+    "tests/test_finviz_non_equity_skip_20261107.py"
+  ],
+  "comment": [
+    "finviz-enrichment's 2026-11-06 receipt read produced 3 / attempted 6 / skipped_reasons {no_view_data 3,",
+    "rejected_non_ticker 3}: skipped could not be a partition of attempted, because rejected_non_ticker is counted in",
+    "_split_equities over the whole requested universe before the stale set exists. run_quality.receipt_flags flagged",
+    "it ('skipped 6 items, more than it produced (3)') and the Ops quality grade for a healthy run was DEGRADED.",
+    "Pins: produced + skipped == attempted for every ordinary shape, rejected_non_ticker rides excluded_reasons and",
+    "is never a skip, the live receipt shape grades clean through the real receipt_flags, the excluded line still",
+    "reaches the operator, and the fatal universe markers are unchanged. Hermetic; no DB, no network."
+  ]
+}
