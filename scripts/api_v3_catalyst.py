@@ -16,7 +16,7 @@ from typing import Any
 try:
     from lib import catalyst_impact_reader as R
 except ImportError:  # pragma: no cover - script-path import (scripts/ on sys.path)
-    from scripts.lib import catalyst_impact_reader as R  # type: ignore
+    from scripts.lib import catalyst_impact_reader as R  # type: ignore -- package import when scripts/ is not on the path
 
 AUTHORITY = R.AUTHORITY
 SCHEMA = R.SCHEMA

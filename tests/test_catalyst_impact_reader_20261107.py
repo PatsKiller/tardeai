@@ -142,11 +142,30 @@ def test_empty_window_names_when_the_writer_last_recorded():
 
 
 def test_a_symbol_the_writer_never_saw_says_so():
+    # What count(*) really returns for a symbol with no rows: one row, count 0, max(created_at) NULL.
+    db = FakeDb(rows=[], last={"last_row_at": None, "rows_written": 0})
+    out = R.build(symbol="ZZZZ", db=db)
+    assert out["status"] == "no_rows"
+    assert out["rows_written_total"] == 0
+    assert "no catalyst impact for ZZZZ" in out["note"]
+
+
+def test_an_unreadable_count_is_not_a_zero():
+    # The count query returned nothing at all: the symbol's history is unknown, so the note must not
+    # claim "no catalyst impact" and rows_written_total must stay None rather than become 0.
     db = FakeDb(rows=[], last=None)
     out = R.build(symbol="ZZZZ", db=db)
     assert out["status"] == "no_rows"
-    assert out["rows_written_total"] in (0, None)
-    assert "no catalyst impact for ZZZZ" in out["note"]
+    assert out["rows_written_total"] is None
+    assert "could not be read" in out["note"] and "not a count of zero" in out["note"]
+
+
+def test_a_timestamp_without_a_readable_count_still_means_the_symbol_was_seen():
+    db = FakeDb(rows=[], last={"last_row_at": NOW - timedelta(days=200), "rows_written": None})
+    out = R.build(symbol="FCX", db=db)
+    assert out["status"] == "no_rows_in_window"
+    assert out["rows_written_total"] is None
+    assert "could not be read" in out["note"]
 
 
 # --- the handler -----------------------------------------------------------------------------------

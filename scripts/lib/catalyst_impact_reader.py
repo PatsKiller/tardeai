@@ -166,24 +166,37 @@ def build(
         if last:
             last = dict(last)
             last_row_at = _ts(last.get("last_row_at"))
+            raw_count = last.get("rows_written")
+            # count(*) always returns a number; anything else is "could not read", never 0 — a zero here
+            # would turn an unreadable count into "this symbol was never seen".
             try:
-                rows_written = int(last.get("rows_written") or 0)
+                rows_written = int(raw_count) if raw_count is not None else None
             except (TypeError, ValueError):
                 rows_written = None
+
+    # "Has the writer ever recorded this symbol?" — answered by the stored count or, failing that, by the
+    # presence of a last timestamp. rows_written == 0 and no timestamp is the only real "never seen".
+    seen_before = (rows_written is not None and rows_written > 0) or last_row_at is not None
 
     if rows:
         status = "ok"
         note = None
-    elif sym and rows_written:
+    elif sym and seen_before:
         # The distinction that matters: the symbol is tracked and has rows, just none in this window.
         status = "no_rows_in_window"
+        recorded = f"{rows_written} row(s)" if rows_written is not None else "a row count that could not be read"
         note = (
             f"no catalyst impact recorded for {sym} in the last {window} days; "
-            f"the writer has recorded {rows_written} row(s), most recently {last_row_at or 'unknown'}"
+            f"the writer has recorded {recorded}, most recently {last_row_at or 'unknown'}"
         )
     else:
         status = "no_rows"
-        note = f"the writer has recorded no catalyst impact for {sym}" if sym else "the table has no rows yet"
+        if not sym:
+            note = "the table has no rows yet"
+        elif rows_written is None:
+            note = f"the writer's record count for {sym} could not be read; this is not a count of zero"
+        else:
+            note = f"the writer has recorded no catalyst impact for {sym}"
 
     return {
         "ok": True,
