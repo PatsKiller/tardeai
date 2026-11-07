@@ -842,3 +842,65 @@ def test_event_lane_claims_the_openclaw_job_it_names(tmp_path):
     obs["openclaw"]["jobs"][0]["enabled"] = False
     row = project(tmp_path, [event], obs)["rows"][0]
     assert row["runtime_state"] == "ORPHANED"
+
+
+def _conditional_work_lane(tmp_path):
+    """A daily lane whose work depends on something outside its control.
+
+    dof-rescan-tickets rescans only auctions within 48h, so most runs write no DB row. It now
+    declares the log its cron redirect appends on every run instead of the conditional DB max.
+    """
+    return {
+        "lane_id": "test-conditional",
+        "owner": "platform",
+        "state": "ACTIVE",
+        "scheduler": {"kind": "cron", "expression": "0 18 * * *", "match": "scripts/test_lane.py"},
+        "expected_cadence_hours": 24,
+        "output_signal": {"kind": "file_mtime", "path": "logs/rescan.log"},
+        "consumer": "ops",
+    }
+
+
+def test_conditional_work_lane_records_an_idle_run_and_still_can_read_silent(tmp_path):
+    """2026-11-06: db_max(rescan_count>0) read SLOW after a completed run that rescanned 0 plates.
+
+    The signal must move when the lane RUNS, not only when it has work, or a healthy idle run and a
+    stopped lane look identical. It must still be able to fail: a log untouched past 2x cadence is SILENT.
+    """
+    import os
+
+    log = tmp_path / "logs/rescan.log"
+    log.parent.mkdir()
+    log.write_text("Nothing to rescan. Check --date or --all flag.\n")
+    os.utime(log, (NOW.timestamp() - 3 * 3600, NOW.timestamp() - 3 * 3600))
+    obs = observations("0 18 * * * python scripts/test_lane.py")
+    row = project(tmp_path, [_conditional_work_lane(tmp_path)], obs)["rows"][0]
+    assert row["freshness"] == "FRESH"
+    assert row["runtime_state"] != "SLOW"
+    assert row["output_evidence_class"] == "OBSERVED_HOST"
+
+    # 49h later the same lane is silent: the log is an output, not decoration.
+    later = datetime(2026, 10, 10, 23, tzinfo=timezone.utc)
+    late_obs = observations("0 18 * * * python scripts/test_lane.py")
+    late_obs["cron"]["as_of"] = later.isoformat()  # a stale host snapshot cannot prove the scheduler either
+    late = build_projection(
+        {"lanes": [_conditional_work_lane(tmp_path)]},
+        late_obs,
+        root=tmp_path,
+        now=later,
+    )["rows"][0]
+    assert late["freshness"] == "STALE"
+    assert late["runtime_state"] == "SILENT"
+
+
+def test_dof_rescan_lane_declares_a_per_run_artifact_not_a_conditional_row():
+    """Lock the 2026-11-06 fix: this lane is idle for days between auctions.
+
+    A db_max over rows that only exist when there was work cannot express "ran, nothing to do".
+    """
+    import json
+
+    registry = json.loads((Path(__file__).resolve().parents[1] / "config/lane_registry.json").read_text())
+    entry = next(l for l in registry["lanes"] if l["lane_id"] == "dof-rescan-tickets")
+    assert entry["output_signal"]["kind"] == "file_mtime"
+    assert entry["output_signal"]["path"].endswith("/nyc-dof-auction/logs/rescan.log")

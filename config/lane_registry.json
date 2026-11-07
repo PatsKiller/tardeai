@@ -44,12 +44,10 @@
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "db_max",
-        "table": "dof_ticket_lookups",
-        "column": "lookup_at",
-        "where": "rescan_count > 0"
+        "kind": "file_mtime",
+        "path": "~/nyc-dof-auction/logs/rescan.log"
       },
-      "note": "Observed crontab -l 2026-10-08: daily 18:00, cwd ~/nyc-dof-auction, .venv/bin/python3 scripts/rescan_tickets.py, stdout -> logs/rescan.log. rescan_tickets.py:185-204 updates lookup_at and rescan_count; this signal proves a changed lookup, not an idle successful scan or full pipeline completion. Reader availability/database identity must be verified by the DOF projection owner. SQL UPDATE/DELETE/INSERT makes the command forbidden by AGENTS 23.3; no shared cron lock or dry-run. No command invoked. N6 retained on cron by operator decision 2026-10-09 (AGENTS.md §23.3).",
+      "note": "Observed crontab -l 2026-10-08: daily 18:00, cwd ~/nyc-dof-auction, .venv/bin/python3 scripts/rescan_tickets.py, stdout -> logs/rescan.log. The lane's work is CONDITIONAL: rescan_tickets.py:99-105 rescans only auctions in [today, today+48h], so a run with nothing due writes no dof_ticket_lookups row. Until 2026-11-06 the signal was db_max(dof_ticket_lookups.lookup_at WHERE rescan_count>0), which only moves when there WAS work: measured 2026-11-06T02:40Z the lane read SLOW (output_age 27.7h) while the 2026-11-06 18:00 ET run had completed and logged '0 plate(s) to rescan' (next auction 2026-11-13; zero auctions in the next 3 days). An idle-but-completed run and a stopped one were indistinguishable. The signal is now the log file the cron redirect appends on every invocation, which proves the run, not the business effect; the DB effect is no longer the freshness gate. Residual gap: the log advances on a crashing run too, and the DOF script writes no RunReceipt, so runtime_state settles at NOT_MEASURED rather than LIVE -- a heartbeat/receipt from rescan_tickets.py is the follow-up (needs the nyc-dof-auction repo, outside this tree). Reader availability/database identity must be verified by the DOF projection owner. SQL UPDATE/DELETE/INSERT makes the command forbidden by AGENTS 23.3; no shared cron lock or dry-run. No command invoked. N6 retained on cron by operator decision 2026-10-09 (AGENTS.md §23.3).",
       "state_since": "2026-10-08",
       "value_class": "Business Critical",
       "recommendation": "KEEP_ON_CRON",
