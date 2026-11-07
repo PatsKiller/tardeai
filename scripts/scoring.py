@@ -16,11 +16,41 @@ except ImportError:  # pragma: no cover - scripts/ not on sys.path
     _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
     from lib.cc_client import cc_urlopen as _cc_urlopen
 
-import json, logging, os
+import json, logging, os, time
 from typing import Any, Dict, List, Optional
 import threading
 
 logger = logging.getLogger(__name__)
+
+
+SCORE_NETWORK_TAIL_S = 30.0
+"""Seconds at the end of a cycle reserved for halt detection, persist and the alert — never network."""
+
+
+def score_network_deadline(deadline_monotonic: Optional[float],
+                           budget_s: Optional[float] = None,
+                           tail_reserve_s: float = SCORE_NETWORK_TAIL_S) -> Optional[float]:
+    """Instant (time.monotonic) after which the score phase stops starting optional network work.
+
+    2026-11-07: the 5-min scalp lane runs under `timeout 295` and had no cap inside the score phase — every
+    ticker took a yfinance `.info`, up to two `.history` calls, a company-name lookup and, for a headline that
+    failed relevance, an unbounded Yahoo RSS fetch. On a warm host that is ~0.4 s a name; when Yahoo throttles
+    it is several seconds a name, and 64 of that day's 78 cycles were SIGTERMed at 295 s inside `score`. So the
+    phase gets three caps: never more than `budget_s` seconds of network from the moment scoring starts, never
+    inside the last `tail_reserve_s` of the hard deadline, and never past it. Past any cap the row scores on
+    the data already in hand. None means "no cap" (the full-run caller passes nothing; behaviour unchanged).
+    """
+    if deadline_monotonic is None:
+        return None
+    dl = float(deadline_monotonic) - max(0.0, float(tail_reserve_s or 0.0))
+    if budget_s is not None and float(budget_s) > 0:
+        dl = min(dl, time.monotonic() + float(budget_s))
+    return dl
+
+
+def _network_spent(deadline_monotonic: Optional[float]) -> bool:
+    """True when the score phase's optional-network window has closed."""
+    return deadline_monotonic is not None and time.monotonic() >= float(deadline_monotonic)
 
 # Ollama serialization lock — one call at a time, no timeout pile-up
 _ollama_lock = threading.Lock()
@@ -166,10 +196,16 @@ def is_disqualified_ticker(symbol: str, ticker_row: Dict[str, Any]) -> tuple[boo
 
 _COMPANY_NAME_CACHE: dict = {}
 
-def _get_company_name(symbol: str) -> str:
-    """Get company name with yfinance, cached to avoid repeated API calls."""
+def _get_company_name(symbol: str, deadline_monotonic: Optional[float] = None) -> str:
+    """Get company name with yfinance, cached to avoid repeated API calls.
+
+    Past the score phase's network deadline the symbol stands in for the name (not cached, so a later cycle
+    still resolves it): a cycle must not be SIGTERMed over a cosmetic lookup.
+    """
     if symbol in _COMPANY_NAME_CACHE:
         return _COMPANY_NAME_CACHE[symbol]
+    if _network_spent(deadline_monotonic):
+        return symbol
     try:
         import yfinance as _yf
         _info = _yf.Ticker(symbol).info
@@ -249,11 +285,27 @@ def validate_catalyst_relevance(symbol: str, company_name: str, headline: str) -
     return score >= 0.3, score, reason
 
 
-def get_verified_catalyst_fallback(symbol: str, company_name: str) -> str:
-    """Fetch a verified headline from Yahoo Finance RSS when primary fails."""
+def get_verified_catalyst_fallback(symbol: str, company_name: str,
+                                   deadline_monotonic: Optional[float] = None,
+                                   timeout_s: float = 5.0) -> str:
+    """Fetch a verified headline from Yahoo Finance RSS when primary fails.
+
+    Returns "" when the score phase's network window has closed, so the caller keeps the primary verdict
+    instead of manufacturing a failed-fetch string (see score_all's skip counter). The fetch itself is
+    bounded: feedparser.parse(url) has no timeout and can hang for minutes, so the URL is opened with one
+    (capped by the remaining window) and the bytes are parsed.
+    """
+    if _network_spent(deadline_monotonic):
+        return ""
     try:
         import feedparser
-        feed = feedparser.parse(f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US")
+        import urllib.request
+        timeout = float(timeout_s)
+        if deadline_monotonic is not None:
+            timeout = max(0.5, min(timeout, float(deadline_monotonic) - time.monotonic()))
+        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US"
+        with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310  # constant https feed URL
+            feed = feedparser.parse(resp.read())
         if feed.entries:
             title = feed.entries[0].get('title', '')
             ok, _, _ = validate_catalyst_relevance(symbol, company_name, title)
@@ -264,12 +316,19 @@ def get_verified_catalyst_fallback(symbol: str, company_name: str) -> str:
     return "No verified catalyst — data quality check failed"
 
 
-def get_industry_with_fallback(symbol: str, finviz_data: Dict[str, Any]) -> str:
-    """Industry with yfinance fallback. Never returns empty."""
+def get_industry_with_fallback(symbol: str, finviz_data: Dict[str, Any],
+                               deadline_monotonic: Optional[float] = None) -> str:
+    """Industry with yfinance fallback. Never returns empty.
+
+    Past the score phase's network deadline the yfinance lookup is skipped and the row reads
+    'Unclassified' — the same value a failed lookup yields, but reachable in bounded time.
+    """
     industry = str(finviz_data.get('industry', '') or finviz_data.get('sector', '') or
                    finviz_data.get('Industry', '') or finviz_data.get('Sector', '') or '').strip()
     if industry and industry.lower() not in ('', 'unknown', 'n/a', '-'):
         return industry
+    if _network_spent(deadline_monotonic):
+        return 'Unclassified'
     try:
         import yfinance as yf
         info = yf.Ticker(symbol).info
@@ -288,10 +347,18 @@ _SECTOR_ETF_MAP = {
     'Basic Materials': 'XLB', 'Communication Services': 'XLC',
 }
 
-def get_sector_context(symbol: str, industry: str) -> Dict[str, Any]:
-    """Get sector, country, and 1M performance. Called during scoring (cached per run)."""
+def get_sector_context(symbol: str, industry: str,
+                       deadline_monotonic: Optional[float] = None) -> Dict[str, Any]:
+    """Get sector, country, and 1M performance. Called during scoring (cached per run).
+
+    Three yfinance calls per ticker (.info, the ticker's 1M history, the sector ETF's) — the most expensive
+    thing in the score phase. Past the score phase's network deadline it returns the unknown-context shape
+    untouched rather than starting calls it cannot finish before `timeout 295`.
+    """
     result: Dict[str, Any] = {'country': '', 'sector': '', 'sector_etf': '',
               'ticker_perf_1m': None, 'sector_perf_1m': None, 'vs_sector_pct': None}
+    if _network_spent(deadline_monotonic):
+        return result
     try:
         import yfinance as yf
         info = yf.Ticker(symbol).info
@@ -511,8 +578,15 @@ def score_ticker(
     enrichment: Dict[str, Any],
     weights: Dict[str, Any],
     use_llm: bool = True,
+    *,
+    deadline_monotonic: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Score one ticker and return a full ScoredTicker dict."""
+    """Score one ticker and return a full ScoredTicker dict.
+
+    `deadline_monotonic` bounds the confluence pillar (indicator_engine fetches 90 days of OHLCV per symbol,
+    throttled at 0.35 s a name and retried on rate limits). Past it the pillar is 0 with no fetch — the row
+    still scores on the pillars that need no network.
+    """
     symbol = str(ticker_row.get("symbol", "")).upper()
 
     # Raw Finviz fields
@@ -581,12 +655,17 @@ def score_ticker(
     confluence_tier = None
     strategy_badges = []
     try:
-        from indicator_engine import analyze_confluence
-        conf_result = analyze_confluence(symbol, profile='scalp')
-        if conf_result.get('ok'):
-            confluence_score = conf_result.get('confluence_score', 0)
-            confluence_tier = conf_result.get('confluence_tier')
-            strategy_badges = conf_result.get('strategy_badges', [])
+        if _network_spent(deadline_monotonic):
+            # 2026-11-07: the OHLCV fetch behind this pillar is a network call with a 0.35 s throttle and
+            # rate-limit retries; it must not start inside the cycle's last seconds.
+            logger.warning(f"Confluence pillar skipped for {symbol}: score network deadline reached")
+        else:
+            from indicator_engine import analyze_confluence
+            conf_result = analyze_confluence(symbol, profile='scalp')
+            if conf_result.get('ok'):
+                confluence_score = conf_result.get('confluence_score', 0)
+                confluence_tier = conf_result.get('confluence_tier')
+                strategy_badges = conf_result.get('strategy_badges', [])
     except Exception as e:
         logger.warning(f"Confluence pillar skipped for {symbol} (non-fatal): {e}")
 
@@ -722,15 +801,28 @@ def score_all(
     enrichments: Dict[str, Dict],
     project_root: str = ".",
     use_llm: bool = True,
+    *,
+    deadline_monotonic: Optional[float] = None,
+    network_budget_s: Optional[float] = None,
+    stats: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Score all tickers, return sorted list (highest score first).
     Includes data quality hardening: disqualification, catalyst validation,
     industry fallback, RVOL micro-float cap.
+
+    ``deadline_monotonic`` / ``network_budget_s`` bound the optional per-ticker network enrichment
+    (company name, industry, sector context, Yahoo RSS fallback). Past the window each row is scored on the
+    data already in hand — no lookup is started that could outlive the caller's timeout — and the number of
+    such rows is printed and, when ``stats`` is given, recorded under ``scoring_network_skips`` plus the
+    ``budget_skips`` breadcrumb, so a cut cycle is never mistaken for a cold universe. Callers that pass
+    nothing (the full run) keep the previous unbounded behaviour.
     """
     weights = _load_weights(project_root)
     results = []
     disqualified_count = 0
     unverified_count = 0
+    net_deadline = score_network_deadline(deadline_monotonic, network_budget_s)
+    network_skips = 0
 
     # Resolve post-processing helpers before iterating.  A valid empty
     # universe must still return cleanly; importing this inside the loop left
@@ -744,6 +836,10 @@ def score_all(
 
     for row in tickers:
         sym = str(row.get("symbol", "")).upper()
+        # Closed network window: this row still scores, on what the ingest/enrich phases already hold.
+        network_open = not _network_spent(net_deadline)
+        if not network_open:
+            network_skips += 1
         enrichment = enrichments.get(sym, {
             "catalyst_tier": "none", "catalyst_count": 0,
             "has_fresh_catalyst": False, "top_catalyst": None, "catalysts": [],
@@ -760,7 +856,9 @@ def score_all(
         from micro_float_manual_review import apply_micro_float_manual_fields
         from low_price_manual_review import apply_low_price_manual_fields
         from unenriched_inject_review import qualifies_unenriched_inject, apply_unenriched_inject_fields
-        risk = classify_ticker_risk(sym, row)
+        # A closed window also skips the reverse-split fetch inside this call; the row's risk is then
+        # classified on its own fields this cycle and the split check runs on the next one.
+        risk = classify_ticker_risk(sym, row, deadline_monotonic=net_deadline)
         if risk["action"] in ("hard_dq", "standard_dq"):
             disq_reason = risk["reasons"]
             disqualified_count += 1
@@ -770,7 +868,7 @@ def score_all(
                 "disqualified": True, "disqualification_reason": disq_reason,
                 "catalyst": f"DISQUALIFIED: {disq_reason}",
                 "catalyst_verified": False,
-                "industry": get_industry_with_fallback(sym, row),
+                "industry": get_industry_with_fallback(sym, row, deadline_monotonic=net_deadline),
                 "pillar_breakdown": {}, "criteria": {}, "criteria_met": 0, "criteria_total": 0,
                 "price": float(row.get("price", 0) or 0),
                 "change_pct": str(row.get("change_percent", row.get("change_pct", ""))),
@@ -795,7 +893,7 @@ def score_all(
             company_name = ""
         # If company name is missing or just the symbol, use yfinance cache
         if not company_name or company_name == sym or company_name == "None" or len(company_name) <= 5:
-            company_name = _get_company_name(sym)
+            company_name = _get_company_name(sym, deadline_monotonic=net_deadline)
         catalyst_verified = None
         catalyst_confidence = None
 
@@ -807,7 +905,7 @@ def score_all(
                 unverified_count += 1
                 print(f"  [scoring] CATALYST_UNVERIFIED {sym}: conf={conf:.2f} reason={rel_reason} headline='{raw_headline[:60]}'")
                 # Try Yahoo fallback
-                fallback = get_verified_catalyst_fallback(sym, company_name)
+                fallback = get_verified_catalyst_fallback(sym, company_name, deadline_monotonic=net_deadline)
                 if fallback and "No verified" not in fallback:
                     top_cat["title"] = fallback
                     enrichment["top_catalyst"] = top_cat
@@ -815,14 +913,14 @@ def score_all(
                     print(f"  [scoring]   → Yahoo fallback: {fallback[:60]}")
 
         # ── FIX 3: Industry fallback ──
-        industry = get_industry_with_fallback(sym, row)
+        industry = get_industry_with_fallback(sym, row, deadline_monotonic=net_deadline)
         row["industry"] = industry
 
         # Sector context (country, 1M perf, vs sector)
-        sector_ctx = get_sector_context(sym, industry)
+        sector_ctx = get_sector_context(sym, industry, deadline_monotonic=net_deadline)
 
         # Score normally
-        scored = score_ticker(row, enrichment, weights, use_llm=use_llm)
+        scored = score_ticker(row, enrichment, weights, use_llm=use_llm, deadline_monotonic=net_deadline)
         scored["disqualified"] = False
         scored["disqualification_reason"] = ""
         scored["catalyst_verified"] = catalyst_verified
@@ -872,6 +970,19 @@ def score_all(
 
     if disqualified_count:
         print(f"  [scoring] Data quality: {disqualified_count} disqualified, {unverified_count} catalyst unverified")
+
+    if network_skips:
+        # A cut score phase is a fact about the run, not a quiet zero: name it, keep it in the receipt.
+        msg = (f"  [scoring] cycle deadline reached: {network_skips} of {len(tickers)} ticker(s) scored on the "
+               f"data already in hand (company name / industry / sector / Yahoo fallback skipped); "
+               f"the next cycle refreshes them")
+        print(msg)
+        logger.warning(msg.strip())
+        if stats is not None:
+            stats["scoring_network_skips"] = network_skips
+            skips = stats.setdefault("budget_skips", [])
+            if "scoring_network" not in skips:
+                skips.append("scoring_network")
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results

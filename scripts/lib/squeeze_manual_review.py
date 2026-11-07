@@ -20,8 +20,24 @@ def _num(row: dict, *keys: str, default: float = 0.0) -> float:
     return default
 
 
-def detect_reverse_split_reason(symbol: str) -> str | None:
-    """Return REVERSE_SPLIT reason string if split within 60d, else None."""
+def _window_closed(deadline_monotonic: float | None) -> bool:
+    """True when a caller's network window (time.monotonic) has closed."""
+    if deadline_monotonic is None:
+        return False
+    import time
+
+    return time.monotonic() >= float(deadline_monotonic)
+
+
+def detect_reverse_split_reason(symbol: str, deadline_monotonic: float | None = None) -> str | None:
+    """Return REVERSE_SPLIT reason string if split within 60d, else None.
+
+    `deadline_monotonic` (2026-11-07) bounds the yfinance `.actions` fetch — one uncached request per symbol
+    in the 5-min scalp lane's score phase. Past it the check is skipped and the row is classified on the
+    fields it already carries; the next cycle, five minutes later, does the split check.
+    """
+    if _window_closed(deadline_monotonic):
+        return None
     try:
         import pandas as pd
         import yfinance as yf
@@ -95,11 +111,15 @@ def apply_squeeze_manual_fields(row: dict, *, rs_reason: str) -> dict:
     return row
 
 
-def classify_ticker_risk(symbol: str, row: dict) -> dict[str, Any]:
-    """Classify pre-score risk. action: score | hard_dq | squeeze_manual | standard_dq."""
+def classify_ticker_risk(symbol: str, row: dict, deadline_monotonic: float | None = None) -> dict[str, Any]:
+    """Classify pre-score risk. action: score | hard_dq | squeeze_manual | standard_dq.
+
+    `deadline_monotonic` bounds the reverse-split fetch (see detect_reverse_split_reason). A closed window
+    yields no squeeze routing for that cycle — the caller counts it and the next cycle re-checks.
+    """
     reasons: list[str] = []
 
-    rs = detect_reverse_split_reason(symbol)
+    rs = detect_reverse_split_reason(symbol, deadline_monotonic=deadline_monotonic)
     if rs:
         reasons.append(rs)
 

@@ -188,6 +188,23 @@ def post_enrich_reserve() -> float:
         return 100.0
 
 
+def score_network_budget() -> float:
+    """Seconds of optional per-ticker network enrichment allowed inside the score phase.
+
+    config/trade_ai_scalp_lane.yaml score_network_budget_s. 2026-11-07: the score phase was the one phase
+    with no wall-clock cap, so a throttled Yahoo turned it into the place the 295 s timeout ran out (64 of
+    78 cycles SIGTERMed in `score`). 0 disables the network in scoring entirely.
+    """
+    try:
+        import yaml
+
+        v = (yaml.safe_load((ROOT / "config" / "trade_ai_scalp_lane.yaml").read_text(encoding="utf-8")) or {}).get(
+            "score_network_budget_s")
+        return float(v) if v is not None else 60.0
+    except Exception:  # noqa: BLE001 — unreadable config keeps a bounded score phase
+        return 60.0
+
+
 def cycle_deadline() -> float:
     """Hard per-cycle deadline in seconds (config/trade_ai_scalp_lane.yaml cycle_deadline_s; the cron timeout)."""
     try:
@@ -308,7 +325,8 @@ def _run_cycle(day: str, slot: str, now: datetime, t0: datetime, stats: dict, de
         scored = run_live_cycle(ROOT, RUN_LABEL, day, st, now.strftime("%H:%M"), publish_dashboard=False,
                                 enrich_budget_s=enrich_s, bulk_catalysts=bulk_catalysts(), cycle_stats=stats,
                                 state_saver=lambda s: save_state(day, s), deadline_monotonic=deadline_mono,
-                                post_enrich_reserve_s=post_enrich_reserve())
+                                post_enrich_reserve_s=post_enrich_reserve(),
+                                score_network_budget_s=score_network_budget())
     except Exception as e:  # noqa: BLE001 — record the failure, then let cron see a non-zero exit
         return _failed(f"{type(e).__name__}: {e}")
     if not isinstance(scored, list) or any(not isinstance(row, dict) for row in scored):
