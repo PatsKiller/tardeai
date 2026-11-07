@@ -94,20 +94,76 @@ def get_prospects(query: dict | None = None) -> dict[str, Any]:
     return out
 
 
+#: Key path for the stale-while-revalidate cache (scripts/lib/stale_serve.py, the LQ-20261107-201 pattern).
+CURATION_SWR_PATH = "/api/v3/data-broker/watch-curation"
+
+
+def _read_curation(query: dict) -> dict[str, Any]:
+    from lib.site_payload_reads import read_curation
+
+    out = read_curation(query)
+    if out.get("status") == "unavailable" and out.get("payload_gap"):
+        raise ValueError("Curation payload unavailable: " + out["payload_gap"]["reason"])
+    return out
+
+
 def get_curation(query: dict | None = None) -> dict[str, Any]:
     """GET /api/v3/data-broker/watch-curation — My Watchlist (every operator name, starred first, never capped) and
-    System Suggests (top N of the Full universe ranking, rotating with reasons); lib/data_broker/watch_curation.py."""
-    flag = (query or {}).get("review_status")
+    System Suggests (top N of the Full universe ranking, rotating with reasons); lib/data_broker/watch_curation.py.
+
+    Served stale-while-revalidate like the desk reads (LQ-20261107-201, scripts/lib/stale_serve.py): the composition
+    behind this body takes 8-11 s warm (and 24 s under the page sweep's load), past the browser's 30 s abort on
+    /v3/watch — measured 2026-11-07T19:43Z, "watch-curation aborted at 30 s", 'Loading your watchlist…' at 25 s.
+    A last good body is served at once, stamped `_swr` {as_of, age_s, stale, refreshing, source}, and ONE background
+    refresh recomputes it. Nothing is cached for a read that fails: an unavailable payload still raises, so the
+    caller's 500 and the gap reason reach the page as before. The key is (identity, path, query), so one identity
+    never receives another's watchlist.
+    """
+    query = query or {}
+    flag = query.get("review_status")
     if flag in ("1", 1, ["1"]):
         from lib.data_broker.watch_review_status import review_status
 
         return review_status(query)
-    from lib.site_payload_reads import read_curation
+    swr_mod, identity, set_principal = _swr_context()
+    if swr_mod is None:
+        return _read_curation(query)
+    # An identity-less request (the local listener, the host's page walk) gets its own bucket, not nobody's:
+    # it receives the body it would have computed for itself, never an authenticated identity's body.
+    key_principal = identity or "anonymous"
 
-    out = read_curation(query or {})
-    if out.get("status") == "unavailable" and out.get("payload_gap"):
-        raise ValueError("Curation payload unavailable: " + out["payload_gap"]["reason"])
-    return out
+    def compute() -> tuple[int, dict[str, Any]]:
+        return 200, _read_curation(query)
+
+    def refresh() -> tuple[int, dict[str, Any]]:
+        if set_principal is not None:
+            set_principal(identity)  # the principal is thread-local; the refresh runs on its own thread
+        return compute()
+
+    status, body = swr_mod.default().get(swr_mod.request_key(CURATION_SWR_PATH, query, key_principal),
+                                         compute, refresh)
+    if status != 200:  # compute() only returns 200; anything else is a defect worth surfacing, not a body
+        raise ValueError(f"curation served status {status}")
+    return body
+
+
+def _swr_context():
+    """(stale_serve module, principal, set_request_principal) — or a falsy module when SWR must not apply."""
+    try:
+        from lib import stale_serve as swr_mod
+        from lib.cc_auth import current_principal, set_request_principal
+    except ImportError:
+        try:
+            from scripts.lib import stale_serve as swr_mod
+            from scripts.lib.cc_auth import current_principal, set_request_principal
+        except ImportError:
+            return None, "", None
+    try:
+        if not swr_mod.enabled():
+            return None, "", None
+        return swr_mod, current_principal() or "", set_request_principal
+    except Exception:  # noqa: BLE001 -- an unknown identity means "never share a body", not an error page
+        return None, "", None
 
 
 def get_symbol_search(query: dict | None = None) -> dict[str, Any]:

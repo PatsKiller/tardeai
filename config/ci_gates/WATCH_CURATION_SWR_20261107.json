@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "WATCH_CURATION_SWR_20261107",
+  "files": [
+    "tests/test_watch_curation_swr_20261107.py"
+  ],
+  "anchor": "WATCH_CURATION_SWR_20261107",
+  "comment": [
+    "ANCHOR: WATCH_CURATION_SWR_20261107 — LQ-20261107-227. /v3/watch (and /v3/watch-legacy) read",
+    "GET /api/v3/data-broker/watch-curation, whose composition (read_curation -> watch_prospects.gather)",
+    "costs 8-11 s warm on this host; the 14:43 ET page sweep measured PENDING 24 s and 'watch-curation",
+    "aborted at 30 s' with 'Loading your watchlist…' still on screen at 25 s. The route now serves the",
+    "last good body at once and refreshes it in the background (scripts/lib/stale_serve.py, the",
+    "LQ-20261107-201 pattern). This gate pins the properties that make it safe: a warm hit never",
+    "recomputes, a stale body is served with its age and starts exactly one refresh, a failed read is",
+    "never cached (the payload-gap ValueError still reaches the page), the cache key carries the",
+    "identity so one operator's watchlist is never served to another, and a restart serves the",
+    "persisted body instead of computing cold.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}
