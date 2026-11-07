@@ -25,6 +25,7 @@ import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import HomeDoNow from './HomeDoNow'
+import MarketEventBanner from '../components/marketevent/MarketEventBanner'
 import { factLine, unwrapMarketRisk } from '../lib/marketRisk'
 import { TOKENS, toneVars } from '../lib/designTokens'
 import { deriveTodayPnlState } from '../lib/todayPnlState'
@@ -65,7 +66,9 @@ function acctPretty(a: string) {
  *  (HomeClassic below, unchanged) stays reachable at /v3/?view=classic for one release. */
 export default function HomeHub({ onDrill }: Props) {
   const [params] = useSearchParams()
-  return params.get('view') === 'classic' ? <HomeClassic onDrill={onDrill} /> : <HomeDoNow />
+  if (params.get('view') === 'classic') return <HomeClassic onDrill={onDrill} />
+  // Market Event banner (WP5): renders nothing unless an episode is open, so the approved Do-now layout is unchanged otherwise.
+  return <><div style={{ maxWidth: 1392, margin: '0 auto 10px' }}><MarketEventBanner /></div><HomeDoNow /></>
 }
 
 function HomeClassic({ onDrill }: Props) {
