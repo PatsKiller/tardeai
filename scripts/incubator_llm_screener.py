@@ -466,7 +466,7 @@ def promo_route_label(process_id=LLM_PROCESS_ID):
         tier = promo.tier_for("FAST", process_id=process_id)
         model = str((promo.load_policy().get("models") or {}).get(tier) or "")
         return f"anthropic promotional credit [{tier}:{model}]" if model else "anthropic promotional credit"
-    except Exception:  # noqa: BLE001 - a label must never change the run
+    except Exception:  # noqa: BLE001 -- a label must never change the run
         return ""
 
 
@@ -712,7 +712,7 @@ def _receipt_lib():
     try:
         from lib import lane_last_receipt as lr
     except ImportError:  # pragma: no cover - flat layout
-        from scripts.lib import lane_last_receipt as lr  # type: ignore[no-redef]
+        from scripts.lib import lane_last_receipt as lr  # type: ignore[no-redef] -- flat layout: scripts/ is on sys.path, repo root is not
     return lr
 
 
@@ -729,7 +729,7 @@ def write_receipt(*, ok, exit_code, started_at, produced, attempted, skipped, em
             script="incubator_llm_screener.py", summary=summary, error=error,
             produced_count=produced, attempted_count=attempted,
             skipped_reasons=skipped, empty_reason=empty_reason)
-    except Exception as e:  # noqa: BLE001 - the run's result comes first
+    except Exception as e:  # noqa: BLE001 -- the run's result comes first
         log.warning(f"lane receipt not written: {e}")
         return None
 
