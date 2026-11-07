@@ -2,6 +2,7 @@
 import { fmt$ } from '../lib/format'
 import ProAnalystPill, { useProAnalystMap } from './ProAnalystPill'
 import { hubPanel } from '../lib/terminalHubChrome'
+import { longestHorizon, mergePayers, projectionValue } from '../lib/forecastView'
 
 type Props = {
   forecast: any
@@ -14,7 +15,8 @@ export default function ForecastPanel({ forecast, loading, error, terminalUi }: 
   const paMap = useProAnalystMap()
   const f = forecast?.data ?? forecast ?? {}
   const proj = f.projections ?? {}
-  const payers = f.top_dividend_payers ?? []
+  const payers = mergePayers(f.top_dividend_payers ?? [])
+  const horizon = longestHorizon(proj)
   const asOf = f.as_of || f.generated_at || f.updated_at || null
 
   if (loading && !forecast) {
@@ -46,7 +48,7 @@ export default function ForecastPanel({ forecast, loading, error, terminalUi }: 
         <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text0)' }}>Income forecast</div>
         {asOf && <div style={{ fontSize: 10, color: 'var(--text3)' }}>As of {String(asOf).slice(0, 19)}</div>}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
         {[
           { k: 'Annual dividend income', v: fmt$(f.annual_dividend_income ?? 0, 0) },
           { k: 'Monthly avg', v: fmt$(f.monthly_dividend_avg ?? 0, 0) },
@@ -59,16 +61,14 @@ export default function ForecastPanel({ forecast, loading, error, terminalUi }: 
           </div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,280px),1fr))', gap: 14 }}>
         <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(!!terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Projections (10y)</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Projections{horizon ? ` (${horizon})` : ''}</div>
           {Object.keys(proj).length === 0 && <div style={{ fontSize: 11, color: 'var(--text3)' }}>No projection rows.</div>}
           {Object.entries(proj).map(([k, v]: any) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--border)', fontSize: 11 }}>
-              <span style={{ color: 'var(--text3)', textTransform: 'capitalize' }}>{k}</span>
-              <span style={{ color: 'var(--text0)', fontWeight: 600 }}>
-                {typeof v === 'object' ? fmt$(v.value ?? v.projected_value ?? v.total ?? 0, 0) : (typeof v === 'number' ? fmt$(v, 0) : String(v))}
-              </span>
+              <span style={{ color: 'var(--text3)' }} title={v?.label}>{v?.label || k}</span>
+              <span style={{ color: 'var(--text0)', fontWeight: 600 }}>{(() => { const n = projectionValue(v, horizon); return n == null ? '—' : fmt$(n, 0) })()}</span>
             </div>
           ))}
         </div>
