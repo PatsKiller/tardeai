@@ -144,3 +144,86 @@ def test_the_lane_shape_matches_its_siblings():
         assert k in r
     assert r["financial_action"] is False
     assert r["authority"] == "READ_ONLY_ADVISORY"
+
+
+# ── n8n-scheduled producers count as scheduled (LQ-20261107-310) ────────────
+#
+# build_catalyst_graph.py runs under n8n (lane catalyst-graph, cutover CW1). Its cron
+# line is commented as RETIRED, so cron and systemd both read empty. Before this fix
+# identity-spine reported it as "producer_unscheduled" while the lane ran.
+
+class _Done:
+    def __init__(self, stdout: str = "") -> None:
+        self.stdout = stdout
+
+
+def _no_host_schedulers(monkeypatch):
+    """crontab and systemctl both report nothing: the state of the cutover lanes."""
+    monkeypatch.setattr(IH.subprocess, "run", lambda *a, **k: _Done(""))
+
+
+def _registry(monkeypatch, lanes):
+    from scripts.lib import lane_registry as lr  # the module _n8n_scheduled imports first
+    monkeypatch.setattr(lr, "load_registry", lambda path=None: {"lanes": lanes})
+
+
+def _n8n_lane(lane_id, match, state="ACTIVE"):
+    return {"lane_id": lane_id, "state": state,
+            "scheduler": {"kind": "n8n", "expression": "dispatcher", "match": match,
+                          "command_text": f"cd $PROJ && $PY scripts/{match} # lane {lane_id}"}}
+
+
+def test_an_active_n8n_lane_counts_as_scheduled(monkeypatch):
+    _no_host_schedulers(monkeypatch)
+    _registry(monkeypatch, [_n8n_lane("catalyst-graph", "build_catalyst_graph.py --apply")])
+    assert IH._is_scheduled("build_catalyst_graph.py") is True
+
+
+def test_a_retired_n8n_lane_is_not_a_schedule(monkeypatch):
+    _no_host_schedulers(monkeypatch)
+    _registry(monkeypatch, [_n8n_lane("catalyst-graph", "build_catalyst_graph.py --apply",
+                                      state="RETIRED")])
+    assert IH._is_scheduled("build_catalyst_graph.py") is False
+
+
+def test_a_paused_n8n_lane_is_not_a_schedule(monkeypatch):
+    _no_host_schedulers(monkeypatch)
+    _registry(monkeypatch, [_n8n_lane("catalyst-graph", "build_catalyst_graph.py --apply",
+                                      state="PAUSED")])
+    assert IH._is_scheduled("build_catalyst_graph.py") is False
+
+
+def test_an_n8n_lane_for_another_script_does_not_match(monkeypatch):
+    _no_host_schedulers(monkeypatch)
+    _registry(monkeypatch, [_n8n_lane("catalyst-graph", "build_catalyst_graph.py --apply")])
+    assert IH._is_scheduled("mint_identity_registry.py") is False
+
+
+def test_a_cron_lane_is_not_read_as_n8n(monkeypatch):
+    """Only scheduler.kind == 'n8n' is an n8n schedule; a cron row naming the script is not."""
+    _no_host_schedulers(monkeypatch)
+    row = _n8n_lane("x", "build_catalyst_graph.py --apply")
+    row["scheduler"]["kind"] = "cron"
+    _registry(monkeypatch, [row])
+    assert IH._n8n_scheduled("build_catalyst_graph.py") is False
+
+
+def test_an_unreadable_registry_fails_loud(monkeypatch):
+    _no_host_schedulers(monkeypatch)
+    from scripts.lib import lane_registry as lr  # the module _n8n_scheduled imports first
+
+    def boom(path=None):
+        raise OSError("registry unreadable")
+
+    monkeypatch.setattr(lr, "load_registry", boom)
+    assert IH._is_scheduled("build_catalyst_graph.py") is False
+
+
+def test_the_n8n_branch_is_reached_only_after_cron_and_systemd(monkeypatch):
+    """A live crontab line still short-circuits; the n8n lookup is the last resort."""
+    monkeypatch.setattr(IH.subprocess, "run",
+                        lambda *a, **k: _Done("0 6 * * * scripts/build_catalyst_graph.py\n"))
+    called = []
+    monkeypatch.setattr(IH, "_n8n_scheduled", lambda s: called.append(s) or False)
+    assert IH._is_scheduled("build_catalyst_graph.py") is True
+    assert called == []

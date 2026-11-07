@@ -108,6 +108,33 @@ def _is_scheduled(script: str) -> bool:
             return True
     except Exception:
         pass
+    return _n8n_scheduled(script)
+
+
+def _n8n_scheduled(script: str) -> bool:
+    """True when an ACTIVE lane_registry row with scheduler.kind == "n8n" names this
+    script in its match or command_text.
+
+    n8n is the scheduler for lanes cut over from cron (LQ-20261107-310): the crontab
+    line is commented as `# RETIRED ... n8n-cutover`, so cron and systemd both read
+    empty for a lane that runs. Only ACTIVE rows count: RETIRED and PAUSED are declared
+    absences. Liveness (did n8n fire it?) stays with lane_registry._scheduler_present.
+    A missing or unreadable registry returns False, which is the loud direction."""
+    try:
+        try:
+            from scripts.lib import lane_registry as _lr
+        except ImportError:
+            from lib import lane_registry as _lr
+        registry = _lr.load_registry()
+    except Exception:
+        return False
+    for row in registry.get("lanes") or []:
+        sched = row.get("scheduler") or {}
+        if sched.get("kind") != "n8n" or row.get("state") != "ACTIVE":
+            continue
+        text = f"{sched.get('match') or ''} {sched.get('command_text') or ''}"
+        if script in text:
+            return True
     return False
 
 
