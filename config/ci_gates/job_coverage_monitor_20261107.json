@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "job_coverage_monitor_20261107",
+  "files": [
+    "tests/test_job_coverage_monitor_20261107.py"
+  ],
+  "anchor": "JOB_COVERAGE_MONITOR_20261107",
+  "comment": [
+    "ANCHOR: JOB_COVERAGE_MONITOR_20261107 — LQ-20261107-145: the monitor keeps a RUN clock (n8n ledger, the job's own log or last-run marker) apart from an OUTPUT clock (a DB row), so an n8n-dispatched lane is not NOT_SCHEDULED and an old output row is never printed as 'since last run'. The durable record data/runtime/job_coverage_monitor_results.json is written by a real run and never by --dry-run. No crontab, database or ledger is read: every dependency is injected."
+  ]
+}

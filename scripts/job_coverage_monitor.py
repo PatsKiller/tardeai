@@ -9,10 +9,10 @@ can't catch two failure modes that bit us 2026-06-03:
      invalid arg, errored every run).
 
 This monitor keeps a REGISTRY of jobs that are SUPPOSED to run, and for each checks:
-  - SCHEDULED?  — does its script appear (uncommented) in the active crontab?
-  - PRODUCING?  — has it emitted a fresh heartbeat (log mtime or DB timestamp) within
-                  its expected cadence?
-Status: NOT_SCHEDULED / STALE / NO_SIGNAL (warn) / OK.
+  - SCHEDULED?  — does the crontab, an n8n lane run in the ledger, or its systemd timer say so?
+  - RUNNING?    — has it RUN within its cadence (the n8n ledger, else its own log) —
+                  and is what it WRITES still fresh (a DB row)? Two clocks, never one.
+Status: OK / STALE (no fresh run) / STALE_OUTPUT (ran, output old) / NOT_SCHEDULED / NO_SIGNAL.
 
 Usage:
     python3 scripts/job_coverage_monitor.py            # human-readable
@@ -25,9 +25,9 @@ FINDINGS, reported in the output and the receipt, not a failed run. 2 when the i
 FAIL count, so a dispatcher could not tell "found 1 stale job" from "crashed". ``--exit-fail-count``
 keeps the old contract for a caller that wants it.
 
-The monitor itself is read-only (crontab -l, systemctl is-active, SELECTs, log mtimes). Its only write is
-the ScheduledJobReceipt@v1 receipt (data/runtime/job_coverage_monitor_last.json, ``ok_at`` on success);
-``--dry-run`` never enters the receipt wrapper (AGENTS.md §6).
+The monitor itself is read-only (crontab -l, systemctl is-active, SELECTs, log mtimes, the n8n run ledger). Its
+writes are the ScheduledJobReceipt@v1 receipt and the durable record data/runtime/job_coverage_monitor_results.json;
+``--dry-run`` writes neither (AGENTS.md §6).
 """
 import json
 import os
@@ -149,6 +149,13 @@ REGISTRY = [
      "remediate_cmd": "cd $PROJ && $PY scripts/desk_suggestions_digest.py"},
 ]
 
+# ── Two clocks, never mixed (LQ-20261107-145). An OUTPUT row's age is not a run record, and the crontab is no
+#   longer the only schedule: the n8n cutover retired most cron lines. A job is SCHEDULED when the crontab, its
+#   systemd timer or an n8n ledger run says so; its RUN clock is the n8n ledger, else its own log;
+#   its OUTPUT clock is a DB row, which can only ever say STALE_OUTPUT ("it ran, but what it writes is old").
+RESULTS_REL = Path("data") / "runtime" / "job_coverage_monitor_results.json"
+RESULTS_SCHEMA = "JobCoverageResults@v1"
+ALLOWLIST_REL = Path("config") / "n8n_run_allowlist.json"
 
 # Set by _crontab_lines() when `crontab -l` could not be read: the run is blind, not "nothing scheduled".
 CRONTAB_ERROR = None
@@ -243,6 +250,57 @@ def _log_age_h(fname):
     return min(ages) if ages else None
 
 
+def _lane_map():
+    """job name -> n8n lane id, derived from the allowlist commands (the script name is the key).
+
+    Derived, never hand-listed: a lane whose command names this job's script IS this job's scheduler. A job with no
+    such lane keeps its crontab/log evidence and is never silently upgraded to "scheduled"; an unreadable allowlist
+    reports the error and leaves every job to the old evidence.
+    """
+    path = PROJECT_ROOT / ALLOWLIST_REL
+    try:
+        lanes = json.loads(path.read_text(encoding="utf-8")).get("lanes") or []
+    except (OSError, ValueError) as exc:
+        return {}, type(exc).__name__
+    out = {}
+    for job in REGISTRY:
+        match = job["schedule_match"]
+        hits = sorted(str(e.get("lane_id")) for e in lanes if isinstance(e, dict)
+                      and match in " ".join(str(x) for x in (list(e.get("command") or [])
+                                                             + list(e.get("live_arg") or []))))
+        if len(hits) == 1:  # ambiguous = unmapped: a wrong lane would hide a job that never runs
+            out[job["name"]] = hits[0]
+    return out, None
+
+
+def _age_h(ts, now=None):
+    """Hours since an ISO stamp (Z or offset), or None when it cannot be parsed."""
+    from datetime import datetime, timezone
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    ref = now or datetime.now(timezone.utc)
+    return round(max(0.0, (ref - dt).total_seconds() / 3600), 1)
+
+
+def _ledger_last_run(lane_map, job):
+    """The newest finished n8n run for this job's lane, or None. Read-only, never raises."""
+    lane = lane_map.get(job["name"])
+    if not lane:
+        return None
+    try:
+        from lib.lane_registry import n8n_last_run
+        hit = n8n_last_run(lane)
+    except (ImportError, OSError):  # a missing ledger is "no evidence", not a crash
+        return None
+    return {**hit, "lane_id": lane} if hit else None
+
+
 def _db_age_h(sql):
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -259,48 +317,131 @@ def _db_age_h(sql):
         return None
 
 
-def evaluate():
-    cron_lines = _crontab_lines()
+FAIL_STATUSES = ("NOT_SCHEDULED", "STALE", "STALE_OUTPUT")
+
+
+def evaluate(*, now=None, cron_lines=None, log_age=None, db_age=None, last_run=None, lane_map=None):
+    """One row per registered job. Every dependency is injectable so a test never reads the host.
+
+    Two clocks, never mixed (LQ-20261107-145): ``run_age_hours`` answers "when did it last RUN" from a run record
+    (the n8n ledger, else its own log); ``output_age_hours`` answers "how old is what it writes" from a DB row. A
+    fresh run with an old output is STALE_OUTPUT — a finding, but never reported as "did not run". It stays a
+    finding even when the run's own record says it staged 0 rows: an absence the run cannot explain is precisely
+    what a monitor must not wave through (catalyst: 25 researcher records/day, ``staged: 0`` for nine days).
+    """
+    cron_lines = _crontab_lines() if cron_lines is None else list(cron_lines)
+    log_age = _log_age_h if log_age is None else log_age
+    db_age = _db_age_h if db_age is None else db_age
+    lane_map = (_lane_map()[0] if lane_map is None else lane_map)
+    last_run = ((lambda job: _ledger_last_run(lane_map, job)) if last_run is None else last_run)
     results = []
     for job in REGISTRY:
         timer = job.get("systemd_timer")
-        scheduled = _is_scheduled(job["schedule_match"], cron_lines) or bool(timer and _timer_active(timer))
+        in_cron = _is_scheduled(job["schedule_match"], cron_lines)
+        last = last_run(job)
         kind, arg = job["signal"]
-        age = _log_age_h(arg) if kind == "log" else _db_age_h(arg)
-        idle = _hours_since_due(job.get("schedule_exprs") or _cron_exprs(job["schedule_match"], cron_lines))
-        # Never looser than the cadence while the job is in its window; outside it, the output only has to
+        run_age, run_source = None, None
+        output_age = None
+        if kind == "db":
+            output_age = db_age(arg)
+        else:
+            run_age, run_source = log_age(arg), "log"
+        ledger_age = _age_h((last or {}).get("finished_at"), now)
+        if ledger_age is not None and (run_age is None or ledger_age < run_age):
+            run_age, run_source = ledger_age, f"n8n ledger ({last.get('state') or '?'})"
+        scheduled = in_cron or bool(timer and _timer_active(timer)) or last is not None
+        idle = _hours_since_due(job.get("schedule_exprs") or _cron_exprs(job["schedule_match"], cron_lines), now)
+        # Never looser than the cadence while the job is in its window; outside it, the heartbeat only has to
         # postdate the last due fire (plus up to 1h of run time).
         allowed = max(job["cadence_h"], idle + min(job["cadence_h"], 1.0))
         if not scheduled:
-            where = f"crontab or {timer}" if timer else "crontab"
-            status, detail = "NOT_SCHEDULED", (f"not in {where} (last signal {age}h ago)" if age is not None
+            where = f"crontab, {timer}, or an n8n ledger run" if timer else "crontab or an n8n ledger run"
+            beat = run_age if run_age is not None else output_age
+            status, detail = "NOT_SCHEDULED", (f"not in {where} (last signal {beat}h ago)" if beat is not None
                                               else f"not in {where}, no heartbeat")
-        elif age is None:
+        elif run_age is None and output_age is None:
             status, detail = "NO_SIGNAL", "scheduled but no heartbeat found yet"
-        elif age > allowed:
-            status, detail = "STALE", f"{age}h since last run (max {allowed:.1f}h; last due {idle:.1f}h ago)"
+        elif run_age is not None and run_age > allowed:
+            status, detail = "STALE", (f"{run_age}h since last run ({run_source}; max {allowed:.1f}h; "
+                                       f"last due {idle:.1f}h ago)")
+        elif run_age is not None:
+            if output_age is not None and output_age > allowed:
+                status, detail = "STALE_OUTPUT", (f"ran {run_age}h ago ({run_source}) but its output is "
+                                                  f"{output_age}h old (max {allowed:.1f}h)")
+            else:
+                status, detail = "OK", (f"ran {run_age}h ago ({run_source}; max {allowed:.1f}h; "
+                                        f"last due {idle:.1f}h ago)")
+        elif output_age > allowed:
+            # no run record at all; the declared output signal is the only evidence there is
+            status, detail = "STALE_OUTPUT", (f"output {output_age}h old and no run record "
+                                              f"(max {allowed:.1f}h; last due {idle:.1f}h ago)")
         else:
-            status, detail = "OK", f"{age}h ago (max {allowed:.1f}h; last due {idle:.1f}h ago)"
+            status, detail = "OK", (f"output {output_age}h ago (max {allowed:.1f}h; last due {idle:.1f}h ago)")
         results.append({"job": job["name"], "status": status, "detail": detail,
-                        "age_hours": age, "cadence_hours": job["cadence_h"], "idle_hours": round(idle, 1),
+                        "run_age_hours": run_age, "run_source": run_source,
+                        "output_age_hours": output_age, "cadence_hours": job["cadence_h"],
+                        "allowed_hours": round(allowed, 1), "idle_hours": round(idle, 1),
                         "scheduled": scheduled})
     return results
 
 
-def main():
-    results = evaluate()
-    fails = [r for r in results if r["status"] in ("NOT_SCHEDULED", "STALE")]
+def _summary(results):
+    return {"total": len(results),
+            "fail": sum(1 for r in results if r["status"] in FAIL_STATUSES),
+            "ok": sum(1 for r in results if r["status"] == "OK"),
+            "stale": sum(1 for r in results if r["status"] == "STALE"),
+            "stale_output": sum(1 for r in results if r["status"] == "STALE_OUTPUT"),
+            "not_scheduled": sum(1 for r in results if r["status"] == "NOT_SCHEDULED"),
+            "no_signal": sum(1 for r in results if r["status"] == "NO_SIGNAL")}
+
+
+def write_results(results, *, generated_at=None, root=None):
+    """Atomically replace the durable record. Returns ``{"ok", "path", "error"}`` and never raises.
+
+    The monitor had no durable output at all (LQ-20261107-145: only a 193-byte receipt), so nothing downstream could
+    read what it found. This is the monitor's second and last write; the caller keeps it out of the dry-run path.
+    ``root`` is the persistent state root (resolved from the durable resolver unless a caller passes one). A write
+    that fails answers ``ok: False`` with the exception's name: an explicit unknown a reader can see, never a silent
+    empty file and never a crash that would mask the run's own result.
+    """
+    import datetime as _dt
+
+    target = None
+    try:
+        try:
+            from lib.data_broker.atomic_json import atomic_write_json
+        except ImportError:  # scripts/ on sys.path, repo root not
+            from scripts.lib.data_broker.atomic_json import atomic_write_json  # type: ignore[no-redef] -- fallback
+        if root is None:
+            from lib.persistent_state_root import good_persistent_root
+            root = good_persistent_root()
+        target = Path(root) / RESULTS_REL
+        doc = {"schema": RESULTS_SCHEMA, "generated_at": generated_at or _dt.datetime.now(_dt.timezone.utc).isoformat(),
+               "monitor": "job_coverage_monitor", "summary": _summary(results), "results": results}
+        atomic_write_json(target, doc, indent=1)
+        return {"ok": True, "path": str(target), "error": None}
+    except Exception as exc:  # noqa: BLE001 -- the record must never mask the run's own result
+        print(f"[job_coverage_monitor] durable record write failed: {type(exc).__name__}", file=sys.stderr)
+        return {"ok": False, "path": None if target is None else str(target), "error": type(exc).__name__}
+
+
+def main(*, write=None, **eval_kwargs):
+    results = evaluate(**eval_kwargs)
+    fails = [r for r in results if r["status"] in FAIL_STATUSES]
     blind = CRONTAB_ERROR
+    summary = _summary(results)
+    if write is None:
+        write = "--dry-run" not in sys.argv
+    if write:
+        write_results(results)
     if "--json" in sys.argv:
-        print(json.dumps({"results": results,
-                          "summary": {"total": len(results), "fail": len(fails),
-                                      "ok": sum(1 for r in results if r["status"] == "OK")}}, indent=2, default=str))
+        print(json.dumps({"results": results, "summary": summary}, indent=2, default=str))
     else:
-        icon = {"OK": "✅", "STALE": "🔴", "NOT_SCHEDULED": "⛔", "NO_SIGNAL": "🟡"}
+        icon = {"OK": "✅", "STALE": "🔴", "STALE_OUTPUT": "🟠", "NOT_SCHEDULED": "⛔", "NO_SIGNAL": "🟡"}
         print("Job coverage / heartbeat:")
         for r in sorted(results, key=lambda x: x["status"]):
             print(f"  {icon.get(r['status'],'?')} [{r['status']:13}] {r['job']:28} {r['detail']}")
-        print(f"\n{len(fails)} FAIL ({sum(1 for r in results if r['status']=='OK')}/{len(results)} OK)")
+        print(f"\n{len(fails)} FAIL ({summary['ok']}/{len(results)} OK)")
     if blind:
         print(f"BLIND: crontab unreadable ({blind}) — NOT_SCHEDULED rows are not evidence", file=sys.stderr)
         return 2
@@ -312,9 +453,10 @@ def main():
 def cli():
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     if "--dry-run" in sys.argv:
-        # AGENTS.md §6: the receipt wrapper (the monitor's only write) is not reachable from a dry run.
-        code = main()
-        print("(dry run — receipt not written: data/runtime/job_coverage_monitor_last.json)")
+        # AGENTS.md §6: neither the receipt wrapper nor the durable record is reachable from a dry run.
+        code = main(write=False)
+        print("(dry run — receipt not written, durable record not written: "
+              f"data/runtime/job_coverage_monitor_last.json, {RESULTS_REL.as_posix()})")
         return code
     from lib.scheduled_job_receipt import run_with_receipt
     return run_with_receipt(main, script="job_coverage_monitor", root=PROJECT_ROOT)
