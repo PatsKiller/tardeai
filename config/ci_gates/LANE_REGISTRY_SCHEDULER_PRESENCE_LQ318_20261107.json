@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "LANE_REGISTRY_SCHEDULER_PRESENCE_LQ318_20261107",
+  "files": [
+    "tests/test_lane_registry_scheduler_presence_lq318_20261107.py"
+  ],
+  "anchor": "LANE_REGISTRY_SCHEDULER_PRESENCE_LQ318_20261107",
+  "comment": [
+    "ANCHOR: SCHEDULER_PRESENCE_LQ318_20261107 — LQ-20261107-318, the ten false orphans in /v3/health.",
+    "Measured 2026-11-07T21:55Z: 36 ORPHANED rows. Twelve are cron rows the n8n cutover retired (declaring",
+    "those is the lead's lane_registry patch, not this gate). Ten were _scheduler_present asking the wrong",
+    "question: it ignored a systemd row's `match` (six live timers read orphaned), expected a health-tick",
+    "step to be a unit of its own, stringified a list `match` into a repr that matches no crontab line, and",
+    "read a declared on-demand trigger as a missing scheduler.",
+    "This gate pins each shape as a present/absent pair, so the fix cannot pass by declaring everything",
+    "present, and pins that ORPHANED stays reachable for a row whose scheduler is really gone.",
+    "Hermetic: synthetic rows and inventory, and the step config is written under tmp_path; no crontab,",
+    "systemd, database or host state read."
+  ]
+}

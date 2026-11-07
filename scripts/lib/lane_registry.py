@@ -999,6 +999,27 @@ def render_lane_table(rows: Iterable[dict[str, Any]]) -> str:
     return "\n".join(format_lane_line(r) for r in rows)
 
 
+#: "<unit> step <step-id>" — a lane that is one step of a unit's tick rather than a unit of its own.
+_STEP_OF_UNIT = re.compile(r"^(\S+\.(?:timer|service))\s+step\s+([^\s(]+)")
+
+
+def _health_tick_step_declared(step_id: str) -> bool:
+    """Is ``step_id`` still a step of the health-tick unit this row names?
+
+    A step has no unit of its own: presence is the timer's, membership is this config's. When the
+    config cannot be read the timer is still the scheduler and the step's own output signal still
+    catches a deleted step (it goes stale), so an unreadable file is not evidence of an orphan —
+    the same reason a single missing source never turns a whole report green in the checkers.
+    """
+    path = ROOT / "config" / "health_tick_steps.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    steps = doc.get("steps") if isinstance(doc, dict) else None
+    return any(str((s or {}).get("step_id")) == step_id for s in steps or [])
+
+
 def _scheduler_present(
     row: dict[str, Any], found: dict[str, Any], *, now: Optional[datetime] = None, root: Optional[Path] = None
 ) -> bool:
@@ -1010,7 +1031,13 @@ def _scheduler_present(
     sched = row.get("scheduler") or {}
     kind, expr = sched.get("kind"), str(sched.get("expression") or "")
     if kind == "none":
-        return False
+        # On-demand: the trigger is an operator action (an API route, a host run request), not a
+        # timetable, so "the scheduler is missing" is not a question this lane can fail. Measured
+        # 2026-11-07 (LQ-20261107-318): the three ACTIVE on-demand rows — advisory-desk-run-now,
+        # analyst-prospectus-generate, aegis-brief-regenerate — read ORPHANED only because a
+        # declared absence was judged as an absence that was not declared. They are judged on
+        # output freshness like any other lane; nothing schedules them, so nothing can orphan them.
+        return expr.startswith("on-demand:")
     if kind == SCHEDULER_N8N:
         # n8n is not on this host; its UI is not evidence. The scheduler "exists" when the run
         # ledger (or a RunReceipt) shows it fired the lane within one cadence.
@@ -1026,12 +1053,36 @@ def _scheduler_present(
         now = now or datetime.now(timezone.utc)
         return (now - ts) <= timedelta(hours=cadence_h)
     if kind == "systemd":
-        return any(
-            u["expression"] == expr for u in (found.get("systemd") or []) + (found.get("systemd_services") or [])
-        )
+        # `expression` is the operator-facing label ("tradeai-health-tick.timer (*:0/5)"); `match`
+        # is the unit itself. Comparing the label to a unit name made six live timers read
+        # ORPHANED on 2026-11-07 (LQ-20261107-318) — the declaration was right and the matcher was
+        # not, which is the worst kind of finding because it asks the operator to fix what works.
+        # Either field can hold the unit: `match` does where the row was written with a label
+        # ("tradeai-health-tick.timer (*:0/5)"), `expression` does where `match` names the lane's
+        # script instead (tmp-hygiene-apply). Asking about both is the only reading that is true of
+        # the whole registry, and a unit name cannot collide with a script path.
+        units = (found.get("systemd") or []) + (found.get("systemd_services") or [])
+        markers = {expr, str(sched.get("match") or "")}
+        if any(u["expression"] in markers for u in units):
+            return True
+        # A step of a unit ("tradeai-health-tick.timer step premarket-delivery-deadman"):
+        # the scheduler is the timer; the step is a line in the lane's own step config.
+        step = _STEP_OF_UNIT.match(expr)
+        if step is None:
+            return False
+        unit, step_id = step.group(1), step.group(2)
+        if not any(u["expression"] == unit for u in units):
+            return False
+        return _health_tick_step_declared(step_id)
     if kind == "cron":
-        marker = str(sched.get("match") or expr)
-        return any(marker in c["expression"] for c in found.get("cron") or [])
+        # `match` is a marker or a LIST of markers (an off-peak wrapped line and its plain twin
+        # carry two). `str(match)` on a list is the repr, which never occurs in a crontab line —
+        # measured 2026-11-07 on research-intelligence-queue, declared and running, read ORPHANED.
+        markers = sched.get("match") or expr
+        if isinstance(markers, str):
+            markers = [markers]
+        markers = [str(m) for m in markers if str(m)]
+        return any(m in c["expression"] for m in markers for c in found.get("cron") or [])
     if kind == "event":
         # Hook-driven: nothing schedules it, another lane emits it. There is no
         # scheduler to be missing, so ORPHANED is not a verdict this lane can
