@@ -9,9 +9,64 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 MIGRATION = PROJECT_ROOT / "migrations" / "2026_07_15_redeploy_phase_a_data_truth.sql"
 
 
+REQUIRED_TABLES = (
+    "redeploy_exposure_loss",
+    "redeploy_exposure_loss_sector",
+    "redeploy_exposure_loss_holding",
+    "redeploy_portfolio_context_snapshots",
+)
+REQUIRED_DEPLOY_EVENT_COLUMNS = (
+    "net_proceeds_usd",
+    "deployable_cash_usd",
+    "reconciliation_status",
+    "policy_version",
+    "generator_version",
+    "holdings_snapshot_id",
+)
+REQUIRED_CONSTRAINTS = ("chk_deploy_reconciliation_status", "chk_redeploy_income_status")
+
+
+def _first(row):
+    if isinstance(row, dict):
+        return next(iter(row.values()), None)
+    if isinstance(row, (list, tuple)):
+        return row[0] if row else None
+    return None
+
+
+def _schema_present(cur) -> bool:
+    """True when every object the Phase A migration adds already exists.
+
+    The migration's ``ALTER TABLE deploy_events ADD COLUMN IF NOT EXISTS`` and ``ADD CONSTRAINT`` take an
+    ACCESS EXCLUSIVE lock on ``deploy_events`` even when they change nothing. Run on every call from a
+    request transaction, that lock blocked every reader until lock_timeout and the Re-entry desk showed
+    "Sell history could not be read." (LQ-20261107-265; the sibling of LQ-176 in deploy_events_db).
+    These catalog lookups take no lock.
+    """
+    cur.execute(
+        "SELECT bool_and(to_regclass(t) IS NOT NULL) FROM unnest(%s::text[]) AS t",
+        (list(REQUIRED_TABLES),),
+    )
+    if _first(cur.fetchone()) is not True:
+        return False
+    cur.execute(
+        "SELECT count(DISTINCT column_name) FROM information_schema.columns "
+        "WHERE table_name = 'deploy_events' AND column_name = ANY(%s)",
+        (list(REQUIRED_DEPLOY_EVENT_COLUMNS),),
+    )
+    if _first(cur.fetchone()) != len(REQUIRED_DEPLOY_EVENT_COLUMNS):
+        return False
+    cur.execute("SELECT count(*) FROM pg_constraint WHERE conname = ANY(%s)", (list(REQUIRED_CONSTRAINTS),))
+    return _first(cur.fetchone()) == len(REQUIRED_CONSTRAINTS)
+
+
 def ensure_phase_a_tables(cur) -> None:
-    if MIGRATION.is_file():
-        cur.execute(MIGRATION.read_text())
+    """Apply the Phase A migration once; do nothing (and lock nothing) when it is already applied."""
+    if not MIGRATION.is_file():
+        return
+    if _schema_present(cur):
+        return
+    cur.execute(MIGRATION.read_text())
 
 
 #: Versioned snapshot tables _next_version may read; checked before the name reaches SQL text.

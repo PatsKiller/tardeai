@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PHASE_A_SCHEMA_NO_LOCK_20261107",
+  "files": ["tests/test_phase_a_schema_no_lock_20261107.py"],
+  "anchor": "PHASE_A_SCHEMA_NO_LOCK_20261107",
+  "comment": ["ANCHOR: PHASE_A_SCHEMA_NO_LOCK_20261107 — LQ-20261107-265: the Phase A migration alters deploy_events (ACCESS EXCLUSIVE) on every call; it must run only when objects are missing."]
+}
