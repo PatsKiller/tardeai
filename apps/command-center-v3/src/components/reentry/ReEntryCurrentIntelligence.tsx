@@ -34,6 +34,7 @@ import {
   type ScoreGate,
   type ScorecardResult,
 } from '../../lib/reentryDecisionScorecard'
+import { catalystLabel, macdLabel, macdReadFromDeskRow } from '../../lib/reentryFieldReads'
 import { HelpTip } from './ReEntryHelpGuide'
 import ReEntryCommandHeader, { type ReEntryLaneCounts } from './ReEntryCommandHeader'
 import ReEntryMiniChart from './ReEntryMiniChart'
@@ -56,6 +57,8 @@ type IntelWithScore = Intel & {
   ma50: number | null
   ma200: number | null
   macd: string
+  /** Why the MACD reads the way it does — null when the value came through. */
+  macdWhy: string | null
   pe: number | null
   forwardPe: number | null
   riskReward: number | null
@@ -90,8 +93,15 @@ function deriveIntel(
     analystTarget: number | null
     analystCount: number | null
   },
+  /** The re-entry decision desk's row for this symbol (null when the desk has none). */
+  desk: any,
 ): IntelWithScore {
   const levels = extractLevelsFromContext(watch, card)
+  // MACD: no endpoint this page reads carries a histogram magnitude. The indicator snapshot the
+  // decision desk composes does carry the histogram's DIRECTION and the MACD signal state, so the
+  // page reads those instead of printing UNAVAILABLE over data the system holds (LQ-20261107-235).
+  const macdRead = macdReadFromDeskRow(desk)
+  const macdDirection = levels.macdHistogram !== null && levels.macdHistogram !== undefined ? null : macdRead.direction
   const score = buildReEntryScorecard({
     price: levels.price ?? null,
     asOf: levels.asOf ?? '',
@@ -110,6 +120,7 @@ function deriveIntel(
     ma200: levels.ma200 ?? null,
     macdHistogram: levels.macdHistogram ?? null,
     macdSlope: levels.macdSlope ?? null,
+    macdDirection,
     relativeStrength: levels.relativeStrength ?? null,
     pe: levels.pe ?? null,
     forwardPe: levels.forwardPe ?? null,
@@ -125,9 +136,12 @@ function deriveIntel(
     analystTarget: narrative.analystTarget,
     analystCount: narrative.analystCount,
   })
-  const macd = levels.macdHistogram === null || levels.macdHistogram === undefined
-    ? 'UNAVAILABLE'
-    : `${levels.macdHistogram >= 0 ? 'pos' : 'neg'}${levels.macdSlope == null ? '' : levels.macdSlope > 0 ? '↑' : levels.macdSlope < 0 ? '↓' : ''}`
+  const macd = macdLabel({
+    histogram: levels.macdHistogram ?? null,
+    slope: levels.macdSlope ?? null,
+    read: macdRead,
+    onDesk: Boolean(desk),
+  })
   return {
     price: levels.price ?? null,
     asOf: levels.asOf ?? '',
@@ -146,7 +160,8 @@ function deriveIntel(
     ma20: levels.ma20 ?? null,
     ma50: levels.ma50 ?? null,
     ma200: levels.ma200 ?? null,
-    macd,
+    macd: macd.label,
+    macdWhy: macd.why,
     pe: levels.pe ?? null,
     forwardPe: levels.forwardPe ?? null,
     riskReward: score.riskReward,
@@ -234,6 +249,10 @@ export default function ReEntryCurrentIntelligence({
   const resistancePref = useApi<any>(`/api/v2/ui/prefs/get?key=${encodeURIComponent(RESISTANCE_KEY)}`, 120_000)
   const compositePref = useApi<any>(`/api/v2/ui/prefs/get?key=${encodeURIComponent(COMPOSITE_ALERT_KEY)}`, 120_000)
   const analyst = useApi<any>('/api/v2/pro-analyst/pills?map=1', 300_000)
+  // The decision desk composes indicator_confluence_cache, the only place this system holds a MACD
+  // read (histogram_direction + signal). No endpoint this page already reads carries one — measured
+  // 2026-11-07: 0 of 55 watchlist items and 0 of 55 symbol cards had any macd field (LQ-20261107-235).
+  const reentryDesk = useApi<any>('/api/v2/reentry/decision-desk', 300_000)
   const [watchMap, setWatchMap] = useState<Record<string, any>>({})
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState('ALL')
@@ -353,6 +372,11 @@ export default function ReEntryCurrentIntelligence({
   const alertRows: any[] = unwrap(alerts.data)?.alerts ?? unwrap(alerts.data)?.items ?? []
   const resistanceMap: Record<string, any> = prefValue(resistancePref.data)?.symbols ?? {}
   const analystMap: Record<string, any> = unwrap(analyst.data)?.map ?? {}
+  const deskMap: Record<string, any> = {}
+  for (const deskRow of (unwrap(reentryDesk.data)?.rows ?? []) as any[]) {
+    const deskSymbol = String(deskRow?.symbol || '').toUpperCase()
+    if (deskSymbol) deskMap[deskSymbol] = deskRow
+  }
   const compositeMap = prefValue(compositePref.data) as Record<string, { armed?: boolean }> | null
   const armedCount = compositeMap
     ? Object.values(compositeMap).filter(item => item && item.armed).length
@@ -388,6 +412,7 @@ export default function ReEntryCurrentIntelligence({
         analystTarget: finite(analystRow?.target),
         analystCount: finite(analystRow?.n),
       },
+      deskMap[summary.symbol] ?? null,
     )
     const completeness = [
       summary.shares !== null,
@@ -426,7 +451,7 @@ export default function ReEntryCurrentIntelligence({
       analyst: analystRow,
       score: intel.score,
     }
-  }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data, regimeLabel])
+  }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data, regimeLabel, reentryDesk.data])
 
   const laneCounts: ReEntryLaneCounts = useMemo(() => {
     const active = rows.filter(row => !row.suppressed)
@@ -768,7 +793,7 @@ export default function ReEntryCurrentIntelligence({
                         </div>
                       ))}
                       <div style={{ marginTop: 8, fontSize: 10, color: BB.text3 }}>
-                        Support {money(row.intel.support)} · MA20 {money(row.intel.ma20)} · MA50 {money(row.intel.ma50)} · MA200 {money(row.intel.ma200)} · MACD {row.intel.macd}
+                        Support {money(row.intel.support)} · MA20 {money(row.intel.ma20)} · MA50 {money(row.intel.ma50)} · MA200 {money(row.intel.ma200)} · MACD {row.intel.macd}{row.intel.macdWhy ? ` (${row.intel.macdWhy})` : ''}
                       </div>
                     </div>
                     <div>
@@ -809,7 +834,7 @@ export default function ReEntryCurrentIntelligence({
                         <b>Thesis:</b> {row.mandate.thesis || 'No operator thesis saved.'}<br />
                         <b>Watch recommendation:</b> {text(row.watch?.synthesis_recommendation, row.watch?.latest_recommendation, 'unavailable').replace(/_/g, ' ')}<br />
                         <b>Sector:</b> {text(row.watch?.profile_sector, row.card?.sector, 'unavailable')}<br />
-                        <b>Catalyst:</b> {text(row.watch?.catalyst_headline, 'unavailable')}<br />
+                        <b>Catalyst:</b> {catalystLabel(row.watch)}<br />
                         <b>Earnings:</b> {text(row.watch?.earnings_date, row.watch?.next_earnings_date, 'unavailable')}<br />
                         <b>Resistance source:</b> {row.resistance.source} — {row.resistance.reason}<br />
                         <b>Disposition:</b> {normalizedEvent(row.latest, events[row.latest.event_key]).eventType.replace(/_/g, ' ')}

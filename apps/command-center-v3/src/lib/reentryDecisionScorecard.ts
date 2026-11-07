@@ -41,6 +41,13 @@ export type ScorecardInput = {
   ma200: number | null
   macdHistogram: number | null
   macdSlope: number | null
+  /**
+   * Which way the histogram is moving, when the system has the direction but not the magnitude
+   * (indicator_confluence_cache.macd_histogram_direction). The gate's own criterion is "hist ≥ 0
+   * or improving", so a rising histogram alone satisfies it; a falling one never does. Absent
+   * means the indicator snapshot said nothing, which stays UNAVAILABLE.
+   */
+  macdDirection?: 'up' | 'down' | null
   relativeStrength: number | null
   pe: number | null
   forwardPe: number | null
@@ -311,7 +318,10 @@ export function composeDecisionNarrative(
   const softBits: string[] = []
   if (input.ma50 === null && input.ma200 === null) softBits.push('MA n/a')
   else if (input.ma50 !== null && price !== null) softBits.push(price >= input.ma50 ? '≥MA50' : '<MA50')
-  if (input.macdHistogram === null) softBits.push('MACD n/a')
+  // A magnitude is a sign; a direction is an arrow. Printing 'MACD+' from a rising histogram would
+  // claim a positive histogram we were never given, so the direction gets its own arrow.
+  if (input.macdHistogram === null && !input.macdDirection) softBits.push('MACD n/a')
+  else if (input.macdHistogram === null) softBits.push(input.macdDirection === 'up' ? 'MACD↑' : 'MACD↓')
   else softBits.push(input.macdHistogram >= 0 ? 'MACD+' : 'MACD−')
   if (input.pe === null && input.forwardPe === null) softBits.push('P/E n/a')
   else softBits.push(`P/E ${((input.forwardPe ?? input.pe) as number).toFixed(0)}`)
@@ -469,8 +479,17 @@ export function buildReEntryScorecard(input: ScorecardInput): ScorecardResult {
   }
 
   // Soft: MACD
-  if (input.macdHistogram === null) {
-    gates.push(gate('macd', 'MACD histogram', 'soft', 'UNAVAILABLE', 'unavailable', 'hist ≥ 0 or improving', 'MACD not on packet.'))
+  if (input.macdHistogram === null && !input.macdDirection) {
+    gates.push(gate('macd', 'MACD histogram', 'soft', 'UNAVAILABLE', 'unavailable', 'hist ≥ 0 or improving', 'No indicator snapshot for this symbol.'))
+  } else if (input.macdHistogram === null) {
+    // Direction only. The gate asks for "≥ 0 or improving"; a rising histogram is improving, and a
+    // falling one is neither, so this is decidable without a magnitude — and the wording below never
+    // claims a sign, because the snapshot did not give one.
+    const rising = input.macdDirection === 'up'
+    gates.push(gate('macd', 'MACD histogram', 'soft', rising ? 'PASS' : 'WAIT',
+      `hist ${rising ? 'rising' : 'falling'} (direction only)`, 'hist ≥ 0 or improving',
+      rising ? 'Histogram is rising — improving, though its sign is not on the snapshot.'
+        : 'Histogram is falling and its sign is not on the snapshot — not improving.'))
   } else if (input.macdHistogram >= 0 || (input.macdSlope !== null && input.macdSlope > 0)) {
     gates.push(gate('macd', 'MACD histogram', 'soft', 'PASS',
       `hist ${input.macdHistogram.toFixed(3)}${input.macdSlope === null ? '' : ` · slope ${input.macdSlope.toFixed(3)}`}`,

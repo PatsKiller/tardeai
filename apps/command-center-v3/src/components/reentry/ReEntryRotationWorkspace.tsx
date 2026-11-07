@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { BB } from '../../lib/holdingsTerminalTokens'
 import { fmt$ } from '../../lib/format'
+import { macdLabel, macdReadFromDeskRow } from '../../lib/reentryFieldReads'
 
 const MANDATE_KEY = 'portfolio.reentry.mandates.v4'
 const EVENT_KEY = 'portfolio.reentry.event-classifications.v1'
@@ -90,6 +91,8 @@ type Technical = {
   resistanceTests: number | null
   trend: 'IMPROVING' | 'CONSTRUCTIVE' | 'DETERIORATING' | 'EXTENDED' | 'UNAVAILABLE'
   macd: string
+  /** Why the MACD reads the way it does — null when the value came through. */
+  macdWhy: string | null
   relativeStrength: number | null
   ma20: number | null
   ma50: number | null
@@ -177,7 +180,9 @@ async function savePref(key: string, value: any) {
   if (!response.ok || payload?.ok === false) throw new Error(payload?.error || 'preference save failed')
 }
 
-function technical(symbol: string, cardMap: Record<string, any>, watchMap: Record<string, any>): Technical {
+function technical(symbol: string, cardMap: Record<string, any>, watchMap: Record<string, any>,
+  /** The re-entry decision desk's row for this symbol, when the desk has one. */
+  desk: any = null): Technical {
   const card = cardMap[symbol] ?? {}
   const watch = watchMap[symbol] ?? {}
   const packet = watch?.decision_packet ?? card?.decision_packet ?? {}
@@ -216,8 +221,10 @@ function technical(symbol: string, cardMap: Record<string, any>, watchMap: Recor
     else if (price < ma20 && ma20 < ma50) trend = 'DETERIORATING'
     else if (rsi !== null && rsi >= 70) trend = 'EXTENDED'
   }
-  const macd = macdHistogram === null ? 'UNAVAILABLE' : `${macdHistogram >= 0 ? 'positive' : 'negative'}${macdSlope === null ? '' : macdSlope > 0 ? ' · improving' : macdSlope < 0 ? ' · deteriorating' : ' · flat'}`
-  return { symbol, price, rsi, entryLow, entryHigh, resistance, resistanceDistancePct: distance, resistanceSide, resistanceHoldDays: holdDays, resistanceHoldStart: holdStart, resistanceTests, trend, macd, relativeStrength, ma20, ma50, ma200, asOf: pickText(objects, ['last_enriched_at', 'computed_at', 'as_of', 'updated_at', 'quote_time', 'technicals.as_of']) }
+  // LQ-20261107-235: no endpoint this page reads carries a histogram magnitude; the decision desk's
+  // indicator snapshot carries the histogram's DIRECTION. Use it rather than printing UNAVAILABLE.
+  const macd = macdLabel({ histogram: macdHistogram, slope: macdSlope, read: macdReadFromDeskRow(desk), onDesk: Boolean(desk) })
+  return { symbol, price, rsi, entryLow, entryHigh, resistance, resistanceDistancePct: distance, resistanceSide, resistanceHoldDays: holdDays, resistanceHoldStart: holdStart, resistanceTests, trend, macd: macd.label, macdWhy: macd.why, relativeStrength, ma20, ma50, ma200, asOf: pickText(objects, ['last_enriched_at', 'computed_at', 'as_of', 'updated_at', 'quote_time', 'technicals.as_of']) }
 }
 
 function analystFor(symbol: string, analystData: any) {
@@ -364,7 +371,7 @@ function TechnicalCard({ value, analyst, lookthrough }: { value: Technical; anal
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7, marginTop: 8, fontSize: 10.5 }}>
       <div><span style={{ color: BB.text3 }}>Price</span><br /><b>{dollars(value.price)}</b></div><div><span style={{ color: BB.text3 }}>RSI</span><br /><b>{value.rsi === null ? '—' : value.rsi.toFixed(1)}</b></div><div><span style={{ color: BB.text3 }}>Trend</span><br /><b>{value.trend}</b></div>
       <div><span style={{ color: BB.text3 }}>Resistance</span><br /><b>{dollars(value.resistance)}</b></div><div><span style={{ color: BB.text3 }}>Distance</span><br /><b>{value.resistanceSide} · {pct(value.resistanceDistancePct)}</b></div><div><span style={{ color: BB.text3 }}>Held above</span><br /><b>{value.resistanceHoldDays === null ? 'UNAVAILABLE' : `${value.resistanceHoldDays} closed sessions`}</b></div>
-      <div><span style={{ color: BB.text3 }}>Hold start</span><br /><b>{value.resistanceHoldStart || 'UNAVAILABLE'}</b></div><div><span style={{ color: BB.text3 }}>Tests</span><br /><b>{value.resistanceTests === null ? 'UNAVAILABLE' : value.resistanceTests}</b></div><div><span style={{ color: BB.text3 }}>MACD</span><br /><b>{value.macd}</b></div>
+      <div><span style={{ color: BB.text3 }}>Hold start</span><br /><b>{value.resistanceHoldStart || 'UNAVAILABLE'}</b></div><div><span style={{ color: BB.text3 }}>Tests</span><br /><b>{value.resistanceTests === null ? 'UNAVAILABLE' : value.resistanceTests}</b></div><div><span style={{ color: BB.text3 }}>MACD</span><br /><b>{value.macd}</b>{value.macdWhy ? <div style={{ color: BB.text3 }}>{value.macdWhy}</div> : null}</div>
       <div><span style={{ color: BB.text3 }}>MA20 / 50 / 200</span><br /><b>{dollars(value.ma20)} / {dollars(value.ma50)} / {dollars(value.ma200)}</b></div><div><span style={{ color: BB.text3 }}>Relative strength</span><br /><b>{pct(value.relativeStrength)}</b></div><div><span style={{ color: BB.text3 }}>Entry zone</span><br /><b>{dollars(value.entryLow)}–{dollars(value.entryHigh)}</b></div>
     </div>
     {isFund && <div style={{ fontSize: 10, color: BB.text3, marginTop: 7 }}>Expense {finite(lookthrough?.expense_ratio) === null ? '—' : `${finite(lookthrough?.expense_ratio)!.toFixed(2)}%`} · yield {finite(lookthrough?.distribution_yield, lookthrough?.yield_pct) === null ? '—' : `${finite(lookthrough?.distribution_yield, lookthrough?.yield_pct)!.toFixed(2)}%`} · effective weights and top holdings from fund look-through when available.</div>}
@@ -378,6 +385,8 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
   const analyst = useJson('/api/v2/analyst-detail', 300_000)
   const lookthrough = useJson('/api/v2/portfolio/lookthrough', 300_000)
   const dividends = useJson('/api/v2/dividends', 300_000)
+  // The only MACD read this system holds (histogram direction + signal), via the decision desk.
+  const reentryDesk = useJson('/api/v2/reentry/decision-desk', 300_000)
   const taxLots = useJson('/api/v2/tax-lots', 300_000)
   const regime = useJson('/api/v2/risk-regime/latest', 300_000)
   const mandatesPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(MANDATE_KEY)}`, 0)
@@ -452,6 +461,11 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
   }, [symbols.join('|')])
 
   const cardMap: Record<string, any> = unwrap(cards.data)?.cards ?? {}
+  const deskMap: Record<string, any> = {}
+  for (const deskRow of (unwrap(reentryDesk.data)?.rows ?? []) as any[]) {
+    const deskSymbol = String(deskRow?.symbol || '').toUpperCase()
+    if (deskSymbol) deskMap[deskSymbol] = deskRow
+  }
   const openPositions = positionRows(positions.data)
   const taxRows = rows(taxLots.data, ['lots', 'rows', 'tax_lots'])
   const dividendRows = rows(dividends.data, ['rows', 'dividends', 'payments'])
@@ -505,8 +519,8 @@ export default function ReEntryRotationWorkspace({ mode = 'full', eventId: event
     {Object.values(links).length > 0 && <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       <div style={{ fontSize: 13, fontWeight: 900 }}>ROTATION PAIRS — BOTH-SIDE MONITORING</div>
       {Object.values(links).map(link => {
-        const source = technical(link.sourceSymbol, cardMap, watchMap)
-        const destination = technical(link.destinationSymbol, cardMap, watchMap)
+        const source = technical(link.sourceSymbol, cardMap, watchMap, deskMap[String(link.sourceSymbol || '').toUpperCase()] ?? null)
+        const destination = technical(link.destinationSymbol, cardMap, watchMap, deskMap[String(link.destinationSymbol || '').toUpperCase()] ?? null)
         const sourceAnalyst = analystFor(link.sourceSymbol, analyst.data)
         const destAnalyst = analystFor(link.destinationSymbol, analyst.data)
         const sourceLook = lookthroughFor(link.sourceSymbol, lookthrough.data)
