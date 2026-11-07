@@ -90,3 +90,49 @@ export function catalystAgeDays(catalystAt: string | null | undefined): number |
   if (!Number.isFinite(t)) return null
   return Math.max(0, Math.floor((Date.now() - t) / 864e5))
 }
+
+// ── LQ-20261107-273: the price's OWN timestamp, and a failed lookup as its own fact ─────────────────────────
+//
+// `price_as_of` from the API falls back to watchlist_items.last_enriched_at when no live quote is newer, and the
+// enrichment sweep moves last_enriched_at on EVERY attempt — including an attempt whose price lookup failed (the
+// sweep keeps the last good price, LQ-56). So after a failure `price_as_of` describes the ATTEMPT, not the price,
+// and the card presented an older price as if it had just been observed. The sweep now writes price_observed_at
+// when it actually takes a price, price_observed_source for the rung that supplied it, and price_lookup_failed_at
+// when it cannot. This resolves the four fields into what the card is allowed to claim.
+export type PriceMark = {
+  /** The timestamp the displayed price can honestly carry, or null when none describes it. */
+  asOf: string | null
+  /** Which source supplied it (market_quotes | finviz) when known. */
+  source: string | null
+  /** When the latest price lookup failed (the row keeps its last good price); null when it succeeded. */
+  failedAt: string | null
+  /** The displayed price is a live quote, so its own quote time is the as-of. */
+  live: boolean
+  /** A lookup is currently failing; the row is showing its last good price. */
+  lookupFailing: boolean
+  /** The price is kept from a failed lookup and has no recorded observation time — say so, never invent one. */
+  ageUnknown: boolean
+}
+
+export function priceMark(it: any): PriceMark {
+  const failedAt: string | null = it?.price_lookup_failed_at ?? null
+  const live = it?.price_source === 'market_quotes' && Boolean(it?.price_as_of)
+  const observed: string | null = it?.price_observed_at ?? null
+  const apiAsOf: string | null = it?.price_as_of ?? null
+  if (live) {
+    return { asOf: apiAsOf, source: 'market_quotes', failedAt, live: true, lookupFailing: Boolean(failedAt), ageUnknown: false }
+  }
+  if (observed) {
+    return {
+      asOf: observed,
+      source: it?.price_observed_source ?? it?.price_source ?? null,
+      failedAt, live: false, lookupFailing: Boolean(failedAt), ageUnknown: false,
+    }
+  }
+  if (failedAt) {
+    // The last attempt failed and no observation was ever recorded for the kept price: its age is unknown.
+    return { asOf: null, source: null, failedAt, live: false, lookupFailing: true, ageUnknown: true }
+  }
+  // Legacy row (no capture columns yet): keep the previous behaviour rather than blank a timestamp that may be right.
+  return { asOf: apiAsOf, source: it?.price_source ?? null, failedAt: null, live: false, lookupFailing: false, ageUnknown: false }
+}

@@ -74,14 +74,16 @@ def _finviz_price(symbol):
         mark = pp.resolve_mark({"symbol": symbol}, quote=None, finviz=pp.finviz_cache().get(symbol.upper()))
     except Exception as exc:
         print(f"  [sweep] finviz price unavailable for {symbol}: {type(exc).__name__}: {str(exc)[:80]}")
-        return None, None
+        return None, None, None
     if mark.get("price") and mark.get("source") == "finviz" and not mark.get("stale"):
-        return float(mark["price"]), None
-    return None, None
+        return float(mark["price"]), None, "finviz"
+    return None, None, None
 
 
 def _price(conn, symbol, *, allow_fetch: bool = True):
-    """Fresh market_quotes price; else the fresh Finviz cache price (read only, no backfill). Never yfinance."""
+    """(price, day_change_pct, source) — fresh market_quotes price; else the fresh Finviz cache price (read only, no
+    backfill). Never yfinance. ``source`` is which rung supplied the number, so the row can say where it came from
+    (LQ-20261107-273); all three are None when no rung has a usable price."""
     try:
         cur = conn.cursor()
         cur.execute("""SELECT price, day_change_pct FROM market_quotes WHERE symbol=%s
@@ -89,7 +91,7 @@ def _price(conn, symbol, *, allow_fetch: bool = True):
                        ORDER BY fetched_at DESC LIMIT 1""", (symbol,))
         r = cur.fetchone()
         if r and r[0] is not None:
-            return float(r[0]), (float(r[1]) if r[1] is not None else None)
+            return float(r[0]), (float(r[1]) if r[1] is not None else None), "market_quotes"
     except Exception as exc:
         print(f"  [sweep] market_quotes read failed for {symbol}: {type(exc).__name__}: {str(exc)[:80]}")
     return _finviz_price(symbol)
@@ -104,23 +106,66 @@ def _num(v):
 
 STALE_PRICE_NOTE = " · price stale (last good price kept)"
 
+#: Columns that let a stored price carry its OWN timestamp and a failed lookup be recorded separately
+#: (LQ-20261107-273; migrations/2026_11_07_watchlist_price_capture.sql). The migration is operator-applied, so the
+#: sweep detects them and keeps writing the older row shape until they exist.
+PRICE_CAPTURE_COLUMNS = ("price_observed_at", "price_observed_source", "price_lookup_failed_at")
+_PRICE_CAPTURE_SUPPORT = None
 
-def _write_row(cur, sym, *, rsi, trend, score, advisory, price, chg, floatm, rvol, score_kind):
+
+def price_capture_available(cur) -> bool:
+    """True when watchlist_items carries the LQ-273 price-capture columns. Asked once per process; any failure
+    answers False, so a missing migration can only cost the new columns — never the lane."""
+    global _PRICE_CAPTURE_SUPPORT
+    if _PRICE_CAPTURE_SUPPORT is None:
+        try:
+            # Scoped to the schema the UPDATE will hit: a same-named table elsewhere must not make the lane write a
+            # column the live table does not have.
+            cur.execute("SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema=current_schema() AND table_name='watchlist_items' "
+                        "AND column_name = ANY(%s)",
+                        (list(PRICE_CAPTURE_COLUMNS),))
+            found = {r[0] for r in (cur.fetchall() or [])}
+            _PRICE_CAPTURE_SUPPORT = found >= set(PRICE_CAPTURE_COLUMNS)
+        except Exception as exc:
+            print(f"  [sweep] price-capture column check failed ({type(exc).__name__}: {str(exc)[:80]}); "
+                  "writing the pre-LQ-273 row shape")
+            _PRICE_CAPTURE_SUPPORT = False
+    return _PRICE_CAPTURE_SUPPORT
+
+
+def _write_row(cur, sym, *, rsi, trend, score, advisory, price, chg, floatm, rvol, score_kind,
+               price_source=None, capture=False):
     """The one watchlist_items UPDATE. LQ-20261107-56: a failed price lookup (price is None) must never overwrite a known
     price or its change% with NULL (CXMT was wiped; 9 of 92 cards went stale). The last good values stay and the row says so in
     setup_advisory; last_enriched_at still moves so a symbol that never prices cannot hold the front of the stalest-first queue.
-    A fresh price replaces both price and change% (a null change% with a fresh price is written as null: the pair stays coherent)."""
+    A fresh price replaces both price and change% (a null change% with a fresh price is written as null: the pair stays coherent).
+
+    LQ-20261107-273 (``capture=True``, columns present): the price also carries the time it was OBSERVED
+    (``price_observed_at``) and the rung that supplied it (``price_observed_source``); a failed lookup writes
+    ``price_lookup_failed_at`` and leaves the price's own timestamp alone. Without those columns a kept price has no
+    timestamp that is not the ATTEMPT time — last_enriched_at moves on a failure too, and the card read it as the
+    price's age."""
     if price is None:
         advisory = f"{advisory}{STALE_PRICE_NOTE}"
-    cur.execute("""UPDATE watchlist_items SET
+    capture_sql, capture_params = "", ()
+    if capture:
+        capture_sql = (""",
+                     price_observed_at=CASE WHEN %s::numeric IS NULL THEN price_observed_at ELSE NOW() END,
+                     price_observed_source=CASE WHEN %s::numeric IS NULL THEN price_observed_source ELSE %s END,
+                     price_lookup_failed_at=CASE WHEN %s::numeric IS NULL THEN NOW() ELSE NULL END""")
+        capture_params = (price, price, price_source, price)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- only interpolation is the fixed capture_sql fragment
+        f"""UPDATE watchlist_items SET
                      rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
                      price=COALESCE(%s, price),
                      change_pct=CASE WHEN %s::numeric IS NULL THEN change_pct ELSE %s END,
-                     float_m=%s, rvol=%s,
+                     float_m=%s, rvol=%s{capture_sql},
                      first_seen_price=COALESCE(first_seen_price, %s),
                      watch_score_kind=%s, last_enriched_at=NOW(), updated_at=NOW()
                    WHERE symbol=%s AND status IN ('active','researched')""",
-                (rsi, trend, score, advisory, price, price, chg, floatm, rvol, price, score_kind, sym))
+                (rsi, trend, score, advisory, price, price, chg, floatm, rvol, *capture_params,
+                 price, score_kind, sym))
 
 
 def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | None = None,
@@ -143,6 +188,9 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
     if dry:
         _receipt_lib().enforce_readonly(conn)
     cur = conn.cursor()
+    # LQ-20261107-273: asked once, before any write. False (migration not applied yet) keeps the lane on the
+    # older row shape instead of failing every symbol on a missing column.
+    capture = price_capture_available(cur) if not dry else False
     enriched = 0
     reached: list[str] = []
     deferred = 0
@@ -165,7 +213,7 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
                 sma50, sma200 = _num(tech.get("sma50_pct")), _num(tech.get("sma200_pct"))
                 trend = _trend_label(sma50, sma200)
                 floatm, rvol = _num(tech.get("float_m")), _num(tech.get("rvol"))
-                price, chg = _price(conn, sym, allow_fetch=not dry)
+                price, chg, price_source = _price(conn, sym, allow_fetch=not dry)
                 if price is not None:
                     tech["price"] = price
                 band = rsi_band(rsi) if rsi is not None else None
@@ -189,7 +237,8 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
                     enriched += 1  # would-update count (the UPDATE below is unreachable from a dry run)
                     continue
                 _write_row(cur, sym, rsi=rsi, trend=trend, score=score, advisory=advisory, price=price, chg=chg,
-                           floatm=floatm, rvol=rvol, score_kind=score_kind)
+                           floatm=floatm, rvol=rvol, score_kind=score_kind,
+                           price_source=price_source, capture=capture)
                 if cur.rowcount:
                     enriched += 1
             except Exception as e:

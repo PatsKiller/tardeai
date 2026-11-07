@@ -7,6 +7,10 @@
   "anchor": "WATCHLIST_SWEEP_KEEPS_PRICE_20261107",
   "comment": [
     "ANCHOR: WATCHLIST_SWEEP_KEEPS_PRICE_20261107 — LQ-20261107-56: the watchlist enrichment sweep must not overwrite a known price or",
-    "change% with NULL when a price lookup fails; the row is marked stale instead, through the sweep's single UPDATE."
+    "change% with NULL when a price lookup fails; the row is marked stale instead, through the sweep's single UPDATE.",
+    "LQ-20261107-273 extends the same guarantee: the kept price carries the time it was OBSERVED (price_observed_at,",
+    "not the attempt time last_enriched_at), and the failed lookup is recorded separately (price_lookup_failed_at).",
+    "The card's proof is a render test discovered by the frontend build chain:",
+    "apps/command-center-v3/src/lib/watchlistPriceMark.view.test.mjs"
   ]
 }

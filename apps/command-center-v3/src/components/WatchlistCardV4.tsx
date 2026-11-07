@@ -27,7 +27,7 @@ import SizingTable from './SizingTable'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import CloudLlmRunButtons from './CloudLlmRunButtons'
 import type { WatchlistCardProps } from './WatchlistCard'
-import { marketAwareStale, composeWhy, sameHeadline, catalystAgeDays } from '../lib/watchlistCardV4'
+import { marketAwareStale, composeWhy, sameHeadline, catalystAgeDays, priceMark, type PriceMark } from '../lib/watchlistCardV4'
 import {
   resolvePlanVolContext,
   stopVolatilityLine,
@@ -122,6 +122,10 @@ function ladderFocusIndex(ladder: Ladder | null): number {
 const micro: CSSProperties = { fontSize: 8, fontWeight: 700, letterSpacing: '.07em', textTransform: 'uppercase', color: BB.text3 }
 const hair = `1px solid ${BB.border}`
 
+/** "at 14:32" when the sweep recorded when the last lookup failed; say "at an unrecorded time" rather than imply one. */
+const failedAgo = (m: PriceMark): string =>
+  m.failedAt ? `at ${new Date(m.failedAt).toLocaleTimeString()}` : 'at an unrecorded time'
+
 export default function WatchlistCardV4({
   it, adv, sc, pa, outcome, llms, fv, lvl, reportEntry, paMap, accounts, heldPositions, maxDeployPctOfCash,
   ensOpen, refreshState, onDrill, onToggleStar, onRefresh, onRefreshStrategy,
@@ -130,6 +134,8 @@ export default function WatchlistCardV4({
 }: WatchlistCardProps) {
   const enriched = !!it.last_enriched_at
   const stale = enriched && marketAwareStale(it.last_enriched_at)
+  // What the card is allowed to claim about this price's age (LQ-20261107-273).
+  const pm = priceMark(it)
   const needsRefresh = watchlistNeedsRefresh(it, stale)
   const street = pa?.target != null && Number(pa.target) > 0 ? Number(pa.target) : null
   const entry = it.entry_limit != null ? Number(it.entry_limit) : null
@@ -350,25 +356,39 @@ export default function WatchlistCardV4({
           {/* The price carries its own as-of stamp. This card once showed $19.09
               in the header and "current $19.83" in the Fib block simultaneously,
               because the header read a cached enrichment snapshot and nothing
-              displayed when it was taken. The API now prefers the live quote and
+              displayed when it was taken. The API prefers the live quote and
               returns price_as_of/price_source; an enrichment-sourced price older
-              than 15 minutes says so rather than presenting itself as current. */}
+              than 15 minutes says so rather than presenting itself as current.
+              LQ-20261107-273: price_as_of falls back to last_enriched_at, which the
+              enrichment sweep moves on a FAILED lookup too — so the card resolves the
+              sweep's own price_observed_at / price_lookup_failed_at through priceMark()
+              instead of reading the attempt time as the price's age. */}
           <span
-            title={it.price_as_of
-              ? `as of ${new Date(it.price_as_of).toLocaleTimeString()} · source ${it.price_source ?? 'unknown'}`
-              + (it.price_live != null && it.price_enriched != null
-                 && Math.abs(Number(it.price_live) - Number(it.price_enriched)) / Number(it.price_live) > 0.01
-                 ? ` · enrichment snapshot ${money(it.price_enriched)} differs from live ${money(it.price_live)}`
-                 : '')
-              : 'no as-of timestamp for this price'}
+            data-testid="wlc-price"
+            title={pm.ageUnknown
+              ? `the last good price has no recorded time — the latest lookup failed ${failedAgo(pm)}`
+              : pm.asOf
+                ? `as of ${new Date(pm.asOf).toLocaleTimeString()} · source ${pm.source ?? 'unknown'}`
+                + (it.price_live != null && it.price_enriched != null
+                   && Math.abs(Number(it.price_live) - Number(it.price_enriched)) / Number(it.price_live) > 0.01
+                   ? ` · enrichment snapshot ${money(it.price_enriched)} differs from live ${money(it.price_live)}`
+                   : '')
+                : 'no as-of timestamp for this price'}
             style={{ ...numStyle, fontSize: 16, fontWeight: 800, color: BB.text0 }}>
             {it.price != null ? money(it.price) : '—'}
           </span>
-          {it.price_source === 'enrichment' && it.price_as_of
-            && (Date.now() - new Date(it.price_as_of).getTime()) > 15 * 60_000 && (
+          {pm.lookupFailing && (
+            <span data-testid="wlc-price-lookup-failed"
+                  style={{ fontSize: 10, fontWeight: 800, color: BB.amber, flexShrink: 0, whiteSpace: 'nowrap' }}
+                  title={`price lookup is failing — showing the last good price${pm.asOf ? ` from ${new Date(pm.asOf).toLocaleString()}` : ' (its own time was not recorded)'}; latest attempt ${failedAgo(pm)}`}>
+              price stale · lookup failing
+            </span>
+          )}
+          {!pm.lookupFailing && pm.asOf && !pm.live
+            && (Date.now() - new Date(pm.asOf).getTime()) > 15 * 60_000 && (
             <span style={{ fontSize: 10, fontWeight: 800, color: BB.amber, flexShrink: 0 }}
-                  title={`price is a cached snapshot from ${new Date(it.price_as_of).toLocaleTimeString()} — no fresher quote available`}>
-              @{new Date(it.price_as_of).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  title={`price is a cached snapshot from ${new Date(pm.asOf).toLocaleTimeString()} — no fresher quote available`}>
+              @{new Date(pm.asOf).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
           {it.change_pct != null && (

@@ -115,8 +115,15 @@ def test_card_shows_the_as_of_timestamp():
 
 def test_card_flags_a_stale_enrichment_price():
     """An enrichment-sourced price older than 15 minutes must say so rather than
-    presenting itself as current."""
-    assert "price_source === 'enrichment'" in CARD
+    presenting itself as current.
+
+    LQ-20261107-273 replaced the literal `price_source === 'enrichment'` test with
+    `!pm.live`: the sweep keeps the last good price across a FAILED lookup and
+    price_as_of then describes the attempt, so the card resolves the age through
+    priceMark() (price_observed_at when present, else the API's as_of). A price with
+    no live quote is a snapshot whatever its source, and must still carry its age."""
+    assert "!pm.live" in CARD
+    assert "pm.asOf" in CARD
     assert "15 * 60_000" in CARD
 
 
