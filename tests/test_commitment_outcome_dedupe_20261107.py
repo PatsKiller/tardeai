@@ -56,3 +56,23 @@ def test_append_keeps_one_effective_outcome_per_commitment():
     assert app(led2, mk("UNSCOREABLE", "k4")) == led2                   # a scored outcome is never displaced
     assert app(led2, mk("CONFIRMED", "k5")) == led2                     # nor rewritten by an equal-rank one
     assert len(app(led2, {"commitment_id": "syn-c2", "outcome": "EXPIRED", "idempotency_key": "k6"})) == 3
+
+
+def test_a_stance_word_is_not_a_price_prediction():
+    """LQ-20261107-272: the provider's module docstring promised stance-based scoring that
+    ``direction_of`` never implemented. A commitment carrying ``author_stance`` and a BUY/SELL word
+    but no ``observation_spec`` must not be scored even when both prices exist — the threshold would
+    be invented."""
+    from scripts.lib.commitment_price_observation import make_price_observation_provider
+    c = {"commitment_id": "syn-c1", "author_stance": "BEARISH", "subject_guid": "g-syn",
+         "claim": "SELL: synthetic instruments retrace",
+         "created_at": "2026-10-01T00:00:00Z", "due_at": "2026-10-08T00:00:00Z"}
+    prices = {"2026-10-01": (100.0, "2026-10-01"), "2026-10-08": (90.0, "2026-10-08")}
+    prov = make_price_observation_provider(price_lookup=lambda s, d: prices.get(d),
+                                           symbol_for_guid=lambda g: "ZZT", now=NOW)
+    assert prov(c) == {}
+
+    c["observation_spec"] = {"metric": "close_return_pct", "source": "ticker_prices",
+                             "operator": "<", "threshold": -5.0}
+    obs = prov(c)
+    assert obs["observed"] is True and obs["change_pct"] == -10.0 and obs["confirmed"] is True

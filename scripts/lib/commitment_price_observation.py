@@ -8,12 +8,20 @@ EXPIRED. This one answers from prices:
 * subject_guid -> symbol through the identity registry (lookup only);
 * close on the commitment's created_at and on its due_at (the resolver's own
   ``ticker_prices`` lookup, injected);
-* a direction is read from the commitment's stance (the L3 author's) or, when
-  absent, from a directional recommendation word in the claim;
+* a direction and a threshold are read ONLY from the commitment's recorded
+  ``observation_spec`` (metric ``close_return_pct``, source ``ticker_prices``,
+  operator ``>``/``<``, numeric ``threshold``);
 * returns ``{"observed": True, "change_pct": x, "confirmed": bool, ...}`` only
-  when BOTH a direction and both prices exist. Otherwise ``{}`` — so
+  when BOTH a valid spec and both prices exist. Otherwise ``{}`` — so
   ``governed_commitment.evaluate_outcome`` says INSUFFICIENT_EVIDENCE / EXPIRED
-  truthfully. INSUFFICIENT / ABSTAIN stances are never scored.
+  truthfully.
+
+A stance word (BULLISH/BEARISH) or a free-text falsifier is NOT a price
+prediction and is never scored here: what price move would satisfy "the
+relative-strength anomaly persisted" is not stated, and reading a threshold out
+of it would be manufactured evidence. That is why a store of commitments minted
+without an ``observation_spec`` scores zero — correctly (LQ-20261107-272: 888
+dated commitments, 0 carrying a spec, 0 scored).
 
 Never invents a price, a direction or a result. MBI_BEHAVIOR = 0.
 
@@ -21,7 +29,6 @@ AUTHORITY: READ_ONLY_ADVISORY.
 """
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping, Optional
 
@@ -30,11 +37,11 @@ SCHEMA = "CommitmentPriceObservation@v1"
 PriceLookup = Callable[[str, str], Optional[tuple[float, str]]]
 SymbolForGuid = Callable[[str], Optional[str]]
 
-BULLISH = frozenset({"BULLISH", "BUY", "ADD", "ACCUMULATE", "LONG", "POSITIVE", "UP"})
-BEARISH = frozenset({"BEARISH", "TRIM", "SELL", "SELL_TAXABLE", "REDUCE", "SHORT", "NEGATIVE", "DOWN"})
-UNSCORED = frozenset({"INSUFFICIENT", "ABSTAIN", "NEUTRAL", "HOLD", "WAIT", "RECOMMEND", "DISPUTE", ""})
-
-_CLAIM_WORD = re.compile(r"\b(BULLISH|BEARISH|TRIM|SELL|REDUCE|BUY|ADD|ACCUMULATE)\b", re.IGNORECASE)
+# Removed 2026-11-07 (LQ-20261107-272): BULLISH/BEARISH/UNSCORED and _CLAIM_WORD
+# were left by a stance-word scorer that `direction_of` no longer implements; the
+# docstring above still described it, so the module read as if a stance alone
+# could score. Reading a direction from a stance word and a threshold from
+# nowhere is manufactured evidence — the spec is the only source.
 
 
 def direction_of(commitment: Mapping[str, Any]) -> Optional[str]:
