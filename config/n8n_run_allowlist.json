@@ -5772,6 +5772,44 @@
       "output_signal": "data/runtime/warm-read-endpoints_last.json",
       "source": "LQ-20261107-266: after a release restart the first /api/v2/system/control-plane-surface-authority call cost 15-16 s and the first Ops load 28-52 s (logs/portfolio_server.log [slow-request]). The lane reads the server boot stamp (~/.local/state/tradeai/portfolio_server_boot.json) and, when the pid/started_at differ from the last warm or the 10 min window is open, GETs five reviewed read-only endpoints. GET-only, loopback-only, no action route; writes data/runtime/warm_read_endpoints_state.json and a produced_count receipt. Dry run prints the plan and writes nothing.",
       "review_note": "mirror of scripts/warm_read_endpoints.py ENDPOINTS; env_names is empty because the script reads no credential: lib.cc_client attaches the loopback service token from config/cc_auth.yaml itself, the same way every other loopback caller does. HOME is in CHILD_ENV_BASE_NAMES so the boot stamp path resolves."
+    },
+    {
+      "lane_id": "market-event-data-refresh",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "finviz_snapshot_refresh.py imports db_adapter._get_conn (DB_*), lib/lane_last_receipt (state root), external_market_data_ingest.ingest_finviz_fundamentals and finviz_enrichment.enrich_tickers (cache under the state root). Wrapper names from safe_flock.sh.",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file (tmpfs or disk) into the child, so the import closure (~1,090 modules via db_adapter/lane_registry) is not bounded by literal reads; report until that loader is bounded.",
+      "source": "LQ-20261107-364: Sat/Sun 18:00 ET and Mon-Fri 06:30 ET. $PY scripts/finviz_snapshot_refresh.py --apply; --dry-run plans and writes nothing. Finviz only, through finviz_enrichment (2.5 s global throttle, <=30 export requests for a 91-symbol universe). Lock /tmp/tradeai_market_event_data_refresh.lock.",
+      "command": [
+        "$PY",
+        "scripts/finviz_snapshot_refresh.py"
+      ],
+      "lock": "/tmp/tradeai_market_event_data_refresh.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 900,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/market-event-data-refresh_last.json",
+      "output_receipt": "v2",
+      "output_receipt_reason": null,
+      "review_note": "No cron twin: this lane is the only writer of this baseline, so its lock protects n8n against itself and against a manual run, nothing else. market_gate is false because two of the thirteen weekly fires are on a weekend. timeout_s 900 covers 30 export requests at the 2.5 s throttle plus page fetches."
     }
   ],
   "blocked_reasons": {

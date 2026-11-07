@@ -40990,6 +40990,206 @@
         "reviewed_by": "cc-deepseek-2, the author, against scripts/warm_read_endpoints.py (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews the bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
         "reviewed_on": "2026-11-07"
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "market-event-data-refresh",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Sat/Sun 18:00 and Mon-Fri 06:30 ET: refresh ticker_snapshot_daily and fundamental_data for the last completed session close over holdings, the active watchlist and recently-run screener members - Finviz only.",
+        "business_function": "Market Event Re-entry data prerequisites (WP0a)",
+        "source": "LQ-20261107-364; scripts/finviz_snapshot_refresh.py LANE_ID"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/finviz_snapshot_refresh.py (--apply live, --dry-run shadow)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_market_event_data_refresh.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
+        },
+        {
+          "name": "Finviz export views (finviz_enrichment.enrich_tickers, 2.5 s global throttle)",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "scripts/finviz_enrichment.py; AGENTS.md \u00a724.7 (Finviz only, never yfinance)"
+        },
+        {
+          "name": "Postgres ticker_snapshot_daily (UPSERT on snapshot_date, symbol)",
+          "kind": "store",
+          "direction": "write",
+          "source": "db_adapter.save_ticker_snapshot_daily; produced_count is a read-back count of these rows"
+        },
+        {
+          "name": "Postgres fundamental_data (UPSERT on symbol, source, metric_name, period='latest')",
+          "kind": "store",
+          "direction": "write",
+          "source": "external_market_data_ingest.ingest_finviz_fundamentals, read from the stored Finviz cache (zero provider calls)"
+        },
+        {
+          "name": "data/portfolios/state/holdings.json, active watchlist, screener_symbol_membership",
+          "kind": "store",
+          "direction": "read",
+          "source": "build_universe()"
+        },
+        {
+          "name": "data/runtime/market-event-data-refresh_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_every_fire",
+          "text": "every fire ends with a RunReceipt in the coordination ledger; a dry_run fire writes no lane receipt and changes no durable state"
+        },
+        {
+          "check": "live_run_produces_rows",
+          "text": "a live run's LaneRunReceipt@v2 produced_count (the read-back count of ticker_snapshot_daily rows for this close and these symbols) is >= 1"
+        },
+        {
+          "check": "date_is_the_last_completed_close",
+          "text": "the rows carry the last session whose 16:00 ET close has happened: a Sat/Sun 18:00 fire and a Mon-Fri 06:30 fire both carry the previous session, never a date whose close has not happened"
+        },
+        {
+          "check": "skipped_partition",
+          "text": "produced_count + skipped_reasons == attempted_count, and a symbol whose Finviz record was not refreshed by this run is counted not_refreshed rather than written under this close"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 720 s (80% of timeout_s 900)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "partial_universe",
+          "text": "produced_count > 0 but some symbols landed in skipped_reasons (not_refreshed / rejected_non_ticker): the rows that exist are true, the universe is short"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 720 s"
+        },
+        {
+          "check": "late",
+          "text": "receipt ok_at older than 36 h (the longest legitimate gap is Friday 06:30 -> Saturday 18:00, 35.5 h)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run verified no row in ticker_snapshot_daily -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt under data/runtime/lane_attempts/market-event-data-refresh/ -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "stale",
+          "text": "receipt ok_at older than 48 h (a missed Saturday fire is visible before the Sunday fire)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 36,
+        "freshness_failed_after_h": 48,
+        "freshness_rule": "the longest legitimate gap is Friday 06:30 -> Saturday 18:00 (35.5 h); degraded beyond 36 h, failed beyond 48 h so one missed weekend fire is visible",
+        "timeout_s": 900,
+        "class": "ingest",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no finished live runs yet; class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 720
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "the market-event brief reads these rows: a silent stop starves the brief rather than corrupting a trade",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": "a failed refresh is retried by the next fire and the writer upserts on (snapshot_date, symbol), so a rerun is safe; nothing to repair automatically"
+      },
+      "evidence": {
+        "receipt": "data/runtime/market-event-data-refresh_last.json",
+        "verify": [
+          "python3 -c \"import sqlite3; c=sqlite3.connect('file:data/governance/n8n_coordination_ledger.sqlite?mode=ro', uri=True); print(*c.execute(\\\"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='market-event-data-refresh' ORDER BY requested_at DESC LIMIT 10\\\").fetchall(), sep=chr(10))\"",
+          "jq '{status, produced_count, attempted_count, skipped_reasons, summary: .summary.snapshot_date}' data/runtime/market-event-data-refresh_last.json",
+          "psql -h /var/run/postgresql -d trade_ai -c \"SELECT max(snapshot_date), count(*) FROM ticker_snapshot_daily\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted; prove work with the ledger and the receipt",
+        "expected_output_basis": "scripts/finviz_snapshot_refresh.py writes produced_count as a READ-BACK count of ticker_snapshot_daily rows for the run's snapshot_date and symbols, and empty_reason no_refreshed_records when it verified none"
+      },
+      "review_by": "2026-12-07",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "rows verified in ticker_snapshot_daily for the run's session close and symbols",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/market-event-data-refresh_last.json produced_count and output_evidence[] (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/market-event-data-refresh/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "cc-deepseek-6 LQ-20261107-364",
+        "reviewed_by": "cc-deepseek-6, the author, against scripts/finviz_snapshot_refresh.py (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews the bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
+        "reviewed_on": "2026-11-07"
+      }
     }
   ],
   "pending_changes": {

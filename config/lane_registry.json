@@ -27504,6 +27504,43 @@
         "priority": 4,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "market-event-data-refresh",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/finviz_snapshot_refresh.py",
+        "cadence": "30 6 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/market-event-data-refresh_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Technical",
+      "adopted_from": "hand-written LQ-20261107-364 (Market Event Re-entry WP0a data prerequisite)",
+      "adopted_on": "2026-11-07",
+      "adopted_reason": "Not a reconciled cron row. ticker_snapshot_daily had no writer after 2026-11-03 (stage 1 of portfolio_orchestrator crashed on asset_type null, FU-007) and fundamental_data is written only on Mondays, so the market-event brief had no 11-06 close to read.",
+      "note": "Thirteen fires a week: Sat 18:00 and Sun 18:00 ET (the Friday close) and Mon-Fri 06:30 ET (the previous session's close - at 06:30 today's close has not happened, so the lane steps back one session). Universe: holdings + active watchlist (stalest-first, cap 200) + members of screener screens that completed a run in 14 days, Finviz only; the fundamentals leg reads the stored Finviz cache through the data broker and spends zero provider calls. produced_count is a READ-BACK count of ticker_snapshot_daily, because db_adapter.save_ticker_snapshot_daily swallows its own failure and returns None; a symbol the run did not actually refresh is counted under skipped_reasons not_refreshed and is never dated as this close. SHADOW FIRST: dispatch.mode dry_run, so every fire plans and writes nothing and nothing advances output_signal until the lead/operator promotes it (stage and dispatch.mode, one reviewed edit). Sector-peer names are absent while finviz-screener-runner is down (its 2026-11-06 run ended executor_lost); pass them with --symbols-file until that lane is revived.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 6 * * 1-5",
+          "0 18 * * 0,6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
     }
   ],
   "freshness_contracts": [
