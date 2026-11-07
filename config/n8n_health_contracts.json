@@ -26267,7 +26267,7 @@
           "python3 docs/ops/packets/n8n-hermes-learning-flow-20261015/04_evidence.py --since <ISO-8601 UTC>"
         ],
         "never": "Do not infer host run or output success from an n8n execution status; the RunReceipt, the ledger row and the cron step receipt are the evidence.",
-        "expected_output_basis": "expected_output derived 2026-10-15 from scripts/hermes_tag_engine.py:254-305 recomputes per-tag efficacy and upserts every tag row on each --apply run (aggregate refresh), while retag (:147) is capped and may be 0; no lane receipt (run() :309-334 prints only); kill switch idles (:310-313); daily via tradeai-fabric-hermes-learning. produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
+        "expected_output_basis": "expected_output derived 2026-10-15 from scripts/hermes_tag_engine.py:254-305 recomputes per-tag efficacy and upserts every tag row on each --apply run (aggregate refresh), while retag (:147) is capped and may be 0; no lane receipt (run() :309-334 prints only); kill switch idles (:310-313); daily via tradeai-fabric-hermes-learning. produced_count emission: 2026-11-07 (LQ-20261107-298) - run() now writes LaneRunReceipt@v2 whose produced_count is the hermes_tag_efficacy rows the run upserted (exactly the rows whose updated_at is the registry output_signal), plus a failed receipt for a raised run and a disabled skip for the kill switch; with the allowlist output_receipt v2 opt-in min_produced is ENFORCED, not declared_not_enforced"
       },
       "review_by": "2026-10-29",
       "evidence_class": "SOURCE_ONLY",
