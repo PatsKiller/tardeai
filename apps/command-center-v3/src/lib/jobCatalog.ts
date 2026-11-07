@@ -1,7 +1,8 @@
 // Ops › Job catalog + job descriptions (operator 2026-11-06: "at least a line or two of normalization of what each job
 // does" and "another page that categorizes all of the jobs"). Wire types for the description fields jobs-history now
 // carries, GET /api/v2/jobs-catalog (JobCatalog@v1), and the pure helpers both pages use. No React, no fetch.
-import type { HistoryListRow, HistoryListWire, SourceClock } from './jobRunHistory.ts'
+import { RESULT_LABEL, etTime } from './jobRunHistory.ts'
+import type { HistoryListRow, HistoryListWire, HistoryStatus, RunResult, SourceClock } from './jobRunHistory.ts'
 
 export const JOB_CATALOG_PATH = '/ops/jobs-catalog'
 export const JOBS_CATALOG_API = '/api/v2/jobs-catalog'
@@ -89,3 +90,69 @@ export const toggleStatus = (current: string | null, picked: string): string | n
 
 /** Link from a catalog card into Jobs & n8n run history for that job. */
 export const runHistoryHref = (laneId: string) => `/ops/jobs-n8n?tab=all&history=${encodeURIComponent(laneId)}`
+
+// ── chip tooltips + click-to-filter (operator 2026-11-07 LQ-181) ────────────────────────────────────────────────
+/** What each catalog chip means, in plain words (tap/hover tooltip head). */
+export const MIX_MEANING: Record<keyof StatusMix, string> = {
+  failed: 'The last run of these jobs ended in an error, a timeout or a refusal.',
+  missed: 'These jobs were due to run on schedule and no run started.',
+  late: 'These jobs have not run as recently as their schedule expects, but are not yet counted as missed.',
+  running: 'These jobs are running right now.',
+  ok: 'The last run finished OK and its output arrived on time.',
+  ok_unverified: 'The last run finished and its output was on time, but nothing proves the work itself succeeded.',
+  not_measured: 'No schedule or run record exists to judge these jobs against, so their health is unknown, not good.',
+  inactive: 'These jobs are paused, retired or were never scheduled, so no run is expected.',
+}
+/** What each status badge on a job card means. */
+export const STATUS_MEANING: Record<HistoryStatus, string> = {
+  ok: 'Running on schedule: the last run succeeded and the output arrived on time.',
+  ok_unverified: 'Output on time, success unproven: the job ran and wrote on time, but no check confirms the work was right.',
+  failed: 'Last run failed: the most recent run ended in an error, timeout or refusal.',
+  missed: 'Missed a run: a scheduled run never started.',
+  late: 'Late: the job has not run as recently as its schedule expects.',
+  running: 'Running now.',
+  not_measured: 'Not measured: there is no schedule or run record to judge this job against, so its health is unknown.',
+  paused: 'Paused: the job is switched off on purpose, so no run is expected.',
+  retired: 'Retired: the job was replaced or removed, so no run is expected.',
+  never_scheduled: 'Never scheduled: the job exists but has no schedule, so no run is expected.',
+}
+export const RESULT_MEANING: Record<RunResult, string> = {
+  succeeded: 'The last run finished and reported success.',
+  failed: 'The last run ended in an error.',
+  timed_out: 'The last run was stopped because it took longer than allowed.',
+  refused: 'The last run was refused by a safety rule and did not do its work.',
+  skipped_lock: 'The last run did not start because the previous run was still going.',
+  running: 'A run is in progress.',
+  requested: 'A run was requested and is waiting to start.',
+  unknown: 'A run was recorded but it did not say how it ended.',
+}
+
+/** The jobs-history `status` value a chip filters on (the API takes a comma list). */
+export const mixStatusParam = (k: keyof StatusMix): string => (k === 'inactive' ? 'paused,retired,never_scheduled' : k)
+
+/** The category page already filtered to the chip's state. */
+export const catalogFilterHref = (category: string, k: keyof StatusMix): string =>
+  `${JOB_CATALOG_PATH}?${new URLSearchParams({ category, status: mixStatusParam(k) }).toString()}`
+
+const MAX_TIP_JOBS = 8
+/** Tooltip text: "<n> <state> — meaning", then one line per job (up to 8) and "+N more". Pure. */
+export function chipTipText(k: keyof StatusMix, count: number, rows: ReadonlyArray<Pick<DescribedRow, 'title' | 'job' | 'last_run'>>): string {
+  const label = MIX_ORDER.find(([key]) => key === k)?.[1] ?? k
+  const lines = [`${count} ${label} — ${MIX_MEANING[k]}`]
+  for (const r of rows.slice(0, MAX_TIP_JOBS)) {
+    const run = r.last_run
+    if (!run) { lines.push(`${jobTitle(r)} — no run recorded`); continue }
+    const exit = run.exit_code != null && run.exit_code !== 0 ? ` (exit_${run.exit_code})` : ''
+    lines.push(`${jobTitle(r)} — last run ${etTime(run.started_at || run.finished_at)} ${(RESULT_LABEL[run.result] ?? run.result).toLowerCase()}${exit}`)
+  }
+  if (count > Math.min(rows.length, MAX_TIP_JOBS)) lines.push(`+${count - Math.min(rows.length, MAX_TIP_JOBS)} more`)
+  return lines.join('\n')
+}
+
+/** `?status=failed,late` → known statuses only. */
+export const parseStatusFilter = (raw: string | null | undefined): string[] =>
+  (raw ?? '').split(',').map(x => x.trim()).filter((x, i, a) => isHistoryStatus(x) && a.indexOf(x) === i)
+export const toggleStatusFilter = (cur: string[], picked: string): string[] =>
+  cur.includes(picked) ? cur.filter(x => x !== picked) : [...cur, picked]
+export const filterBarText = (statuses: string[], shown: number): string =>
+  `Showing: ${statuses.map(s => s.replace(/_/g, ' ')).join(', ')} (${shown})`

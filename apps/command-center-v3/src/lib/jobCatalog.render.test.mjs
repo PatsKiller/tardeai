@@ -48,7 +48,7 @@ const __origConsoleError = console.error
 console.error = (...args) => { if (String(args[0] ?? '').includes('useLayoutEffect does nothing on the server')) return; __origConsoleError(...args) }
 
 const { TileGrid, N8nLanesTab } = await import(compile(join(app, 'src/components/JobsN8nViews.tsx')))
-const { JobCard, CategoryCard, JobDescription } = await import(compile(join(app, 'src/components/JobCatalogViews.tsx')))
+const { JobCard, CategoryCard, FilterBar, JobDescription } = await import(compile(join(app, 'src/components/JobCatalogViews.tsx')))
 const { historyTiles, n8nTiles } = await import(compile(join(app, 'src/lib/jobsN8n.ts')))
 
 let failed = 0
@@ -106,9 +106,27 @@ check(desc.includes('No description yet'), 'missing description stated')
 const cat = { key: 'cio', label: 'CIO & advice', blurb: 'Synthetic verdicts.', jobs: 55, described: 50, with_missed: 0, fixed_14d: 1,
   status_mix: { failed: 3, missed: 0, late: 0, running: 0, ok: 40, ok_unverified: 0, not_measured: 12, inactive: 0 } }
 const cc = h(React.createElement(CategoryCard, { cat, onOpen: () => {} }))
-check(/^<button/.test(cc) && /min-height:44px/.test(flat(cc)), 'category card is a 44 px button')
+check(/data-testid="catalog-category-open"/.test(cc) && /min-height:44px/.test(flat(cc)), 'category card keeps a 44 px open button')
+check(!/<button[^>]*>(?:(?!<\/button>).)*<button/s.test(cc), 'chips are never nested inside the open button')
 check(cc.includes('CIO &amp; advice') && cc.includes('Synthetic verdicts.') && cc.includes('>55<'), 'name, blurb, count')
-check(cc.includes('3 failed · 40 ok · 12 not measured') && cc.includes('50 of 55 described'), 'status mix and described count')
+check(cc.includes('3 failed') && cc.includes('40 ok') && cc.includes('12 not measured') && cc.includes('50 of 55 described'), 'status mix and described count')
+check(/aria-label="3 failed · 40 ok · 12 not measured"/.test(cc), 'mix keeps its one-line aria-label')
+check(cc.includes('title="3 failed — The last run of these jobs ended in an error'), 'failed chip tooltip names the state')
+check(cc.includes('title="12 not measured — No schedule or run record exists'), 'not-measured chip tooltip says unknown, not good')
+check(['failed', 'ok', 'not_measured'].every(k => cc.includes(`data-testid="catalog-chip-${k}"`) && cc.includes(`data-testid="catalog-chip-info-${k}"`)), 'each chip has a button and an info button')
+
+// 5. Status badges on a job card explain themselves (hover title + tap box).
+const failedCard = h(React.createElement(JobCard, { row: { ...base, status: 'failed', last_run: { result: 'failed', mode: 'live', started_at: '2026-11-03T11:01:00Z', exit_code: 1 }, quality: { grade: 'NOT_LIVE', sub: 'dry_run' } }, computedAt: '2026-11-07T15:00:00Z', categories: cats, href: '/x' }))
+check(failedCard.includes('title="Last run failed: the most recent run ended in an error'), 'status badge tooltip')
+check(failedCard.includes('title="The last run ended in an error.'), 'last-run result tooltip')
+check(failedCard.includes('title="Not live · dry run: The last run was a dry run'), 'quality badge tooltip')
+check((failedCard.match(/data-testid="tap-tip"/g) || []).length >= 3, 'badges are tap targets')
+
+// 6. The filtered category page says what it is showing and offers Show all.
+const bar = h(React.createElement(FilterBar, { statuses: ['failed'], total: 1, onClear: () => {} }))
+check(bar.includes('Showing: failed (1)') && bar.includes('Show all') && bar.includes('data-testid="catalog-filter-bar"'), 'filter bar: Showing: failed (1) · Show all')
+check(h(React.createElement(FilterBar, { statuses: ['paused', 'retired'], total: null, onClear: () => {} })).includes('Showing: paused, retired'), 'filter bar before the count loads')
+check(h(React.createElement(FilterBar, { statuses: [], total: 3, onClear: () => {} })) === '', 'no filter, no bar')
 
 if (failed) { console.error(`jobCatalog.render: ${failed} failed`); process.exit(1) }
 console.log('jobCatalog.render: all checks passed')

@@ -3,6 +3,7 @@
 import {
   HISTORY_STATUS_KEYS, JOB_CATALOG_PATH, categoryKeyOf, categoryLabel, describedHistoryQuery, descriptionLines, effectiveHistoryFilter,
   isHistoryStatus, jobTitle, matchesCategory, mixParts, mixText, runHistoryHref, toggleStatus,
+  MIX_MEANING, STATUS_MEANING, RESULT_MEANING, catalogFilterHref, chipTipText, mixStatusParam, parseStatusFilter, toggleStatusFilter, filterBarText,
 } from './jobCatalog.ts'
 import { N8N_STATUS_KEYS, historyTiles, isN8nStatus, matchesN8nStatus, n8nTiles } from './jobsN8n.ts'
 import { summaryOf, type N8nRowX } from './opsControlsN8n.ts'
@@ -80,6 +81,40 @@ t('n8n tiles are keyed and a tile filters exactly the lanes it counts', () => {
     if (!isN8nStatus(tile.key)) fail(`bad key ${tile.key}`)
     eq(rows.filter(r => matchesN8nStatus(r, tile.key as never)).length, tile.value, tile.label)
   }
+})
+t('chip state maps to the status the API filters on, and every chip has a meaning', () => {
+  eq(mixStatusParam('failed'), 'failed')
+  eq(mixStatusParam('inactive'), 'paused,retired,never_scheduled')
+  for (const k of ['failed', 'missed', 'late', 'running', 'ok', 'ok_unverified', 'not_measured', 'inactive'] as const) {
+    if (!MIX_MEANING[k] || MIX_MEANING[k].length < 20) fail(`no meaning for ${k}`)
+  }
+  for (const k of HISTORY_STATUS_KEYS) if (k !== 'fixed' && !STATUS_MEANING[k as keyof typeof STATUS_MEANING]) fail(`no badge meaning for ${k}`)
+  for (const r of ['succeeded', 'failed', 'timed_out', 'refused', 'skipped_lock', 'running', 'requested', 'unknown'] as const) if (!RESULT_MEANING[r]) fail(`no result meaning ${r}`)
+})
+t('a chip opens the category page filtered to that state', () => {
+  eq(catalogFilterHref('market_data', 'failed'), '/ops/jobs-catalog?category=market_data&status=failed')
+  eq(catalogFilterHref('market_data', 'inactive'), '/ops/jobs-catalog?category=market_data&status=paused%2Cretired%2Cnever_scheduled')
+})
+t('chip tip names the state, lists the jobs (max 8) and the remainder', () => {
+  const row = (i: number, extra = {}) => ({ lane_id: `syn-${i}`, job: `Synthetic ${i}`, title: i === 1 ? 'Company info snapshot' : null,
+    last_run: { result: 'failed', started_at: '2026-11-03T11:01:00Z', finished_at: null, exit_code: 1 }, ...extra }) as never
+  const one = chipTipText('failed', 1, [row(1)])
+  if (!one.startsWith('1 failed')) fail(`head: ${one}`)
+  if (!one.includes('Company info snapshot — last run Nov 3, 6:01 AM ET failed (exit_1)')) fail(`line: ${one}`)
+  const many = chipTipText('failed', 11, Array.from({ length: 8 }, (_, i) => row(i + 1)))
+  eq(many.split('\n').filter(l => l.includes(' — last run ')).length, 8)
+  if (!many.includes('+3 more')) fail(`more: ${many}`)
+  const none = chipTipText('ok', 2, [{ lane_id: 'syn-z', job: 'Synthetic z', last_run: null } as never])
+  if (!none.includes('Synthetic z — no run recorded')) fail(`norun: ${none}`)
+  if (!chipTipText('failed', 3, []).includes('3 failed')) fail('empty rows still names the count')
+})
+t('status filter: parse, toggle, bar text', () => {
+  eq(parseStatusFilter('failed,late,bogus'), ['failed', 'late'])
+  eq(parseStatusFilter(null), [])
+  eq(toggleStatusFilter(['failed'], 'late'), ['failed', 'late'])
+  eq(toggleStatusFilter(['failed', 'late'], 'failed'), ['late'])
+  eq(filterBarText(['failed'], 1), 'Showing: failed (1)')
+  eq(filterBarText(['paused', 'retired', 'never_scheduled'], 4), 'Showing: paused, retired, never scheduled (4)')
 })
 t('paths', () => {
   eq(JOB_CATALOG_PATH, '/ops/jobs-catalog')

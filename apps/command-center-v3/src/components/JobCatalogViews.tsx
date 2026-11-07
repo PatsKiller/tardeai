@@ -1,6 +1,7 @@
 import { QualityChips, QualityReason } from './RunQualityViews'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { TapTip } from './TapTip'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import DetailHeader from './DetailHeader'
@@ -8,8 +9,9 @@ import {
   RESULT_LABEL, STATUS_LABEL, ago, cadenceText, etTime, fixLabel, missedText, resultTone, schedulerLabel, statusTone,
 } from '../lib/jobRunHistory'
 import {
-  JOBS_CATALOG_API, categoryKeyOf, categoryLabel, describedHistoryQuery, descriptionLines, jobTitle, matchesCategory, mixParts,
-  mixText, mixTone, runHistoryHref, type CatalogCategory, type CatalogWire, type Category, type DescribedListWire, type DescribedRow,
+  JOBS_CATALOG_API, MIX_MEANING, RESULT_MEANING, STATUS_MEANING, catalogFilterHref, chipTipText, filterBarText, mixStatusParam,
+  parseStatusFilter, toggleStatusFilter, categoryKeyOf, categoryLabel, describedHistoryQuery, descriptionLines, jobTitle, matchesCategory, mixParts,
+  mixText, mixTone, runHistoryHref, type StatusMix, type CatalogCategory, type CatalogWire, type Category, type DescribedListWire, type DescribedRow,
 } from '../lib/jobCatalog'
 
 // Ops › Job catalog + the described job card (operator 2026-11-06). Read-only: no Run, Retry or Pause button exists
@@ -52,7 +54,7 @@ export function JobCard({ row, computedAt, categories, onOpen, href, showCategor
         <span style={{ ...muted, ...wrap, display: 'block' }}>{row.title ? <span style={{ fontFamily: FONT.mono }}>{row.lane_id} · </span> : null}{schedulerLabel(row.scheduler)} · {cadenceText(row.cadence)}</span>
       </div>
       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        <span style={chip(statusTone(row.status))}>{STATUS_LABEL[row.status] ?? row.status}</span>
+        <TapTip align="right" tip={STATUS_MEANING[row.status] ?? 'Status not described.'}><span style={chip(statusTone(row.status))} data-testid="job-status-badge">{STATUS_LABEL[row.status] ?? row.status}</span></TapTip>
         <QualityChips q={row.quality} />
       </span>
     </div>
@@ -61,7 +63,7 @@ export function JobCard({ row, computedAt, categories, onOpen, href, showCategor
     {showCategory && <span style={{ ...muted }}>Category: {categoryLabel(categoryKeyOf(row), categories)}</span>}
     {row.status_reason && <div style={{ ...wrap, color: TOKENS.text[1], fontSize: TYPE.sm }}>{row.status_reason}</div>}
     <div className="job-history-facts">
-      <Fact label="Last run" tip="When this job last started, and how that run ended.">{last ? <>{etTime(last.started_at || last.finished_at)} <span style={chip(resultTone(last.result))}>{RESULT_LABEL[last.result]}</span></> : 'No run recorded'}</Fact>
+      <Fact label="Last run" tip="When this job last started, and how that run ended.">{last ? <>{etTime(last.started_at || last.finished_at)} <TapTip tip={RESULT_MEANING[last.result] ?? 'How the last run ended.'}><span style={chip(resultTone(last.result))}>{RESULT_LABEL[last.result]}</span></TapTip></> : 'No run recorded'}</Fact>
       <Fact label="Last success" tip="The last run that finished OK, and how long ago.">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>
       <Fact label="Missed runs" tip="Scheduled runs that never started, measured against the expected cadence.">{missedText(row)}</Fact>
       <Fact label="Fixed (14 days)" tip="Self-heal or manual fixes recorded for this job in the last 14 days.">{row.fix_count && row.last_fix ? `${row.fix_count} event${row.fix_count === 1 ? '' : 's'} · latest ${fixLabel(row.last_fix.kind).toLowerCase()} ${etTime(row.last_fix.at)}` : 'None recorded'}</Fact>
@@ -72,30 +74,88 @@ export function JobCard({ row, computedAt, categories, onOpen, href, showCategor
   </article>
 }
 
-/** One category as a tappable card: name, one-line blurb, job count and status mix. Pure. */
+const chipBtn = (tone: Tone, on: boolean): CSSProperties => ({ ...chip(tone), minHeight: 44, display: 'inline-flex', alignItems: 'center', cursor: 'pointer', font: 'inherit', fontSize: TYPE.sm, fontWeight: 600, boxShadow: on ? `0 0 0 2px ${toneVars(tone).color}` : 'none' })
+const infoBtn: CSSProperties = { minWidth: 44, minHeight: 44, background: 'transparent', border: 'none', color: TOKENS.text[2], fontSize: TYPE.base, cursor: 'pointer', padding: 0 }
+
+/** The status chips of one category. Hover or the ⓘ shows what the state means and which jobs are in it (up to 8); a
+ *  click opens that state's jobs ('link': straight to the job when there is one) or toggles the filter ('filter').
+ *  Chips are siblings of the card's open button, never inside it. */
+export function CatalogChips({ category, mix, mode, activeStatuses = [], onToggle }: {
+  category: string; mix: Partial<StatusMix>; mode: 'link' | 'filter'; activeStatuses?: string[]; onToggle?: (k: keyof StatusMix) => void
+}) {
+  const nav = useNavigate()
+  const parts = mixParts(mix)
+  const [hover, setHover] = useState<keyof StatusMix | null>(null)
+  const [tapped, setTapped] = useState<keyof StatusMix | null>(null)
+  const [pending, setPending] = useState<keyof StatusMix | null>(null)
+  const shown = pending ?? tapped ?? hover
+  const api = useApi<DescribedListWire>(describedHistoryQuery({ filter: 'all', category, status: shown ? mixStatusParam(shown) : null, limit: 8 }), undefined, { enabled: !!shown })
+  const rows = shown ? api.data?.rows ?? [] : []
+  const count = shown ? mix[shown] ?? 0 : 0
+  useEffect(() => {
+    if (!pending) return
+    const done = !api.loading && (api.data || api.error)
+    if (!done) return
+    setPending(null)
+    nav(count === 1 && api.data?.rows.length === 1 ? runHistoryHref(api.data.rows[0].lane_id) : catalogFilterHref(category, pending))
+  }, [pending, api.loading, api.data, api.error, count, category, nav])
+  if (!parts.length) return <span style={muted}>No jobs</span>
+  const click = (k: keyof StatusMix, n: number) => {
+    if (mode === 'filter') { onToggle?.(k); return }
+    if (n === 1) setPending(k); else nav(catalogFilterHref(category, k))
+  }
+  const tipFor = (k: keyof StatusMix, n: number) => (shown === k && rows.length ? chipTipText(k, n, rows) : `${n} ${parts.find(p => p.key === k)?.text.replace(/^\d+ /, '')} — ${MIX_MEANING[k]}`)
+  return <span style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+    <span data-testid="catalog-mix" aria-label={mixText(mix)} style={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      {parts.map(p => {
+        const on = mixStatusParam(p.key).split(',').every(x => activeStatuses.includes(x))
+        return <span key={p.key} style={{ display: 'inline-flex', alignItems: 'center' }} onMouseEnter={() => setHover(p.key)} onMouseLeave={() => setHover(null)}>
+          <button type="button" data-testid={`catalog-chip-${p.key}`} title={tipFor(p.key, p.count)} aria-pressed={mode === 'filter' ? on : undefined}
+            style={chipBtn(mixTone(p.key), on)} onClick={() => click(p.key, p.count)}>{p.text}</button>
+          <button type="button" aria-label={`What ${p.text} means`} aria-expanded={tapped === p.key} data-testid={`catalog-chip-info-${p.key}`} style={infoBtn}
+            onClick={() => setTapped(t => (t === p.key ? null : p.key))}>ⓘ</button>
+        </span>
+      })}
+    </span>
+    {shown && <span role="status" data-testid="catalog-chip-tip" style={{ ...panel, background: TOKENS.bg[2], fontSize: TYPE.sm, whiteSpace: 'pre-line', ...wrap }}>
+      {tipFor(shown, count)}{api.loading && !rows.length ? '\nLoading the jobs…' : ''}
+    </span>}
+  </span>
+}
+
+/** One category as a card: name, one-line blurb, job count and status chips. Pure apart from the chips' lazy read. */
 export function CategoryCard({ cat, onOpen }: { cat: CatalogCategory; onOpen: (key: string) => void }) {
-  const parts = mixParts(cat.status_mix)
-  return <button type="button" data-testid="catalog-category" aria-label={`${cat.label}: ${cat.jobs} jobs`} onClick={() => onOpen(cat.key)}
-    style={{ ...panel, display: 'grid', gap: 6, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], font: 'inherit', minHeight: 44, width: '100%', boxSizing: 'border-box' }}>
-    <span style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap' }}>
-      <strong style={{ ...wrap, fontSize: TYPE.md, flex: '1 1 160px' }}>{cat.label}</strong>
-      <span style={{ fontFamily: FONT.mono, fontSize: TYPE.lg }}>{cat.jobs}<span style={{ ...muted, fontFamily: FONT.sans }}> jobs</span></span>
-    </span>
-    {cat.blurb && <span style={{ ...wrap, fontSize: TYPE.base, color: TOKENS.text[1] }}>{cat.blurb}</span>}
-    <span data-testid="catalog-mix" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }} aria-label={mixText(cat.status_mix)}>
-      {parts.length ? parts.map(p => <span key={p.key} style={chip(mixTone(p.key))}>{p.text}</span>) : <span style={muted}>No jobs</span>}
-    </span>
+  return <div data-testid="catalog-category" style={{ ...panel, display: 'grid', gap: 6, color: TOKENS.text[0], boxSizing: 'border-box', width: '100%' }}>
+    <button type="button" data-testid="catalog-category-open" aria-label={`${cat.label}: ${cat.jobs} jobs`} onClick={() => onOpen(cat.key)}
+      style={{ display: 'grid', gap: 6, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], font: 'inherit', minHeight: 44, width: '100%', boxSizing: 'border-box', background: 'transparent', border: 'none', padding: 0 }}>
+      <span style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap' }}>
+        <strong style={{ ...wrap, fontSize: TYPE.md, flex: '1 1 160px' }}>{cat.label}</strong>
+        <span style={{ fontFamily: FONT.mono, fontSize: TYPE.lg }}>{cat.jobs}<span style={{ ...muted, fontFamily: FONT.sans }}> jobs</span></span>
+      </span>
+      {cat.blurb && <span style={{ ...wrap, fontSize: TYPE.base, color: TOKENS.text[1] }}>{cat.blurb}</span>}
+    </button>
+    <CatalogChips category={cat.key} mix={cat.status_mix} mode="link" />
     {cat.jobs > 0 && <span style={muted}>{cat.described === cat.jobs ? 'All described' : `${cat.described} of ${cat.jobs} described`}</span>}
-  </button>
+  </div>
+}
+
+/** "Showing: failed (1) · Show all" above a filtered category list. Nothing when no state is picked. */
+export function FilterBar({ statuses, total, onClear }: { statuses: string[]; total: number | null; onClear: () => void }) {
+  if (!statuses.length) return null
+  return <div data-testid="catalog-filter-bar" style={{ ...panel, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+    <span style={wrap}>{total == null ? `Showing: ${statuses.map(x => x.replace(/_/g, ' ')).join(', ')}` : filterBarText(statuses, total)}</span>
+    <button type="button" style={pill} onClick={onClear}>Show all</button>
+  </div>
 }
 
 /** A category's jobs (or search results), paged, each linking into Jobs & n8n run history. */
-function JobList({ query, categories, showCategory }: { query: (offset: number) => string; categories: Category[] | null; showCategory?: boolean }) {
+function JobList({ query, categories, showCategory, bar }: { query: (offset: number) => string; categories: Category[] | null; showCategory?: boolean; bar?: (total: number | null) => ReactNode }) {
   const [offset, setOffset] = useState(0)
   const path = query(offset)
   const list = useApi<DescribedListWire>(path, 60_000)
   const data = list.data
   return <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+    {bar?.(data ? data.total : null)}
     {list.error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>Jobs could not be read: {list.error}.</div>}
     <div className="jobs-n8n-list">
       {data?.rows.map(r => <JobCard key={r.lane_id} row={r} computedAt={data.computed_at} categories={categories} href={runHistoryHref(r.lane_id)} showCategory={showCategory} />)}
@@ -113,6 +173,7 @@ function JobList({ query, categories, showCategory }: { query: (offset: number) 
 export function JobCatalogView() {
   const [params, setParams] = useSearchParams()
   const selected = params.get('category')
+  const statuses = parseStatusFilter(params.get('status'))
   const [q, setQ] = useState(params.get('q') ?? '')
   const [debounced, setDebounced] = useState(q)
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 300); return () => clearTimeout(t) }, [q])
@@ -124,8 +185,17 @@ export function JobCatalogView() {
   useEffect(() => { if (selected) title.current?.focus() }, [selected])
   const open = (key: string | null) => {
     const next = new URLSearchParams(params)
-    if (key) next.set('category', key); else next.delete('category')
+    if (key) next.set('category', key); else { next.delete('category'); next.delete('status') }
     setParams(next, key ? undefined : { replace: true })
+  }
+  const setStatuses = (list: string[]) => {
+    const next = new URLSearchParams(params)
+    if (list.length) next.set('status', list.join(',')); else next.delete('status')
+    setParams(next, { replace: true })
+  }
+  const toggleChip = (k: keyof StatusMix) => {
+    const ps = mixStatusParam(k).split(',')
+    setStatuses(ps.every(x => statuses.includes(x)) ? statuses.filter(x => !ps.includes(x)) : [...statuses, ...ps.filter(x => !statuses.includes(x))])
   }
   const cat = selected ? cats.find(c => c.key === selected) ?? null : null
   return <section aria-label="Job catalog" data-testid="job-catalog" style={{ display: 'grid', gap: 12, minWidth: 0 }}>
@@ -150,8 +220,10 @@ export function JobCatalogView() {
       <DetailHeader back="Job catalog" title={cat?.label || 'Category'} titleId="job-catalog-title" titleRef={title} onClose={() => open(null)} style={{ margin: '-16px -16px 12px' }} />
       {cat ? <div style={{ display: 'grid', gap: 10, maxWidth: 960, width: '100%', minWidth: 0 }}>
         {cat.blurb && <p style={{ ...wrap, margin: 0, fontSize: TYPE.base }}>{cat.blurb}</p>}
-        <p style={muted}>{cat.jobs} jobs · {mixText(cat.status_mix)}</p>
-        <JobList key={cat.key} query={offset => describedHistoryQuery({ filter: 'all', category: cat.key, offset })} categories={cats} />
+        <p style={muted}>{cat.jobs} jobs · tap a state to show only those jobs.</p>
+        <CatalogChips category={cat.key} mix={cat.status_mix} mode="filter" activeStatuses={statuses} onToggle={toggleChip} />
+        <JobList key={`${cat.key}|${statuses.join(',')}`} query={offset => describedHistoryQuery({ filter: 'all', category: cat.key, status: statuses.join(',') || null, offset })} categories={cats}
+          bar={total => <FilterBar statuses={statuses} total={total} onClear={() => setStatuses([])} />} />
       </div> : <p role="status">{catalog.loading ? 'Loading…' : 'This category is not in the job catalog.'}</p>}
       <p style={{ ...muted, marginTop: 16 }}>Read-only page. To see a job's runs and fixes, tap Run history &amp; fixes.</p>
     </div>}

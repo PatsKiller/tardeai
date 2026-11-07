@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
-import { QUALITY_GRADES, checkRows, gradeChip, notAsDesigned, type RunQuality } from '../lib/runQuality'
+import { QUALITY_GRADES, checkRows, gradeChip, notAsDesigned, qualityMeans, type RunQuality } from '../lib/runQuality'
+import { TapTip } from './TapTip'
 
 // Ops › Jobs & n8n run quality (design pages/jobs v003, operator-approved 2026-11-06). Read-only views over the per-row
 // `quality` block of /api/v2/jobs-history. "OK" is never shown for a dry run or a skip: the grade says what the run made.
@@ -14,8 +15,12 @@ export function QualityChips({ q }: { q: RunQuality | null | undefined }) {
   const g = gradeChip(q)
   if (!g) return null
   return <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
-    <span style={chip(g.tone)} data-testid="quality-chip" title="Run quality: what the last run actually produced">{g.label}</span>
-    {notAsDesigned(q) && <span style={chip('warning')} data-testid="quality-not-as-designed" title={(q?.design_issues ?? []).join('; ')}>⚠ Not as designed</span>}
+    <TapTip align="right" tip={`${g.label}: ${qualityMeans(q!.grade) || 'what the last run actually produced'}`}>
+      <span style={chip(g.tone)} data-testid="quality-chip" title={`${g.label}: ${qualityMeans(q!.grade) || 'what the last run actually produced'}`}>{g.label}</span>
+    </TapTip>
+    {notAsDesigned(q) && <TapTip align="right" tip={`Not as designed: ${(q?.design_issues ?? []).join('; ') || 'the label disagrees with what ran.'}`}>
+      <span style={chip('warning')} data-testid="quality-not-as-designed" title={(q?.design_issues ?? []).join('; ')}>⚠ Not as designed</span>
+    </TapTip>}
   </span>
 }
 
