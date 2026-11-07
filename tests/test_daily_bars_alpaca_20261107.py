@@ -79,12 +79,12 @@ def test_edt_session_keeps_the_same_key(monkeypatch):
     assert bar["bar_time"].utcoffset() == timedelta(hours=-4)
 
 
-def test_values_are_ohlcv_and_missing_volume_is_zero(monkeypatch):
+def test_values_are_ohlcv_and_missing_volume_stays_unknown(monkeypatch):
     monkeypatch.setattr(oc, "alpaca_daily_bars",
                         lambda s, a, b: ([_alpaca("2026-11-06T05:00:00Z", v=None)], None))
     bar = mdl.fetch_alpaca_daily_bars("QQQ", 30)[0]
     assert (bar["open"], bar["high"], bar["low"], bar["close"]) == (100.0, 103.5, 99.25, 102.75)
-    assert bar["volume"] == 0.0
+    assert bar["volume"] is None  # no volume in the payload is unknown, never 0 shares traded
 
 
 def test_a_malformed_bar_is_skipped_not_fatal(monkeypatch):

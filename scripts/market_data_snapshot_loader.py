@@ -127,7 +127,7 @@ def fetch_alpaca_daily_bars(symbol: str, days: int) -> list:
     try:
         import ohlc_charts as oc
         raw, err = oc.alpaca_daily_bars(sym, start.isoformat(), end.isoformat())
-    except Exception as e:  # noqa: BLE001 - reported to the lane as an empty symbol
+    except Exception as e:  # noqa: BLE001 -- the lane names the symbol and exits 1; the cause is logged here
         log.warning(f"alpaca daily-bar fetch failed for {sym}: {type(e).__name__}")
         return []
     if err:
@@ -145,7 +145,8 @@ def fetch_alpaca_daily_bars(symbol: str, days: int) -> list:
                 "high": float(b["h"]),
                 "low": float(b["l"]),
                 "close": float(b["c"]),
-                "volume": float(b.get("v") or 0),
+                # A bar Alpaca returns without volume is UNKNOWN volume, not zero traded shares.
+                "volume": float(b["v"]) if b.get("v") is not None else None,
                 "source": DAILY_SOURCE,
             })
         except (KeyError, TypeError, ValueError) as e:
