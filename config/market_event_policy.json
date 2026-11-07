@@ -1,0 +1,164 @@
+{
+  "schema": "MarketEventPolicy@v1",
+  "policy_version": "2026-11-07.1",
+  "_owner": "cc-opus-3 owns this file (LQ-20261107-332, WP1+WP2). Other work packages send their keys to the owner; the 'plan' block is WP3's (cc-opus-2, LQ-20261107-333), accepted verbatim. Spec: persistent-state/handoffs/SPEC_MARKET_EVENT_REENTRY_20261107.md. Advisory only: nothing here sizes, orders or touches a broker.",
+  "_units": "Percentages are percent (5.0 = 5%). A drawdown threshold is a positive magnitude; the code compares it against the negative move.",
+
+  "data": {
+    "_why": "Finviz-only rule (spec 2): closes and last prices come from market_quotes rows written by the allowed sources; yfinance rows are never read. market_ohlcv_bars daily is yfinance-only (measured 2026-11-07), so it is not a source here.",
+    "quote_sources_allowed": ["alpaca", "finviz"],
+    "close_time_et": "16:00",
+    "close_window_minutes": 30,
+    "session_open_time_et": "09:30",
+    "premarket_from_et": "04:00",
+    "snapshot_max_age_days": 10,
+    "split_guard": {
+      "_why": "SOXX 2026-11-05: prev_close 451.20 against price 144.66 is a 3:1 split the provider did not adjust. A ratio this close to a split ratio is a data break, not a drawdown.",
+      "min_abs_move_pct": 40.0,
+      "ratios": [2, 3, 4, 5, 8, 10, 15, 20],
+      "ratio_tolerance_pct": 15.0
+    }
+  },
+
+  "detector": {
+    "lane_id": "market-event-detect",
+    "benchmark_symbol": "SPY",
+    "index_symbols": ["SPY", "QQQ"],
+    "tier_order": ["GREEN", "NONE", "BLUE", "YELLOW", "ORANGE", "RED"],
+    "mre_max_age_hours": 6.0,
+    "open": {
+      "mre_tier_at_least": "ORANGE",
+      "index_drawdown_pct": 4.0,
+      "index_lookback_sessions": 5,
+      "sector_rel_move_pct": 5.0,
+      "sector_rel_field": "rs5",
+      "sector_group_kinds": ["sector", "theme"]
+    },
+    "affected_groups": {
+      "_why": "A broad selloff names the groups that took the hit: MRE group state in these states, or a 5-day move relative to SPY at or below -rel_move_pct.",
+      "states": ["STRESS"],
+      "rel_move_pct": 5.0,
+      "rel_field": "rs5",
+      "kinds": ["sector", "theme"]
+    },
+    "single_name_shock": {
+      "enabled": true,
+      "sources": ["holding", "watchlist", "stop_out"],
+      "day_move_pct": 12.0,
+      "rel_to_benchmark_pct": 10.0
+    },
+    "states": {
+      "stabilizing_sessions_without_new_low": 2,
+      "recovering_pct_of_drawdown": 33.0
+    },
+    "close": {
+      "mre_tier_at_most": "YELLOW",
+      "sessions": 3,
+      "median_candidate_recovered_pct_of_drawdown": 50.0
+    },
+    "seed_episodes": [
+      {
+        "kind": "broad_selloff",
+        "scope": "market",
+        "baseline_date": "2026-11-04",
+        "opened_at": "2026-11-05T14:30:00Z",
+        "reason": "Operator 2026-11-07 (spec 0): Thu 11-05 to Fri 11-06 selloff, QQQ -5.1%, MRE tier RED. Baseline is the 2026-11-04 close."
+      }
+    ],
+    "rank_on_detect": true
+  },
+
+  "universe": {
+    "holdings": {"exclude_asset_types": ["CASH", "MUTUAL_FUND"], "symbol_pattern": "^[A-Z][A-Z.\\-]{0,6}$"},
+    "stop_outs": {"lookback_days": 120, "include_mre_reentry_watch": true},
+    "watchlist": {"watchlist_items_status": ["active"], "symbol_master_flags": ["in_personal_watchlist", "in_ai_watchlist"]},
+    "group_map": {
+      "_why": "MRE sector group key -> Finviz sector/industry filter on ticker_snapshot_daily.data. Most specific first: a symbol joins the first group that matches.",
+      "order": ["semis", "ai_basket", "tech", "comm", "discretionary", "staples", "healthcare", "utilities", "energy", "financials", "industrials", "materials", "real_estate"],
+      "groups": {
+        "semis": {"industries": ["Semiconductors", "Semiconductor Equipment & Materials"]},
+        "ai_basket": {"from_mre_symbols": true},
+        "tech": {"sectors": ["Technology"]},
+        "comm": {"sectors": ["Communication Services"]},
+        "discretionary": {"sectors": ["Consumer Cyclical"]},
+        "staples": {"sectors": ["Consumer Defensive"]},
+        "healthcare": {"sectors": ["Healthcare"]},
+        "utilities": {"sectors": ["Utilities"]},
+        "energy": {"sectors": ["Energy"]},
+        "financials": {"sectors": ["Financial", "Financial Services"]},
+        "industrials": {"sectors": ["Industrials"]},
+        "materials": {"sectors": ["Basic Materials"]},
+        "real_estate": {"sectors": ["Real Estate"]}
+      }
+    },
+    "sector_peers": {
+      "_why": "Peers come from the Finviz snapshot already in ticker_snapshot_daily (no live screen call; the Finviz filter tokens proposed by cc-haiku-1 are unvalidated, and an ignored token returns the whole universe). Quality floors applied after the read.",
+      "enabled": true,
+      "per_group_cap": 8,
+      "min_market_cap_usd": 2000000000,
+      "require_forward_pe_positive": true,
+      "min_roic_pct": 8.0,
+      "min_oper_margin_pct": 5.0,
+      "max_total_debt_equity": 2.0,
+      "min_dollar_volume_usd": 20000000,
+      "_avg_vol_units": "ticker_snapshot_daily.data.avg_vol_m is thousands of shares (NVDA 114187.68 on 2026-11-03), despite the key name.",
+      "min_price_usd": 5.0
+    }
+  },
+
+  "ranking": {
+    "min_drawdown_pct": 3.0,
+    "max_candidates": 25,
+    "combined_weights": {"quality": 0.6, "discount": 0.4},
+    "min_quality_coverage": 0.5,
+    "quality_factors": {
+      "_why": "Each factor maps linearly from its 'bad' anchor (0) to its 'good' anchor (1), clamped. A factor with no data drops out and the remaining weights renormalise: absent is not negative (spec 4.2). coverage = present weight / total weight.",
+      "fpe_vs_trailing":   {"weight": 0.15, "good": 0.70, "bad": 1.20},
+      "fpe_vs_sector_median": {"weight": 0.15, "good": 0.70, "bad": 1.50},
+      "peg":               {"weight": 0.10, "good": 1.0,  "bad": 3.0},
+      "roic_pct":          {"weight": 0.15, "good": 20.0, "bad": 0.0},
+      "oper_margin_pct":   {"weight": 0.10, "good": 25.0, "bad": 0.0},
+      "total_debt_equity": {"weight": 0.10, "good": 0.3,  "bad": 2.0},
+      "analyst_recom":     {"weight": 0.10, "good": 1.8,  "bad": 3.0},
+      "inst_trans_pct":    {"weight": 0.025, "good": 2.0, "bad": -2.0},
+      "insider_trans_pct": {"weight": 0.025, "good": 1.0, "bad": -5.0},
+      "orders_backlog":    {"weight": 0.10, "good": 20.0, "bad": -10.0}
+    },
+    "orders_backlog": {
+      "_why": "Input is the YoY growth % of remaining performance obligations (sec_xbrl, primary source; cc-deepseek-8 note 2026-11-07T2216Z). A symbol with no RPO tag, no YoY match or a stale filing gets null and the factor drops out (never 0). Catalyst/transcript backlog text is display-only until an extraction is validated.",
+      "metric_name": "remaining_performance_obligation",
+      "max_filing_age_days": 150,
+      "yoy_tolerance_days": 45
+    },
+    "discount": {
+      "_why": "excess = drawdown - beta x benchmark drawdown. Falling more than beta implies is discount; the score reaches 100 at full_scale_pct of excess.",
+      "full_scale_pct": 20.0,
+      "default_beta": 1.0,
+      "beta_floor": 0.3,
+      "beta_cap": 3.0
+    },
+    "fell_for_reason": {
+      "window_pre_days": 3,
+      "negative_catalyst_types": ["earnings_miss", "analyst_downgrade", "guidance_lower", "bearish", "legal", "lawsuit", "sec_investigation", "regulatory_action", "ceo_change"],
+      "earnings_reaction": {"enabled": true, "min_excess_drawdown_pct": 8.0},
+      "unexplained_excess_drawdown_pct": 15.0,
+      "_unexplained_why": "No earnings calendar in the DB (measured 2026-11-07): a name that fell this much more than beta implies, with no catalyst row, is flagged reason_evidence.unexplained_excess_drop for the operator; it is NOT marked fell_for_reason without evidence."
+    }
+  },
+
+  "plan": {
+    "cash_reserve_pct": 5.0,
+    "tranche_pcts": [30, 30, 40],
+    "per_name_cap_pct_of_deployable": 10.0,
+    "per_sector_cap_pct_of_deployable": 30.0,
+    "risk_budget_pct_of_account": 1.0,
+    "min_tranche_usd": 250,
+    "max_candidates": 25,
+    "market_gate": {"score_falling_evaluations": 2, "min_confirming": 2,
+                    "options_flow_ok_states": ["CALM", "WARN"], "breadth_ok_states": ["CALM", "WARN"],
+                    "futures_ok_states": ["CALM", "WARN"]},
+    "name_gate": {"no_new_low_sessions": 3, "rsi_period": 14, "rsi_low": 35, "cmf_period": 20,
+                  "obv_slope_sessions": 5, "sma_period": 20, "invalidation_buffer_pct": 1.0,
+                  "min_bars": 30}
+  }
+}
