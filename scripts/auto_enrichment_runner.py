@@ -422,10 +422,28 @@ def main():
     ap.add_argument("--limit", type=int, default=40)
     args = ap.parse_args()
 
+    # LaneRunReceipt: the registry output_signal for auto-enrichment-runner is this receipt's ok_at
+    # (LQ-20261107-20 overnight onboarding). A failed run writes ok=false, so the lane goes stale instead of green.
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started_at = now_iso()
+    try:
+        summary = _run(args)
+    except Exception as exc:  # noqa: BLE001 — record the failure before it propagates
+        write_lane_receipt("auto-enrichment-runner", ok=False, started_at=started_at,
+                           script="scripts/auto_enrichment_runner.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    ok = not summary.get("error")
+    write_lane_receipt("auto-enrichment-runner", ok=ok, started_at=started_at,
+                       script="scripts/auto_enrichment_runner.py", summary=summary,
+                       error=summary.get("error"))
+    return summary
+
+
+def _run(args) -> dict:
     conn = _get_conn()
     if not conn:
         log.error("No DB connection")
-        return
+        return {"error": "no DB connection", "candidates": 0, "enriched": 0, "failed": 0}
 
     proposals = _fetch_proposals(conn, force_all=args.force_all)
     # Release the fetch txn — this conn sits idle through the whole thread-pool enrichment run
@@ -437,7 +455,7 @@ def main():
         cur = conn.cursor()
         cur.execute("UPDATE atm_state SET last_enrichment_at = NOW() WHERE id = 1")
         conn.commit()
-        return
+        return {"candidates": 0, "enriched": 0, "failed": 0}
 
     proposals = proposals[:args.limit]
     log.info(f"Enriching {len(proposals)} proposals (force={args.force_all})")
@@ -462,6 +480,7 @@ def main():
     cur = conn.cursor()
     cur.execute("UPDATE atm_state SET last_enrichment_at = NOW() WHERE id = 1")
     conn.commit()
+    return {"candidates": len(proposals), "enriched": enriched, "failed": failed}
 
 
 if __name__ == "__main__":

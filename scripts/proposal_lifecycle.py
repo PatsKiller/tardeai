@@ -370,11 +370,23 @@ def evaluate_lifecycle_status(strategy_id, current_price, entry_price,
 
 
 if __name__ == "__main__":
-    with PipelineRun("proposal_lifecycle") as _run:
-        strategies = sorted(STRATEGY_EXPIRY_HOURS.keys())
-        print(f"{'Strategy':32} {'Hours':>5} {'Max':>5} {'Class':15} {'Overnight':>9} {'Intraday':>8}")
-        print("-" * 90)
-        for s in strategies:
-            print(f"{s:32} {get_expiry_hours(s):5} {get_max_expiry_hours(s):5} "
-                  f"{get_timeframe_class(s):15} {str(is_overnight(s)):>9} {str(is_intraday(s)):>8}")
+    # LaneRunReceipt: the registry output_signal for proposal-lifecycle is this receipt's ok_at (LQ-20261107-20
+    # overnight onboarding). The --dry-run branch returned above, before this point.
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started_at = now_iso()
+    try:
+        with PipelineRun("proposal_lifecycle") as _run:
+            strategies = sorted(STRATEGY_EXPIRY_HOURS.keys())
+            print(f"{'Strategy':32} {'Hours':>5} {'Max':>5} {'Class':15} {'Overnight':>9} {'Intraday':>8}")
+            print("-" * 90)
+            for s in strategies:
+                print(f"{s:32} {get_expiry_hours(s):5} {get_max_expiry_hours(s):5} "
+                      f"{get_timeframe_class(s):15} {str(is_overnight(s)):>9} {str(is_intraday(s)):>8}")
+    except Exception as exc:  # noqa: BLE001 — record the failure before it propagates
+        write_lane_receipt("proposal-lifecycle", ok=False, started_at=started_at,
+                           script="scripts/proposal_lifecycle.py", error=f"{type(exc).__name__}: {exc}")
+        raise
+    write_lane_receipt("proposal-lifecycle", ok=True, started_at=started_at,
+                       script="scripts/proposal_lifecycle.py",
+                       summary={"strategies": len(sorted(STRATEGY_EXPIRY_HOURS.keys()))})
 
