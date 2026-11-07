@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_runtime_evidence_batch_20261107",
+  "files": [
+    "tests/test_agent_runtime_evidence_batch_20261107.py"
+  ],
+  "comment": [
+    "LQ-20261107-90: the Runtime desk fanned out 150 per-run requests per load;",
+    "GET /api/v3/agent-runtime/evidence answers the same three row sets in one request."
+  ]
+}

@@ -233,6 +233,12 @@ def dispatch(
             if limit > MAX_LIMIT:
                 limit = MAX_LIMIT
             result = getattr(api, route.operation)(limit=limit, offset=offset)
+        elif route.operation == "batch_run_evidence":
+            # The desk asks for the newest fifty runs; the same hard bound applies.
+            limit = _as_int(query.get("limit"), DEFAULT_LIMIT)
+            if limit > MAX_LIMIT:
+                limit = MAX_LIMIT
+            result = api.batch_run_evidence(limit=limit)
         else:
             result = getattr(api, route.operation)(params["run_id"])
         return 200, result

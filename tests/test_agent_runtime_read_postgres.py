@@ -69,21 +69,25 @@ class FakeCursor:
             self._result = [(_jsonb(r["payload"]), r["payload_hash"], r["created_at"]) for r in rows]
             return
         if "FROM agentic_runtime.agent_artifacts" in s and "artifact_type <> %s" in s:  # material artifacts
-            run_id, atype = params[0], params[1]
-            rows = [r for r in c.agent_artifacts if r["run_id"] == run_id and r["artifact_type"] != atype]
-            self._result = _project(rows, cols)
+            # The per-run read passes one run_id; the fleet batch passes a list (ANY(%s)).
+            run_ids = params[0] if isinstance(params[0], (list, tuple)) else [params[0]]
+            atype = params[1]
+            rows = [r for r in c.agent_artifacts if r["run_id"] in run_ids and r["artifact_type"] != atype]
+            self._result = _project(rows, [col.split(".")[-1] for col in cols])
             return
         if "FROM agentic_runtime.agent_tool_calls" in s:
             rows = [r for r in c.agent_tool_calls if r["run_id"] == params[0]]
             self._result = _project(rows, cols)
             return
         if "FROM agentic_runtime.agent_reviews" in s:
-            art_ids = {a["artifact_id"] for a in c.agent_artifacts if a["run_id"] == params[0]}
+            run_ids = params[0] if isinstance(params[0], (list, tuple)) else [params[0]]
+            art_ids = {a["artifact_id"] for a in c.agent_artifacts if a["run_id"] in run_ids}
             rows = [r for r in c.agent_reviews if r["artifact_id"] in art_ids]
             self._result = _project(rows, [col.split(".")[-1] for col in cols])
             return
         if "FROM agentic_runtime.agent_scores" in s:
-            art_ids = {a["artifact_id"] for a in c.agent_artifacts if a["run_id"] == params[0]}
+            run_ids = params[0] if isinstance(params[0], (list, tuple)) else [params[0]]
+            art_ids = {a["artifact_id"] for a in c.agent_artifacts if a["run_id"] in run_ids}
             rows = [r for r in c.agent_scores if r["artifact_id"] in art_ids]
             self._result = _project(rows, [col.split(".")[-1] for col in cols])
             return
@@ -238,9 +242,10 @@ def test_read_api_over_postgres_reader_end_to_end_and_zero_authority():
     api = ReadOnlyAgentRuntimeAPI(PostgresAgentRuntimeReader(_factory(cluster)))
 
     # every declared route resolves to a working method
+    paginated = ("list_runs", "list_lessons", "list_cases", "batch_run_evidence")
     for route in READ_ROUTES:
         method = getattr(api, route.operation)
-        result = method(limit=5) if route.operation in ("list_runs", "list_lessons", "list_cases") else method(RUN)
+        result = method(limit=5) if route.operation in paginated else method(RUN)
         assert result["read_only"] is True
         assert all(v is False for v in result["authority"].values())
 

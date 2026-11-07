@@ -229,6 +229,61 @@ class PostgresAgentRuntimeReader:
             row["dimensions"] = _as_obj(row.get("dimensions")) or {}
         return rows
 
+    def list_run_evidence_batch(self, run_ids: Sequence[str]) -> dict[str, dict[str, list[dict[str, Any]]]]:
+        """The artifacts/reviews/scores for MANY runs in three statements, one transaction.
+
+        The desk asked for the newest fifty runs and used to issue one request per run per
+        kind (2026-11-07, LQ-90). These are the same projections and the same joins as
+        ``list_artifacts``/``list_reviews``/``list_scores`` with ``run_id=%s`` widened to
+        ``run_id = ANY(%s)``; ``run_id`` is projected so the rows can be grouped without a
+        second lookup. Read-only, uncommitted, bounded by the same statement_timeout.
+        """
+        ids = [str(rid).strip() for rid in run_ids if str(rid or "").strip()]
+        grouped: dict[str, dict[str, list[dict[str, Any]]]] = {
+            rid: {"artifacts": [], "reviews": [], "scores": []} for rid in ids
+        }
+        if not ids:
+            return grouped
+
+        artifact_cols = _ARTIFACT_COLS + ("run_id",)
+        review_cols = ("run_id",) + _REVIEW_COLS
+        score_cols = ("run_id",) + _SCORE_COLS
+        with self._reading() as conn:
+            artifacts = self._rows(
+                conn,
+                f"SELECT {', '.join(artifact_cols)} FROM {self._q('agent_artifacts')} "
+                "WHERE run_id = ANY(%s) AND artifact_type <> %s "
+                "ORDER BY run_id, created_at, artifact_id",
+                (ids, RUN_EVENT_TYPE),
+                artifact_cols,
+            )
+            reviews = self._rows(
+                conn,
+                f"SELECT a.run_id, {', '.join('c.' + c for c in _REVIEW_COLS)} "
+                f"FROM {self._q('agent_reviews')} c "
+                f"JOIN {self._q('agent_artifacts')} a ON a.artifact_id = c.artifact_id "
+                "WHERE a.run_id = ANY(%s) ORDER BY a.run_id, c.created_at, c.review_id",
+                (ids,),
+                review_cols,
+            )
+            scores = self._rows(
+                conn,
+                f"SELECT a.run_id, {', '.join('c.' + c for c in _SCORE_COLS)} "
+                f"FROM {self._q('agent_scores')} c "
+                f"JOIN {self._q('agent_artifacts')} a ON a.artifact_id = c.artifact_id "
+                "WHERE a.run_id = ANY(%s) ORDER BY a.run_id, c.created_at, c.score_id",
+                (ids,),
+                score_cols,
+            )
+        for row in scores:
+            row["dimensions"] = _as_obj(row.get("dimensions")) or {}
+        for kind, rows in (("artifacts", artifacts), ("reviews", reviews), ("scores", scores)):
+            for row in rows:
+                rid = str(row.pop("run_id", "") or "")
+                if rid in grouped:
+                    grouped[rid][kind].append(row)
+        return grouped
+
     def list_retrieval_evidence(self, run_id: str) -> Sequence[Mapping[str, Any]]:
         with self._reading() as conn:
             events = self._run_event_rows(conn, run_id)

@@ -125,7 +125,9 @@ def test_every_declared_route_maps_to_an_implemented_api_method():
     for route in READ_ROUTES:
         method = getattr(api, route.operation, None)
         assert callable(method), f"route {route.path} has no implemented method {route.operation}"
-        result = method(limit=5) if route.operation in ("list_runs", "list_lessons", "list_cases") else method("run_1")
+        # Paginated/fleet reads take a limit; per-run reads take a run_id.
+        paginated = ("list_runs", "list_lessons", "list_cases", "batch_run_evidence")
+        result = method(limit=5) if route.operation in paginated else method("run_1")
         assert result["read_only"] is True and all(v is False for v in result["authority"].values())
 
 
