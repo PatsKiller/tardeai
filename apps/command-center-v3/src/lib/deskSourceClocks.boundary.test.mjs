@@ -49,13 +49,13 @@ export function diagnosticsOf(html) {
 export function primaryOf(html) {
   return text(markup(html).match(/<div\b[^>]*data-testid="source-writer-state"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '')
 }
-export function renderWriter(state, { loading = false, lastSuccess = null, reason = 'No successful run is recorded in the available execution evidence.', missing = false } = {}) {
+export function renderWriter(state, { loading = false, lastSuccess = null, reason = 'No successful run is recorded in the available execution evidence.', missing = false, asOf = '2026-11-05T20:58:00Z', fallback = false, gap } = {}) {
   const writers = missing ? [] : [{ lane_id: 'synthetic-source-lane', state, last_success_at: lastSuccess,
     evidence_as_of: '2026-11-05T20:59:00Z', reason }]
   globalThis.__deskWriterFixture = { data: { ok: true, data: { writers } }, loading, error: null, stale: false, refetch() {} }
   return renderToStaticMarkup(React.createElement(MemoryRouter, { initialEntries: ['/v3/defense'] },
     React.createElement(DeskPage, { title: 'Synthetic desk', purpose: 'Synthetic source evidence',
-      sources: [{ id: 'fixture', label: 'Synthetic source', asOf: '2026-11-05T20:58:00Z', laneIds: ['synthetic-source-lane'] }],
+      sources: [{ id: 'fixture', label: 'Synthetic source', asOf, laneIds: ['synthetic-source-lane'], writerClockFallback: fallback, gap }],
       children: React.createElement('div', null, 'Synthetic desk content') })))
 }
 

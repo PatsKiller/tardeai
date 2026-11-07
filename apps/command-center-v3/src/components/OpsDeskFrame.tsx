@@ -116,7 +116,7 @@ export default function OpsDeskFrame({ page, asOf = {}, gaps = {}, children }: {
 }) {
   const spec = PAGES[page]
   const sources: DeskSource[] = spec.sources.map(source => ({
-    ...source, asOf: asOf[source.id] ?? null,
+    ...source, asOf: asOf[source.id] ?? null, writerClockFallback: true,
     gap: gaps[source.id] ?? (asOf[source.id] ? undefined : 'This page does not record when this source last updated; the writer’s last successful run is shown instead.'),
   }))
   return <DeskPage title={spec.title} purpose={spec.purpose} sources={sources} decisions={DECISIONS}>
