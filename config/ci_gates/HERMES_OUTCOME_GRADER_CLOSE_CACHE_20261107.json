@@ -1,0 +1,31 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_OUTCOME_GRADER_CLOSE_CACHE_20261107",
+  "files": [
+    "tests/test_hermes_outcome_grader_close_cache_20261107.py"
+  ],
+  "anchor": "HERMES_OUTCOME_GRADER_CLOSE_CACHE_20261107",
+  "comment": [
+    "ANCHOR: HERMES_OUTCOME_GRADER_CLOSE_CACHE_20261107 — daily_close_cache held an arbitrary quote",
+    "of each day instead of the last one, so every Hermes outcome graded against the close cache",
+    "was graded against a morning or intraday print.",
+    "The statement was `SELECT DISTINCT ON (UPPER(symbol), fetched_at::date) ... ORDER BY",
+    "UPPER(symbol), fetched_at::date, fetched_at DESC`. PostgreSQL resolves an unqualified ORDER BY",
+    "name against the SELECT-list output names first, and a cast is named after its argument, so the",
+    "third output column is itself called `fetched_at` and the DESC key bound to `fetched_at::date`.",
+    "EXPLAIN shows the consequence directly: `Sort Key: ((market_quotes.fetched_at)::date)` with no",
+    "second key. Inside a DISTINCT ON group that key is constant, so the DESC key did nothing and",
+    "each day's row was whichever quote the plan happened to deliver.",
+    "Measured 2026-11-07 through the application's own connection: two consecutive runs of the old",
+    "statement gave XLK 2026-11-06 = 165.265 and then 166.71 (true last quote 164.8); the cache as",
+    "written by the 10:50 ET run differed from the true last quote on 3809 of 5577 (symbol, day)",
+    "pairs for 2026-11-06 (68.3%).",
+    "The gate pins: every quote-timestamp key in the ORDER BY is table-qualified (so it cannot bind",
+    "to the output column), the ordering ends with an id tiebreak, the day bucket is the New York",
+    "session date everywhere it appears (DISTINCT ON, inserted price_date, ORDER BY) so it does not",
+    "follow the server's TimeZone, the refresh window and the ordering agree on the column they",
+    "filter, --backfill-closes uses the same ordering, and the detector itself flags the legacy",
+    "statement (otherwise the other assertions prove nothing).",
+    "Hermetic: a recording cursor captures the SQL; no database, no network."
+  ]
+}

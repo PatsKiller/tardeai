@@ -1,5 +1,7 @@
 """LQ-20261107-126 — the daily-close cache must keep the LAST quote of each session date.
 
+ANCHOR: HERMES_OUTCOME_GRADER_CLOSE_CACHE_20261107
+
 Hermetic: no database. A recording cursor captures the exact SQL `refresh_close_cache` sends, and the
 tests assert the statement's ordering, which is where the defect lives.
 
