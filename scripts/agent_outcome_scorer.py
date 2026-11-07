@@ -78,8 +78,106 @@ def _get_conn():
     return psycopg2.connect(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai', password=pw)
 
 
-def match_and_score(conn) -> list:
-    """Join trade_closed to watchlist_agent_results, score each pair.
+# Candidate trades per recommendation. The pick is one_trade_per_recommendation (LQ-20261107-125).
+# "Already scored" is keyed on the recommendation alone: trade_closed is reloaded with new ids, so a
+# (war_id, trade_id) key queued every recommendation again after each reload. No row LIMIT here: it
+# would cut one recommendation's candidates in half; the cap is on recommendations (MAX_RECOMMENDATIONS).
+_CANDIDATES_SQL = """
+    SELECT
+        war.id as war_id,
+        war.agent as agent_name,
+        war.symbol,
+        war.recommendation,
+        war.confidence,
+        war.created_at as recommendation_date,
+        war.input_data_snapshot->'position'->>'account' as rec_account,
+        tc.id as trade_id,
+        tc.account as trade_account,
+        tc.open_date as entry_date,
+        tc.close_date as exit_date,
+        tc.buy_price as entry_price,
+        tc.sell_price as exit_price,
+        tc.pnl as realized_pnl,
+        tc.pnl_pct
+    FROM watchlist_agent_results war
+    JOIN trade_closed tc ON tc.symbol = war.symbol
+    WHERE war.created_at::date <= tc.close_date
+      AND war.created_at::date >= tc.open_date - INTERVAL '90 days'
+      AND NOT EXISTS (
+          SELECT 1 FROM agent_recommendation_outcomes aro
+          WHERE aro.war_id = war.id
+      )
+"""
+MAX_RECOMMENDATIONS = 1000
+
+
+def _canon(raw) -> str:
+    """One key per account: a recommendation says ``schwab_roth``, trade_closed says
+    ``schwab_roth_ira``. Both go through config/account_display_names.json aliases."""
+    try:
+        from lib.account_display import canonical_key
+    except ImportError:  # imported as scripts.agent_outcome_scorer
+        from scripts.lib.account_display import canonical_key
+    return canonical_key(raw)
+
+
+def _as_date(v):
+    return v.date() if isinstance(v, datetime) else v
+
+
+def one_trade_per_recommendation(rows: list, stats: dict | None = None) -> list:
+    """Reduce candidate (recommendation, trade) rows to at most one trade per recommendation.
+
+    - A recommendation that names its account matches only that account's trades.
+    - A trade open on the recommendation day beats one opened after it; the nearest one wins.
+    - Account unknown and the best matches sit in more than one account: held back, not guessed.
+    Each kept row carries ``match_note`` saying how it matched.
+    """
+    by_rec: dict = {}
+    for r in rows:
+        by_rec.setdefault(r['war_id'], []).append(r)
+    held_back: dict = defaultdict(int)
+    picked = []
+    for cands in by_rec.values():
+        rec_day = _as_date(cands[0]['recommendation_date'])
+        account = _canon(cands[0].get('rec_account'))
+        if account:
+            cands = [c for c in cands if _canon(c.get('trade_account')) == account]
+            if not cands:
+                held_back['no_trade_in_named_account'] += 1
+                continue
+        ranked = []
+        for c in cands:
+            entry, exit_ = c['entry_date'], c['exit_date']
+            if entry <= rec_day <= exit_:
+                ranked.append(((0, -entry.toordinal()), c))  # held at the recommendation: latest entry
+            elif rec_day < entry:
+                ranked.append(((1, entry.toordinal()), c))   # entered after it: nearest entry
+        if not ranked:
+            held_back['outside_window'] += 1
+            continue
+        ranked.sort(key=lambda kc: (kc[0], kc[1]['trade_id']))
+        best_key = ranked[0][0]
+        best = [c for k, c in ranked if k == best_key]
+        if not account and len({_canon(c.get('trade_account')) for c in best}) > 1:
+            held_back['account_unknown_ambiguous'] += 1
+            continue
+        chosen = best[0]
+        how = 'held_at_recommendation' if best_key[0] == 0 else 'entered_after_recommendation'
+        chosen = {**chosen, 'match_note': f"match={how}; account={'named' if account else 'unknown'}; "
+                                          f"candidates={len(cands)}"}
+        picked.append(chosen)
+    picked.sort(key=lambda r: (r['exit_date'], str(r['war_id'])), reverse=True)
+    if stats is not None:
+        stats['candidate_rows'] = len(rows)
+        stats['recommendations'] = len(by_rec)
+        stats['held_back'] = dict(held_back)
+        stats['capped'] = max(0, len(picked) - MAX_RECOMMENDATIONS)
+    return picked[:MAX_RECOMMENDATIONS]
+
+
+def match_and_score(conn, stats: dict | None = None) -> list:
+    """Match each unscored recommendation to one closed trade and score it.
 
     Respects re-entry classification: if a symbol has an active relist/market
     reconnection record (explicit_stop_out = false), do not score the
@@ -87,33 +185,8 @@ def match_and_score(conn) -> list:
     """
     cur = conn.cursor(cursor_factory=RealDictCursor)
 
-    cur.execute("""
-        SELECT
-            war.id as war_id,
-            war.agent as agent_name,
-            war.symbol,
-            war.recommendation,
-            war.confidence,
-            war.created_at as recommendation_date,
-            tc.id as trade_id,
-            tc.open_date as entry_date,
-            tc.close_date as exit_date,
-            tc.buy_price as entry_price,
-            tc.sell_price as exit_price,
-            tc.pnl as realized_pnl,
-            tc.pnl_pct
-        FROM watchlist_agent_results war
-        JOIN trade_closed tc ON tc.symbol = war.symbol
-        WHERE war.created_at::date <= tc.close_date
-          AND war.created_at::date >= tc.open_date - INTERVAL '90 days'
-          AND NOT EXISTS (
-              SELECT 1 FROM agent_recommendation_outcomes aro
-              WHERE aro.war_id = war.id AND aro.trade_id = tc.id
-          )
-        ORDER BY tc.close_date DESC
-        LIMIT 1000
-    """)
-    pairs = cur.fetchall()
+    cur.execute(_CANDIDATES_SQL)
+    pairs = one_trade_per_recommendation(cur.fetchall(), stats)
 
     # Build relist context: symbols with active relist/market reconnection records
     relist_symbols = set()
@@ -203,14 +276,15 @@ def save_outcomes(conn, scored: list, stats: dict | None = None) -> int:
                     agent_name, symbol, recommendation, confidence,
                     recommendation_date, war_id, trade_id,
                     entry_date, exit_date, entry_price, exit_price,
-                    realized_pnl, pnl_pct, verdict, verdict_score, delta_days
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    realized_pnl, pnl_pct, verdict, verdict_score, delta_days, notes
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT DO NOTHING
             """, [p.get('agent_name'), p.get('symbol'), p.get('recommendation'),
                   p.get('confidence'), p.get('recommendation_date'), p.get('war_id'),
                   p.get('trade_id'), p.get('entry_date'), p.get('exit_date'),
                   p.get('entry_price'), p.get('exit_price'), p.get('realized_pnl'),
-                  p.get('pnl_pct'), p['verdict'], p['verdict_score'], p.get('delta_days')])
+                  p.get('pnl_pct'), p['verdict'], p['verdict_score'], p.get('delta_days'),
+                  p.get('match_note')])
             cur.execute("RELEASE SAVEPOINT aos_outcome")
             saved += 1
         except Exception:
@@ -387,7 +461,8 @@ def dry_run() -> dict:
     conn = _get_conn()
     lr.enforce_readonly(conn)
     print("=== Agent Outcome Scorer (DRY-RUN) ===")
-    scored = match_and_score(conn)
+    match: dict = {}
+    scored = match_and_score(conn, match)
     verdicts = defaultdict(int)
     for p in scored:
         verdicts[p['verdict']] += 1
@@ -403,7 +478,9 @@ def dry_run() -> dict:
     cur.execute(_SOURCE_PERF_SQL)
     source_labels = sum(1 for r in cur.fetchall() if r[0])
     conn.close()
-    summary = {"unscored_pairs": len(scored), "verdicts": dict(verdicts),
+    summary = {"unscored_pairs": len(scored), "candidate_rows": match["candidate_rows"],
+               "recommendations": match["recommendations"], "held_back": match["held_back"],
+               "capped": match["capped"], "verdicts": dict(verdicts),
                "would_save": len(scored), "calibration_agents_365d": calib_agents,
                "rule_agents_90d": rule_agents, "source_labels": source_labels}
     lr.dry_run_report(
@@ -422,7 +499,8 @@ def run_scoring() -> dict:
     conn = _get_conn()
 
     print("=== Agent Outcome Scorer ===")
-    scored = match_and_score(conn)
+    match: dict = {}
+    scored = match_and_score(conn, match)
     print(f"Unscored pairs found: {len(scored)}")
 
     saved = save_outcomes(conn, scored, stats)
@@ -455,7 +533,8 @@ def run_scoring() -> dict:
         print("No calibration data yet — need 3+ closed trades per agent")
 
     conn.close()
-    return {"unscored_pairs": len(scored), "saved": saved, "save_failed": stats.get("save_failed", 0),
+    return {"unscored_pairs": len(scored), "candidate_rows": match["candidate_rows"],
+            "held_back": match["held_back"], "saved": saved, "save_failed": stats.get("save_failed", 0),
             "rule_write_failed": stats.get("rule_write_failed", 0), "source_performance_ok": source_ok}
 
 

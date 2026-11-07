@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "AGENT_OUTCOME_SCORER_FANOUT_20261107",
+  "files": [
+    "tests/test_agent_outcome_scorer_fanout_20261107.py"
+  ],
+  "anchor": "AGENT_OUTCOME_SCORER_FANOUT_20261107",
+  "comment": [
+    "ANCHOR: AGENT_OUTCOME_SCORER_FANOUT_20261107 — LQ-20261107-125. match_and_score joined each recommendation",
+    "to every closed trade on its symbol in a 90-day window, in every account, and keyed 'already scored' on",
+    "(war_id, trade_id), so every trade_closed reload queued it again. A recommendation now gets at most one",
+    "outcome: its named account only (aliases resolved), a trade held at the recommendation first, the nearest",
+    "otherwise; an unknown account that spans two accounts is held back, not guessed. Listing it schedules nothing."
+  ]
+}
