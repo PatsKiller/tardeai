@@ -144,6 +144,34 @@ def is_cash(position: dict) -> bool:
     return bool(position.get("is_cash")) or str(position.get("symbol") or "").upper() in ("CASH", "SPAXX", "FDRXX")
 
 
+_AUTO = object()   # resolve_mark(finviz=...) default: read the Finviz live cache for this symbol
+_FV_MEMO: dict = {}
+
+
+def finviz_cache(path: Optional[Path] = None) -> dict:
+    """{SYMBOL: {price, as_of}} from finviz_quote_cache.json beside the position store (the repricer writes it
+    every 15 min). Re-read only when the file changes. Missing/unreadable -> {} (callers fall back, never crash)."""
+    import json
+    p = Path(path) if path is not None else store_path().parent / "finviz_quote_cache.json"
+    try:
+        mt = p.stat().st_mtime_ns
+    except OSError:
+        return {}
+    hit = _FV_MEMO.get(str(p))
+    if hit and hit[0] == mt:
+        return hit[1]
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for sym, row in (raw.items() if isinstance(raw, dict) else []):
+        if isinstance(row, dict) and (_f(row.get("price")) or 0) > 0:
+            out[str(sym).upper()] = {"price": _f(row["price"]), "as_of": row.get("last_fetched") or row.get("last_updated")}
+    _FV_MEMO[str(p)] = (mt, out)
+    return out
+
+
 def _backup_ok(source: Any, cfg: dict) -> bool:
     """A non-Finviz quote serves only from an operator-named backup provider (Schwab, Alpaca, moomoo) or a
     Finviz-sourced DB row. A labelled row from any other provider (yfinance, …) never prices a holding; an
@@ -154,11 +182,14 @@ def _backup_ok(source: Any, cfg: dict) -> bool:
     return any(p in s for p in cfg.get("backup_quote_providers") or _DEFAULTS["backup_quote_providers"])
 
 
-def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Optional[dict] = None,
+def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Any = _AUTO,
                  now: Optional[datetime] = None, cfg: Optional[dict] = None) -> dict:
     """The one price for a position. quote = data-broker {price, as_of|fetched_at, source};
-    finviz = {price, as_of}. Returns {price, source, as_of, age_s, live, stale}."""
+    finviz = {price, as_of}; left out, the Finviz live cache is read for the symbol (a caller that forgets it can no
+    longer fall to a DB row); None = the caller has no Finviz price. Returns {price, source, as_of, age_s, live, stale}."""
     cfg = cfg or _DEFAULTS
+    if finviz is _AUTO:
+        finviz = None if is_cash(position) else finviz_cache().get(str(position.get("symbol") or "").upper())
     now = now or datetime.now(timezone.utc)
     if is_cash(position):
         return {"price": 1.0, "source": "cash_unit", "as_of": None, "age_s": None, "live": False, "stale": False}

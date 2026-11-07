@@ -277,3 +277,15 @@ def test_fresh_backup_quote_serves_when_finviz_is_down_or_stale():
     assert pp.resolve_mark(LAG, quote=q, finviz=old_fv, now=now)["price"] == 31.0
     m = pp.resolve_mark(LAG, quote=q, finviz=None, now=now)
     assert m["price"] == 31.0 and m["live"] is True
+
+
+def test_resolve_mark_reads_the_finviz_cache_when_the_caller_omits_it(tmp_path, monkeypatch):
+    """A caller that forgets finviz= used to fall to the market_quotes row (positions_context, trade_journey, …)."""
+    cache = tmp_path / "finviz_quote_cache.json"
+    cache.write_text('{"LAGX": {"price": 33.0, "last_fetched": "2026-10-06 00:50:00 ET"}}')
+    monkeypatch.setattr(pp, "store_path", lambda root=None: tmp_path / "holdings.json")
+    now = dt.datetime(2026, 10, 6, 5, 0, tzinfo=dt.timezone.utc)
+    q = {"price": 27.0, "as_of": "2026-10-06T04:55:00+00:00", "source": "market_quotes"}
+    m = pp.resolve_mark({**LAG, "symbol": "LAGX"}, quote=q, now=now)
+    assert m["price"] == 33.0 and m["source"] == "finviz"
+    assert pp.resolve_mark({**LAG, "symbol": "LAGX"}, quote=q, finviz=None, now=now)["price"] == 27.0

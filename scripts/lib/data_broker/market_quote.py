@@ -83,7 +83,7 @@ def _best_quote(symbol: str, max_age_s: int = 900) -> dict[str, Any] | None:
 
 
 def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
-                    *, skip_live: bool = False) -> dict[str, dict[str, Any]]:
+                    *, skip_live: bool = False, finviz_first: bool = True) -> dict[str, dict[str, Any]]:
     """Return {SYMBOL: {price, chg_pct, as_of, source}} for a batch.
 
     Primary: the newest market_quotes row per symbol (latest_quote projection), kept when it is
@@ -117,6 +117,25 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
             "as_of": row["as_of"],
             "source": f"data_broker.market_quotes:{row.get('provider') or 'market_quotes'}",
         }
+
+    # Finviz first (operator 2026-11-07: live prices come from Finviz, not a DB row). A cache row younger than
+    # positions.price_stale_after_s (30 min) replaces the market_quotes row; an older one never does, so a Finviz
+    # outage falls back to the Schwab/Alpaca/moomoo rows above. Data-truth audit 2026-11-07: market_quotes served
+    # PFE 27.56 from 16:45 ET while Finviz at 23:30 ET said 29.39.
+    if finviz_first:
+        try:
+            from datetime import datetime, timezone
+            from lib import portfolio_positions as _pp
+            _fv, _lim, _now = _pp.finviz_cache(), float(_pp.load_config()["price_stale_after_s"]), datetime.now(timezone.utc)
+            for sym in symbols:
+                fv = _fv.get(sym)
+                age = _pp._age_s(fv.get("as_of"), _now) if fv else None
+                if fv and age is not None and age <= _lim:
+                    prev = out.get(sym) or {}
+                    out[sym] = {"price": fv["price"], "chg_pct": prev.get("chg_pct"), "as_of": fv["as_of"],
+                                "source": "finviz_quote_cache"}
+        except Exception:  # noqa: BLE001 -- the cache is an overlay; without it the DB rows above stand
+            pass
 
     # Second pass: quote-only broker waterfall, only for missing symbols, bounded per batch.
     if not skip_live:
