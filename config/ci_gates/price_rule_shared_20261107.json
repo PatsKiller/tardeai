@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "price_rule_shared_20261107",
+  "files": [
+    "tests/test_price_rule_shared_20261107.py"
+  ],
+  "anchor": "PRICE_RULE_SHARED_20261107",
+  "comment": [
+    "ANCHOR: PRICE_RULE_SHARED_20261107 — one price rule, one reader (LQ-20261107-280): market_quote.fresh_price/quote_age_seconds hold the operator rule (Finviz cache when younger than price_stale_after_s, else a fresh broker quote, never a stored print older than 30 min, never yfinance). watchlist_entry_planner._bars refuses a frame whose newest bar is older than 120 h, and shadow_decision_service.gather_facts records the quote it used or states the absence instead of serving a stored print as live_price."
+  ]
+}

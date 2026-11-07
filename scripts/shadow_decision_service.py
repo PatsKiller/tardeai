@@ -140,6 +140,18 @@ def _fundamentals_for(symbol: str) -> dict:
     return out
 
 
+def _cursor_query(cur):
+    """Adapt a cursor to the ``db_query(sql, params, fetch=)`` shape the Data Broker expects.
+
+    The Data Broker's read models take a query callable so a caller's own connection is reused;
+    passing the cursor itself keeps this lane on one handle and one transaction.
+    """
+    def _q(sql, params=(), fetch="all"):
+        cur.execute(sql, params)
+        return cur.fetchone() if fetch == "one" else cur.fetchall()
+    return _q
+
+
 def gather_facts(symbol: str, conn) -> dict:
     """Everything deterministic, before any model is asked."""
     sym = symbol.upper()
@@ -176,11 +188,20 @@ def gather_facts(symbol: str, conn) -> dict:
     if fund.get("short_float_pct") is not None:
         facts["short_float_pct"] = fund["short_float_pct"]
 
-    cur.execute("""SELECT price, fetched_at FROM market_quotes WHERE symbol=%s
-                   ORDER BY fetched_at DESC LIMIT 1""", (sym,))
-    r = cur.fetchone()
-    facts["live_price"] = float(r[0]) if r and r[0] is not None else None
-    facts["live_price_as_of"] = str(r[1]) if r else None
+    # Operator price rule (2026-11-07): a live price is the Finviz cache when it is younger than
+    # price_stale_after_s, else a fresh broker quote — never a stored print older than 30 minutes.
+    # The raw market_quotes read this replaced took the newest row whatever its age and called it
+    # "live" (measured 2026-11-07 21:10Z: SPY 735.53 from a row fetched 2026-11-06 16:45 ET).
+    try:
+        from lib.data_broker.market_quote import fresh_price
+    except ImportError:  # pragma: no cover - imported as scripts.shadow_decision_service
+        from scripts.lib.data_broker.market_quote import fresh_price  # type: ignore -- package import when scripts/ is not on sys.path
+    quote = fresh_price(_cursor_query(cur), sym) or {}
+    facts["live_price"] = quote.get("price")
+    facts["live_price_as_of"] = str(quote["as_of"]) if quote.get("as_of") is not None else None
+    facts["live_price_source"] = quote.get("source")
+    if facts["live_price"] is None:
+        facts["live_price_reason"] = "no quote within 30 minutes from the Finviz cache or a broker"
 
     # ATR and swing levels need TRUE RANGE, which needs highs and lows.
     # ticker_prices stores close_price ONLY — no high, no low. Computing a

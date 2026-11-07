@@ -126,58 +126,32 @@ def _bar(high, low, close):
 
 #: The operator price rule (2026-11-07): a live price is the Finviz cache when it is younger than
 #: portfolio_positions.price_stale_after_s, else a fresh broker quote — and never a stored DB print
-#: older than this. A bar's last close is history; it is not a today price.
+#: older than this. A bar's last close is history; it is not a today price. The rule itself lives in
+#: one place (``market_quote.fresh_price``); these two names delegate so the lane's readers and its
+#: tests have one entry point.
 QUOTE_MAX_AGE_S = 30 * 60
+
+
+def _market_quote_rule():
+    try:
+        from lib.data_broker.market_quote import fresh_price, quote_age_seconds
+    except ImportError:  # pragma: no cover - imported as scripts.watchlist_entry_planner
+        from scripts.lib.data_broker.market_quote import fresh_price, quote_age_seconds  # type: ignore -- package import when scripts/ is not on sys.path
+    return fresh_price, quote_age_seconds
 
 
 def _quote_age_seconds(as_of) -> float | None:
     """Seconds since the quote's own stamp, or None when it cannot be read (an unreadable stamp is not a price)."""
-    # None means "cannot date this quote", which the caller treats as no quote.
-    # nosemgrep: tq-py-broad-except-returns-default -- an undated price is what the operator rule forbids
-    try:
-        if isinstance(as_of, (int, float)):
-            stamp = datetime.fromtimestamp(float(as_of), timezone.utc)
-        elif isinstance(as_of, str):
-            stamp = datetime.fromisoformat(as_of.strip().replace("Z", "+00:00"))
-        elif isinstance(as_of, datetime):
-            stamp = as_of
-        else:
-            return None
-        if stamp.tzinfo is None:
-            stamp = stamp.replace(tzinfo=timezone.utc)
-        return max(0.0, (datetime.now(timezone.utc) - stamp).total_seconds())
-    except Exception:  # noqa: BLE001 -- an unreadable stamp cannot be aged
-        return None
+    return _market_quote_rule()[1](as_of)
 
 
 def _fresh_price(symbol: str) -> dict | None:
-    """The symbol's live quote from the one shared price helper, or None.
+    """The symbol's live quote under the operator price rule, or None.
 
-    None means: no quote satisfies the operator rule right now. The caller must not fall back to the
-    bars' last close — that fallback is the defect this function exists to remove.
+    None means: no quote satisfies the rule right now. The caller must not fall back to the bars'
+    last close — that fallback is the defect this function exists to remove.
     """
-    # None already means "no quote that satisfies the rule", and the caller skips the symbol as
-    # no_fresh_price rather than planning off a close.
-    # nosemgrep: tq-py-broad-except-returns-default -- the caller skips the symbol, never plans off a close
-    try:
-        try:
-            from lib.data_broker.market_quote import get_price_batch
-        except ImportError:  # pragma: no cover - imported as scripts.watchlist_entry_planner
-            from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore -- package import when scripts/ is not on sys.path
-        quote = (get_price_batch(_broker_db_query(), [symbol.upper()], max_age_hours=1) or {}).get(symbol.upper())
-    except Exception:  # noqa: BLE001 -- a failed read is no quote
-        return None
-    if not quote or quote.get("price") is None:
-        return None
-    source = str(quote.get("source") or "")
-    if source == "finviz_quote_cache":
-        # The overlay is applied only when the cache row is younger than the configured limit, so a
-        # price carrying that source already satisfies the rule.
-        return quote
-    age = _quote_age_seconds(quote.get("as_of"))
-    if age is None or age > QUOTE_MAX_AGE_S:
-        return None
-    return quote
+    return _market_quote_rule()[0](_broker_db_query(), symbol, max_age_s=QUOTE_MAX_AGE_S)
 
 
 def _bars_data_broker(symbol, days=70):
@@ -203,15 +177,44 @@ def _bars_data_broker(symbol, days=70):
     return bars[-days:] if len(bars) >= 50 else None
 
 
+def _bar_age_hours(stamp) -> float | None:
+    """Hours since a bar's own date, or None when it cannot be read.
+
+    An unreadable date is not evidence of freshness: the caller refuses the bars rather than
+    assuming they are current. Accepts a pandas Timestamp, a datetime, or an ISO string; a naive
+    stamp is UTC.
+    """
+    # None means "cannot date these bars", which the caller treats as unusable.
+    # nosemgrep: tq-py-broad-except-returns-default -- an undated bar is not a current bar
+    try:
+        if hasattr(stamp, "to_pydatetime"):
+            stamp = stamp.to_pydatetime()
+        if isinstance(stamp, datetime):
+            when = stamp
+        else:
+            when = datetime.fromisoformat(str(stamp).strip().replace("Z", "+00:00"))
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - when).total_seconds()) / 3600.0
+    except Exception:  # noqa: BLE001 -- an unreadable date cannot be aged
+        return None
+
+
 def _bars(symbol, days=70):
-    """yfinance first; on rate-limit/empty, fall back to the host Data Broker (market_ohlcv_bars). Either
-    returns the last `days` of {high,low,close} (≥50 bars) or None."""
+    """yfinance first; on rate-limit/empty, fall back to the host Data Broker (market_ohlcv_bars).
+
+    Either returns the last `days` of {high,low,close} (≥50 bars) or None. A frame whose newest bar
+    is older than ``BROKER_BARS_MAX_AGE_HOURS`` is refused, exactly as the broker path already
+    refuses one: technicals from a 717-hour-old bar are a picture of a month ago, and the last
+    close of such a frame was reaching plans and suggested levels as "the price".
+    """
     try:
         import yfinance as yf
         h = yf.Ticker(symbol).history(period="1y")
         bars = [b for b in (_bar(hi, lo, c)
                             for hi, lo, c in zip(h["High"], h["Low"], h["Close"])) if b]
-        if len(bars) >= 50:
+        age = _bar_age_hours(h.index[-1]) if len(h) else None
+        if len(bars) >= 50 and age is not None and age <= BROKER_BARS_MAX_AGE_HOURS:
             return bars[-days:]
     except Exception:
         pass

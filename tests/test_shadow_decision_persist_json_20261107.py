@@ -25,6 +25,7 @@ from the live store): the bar boundary (``_bar``), the fact gates (``_finite_rou
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import math
 import sys
@@ -59,13 +60,25 @@ def test_a_non_finite_bar_is_not_a_bar():
 
 
 class _Frame:
-    """The two-column-read shape ``_bars`` uses: ``h["High"]`` etc. as plain sequences."""
+    """The two-column-read shape ``_bars`` uses: ``h["High"]`` etc. as plain sequences.
+
+    ``index`` is a real yfinance frame's row index (one date per bar), and ``_bars`` now reads it to
+    refuse bars whose newest candle is older than ``BROKER_BARS_MAX_AGE_HOURS`` (LQ-20261107-280). A
+    fake without dates would prove nothing about that guard, so the bars are stamped as the last n
+    days.
+    """
 
     def __init__(self, cols):
         self._cols = cols
+        n = len(next(iter(cols.values())))
+        now = dt.datetime.now(dt.timezone.utc)
+        self.index = [now - dt.timedelta(days=n - 1 - i) for i in range(n)]
 
     def __getitem__(self, key):
         return self._cols[key]
+
+    def __len__(self):
+        return len(next(iter(self._cols.values())))
 
 
 class _Ticker:

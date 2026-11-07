@@ -31,6 +31,16 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 LIVE_FALLBACK_MAX_PER_BATCH = 10
 LIVE_FALLBACK_TIMEOUT_S = 5.0
 
+#: The operator price rule (2026-11-07): a live price is the Finviz cache when it is younger than
+#: ``portfolio_positions.price_stale_after_s``, else a fresh broker quote — and never a stored print
+#: older than this. One constant, one reader (:func:`fresh_price`), so no lane re-derives it.
+PRICE_MAX_AGE_S = 30 * 60
+
+#: Providers whose quote is a delayed display price, never a price to plan or decide on. The
+#: operator rule (2026-11-07) says never yfinance; the quote-only waterfall asks it third, so a
+#: symbol whose brokers are silent would otherwise come back "priced" from a delayed feed.
+DISALLOWED_PRICE_PROVIDERS = frozenset({"yfinance", "yahoo"})
+
 
 def _ensure_scripts_path() -> None:
     scripts = str(PROJECT_ROOT / "scripts")
@@ -68,6 +78,10 @@ def _best_quote(symbol: str, max_age_s: int = 900) -> dict[str, Any] | None:
         ex.shutdown(wait=False, cancel_futures=True)
     price = q.get("price") if q.get("price") is not None else q.get("last_price")
     if price is None:
+        return None
+    if str(q.get("provider") or "").strip().lower() in DISALLOWED_PRICE_PROVIDERS:
+        # A delayed display quote is not a price under the operator rule. Returning None is the
+        # honest answer: the caller then says "no current quote" instead of pricing off it.
         return None
     try:
         price = float(price)
@@ -155,3 +169,64 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
                     "source": f"data_broker.market_quote:get_best_quote:{q.get('provider') or 'unknown'}",
                 }
     return out
+
+
+def quote_age_seconds(as_of) -> float | None:
+    """Seconds since a quote's own stamp, or None when it cannot be read.
+
+    Accepts an epoch number, an ISO string (``Z`` allowed), or a datetime; a naive stamp is UTC.
+    Junk returns None, which every caller treats as "cannot date this quote" — an undated price is
+    exactly what the operator rule forbids.
+    """
+    from datetime import datetime, timezone
+
+    # None means "cannot date this quote", which every caller treats as no quote.
+    # nosemgrep: tq-py-broad-except-returns-default -- an unstampable quote is refused, never treated as fresh
+    try:
+        if isinstance(as_of, (int, float)):
+            stamp = datetime.fromtimestamp(float(as_of), timezone.utc)
+        elif isinstance(as_of, str):
+            stamp = datetime.fromisoformat(as_of.strip().replace("Z", "+00:00"))
+        elif isinstance(as_of, datetime):
+            stamp = as_of
+        else:
+            return None
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - stamp).total_seconds())
+    except Exception:  # noqa: BLE001 -- an unreadable stamp cannot be aged
+        return None
+
+
+def fresh_price(db_query, symbol: str, *, max_age_s: float = PRICE_MAX_AGE_S,
+                skip_live: bool = False) -> dict[str, Any] | None:
+    """The symbol's current price under the operator rule (2026-11-07), or None.
+
+    A ``finviz_quote_cache`` answer is taken outright — :func:`get_price_batch` only overlays the
+    cache when it is younger than ``portfolio_positions.price_stale_after_s``. Any other answer is
+    kept only when its own ``as_of`` is within ``max_age_s``; a stored print of any age, or an
+    undated one, is None.
+
+    None means "no price right now", and every caller must say so rather than fall back to a
+    historical close or a stored row — that fallback is the defect this function exists to remove.
+    """
+    # nosemgrep: tq-py-broad-except-returns-default -- None means "no price right now"; the caller's skip is the safe direction
+    try:
+        quote = (get_price_batch(db_query, [symbol.upper()], max_age_hours=1,
+                                 skip_live=skip_live, finviz_first=True) or {}).get(symbol.upper())
+    except Exception:  # noqa: BLE001 -- a failed read is no price
+        return None
+    if not quote or quote.get("price") is None:
+        return None
+    if str(quote.get("source") or "") == "finviz_quote_cache":
+        return quote
+    src = str(quote.get("source") or "").lower()
+    if any(bad in src for bad in DISALLOWED_PRICE_PROVIDERS):
+        # "Finviz, never yfinance" binds a stored row too: market_quotes holds yfinance-sourced
+        # rows (measured 2026-11-07: V 422.65, source yfinance), and a recent one is still a
+        # delayed display print, not a price to plan or decide on.
+        return None
+    age = quote_age_seconds(quote.get("as_of"))
+    if age is None or age > max_age_s:
+        return None
+    return quote

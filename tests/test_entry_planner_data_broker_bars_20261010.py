@@ -181,7 +181,18 @@ def test_yfinance_first_broker_untouched_when_it_answers(guarded, monkeypatch):
     wep, _blocker, env, _before = guarded
 
     class _Hist(dict):
-        pass
+        """A yfinance frame: the columns, plus the row index every real frame carries.
+
+        ``_bars`` now refuses a frame whose newest bar is older than
+        ``BROKER_BARS_MAX_AGE_HOURS`` (LQ-20261107-280) and reads ``index[-1]`` to date it, so an
+        undated fake would exercise the refusal path rather than the yfinance-first path.
+        """
+
+        def __init__(self, **cols):
+            super().__init__(**cols)
+            n = len(next(iter(cols.values())))
+            now = datetime.now(timezone.utc)
+            self.index = [now - timedelta(days=n - 1 - i) for i in range(n)]
 
     n = 80
     h = _Hist(High=[2.0 + i for i in range(n)], Low=[1.0 + i for i in range(n)], Close=[1.5 + i for i in range(n)])
