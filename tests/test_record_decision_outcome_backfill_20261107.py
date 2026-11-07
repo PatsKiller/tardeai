@@ -323,6 +323,17 @@ def test_dry_run_without_the_fill_previews_only_the_inserts(lane, monkeypatch):
     assert not any("WITH src AS" in s for s, _ in cursor.executed)
 
 
+def test_a_dry_run_that_cannot_measure_says_so_instead_of_zero(lane, monkeypatch):
+    """The preview is one count row. If it is not there, printing 0 would be the flattened unknown this item is
+    about; the dry run fails instead."""
+    m, _ = lane
+    cursor = FakeCursor(rows=[[]])  # _select_decisions, then nothing for the preview
+    _with_cursor(monkeypatch, m, cursor)
+
+    with pytest.raises(RuntimeError, match="preview returned no count row"):
+        m.dry_run(True)
+
+
 def test_main_dry_run_never_touches_the_writers(lane, monkeypatch):
     m, _ = lane
     monkeypatch.setattr(m, "record_current_decisions", lambda *a, **k: pytest.fail("dry run must not insert"))

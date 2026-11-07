@@ -215,7 +215,9 @@ def backfill_prices(days: int = 30) -> int:
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute(_FILL_PRICES_SQL)
-    written = int(cur.rowcount or 0)
+    # psycopg2 reports an UPDATE's row count from the command tag; a driver that could not would have raised, so a
+    # falsy value here reads "the statement reported no rows", not "unknown".
+    written = int(cur.rowcount or 0)  # nosemgrep: tq-py-missing-as-zero -- the UPDATE's own command tag, not a default
 
     # Same transaction, after the fill: a row whose +7d close was just found has become scoreable.
     cur.execute(_SCORE_CANDIDATES_SQL)
@@ -243,11 +245,13 @@ def dry_run(backfill: bool) -> dict:
     print(f"[outcomes] DRY-RUN would record {len(decisions)} new decision outcomes")
     if backfill:
         cur.execute(_FILL_PREVIEW_SQL)
-        r = cur.fetchone() or {}
-        out.update(would_backfill=int(r.get("would_backfill") or 0),
-                   would_fill={"1d": int(r.get("fill_1d") or 0), "7d": int(r.get("fill_7d") or 0),
-                               "30d": int(r.get("fill_30d") or 0),
-                               "decision_id": int(r.get("fill_id") or 0)})
+        r = cur.fetchone()
+        if not r:  # a dry run that cannot measure its own preview must say so, never print a wall of zeros
+            raise RuntimeError("the fill preview returned no count row")
+        out.update(would_backfill=int(r["would_backfill"]),
+                   would_fill={"1d": int(r["fill_1d"]), "7d": int(r["fill_7d"]),
+                               "30d": int(r["fill_30d"]),
+                               "decision_id": int(r["fill_id"])})
         print(f"[outcomes] DRY-RUN would fill prices on {out['would_backfill']} decision outcomes "
               f"(1d {out['would_fill']['1d']}, 7d {out['would_fill']['7d']}, 30d {out['would_fill']['30d']}, "
               f"decision_id {out['would_fill']['decision_id']})")
@@ -284,7 +288,9 @@ def main(argv=None) -> int:
             summary["backfilled"] = backfill_prices()
     except Exception as exc:
         # Report what this run already wrote and committed, not a flat zero: the INSERT step commits on its own.
-        produced = int(summary.get("recorded") or 0) + int(summary.get("backfilled") or 0)
+        # Each key is set only after its step committed, so an absent key means that step never completed and wrote
+        # nothing -- a fact, not an unknown.
+        produced = int(summary.get("recorded") or 0) + int(summary.get("backfilled") or 0)  # nosemgrep: tq-py-missing-as-zero -- see above
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                               script="record_decision_outcome.py", summary=summary,
                               error=f"{type(exc).__name__}: {exc}",
@@ -295,7 +301,8 @@ def main(argv=None) -> int:
         print(json.dumps(summary, indent=2))
     # LaneRunReceipt@v2 output (n8n expected_output, produced_field produced_count): the rows this run wrote --
     # inserted outcomes + prices filled. None of either is a correct outcome for this lane; it says so.
-    written = int(summary.get("recorded") or 0) + int(summary.get("backfilled") or 0)
+    # Absent = that step did not run (--no-backfill) or committed nothing, not an unknown value.
+    written = int(summary.get("recorded") or 0) + int(summary.get("backfilled") or 0)  # nosemgrep: tq-py-missing-as-zero -- see above
     lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
                           script="record_decision_outcome.py", summary=summary,
                           output={"produced_count": written, "attempted_count": written, "skipped_reasons": {},
