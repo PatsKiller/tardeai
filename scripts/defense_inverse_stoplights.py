@@ -620,9 +620,32 @@ class _DryRunConn:
 ENGINE_REL = ("data", "runtime", "defense_engine_latest.json")  # resolved under ROOT at call time
 
 
-def thesis_inputs(now: datetime | None = None) -> tuple[dict, dict, str | None]:
-    """(exposure{bench: pct|None}, trigger{bench: bool|None}, unknown_reason) from the defense projection."""
+def _build_projection_in_process(now: datetime):
+    """Read-only in-process build of the defense projection with the same builder the
+    defense-engine-build lane runs (scripts/defense_engine_build.py). Writes nothing."""
+    import defense_engine_build as _deb
+    return _deb.build(ROOT, now=now)
+
+
+def _write_projection(doc: dict) -> str | None:
+    """Persist an in-process build (never called on dry_run). Fail soft: returns the error text."""
+    try:
+        import defense_engine_build as _deb
+        _deb.write_atomic(ROOT.joinpath(*ENGINE_REL), doc)
+        return None
+    except Exception as e:  # noqa: BLE001 - a failed write must not break the evaluation
+        return f"{type(e).__name__}: {e}"[:300]
+
+
+def resolve_thesis_inputs(now: datetime | None = None, *, build=None, dry_run: bool = True) -> dict:
+    """THESIS inputs from the defense projection file; when it is missing or stale and a builder is
+    given, build the projection in-process (read-only inputs) and use that instead.
+
+    Returns {"exposure", "trigger", "unknown_reason", "source", "file_reason", "build_error", "wrote"}.
+    source is "file" or "built_in_process". The built projection is written to the projection path
+    only when not dry_run."""
     from lib.defense_engine import config as _de_config, thesis_inputs_from_projection
+    now = now or datetime.now(timezone.utc)
     try:
         doc = json.loads(ROOT.joinpath(*ENGINE_REL).read_text())
     except (OSError, ValueError):
@@ -632,31 +655,57 @@ def thesis_inputs(now: datetime | None = None) -> tuple[dict, dict, str | None]:
     except (OSError, ValueError):
         raw = None
     limit = float(_de_config(raw)["stale_projection_hours"])
-    trig, expo, why = thesis_inputs_from_projection(doc, now or datetime.now(timezone.utc), max_age_hours=limit)
-    if why:
-        return {}, {}, why
-    return expo, trig, None
+    trig, expo, why = thesis_inputs_from_projection(doc, now, max_age_hours=limit)
+    res = {"exposure": {} if why else expo, "trigger": {} if why else trig, "unknown_reason": why,
+           "source": "file", "file_reason": why, "build_error": None, "wrote": False}
+    if not why or build is None:
+        return res
+    try:
+        built = build(now)
+    except Exception as e:  # noqa: BLE001 - a failed build leaves THESIS UNKNOWN (AMBER), never RED
+        res["build_error"] = f"{type(e).__name__}: {e}"[:300]
+        res["unknown_reason"] = f"{why}; in-process build failed: {res['build_error']}"
+        return res
+    trig2, expo2, why2 = thesis_inputs_from_projection(built, now, max_age_hours=limit)
+    res["source"] = "built_in_process"
+    if why2:
+        res["unknown_reason"] = f"{why}; in-process build: {why2}"
+        return res
+    res.update(exposure=expo2, trigger=trig2, unknown_reason=None)
+    if not dry_run:
+        err = _write_projection(built)
+        res["wrote"] = err is None
+        res["build_error"] = err and f"projection write failed: {err}"
+    return res
 
 
-def evaluate_all(cur, conn, notify: bool = False, dry_run: bool = False) -> dict:
+def thesis_inputs(now: datetime | None = None) -> tuple[dict, dict, str | None]:
+    """(exposure{bench: pct|None}, trigger{bench: bool|None}, unknown_reason) from the defense projection file."""
+    r = resolve_thesis_inputs(now)
+    return r["exposure"], r["trigger"], r["unknown_reason"]
+
+
+def evaluate_all(cur, conn, notify: bool = False, dry_run: bool = False, build_projection=None) -> dict:
     """Nightly/refresh evaluation for the whole lane; persists transitions,
     dedupes alerts (only meaningful transitions fire).
 
     notify: send the transitions listed in config/defense_stoplight_notify.json
     (operator promoted the desk out of SHADOW 2026-10-31, P0-T7). dry_run: render
     the cards and send nothing, write no row and leave the snapshot file untouched (see _DryRunConn); the result
-    carries ``would_write`` instead. Sends go only through lib.market_risk.stoplight_notify."""
+    carries ``would_write`` instead. Sends go only through lib.market_risk.stoplight_notify.
+    build_projection: optional callable(now) -> projection, used when the projection file is missing
+    or stale (the CLI passes _build_projection_in_process); its output is written only when not dry_run."""
     if dry_run:
         real_conn = conn
         conn = _DryRunConn(real_conn)
         cur = _DryRunCursor(cur, conn)
         try:
-            out = _evaluate_all(cur, conn, notify=notify, dry_run=True)
+            out = _evaluate_all(cur, conn, notify=notify, dry_run=True, build_projection=build_projection)
         finally:
             real_conn.rollback()
         out["would_write"] = list(conn.would)
         return out
-    return _evaluate_all(cur, conn, notify=notify, dry_run=False)
+    return _evaluate_all(cur, conn, notify=notify, dry_run=False, build_projection=build_projection)
 
 
 def _write_snapshot(out: dict, dry_run: bool) -> None:
@@ -664,7 +713,7 @@ def _write_snapshot(out: dict, dry_run: bool) -> None:
         SNAP.write_text(json.dumps(out, default=str))
 
 
-def _evaluate_all(cur, conn, notify: bool, dry_run: bool) -> dict:
+def _evaluate_all(cur, conn, notify: bool, dry_run: bool, build_projection=None) -> dict:
     ensure_stoplight_tables(cur, conn)
     try:
         _cfg()
@@ -684,13 +733,17 @@ def _evaluate_all(cur, conn, notify: bool, dry_run: bool) -> dict:
     # look-through stressed share of invested. The old input — a regex over "HEDGE" card titles in
     # defense_recommendations_latest.json — measured Tech by direct holdings only, so a fund's tech share never
     # counted and the trigger could not fire. A missing or stale projection leaves every trigger UNKNOWN
-    # (AMBER), never "no thesis" (RED).
-    exposure, trigger, thesis_unknown = thesis_inputs()
+    # (AMBER), never "no thesis" (RED). Safety net: when the file is missing or stale and a builder is
+    # given, the projection is built in-process from the same read-only inputs (source "built_in_process").
+    ti = resolve_thesis_inputs(build=build_projection, dry_run=dry_run)
+    exposure, trigger, thesis_unknown = ti["exposure"], ti["trigger"], ti["unknown_reason"]
     out = {"generated_at": datetime.now(timezone.utc).isoformat(),
            "policy_version": POLICY_VERSION, "candidates": [], "locked": LOCKED,
            "path_warning": PATH_WARNING,
            "thesis_source": {"input": "data/runtime/defense_engine_latest.json hedge_readiness.inverse_triggers",
-                             "unknown_reason": thesis_unknown}}
+                             "unknown_reason": thesis_unknown, "source": ti["source"],
+                             "file_reason": ti["file_reason"], "build_error": ti["build_error"],
+                             "projection_written": ti["wrote"]}}
     from lib.market_risk.stoplight_notify import emit as _notify_emit
     from lib.market_risk.stoplight_notify import load_config as _notify_config
     from lib.market_risk.stoplight_notify import should_notify as _should_notify
@@ -763,7 +816,11 @@ if __name__ == "__main__":
     from lib.market_risk.stoplight_notify import load_config as _notify_config
     _dry = "--dry-run" in sys.argv[1:]
     conn = _get_conn(); cur = conn.cursor()
-    r = evaluate_all(cur, conn, notify=bool(_notify_config().get("enabled")), dry_run=_dry)
+    r = evaluate_all(cur, conn, notify=bool(_notify_config().get("enabled")), dry_run=_dry,
+                     build_projection=_build_projection_in_process)
+    _ts = r.get("thesis_source") or {}
+    print(f"thesis_source: {_ts.get('source')} unknown_reason={_ts.get('unknown_reason')} "
+          f"written={_ts.get('projection_written')}")
     for n in r.get("notifications") or []:
         print(f"notify {n['light']} {n['state']}: sent={n['sent']} accepted={n['accepted']} error={n['error']}")
     if _dry:
