@@ -416,7 +416,8 @@ def governor_decision(process_id=LLM_PROCESS_ID):
         from lib.llm_consumption import should_call
     except Exception:
         try:
-            from llm_consumption import should_call  # type: ignore
+            # same module, flat import: this script puts scripts/ on sys.path itself
+            from llm_consumption import should_call  # type: ignore -- flat-module fallback, see scripts/lib/llm_consumption.py
         except Exception:
             return None
     try:
