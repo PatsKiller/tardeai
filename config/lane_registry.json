@@ -5070,13 +5070,14 @@
       "lane_id": "commitment-outcome-sweep",
       "owner": "cio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "20 18 * * *",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/commitment-outcome-sweep.lock $PY scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/sweep_commitment_outcomes.py --apply",
-        "stage": "canary",
+        "cadence": "20 18 * * *",
+        "stage": "cutover",
         "wave": "R2-05",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/commitment-outcome-sweep.lock $PY scripts/sweep_commitment_outcomes.py --apply --state-root $HOME/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -5116,19 +5117,29 @@
         "class": "learn",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "20 18 * * *",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/commitment-outcome-sweep.lock $PY scripts/sweep_commitment_outcomes.py --apply --state-root $HOME/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+        "match": "scripts/sweep_commitment_outcomes.py --apply",
+        "stage": "canary",
+        "wave": "R2-05",
+        "cutover_wave": "CW2"
       }
     },
     {
       "lane_id": "instrument-belief-writer",
       "owner": "cio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "50 18 * * *",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/instrument-belief-writer.lock $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/write_instrument_beliefs.py --apply",
-        "stage": "canary",
+        "cadence": "50 18 * * *",
+        "stage": "cutover",
         "wave": "R2-06",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/instrument-belief-writer.lock $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -5167,7 +5178,16 @@
         "retry_policy": "none"
       },
       "adopted_on": "2026-10-11",
-      "adopted_reason": "SOURCE_ONLY shard06 proposal; exact approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00; no runtime or natural schedule observation; cron continues doing real work"
+      "adopted_reason": "SOURCE_ONLY shard06 proposal; exact approved scoped cron snapshot 2026-10-11T17:05:28.513179+00:00; no runtime or natural schedule observation; cron continues doing real work",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "50 18 * * *",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/instrument-belief-writer.lock $PY scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1",
+        "match": "scripts/write_instrument_beliefs.py --apply",
+        "stage": "canary",
+        "wave": "R2-06",
+        "cutover_wave": "CW2"
+      }
     },
     {
       "lane_id": "options-thesis-lifecycle",
@@ -6800,13 +6820,14 @@
       "lane_id": "watchlist-enrichment-sweep",
       "owner": "watch",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 9-16 * * 1-5",
-        "command_text": "cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/watchlist_enrichment_sweep.py",
-        "stage": "canary",
+        "cadence": "*/30 9-16 * * 1-5",
+        "stage": "cutover",
         "wave": "D3",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment"
       },
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
@@ -6847,6 +6868,15 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "*/30 9-16 * * 1-5",
+        "command_text": "cd $PROJ && flock -n /tmp/watchlist_sweep.lock $PY scripts/watchlist_enrichment_sweep.py --once >> logs/watchlist_sweep.log 2>&1  # E-1 intraday watchlist enrichment",
+        "match": "scripts/watchlist_enrichment_sweep.py",
+        "stage": "canary",
+        "wave": "D3",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -8906,13 +8936,14 @@
       "lane_id": "opening-intelligence-render",
       "owner": "portfolio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 9 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/opening_intelligence.py --persist --render",
-        "stage": "canary",
+        "cadence": "15 9 * * 1-5",
+        "stage": "cutover",
         "wave": "LD-W1",
-        "command_text": "15 9 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1",
-        "cutover_wave": "CW3"
+        "cutover_wave": "CUT1",
+        "command_text": "15 9 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -8952,7 +8983,16 @@
         "priority": 5,
         "retry_policy": "none"
       },
-      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L796 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
+      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L796 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "15 9 * * 1-5",
+        "match": "scripts/opening_intelligence.py --persist --render",
+        "stage": "canary",
+        "wave": "LD-W1",
+        "command_text": "15 9 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/opening_intel.lock $PY scripts/opening_intelligence.py --persist --render >> logs/opening_intelligence.log 2>&1",
+        "cutover_wave": "CW3"
+      }
     },
     {
       "lane_id": "hermes-research-agenda-at-45-7",
@@ -10447,13 +10487,14 @@
       "lane_id": "journal-tilt-morning-hook",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 12 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/journal_tilt_morning_hook.py",
-        "stage": "canary",
+        "cadence": "0 12 * * 1-5",
+        "stage": "cutover",
         "wave": "D1b",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/journal_tilt_hook.lock $PY scripts/journal_tilt_morning_hook.py >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/journal_tilt_hook.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/journal_tilt_hook.lock $PY scripts/journal_tilt_morning_hook.py >> $HOME/trade-ai-releases/portfolio-server/CURRENT/logs/journal_tilt_hook.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -10490,6 +10531,15 @@
         "class": "report",
         "priority": 5,
         "retry_policy": "transient-2"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 12 * * 1-5",
+        "match": "scripts/journal_tilt_morning_hook.py",
+        "stage": "canary",
+        "wave": "D1b",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/journal_tilt_hook.lock $PY scripts/journal_tilt_morning_hook.py >> $HOME/trade-ai-releases/portfolio-server/CURRENT/logs/journal_tilt_hook.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -10618,11 +10668,13 @@
       "lane_id": "hermes-entity-spike-discovery",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 */3 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_entity_spike_discovery.py",
-        "stage": "canary",
+        "cadence": "15 */3 * * *",
+        "stage": "cutover",
         "wave": "D1b",
+        "cutover_wave": "CUT1",
         "command_text": "cd $PROJ && flock -n /tmp/hermes_entity_spike.lock $PY scripts/hermes_entity_spike_discovery.py --run --json >> logs/hermes_entity_spike.log 2>&1  # URDL entity-spike discovery (enabled 2026-07-05)"
       },
       "expected_cadence_hours": 3.0,
@@ -10667,6 +10719,14 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 27 natural dispatcher dry_run fires RUN_DONE exit 0 (d:hermes-entity-spike-discovery:dry_run:20261010T1515 .. d:hermes-entity-spike-discovery:dry_run:20261014T0915), 4 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 26/27 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L688 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/hermes_entity_spike.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "15 */3 * * *",
+        "match": "scripts/hermes_entity_spike_discovery.py",
+        "stage": "canary",
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_entity_spike.lock $PY scripts/hermes_entity_spike_discovery.py --run --json >> logs/hermes_entity_spike.log 2>&1  # URDL entity-spike discovery (enabled 2026-07-05)"
       }
     },
     {
@@ -11128,13 +11188,14 @@
       "lane_id": "agent-outcome-linker",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 11 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/agent_outcome_linker.py",
-        "stage": "canary",
+        "cadence": "0 11 * * 1-5",
+        "stage": "cutover",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_linker.lock $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_linker.lock $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -11171,6 +11232,15 @@
         "class": "learn",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 11 * * 1-5",
+        "match": "scripts/agent_outcome_linker.py",
+        "stage": "canary",
+        "wave": "D3",
+        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_linker.lock $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -11633,13 +11703,14 @@
       "lane_id": "update-agent-performance",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 20 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/update_agent_performance.py",
-        "stage": "canary",
+        "cadence": "0 20 * * 1-5",
+        "stage": "cutover",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/update_agent_performance.lock $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/update_agent_performance.lock $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -11676,19 +11747,29 @@
         "class": "learn",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 20 * * 1-5",
+        "match": "scripts/update_agent_performance.py",
+        "stage": "canary",
+        "wave": "D3",
+        "command_text": "cd $PROJ && flock -n /tmp/update_agent_performance.lock $PY scripts/update_agent_performance.py >> logs/update_agent_performance.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
       "lane_id": "build-symbol-profiles-at-0-19",
       "owner": "portfolio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 19 * * 0",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/build_symbol_profiles.py >>",
-        "command_text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)",
-        "stage": "canary",
+        "cadence": "0 19 * * 0",
+        "stage": "cutover",
         "wave": "R2-05",
-        "cutover_wave": "CW3"
+        "cutover_wave": "CUT1",
+        "command_text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -11725,6 +11806,15 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 19 * * 0",
+        "match": "scripts/build_symbol_profiles.py >>",
+        "command_text": "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)",
+        "stage": "canary",
+        "wave": "R2-05",
+        "cutover_wave": "CW3"
       }
     },
     {
@@ -12513,13 +12603,14 @@
       "lane_id": "sec-data-ingest",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 20 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/sec_data_ingest.py",
-        "stage": "canary",
+        "cadence": "0 20 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -12556,6 +12647,15 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 20 * * 1-5",
+        "match": "scripts/sec_data_ingest.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/sec_data_ingest.lock $PY scripts/sec_data_ingest.py --all >> logs/sec_ingest.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -12644,13 +12744,14 @@
       "lane_id": "feedback-loop-processor",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 20 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/feedback_loop_processor.py",
-        "stage": "canary",
+        "cadence": "30 20 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -12687,6 +12788,15 @@
         "class": "learn",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5",
+        "match": "scripts/feedback_loop_processor.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -12752,13 +12862,14 @@
       "lane_id": "agent-outcome-scorer",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 11 * * 0",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/agent_outcome_scorer.py",
-        "stage": "canary",
+        "cadence": "0 11 * * 0",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_scorer.lock $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_scorer.lock $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -12795,19 +12906,29 @@
         "class": "learn",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 11 * * 0",
+        "match": "scripts/agent_outcome_scorer.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/agent_outcome_scorer.lock $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1",
+        "cutover_wave": "CW2"
       }
     },
     {
       "lane_id": "aegis-social-sentiment",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 11,15 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/aegis_social_sentiment.py",
-        "stage": "canary",
+        "cadence": "0 11,15 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/aegis_social_sentiment.lock timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/aegis_social_sentiment.lock timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1"
       },
       "expected_cadence_hours": 68.0,
       "state": "ACTIVE",
@@ -12844,19 +12965,29 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 11,15 * * 1-5",
+        "match": "scripts/aegis_social_sentiment.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/aegis_social_sentiment.lock timeout 10m $PY scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1",
+        "cutover_wave": "CW2"
       }
     },
     {
       "lane_id": "aegis-transcript-discovery",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 9 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/aegis_transcript_discovery.py",
-        "stage": "canary",
+        "cadence": "0 9 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/aegis_transcript_discovery.lock timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/aegis_transcript_discovery.lock timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -12893,6 +13024,15 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 9 * * 1-5",
+        "match": "scripts/aegis_transcript_discovery.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/aegis_transcript_discovery.lock timeout 5m $PY scripts/aegis_transcript_discovery.py >> logs/aegis_transcript.log 2>&1",
+        "cutover_wave": "CW2"
       }
     },
     {
@@ -13043,13 +13183,14 @@
       "lane_id": "etf-analyst-enrich",
       "owner": "portfolio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 7 * * 6",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/etf_analyst_enrich.py",
-        "stage": "canary",
+        "cadence": "0 7 * * 6",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>&1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -13086,19 +13227,29 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 7 * * 6",
+        "match": "scripts/etf_analyst_enrich.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/etf_analyst.lock $PY scripts/etf_analyst_enrich.py >> logs/etf_analyst_enrich.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
       "lane_id": "etf-performance-enrich",
       "owner": "portfolio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 7 * * 6",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/etf_performance_enrich.py",
-        "stage": "canary",
+        "cadence": "15 7 * * 6",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -13135,6 +13286,15 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "15 7 * * 6",
+        "match": "scripts/etf_performance_enrich.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -13314,13 +13474,14 @@
       "lane_id": "hermes-social-sentiment",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 11,15 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_social_sentiment.py",
-        "stage": "canary",
+        "cadence": "15 11,15 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_social_sentiment.lock $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_social_sentiment.lock $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1"
       },
       "expected_cadence_hours": 68.0,
       "state": "ACTIVE",
@@ -13357,6 +13518,15 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "15 11,15 * * 1-5",
+        "match": "scripts/hermes_social_sentiment.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_social_sentiment.lock $PY scripts/hermes_social_sentiment.py --apply >> logs/hermes_social_sentiment.log 2>&1",
+        "cutover_wave": "CW2"
       }
     },
     {
@@ -14985,13 +15155,14 @@
       "lane_id": "finviz-screener-runner",
       "owner": "scalp",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 10 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/finviz_screener_runner.py",
-        "stage": "canary",
+        "cadence": "0 10 * * 1-5",
+        "stage": "cutover",
         "wave": "R2-01",
-        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -15028,19 +15199,29 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
-      "adopted_reason": "R2-01 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+      "adopted_reason": "R2-01 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 10 * * 1-5",
+        "match": "scripts/finviz_screener_runner.py",
+        "stage": "canary",
+        "wave": "R2-01",
+        "command_text": "0 10 * * 1-5 cd $PROJ && flock -n /tmp/finviz_screener.lock $PY scripts/finviz_screener_runner.py --run >> logs/finviz_screener.log 2>&1",
+        "cutover_wave": "CW1"
+      }
     },
     {
       "lane_id": "daily-incubator-refresh",
       "owner": "proposals",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 8 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/daily_incubator_refresh.py",
-        "stage": "canary",
+        "cadence": "15 8 * * 1-5",
+        "stage": "cutover",
         "wave": "R2-01",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/daily-incubator-refresh.lock $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/daily-incubator-refresh.lock $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -15077,19 +15258,29 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
-      "adopted_reason": "R2-01 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation."
+      "adopted_reason": "R2-01 source shadow candidate (refactor train 3): a row carrying a dispatch block is hand-maintained, so the generator must not re-derive it. Health contract remains DRAFT; operator review is required before activation.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "15 8 * * 1-5",
+        "match": "scripts/daily_incubator_refresh.py",
+        "stage": "canary",
+        "wave": "R2-01",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/daily-incubator-refresh.lock $PY scripts/daily_incubator_refresh.py --apply >> logs/incubator_refresh.log 2>&1",
+        "cutover_wave": "CW2"
+      }
     },
     {
       "lane_id": "weekly-incubator-builder",
       "owner": "proposals",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 19 * * 0",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/weekly_incubator_builder.py",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/weekly-incubator-builder.lock $PY scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1",
-        "stage": "canary",
+        "cadence": "0 19 * * 0",
+        "stage": "cutover",
         "wave": "R2-02",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/weekly-incubator-builder.lock $PY scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -15139,19 +15330,29 @@
         "worktree": "refactor-shard-02",
         "runtime_activation": "NOT_PERFORMED",
         "contract_status": "DRAFT"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 19 * * 0",
+        "match": "scripts/weekly_incubator_builder.py",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/weekly-incubator-builder.lock $PY scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1",
+        "stage": "canary",
+        "wave": "R2-02",
+        "cutover_wave": "CW2"
       }
     },
     {
       "lane_id": "finviz-proactive-research",
       "owner": "scalp",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 9,11,13,15 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/finviz_proactive_research.py",
-        "stage": "canary",
+        "cadence": "30 9,11,13,15 * * 1-5",
+        "stage": "cutover",
         "wave": "R2-04",
-        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1"
       },
       "expected_cadence_hours": 66.0,
       "state": "ACTIVE",
@@ -15195,6 +15396,15 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 9 natural dispatcher dry_run fires RUN_DONE exit 0 (d:finviz-proactive-research:dry_run:20261012T0930 .. d:finviz-proactive-research:dry_run:20261014T0930), 0 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 9/9 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L524 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/finviz_proactive.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "30 9,11,13,15 * * 1-5",
+        "match": "scripts/finviz_proactive_research.py",
+        "stage": "canary",
+        "wave": "R2-04",
+        "command_text": "30 9,11,13,15 * * 1-5 cd $PROJ && flock -n /tmp/finviz_proactive.lock $PY scripts/finviz_proactive_research.py --max 400 --lookback-hours 12 >> logs/finviz_proactive.log 2>&1",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -15389,13 +15599,14 @@
       "lane_id": "proposal-backtest-engine",
       "owner": "proposals",
       "scheduler": {
-        "kind": "cron",
-        "expression": "5 10-15/2 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/proposal_backtest_engine.py",
-        "stage": "canary",
+        "cadence": "5 10-15/2 * * 1-5",
+        "stage": "cutover",
         "wave": "R2-06",
-        "command_text": "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CUT1",
+        "command_text": "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)"
       },
       "expected_cadence_hours": 68.0,
       "state": "ACTIVE",
@@ -15439,6 +15650,15 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 7 natural dispatcher dry_run fires RUN_DONE exit 0 (d:proposal-backtest-engine:dry_run:20261012T1005 .. d:proposal-backtest-engine:dry_run:20261014T1005), 0 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 7/7 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L608 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/proposal_backtest.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "5 10-15/2 * * 1-5",
+        "match": "scripts/proposal_backtest_engine.py",
+        "stage": "canary",
+        "wave": "R2-06",
+        "command_text": "5 10-15/2 * * 1-5 cd $PROJ && flock -n /tmp/proposal_backtest.lock $PY scripts/proposal_backtest_engine.py --all-pending --apply >> logs/proposal_backtest_engine.log 2>&1  # backtest active proposals → proposal_backtest_snapshots (Backtest field on cards)",
+        "cutover_wave": "CW1"
       }
     },
     {
@@ -16758,13 +16978,14 @@
       "lane_id": "incubator-rolloff-engine",
       "owner": "proposals",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 10 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/incubator_rolloff_engine.py",
-        "stage": "canary",
+        "cadence": "0 10 * * 1-5",
+        "stage": "cutover",
         "wave": "LD-W1",
-        "command_text": "cd $PROJ && flock -n /tmp/incubator_rolloff.lock $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1",
-        "cutover_wave": "CW3"
+        "cutover_wave": "CUT1",
+        "command_text": "cd $PROJ && flock -n /tmp/incubator_rolloff.lock $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
@@ -16801,7 +17022,16 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L269 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
+      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L269 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 10 * * 1-5",
+        "match": "scripts/incubator_rolloff_engine.py",
+        "stage": "canary",
+        "wave": "LD-W1",
+        "command_text": "cd $PROJ && flock -n /tmp/incubator_rolloff.lock $PY scripts/incubator_rolloff_engine.py --apply >> logs/incubator_rolloff.log 2>&1",
+        "cutover_wave": "CW3"
+      }
     },
     {
       "lane_id": "wire-advisory-lessons",
@@ -16866,13 +17096,14 @@
       "lane_id": "pattern-extractor",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "0 9 1 * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/pattern_extractor.py",
-        "stage": "canary",
+        "cadence": "0 9 1 * *",
+        "stage": "cutover",
         "wave": "LD-W1",
-        "command_text": "0 9 1 * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1",
-        "cutover_wave": "CW3"
+        "cutover_wave": "CUT1",
+        "command_text": "0 9 1 * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1"
       },
       "expected_cadence_hours": 744.0,
       "state": "ACTIVE",
@@ -16909,7 +17140,16 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L790 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
+      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L790 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "0 9 1 * *",
+        "match": "scripts/pattern_extractor.py",
+        "stage": "canary",
+        "wave": "LD-W1",
+        "command_text": "0 9 1 * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pattern_extractor.lock $PY scripts/pattern_extractor.py >> logs/pattern_extractor.log 2>&1",
+        "cutover_wave": "CW3"
+      }
     },
     {
       "lane_id": "hermes-discovery-scorecard",
