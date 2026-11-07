@@ -369,6 +369,43 @@ def test_consumer_contract_brief_fields():
     assert "SYNTHKEY" not in json.dumps(d, default=str)
 
 
+def _detector_evidence():
+    # the shape lib.market_event_rank writes (LQ-380 go-live): no flat forward_pe/peg/roic_pct keys
+    return {"sector": "Technology", "group": "tech", "fpe_sector_median": 20.0,
+            "quality_factors": {"peg": {"input": 0.8, "value": 1.0}, "roic_pct": {"input": 31.5, "value": 1.0},
+                                "fpe_vs_sector_median": {"input": 0.75, "value": 1.0},
+                                "analyst_recom": {"input": None, "value": None}}}
+
+
+def test_evidence_numbers_read_the_detector_shape():
+    n = api.evidence_numbers(_detector_evidence())
+    assert n == {"fwd_pe": 15.0, "sector_median_pe": 20.0, "peg": 0.8, "roic_pct": 31.5}
+    # flat keys still win; a missing factor stays unknown, never zero
+    assert api.evidence_numbers({"forward_pe": 18.2, **_detector_evidence()})["fwd_pe"] == 18.2
+    assert api.evidence_numbers({"quality_factors": {"peg": {"input": None}}}) == {
+        "fwd_pe": None, "sector_median_pe": None, "peg": None, "roic_pct": None}
+
+
+def test_active_fills_pe_from_detector_evidence_for_banner_and_brief():
+    doc = api.consumer_view({"market_gate": {}, "accounts": [], "candidates": [
+        {"symbol": "SYNTH_B", "rank": 1, "state": "WATCH", "reason_evidence": _detector_evidence()}]})
+    c = doc["candidates"][0]
+    assert (c["fwd_pe"], c["sector_median_pe"], c["peg"], c["roic_pct"]) == (15.0, 20.0, 0.8, 31.5)
+    assert c["forward_pe"] == 15.0  # market_event_brief._evidence(c, "forward_pe")
+
+
+def test_active_reports_the_total_beyond_the_display_cap():
+    d = _ready_payload()
+    assert d["candidates_total"] == 1 == len(d["candidates"])
+    rows = [{"episode_id": "E1", "symbol": f"SYNTH_{i:02d}", "rank": i, "state": "WATCH", "last_price": 10.0,
+             "reason_evidence": {"sector": "Technology"}, "updated_at": "2026-11-08T13:00:00+00:00"}
+            for i in range(1, 31)]
+    capped = _active(FakeDB({"market_event_episodes": [{"episode_id": "E1", "state": "OPEN",
+                                                         "opened_at": "2026-11-05T14:00:00+00:00"}],
+                             "market_event_candidates": rows, "market_quotes": [], "trade_transactions": []}))
+    assert len(capped["candidates"]) == 25 and capped["candidates_total"] == 30
+
+
 def test_bars_never_read_yfinance_or_ohlcv_table():
     # spec section 2: Finviz-only; market_ohlcv_bars daily is yfinance-only, so it must not be read
     assert "market_ohlcv_bars" not in api.BARS_SQL and "market_quotes" in api.BARS_SQL

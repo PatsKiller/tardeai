@@ -264,6 +264,7 @@ def build_active(*, db_query: DbQuery, snapshot: Optional[Mapping[str, Any]],
         "episode": doc["episode"],
         "market_gate": doc["market_gate"],
         "candidates": doc["candidates"],
+        "candidates_total": len(candidates),
         "accounts": doc["accounts"],
         "policy": doc["policy"],
         "computed_at": now.isoformat(),
@@ -275,6 +276,35 @@ def build_active(*, db_query: DbQuery, snapshot: Optional[Mapping[str, Any]],
 
 
 _EVIDENCE_NUMBERS = {"fwd_pe": "forward_pe", "sector_median_pe": "sector_median_pe", "peg": "peg", "roic_pct": "roic_pct"}
+
+
+def _num_or_none(v: Any) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def evidence_numbers(ev: Mapping[str, Any]) -> dict[str, Optional[float]]:
+    """fwd_pe / sector_median_pe / peg / roic_pct from a candidate's reason_evidence.
+
+    Flat keys win when present. The detector (lib.market_event_rank) stores them in another shape:
+    ``fpe_sector_median`` and ``quality_factors.<factor>.input``; forward P/E is stored only as its
+    ratio to the sector median, so it is the ratio times the median. A factor without an input stays None.
+    """
+    qf = ev.get("quality_factors") if isinstance(ev.get("quality_factors"), Mapping) else {}
+
+    def factor(name: str) -> Optional[float]:
+        f = qf.get(name)
+        return _num_or_none(f.get("input")) if isinstance(f, Mapping) else None
+
+    out = {k: _num_or_none(ev.get(src)) for k, src in _EVIDENCE_NUMBERS.items()}
+    if out["sector_median_pe"] is None:
+        out["sector_median_pe"] = _num_or_none(ev.get("fpe_sector_median"))
+    for k in ("peg", "roic_pct"):
+        if out[k] is None:
+            out[k] = factor(k)
+    ratio = factor("fpe_vs_sector_median")
+    if out["fwd_pe"] is None and ratio is not None and out["sector_median_pe"]:
+        out["fwd_pe"] = round(ratio * out["sector_median_pe"], 2)
+    return out
 
 
 def _gate_state(ok: Optional[bool]) -> str:
@@ -320,9 +350,11 @@ def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
             rows_by_symbol.setdefault(str(nm.get("symbol")), []).append((acct, nm))
     for c in doc.get("candidates") or []:
         ev = c.get("reason_evidence") if isinstance(c.get("reason_evidence"), dict) else {}
-        for out_key, ev_key in _EVIDENCE_NUMBERS.items():
-            if c.get(out_key) is None and isinstance(ev.get(ev_key), (int, float)):
-                c[out_key] = ev[ev_key]
+        for out_key, val in evidence_numbers(ev).items():
+            if c.get(out_key) is None and val is not None:
+                c[out_key] = val
+        if c.get("forward_pe") is None and c.get("fwd_pe") is not None:
+            c["forward_pe"] = c["fwd_pe"]  # the brief's _evidence(c, "forward_pe") reads this name
         sig = ((c.get("name_gate") or {}).get("signals") or {}) if (c.get("name_gate") or {}).get("evaluated") else {}
         name_chips = [{"id": k, "label": lbl, "state": _gate_state(sig.get(k)) if sig else "unknown"}
                       for k, lbl in (("no_new_low", "No new low"), ("rsi_turning_up", "RSI turning up"),
