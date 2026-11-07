@@ -29,7 +29,11 @@ export type JobRow = {
   display: string | null; paused_on?: string | null; paused_note?: string | null
   broker_class?: boolean; broker_tokens?: string[]; note?: string | null
 }
-export type N8nRow = { lane_id: string; stage?: string; mode?: string; on_live_list: boolean; workflow?: string | null }
+export type N8nRow = {
+  lane_id: string; stage?: string; mode?: string; on_live_list: boolean; workflow?: string | null
+  // Additive (2026-11-06): why the lane is not on the EFFECTIVE relay live list (code + plain words); null when live.
+  live_exclusion?: string | null; live_exclusion_text?: string | null
+}
 export type SettingType = 'bool' | 'int' | 'float' | 'string' | 'enum'
 export type SettingValue = boolean | number | string
 export type SettingRow = {
@@ -88,6 +92,10 @@ export type OpsControlsState = {
   jobs: Section & { as_of?: string; rows?: JobRow[]; unmatched_active_lines?: number }
   n8n: Section & {
     live_list_path?: string; live_lanes?: string[]; rows?: N8nRow[]
+    // Additive (2026-11-06, ops audit P0-2): the effective list's source (registry_render | host_env_fallback |
+    // host_env_legacy), the host-file list and which of its lanes the relay ignores, and paused lanes.
+    live_source?: string | null; live_source_detail?: string | null; render_path?: string
+    host_env_lanes?: string[]; host_env_ignored?: string[]; paused?: string[]
     // Additive (n8n outcomes, 2026-10-22; scripts/lib/ops_controls_n8n_outcomes.py). Absent on an older server.
     outcomes_state?: 'OK' | 'UNAVAILABLE'; outcomes_reason?: string | null; outcomes_as_of?: string; ledger_path?: string
     crontab_read?: boolean; cache_ttl_s?: number

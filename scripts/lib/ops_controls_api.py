@@ -796,15 +796,114 @@ def jobs_view(ctx: Ctx) -> dict:
             "unmatched_active_lines": len([ln for ln in active if ln not in matched])}
 
 
-def n8n_view(ctx: Ctx) -> dict:
-    from scripts.check_registry_runtime_truth import parse_live_lanes
+#: Plain words for the relay's exclusion codes (scripts/lib/n8n_relay_live_lanes.py). Display only; an unknown code is
+#: shown as the code itself.
+LIVE_EXCLUSION_TEXT = {
+    "native_n8n_no_stage": "native n8n row has no scheduler.stage, so the registry render leaves it off",
+    "no_allowlist_live_arg": "no live argument in config/n8n_run_allowlist.json",
+    "dispatch_not_live": "dispatch block is not mode live",
+    "stage_shadow": "stage shadow: rehearsal, dry run only",
+    "paused_ops_controls": "paused by the Ops Controls relay pause",
+    "paused_host_env": "paused by TRADEAI_N8N_RELAY_LIVE_LANES_PAUSED in the host file",
+    "host_env_only": "listed in the host file only; the relay ignores that list while the registry render is valid",
+    "not_in_registry_render": "not live in the registry (stage, dispatch mode or allowlist)",
+    "not_on_host_list": "not on the host-file list the relay falls back to",
+}
+
+
+def _host_lane_keys(text: str) -> dict[str, str]:
+    """Only the two lane-id keys the relay reads from the host file, by key name; every other line is skipped unread."""
+    from scripts.lib import n8n_relay_live_lanes as RLL
+
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("export "):
+            s = s[len("export "):].strip()
+        for key in (RLL.LIVE_LANES_ENV, RLL.PAUSED_ENV):
+            if s.startswith(key + "="):
+                out[key] = s.split("=", 1)[1].strip().strip("'\"").replace(",", " ")
+    return out
+
+
+def effective_live_list(ctx: Ctx) -> dict:
+    """The list the relay actually uses (n8n_relay_live_lanes.resolve over the served release), not the host-file list.
+
+    2026-11-06 (ops audit P0-2): this tab showed TRADEAI_N8N_RELAY_LIVE_LANES from the host file as "the live list". Since
+    2026-10-31 the relay's base is the release's registry render (config/n8n_relay_live_source.json), minus pauses, so
+    five lanes showed live that were refused and five showed dry that were live. Read-only; lane ids only."""
+    import os
+
+    from scripts.lib import n8n_relay_live_lanes as RLL
 
     path = ctx.hosts.live_list_path
     try:
-        live = parse_live_lanes(path.read_text(encoding="utf-8"))
-        live_state, reason = "OK", None
+        host = _host_lane_keys(path.read_text(encoding="utf-8"))
+        host_err = None
     except OSError as exc:
-        live, live_state, reason = [], "UNAVAILABLE", f"{path}: {type(exc).__name__}"
+        host, host_err = {}, f"{path}: {type(exc).__name__}"
+    state_root = (ctx.cfg.get("live_list") or {}).get("state_root") or os.environ.get("TRADEAI_STATE_ROOT")
+    environ = dict(host)
+    if state_root:
+        environ["TRADEAI_STATE_ROOT"] = str(C.expand(state_root))
+    root = Path(ctx.hosts.code_root)
+    try:
+        eff = RLL.resolve(environ, root)
+    except Exception as exc:  # pragma: no cover - display path never raises
+        eff = {"source": "unavailable", "lanes": None, "detail": type(exc).__name__}
+    host_list = sorted(RLL.legacy_lanes(host) or ())
+    render_excluded: dict[str, str] = {}
+    try:
+        reg = json.loads((root / RLL.REGISTRY_REL).read_text(encoding="utf-8"))
+        al = json.loads((root / RLL.ALLOWLIST_REL).read_text(encoding="utf-8"))
+        _lanes, render_excluded = RLL.registry_live_lanes(reg, al)
+    except Exception:
+        render_excluded = {}
+    lanes = eff.get("lanes")
+    paused_by = eff.get("paused_by") or {}
+    return {"source": eff.get("source"), "detail": eff.get("detail"), "host_error": host_err,
+            "lanes": sorted(lanes) if lanes is not None else None, "host_lanes": host_list,
+            "paused_ops": list(paused_by.get("ops_controls") or []), "paused_host": list(paused_by.get("host_env") or []),
+            "render_excluded": dict(sorted(render_excluded.items())),
+            "render_path": str(root / RLL.RENDER_NAME)}
+
+
+def live_exclusion(lane: str, row: dict, eff: dict) -> Optional[str]:
+    """Why this lane is not on the effective live list (a code from LIVE_EXCLUSION_TEXT or the render), or None."""
+    lanes = eff.get("lanes")
+    if lanes is None or lane in lanes:
+        return None
+    if lane in eff.get("paused_ops", []):
+        return "paused_ops_controls"
+    if lane in eff.get("paused_host", []):
+        return "paused_host_env"
+    if eff.get("source") != "registry_render":
+        return "not_on_host_list"
+    if lane in eff.get("render_excluded", {}):
+        return eff["render_excluded"][lane]
+    s = row.get("scheduler") or {}
+    if row.get("state") != "ACTIVE":
+        return f"registry_state_{row.get('state')}"
+    if s.get("stage") == "shadow":
+        return "stage_shadow"
+    mode = (row.get("dispatch") or {}).get("mode")
+    if row.get("dispatch") and mode != "live":
+        return f"dispatch_mode_{mode}"
+    if lane in eff.get("host_lanes", []):
+        return "host_env_only"
+    return "not_in_registry_render"
+
+
+def n8n_view(ctx: Ctx) -> dict:
+    eff = effective_live_list(ctx)
+    path = ctx.hosts.live_list_path
+    if eff["lanes"] is None:
+        live, live_state = [], "UNAVAILABLE"
+        reason = f"relay live list unavailable ({eff.get('source')}: {eff.get('detail')})"
+        if eff.get("host_error"):
+            reason += f"; {eff['host_error']}"
+    else:
+        live, live_state, reason = eff["lanes"], "OK", None
     rows = []
     reg_rows: dict[str, dict] = {}
     for r in ctx.hosts.lane_registry().get("lanes") or []:
@@ -812,12 +911,22 @@ def n8n_view(ctx: Ctx) -> dict:
         if not d and s.get("kind") != "n8n":
             continue
         reg_rows[str(r.get("lane_id"))] = r
+        excl = live_exclusion(str(r.get("lane_id")), r, eff) if live_state == "OK" else None
         rows.append({"lane_id": r.get("lane_id"), "stage": s.get("stage"), "mode": d.get("mode"),
                      "on_live_list": r.get("lane_id") in live if live_state == "OK" else None,
+                     # Additive (2026-11-06): why a lane is not on the EFFECTIVE list, code + plain words.
+                     "live_exclusion": excl,
+                     "live_exclusion_text": LIVE_EXCLUSION_TEXT.get(excl, excl) if excl else None,
                      "workflow": s.get("workflow_id") or s.get("expression"), "registry_state": r.get("state"),
                      # Additive (n8n outcomes, 2026-10-22): display only.
                      "scheduler_kind": s.get("kind"), "dispatch_class": d.get("class")})
-    out = {"state": live_state, "reason": reason, "live_list_path": str(path), "live_lanes": live, "rows": rows}
+    ignored = sorted(set(eff["host_lanes"]) - set(live)) if live_state == "OK" else []
+    out = {"state": live_state, "reason": reason, "live_list_path": str(path), "live_lanes": live, "rows": rows,
+           # Additive (2026-11-06, ops audit P0-2): where the effective list comes from and what the host file adds.
+           "live_source": eff.get("source"), "live_source_detail": eff.get("detail"),
+           "render_path": eff.get("render_path"), "host_env_lanes": eff["host_lanes"],
+           "host_env_ignored": ignored if eff.get("source") == "registry_render" else [],
+           "paused": sorted(set(eff["paused_ops"]) | set(eff["paused_host"]))}
     # Additive (n8n outcomes dashboard, 2026-10-22): last run / health / next run / promotion readiness per lane, read
     # from the coordination ledger (sqlite mode=ro, bounded per-lane indexed queries) and cached 60 s. Read-only.
     from scripts.lib import ops_controls_n8n_outcomes as NO

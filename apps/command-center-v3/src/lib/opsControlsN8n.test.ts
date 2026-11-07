@@ -1,7 +1,7 @@
 // Ops → Controls · n8n lanes dashboard model. Runs in the CC-v3 build:
 //   node --experimental-strip-types src/lib/opsControlsN8n.test.ts
 import {
-  failuresBadge, GLOSSARY, healthView, isFailing, lastRunView, matchesN8nFilter, matchesN8nQuery, n8nFilterCounts,
+  failuresBadge, GLOSSARY, healthView, isFailing, lastRunView, liveSourceText, matchesN8nFilter, matchesN8nQuery, n8nFilterCounts,
   nextRunView, readinessView, runsText, sortRows, stageView, summaryOf, timeAgo, timeUntil, type N8nRowX,
 } from './opsControlsN8n.ts'
 // No node:assert: CI's tsc has no @types/node (same local-assert pattern as opsControlsJobs.test.ts).
@@ -33,7 +33,14 @@ t('stage in plain words, corrected by what a fire really does', () => {
   eq(stageView(row({ stage: 'shadow', mode: 'dry_run' })).label, 'Rehearsing — not doing real work yet')
   eq(stageView(row({})).label, 'Live, watched (canary)')
   eq(stageView(row({ on_live_list: false, outcome: { effective_mode: 'dry_run' } })).key, 'canary_dry')
-  ok(stageView(row({ on_live_list: false, outcome: { effective_mode: 'dry_run' } })).label.includes('not on the live list'), 'canary not listed says so')
+  ok(stageView(row({ on_live_list: false, outcome: { effective_mode: 'dry_run' } })).label.includes('not on the effective live list'), 'canary not listed says so')
+  // 2026-11-06 (ops audit P0-2): the reason the relay excludes the lane is in the tooltip, and "paper" is never shown.
+  const ex = stageView(row({ on_live_list: false, live_exclusion: 'paused_ops_controls', live_exclusion_text: 'paused by the Ops Controls relay pause' }))
+  ok(ex.tip.includes('paused by the Ops Controls relay pause'), 'exclusion reason in tooltip')
+  for (const v of [ex, stageView(row({})), stageView(row({ stage: 'shadow' })), stageView(row({ stage: undefined, scheduler_kind: 'n8n', on_live_list: false, outcome: { effective_mode: 'dry_run' } }))])
+    ok(!/paper/i.test(v.label + v.tip), `no "paper" in ${v.label}`)
+  eq(stageView(row({ stage: 'cutover', on_live_list: false, live_exclusion: 'native_n8n_no_stage' })).label, 'Moved to n8n — not live')
+  eq(stageView(row({ stage: undefined, scheduler_kind: 'n8n', on_live_list: false, outcome: { effective_mode: 'dry_run' } })).label, 'n8n-native — not live')
   eq(stageView(row({ stage: 'cutover' })).label, 'Fully moved to n8n')
   eq(stageView(row({ registry_state: 'NEVER_SCHEDULED', outcome: { effective_mode: 'off' } })).label, 'Off — registry NEVER_SCHEDULED')
   eq(stageView(row({ stage: undefined, scheduler_kind: 'n8n' })).label, 'n8n-native — live')
@@ -41,9 +48,18 @@ t('stage in plain words, corrected by what a fire really does', () => {
 
 t('glossary covers every word on the tab and states the live-list rule', () => {
   for (const k of ['shadow', 'canary', 'cutover', 'dry_run', 'live', 'live_list', 'promotion']) ok(GLOSSARY[k], `glossary ${k}`)
-  ok(GLOSSARY.live_list.includes('TRADEAI_N8N_RELAY_LIVE_LANES'), 'names the env key')
+  ok(GLOSSARY.live_list.includes('registry render') && GLOSSARY.live_list.includes('n8n-live-lanes.env'), 'names the render and the host-file fallback')
+  for (const [k, v] of Object.entries(GLOSSARY)) ok(!/paper/i.test(v), `glossary ${k} never says paper`)
   ok(GLOSSARY.promotion.includes('SKIPPED run does not count'), 'skip is not a live proof')
   ok(GLOSSARY.canary.includes('same lock'), 'canary = shared lock')
+})
+
+t('live source sentence: render vs host-file fallback, with ignored host lanes', () => {
+  const r = liveSourceText({ live_lanes: ['a', 'b'], live_source: 'registry_render', render_path: '/rel/N8N_RELAY_LIVE_LANES.json', host_env_ignored: ['x'] })
+  ok(r.includes('2 lane(s)') && r.includes('registry render') && r.includes('ignores: x'), r)
+  const f = liveSourceText({ live_lanes: ['a'], live_source: 'host_env_fallback', live_source_detail: 'render_missing', live_list_path: '/h/n8n-live-lanes.env' })
+  ok(f.includes('FALLBACK') && f.includes('render_missing'), f)
+  ok(!/paper/i.test(r + f), 'never paper')
 })
 
 t('last run: ✓ / ✗ / skipped / never / not measured, with time-ago and the reason in the tooltip', () => {

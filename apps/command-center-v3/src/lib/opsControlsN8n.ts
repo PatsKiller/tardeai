@@ -42,12 +42,12 @@ export type N8nSummary = {
 // ── glossary: what each word on the tab means (accurate to the platform, AGENTS.md §23.11/§23.12/§23.21) ─────────────
 export const GLOSSARY: Record<string, string> = {
   shadow: 'Rehearsing. n8n runs the lane with its dry-run argument — it computes and checks but writes nothing and sends nothing — while the cron line keeps doing the real work. The shadow stage forces dry_run whatever the mode says.',
-  canary: 'Live, watched. The cron line is still there and n8n also fires the lane live; both take the same lock, so only one runs per slot (the other records SKIPPED). A canary lane runs live only if it is on the live list — otherwise n8n still runs it as a dry run.',
-  cutover: 'Fully moved to n8n. The cron line was commented out as “# RETIRED … n8n-cutover” and kept as the rollback; n8n’s dispatcher is the only scheduler.',
-  native: 'An n8n-native workflow (no stage): n8n owns it outright and there is no cron twin.',
+  canary: 'Live, watched. n8n fires the lane live (where a cron twin remains, both take the same lock, so only one runs per slot and the other records SKIPPED). A canary lane runs live only if it is on the effective relay live list — otherwise the relay refuses its live fire.',
+  cutover: 'Fully moved to n8n. The cron line was commented out as “# RETIRED … n8n-cutover” and kept as the rollback; n8n is the only scheduler.',
+  native: 'An n8n-native workflow (no stage): n8n owns it outright and there is no cron twin. Without a stage the registry render leaves it off the live list.',
   dry_run: 'dry_run: the lane runs with its dry-run argument. Write-free by contract (no DB write, no file, no send, no model call).',
   live: 'live: a real run — it writes its output the way the cron job would.',
-  live_list: 'The relay live list (TRADEAI_N8N_RELAY_LIVE_LANES in ~/.config/tradeai/n8n-live-lanes.env). The relay refuses a live fire for any lane not on it, and the dispatcher posts that lane’s slots as dry_run. Adding or removing a lane is a passkey action.',
+  live_list: 'The effective relay live list: the release’s registry render (N8N_RELAY_LIVE_LANES.json, built from config/lane_registry.json) minus any pause. The relay refuses a live fire for any lane not on it. A lane is added only by a reviewed registry PR; the host file ~/.config/tradeai/n8n-live-lanes.env is used only if the release has no valid render.',
   promotion: 'Promotion is an operator decision made by a reviewed registry PR (AGENTS.md §23.11). This column only shows the evidence. Shadow → canary needs a REVIEWED health contract, an allowlist entry, a clean n8n dry run and the cron line’s flock lock equal to the allowlist lock. Canary → cutover (§23.21) needs the defect fixed, a clean dry run, the lane’s regression tests, and at least one successful live n8n run with the cron line present under the shared lock that advanced its output (a SKIPPED run does not count). No number of soak days is required.',
 }
 
@@ -63,15 +63,22 @@ export function stageView(r: N8nRowX): StageView {
   if (st === 'shadow') return { key: 'shadow', label: 'Rehearsing — not doing real work yet', tone: 'info', tip: GLOSSARY.shadow }
   if (st === 'canary') {
     if (eff === 'dry_run' || r.on_live_list === false) {
-      return { key: 'canary_dry', label: 'Canary on paper — not on the live list, still a dry run', tone: 'warning', tip: `${GLOSSARY.canary} This lane is not on the live list.` }
+      const why = r.live_exclusion_text || r.live_exclusion
+      return { key: 'canary_dry', label: 'Canary — not live: not on the effective live list', tone: 'warning', tip: `${GLOSSARY.canary} This lane is not on the effective live list${why ? `: ${why}` : ''}.` }
     }
     return { key: 'canary', label: 'Live, watched (canary)', tone: 'success', tip: GLOSSARY.canary }
   }
-  if (st === 'cutover') return { key: 'cutover', label: 'Fully moved to n8n', tone: 'success', tip: GLOSSARY.cutover }
+  if (st === 'cutover') {
+    if (r.on_live_list === false) {
+      const why = r.live_exclusion_text || r.live_exclusion
+      return { key: 'cutover', label: 'Moved to n8n — not live', tone: 'danger', tip: `${GLOSSARY.cutover} It is not on the effective live list${why ? `: ${why}` : ''}, so the relay refuses its live fire.` }
+    }
+    return { key: 'cutover', label: 'Fully moved to n8n', tone: 'success', tip: GLOSSARY.cutover }
+  }
   if (!st && r.scheduler_kind === 'n8n') {
     return eff === 'live' || r.on_live_list
       ? { key: 'native', label: 'n8n-native — live', tone: 'success', tip: GLOSSARY.native }
-      : { key: 'native', label: 'n8n-native — dry run', tone: 'info', tip: GLOSSARY.native }
+      : { key: 'native', label: 'n8n-native — not live', tone: 'warning', tip: `${GLOSSARY.native} Not on the effective live list${r.live_exclusion_text || r.live_exclusion ? `: ${r.live_exclusion_text || r.live_exclusion}` : ''}; the relay refuses its live fire.` }
   }
   return { key: 'unknown', label: st ? `Stage ${st}` : 'No stage', tone: 'neutral', tip: 'The registry row names no known stage.' }
 }
@@ -223,4 +230,29 @@ export function summaryOf(rows: N8nRowX[], server?: Partial<N8nSummary> | null):
 export function sortRows(rows: N8nRowX[]): N8nRowX[] {
   const rank = (r: N8nRowX) => (isFailing(r) ? 0 : r.outcome?.health === 'NEVER_RAN' && r.outcome?.effective_mode !== 'off' ? 1 : isReady(r) ? 2 : r.outcome?.effective_mode === 'off' ? 4 : 3)
   return [...rows].sort((a, b) => rank(a) - rank(b) || a.lane_id.localeCompare(b.lane_id))
+}
+
+// ── effective live list source (2026-11-06, ops audit P0-2) ─────────────────────────────────────────────────────────
+export type LiveSourceInfo = {
+  live_lanes?: string[]; live_source?: string | null; live_source_detail?: string | null; render_path?: string
+  live_list_path?: string; host_env_ignored?: string[]; paused?: string[]
+} | null | undefined
+/** One sentence: how many lanes are effectively live, where that list comes from, and what the host file adds. */
+export function liveSourceText(n: LiveSourceInfo): string {
+  const count = (n?.live_lanes || []).length
+  const src = n?.live_source
+  const paused = (n?.paused || []).length ? ` · paused: ${(n?.paused || []).join(', ')}` : ''
+  if (src === 'registry_render') {
+    const ign = n?.host_env_ignored || []
+    return `Effective live list: ${count} lane(s) from the release’s registry render${n?.render_path ? ` (${n.render_path})` : ''}${paused}.`
+      + (ign.length ? ` The host file lists ${ign.length} more that the relay ignores: ${ign.join(', ')}.` : '')
+      + ' A lane becomes live only through a reviewed registry PR.'
+  }
+  if (src === 'host_env_fallback') {
+    return `Effective live list: ${count} lane(s) from the host file ${n?.live_list_path || ''} — FALLBACK, because the release’s registry render is unusable (${n?.live_source_detail || 'unknown'})${paused}. Changing the host list restarts the relay and gateway.`
+  }
+  if (src === 'host_env_legacy') {
+    return `Effective live list: ${count} lane(s) from the host file ${n?.live_list_path || ''} (registry render not in force)${paused}. Changing it restarts the relay and gateway.`
+  }
+  return `Live list ${n?.live_list_path || ''} · ${count} lane(s).`
 }
