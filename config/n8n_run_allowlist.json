@@ -1975,18 +1975,18 @@
       "env_allowlist_mode": "report",
       "env_evidence": "run_finviz_momentum_scalp_scan.py _hot_list_only: lib/scalp_hot_tier (SCALP_HOT_TIER), momentum_scalp_early_lane_runner (MOMENTUM_SCALP_OUTER_DEADLINE_S, MOMENTUM_SCALP_REFRESH_RECEIPT, TRADEAI_STATE_ROOT); the live stage spawns finviz_screener_runner.py --screener <id> (FINVIZ_* + DB_*). No broker credential name (AGENTS §23.18 ruling 3).",
       "env_report_reason": "finviz_screener_runner.py (the live child) is not inventoried for whole-.env loading yet; the dry run spawns no child (dry_run_no_refresh), so a shadow fire holds none of it. Inventory + enforce before canary.",
-      "source": "scalp/premarket dispatcher shadow 2026-10-14 (operator directive; R1 class ingest). crontab -l 2026-10-14 (read-only): `*/2 6-9 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=100 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 110 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list` (*/2 6-11 after PR #1722's cron edit). SHADOW ONLY: live_arg null (canary: [\"--apply\"]). Inline env carried by `env`; market_gate true; lock = the cron line's flock lock; timeout 110 = the cron line's. --dry-run is write-free: _hot_list_only reads the refresh receipt and config only, records dry_run_no_refresh with the would-run screener calls, and calls lane_last_receipt.dry_run_report (prints only).",
+      "source": "scalp/premarket dispatcher shadow 2026-10-14 (operator directive; R1 class ingest). crontab -l 2026-11-07 (read-only; the installed line has since been widened): `*/2 6-9 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=170 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 180 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list  (budget 170s, operator 2026-10-23)`; the 2026-10-14 reading was `MOMENTUM_SCALP_OUTER_DEADLINE_S=100 ... timeout 110`, which this entry and network health contract still carried until 2026-11-07 (*/2 6-11 after PR #1722's cron edit). SHADOW ONLY: live_arg null (canary: [\"--apply\"]). Inline env carried by `env`; market_gate true; lock = the cron line's flock lock; timeout_s 180 = the cron line's `timeout 180`. --dry-run is write-free: _hot_list_only reads the refresh receipt and config only, records dry_run_no_refresh with the would-run screener calls, and calls lane_last_receipt.dry_run_report (prints only).",
       "command": [
         "env",
         "SCALP_HOT_TIER=1",
-        "MOMENTUM_SCALP_OUTER_DEADLINE_S=100",
+        "MOMENTUM_SCALP_OUTER_DEADLINE_S=170",
         "$PY",
         "scripts/run_finviz_momentum_scalp_scan.py",
         "--hot-list-only"
       ],
       "lock": "/tmp/tradeai_scalp_hot_list.lock",
       "lock_kind": "flock",
-      "timeout_s": 110,
+      "timeout_s": 180,
       "dry_run_arg": [
         "--dry-run"
       ],

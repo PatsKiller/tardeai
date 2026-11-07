@@ -25183,7 +25183,7 @@
         },
         {
           "check": "slow",
-          "text": "duration above 88.0 s"
+          "text": "duration above 144.0 s"
         },
         {
           "check": "retried",
@@ -25228,13 +25228,13 @@
         "freshness_degraded_after_h": 0.068,
         "freshness_failed_after_h": 0.102,
         "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold); freshness applies only inside the lane's window on market days (lib/scalp_hot_tier WINDOWS); outside it the script prints SKIPPED_* and writes no receipt, so ok_at is expected to age overnight and on weekends/holidays (market_day_gate.sh)",
-        "timeout_s": 110,
+        "timeout_s": 180,
         "class": "ingest",
-        "computed_on": "2026-10-14",
-        "basis": "CLASS_DEFAULT_PROVISIONAL",
-        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "computed_on": "2026-11-07",
+        "basis": "OPERATOR_BUDGET_2026_10_23",
+        "source": "crontab -l 2026-11-07 (read-only): `timeout 180 ... MOMENTUM_SCALP_OUTER_DEADLINE_S=170 ... (budget 170s, operator 2026-10-23)`. The 2026-10-14 CLASS_DEFAULT_PROVISIONAL baseline (timeout_s 110, degraded above 88 s, runs_considered 0) was never revised after the operator widened that budget, so every healthy 6-9 ET hot-list run -- 128 s on 2026-11-06 -- graded DEGRADED against a limit it could no longer meet. Duration degraded stays the file's own 80%-of-timeout_s rule: 0.8 x 180 = 144 s, below the script's own 170 s outer deadline and its 180 s hard kill.",
         "runs_considered": 0,
-        "duration_degraded_above_s": 88.0
+        "duration_degraded_above_s": 144.0
       },
       "alerting": {
         "lane_severity": "High",

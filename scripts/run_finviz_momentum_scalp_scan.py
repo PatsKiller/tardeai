@@ -57,6 +57,23 @@ def _receipts():
     return lr
 
 
+def hot_list_summary(stages: list[dict], screener_ids: list[str], refresh_age_min) -> dict:
+    """The LaneRunReceipt summary for a hot-list run, including the row count the scan measured.
+
+    The count is repeated at the summary's top level because ``run_quality.item_count`` reads a receipt's top
+    level and its summary, not the inside of a stage. Without it a healthy scan stated nothing produced -- its
+    only output signal is its own ``ok_at`` -- so Ops › Quality could not call it GOOD (2026-11-06: four
+    screeners, 79 rows). A run that skipped the refresh has no measured count and states none.
+    """
+    summary = {"stages": [{k: st.get(k) for k in ("stage", "ran", "ok", "reason", "rc", "rows")} for st in stages],
+               "screener_ids": screener_ids, "refresh_age_min_before": refresh_age_min}
+    scan_rows = next((st.get("rows") for st in stages
+                      if st.get("stage") == "finviz_scan" and isinstance(st.get("rows"), int)), None)
+    if scan_rows is not None:
+        summary["rows"] = scan_rows
+    return summary
+
+
 def load_window() -> dict:
     try:
         cfg = yaml.safe_load(CONFIG.read_text())["momentum_scalp_finviz_screen"]
@@ -116,9 +133,7 @@ def _hot_list_only(args, rep: dict, *, apply: bool, hot_on: bool, hot_list_phase
     # fresh after this run (refreshed now, or already inside the refresh threshold); a failed refresh carries the
     # previous ok_at forward. The dry run writes nothing (dry_run_report prints only). SKIPPED_FLAG_OFF and
     # SKIPPED_OFF_HOT_WINDOW above return before this point and write no receipt.
-    summary = {"stages": [{k: st.get(k) for k in ("stage", "ran", "ok", "reason", "rc", "rows")}
-                          for st in rep["stages"]], "screener_ids": ids,
-               "refresh_age_min_before": rep["refresh_policy"]["refresh_age_min"]}
+    summary = hot_list_summary(rep["stages"], ids, rep["refresh_policy"]["refresh_age_min"])
     if not apply:
         _receipts().dry_run_report(HOT_LIST_LANE_ID, summary, would_write=["finviz screener rows (scalp screeners)"])
     else:
