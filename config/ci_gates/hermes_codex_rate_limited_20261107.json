@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_codex_rate_limited_20261107",
+  "files": [
+    "tests/test_hermes_codex_rate_limited_20261107.py"
+  ],
+  "anchor": "HERMES_CODEX_RATE_LIMITED_20261107",
+  "comment": [
+    "ANCHOR: HERMES_CODEX_RATE_LIMITED_20261107 — 2026-11-06 live: hermes-deep-research-local.service failed every",
+    "tick (22:00-05:35 ET) with CODEX_HEADLESS_UNAVAILABLE 'authed but did not finalize a response — re-login',",
+    "three targets per tick, exit 1, row graded RUN_FAILED. The OAuth proxy at :8646 was up and authenticated with",
+    "last_upstream.state=rate_limited: the proxy's 429 was swallowed by _call_codex_proxy's bare except, the CLI",
+    "fallback (same OAuth session) was attempted, and a quota condition was reported as an auth failure.",
+    "Fix: scripts/hermes_external_researcher.py raises CodexRateLimited on a 429 (or an empty answer while the",
+    "proxy reports rate_limited), call_codex_cli re-raises CODEX_UNAVAILABLE_RATE_LIMITED without attempting the",
+    "CLI. The message keeps the UNAVAILABLE token on purpose so the lane's status classifier still records a",
+    "lane-level failure ('unavailable'), not 'error'. Hermetic: fake requests module, synthetic proxy bodies, the",
+    "CLI entry point forbidden by an AssertionError, no network, no credential, no live lane."
+  ]
+}

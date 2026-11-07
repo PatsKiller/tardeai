@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_enforced_lanes_have_output_rule_20261107",
+  "files": [
+    "tests/test_n8n_enforced_lanes_have_output_rule_20261107.py"
+  ],
+  "anchor": "N8N_ENFORCED_LANES_HAVE_OUTPUT_RULE_20261107",
+  "comment": [
+    "ANCHOR: N8N_ENFORCED_LANES_HAVE_OUTPUT_RULE_20261107 — 2026-11-02 conflict-resolver live: the allowlist armed",
+    "the lane for output enforcement on 2026-10-29 (42e3211cd, output_receipt v2) while its health contract had no",
+    "expected_output block; apply_output_verdict stamped rule_missing on five healthy exit-0 runs (status ok,",
+    "produced_count 1), which grades RUN_FAILED, and the breaker opened 2026-11-02T14:15:59Z. The rule itself only",
+    "landed 2026-11-05 (0a540a987, PR 2368). Nothing compared the two configs, so the ordering defect was",
+    "invisible until the runs failed. This gate makes the pairing a build-time invariant: every allowlist lane",
+    "with output_receipt v2 must have a kind=lane contract carrying an expected_output block, through the",
+    "executor's own loaders (load_allowlist / parse_expected_outputs). Synthetic fixtures only."
+  ]
+}
