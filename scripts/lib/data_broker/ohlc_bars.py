@@ -11,10 +11,10 @@ from lib.data_broker.envelope import envelope
 
 DOMAIN = "technicals"
 BARS_SQL = """SELECT bar_time, open, high, low, close, volume FROM market_ohlcv_bars
-               WHERE upper(symbol) = %s AND timeframe = 'daily' AND bar_time > now() - (%s || ' days')::interval
+               WHERE symbol = %s AND timeframe = 'daily' AND bar_time > now() - (%s || ' days')::interval
                ORDER BY bar_time"""
 CLOSES_SQL = """SELECT price_date, close_price FROM ticker_prices
-                 WHERE upper(symbol) = %s AND price_date > CURRENT_DATE - %s ORDER BY price_date"""
+                 WHERE symbol = %s AND price_date > CURRENT_DATE - %s ORDER BY price_date"""
 
 
 def _f(v: Any) -> float | None:

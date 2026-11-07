@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ohlc_bars_sargable_20261107",
+  "files": [
+    "tests/test_ohlc_bars_sargable_20261107.py",
+    "tests/test_request_isolation_swr_20261107.py"
+  ],
+  "anchor": "OHLC_BARS_SARGABLE",
+  "comment": [
+    "ANCHOR: OHLC_BARS_SARGABLE - 2026-11-07 LQ-20261107-416: symbol = %s (not upper(symbol)) so the bars index is used;",
+    "stale-ok isolated results are persisted to disk so a restart does not pay the cold computation."
+  ]
+}

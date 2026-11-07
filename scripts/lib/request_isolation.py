@@ -60,6 +60,10 @@ sys.stdout.write("\n" + json.dumps(out, default=str))
 STALE_OK_SEC = {"control_plane_surface_authority": 1800.0}
 
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
+# LQ-20261107-416: the in-memory cache dies with the server, so the first call after every deploy restart paid the
+# whole cold computation (21 s for control-plane-surface-authority). Stale-ok results are also written to disk and
+# seeded back on a miss, aged by wall clock against ``stale_ttl``.
+DISK_DIR_OVERRIDE: Path | None = None
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
@@ -147,6 +151,58 @@ def _run_child(module: str, fn: str, kwargs: dict[str, Any], deadline: float) ->
     return body
 
 
+def _disk_dir() -> Path | None:
+    if DISK_DIR_OVERRIDE is not None:
+        return DISK_DIR_OVERRIDE
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return None  # tests must never write the live state root
+    try:
+        from lib.canonical_store_registry import production_state_root
+
+        return Path(production_state_root()) / "data" / "runtime" / "isolated_last_good"
+    except Exception:  # noqa: BLE001 - no state root means no disk seed, never an error
+        return None
+
+
+def _disk_path(key: str) -> Path | None:
+    d = _disk_dir()
+    if d is None:
+        return None
+    import hashlib
+
+    return d / (hashlib.sha256(key.encode()).hexdigest()[:40] + ".json")
+
+
+def _disk_save(key: str, body: dict[str, Any]) -> None:
+    path = _disk_path(key)
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps({"key": key, "saved_at": time.time(), "body": body}, default=str))
+        os.replace(tmp, path)
+    except Exception:  # noqa: BLE001 - persistence is best effort; the live answer is already returned
+        pass
+
+
+def _disk_seed(key: str, stale_ttl: float) -> bool:
+    """Load a persisted result into ``_cache`` with its true age; True when it is inside ``stale_ttl``."""
+    path = _disk_path(key)
+    if path is None:
+        return False
+    try:
+        rec = json.loads(path.read_text())
+        age = time.time() - float(rec["saved_at"])
+        body = rec["body"]
+        if rec.get("key") != key or not isinstance(body, dict) or age < 0 or age >= stale_ttl:
+            return False
+    except Exception:  # noqa: BLE001 - torn or missing file is simply a cold miss
+        return False
+    _cache[key] = (time.monotonic() - age, body)
+    return True
+
+
 def run_isolated(
     module: str,
     fn: str,
@@ -177,6 +233,8 @@ def run_isolated(
     key = f"{module}:{fn}:{json.dumps(kwargs, sort_keys=True, default=str)}"
 
     hit = _cache.get(key)
+    if hit is None and stale_ttl and _disk_seed(key, stale_ttl):
+        hit = _cache.get(key)
     if hit and time.monotonic() - hit[0] < keep_for:
         return hit[1]
     if hit and stale_ttl and time.monotonic() - hit[0] < stale_ttl:
@@ -195,12 +253,16 @@ def run_isolated(
         # verdict the contract itself returned (even UNAVAILABLE) is a result.
         if not body.get("isolation_failure"):
             _cache[key] = (time.monotonic(), body)
+            if stale_ttl:
+                _disk_save(key, body)
         return body
     finally:
         lock.release()
 
 
-def _refresh_in_background(key: str, module: str, fn: str, kwargs: dict[str, Any], deadline: float) -> None:
+def _refresh_in_background(
+    key: str, module: str, fn: str, kwargs: dict[str, Any], deadline: float, persist: bool = True
+) -> None:
     """Start at most one background refresh for ``key``; a caller never waits for it."""
     lock = _lock_for(key)
     if not lock.acquire(blocking=False):
@@ -211,6 +273,8 @@ def _refresh_in_background(key: str, module: str, fn: str, kwargs: dict[str, Any
             body = _run_child(module, fn, kwargs, deadline)
             if not body.get("isolation_failure"):
                 _cache[key] = (time.monotonic(), body)
+                if persist:
+                    _disk_save(key, body)
         finally:
             lock.release()
 
