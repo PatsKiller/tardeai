@@ -1809,6 +1809,34 @@ def do_now_for(positions, approvals, *, now=None) -> dict:
                         reason="approval count unavailable" if approvals.get("total") is None else None)}
 
 
+def _ledger_conflicts(root, now) -> dict:
+    """The conflict-check section, read from the engine's own ledger (conflict_events.jsonl).
+
+    Until LQ-20261107-237 this was a constant gap ("accepted source not yet integrated") although the
+    engine has written that ledger since 10-30, so /risk always said the check was not connected.
+    The section's own ``gap`` still says so honestly when the ledger is missing or unreadable, and its
+    ``as_of`` is the newest record's update time, so a ledger the resolver stopped writing shows its age
+    instead of passing for current.
+    """
+    try:
+        from .conflicts.api import records_section
+        section = records_section(root)
+    except Exception as exc:  # a broken ledger must degrade to a visible gap, never break the page
+        return {"findings": [], **_evidence("conflict engine read projection", None, now,
+                reason=f"conflict ledger could not be read ({type(exc).__name__})")}
+    if not isinstance(section, dict) or not isinstance(section.get("findings"), list):
+        return {"findings": [], **_evidence("conflict engine read projection", None, now,
+                reason="conflict ledger returned no findings list")}
+    as_of = section.get("as_of")
+    if section.get("stale") is None:
+        try:
+            stamp = datetime.fromisoformat(str(as_of).replace("Z", "+00:00")) if as_of else None
+            section["stale"] = None if stamp is None else (now - stamp).total_seconds() > 26 * 3600
+        except (ValueError, TypeError):
+            section["stale"] = None
+    return section
+
+
 def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     """Shared display document; root is a persistent state root containing data/.
 
@@ -2035,8 +2063,6 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             "do_now": do_now,
             "companies": {"by_guid": companies, **_evidence("CIO InstrumentRecord research.company_facts", None, now,
                           reason="CIO company facts unavailable" if not companies else None)},
-            "conflicts": deepcopy(inputs["conflicts"]) if "conflicts" in inputs else {
-                "findings": [], **_evidence("conflict engine read projection", None, now,
-                                            reason="conflict engine accepted source not yet integrated")},
+            "conflicts": deepcopy(inputs["conflicts"]) if "conflicts" in inputs else _ledger_conflicts(root, now),
             "sectors": sectors or {"sectors": {}, **_evidence("sector_momentum.get_sector_signals", None, now,
                           reason="multi-horizon sector projection unavailable")}}

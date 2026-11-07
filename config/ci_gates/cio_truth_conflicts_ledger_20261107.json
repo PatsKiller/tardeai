@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_truth_conflicts_ledger_20261107",
+  "files": [
+    "tests/test_cio_truth_conflicts_ledger_20261107.py"
+  ],
+  "comment": [
+    "The CIO truth conflicts section reads the engine ledger instead of a constant not-integrated gap (LQ-20261107-237)."
+  ]
+}
