@@ -997,6 +997,24 @@ def _executor() -> cf.ThreadPoolExecutor:
     return _EXECUTOR
 
 
+def _probe(fn: Callable[[], Any]) -> Any:
+    """Run one probe on a pool worker, then hand that worker's DB transaction back.
+
+    The workers are long-lived and each owns a db_adapter connection. A probe that reads without
+    committing leaves its backend ``idle in transaction`` until PostgreSQL's 120 s role timeout
+    kills it (LQ-20261107-372). Runs in a ``finally`` so a probe that raises releases too.
+    """
+    try:
+        return fn()
+    finally:
+        try:
+            from db_adapter import end_thread_txn
+
+            end_thread_txn()
+        except Exception:
+            pass
+
+
 def aggregate(
     probes: dict[str, Callable[[], Any]],
     *,
@@ -1010,7 +1028,7 @@ def aggregate(
     rules = rules or RULES
     ex = executor or _executor()
     started = time.monotonic()
-    futures = {name: ex.submit(fn) for name, fn in probes.items()}
+    futures = {name: ex.submit(_probe, fn) for name, fn in probes.items()}
     items: list[dict] = []
     sources: dict[str, dict] = {}
     for name, fut in futures.items():

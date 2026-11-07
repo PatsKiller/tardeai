@@ -947,6 +947,26 @@ def _executor() -> cf.ThreadPoolExecutor:
     return _EXECUTOR
 
 
+def _probe(fn: Callable[[], Any]) -> Any:
+    """Run one probe on a pool worker, then hand that worker's DB transaction back.
+
+    Pool workers live for the life of the process, and db_adapter gives every thread its own
+    connection. A read probe (`deploy`, `held`, …) never commits, so without this the worker's
+    backend stays ``idle in transaction`` until PostgreSQL's 120 s role timeout kills it —
+    LQ-20261107-372 measured exactly one such pair (deploy + held) per do-now build, 22-77 kills
+    an hour. Runs in a ``finally`` so a probe that raises releases its transaction too.
+    """
+    try:
+        return fn()
+    finally:
+        try:
+            from db_adapter import end_thread_txn
+
+            end_thread_txn()
+        except Exception:
+            pass
+
+
 def build(
     probes: dict[str, Callable[[], Any]],
     *,
@@ -959,7 +979,7 @@ def build(
     now = now or datetime.now(timezone.utc)
     ex = executor or _executor()
     started = time.monotonic()
-    futures = {name: ex.submit(fn) for name, fn in probes.items()}
+    futures = {name: ex.submit(_probe, fn) for name, fn in probes.items()}
     payloads: dict[str, Any] = {}
     sources: dict[str, dict] = {}
     for name, fut in futures.items():

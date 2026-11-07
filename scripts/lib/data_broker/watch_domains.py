@@ -42,13 +42,32 @@ def _safe_float(v: Any) -> float | None:
 
 
 def _db_query(sql: str, params=None, fetch: str = "all"):
+    """Read-only query. Ends its transaction before returning.
+
+    This module has no writes, so the commit costs nothing — and it is required. The reader runs
+    inside long-lived fan-out pool threads (the Home do-now pool, lib/data_broker/home_do_now.py,
+    and the needs-action pool), where an uncommitted SELECT leaves the worker's connection
+    ``idle in transaction`` until PostgreSQL's 120 s ``idle_in_transaction_session_timeout`` kills
+    the backend (LQ-20261107-372: the held_positions read was one of the two probes killed per
+    do-now build).
+    """
     from db_adapter import _get_conn
+
     conn = _get_conn()
-    cur = conn.cursor()
-    cur.execute(sql, params or ())
-    if fetch == "one":
-        return cur.fetchone()
-    return cur.fetchall() or []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params or ())
+            if fetch == "one":
+                return cur.fetchone()
+            return cur.fetchall() or []
+    finally:
+        try:
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
 
 # ── Membership / positions ──────────────────────────────────────────────────

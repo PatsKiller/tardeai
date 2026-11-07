@@ -263,6 +263,39 @@ def close_thread_conn():
                 pass
 
 
+def end_thread_txn() -> bool:
+    """Roll back a transaction THIS thread's connection left open, keeping the connection.
+
+    Read helpers legitimately never commit. A long-lived worker thread — a fan-out pool such as
+    lib/data_broker/home_do_now.py's home-do-now pool or lib/needs_action.py's needs-action pool —
+    runs a read and then idles, so the backend sits ``idle in transaction`` until PostgreSQL's
+    role-level ``idle_in_transaction_session_timeout`` (120 s for trade_ai) kills it. That is the
+    "Postgres idle-in-transaction kills" the health agent reports (LQ-20261107-372).
+
+    Rolls back (never commits): an uncommitted write from a helper that forgot to commit is
+    discarded here, which is the fail-closed outcome, instead of being committed later by an
+    unrelated statement on the same connection. Returns True when a transaction was ended.
+    """
+    conn = getattr(_tls, "conn", None)
+    if conn is None:
+        return False
+    try:
+        if getattr(conn, "closed", 1):
+            return False
+        import psycopg2.extensions as _pgext
+
+        if conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_IDLE:
+            return False
+        conn.rollback()
+        return True
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+
+
 # Alias for scripts that import get_connection
 get_connection = _get_conn
 

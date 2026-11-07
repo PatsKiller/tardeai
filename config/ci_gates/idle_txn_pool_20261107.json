@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "IDLE_TXN_POOL_20261107",
+  "files": [
+    "tests/test_idle_txn_pool_20261107.py"
+  ],
+  "anchor": "IDLE_TXN_POOL_20261107",
+  "comment": [
+    "ANCHOR: IDLE_TXN_POOL_20261107 — 2026-11-07 fan-out pools hand their worker's DB transaction back.",
+    "Postgres killed 160 idle-in-transaction backends in 3 h (588 on 11-06). pg_stat_activity sampling",
+    "attributed the pairs to one /api/v2/home/do-now build: its ThreadPoolExecutor workers are",
+    "long-lived, db_adapter gives each thread its own non-autocommit connection, and a read probe never",
+    "commits — so the worker idles until the 120 s role timeout kills it. Fix: end_thread_txn() in",
+    "db_adapter, watch_domains._db_query commits, and both pools submit through a wrapper that rolls",
+    "back in a finally. Hermetic: fake connections, a recording executor, no database."
+  ]
+}
