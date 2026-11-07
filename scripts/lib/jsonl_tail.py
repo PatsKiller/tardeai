@@ -4,8 +4,9 @@ On 2026-10-30 the host ran out of disk around 00:50 ET. Two append-only stores w
 record, and each reader died on it from then on:
 
 * ``data/runtime/provider_cost/anthropic_credit.jsonl`` -- every read raised ``CREDIT_UNAVAILABLE``, so the Anthropic
-  lane failed closed and fell back to grok without a word for 30+ hours (the credit book deliberately stays
-  fail-closed on a damaged spend journal; it now reports it);
+  lane failed closed and fell back to grok without a word for 30+ hours (LQ-20261107-307: the credit book now
+  skips a torn final record like every other store and archives it on its next write; damage above the last
+  line still fails it closed);
 * ``persistent_wake/state/wakes.jsonl`` -- the hourly persistent-agent wake threw ``JSONDecodeError`` every run.
 
 The rule here is narrow on purpose: only a final segment that is not newline-terminated AND does not parse is a
@@ -120,7 +121,7 @@ def store_damage_diagnostic(path: Path, fragment_len: int, *, action: str, now: 
             f"The last record of `{path}` is half-written ({fragment_len} bytes), most likely from a full disk.\n"
             f"Action taken: {action}.\n"
             "Stores that tolerate it skip it and archive it beside the store on the next write "
-            "(.corrupt-tail-<time>); the Anthropic credit book stays closed until the fragment is archived. "
+            "(.corrupt-tail-<time>). "
             "Check free disk space and whether other stores were damaged the same night."
         ),
     }

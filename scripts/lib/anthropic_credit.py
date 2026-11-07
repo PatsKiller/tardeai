@@ -278,6 +278,7 @@ class CreditBook:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.with_suffix(".lock").open("a") as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX)
+                self._archive_torn_tail()
                 yield
         except CreditDenied:
             raise
@@ -293,16 +294,21 @@ class CreditBook:
             raw = self.path.read_bytes()
             tail = jsonl_tail.truncated_tail(raw)
             if tail is not None:
-                # A half-written last record (disk full mid-write). The credit book stays fail-closed -- an
-                # unreadable spend journal is never read as zero spend (tests/test_anthropic_first_20261025.py,
-                # tests/test_anthropic_monitoring_20261025.py) -- but it is no longer silent: one P1 per day says
-                # the Anthropic lane is off and why. The operator archives the fragment (repair is in the alert).
+                # A half-written LAST record (disk full mid-write; LQ-20261107-307: 21 bytes torn at
+                # 2026-11-03T14:00:31Z kept the lane off for four days). Only the final, unterminated,
+                # unparseable segment is skipped; every complete row above it is still chain-verified, and
+                # any damage ABOVE the last line still fails closed below. Skipping it never under-counts
+                # spend: a torn row is a write that raised. A torn reserve was refused (the call is made only
+                # after reserve() returns); a torn settle/uncertain leaves its reserve open, still holding the
+                # full projected amount. A torn failure/fallback/operator_reset loses that one marker, the
+                # same as if the write had failed cleanly.
+                # The next writer archives the bytes beside the journal (_archive_torn_tail).
                 jsonl_tail.report(
                     self.path,
                     len(tail[1]),
-                    action="Anthropic lane OFF (fail-closed) until the operator archives the fragment",
+                    action="torn final record skipped by readers; the next credit write archives it",
                 )
-                raise CreditDenied("CREDIT_UNAVAILABLE")
+                raw = raw[: tail[0]]
             for line in raw.decode("utf-8").splitlines(keepends=True):
                 row = json.loads(line)
                 if not isinstance(row, dict):
@@ -360,15 +366,43 @@ class CreditBook:
         payload = (json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n").encode()
         fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         try:
-            offset = 0
-            while offset < len(payload):
-                written = os.write(fd, payload[offset:])
-                if written <= 0:
-                    raise CreditDenied("CREDIT_UNAVAILABLE")
-                offset += written
-            os.fsync(fd)
+            # Every writer holds the flock (_locked), so the size cannot move under us.
+            start = os.fstat(fd).st_size
+            try:
+                offset = 0
+                while offset < len(payload):
+                    written = os.write(fd, payload[offset:])
+                    if written <= 0:
+                        raise CreditDenied("CREDIT_UNAVAILABLE")
+                    offset += written
+                os.fsync(fd)
+            except BaseException:
+                # A partial row (ENOSPC mid-write) is cut back to the last whole row, so the journal is never
+                # left torn by this writer. If even the cut fails, readers skip the torn tail and the next
+                # writer archives it (_archive_torn_tail). The caller still sees the failure.
+                try:
+                    os.ftruncate(fd, start)
+                    os.fsync(fd)
+                except OSError:
+                    pass
+                raise
         finally:
             os.close(fd)
+
+    def _archive_torn_tail(self) -> None:
+        """Under the write lock: move a torn final record beside the journal before anything is appended.
+
+        Without this the next row would be glued onto the fragment and the damage would move ABOVE the last
+        line, where readers (rightly) fail closed for good. Archive, never delete: the bytes go to a unique
+        ``anthropic_credit.jsonl.corrupt-tail-<epoch>`` (scripts/lib/jsonl_tail.py), the same rule
+        persistent_wake_store applies.
+        """
+        if not self.path.exists():
+            return
+        tail = jsonl_tail.truncated_tail(self.path.read_bytes())
+        if tail is not None:
+            archive = jsonl_tail.quarantine_tail(self.path, *tail)
+            jsonl_tail.report(self.path, len(tail[1]), action=f"torn final record archived to {archive.name}")
 
     def _own(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [row for row in rows if row.get("promotion_id") == self.promotion]

@@ -83,7 +83,9 @@ def test_corrupt_journal_and_changed_policy_refuse_instead_of_resetting(tmp_path
     book = credit.CreditBook(tmp_path, policy())
     book.reserve("one", "x", Decimal("0.02"), tier="bulk", now=NOW)
     with book.path.open("a") as f:
-        f.write('{"broken":')
+        # A complete but corrupt row. (A bare torn FINAL record is skipped and archived instead:
+        # LQ-20261107-307, tests/test_lq307_credit_torn_tail_20261107.py.)
+        f.write('{"broken":\n')
     with pytest.raises(credit.CreditDenied, match="UNAVAILABLE"):
         book.reserve("two", "x", Decimal("0.02"), tier="bulk", now=NOW)
 

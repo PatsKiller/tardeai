@@ -236,7 +236,12 @@ def main() -> int:
                 pass
     else:
         print(f"[pipeline-freshness] unchanged stale set — suppressed ({obs.get('action')})")
-    return 1
+    # A stale or missing pipeline is a FINDING, not a crash. Exit 3, never 1: health_tick.py reads 1 as an
+    # uncaught exception, so this monitor marked tradeai-health-tick failed on every 4-hourly run that found a
+    # stale table (LQ-20261107-307; 25 "crashed" rows 2026-11-02..07). config/health_tick_steps.json declares
+    # finding_rc [3] for this step.
+    from lib.monitor_exit_codes import EXIT_FINDING
+    return EXIT_FINDING
 
 
 if __name__ == "__main__":

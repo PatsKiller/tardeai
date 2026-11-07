@@ -644,7 +644,13 @@ def main():
             if fixed:
                 log.info(f"[watchdog] GO coverage: fixed {fixed}")
 
-        return 0 if handoff.get("accepted") else 1
+        # A repair handoff that was not accepted (the repair unit is not installed, or it refused to start) is a
+        # FINDING the handoff record already names, not a crash. Exit 3 (EXIT_FINDING), never 1: health_tick.py
+        # reads 1 as an uncaught exception, and this step marked tradeai-health-tick failed every two hours
+        # (LQ-20261107-307; 81 "crashed" rows 2026-11-01..07, all "repair unit not installed/loaded").
+        # config/health_tick_steps.json declares finding_rc [3] for this step.
+        from lib.monitor_exit_codes import EXIT_FINDING
+        return 0 if handoff.get("accepted") else EXIT_FINDING
 
     finally:
         conn.close()

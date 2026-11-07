@@ -123,15 +123,16 @@ def _book_with_rows(tmp_path, n=3):
     return book
 
 
-def test_credit_book_truncated_tail_stays_closed_but_alerts_once(tmp_path, sent):
+def test_credit_book_truncated_tail_is_skipped_and_alerts_once(tmp_path, sent):
+    # LQ-20261107-307: the credit book used to stay closed on a torn final record until an operator archived it
+    # by hand (four days, 2026-11-03..07). It now reads every complete row above it, like every other store.
     book = _book_with_rows(tmp_path)
     with open(book.path, "ab") as fh:
         fh.write(b'{"schema":"x","event":"reserve","sequ')  # disk full mid-write
     for _ in range(3):
-        with pytest.raises(CreditDenied, match="CREDIT_UNAVAILABLE"):
-            book._read()  # an unreadable spend journal is never read as zero spend
+        assert [r["sequence"] for r in book._read()] == [1, 2, 3]
     assert len(sent) == 1 and sent[0]["priority"] == "P1" and "STORE DAMAGE" in sent[0]["message"]
-    assert "Anthropic lane OFF" in sent[0]["message"]
+    assert "skipped by readers" in sent[0]["message"]
 
 
 def test_credit_book_interior_corruption_still_fails_closed(tmp_path, sent):

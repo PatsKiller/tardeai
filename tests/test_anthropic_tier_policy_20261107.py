@@ -2,7 +2,7 @@
 
 Tier mapping (FAST and the light tiers no longer resolve to Opus), per-tier daily sub-caps enforced at CreditBook
 admission (ANTHROPIC_CREDIT_TIER_CAP), the ``monthly_credit_usd`` / ``period_start`` renewal shape (daily cap =
-monthly / 30), and a torn journal tail that still fails closed. No network, no real journal: every CreditBook lives
+monthly / 30), and a torn journal tail that is skipped and archived (LQ-20261107-307). No network, no real journal: every CreditBook lives
 under tmp_path and every amount is synthetic.
 """
 from __future__ import annotations
@@ -223,10 +223,10 @@ def test_one_time_mode_is_unchanged(tmp_path):
     assert snap["total_cap_usd"] == "190.00" and snap["daily_cap_base_usd"] == "10.00"
 
 
-# ── a torn journal tail still fails closed ───────────────────────────────────────────────────
+# ── a torn journal tail is skipped, then archived by the next write (LQ-20261107-307) ─────────
 
 
-def test_corrupt_tail_is_credit_unavailable_until_the_fragment_is_archived(tmp_path, monkeypatch):
+def test_corrupt_tail_is_skipped_and_archived_by_the_next_reserve(tmp_path, monkeypatch):
     reports = []
     monkeypatch.setattr(jsonl_tail, "report", lambda path, n, **kw: reports.append((Path(path).name, n)))
     book = CreditBook(tmp_path, policy(tier_daily_cap_shares=SHARES))
@@ -234,19 +234,14 @@ def test_corrupt_tail_is_credit_unavailable_until_the_fragment_is_archived(tmp_p
     journal = tmp_path / ac.JOURNAL_REL
     with journal.open("ab") as fh:
         fh.write(b'{"schema":"AnthropicCreditAuthorization@v1","sequ')  # disk full mid-write
-    for call in (lambda: book.snapshot(now=NOV12),
-                 lambda: book.reserve("t2", "lq196_proc", Decimal("0.10"), tier="bulk", now=NOV12)):
-        with pytest.raises(CreditDenied) as exc:
-            call()
-        assert exc.value.reason == "CREDIT_UNAVAILABLE"
-    assert reports and reports[0][0] == "anthropic_credit.jsonl"
-    # the lead's step 2: archive the fragment beside the store; the book reopens with the earlier spend intact
-    raw = journal.read_bytes()
-    offset, fragment = jsonl_tail.truncated_tail(raw)
-    archive = jsonl_tail.quarantine_tail(journal, offset, fragment)
-    assert archive.read_bytes() == fragment
-    snap = book.snapshot(now=NOV12)
+    snap = book.snapshot(now=NOV12)  # the earlier spend is intact and the lane stays open
     assert snap["status"] == "OK" and snap["reserved_usd"] == "0.10"
+    assert reports and reports[0][0] == "anthropic_credit.jsonl"
+    book.reserve("t2", "lq196_proc", Decimal("0.10"), tier="bulk", now=NOV12)
+    archives = list(journal.parent.glob("anthropic_credit.jsonl.corrupt-tail-*"))
+    assert len(archives) == 1 and archives[0].read_bytes().endswith(b'"sequ')
+    assert journal.read_bytes().endswith(b"\n") and jsonl_tail.truncated_tail(journal.read_bytes()) is None
+    assert book.snapshot(now=NOV12)["reserved_usd"] == "0.20"
 
 
 def test_monitoring_credit_config_shows_the_sub_caps_and_monthly_keys(tmp_path, monkeypatch):
