@@ -22,6 +22,7 @@ import ShareReconciliationModal, { type ShareDriftItem } from '../components/Sha
 import type { HoldingsDetailContext } from '../components/HoldingsDetailPanel'
 import type { HoldingsCvdMode } from '../lib/holdingsTerminalTokens'
 import { accountFullName, buildHoldingsRowModel, isCashHolding } from '../lib/holdingsRowModel'
+import { portfolioDayFigure } from '../lib/portfolioDayFigure'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 import PortfolioDeskHealth from '../components/PortfolioDeskHealth'
@@ -342,12 +343,13 @@ export default function PortfolioHub({ onDrill }: Props) {
   const brokerStopsFetchedAt = storedStopsAsOf(allHoldings)
   const liveStopsDegraded = false
   const brokerStopReadOk: string[] = []
-  // Header total + day P/L follow the active filter (account + signal). Unfiltered → equals the global
-  // portfolio figures; filtered → that account's own value + day change (fixes "10 holdings · $1.25M").
+  // Header total follows the active filter (account + signal). The day figure does NOT: it is the backend's
+  // (lib/portfolioDayFigure — the same source as the header TODAY tile), narrowed only to an attribution the
+  // backend itself makes (today_move.by_account). Until 2026-11-07 this page summed the rows it held, which put
+  // +$5,592 beside the header's +$5,576 and holdings.json's $10,409 while /api/v2/overview said today_change
+  // was null because economic day P&L is unproven (OI-044, data-truth audit defect 6).
   const viewTotal = holdingsList.reduce((s: number, h: any) => s + (h.market_value ?? 0), 0)
-  const viewDay = holdingsList.reduce((s: number, h: any) =>
-    s + (h.day_change ?? (h.market_value ?? 0) * (h.day_change_pct ?? 0) / 100), 0)
-  const viewDayPct = (viewTotal - viewDay) ? viewDay / (viewTotal - viewDay) * 100 : 0
+  const viewDay = portfolioDayFigure(overview, { account: acctFilter, signalFiltered: sigSet.length > 0 })
   const priceStamp = pricingStampLine(holdings?.pricing ?? holdings, { includeTechnicals: true })
 
   const buildRowContext = (rawH: any): HoldingsTableRowContext => {
@@ -469,9 +471,22 @@ export default function PortfolioHub({ onDrill }: Props) {
           <div style={hubSubtitle(terminalUi)}>
             {(needLookthrough || needAllocation) ? 'Current holdings opened into their underlying exposures' : !needHoldingsData ? 'Select Holdings for position totals and stop coverage' : holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : `${holdingsList.length} holdings · ${fmt$(viewTotal, 0)}`}
             {needHoldingsData && !needLookthrough && !needAllocation && !holdingsPending && !holdingsUnavailable && <>
-              {' · '}<span style={{ color: viewDay >= 0 ? '#22c55e' : '#ef4444' }}>today {viewDay >= 0 ? '+' : ''}{fmt$(viewDay, 0)} ({viewDay >= 0 ? '+' : ''}{viewDayPct.toFixed(2)}%)</span>
+              {' · '}
+              {/* The day figure is the backend's and says what it is. With no figure it states the backend's
+                  reason (the economic-day gap, in the backend's own words) rather than a page-side sum; the
+                  provenance note sits beside the number, never in a tooltip only. */}
+              {viewDay.change != null
+                ? <span title={viewDay.note ?? undefined} style={{ color: viewDay.change >= 0 ? BB.green : BB.red }}>
+                    today {viewDay.change >= 0 ? '+' : ''}{fmt$(viewDay.change, 0)}
+                    {viewDay.pct != null ? ` (${viewDay.pct >= 0 ? '+' : ''}${viewDay.pct.toFixed(2)}%)` : ''}
+                    {viewDay.note && <span style={{ color: BB.amber }}> · {viewDay.note}</span>}
+                  </span>
+                : <span title={viewDay.reason ?? undefined} style={{ color: 'var(--text3)' }}>
+                    today <span style={{ color: BB.amber }}>—</span>
+                    {viewDay.reason && <span style={{ color: BB.amber }}> · {viewDay.reason}</span>}
+                  </span>}
               {acctFilter && <span style={{ color: 'var(--text4)' }}> · {acctFilter.replace(/_/g, ' ')}</span>}
-              {holdingsStale && <span style={{ color: '#f59e0b' }}> · refreshing</span>}
+              {holdingsStale && <span style={{ color: BB.amber }}> · refreshing</span>}
             </>}
           </div>
           {needHoldingsData && priceStamp && (
