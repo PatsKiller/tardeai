@@ -130,9 +130,9 @@ def default_llm_query(sql: str, params: Any = None) -> Optional[list]:
     """Read-only SELECT through db_adapter. None when the DB is not reachable (callers turn it into a note)."""
     try:
         try:
-            import db_adapter  # type: ignore[import-not-found]
+            import db_adapter  # type: ignore[import-not-found]  -- the host runs with scripts/ on sys.path; the package path is the fallback
         except ImportError:
-            from scripts import db_adapter  # type: ignore[no-redef]
+            from scripts import db_adapter  # type: ignore[no-redef]  -- same module, imported by its package path
         if not getattr(db_adapter, "USE_DB", True):
             return None
         return db_adapter._execute(sql, params, fetch="all")
@@ -158,7 +158,7 @@ def read_llm_24h(query: QueryFn) -> tuple[Optional[list[dict]], dict[str, Option
         out.append({"process_id": str(r.get("process_id") or "(none)"), "process_name": r.get("process_name"),
                     "category": r.get("category"), "lane": r.get("model_lane"),
                     "models": sorted({str(m) for m in (r.get("models") or []) if m}),
-                    "calls": int(r.get("calls") or 0), "failures": int(r.get("failures") or 0),
+                    "calls": int(r["calls"]), "failures": int(r["failures"]),  # COUNT(*) and COUNT(*) FILTER are never NULL
                     "last_at": _iso(r.get("last_at")), "last_ok_at": _iso(r.get("last_ok_at")),
                     "spend_usd": _num(r.get("spend_usd")), "last_error": _clip(r.get("last_error"), 200)})
     seen = {r["process_id"] for r in out}

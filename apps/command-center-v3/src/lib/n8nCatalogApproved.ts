@@ -200,7 +200,7 @@ export function llmHtml(w: Wire): string {
   const head = `<p class="asof">LLM calls in the last 24 h, from the consumption log · as of ${esc(etFmt(L.as_of))} · refreshes every minute</p>${L.note ? `<p class="empty" role="status" style="color:var(--shadow)">${esc(L.note)}</p>` : ''}`
   const groups: Wire[] = L.groups || []
   const pill = (g: Wire) => `<span class="pill ${g.red || g.active * 2 < g.total ? 'bad' : 'live'}" ${tipAttr(`${g.label}: ${g.active} of ${g.total} purposes had a successful call in 24 h; ${g.red} have a model lane where every call failed.`)}>${g.key === 'ops' ? 'operations' : 'content'}: ${g.active}/${g.total} active ⓘ</span>`
-  const reds = groups.reduce((n, g) => n + (g.red || 0), 0)
+  const reds = groups.filter(g => typeof g.red === 'number').reduce((n, g) => n + g.red, 0)
   const body = groups.map(g => `<div><h3 class="${g.red ? 'bad' : 'live'}">${esc(g.label)} · ${g.calls} calls · ${g.failures} failed · ${usd(g.spend_usd)}</h3><ul>${(g.items || []).map(llmItem).join('') || '<li class="d">No calls in 24 h.</li>'}</ul></div>`).join('')
   return `${head}<details open><summary><h2>How LLMs are used</h2><span class="bar">${groups.map(pill).join('')}${reds ? `<span class="pill bad" ${tipAttr('Purposes with a model lane where every call in the last 24 h failed. They are listed first, in red.')}>${reds} failing on a lane ⓘ</span>` : ''}</span></summary><div class="body">
 <p class="blurb">Every governed LLM call writes a row to the consumption log; this view groups the last 24 h by purpose and model lane. A lane where every call failed is red, with its last error.</p>
