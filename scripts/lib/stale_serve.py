@@ -160,7 +160,7 @@ class StaleServe:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(doc, fh, default=str)
             os.replace(tmp, f)
-        except Exception:  # noqa: BLE001 - a cache write must never fail the request
+        except Exception:  # noqa: BLE001 -- a cache write must never fail the request; counted in stats
             self.stats["persist_failed"] += 1
 
     def _remember(self, key: str, result: tuple) -> _Entry:
@@ -202,7 +202,7 @@ class StaleServe:
                 with self._lock:
                     self._errors[key] = f"refresh returned status {status}"
                 self.stats["refresh_failed"] += 1
-        except Exception as exc:  # noqa: BLE001 - keep the last good body
+        except Exception as exc:  # noqa: BLE001 -- keep the last good body; the error is named in the stamp
             with self._lock:
                 self._errors[key] = type(exc).__name__
             self.stats["refresh_failed"] += 1
@@ -246,18 +246,17 @@ def _daemon_thread(fn: Callable[[], None]) -> None:
     threading.Thread(target=fn, name="swr-refresh", daemon=True).start()
 
 
-def default_store_dir() -> Path | None:
+def default_store_dir() -> Path:
     raw = os.environ.get("TRADEAI_SWR_DIR")
     if raw:
         return Path(raw)
+    # No fallback: if the state root cannot be resolved, default() raises and the server's
+    # _coalesce_get serves the route uncached, exactly as before this layer existed.
     try:
-        try:
-            from lib.canonical_store_registry import production_state_root
-        except ImportError:
-            from scripts.lib.canonical_store_registry import production_state_root
-        return production_state_root() / "data" / "runtime" / "swr_last_good"
-    except Exception:  # noqa: BLE001 - memory-only when the root cannot be resolved
-        return None
+        from lib.canonical_store_registry import production_state_root
+    except ImportError:
+        from scripts.lib.canonical_store_registry import production_state_root
+    return production_state_root() / "data" / "runtime" / "swr_last_good"
 
 
 _DEFAULT: StaleServe | None = None

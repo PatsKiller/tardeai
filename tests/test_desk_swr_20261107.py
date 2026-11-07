@@ -228,7 +228,9 @@ def test_facts_snapshot_is_memoised_until_the_store_changes(tmp_path, monkeypatc
     from scripts.lib.data_broker import cio_company_facts as cf
     store = tmp_path / "data" / "cio" / "cio_instrument_records.jsonl"
     store.parent.mkdir(parents=True)
-    store.write_text(json.dumps(_record("g-1", "ZZQA", 1)) + "\n")
+    tmp = store.with_suffix(".tmp")
+    tmp.write_text(json.dumps(_record("g-1", "ZZQA", 1)) + "\n")
+    os.replace(tmp, store)
     builds = []
     real = cf._build_snapshot
     monkeypatch.setattr(cf, "_build_snapshot", lambda records: builds.append(1) or real(records))
