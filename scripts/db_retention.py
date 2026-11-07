@@ -28,6 +28,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 from datetime import datetime
 
 # ── DB connection ────────────────────────────────────────────────
@@ -50,6 +51,54 @@ def _connect():
                 "let libpq fall back to ~/.pgpass."
             )
     return psycopg2.connect(DB_DSN)
+
+
+# ── Lock contention ──────────────────────────────────────────────
+# The trade_ai role carries lock_timeout=3s (db_adapter.py's interactive anti-cascade guard: a page
+# query must fail fast rather than queue behind a blocked DDL). A nightly batch inherited it and a
+# writer holding a table for four seconds failed the whole policy — deploy_plans logged
+# "canceling statement due to lock timeout" on most nights in October/November 2026 and the nightly
+# platform-maintenance lane went red for it. The batch sets its own, longer one and retries a
+# transient lock; a table that stays locked is still reported and still fails the run (rule 8).
+BATCH_LOCK_TIMEOUT = "60s"
+LOCK_RETRY_ATTEMPTS = 3
+_LOCK_TIMEOUT_RE = re.compile(r"^\d+(ms|s)$")
+
+
+def _batch_lock_timeout() -> str:
+    """The session lock_timeout, validated — a SET takes a literal, not a bind parameter."""
+    want = os.getenv("DB_RETENTION_LOCK_TIMEOUT", BATCH_LOCK_TIMEOUT).strip()
+    return want if _LOCK_TIMEOUT_RE.match(want) else BATCH_LOCK_TIMEOUT
+
+
+def _is_lock_timeout(exc: BaseException) -> bool:
+    """SQLSTATE 55P03 (lock_not_available) — the session's lock_timeout fired. Not statement_timeout
+    (57014), which means the query itself is too slow and a retry would only repeat it."""
+    code = getattr(exc, "pgcode", None) or getattr(getattr(exc, "orig", None), "pgcode", None)
+    if code == "55P03":
+        return True
+    return "lock timeout" in str(exc).lower()
+
+
+def _delete_with_retry(cur, conn, sql: str, *, attempts: int = LOCK_RETRY_ATTEMPTS,
+                       sleep_s: float = 2.0) -> int:
+    """Run the retention DELETE, retrying a lock timeout. Returns rowcount.
+
+    Only the DELETE is retried — never the archive: the archive already on disk holds exactly the
+    rows this predicate selects, and re-archiving would duplicate it. A statement that is still
+    locked after the last attempt raises, so the table is reported as an unenforced policy.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            cur.execute(sql)
+            return cur.rowcount
+        except Exception as e:  # noqa: BLE001 -- re-raised below when it is not a lock timeout
+            if attempt == attempts or not _is_lock_timeout(e):
+                raise
+            conn.rollback()
+            print(f"  RETRY {attempt}/{attempts - 1} after lock timeout: {str(e).strip()[:100]}")
+            time.sleep(sleep_s * attempt)
+    raise AssertionError("unreachable")
 
 # ── Retention policies ───────────────────────────────────────────
 # Format: (table_name, date_column, retention_days)
@@ -686,11 +735,13 @@ def run(dry_run: bool = False):
         return {"ok": False, "skipped": True, "reason": blocked, "deleted": 0}
 
     conn = _connect()
+    cur = conn.cursor()
     if dry_run:
         # 2026-10-11: a dry run must not be able to REACH a mutation (AGENTS.md §6) -- the session itself
         # refuses writes, so a code path that forgot to check dry_run fails instead of deleting.
         conn.set_session(readonly=True)
-    cur = conn.cursor()
+    else:
+        cur.execute(f"SET lock_timeout = '{_batch_lock_timeout()}'")
     total_deleted = 0
     failures: list[str] = []
 
@@ -732,8 +783,8 @@ def run(dry_run: bool = False):
                     if n_arch != matching:
                         raise RuntimeError(f"archived {n_arch} != matching {matching}; delete refused (archive {path})")
                 # nosemgrep: tq-py-sql-fstring -- table/col passed _plain_ident(), days int() above, guard fk_guard()
-                cur.execute(f"DELETE FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
-                count = cur.rowcount
+                count = _delete_with_retry(
+                    cur, conn, f"DELETE FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
                 if n_arch is not None and count != n_arch:
                     # 2026-10-11: a row that matched between the archive SELECT and the DELETE would be
                     # deleted unarchived. Roll back; the next night archives the whole set again.
