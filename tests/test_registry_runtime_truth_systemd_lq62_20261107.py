@@ -109,7 +109,7 @@ def _runner(scopes):
         props = next((a for a in argv if a.startswith("--property=")), "")
         return 0, canned.get("timers", "") if "Triggers" in props else canned.get("services", "")
 
-    run.calls = calls  # type: ignore[attr-defined]
+    run.calls = calls  # type: ignore[attr-defined] -- a test double carrying the argv it was asked to run
     return run
 
 
@@ -135,6 +135,7 @@ def _ledger(path: Path, *, runs=()):
 def _fixture_root(tmp_path, rows):
     root = tmp_path / "repo"
     (root / "config").mkdir(parents=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture inside pytest's tmp_path, not a live store
     (root / "config" / "lane_registry.json").write_text(json.dumps({"lanes": rows}), encoding="utf-8")
     (root / "config" / "n8n_health_contracts.json").write_text(json.dumps({"contracts": []}), encoding="utf-8")
     (root / "config" / "n8n_run_allowlist.json").write_text(json.dumps({"lanes": []}), encoding="utf-8")
