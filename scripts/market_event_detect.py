@@ -298,7 +298,7 @@ def run(args: argparse.Namespace) -> int:
             produced_count=written, attempted_count=len(results),
             output_evidence=[{"table": "market_event_candidates", "episode_id": e["episode_id"], "rows": len(c)}
                              for e, c, _ in results],
-            empty_reason=None if written else "no open episode with candidates")
+            empty_reason=None if written else "no_open_episode")
         print(json.dumps({"ok": True, "episodes": len(results), "candidates_written": written}))
         return 0
     finally:
