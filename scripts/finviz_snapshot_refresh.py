@@ -39,7 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -143,8 +143,10 @@ def screener_members(conn, *, max_age_days: int = SCREEN_MAX_AGE_DAYS) -> tuple[
             WHERE active AND (last_run IS NULL OR last_run < now() - make_interval(days => %s))""",
         (int(max_age_days),),
     )
-    row = cur.fetchone() or (0,)
-    return members, {"stale_screens": int(row[0] or 0), "max_age_days": int(max_age_days)}
+    row = cur.fetchone()
+    if not row or row[0] is None:  # a count we did not read is unknown, never 0 screens stale
+        raise RuntimeError("finviz_screeners count returned no row")
+    return members, {"stale_screens": int(row[0]), "max_age_days": int(max_age_days)}
 
 
 def build_universe(root: Path, conn, *, cap: int = WATCHLIST_CAP, screen_max_age_days: int = SCREEN_MAX_AGE_DAYS,
@@ -177,13 +179,18 @@ def build_universe(root: Path, conn, *, cap: int = WATCHLIST_CAP, screen_max_age
     }
 
 
+def _aware(dt: datetime) -> datetime:
+    """Attach the local zone to the cache's naive ``cached_at`` (it is written naive-local by finviz_enrichment)."""
+    return dt.astimezone() if dt.tzinfo is None else dt
+
+
 def _fresh_after(record: dict, started: datetime) -> bool:
     """True when this record was fetched by THIS run (not a cache survivor dressed as this close)."""
     cached_at = (record or {}).get("cached_at")
     if not cached_at:
         return False
     try:
-        return datetime.fromisoformat(str(cached_at)) >= started - timedelta(seconds=REFRESH_GRACE_S)
+        return _aware(datetime.fromisoformat(str(cached_at))) >= _aware(started) - timedelta(seconds=REFRESH_GRACE_S)
     except ValueError:
         return False
 
@@ -197,9 +204,11 @@ def count_snapshot_rows(conn, snapshot_date: str, symbols: list) -> int:
         "SELECT count(*) FROM ticker_snapshot_daily WHERE snapshot_date = %s AND symbol = ANY(%s)",
         (snapshot_date, list(symbols)),
     )
-    row = cur.fetchone() or (0,)
+    row = cur.fetchone()
     conn.rollback()  # a read must never leave a transaction open on a shared thread-local connection
-    return int(row[0] or 0)
+    if not row or row[0] is None:  # an unread count is unknown: reporting 0 would claim "wrote nothing"
+        raise RuntimeError(f"snapshot row count unreadable for {snapshot_date}")
+    return int(row[0])
 
 
 def plan(root: Path, *, snapshot_date: str, cap: int, screen_max_age_days: int, extra: list | None,
@@ -260,7 +269,7 @@ def apply(root: Path, *, snapshot_date: str, cap: int, screen_max_age_days: int,
     from external_market_data_ingest import ingest_finviz_fundamentals
     from finviz_enrichment import _split_equities, enrich_tickers
 
-    started = datetime.now()
+    started = datetime.now(timezone.utc)
     conn = _connect(readonly=False)
     uni = build_universe(root, conn, cap=cap, screen_max_age_days=screen_max_age_days, extra=extra)
     equities, rejected = _split_equities(list(uni["symbols"]))
@@ -272,7 +281,7 @@ def apply(root: Path, *, snapshot_date: str, cap: int, screen_max_age_days: int,
     save_ticker_snapshot_daily(snapshot_date, fresh)  # returns None on failure — never trusted, never counted
     verified = count_snapshot_rows(conn, snapshot_date, list(fresh))
 
-    fund = {"rows": 0, "fetched": 0}
+    fund = {"rows": None, "fetched": None}  # None until the ingest reports: unknown, not zero
     try:
         fund = ingest_finviz_fundamentals(list(fresh), limit=min(len(fresh), fundamentals_limit)) or fund
     except Exception as exc:  # noqa: BLE001 -- the snapshot is this lane's declared output; report the rest
@@ -299,8 +308,8 @@ def apply(root: Path, *, snapshot_date: str, cap: int, screen_max_age_days: int,
         "not_refreshed": len(stale_by_run),
         "rejected_non_ticker": len(rejected),
         "snapshot_rows_verified": verified,
-        "fundamentals_rows": int(fund.get("rows") or 0),
-        "fundamentals_symbols": int(fund.get("fetched") or 0),
+        "fundamentals_rows": fund.get("rows"),
+        "fundamentals_symbols": fund.get("fetched"),
         "skipped": skipped,
     }
 
@@ -361,7 +370,7 @@ def main(argv: list | None = None) -> int:
             print(json.dumps({"dry_run": True, **p}, default=str))
         return 0
 
-    started_iso = datetime.now().astimezone().isoformat()
+    started_iso = datetime.now(timezone.utc).astimezone().isoformat()
     try:
         result = apply(root, snapshot_date=snapshot_date, cap=a.cap, screen_max_age_days=a.screen_max_age_days,
                        extra=extra, force_refresh=force, fundamentals_limit=a.fundamentals_limit)
