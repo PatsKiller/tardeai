@@ -140,3 +140,8 @@ def test_dry_run_starts_nothing(tmp_path, capsys):
     assert tm.main(["--build", str(b), "--routes", str(r), "--out", str(out), "--dry-run"]) == 0
     assert '"dry_run": true' in capsys.readouterr().out
     assert not out.exists(), "a dry run writes nothing"
+
+
+def test_missing_rss_renders_unknown_not_zero():
+    md = tm.render_md({"pairs": [], "persistent": []}, [{"label": "boot", "rss_kb": None, "hwm_kb": 2048}])
+    assert "| boot | n/a | 2 | n/a |" in md

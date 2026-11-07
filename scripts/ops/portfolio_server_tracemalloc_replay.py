@@ -283,9 +283,12 @@ def render_md(report: dict, rss: list[dict]) -> str:
     out = ["# portfolio-server tracemalloc replay", ""]
     if rss:
         out += ["| snapshot | VmRSS MB | VmHWM MB | traced MB |", "|---|---|---|---|"]
+        def _mb(v, div):
+            return "n/a" if v is None else f"{v / div:.0f}"
+
         for r in rss:
             out.append(
-                f"| {r['label']} | {r['rss_kb'] / 1024:.0f} | {r['hwm_kb'] / 1024:.0f} | {r.get('traced', 0) / 1e6:.0f} |"
+                f"| {r['label']} | {_mb(r.get('rss_kb'), 1024)} | {_mb(r.get('hwm_kb'), 1024)} | {_mb(r.get('traced'), 1e6)} |"
             )
         out.append("")
     for p in report["pairs"]:
@@ -323,11 +326,11 @@ def report_dir(out: Path) -> dict:
 
 
 # ── inside the second instance (boot mode) ────────────────────────────────────
-def _status_kb(field: str, pid: str = "self") -> int:
+def _status_kb(field: str, pid: str = "self") -> int | None:
     for line in Path(f"/proc/{pid}/status").read_text().splitlines():
         if line.startswith(field + ":"):
             return int(line.split()[1])
-    return 0
+    return None  # unknown, never a plausible zero
 
 
 def boot(server: Path, out: Path) -> None:
@@ -357,6 +360,7 @@ def boot(server: Path, out: Path) -> None:
 # ── inside the sandbox (driver mode) ──────────────────────────────────────────
 def _wait_health(port: int, proc: subprocess.Popen, timeout: float = 240.0) -> float:
     t0 = time.monotonic()
+    last = "no answer yet"
     while time.monotonic() - t0 < timeout:
         if proc.poll() is not None:
             raise RuntimeError(f"replay instance exited during boot (rc={proc.returncode})")
@@ -364,10 +368,11 @@ def _wait_health(port: int, proc: subprocess.Popen, timeout: float = 240.0) -> f
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=5) as r:  # noqa: S310 -- loopback in a private netns
                 if r.status < 500:
                     return time.monotonic() - t0
-        except OSError:
-            pass
+                last = f"HTTP {r.status}"
+        except OSError as exc:  # still booting: kept, and named in the timeout below
+            last = f"{type(exc).__name__}: {exc}"
         time.sleep(2)
-    raise RuntimeError(f"replay instance not healthy after {timeout:.0f}s")
+    raise RuntimeError(f"replay instance not healthy after {timeout:.0f}s (last: {last})")
 
 
 def _snapshot(proc: subprocess.Popen, out: Path, label: str, timeout: float = 600.0) -> None:
@@ -421,6 +426,7 @@ def replay_pass(port: int, routes: list[str], out: Path, label: str, *, batch: i
                        "seconds": round(time.monotonic() - t0, 1), "api_calls": len(api),
                        "api_failed": sorted({a["url"].split("?")[0] for a in api if a["status"] >= 400})[:20]}
                 log.write(json.dumps(row) + "\n")
+                log.flush()  # a pass takes ~50 min under tracemalloc; progress must be visible while it runs
                 page.close()
         ctx.close()
         browser.close()
