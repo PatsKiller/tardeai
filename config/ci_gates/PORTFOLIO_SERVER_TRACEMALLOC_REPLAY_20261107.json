@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PORTFOLIO_SERVER_TRACEMALLOC_REPLAY_20261107",
+  "files": [
+    "tests/test_portfolio_server_tracemalloc_replay_20261107.py"
+  ],
+  "anchor": "PORTFOLIO_SERVER_TRACEMALLOC_REPLAY_20261107",
+  "comment": [
+    "ANCHOR: PORTFOLIO_SERVER_TRACEMALLOC_REPLAY_20261107 — LQ-20261107-229. The live portfolio-server grew",
+    "1.13 -> 1.59 GB RSS during one walk of the /v3 pages. scripts/ops/portfolio_server_tracemalloc_replay.py",
+    "replays the walk against a second instance in a bwrap sandbox (read-only root, copy-on-write HOME,",
+    "no network, credentials masked, read-only DB session) and ranks tracemalloc growth per pass.",
+    "The tests pin the ranking (frames run oldest -> newest), the sandbox argv (only the report dir and",
+    "the DB socket dir are writable), the env (built, never inherited; no secret-shaped key) and the dry run.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}
