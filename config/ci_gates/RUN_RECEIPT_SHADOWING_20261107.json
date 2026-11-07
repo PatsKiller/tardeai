@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "RUN_RECEIPT_SHADOWING_20261107",
+  "files": [
+    "tests/test_run_receipt_shadowing_20261107.py"
+  ],
+  "anchor": "RUN_RECEIPT_SHADOWING_20261107",
+  "comment": [
+    "ANCHOR: RUN_RECEIPT_SHADOWING_20261107 — portfolio-repricer graded UNPROVEN 'no_run_record' while every",
+    "fire wrote a LaneRunReceipt@v2 (status ok, exit 0, started/finished, produced_count 34).",
+    "Its declared output signal is data/portfolios/state/holdings.json, a business store several writers touch;",
+    "receipt_candidates lists a declared *.json output first and read_receipt accepts it because it carries",
+    "as_of, so the lane's own data/runtime/portfolio-repricer_last.json was never read and a pseudo-run whose",
+    "start was the store's as_of (result unknown) also suppressed the real receipt in lane_history.",
+    "The rule this gate pins: a document that names no run start or finish is not a run receipt. The receipt",
+    "that names its run wins; the store keeps serving as the lane's OUTPUT time (freshness), which is what it",
+    "is; and a lane with only a store and no receipt keeps exactly the evidence it has today.",
+    "Hermetic: temp trees and hand-written JSON; no production store, no database, no network."
+  ]
+}

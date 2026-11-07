@@ -252,6 +252,17 @@ def journal_runs(events: list[dict]) -> dict[str, list[dict]]:
     return out
 
 
+#: What makes a document a RUN receipt: it names its own start or finish. A business store that merely carries an
+#: ``as_of`` (data/portfolios/state/holdings.json and other state files several writers touch) says something
+#: happened around then; it does not say a run started, finished or exited, and it must not stand in for one.
+_RUN_KEYS = ("started_at", "finished_at", "ok_at")
+
+
+def names_a_run(run: dict | None) -> bool:
+    """Does this run row name its own start or finish (rather than only an ``as_of``)? See ``_RUN_KEYS``."""
+    return bool(run and (run.get("started_at") or run.get("finished_at")))
+
+
 def receipt_run(receipt: dict, key: str | None) -> dict | None:
     """The single last run a lane's own receipt describes (it keeps no history)."""
     if not receipt or receipt.get("dry_run") is True or receipt.get("mode") in {"dry_run", "dry-run", "shadow", "preflight"}:
@@ -390,6 +401,13 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
     runs = sorted(ledger + journal, key=lambda r: r["_start"] or datetime.min.replace(tzinfo=timezone.utc))
     sources = list(dict.fromkeys(r["source"] for r in ledger + journal))
     covered = [t for t, rows in ((ledger_since, ledger), (journal_since, journal)) if rows and t]
+    # A declared JSON output that names no run (a state store with a bare ``as_of``) may not speak for a slot the
+    # lane's own run receipt names: only the receipt says what the run was. portfolio-repricer's declared output is
+    # data/portfolios/state/holdings.json, so the store's as_of was read as "the last run", said nothing about it,
+    # and — being within SAME_RUN of the real receipt — suppressed that receipt below (2026-11-07, item 4).
+    if receipt and lane_receipt and lane_receipt.get("_start") and not names_a_run(receipt) \
+            and _same_run(receipt, lane_receipt["_start"]):
+        receipt = None
     history_gap = None
     if not runs:
         if receipt:
@@ -805,16 +823,40 @@ def read_receipts(registry: dict, root: Path) -> tuple[dict, dict]:
     return receipts, outputs
 
 
+def receipt_naming_a_run(lane: dict, root: Path) -> tuple[dict | None, str | None]:
+    """The lane's own run receipt: the first candidate document that NAMES its run (start or finish).
+
+    ``run_quality.read_receipt`` returns the first *accepted* candidate, and a business store that happens to carry
+    ``as_of`` is accepted — so a lane whose declared output is such a store (portfolio-repricer's
+    ``data/portfolios/state/holdings.json``) never reaches its own ``data/runtime/<lane>_last.json``, which is listed
+    one candidate later. The receipt is the document that says what the run was; a store that only says when may not
+    hide it (2026-11-07, WORK-QUEUE item 4).
+    """
+    from scripts.lib.run_quality import read_receipt, receipt_candidates
+    doc, rel = read_receipt(lane, root)
+    if doc and any(_at(doc.get(k)) for k in _RUN_KEYS):
+        return doc, rel
+    base = Path(root).resolve()
+    allowed = (base / "data", base / "logs")
+    for cand in receipt_candidates(lane):
+        path = (base / cand).resolve()
+        if not any(path.is_relative_to(a) for a in allowed):
+            continue
+        other = _read_json(path, 512 * 1024)
+        if other and any(_at(other.get(k)) for k in _RUN_KEYS):
+            return other, cand
+    return None, None
+
+
 def read_lane_receipts(registry: dict, root: Path) -> dict:
     """Each ACTIVE lane's own run receipt (run_quality.read_receipt: <lane>_last.json or a declared JSON receipt) as a
     run, source "lane receipt". Only a receipt that names its run's start or finish counts (a bare as_of is not a run)."""
-    from scripts.lib.run_quality import read_receipt
     out = {}
     for lane in registry.get("lanes") or []:
         if lane.get("state") != "ACTIVE":
             continue
-        doc, _rel = read_receipt(lane, root)
-        if not doc or not any(_at(doc.get(k)) for k in ("started_at", "finished_at", "ok_at")):
+        doc, _rel = receipt_naming_a_run(lane, root)
+        if not doc or not any(_at(doc.get(k)) for k in _RUN_KEYS):
             continue
         run = receipt_run(doc, None)
         if run:
