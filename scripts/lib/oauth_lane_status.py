@@ -71,6 +71,12 @@ def _probe_health(lane: str, timeout: float = 5.0) -> dict:
         "label": "Grok (xAI OAuth)" if lane == "grok" else "ChatGPT (openai-codex OAuth)",
         "billing": "free_oauth",
         "proxy": body.get("_proxy") or body.get("status"),
+        # Pass-through only (2026-11-07): a 200 from /health has never meant the lane can serve. The
+        # proxy states ``serving`` and what the upstream did last (rate_limited / auth_expired / ok),
+        # and the keepalive dry run reads them to tell a quota wait from a dead login without spending
+        # a generate. Grok's proxy omits both; the values are then None and nothing changes.
+        "serving": body.get("serving"),
+        "last_upstream": body.get("last_upstream"),
     }
 
 
