@@ -96,9 +96,27 @@ def _norm_rated_rec(raw: str | None) -> str | None:
     return r if r in DAILY_PRIORITY_RATED_RECS else None
 
 
+_AS_OF: datetime | None = None
+
+
+def set_as_of(value: "str | datetime | None") -> datetime | None:
+    """Inject the clock used by is_off_hours_et (weekday/session emulation, LQ-170).
+
+    Accepts an ISO-8601 string or datetime; None clears the override. A naive value
+    is read as ET. Raises ValueError on an unparseable string (never silently real-time).
+    """
+    global _AS_OF
+    if value is None or value == "":
+        _AS_OF = None
+        return None
+    dt = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    _AS_OF = dt.replace(tzinfo=ET) if dt.tzinfo is None else dt.astimezone(ET)
+    return _AS_OF
+
+
 def is_off_hours_et(now: datetime | None = None) -> bool:
     """True outside regular US equity session (Mon–Fri 09:30–16:00 ET) and all weekend."""
-    now = now or datetime.now(ET)
+    now = now or _AS_OF or datetime.now(ET)
     if now.tzinfo is None:
         now = now.replace(tzinfo=ET)
     else:

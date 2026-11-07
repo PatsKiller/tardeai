@@ -33,7 +33,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
 from watchlist_priority import (
     WATCHLIST_TOP_N, daily_priority_sql_params, is_off_hours_et, off_hours_top_n,
-    sql_daily_priority_exists,
+    set_as_of, sql_daily_priority_exists,
 )
 
 BATCH = 15  # Finviz-Elite rate-limit aware
@@ -264,7 +264,11 @@ def main(argv=None) -> int:
     ap.add_argument("--budget-s", type=float, default=DEFAULT_BUDGET_S,
                     help=f"start no new batch after this many seconds (default {DEFAULT_BUDGET_S}; 0 = unbounded)")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--as-of", default=None,
+                    help="ISO-8601 clock for weekday/session emulation (naive = ET)")
     a = ap.parse_args(argv)
+    if a.as_of:
+        set_as_of(a.as_of)
     if a.dry_run:
         res = sweep(limit=a.limit, dry=True, budget_s=a.budget_s)
         _receipt_lib().dry_run_report(LANE_ID, {"selected": res["total"], "would_update": res["enriched"]},
