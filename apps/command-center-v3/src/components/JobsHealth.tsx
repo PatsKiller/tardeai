@@ -7,7 +7,7 @@ import ConflictSheet, { useConflictSheet, type ConflictSection } from './conflic
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import CountTile from './CountTile'
 import DetailHeader from './DetailHeader'
-import { jobsCount, jobsMissed, jobsNotMeasured, type JobsSummary } from '../lib/measuredCount'
+import { jobsCount, jobsMissed, jobsNotMeasured, jobsNotMeasuredBreakdown, type JobsSummary } from '../lib/measuredCount'
 
 export type JobResult = 'succeeded' | 'failed' | 'missed' | 'paused' | 'retired' | 'unknown' | 'due' | 'outside_window'
 export interface JobHealthRow {
@@ -56,6 +56,7 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
     ['due_today', 'Jobs due today', 'neutral'], ['succeeded', 'Ran and succeeded', 'success'],
     ['failed', 'Failed', 'danger'], ['missed', 'Missed', 'warning'],
   ] as const
+  const notMeasuredBreakdown = jobsNotMeasuredBreakdown(data?.summary)
   return <section aria-label="Jobs and health" data-testid="jobs-health" style={{ display: 'grid', gap: 12, color: TOKENS.text[0], fontFamily: FONT.sans, minWidth: 0 }}>
     <AnthropicCreditPanel status={(consumption.data?.overview ?? consumption.data)?.anthropic} />
     <style>{`.jobs-health-row{display:grid;grid-template-columns:minmax(180px,1.3fr) 90px 130px 110px 130px minmax(200px,2fr);gap:10px;align-items:start}.jobs-health-mobile-label{display:none}@media(max-width:800px){.jobs-health-head{display:none}.jobs-health-row{grid-template-columns:1fr 1fr}.jobs-health-job,.jobs-health-cause{grid-column:1/-1}.jobs-health-mobile-label{display:block;font-size:11px;color:var(--text-2);margin-bottom:3px}}`}</style>
@@ -83,6 +84,9 @@ export default function JobsHealth({ enabled = true }: { enabled?: boolean }) {
       <CountTile testId="jobs-tile-not-measured" label="Not measured" tone="warning" style={{ padding: 14 }} count={jobsNotMeasured(data?.summary)} />
       <div style={panel}><div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Paused / retired</div><strong style={{ fontFamily: FONT.mono, fontSize: TYPE.xl }}>{data ? `${data.summary.paused ?? '—'} / ${data.summary.retired ?? '—'}` : '—'}</strong></div>
     </div>
+    {notMeasuredBreakdown && <p data-testid="jobs-not-measured-breakdown" style={{ margin: 0, fontSize: TYPE.sm, color: TOKENS.text[2], overflowWrap: 'anywhere' }}>
+      Not measured, by why: {notMeasuredBreakdown}
+    </p>}
     {data?.monitor.cause && <div role="status" style={{ ...panel, borderColor: toneVars('warning').border, color: TOKENS.warning }}>{data.monitor.cause}</div>}
     <section aria-label="Data errors" style={{ ...panel, display: 'grid', gap: 8 }}>
       <h3 style={{ margin: 0, fontSize: TYPE.base }}>Data quality</h3>

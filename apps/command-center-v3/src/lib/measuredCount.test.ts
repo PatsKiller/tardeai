@@ -1,6 +1,6 @@
 // A gap is a gap, never 0: jobs tiles and data-approval tiles. Synthetic inputs only.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/measuredCount.test.ts
-import { countText, dataApprovalTiles, jobsCount, jobsMissed, jobsNotMeasured, measured } from './measuredCount.ts'
+import { countText, dataApprovalTiles, jobsCount, jobsMissed, jobsNotMeasured, jobsNotMeasuredBreakdown, measured } from './measuredCount.ts'
 
 declare const process: { exit(code?: number): never }
 function fail(m: string): never { console.log(`  [FAIL] ${m}`); process.exit(1) }
@@ -66,4 +66,24 @@ t('data approvals: no rows → gap, never 0', () => {
 t('data approvals: every row checked → real counts including real zeros', () => {
   const tiles = dataApprovalTiles([{ verdict: 'APPROVED' }, { verdict: 'NOT_READY' }], { approved: 1, ready: 0, notReady: 1, findings: 0 }, { state: 'DONE' })
   eq([tiles.approved.value, tiles.ready.value, tiles.notReady.value, tiles.findings.value], [1, 0, 1, 0])
+})
+
+t('jobs: the unmeasured total is split by why, in the server order', () => {
+  const s = { not_measured: 8, not_measured_groups: { never_scheduled: 4, schedule_not_measured: 5, no_run_source: 2, dry_run_only: 1, no_success_measured: 0 } }
+  eq(jobsNotMeasuredBreakdown(s), 'never scheduled: 4 · schedule this reader cannot measure: 5 · no run source: 2 · dry run only: 1')
+  eq(jobsNotMeasured(s).value, 8, 'the flat count is unchanged')
+})
+
+t('jobs: an older server body has no split → no invented breakdown', () => {
+  eq(jobsNotMeasuredBreakdown({ not_measured: 8 }), null)
+  eq(jobsNotMeasuredBreakdown(null), null)
+  eq(jobsNotMeasuredBreakdown({ not_measured_groups: null }), null)
+})
+
+t('jobs: a fully measured body shows no breakdown line', () => {
+  eq(jobsNotMeasuredBreakdown({ not_measured: 0, not_measured_groups: { never_scheduled: 0, schedule_not_measured: 0, no_run_source: 0, dry_run_only: 0, no_success_measured: 0 } }), null)
+})
+
+t('jobs: a non-numeric group is skipped, never rendered as NaN', () => {
+  eq(jobsNotMeasuredBreakdown({ not_measured_groups: { no_run_source: '2', dry_run_only: 3 } }), 'dry run only: 3')
 })

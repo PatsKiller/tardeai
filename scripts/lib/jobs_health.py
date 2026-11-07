@@ -26,6 +26,18 @@ _CACHE = {}
 _LOCK = threading.Lock()
 _SINGLE = threading.Lock()
 _FAILURES = {"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED"}
+#: Modes that execute the lane without doing the work. Evidence that a lane RUNS; never evidence that it worked.
+_DRY_MODES = {"dry_run", "shadow", "preflight"}
+#: Why a job's execution could not be measured, as the page groups it (LQ-20261107-246). The order here is the
+#: order the breakdown reads in: a lane no scheduler installs explains the unknown before a schedule this reader
+#: cannot parse does, and both before an absent run.
+NOT_MEASURED_GROUPS = (
+    ("never_scheduled", "never scheduled"),
+    ("schedule_not_measured", "schedule this reader cannot measure"),
+    ("no_run_source", "no run source"),
+    ("dry_run_only", "dry run only"),
+    ("no_success_measured", "run recorded, no success"),
+)
 #: The generic text cause() returns when a failure carries no stderr and no specific reason.
 NO_DIAGNOSTIC = "Failure recorded; stderr diagnostic was not retained"
 #: A job log's last error line explains a wrapper failure only if the log was written this close to it.
@@ -235,12 +247,15 @@ def plain_reason(text) -> str | None:
     return _PATH_RE.sub(_path_word, raw)
 
 
-def _measurement(unknown: int, collection_gaps: list) -> dict:
+def _measurement(unknown: int, collection_gaps: list, groups: dict | None = None) -> dict:
     """A count that cannot be measured is a gap, never 0 (operator design rule 2026-10-25).
 
     ``missed`` is only countable for jobs whose schedule and run receipts are measured. With unmeasured jobs
     (or an incomplete collection) a ``missed`` of 0 is not a fact, so readers get ``missed_measured`` False
     and the reason; ``missed`` itself stays the measured floor for existing readers (platform_health).
+
+    ``not_measured_groups`` splits the same total by WHY it is unmeasured (LQ-20261107-246). It is additive:
+    the flat ``not_measured`` count and ``gap_reasons`` stay exactly as they were for every existing reader.
     """
     reasons = []
     if unknown:
@@ -250,7 +265,8 @@ def _measurement(unknown: int, collection_gaps: list) -> dict:
         reasons.append("execution evidence incomplete: " + "; ".join(plain_reason(g) for g in collection_gaps[:3]))
     return {"not_measured": unknown, "missed_measured": not reasons,
             "gap_reasons": {"missed": " · ".join(reasons) or None,
-                            "not_measured": "No run receipt or no measurable schedule" if unknown else None}}
+                            "not_measured": "No run receipt or no measurable schedule" if unknown else None},
+            "not_measured_groups": dict(groups or {})}
 
 
 #: The operations watchers surfaced by the Jobs & health stoplight strip (operator 2026-10-28: "a mode in the
@@ -299,11 +315,19 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
     if now.tzinfo is None:
         raise ValueError("jobs health requires an aware clock")
     by_lane = {}
+    #: Lanes the ledger shows EXECUTING, but only as a dry run / shadow. Today they are dropped here and the
+    #: page cannot tell them from a lane that never ran at all (LQ-20261107-246: 191 "not measured" rows, of
+    #: which 9 run every few minutes in shadow). A dry run is not proof of work — but "it runs, in shadow" is
+    #: a different, actionable fact from "nothing records this lane", so it is carried, never counted as success.
+    dry_only = {}
     for run in runs:
         at = instant(run.get("finished_at") or run.get("started_at") or run.get("requested_at"))
         pending_live = run.get("mode") == "live" and run.get("state") in {"REQUESTED", "RUNNING"}
         if at and at <= now and (RV.effective_mode(run) == "live" or pending_live):
             by_lane.setdefault(run.get("lane_id"), []).append(run)
+        elif (at and at <= now and (RV.effective_mode(run) or run.get("mode")) in _DRY_MODES
+              and run.get("lane_id")):
+            dry_only[run["lane_id"]] = max(at, dry_only.get(run["lane_id"], at))
     for values in by_lane.values():
         values.sort(key=lambda r: instant(r.get("finished_at") or r.get("started_at") or r.get("requested_at")))
     captured = {**snapshot, "successes": {k: list(v) for k, v in (snapshot.get("successes") or {}).items()}}
@@ -370,6 +394,23 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             outcome, reason = "outside_window", "Outside the scheduled window"
         elif due and success and success < due[-1]:
             outcome, reason = "due", "Waiting for the next successful execution"
+        # An unmeasured row still names WHAT is missing. "Not measured" as one flat number is the defect
+        # (LQ-20261107-246): the page could not separate a lane nothing records from one that runs every five
+        # minutes in shadow, so neither could be acted on.
+        gap = None
+        if outcome == "unknown":
+            if state == "NEVER_SCHEDULED":
+                # A registered lane with no installed unit. "Schedule not measured" would blame the reader for a
+                # schedule that does not exist; this is a registration the operator either wires up or retires.
+                gap, reason = "never_scheduled", "Never scheduled: no scheduler installs this lane"
+            elif issue:
+                gap = "schedule_not_measured"
+            elif not values and lane_id in dry_only:
+                gap, reason = "dry_run_only", f"Runs only as a dry run (last {W.iso(dry_only[lane_id])}); a dry run does not prove work"
+            elif values:
+                gap, reason = "no_success_measured", "A run is recorded but no successful execution is measured"
+            else:
+                gap, reason = "no_run_source", "No run ledger row, wrapper event or proven log for this lane"
         rows.append({"lane_id": lane_id, "job": lane.get("display_name") or lane_id.replace("-", " ").replace("_", " ").capitalize(),
             "scheduler": scheduler.get("kind") or "unknown", "state": state, "result": outcome,
             "last_run_at": W.iso(last_at) if last_at else None, "last_success_at": W.iso(success) if success else None,
@@ -377,6 +418,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": due_today,
             "missed_fires": check.get("missed_fires"), "market_hours_only": gated,
             "cause": reason if reason_is_prose else plain_reason(reason),
+            "evidence_gap": gap,
             "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
     seen = instant(watchdog.get("observed_at"))
@@ -392,10 +434,12 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
     if not monitor_ok:
         incidents.append({"id": "job_monitor_unmeasured", "severity": "warning", "title": "Job monitoring needs attention",
                           "message": monitor["cause"], "href": "/ops/jobs", "source": "job_execution"})
+    gaps = Counter(row["evidence_gap"] for row in rows if row["result"] == "unknown" and row.get("evidence_gap"))
     return {"schema": SCHEMA, "as_of": W.iso(now), "authority": "READ_ONLY_ADVISORY", "rows": rows,
         "summary": {"due_today": sum(r["due_today"] and r["state"] == "ACTIVE" for r in rows),
                     **{key: counts[key] for key in ("succeeded", "failed", "missed", "paused", "retired", "unknown", "due", "outside_window")},
-                    **_measurement(counts["unknown"], captured.get("collection_gaps") or [])},
+                    **_measurement(counts["unknown"], captured.get("collection_gaps") or [],
+                                   {key: gaps[key] for key, _ in NOT_MEASURED_GROUPS})},
         "monitor": monitor, "watchers": _watchers(registry, rows, monitor, monitor_ok),
         "incidents": incidents, "incident_count": len(incidents),
         "coverage_gaps": captured.get("collection_gaps") or [],

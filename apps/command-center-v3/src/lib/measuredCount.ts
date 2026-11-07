@@ -25,6 +25,30 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 export type JobsSummary = Record<string, unknown> & {
   not_measured?: unknown; unknown?: unknown; missed?: unknown; missed_measured?: unknown
   gap_reasons?: Record<string, string | null> | null
+  not_measured_groups?: Record<string, unknown> | null
+}
+
+/** Why a job is unmeasured, in the order the server sends it. The page shows this instead of a bare total. */
+export const NOT_MEASURED_GROUPS: [key: string, label: string][] = [
+  ['never_scheduled', 'never scheduled'],
+  ['schedule_not_measured', 'schedule this reader cannot measure'],
+  ['no_run_source', 'no run source'],
+  ['dry_run_only', 'dry run only'],
+  ['no_success_measured', 'run recorded, no success'],
+]
+
+/**
+ * The unmeasured total, split by why (LQ-20261107-246 live audit: "191 jobs not measured" was one number naming
+ * no cause). Returns one clause per non-zero group, or null when the server sends no split — an older server's
+ * flat count stays a flat count rather than being given an invented breakdown.
+ */
+export function jobsNotMeasuredBreakdown(summary: JobsSummary | null | undefined): string | null {
+  const groups = summary?.not_measured_groups
+  if (!groups || typeof groups !== 'object') return null
+  const parts = NOT_MEASURED_GROUPS
+    .filter(([key]) => isCount(groups[key]) && (groups[key] as number) > 0)
+    .map(([key, label]) => `${label}: ${groups[key]}`)
+  return parts.length ? parts.join(' · ') : null
 }
 
 /** Jobs whose execution could not be measured (server `not_measured`, older servers `unknown`). */

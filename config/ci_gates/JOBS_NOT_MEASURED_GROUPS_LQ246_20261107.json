@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_not_measured_groups_lq246_20261107",
+  "files": [
+    "tests/test_jobs_not_measured_groups_lq246_20261107.py"
+  ],
+  "anchor": "JOBS_NOT_MEASURED_GROUPS_LQ246_20261107",
+  "comment": [
+    "ANCHOR: JOBS_NOT_MEASURED_GROUPS_LQ246_20261107 — an unmeasured jobs-health row names which evidence is",
+    "missing (schedule unreadable / no run source / dry run only / run without success) and the summary splits",
+    "the flat not_measured count by why (LQ-20261107-246)."
+  ]
+}
