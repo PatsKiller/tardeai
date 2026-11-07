@@ -26,6 +26,7 @@ import sys
 import types
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -35,7 +36,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import finviz_snapshot_refresh as R  # noqa: E402
 from lib import lane_last_receipt as LR  # noqa: E402
 
-LANE = "finviz-snapshot-refresh"
+#: The lane id is the module's, not a copy: LQ-364 renamed it to the n8n lane id (``market-event-data-refresh``)
+#: because the executor looks this run's attempt receipt up under the allowlist lane id.
+LANE = R.LANE_ID
 
 
 class FakeCursor:
@@ -84,9 +87,21 @@ def test_a_saturday_run_dates_the_row_friday(monkeypatch):
     import lib.cio_market_calendar as cal
 
     monkeypatch.setattr(cal, "is_us_trading_day", lambda d: date.fromisoformat(str(d)).weekday() < 5)
-    assert R.last_session_close(date(2026, 11, 7)) == "2026-11-06"   # Saturday → Friday
-    assert R.last_session_close(date(2026, 11, 6)) == "2026-11-06"   # a session is its own close
-    assert R.last_session_close(date(2026, 11, 9)) == "2026-11-09"   # Monday
+    et = ZoneInfo("America/New_York")
+    assert R.last_session_close(datetime(2026, 11, 7, 18, 0, tzinfo=et)) == "2026-11-06"   # Saturday → Friday
+    assert R.last_session_close(datetime(2026, 11, 6, 18, 0, tzinfo=et)) == "2026-11-06"   # a session past its close
+    assert R.last_session_close(datetime(2026, 11, 9, 18, 0, tzinfo=et)) == "2026-11-09"   # Monday evening
+
+
+def test_a_premarket_run_carries_the_previous_session(monkeypatch):
+    """LQ-364: the weekday fire is 06:30 ET, four hours before today's session opens — today has no close yet."""
+    import lib.cio_market_calendar as cal
+
+    monkeypatch.setattr(cal, "is_us_trading_day", lambda d: date.fromisoformat(str(d)).weekday() < 5)
+    et = ZoneInfo("America/New_York")
+    assert R.last_session_close(datetime(2026, 11, 9, 6, 30, tzinfo=et)) == "2026-11-06"   # Monday pre-market
+    assert R.last_session_close(datetime(2026, 11, 6, 15, 0, tzinfo=et)) == "2026-11-05"   # Friday, before the close
+    assert R.last_session_close(datetime(2026, 11, 6, 16, 0, tzinfo=et)) == "2026-11-06"   # at the close
 
 
 def test_last_session_close_refuses_to_guess(monkeypatch):
@@ -94,7 +109,7 @@ def test_last_session_close_refuses_to_guess(monkeypatch):
 
     monkeypatch.setattr(cal, "is_us_trading_day", lambda d: False)
     with pytest.raises(RuntimeError, match="refusing to guess"):
-        R.last_session_close(date(2026, 11, 7))
+        R.last_session_close(datetime(2026, 11, 7, 18, 0, tzinfo=ZoneInfo("America/New_York")))
 
 
 def test_holdings_symbols_skip_cash_and_loans(tmp_path):

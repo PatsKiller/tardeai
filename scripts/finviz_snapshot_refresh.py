@@ -26,6 +26,11 @@ through the data broker, so the fundamentals leg spends zero provider calls.
 A dry run reads, plans and writes nothing (AGENTS.md §6). ``--apply`` writes ``ticker_snapshot_daily`` rows,
 ``fundamental_data`` rows and one LaneRunReceipt@v2.
 
+As an n8n lane (``market-event-data-refresh``, LQ-20261107-364) it fires Sat/Sun 18:00 and Mon-Fri 06:30 ET and
+starts at ``dispatch: dry_run``: shadow first, so every scheduled fire plans and writes nothing until the lead
+and operator promote it. The registry row, the run-allowlist entry and the health contract live outside this
+file and travel to the lead as a patch — the code and its wiring are reviewed as one change.
+
 Two honesty rules this file is built around:
 
 * ``db_adapter.save_ticker_snapshot_daily`` **swallows its own errors** (prints, rolls back, returns None), so a
@@ -39,13 +44,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-LANE_ID = "finviz-snapshot-refresh"
+#: The lane id every receipt, the registry row and the allowlist entry share. The n8n executor finds this run's
+#: immutable attempt receipt under ``data/runtime/lane_attempts/<allowlist lane_id>/``, so a different name here
+#: would make every live run read ``output_unverifiable`` (N8nExpectedOutput@v1).
+LANE_ID = "market-event-data-refresh"
 SCRIPT = "finviz_snapshot_refresh.py"
 #: Active-watchlist cap: matches finviz_enrichment.DEFAULT_UNIVERSE_CAP (the number the enrichment lane already
 #: spends safely against Finviz's ~100 req/hour, 20 tickers per export).
@@ -56,6 +65,11 @@ SCREEN_MAX_AGE_DAYS = 14
 REFRESH_GRACE_S = 900
 #: fundamental_data row cap for one run (external_market_data_ingest.FINVIZ_FUNDAMENTALS_LIMIT).
 FUNDAMENTALS_LIMIT = 200
+#: Session times are ET, not the host's idea of local time.
+ET = ZoneInfo("America/New_York")
+#: The moment a session's close can exist. The scheduled fires — Sat/Sun 18:00 and weekdays 06:30 ET — sit at
+#: least 2 h from it, so the boundary only decides anything for a manual run.
+SESSION_CLOSE_ET = (16, 0)
 
 
 def _receipt():
@@ -65,15 +79,24 @@ def _receipt():
     return r
 
 
-def last_session_close(today: date | None = None) -> str:
-    """The most recent US equity session on or before ``today`` — the close the rows will carry.
+def last_session_close(now: datetime | None = None) -> str:
+    """The most recent US equity session whose 16:00 ET close has happened — the close the rows will carry.
 
     A Saturday run captures Friday's close, so the row is dated Friday, not Saturday: dating it "today" would
     tell every ``MAX(snapshot_date)`` consumer the snapshot is a weekend quote it never was.
+
+    The close has to have happened, not merely be on the calendar: the weekday fire is 06:30 ET, when today's
+    session is still four hours from opening. Returning today there would date pre-market values as a close that
+    does not exist yet and would move ``MAX(snapshot_date)`` for every consumer of the table.
     """
     from lib.cio_market_calendar import is_us_trading_day
 
-    d = today or date.today()
+    now = now or datetime.now(ET)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=ET)  # a caller passing naive time means ET wall-clock time
+    d = now.date()
+    if (now.hour, now.minute) < SESSION_CLOSE_ET:
+        d -= timedelta(days=1)  # today's close has not happened yet
     for _ in range(10):
         if is_us_trading_day(d):
             return d.isoformat()
