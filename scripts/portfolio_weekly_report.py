@@ -532,6 +532,38 @@ def _num(v: Any, default: float = 0.0) -> float:
     return f if f == f else default
 
 
+def _fmt_num(v: Any, spec: str, unknown: str = "—") -> str:
+    """Render a number that may be present-but-None. ``unknown`` renders as
+    ``unknown``, never as 0: a null institutional-flow figure means "not
+    fetched", and printing ``+0.0%`` would assert a measurement nobody made.
+    ``.get(k, 0)`` does NOT substitute for a present-but-None value, so the
+    f-string ``:+.1f`` inside the analyst block raised
+    ``TypeError: unsupported format string passed to NoneType.__format__`` and
+    exited the weekly report rc=1 (weekly 2026-11-02, monthly 2026-11-01),
+    which the cadence pipeline recorded as overall_status=degraded."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return unknown
+    if f != f:
+        return unknown
+    return format(f, spec)
+
+
+def _momentum_shift(p1w: Dict, prev: Optional[List]) -> str:
+    """This week's change minus last week's, or "—" when either side is unknown.
+    Subtracting through a 0.0 default would print a measurement that was never
+    taken; the weekly report treats a missing figure as unknown, not as flat."""
+    if not prev:
+        return "—"
+    now = p1w.get("change_pct") if isinstance(p1w, dict) else None
+    then = prev[-1].get("1w_change_pct") if isinstance(prev[-1], dict) else None
+    try:
+        return format(float(now) - float(then), ".1f")
+    except (TypeError, ValueError):
+        return "—"
+
+
 def _period_summary_lines(total: Any, p1w: Dict, p1m: Dict, pytd: Dict, p1y: Dict) -> str:
     """The two prompt lines that summarise portfolio performance. Pure; None-safe."""
     p1w, p1m, pytd, p1y = (d or {} for d in (p1w, p1m, pytd, p1y))
@@ -573,8 +605,8 @@ def _generate_narrative(
     p1m  = perf_data.get("periods", {}).get("1M", {})
     pytd = perf_data.get("periods", {}).get("YTD", {})
     p1y  = perf_data.get("periods", {}).get("1Y", {})
-    total = perf_data.get("total_value", 0)
-    cash_pct = perf_data.get("cash_pct", 0)
+    total = _num(perf_data.get("total_value"))
+    cash_pct = _num(perf_data.get("cash_pct"))
 
     # Load previous weeklies for delta context
     prev = _load_previous_weeklies(3)
@@ -583,9 +615,9 @@ def _generate_narrative(
         prev_context = "PREVIOUS WEEKS CONTEXT (do not repeat — use for DELTA analysis only):\n"
         for pw in prev[-3:]:
             prev_context += (
-                f"  Week {pw.get('date','?')}: total=${pw.get('total_value',0):,.0f} "
-                f"1W={pw.get('1w_change_pct',0):+.2f}% "
-                f"YTD={pw.get('ytd_change_pct',0):+.2f}% "
+                f"  Week {pw.get('date','?')}: total=${_fmt_num(pw.get('total_value'), ',.0f')} "
+                f"1W={_fmt_num(pw.get('1w_change_pct'), '+.2f')}% "
+                f"YTD={_fmt_num(pw.get('ytd_change_pct'), '+.2f')}% "
                 f"above200={pw.get('tech_above_200','?')} "
                 f"action: {str(pw.get('narratives',{}).get('action',''))[:80]}\n"
             )
@@ -632,7 +664,7 @@ def _generate_narrative(
             div_data = json.loads(dp.read_text())
     except Exception:
         pass
-    annual_div = div_data.get("total_annual", 0)
+    annual_div = _num(div_data.get("total_annual"))
     ex_div = [d.get("symbol","") for d in div_data.get("ex_div_alerts", []) if d.get("symbol")]
 
     # Load risk/rebalance
@@ -648,18 +680,19 @@ def _generate_narrative(
         for s in grounding.stops_near[:6]
     ]
 
-    rebal_total = grounding.rebal_total or risk_data.get("total_to_rebalance", 0)
-    beta = risk_data.get("portfolio_beta", 0.38)
+    rebal_total = _num(grounding.rebal_total or risk_data.get("total_to_rebalance"))
+    beta = _num(risk_data.get("portfolio_beta"), 0.38)
 
     # Account lines
     acct_lines = ""
     for name, d in perf_data.get("accounts", {}).items():
         chg = d.get("change_pct")
         chg_str = f"{chg:+.2f}%" if chg is not None else "n/a"
-        acct_lines += f"  {name}: ${d.get('value',0):,.0f} 1W={chg_str}\n"
+        acct_lines += f"  {name}: ${_fmt_num(d.get('value'), ',.0f')} 1W={chg_str}\n"
 
-    top_gainers = [t for t in perf_data.get("top_movers",[]) if t.get("change_pct",0) > 0][:5]
-    top_losers  = [t for t in perf_data.get("top_movers",[]) if t.get("change_pct",0) < 0][-5:]
+    _movers = [t for t in perf_data.get("top_movers", []) if isinstance(t, dict) and t.get("change_pct") is not None]
+    top_gainers = [t for t in _movers if _num(t.get("change_pct")) > 0][:5]
+    top_losers  = [t for t in _movers if _num(t.get("change_pct")) < 0][-5:]
 
     # ── PROMPT 1: Performance (with delta from previous weeks) ────────────────
     prompt1 = f"""You are a professional wealth manager analyzing John W. Whiting's portfolio.
@@ -670,8 +703,8 @@ THIS WEEK DATA:
 {_period_summary_lines(total, p1w, p1m, pytd, p1y)}
 By account:
 {acct_lines}
-Top gainers this week: {[f"{t['symbol']} {t['change_pct']:+.1f}%" for t in top_gainers]}
-Top losers this week: {[f"{t['symbol']} {t['change_pct']:+.1f}%" for t in top_losers]}
+Top gainers this week: {[f"{t.get('symbol','?')} {_fmt_num(t.get('change_pct'), '+.1f')}%" for t in top_gainers]}
+Top losers this week: {[f"{t.get('symbol','?')} {_fmt_num(t.get('change_pct'), '+.1f')}%" for t in top_losers]}
 Cash: {_num(cash_pct):.1f}% | Annual dividends: ${_num(annual_div):,.0f}/yr | Beta: {_num(beta, 0.38):.3f}
 Rebalancing needed: ${_num(rebal_total):,.0f}
 
@@ -687,7 +720,7 @@ NEVER say "Data unavailable". NEVER start with "Portfolio"."""
 {tech_detail}
 Overbought (RSI>70): {ob if ob else 'none'}
 Oversold (RSI<30): {os_ if os_ else 'none'}
-{p1w.get('change_pct',0)-list(p[-1] for p in [prev] if p)[-1].get('1w_change_pct',0) if prev else 0:.1f}% momentum shift vs last week
+{_momentum_shift(p1w, prev)}% momentum shift vs last week
 Earnings coming: {earnings_soon[:5] if earnings_soon else 'none this week'}
 Analyst ratings bullish on: {analyst_upgrades[:5] if analyst_upgrades else 'none flagged'}
 Ex-dividend soon: {ex_div[:5] if ex_div else 'none'}
@@ -699,10 +732,10 @@ Write 3 sentences on technical posture. Be specific about which positions are at
     # ── PROMPT 3: Risk & Rebalancing ─────────────────────────────────────────
     prompt3 = f"""Portfolio risk assessment for John W. Whiting:
 {grounding.positions_table}
-Beta: {beta:.3f} (target <0.5, conservative)
-Rebalancing: ${rebal_total:,.0f} across {len(risk_data.get('positions',{}) if isinstance(risk_data.get('positions'),dict) else [])} positions
+Beta: {_fmt_num(beta, '.3f')} (target <0.5, conservative)
+Rebalancing: ${_fmt_num(rebal_total, ',.0f')} across {len(risk_data.get('positions',{}) if isinstance(risk_data.get('positions'),dict) else [])} positions
 Stops near trigger (<5%): {stops_near if stops_near else 'none'}
-Cash: {cash_pct:.1f}% (${perf_data.get('cash_total',0):,.0f})
+Cash: {_fmt_num(cash_pct, '.1f')}% (${_fmt_num(perf_data.get('cash_total'), ',.0f')})
 V concentration: {next((h.get('portfolio_pct',0) for h in [] if h.get('symbol')=='V'), 'check holdings')}%
 
 Write 2 sentences on risk posture. Is beta appropriate? Any stops about to trigger? Is rebalancing urgent or can it wait?
@@ -726,7 +759,7 @@ Write 2 sentences. Is the income trajectory improving? What's the single best ac
     # ── PROMPT 5: Action Recommendation (grounded + validated) ─────────────
     last_action = prev[-1].get("narratives", {}).get("action", "") if prev else ""
     action_context = (
-        f"- 1W: {p1w.get('change_pct',0):+.2f}% | YTD: {pytd.get('change_pct',0):+.2f}%\n"
+        f"- 1W: {_fmt_num(p1w.get('change_pct'), '+.2f')}% | YTD: {_fmt_num(pytd.get('change_pct'), '+.2f')}%\n"
         f"- Rebalancing needed: ${rebal_total:,.0f}\n"
         f"- Overbought: {ob} | Stops near trigger: {stops_near}\n"
         f"- Earnings soon: {earnings_soon[:3]}\n"
@@ -746,24 +779,24 @@ Write 2 sentences. Is the income trajectory improving? What's the single best ac
         score = p.get("recom_score")
         score_str = f"{score:.1f}" if score else "—"
         analyst_lines += (
-            f"  {p['symbol']}: {p['analyst_rating']} ({score_str}/5.0) "
-            f"RSI={p.get('rsi') or '—'} SMA200={p.get('sma200_pct',0):+.1f}% "
-            f"InstFlow={p.get('inst_trans_pct',0):+.1f}% "
-            f"Port={p.get('portfolio_pct',0):.1f}%\n"
+            f"  {p.get('symbol', '?')}: {p.get('analyst_rating') or '—'} ({score_str}/5.0) "
+            f"RSI={p.get('rsi') or '—'} SMA200={_fmt_num(p.get('sma200_pct'), '+.1f')}% "
+            f"InstFlow={_fmt_num(p.get('inst_trans_pct'), '+.1f')}% "
+            f"Port={_fmt_num(p.get('portfolio_pct'), '.1f')}%\n"
         )
 
     rebal_lines = ""
     for r in rebal_rationale[:5]:
-        reasons_str = " | ".join(r.get("reasons", [])[:3])
+        reasons_str = " | ".join((r.get("reasons") or [])[:3])
         rebal_lines += (
-            f"  {r['action']} {r['symbol']} ${abs(r.get('amount',0)):,.0f} "
-            f"({r['analyst_rating']}) — {reasons_str}\n"
+            f"  {r.get('action', '?')} {r.get('symbol', '?')} ${_fmt_num(abs(_num(r.get('amount'))), ',.0f')} "
+            f"({r.get('analyst_rating') or '—'}) — {reasons_str}\n"
         )
 
     brave_lines = ""
     for sym, items in brave_commentary.items():
         for item in items[:1]:
-            brave_lines += f"  {sym} ({item['source']}): {item['snippet'][:150]}\n"
+            brave_lines += f"  {sym} ({item.get('source', '?')}): {str(item.get('snippet', ''))[:150]}\n"
 
     prompt6 = f"""You are a professional wealth manager. Analyze analyst consensus and rebalancing rationale for John W. Whiting.
 {grounding.positions_table}
@@ -808,7 +841,7 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
         acct_rows += f"""
         <tr>
           <td>{name}</td>
-          <td>${d.get('value', 0):,.0f}</td>
+          <td>${_fmt_num(d.get('value'), ',.0f')}</td>
           <td style="color:{color}">{chg_str}</td>
           <td style="color:{color}">${abs(d.get('change', 0) or 0):,.0f}</td>
         </tr>"""
@@ -831,12 +864,12 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
 
     movers_rows = ""
     for t in perf_data.get("top_movers", [])[:8]:
-        color = "#00e676" if t["change_pct"] >= 0 else "#ff5252"
+        color = "#00e676" if _num(t.get("change_pct")) >= 0 else "#ff5252"
         movers_rows += f"""
         <tr>
-          <td><b>{t['symbol']}</b></td>
-          <td style="color:{color}">{t['change_pct']:+.2f}%</td>
-          <td>${t.get('value', 0):,.0f}</td>
+          <td><b>{t.get('symbol', '?')}</b></td>
+          <td style="color:{color}">{_fmt_num(t.get('change_pct'), '+.2f')}%</td>
+          <td>${_fmt_num(t.get('value'), ',.0f')}</td>
         </tr>"""
 
     # SPY benchmark pre-computed for f-string
@@ -910,8 +943,8 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
   </div>
   <div class="kpi">
     <div class="label">Cash</div>
-    <div class="value">${perf_data.get('cash_total',0):,.0f}</div>
-    <div class="sub">{perf_data.get('cash_pct',0):.1f}% of portfolio</div>
+    <div class="value">${_fmt_num(perf_data.get('cash_total'), ',.0f')}</div>
+    <div class="sub">{_fmt_num(perf_data.get('cash_pct'), '.1f')}% of portfolio</div>
   </div>
 </div>
 
@@ -972,8 +1005,8 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
     <tr><th>Metric</th><th>Value</th></tr>
     <tr><td>Transactions</td><td>{journal_data.get('week_trades', 0)}</td></tr>
     <tr><td>Closed Trades</td><td>{journal_data.get('closed_trades', 0)}</td></tr>
-    <tr><td>Net P&amp;L</td><td class="{'up' if journal_data.get('pnl',0)>=0 else 'dn'}">${journal_data.get('pnl',0):+,.2f}</td></tr>
-    <tr><td>Win Rate</td><td>{journal_data.get('win_rate',0):.1f}%</td></tr>
+    <tr><td>Net P&amp;L</td><td class="{'up' if _num(journal_data.get('pnl'))>=0 else 'dn'}">${_fmt_num(journal_data.get('pnl'), '+,.2f')}</td></tr>
+    <tr><td>Win Rate</td><td>{_fmt_num(journal_data.get('win_rate'), '.1f')}%</td></tr>
   </table>
 </div>
 
@@ -1169,7 +1202,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
     ytd_chg = pytd.get("change_pct", 0) or 0
     tg_msg = (
         f"📊 <b>Weekly Report — {date_str}</b>\n\n"
-        f"<b>${perf_data.get('total_value',0):,.0f}</b> | "
+        f"<b>${_fmt_num(perf_data.get('total_value'), ',.0f')}</b> | "
         f"1W: <b>{w_chg:+.2f}%</b> | YTD: {ytd_chg:+.2f}%\n\n"
         f"{_clean_md(narratives.get('performance',''))[:300]}\n\n"
         f"🎯 {_clean_md(safe_action)[:200]}\n\n"
