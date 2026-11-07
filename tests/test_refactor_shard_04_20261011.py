@@ -767,12 +767,17 @@ def test_allowlist_preserves_exact_observed_cron_script_arguments():
         for token in tokens[script_index + 1:]:
             if token in {">", ">>", "2>&1", "&&", ";", "#"}:
                 break
-            if token != "--apply":
-                observed.append(token)
-        assert command[2:] == observed, row["lane_id"]
+            observed.append(token)
+        # The executor runs command + live_arg (lane_dispatch: command + dry_run_arg + live_arg), so the live argv is
+        # compared whole, --apply included. Rows put --apply in command (hermes-research-agenda-at-45-7: command
+        # --apply, live_arg --json) or in live_arg (hermes-momentum-catalyst-scalp); both equal the cron line.
+        assert command[2:] + list(allow[row["lane_id"]].get("live_arg") or []) == observed, row["lane_id"]
 
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014 as _CANARY_WAVE_1014  # noqa: E402  canary-wave-20261014
 from tests.support.n8n_cutover_waves import PROMOTED as _CW_PROMOTED  # noqa: E402  2026-10-15 cutover waves
 from tests.support.n8n_cutover_waves import CUT_OVER as _CW_CUT_OVER  # noqa: E402  registry rows at stage cutover
 
-_CANARY_WAVE = set(_CANARY_WAVE_1014) | set(_CW_PROMOTED)
+# 2026-11-07 (LQ-20261107-252): hermes-research-agenda-at-45-7 went to canary/live in 498f45d2a (n8n batch 3b, W5
+# onboarding) after this list was written; its registry row, allowlist row and health contract all say canary.
+_BATCH_3B_CANARY = {"hermes-research-agenda-at-45-7"}
+_CANARY_WAVE = set(_CANARY_WAVE_1014) | set(_CW_PROMOTED) | _BATCH_3B_CANARY
