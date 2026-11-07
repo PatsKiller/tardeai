@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "catalyst_router_env_20261107",
+  "files": [
+    "tests/test_catalyst_router_env_20261107.py"
+  ],
+  "anchor": "CATALYST_ROUTER_ENV_20261107",
+  "comment": [
+    "ANCHOR: CATALYST_ROUTER_ENV_20261107 — the B8 catalyst family's proposal modes carry SEARCH_ROUTING_ENGINE=1",
+    "so the cron-run engine's catalyst search takes the routing engine, not the dead legacy SearXNG call (LQ-20261107-49)."
+  ]
+}

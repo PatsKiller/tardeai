@@ -13,7 +13,9 @@
 #   The overnight line (--band overnight) is NOT touched (its own D3 shadow lane).
 #
 # Preconditions (refuses otherwise): the served CURRENT has run_family_slot.py with the catalyst family AND its
-# proposal modes carry `env ALPACA_MODE=paper` (the legacy lines do; installing without it would drop the paper guard).
+# proposal modes carry `env ALPACA_MODE=paper` (the legacy lines do; installing without it would drop the paper guard)
+# and `SEARCH_ROUTING_ENGINE=1` (2026-11-07, LQ-20261107-49: without it the engine's catalyst search falls to the
+# dead legacy SearXNG call and stages nothing).
 #
 # Usage:
 #   bash apply-operator.sh            # preconditions, backup, diff preview, ONE "APPLY" prompt, install, verify
@@ -40,6 +42,7 @@ echo "== preconditions"
 for m in premarket_scalp market_swing; do
   (cd "$CUR" && "$PY" scripts/run_family_slot.py --family catalyst-momentum-engine --mode "$m" --dry-run --project-root "$CUR") > "$WORK/dry.$m" 2>&1
   grep -qF "env ALPACA_MODE=paper" "$WORK/dry.$m" || { echo "REFUSED: served family mode $m lacks env ALPACA_MODE=paper (release the PR first)"; exit 3; }
+  grep -qF "env ALPACA_MODE=paper SEARCH_ROUTING_ENGINE=1 " "$WORK/dry.$m" || { echo "REFUSED: served family mode $m lacks SEARCH_ROUTING_ENGINE=1 (LQ-20261107-49; release the PR first)"; exit 3; }
 done
 echo "   served family lines:"; sed 's/^/     /' "$WORK/family.lines"
 

@@ -112,6 +112,10 @@ def test_mode_command_is_the_retired_line_verbatim(fam, mode):
     if fam.lane_id == "topic-ingestion":
         assert rendered.endswith(B2_BOUND)
         rendered = rendered[: -len(B2_BOUND)]
+    if fam.lane_id == "catalyst-momentum-engine" and mode.name != "overnight":
+        # 2026-11-07 (LQ-20261107-49): the one documented insertion — the router flag after the paper guard.
+        assert FSJ.CATALYST_PROPOSAL_ENV in rendered
+        rendered = rendered.replace(FSJ.CATALYST_PROPOSAL_ENV, FSJ.CATALYST_PAPER_ENV, 1)
     assert rendered == body
     assert mode.log == log
     assert mode.old_schedule == sched

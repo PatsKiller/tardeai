@@ -106,6 +106,14 @@ _RESEARCH = (
 #: written (crontab L381/L382). The consolidated job must run exactly that command, so the proposal modes carry it;
 #: installing the B8 crontab lines without it would silently drop the paper-mode guard.
 CATALYST_PAPER_ENV = "env ALPACA_MODE=paper "
+#: 2026-11-07 (LQ-20261107-49): the engine's catalyst search takes the search routing engine only when
+#: ``SEARCH_ROUTING_ENGINE`` is on (``hermes_momentum_catalyst_researcher.search_catalyst``). The n8n executor env
+#: carries it (the scalp researcher lane finds catalysts there); cron does not, so every cron-run engine pass fell to
+#: the legacy SearXNG call (categories=news, time_range=day, google news/bing news/duckduckgo), whose engines answer
+#: CAPTCHA / parsing error -> 0 results -> 0 momentum_catalyst rows in hermes_research_intelligence since 2026-10-29
+#: and 0 hermes rows bridged into news_articles. The proposal modes carry the flag so the B8 install fixes both.
+CATALYST_ROUTER_ENV = "SEARCH_ROUTING_ENGINE=1 "
+CATALYST_PROPOSAL_ENV = CATALYST_PAPER_ENV + CATALYST_ROUTER_ENV
 _CATALYST = (
     "%sbash $PROJ/scripts/safe_flock.sh /tmp/catalyst_%s.lock $PY scripts/catalyst_momentum_engine.py "
     "--band %s --apply%s"
@@ -182,9 +190,9 @@ FAMILIES: tuple[Family, ...] = (
         lane_id="catalyst-momentum-engine",
         design_id="B8",
         modes=(
-            Mode("premarket_scalp", _CATALYST % (CATALYST_PAPER_ENV, "premarket", "premarket_scalp", " --generate-proposals"),
+            Mode("premarket_scalp", _CATALYST % (CATALYST_PROPOSAL_ENV, "premarket", "premarket_scalp", " --generate-proposals"),
                  "logs/catalyst_momentum_engine.log", "catalyst-momentum-engine-premarket", "*/30 4-9 * * 1-5"),
-            Mode("market_swing", _CATALYST % (CATALYST_PAPER_ENV, "swing", "market_swing", " --generate-proposals"),
+            Mode("market_swing", _CATALYST % (CATALYST_PROPOSAL_ENV, "swing", "market_swing", " --generate-proposals"),
                  "logs/catalyst_momentum_engine.log", "catalyst-momentum-engine-market", "30 9-15 * * 1-5"),
             Mode("overnight", _CATALYST % ("", "overnight", "overnight", ""),
                  "logs/catalyst_momentum_engine.log", "catalyst-momentum-engine-overnight", "0 18,22 * * *"),

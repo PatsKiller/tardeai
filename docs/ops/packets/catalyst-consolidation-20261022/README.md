@@ -8,6 +8,14 @@ never happened, so the legacy lines still run and the family line is absent
 Since then the legacy lines gained `env ALPACA_MODE=paper`. The family's proposal modes now carry it too
 (`scripts/lib/family_slot_jobs.py` `CATALYST_PAPER_ENV`); the script refuses unless the served release has it.
 
+2026-11-07 (LQ-20261107-49): the proposal modes also carry `SEARCH_ROUTING_ENGINE=1`. The cron-run engine has had
+no catalyst search since 2026-10-29: without the flag `search_catalyst` takes the legacy SearXNG call
+(`time_range=day`, google news / bing news / duckduckgo), those engines answer CAPTCHA or parsing error, every
+candidate comes back empty, and `hermes_research_intelligence` has no `momentum_catalyst` row after 10-29 08:00 ET
+(so `hermes_news_bridge` bridges 0). The n8n-run scalp researcher has the flag and finds catalysts through the same
+function. Installing this packet is therefore also the starvation fix; the script refuses unless the served release
+has the flag. The overnight line (0 18,22) is not touched by this packet and stays on the legacy search.
+
     bash apply-operator.sh --preview   # changes nothing
     bash apply-operator.sh             # backup, diff, type APPLY, install, verify against a captured file
 
