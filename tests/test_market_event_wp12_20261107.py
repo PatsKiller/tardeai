@@ -223,6 +223,8 @@ def test_dry_run_writes_nothing(monkeypatch, tmp_path, policy, capsys):
     calls = []
     monkeypatch.setattr(det, "connect", lambda read_only: (calls.append(("connect", read_only)), FakeConn())[1])
     monkeypatch.setattr(det, "index_closes", lambda conn, p, d: closes())
+    # LQ-382: the detector also reads sector-proxy bars; the fake connection has no rows to give.
+    monkeypatch.setattr(det.sector_proxies, "read_closes", lambda conn, symbols, **k: [])
     monkeypatch.setattr(store, "tables_exist", lambda conn: False)
     for fn in ("upsert_episode", "upsert_candidates", "unrank_missing"):
         monkeypatch.setattr(store, fn, lambda *a, **k: calls.append("WRITE"))
