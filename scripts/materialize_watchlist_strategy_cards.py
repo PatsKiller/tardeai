@@ -390,6 +390,22 @@ def load_catalysts(cur, symbols: list[str], days: int = 60) -> dict[str, list[di
     return out
 
 
+def _range_anchor(price, pct):
+    """price / (1 + pct/100), or None when the enrichment percentage cannot give a price.
+
+    A 52-week percentage of -100 (a stale or zero 52-week figure) made the divisor 0 and one ZeroDivisionError aborted
+    the whole lane run (65 tracebacks in logs/watchlist_strategy_cards.log); NaN, inf and text fail the same way. The
+    card then simply has no fallback level, which coherent_levels() already handles.
+    """
+    try:
+        divisor = 1 + float(pct) / 100
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(divisor) or divisor <= 0:
+        return None
+    return price / divisor
+
+
 def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
     conn = _get_conn()
     if dry_run:
@@ -570,13 +586,15 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
         if not support and latest_price:
             w52_low_pct = e.get("week52_low_pct")  # % above 52-week low
             if w52_low_pct is not None:
-                w52_low = latest_price / (1 + float(w52_low_pct) / 100)
-                support = round(w52_low * 1.02, 2)  # slightly above 52-week low
+                w52_low = _range_anchor(latest_price, w52_low_pct)
+                if w52_low is not None:
+                    support = round(w52_low * 1.02, 2)  # slightly above 52-week low
         if not resistance and latest_price:
             w52_high_pct = e.get("week52_high_pct")  # % below 52-week high (negative)
             if w52_high_pct is not None:
-                w52_high = latest_price / (1 + float(w52_high_pct) / 100)
-                resistance = round(w52_high * 0.98, 2)  # slightly below 52-week high
+                w52_high = _range_anchor(latest_price, w52_high_pct)
+                if w52_high is not None:
+                    resistance = round(w52_high * 0.98, 2)  # slightly below 52-week high
 
         # Technical
         rsi = e.get("rsi")
