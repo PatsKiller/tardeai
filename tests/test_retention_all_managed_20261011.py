@@ -338,6 +338,10 @@ class _RetCur:
             self._one = (4,)
         elif s.startswith("SELECT row_to_json"):
             self._all = [({"id": i},) for i in range(4)]
+        elif s.startswith("SET "):
+            # A session setting (db_retention's batch lock_timeout) is not a mutation — PostgreSQL
+            # accepts it in a read-only transaction too. The DELETE below is still refused there.
+            pass
         elif s.startswith("DELETE"):
             if self.conn.readonly:
                 raise RuntimeError("cannot execute DELETE in a read-only transaction")
