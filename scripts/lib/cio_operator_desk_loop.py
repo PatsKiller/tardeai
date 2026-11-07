@@ -2678,6 +2678,39 @@ def select_subject_research(items: list[dict[str, Any]], *, include_operational:
     return (primary + secondary)[: max(1, int(limit))]
 
 
+def _session_bars(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop bars dated to a day with no session.
+
+    LQ-20261107-83: the repricer stamped a Saturday row (V, 2026-11-07) holding Friday's close, and
+    the subject brief then told the operator "close Nov 07". The producer is gated now, but a row
+    once written is history — never deleted — so the reader must not date a close to a non-session.
+    """
+    try:
+        from scripts.lib.overnight_session import is_trading_day  # noqa: PLC0415
+    except ImportError:
+        try:
+            from lib.overnight_session import is_trading_day  # noqa: PLC0415
+        except ImportError:  # pragma: no cover - no calendar module at all
+            is_trading_day = None  # type: ignore[assignment]
+    kept: list[dict[str, Any]] = []
+    for b in bars:
+        try:
+            d = datetime.fromisoformat(str(b["price_date"])[:10]).date()
+        except (ValueError, KeyError, TypeError):
+            kept.append(b)
+            continue
+        if is_trading_day is not None:
+            try:
+                if not is_trading_day(d):
+                    continue
+            except Exception:  # noqa: BLE001 - calendar lookup failed: keep the bar
+                pass
+        elif d.weekday() >= 5:
+            continue
+        kept.append(b)
+    return kept
+
+
 def subject_price_facts(symbols: list[str], *, days: int = 45) -> dict[str, dict[str, Any]]:
     """Last close and the change over about 30 days, read through the broker's daily bars.
 
@@ -2697,6 +2730,7 @@ def subject_price_facts(symbols: list[str], *, days: int = 45) -> dict[str, dict
         except Exception:  # noqa: BLE001
             continue
         bars = sorted((b for b in (res.get("bars") or []) if b.get("close")), key=lambda b: str(b.get("price_date")))
+        bars = _session_bars(bars)
         if not bars:
             continue
         last = bars[-1]
@@ -2785,10 +2819,19 @@ def _subject_takeaway(sym: str, price: dict[str, Any], row: Optional[dict[str, A
     if row and close:
         res = row.get("resistance")
         res_lvl = res.get("level") if isinstance(res, dict) else res
+        res_state = str(res.get("state") or "").upper() if isinstance(res, dict) else ""
         try:
             if res_lvl:
                 gap = (float(res_lvl) - float(close)) / float(close) * 100.0
-                bits.append(f"price is {abs(gap):.1f}% {'below' if gap >= 0 else 'above'} resistance {_fmt_price(res_lvl)}")
+                if res_state == "ABOVE" or gap < 0:
+                    # LQ-20261107-83: a level the price has held above for weeks is a BROKEN
+                    # resistance (the breakout floor), not resistance overhead. Calling it
+                    # "resistance" produced "11.3% above resistance $375.07" on a level whose
+                    # last touch was 25 sessions ago.
+                    bits.append(f"price is {abs(gap):.1f}% above the broken resistance "
+                                f"{_fmt_price(res_lvl)} (breakout held, now the floor)")
+                else:
+                    bits.append(f"price is {abs(gap):.1f}% below resistance {_fmt_price(res_lvl)}")
             if row.get("stop"):
                 cushion = (float(close) - float(row["stop"])) / float(close) * 100.0
                 bits.append(f"{abs(cushion):.1f}% {'above' if cushion >= 0 else 'below'} the stop {_fmt_price(row['stop'])}")

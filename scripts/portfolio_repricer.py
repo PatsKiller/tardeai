@@ -1569,18 +1569,72 @@ def close_price_for_holding(h: dict, quote_price=None):
     return None
 
 
+def close_session_date(now=None):
+    """The session a ``ticker_prices`` CLOSE may be stamped for, or None while a session is open.
+
+    ``ticker_prices`` is a daily CLOSE store: one row per (symbol, price_date). The repricer runs
+    every 15 minutes, and the old code stamped ``CURRENT_DATE`` unconditionally. LQ-20261107-83: the
+    2026-11-07 00:15 ET run wrote ``(V, 2026-11-07, 422.65)`` — Friday's close dated to a Saturday —
+    and the CIO answer read "close Nov 07". Every row was shifted this way (the 2026-11-06 row was
+    written at 00:00 on the 6th holding the 5th's close).
+
+    The price in hand decides the date, never the wall clock:
+
+    * after the regular close (16:00 ET, +5 min grace for the closing print) on a session day, the
+      price IS that session's close, so stamp today;
+    * before the opening bell (and all day on a weekend or holiday, when the market is shut), the
+      price is the last completed session's close, so stamp the previous trading day;
+    * while the session is open (09:30-16:05 on a session day) the price is an intraday mark, not a
+      close — return None and write nothing.
+    """
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:  # pragma: no cover - py<3.9
+        return None
+    tz = ZoneInfo("America/New_York")
+    n = now if now is not None else datetime.now(tz)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=tz)
+    n = n.astimezone(tz)
+    is_session = None
+    previous = None
+    try:
+        try:
+            from scripts.lib.overnight_session import is_trading_day, previous_trading_day
+        except ImportError:
+            from lib.overnight_session import is_trading_day, previous_trading_day  # type: ignore
+        is_session = bool(is_trading_day(n.date()))
+        previous = previous_trading_day(n.date())
+    except Exception:  # noqa: BLE001 - no calendar: weekday fallback, never invent a weekend close
+        is_session = n.weekday() < 5
+        previous = n.date() - timedelta(days=3 if n.weekday() == 0 else 1)
+    if not is_session:
+        return previous  # market shut all day: the last close is the previous session's
+    if (n.hour, n.minute) >= (16, 5):
+        return n.date()
+    if (n.hour, n.minute) < (9, 30):
+        return previous  # pre-market: still the previous session's close
+    return None  # session open: an intraday mark is not a close
+
+
 def _sync_ticker_prices(portfolio, root):
-    """Write each held symbol's repriced close into ticker_prices for today (today's row is replaced
-    if present, else created) so surfaces reading ticker_prices match holdings.json. Best-effort;
-    never breaks repricing.
+    """Write each held symbol's repriced close into ticker_prices for the session it belongs to.
+
+    Skips entirely while a session is open (``close_session_date`` is None) rather than stamping an
+    intraday or non-session mark as a close — see that function's docstring.
 
     One write path per store (Phase 9): this module is the registry's writer_target for
     ``technicals``; the SQL lives in lib/writers/ticker_prices_writer.py (re-exported below as
     ``write_ticker_prices``). The legacy contract is preserved by explicit parameters --
     ``on_conflict="overwrite"`` is the old UPDATE-then-INSERT under the (symbol, price_date) unique
-    index, ``price_date=None`` is CURRENT_DATE, ``stamp_created_at`` is created_at=now(), and
-    ``round_to=None`` writes the holdings price as given.
+    index, ``stamp_created_at`` is created_at=now(), and ``round_to=None`` writes the holdings price
+    as given. ``price_date`` is now the resolved session, never CURRENT_DATE.
     """
+    session = close_session_date()
+    if session is None:
+        print("  [repricer] ticker_prices skipped: the session is open, so the price in hand is not "
+              "a close (a close is only ever stamped for a completed session)")
+        return
     import psycopg2
     _load_env(root)
     seen, rows = set(), []
@@ -1595,12 +1649,13 @@ def _sync_ticker_prices(portfolio, root):
         if not sym or sym in seen or h.get("is_cash") or not px:
             continue
         seen.add(sym)
-        rows.append({"symbol": sym, "price_date": None, "close_price": px})
+        rows.append({"symbol": sym, "price_date": session.isoformat(), "close_price": px})
     rc = write_ticker_prices(cur, rows, source="portfolio_repricer", on_conflict="overwrite",
                              round_to=None, stamp_created_at=True)
     n = rc.rows_accepted
     c.commit(); c.close()
-    print(f"  [repricer] ticker_prices synced for {n} held symbols (unified with portfolio view)")
+    print(f"  [repricer] ticker_prices synced for {n} held symbols to session {session.isoformat()} "
+          "(unified with portfolio view)")
     if rc.rows_rejected:
         print(f"  [repricer] ticker_prices REJECTED {len(rc.rows_rejected)} row(s): "
               + "; ".join(f"{r['row'].get('symbol')}: {r['reason']}" for r in rc.rows_rejected[:10]))
