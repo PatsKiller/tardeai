@@ -313,6 +313,80 @@ def test_window_dry_run_writes_nothing(cfg, root):
     assert tree(root) == before
 
 
+# ── stranded rows and an honest drain size (audit 2026-11-07, LQ-20261107-136) ────────────────────────────────
+# Live queue 2026-11-07: two rows sat in ``running`` since 2026-10-28 22:30 (a fire died mid-run). Nothing
+# ever re-queues a ``running`` row — run_queue takes only queued/None and enqueue leaves the state alone — so
+# those symbols would never be written again. And the dry run reported ``queue_depth`` (every state, 85 at the
+# time) which is not the number of rows a live window would actually take.
+
+def _backdate(base, symbol, started_at):
+    doc = json.loads((base / "queue.json").read_text())
+    for row in doc["items"]:
+        if row["symbol"] == symbol:
+            row["started_at"] = started_at
+    (base / "queue.json").write_text(json.dumps(doc))
+
+
+def test_a_live_fire_requeues_a_row_stranded_in_running(cfg, root):
+    base = base_of(root, cfg)
+    seed_queue(base, [{"symbol": "AAA", "scope": "holding", "priority": 100, "reason": "monthly_due"},
+                      {"symbol": "BBB", "scope": "holding", "priority": 101, "reason": "monthly_due"}])
+    store.mark(base, "BBB", state="running")
+    _backdate(base, "BBB", "2026-10-28T22:30:19+00:00")
+    out = PW.run(args(now="2026-11-10T22:50:00Z"), cfg, root,
+                 sources_factory=lambda r, ro: FakeSources(holdings={"AAA": {"market_value": 2.0},
+                                                                     "BBB": {"market_value": 1.0}}),
+                 run_queue_fn=fake_run_queue([]))
+    assert out["recovered_running"] == ["BBB"]
+    assert sorted(out["done"]) == ["AAA", "BBB"]
+
+
+def test_a_fresh_running_row_is_left_alone(cfg, root):
+    """A row another fire is writing right now must never be re-queued under it."""
+    base = base_of(root, cfg)
+    seed_queue(base, [{"symbol": "BBB", "scope": "holding", "priority": 101, "reason": "monthly_due"}])
+    store.mark(base, "BBB", state="running")
+    _backdate(base, "BBB", "2026-11-10T22:45:00+00:00")  # 5 minutes before the fire
+    out = PW.run(args(now="2026-11-10T22:50:00Z"), cfg, root,
+                 sources_factory=lambda r, ro: FakeSources(holdings={"BBB": {"market_value": 1.0}}),
+                 run_queue_fn=fake_run_queue([]))
+    assert out["recovered_running"] == [] and out["done"] == []
+    assert [r["state"] for r in store.read_queue(base)["items"]] == ["running"]
+
+
+def test_dry_run_reports_the_drain_size_not_the_queue_depth(cfg, root):
+    base = base_of(root, cfg)
+    seed_queue(base, [{"symbol": "HLD", "scope": "holding", "priority": 100, "reason": "monthly_due"},
+                      {"symbol": "WCH", "scope": "watch", "priority": 1000, "reason": "missing"},
+                      {"symbol": "OPR", "scope": "watch", "priority": 1, "reason": "operator_refresh"}])
+    store.enqueue(base, [{"symbol": "BAD", "scope": "watch", "priority": 1000, "reason": "missing"}])
+    store.mark(base, "BAD", state="failed")
+    store.enqueue(base, [{"symbol": "RUN", "scope": "watch", "priority": 1000, "reason": "missing"}])
+    store.mark(base, "RUN", state="running")
+    out = PW.run(args(apply=False, now="2026-11-07T15:00:00Z"), cfg, root,
+                 sources_factory=lambda r, ro: FakeSources())
+    assert out["window"] is None
+    assert out["queue_depth"] == 5
+    assert out["queue_states"] == {"queued": 3, "failed": 1, "running": 1}
+    assert out["drain_eligible"] == 1, "off-window only the operator row can run"
+    assert out["stale_running"] == []  # RUN was just marked, not stranded
+
+
+def test_dry_run_at_a_window_names_the_rows_it_would_take(cfg, root):
+    base = base_of(root, cfg)
+    seed_queue(base, [{"symbol": s, "scope": "holding", "priority": 100 + i, "reason": "monthly_due"}
+                      for i, s in enumerate(["H1", "H2", "H3"])]
+               + [{"symbol": "W1", "scope": "watch", "priority": 1000, "reason": "missing"},
+                  {"symbol": "W2", "scope": "watch", "priority": 1000, "reason": "missing"},
+                  {"symbol": "O1", "scope": "watch", "priority": 1, "reason": "operator_refresh"}])
+    out = PW.run(args(apply=False, now="2026-11-10T22:50:00Z"), cfg, root,
+                 sources_factory=lambda r, ro: FakeSources(holdings={"H1": {"market_value": 3.0}}))
+    assert out["window"] == "post_close"
+    assert out["drain_eligible"] == 4, "3 holdings + the operator row; Watch is submitted as a batch"
+    assert out["batch_deferred"] == 2
+    assert out["would_run_max"] == 12
+
+
 # ── delivery ──────────────────────────────────────────────────────────────────────────────────────────────────
 class Stubs:
     def __init__(self, fail_text=False, fail_mail=False):

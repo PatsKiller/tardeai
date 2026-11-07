@@ -91,6 +91,29 @@ def _eligible_for(win: dict | None) -> Callable[[dict], bool]:
     return lambda row: schedule.is_operator_row(row) or row.get("scope", "watch") in scopes
 
 
+def _state_counts(queue: list[dict]) -> dict:
+    counts: dict[str, int] = {}
+    for row in queue:
+        key = row.get("state") or "queued"  # a fresh row carries no state
+        counts[key] = counts[key] + 1 if key in counts else 1
+    return dict(sorted(counts.items()))
+
+
+def _drain_split(queue: list[dict], win: dict | None, *, batch_on: bool) -> tuple[int, int]:
+    """How many rows a live fire would ACTUALLY take now: (synchronous drain, deferred to the Watch batch).
+
+    ``queue_depth`` counts every state — failed, running, blocked_data, batch_pending — and so answers a different
+    question: an 85-row queue with 40 runnable reads as "a window would run 85 reports".
+    """
+    eligible = _eligible_for(win)
+    scoped = [r for r in queue if r.get("state") in ("queued", None) and eligible(r)]
+    if not batch_on:
+        return len(scoped), 0
+    from scripts.lib.prospectus import batch as batch_mod
+    deferred = [r for r in scoped if batch_mod.is_batch_row(r)]
+    return len(scoped) - len(deferred), len(deferred)
+
+
 def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Callable[[Path, bool], Any],
         run_queue_fn: Callable | None = None, batch_submit_fn: Callable | None = None,
         batch_collect_fn: Callable | None = None, log: Callable[[str], None] = print,
@@ -105,6 +128,10 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
                            "window": (win or {}).get("id"), "window_key": (win or {}).get("key"),
                            "next_windows": schedule.next_windows(cfg, now), "queue_depth": len(queue),
                            "operator_rows": [r["symbol"] for r in operator_rows]}
+    batch_on = schedule.watch_batch_enabled(cfg)
+    drained, deferred = _drain_split(queue, win, batch_on=batch_on)
+    out.update(queue_states=_state_counts(queue), drain_eligible=drained, batch_deferred=deferred,
+               stale_running=schedule.stale_running(queue, now))
     if not args.apply:
         out.update(mode="dry_run", writes="none", model_calls=0)
         if win:
@@ -124,7 +151,11 @@ def run(args: argparse.Namespace, cfg: dict, root: Path, *, sources_factory: Cal
 
     from scripts.lib.prospectus.pipeline import handle_blocked, run_queue
     run_queue_fn = run_queue_fn or run_queue
+    out["recovered_running"] = schedule.recover_stale_running(base, now)  # a dead fire's running row
     schedule.release_held(base)  # a crashed earlier fire never strands a parked row
+    queue = store.read_queue(base)["items"]  # re-read so the drain numbers include the recovered rows
+    drained, deferred = _drain_split(queue, win, batch_on=batch_on)
+    out.update(queue_states=_state_counts(queue), drain_eligible=drained, batch_deferred=deferred)
     if win is None and not operator_rows:
         out.update(mode="apply", ran="nothing_due", produced_count=0)
         return out
@@ -263,7 +294,7 @@ def write_receipt(root: Path, out: dict, started: str) -> None:
         LANE, ok=True, exit_code=0, started_at=started, script="scripts/prospectus_window.py",
         summary={k: out.get(k) for k in ("ran", "window", "window_key", "enqueued", "done", "failed", "blocked_data",
                                          "queue_left", "cost_usd", "month_spend_usd", "stopped_reason", "outbox",
-                                         "batch", "news")},
+                                         "batch", "news", "recovered_running")},
         produced_count=produced, attempted_count=produced + len(out.get("failed") or []),
         output_evidence=[{"kind": "file_artifact", "ref": out["outbox"]}] if out.get("outbox") else [],
         empty_reason=empty_reason_for(out),

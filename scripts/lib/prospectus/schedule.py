@@ -280,6 +280,40 @@ def release_held(base: Path) -> int:
     return released
 
 
+# A row left in ``running`` by a fire that died is never re-queued by anything: ``run_queue`` takes only
+# queued/None and ``enqueue`` leaves a running row's state alone. Recover it only once no live fire could still
+# own it — the allowlist timeout is 7200 s, so 6 h is safely past any live row (audit 2026-11-07: two rows sat
+# in ``running`` since 2026-10-28 22:30 and would never have been written again).
+STALE_RUNNING_AFTER_S = 6 * 3600
+
+
+def _stranded(row: dict, now: datetime, max_age_s: int) -> bool:
+    if row.get("state") != "running":
+        return False
+    started = _dt(row.get("started_at"))
+    return started is None or (now - started).total_seconds() > max_age_s
+
+
+def stale_running(queue_items: list[dict], now: datetime, max_age_s: int = STALE_RUNNING_AFTER_S) -> list[str]:
+    """Symbols a crashed fire left in ``running`` (including rows with no readable start stamp)."""
+    return sorted(r["symbol"] for r in queue_items if _stranded(r, now, max_age_s))
+
+
+def recover_stale_running(base: Path, now: datetime, max_age_s: int = STALE_RUNNING_AFTER_S) -> list[str]:
+    """Return stranded ``running`` rows to ``queued`` (attempts and last_error kept) and name them."""
+    recovered: list[str] = []
+    with store.locked(base):
+        doc = store.read_queue(base)
+        for row in doc["items"]:
+            if _stranded(row, now, max_age_s):
+                row["state"] = "queued"
+                row["recovered_at"] = now.isoformat()
+                recovered.append(row["symbol"])
+        if recovered:
+            store.write_json(base / "queue.json", doc)
+    return sorted(recovered)
+
+
 def watch_batch_cfg(cfg: dict) -> dict:
     return window_cfg(cfg).get("watch_batch") or {}
 
