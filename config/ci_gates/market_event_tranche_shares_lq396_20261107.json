@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_tranche_shares_lq396_20261107",
+  "files": [
+    "tests/test_market_event_tranche_shares_lq396_20261107.py"
+  ],
+  "comment": [
+    "LQ-20261107-396: a 0-share tranche is not deployable dollars in /api/v2/market-event/active's plan.",
+    "Pins the 1-share boundary (usd == price buys one share, a cent less buys none), that plan.accounts[].tranche_usd",
+    "counts only tranches that buy a share, that the account row is still emitted with below_one_share dollars",
+    "reported beside it, and that the brief's NEXT TRANCHE $ line prints $0 rather than the unbuyable amount.",
+    "Synthetic fixtures only; no broker/order/write path."
+  ]
+}
