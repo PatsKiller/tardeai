@@ -16,13 +16,18 @@ The contract these tests pin:
      not caught up with (symbol_validation.gate_watchlist_symbol). The English words OVER / WITH / PICKS
      that the event queue carried in are scored no longer;
   4. the history row records the rank the list actually holds (selected from watchlist_items after the
-     rerank, never an in-batch counter).
+     rerank, never an in-batch counter);
+  5. the price R/R and the history row carry is a MARK, not `wi.price`: the Finviz cache when fresh, else the
+     newest market_quotes / ticker_prices row (operator price rule 2026-11-07), and a stale mark is written as
+     NULL rather than as if it were a live quote (read-only 11-07: OPLN 39.935 as the watchlist copy against a
+     34.35 quote, +16.3%).
 
 Hermetic: fake connection, fake inputs. No DB, no network.
 """
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -72,6 +77,10 @@ class _Cur:
         elif s.startswith("SELECT wi.symbol"):
             self.description = [(c,) for c in _COLS]
             self._all = [r for r in self.conn.rows if r[0] in self.conn.validated]
+        elif "FROM market_quotes" in s:                        # the mark: newest quote per symbol
+            self._all = list(self.conn.quotes)
+        elif "FROM ticker_prices" in s:
+            self._all = list(self.conn.closes)
         elif "FROM hermes_score_history" in s:
             self._all = []
         head = s.split(" ", 1)[0].upper()
@@ -95,11 +104,13 @@ class _Cur:
 
 
 class _Conn:
-    def __init__(self, rows, *, universe, ranks, validated):
+    def __init__(self, rows, *, universe, ranks, validated, quotes=(), closes=()):
         self.rows = rows
         self.universe = universe        # [(symbol, stored composite)] — already symbol_profiles-validated
         self.ranks = ranks              # [(symbol, stored hermes_rank)]
         self.validated = validated      # symbols the DB would call scoreable
+        self.quotes = list(quotes)      # [(symbol, price, fetched_at)] from market_quotes
+        self.closes = list(closes)      # [(symbol, price, price_date)] from ticker_prices
         self.sql, self.writes = [], []
         self.readonly = False
         self.fail_write_for = None      # a symbol whose every write raises
@@ -140,6 +151,9 @@ def env(monkeypatch):
     monkeypatch.setattr(hws, "_score_row", lambda r, *a, **k: (SCORES[r["symbol"]], {"technical_momentum": 1.0}))
     monkeypatch.setattr(hws, "_tier_plan", lambda now_et=None: ["S0"])
     monkeypatch.setattr(hws, "_pending_event_symbols", lambda cur: ["CCC", "DDD"])
+    # no Finviz cache in hermetically-run tests: resolve_mark then uses the market_quotes row the fake returns
+    import lib.portfolio_positions as pp
+    monkeypatch.setattr(pp, "finviz_cache", lambda *a, **k: {})
 
     def use(conn):
         monkeypatch.setattr(hws, "_conn", lambda: conn)
@@ -245,6 +259,34 @@ def test_an_unwritable_rank_does_not_roll_back_the_others(env):
     assert out["skipped_errors"] == {"rerank:RuntimeError": 1}, out
     ranks = conn.rank_writes()
     assert ranks["CCC"] == 1 and "AAA" not in ranks, ranks
+
+
+def test_the_history_price_is_the_mark_not_the_watchlist_copy(env):
+    """The row's own `price` (39.935) is not a quote: the fresh market_quotes mark (34.35) is what gets written."""
+    now = datetime.now(timezone.utc) - timedelta(minutes=5)
+    conn = _Conn([_row("CCC", price="39.935")],
+                 universe=[("AAA", 80.0)],
+                 ranks=[("AAA", 1)],
+                 validated={"AAA", "CCC"},
+                 quotes=[("CCC", Decimal("34.35"), now)])
+    env(conn)
+    hws.run()
+    hist = [p for s, p in conn.writes if s.startswith("INSERT INTO hermes_score_history")]
+    assert hist and float(hist[0][3]) == 34.35, hist
+
+
+def test_a_stale_mark_is_not_written_as_a_live_price(env):
+    """A quote 3 h old is stale (operator rule: 30 min): history gets NULL, never the old number as a quote."""
+    old = datetime.now(timezone.utc) - timedelta(hours=3)
+    conn = _Conn([_row("CCC", price="39.935")],
+                 universe=[("AAA", 80.0)],
+                 ranks=[("AAA", 1)],
+                 validated={"AAA", "CCC"},
+                 quotes=[("CCC", Decimal("34.35"), old)])
+    env(conn)
+    hws.run()
+    hist = [p for s, p in conn.writes if s.startswith("INSERT INTO hermes_score_history")]
+    assert hist and hist[0][3] is None, hist
 
 
 def test_an_event_symbol_outside_the_universe_is_reported_and_drained(env, monkeypatch):

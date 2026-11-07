@@ -395,14 +395,20 @@ _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_k
                    LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
                    WHERE wi.status IN ('active','researched')"""
 
-# A row is scoreable only when it names a validated security: a symbol_profiles row, or a portfolio holding
-# whose profile sync has not caught up (the same rule as symbol_validation.gate_watchlist_symbol). Binds the
-# holdings list. Before 2026-11-07 the scorer scored whatever sat in the row: English words the event queue
-# carried in (OVER, WITH, PICKS — scored with a NULL price) and 2,380 fund/identifier codes with no profile.
-# LQ-20261107-189.
+# A row is scoreable only when it names a validated security: a symbol_profiles row, a portfolio holding whose
+# profile sync has not caught up (symbol_validation.gate_watchlist_symbol), or a symbol the price stores know —
+# `market_quotes` / `ticker_prices`. Binds the holdings list. Before 2026-11-07 the scorer scored whatever sat
+# in the row: English words the event queue carried in (OVER, WITH, PICKS — scored with a NULL price and no
+# quote anywhere) and 2,380 fund/identifier codes with no profile. LQ-20261107-189.
+# The quote rung is not cosmetic: PTN, QLEP and QRED carry no symbol_profiles row (sync lag) but every quote
+# store prices them, so a profile-only filter would drop three real names to remove three words. Measured
+# read-only 2026-11-07: profile-only 3,244 symbols, with the quote rung 5,176, and OVER/WITH/PICKS stay out
+# (0 rows in either store). The indexed `symbol` columns are compared bare (6.6M market_quotes rows).
 _VALIDATED_SYMBOL_SQL = """ AND (
         EXISTS (SELECT 1 FROM symbol_profiles sp WHERE UPPER(sp.symbol) = UPPER(wi.symbol))
-        OR UPPER(wi.symbol) = ANY(%s))"""
+        OR UPPER(wi.symbol) = ANY(%s)
+        OR EXISTS (SELECT 1 FROM market_quotes mq WHERE mq.symbol = UPPER(wi.symbol))
+        OR EXISTS (SELECT 1 FROM ticker_prices tp WHERE tp.symbol = UPPER(wi.symbol)))"""
 
 #: The ranking input: every scoreable symbol and the composite the list currently holds for it. The run
 #: overlays the scores it has just computed and ranks the whole list, so a partial (event-tier) rescore can
@@ -769,6 +775,15 @@ def run(limit=None, *, dry_run=False):
         _fetch_watchlist_rows(cur, held, limit=limit, off_hours=use_capped_fetch)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    # The price the scorer uses is a MARK, never `wi.price`: that column is the watchlist's own copy and drifts
+    # (read-only 2026-11-07: OPLN 39.935 vs a 34.35 quote, +16.3%; PTN 5.085 vs 5.80, -12.3%). Operator price
+    # rule: the Finviz cache when fresh, else a fresh broker quote, never a stored DB price older than 30 min.
+    # A stale mark means no price at all — R/R drops and the history row records NULL, so a stale number is
+    # never written as if it were a live one (data-truth audit 2026-11-07, LQ-20261107-143 defect 3).
+    marks = _marks(cur, [r.get("symbol") for r in rows])
+    for r in rows:
+        m = marks.get(str(r.get("symbol") or "").upper()) or {}
+        r["price"] = m.get("price") if m.get("price") and not m.get("stale") else None
     errors = {"reasons": {}, "symbols": []}
     scored, unscored = [], 0
     for r in rows:
@@ -903,6 +918,33 @@ def run(limit=None, *, dry_run=False):
         skipped_errors=dict(errors["reasons"]), error_symbols=errors["symbols"][:20],
         top=[(s, round(c, 1)) for s, c, *_ in scored[:10]],
         excluded=excluded, excluded_symbols=excluded_syms[:20], rank_changes=rank_changes)
+
+
+def _marks(cur, symbols):
+    """{SYMBOL: resolve_mark(...)} for the names this run scores — the one price R/R and history may use.
+
+    `wi.price` is the watchlist's own copy, not a quote (2026-11-07 read-only: OPLN 39.935 vs 34.35 in
+    market_quotes, +16.3%). The newest row from each quote store becomes the caller's ``quote`` for
+    lib.portfolio_positions.resolve_mark, which prefers the Finviz cache (operator price rule 2026-11-07) and
+    returns ``stale``/``age_s``. Two indexed reads over the batch, bounded by the run's own symbol list —
+    market_quotes holds 6.6M rows, so the columns are compared bare (both stores are upper-case).
+    """
+    from lib.portfolio_positions import resolve_mark
+    syms = sorted({str(s).upper() for s in symbols if s})
+    if not syms:
+        return {}
+    quotes = {}
+    cur.execute("""SELECT DISTINCT ON (symbol) symbol, price, fetched_at FROM market_quotes
+                   WHERE symbol = ANY(%s) AND price IS NOT NULL AND price > 0
+                   ORDER BY symbol, fetched_at DESC""", (syms,))
+    for sym, price, at in cur.fetchall():
+        quotes[str(sym).upper()] = {"price": price, "as_of": at, "source": "market_quotes"}
+    cur.execute("""SELECT DISTINCT ON (symbol) symbol, close_price, price_date FROM ticker_prices
+                   WHERE symbol = ANY(%s) AND close_price IS NOT NULL AND close_price > 0
+                   ORDER BY symbol, price_date DESC""", (syms,))
+    for sym, price, at in cur.fetchall():
+        quotes.setdefault(str(sym).upper(), {"price": price, "as_of": at, "source": "ticker_prices"})
+    return {s: resolve_mark({"symbol": s}, quote=quotes.get(s)) for s in syms}
 
 
 def _global_ranks(cur, scored, held):
