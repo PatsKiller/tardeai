@@ -253,6 +253,35 @@ def plan_run(reads: dict, required: Iterable[str], open_lots: list[dict]) -> dic
             "accounts": accounts, "snapshots": snaps, "current": current}
 
 
+# LQ-20261107-72: Schwab's position normaliser carries no assetType, so 28 of 34 positions_current rows had asset_type NULL and
+# portfolio_analyzer crashed (NoneType.upper) from 11-04. The class is filled from the instrument classification we already
+# hold (asset_intelligence_history); a symbol with no classification stays NULL (unknown), never a guess.
+_CLASS_TO_ASSET_TYPE = {"stock": "EQUITY", "etf": "ETF", "mutual_fund": "MUTUAL_FUND"}
+
+
+def fill_missing_asset_type(plan: dict, classes: dict) -> int:
+    """Set asset_type on snapshot/current rows where the broker gave none. classes: SYMBOL -> stock|etf|mutual_fund."""
+    n = 0
+    for key in ("snapshots", "current"):
+        for r in plan.get(key) or []:
+            if r.get("asset_type"):
+                continue
+            at = _CLASS_TO_ASSET_TYPE.get(str(classes.get(str(r.get("symbol") or "").upper()) or "").lower())
+            if at:
+                r["asset_type"] = at
+                n += 1 if key == "current" else 0
+    return n
+
+
+def load_asset_classes(cur, symbols) -> dict:
+    syms = sorted({str(s).upper() for s in symbols if s})
+    if not syms:
+        return {}
+    cur.execute("SELECT DISTINCT ON (upper(symbol)) upper(symbol), asset_type FROM asset_intelligence_history "
+                "WHERE upper(symbol) = ANY(%s) ORDER BY upper(symbol), as_of DESC", (syms,))
+    return {r[0]: r[1] for r in cur.fetchall()}
+
+
 def lot_checks(current: list[dict], open_lots: list[dict], qty_tol: float, basis_tol: float) -> list[dict]:
     """Where the ledger lots do not reproduce the broker position (phase 2 evidence, not an error)."""
     by = defaultdict(lambda: [0.0, 0.0, True])
@@ -460,12 +489,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     conn.rollback()
     open_lots, realized = build_lots(ledger)
     plan = plan_run(reads, cfg["required_accounts"], open_lots)
+    with conn.cursor() as cur:
+        classes = load_asset_classes(cur, [r["symbol"] for r in plan["current"] if not r.get("asset_type")])
+    conn.rollback()
+    asset_filled = fill_missing_asset_type(plan, classes)
     checks = lot_checks(plan["current"], open_lots, cfg["qty_tolerance"], cfg["basis_tolerance_usd"])
     notes = json.dumps({"lot_checks": checks}, default=_jsonable)
     summary = {"mode": "APPLY" if args.apply else "DRY-RUN", "status": plan["status"], "promote": plan["promote"],
                "accounts_ok": plan["accounts_ok"], "accounts_failed": plan["accounts_failed"],
                "accounts": plan["accounts"], "position_rows": len(plan["snapshots"]), "open_lots": len(open_lots),
-               "realized_lots": len(realized), "lot_checks": checks}
+               "realized_lots": len(realized), "lot_checks": checks,
+               "asset_type_filled": asset_filled,
+               "asset_type_still_null": sum(1 for r in plan["current"] if not r.get("asset_type"))}
     if args.apply:
         run_id = open_run(conn)
         write_run(conn, run_id, plan, open_lots, realized, notes)

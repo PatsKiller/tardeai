@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ASSET_TYPE_FILL",
+  "files": [
+    "tests/test_asset_type_fill_20261107.py"
+  ],
+  "anchor": "ASSET_TYPE_FILL",
+  "comment": [
+    "ANCHOR: ASSET_TYPE_FILL - 2026-11-07 LQ-20261107-72: positions_sync fills a broker-missing asset_type from the held",
+    "instrument classification, and portfolio_analyzer treats a NULL asset_type as unknown instead of crashing."
+  ]
+}
