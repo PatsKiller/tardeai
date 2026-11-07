@@ -26709,7 +26709,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Weekly (Sun 19:00) company-profile refresh: one-to-two-sentence description, sector and industry for every stale watch-grade symbol (watch_universe + holding proxies + CIO top-ranked + Finviz-stub retries) into symbol_profiles via lib/writers/symbol_profiles_writer.py (yfinance, Finviz fallback).",
         "business_function": "research",
@@ -26762,8 +26762,8 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
         },
         {
           "check": "dry_run_writes_nothing",
@@ -26905,8 +26905,14 @@
         "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15 --no-ledger; lane repair 2026-10-15)",
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, LANE_OUTPUT counts, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 / LD-W1 precedent)",
-        "reviewed_on": "2026-10-15"
-      }
+        "reviewed_on": "2026-10-15",
+        "stage_rereview": {
+          "on": "2026-11-06",
+          "by": "n8n_cutover_wave.py contract-canary",
+          "evidence": "registry cron canary, dispatch.mode live; live fire d:build-symbol-profiles-at-0-19:live:20261101T1900"
+        }
+      },
+      "state_note": "CW-N8NMOVE 2026-11-06: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -29037,7 +29043,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Monthly pattern extraction from recommendation outcomes into pattern_library (PROVEN/KILLED/NEUTRAL).",
         "business_function": "research",
@@ -29090,8 +29096,8 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
         },
         {
           "check": "dry_run_writes_nothing",
@@ -29204,7 +29210,12 @@
         "prepared_by": "agent draft (build_n8n_health_contracts.py --as-of 2026-10-15; shadow wave LD-W1)",
         "status": "REVIEWED",
         "reviewed_by": "agent-reviewed 2026-10-15 against source (dry-run branch, receipt writer, import closure via advisory_lane_guard); awaiting the operator's REVIEW pass (SW4 precedent)",
-        "reviewed_on": "2026-10-15"
+        "reviewed_on": "2026-10-15",
+        "stage_rereview": {
+          "on": "2026-11-06",
+          "by": "n8n_cutover_wave.py contract-canary",
+          "evidence": "registry cron canary, dispatch.mode live; live fire d:pattern-extractor:live:20261101T0900"
+        }
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
@@ -29235,7 +29246,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "state_note": "CW-N8NMOVE 2026-11-06: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     },
     {
       "schema": "N8nHealthContract@v1",
