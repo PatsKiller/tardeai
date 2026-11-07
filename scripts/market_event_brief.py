@@ -68,7 +68,14 @@ def fetch_active(policy: dict[str, Any]) -> dict[str, Any]:
     url = policy["api_base"].rstrip("/") + policy["api_path"]
     resp = requests.get(url, headers=cc_headers(url), timeout=20)
     resp.raise_for_status()
-    return resp.json()
+    return unwrap(resp.json())
+
+
+def unwrap(body: Any) -> dict[str, Any]:
+    """The v2 dispatcher serves {"ok": true, "data": <MarketEvent@v1>}; the brief reads the inner document."""
+    if isinstance(body, dict) and body.get("schema") is None and isinstance(body.get("data"), dict):
+        return body["data"]
+    return body if isinstance(body, dict) else {}
 
 
 # --------------------------------------------------------------------------- slots and state
@@ -151,7 +158,7 @@ def _evidence(cand: dict[str, Any], key: str) -> Any:
 
 
 def _gate_text(cand: dict[str, Any]) -> str:
-    gates = cand.get("gates")
+    gates = cand.get("gate_checks") if isinstance(cand.get("gate_checks"), dict) else cand.get("gates")
     if not isinstance(gates, dict) or not gates:
         return "-"
     return " ".join(f"{k}{'+' if v is True or (isinstance(v, dict) and v.get('pass')) else '-'}" for k, v in sorted(gates.items()))
@@ -378,7 +385,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("no scheduled slot is due; nothing to do")
         return 0
     try:
-        payload = json.loads(Path(args.input).read_text(encoding="utf-8")) if args.input else fetch_active(policy)
+        payload = unwrap(json.loads(Path(args.input).read_text(encoding="utf-8"))) if args.input else fetch_active(policy)
     except Exception as exc:  # noqa: BLE001 -- the lane fails visibly; a brief is never rendered from nothing
         print(f"market-event-brief: payload unavailable ({type(exc).__name__}): {exc}", file=sys.stderr)
         lane_output.emit(LANE_ID, mode, lane_output.output_block(produced=0, attempted=1, skipped={"payload_unavailable": 1}, empty_reason="payload_unavailable", unit="briefs"), started_at=started)
