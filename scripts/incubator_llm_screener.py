@@ -15,15 +15,28 @@ the allowlist ``llm_route`` of lane incubator-llm-screener) the screen is ONE go
 in-process cloud_review (CLOUD_REVIEW=1) is skipped, so no provider client is reachable. A refusal is a per-symbol
 ``error`` (no UPDATE). --dry-run makes no model call. The cron line is unchanged.
 
-Refusal is named once, at run level (LQ-20261107-86, 2026-11-07): the process is registered ``default_mode:
+Refusal is named once, at run level (LQ-20261107-86, 2026-11-07): the process was registered ``default_mode:
 manual`` and ``llm_consumption._seed_registry`` rewrites ``llm_process_config.mode`` from that registry value on
-every process start, so the in-process DeepSeek lane is refused ``manual_mode`` for the whole run. From 2026-08-27
+every process start, so the in-process lane was refused ``manual_mode`` for the whole run. From 2026-08-27
 to 2026-11-07 that produced ten identical ``screen failed`` warnings per weekday run, a log mtime that read as a
 healthy lane, and exit 0 — 10 weeks of silence. ``preflight()`` asks the governor once and, when it refuses, logs
 ONE line naming the gate and the operator decision that would change it, skips the per-symbol loop entirely and
 exits ``EXIT_REFUSED``. A run the governor allows that screens nothing exits ``EXIT_NO_SCREENS``. The gate itself is
 not bypassed here: arming an LLM lane is the operator's decision (AGENTS.md §17), and ``default_mode`` is set in
 config/llm_process_registry.json.
+
+Route (operator 2026-11-07: "use the free Anthropic API lanes (lower model OK)"): the row's ``default_mode`` is now
+``automated``, so the governor allows the cron run, and because the row is ``anthropic_first`` and its id is in
+``bulk_processes`` the gate serves it from the promotional credit lane as ``claude-haiku-5-5`` (tier ``bulk``) before
+it would ever consider paid DeepSeek. This script does not pick a provider — ``lib.llm_consumption.gate_and_generate``
+does — so ``preflight()`` reports the lane the gate will pick and ``served_lane()`` reads the provider/model the
+gate's own provenance says actually answered, instead of the constant "deepseek-flash" this file used to write into
+``incubator_universe.llm_screen_model``.
+
+Receipt: the lane's registry ``output_signal`` is ``data/runtime/incubator-llm-screener_last.json`` (json_key
+``ok_at``) and no code wrote it, so the lane's only evidence was the cron redirect's log mtime. Every real exit now
+writes it through ``lib.lane_last_receipt`` — success, a governor refusal, and zero screens alike, with
+produced/attempted counts and the providers that answered. A ``--dry-run`` writes nothing.
 """
 import sys as _dr_sys
 
@@ -41,8 +54,9 @@ if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
     _dr_lane = "incubator-llm-screener"
     _dr_would = (
         "fetch up to --limit incubator candidates at score >= 40, enrich each (catalyst, news, social, technical), "
-        "screen it through the governed bridge as process incubator_llm_screener and write llm_screen_grade / "
-        "llm_screen_verdict back to incubator_universe"
+        "screen it as process incubator_llm_screener on whichever route this run would take (the governed bridge when "
+        "TRADEAI_LLM_VIA_BRIDGE is bound by the n8n executor, else the in-process gate and its credit/DeepSeek lane), "
+        "and write llm_screen_grade / llm_screen_verdict back to incubator_universe"
     )
     print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
           "nothing read from env/DB/network, no model call, no send, no file write")
@@ -384,9 +398,11 @@ JSON only:
 {{"screen_grade":"A|B|C|D|F","verdict":"PROMOTE|HOLD|DROP","confidence":0-100,"reasoning":"1-2 sentences","setup_quality":"textbook|decent|marginal|broken"}}"""
 
 
-#: Registered process (config/llm_process_registry.json, default_mode manual) and its governed-bridge route
+#: Registered process (config/llm_process_registry.json) and its governed-bridge route
 #: (scripts/lib/governed_process_routes.py advisory_desk / incubator_llm_screener).
 LLM_PROCESS_ID = "incubator_llm_screener"
+#: The lane id its registry ``output_signal`` names (data/runtime/<lane>_last.json, json_key ok_at).
+LANE_ID = "incubator-llm-screener"
 #: The flag the n8n run executor binds from the allowlist llm_route. Read directly so a failed import with the flag
 #: ON can never fall through to the in-process provider path.
 VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
@@ -430,22 +446,51 @@ def governor_decision(process_id=LLM_PROCESS_ID):
         return UNREADABLE
 
 
+def promo_route_label(process_id=LLM_PROCESS_ID):
+    """The promotional-credit lane this process will be served by, or '' when it will not be.
+
+    Same three questions ``lib.llm_consumption.gate_and_generate`` asks before it hands a call to
+    ``lib.anthropic_routing.generate_in_process`` (``eligible`` -> ``credit_admitted`` -> ``active``), asked here once so
+    the run can SAY which lane it used. Read-only: no reservation, no provider, no file write. An exception is '' —
+    an unreadable credit book is never reported as a route.
+    """
+    try:
+        from lib import anthropic_routing as promo
+        from lib import llm_consumption as lc
+    except ImportError:  # pragma: no cover - flat layout
+        return ""
+    try:
+        cfg = lc.get_process_config(process_id)
+        if not promo.active(process_id, cfg):
+            return ""
+        tier = promo.tier_for("FAST", process_id=process_id)
+        model = str((promo.load_policy().get("models") or {}).get(tier) or "")
+        return f"anthropic promotional credit [{tier}:{model}]" if model else "anthropic promotional credit"
+    except Exception:  # noqa: BLE001 - a label must never change the run
+        return ""
+
+
+def paid_route_label():
+    """The lane an allowed run falls to when the credit lane is not usable."""
+    return "deepseek-flash paid (per-process caps; queued off-peak while LLM_DEFER_OFFPEAK=1)"
+
+
 def preflight():
     """One decision for the whole run, asked before the first symbol. Never calls a provider.
 
-    Returns ``(mode, refusal)``. A refusal is a one-line cause: the run cannot screen anything, and saying so
-    once with the gate named is the difference between "the lane is off on purpose" and ten identical
+    Returns ``(route, refusal, lane_label)``. A refusal is a one-line cause: the run cannot screen anything, and
+    saying so once with the gate named is the difference between "the lane is off on purpose" and ten identical
     ``screen failed`` warnings that read as a provider outage. It does NOT route around the gate: arming an
     LLM lane is the operator's decision (AGENTS.md §17), and ``default_mode`` lives in
     config/llm_process_registry.json.
     """
     if _via_bridge():
-        return ROUTE_ENV, None
+        return ROUTE_ENV, None, "governed bridge (n8n llm_route)"
     decision = governor_decision()
     if decision is UNREADABLE:
-        return ROUTE_UNKNOWN, None
+        return ROUTE_UNKNOWN, None, "unknown (governor unreadable; the per-symbol path decides)"
     if decision.get("allow"):
-        return ROUTE_IN_PROCESS, None
+        return ROUTE_IN_PROCESS, None, promo_route_label() or paid_route_label()
     why = str(decision.get("reason") or "denied")
     mode = decision.get("mode")
     return ROUTE_IN_PROCESS, (
@@ -453,7 +498,23 @@ def preflight():
         f"(reason={why}, mode={mode}); llm_process_config.mode is re-seeded from "
         f"config/llm_process_registry.json default_mode on every process start, so unblocking this run is an "
         f"operator decision: register the lane as automated, or retire the cron line"
-    )
+    ), ""
+
+
+def served_lane(provenance):
+    """``(provider, model)`` the answer actually came from, read from the gate's own provenance.
+
+    The credit lane answers as an Anthropic model while the script asks for the ``deepseek-flash`` lane, so a
+    constant "deepseek-flash" in ``incubator_universe.llm_screen_model`` would be a screen saying something untrue.
+    Both values are ``unknown`` when the gate returned no provenance — never a guess.
+    """
+    prov = dict(provenance or {})
+    provider = str(prov.get("provider") or "").strip().lower()
+    model = str(prov.get("returned_model") or prov.get("requested_model_id") or "").strip()
+    if not provider:
+        provider = "deepseek" if model.lower().startswith("deepseek") else "unknown"
+    return provider, (model or "unknown")
+
 
 
 def screen_one(conn, candidate, dry_run=False, via_bridge=None):
@@ -527,35 +588,44 @@ def screen_one(conn, candidate, dry_run=False, via_bridge=None):
         prompt = build_screen_prompt(candidate, news, social, technical, web_news_line)
 
     via_bridge = _via_bridge() if via_bridge is None else bool(via_bridge)
+    provider = "unknown"
     try:
         if via_bridge:
             from lib.llm_bridge_route import require_text_via_bridge
             raw = require_text_via_bridge(LLM_PROCESS_ID, prompt, timeout_s=120)
         else:
-            from llm_lane import generate
-            raw = generate(
+            # The gate (not this script) decides the provider: for an ``anthropic_first`` process whose promotional
+            # credit is usable it walks provider_order and answers as an Anthropic model, and only then falls to the
+            # DeepSeek lane. ``return_provenance`` is how the run learns WHICH one answered instead of assuming.
+            from lib.llm_consumption import gate_and_generate
+            raw, provenance = gate_and_generate(
                 prompt,
                 lane="deepseek-flash",
-                timeout=120,
                 process_id=LLM_PROCESS_ID,
+                task_summary=f"incubator screen {symbol}",
+                timeout=120,
+                max_tokens=2048,
+                return_provenance=True,
             )
+            provider, model = served_lane(provenance)
         if not raw:
             log.warning(f"  {symbol}: LLM returned empty")
-            return {'symbol': symbol, 'status': 'empty'}
+            return {'symbol': symbol, 'status': 'empty', 'provider': provider}
 
         # Parse JSON
         start = raw.find('{')
         end = raw.rfind('}') + 1
         if start < 0 or end <= start:
             log.warning(f"  {symbol}: no JSON in response")
-            return {'symbol': symbol, 'status': 'parse_error'}
+            return {'symbol': symbol, 'status': 'parse_error', 'provider': provider}
 
         result = json.loads(raw[start:end])
         grade = result.get('screen_grade', 'C')
         verdict = result.get('verdict', 'HOLD')
         confidence = min(100, max(0, int(result.get('confidence', 50))))
 
-        model = "governed-bridge" if via_bridge else "deepseek-flash"
+        if via_bridge:
+            model, provider = "governed-bridge", "cio_governed_bridge"
 
         # Validate
         if grade not in ('A', 'B', 'C', 'D', 'F'):
@@ -626,7 +696,7 @@ def screen_one(conn, candidate, dry_run=False, via_bridge=None):
                 log.debug(f"  {symbol}: cloud_review skipped — {e}")
 
         return {'symbol': symbol, 'status': 'screened', 'grade': grade,
-                'verdict': verdict, 'confidence': confidence, 'model': model,
+                'verdict': verdict, 'confidence': confidence, 'model': model, 'provider': provider,
                 'result': result, 'cloud_review_verdict': cloud_verdict}
 
     except Exception as e:
@@ -635,7 +705,33 @@ def screen_one(conn, candidate, dry_run=False, via_bridge=None):
             conn.rollback()
         except Exception:
             pass
-        return {'symbol': symbol, 'status': 'error', 'error': str(e)}
+        return {'symbol': symbol, 'status': 'error', 'error': str(e), 'provider': provider}
+
+
+def _receipt_lib():
+    try:
+        from lib import lane_last_receipt as lr
+    except ImportError:  # pragma: no cover - flat layout
+        from scripts.lib import lane_last_receipt as lr  # type: ignore[no-redef]
+    return lr
+
+
+def write_receipt(*, ok, exit_code, started_at, produced, attempted, skipped, empty_reason, summary, error=None):
+    """Write this lane's declared ``output_signal`` (data/runtime/<lane>_last.json, json_key ok_at).
+
+    The registry declares that file; before 2026-11-07 no code wrote it, so the lane's only output evidence was the
+    cron redirect's log mtime — which a refused run updates just as happily as a good one. Never raises and never
+    changes the run's own result (AGENTS.md rail 8: exit 0 is not evidence). A dry run does not call this.
+    """
+    try:
+        return _receipt_lib().write_lane_receipt(
+            LANE_ID, ok=ok, exit_code=exit_code, started_at=started_at,
+            script="incubator_llm_screener.py", summary=summary, error=error,
+            produced_count=produced, attempted_count=attempted,
+            skipped_reasons=skipped, empty_reason=empty_reason)
+    except Exception as e:  # noqa: BLE001 - the run's result comes first
+        log.warning(f"lane receipt not written: {e}")
+        return None
 
 
 def main():
@@ -647,6 +743,7 @@ def main():
     parser.add_argument("--symbol", type=str, help="Screen specific symbol")
     args = parser.parse_args()
 
+    started = datetime.now(timezone.utc).isoformat()
     conn = get_db()
     try:
         candidates = fetch_candidates(conn, limit=args.limit)
@@ -655,9 +752,9 @@ def main():
 
         log.info(f"Found {len(candidates)} candidates for LLM screening")
 
-        route, refusal = (ROUTE_DRY, None) if args.dry_run else preflight()
+        route, refusal, lane_label = (ROUTE_DRY, None, "dry run (no model call)") if args.dry_run else preflight()
         via_bridge = route == ROUTE_ENV
-        log.info(f"Route: {'governed bridge' if via_bridge else 'in-process DeepSeek'} [{route}]")
+        log.info(f"Route: {lane_label or route} [{route}]")
 
         results = []
         if refusal:
@@ -674,10 +771,15 @@ def main():
         promotes = sum(1 for r in results if r.get('verdict') == 'PROMOTE')
         holds = sum(1 for r in results if r.get('verdict') == 'HOLD')
         drops = sum(1 for r in results if r.get('verdict') == 'DROP')
+        providers = {}
+        for r in results:
+            p = str(r.get('provider') or '')
+            if p:
+                providers[p] = providers.get(p, 0) + 1
 
         print("\nIncubator LLM Screener")
         print(f"{'=' * 40}")
-        print(f"  Route:      {'governed bridge' if via_bridge else 'in-process DeepSeek'} [{route}]")
+        print(f"  Route:      {lane_label or route} [{route}]")
         print(f"  Refused:    {len(candidates) if refusal else 0}")
         print(f"  Candidates: {len(candidates)}")
         print(f"  Screened:   {screened}")
@@ -717,15 +819,38 @@ def main():
                 log.debug(f"Telegram notification failed: {e}")
 
         # Exit 0 is not evidence of work: a refused run and a run that screened nothing are both failures,
-        # and the cron line's log mtime — this lane's declared output signal — cannot tell either from a
-        # healthy run.
+        # and the cron line's log mtime cannot tell either from a healthy run.
+        first_error = next((r.get('error') for r in results if r.get('status') == 'error'), None)
+        skipped = {}
         if refusal:
-            return EXIT_REFUSED
-        if args.run and candidates and screened == 0:
-            first = next((r.get('error') for r in results if r.get('status') == 'error'), 'no result rows')
-            log.error(f"NO SCREENS: 0 of {len(candidates)} symbols screened — first cause: {first}")
-            return EXIT_NO_SCREENS
-        return 0
+            skipped["governor_refused"] = len(candidates)
+        elif errors:
+            skipped["screen_error"] = errors
+        if refusal:
+            code, empty_reason = EXIT_REFUSED, "governor_refused"
+            log.error(f"NO SCREENS: governor refused the run ({refusal})")
+        elif args.run and candidates and screened == 0:
+            code, empty_reason = EXIT_NO_SCREENS, "no_screens"
+            log.error(f"NO SCREENS: 0 of {len(candidates)} symbols screened — first cause: {first_error or 'no result rows'}")
+        else:
+            code, empty_reason = 0, (None if screened else "no_candidates_or_dry_run")
+
+        if not args.dry_run:
+            write_receipt(
+                ok=code == 0, exit_code=code, started_at=started,
+                produced=screened, attempted=len(candidates), skipped=skipped, empty_reason=empty_reason,
+                summary={"route": lane_label or route, "screened": screened, "errors": errors,
+                         "promote": promotes, "hold": holds, "drop": drops, "providers": providers},
+                error=None if code == 0 else (refusal or first_error or "no_screens"),
+            )
+        return code
+
+    except BaseException as exc:
+        if not args.dry_run:
+            write_receipt(ok=False, exit_code=1, started_at=started, produced=0, attempted=0,
+                          skipped={"run_failed": 1}, empty_reason="run_failed",
+                          summary={"route": "unknown"}, error=type(exc).__name__)
+        raise
 
     finally:
         conn.close()
