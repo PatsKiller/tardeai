@@ -182,7 +182,8 @@ def run(*, apply: bool, client: GatewayClient | None, enqueue: Enqueue, root: Pa
     if apply:
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = receipt_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(receipt, indent=1, default=str) + "\n", encoding="utf-8")
+        tmp.write_text(json.dumps(state_document(receipt, output, now=now), indent=1, default=str) + "\n",
+                       encoding="utf-8")
         os.replace(tmp, receipt_path)
         _write_lane_receipt(receipt, output, root=root, started_at=now)
     else:  # dry run: no receipt (AGENTS.md §6); the fields a real run would record, on stderr
@@ -217,6 +218,22 @@ def lane_output(rows: list[dict[str, Any]], *, enqueued: int, apply: bool, has_c
         skipped["dry_run"] = len(rows)
     return {"produced_count": int(enqueued), "attempted_count": max(len(rows), int(enqueued)),
             "skipped_reasons": skipped, "empty_reason": None if enqueued else "no_new_input"}
+
+
+def state_document(receipt: dict[str, Any], output: dict[str, Any], *, now: datetime) -> dict[str, Any]:
+    """The N8nResearchIntake@v1 document as it is WRITTEN: the consumer's own fields plus the run identity and the
+    LaneRunReceipt@v2 output verdict.
+
+    This file is the lane's declared output and the first document the jobs page reads as the lane's receipt. With
+    only ``as_of`` and no ``started_at``/``status``/``empty_reason`` the page could not tie it to a run, so every
+    run graded EMPTY "the receipt does not say why" while the LaneRunReceipt next door said ``no_new_input``
+    (2026-11-06, WORK-QUEUE items 14)."""
+    doc = dict(receipt)
+    doc["started_at"] = now.isoformat()
+    doc["finished_at"] = datetime.now(timezone.utc).isoformat()
+    doc["status"] = "ok" if doc.get("ok") else "failed"
+    doc.update(output)
+    return doc
 
 
 def _write_lane_receipt(receipt: dict[str, Any], output: dict[str, Any], *, root: Path, started_at: datetime) -> None:

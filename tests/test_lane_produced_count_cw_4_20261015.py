@@ -215,6 +215,18 @@ def test_commitment_outcome_sweep(monkeypatch, tmp_path, outcomes, expect):
         assert out["output_verdict"]["empty_reason"] == "nothing_due"
 
 
+def test_commitment_outcome_sweep_says_all_already_settled():
+    """A re-sweep of a window already settled is not "nothing due": 2026-11-06 reported due 886 / already_settled
+    886 / outcomes 0 under ``nothing_due``, which was untrue and hid that the sweep found work (WORK-QUEUE item 8)."""
+    import sweep_commitment_outcomes as m
+
+    out = m.lane_output({"outcomes": 0, "lessons": 0, "due": 886, "already_settled": 886}, 0)
+    assert out["empty_reason"] == "all_already_settled"
+    assert (out["produced_count"], out["attempted_count"]) == (0, 886)
+    assert m.lane_output({"outcomes": 0, "due": 0, "already_settled": 0}, 0)["empty_reason"] == "nothing_due"
+    assert m.lane_output({"outcomes": 3, "due": 3, "already_settled": 0}, 0)["empty_reason"] is None
+
+
 def test_commitment_outcome_sweep_missing_store_is_a_fatal_skip(monkeypatch, tmp_path):
     """The real _run: no commitments.jsonl under --state-root exits 2 before any provider import."""
     import sweep_commitment_outcomes as m

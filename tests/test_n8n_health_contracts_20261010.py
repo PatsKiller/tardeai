@@ -172,6 +172,23 @@ def test_canary_needs_a_reviewed_contract_without_unknowns(committed):
     assert any("DRAFT_AT_LIVE_STAGE" in e for e in H.check(d, reg2, idx, TODAY)["errors"])
 
 
+def test_a_contract_stage_must_match_the_registry(committed):
+    """The contract's ``stage`` is a copy of the registry's, and the registry is what the executor's stage clamp
+    reads. The copy was never re-taken: on 2026-11-06, 36 lanes had a contract saying canary/shadow while the
+    registry ran them at cutover, which made /api/v2/jobs-history report each as "not as designed" and would have
+    stopped nightly_cutover.py from retiring any of them. Nothing failed, so the gate now fails on the drift."""
+    doc, reg, idx = committed
+    reg2 = copy.deepcopy(reg)
+    row = next(r for r in reg2["lanes"] if r["lane_id"] == "fee-efficiency-analyzer")
+    row["scheduler"]["stage"] = "cutover"
+    d = copy.deepcopy(doc)
+    c = next(c for c in d["contracts"] if c["id"] == "fee-efficiency-analyzer")
+    c["status"] = "REVIEWED"
+    assert any(e.startswith("STAGE_DRIFT fee-efficiency-analyzer") for e in H.check(d, reg2, idx, TODAY)["errors"])
+    c["stage"] = "cutover"
+    assert not [e for e in H.check(d, reg2, idx, TODAY)["errors"] if "fee-efficiency-analyzer" in e]
+
+
 @pytest.mark.parametrize("field", ["healthy", "degraded", "failed", "connects_to"])
 def test_empty_criteria_or_edges_are_invalid(committed, field):
     doc, _reg, _idx = committed

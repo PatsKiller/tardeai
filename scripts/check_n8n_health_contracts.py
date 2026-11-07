@@ -11,6 +11,8 @@ Gate for ``config/n8n_health_contracts.json`` (N8nHealthContract@v1; rules in
   review date for a provisional baseline, or no notifier priority (INVALID_CONTRACT);
 * a DRAFT contract belongs to a lane that was not grandfathered on 2026-10-10 (DRAFT_NOT_GRANDFATHERED);
 * a lane at canary or cutover has a contract that is not REVIEWED or still carries UNKNOWN (DRAFT_AT_LIVE_STAGE);
+* a contract's ``stage`` disagrees with the registry row's ``scheduler.stage`` (STAGE_DRIFT — the contract's stage is
+  a copy of the registry's; 36 unsynced copies made run_quality call those lanes "not as designed" on 2026-11-06);
 * a lane contract names no registry row (ORPHAN_CONTRACT).
 
     python3 scripts/check_n8n_health_contracts.py [--json] [--contracts PATH] [--registry PATH]

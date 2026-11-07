@@ -210,6 +210,7 @@ def check(
       * DRAFT_NOT_GRANDFATHERED  a DRAFT contract for a lane not in the file's ``grandfathered_draft`` list
                              (a new lane writes and gets its contract REVIEWED before its registry PR);
       * DRAFT_AT_LIVE_STAGE  a lane at canary or cutover whose contract is not REVIEWED, or still has UNKNOWN fields;
+      * STAGE_DRIFT          the contract's ``stage`` disagrees with ``scheduler.stage`` in the registry;
       * ORPHAN_CONTRACT      a lane contract whose lane_id is no registry row.
     Warnings: a review_by date in the past (stale provisional baseline).
     """
@@ -237,6 +238,14 @@ def check(
         st = stage_of(rows.get(cid))
         if st in STAGES_NEEDING_REVIEW and (c.get("status") != "REVIEWED" or unknown_fields(c)):
             errors.append(f"DRAFT_AT_LIVE_STAGE {cid}: stage {st} needs a REVIEWED contract with no UNKNOWN field")
+        # The contract's ``stage`` is a COPY of the registry's, and the registry is the runtime source (the n8n
+        # executor's stage clamp reads it). A copy not re-taken when the lane graduates says the lane runs somewhere
+        # it does not: run_quality reports it "not as designed", and nightly_cutover.py refuses to retire a cutover
+        # lane whose contract still says canary. 36 lanes had drifted by 2026-11-06 and nothing failed.
+        contract_stage = c.get("stage")
+        if st and contract_stage and contract_stage != st:
+            errors.append(f"STAGE_DRIFT {cid}: contract stage {contract_stage} but config/lane_registry.json says "
+                          f"{st} — re-take the registry stage when the lane graduates")
         rb = str(c.get("review_by") or "")
         if _DATE_RE.match(rb) and date.fromisoformat(rb) < today:
             warnings.append(f"REVIEW_OVERDUE {cid}: review_by {rb}")

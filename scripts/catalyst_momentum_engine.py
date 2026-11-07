@@ -16,8 +16,11 @@ LLM classification on gemma3:4b. Kill-switch aware (data/runtime/HERMES_DISABLED
 --dry-run (wins over --apply and --generate-proposals) reads candidates and runs the read-only SearXNG
 search, then prints what would be staged; write_research_rows, the auto_proposal_generator subprocess, the
 last-run marker and the lane receipt are unreachable from it. A real run writes the per-band lane receipt
-<state_root>/data/runtime/catalyst-momentum-engine-<band>_last.json (ok_at only on success). Exit 1 when every
-candidate's catalyst search errored (search source down) — a run that found no catalyst is a finding, exit 0.
+<state_root>/data/runtime/catalyst-momentum-engine-<band>_last.json (ok_at only on success) with the
+LaneRunReceipt@v2 output verdict: produced = rows staged, and ``no_search_coverage`` = candidates whose search
+answered with nothing (a different fact from a search that errored, and the only symptom a dead search tier
+leaves). Exit 1 when every candidate's catalyst search errored (search source down) — a run that found no
+catalyst is a finding, exit 0.
 Scalp hot tier (SCALP_HOT_TIER=1 + the search routing engine importable): search_catalyst goes through the routing
 engine (shared 20-min (subject, intent) cache with L708's identical "premarket catalyst" intent); the dry run passes
 dry_run=True to the engine. Knob off: the legacy SearXNG path, unchanged.
@@ -184,11 +187,34 @@ def main():
     except Exception as exc:
         _receipt_lib().write_lane_receipt(lane_id, ok=False, exit_code=1, started_at=started,
                                           script="catalyst_momentum_engine.py", summary=stats,
+                                          output=lane_output(stats),
                                           error=f"{type(exc).__name__}: {exc}")
         raise
     _receipt_lib().write_lane_receipt(lane_id, ok=(rc == 0), exit_code=rc, started_at=started,
-                                      script="catalyst_momentum_engine.py", summary=stats)
+                                      script="catalyst_momentum_engine.py", summary=stats,
+                                      output=lane_output(stats))
     return rc
+
+
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output verdict (unit: rows staged into hermes_research_intelligence,
+    research_type=momentum_catalyst).
+
+    ``no_search_coverage`` is the count of candidates whose catalyst search answered with no results and no
+    error — the only visible symptom when the search tier is reachable but returning nothing. On 2026-11-07 the
+    overnight band reported ``candidates: 4, catalyst_confirmed: 0, search_errors: 0`` twice a day for 8 days
+    while a control query against the same SearXNG returned 26 results without ``time_range=day`` and 0 with it:
+    "0 staged, no errors" read exactly like a quiet market. The key is prefixed ``no_`` on purpose — run_quality's
+    benign-skip rule treats it as a scope skip, not as the run's own gap."""
+    staged = int(summary.get("staged") or 0)
+    cands = int(summary.get("candidates") or 0)
+    skipped: dict[str, int] = {}
+    if summary.get("search_empty"):
+        skipped["no_search_coverage"] = int(summary["search_empty"])
+    if summary.get("search_errors"):
+        skipped["search_errors"] = int(summary["search_errors"])
+    return {"produced_count": staged, "attempted_count": max(cands, staged),
+            "skipped_reasons": skipped, "empty_reason": None if staged else "no_new_input"}
 
 
 def _search_kwargs(*, dry_run: bool) -> dict:
@@ -227,7 +253,7 @@ def _dry_run(args) -> int:
     from hermes_momentum_candidate_reader import get_momentum_candidates
     from hermes_momentum_catalyst_researcher import search_catalyst, classify_catalyst
     cands = get_momentum_candidates(max_tickers=band["max"], min_rvol=band["min_rvol"], min_score=band["min_score"])
-    would_stage, gateable, search_errors = [], [], 0
+    would_stage, gateable, search_errors, search_empty = [], [], 0, 0
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
@@ -236,6 +262,7 @@ def _dry_run(args) -> int:
             sources, errored = [], True
         search_errors += int(errored and not sources)
         if not sources:
+            search_empty += int(not errored)
             continue
         text = " ".join(s.get("title", "") + " " + s.get("content", "") for s in sources[:3])
         conf = round(min(0.9, 0.4 + 0.1 * len(sources)), 2)
@@ -243,7 +270,8 @@ def _dry_run(args) -> int:
         if conf >= 0.6 and float((c.get("rvol") if isinstance(c, dict) else 0) or 0) >= band["min_rvol"]:
             gateable.append(sym)
     summary = {"band": args.band, "kill_switch_active": kill_active(), "candidates": len(cands),
-               "search_errors": search_errors, "would_stage": would_stage if args.apply else [],
+               "search_errors": search_errors, "search_empty": search_empty,
+               "would_stage": would_stage if args.apply else [],
                "catalyst_found": len(would_stage), "catalyst_confirmed": len(gateable),
                "would_attempt_proposals": (sorted(gateable)[:band["prop_cap"]]
                                            if args.generate_proposals and band["gen_proposals"] else [])}
@@ -272,7 +300,7 @@ def _run(args, stats: dict) -> int:
 
     conn = psycopg2.connect(**_db_kwargs()); conn.autocommit = True
     cur = conn.cursor()
-    staged, gated, proposals, search_errors = 0, [], 0, 0
+    staged, gated, proposals, search_errors, search_empty = 0, [], 0, 0, 0
     for c in cands:
         sym = c["symbol"] if isinstance(c, dict) else c
         try:
@@ -283,6 +311,7 @@ def _run(args, stats: dict) -> int:
         if errored and not sources:
             log.warning("  %s: catalyst search errored", sym); search_errors += 1; continue
         if not sources:
+            search_empty += 1  # answered, with nothing: a quiet ticker or a dead search tier — say which count
             continue  # ACCURACY GATE: no catalyst → skip (no fabricated signal)
         text = " ".join(s.get("title", "") + " " + s.get("content", "") for s in sources[:3])
         ctype = classify_catalyst(text)
@@ -321,6 +350,9 @@ def _run(args, stats: dict) -> int:
                 log.warning("  proposal[%s] failed: %s", sym, e)
 
     log.info("Done: %d staged (advisory), %d catalyst-confirmed, %d gated proposals attempted", staged, len(gated), proposals)
+    if cands and search_empty == len(cands):
+        log.warning("  catalyst search answered with no results for all %d candidates; 0 staged is NOT evidence "
+                    "that there is no catalyst (search tier empty, not errored)", len(cands))
     marker = {
         "schema": "CatalystMomentumLastRun@v1",
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -330,6 +362,7 @@ def _run(args, stats: dict) -> int:
         "staged": staged,
         "catalyst_confirmed": len(gated),
         "proposals_attempted": proposals,
+        "search_empty": search_empty,
         "served_state_root": str(_served_state_root()),
         "scheduled": True,
         "authority": "READ_ONLY_ADVISORY",
@@ -343,7 +376,7 @@ def _run(args, stats: dict) -> int:
         log.info("  wrote served last-run marker %s", path)
     conn.close()
     stats.update(staged=staged, catalyst_confirmed=len(gated), proposals_attempted=proposals,
-                 search_errors=search_errors)
+                 search_errors=search_errors, search_empty=search_empty)
     if cands and search_errors == len(cands):
         # every search failed: "0 staged" would otherwise read as "no catalysts today" (§0 rail 8)
         log.error("  catalyst search failed for all %d candidates -> exit 1", len(cands))

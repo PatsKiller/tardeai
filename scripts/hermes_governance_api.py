@@ -171,8 +171,12 @@ def main(argv=None):
                                error=f"{type(exc).__name__}: {exc}",
                                output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
             raise
+        # ``status`` here is the RESEARCH SCOPE AUDIT's verdict about the 30-day research record, not the verdict on
+        # this warm: the run's own status is the receipt's top-level ``status``. Filed as ``summary.status`` it read
+        # as "this run was WARN", and /api/v2/jobs-history graded the warm DEGRADED every time the audit said WARN
+        # (2026-11-06). Name a subject verdict ``subject_status`` (scripts/lib/lane_last_receipt.py).
         write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, script="hermes_governance_api.py",
-                           summary={"status": d.get("status"), "compute_sec": round(time.time() - t0, 2)},
+                           summary={"subject_status": d.get("status"), "compute_sec": round(time.time() - t0, 2)},
                            output={"produced_count": 1, "attempted_count": 1, "skipped_reasons": {}})
         print(json.dumps({"warmed": True, "cached_path": _CACHE_PATH, "ttl_sec": _TTL_SEC,
                           "compute_sec": round(time.time() - t0, 2), "status": d.get("status")}, indent=2))

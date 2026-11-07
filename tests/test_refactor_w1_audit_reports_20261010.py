@@ -102,7 +102,10 @@ def test_aec_live_alert_sends_once_and_writes_ok_receipt(state, aec):
     assert aec._sent == [1]
     rec = _receipt(state, "audit-enrichment-coverage")
     assert rec["status"] == "ok" and rec["ok_at"]
-    assert rec["summary"]["members"] == 2 and rec["summary"]["symbols_with_gaps"] == 1
+    # the audit's finding about the portfolio, not a gap in the run: the key must not read as the run's own
+    # (run_quality flags any summary key ending in _gaps/_missing, which graded every working audit DEGRADED).
+    assert rec["summary"]["members"] == 2 and rec["summary"]["symbols_missing_surfaces"] == 1
+    assert "symbols_with_gaps" not in rec["summary"]
     assert rec["summary"]["alert_decision"] == "first_run" and rec["summary"]["alert_sent"] is True
     assert rec["produced_count"] == 2
     # the same gap set the next day is not sent again
