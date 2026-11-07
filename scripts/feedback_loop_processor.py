@@ -312,6 +312,53 @@ def _verdict_for(pnl):
     return "NEUTRAL", 0.0
 
 
+def repair_flat_outcome_verdicts(cur, dry_run=False, plan_out=None):
+    """Re-mark the flat trades the old feed scored WRONG.
+
+    ``CORRECT if pnl > 0 else WRONG`` made every break-even trade a -1.0 for the agent.
+    Five of the ten rows this lane has ever written are that mistake.
+
+    The rows are found by the OLD WRITER'S SIGNATURE, not by ``scoring_method``: the
+    column defaults to ``'auto'``, so the old writer left no NULL mark to filter on
+    (measured 2026-11-07: 9241/9241 rows read ``'auto'``).
+
+    The signature is what the old code actually did — no trade FK, ``pnl_pct`` invented
+    as ``pnl / 100``, NOW() stamped as both the recommendation and the entry date, no
+    exit date::
+
+        trade_id IS NULL AND entry_date = recommendation_date AND exit_date IS NULL
+        AND pnl_pct = round(realized_pnl / 100, 2)
+
+    On 2026-11-07 that selects exactly the 10 rows this lane has ever written (all 10
+    ``approve_trade`` rows with ``trade_id IS NULL``) and no other row, so the repair
+    cannot reach another producer's outcomes. The new feed writes ``trade_id`` and
+    ``scoring_method = 'feedback_loop'``, so it is outside the signature by construction.
+    """
+    cur.execute("""
+        SELECT id, agent_name, symbol, scored_at::date AS scored_on
+        FROM agent_recommendation_outcomes
+        WHERE recommendation = 'approve_trade' AND realized_pnl = 0 AND verdict = 'WRONG'
+          AND trade_id IS NULL AND exit_date IS NULL
+          AND entry_date = recommendation_date
+          AND pnl_pct = round(realized_pnl / 100, 2)
+    """)
+    rows = cur.fetchall()
+    for row in rows:
+        if plan_out is not None:
+            plan_out.setdefault("flat_verdict_repairs", []).append(
+                {"id": row["id"], "agent": row["agent_name"], "symbol": row["symbol"],
+                 "from": "WRONG/-1.0", "to": "NEUTRAL/0.0"})
+        if not dry_run:
+            cur.execute("""
+                UPDATE agent_recommendation_outcomes
+                SET verdict = 'NEUTRAL', verdict_score = 0.0,
+                    notes = 'flat trade (realized_pnl = 0) was scored WRONG by the old feed; '
+                            're-marked 2026-11-07'
+                WHERE id = %s
+            """, (row["id"],))
+    return len(rows)
+
+
 def feed_outcomes_to_agents(conn, dry_run=False, plan_out=None):
     """Feed each closed chain's own trade outcome to agent calibration.
 
@@ -391,8 +438,12 @@ def feed_outcomes_to_agents(conn, dry_run=False, plan_out=None):
                   verdict, verdict_score))
         fed += 1
 
+    repaired_flat = repair_flat_outcome_verdicts(cur, dry_run=dry_run, plan_out=plan_out)
+
     if not dry_run:
         conn.commit()
+    if repaired_flat:
+        print(f"  flat trades re-marked NEUTRAL (were WRONG): {repaired_flat}")
     if skipped["no_proposing_agent"]:
         print(f"  outcomes skipped: {skipped['no_proposing_agent']} closed chain(s) "
               f"with no proposing_agent")

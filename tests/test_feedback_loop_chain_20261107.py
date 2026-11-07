@@ -213,6 +213,27 @@ def test_a_flat_trade_is_fed_as_neutral():
     assert params[8] == "NEUTRAL" and float(params[9]) == 0.0
 
 
+def test_the_flat_rows_the_old_feed_scored_wrong_are_re_marked_neutral():
+    def handler(sql, params):
+        if sql.startswith("SELECT id, agent_name, symbol, scored_at::date"):
+            return [{"id": 7, "agent_name": "incubator_promoter", "symbol": "BWEN",
+                     "scored_on": "2026-06-04"}]
+        return []
+
+    cur = ScriptedCursor(handler)
+    assert flp.repair_flat_outcome_verdicts(cur) == 1
+    update, params = cur.writes("UPDATE")[0]
+    assert "'NEUTRAL'" in update and params == (7,)
+    # The legacy rows are found by what the old writer did, not by scoring_method: the
+    # column defaults to 'auto', so a scoring_method filter would match nothing (9241/9241
+    # rows read 'auto' on 2026-11-07). A row the new feed writes carries a trade_id and is
+    # therefore outside this signature.
+    select_sql = cur.calls[0][0]
+    assert "trade_id IS NULL" in select_sql
+    assert "entry_date = recommendation_date" in select_sql
+    assert "scoring_method" not in select_sql
+
+
 def test_a_closed_chain_with_no_agent_is_named_not_silently_dropped():
     closed = {"id": 1, "proposal_id": 2, "symbol": "X", "strategy_id": None,
               "proposing_agent": None, "trade_pnl": 3.0, "trade_r_multiple": None,
