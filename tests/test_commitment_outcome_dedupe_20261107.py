@@ -43,3 +43,16 @@ def test_cli_never_writes(tmp_path, capsys):
     assert cli.main(["--state-root", str(tmp_path)]) == 0
     assert p.read_bytes() == before and json.loads(capsys.readouterr().out)["cleanup_plan"]["superseded"] == 2
     assert sorted(x.name for x in tmp_path.iterdir()) == ["commitment_outcomes.jsonl", "commitments.jsonl"]
+
+
+def test_append_keeps_one_effective_outcome_per_commitment():
+    from scripts.lib.governed_commitment import durable_outcome_ledger_append as app
+    mk = lambda o, k: {"commitment_id": "syn-c1", "outcome": o, "idempotency_key": k}
+    led = app([], mk("INSUFFICIENT_EVIDENCE", "k1"))
+    assert app(led, mk("INSUFFICIENT_EVIDENCE", "k2")) == led          # same rank, new observation: no second row
+    assert app(led, mk("INSUFFICIENT_EVIDENCE", "k1")) == led          # same key: no-op
+    led2 = app(led, mk("REFUTED", "k3"))                                # more final: appended, links what it outranks
+    assert len(led2) == 2 and led2[-1]["supersedes"] == "k1" and led2[0] == led[0]
+    assert app(led2, mk("UNSCOREABLE", "k4")) == led2                   # a scored outcome is never displaced
+    assert app(led2, mk("CONFIRMED", "k5")) == led2                     # nor rewritten by an equal-rank one
+    assert len(app(led2, {"commitment_id": "syn-c2", "outcome": "EXPIRED", "idempotency_key": "k6"})) == 3

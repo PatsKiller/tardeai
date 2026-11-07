@@ -386,17 +386,35 @@ def evaluate_outcome(
     }
 
 
+#: Lower rank = more final. A scored (CONFIRMED/REFUTED) outcome is the end of a commitment's life;
+#: INSUFFICIENT_EVIDENCE is the only provisional one.
+_OUTCOME_RANK = {"CONFIRMED": 0, "REFUTED": 0, "EXPIRED": 1, UNSCOREABLE: 2, "INSUFFICIENT_EVIDENCE": 3}
+
+
 def durable_outcome_ledger_append(ledger: list[dict[str, Any]], outcome: dict[str, Any]) -> list[dict[str, Any]]:
     """Append-only outcome ledger: refuted outcomes are preserved, never rewritten.
 
-    Idempotent on the outcome idempotency_key (a re-evaluation of the same
-    commitment + observation is a no-op).
+    Idempotent on the outcome idempotency_key AND keyed on commitment_id (LQ-20261107-54): the
+    idempotency key hashes the observation, so re-evaluating the same commitment with a different
+    observation used to add a second outcome (883 commitments held two). One commitment keeps one
+    effective outcome: a later row is appended only when it is strictly more final than every row
+    already held for that commitment, and then it records ``supersedes`` (the key it outranks).
+    Rows are never removed or edited.
     """
     key = outcome.get("idempotency_key")
     for row in ledger:
         if row.get("idempotency_key") == key:
             return ledger
-    return ledger + [outcome]
+    cid = outcome.get("commitment_id")
+    if cid is None:
+        return ledger + [outcome]
+    held = [r for r in ledger if r.get("commitment_id") == cid]
+    if not held:
+        return ledger + [outcome]
+    best = min(held, key=lambda r: _OUTCOME_RANK.get(str(r.get("outcome") or ""), 9))
+    if _OUTCOME_RANK.get(str(outcome.get("outcome") or ""), 9) >= _OUTCOME_RANK.get(str(best.get("outcome") or ""), 9):
+        return ledger
+    return ledger + [dict(outcome, supersedes=best.get("idempotency_key"))]
 
 
 def feature_enabled(env: Mapping[str, str] | None = None) -> bool:
