@@ -947,13 +947,21 @@ def test_an_absent_technical_projection_leaves_sma20_unset_rather_than_guessing(
 
 
 def test_the_daily_adapter_reads_sma20_from_the_same_projection(monkeypatch):
-    """Both scheduled adapters search the quote row; both must read the technical projection (CX1)."""
+    """Both scheduled adapters search the quote row; both must read the technical projection (CX1).
+
+    Since 2026-11-07 the close is the live mark (`_live_prices`: Finviz first, 30-minute window, operator's
+    rule), not the newest `market_quotes` row, so the adapter is handed a mark candidate here. What this test
+    guards is unchanged: SMA20 still comes from the registered projection, and the mark's own timestamp
+    travels with its close.
+    """
     import db_adapter
     import recovery_watch_daily as D
 
     _fake_projection(monkeypatch, {"DEMO": {"sma_20": 99.0}})
     monkeypatch.setattr(db_adapter, "_get_conn", lambda: None)
-    monkeypatch.setattr(D, "_db_query", lambda sql, params=None, fetch="all": dict(_QUOTE_ROW))
+    mark = {"price": 102.0, "price_source": "finviz", "price_as_of": _QUOTE_ROW["fetched_at"],
+            "price_stale": False, "price_age_s": 60}
+    monkeypatch.setattr(D, "_live_prices", lambda symbols: ({str(s).upper(): dict(mark) for s in symbols}, "ok"))
     monkeypatch.setattr(R, "store_accessor", lambda conn, policy: RecordingStore([_t1_row()]))
 
     captured = {}
@@ -967,6 +975,7 @@ def test_the_daily_adapter_reads_sma20_from_the_same_projection(monkeypatch):
 
     assert captured["snapshot"]["sma20"] == 99.0
     assert captured["snapshot"]["close"] == 102.0
+    assert captured["snapshot"]["fetched_at"] == _QUOTE_ROW["fetched_at"]
 
 
 # ── CX2: a fresh but unusable close must not clear a pending retry ────────────────────────────────────────
