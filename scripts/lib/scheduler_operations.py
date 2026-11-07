@@ -22,6 +22,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from scripts.lib import cron_last_fire, lane_registry
+from scripts.lib.cron_schedule import last_fire_at_or_before
 
 SCHEMA = "SchedulerOperations@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -538,6 +539,76 @@ def cron_collides(a: dict[str, Any], b: dict[str, Any], now: datetime) -> bool:
     )
 
 
+def _workflow_cron_expressions(workflow: dict[str, Any] | None) -> list[str]:
+    """Cron expressions an n8n workflow's scheduleTrigger declares (cron rules only)."""
+    if not isinstance(workflow, dict):
+        return []
+    out: list[str] = []
+    for rule in workflow.get("schedules") or []:
+        if not isinstance(rule, dict):
+            continue
+        for item in rule.get("interval") or []:
+            if isinstance(item, dict) and item.get("field") == "cronExpression":
+                expr = item.get("expression")
+                if isinstance(expr, str) and expr.strip():
+                    out.append(expr.strip())
+        if rule.get("kind") == "cron" and isinstance(rule.get("expr"), str) and rule["expr"].strip():
+            out.append(rule["expr"].strip())
+    return out
+
+
+def _due_expressions(
+    lane: dict[str, Any], sched: dict[str, Any], matched: list[dict[str, Any]], workflow: dict[str, Any] | None
+) -> list[str]:
+    """The cron schedules (5-field, via ``cron_last_fire.cron_fields``) whose fires this lane is due for.
+
+    ``due_schedules`` wins over the scheduler's own line: a line may fire more often than the lane writes
+    (a premarket watch fires to 09:55 but stops producing at 09:29). An n8n lane declares its cadence in
+    the workflow's scheduleTrigger, not in the registry expression (which is a workflow id or the shared
+    ``dispatcher`` alias), so it is read from the observed workflow. ``@reboot`` has no recurring fire.
+    """
+    due = sched.get("due_schedules")
+    if isinstance(due, list) and due and all(isinstance(x, str) and x.strip() for x in due):
+        parts = [x.strip() for x in due]
+    elif sched.get("kind") == "n8n":
+        # The shared dispatcher's every-minute trigger is not this lane's cadence (49 rows say
+        # "dispatcher"); judging them against it would call an hourly lane silent after one minute.
+        parts = [] if str(sched.get("expression")) in N8N_EXPRESSION_ALIASES else _workflow_cron_expressions(workflow)
+    elif matched:
+        parts = [str(m.get("expression") or "") for m in matched]
+    else:
+        parts = [str(sched.get("expression") or "")]
+    out: list[str] = []
+    for part in parts:
+        fields = cron_last_fire.cron_fields(part)
+        if fields and fields != "@reboot":
+            out.append(fields)
+    return out
+
+
+def _last_fire(expressions: list[str], ref: datetime, tz: str) -> datetime | None:
+    """Latest fire at or before ``ref`` (UTC) over several schedules, or None when none is readable."""
+    best: datetime | None = None
+    for fields in expressions:
+        try:
+            fire = last_fire_at_or_before(fields, ref, tz, lookback_days=400)
+        except (ValueError, KeyError):
+            continue  # a schedule this reader rejects falls back to the cadence rule
+        if fire is None:
+            continue
+        at = fire.at.astimezone(timezone.utc)
+        best = at if best is None or at > best else best
+    return best
+
+
+def _schedule_deadlines(expressions: list[str], ref: datetime, tz: str) -> tuple[datetime | None, datetime | None]:
+    """(most recent fire due by ``ref``, the fire before it); (None, None) when the schedule is unreadable."""
+    due = _last_fire(expressions, ref, tz)
+    if due is None:
+        return None, None
+    return due, _last_fire(expressions, due - timedelta(seconds=1), tz)
+
+
 def schedule_label(value: Any) -> str | None:
     """Project known schedule forms as expressions, never scheduler JSON/repr."""
     if isinstance(value, str):
@@ -583,6 +654,8 @@ def _base_row(lane: dict[str, Any]) -> dict[str, Any]:
         "output_signal": lane.get("output_signal"),
         "output_age": None,
         "freshness": "NOT_MEASURED",
+        "freshness_basis": None,
+        "last_due": None,
         "lock_skips_24h": None,
         "failures_24h": None,
         "duplicate_scheduler": None,
@@ -803,17 +876,53 @@ def build_projection(
             if run_age is not None and cadence_s
             else "NOT_MEASURED"
         )
-        row["freshness"] = (
-            "FRESH"
-            if age is not None and age <= cadence_s
-            else "AGING"
-            if age is not None and age <= cadence_s * 2
-            else "STALE"
-            if age is not None
-            else "ABSENT"
-            if signal.get("readable")
-            else "NOT_MEASURED"
+        # Staleness against the lane's OWN schedule, not the wall clock. A weekday 09:00-16:45 lane is not
+        # late on Friday night, and a weekly lane is not late on Wednesday; the cadence rule below called
+        # every market-hours lane SILENT after its last in-hours fire (2026-11-06: 10 false alarms at
+        # 21:00 ET). The deadline is the most recent fire that has had max_run_s to finish, DST-safe via
+        # cron_schedule.last_fire_at_or_before: the same rule heartbeat_watch and supervisor_breach_detector
+        # already use for their verdicts.
+        max_run_s = float((lane.get("watch") or {}).get("max_run_s") or 900)
+        tz = (matched[0].get("timezone") if matched and matched[0].get("timezone") else None) or "America/New_York"
+        due_exprs = _due_expressions(
+            lane,
+            sched,
+            matched,
+            workflow_by_id.get(N8N_EXPRESSION_ALIASES.get(str(sched.get("expression")), str(sched.get("expression"))))
+            if kind == "n8n"
+            else None,
         )
+        due_at, previous_at = _schedule_deadlines(due_exprs, now - timedelta(seconds=max_run_s), tz)
+        # One minute of tolerance: cron fires to the minute and a run may write at the boundary.
+        slack = timedelta(seconds=60)
+        if due_at is not None:
+            row["last_due"] = iso(due_at)
+            row["freshness_basis"] = "schedule:" + " + ".join(due_exprs)
+            row["freshness"] = (
+                "ABSENT"
+                if not isinstance(at, datetime) and signal.get("readable")
+                else "NOT_MEASURED"
+                if not isinstance(at, datetime)
+                else "FRESH"
+                if at >= due_at - slack
+                else "AGING"
+                if isinstance(previous_at, datetime) and at >= previous_at - slack
+                else "STALE"
+            )
+            # AGING = the most recent due fire produced nothing but the one before it did: one miss,
+            # not silence. The cadence fields keep the SLA the UI already shows.
+        else:
+            row["freshness"] = (
+                "FRESH"
+                if age is not None and age <= cadence_s
+                else "AGING"
+                if age is not None and age <= cadence_s * 2
+                else "STALE"
+                if age is not None
+                else "ABSENT"
+                if signal.get("readable")
+                else "NOT_MEASURED"
+            )
         row["output_evidence_class"] = (
             ("OBSERVED_DB" if sig.get("kind") == "db_max" else "OBSERVED_HOST")
             if signal.get("readable")
