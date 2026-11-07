@@ -1250,13 +1250,18 @@ def _min_live_coverage(root: Path) -> float:
         return 0.5
 
 
-def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, Any]:
+def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path,
+                      stats: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Full reprice cycle:
       1. Fetch Finviz prices for all portfolio + watchlist symbols
       2. Delta-write to finviz_quote_cache.json
       3. Apply to holdings, recalc totals
       4. Optionally reprice Fidelity from Yahoo cache (after 8 PM)
+
+    ``stats`` (optional) is filled with what this pass actually did — holdings updated, quote symbols
+    updated, totals — so the caller can write a run receipt without reading the published document
+    back. It is a caller-owned dict and is never part of the returned portfolio.
     """
     root    = state_dir.parent.parent.parent  # data/portfolios/state -> project root
     # FQ-2532-R (cc-deepseek-8's F1): work on a COPY. A refused pass then leaves the caller's document exactly as it
@@ -1354,6 +1359,8 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
     cache_path = state_dir / "finviz_quote_cache.json"
     if live_prices:
         n_updated = _update_quote_cache(live_prices, cache_path, now_str)
+        if stats is not None:
+            stats["quote_symbols_updated"] = n_updated
         print(f"  [repricer] Quote cache: {n_updated} symbols updated -> finviz_quote_cache.json")
 
     # ── 3. Apply to portfolio holdings ────────────────────────────────────────
@@ -1386,6 +1393,9 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
 
     intraday_fills = _load_intraday_fills(_fills_trade_date(now))
     n_holdings = _apply_to_holdings(portfolio.get("holdings", []), live_prices, fidelity_prices, intraday_fills)
+    if stats is not None:
+        stats["holdings_updated"] = n_holdings
+        stats["holdings"] = len(portfolio.get("holdings") or [])
     print(f"  [repricer] Holdings updated: {n_holdings}")
 
     # ── 3c. Positions fully sold today (realized day P/L; they left holdings) ──
@@ -1444,6 +1454,9 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
         print(f"  [repricer] WARNING: ticker snapshot build failed: {e}")
 
     print(f"  [repricer] Total: ${total:,.0f} | Day: ${day:+,.0f}")
+    if stats is not None:
+        stats["total_value"] = total
+        stats["day_change"] = day
 
     # ── Follow-up B: unify ticker_prices for held symbols so ALL surfaces agree with the portfolio view ──
     try:
@@ -1573,6 +1586,36 @@ def _sync_ticker_prices(portfolio, root):
               + "; ".join(f"{r['row'].get('symbol')}: {r['reason']}" for r in rc.rows_rejected[:10]))
 
 
+LANE_ID = "portfolio-repricer"
+
+
+def _write_run_receipt(state_dir: Path, *, ok: bool, exit_code: int,
+                       started_at: Optional[str] = None, summary: Optional[Dict[str, Any]] = None,
+                       error: Optional[str] = None, produced_count: Optional[int] = None) -> None:
+    """Write this lane's own LaneRunReceipt beside the state root this run wrote to.
+
+    Why a real run must say so for itself (RUNQ 2026-11-06): with no receipt, the run-quality grader fell back
+    to the lane's declared ``output_signal`` — ``data/portfolios/state/holdings.json`` — and graded the lane
+    DEGRADED for that store's standing note ``gaps: ["fund look-through unavailable: ..."]``, a data gap no
+    repricer run ever reported ("receipt reports gaps = 1"). A business store several writers touch is not a
+    run receipt; this is (``data/runtime/portfolio-repricer_last.json``).
+
+    Called from a REAL run only — never from ``--print-targets``, which exits before ``main()`` — and it never
+    raises into the caller: the run's own result and exit code come first.
+    """
+    try:
+        from scripts.lib.lane_last_receipt import receipt_path, write_lane_receipt
+        path = receipt_path(LANE_ID, state_dir.parent.parent.parent)
+    except Exception as _e:  # noqa: BLE001 — a receipt failure must not change the run's result
+        print(f"  [repricer] WARN run receipt unavailable: {_e}")
+        return
+    write_lane_receipt(
+        LANE_ID, ok=ok, exit_code=exit_code, started_at=started_at,
+        script="scripts/portfolio_repricer.py", summary=summary, error=error,
+        produced_count=produced_count, attempted_count=(summary or {}).get("holdings"), path=path,
+    )
+
+
 def main(state_dirs) -> None:
     """The CLI guarantee path: read, reprice, write — or write nothing at all.
 
@@ -1580,12 +1623,19 @@ def main(state_dirs) -> None:
     F5 and cc-deepseek-9 on #2689): the old test scanned this block's source text and broke the moment the
     mechanism became an exception. Running this against a temporary state directory and asserting SystemExit(3)
     plus a byte-identical file cannot go stale the same way.
+
+    Every exit path writes its own run receipt (``_write_run_receipt``), so the operator can tell a refusal or
+    a failed write from a healthy pass without reading the published holdings store.
     """
     state_dir = state_dirs[0]
     hp        = state_dir / "holdings.json"
+    _stats: Dict[str, Any] = {}
+    _started_at = _utc_now_iso()
 
     if not hp.exists():
         print("holdings.json not found — run run_portfolio.bat first")
+        _write_run_receipt(state_dir, started_at=_started_at, ok=False, exit_code=1, error="holdings.json not found",
+                           summary={"reason": "holdings_missing", "state_dir": str(state_dir)})
         raise SystemExit(1)
 
     if len(state_dirs) > 1:
@@ -1606,12 +1656,14 @@ def main(state_dirs) -> None:
     print(_summary_line("Before", portfolio))
 
     try:
-        portfolio = reprice_portfolio(portfolio, state_dir)
-    except RepriceRefused:
+        portfolio = reprice_portfolio(portfolio, state_dir, _stats)
+    except RepriceRefused as _refusal:
         # Nothing was repriced; do not rewrite the file (another writer may have landed since our read).
         # FQ-2532-R: the refusal is an exception now (cc-deepseek-8's F1/F2), so no caller can receive a document
         # from a refused pass and write it. The CLI keeps its long-standing exit 3 and its no-write guarantee.
         _holdings_lock.__exit__(None, None, None)
+        _write_run_receipt(state_dir, started_at=_started_at, ok=False, exit_code=3, error="RepriceRefused",
+                           summary={**_stats, "reason": "reprice_refused", "detail": str(_refusal)[:300]})
         raise SystemExit(3) from None
 
     _payload = json.dumps(portfolio, indent=2, default=str)
@@ -1632,6 +1684,9 @@ def main(state_dirs) -> None:
     print(_summary_line("After", portfolio))
     if not _written:
         print("ERROR: no holdings.json copy could be written")
+        _holdings_lock.__exit__(None, None, None)
+        _write_run_receipt(state_dir, started_at=_started_at, ok=False, exit_code=1, error="no holdings.json copy could be written",
+                           summary={**_stats, "reason": "write_failed", "skipped": _skipped})
         raise SystemExit(1)
     print(f"holdings.json updated ({len(_written)} copy/copies): {', '.join(_written)}")
     for _s in _skipped:
@@ -1651,6 +1706,12 @@ def main(state_dirs) -> None:
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
         meta  = cache.get("_meta", {})
         print(f"Quote cache: {meta.get('symbols_cached',0)} symbols | updated {meta.get('last_updated','?')}")
+
+    # The run is a success only now: the store was written. produced_count is the number of holding rows this
+    # run published (never 0 for a healthy pass, so a quiet market cannot read as EMPTY); holdings_updated says
+    # how many of those rows actually took a new mark.
+    _write_run_receipt(state_dir, started_at=_started_at, ok=True, exit_code=0, summary={**_stats, "copies_written": len(_written)},
+                       produced_count=_stats.get("holdings"))
 
 
 

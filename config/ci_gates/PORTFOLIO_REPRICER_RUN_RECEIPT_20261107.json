@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PORTFOLIO_REPRICER_RUN_RECEIPT_20261107",
+  "files": [
+    "tests/test_portfolio_repricer_run_receipt_20261107.py"
+  ],
+  "anchor": "PORTFOLIO_REPRICER_RUN_RECEIPT_20261107",
+  "comment": [
+    "ANCHOR: PORTFOLIO_REPRICER_RUN_RECEIPT_20261107 — the repricer cron fires every 15 minutes and",
+    "exited 0 every time, yet its lane row read ok_unverified/DEGRADED 'receipt reports gaps = 1'",
+    "(2026-11-06) because the lane wrote no run receipt at all and the grader fell back to",
+    "data/portfolios/state/holdings.json, whose top-level gaps is a standing data note. Every exit",
+    "path (success, refusal, failed write, missing book) must now write data/runtime/<lane>_last.json.",
+    "Hermetic: synthetic fixtures, main() never past the missing-file guard, no live store, no",
+    "broker, no network, no quotes fetched, no DB."
+  ]
+}
