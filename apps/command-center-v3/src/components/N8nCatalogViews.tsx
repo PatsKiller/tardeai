@@ -1,4 +1,4 @@
-import { useId, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
@@ -7,6 +7,7 @@ import {
   MODES, MODE_LABEL, MODE_TIP, MODE_TONE, N8N_CATALOG_API, catalogStats, categoryLanes, laneChips, laneHref, notInRelay, scheduleText,
   type CatalogCategory, type CatalogLane, type N8nCatalogWire,
 } from '../lib/n8nCatalog'
+import { mountApproved } from '../lib/n8nCatalogApproved'
 
 // Ops › Jobs & n8n › n8n catalog (LQ-20261107-150). Read-only. Phone first: stacked cards, 44 px targets, every
 // mode chip / verdict chip / top stat explains itself: a tap opens the text inline (phone), hover or keyboard focus
@@ -110,7 +111,24 @@ export function N8nCatalogView({ data, loading, error }: { data: N8nCatalogWire 
   </section>
 }
 
+/** The operator-approved design (artifact "n8n Lane Configuration"), rendered verbatim in a shadow root so its CSS
+ *  matches the approved page exactly and cannot leak into the app. Fed by the same live read-only GET. */
+export function N8nCatalogApprovedView({ data }: { data: N8nCatalogWire }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const box = ref.current
+    if (!box) return
+    const host = document.createElement('div')
+    const theme = document.documentElement.dataset.theme
+    if (theme) host.dataset.theme = theme
+    box.replaceChildren(host)
+    mountApproved(host.attachShadow({ mode: 'open' }), data)
+  }, [data])
+  return <div ref={ref} data-testid="n8n-catalog-approved" style={{ minWidth: 0 }} />
+}
+
 export function N8nCatalogTab() {
   const api = useApi<N8nCatalogWire>(N8N_CATALOG_API, 60_000)
-  return <N8nCatalogView data={api.data ?? null} loading={api.loading} error={api.error ?? null} />
+  if (api.data) return <N8nCatalogApprovedView data={api.data} />
+  return <N8nCatalogView data={null} loading={api.loading} error={api.error ?? null} />
 }
