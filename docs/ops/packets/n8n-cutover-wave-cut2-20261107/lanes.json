@@ -1,0 +1,72 @@
+{
+  "wave": "CUT2",
+  "ready": [
+    "hermes-research-worker-pool",
+    "news-to-catalyst",
+    "update-lockup-earnings-dates"
+  ],
+  "effect_keyed": [
+    "hermes-research-worker-pool",
+    "news-to-catalyst",
+    "update-lockup-earnings-dates"
+  ],
+  "plan": [
+    {
+      "lane_id": "hermes-research-worker-pool",
+      "row_id": "cron:L693",
+      "family_id": "F40",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/hermes_worker_pool.lock",
+      "live_arg": [],
+      "slots": [
+        "5 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 700,
+          "text": "5 * * * * cd $PROJ && flock -n /tmp/hermes_worker_pool.lock env TRADEAI_EFFECT_CLAIM=hermes-research-worker-pool bash scripts/effect_claim_cron.sh hermes-research-worker-pool $PY scripts/hermes_research_worker_pool.py --run --json >> logs/hermes_worker_pool.log 2>&1  # white-space/strategy/proxy/legal lanes, self-gated by lane cadence + do-no-harm (2026-07-05)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "news-to-catalyst",
+      "row_id": "cron:L408",
+      "family_id": "F44",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/news_to_catalyst.lock",
+      "live_arg": [],
+      "slots": [
+        "45 6,12,18 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 409,
+          "text": "45 6,12,18 * * * cd $PROJ && flock -n /tmp/news_to_catalyst.lock env TRADEAI_EFFECT_CLAIM=news-to-catalyst bash scripts/effect_claim_cron.sh news-to-catalyst $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "update-lockup-earnings-dates",
+      "row_id": "cron:L492",
+      "family_id": "F42",
+      "tier_name": "send",
+      "status": "READY_CANARY",
+      "lock": "/tmp/lockup_earnings.lock",
+      "live_arg": [],
+      "slots": [
+        "18 8 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 493,
+          "text": "18 8 * * * cd $PROJ && flock -n /tmp/lockup_earnings.lock env TRADEAI_EFFECT_CLAIM=update-lockup-earnings-dates bash scripts/effect_claim_cron.sh update-lockup-earnings-dates $PY scripts/update_lockup_earnings_dates.py >> logs/lockup_earnings.log 2>&1  # snap earnings-tied lockup tranches to real report dates"
+        }
+      ],
+      "reasons": []
+    }
+  ]
+}

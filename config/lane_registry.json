@@ -11298,9 +11298,10 @@
         "kind": "cron",
         "expression": "45 6,12,18 * * *",
         "match": "scripts/news_to_catalyst.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "D3",
-        "command_text": "cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/news_to_catalyst.lock env TRADEAI_EFFECT_CLAIM=news-to-catalyst bash scripts/effect_claim_cron.sh news-to-catalyst $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1",
+        "cutover_wave": "CUT2"
       },
       "expected_cadence_hours": 12.0,
       "state": "ACTIVE",
@@ -11328,7 +11329,7 @@
       "adopted_on": "2026-10-10",
       "adopted_reason": "dispatcher shadow wave D3 (R1): a row carrying a reviewed r1_pending / dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "45 6,12,18 * * *"
         ],
@@ -13138,9 +13139,10 @@
         "kind": "cron",
         "expression": "18 8 * * *",
         "match": "scripts/update_lockup_earnings_dates.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/lockup_earnings.lock $PY scripts/update_lockup_earnings_dates.py >> logs/lockup_earnings.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/lockup_earnings.lock env TRADEAI_EFFECT_CLAIM=update-lockup-earnings-dates bash scripts/effect_claim_cron.sh update-lockup-earnings-dates $PY scripts/update_lockup_earnings_dates.py >> logs/lockup_earnings.log 2>&1",
+        "cutover_wave": "CUT2"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -13168,7 +13170,7 @@
       "adopted_on": "2026-10-11",
       "adopted_reason": "shadow wave 4 (SW4, R1 ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. Cron line L490 (crontab -l, 2026-10-11) keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log/file mtime to the LaneRunReceipt@v1 the script already writes (refactor waves 1-3).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "18 8 * * *"
         ],
@@ -15414,9 +15416,10 @@
         "kind": "cron",
         "expression": "5 * * * *",
         "match": "scripts/hermes_research_worker_pool.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "R2-04",
-        "command_text": "5 * * * * cd $PROJ && flock -n /tmp/hermes_worker_pool.lock $PY scripts/hermes_research_worker_pool.py --run --json >> logs/hermes_worker_pool.log 2>&1  # white-space/strategy/proxy/legal lanes, self-gated by lane cadence + do-no-harm (2026-07-05)"
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_worker_pool.lock env TRADEAI_EFFECT_CLAIM=hermes-research-worker-pool bash scripts/effect_claim_cron.sh hermes-research-worker-pool $PY scripts/hermes_research_worker_pool.py --run --json >> logs/hermes_worker_pool.log 2>&1",
+        "cutover_wave": "CUT2"
       },
       "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
@@ -15441,7 +15444,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "5 * * * *"
         ],

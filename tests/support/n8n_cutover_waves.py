@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PACKETS = sorted((ROOT / "docs" / "ops" / "packets").glob("n8n-cutover-wave-*-20261015/lanes.json"))
+PACKETS = sorted((ROOT / "docs" / "ops" / "packets").glob("n8n-cutover-wave-*-2026[01][0-9][0-3][0-9]/lanes.json"))
 
 
 def _load() -> dict[str, dict]:

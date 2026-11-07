@@ -302,8 +302,8 @@
       ],
       "idempotent_today": "no:audit rows per lane run",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "hermes-scope-governor": {
       "process": "hermes-scope-governor",
@@ -345,8 +345,8 @@
       ],
       "idempotent_today": "guarded:(symbol, headline); local Ollama classifier",
       "wave": "tierA",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "resolve-due-checkpoints": {
       "process": "resolve-due-checkpoints",
@@ -730,8 +730,8 @@
       ],
       "idempotent_today": "guarded:approx flag; alert_events row (sender uncertain)",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "weekly-incubator-builder": {
       "process": "weekly-incubator-builder",
