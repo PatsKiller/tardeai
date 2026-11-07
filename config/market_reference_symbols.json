@@ -1,12 +1,19 @@
 {
   "schema": "MarketReferenceSymbols@v1",
-  "as_of": "2026-10-31",
-  "_comment": "Index, sector, rates, credit, dollar, commodity and volatility ETFs the Market Risk Engine reads from market_quotes (DSN-20261031-market-risk-engine §5.1). They are always quoted, whether or not anyone holds or watches them. Builder H's read-only data audit (PR #2341) found HYG, UUP and VIXY absent from the quote universe on 2026-10-31. Operator approved design §11 item 1 in session 2026-10-31: \"I approve and agree to everything one through eight…\". Adding a symbol here adds one quote per refresh; nothing else changes.",
+  "as_of": "2026-11-07",
+  "_comment": "Index, sector, rates, credit, dollar, commodity and volatility ETFs the Market Risk Engine reads from market_quotes (DSN-20261031-market-risk-engine §5.1). They are always quoted, whether or not anyone holds or watches them. Builder H's read-only data audit (PR #2341) found HYG, UUP and VIXY absent from the quote universe on 2026-10-31. Operator approved design §11 item 1 in session 2026-10-31: \"I approve and agree to everything one through eight…\". Adding a symbol here adds one quote per refresh; nothing else changes. 2026-11-07: operator approved covering all cross-market gaps (\"Approve Finviz refresh and also cover all of those other gaps\"): 10 sector SPDRs, 7 industry ETFs, international, crypto, commodities, short/mid Treasuries + TIPS, REITs.",
   "symbols": [
     "SPY", "QQQ", "IWM", "DIA", "RSP",
     "SMH", "SOXX", "XLK",
     "TLT", "HYG", "JNK", "LQD",
     "UUP", "USO", "GLD",
-    "VIXY", "UVXY"
+    "VIXY", "UVXY",
+    "XLE", "XLF", "XLV", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC",
+    "IGV", "KRE", "XBI", "IBB", "ITB", "IYT", "ARKK",
+    "EFA", "EEM", "FXI", "EWJ", "EWZ", "INDA",
+    "IBIT", "ETHA",
+    "SLV", "CPER", "UNG", "DBC", "DBA",
+    "SHY", "IEF", "TIP",
+    "VNQ"
   ]
 }
