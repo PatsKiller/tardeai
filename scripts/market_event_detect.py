@@ -35,6 +35,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib import market_event_rank as rank  # noqa: E402
 from lib import market_event_store as store  # noqa: E402
+from lib import market_event_sector_proxies as sector_proxies  # noqa: E402
 
 LANE_ID = "market-event-detect"
 MRE_REL = "data/runtime/market_risk_latest.json"
@@ -86,7 +87,8 @@ def index_triggers(closes: Mapping[str, Mapping[str, float]], last_session: str,
 
 
 def evaluate_triggers(mre: Mapping[str, Any], index_closes: Mapping[str, Mapping[str, float]], last_session: str,
-                      policy: Mapping[str, Any], now: datetime) -> dict:
+                      policy: Mapping[str, Any], now: datetime,
+                      bar_moves: Mapping[str, Any] | None = None) -> dict:
     det = policy["detector"]
     op = det["open"]
     fresh = mre_fresh(mre, now, float(det.get("mre_max_age_hours", 6)))
@@ -102,7 +104,11 @@ def evaluate_triggers(mre: Mapping[str, Any], index_closes: Mapping[str, Mapping
         "mre": {"tier": mre.get("tier"), "score": mre.get("score"), "as_of": mre.get("as_of"), "fresh": fresh,
                 "hit": bool(tier and tier_at_least(tier, op["mre_tier_at_least"], det["tier_order"]))},
         "index": index_triggers(index_closes, last_session, float(op["index_drawdown_pct"])),
-        "sectors": sector_hits,
+        "sectors": sector_proxies.merge_sector_hits(
+            sector_hits,
+            sector_proxies.sector_hits(bar_moves, rel_field=op.get("sector_rel_field", "rs5"),
+                                       rel_move_pct=float(op["sector_rel_move_pct"]),
+                                       kinds=op.get("sector_group_kinds", ["sector", "theme"])) if bar_moves else []),
         "affected_groups": affected_groups(mre, det["affected_groups"]) if fresh else [],
         "last_session": last_session,
     }
@@ -239,7 +245,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         last_session = rank.last_completed_session(now, policy["data"].get("close_time_et", "16:00"))
         triggers = evaluate_triggers(mre, index_closes(conn, policy, last_session), last_session.isoformat(),
-                                     policy, now)
+                                     policy, now, bar_moves=sector_proxies.read_moves(conn, policy, now=now))
         have_tables = store.tables_exist(conn)
         existing = store.list_episodes(conn) if have_tables else []
         episodes = plan_episodes(existing, triggers, policy, now)
