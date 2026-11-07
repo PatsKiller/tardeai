@@ -702,12 +702,63 @@ def position_state(qty: Any) -> str:
     return "flat" if q <= 0 else ("fractional" if q < 1 else "held")
 
 
+# A stored status meaning the order is over and did NOT fill. The alert row that
+# named it is history, not current truth (2026-11-07: ZETA's three rollover stops
+# were stored 'replaced' for days while their alerts still read as live).
+# 'not_in_read' is deliberately NOT here: a failed broker read marks every row
+# not_in_read, so it means "not observed", never "did not fill".
+_STORED_ORDER_DEAD = frozenset({"canceled", "cancelled", "rejected", "expired", "replaced"})
+# The claim a fill alert makes when the position has not been read yet.
+_FLAT_HEDGE = "position may be flat; review."
+# A stored status meaning the order is still a resting stop.
+_STORED_ORDER_RESTING = frozenset({"working", "open", "new", "accepted", "pending_activation",
+                                   "awaiting_stop_condition", "queued"})
+
+
+def _stored_order_status(alerts: list, db_query: Optional[Callable]) -> Optional[dict]:
+    """Newest stored status per (account, order_id) for the orders these alerts name.
+
+    ``None`` means the store could not be asked (no db_query, table missing, DB down) —
+    deliberately distinct from an answer that has no row for an order. Absence of a
+    reading is never evidence about the order, so the caller falls back to the alert's
+    own text instead of inventing one.
+    """
+    ids = sorted({str(_payload(a).get("order_id")) for a in alerts if _payload(a).get("order_id")})
+    if not ids:
+        return None
+    rows = _q(db_query, "SELECT DISTINCT ON (account, order_id) account, order_id, status, captured_at "
+                        "FROM stop_last_known WHERE order_id = ANY(%s) "
+                        "ORDER BY account, order_id, captured_at DESC", (ids,))
+    if rows is None:
+        return None
+    return {(r.get("account"), str(r.get("order_id"))): r.get("status")
+            for r in rows if isinstance(r, dict)}
+
+
+def _state_the_position(msg: str, position_now: str) -> str:
+    """Replace the alert's unread hedge ("position may be flat; review.") with the position now.
+
+    The hedge was written when nothing had read the position; appending the real quantity
+    after it left one line asserting both (2026-11-07: 'stop FILLED … may be flat' next to
+    '0.4985 sh remain'). Dropping the pattern also stops the action classifier reading the
+    hedge as evidence of a live trigger on a lot that is still held."""
+    if _FLAT_HEDGE in msg:
+        return msg.replace(_FLAT_HEDGE, f"{position_now}.", 1)
+    return f"{msg} — {position_now}"
+
+
 def _stop_alert_rows(alerts: list, db_query: Optional[Callable]) -> list[dict]:
     """Open stop alerts for display. A 'stop FILLED' line used to read as if the lot were gone ("position may be
     flat") although the account still held some of it (2026-11-07: V in the Roth IRA kept 0.4985 sh after a 65 sh
     stop filled; SCHD in the Rollover IRA kept 0.2529 sh after 8000). The line now carries the account's current
     quantity from positions_current, keyed by ACCOUNT + symbol (the same symbol is held in other accounts, so a
-    symbol-only match would be wrong), and the hourly repeats of one fill collapse into one row with a count."""
+    symbol-only match would be wrong), and the hourly repeats of one fill collapse into one row with a count.
+
+    The alert row is a historical record of what the stop check saw. Each row now also carries the order's CURRENT
+    stored status from stop_last_known, and a row whose order the store records as over-and-not-filled stops
+    repeating the alert's 'stop FILLED' claim instead of contradicting it (2026-11-07: three rollover stops stored
+    'replaced' still displayed as live stop alerts). An unreadable store is reported as unknown, never guessed."""
+    stored = _stored_order_status(alerts, db_query)
     filled_syms = sorted({str(a.get("symbol")) for a in alerts
                           if _payload(a).get("condition") == "TRIGGERED" and a.get("symbol")})
     held: Optional[dict] = None
@@ -720,10 +771,17 @@ def _stop_alert_rows(alerts: list, db_query: Optional[Callable]) -> list[dict]:
     seen: dict[tuple, dict] = {}
     for a in alerts:  # newest first
         pl = _payload(a)
-        acct, sym = pl.get("account"), a.get("symbol")
+        acct, sym, order_id = pl.get("account"), a.get("symbol"), pl.get("order_id")
         msg = scrub(a.get("raw_text"), 160)
         row = {"id": a.get("id"), "at": _iso(a.get("created_at")), "symbol": sym, "severity": a.get("severity"),
                "message": msg, "lifecycle_state": a.get("lifecycle_state") or "active", "account": acct}
+        # What the store says about the exact order this alert named, keyed by account AND order id.
+        known = acct is not None and order_id is not None and stored is not None
+        st = (stored or {}).get((acct, str(order_id))) if known else None
+        row["stored_status"] = st
+        row["stored_status_source"] = ("unavailable" if stored is None or acct is None or order_id is None
+                                       else ("recorded" if st else "absent"))
+        row["alert_claim"] = "current"
         if pl.get("condition") == "TRIGGERED":
             qty = None if held is None else held.get((acct, sym), 0)
             state = "unknown" if held is None else position_state(qty)
@@ -735,7 +793,42 @@ def _stop_alert_rows(alerts: list, db_query: Optional[Callable]) -> list[dict]:
                 "held": f"{float(qty or 0):g} sh still held in this account (the stop that filled is gone; check for a replacement)",
                 "unknown": "current position unknown",
             }[state]
-            row["message"] = scrub(f"{msg} — {row['position_now']}", 320)
+            if st in _STORED_ORDER_DEAD:
+                row["alert_claim"] = "stale"
+                row["message"] = scrub(
+                    f"[stop-health] {sym}@{acct} · order #{order_id} is recorded as {st} in the stop store: it did "
+                    f"not fill, so this alert's fill claim is stale and needs no action. "
+                    f"Position: {row['position_now']}.", 320)
+            elif st in _STORED_ORDER_RESTING:
+                row["alert_claim"] = "stale"
+                row["message"] = scrub(
+                    f"[stop-health] {sym}@{acct} · order #{order_id} is still {st} in the stop store: it has not "
+                    f"filled, so the alert's fill claim is stale — the stop is resting, not triggered. "
+                    f"Position: {row['position_now']}.", 320)
+            elif st == "not_in_read" or (known and st is None):
+                row["alert_claim"] = "unconfirmed"
+                why = ("is missing from the stop store's latest read (not_in_read)" if st == "not_in_read"
+                       else "has no row in the stop store")
+                row["message"] = scrub(
+                    f"[stop-health] {sym}@{acct} · the alert claims a fill for order #{order_id}, but that order "
+                    f"{why}: the fill is unconfirmed. Position: {row['position_now']}.", 320)
+            else:
+                # A stored 'filled' (or no readable store): the fill claim stands, but the
+                # unread hedge is replaced by the position that was actually read.
+                if st == "filled":
+                    row["alert_claim"] = "confirmed"
+                row["message"] = scrub(_state_the_position(msg, row["position_now"]), 320)
+        elif st in _STORED_ORDER_DEAD or st == "filled":
+            # NEAR_TRIGGER / TRIGGERED_LIKELY / ORPHANED / OVERSIZED on an order the store has retired or
+            # filled: 'about to fire' is not a live statement about it (2026-11-07: V and SCHD proximity
+            # alerts were still open against stops that had already filled). Built from the payload rather
+            # than appending to the 160-char cut of the old text, which ends mid-clause.
+            level = pl.get("stop_price")
+            where = (f"stop ${float(level):.2f}" if isinstance(level, (int, float)) and level else "its stop")
+            row["alert_claim"] = "stale"
+            row["message"] = scrub(
+                f"[stop-health] {sym}@{acct} · {pl.get('condition')} on {where} — the stop store records order "
+                f"#{order_id} as {st}, so it is no longer a resting stop; this alert is stale.", 320)
         key = (sym, acct, pl.get("order_id"), pl.get("condition")) if pl.get("order_id") else None
         if key and key in seen:
             seen[key]["repeat_count"] += 1
