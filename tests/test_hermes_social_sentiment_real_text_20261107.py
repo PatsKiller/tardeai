@@ -35,7 +35,7 @@ def test_non_forum_quote_pages_are_not_mentions():
 
 
 def test_real_text_without_bull_bear_words_is_no_row_not_neutral_zero():
-    assert hs.normalize("NVDA", [NEUTRAL_REAL, dict(NEUTRAL_REAL, url="https://reddit.com/r/y/2")]) is None
+    assert hs.normalize("NVDA", [NEUTRAL_REAL, dict(NEUTRAL_REAL, url="https://www.reddit.com/r/stocks/comments/y2/")]) is None
     assert hs.NORMALIZE_SKIPS["no_polarity_evidence"] == 1
 
 
@@ -53,8 +53,8 @@ def test_single_post_is_thin_evidence_not_a_row():
 
 
 def test_polarity_follows_text():
-    assert hs.normalize("NVDA", [BULL, dict(BULL, url="https://reddit.com/r/x/2")])["sentiment_score"] > 0
-    assert hs.normalize("NVDA", [BEAR, dict(BEAR, url="https://stocktwits.com/2")])["sentiment_score"] < 0
+    assert hs.normalize("NVDA", [BULL, dict(BULL, url="https://www.reddit.com/r/stocks/comments/x2/")])["sentiment_score"] > 0
+    assert hs.normalize("NVDA", [BEAR, dict(BEAR, url="https://stocktwits.com/someone/message/20261107")])["sentiment_score"] < 0
 
 
 def test_placeholder_text_is_never_in_the_stored_summary():

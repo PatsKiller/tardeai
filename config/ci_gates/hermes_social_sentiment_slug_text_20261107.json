@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_SOCIAL_SENTIMENT_SLUG_TEXT",
+  "files": [
+    "tests/test_hermes_social_sentiment_slug_text_20261107.py"
+  ],
+  "anchor": "HERMES_SOCIAL_SENTIMENT_SLUG_TEXT_20261107",
+  "comment": [
+    "ANCHOR: HERMES_SOCIAL_SENTIMENT_SLUG_TEXT_20261107 — LQ-20261107-123. The search engines return the",
+    "reddit thread title only in the URL path ('Link to reddit.com' is the title), so the lane recovers it from",
+    "the slug instead of discarding the hit; a mention must be a post that names the symbol; polarity words are",
+    "whole words. Listing it schedules nothing."
+  ]
+}

@@ -92,6 +92,20 @@ BULLISH_WORDS = {"bull", "bullish", "moon", "buy", "calls", "long", "breakout",
 BEARISH_WORDS = {"bear", "bearish", "puts", "short", "crash", "overvalued",
                  "dump", "sell", "downside", "tank", "fade"}
 
+# The same words as whole tokens, with the inflections the forums actually use ("buys", "selling",
+# "puts"). The keyword test used to be a substring test, so "outputs" read as bearish ("puts"),
+# "along" as bullish ("long") and "bullet" as bullish ("bull") -- each of which stored a confident
+# +/-1.00 from one word that says nothing (LQ-20261107-123).
+BULLISH_TOKENS = frozenset({
+    *BULLISH_WORDS, "bulls", "mooning", "buys", "buying", "bought", "call", "longs", "breakouts",
+    "rockets", "rocketing", "squeezes", "loads", "loading",
+})
+BEARISH_TOKENS = frozenset({
+    *BEARISH_WORDS, "bears", "shorts", "shorting", "crashes", "crashing", "dumps", "dumping",
+    "sells", "selling", "sold", "tanks", "tanking", "fades", "fading",
+})
+_TOKEN_RE = re.compile(r"[a-z']+")
+
 
 def _db_write(sql, params=None) -> bool:
     try:
@@ -169,8 +183,31 @@ MIN_MENTIONS = 2       # one forum post is an anecdote, not a sentiment reading 
 MIN_TEXT_CHARS = 25   # title + snippet of real words, after dropping the placeholder pieces
 
 
+# LQ-20261107-123: a placeholder title is not an empty result. Yandex serves every reddit hit with the
+# literal title "Link to reddit.com" and the site-owner placeholder as the summary, but the thread's own
+# title is in the URL path: /r/stocks/comments/1fxv2h1/defense_stocks_what_happens_if_the_major_/ .
+# Dropping those items (LQ-20261107-63) silenced the lane completely -- measured 2026-11-07: 8 of 8
+# symbols produced zero rows -- so the title is recovered from the slug instead.
+_THREAD_SLUG_RE = re.compile(r"/comments/[a-z0-9]+/([^/?#]+)", re.I)
+
+#: A site template that repeats the crawl query in the page title ("Unknown (@333Trader) | Stocktwits LDOS")
+#: is not evidence that the page is about the symbol -- it is the query echoed back. Measured 2026-11-07:
+#: every StockTwits profile page the engines returned for LDOS was titled that way, and counting them made
+#: mention_count a constant again.
+_SITEWIDE_ECHO_RE = re.compile(r"\s*[|·—–]\s*(?:stocktwits|reddit)\b.*$", re.I)
+
+
+def title_from_url(url: str) -> str:
+    """The thread title carried in a forum URL path, de-slugified. '' when the URL has no thread slug."""
+    m = _THREAD_SLUG_RE.search(url or "")
+    if not m:
+        return ""
+    return urllib.parse.unquote(m.group(1)).replace("_", " ").replace("-", " ").strip()
+
+
 def real_text(item: dict) -> str:
-    """The item's usable text: title and snippet with placeholder pieces removed. '' = nothing readable."""
+    """The item's usable text: title and snippet with placeholder pieces removed, falling back to the
+    thread title in the URL when both are placeholders. '' = nothing readable."""
     parts = []
     title = (item.get("title") or "").strip()
     snippet = (item.get("snippet") or "").strip()
@@ -178,12 +215,39 @@ def real_text(item: dict) -> str:
         parts.append(title)
     if snippet and not any(p in snippet.lower() for p in _PLACEHOLDER_SNIPPETS):
         parts.append(snippet)
-    return " ".join(parts)
+    if not parts:
+        parts.append(title_from_url(item.get("url") or ""))
+    return " ".join(p for p in parts if p).strip()
+
+
+def names_symbol(text: str, symbol: str, ignore_case: bool = True) -> bool:
+    """True when ``text`` mentions the ticker as a whole word (LMT in "lmt and lin", not in "lmtt").
+
+    ``ignore_case=False`` is how prose is checked: a ticker is written in capitals ("NOC", "$MAIN"), while
+    "the main reason" is an English word -- MAIN, ALL, ON and friends are real tickers. A URL slug is
+    lower-case by construction, so paths are matched case-insensitively."""
+    sym = (symbol or "").strip().upper()
+    if not sym or not text:
+        return False
+    flags = re.IGNORECASE if ignore_case else 0
+    return re.search(rf"(?<![A-Za-z0-9]){re.escape(sym)}(?![A-Za-z0-9])", text, flags) is not None
 
 
 def is_substantive_forum_mention(item: dict) -> bool:
+    """A mention is a forum/community page with readable text. What a page's title says is checked
+    separately (:func:`mentions_symbol`): a profile page whose title merely echoes the query has text but
+    says nothing about the symbol."""
     url = item.get("url", "") or ""
     return any(h in url for h in FORUM_DOMAIN_HINTS) and len(real_text(item)) >= MIN_TEXT_CHARS
+
+
+def mentions_symbol(item: dict, symbol: str) -> bool:
+    """True when the readable text -- or the URL's path, where a reddit thread's slug lives -- names the
+    symbol, with any site-template echo removed. Query parameters are tracking noise and are ignored (a link
+    carrying ``?trk=...IRDM`` does not make an unrelated page a mention)."""
+    path = (item.get("url") or "").split("?", 1)[0]
+    text = _SITEWIDE_ECHO_RE.sub("", real_text(item))
+    return names_symbol(text, symbol, ignore_case=False) or names_symbol(path, symbol)
 
 
 def search_forum(symbol: str, limit: int = 6) -> list[dict]:
@@ -215,14 +279,19 @@ def search_forum(symbol: str, limit: int = 6) -> list[dict]:
             else:
                 general.append(item)
         time.sleep(0.4)
-    return (forum + general)[:limit]
+    # The engines answer with several results per symbol that do not mention it at all (measured
+    # 2026-11-07: LDOS 0 of 14, MAIN 0 of 25). Rank the ones that name the symbol ahead of the cap, so
+    # a real thread is not displaced by eight unrelated ones.
+    ranked = forum + general
+    named = [i for i in ranked if mentions_symbol(i, symbol)]
+    return (named or ranked)[:limit]
 
 
 def classify(text: str) -> tuple[int, int]:
-    """Return (bull, bear) keyword counts for a text."""
-    tl = text.lower()
-    bull = sum(1 for w in BULLISH_WORDS if w in tl)
-    bear = sum(1 for w in BEARISH_WORDS if w in tl)
+    """Return (bull, bear) keyword counts for a text, matching whole words only."""
+    tokens = _TOKEN_RE.findall((text or "").lower())
+    bull = sum(1 for t in tokens if t in BULLISH_TOKENS)
+    bear = sum(1 for t in tokens if t in BEARISH_TOKENS)
     return bull, bear
 
 
@@ -230,12 +299,21 @@ NORMALIZE_SKIPS: Counter = Counter()   # why a symbol produced no row in this pr
 
 
 def normalize(symbol: str, mentions: list[dict]) -> dict | None:
-    """Sentiment from substantive forum items only. None (no row) when there are none, or when none carries bull/bear
-    wording: a row of zeros is not 'neutral', it is 'nothing known', and ~14 consumers read zeros as neutral."""
+    """Sentiment from substantive forum items that name the symbol. None (no row) when there are none, or when none
+    carries bull/bear wording: a row of zeros is not 'neutral', it is 'nothing known', and ~14 consumers read zeros as
+    neutral."""
     raw = len(mentions or [])
-    mentions = [m for m in (mentions or []) if is_substantive_forum_mention(m)]
+    substantive = [m for m in (mentions or []) if is_substantive_forum_mention(m)]
+    # A forum thread about something else is not a mention of this symbol, and a Reddit advertising landing page
+    # is not a mention of anything.
+    mentions = [m for m in substantive if mentions_symbol(m, symbol)]
     if not mentions:
-        NORMALIZE_SKIPS["placeholder_or_non_forum" if raw else "no_results"] += 1
+        if not raw:
+            NORMALIZE_SKIPS["no_results"] += 1
+        elif not substantive:
+            NORMALIZE_SKIPS["placeholder_or_non_forum"] += 1
+        else:
+            NORMALIZE_SKIPS["not_about_the_symbol"] += 1
         return None
     if len(mentions) < MIN_MENTIONS:
         NORMALIZE_SKIPS["thin_evidence"] += 1
