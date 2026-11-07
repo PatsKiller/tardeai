@@ -101,7 +101,7 @@ matched to the script it actually runs. Eight codes:
 | `ACTIVE_SERVICE_INACTIVE` | the same for a `kind: systemd` row that names a `.service` |
 | `DECLARED_OFF_TIMER_ACTIVE` / `DECLARED_OFF_SERVICE_ACTIVE` | a PAUSED / RETIRED / NEVER_SCHEDULED row whose unit is active, naming the manager that has it live |
 | `CRON_ROW_RUNS_UNDER_TIMER` | a `kind: cron` row with no cron line because a live timer runs the same script — the lane is named, not called absent |
-| `DUPLICATE_SCHEDULER` | one program under two live schedulers: an n8n entry script importing the module a live timer runs, or a cron line beside a live timer |
+| `DUPLICATE_SCHEDULER` | one program reachable from two schedulers: an n8n entry script (registry ACTIVE, dispatch live) importing the module a live timer runs, or a cron line beside a live timer |
 
 A declared systemd row with no readable source marks every timer rule NOT_MEASURED, never clean; the reader only runs
 when the declaration has a `kind: systemd` row, so a fixture repo never shells out (`--no-systemd` skips it
