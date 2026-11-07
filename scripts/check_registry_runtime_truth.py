@@ -239,6 +239,23 @@ def _sched(row: Mapping[str, Any]) -> Mapping[str, Any]:
     return row.get("scheduler") or {}
 
 
+def _match_markers(scheduler: Mapping[str, Any]) -> list[str]:
+    """``scheduler.match`` as a list of markers — a list declares one marker per cron line.
+
+    2026-11-07: a row may carry ``match`` as a LIST (one item per cron form: research-intelligence-queue runs the
+    mid-week ``&& flock … --drain`` form and the ``--official -- … --drain`` off-peak form). ``str()`` on that list
+    is a Python repr no crontab line contains, so this checker reported ACTIVE_CRON_LINE_ABSENT for a lane whose line
+    runs every weekday — a contradiction invented by the reader, not observed on the host. The house rule already
+    exists in scripts/reconcile_lane_registry.declarations(): a list match declares item by item, and a line belongs
+    to the lane when ANY marker is a substring of it. Same rule here.
+    """
+    raw = scheduler.get("match")
+    if isinstance(raw, (list, tuple)):
+        return [str(m).strip() for m in raw if str(m or "").strip()]
+    text = str(raw or "").strip()
+    return [text] if text else []
+
+
 def _stage_is_live(row: Mapping[str, Any]) -> bool:
     """canary/cutover; or a per-lane n8n workflow row from before the stage field existed (kind n8n, own workflow id,
     no stage): the pilot lanes of 2026-10-08/09 whose workflow is the live scheduler."""
@@ -390,10 +407,12 @@ def evaluate(
             s = _sched(row)
             if s.get("kind") != "cron":
                 continue
-            match = str(s.get("match") or "").strip()
-            if not match:
+            markers = _match_markers(s)
+            if not markers:
                 continue
-            hits = [ln for ln in cron_lines if match in ln]
+            # one readable label for the detail line: the single marker as before, or the list for a list match
+            match = markers[0] if len(markers) == 1 else markers
+            hits = [ln for ln in cron_lines if any(m in ln for m in markers)]
             if row.get("state") == "ACTIVE" and not hits:
                 out.append(_c("ACTIVE_CRON_LINE_ABSENT", lane,
                               f"registry state ACTIVE (kind cron) but no active crontab line runs {match!r}",
@@ -407,10 +426,11 @@ def evaluate(
             s = _sched(row)
             if row.get("state") != "ACTIVE" or s.get("kind") != "n8n" or s.get("stage") != "cutover":
                 continue
-            match = str(s.get("match") or "").strip()
-            if not match:
+            markers = _match_markers(s)
+            if not markers:
                 continue
-            hits = [ln for ln in cron_lines if match in ln and "effect_claim_cron.sh" not in ln]
+            match = markers[0] if len(markers) == 1 else markers
+            hits = [ln for ln in cron_lines if any(m in ln for m in markers) and "effect_claim_cron.sh" not in ln]
             if hits:
                 out.append(_c("CUTOVER_CRON_LINE_ACTIVE", lane,
                               f"stage cutover but {len(hits)} active crontab line(s) still run {match!r} unwrapped",

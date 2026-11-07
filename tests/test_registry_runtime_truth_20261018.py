@@ -268,6 +268,66 @@ def test_workflow_inactive_and_cutover_cron_line_rules():
     assert cut["evidence"]["lines"] == 1 and "scripts/cut.py >>" not in json.dumps(cut)  # line text never reported
 
 
+# ── a list-shaped scheduler.match (2026-11-07) ────────────────────────────────────────────────────────────────────
+# config/lane_registry.json's research-intelligence-queue carries scheduler.match as a LIST: one marker per cron
+# form (the mid-week drain and the --official off-peak drain). The checker ran str() over that list, which is a
+# Python repr no crontab line contains, and reported ACTIVE_CRON_LINE_ABSENT for a lane whose lines run every
+# weekday — a contradiction invented by the reader. A list match declares item by item and a line belongs to the
+# lane when ANY marker is on it, exactly as scripts/reconcile_lane_registry.declarations() has it.
+
+RIQ_MARKERS = ["&& flock -n /tmp/ri.lock $PY scripts/riq.py --drain",
+               "--official -- flock -n /tmp/ri.lock $PY scripts/riq.py --drain"]
+RIQ_LINES = [
+    "45 16 * * 1-5 cd $PROJ && flock -n /tmp/ri.lock $PY scripts/riq.py --drain --cap 10",
+    "40 2 * * * cd $PROJ && bash run_with_deepseek_offpeak.sh --official -- flock -n /tmp/ri.lock $PY "
+    "scripts/riq.py --drain --cap 10",
+]
+
+
+def _list_match_row(lane, *, state="ACTIVE"):
+    row = _row(lane, kind="cron", expression="45 16 * * 1-5", stage=None, state=state)
+    row["scheduler"]["match"] = list(RIQ_MARKERS)
+    return row
+
+
+def test_a_list_match_whose_line_is_active_is_not_absent():
+    found, _, _ = RT.evaluate(_decl([_list_match_row("riq")]), ledger=None, live_lanes=None,
+                              cron_lines=RIQ_LINES, n8n_active=None)
+    assert _codes(found) == []
+
+
+def test_a_list_match_still_reports_absent_when_none_of_its_markers_run():
+    found, _, _ = RT.evaluate(_decl([_list_match_row("riq")]), ledger=None, live_lanes=None,
+                              cron_lines=["0 1 * * * cd $PROJ && $PY scripts/other.py"], n8n_active=None)
+    assert _codes(found) == [("ACTIVE_CRON_LINE_ABSENT", "riq")]
+    # the finding names the markers, not a str() repr of the list
+    assert found[0]["evidence"]["match"] == RIQ_MARKERS
+
+
+def test_a_list_match_on_a_retired_row_reports_the_live_line():
+    found, _, _ = RT.evaluate(_decl([_list_match_row("riq", state="RETIRED")]), ledger=None, live_lanes=None,
+                              cron_lines=RIQ_LINES, n8n_active=None)
+    assert _codes(found) == [("DECLARED_OFF_CRON_LINE_ACTIVE", "riq")]
+    assert found[0]["evidence"]["lines"] == 2
+
+
+def test_a_list_match_feeds_the_cutover_rule_too():
+    row = _row("cut", expression="dispatcher", stage="cutover")
+    row["scheduler"]["match"] = list(RIQ_MARKERS)
+    found, _, _ = RT.evaluate(_decl([row]), ledger=None, live_lanes=None, cron_lines=RIQ_LINES,
+                              n8n_active=["tradeai-dispatcher"])
+    assert _codes(found) == [("CUTOVER_CRON_LINE_ACTIVE", "cut")]
+
+
+def test_the_checker_and_the_reconciler_agree_on_a_list_match():
+    # the same row read by the two readers: the registry row that made the checker wrong.
+    row = REG["research-intelligence-queue"]
+    assert isinstance(row["scheduler"]["match"], list)
+    assert RT._match_markers(row["scheduler"]) == [m for m in row["scheduler"]["match"] if m.strip()]
+    from scripts.reconcile_lane_registry import declarations
+    assert set(RT._match_markers(row["scheduler"])) <= set(declarations(row))
+
+
 def test_effect_ownership_drift():
     parent = _row("parent", kind="cron", expression="20 11 * * *", stage=None,
                   effect_ownership={"n8n_owned_steps": {"a": "lane-a", "b": "lane-b"},
