@@ -40765,6 +40765,230 @@
       },
       "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     }
+  ,
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "warm-read-endpoints",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Warm the API's in-process caches after a release restart so the first operator page load does not pay 13-52 s of cold computation",
+        "business_function": "monitoring",
+        "source": "LQ-20261107-266 (lead assign; proposed by cc-sonnet-2 in LQ-20261107-259)"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/warm_read_endpoints.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_warm_read_endpoints.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (safe_flock)"
+        },
+        {
+          "name": "~/.local/state/tradeai/portfolio_server_boot.json",
+          "kind": "file",
+          "direction": "read",
+          "source": "written by scripts/portfolio_server.py PortfolioServerBoot@v1 at startup (restart signal)"
+        },
+        {
+          "name": "GET /api/v2/system/control-plane-surface-authority",
+          "kind": "read_api",
+          "direction": "calls",
+          "source": "scripts/warm_read_endpoints.py ENDPOINTS[0]"
+        },
+        {
+          "name": "GET /api/v2/cio/pages",
+          "kind": "read_api",
+          "direction": "calls",
+          "source": "scripts/warm_read_endpoints.py ENDPOINTS[1]"
+        },
+        {
+          "name": "GET /api/v2/jobs-catalog",
+          "kind": "read_api",
+          "direction": "calls",
+          "source": "scripts/warm_read_endpoints.py ENDPOINTS[2]"
+        },
+        {
+          "name": "GET /api/v2/jobs-history",
+          "kind": "read_api",
+          "direction": "calls",
+          "source": "scripts/warm_read_endpoints.py ENDPOINTS[3]"
+        },
+        {
+          "name": "GET /api/v2/risk",
+          "kind": "read_api",
+          "direction": "calls",
+          "source": "scripts/warm_read_endpoints.py ENDPOINTS[4]"
+        },
+        {
+          "name": "data/runtime/warm_read_endpoints_state.json",
+          "kind": "state",
+          "direction": "write",
+          "source": "boot identity + cycle count the next fire decides from"
+        },
+        {
+          "name": "data/runtime/warm-read-endpoints_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_every_fire",
+          "text": "every fire ends with a LaneRunReceipt@v2 carrying a decision (restart/still_in_window/window_closed/cycle_cap/too_soon/boot_stamp_unreadable)"
+        },
+        {
+          "check": "no_http_when_nothing_to_do",
+          "text": "a fire whose decision is not restart/still_in_window performs no HTTP request (produced_count 0, empty_reason already_warm)"
+        },
+        {
+          "check": "warm_after_restart",
+          "text": "within one cadence of a server restart the first fire warms all five targets and reports produced_count == 5"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 336.0 s (80% of timeout_s 420)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "partial_warm",
+          "text": "a warm run has 1-4 targets answering 200 (skipped_reasons names the failures); the state file is not advanced, so the next fire retries"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 336.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (min_produced, already_warm allowed), or skipped for a fatal reason -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "stale",
+          "text": "no receipt for 1 h (120x the 2 min cadence): the lane is not being dispatched"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 1,
+        "freshness_failed_after_h": 2,
+        "freshness_rule": "degraded beyond 1 h, failed beyond 2 h (a */2 lane that stops firing is silent)",
+        "timeout_s": 420,
+        "class": "monitor",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no finished live runs yet; class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 336.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "a warm-up lane: its failure costs a slow first page load, not a wrong number",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py",
+        "enforced": "not read at runtime yet (the bridge derives severity from the registry row)"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": "a failed warm is retried by the next fire; nothing to repair automatically"
+      },
+      "evidence": {
+        "receipt": "data/runtime/warm-read-endpoints_last.json",
+        "verify": [
+          "python3 -c \"import sqlite3; c=sqlite3.connect('file:data/governance/n8n_coordination_ledger.sqlite?mode=ro', uri=True); print(*c.execute(\\\"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='warm-read-endpoints' ORDER BY requested_at DESC LIMIT 10\\\").fetchall(), sep=chr(10))\"",
+          "jq '{status, produced_count, empty_reason, decision: .summary.decision, endpoints: .summary.endpoints}' data/runtime/warm-read-endpoints_last.json",
+          "grep '\\[slow-request\\]' logs/portfolio_server.log | tail: after a warm the first post-restart load no longer appears there"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted; prove work with the ledger and the receipt",
+        "expected_output_basis": "scripts/warm_read_endpoints.py writes produced_count = number of targets answering 200, and empty_reason already_warm when the fire correctly did nothing"
+      },
+      "review_by": "2026-12-07",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "reviewed read-only endpoints answered 200 by one warm run",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable",
+          "all_endpoints_failed"
+        ],
+        "empty_allowed_reasons": [
+          "already_warm"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/warm-read-endpoints_last.json produced_count and summary.endpoints[] (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/warm-read-endpoints/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "cc-deepseek-2 LQ-20261107-266",
+        "reviewed_by": "cc-deepseek-2, the author, against scripts/warm_read_endpoints.py (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews the bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
+        "reviewed_on": "2026-11-07"
+      }
+    }
   ],
   "pending_changes": {
     "w8-writer-restoration-20261024": {

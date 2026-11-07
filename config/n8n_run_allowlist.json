@@ -5697,6 +5697,28 @@
       "env_evidence": "SOURCE_ONLY: the live path imports db_adapter (DB_* via the shared loader); the --dry-run path returns before any env, DB or network read. Full real-run import closure NOT_MEASURED.",
       "source": "LQ-20261107-20 overnight onboarding wave (2026-11-07). Both live cron lines already carry flock -n /tmp/ri_research_queue_cron.lock; no crontab edit needed. `--drain` writes the LaneRunReceipt (research_intelligence_queue.py), `--dry-run` returns before any env/DB read. SHADOW ONLY: live_arg null, dispatch.mode dry_run, scheduler.stage shadow. | CW0 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--drain', '--cap', '10'], lock = the cron flock lock /tmp/ri_research_queue_cron.lock (shared: the lock proves no double run)."
     }
+  ,
+    {
+      "lane_id": "warm-read-endpoints",
+      "env_names": [],
+      "command": [
+        "$PY",
+        "scripts/warm_read_endpoints.py"
+      ],
+      "lock": "/tmp/tradeai_warm_read_endpoints.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 420,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/warm-read-endpoints_last.json",
+      "source": "LQ-20261107-266: after a release restart the first /api/v2/system/control-plane-surface-authority call cost 15-16 s and the first Ops load 28-52 s (logs/portfolio_server.log [slow-request]). The lane reads the server boot stamp (~/.local/state/tradeai/portfolio_server_boot.json) and, when the pid/started_at differ from the last warm or the 10 min window is open, GETs five reviewed read-only endpoints. GET-only, loopback-only, no action route; writes data/runtime/warm_read_endpoints_state.json and a produced_count receipt. Dry run prints the plan and writes nothing.",
+      "review_note": "mirror of scripts/warm_read_endpoints.py ENDPOINTS; env_names is empty because the script reads no credential: lib.cc_client attaches the loopback service token from config/cc_auth.yaml itself, the same way every other loopback caller does. HOME is in CHILD_ENV_BASE_NAMES so the boot stamp path resolves."
+    }
   ],
   "blocked_reasons": {
     "n8n-activation-grants": "AGENTS 3.0.0 §23.10 P16 read-only checker (scripts/check_n8n_activation_grants.py). Blocked 2026-10-09 by the allowlist's own safety test: the command path, the receipt name n8n_activation_grants_last.json and any natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant'. The check is read-only, but renaming the entrypoint to dodge the token or exempting it is an operator decision, not an agent's. Registry row NEVER_SCHEDULED; no workflow generated.",

@@ -27369,6 +27369,42 @@
       "note": "Observed systemctl --user 2026-11-07: tradeai-deploy-on-main.timer UnitFileState=enabled, ActiveState=inactive (No next elapse); tradeai-deploy-on-main.service ActiveState=failed, UnitFileState=disabled. Promote-only poller (deploy_on_main_poll.py writes one receipt per poll under data/runtime/deploy_on_main). Merge-deploy control is a held class: OUT OF SCOPE to start, enable or repair - reported to the lead.",
       "state_reason": "2026-11-07: the scheduler is the .timer unit (OnCalendar=*:0/2, UnitFileState=enabled), not the .service it starts; declaring the .service left the timer an undeclared unit and the disabled, failed service a phantom orphan. Declared state is unchanged - the timer is enabled but active=inactive/dead and its service has been failed since 2026-10-26T14:10Z, which the census reports as RUN_FAILED."
     }
+  ,
+    {
+      "lane_id": "warm-read-endpoints",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/warm_read_endpoints.py",
+        "cadence": "*/2 * * * *",
+        "stage": "shadow",
+        "wave": "W3"
+      },
+      "expected_cadence_hours": 0.03,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/warm-read-endpoints_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Technical",
+      "adopted_from": "hand-written LQ-20261107-266 (restart warm, not a poll)",
+      "adopted_on": "2026-11-07",
+      "adopted_reason": "The lane is a hand-designed n8n lane, not a reconciled cron row: a release restart empties the API's in-process caches and the first page load pays 13-52 s (measured [slow-request] lines in logs/portfolio_server.log at the 2026-11-07T20:47:57Z and 2026-11-07T20:59:59Z restarts). It reads the server boot stamp and warms only after a restart, then keeps the 60 s caches hot for 10 min.",
+      "note": "Shadow first: dispatch.mode dry_run, live_arg --apply. Every fire writes a LaneRunReceipt@v2 with produced_count (endpoints that answered 200) and empty_reason already_warm when it has nothing to do.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/2 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W3",
+        "class": "monitor",
+        "priority": 4,
+        "retry_policy": "transient-2"
+      }
+    }
   ],
   "freshness_contracts": [
     {
