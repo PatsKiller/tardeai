@@ -58,6 +58,36 @@ def load_yaml_or_json_file(path):
         return json.loads(text)
 
 
+def fetch_config_document(config_key):
+    """DB-only read that RAISES when the store is unreachable.
+
+    ``get_config`` swallows every exception and falls through to a file, which makes "Postgres is
+    down" indistinguishable from "this key has no row" — a caller that must name which tier
+    answered (scripts/lib/hermes_score_weights.py, operator rule 2026-11-07) cannot use it.
+    Returns the parsed content, or None when the key is absent.
+    """
+    conn = _get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT content FROM config_documents WHERE config_key = %s AND active = true",
+            (config_key,),
+        )
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return None
+        return row[0] if isinstance(row[0], (dict, list)) else json.loads(row[0])
+    except Exception as exc:
+        try:
+            conn.close()
+        except Exception as close_exc:
+            # The read error is the one the caller must see; a failed close is named on it rather
+            # than swallowed, so the log does not hide a second fault behind the first.
+            exc.add_note(f"connection close also failed: {type(close_exc).__name__}: {close_exc}")
+        raise
+
+
 def get_config(config_key, fallback_path=None, required=False):
     """
     DB-first config read. Falls back to file if not in DB.

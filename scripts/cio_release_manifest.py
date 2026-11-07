@@ -500,11 +500,13 @@ def build_manifest(*, note: str = "") -> dict[str, Any]:
         "notes": notes,
         "hermes_score_weights_ownership": {
             "path": "config/hermes_score_weights.yaml",
-            "classification": "runtime_state_with_release_seed",
+            "classification": "release_seed_only",
             "rule": (
-                "Seed defaults may be version-controlled; auto_grafted_at and live weight "
-                "mutations are runtime state and may dirty the worktree. Do not treat "
-                "runtime grafts as undeclared source drift without an ownership note."
+                "This file is the git SEED and nothing writes it (LQ-20261107-55, 2026-11-07). "
+                "The live, learned weights are runtime state in the DB config_documents row "
+                "hermes_score_weights, mirrored to persistent-state/data/hermes/"
+                "hermes_score_weights.yaml (lib.hermes_score_weights). Readers resolve DB first. "
+                "A release resetting this file to the seed is a no-op for the live weights."
             ),
         },
         "branch_protection": {

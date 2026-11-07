@@ -37,8 +37,12 @@ together ~157K rows/day → ~3-6K. One weighted 0-100 score per name, ranked hig
 | news_catalyst | verified catalyst presence |
 | risk_reward | target/stop from watchlist_strategy_cards |
 
-- **Weights** live in `config/hermes_score_weights.yaml` — auto-grafted only by the outcome-gated
-  loop (see H-4).
+- **Weights** are runtime state, so they live outside the release tree: the live document is the
+  `config_documents` row `hermes_score_weights` (Postgres, system of record), mirrored to
+  `persistent-state/data/hermes/hermes_score_weights.yaml` for a DB outage. The tracked
+  `config/hermes_score_weights.yaml` is a read-only SEED that every release resets — never the live
+  store, and nothing writes it. Every reader and the tuner resolve through
+  `scripts/lib/hermes_score_weights.py`. Auto-grafted only by the outcome-gated loop (see H-4).
 - **No fabrication:** missing factors are dropped and remaining weights re-normalized.
 - **Coverage-confidence penalty:** `composite = raw * (0.55 + 0.45 * coverage)` so a name strong across
   many dimensions beats a thin 2-factor RVOL pop. Confidence = `0.4 + 0.6*coverage`.
@@ -131,7 +135,7 @@ Each loop below is **automated** (no human in the loop inside its rails), reads 
 
 | # | Outcome signal | What it changes | Where enforced | Audit trail | Gate / state |
 |---|---|---|---|---|---|
-| 1 | 20-session excess return + realized R per factor | live scoring weights (`config/hermes_score_weights.yaml`) | `hermes_outcome_learning.py` → `hermes_autonomous_self_tune.py` graft (additive ±0.02, ≥5 eligible days/14, 0.10 weekly drift cap, shadow-beats-live) | `hermes_weight_calibration` + `hermes_autotune_audit` | n≥10 hi + n≥10 lo graded pairs per factor |
+| 1 | 20-session excess return + realized R per factor | live scoring weights (Postgres `config_documents:hermes_score_weights`, persistent-state mirror) | `hermes_outcome_learning.py` → `hermes_autonomous_self_tune.py` graft (additive ±0.02, ≥5 eligible days/14, 0.10 weekly drift cap, shadow-beats-live) | `hermes_weight_calibration` + `hermes_autotune_audit` + `config_document_history` | n≥10 hi + n≥10 lo graded pairs per factor |
 | 2 | promotion precision per research_type | auto-promote confidence gate | coordinator promote query joins `hermes_promotion_thresholds` | table rows w/ reason + `hermes_promotion_audit` | n≥10/type (live: momentum_catalyst 0.32 → 0.75 gate) |
 | 3 | per-domain actioned yield | `research_sources.active` (research depth by source) | `hermes_outcome_learning.py`; nightly curation cannot override (`OUTCOME_LEDGER` markers) | `notes` markers | n≥10/domain (live: 8 retired) |
 | 4 | per-lane rec hit-rate | external lane rotation weight (grok vs chatgpt) | `research_scheduler._lane_rotation()` (0.15 floor) | `hermes_lane_usefulness` | ≥30 graded recs (pending ~Jul 16) |

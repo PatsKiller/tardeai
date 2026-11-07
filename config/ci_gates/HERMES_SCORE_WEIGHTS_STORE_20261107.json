@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_SCORE_WEIGHTS_STORE_20261107",
+  "files": [
+    "tests/test_hermes_score_weights_store_20261107.py"
+  ],
+  "anchor": "HERMES_SCORE_WEIGHTS_STORE_20261107",
+  "comment": [
+    "ANCHOR: HERMES_SCORE_WEIGHTS_STORE_20261107 — LQ-20261107-55 / LQ-20261107-187. The tuner wrote its",
+    "learned factor weights into config/hermes_score_weights.yaml inside the release directory, so every",
+    "promote replaced them with the v9 git seed: the served weights stayed at 2026-08-13 while the newest",
+    "surviving learned graft was v20 (2026-11-01), and 42 audited grafts were lost. The fix moves the live",
+    "store to config_documents (system of record) with a persistent-state mirror written after the DB; the",
+    "release YAML is a read-only seed. This file pins the ladder (DB > mirror > seed), that an unreadable",
+    "tier is named and skipped rather than flattened into a plausible default, that the DB is written before",
+    "the mirror, that the seed is never written, and that every reader (scorer, calibration, outcome",
+    "learning, self-tune writer) resolves through the store.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}

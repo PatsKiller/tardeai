@@ -101,10 +101,19 @@ def _weights():
     try:
         import yaml
         profile = (os.getenv("HERMES_WEIGHTS_PROFILE") or "").strip().lower()
-        path = SCALP_WEIGHTS_FILE if profile == "scalp" and SCALP_WEIGHTS_FILE.exists() else WEIGHTS_FILE
-        w = (yaml.safe_load(path.read_text()) or {}).get("weights", {})
+        if profile == "scalp" and SCALP_WEIGHTS_FILE.exists():
+            # A static operator-authored profile — not learned, so it stays with the release.
+            w = (yaml.safe_load(SCALP_WEIGHTS_FILE.read_text()) or {}).get("weights", {})
+        else:
+            # LIVE weights: config_documents (system of record) → persistent-state mirror → git seed.
+            # LQ-20261107-55: reading the release-tree config here kept the scorer on the v9 seed while
+            # the tuner wrote v20 into a file the next promote replaced.
+            from lib.hermes_score_weights import load
+            w = load(seed=WEIGHTS_FILE)[0].get("weights", {})
         return {k: float(v) for k, v in w.items()} if w else {}
-    except Exception:
+    except Exception as exc:  # noqa: BLE001  -- the failure is printed before any default is used, so it is never silent
+        print(f"[scorer] WARN factor weights unavailable ({type(exc).__name__}: {exc}); "
+              f"using built-in defaults", file=sys.stderr)
         return {"technical_momentum": .2, "setup_quality": .18, "analyst": .16,
                 "social_sentiment": .12, "sector_strength": .12, "news_catalyst": .12, "risk_reward": .1}
 

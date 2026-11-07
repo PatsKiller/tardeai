@@ -26536,13 +26536,13 @@
           "source": "config/n8n_run_allowlist.json lock (flock) = the cron step's lock"
         },
         {
-          "name": "hermes_weight_calibration, hermes_autotune_audit, config/hermes_score_weights.yaml",
+          "name": "hermes_weight_calibration, hermes_autotune_audit, config_documents:hermes_score_weights (live weights; LQ-20261107-55 moved them out of the release tree)",
           "kind": "inventory_text",
           "direction": "read",
           "source": "scripts/hermes_autonomous_self_tune.py module docstring source reads (DRAFT: free text)"
         },
         {
-          "name": "config/hermes_score_weights.yaml (+ data/runtime/weight_grafts archive), hermes_autotune_audit rows; self-purge: UPDATE hermes_advisory_events / hermes_embedding_queue, archive-first DELETE (lib.retention_archive.managed_purge) on hermes_embedding_queue, hermes_score_history, hermes_research_intelligence, hermes_external_research, watchlist_research_results, watchlist_research_queue, proposal_research_packets; LaneRunReceipt@v2",
+          "name": "config_documents:hermes_score_weights (DB first) + persistent-state/data/hermes/hermes_score_weights.yaml mirror (+ data/runtime/weight_grafts archive), hermes_autotune_audit rows; the release-tree config/hermes_score_weights.yaml is a read-only SEED and is never written; self-purge: UPDATE hermes_advisory_events / hermes_embedding_queue, archive-first DELETE (lib.retention_archive.managed_purge) on hermes_embedding_queue, hermes_score_history, hermes_research_intelligence, hermes_external_research, watchlist_research_results, watchlist_research_queue, proposal_research_packets; LaneRunReceipt@v2",
           "kind": "inventory_text",
           "direction": "write",
           "source": "scripts/hermes_autonomous_self_tune.py module docstring source writes (live only; the dry run writes nothing) (DRAFT: free text)"

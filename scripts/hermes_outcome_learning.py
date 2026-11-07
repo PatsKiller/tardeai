@@ -49,8 +49,10 @@ def _conn():
 
 
 def _live_weights():
-    import yaml
-    return {k: float(v) for k, v in (yaml.safe_load(WEIGHTS_FILE.read_text()) or {}).get("weights", {}).items()}
+    """The weights the scorer actually ranks with: config_documents → persistent-state mirror → git
+    seed (LQ-20261107-55). The release-tree config is only the seed, never the reader's source."""
+    from lib.hermes_score_weights import load
+    return load(seed=WEIGHTS_FILE)[0]["weights"]
 
 
 # ── 3.1 weights ───────────────────────────────────────────────────────────────

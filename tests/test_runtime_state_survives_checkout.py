@@ -110,12 +110,15 @@ def test_the_guard_runs_after_its_helpers_are_defined():
 
 # ── a graft is archived before it can be lost ───────────────────────────────
 
-def test_grafts_are_archived_before_the_live_file_is_rewritten():
+def test_grafts_are_archived_before_the_live_store_is_rewritten():
+    """LQ-20261107-55: the live store is no longer the release-tree config — the graft goes to
+    config_documents + the persistent-state mirror — so the archive must precede _save_weights."""
     src = TUNER.read_text(encoding="utf-8")
     assert "_archive_graft" in src
     archive_at = src.index("archived = _archive_graft(doc)")
-    write_at = src.index("WEIGHTS_FILE.write_text")
+    write_at = src.index("write = _save_weights(doc")
     assert archive_at < write_at, "archived after the write is not a backup"
+    assert "WEIGHTS_FILE.write_text" not in src, "the frozen release seed is a write target again"
 
 
 def test_the_archive_survives_the_checkout_that_causes_the_problem():

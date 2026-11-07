@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """hermes_score_calibration.py — H-4: learn which factors actually predicted forward returns and
-propose weight adjustments (the feedback loop). ADVISORY — writes hermes_weight_calibration; the
-operator applies changes to config/hermes_score_weights.yaml (never auto-edits live weights).
+propose weight adjustments (the feedback loop). ADVISORY — writes hermes_weight_calibration;
+the tuner auto-grafts the eligible suggestions into the live store (config_documents key
+hermes_score_weights, mirrored under persistent-state — lib.hermes_score_weights), never into the
+release tree's config/hermes_score_weights.yaml, which is only the git seed.
 
 Method (transparent, no heavy deps):
   * pair each score snapshot with a LATER snapshot of the same symbol (>= MIN_HOURS later) → forward return
@@ -31,10 +33,15 @@ def _conn():
 
 
 def _weights():
+    """Current live weights — suggestions are computed as a move FROM these, so reading the old
+    release seed here would propose deltas against weights the scorer does not use
+    (LQ-20261107-55: config_documents → persistent-state mirror → git seed)."""
     try:
-        import yaml
-        return {k: float(v) for k, v in (yaml.safe_load(WEIGHTS_FILE.read_text()) or {}).get("weights", {}).items()}
-    except Exception:
+        from lib.hermes_score_weights import load
+        return load(seed=WEIGHTS_FILE)[0]["weights"]
+    except Exception as exc:  # noqa: BLE001  -- the failure is printed before any default is used, so it is never silent
+        print(f"[calibration] WARN live weights unavailable ({type(exc).__name__}: {exc}); "
+              f"using equal weights — suggestions this run are advisory only", file=sys.stderr)
         return {f: 1.0 / len(FACTORS) for f in FACTORS}
 
 

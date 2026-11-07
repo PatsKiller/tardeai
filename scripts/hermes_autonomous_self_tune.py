@@ -4,8 +4,11 @@
 Operator chose full autonomy (minimal gates, audit-only). This closes the two open legs:
 
   SELF-LEARNING (auto-graft): take the latest H-4 calibration suggestions from hermes_weight_calibration
-  and write them straight into config/hermes_score_weights.yaml (the live factor weights the scorer
-  reads). Previously the operator hand-grafted these. Now automatic, every run, audited.
+  and graft them into the live factor weights the scorer reads. Previously the operator hand-grafted
+  these. Now automatic, every run, audited. Since 2026-11-07 (LQ-20261107-55) the graft is stored
+  DB-first in config_documents (key ``hermes_score_weights``) with a persistent-state mirror
+  (lib.hermes_score_weights) — NOT in the release tree's config/hermes_score_weights.yaml, which every
+  release resets to the git seed and which had already swallowed 42 audited grafts.
 
   SELF-PURGE: prune stale pipeline state so cruft can't accumulate (the class of failure that left a
   queue jammed 2 weeks and 653 embeddings failed) — stale queues, failed embeddings, aged
@@ -42,22 +45,20 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+#: The git SEED. Never written (LQ-20261107-55): every release resets it to v9, which is why the
+#: learned weights live in config_documents + the persistent-state mirror (lib.hermes_score_weights).
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
 
-# Each graft is archived before the live file is rewritten.
+# Each graft is archived before the live store is rewritten.
 #
-# WHY: cio_release_manifest classifies this file "runtime_state_with_release_seed" —
-# the tracked copy is a SEED, the live weights are runtime state learned from the
-# outcome ledger. Nothing enforced that classification, so the file stayed an
-# ordinary tracked config that `git checkout` silently reverts to the seed. On
-# 2026-09-06 a routine fast-forward of the executing tree did exactly that, and only
-# an out-of-band backup preserved v11 — nine grafts of learning.
-#
-# skip-worktree on the executing clone stops the clobber, but it is invisible local
-# state that any fresh clone or `--no-skip-worktree` drops. This archive is the
-# durable half: a lost graft can always be recovered from here. It lives under
-# data/runtime, which is gitignored, so it survives the checkout that causes the
-# problem in the first place.
+# WHY: the live weights are runtime state learned from the outcome ledger; the tracked
+# config is only a SEED. On 2026-09-06 a fast-forward of the executing tree reverted the
+# live file to that seed, and only an out-of-band backup preserved v11 — nine grafts of
+# learning. skip-worktree (the 2026-09 mitigation) stopped that clobber but is invisible
+# local state that any fresh clone drops, and every release still replaced the tree.
+# 2026-11-07 (LQ-20261107-55): the live store moved to config_documents + persistent-state,
+# where a release cannot reach it. This archive remains the post-mortem copy beside every
+# graft; a lost store can always be rebuilt from here.
 GRAFT_ARCHIVE_DIR = Path(
     os.getenv("HERMES_WEIGHT_GRAFT_ARCHIVE",
               str(PROJECT_ROOT / "data" / "runtime" / "weight_grafts"))
@@ -96,6 +97,18 @@ DEAD_TABLES = [t.strip() for t in os.getenv(
 def _conn():
     from db_adapter import _get_conn
     return _get_conn()
+
+
+def _load_weights() -> tuple[dict, str]:
+    """Live weights: config_documents → persistent-state mirror → release seed (LQ-20261107-55)."""
+    from lib.hermes_score_weights import load
+    return load(seed=WEIGHTS_FILE)
+
+
+def _save_weights(doc: dict, *, notes: str) -> dict:
+    """Store the graft where a release cannot overwrite it; the frozen release file is never written."""
+    from lib.hermes_score_weights import save
+    return save(doc, changed_by="hermes_autonomous_self_tune", notes=notes, seed=WEIGHTS_FILE)
 
 
 class LearnOnlyViolation(RuntimeError):
@@ -145,7 +158,6 @@ def auto_graft_weights(cur, apply: bool, *, audit_present: bool = True) -> dict:
 
     ``audit_present`` False (a dry run on a database that never had the audit table): the weekly drift reads 0
     instead of querying a table the read-only session may not create."""
-    import yaml
     # persistence gate: eligible outcome suggestions on >= N distinct days in the window
     cur.execute("""SELECT count(DISTINCT created_at::date) FROM hermes_weight_calibration
                    WHERE rationale LIKE 'OUTCOME_LEDGER|eligible=1%%'
@@ -175,7 +187,10 @@ def auto_graft_weights(cur, apply: bool, *, audit_present: bool = True) -> dict:
     rows = cur.fetchall()
     if not rows:
         return {"status": "no_outcome_suggestions"}
-    doc = yaml.safe_load(WEIGHTS_FILE.read_text()) or {}
+    doc, source = _load_weights()
+    if source != "config_documents":
+        print(f"  WARN weights answered by {source} — the DB store is not serving "
+              f"(see lib.hermes_score_weights.resolve() for the named errors)", file=sys.stderr)
     cur_w = dict(doc.get("weights") or {})
     new_w = dict(cur_w)
     changes = []
@@ -200,9 +215,12 @@ def auto_graft_weights(cur, apply: bool, *, audit_present: bool = True) -> dict:
         doc["auto_grafted_at"] = datetime.now(timezone.utc).isoformat()
         doc["graft_source"] = "outcome_ledger"
         archived = _archive_graft(doc)
-        WEIGHTS_FILE.write_text(yaml.safe_dump(doc, sort_keys=False))
+        write = _save_weights(doc, notes=f"auto_graft v{doc['version']} (from {source})")
         if archived:
             print(f"  graft archived -> {archived}")
+        print(f"  graft stored -> db={write['db'] or write['db_error']} "
+              f"mirror={write['mirror'] or write['mirror_error']} checksum={write['checksum']} "
+              f"seed untouched={not write['wrote_seed']}")
         _audit(cur, "auto_graft_weights_outcome",
                {"changes": changes, "new_weights": new_w, "eligible_days": eligible_days,
                 "drift_7d_before": float(drift_7d or 0)}, len(changes))

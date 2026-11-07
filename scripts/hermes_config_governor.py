@@ -168,13 +168,13 @@ def detect(cur, apply) -> list:
                 cur,
                 apply,
                 target_key=f"hermes_weights.clamp_pressure.{factor}",
-                target_path="config/hermes_score_weights.yaml:weights." + factor,
+                target_path="config_documents:hermes_score_weights:weights." + factor,
                 current={"note": "live weight lags outcome suggestion by >= 2x clamp"},
                 proposed={"action": f"operator one-time graft toward suggestion for {factor}"},
                 reason=f"outcome calibration wanted |Δ|≈{float(gap):.3f} on {factor} for {days} days — the ±0.02 clamp is the binding constraint",
                 evidence={"factor": factor, "eligible_days": days, "avg_gap": float(gap)},
                 risk="weight moves affect advisory ranking only",
-                rollback="revert config/hermes_score_weights.yaml to prior version (versioned + audited)",
+                rollback="config_documents row hermes_score_weights carries config_document_history; restore the prior content there",
             )
         )
 
