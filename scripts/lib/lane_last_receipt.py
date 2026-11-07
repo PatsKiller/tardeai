@@ -24,7 +24,7 @@ a dispatcher or the registry reads instead, as a ``json_key`` signal on ``ok_at`
 :func:`enforce_readonly` puts a dry run's psycopg2 session in READ ONLY at the server.
 
 2026-10-15 (third-party audit DD07, "output truth"): ``LaneRunReceipt@v2``. A writer that passes
-``produced_count`` (and optionally ``attempted_count``, ``skipped_reasons``, ``output_evidence``,
+``produced_count`` (and optionally ``attempted_count``, ``skipped_reasons``, ``excluded_reasons``, ``output_evidence``,
 ``empty_reason``) writes schema v2: every v1 field plus those, plus the ATTEMPT identity the n8n executor hands
 the lane in its env (``TRADEAI_RUN_ID``, ``TRADEAI_RUN_ATTEMPT``, ``TRADEAI_RUN_MODE``, ``TRADEAI_CODE_SHA``).
 The mutable ``<lane>_last.json`` alone cannot prove the CURRENT attempt produced anything (a previous success or
@@ -34,6 +34,12 @@ to ``data/runtime/lane_attempts/<lane_id>/<run_id>.json`` (:func:`attempt_receip
 The process exit field is ``exit`` (not ``exit_code``) in both versions.
 
 Monitor bookkeeping only: MBI_BEHAVIOR = 0, no broker, no send.
+
+2026-11-07 (WORK-QUEUE item 26, ``news-to-catalyst``): ``excluded_reasons`` joins the v2 output block. A candidate a
+lane's identity/universe gate refuses was never ELIGIBLE -- it is not a skip the run chose, and counting it against
+``produced_count`` made a full run that created 80 rows grade "skipped 420 items, more than it produced (80)". The
+rule: a gate refusal goes in ``excluded_reasons`` (reason -> count) and is subtracted from ``attempted_count``; a
+item the lane considered and did NOT write goes in ``skipped_reasons``. Structural, not advisory.
 
 2026-11-06 (run QUALITY, ``scripts/lib/run_quality.py``): ``summary`` is free-form EVIDENCE about the run's product,
 and the run's own status is the top-level ``status`` field. So a summary must not carry a run-verdict word under
@@ -180,6 +186,7 @@ def build_receipt(
     produced_count: int | None = None,
     attempted_count: int | None = None,
     skipped_reasons: Mapping[str, int] | None = None,
+    excluded_reasons: Mapping[str, int] | None = None,
     output_evidence: list[Mapping[str, Any]] | None = None,
     empty_reason: str | None = None,
     run_id: str | None = None,
@@ -220,12 +227,14 @@ def build_receipt(
         ):
             raise ValueError("attempted_count must be an int >= 0")
         skipped = {str(k): int(v) for k, v in (skipped_reasons or {}).items() if not isinstance(v, bool)}
+        excluded = {str(k): int(v) for k, v in (excluded_reasons or {}).items() if not isinstance(v, bool)}
         doc.update(
             {
                 "schema": SCHEMA_V2,
                 "produced_count": produced_count,
                 "attempted_count": attempted_count,
                 "skipped_reasons": skipped,
+                "excluded_reasons": excluded,
                 "output_evidence": [dict(e) for e in (output_evidence or [])],
                 "empty_reason": empty_reason if produced_count == 0 else None,
             }
@@ -241,12 +250,15 @@ def build_receipt(
 #: LaneRunReceipt@v2 output fields (docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md §5), written ADDITIVELY on the
 #: v1 document: ``schema`` stays ``LaneRunReceipt@v1`` because v1 readers (system_health_freshness) match it exactly
 #: and ignore unknown keys. A health contract's ``expected_output`` rule (§6) reads ``produced_count``.
-OUTPUT_FIELDS = ("produced_count", "attempted_count", "skipped_reasons", "empty_reason", "output_evidence")
+OUTPUT_FIELDS = ("produced_count", "attempted_count", "skipped_reasons", "excluded_reasons", "empty_reason",
+                 "output_evidence")
 
 
 def output_fields(output: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Validated v2 output fields from ``output`` ({} when None). Counts are non-negative ints; skipped_reasons is
-    {reason: count}; empty_reason a string or None; output_evidence a list of dicts. Anything else is dropped."""
+    """Validated v2 output fields from ``output`` ({} when None). Counts are non-negative ints; skipped_reasons and
+    excluded_reasons are {reason: count}; empty_reason a string or None; output_evidence a list of dicts. Anything else
+    is dropped. ``excluded_reasons`` are candidates a gate refused before the run could attempt them (never eligible);
+    ``skipped_reasons`` are items the run considered and did not write."""
     if not output:
         return {}
     out: dict[str, Any] = {}
@@ -256,15 +268,16 @@ def output_fields(output: Mapping[str, Any] | None) -> dict[str, Any]:
                 out[key] = max(0, int(output[key]))
             except (TypeError, ValueError):
                 continue
-    sr = output.get("skipped_reasons")
-    if isinstance(sr, Mapping):
-        clean: dict[str, int] = {}
-        for k, v in sr.items():
-            try:
-                clean[str(k)] = max(0, int(v))
-            except (TypeError, ValueError):
-                continue
-        out["skipped_reasons"] = dict(sorted(clean.items()))
+    for key in ("skipped_reasons", "excluded_reasons"):
+        sr = output.get(key)
+        if isinstance(sr, Mapping):
+            clean: dict[str, int] = {}
+            for k, v in sr.items():
+                try:
+                    clean[str(k)] = max(0, int(v))
+                except (TypeError, ValueError):
+                    continue
+            out[key] = dict(sorted(clean.items()))
     if "empty_reason" in output:
         er = output.get("empty_reason")
         out["empty_reason"] = str(er) if er not in (None, "") else None
@@ -289,6 +302,7 @@ def write_lane_receipt(
     produced_count: int | None = None,
     attempted_count: int | None = None,
     skipped_reasons: Mapping[str, int] | None = None,
+    excluded_reasons: Mapping[str, int] | None = None,
     output_evidence: list[Mapping[str, Any]] | None = None,
     empty_reason: str | None = None,
     output: Mapping[str, Any] | None = None,
@@ -314,6 +328,7 @@ def write_lane_receipt(
             produced_count=produced_count,
             attempted_count=attempted_count,
             skipped_reasons=skipped_reasons,
+            excluded_reasons=excluded_reasons,
             output_evidence=output_evidence,
             empty_reason=empty_reason,
             output=output,

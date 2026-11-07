@@ -222,7 +222,8 @@ only when the signal is older than 3× cadence.
 |---|---|---|
 | `produced_count` | int ≥ 0 | units of business output this run produced (rows written, items processed, files emitted) — the lane defines the unit in its contract (§6) |
 | `attempted_count` | int ≥ 0 | units the run tried (so 0/0 "nothing to do" differs from 0/40 "everything skipped") |
-| `skipped_reasons` | object reason → count | every skipped unit, by typed reason (e.g. `{"no_runner": 12}`) |
+| `skipped_reasons` | object reason → count | every skipped unit, by typed reason (e.g. `{"no_runner": 12}`) — units the run considered and did not write |
+| `excluded_reasons` | object reason → count | candidates a gate refused before the run could attempt them (never eligible: a research-directive slug, a symbol outside the universe). Structural, not a skip: subtracted from `attempted_count`, never compared against `produced_count` (2026-11-07, `news-to-catalyst`) |
 | `output_evidence` | list of `{kind: store_rows | file | receipt_field | ledger_row, ref, count, as_of}` | durable artifacts that would not exist had the work not happened (§0 rule 8) |
 | `empty_reason` | string or null | when `produced_count == 0`: a typed legitimate reason (`market_closed`, `no_new_items`, …) or null |
 

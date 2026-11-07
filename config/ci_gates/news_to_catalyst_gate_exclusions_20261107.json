@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "news_to_catalyst_gate_exclusions_20261107",
+  "files": [
+    "tests/test_news_to_catalyst_gate_exclusions_20261107.py"
+  ],
+  "anchor": "NEWS_TO_CATALYST_GATE_EXCLUSIONS_20261107",
+  "comment": [
+    "ANCHOR: NEWS_TO_CATALYST_GATE_EXCLUSIONS_20261107 — a candidate refused by an identity gate",
+    "(research-directive slug, not in the ticker universe) was never eligible, so it is reported under",
+    "excluded_reasons and subtracted from attempted_count instead of counted as a skip the run chose. The",
+    "receipt writer carries the field (LaneRunReceipt@v2) and run_quality reads it as a stated structural",
+    "exclusion. A full run with gate refusals no longer grades DEGRADED for 'skipped N, more than it",
+    "produced'. Listing it schedules nothing."
+  ]
+}

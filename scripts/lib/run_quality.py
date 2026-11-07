@@ -228,9 +228,9 @@ _SUBJECT_COUNTERS = {"stale", "degraded"}
 
 
 def _typed_account(receipt: dict) -> tuple:
-    """(attempted_count, skipped_reasons) the receipt states about its own run.
+    """(attempted_count, skipped_reasons, excluded_reasons) the receipt states about its own run.
     Reads the LaneRunReceipt@v2 top-level fields, or a ``summary.output`` LaneOutput@v1 block (indicator-engine and
-    other lanes whose script prints its output block inside the summary). (None, {}) = no typed account stated."""
+    other lanes whose script prints its output block inside the summary). (None, {}, {}) = no typed account stated."""
     summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
     block = summary.get("output") if isinstance(summary.get("output"), dict) else {}
     attempted = _num(receipt.get("attempted_count"))
@@ -239,7 +239,10 @@ def _typed_account(receipt: dict) -> tuple:
     reasons = receipt.get("skipped_reasons") if isinstance(receipt.get("skipped_reasons"), dict) else {}
     if not reasons and isinstance(block.get("skipped_reasons"), dict):
         reasons = block["skipped_reasons"]
-    return attempted, reasons
+    excluded = receipt.get("excluded_reasons") if isinstance(receipt.get("excluded_reasons"), dict) else {}
+    if not excluded and isinstance(block.get("excluded_reasons"), dict):
+        excluded = block["excluded_reasons"]
+    return attempted, reasons, excluded
 
 
 def receipt_flags(receipt: dict | None, count=None) -> list[str]:
@@ -248,7 +251,7 @@ def receipt_flags(receipt: dict | None, count=None) -> list[str]:
         return []
     flags = []
     summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
-    attempted, _ = _typed_account(receipt)
+    attempted, _, _ = _typed_account(receipt)
 
     def truthy(v):
         return (v is True) or (_num(v) is not None and v > 0) or (isinstance(v, (list, dict)) and len(v) > 0) or \
@@ -301,7 +304,7 @@ def subject_notes(receipt: dict | None) -> list[str]:
     if not receipt:
         return []
     summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
-    attempted, reasons = _typed_account(receipt)
+    attempted, reasons, _ = _typed_account(receipt)
     notes = []
     for key, value in summary.items():
         k = str(key).lower()
@@ -313,6 +316,26 @@ def subject_notes(receipt: dict | None) -> list[str]:
                      + (f" ({why})" if why else "")
                      + " — how many items it selected or scored that way, not a run defect")
     return notes
+
+
+def excluded_notes(receipt: dict | None) -> list[str]:
+    """Plain-English notes for candidates a gate refused before the run could attempt them.
+
+    A gate refusal is structural: the item was never eligible, so it is neither produced nor skipped, and counting it
+    against ``produced_count`` graded a healthy full run DEGRADED ("skipped 420 items, more than it produced (80)",
+    news-to-catalyst, 2026-11-07). It rides ``checks`` as a pass and never grades the run DEGRADED; the operator still
+    sees the account. A lane that reports these in ``skipped_reasons`` instead is flagged — that is the defect."""
+    if not receipt:
+        return []
+    attempted, _, excluded = _typed_account(receipt)
+    excluded = {k: v for k, v in excluded.items() if _num(v)}
+    if not excluded:
+        return []
+    why = ", ".join(f"{r} = {v:g}" for r, v in excluded.items())
+    total = sum(excluded.values())
+    if attempted is None:
+        return [f"structurally excluded {total:g} candidates ({why}) — never eligible, not skips"]
+    return [f"structurally excluded {total:g} of {attempted + total:g} candidates ({why}) — never eligible, not skips"]
 
 
 # ── grading (pure) ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -590,6 +613,9 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     notes = subject_notes(receipt) if same_receipt else []
     if notes:
         checks["subject_outcomes"] = _check("pass", None, "; ".join(notes))
+    excluded_notes_ = excluded_notes(receipt) if same_receipt else []
+    if excluded_notes_:
+        checks["excluded_candidates"] = _check("pass", None, "; ".join(excluded_notes_))
     degraded += flags
     if count is not None and median and len(past) >= MIN_COUNT_HISTORY and count < COUNT_DROP * median:
         degraded.append(f"item count {count:g} is {100 * (1 - count / median):.0f}% below its median {median:g} "

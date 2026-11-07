@@ -181,17 +181,24 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
             is_research_directive_slug = None  # type: ignore
 
     created = []
-    skipped = {"research_directive_slug": 0, "not_in_ticker_universe": 0, "already_present": 0}
+    # Two accounts, because they mean different things: a gate refusal is a candidate that was never ELIGIBLE (the
+    # lane did not choose to skip it — a research-directive slug is not a symbol), while ``skipped`` is a candidate
+    # the lane considered and did not write. Counting them together made a full run that created 80 rows grade
+    # "skipped 420 items, more than it produced (80)" (WORK-QUEUE item 26).
+    excluded = {"research_directive_slug": 0, "not_in_ticker_universe": 0}
+    skipped = {"already_present": 0}
+    attempted = 0
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
         # Filter BEFORE classify/LLM spend — junk must not reach identity later.
         if is_research_directive_slug is not None and is_research_directive_slug(symbol):
-            skipped["research_directive_slug"] += 1
+            excluded["research_directive_slug"] += 1
             continue
         if gate_catalyst_symbol is not None:
             ok, reason = gate_catalyst_symbol(symbol)
             if not ok:
-                skipped["not_in_ticker_universe"] += 1
+                excluded["not_in_ticker_universe"] += 1
                 continue
+        attempted += 1
 
         if _cc:
             # a dry run never spends the LLM budget: deterministic classification only
@@ -256,41 +263,59 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
             "candidates": len(rows),
             "created": 0 if dry_run else len(created),
             "would_create": len(created) if dry_run else None,
+            "attempted": attempted,
             "skipped": skipped,
+            "excluded": excluded,
             "catalysts": created,
         }, default=str))
     else:
         print(f"[news_to_catalyst] {verb} {len(created)} catalyst events from unprocessed news.")
-        print(f"[news_to_catalyst] Skipped research_directive_slug={skipped['research_directive_slug']} "
-              f"not_in_ticker_universe={skipped['not_in_ticker_universe']}")
+        print(f"[news_to_catalyst] Skipped already_present={skipped['already_present']}")
+        print(f"[news_to_catalyst] Excluded (never eligible) research_directive_slug="
+              f"{excluded['research_directive_slug']} not_in_ticker_universe={excluded['not_in_ticker_universe']}")
         for c in created[:20]:
             print(f"  {c['symbol']:>8} | {c['catalyst_type']:<20} | sev={c['severity']:<6} | score={c['impact_score']}")
         if len(created) > 20:
             print(f"  ... and {len(created) - 20} more")
-    return {"candidates": len(rows), "created": 0 if dry_run else len(created),
-            "would_create": len(created) if dry_run else None, "skipped": dict(skipped)}
+    return {"candidates": len(rows), "attempted": attempted,
+            "created": 0 if dry_run else len(created),
+            "would_create": len(created) if dry_run else None,
+            "skipped": dict(skipped), "excluded": dict(excluded)}
 
 
 def lane_output(summary: dict) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows inserted into catalyst_events).
 
-    produced = catalyst rows created this run; attempted = news articles with no linked catalyst (the query's rows).
+    produced = catalyst rows created this run; attempted = candidates that passed the identity gates (the query's rows
+    minus the gate refusals); excluded_reasons = candidates a gate refused, which were never eligible.
+
     The receipt only carried ``summary.candidates``/``summary.created``, so an empty run said "produced nothing" and
     nothing about why (2026-11-06, WORK-QUEUE item 26). An empty run now names its own kind of empty: no unprocessed
     article at all (``no_unprocessed_news``), every candidate already had its catalyst row (``already_present``), or
-    every candidate was refused by an identity gate (``no_eligible_candidates``)."""
+    every candidate was refused by an identity gate (``no_eligible_candidates``).
+
+    2026-11-07: the gate refusals are reported under ``excluded_reasons`` and subtracted from ``attempted_count``. Left
+    in ``skipped_reasons`` they were read as skips the run CHOSE, and a normal full run (500 candidates, 420 refused
+    as research-directive slugs, 80 created) graded DEGRADED for "skipped 420 items, more than it produced (80)"."""
     created, candidates = int(summary.get("created") or 0), int(summary.get("candidates") or 0)
+    attempted = summary.get("attempted")
+    attempted = int(attempted) if isinstance(attempted, (int, float)) and not isinstance(attempted, bool) \
+        else candidates
     skipped = {k: int(v) for k, v in (summary.get("skipped") or {}).items() if v}
+    excluded = {k: int(v) for k, v in (summary.get("excluded") or {}).items() if v}
     empty_reason = None
     if not created:
         if not candidates:
             empty_reason = "no_unprocessed_news"
-        elif skipped.get("already_present", 0) == candidates:
+        elif attempted <= 0:
+            empty_reason = "no_eligible_candidates"
+        elif sum(skipped.values()) >= attempted:
+            # every attempted candidate ended in a skip the run itself accounts for (already_present today)
             empty_reason = "already_present"
         else:
             empty_reason = "no_eligible_candidates"
-    return {"produced_count": created, "attempted_count": max(candidates, created),
-            "skipped_reasons": skipped, "empty_reason": empty_reason}
+    return {"produced_count": created, "attempted_count": max(attempted, created),
+            "skipped_reasons": skipped, "excluded_reasons": excluded, "empty_reason": empty_reason}
 
 
 def main(argv: list[str] | None = None) -> int:

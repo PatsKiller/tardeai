@@ -65,7 +65,7 @@ export function qualityHistoryQuery(o: { quality: string | null; offset?: number
 
 const CHECK_LABEL: Record<string, string> = {
   ran_live: 'Ran live', run_result: 'Exit / result', output_written: 'Output touched this run', item_count: 'Items produced',
-  receipt_flags: 'Receipt flags (partial / gaps / fallback)', count_vs_history: 'Count vs its median', duration_vs_history: 'Runtime vs history',
+  excluded_candidates: 'Candidates excluded by a gate', receipt_flags: 'Receipt flags (partial / gaps / fallback)', count_vs_history: 'Count vs its median', duration_vs_history: 'Runtime vs history',
   input_freshness: 'Inputs fresh', data_plausibility: 'Inputs plausible', as_designed: 'As designed',
 }
 const CHECK_ORDER = Object.keys(CHECK_LABEL)
