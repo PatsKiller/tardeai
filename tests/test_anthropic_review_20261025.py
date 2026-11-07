@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def activated_policy():
     from scripts.lib.anthropic_transport import load_policy
-    return dict(load_policy(), enabled=True)
+    # pinned one-time: the live policy is monthly since the 2026-11-07 operator decision
+    return dict(load_policy(), enabled=True, renewal={"mode": "one_time", "monthly_allowance_usd": "190", "renews_on_day": None})
 
 
 def test_operator_enabled_promotion_preserves_caps_and_model_choices():

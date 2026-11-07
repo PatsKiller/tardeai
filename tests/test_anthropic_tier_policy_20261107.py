@@ -38,7 +38,7 @@ def policy(**over):
                 starts_at="2026-11-01T00:00:00Z", expires_at="2027-06-01T00:00:00Z",
                 per_call_caps_usd={t: "5.00" for t in ("bulk", "mid", "standard", "high", "highest",
                                                        "long_form", "premium")},
-                emergency_process_caps=None)
+                emergency_process_caps=None, renewal={"mode": "one_time", "monthly_allowance_usd": "190", "renews_on_day": None})
     base.update(over)
     return base
 
@@ -63,11 +63,21 @@ def test_a_declared_process_pin_still_wins_over_the_logical_tier():
     assert tier_for("FAST", policy=pinned, process_id="lq196_pinned") == "long_form"
 
 
-def test_live_policy_carries_the_sub_caps_and_keeps_the_one_time_values():
+def test_live_policy_carries_the_sub_caps_and_the_operators_monthly_200():
+    # Operator decision 2026-11-07 13:55 ET: $200/month of API credits; the billing day is still pending.
     assert LIVE["tier_daily_cap_shares"] == SHARES
-    assert LIVE["renewal"]["mode"] == "one_time"
-    assert (LIVE["total_cap_usd"], LIVE["credit_usd"], LIVE["daily_cap_usd"]) == ("190", "200", "10")
+    renewal = LIVE["renewal"]
+    assert renewal["mode"] == "monthly" and renewal["monthly_credit_usd"] == "200"
+    assert renewal["period_start"] is None and "OPERATOR VALUE" in renewal["note"]
+    assert "monthly_allowance_usd" not in renewal  # naming both amounts would refuse the policy
     assert LIVE["expires_at"].startswith("2026-11-16")
+
+
+def test_live_monthly_200_paces_six_sixty_six_a_day_split_by_tier(tmp_path):
+    snap = CreditBook(tmp_path, LIVE).snapshot(now=datetime(2026, 11, 8, 12, tzinfo=timezone.utc))
+    assert snap["renewal_mode"] == "monthly" and snap["total_cap_usd"] == "200.00"
+    assert snap["daily_cap_base_usd"] == "6.66"
+    assert snap["tier_daily_caps_usd"] == {"bulk": "2.66", "mid": "2.99", "standard": "0.99"}
 
 
 # ── per-tier daily sub-caps ───────────────────────────────────────────────────────────────────

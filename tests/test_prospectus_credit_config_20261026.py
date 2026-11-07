@@ -34,7 +34,8 @@ def _json(rel):
 
 
 def policy(**over):
-    return dict(deepcopy(load_policy()), enabled=True, **over)
+    # pinned one-time: the live policy is monthly since the 2026-11-07 operator decision
+    return dict(deepcopy(load_policy()), enabled=True, **{"renewal": {"mode": "one_time", "monthly_allowance_usd": "190", "renews_on_day": None}, **over})
 
 
 def test_policy_carries_override_renewal_admin_and_premium_tier():
@@ -44,8 +45,9 @@ def test_policy_carries_override_renewal_admin_and_premium_tier():
         {"usd": "25", "from": "2026-10-26", "until": "2026-10-29"},
         # operator 2026-10-26 "I rather finish right now": UTC day 10-26 only, last match wins
         {"usd": "40", "from": "2026-10-26", "until": "2026-10-27"}]
-    assert {k: p["renewal"][k] for k in ("mode", "monthly_allowance_usd", "renews_on_day")} == {
-        "mode": "one_time", "monthly_allowance_usd": "190", "renews_on_day": None}
+    # operator 2026-11-07: monthly $200 credit; the billing day is still an OPERATOR VALUE
+    assert {k: p["renewal"][k] for k in ("mode", "monthly_credit_usd", "period_start")} == {
+        "mode": "monthly", "monthly_credit_usd": "200", "period_start": None}
     assert p["admin_cost_verification"]["env_key_name"] == "ANTHROPIC_ADMIN_API_KEY"
     assert p["models"]["premium"] == "claude-fable-5-1" and p["models"]["long_form"] == "claude-opus-5-5"
     assert p["process_tiers"] == {"prospectus_writer": "long_form", "prospectus_writer_premium": "premium",

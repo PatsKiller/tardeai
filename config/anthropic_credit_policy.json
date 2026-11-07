@@ -20,10 +20,11 @@
     }
   ],
   "renewal": {
-    "mode": "one_time",
-    "monthly_allowance_usd": "190",
+    "mode": "monthly",
+    "monthly_credit_usd": "200",
+    "period_start": null,
     "renews_on_day": null,
-    "note": "one_time: one total cap for the promotion. Operator may switch mode to monthly. Preferred monthly shape (LQ-20261107-196): replace monthly_allowance_usd/renews_on_day with monthly_credit_usd (OPERATOR VALUE) and period_start (YYYY-MM-DD, day 1-28); the daily cap is then monthly_credit_usd / 30 and daily_cap_usd is not used. The older monthly_allowance_usd shape keeps daily_cap_usd. Naming both amounts in monthly mode refuses the policy. The journal keeps every period; expires_at still ends the credit and must be rolled."
+    "note": "Operator decision 2026-11-07 13:55 ET (relayed by claude-lead, DSN-20261107-ANTHROPIC-FIRST-ROUTING.md 'Decision: monthly credit = $200'): the $200/month plan carries $200 USD/month of API credits, so monthly_credit_usd = 200 and the daily cap is 200 / 30 = 6.66 (rounded down to the cent; daily_cap_usd and total_cap_usd are not used in this mode). period_start is an OPERATOR VALUE still pending: credits refresh on the BILLING day, not the 1st, and expire unused at cycle end. Until the operator reads the billing day from Console > Billing > Promotional credits, period_start stays null and periods run from the 1st (placeholder). Set period_start to YYYY-MM-DD (day 1-28) of the current cycle start once known. The credits cover the API, Managed Agents, the Agent SDK and the playground, not Claude Code sessions. one_time (one total cap for a promotion) stays a supported mode. expires_at still ends the credit and must be rolled."
   },
   "admin_cost_verification": {
     "enabled": true,
