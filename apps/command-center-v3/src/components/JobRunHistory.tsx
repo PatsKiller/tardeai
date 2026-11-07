@@ -1,3 +1,4 @@
+import { QualityDetail } from './RunQualityViews'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -65,6 +66,7 @@ export function HistoryDetail({ row, computedAt }: { row: HistoryDetailRow; comp
       <span style={muted}>{schedulerLabel(row.scheduler)} · registry state {row.state.toLowerCase().replace(/_/g, ' ')}</span>
     </div>
     {row.status_reason && <p style={{ ...wrap, margin: 0 }}>{row.status_reason}</p>}
+    <QualityDetail q={row.quality} statusLabel={STATUS_LABEL[row.status]} />
     <div className="job-history-facts">
       <Fact label="Expected">{cadenceText(row.cadence)}</Fact>
       <Fact label="Last success">{row.last_success_at ? `${etTime(row.last_success_at)} (${ago(row.last_success_at, computedAt)})` : 'None recorded'}</Fact>

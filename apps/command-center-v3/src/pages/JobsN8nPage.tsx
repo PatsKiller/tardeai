@@ -15,7 +15,7 @@ const tabStyle = (on: boolean): CSSProperties => ({
 })
 
 /** Ops › Jobs & n8n (design pages/jobs v002, operator-approved 2026-11-06). Read-only: six tabs over existing GETs.
- *  `?tab=needs|all|checks|n8n|incidents|fixes` (checks = scheduler checks merged from Coordination › Automation, 2026-11-06); job detail `?history=<lane>`, lane detail `?lane=<lane>` (full-screen sheets). */
+ *  `?tab=needs|quality|all|checks|n8n|incidents|fixes` (quality = run-quality grades, design v003 approved 2026-11-06) (checks = scheduler checks merged from Coordination › Automation, 2026-11-06); job detail `?history=<lane>`, lane detail `?lane=<lane>` (full-screen sheets). */
 export default function JobsN8nPage() {
   const [params, setParams] = useSearchParams()
   const tab = resolveJobsN8nTab(params.get('tab'))
@@ -39,7 +39,7 @@ export default function JobsN8nPage() {
         </nav>
         <Link to={JOB_CATALOG_PATH} data-testid="jobs-n8n-catalog-link" style={{ minHeight: 44, display: 'flex', alignItems: 'center', color: TOKENS.info, fontSize: TYPE.base, textDecoration: 'none' }}>Browse every job by category and what it does → Job catalog</Link>
         <div role="tabpanel" style={{ minWidth: 0 }}>
-          {(tab === 'needs' || tab === 'all' || tab === 'fixes') && <JobsHistoryTab key={tab} tab={tab} onTotal={onTotal} />}
+          {(tab === 'needs' || tab === 'quality' || tab === 'all' || tab === 'fixes') && <JobsHistoryTab key={tab} tab={tab} onTotal={onTotal} />}
           {tab === 'checks' && <SchedulerChecksTab onTotal={onTotal} />}
           {tab === 'n8n' && <N8nLanesTab state={controls.data ?? null} loading={controls.loading} error={controls.error ?? null} />}
           {tab === 'incidents' && <IncidentsTab />}

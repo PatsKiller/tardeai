@@ -6,7 +6,9 @@ import DetailHeader from './DetailHeader'
 import { HistoryDetail } from './JobRunHistory'
 import { JobCard, JobDescription } from './JobCatalogViews'
 import { SchedulerLaneDetail } from './SchedulerChecksViews'
-import { detailQuery, etTime, type HistoryDetailWire } from '../lib/jobRunHistory'
+import { QualityLegend } from './RunQualityViews'
+import { notAsDesignedCount, qualityHistoryQuery, qualityTiles } from '../lib/runQuality'
+import { detailQuery, etTime, type HistoryDetailWire, type HistoryListWire } from '../lib/jobRunHistory'
 import {
   JOB_CATALOG_PATH, describedHistoryQuery, effectiveHistoryFilter, jobTitle, toggleStatus, type Category, type DescribedListWire, type DescribedRow,
 } from '../lib/jobCatalog'
@@ -65,13 +67,13 @@ function StatusFilterBar({ label, count, onClear }: { label: string; count: numb
 }
 
 /** `?status=` read and written on the current URL (shareable); replace, so Back leaves the page rather than a tile. */
-function useStatusParam(valid: (s: string) => boolean): [string | null, (key: string | null) => void] {
+function useStatusParam(valid: (s: string) => boolean, name = 'status'): [string | null, (key: string | null) => void] {
   const [params, setParams] = useSearchParams()
-  const raw = params.get('status')
+  const raw = params.get(name)
   const status = raw && valid(raw) ? raw : null
   const set = (key: string | null) => {
     const next = new URLSearchParams(params)
-    if (key) next.set('status', key); else next.delete('status')
+    if (key) next.set(name, key); else next.delete(name)
     setParams(next, { replace: true })
   }
   return [status, set]
@@ -83,7 +85,7 @@ export function JobsN8nStyles() {
 }
 
 // ── job tabs: Needs you, All jobs, Fixes (GET /api/v2/jobs-history) ─────────────────────────────────────────────
-export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes'; onTotal?: (tab: string, total: number) => void }) {
+export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'quality' | 'all' | 'fixes'; onTotal?: (tab: string, total: number) => void }) {
   const [filter, setFilter] = useState<string>(TAB_HISTORY_FILTER[tab])
   const [offset, setOffset] = useState(0)
   const [query, setQuery] = useState('')
@@ -91,11 +93,15 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
   const [params, setParams] = useSearchParams()
   const selectedId = params.get('history')
   const title = useRef<HTMLHeadingElement>(null)
-  const tiles = historyTiles(null, tab)
-  const [status, setStatus] = useStatusParam(s => tiles.some(t => t.key === s))
+  const isQ = tab === 'quality'
+  const tilesOf = (s: HistoryListWire['summary'] | null | undefined): Tile[] => (isQ ? qualityTiles(s) : historyTiles(s, tab as 'needs' | 'all' | 'fixes'))
+  const tiles = tilesOf(null)
+  // The Quality tab filters by `?quality=<grade>`; the other job tabs by `?status=`.
+  const [status, setStatus] = useStatusParam(s => tiles.some(t => t.key === s), isQ ? 'quality' : 'status')
   useEffect(() => { const t = setTimeout(() => { setDebounced(query); setOffset(0) }, 300); return () => clearTimeout(t) }, [query])
   useEffect(() => { setOffset(0) }, [status])
-  const list = useApi<DescribedListWire>(describedHistoryQuery({ filter: effectiveHistoryFilter(tab, filter, status), offset, q: debounced, status }), 60_000)
+  const list = useApi<DescribedListWire>(isQ ? qualityHistoryQuery({ quality: status, offset, q: debounced })
+    : describedHistoryQuery({ filter: effectiveHistoryFilter(tab as 'needs' | 'all' | 'fixes', filter, status), offset, q: debounced, status }), 60_000)
   const detail = useApi<HistoryDetailWire>(detailQuery(selectedId || ''), 60_000, { enabled: !!selectedId })
   const data = list.data
   useEffect(() => {
@@ -111,14 +117,21 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
   const listRow = data?.rows.find(r => r.lane_id === selectedId)
   const listName = listRow ? jobTitle(listRow) : undefined
   const detailRow = row as (typeof row & Partial<DescribedRow>) | null
-  const activeTile = status ? historyTiles(data?.summary, tab).find(t => t.key === status) ?? null : null
-  const intro = tab === 'needs' ? 'Failed, missed and late jobs, worst first.'
+  const activeTile = status ? tilesOf(data?.summary).find(t => t.key === status) ?? null : null
+  const filteredTotal = data && (isQ ? (data as { quality?: string | null }).quality === status?.toUpperCase() : data.status === status) ? data.total : null
+  const offDesign = isQ ? notAsDesignedCount(data?.summary) : null
+  const intro = isQ ? 'Not just "did it run": did it run live and produce something real. Every job graded by what its last run made.'
+    : tab === 'needs' ? 'Failed, missed and late jobs, worst first.'
     : tab === 'fixes' ? 'Jobs with a retry, heal, incident or code fix in the last 14 days.' : 'Every registered job and where it runs.'
-  return <section aria-label={tab === 'needs' ? 'Needs you' : tab === 'fixes' ? 'Fixes' : 'All jobs'} data-testid={`jobs-n8n-${tab}`} style={{ display: 'grid', gap: 10, minWidth: 0 }}>
+  return <section aria-label={isQ ? 'Quality' : tab === 'needs' ? 'Needs you' : tab === 'fixes' ? 'Fixes' : 'All jobs'} data-testid={`jobs-n8n-${tab}`} style={{ display: 'grid', gap: 10, minWidth: 0 }}>
     <p style={muted}>{intro}{data ? ` Checked ${etTime(data.computed_at)}.` : ''}</p>
     {list.error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>Run history could not be read: {list.error}.{data ? ' The last observation remains below.' : ''}</div>}
-    <TileGrid tiles={historyTiles(data?.summary, tab)} label="Run history summary — tap a status to filter" active={status} onPick={k => setStatus(toggleStatus(status, k))} />
-    {activeTile && <StatusFilterBar label={activeTile.label} count={data && data.status === status ? data.total : null} onClear={() => setStatus(null)} />}
+    <TileGrid tiles={tilesOf(data?.summary)} label={isQ ? 'Run quality — tap a grade to filter' : 'Run history summary — tap a status to filter'} active={status} onPick={k => setStatus(toggleStatus(status, k))} />
+    {activeTile && <StatusFilterBar label={activeTile.label} count={filteredTotal} onClear={() => setStatus(null)} />}
+    {isQ && <QualityLegend activeKey={status} notAsDesigned={offDesign} />}
+    {isQ && <label style={{ display: 'grid', gap: 4, maxWidth: 420 }}><span style={muted}>Find a job</span>
+      <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Job name" style={searchInput} />
+    </label>}
     {tab === 'all' && <>
       <div role="group" aria-label="Filter jobs by scheduler" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
         {ALL_JOBS_FILTERS.map(([k, label]) => <button key={k} type="button" aria-pressed={k === filter} onClick={() => { setFilter(k); setOffset(0) }} style={pill(k === filter)}>{label}</button>)}
@@ -130,7 +143,7 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
     <div className="jobs-n8n-list">
       {data?.rows.map(r => <JobCard key={r.lane_id} row={r} computedAt={data.computed_at} categories={data.categories} onOpen={select} />)}
     </div>
-    {!data?.rows.length && <p style={{ ...panel, ...muted }}>{list.loading ? 'Loading run history…' : data ? (status ? 'No jobs with this status.' : tab === 'needs' ? 'Nothing needs you: no failed, missed or late job.' : 'No jobs in this view.') : 'No run history is available.'}</p>}
+    {!data?.rows.length && <p style={{ ...panel, ...muted }}>{list.loading ? 'Loading run history…' : data ? (status ? (isQ ? 'No jobs with this grade.' : 'No jobs with this status.') : tab === 'needs' ? 'Nothing needs you: no failed, missed or late job.' : 'No jobs in this view.') : 'No run history is available.'}</p>}
     {data && data.total > data.rows.length && <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', ...muted }}>
       <button type="button" style={pill(false)} disabled={data.offset === 0} onClick={() => setOffset(Math.max(0, data.offset - data.limit))}>Previous</button>
       <span>{data.offset + 1}–{data.offset + data.rows.length} of {data.total}</span>
