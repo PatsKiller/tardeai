@@ -231,3 +231,22 @@ def test_broker_cost_basis_is_truth_by_operator_rule():
     assert cfg["positions"]["cost_basis_truth"] == "broker"
     src = (ROOT / "scripts" / "api_v2.py").read_text()
     assert '_pp_cfg_basis_truth() == "broker"' in src and "_cb = _cb_broker" in src
+
+
+# ── data-truth audit 2026-11-07: `price` is the position build's lagging copy, canonical_mark is the mark ──────
+LAG = {"symbol": "LAGX", "account": "schwab_rollover_ira", "shares": 1000.0, "price": 27.0, "market_value": 27000.0,
+       "current_price": 30.0, "canonical_mark": 30.0, "canonical_mark_ingested_at": "2026-10-05T20:40:00+00:00",
+       "broker_market_value": 30000.0, "price_field_role": "derived_from_broker_mv", "cost_basis": 28000.0,
+       "last_repriced": "2026-10-05 16:40:00 ET"}
+
+
+def test_canonical_mark_beats_the_lagging_price_copy():
+    """Revert to `price or canonical_mark` -> 27.0 and a $3,000 understated value."""
+    m = pp.resolve_mark(LAG, now=NOW)
+    assert m["price"] == 30.0 and m["as_of"] == "2026-10-05T20:40:00+00:00"
+    assert pp.value_and_pl(LAG, m)["market_value"] == pytest.approx(30000.0)
+
+
+def test_price_still_serves_when_no_canonical_mark_exists():
+    m = pp.resolve_mark({**LAG, "canonical_mark": None}, now=NOW)
+    assert m["price"] == 27.0 and m["source"] == "stored_mark"

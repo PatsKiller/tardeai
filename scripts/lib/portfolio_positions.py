@@ -158,10 +158,19 @@ def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Option
                       quote.get("as_of") or quote.get("fetched_at"), True))
     if finviz and (_f(finviz.get("price")) or 0) > 0:
         cands.append((_f(finviz["price"]), "finviz", finviz.get("as_of"), True))
-    stored = _f(position.get("price")) or _f(position.get("canonical_mark"))
-    if stored and stored > 0:
-        cands.append((stored, "stored_mark", position.get("last_repriced") or position.get("canonical_mark_ingested_at")
+    # The repricer's named mark first. `price` is the position build's copy (holdings_export rebuilds it from the
+    # morning positions run as market_value ÷ shares, price_field_role "derived_from_broker_mv"), so it lags the
+    # repricer all day. Data-truth audit 2026-11-07: preferring `price` showed 24 of 30 holdings at stale prices
+    # (PFE 27.56 vs close 29.39 while canonical_mark held 29.39). `price` serves only when no canonical_mark exists.
+    canon = _f(position.get("canonical_mark"))
+    if canon and canon > 0:
+        cands.append((canon, "stored_mark", position.get("canonical_mark_ingested_at") or position.get("last_repriced")
                       or position.get("updated_at") or position.get("as_of"), False))
+    else:
+        stored = _f(position.get("price"))
+        if stored and stored > 0:
+            cands.append((stored, "stored_mark", position.get("last_repriced") or position.get("updated_at")
+                          or position.get("as_of"), False))
     if not cands:
         return {"price": None, "source": "none", "as_of": None, "age_s": None, "live": False, "stale": True}
     price, source, as_of, live = cands[0]
