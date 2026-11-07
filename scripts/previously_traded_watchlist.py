@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Previously Traded Watchlist — monitors former winning trades for re-entry signals."""
-import os, sys, time, json, logging
+import os, sys, json, logging
 from datetime import date, datetime
 from pathlib import Path
 
@@ -107,8 +107,31 @@ def populate_from_journal():
     return inserted
 
 
+def _conn_db_query(conn):
+    """Adapt a DB-API connection to the broker projections' ``db_query(sql, params, fetch)``."""
+    def _q(sql, params=None, fetch="all"):
+        cur = conn.cursor()
+        cur.execute(sql, params or ())
+        cols = [d[0] for d in (cur.description or [])]
+        if fetch == "one":
+            row = cur.fetchone()
+            return None if row is None else (dict(row) if hasattr(row, "keys") else dict(zip(cols, row)))
+        rows = cur.fetchall() or []
+        return [dict(r) if hasattr(r, "keys") else dict(zip(cols, r)) for r in rows]
+    return _q
+
+
 def fetch_current_prices():
-    import yfinance as yf
+    """Current price per tracked symbol through the shared Finviz-first batch — never yfinance.
+
+    Operator price rule (2026-11-07, LQ-20261107-14): a live price comes from Finviz while its cache row is
+    fresh (<= 30 min), else a fresh Schwab/Alpaca/moomoo quote; never yfinance, never a stored row older than
+    that. ``get_price_batch`` is that ladder (Finviz overlay built in), so this lane calls it instead of its
+    own yfinance loop. The batch's quote-only fallback is bounded per call, so the symbols go in chunks of that
+    bound — otherwise everything past the first ten would keep yesterday's stored price all day. A symbol the
+    batch cannot price inside the window is skipped and named in the log; its stored price is left alone
+    rather than overwritten with a stale close or a zero.
+    """
     conn = get_db()
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute("SELECT symbol FROM previously_traded_watchlist WHERE is_currently_held=false")
@@ -117,22 +140,31 @@ def fetch_current_prices():
 
     log.info(f"Fetching prices for {len(symbols)} symbols...")
     prices = {}
-    for sym in symbols:
+    batch = {}
+    if symbols:
+        conn = get_db()
         try:
-            t = yf.Ticker(sym)
+            from lib.data_broker.market_quote import LIVE_FALLBACK_MAX_PER_BATCH, get_price_batch
+            q = _conn_db_query(conn)
+            step = max(1, int(LIVE_FALLBACK_MAX_PER_BATCH))
+            for i in range(0, len(symbols), step):
+                batch.update(get_price_batch(q, symbols[i:i + step], max_age_hours=0.5) or {})
+        except Exception as e:  # noqa: BLE001 — a batch failure is named, never published as "no prices"
+            log.error(f"price batch failed: {type(e).__name__}: {e}")
+        finally:
+            conn.close()
+        for sym, quote in batch.items():
             try:
-                price = t.fast_info['lastPrice']
-            except Exception:
-                hist = t.history(period='2d')
-                if len(hist) > 0:
-                    price = float(hist['Close'].iloc[-1])
-                else:
-                    raise ValueError("No data")
-            if price and price > 0:
-                prices[sym] = float(price)
-        except Exception as e:
-            log.warning(f"  {sym}: {e}")
-        time.sleep(0.3)
+                px = float((quote or {}).get("price"))
+            except (TypeError, ValueError):
+                continue
+            if px > 0:
+                prices[str(sym).upper()] = px
+    unpriced = [s for s in symbols if s not in prices]
+    for sym in unpriced[:20]:
+        log.warning(f"  {sym}: no quote inside the 30-minute window — left at its stored price")
+    if len(unpriced) > 20:
+        log.warning(f"  ... and {len(unpriced) - 20} more without a fresh quote")
 
     if prices:
         conn = get_db()
@@ -146,7 +178,7 @@ def fetch_current_prices():
         conn.commit()
         conn.close()
 
-    log.info(f"Prices: {len(prices)} OK, {len(symbols)-len(prices)} failed")
+    log.info(f"Prices: {len(prices)} fresh inside 30 min, {len(unpriced)} without a fresh quote (stored prices kept)")
     return prices
 
 

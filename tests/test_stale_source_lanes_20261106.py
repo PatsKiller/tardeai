@@ -119,7 +119,9 @@ def test_screen_reports_coverage_and_ranks():
     universe = dca.universe_symbols()
     result = dca.screen(_fake_query({universe[0]}), now=NOW)
     cov = result["coverage"]
-    assert cov == {"universe": len(result["candidates"]), "priced": len(result["candidates"]), "with_yield": 1}
+    # fresh_mark (LQ-20261107-14): every row above is stamped NOW, so every mark is fresh against screen()'s now.
+    assert cov == {"universe": len(result["candidates"]), "priced": len(result["candidates"]),
+                   "fresh_mark": len(result["candidates"]), "with_yield": 1}
     scores = [c["total_score"] for c in result["candidates"]]
     assert scores == sorted(scores, reverse=True)
     assert next(c for c in result["candidates"] if c["symbol"] == universe[0])["yield_data"]["div_yield"] == 5.0

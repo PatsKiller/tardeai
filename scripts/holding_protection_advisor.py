@@ -102,6 +102,72 @@ def _bars(symbol, days=70):
     return bars[-days:] if bars else None
 
 
+def _live_quotes(symbols: list[str]) -> dict:
+    """{SYM: {price, as_of, source}} from the shared Finviz-first batch; {} when the broker is unreachable.
+
+    ``get_price_batch`` serves the newest stored quote inside a 30-minute window, overlays the Finviz cache
+    while fresh, and falls back to a quote-only Schwab/Alpaca/moomoo read bounded per call — the operator's
+    price ladder (2026-11-07). Its live fallback is capped per call, so the symbols go in chunks of that cap.
+    A read failure returns {} and the caller keeps the daily close, labelled — never a crash, never a zero.
+    """
+    syms = [s for s in (str(x or "").upper().strip() for x in symbols) if s]
+    if not syms:
+        return {}
+    try:
+        from db_adapter import _get_conn
+        from lib.data_broker.market_quote import LIVE_FALLBACK_MAX_PER_BATCH, get_price_batch
+        conn = _get_conn()
+    except Exception:  # noqa: BLE001
+        return {}
+
+    def _q(sql, params=None, fetch="all"):
+        cur = conn.cursor()
+        cur.execute(sql, params or ())
+        cols = [d[0] for d in (cur.description or [])]
+        if fetch == "one":
+            row = cur.fetchone()
+            return None if row is None else (dict(zip(cols, row)) if not hasattr(row, "keys") else dict(row))
+        return [dict(r) if hasattr(r, "keys") else dict(zip(cols, r)) for r in (cur.fetchall() or [])]
+
+    out = {}
+    try:
+        step = max(1, int(LIVE_FALLBACK_MAX_PER_BATCH))
+        for i in range(0, len(syms), step):
+            out.update(get_price_batch(_q, syms[i:i + step], max_age_hours=0.5) or {})
+    except Exception:  # noqa: BLE001 — the caller keeps the daily close, labelled
+        return out
+    return out
+
+
+def _apply_live_mark(t: dict, symbol: str, quote: dict | None = None) -> dict:
+    """Replace the last daily close with the current mark — Finviz while fresh, else a fresh broker quote.
+
+    Operator price rule (2026-11-07, LQ-20261107-14): a live price comes from Finviz while its cache row is
+    fresh (<= 30 min), else a fresh Schwab/Alpaca/moomoo quote; never yfinance, never a stored close older
+    than that presented as current. `t["price"]` was the last daily bar close — and on the yfinance fallback
+    path in ``_bars`` it was yfinance outright. ``lib.portfolio_positions.resolve_mark`` is that ladder, so
+    this calls it. Only a FRESH mark replaces the bar close (a stale mark is not a current price either); when
+    none exists the bar close stays and ``price_source`` / ``price_stale`` say so in the prompt inputs and
+    the stored evidence, so "current" is never a silent guess.
+    """
+    out = dict(t)
+    out["price_source"], out["price_stale"], out["price_as_of"] = "daily_close", True, None
+    try:
+        try:
+            from lib.portfolio_positions import resolve_mark
+        except ImportError:  # pragma: no cover — package import in tests
+            from scripts.lib.portfolio_positions import resolve_mark
+        mark = resolve_mark({"symbol": symbol}, quote=quote)
+    except Exception:  # noqa: BLE001 — a mark helper that raises must not cost the advisory
+        return out
+    if mark.get("price") and not mark.get("stale"):
+        out["price"] = float(mark["price"])
+        out["price_source"] = mark.get("source") or "unknown"
+        out["price_stale"] = False
+        out["price_as_of"] = mark.get("as_of")
+    return out
+
+
 def _technicals(bars):
     closes = [float(b.get("close") or b.get("c") or 0) for b in bars]
     highs = [float(b.get("high") or b.get("h") or 0) for b in bars]
@@ -233,7 +299,10 @@ def _candidates(limit):
     CASH/dust/delisted-CUSIPs stay out)."""
     from holding_proxies import HOLDING_PROXY_MAP
     import holding_family as hf
-    h = json.loads((PROJECT_ROOT / "data/portfolios/state/holdings.json").read_text())
+    # DB first (operator 2026-11-03: the database is the holdings source of truth); holdings.json is the
+    # documented fallback, and load_document says which one answered. Reads only.
+    from lib.holdings_document import load_document
+    h = load_document()
     rows = []
     skipped_funds = []
     for x in h.get("holdings", []):
@@ -343,12 +412,15 @@ def run(lane="grok", symbols=None, limit=12, manual_trigger=False, batch=False):
                 [{"symbol": s, "account": "schwab", "shares": 0, "cost_basis": 0, "market_value": 0} for s in want]
     done = failed = fellback = 0
     outcomes: list[dict] = []
+    # One Finviz-first batch for the whole sweep (operator price rule 2026-11-07): the "current" price in the
+    # prompt and in the stop-distance sanity check is the live mark, not yesterday's bar close.
+    quotes = _live_quotes([(c.get("symbol") or "").upper() for c in cands])
     for c in cands:
         sym = (c.get("symbol") or "").upper()
         bars = _bars(sym)
         if not bars or len(bars) < 50:
             print(f"  {sym}: no daily bars (skipped)"); failed += 1; continue
-        t = _technicals(bars)
+        t = _apply_live_mark(_technicals(bars), sym, quotes.get(sym))
         qty = float(c.get("shares") or 0)
         basis = float(c.get("cost_basis") or 0)
         basis_ps = basis / qty if qty and basis else t["price"]

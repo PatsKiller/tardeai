@@ -7,9 +7,12 @@ Produces a ranked JSON snapshot consumed by the defense desk frontend.
 
 Scoring: Yield (30%), Capital preservation (35%), Liquidity (20%), Tax efficiency (15%).
 
-Data (fixed 2026-11-06, operator decision "stale sources -> n8n lanes"):
-  * price / day change / volume: ``market_quotes`` (latest row per symbol; columns ``price``,
-    ``day_change_pct``, ``volume``, ``fetched_at``), else ``ticker_prices.close_price``.
+Data (fixed 2026-11-06, operator decision "stale sources -> n8n lanes"; price ladder fixed
+2026-11-07, LQ-20261107-14):
+  * price: Finviz while its cache row is fresh (<= 30 min), else a fresh Schwab/Alpaca/moomoo
+    ``market_quotes`` row, via ``lib.portfolio_positions.resolve_mark``; ``ticker_prices.close_price``
+    stands only as a row flagged ``stale``. Never yfinance. Day change / volume still come from
+    ``market_quotes`` (latest row per symbol).
   * yield: ``ticker_dividend_data.annual_dividend_per_share`` (yfinance, written by
     ``sync_dividend_data.py``, which now includes this universe) divided by the quote price. A
     missing, stale (> ``MAX_DIVIDEND_AGE_DAYS``), retired-provider or implausible row is a named
@@ -113,8 +116,34 @@ def _aware(value):
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def load_prices(query, symbols: list[str]) -> dict:
-    """{symbol: {price, change_pct, volume, as_of, source}} from market_quotes, else ticker_prices."""
+def _live_mark(symbol: str, row: dict | None, now: datetime | None = None) -> dict:
+    """The Finviz-first mark for one symbol over its newest stored quote, or {} when nothing prices it.
+
+    Operator price rule (2026-11-07, LQ-20261107-14): a live price comes from Finviz while its cache row is
+    fresh (<= positions.price_stale_after_s, 30 min); a fresh Schwab/Alpaca/moomoo quote serves when Finviz is
+    down or stale; a stored row older than that is shown only flagged `stale`, never as the current price.
+    ``lib.portfolio_positions.resolve_mark`` IS that ladder, so this lane calls it rather than growing a second
+    one. A helper that raises must not unprice the lane: the stored row above then stands unchanged.
+    """
+    try:
+        try:
+            from lib.portfolio_positions import resolve_mark
+        except ImportError:  # pragma: no cover - package import in tests
+            from scripts.lib.portfolio_positions import resolve_mark
+        quote = None
+        if row:
+            quote = {"price": row["price"], "as_of": row.get("as_of"), "source": row.get("source")}
+        return resolve_mark({"symbol": symbol}, quote=quote, now=now)
+    except Exception:  # noqa: BLE001 — a mark helper that raises must not unprice the lane
+        return {}
+
+
+def load_prices(query, symbols: list[str], now: datetime | None = None) -> dict:
+    """{symbol: {price, change_pct, volume, as_of, source, stale}} — Finviz-first over market_quotes/ticker_prices.
+
+    The stored rows are the fallback the operator named (a fresh Schwab/Alpaca/moomoo row); Finviz is preferred
+    while fresh, and `stale` says which rows are older than 30 min instead of presenting a day-old close as live.
+    """
     out = {}
     try:
         rows = query("SELECT DISTINCT ON (symbol) symbol, price, day_change_pct, volume, fetched_at "
@@ -140,6 +169,17 @@ def load_prices(query, symbols: list[str]) -> dict:
             if price and price > 0:
                 out[r["symbol"]] = {"symbol": r["symbol"], "price": price, "change_pct": None, "volume": None,
                                     "as_of": _aware(r.get("price_date")), "source": "ticker_prices"}
+    for sym in symbols:
+        mark = _live_mark(sym, out.get(sym), now)
+        if not mark.get("price"):
+            continue
+        merged = dict(out.get(sym) or {})
+        merged.update({"symbol": sym, "price": mark["price"], "as_of": mark.get("as_of"),
+                       "source": mark.get("source"), "stale": bool(mark.get("stale")),
+                       "age_s": mark.get("age_s")})
+        merged.setdefault("change_pct", None)
+        merged.setdefault("volume", None)
+        out[sym] = merged
     return out
 
 
@@ -277,7 +317,7 @@ def screen(query, *, now: datetime | None = None) -> dict:
     """Score and rank every candidate. Pure given ``query``; writes nothing."""
     now = now or datetime.now(timezone.utc)
     symbols = universe_symbols()
-    prices = load_prices(query, symbols)
+    prices = load_prices(query, symbols, now=now)
     dividends = load_dividends(query, symbols)
     candidates = []
     for entries in UNIVERSE.values():
@@ -298,6 +338,8 @@ def screen(query, *, now: datetime | None = None) -> dict:
         "top3": candidates[:3],
         "risk_free_rate": 4.5,  # approximate 4-week T-bill, update periodically
         "coverage": {"universe": len(candidates), "priced": sum(1 for c in candidates if c["price"]),
+                     "fresh_mark": sum(1 for c in candidates
+                                       if c["price"] and not (c["price"] or {}).get("stale")),
                      "with_yield": with_yield},
         "note": "Advisory only — the desk presents alternatives; allocation requires operator decision + 2FA.",
     }
@@ -326,7 +368,8 @@ def write_output(result: dict, path: Path) -> None:
 def _line(result: dict) -> str:
     cov = result["coverage"]
     top = ", ".join(f"{c['symbol']} {c['total_score']} (yield {c['yield_data']['div_yield']})" for c in result["top3"])
-    return (f"screened {cov['universe']} vehicles, priced {cov['priced']}, yield known {cov['with_yield']}; "
+    return (f"screened {cov['universe']} vehicles, priced {cov['priced']} "
+            f"({cov['fresh_mark']} with a fresh Finviz/broker mark), yield known {cov['with_yield']}; "
             f"top: {top}")
 
 

@@ -428,6 +428,13 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
         for r in (ex("SELECT * FROM holding_high_water_marks", fetch="all") or [])
     }
 
+    # Current price (operator price rule 2026-11-07, LQ-20261107-14): the metrics' last daily close is replaced
+    # by the Finviz-first live mark when one is fresh (Finviz <= 30 min, else a fresh Schwab/Alpaca/moomoo
+    # quote). open_gain_pct, giveback and the HWM ratchet are about the position NOW, not at yesterday's close;
+    # ext50/ext200/RSI stay bar-based technicals. Same helper as the protection advisor, one ladder, no second.
+    import holding_protection_advisor as hpa
+    quotes = hpa._live_quotes([h["symbol"] for h in holds])
+
     results, provisional_n = [], 0
     for h in holds:
         sym, acct = h["symbol"], h["account"]
@@ -436,6 +443,7 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
         if not m:
             results.append({"symbol": sym, "account": acct, "skip": "no_bars"})
             continue
+        m = hpa._apply_live_mark(m, sym, quotes.get(sym))
 
         basis, basis_source = None, None
         try:
@@ -505,7 +513,7 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
             "basis_source": basis_source, "seeded_from": seeded_from,
             "hwm_price": round(hwm, 4), "open_gain_pct": open_gain_pct,
             "giveback_frac": giveback_frac, "parabolic_score": score,
-            **{k: m.get(k) for k in ("price", "ext50_atr", "ext200_atr", "rsi14", "rvol20",
+            **{k: m.get(k) for k in ("price", "price_source", "ext50_atr", "ext200_atr", "rsi14", "rvol20",
                                      "up_streak", "gain_5d_pct", "gap_ups_5d", "slope_accel")},
             **cls,
         }
@@ -560,6 +568,8 @@ def run(*, apply: bool, shadow: bool, symbols: set[str] | None, limit: int, json
         "ok": True, "apply": apply, "published": published,
         "holdings_scanned": len(ok_rows), "skipped": len(results) - len(ok_rows),
         "provisional_hwm_pct": round(prov_pct, 1),
+        "price_sources": {src: sum(1 for r in ok_rows if (r.get("price_source") or "?") == src)
+                          for src in sorted({(r.get("price_source") or "?") for r in ok_rows})},
         "advisories": len(fired),
         "iron_rule": {"total_value": total_before, "holdings": n_before},
     }
