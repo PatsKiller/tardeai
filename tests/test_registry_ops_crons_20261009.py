@@ -187,6 +187,11 @@ MOVED_SINCE_SNAPSHOT = {
     "hermes-learning-pipeline-learn": {"20 11 * * *"},
     "hermes-learning-pipeline-tune": {"20 17 * * *"},
     # operator 2026-11-02: "repricing needs to run 24 hours as we have 24-hour markets" (was */15 9-16 1-5)
+    # off-hours pairs added to the live crontab 2026-11-05/06 (census, cc-deepseek-6 registry 3b55c8705)
+    "positions-sync": {"9,24,39,54 9-16 * * 1-5", "0,30 0-8,17-23 * * *", "0,30 9-16 * * 0,6"},
+    "schwab-position-sync": {"7,22,37,52 9-16 * * 1-5", "3,33 0-8,17-23 * * *", "3,33 9-16 * * 0,6"},
+    "alpaca-live-read-sync": {"*/15 9-16 * * 1-5", "6,36 0-8,17-23 * * *", "6,36 9-16 * * 0,6"},
+    "moomoo-live-read-sync": {"*/15 9-16 * * 1-5", "9,39 0-8,17-23 * * *", "9,39 9-16 * * 0,6"},
     "portfolio-repricer": {"*/15 * * * *", "10 16 * * 1-5"},  # 24/7 since 2026-11-07 (operator 30-min stale rule)
 }
 
