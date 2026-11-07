@@ -47553,11 +47553,50 @@ def _snaptrade_status():
         return {"client_id_set": False, "consumer_key_set": False, "ready": False, "connected": False, "error": str(e)}
 
 
+import threading as _sg_threading  # noqa: E402
+
+_SHARED_GET_CACHE: dict = {}
+_SHARED_GET_LOCKS: dict = {}
+_SHARED_GET_LOCKS_GUARD = _sg_threading.Lock()
+
+
+def _shared_get_cached(key: str, ttl_s: float, build):
+    """Serve one computed GET payload to every caller for ttl_s seconds, single-flight.
+
+    /api/v2/cio/pages (20-30 s) and /api/v2/risk (11-21 s) were recomputed for every poll from
+    every component and tab; concurrent identical builds pinned the one CPU the server has
+    (2026-11-07). While one build runs, other callers for the same key wait for it instead of
+    starting their own. A failed build is not cached."""
+    import time as _t
+
+    hit = _SHARED_GET_CACHE.get(key)
+    if hit and _t.monotonic() - hit[0] < ttl_s:
+        return hit[1]
+    with _SHARED_GET_LOCKS_GUARD:
+        lock = _SHARED_GET_LOCKS.setdefault(key, _sg_threading.Lock())
+    with lock:
+        hit = _SHARED_GET_CACHE.get(key)
+        if hit and _t.monotonic() - hit[0] < ttl_s:
+            return hit[1]
+        payload = build()
+        _SHARED_GET_CACHE[key] = (_t.monotonic(), payload)
+        return payload
+
+
 def _w7_cio_pages():
-    """Read-only W7 page projection over one CIO truth document."""
+    """Read-only W7 page projection over one CIO truth document. Cached 60 s, single-flight."""
     from scripts.lib.w7_pages import page_payload
 
-    return page_payload(STATE_DIR.parents[2], db_query=_db_query)
+    return _shared_get_cached(
+        "cio_pages", 60.0, lambda: page_payload(STATE_DIR.parents[2], db_query=_db_query)
+    )
+
+
+def _risk_payload_cached():
+    """GET /api/v2/risk — cached 60 s, single-flight (see _shared_get_cached)."""
+    return _shared_get_cached(
+        "risk", 60.0, lambda: _cio_truth_readers().risk_payload(db_query=_db_query)
+    )
 
 
 _DESKS_A_CACHE: dict = {}
@@ -49676,7 +49715,7 @@ ROUTES = {
     "/api/v2/journal/closed-trades/action-dashboard": _journal_closed_action_dashboard,
     "/api/v2/journal/closed-trades/action-items": _journal_closed_action_items,
     "/api/v2/journal/closed-trades/lessons": _journal_closed_lessons,
-    "/api/v2/risk": lambda: _cio_truth_readers().risk_payload(db_query=_db_query),
+    "/api/v2/risk": _risk_payload_cached,
     "/api/v2/tax-lots": tax_lots,
     "/api/v2/correlation": correlation,
     "/api/v2/rebalance": rebalance,
