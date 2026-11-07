@@ -136,7 +136,8 @@ TAG_ANSWERS = [
     ("count(*) FILTER (WHERE strategy_tags", (2, 10)),
     ("COALESCE(hri.research_type,'unknown')", [("news", 3, 10)]),
     ("round(stddev(quality_score)", (0.1, 5)),
-    ("unnest(hri.strategy_tags) tag, count(*)", [("momentum", 3, 10)]),
+    # tag, ledger_n, actioned_hits, directive_hits, outcome_n, wins (LQ-20261107-133b)
+    ("unnest(hri.strategy_tags) tag, count(*)", [("momentum", 10, 6, 3, 4, 2)]),
     ("SELECT tag, count(*) trade_n", []),
 ]
 
@@ -387,10 +388,6 @@ def tune_env(monkeypatch, tmp_path):
     weights = tmp_path / "hermes_score_weights.yaml"
     weights.write_text("version: 3\nweights:\n  momentum: 0.5\n  value: 0.5\n", encoding="utf-8")
     monkeypatch.setattr(ST, "WEIGHTS_FILE", weights)
-    # LQ-20261107-55: the graft is stored DB-first with a persistent-state mirror, never in the release
-    # config. Pin both tiers at this tmp file and keep the unit test off the live config store.
-    monkeypatch.setenv("HERMES_SCORE_WEIGHTS_FILE", str(weights))
-    monkeypatch.setenv("HERMES_SCORE_WEIGHTS_DB", "0")
     monkeypatch.setattr(ST, "GRAFT_ARCHIVE_DIR", tmp_path / "grafts")
     monkeypatch.setattr(ST, "_conn", _conn)
     monkeypatch.setattr(ST, "_LEARN_ONLY", False)

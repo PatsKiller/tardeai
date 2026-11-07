@@ -9,8 +9,10 @@
   quality   quality_score v2: continuous blend of the existing rule score and the outcome
             ledger's per-research_type prior (Bayesian-shrunk). Kills the 0.30/0.62
             two-point-mass "grade".
-  efficacy  hermes_tag_efficacy: per-tag hit-rate vs base rate from the ledger — a tag that
-            doesn't out-predict its base rate gets flagged. Tags become falsifiable.
+  efficacy  hermes_tag_efficacy: per-tag 20-session win rate vs the base rate from the ledger's
+            graded outcomes — a tag that underperforms its base credibly (sample, effect size
+            and one-sided significance) gets flagged. Tags become falsifiable; "a directive
+            was surfaced" is reported as engagement, never scored as a win.
 
 The 3-axis taxonomy cron is retired with this change (zero readers repo-wide — write-only cost).
 Zero paid LLM. Advisory-only; honors data/runtime/HERMES_DISABLED.
@@ -32,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 import urllib.request
@@ -251,22 +254,105 @@ def quality_v2(cur, cfg, apply):
             "distinct_values": distinct}
 
 
+def _normal_sf(z: float) -> float:
+    """P(Z > z) for a standard normal — the one-sided tail without scipy."""
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+
+def efficacy_stats(rows: list[dict], *, min_n: int, min_effect: float,
+                   alpha: float) -> dict:
+    """Per-tag efficacy on REALIZED outcomes, not on internal consumption.
+
+    A hit is a research row whose 20-session outcome return is positive; a row
+    with no graded outcome is neither a win nor a loss (unknown is not zero).
+    ``actioned``/``directive_hits`` are reported beside it: "a directive was
+    surfaced" is engagement, not an outcome, and until 2026-11-07 it was counted
+    as a hit — 97% of rows scored as hits and tags were flagged on a 0.3-1.2
+    point lift that is pure noise (LQ-20261107-133b).
+
+    A tag is flagged only when the evidence is credible: at least ``min_n``
+    graded outcomes, a win-rate gap of at least ``min_effect`` BELOW the base
+    rate, and a one-sided two-proportion z-test p-value <= ``alpha``.
+    """
+    # Row keys are produced by tag_efficacy() from the SQL counts and are all required;
+    # a missing key is an error, never a zero (a count of wins is not "unknown wins").
+    total_wins = sum(int(r["wins"]) for r in rows)
+    total_n = sum(int(r["outcome_n"]) for r in rows)
+    base = (total_wins / total_n) if total_n else None
+    out = {"base_rate": round(base, 3) if base is not None else None,
+           "metric": "win_rate_20d", "min_effect": min_effect, "alpha": alpha,
+           "tags": [], "flagged": []}
+    for r in sorted(rows, key=lambda x: -int(x["ledger_n"])):
+        tag = str(r["tag"])
+        n = int(r["outcome_n"])
+        wins = int(r["wins"])
+        wr = (wins / n) if n else None
+        lift = (wr - base) if (wr is not None and base is not None) else None
+        p_value = None
+        rest_n = total_n - n
+        if wr is not None and base is not None and 0 < n and 0 < rest_n:
+            se = math.sqrt(wr * (1 - wr) / n + base * (1 - base) / rest_n)
+            if se > 0:
+                # left tail: P(the tag is really WORSE than base), not P(it is better)
+                p_value = _normal_sf(-lift / se)
+        reasons = []
+        if n < min_n:
+            reasons.append(f"n<{min_n}")
+        if lift is None or lift > -min_effect:
+            reasons.append(f"lift>-{min_effect}")
+        if p_value is None or p_value > alpha:
+            reasons.append(f"p>{alpha}")
+        flagged = not reasons
+        out["tags"].append({
+            "tag": tag, "ledger_n": int(r["ledger_n"]),
+            "n": n, "hits": wins, "hit_rate": round(wr, 3) if wr is not None else None,
+            "base_rate": out["base_rate"],
+            "lift": round(lift, 3) if lift is not None else None,
+            "p_value": round(p_value, 4) if p_value is not None else None,
+            "actioned": int(r["actioned_hits"]),
+            "directive_hits": int(r["directive_hits"]),
+            "flagged": flagged,
+            "flag_reason": None if flagged else "not_credible: " + ", ".join(reasons),
+        })
+        if flagged:
+            out["flagged"].append(tag)
+    return out
+
+
 def tag_efficacy(cur, cfg, apply, *, dry_run=False):
     if not dry_run:  # DDL is a write: a read-only dry-run session refuses it (the SELECTs below never read this table)
         cur.execute("""CREATE TABLE IF NOT EXISTS hermes_tag_efficacy (
                          tag TEXT PRIMARY KEY, n INT, hits INT, hit_rate NUMERIC,
                          base_rate NUMERIC, lift NUMERIC, flagged BOOLEAN, updated_at TIMESTAMPTZ)""")
         cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS trade_n INT")
-        cur.execute("ALTER TABLE hermes_tag_efficacy ADD COLUMN IF NOT EXISTS avg_realized_r NUMERIC")
+        # One ALTER carries the prior migration's column and this one's: the statement count on the
+        # apply path stays at three (CREATE + 2 ALTERs), which the cutover pin in
+        # tests/test_hermes_learning_unblock_20261015.py asserts.
+        cur.execute("""ALTER TABLE hermes_tag_efficacy
+                         ADD COLUMN IF NOT EXISTS avg_realized_r NUMERIC,
+                         ADD COLUMN IF NOT EXISTS ledger_n INT,
+                         ADD COLUMN IF NOT EXISTS outcome_n INT,
+                         ADD COLUMN IF NOT EXISTS actioned_hits INT,
+                         ADD COLUMN IF NOT EXISTS directive_hits INT,
+                         ADD COLUMN IF NOT EXISTS p_value NUMERIC,
+                         ADD COLUMN IF NOT EXISTS flag_reason TEXT""")
     apply = apply and not dry_run
+    # n is the number of GRADED outcomes a tag's rate is computed on; ledger_n is
+    # every row that carries the tag. wins = the 20-session return was positive.
     cur.execute("""SELECT unnest(hri.strategy_tags) tag,
-                          count(*) FILTER (WHERE l.actioned <> 'none') hits, count(*) n
+                          count(*) ledger_n,
+                          count(*) FILTER (WHERE l.actioned IN ('proposal','trade')) actioned_hits,
+                          count(*) FILTER (WHERE l.actioned = 'directive_hit') directive_hits,
+                          count(*) FILTER (WHERE l.outcome_ret_20d IS NOT NULL) outcome_n,
+                          count(*) FILTER (WHERE l.outcome_ret_20d > 0) wins
                    FROM hermes_outcome_ledger l
                    JOIN hermes_research_intelligence hri ON hri.id = l.subject_id
                    WHERE l.subject_type='research_row' AND l.actioned IS NOT NULL
                      AND hri.strategy_tags IS NOT NULL
                    GROUP BY 1""")
-    rows = cur.fetchall()
+    rows = [{"tag": t, "ledger_n": ln, "actioned_hits": a, "directive_hits": d,
+             "outcome_n": on, "wins": w}
+            for t, ln, a, d, on, w in cur.fetchall()]
     # R-multiple by tag: trades in the ledger joined to prior tagged research on the same symbol
     # (research within 30d before entry). Answers "does research tagged X precede money?"
     cur.execute("""SELECT tag, count(*) trade_n, avg(realized_r) avg_r FROM (
@@ -279,30 +365,34 @@ def tag_efficacy(cur, cfg, apply, *, dry_run=False):
                        AND hri.strategy_tags IS NOT NULL) x
                    GROUP BY tag""")
     r_by_tag = {r[0]: (r[1], float(r[2])) for r in cur.fetchall()}
-    tot_h = sum(r[1] for r in rows); tot_n = sum(r[2] for r in rows)
-    base = tot_h / tot_n if tot_n else None
-    min_n = int(cfg["efficacy"]["min_samples_per_tag"])
-    out = {"base_rate": round(base, 3) if base is not None else None, "tags": [], "flagged": []}
-    for tag, hits, n in sorted(rows, key=lambda r: -r[2]):
-        hr = hits / n if n else None
-        lift = (hr - base) if (hr is not None and base is not None) else None
-        flagged = bool(n >= min_n and lift is not None and lift <= 0)
-        tn, avg_r = r_by_tag.get(tag, (0, None))
-        out["tags"].append({"tag": tag, "n": n, "hit_rate": round(hr, 3),
-                            "lift": round(lift, 3) if lift is not None else None,
-                            "trade_n": tn, "avg_realized_r": round(avg_r, 3) if avg_r is not None else None})
-        if flagged:
-            out["flagged"].append(tag)
+    eff = cfg.get("efficacy") or {}
+    out = efficacy_stats(rows,
+                         min_n=int(eff.get("min_samples_per_tag", 15)),
+                         min_effect=float(eff.get("min_effect", 0.05)),
+                         alpha=float(eff.get("alpha", 0.05)))
+    for t in out["tags"]:
+        tn, avg_r = r_by_tag.get(t["tag"], (0, None))
+        t["trade_n"] = tn
+        t["avg_realized_r"] = round(avg_r, 3) if avg_r is not None else None
         if apply:
             cur.execute("""INSERT INTO hermes_tag_efficacy (tag, n, hits, hit_rate, base_rate, lift,
-                                                            flagged, trade_n, avg_realized_r, updated_at)
-                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                                                            flagged, trade_n, avg_realized_r, ledger_n,
+                                                            outcome_n, actioned_hits, directive_hits,
+                                                            p_value, flag_reason, updated_at)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
                            ON CONFLICT (tag) DO UPDATE SET n=EXCLUDED.n, hits=EXCLUDED.hits,
                              hit_rate=EXCLUDED.hit_rate, base_rate=EXCLUDED.base_rate,
                              lift=EXCLUDED.lift, flagged=EXCLUDED.flagged,
                              trade_n=EXCLUDED.trade_n, avg_realized_r=EXCLUDED.avg_realized_r,
+                             ledger_n=EXCLUDED.ledger_n, outcome_n=EXCLUDED.outcome_n,
+                             actioned_hits=EXCLUDED.actioned_hits,
+                             directive_hits=EXCLUDED.directive_hits,
+                             p_value=EXCLUDED.p_value, flag_reason=EXCLUDED.flag_reason,
                              updated_at=NOW()""",
-                        (tag, n, hits, hr, base, lift, flagged, tn, avg_r))
+                        (t["tag"], t["n"], t["hits"], t["hit_rate"], out["base_rate"],
+                         t["lift"], t["flagged"], t["trade_n"], t["avg_realized_r"],
+                         t["ledger_n"], t["n"], t["actioned"], t["directive_hits"],
+                         t["p_value"], t["flag_reason"]))
     return out
 
 

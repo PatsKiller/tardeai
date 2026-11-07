@@ -48,4 +48,9 @@ quality:
   neutral: 0.5
 
 efficacy:
-  min_samples_per_tag: 15       # below this a tag's lift is reported but not flagged
+  # A hit is a research row whose 20-session outcome return is positive (hermes_outcome_ledger
+  # .outcome_ret_20d, filled by the outcome grader). Was: actioned <> 'none', which counted
+  # "a watch directive surfaced" as success — 97% of rows, so every tag's lift was noise.
+  min_samples_per_tag: 15       # graded outcomes a tag needs before it can be flagged
+  min_effect: 0.05              # smallest win-rate gap below base worth acting on (5 points)
+  alpha: 0.05                   # one-sided significance the gap must clear to flag the tag

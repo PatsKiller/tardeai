@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_TAG_EFFICACY_OUTCOMES_LQ133B_20261107",
+  "files": [
+    "tests/test_hermes_tag_efficacy_outcomes_lq133b_20261107.py"
+  ],
+  "anchor": "HERMES_TAG_EFFICACY_OUTCOMES_LQ133B_20261107",
+  "comment": [
+    "ANCHOR: HERMES_TAG_EFFICACY_OUTCOMES_LQ133B_20261107 — LQ-20261107-133b, audit78 batch 2.",
+    "The tag engine counted actioned<>'none' as a hit; 97% of research rows counted as successes",
+    "(directive_hit 18,171 of 25,661) so every tag's lift was engagement noise and tags were flagged",
+    "on a 0.3-1.2 point gap. A hit is now a positive 20-session outcome (hermes_outcome_ledger",
+    ".outcome_ret_20d) and a flag needs min_n graded rows, a >=5 point gap below base, and a one-sided",
+    "two-proportion z-test p <= 0.05. Hermetic: pure function, no DB, no network, no broker."
+  ]
+}
