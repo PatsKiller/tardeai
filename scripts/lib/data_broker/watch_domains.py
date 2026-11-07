@@ -64,10 +64,12 @@ def _db_query(sql: str, params=None, fetch: str = "all"):
         try:
             conn.commit()
         except Exception:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
+            # The read failed, so the transaction is aborted: end it on this thread's connection
+            # (rollback, or drop a connection that cannot be rolled back) rather than leaving it
+            # open on a long-lived pool worker (LQ-20261107-372).
+            from db_adapter import end_thread_txn
+
+            end_thread_txn()
 
 
 # ── Membership / positions ──────────────────────────────────────────────────

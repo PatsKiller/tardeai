@@ -20,7 +20,8 @@ later PostgreSQL kills the backend. `lib/needs_action.aggregate` has the same sh
 The fix has three parts, each with a pair here — the positive (the transaction is ended) and a
 control (nothing is ended when there is nothing to end, and a probe that raises still releases):
 
-* `db_adapter.end_thread_txn()` — roll back an open transaction, keep the connection.
+* `db_adapter.end_thread_txn()` — roll back an open transaction and keep the connection; drop the
+  connection instead when it cannot be cleaned, so an uncleanable worker does not leak again.
 * `watch_domains._db_query` — commit on success, roll back on failure.
 * `home_do_now.build` / `needs_action.aggregate` — submit every probe through a wrapper that
   calls `end_thread_txn()` in a ``finally``.
@@ -77,14 +78,17 @@ class _FakeCursor:
 class _FakeConn:
     """The slice of a psycopg2 connection db_adapter/read helpers touch."""
 
-    def __init__(self, *, status=None, closed=0, rows=(), raises=None):
+    def __init__(self, *, status=None, closed=0, rows=(), raises=None, status_raises=None):
         self._status = pgext.TRANSACTION_STATUS_IDLE if status is None else status
         self.closed = closed
         self.calls: list[str] = []
         self.rows = list(rows)
         self.raises = raises
+        self.status_raises = status_raises
 
     def get_transaction_status(self):
+        if self.status_raises is not None:
+            raise self.status_raises
         return self._status
 
     def rollback(self):
@@ -164,6 +168,14 @@ def test_end_thread_txn_has_nothing_to_do_without_a_connection(thread_conn):
     assert A.end_thread_txn() is False
 
 
+def test_end_thread_txn_drops_a_connection_it_cannot_clean(thread_conn):
+    """A connection that cannot even report its state is dropped, not reused in a leaked state."""
+    conn = thread_conn(_FakeConn(status_raises=RuntimeError("connection is already closed by server")))
+    assert A.end_thread_txn() is False
+    assert conn.calls == ["close"], "an uncleanable connection must be closed, not handed back"
+    assert A._tls.conn is None, "it must also leave the thread-local so the next reader reconnects"
+
+
 # ── watch_domains._db_query ─────────────────────────────────────────────────────────────────────────
 
 
@@ -181,8 +193,10 @@ def test_watch_domains_db_query_fetch_one_also_commits(monkeypatch):
     assert conn.calls == ["commit"]
 
 
-def test_watch_domains_db_query_rolls_back_a_failed_read(monkeypatch):
-    conn = _FakeConn(raises=RuntimeError("boom"))
+def test_watch_domains_db_query_rolls_back_a_failed_read(monkeypatch, thread_conn):
+    # A statement that raised leaves the transaction INERROR: COMMIT raises, and the finally
+    # block must still end it on the worker's own connection.
+    conn = thread_conn(_FakeConn(status=pgext.TRANSACTION_STATUS_INERROR, raises=RuntimeError("boom")))
     monkeypatch.setattr(A, "_get_conn", lambda: conn)
     with pytest.raises(RuntimeError):
         WD._db_query("SELECT nope")

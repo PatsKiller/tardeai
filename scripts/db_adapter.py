@@ -274,7 +274,11 @@ def end_thread_txn() -> bool:
 
     Rolls back (never commits): an uncommitted write from a helper that forgot to commit is
     discarded here, which is the fail-closed outcome, instead of being committed later by an
-    unrelated statement on the same connection. Returns True when a transaction was ended.
+    unrelated statement on the same connection.
+
+    Never raises. When the transaction cannot be ended, the connection is dropped instead of
+    returned to the caller in a state that would leak the same backend again; the next reader on
+    this thread reconnects. Returns True when a transaction was ended.
     """
     conn = getattr(_tls, "conn", None)
     if conn is None:
@@ -288,11 +292,12 @@ def end_thread_txn() -> bool:
             return False
         conn.rollback()
         return True
-    except Exception:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
+    except Exception as exc:
+        # Not silenced: the connection could not be cleaned, so a live backend may still hold the
+        # transaction. Drop it (close + clear the thread-local) and say so — reusing it would put
+        # the pool worker straight back into the idle-in-transaction state (LQ-20261107-372).
+        print(f"  [db_adapter] could not end thread transaction ({exc}) — dropping the connection")
+        close_thread_conn()
         return False
 
 

@@ -959,12 +959,9 @@ def _probe(fn: Callable[[], Any]) -> Any:
     try:
         return fn()
     finally:
-        try:
-            from db_adapter import end_thread_txn
+        from db_adapter import end_thread_txn
 
-            end_thread_txn()
-        except Exception:
-            pass
+        end_thread_txn()  # never raises; drops the connection if it cannot be cleaned
 
 
 def build(
