@@ -494,6 +494,22 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["Defense hedge_state"],
     },
     {
+        "id": "session_close",
+        "module": "lib.data_broker.session_close",
+        "entrypoints": ["get_session_closes", "sessions_between", "session_close_sql"],
+        "http": [],
+        "domain": "quotes",
+        "authority_domain": "quote_price",
+        "description": "Official close per (symbol, NYSE session), post-close only: prev_close on the next "
+        "session's first quote, else the first print in [close, close+5 min); never an intraday, after-hours "
+        "or pre-market price; alpaca/finviz rows only (no yfinance); weekends/holidays are not sessions "
+        "(LQ-20261107-275)",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": ["hermes_outcome_grader.refresh_close_cache (daily_close_cache)"],
+    },
+    {
         "id": "subject_research",
         "module": "lib.data_broker.subject_research",
         "entrypoints": ["get_subject_research"],

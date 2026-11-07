@@ -25,6 +25,14 @@ XLK 2026-11-06 = 161.75 (a 07:15 print) where the true last quote was 164.8; rep
 statement returned different prices for the same day. The fix qualifies the reference and adds an id
 tiebreak, and buckets the day in the New York session so the result does not follow the server's
 TimeZone setting.
+
+SUPERSEDED IN PART by LQ-20261107-275 (tests/test_hermes_outcome_grader_post_close_lq275_20261107.py).
+"The last quote of the day" was itself not a close: the poller runs past the bell, so it is an
+after-hours trade (XLK 2026-11-05: 161.75 vs the official 162.45). The refresh now inserts from the data
+broker's ``session_close`` projection, which takes a close only from quotes fetched after the bell and
+orders the chosen quote ASC (first after the close), not DESC. What LQ-126 established still holds and is
+pinned here: every quote-timestamp reference is table-qualified, the day bucket is the New York date, and
+the detector still flags the legacy statement.
 """
 
 from __future__ import annotations
@@ -32,6 +40,7 @@ from __future__ import annotations
 import importlib
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,17 +68,15 @@ class RecordingCursor:
         return []
 
 
-def _upsert_call(cfg=None, backfill=False):
+def _upsert_call():
     mod = importlib.import_module("hermes_outcome_grader")
     cur = RecordingCursor()
-    mod.refresh_close_cache(cur, {"close_cache_refresh_days": 4} if cfg is None else cfg,
-                            backfill=backfill)
-    sql, params = cur.calls[0]
-    return sql, params
+    mod.refresh_close_cache(cur, {"close_cache_refresh_days": 4}, today=date(2026, 11, 9))
+    return cur.calls[0]
 
 
 def _order_by(sql: str) -> str:
-    """The ORDER BY clause of the close-cache upsert, up to ON CONFLICT."""
+    """The ORDER BY clause of a legacy close-cache upsert, up to ON CONFLICT."""
     after = sql.split("ORDER BY", 1)[1]
     return after.split("ON CONFLICT", 1)[0]
 
@@ -79,40 +86,21 @@ def _bare_quote_ts_in_order_by(sql: str) -> list[str]:
     return BARE_QUOTE_TS.findall(_order_by(sql).replace("market_quotes.fetched_at", ""))
 
 
-# --- the ordering must be the quote time, not the day ------------------------------------------------
-
-def test_order_by_sorts_by_the_quote_time_reference_that_cannot_bind_to_the_output_column():
+def test_every_quote_timestamp_reference_is_table_qualified():
     sql, _ = _upsert_call()
-    assert "market_quotes.fetched_at DESC" in _order_by(sql)
-    assert _bare_quote_ts_in_order_by(sql) == []
+    assert "market_quotes.fetched_at" in sql
+    assert BARE_QUOTE_TS.findall(sql.replace("market_quotes.fetched_at", "")) == []
 
 
-def test_order_by_ends_with_a_tiebreak_so_one_row_per_day_is_deterministic():
-    order = _order_by(_upsert_call()[0]).strip()
-    assert re.search(r"market_quotes\.fetched_at DESC,\s*market_quotes\.id DESC$", order), order
-
-
-def test_backfill_uses_the_same_ordering():
-    sql, params = _upsert_call(cfg={}, backfill=True)
-    assert params is None
-    assert "market_quotes.fetched_at DESC" in _order_by(sql)
-    assert _bare_quote_ts_in_order_by(sql) == []
-
-
-# --- the day bucket must not follow the server's TimeZone --------------------------------------------
-
-def test_day_bucket_is_the_new_york_session_date_everywhere_it_appears():
+def test_day_bucket_is_the_new_york_session_date():
     sql, _ = _upsert_call()
-    # DISTINCT ON key, the inserted price_date, and the ORDER BY key must be the same expression.
-    assert sql.count(SESSION_DATE) >= 3, sql
+    assert SESSION_DATE in sql
     assert "fetched_at::date" not in sql
 
 
-def test_the_window_and_the_ordering_agree_on_the_column_they_filter():
-    sql, params = _upsert_call()
-    assert "market_quotes.fetched_at >= NOW() - make_interval(days => %s)" in sql
-    assert params == (4,)
-    assert sql.count("%s") == len(params)
+def test_the_last_quote_of_the_day_rule_is_gone():
+    sql, _ = _upsert_call()
+    assert "fetched_at DESC" not in sql and "quote_at DESC" not in sql
 
 
 # --- the detector itself must catch the statement as it was ------------------------------------------
@@ -130,3 +118,4 @@ def test_the_detector_flags_the_legacy_statement():
                   close_price = EXCLUDED.close_price, source = EXCLUDED.source"""
     assert "market_quotes.fetched_at DESC" not in _order_by(legacy)
     assert len(_bare_quote_ts_in_order_by(legacy)) >= 1
+    assert "fetched_at::date" in legacy and "fetched_at DESC" in legacy

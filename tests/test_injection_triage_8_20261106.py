@@ -104,9 +104,12 @@ def test_news_bridge_lookback_is_a_param_outside_any_literal(monkeypatch):
 def test_outcome_grader_refresh_window_is_a_param():
     mod = importlib.import_module("hermes_outcome_grader")
     cur = RecordingCursor()
-    mod.refresh_close_cache(cur, {"close_cache_refresh_days": "4"})
+    # LQ-20261107-275: the window is a list of NYSE sessions computed in Python and bound as
+    # named array params; the config value only ever reaches int().
+    mod.refresh_close_cache(cur, {"close_cache_refresh_days": "4"}, today=__import__("datetime").date(2026, 11, 9))
     sql, params = cur.calls[0]
-    assert "make_interval(days => %s)" in sql and params == (4,)
+    assert isinstance(params, dict) and len(params["session_date"]) == 3
+    assert "%s" not in sql
     cur = RecordingCursor()
     with pytest.raises(ValueError):
         mod.refresh_close_cache(cur, {"close_cache_refresh_days": HOSTILE})
@@ -114,7 +117,7 @@ def test_outcome_grader_refresh_window_is_a_param():
     cur = RecordingCursor()
     mod.refresh_close_cache(cur, {}, backfill=True)
     sql, params = cur.calls[0]
-    assert params is None and "%s" not in sql and "WHERE price IS NOT NULL" in sql
+    assert params is None and "%s" not in sql and "ORDER BY id ASC LIMIT 1" in sql
 
 
 # --- hermes_scalp_shadow_feeder (FIX: int(days) was spliced into SQL text) --------------------------------

@@ -20,6 +20,7 @@ data/runtime/HERMES_DISABLED.
   python3 scripts/hermes_outcome_grader.py                 # dry-run summary
   python3 scripts/hermes_outcome_grader.py --apply         # seed + grade (nightly cron)
   python3 scripts/hermes_outcome_grader.py --apply --backfill-closes  # one-time full close backfill
+  python3 scripts/hermes_outcome_grader.py --closes-dry-run [--backfill-closes]  # what it would write
 """
 from __future__ import annotations
 
@@ -61,48 +62,123 @@ def rec_direction(text: str | None) -> str:
 
 
 # ── daily-close cache ─────────────────────────────────────────────────────────
-def refresh_close_cache(cur, cfg, backfill=False):
-    """Upsert daily closes from market_quotes (last quote per symbol per day); SPY additionally
-    from price_cache. Nightly touches only the last few days; --backfill-closes does history.
+#: daily_close_cache.source labels written by the post-close rule (LQ-20261107-275). Rows written
+#: before it carry 'market_quotes' (last/arbitrary quote of the day) or 'price_cache'.
+SRC_OFFICIAL = "market_quotes:next_session_prev_close"
+SRC_POST_CLOSE = "market_quotes:post_close_quote"
+#: sessions per INSERT during --backfill-closes, so one statement never sorts the whole quote table
+BACKFILL_CHUNK_SESSIONS = 15
 
-    Two details below are load-bearing; both were wrong before 2026-11-07 (LQ-20261107-126):
 
-    * every quote-timestamp key is table-qualified. PostgreSQL resolves an unqualified ORDER BY name
-      against the SELECT-list output names first, and `(…fetched_at…)::date` is itself named
-      `fetched_at` — so a bare `fetched_at DESC` sorted by the day bucket again, a no-op inside the
-      DISTINCT ON group, and each day kept an arbitrary quote of that day. `market_quotes.fetched_at`
-      cannot bind to that output column; `market_quotes.id DESC` breaks the remaining tie.
-    * the day bucket is the New York session date. `fetched_at::date` follows the server's TimeZone
-      setting, so one quote could land in a different day for a differently configured connection.
+def _ny_today():
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/New_York")).date()
+
+
+def _backfill_start(cur, today):
+    """First quote date still in market_quotes (retention starts it in 2026-08); pkey probe, no scan."""
+    from datetime import timedelta
+    cur.execute("""SELECT (fetched_at AT TIME ZONE 'America/New_York')::date
+                   FROM market_quotes ORDER BY id ASC LIMIT 1""")
+    rows = cur.fetchall()
+    return rows[0][0] if rows and rows[0] and rows[0][0] else today - timedelta(days=400)
+
+
+def close_cache_window(cur, cfg, backfill=False, today=None, service=None):
+    """The NYSE sessions a refresh (re)writes. Weekends and holidays are never sessions."""
+    from datetime import timedelta
+    from lib.data_broker.session_close import sessions_between
+    days = None if backfill else int(cfg["close_cache_refresh_days"])  # ValueError before any SQL
+    today = today or _ny_today()
+    start = _backfill_start(cur, today) if backfill else today - timedelta(days=days)
+    return sessions_between(start, today, service=service)
+
+
+def refresh_close_cache(cur, cfg, backfill=False, today=None, service=None):
+    """Upsert session closes from the data broker's ``session_close`` projection, post-close only.
+
+    LQ-20261107-275 (old LQ-126). The cache held "the last quote of each calendar day": an
+    after-hours trade at best, and before LQ-126 an arbitrary quote that was often the 07:15
+    pre-market print, i.e. the previous evening's price (PWR's cache was one session behind).
+    yfinance quotes and weekend dates went in too. A close now comes only from a quote fetched
+    after that session's official close (lib.data_broker.session_close):
+
+    * ``next_session_prev_close``: prev_close on the first quote of the next trading day: the
+      exchange's official close. It overwrites anything.
+    * ``post_close_quote``: the first print in [close, close + 5 min), for the newest session only
+      until (1) exists. It never overwrites an official row.
+
+    Sessions come from the NYSE calendar, not from quote dates. price_cache still fills gaps only.
     """
-    window = "" if backfill else "WHERE market_quotes.fetched_at >= NOW() - make_interval(days => %s)"
-    window_params = None if backfill else (int(cfg["close_cache_refresh_days"]),)
-    cur.execute(  # nosemgrep: tq-py-sql-fstring -- window is one of two literal clauses; the day count is a param
-        f"""INSERT INTO daily_close_cache (symbol, price_date, close_price, source)
-                    SELECT DISTINCT ON
-                           (UPPER(symbol), (market_quotes.fetched_at AT TIME ZONE 'America/New_York')::date)
-                           UPPER(symbol), (market_quotes.fetched_at AT TIME ZONE 'America/New_York')::date,
-                           price, 'market_quotes'
-                    FROM market_quotes
-                    {window}
-                    {"AND" if window else "WHERE"} price IS NOT NULL AND price > 0
-                    ORDER BY UPPER(symbol),
-                             (market_quotes.fetched_at AT TIME ZONE 'America/New_York')::date,
-                             market_quotes.fetched_at DESC, market_quotes.id DESC
-                    ON CONFLICT (symbol, price_date) DO UPDATE SET
-                      close_price = EXCLUDED.close_price, source = EXCLUDED.source""", window_params)
-    n_mq = cur.rowcount
+    from lib.data_broker.session_close import session_close_params, session_close_sql
+    sessions = close_cache_window(cur, cfg, backfill=backfill, today=today, service=service)
+    step = BACKFILL_CHUNK_SESSIONS if backfill else max(len(sessions), 1)
+    n_mq = 0
+    for i in range(0, len(sessions), step):
+        params = session_close_params(sessions[i:i + step])
+        params.update({"src_official": SRC_OFFICIAL, "src_prefix": "market_quotes:"})
+        cur.execute(  # nosemgrep: tq-py-sql-fstring -- the subquery is a module constant; all values are params
+            f"""INSERT INTO daily_close_cache (symbol, price_date, close_price, source)
+                SELECT c.symbol, c.session_date, c.close_price, %(src_prefix)s || c.method
+                FROM ({session_close_sql()}) c
+                ON CONFLICT (symbol, price_date) DO UPDATE SET
+                  close_price = EXCLUDED.close_price, source = EXCLUDED.source
+                WHERE daily_close_cache.source IS DISTINCT FROM %(src_official)s
+                   OR EXCLUDED.source = %(src_official)s""", params)
+        n_mq += max(cur.rowcount or 0, 0)
     cur.execute("""INSERT INTO daily_close_cache (symbol, price_date, close_price, source)
                    SELECT UPPER(symbol), price_date, close_price, 'price_cache'
                    FROM price_cache WHERE close_price IS NOT NULL AND close_price > 0
                    ON CONFLICT (symbol, price_date) DO NOTHING""")
-    return n_mq + cur.rowcount
+    return n_mq + max(cur.rowcount or 0, 0)
 
 
-def _sessions(cur, benchmark):
+def closes_dry_run(cur, cfg, backfill=False, today=None, service=None, sample=8) -> dict:
+    """What refresh_close_cache would write, compared with the cache now. SELECT only."""
+    from lib.data_broker.session_close import session_close_params, session_close_sql
+    sessions = close_cache_window(cur, cfg, backfill=backfill, today=today, service=service)
+    out = {"sessions": [s.session_date.isoformat() for s in sessions], "would_insert": 0,
+           "would_update": 0, "unchanged": 0, "kept_official": 0, "by_method": {}, "largest_changes": []}
+    if not sessions:
+        return out
+    params = session_close_params(sessions)
+    cur.execute(  # nosemgrep: tq-py-sql-fstring -- the subquery is a module constant; all values are params
+        f"""SELECT c.symbol, c.session_date, c.close_price, c.method, d.close_price, d.source
+                    FROM ({session_close_sql()}) c
+                    LEFT JOIN daily_close_cache d ON d.symbol = c.symbol AND d.price_date = c.session_date""",
+                params)
+    changes = []
+    for sym, sd, new, method, old, old_src in cur.fetchall():
+        out["by_method"][method] = out["by_method"].get(method, 0) + 1
+        if old is None:
+            out["would_insert"] += 1
+        elif old_src == SRC_OFFICIAL and method != "next_session_prev_close":
+            out["kept_official"] += 1
+        elif float(old) == float(new) and old_src == "market_quotes:" + method:
+            out["unchanged"] += 1
+        else:
+            out["would_update"] += 1
+            pct = (float(old) / float(new) - 1.0) * 100.0 if float(new) else 0.0
+            changes.append((abs(pct), sym, sd.isoformat(), float(old), float(new), method, old_src))
+    changes.sort(reverse=True)
+    out["largest_changes"] = [{"symbol": c[1], "session_date": c[2], "cached": c[3], "close": c[4],
+                               "cached_off_pct": round(c[0], 3), "method": c[5], "cached_source": c[6]}
+                              for c in changes[:sample]]
+    cur.execute("""SELECT count(*) FROM daily_close_cache
+                   WHERE price_date BETWEEN %s AND %s AND EXTRACT(ISODOW FROM price_date) >= 6""",
+                (sessions[0].session_date, sessions[-1].session_date))
+    out["weekend_rows_in_window_ignored_by_grader"] = cur.fetchall()[0][0]
+    return out
+
+
+def _sessions(cur, benchmark, service=None):
+    """The benchmark's cached dates that are NYSE sessions. A weekend/holiday row (a yfinance quote
+    once put PWR and SPY on Saturday 2026-11-07) is not a session and must not shift the horizons."""
+    from lib.cio_market_session import get_session_service
+    svc = service or get_session_service()
     cur.execute("SELECT price_date FROM daily_close_cache WHERE symbol=%s ORDER BY price_date",
                 (benchmark.upper(),))
-    return [r[0] for r in cur.fetchall()]
+    return [r[0] for r in cur.fetchall() if svc.is_trading_day(r[0])]
 
 
 # ── seeding (idempotent) ─────────────────────────────────────────────────────
@@ -398,7 +474,7 @@ def writeback_hermes_research(cur) -> dict:
     return {"hermes_research_written": written}
 
 
-def run(apply=False, backfill_closes=False, max_rows=None) -> dict:
+def run(apply=False, backfill_closes=False, max_rows=None, closes_dry=False) -> dict:
     if KILL_SWITCH.exists():
         out = {"ok": False, "reason": "HERMES_DISABLED kill switch present — grader idle"}
         print(json.dumps(out))
@@ -407,6 +483,8 @@ def run(apply=False, backfill_closes=False, max_rows=None) -> dict:
     conn = _conn(); cur = conn.cursor()
     out = {"ok": True, "apply": apply}
     if not apply:
+        if closes_dry:
+            out["closes_dry_run"] = closes_dry_run(cur, cfg, backfill=backfill_closes)
         cur.execute("SELECT verdict, count(*) FROM hermes_outcome_ledger GROUP BY 1")
         out["ledger_now"] = {r[0]: r[1] for r in cur.fetchall()}
         out["note"] = "dry-run: no seed/grade performed (use --apply)"
@@ -446,8 +524,11 @@ def main():
     ap.add_argument("--backfill-closes", action="store_true",
                     help="one-time: build daily_close_cache from full market_quotes history")
     ap.add_argument("--max-rows", type=int, default=None)
+    ap.add_argument("--closes-dry-run", action="store_true",
+                    help="without --apply: report what the close refresh would write vs the cache (SELECT only)")
     args = ap.parse_args()
-    run(apply=args.apply, backfill_closes=args.backfill_closes, max_rows=args.max_rows)
+    run(apply=args.apply, backfill_closes=args.backfill_closes, max_rows=args.max_rows,
+        closes_dry=args.closes_dry_run)
 
 
 if __name__ == "__main__":
