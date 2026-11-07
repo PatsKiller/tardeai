@@ -129,3 +129,91 @@ def test_the_lane_id_matches_the_registry_and_the_allowlist_signal(tmp_path, mon
     al = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
     entry = next(e for e in al["lanes"] if e.get("lane_id") == mod.LANE_ID)
     assert entry["output_signal"] == signal["path"], entry["output_signal"]
+
+
+# --- the run's verdict: a halt or a broken provider route is not an empty lane ---------------------
+#
+# A green receipt over work the lane found and did not do is the failure mode this lane's signal exists to
+# catch: `ok_at` advancing makes the health contract report healthy while the desk gets nothing. The three
+# paths below all used to fall through to `ok=True, exit 0, empty_reason="nothing_due"`.
+
+_CHANGE = {"subject_guid": "g-1", "change_guid": "c-1", "symbol": "AAA", "kind": "news", "magnitude": 1}
+
+
+def _wire_apply(mod, monkeypatch, *, changes, ask_model):
+    _stub_ddl_guard(monkeypatch)
+    mod._db = _Conn
+    mod.cap_env_warning = lambda: None
+    mod.reconcile_answers = lambda cur, apply=True: {}
+    mod.pending_changes = lambda cur, limit: changes
+    mod.dossier = lambda cur, guid: [{"doc": "linked in the corpus"}]
+    mod.route = lambda cur, limit: {"routed": 0}
+    mod.ask_model = ask_model
+
+
+def _receipt_doc(tmp_path: Path) -> dict:
+    return json.loads(_receipt(tmp_path).read_text())
+
+
+def test_an_escalated_stop_is_a_failed_run_not_an_empty_one(tmp_path, monkeypatch):
+    """EscalationStopped is the spend ladder refusing a gated lane on work it found. Reporting
+    `nothing_due`/ok told the desk the lane had nothing to do and advanced ok_at."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(tmp_path / "state"))
+    from lib.llm_escalation import EscalationStopped
+
+    mod = _load()
+
+    def _stop(ch, items):
+        raise EscalationStopped([{"lane": "deepseek-free", "error": "quota"}], True)
+
+    _wire_apply(mod, monkeypatch, changes=[dict(_CHANGE)], ask_model=_stop)
+
+    assert mod.main(["--apply"]) == 3
+    doc = _receipt_doc(tmp_path)
+    assert doc["status"] == "failed", doc
+    assert doc["exit"] == 3, doc
+    assert not doc.get("ok_at"), f"a stopped run advanced ok_at: {doc}"
+    assert doc.get("empty_reason") is None, doc
+    assert doc["error"] == "escalation_stopped", doc
+
+
+def test_every_model_call_failing_is_a_failed_run_not_an_empty_one(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    mod = _load()
+
+    def _boom(ch, items):
+        raise RuntimeError("provider route down")
+
+    _wire_apply(mod, monkeypatch, changes=[dict(_CHANGE)], ask_model=_boom)
+
+    assert mod.main(["--apply"]) == 1
+    doc = _receipt_doc(tmp_path)
+    assert doc["status"] == "failed", doc
+    assert doc["exit"] == 1, doc
+    assert not doc.get("ok_at"), f"a broken route advanced ok_at: {doc}"
+    assert doc.get("empty_reason") is None, doc
+    assert doc["error"] == "all_model_calls_failed", doc
+
+
+def test_a_crash_writes_a_failed_receipt_before_it_propagates(tmp_path, monkeypatch):
+    """Without this the previous ok_at stands and a crashing lane reads fresh until it ages out."""
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    mod = _load()
+    _stub_ddl_guard(monkeypatch)
+    mod._db = _Conn
+    mod.cap_env_warning = lambda: None
+
+    def _crash(cur, limit):
+        raise RuntimeError("db went away")
+
+    mod.pending_changes = _crash
+
+    with pytest.raises(RuntimeError):
+        mod.main(["--apply"])
+
+    doc = _receipt_doc(tmp_path)
+    assert doc["status"] == "failed", doc
+    assert doc["exit"] == 1, doc
+    assert doc["error"] == "RuntimeError", doc
+    assert not doc.get("ok_at"), doc

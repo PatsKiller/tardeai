@@ -784,7 +784,8 @@ def route(cur, limit: int) -> dict:
     return out
 
 
-def _write_lane_receipt(*, produced_count: int, empty_reason: str | None = None,
+def _write_lane_receipt(*, ok: bool = True, exit_code: int = 0, produced_count: int | None = 0,
+                        empty_reason: str | None = None, error: str | None = None,
                         started_at: datetime | None = None) -> None:
     """LaneRunReceipt for data/runtime/due-diligence-questions_last.json — a REAL run only.
 
@@ -792,14 +793,20 @@ def _write_lane_receipt(*, produced_count: int, empty_reason: str | None = None,
     (AGENTS.md §9.3, §0 rail 8), so the registry output_signal is this receipt's ``ok_at`` instead. Never
     called from the ``--dry-run`` branch above: a dry run cannot reach the write (AGENTS.md §6). The helper
     never raises into the caller, so a receipt failure cannot change this run's result or exit code.
+
+    ``ok`` is the RUN's verdict, not "the process reached the end": an escalated stop is a deliberate halt on
+    found work, and a run whose every model call failed produced nothing for a reason that is not an empty
+    lane. Both write ``ok=False`` so ``ok_at`` stays where the last good run left it and the lane goes stale
+    (``lane_last_receipt`` carries ``previous_ok_at`` forward), instead of reporting ``nothing_due`` — a green
+    over work the lane saw and did not do.
     """
     try:
         from lib.lane_last_receipt import write_lane_receipt
     except ImportError:  # imported from the repo root rather than with scripts/ on sys.path
         from scripts.lib.lane_last_receipt import write_lane_receipt
-    write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started_at,
+    write_lane_receipt(LANE_ID, ok=ok, exit_code=exit_code, started_at=started_at,
                        script="due_diligence_questions.py", produced_count=produced_count,
-                       empty_reason=empty_reason)
+                       empty_reason=empty_reason, error=error)
 
 
 def main(argv=None) -> int:
@@ -815,6 +822,18 @@ def main(argv=None) -> int:
         print(f"DRY-RUN due-diligence-questions: would curate up to {args.limit} changes route={args.route}; no lock, DB, schema, researcher, model or writes")
         return 0
 
+    try:
+        return _apply_run(args, started)
+    except Exception as exc:  # noqa: BLE001 -- a crash still has to say so in the receipt
+        # Without this the previous run's ok_at stands and a crashing lane reads fresh until the freshness
+        # window expires. The receipt carries previous_ok_at forward, so this makes the lane go stale now.
+        _write_lane_receipt(ok=False, exit_code=1, produced_count=None, empty_reason=None,
+                            error=type(exc).__name__, started_at=started)
+        raise
+
+
+def _apply_run(args, started: datetime) -> int:
+    """The real run. Returns the process exit code; writes the lane receipt on every path that reached the DB."""
     conn = _db()
     cur = conn.cursor()
     # ddl_guard: see scripts/lib/ddl_guard.py — third contender for the same lock.
@@ -858,25 +877,32 @@ def main(argv=None) -> int:
             conn.commit()
         conn.close()
         print("RESULT: " + json.dumps(result, default=str))
-        _write_lane_receipt(produced_count=0, empty_reason="nothing_due", started_at=started)
+        _write_lane_receipt(ok=True, exit_code=0, produced_count=0, empty_reason="nothing_due",
+                            started_at=started)
         return 0
 
     from lib.llm_escalation import EscalationStopped
 
     total_q = 0
+    attempted_calls = 0
+    failed_calls = 0
+    stopped = False
     for ch in changes:
         items = dossier(cur, ch["subject_guid"])
         if not items:
             print(f"  {ch['symbol']}: no dossier — nothing linked in the corpus yet")
             continue
+        attempted_calls += 1
         try:
             got = ask_model(ch, items)
         except EscalationStopped as exc:
             # Hard stop. The operator was asked; do not enter a gated paid lane.
             print(f"  ESCALATION STOPPED: {exc}", file=sys.stderr)
             result["outcome"] = "ESCALATION_STOPPED"
+            stopped = True
             break
         except Exception as exc:  # noqa: BLE001
+            failed_calls += 1
             print(f"  {ch['symbol']}: model call failed "
                   f"({type(exc).__name__}: {str(exc)[:90]})", file=sys.stderr)
             continue
@@ -910,8 +936,21 @@ def main(argv=None) -> int:
         conn.commit()
     conn.close()
     print("\nRESULT: " + json.dumps(result, default=str))
-    _write_lane_receipt(produced_count=total_q, empty_reason=None if total_q else "nothing_due",
-                        started_at=started)
+
+    # The run's verdict, not "we got to the end". An escalation stop is a deliberate halt on work it found
+    # (asking again next tick would re-spend what the ladder just refused); every call failing is a broken
+    # provider route, not an empty lane. Neither may report `nothing_due` or advance ok_at.
+    all_failed = attempted_calls > 0 and failed_calls == attempted_calls and total_q == 0
+    if stopped:
+        _write_lane_receipt(ok=False, exit_code=3, produced_count=total_q, empty_reason=None,
+                            error="escalation_stopped", started_at=started)
+        return 3
+    if all_failed:
+        _write_lane_receipt(ok=False, exit_code=1, produced_count=total_q, empty_reason=None,
+                            error="all_model_calls_failed", started_at=started)
+        return 1
+    _write_lane_receipt(ok=True, exit_code=0, produced_count=total_q,
+                        empty_reason=None if total_q else "nothing_due", started_at=started)
     return 0
 
 
