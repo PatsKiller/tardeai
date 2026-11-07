@@ -5578,6 +5578,42 @@
         "process_id": "due_diligence_questions"
       },
       "offpeak_gate": "scheduled"
+    },
+    {
+      "lane_id": "research-intelligence-queue",
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--drain",
+        "--cap",
+        "10"
+      ],
+      "lock_kind": "flock",
+      "market_gate": false,
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "PROJECT_ROOT",
+        "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as the wave-2/4 lanes).",
+      "command": [
+        "$PY",
+        "scripts/research_intelligence_queue.py"
+      ],
+      "lock": "/tmp/ri_research_queue_cron.lock",
+      "timeout_s": 3600,
+      "output_signal": "data/runtime/research-intelligence-queue_last.json",
+      "env_evidence": "SOURCE_ONLY: the live path imports db_adapter (DB_* via the shared loader); the --dry-run path returns before any env, DB or network read. Full real-run import closure NOT_MEASURED.",
+      "source": "LQ-20261107-20 overnight onboarding wave (2026-11-07). Both live cron lines already carry flock -n /tmp/ri_research_queue_cron.lock; no crontab edit needed. `--drain` writes the LaneRunReceipt (research_intelligence_queue.py), `--dry-run` returns before any env/DB read. SHADOW ONLY: live_arg null, dispatch.mode dry_run, scheduler.stage shadow. | CW0 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--drain', '--cap', '10'], lock = the cron flock lock /tmp/ri_research_queue_cron.lock (shared: the lock proves no double run)."
     }
   ],
   "blocked_reasons": {

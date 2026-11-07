@@ -1068,8 +1068,9 @@ def declarations(row: dict[str, Any]) -> list[str]:
         expr = ""
     if expr and not _BARE_SCHEDULE.match(expr):
         out.append(expr)
-    if sched.get("match"):
-        out.append(str(sched["match"]))
+    # 2026-11-07: a list `match` (one item per cron line) declares item by item, as lane_registry.find_undeclared does.
+    m = sched.get("match")
+    out.extend(str(x) for x in (m if isinstance(m, list) else [m]) if x)
     return out
 
 

@@ -1192,10 +1192,14 @@ def find_undeclared(
             declared.add(expr)
             if not is_unit_row:
                 declared_cron.add(expr)
-        if sched.get("match"):
-            declared.add(str(sched["match"]))
-            if not is_unit_row:
-                declared_cron.add(str(sched["match"]))
+        # 2026-11-07: `match` may be a list, one item per cron line (the cutover planner's answer to
+        # match_hits_2_lines). Each item is its own pattern; str(list) would be a repr that matches no line.
+        raw_match = sched.get("match")
+        for item in (raw_match if isinstance(raw_match, list) else [raw_match]):
+            if item:
+                declared.add(str(item))
+                if not is_unit_row:
+                    declared_cron.add(str(item))
     baseline = set(reg.get("undeclared_baseline") or [])
     # Dated inherited tranches (2026-09-28): lines installed on the host by other work with no
     # lane row, recorded WITH provenance instead of growing the original baseline. Same contract:

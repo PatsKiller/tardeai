@@ -24204,18 +24204,24 @@
       "scheduler": {
         "kind": "cron",
         "expression": "45 16 * * 1-5 + 40 2 * * *",
-        "match": "scripts/research_intelligence_queue.py",
+        "match": [
+          "&& flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain",
+          "--official -- flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain"
+        ],
         "schedules": [
           "45 16 * * 1-5",
           "40 2 * * *"
-        ]
+        ],
+        "stage": "canary",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1 ; cd $HOME/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/ri_research_queue.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "path": "data/runtime/research-intelligence-queue_last.json",
+        "key": "ok_at"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P10",
@@ -24240,7 +24246,19 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "45 16 * * 1-5",
+          "40 2 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "pipeline",
+        "priority": 5,
+        "retry_policy": "none"
+      }
     },
     {
       "lane_id": "holdings-gain-guardian",

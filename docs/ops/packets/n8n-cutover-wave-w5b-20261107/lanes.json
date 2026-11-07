@@ -1,0 +1,39 @@
+{
+  "wave": "W5B",
+  "ready": [
+    "research-intelligence-queue"
+  ],
+  "effect_keyed": [
+    "research-intelligence-queue"
+  ],
+  "plan": [
+    {
+      "lane_id": "research-intelligence-queue",
+      "row_id": "cron:L742",
+      "family_id": "F47",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/ri_research_queue_cron.lock",
+      "live_arg": [
+        "--drain",
+        "--cap",
+        "10"
+      ],
+      "slots": [
+        "45 16 * * 1-5",
+        "40 2 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 752,
+          "text": "45 16 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1"
+        },
+        {
+          "line": 753,
+          "text": "40 2 * * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- flock -n /tmp/ri_research_queue_cron.lock $PY scripts/research_intelligence_queue.py --drain --cap 10 >> logs/ri_research_queue.log 2>&1"
+        }
+      ],
+      "reasons": []
+    }
+  ]
+}
