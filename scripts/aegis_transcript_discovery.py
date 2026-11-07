@@ -2,7 +2,9 @@
 aegis_transcript_discovery.py — Aegis Tier 1D: Transcript intelligence + bounded web discovery.
 
 Sources:
-- Existing youtube_transcripts DB (preferred — already ingested, no network)
+- Existing youtube_transcripts DB (preferred — already ingested, no network). A row is attached to a symbol
+  only when its text names that symbol as a case-sensitive whole word or `$cashtag` (lib/symbol_match.py);
+  a substring hit alone is not evidence (LQ-20261107-143).
 - YouTube transcript API (earnings calls, finance commentary for tracked symbols)
 - Brave Search API (bounded article/transcript discovery; degrades on network failure)
 - Existing article_index from pipeline (internal enrichment)
@@ -29,6 +31,8 @@ import os
 import re
 import sys
 import time
+from collections import Counter
+
 import requests
 from datetime import date, datetime
 from pathlib import Path
@@ -36,6 +40,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+from lib import symbol_match  # noqa: E402 -- one matcher for every lane that finds tickers in text (LQ-20261107-191)
 
 # Load only the named keys from .env (AGENTS.md §23.18: a lane never copies the whole env file, which also carries
 # broker credentials, into os.environ). DB_* for db_adapter (set first, so db_adapter never falls back to env_bootstrap's whole-render load) and the Brave switches this lane reads.
@@ -199,37 +205,106 @@ def _stance_and_themes(title: str, description: str, body: str = "") -> tuple[st
 
 # ── D0: Prefer existing youtube_transcripts DB ────────────────────────────
 
+#: Candidate rows read per symbol before mention() decides. The whole-word SQL prefilter returns 0-3 rows per
+#: symbol on the live corpus (read-only 2026-11-07), so this only bounds a pathological symbol; it is not a
+#: sample of the corpus.
+_CANDIDATE_LIMIT = 50
+
+#: Confidence follows the evidence, not a constant. A cashtag names the security exactly; a bare ticker is an
+#: exact case-sensitive whole word but still one token. Before 2026-11-07 every row got 0.55 whether or not the
+#: text named the symbol at all (LQ-20261107-143).
+_CONFIDENCE_BY_MENTION = {"cashtag": 0.75, "ticker": 0.65}
+
+
+def _mention_confidence(how: str | None) -> float:
+    """The confidence a matched transcript earns from HOW it named the symbol (cashtag > bare ticker)."""
+    return _CONFIDENCE_BY_MENTION.get(how or "", 0.55)
+
+
+def _reported(stats: dict, key: str):
+    """A fetch counter as reported, or ``"unreported"`` — a stub or an empty universe is not a measured zero."""
+    value = stats.get(key)
+    if value is None:
+        return "unreported"
+    return dict(value) if isinstance(value, Counter) else value
+
+
+def _existing_transcript_keys(symbols: list[str]) -> set:
+    """(symbol, title) pairs this lane already wrote, so a later run does not re-file the same video."""
+    rows = _db_query(
+        """SELECT DISTINCT symbol, title FROM transcript_intel_history
+           WHERE source_family = 'youtube' AND symbol = ANY(%s)""",
+        (symbols,)) or []
+    return {(str(r.get("symbol") or ""), r.get("title") or "") for r in rows}
+
+
 def fetch_db_youtube_transcripts(symbols: list[str], max_per_symbol: int = 2,
-                                 lookback_days: int = 14) -> list[dict]:
-    """Query already-ingested youtube_transcripts related to symbols. No network."""
+                                 lookback_days: int = 14, stats: dict | None = None) -> list[dict]:
+    """Query already-ingested youtube_transcripts related to symbols. No network.
+
+    A row is attached to a symbol only when the text actually NAMES it: a case-sensitive whole word or a
+    ``$cashtag`` (``lib/symbol_match.py``). Until 2026-11-07 the test was ``ILIKE '%SYM%'`` — "DRS" inside
+    "cdrs"/"BDRs", "T" inside "don't" — and every substring hit was attached with a fixed 0.55 confidence, so the
+    store carried AXON on a Palantir video and NOC on a Medicare video (LQ-20261107-143). ``pg_word_regex`` is
+    only the SQL prefilter; ``mention`` holds the rules SQL cannot (T-Mobile, TSX:T, S&P, single-letter tickers).
+
+    ``published_at`` comes from ``youtube_transcripts.publish_date``. A (symbol, title) this lane already wrote
+    is skipped, so the daily run files a video once. ``stats`` (optional dict) receives the counts the dry run
+    reports: candidates read, rejected (and why), skipped duplicates, and the matched-by tally.
+    """
     records = []
+    st = stats if stats is not None else {}
+    st.update({"candidates": 0, "rejected_not_mentioned": 0, "rejected_reasons": Counter(),
+               "skipped_duplicate": 0, "matched_by": Counter()})
     if not symbols:
         return records
+    existing = _existing_transcript_keys(symbols)
 
     for sym in symbols[:20]:
+        try:
+            pattern = symbol_match.pg_word_regex(sym)
+        except ValueError:
+            continue  # not a ticker shape (FID-, SP500-, TRP-): a ticker can never appear in text as this
         rows = _db_query(
             """SELECT video_id, title, channel_name, url, summary, transcript_text,
-                      quality_score, strategy_tags, ingested_at
+                      quality_score, strategy_tags, publish_date, ingested_at
                FROM youtube_transcripts
                WHERE ingested_at > NOW() - make_interval(days => %s)
                  AND (
-                      title ILIKE %s
-                   OR COALESCE(summary, '') ILIKE %s
-                   OR COALESCE(transcript_text, '') ILIKE %s
-                   OR COALESCE(strategy_tags::text, '') ILIKE %s
+                      title ~ %s
+                   OR COALESCE(summary, '') ~ %s
+                   OR COALESCE(transcript_text, '') ~ %s
+                   OR COALESCE(strategy_tags::text, '') ~ %s
                  )
                ORDER BY quality_score DESC NULLS LAST, ingested_at DESC
                LIMIT %s""",
-            (lookback_days, f"%{sym}%", f"%{sym}%", f"%{sym}%", f"%{sym}%", max_per_symbol),
+            (lookback_days, pattern, pattern, pattern, pattern, _CANDIDATE_LIMIT),
         ) or []
+        st["candidates"] += len(rows)
 
+        taken = 0
         for r in rows:
+            if taken >= max_per_symbol:
+                break
+            text = " . ".join(str(r.get(k) or "") for k in
+                              ("title", "summary", "transcript_text", "strategy_tags"))
+            match = symbol_match.mention(text, sym)
+            if not match["matched"]:
+                st["rejected_not_mentioned"] += 1
+                why = match.get("reason") or symbol_match.NO_MENTION
+                st["rejected_reasons"][why] += 1
+                continue
             title = (r.get("title") or "")[:120]
             summary = (r.get("summary") or "")[:300]
             body = (r.get("transcript_text") or "")[:500]
             if not title and not summary and not body:
                 continue  # never invent
+            if (sym, title) in existing:
+                st["skipped_duplicate"] += 1
+                continue
             stance, themes = _stance_and_themes(title, summary, body)
+            how = match.get("how")
+            st["matched_by"][how or "unknown"] += 1
             records.append({
                 "symbol": sym,
                 "theme": None,
@@ -240,16 +315,20 @@ def fetch_db_youtube_transcripts(symbols: list[str], max_per_symbol: int = 2,
                 "summary": summary or body[:300],
                 "stance": stance,
                 "notable_themes": themes,
-                "confidence": 0.55,
+                "confidence": _mention_confidence(how),
+                "matched_by": how,
                 "video_id": r.get("video_id"),
                 "quality_score": r.get("quality_score"),
+                "published_at": str(r["publish_date"]) if r.get("publish_date") else None,
             })
+            taken += 1
     return records
 
 
 # ── D1: YouTube transcript ingestion (Brave-assisted, DB-first) ───────────
 
-def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1, network: bool = True) -> list[dict]:
+def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1, network: bool = True,
+                              stats: dict | None = None) -> list[dict]:
     """Prefer DB transcripts; optionally enrich via Brave + youtube_transcript_api.
 
     network=False (the --dry-run path) returns the DB corpus only: no Brave query, no YouTube API call.
@@ -261,7 +340,7 @@ def fetch_youtube_transcripts(symbols: list[str], max_per_symbol: int = 1, netwo
     """
     import os
     # Preferred path: already-ingested corpus
-    records = fetch_db_youtube_transcripts(symbols, max_per_symbol=max(max_per_symbol, 2))
+    records = fetch_db_youtube_transcripts(symbols, max_per_symbol=max(max_per_symbol, 2), stats=stats)
     if records:
         print(f"  [youtube] DB corpus: {len(records)} symbol-related transcripts")
     if not network:
@@ -500,14 +579,15 @@ def persist_transcripts(records: list[dict]) -> int:
     for r in records:
         ok = _db_write(
             """INSERT INTO transcript_intel_history
-               (run_id, symbol, theme, source_family, source_name, channel, title, summary,
+               (run_id, symbol, theme, source_family, source_name, channel, published_at, title, summary,
                 stance, notable_themes, confidence, provenance)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                ON CONFLICT (run_id, symbol, title) DO NOTHING""",
             (RUN_ID, r.get("symbol"), r.get("theme"), r["source_family"], r.get("source_name"),
-             r.get("channel"), r.get("title"), r.get("summary"),
+             r.get("channel"), r.get("published_at"), r.get("title"), r.get("summary"),
              r.get("stance"), r.get("notable_themes", []), r.get("confidence", 0.4),
-             json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:transcript"}))
+             json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:transcript",
+                         "matched_by": r.get("matched_by")}))
         )
         if ok:
             written += 1
@@ -555,8 +635,12 @@ def main(dry_run: bool = False):
     print(f"  Universe: {len(symbols)} symbols")
 
     # D1: YouTube transcripts (DB preferred, Brave optional; the dry run never touches the network)
-    yt_records = fetch_youtube_transcripts(priority, network=not dry_run)
-    print(f"  YouTube: {len(yt_records)} transcript records")
+    yt_stats: dict = {}
+    yt_records = fetch_youtube_transcripts(priority, network=not dry_run, stats=yt_stats)
+    # An unreported count is reported as unreported: 0 would read as "read nothing" when the fetch never said.
+    print(f"  YouTube: {len(yt_records)} transcript records — candidates {_reported(yt_stats, 'candidates')}, "
+          f"rejected (text never names the symbol) {_reported(yt_stats, 'rejected_not_mentioned')}, "
+          f"already filed {_reported(yt_stats, 'skipped_duplicate')}, matched by {_reported(yt_stats, 'matched_by')}")
 
     # Internal article enrichment (Hermes-style local fallback)
     article_records = enrich_from_article_index(symbols)
@@ -566,7 +650,13 @@ def main(dry_run: bool = False):
     if dry_run:
         brave_on = _brave_enabled() and bool(BRAVE_KEY)
         from lib.lane_last_receipt import dry_run_report
-        summary = {"universe": len(symbols), "youtube_db": len(yt_records), "articles": len(article_records),
+        summary = {"universe": len(symbols), "youtube_db": len(yt_records),
+                   "youtube_candidates": yt_stats.get("candidates"),
+                   "youtube_rejected_not_mentioned": yt_stats.get("rejected_not_mentioned"),
+                   "youtube_rejected_reasons": yt_stats.get("rejected_reasons"),
+                   "youtube_already_filed": yt_stats.get("skipped_duplicate"),
+                   "youtube_matched_by": yt_stats.get("matched_by"),
+                   "articles": len(article_records),
                    "would_write_transcripts": len(all_transcripts),
                    "would_query_brave": (min(len(priority), 12) + min(len(priority), 10) + len(PORTFOLIO_THEMES))
                    if brave_on else 0,

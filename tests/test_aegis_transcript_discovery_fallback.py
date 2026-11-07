@@ -27,7 +27,7 @@ def test_db_preferred_before_brave(monkeypatch):
         "quality_score": 72,
     }]
     monkeypatch.setattr(atd, "fetch_db_youtube_transcripts",
-                        lambda symbols, max_per_symbol=2, lookback_days=14: list(db_rows))
+                        lambda symbols, max_per_symbol=2, lookback_days=14, stats=None: list(db_rows))
     monkeypatch.setattr(atd, "BRAVE_KEY", "fake-key")
 
     def boom(*a, **k):
@@ -70,20 +70,25 @@ def test_brave_network_failure_does_not_crash(monkeypatch):
 
 
 def test_fetch_db_maps_real_rows_only(monkeypatch):
-    """Empty title/summary/body rows are skipped — never invent."""
-    monkeypatch.setattr(atd, "_db_query", lambda *a, **k: [{
-        "video_id": "x", "title": "", "channel_name": "", "url": "",
-        "summary": "", "transcript_text": "", "quality_score": 50,
-        "strategy_tags": None, "ingested_at": None,
-    }, {
-        "video_id": "realvid00001", "title": "V analysis", "channel_name": "Desk",
-        "url": "https://www.youtube.com/watch?v=realvid00001",
-        "summary": "Visa earnings", "transcript_text": "Visa beat estimates",
-        "quality_score": 80, "strategy_tags": None, "ingested_at": None,
-    }])
-    rows = atd.fetch_db_youtube_transcripts(["V"], max_per_symbol=5)
+    """A row with no text at all is never turned into a record; a row that names the symbol is."""
+    def fake_query(sql, params=None, **k):
+        if "transcript_intel_history" in sql:  # the already-filed lookup
+            return []
+        return [{
+            "video_id": "x", "title": "", "channel_name": "", "url": "",
+            "summary": "", "transcript_text": "", "quality_score": 50,
+            "strategy_tags": None, "publish_date": None, "ingested_at": None,
+        }, {
+            "video_id": "realvid00001", "title": "SCHD analysis", "channel_name": "Desk",
+            "url": "https://www.youtube.com/watch?v=realvid00001",
+            "summary": "SCHD earnings", "transcript_text": "SCHD beat estimates",
+            "quality_score": 80, "strategy_tags": None, "publish_date": None, "ingested_at": None,
+        }]
+
+    monkeypatch.setattr(atd, "_db_query", fake_query)
+    rows = atd.fetch_db_youtube_transcripts(["SCHD"], max_per_symbol=5)
     assert len(rows) == 1
-    assert rows[0]["title"] == "V analysis"
+    assert rows[0]["title"] == "SCHD analysis"
     assert rows[0]["source_name"] == "youtube_transcripts_db"
 
 

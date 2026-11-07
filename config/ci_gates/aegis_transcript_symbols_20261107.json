@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "aegis_transcript_symbols_20261107",
+  "files": [
+    "tests/test_aegis_transcript_symbols_20261107.py"
+  ],
+  "anchor": "AEGIS_TRANSCRIPT_SYMBOLS_20261107",
+  "comment": [
+    "ANCHOR: AEGIS_TRANSCRIPT_SYMBOLS_20261107 — aegis-transcript-discovery attaches a transcript to a symbol only when the text names that symbol as a case-sensitive whole word or $cashtag (lib/symbol_match.py), never on an ILIKE substring (\"DRS\" in \"cdrs\"); published_at comes from youtube_transcripts.publish_date; a (symbol, title) already filed is skipped; confidence follows HOW the symbol was named (cashtag 0.75 > bare ticker 0.65), not a constant 0.55 (LQ-20261107-143)."
+  ]
+}

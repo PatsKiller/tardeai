@@ -144,7 +144,8 @@ def atd(monkeypatch):
 def test_aegis_transcript_discovery(atd, monkeypatch, tmp_path, universe, n, expect):
     run_id = H.attempt_env(monkeypatch, tmp_path, "aegis-transcript-discovery")
     _universe_module(monkeypatch, universe)
-    monkeypatch.setattr(atd, "fetch_youtube_transcripts", lambda prio, network=True: [{"source_family": "yt"}] * n)
+    monkeypatch.setattr(atd, "fetch_youtube_transcripts",
+                        lambda prio, network=True, stats=None: [{"source_family": "yt"}] * n)
     monkeypatch.setattr(atd, "enrich_from_article_index", lambda syms: [])
     assert atd.cli([]) == 0
     H.check(tmp_path, "aegis-transcript-discovery", run_id, produced=n, expect=expect)

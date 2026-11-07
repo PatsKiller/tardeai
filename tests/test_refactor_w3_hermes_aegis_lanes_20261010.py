@@ -334,7 +334,7 @@ def _transcript_rows(monkeypatch):
     monkeypatch.setattr(
         atd,
         "fetch_db_youtube_transcripts",
-        lambda symbols, max_per_symbol=2, lookback_days=14: [
+        lambda symbols, max_per_symbol=2, lookback_days=14, stats=None: [
             {"symbol": "AAA", "source_family": "youtube", "title": "AAA call", "summary": "s"}
         ],
     )
