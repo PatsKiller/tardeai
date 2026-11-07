@@ -159,6 +159,33 @@ def forum_queries(symbol: str) -> list[str]:
     ]
 
 
+# LQ-20261107-63: since ~2026-09-16 the engines return reddit URLs whose title is the literal "Link to reddit.com" and whose
+# snippet is "The site owner hides the web page description.", plus generic quote pages. 2215 of 2897 stored rows were
+# those placeholders: mention_count was the page limit (6), polarity 0, spike true. A result counts as a mention only when
+# it is a forum-domain item with real text.
+_PLACEHOLDER_RE = re.compile(r"^(link to \S+|reddit - .*dive into anything|just a moment\.*|access denied|403 forbidden)$", re.I)
+_PLACEHOLDER_SNIPPETS = ("site owner hides the web page description", "enable javascript", "verify you are human")
+MIN_MENTIONS = 2       # one forum post is an anecdote, not a sentiment reading (score would be a flat +/-1.0)
+MIN_TEXT_CHARS = 25   # title + snippet of real words, after dropping the placeholder pieces
+
+
+def real_text(item: dict) -> str:
+    """The item's usable text: title and snippet with placeholder pieces removed. '' = nothing readable."""
+    parts = []
+    title = (item.get("title") or "").strip()
+    snippet = (item.get("snippet") or "").strip()
+    if title and not _PLACEHOLDER_RE.match(title):
+        parts.append(title)
+    if snippet and not any(p in snippet.lower() for p in _PLACEHOLDER_SNIPPETS):
+        parts.append(snippet)
+    return " ".join(parts)
+
+
+def is_substantive_forum_mention(item: dict) -> bool:
+    url = item.get("url", "") or ""
+    return any(h in url for h in FORUM_DOMAIN_HINTS) and len(real_text(item)) >= MIN_TEXT_CHARS
+
+
 def search_forum(symbol: str, limit: int = 6) -> list[dict]:
     """Search forums for a symbol, prioritizing actual forum/community domains.
 
@@ -199,8 +226,19 @@ def classify(text: str) -> tuple[int, int]:
     return bull, bear
 
 
+NORMALIZE_SKIPS: Counter = Counter()   # why a symbol produced no row in this process (read into the receipt)
+
+
 def normalize(symbol: str, mentions: list[dict]) -> dict | None:
+    """Sentiment from substantive forum items only. None (no row) when there are none, or when none carries bull/bear
+    wording: a row of zeros is not 'neutral', it is 'nothing known', and ~14 consumers read zeros as neutral."""
+    raw = len(mentions or [])
+    mentions = [m for m in (mentions or []) if is_substantive_forum_mention(m)]
     if not mentions:
+        NORMALIZE_SKIPS["placeholder_or_non_forum" if raw else "no_results"] += 1
+        return None
+    if len(mentions) < MIN_MENTIONS:
+        NORMALIZE_SKIPS["thin_evidence"] += 1
         return None
     mention_count = len(mentions)
     bullish = 0
@@ -210,8 +248,8 @@ def normalize(symbol: str, mentions: list[dict]) -> dict | None:
     words = Counter()
     titles = []
     for m in mentions:
-        title = m.get("title", "")
-        text = f"{title} {m.get('snippet', '')}"
+        title = real_text(m)
+        text = title
         b, s = classify(text)
         bullish += b
         bearish += s
@@ -226,7 +264,10 @@ def normalize(symbol: str, mentions: list[dict]) -> dict | None:
                 words[w] += 1
 
     total = bullish + bearish
-    sentiment_score = round((bullish - bearish) / total, 2) if total else 0.0
+    if not total:
+        NORMALIZE_SKIPS["no_polarity_evidence"] += 1
+        return None
+    sentiment_score = round((bullish - bearish) / total, 2)
     themes = [w for w, c in words.most_common(5) if c >= 2]
     summary = " | ".join(titles[:3])[:500]
 
@@ -237,7 +278,7 @@ def normalize(symbol: str, mentions: list[dict]) -> dict | None:
         "sentiment_score": sentiment_score,
         "theme_tags": themes,
         "top_posts_summary": summary,
-        "confidence": min(0.30 + mention_count * 0.03, 0.60),
+        "confidence": round(min(0.25 + mention_count * 0.03, 0.50), 2),
     }
 
 
@@ -272,16 +313,18 @@ def persist(symbol: str, sentiment: dict) -> bool:
            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
            ON CONFLICT (run_id, symbol, source_family) DO UPDATE SET
             mention_count=EXCLUDED.mention_count, sentiment_score=EXCLUDED.sentiment_score,
+            bullish_count=EXCLUDED.bullish_count, bearish_count=EXCLUDED.bearish_count,
+            neutral_count=EXCLUDED.neutral_count, unusual_spike=EXCLUDED.unusual_spike,
             top_posts_summary=EXCLUDED.top_posts_summary, confidence=EXCLUDED.confidence,
             observed_at=NOW()""",
         (RUN_ID, symbol, "hermes", "hermes_searxng", sentiment["mention_count"],
          sentiment["bullish_count"], sentiment["bearish_count"],
          sentiment["mention_count"] - sentiment["bullish_count"] - sentiment["bearish_count"],
-         sentiment["sentiment_score"], None, sentiment["mention_count"] >= 5,
+         sentiment["sentiment_score"], None, False,   # no per-symbol baseline for forum hits: never a spike
          sentiment["theme_tags"], sentiment["top_posts_summary"],
          sentiment["confidence"],
          json.dumps({"run_id": RUN_ID, "agent": "hermes", "source": "hermes:searxng_social",
-                     "universe": UNIVERSE}, default=str))
+                     "universe": UNIVERSE, "evidence": "forum_text"}, default=str))
     )
 
 
@@ -345,6 +388,7 @@ def main(argv=None) -> int:
     lr = _receipt_lib()
     started = datetime.now(timezone.utc).isoformat()
     _FETCH_STATS.update(ok=0, error=0)
+    NORMALIZE_SKIPS.clear()
     symbols: list[str] = []
     written = hits = 0
     try:
@@ -358,10 +402,11 @@ def main(argv=None) -> int:
             for sym in symbols:
                 mentions = search_forum(sym)
                 if mentions:
-                    hits += 1
                     sentiment = normalize(sym, mentions)
-                    if sentiment and persist(sym, sentiment):
-                        written += 1
+                    if sentiment:
+                        hits += 1
+                        if persist(sym, sentiment):
+                            written += 1
                 time.sleep(0.2)
 
             # Only report source liveness on an APPLY run — a dry-run is a preview and
@@ -369,7 +414,7 @@ def main(argv=None) -> int:
             try:
                 from lib.data_source_report import report_source
                 report_source("hermes_social", written > 0, rows=written,
-                              error=None if written else "0 symbols produced sentiment")
+                              error=None if written else "0 symbols produced sentiment " + json.dumps(dict(NORMALIZE_SKIPS)))
             except Exception:
                 pass
     except Exception as exc:
@@ -388,15 +433,16 @@ def main(argv=None) -> int:
                           summary={"universe_kind": args.universe, "universe": len(symbols), "hits": hits,
                                    "written": written, "searxng_ok": _FETCH_STATS["ok"],
                                    "searxng_errors": _FETCH_STATS["error"]},
-                          output=lane_output(len(symbols), hits, written, all_fetch_failed))
+                          output=lane_output(len(symbols), hits, written, all_fetch_failed, dict(NORMALIZE_SKIPS)))
     return rc
 
 
-def lane_output(universe: int, hits: int, written: int, all_fetch_failed: bool = False) -> dict:
+def lane_output(universe: int, hits: int, written: int, all_fetch_failed: bool = False, skips: dict | None = None) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: social_sentiment_history rows upserted).
     attempted = symbols with forum mentions; an empty universe is fatal (``universe_empty_unexpected``), every
     SearXNG call failing is ``dependency_unavailable``; no mention anywhere = ``no_new_input``."""
     skipped = {"no_mentions": max(universe - hits, 0), "persist_failed": max(hits - written, 0)}
+    skipped.update({k: int(v) for k, v in (skips or {}).items() if v})
     if universe == 0:
         skipped["universe_empty_unexpected"] = 1
     elif all_fetch_failed:

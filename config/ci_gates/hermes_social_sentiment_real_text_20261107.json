@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_SOCIAL_SENTIMENT_REAL_TEXT",
+  "files": [
+    "tests/test_hermes_social_sentiment_real_text_20261107.py"
+  ],
+  "anchor": "HERMES_SOCIAL_SENTIMENT_REAL_TEXT",
+  "comment": [
+    "ANCHOR: HERMES_SOCIAL_SENTIMENT_REAL_TEXT - 2026-11-07 LQ-20261107-63: search placeholders ('Link to reddit.com') and",
+    "non-forum pages are not mentions; no polarity evidence means no row; no baseline means no spike."
+  ]
+}

@@ -396,7 +396,7 @@ def test_hss_real_run_writes_receipt(monkeypatch, _state, sources):
         "_searxng",
         lambda q, categories="general": (
             hss._FETCH_STATS.__setitem__("ok", hss._FETCH_STATS["ok"] + 1),
-            [{"url": f"https://reddit.com/{q}", "title": "bullish calls"}],
+            [{"url": f"https://reddit.com/{q}", "title": "bullish calls on a breakout", "snippet": "buying calls, strong rally and upgrade"}],
         )[1],
     )
     persisted = []
