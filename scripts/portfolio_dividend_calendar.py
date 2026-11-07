@@ -93,7 +93,7 @@ def _get_monthly_income_estimate(sym: str, shares: float, mv: float) -> float:
     if freq == "annual":     return round(annual/12, 2)
     return 0.0
 
-def build_dividend_calendar(portfolio: Dict, root: Path, state_dir: Path) -> Dict:
+def build_dividend_calendar(portfolio: Dict, root: Path, state_dir: Path, *, write: bool = True) -> Dict:
     holdings = [h for h in portfolio.get("holdings",[])
                 if (h.get("market_value") or 0) >= 500
                 and (h.get("shares") or 0) > 0
@@ -242,25 +242,114 @@ def build_dividend_calendar(portfolio: Dict, root: Path, state_dir: Path) -> Dic
         "last_updated":      today.strftime("%Y-%m-%d %H:%M"),
     }
 
+    if not write:  # dry run (AGENTS.md §6): the caller prints; nothing is written
+        return result
+    write_calendar(result, root, state_dir)
+    return result
+
+
+def calendar_targets(root: Path, state_dir: Path) -> List[Path]:
+    """The state dirs dividend_calendar.json goes to (served copy first); resolves paths, writes nothing."""
+    try:
+        import sys as _sys
+        if str(root) not in _sys.path:
+            _sys.path.insert(0, str(root))
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        return portfolio_state_write_targets(root)
+    except Exception:
+        return [state_dir]  # helper unavailable — keep the single checkout copy (no new failure)
+
+
+def write_calendar(result: Dict, root: Path, state_dir: Path) -> List[str]:
+    """Write dividend_calendar.json to every portfolio state target; returns the paths written."""
     _payload = json.dumps(result, indent=2, default=str)
     # WAVE G1 dual-write. The served release symlinks data/portfolios/state at the
     # persistent root, so a checkout-only write (the previous single-line write
     # here) left the served dividend_calendar frozen at 2026-09-04 while this
     # producer refreshed the dev-tree copy daily. Write both copies, exactly as
     # portfolio_repricer already does for holdings.json.
-    _targets = [state_dir]
-    try:
-        import sys as _sys
-        _repo_root = str(root)
-        if _repo_root not in _sys.path:
-            _sys.path.insert(0, _repo_root)
-        from scripts.lib.persistent_state_root import portfolio_state_write_targets
-        _targets = portfolio_state_write_targets(root)
-    except Exception:
-        pass  # helper unavailable — keep the single checkout copy (no new failure)
+    _targets = calendar_targets(root, state_dir)
+    written = []
     for _t in _targets:
         try:
             (_t / "dividend_calendar.json").write_text(_payload)
+            written.append(str(_t / "dividend_calendar.json"))
         except OSError:
             pass
-    return result
+    return written
+
+
+LANE_ID = "dividend-calendar-refresh"
+
+
+def read_holdings(root: Optional[Path] = None) -> Dict:
+    """The position store as stored (lib.portfolio_positions.store_path: the persistent-state root, or
+    ``root``'s data/portfolios/state when one is named); read only, no repricing. Missing -> no holdings."""
+    from lib import portfolio_positions
+    doc = portfolio_positions.load_store(portfolio_positions.store_path(root))
+    return doc if isinstance(doc, dict) and isinstance(doc.get("holdings"), list) else {"holdings": []}
+
+
+def _summary(result: Dict) -> Dict:
+    return {"payers": len(result.get("payers") or []), "total_annual": result.get("total_annual"),
+            "ex_div_alerts": len(result.get("ex_div_alerts") or []), "last_updated": result.get("last_updated")}
+
+
+def main(argv=None) -> int:
+    """Standalone writer for the Re-Entry dividend calendar (operator decision 2026-11-06: stale source -> n8n lane).
+
+    ``--dry-run`` (default): read holdings.json + ticker_dividend_data, print counts, write nothing.
+    ``--apply``: write dividend_calendar.json (the same dual-write targets as the orchestrator) + a lane receipt.
+    Holdings are read as stored (no repricing, no broker read).
+    """
+    import argparse
+    import sys
+    ap = argparse.ArgumentParser(description="Refresh data/portfolios/state/dividend_calendar.json", allow_abbrev=False)
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="compute and print; write nothing (default)")
+    mode.add_argument("--apply", action="store_true", help="write dividend_calendar.json and the lane receipt")
+    ap.add_argument("--root", default=None,
+                    help="read holdings from this root's data/portfolios/state (default: the persistent-state store)")
+    args = ap.parse_args(argv)
+    here = Path(__file__).resolve().parent
+    for p in (str(here), str(here.parent)):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    from lib import lane_last_receipt as receipts
+    # Writes go to the same dual targets as the orchestrator (write_calendar -> portfolio_state_write_targets).
+    root = Path(args.root) if args.root else Path(os.environ.get("PROJ") or here.parent)
+    state_dir = root / "data" / "portfolios" / "state"
+    started = receipts.now_iso()
+    try:
+        # holdings.json as stored (read only): portfolio_loader would reprice and reaches holdings_guard ->
+        # schwab_position_sync -> schwab_transport (tests/test_lane_transitive_capabilities_20261015.py).
+        portfolio = read_holdings(Path(args.root) if args.root else None)
+        if not portfolio.get("holdings"):
+            raise RuntimeError("holdings.json has no holdings")
+        result = build_dividend_calendar(portfolio, root, state_dir, write=False)
+        written = write_calendar(result, root, state_dir) if args.apply else []
+    except Exception as exc:  # noqa: BLE001 - recorded on the receipt, exit 1
+        if args.apply:
+            receipts.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                        script="portfolio_dividend_calendar.py", error=f"{type(exc).__name__}: {exc}")
+        print(f"[dividend-calendar] FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
+    summary = _summary(result)
+    if not args.apply:
+        print(f"DRY-RUN {LANE_ID}: {summary['payers']} payers, {summary['ex_div_alerts']} ex-div alerts, "
+              f"last_updated would be {summary['last_updated']}; would write "
+              f"{', '.join(str(d / 'dividend_calendar.json') for d in calendar_targets(root, state_dir))}; "
+              "nothing written")
+        return 0
+    ok = bool(written)
+    receipts.write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=started,
+                                script="portfolio_dividend_calendar.py", summary=summary,
+                                produced_count=1 if ok else 0, attempted_count=1,
+                                output_evidence=[{"kind": "file", "path": w} for w in written],
+                                empty_reason=None if ok else "no write target accepted the calendar")
+    print(f"[dividend-calendar] {summary['payers']} payers; wrote {', '.join(written) or 'nothing'}")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

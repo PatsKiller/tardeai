@@ -164,15 +164,23 @@ def _prospectus(state_root: Path) -> list:
     return [r.get("symbol") for r in pst.read_universe(pst.base_dir(state_root, cfg))]
 
 
+def _cash_alternatives() -> list:
+    """The Defense desk cash-alternative universe (its yields are computed from these rows)."""
+    if str(PROJECT_ROOT / "scripts") not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    import defense_cash_alternatives
+    return defense_cash_alternatives.universe_symbols()
+
+
 def priority_universe(cur, state_root: Path = None, conn=None) -> dict:
-    """{symbols: [...held, then Watch, then prospectus, de-duplicated], sources: {name: {status, count}}}.
+    """{symbols: [...held, Watch, prospectus, cash alternatives, de-duplicated], sources: {name: {status, count}}}.
 
     Each source fails independently (recorded, never fatal). A failed Watch read rolls the transaction back;
     nothing has been written at that point."""
     root = Path(state_root) if state_root else _receipt_lib()._state_root()
     seen, symbols, sources = set(), [], {}
     for name, fn in (("held", lambda: _held(root)), ("watch", lambda: _watch(cur)),
-                     ("prospectus", lambda: _prospectus(root))):
+                     ("prospectus", lambda: _prospectus(root)), ("cash_alternatives", _cash_alternatives)):
         try:
             got = [s for s in (_norm(x) for x in fn() or []) if s]
             sources[name] = {"status": "ok", "count": len(set(got))}
@@ -302,7 +310,7 @@ def main(argv=None) -> int:
         # Structural (AGENTS.md §6): sync() -- yfinance + INSERT -- is not reachable from this branch.
         plan = {"symbol_cap": SYMBOL_CAP, "priority_cap": PRIORITY_CAP, "fetch_pause_s": FETCH_PAUSE_S,
                 "run_budget_s": RUN_BUDGET_S,
-                "universe": "held + Watch + prospectus first, then active ticker_strategy_classifications (stalest first)",
+                "universe": "held + Watch + prospectus + Defense cash alternatives first, then active ticker_strategy_classifications (stalest first)",
                 "would_check": None, "measured": False, "provider": "yfinance dividendRate"}
         if a.json:
             print(json.dumps(plan, sort_keys=True))

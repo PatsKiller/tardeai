@@ -4702,6 +4702,89 @@
       "env_report_reason": "A --cycle run makes no model call, but the module's live-mode provider-key path exists and reads HOME-relative paths; report until a run with enforce mode is proven for the dry cycle.",
       "env_evidence": "scripts/self_heal_fixer.py: state_root() reads TRADEAI_STATE_ROOT (default under HOME); provider key_file and {home} substitution read HOME. The D1 package executed the dry cycle with rc=0 and no model call.",
       "source": "Operator decision 2026-11-04 (D11 shadow): n8n runs the fixer's dry cycle only; live execution remains the host lane self-heal-fixer (PAUSED, KEEP_ON_CRON). AGENTS \u00a724.5: no push, PR or remote write from a scheduled job."
+    },
+    {
+      "lane_id": "defense-cash-alternatives",
+      "command": [
+        "$PY",
+        "scripts/defense_cash_alternatives.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_defense_cash_alternatives.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/defense-cash-alternatives_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce; no broker, sender or model name is read.",
+      "env_evidence": "scripts/defense_cash_alternatives.py: names listed are the only process env it reads (DB_* via psycopg2 connect where present; TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT via lib.lane_last_receipt.runtime_dir); TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead. n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads and prints only. Canary live_arg (separate PR): [\"--apply\"]."
+    },
+    {
+      "lane_id": "dividend-calendar-refresh",
+      "command": [
+        "$PY",
+        "scripts/portfolio_dividend_calendar.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_dividend_calendar_refresh.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/dividend-calendar-refresh_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce; no broker, sender or model name is read.",
+      "env_evidence": "scripts/portfolio_dividend_calendar.py: names listed are the only process env it reads (DB_* via psycopg2 connect where present; TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT via lib.lane_last_receipt.runtime_dir); TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead. n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads and prints only. Canary live_arg (separate PR): [\"--apply\"]."
+    },
+    {
+      "lane_id": "unit-run-snapshot",
+      "command": [
+        "$PY",
+        "scripts/unit_run_snapshot.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_unit_run_snapshot.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "market_gate": false,
+      "output_signal": "data/runtime/unit-run-snapshot_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DBUS_SESSION_BUS_ADDRESS",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce; no broker, sender or model name is read.",
+      "env_evidence": "scripts/unit_run_snapshot.py: names listed are the only process env it reads (DB_* via psycopg2 connect where present; TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT via lib.lane_last_receipt.runtime_dir); TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead. n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads and prints only. Canary live_arg (separate PR): [\"--apply\"]."
     }
 ],
   "blocked_reasons": {

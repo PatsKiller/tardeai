@@ -110,11 +110,21 @@ def test_reentry_ready_now_hides_stale_packets_and_uses_cio_stance(tmp_path):
     assert row(analyst, "an-ALFA")["value"] == "$15.25"
     assert {"label": "Revisions, 30 days", "value": "not measured"} in row(analyst, "an-ALFA")["detail"]["fields"]
     titles = [d["title"] for d in out["decisions"]]
-    assert "Market regime (CIO): writer market-regime-classifier RETIRED" in titles
+    # The classifier's standalone row is RETIRED, but it still runs inside the premarket / after-close pipelines:
+    # unregistered parents here -> the decision names all three writers.
+    assert ("Market regime (CIO): writer market-regime-classifier RETIRED, premarket-data-pipeline NOT REGISTERED, "
+            "after-close-pipeline-close-capture NOT REGISTERED") in titles
     assert any("older than 48 h" in t for t in titles)
     owned = panel(out, "ready-now", "owned")
     assert {r["href"] for r in owned["rows"]} == {"/portfolio?tab=Look-through", "/rotation", "/watch"}
     assert all(s.startswith("SELECT") for s in db.seen)
+
+
+def test_regime_decision_clears_while_a_parent_pipeline_runs_the_classifier():
+    states = {**REG, "premarket-data-pipeline": "ACTIVE", "after-close-pipeline-close-capture": "ACTIVE"}
+    sources = [desk._source("regime", "Market regime (CIO)", None, desk.REENTRY_LANES["regime"])]
+    assert desk._writer_decisions(sources, states, {"regime": "x"}) == []
+    assert desk._writer_decisions(sources, REG, {"regime": "x"})  # parents unregistered -> still named
 
 
 def test_reentry_unreadable_sources_are_named_gaps_not_zeros(tmp_path):
@@ -211,13 +221,14 @@ def test_defense_book_comes_from_cio_truth_and_unmeasured_fields_say_so(tmp_path
     opts = panel(out, "hedges", "options")
     assert "options-lifecycle-run is PAUSED" in opts["gap"] and "Wed Oct 14 15:40 ET" in opts["gap"]
     cash = panel(out, "hedges", "cash")
-    assert cash["gap"] == "No job writes this file: it has no scheduled writer."
+    # Operator decision 2026-11-06: cash alternatives got an n8n writer lane (defense-cash-alternatives).
+    assert cash["gap"] == "This file is not being refreshed: defense-cash-alternatives is not registered."
     assert row(cash, "ca-SGOV")["value"] == "4.31%"
     lights = panel(out, "hedges", "stoplights")
     assert lights["rows"][0]["tone"] == "bad"
     titles = [d["title"] for d in out["decisions"]]
     assert "Options lifecycle: writer options-lifecycle-run PAUSED" in titles
-    assert "Cash alternatives: no scheduled writer" in titles
+    assert "Cash alternatives: writer defense-cash-alternatives NOT REGISTERED" in titles
     assert any("Review console last locked" in t for t in titles)
 
 

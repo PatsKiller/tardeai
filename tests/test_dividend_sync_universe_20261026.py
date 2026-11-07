@@ -76,6 +76,13 @@ def _responder(watch=("ZZD", "ZZE"), superseded_col=False, watch_raises=False):
     return r
 
 
+@pytest.fixture(autouse=True)
+def _no_cash_alternatives(monkeypatch):
+    """The Defense cash-alternatives source (2026-11-06) is pinned in tests/test_stale_source_lanes_20261106.py;
+    these pins keep their synthetic held/Watch/prospectus universe exact."""
+    monkeypatch.setattr(sdd, "_cash_alternatives", lambda: [])
+
+
 @pytest.fixture()
 def state(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
@@ -99,7 +106,8 @@ def test_priority_universe_held_watch_prospectus_first(state):
     conn = Conn(_responder())
     pri = sdd.priority_universe(conn.cursor(), state_root=state, conn=conn)
     assert pri["symbols"] == ["ZZA", "ZZB", "ZZD", "ZZE", "ZZF"]  # held, Watch, prospectus; deduped; no cash/0/FID-
-    assert {k: v["status"] for k, v in pri["sources"].items()} == {"held": "ok", "watch": "ok", "prospectus": "ok"}
+    assert {k: v["status"] for k, v in pri["sources"].items()} == {"held": "ok", "watch": "ok", "prospectus": "ok",
+                                                                        "cash_alternatives": "ok"}
     batch = sdd.plan_batch(pri["symbols"], sdd._universe(conn.cursor()))
     assert batch[:5] == pri["symbols"]
     assert len(batch) == 5 + sdd.SYMBOL_CAP and "ZZA" not in batch[5:] and "FID-X" not in batch
@@ -214,7 +222,7 @@ def test_dry_run_is_offline_and_names_the_universe(state, capsys, monkeypatch):
     assert sdd.main(["--dry-run", "--json"]) == 0
     out = capsys.readouterr().out
     plan = json.loads(out.splitlines()[0])
-    assert plan["priority_cap"] == sdd.PRIORITY_CAP and "held + Watch + prospectus first" in plan["universe"]
+    assert plan["priority_cap"] == sdd.PRIORITY_CAP and "held + Watch + prospectus + Defense cash alternatives first" in plan["universe"]
     after = {str(p.relative_to(state)): p.read_bytes() for p in state.rglob("*") if p.is_file()}
     assert after == before
 

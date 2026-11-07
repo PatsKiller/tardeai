@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stale_source_lanes_20261106",
+  "files": [
+    "tests/test_stale_source_lanes_20261106.py"
+  ],
+  "anchor": "STALE_SOURCE_LANES_20261106",
+  "comment": [
+    "ANCHOR: STALE_SOURCE_LANES_20261106 — operator decision 2026-11-06 (stale Command Center sources become n8n lanes): defense-cash-alternatives (named yield gaps, real columns), dividend-calendar-refresh (standalone calendar CLI), unit-run-snapshot (systemd per-run evidence for /api/v2/jobs-history); regime VIX join through the classifier snapshot; desk lane maps; dry runs write nothing; apply writes output + LaneRunReceipt v2 to a temp state root; lanes pinned at SHADOW. Synthetic data; DB and systemctl stubbed."
+  ]
+}

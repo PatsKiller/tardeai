@@ -26176,6 +26176,149 @@
         "retry_policy": "transient-2"
       },
       "note": "D11 shadow dry-cycle lane, operator-approved 2026-11-04. n8n runs the fixer's dry cycle only: the allowlist row declares dry_run_arg --cycle and live_arg null, so a live request is refused as data. dispatch.mode is dry_run, so the dispatcher fires the lane dry; the stage clamp would also turn any live request into dry_run. stage is hand-maintained and nothing in code promotes it; promotion is a registry PR. The host lane self-heal-fixer stays PAUSED / KEEP_ON_CRON and its own row is untouched. A green n8n execution is process evidence, not proof: the receipt is the proof."
+    },
+    {
+      "lane_id": "defense-cash-alternatives",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/defense_cash_alternatives.py",
+        "cadence": "20 7 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead: the Defense cash card was fed by a file last written 2026-08-06 with every yield empty: no scheduled writer, and the yields read columns that do not exist. Rewritten reader (named yield gaps, 14-day dividend age limit) and n8n-native dispatcher ingest lane at stage SHADOW, weekdays 07:20 ET: the stage clamp runs it --dry-run (READ ONLY queries, prints, writes nothing). No cron line or unit is added. Canary (--apply) is a later registry PR by the lead.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/defense-cash-alternatives_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/defense_cash_alternatives.py main() writes the LaneRunReceipt (v2 output fields) on --apply (tests/test_stale_source_lanes_20261106.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_stale_source_lanes_20261106.py (dry run writes nothing; apply writes the output and the v2 receipt under a temp state root; registry/allowlist/contract pins; closure: no broker/order/sender/model).",
+      "review_by": "2026-11-20",
+      "note": "Universe: scripts/defense_cash_alternatives.py universe_symbols(). Prices: market_quotes latest per symbol, fallback ticker_prices close. Yield: annual_dividend_per_share / price * 100 from ticker_dividend_data (provider row <= 14 days old, plausible <= 25%), else a named yield_gap. Scoring and thesis unchanged. No broker, no sender, no model. Exit 0 = snapshot written (apply) or printed (dry run); 1 = DB unavailable.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 7 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 6,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "dividend-calendar-refresh",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/portfolio_dividend_calendar.py",
+        "cadence": "30 7 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead: the Re-Entry dividends card read a calendar last written 2026-11-03: its only writer is a step inside the portfolio orchestrator. Standalone CLI (--dry-run default, --apply) and n8n-native dispatcher ingest lane at stage SHADOW, weekdays 07:30 ET: the stage clamp runs it --dry-run (reads holdings, prints, writes nothing). The orchestrator step still writes the same file (two writers of one file; same builder) until the lead retires one at promotion. No cron line or unit is added. Canary (--apply) is a later registry PR by the lead.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/dividend-calendar-refresh_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/portfolio_dividend_calendar.py main() writes the LaneRunReceipt (v2 output fields) on --apply (tests/test_stale_source_lanes_20261106.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_stale_source_lanes_20261106.py (dry run writes nothing; apply writes the output and the v2 receipt under a temp state root; registry/allowlist/contract pins; closure: no broker/order/sender/model).",
+      "review_by": "2026-11-20",
+      "note": "Builder: scripts/portfolio_dividend_calendar.py build_dividend_calendar(write=False) + write_calendar(). Holdings read only, no reprice, no network. No broker, no sender, no model. Exit 0 = calendar written (apply) or printed (dry run); 1 = no holdings readable.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 7 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 6,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "unit-run-snapshot",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/unit_run_snapshot.py",
+        "cadence": "*/15 * * * *",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 0.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-06",
+      "state_reason": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead: /api/v2/jobs-history had no per-run record for systemd jobs (JobsN8n mockup ask 4). New read-only snapshot lane at stage SHADOW, every 15 min: the stage clamp runs it --dry-run (reads unit state, prints, writes nothing). No cron line or unit is added. Canary (--apply) is a later registry PR by the lead.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/unit-run-snapshot_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/unit_run_snapshot.py main() writes the LaneRunReceipt (v2 output fields) on --apply (tests/test_stale_source_lanes_20261106.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_stale_source_lanes_20261106.py (dry run writes nothing; apply writes the output and the v2 receipt under a temp state root; registry/allowlist/contract pins; closure: no broker/order/sender/model).",
+      "review_by": "2026-11-20",
+      "note": "Reads systemctl show only; one run per unit per snapshot (a timer firing faster than 15 min records its last run only). No broker, no sender, no model, no network. Exit 0 = at least one unit read; 1 = no unit readable or registry unreadable.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 7,
+        "retry_policy": "none"
+      }
     }
   ],
   "freshness_contracts": [

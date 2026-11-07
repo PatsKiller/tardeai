@@ -35498,6 +35498,554 @@
         "never": "an n8n execution status: successful executions are soft-deleted and keep status running; prove work with index.json and the capture directory",
         "expected_output_basis": "expected_output derived 2026-11-04 from the one-capture-per-run rule: a run with at least one route captured writes index.json; a run that captured nothing is empty_output"
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "defense-cash-alternatives",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays at 07:20 ET (after the 06:10 dividend sync), screen the cash-alternative universe (T-bills, short Treasuries, money-market and short-duration bond ETFs) from market_quotes / ticker_prices and ticker_dividend_data, compute trailing yield from the annual dividend and the price, and write the Defense page snapshot. A missing or stale yield is a named yield_gap, never a guessed number.",
+        "business_function": "defense-desk-reference",
+        "source": "scripts/defense_cash_alternatives.py; Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> host relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/defense_cash_alternatives.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_defense_cash_alternatives.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "market_quotes / ticker_prices (Postgres)",
+          "kind": "store",
+          "direction": "read",
+          "source": "prices; READ ONLY session"
+        },
+        {
+          "name": "ticker_dividend_data (Postgres)",
+          "kind": "store",
+          "direction": "read",
+          "source": "annual dividend per share; written by scripts/sync_dividend_data.py (cash_alternatives now in its priority universe)"
+        },
+        {
+          "name": "data/runtime/defense_cash_alternatives_latest.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "Defense page cash card (scripts/lib/desks_a.py DEFENSE_LANES cash); live runs only"
+        },
+        {
+          "name": "data/runtime/defense-cash-alternatives_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no output, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/defense-cash-alternatives_last.json ok_at advances on each live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 72 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = vehicles screened"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 72 h but younger than 96 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480 s"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 96 h"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 72.0,
+        "freshness_failed_after_h": 96.0,
+        "freshness_rule": "weekday cadence: degraded beyond 72 h (a weekend), failed beyond 96 h",
+        "timeout_s": 600,
+        "class": "ingest",
+        "computed_on": "2026-11-06",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (operator surface reference data; a stale output degrades to named gaps; no trade path reads it)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A failed run heals on the next fire."
+      },
+      "evidence": {
+        "receipt": "data/runtime/defense-cash-alternatives_last.json",
+        "verify": [
+          "python3 scripts/defense_cash_alternatives.py --dry-run   # reads only; writes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='defense-cash-alternatives' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.ok_at, .produced_count, .skipped_reasons' $STATE_ROOT/data/runtime/defense-cash-alternatives_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-11-06 from scripts/defense_cash_alternatives.py main(): produced = vehicles screened."
+      },
+      "review": {
+        "prepared_by": "agent draft (worker for claude-lead, wt/livefix-LANES)",
+        "status": "REVIEWED",
+        "reviewed_by": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead — lead to confirm this field before promotion",
+        "reviewed_on": "2026-11-06"
+      },
+      "review_by": "2026-11-20",
+      "state_note": "REVIEWED on the Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead; agent-written 2026-11-06. Stage stays SHADOW. Promotion to canary (live_arg [\"--apply\"]) is a registry PR by the lead.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "cash-alternative vehicles screened",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/defense-cash-alternatives_last.json produced_count (LaneRunReceipt@v2 output fields; attempt copy data/runtime/lane_attempts/defense-cash-alternatives/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "dividend-calendar-refresh",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays at 07:30 ET, rebuild the portfolio dividend calendar (payers, next ex-dates, ex-div alerts) from the holdings store and write data/portfolios/state/dividend_calendar.json through the existing dual-write targets, so the Re-Entry dividends card stops depending on the portfolio orchestrator completing.",
+        "business_function": "portfolio-reference",
+        "source": "scripts/portfolio_dividend_calendar.py; Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> host relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/portfolio_dividend_calendar.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_dividend_calendar_refresh.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/portfolios/state/holdings.json (read as stored, no reprice)",
+          "kind": "store",
+          "direction": "read",
+          "source": "holdings"
+        },
+        {
+          "name": "ticker_dividend_data (Postgres, scripts/session13_db.get_conn)",
+          "kind": "store",
+          "direction": "read",
+          "source": "next ex-date / pay date per payer"
+        },
+        {
+          "name": "data/portfolios/state/dividend_calendar.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "portfolio_state_write_targets dual write; Re-Entry dividends card; live runs only"
+        },
+        {
+          "name": "data/runtime/dividend-calendar-refresh_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no output, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/dividend-calendar-refresh_last.json ok_at advances on each live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 72 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = 1 (calendar written; payers in the receipt summary)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 72 h but younger than 96 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480 s"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 96 h"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 72.0,
+        "freshness_failed_after_h": 96.0,
+        "freshness_rule": "weekday cadence: degraded beyond 72 h (a weekend), failed beyond 96 h",
+        "timeout_s": 600,
+        "class": "ingest",
+        "computed_on": "2026-11-06",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (operator surface reference data; a stale output degrades to named gaps; no trade path reads it)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A failed run heals on the next fire."
+      },
+      "evidence": {
+        "receipt": "data/runtime/dividend-calendar-refresh_last.json",
+        "verify": [
+          "python3 scripts/portfolio_dividend_calendar.py --dry-run   # reads only; writes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='dividend-calendar-refresh' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.ok_at, .produced_count, .skipped_reasons' $STATE_ROOT/data/runtime/dividend-calendar-refresh_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-11-06 from scripts/portfolio_dividend_calendar.py main(): produced = 1 when a write target accepted the calendar."
+      },
+      "review": {
+        "prepared_by": "agent draft (worker for claude-lead, wt/livefix-LANES)",
+        "status": "REVIEWED",
+        "reviewed_by": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead — lead to confirm this field before promotion",
+        "reviewed_on": "2026-11-06"
+      },
+      "review_by": "2026-11-20",
+      "state_note": "REVIEWED on the Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead; agent-written 2026-11-06. Stage stays SHADOW. Promotion to canary (live_arg [\"--apply\"]) is a registry PR by the lead.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "dividend calendar files written",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "universe_empty_unexpected"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/dividend-calendar-refresh_last.json produced_count (LaneRunReceipt@v2 output fields; attempt copy data/runtime/lane_attempts/dividend-calendar-refresh/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "unit-run-snapshot",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Every 15 minutes, read each non-retired systemd lane's unit with systemctl show (read-only; user scope, then system scope) and append every newly finished run (keyed by InvocationID) to data/runtime/unit_runs.jsonl, so /api/v2/jobs-history shows per-run evidence for systemd jobs (JobsN8n mockup ask 4).",
+        "business_function": "observability",
+        "source": "scripts/unit_run_snapshot.py; Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> host relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/unit_run_snapshot.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_unit_run_snapshot.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "config/lane_registry.json systemd rows",
+          "kind": "config",
+          "direction": "read",
+          "source": "units to read"
+        },
+        {
+          "name": "systemctl [--user] show (read-only)",
+          "kind": "service",
+          "direction": "read",
+          "source": "unit run properties; never starts, stops or reloads a unit"
+        },
+        {
+          "name": "data/runtime/unit_runs.jsonl + unit_run_snapshot_state.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/jobs_history.py read_unit_runs -> /api/v2/jobs-history; live runs only"
+        },
+        {
+          "name": "data/runtime/unit-run-snapshot_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no output, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/unit-run-snapshot_last.json ok_at advances on each live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 1 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 96 s (80% of timeout_s 120)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = new unit runs"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 1 h but younger than 3 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 96 s"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 3 h"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 1.0,
+        "freshness_failed_after_h": 3.0,
+        "freshness_rule": "15-minute cadence: degraded beyond 1 h, failed beyond 3 h",
+        "timeout_s": 120,
+        "class": "ingest",
+        "computed_on": "2026-11-06",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 96.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (operator surface reference data; a stale output degrades to named gaps; no trade path reads it)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A failed run heals on the next fire."
+      },
+      "evidence": {
+        "receipt": "data/runtime/unit-run-snapshot_last.json",
+        "verify": [
+          "python3 scripts/unit_run_snapshot.py --dry-run   # reads only; writes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='unit-run-snapshot' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.ok_at, .produced_count, .skipped_reasons' $STATE_ROOT/data/runtime/unit-run-snapshot_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-11-06 from scripts/unit_run_snapshot.py main(): produced = new unit runs."
+      },
+      "review": {
+        "prepared_by": "agent draft (worker for claude-lead, wt/livefix-LANES)",
+        "status": "REVIEWED",
+        "reviewed_by": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead — lead to confirm this field before promotion",
+        "reviewed_on": "2026-11-06"
+      },
+      "review_by": "2026-11-20",
+      "state_note": "REVIEWED on the Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead; agent-written 2026-11-06. Stage stays SHADOW. Promotion to canary (live_arg [\"--apply\"]) is a registry PR by the lead.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "new finished systemd unit runs recorded",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_new"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/unit-run-snapshot_last.json produced_count (LaneRunReceipt@v2 output fields; attempt copy data/runtime/lane_attempts/unit-run-snapshot/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {

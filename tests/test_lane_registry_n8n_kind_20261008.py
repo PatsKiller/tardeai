@@ -421,6 +421,11 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-26 yfinance-info-snapshot: n8n-native ingest dispatcher row at shadow, weekdays 05:40 dry_run
         # (no host line; tests/test_yfinance_info_snapshot_lane_20261026.py).
         "yfinance-info-snapshot",
+        # 2026-11-06 operator decision (stale Command Center sources become n8n lanes): three n8n-native dispatcher
+        # rows at shadow, dispatch dry_run, no host line (tests/test_stale_source_lanes_20261106.py).
+        "defense-cash-alternatives",
+        "dividend-calendar-refresh",
+        "unit-run-snapshot",
         # 2026-10-28 conflict-resolver: n8n-native learn dispatcher row (W8; no host line). 2026-10-29 live flip:
         # shadow -> canary, dispatch live, live_arg --shadow --state-root $STATE_ROOT (ledger-writing, no notification).
         "conflict-resolver",

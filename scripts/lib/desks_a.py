@@ -223,11 +223,13 @@ def _cio_stance_text(stance: dict | None) -> str:
 # ── Board 1 · Re-Entry ────────────────────────────────────────────────────────
 REENTRY_LANES = {
     "packets": ["cio-entry-state"],
-    "regime": ["market-regime-classifier"],
+    # The classifier runs as a step of the premarket (06:35 ET) and after-close (16:05 ET) pipelines; its standalone
+    # schedule is RETIRED (superseded_by premarket-data-pipeline), so the parents are its writers too.
+    "regime": ["market-regime-classifier", "premarket-data-pipeline", "after-close-pipeline-close-capture"],
     "holdings": ["portfolio-repricer"],
     "resistance": ["watch-alerts-eval"],
     "analyst": ["hermes-analyst-coverage", "pro-analyst-fetch"],
-    "dividends": ["portfolio-ai-analyst", "sync-dividend-data"],
+    "dividends": ["portfolio-ai-analyst", "sync-dividend-data", "dividend-calendar-refresh"],
 }
 
 
@@ -367,7 +369,7 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
                 gap=div_gap or (f"Last updated {div_raw} (recorded without a time zone)." if div_raw else "Dividend calendar update time is not on file.")),
     ]
     decisions = _writer_decisions(sources, states, {
-        "regime": "The regime classifier writer is not running, so the regime clock is frozen.",
+        "regime": "No regime classifier writer is running (standalone lane and both parent pipelines), so the regime clock is frozen.",
         "dividends": "Dividend data upstream (sync-dividend-data) is retired while the calendar is still rebuilt from it.",
         "packets": "Buy-ready packets are the Telegram BUY_READY / ENTRY_NEAR source.",
     })
@@ -563,7 +565,7 @@ DEFENSE_LANES = {
     "recommendations": ["defense-recommendations"],
     "stoplights": ["defense-inverse-stoplights"],
     "options": ["options-lifecycle-run"],
-    "cash": [],
+    "cash": ["defense-cash-alternatives"],
     "review": [],
 }
 
