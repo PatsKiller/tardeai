@@ -4,6 +4,11 @@
 Run daily on trading days (8:15 AM). Updates scores, RVOL, catalysts.
 Writes IMPROVED / DEGRADED / STAYED_ACTIVE events.
 
+One refresh per ET day, per entry: ``UPDATE_INCUBATOR`` only matches a row whose ``last_seen_at`` is before
+today, and the event is written only for a row the UPDATE actually matched. A re-run of the same slot (a retry
+after the executor died mid-run, LQ-20261107-128) therefore writes nothing twice and reports
+``already_refreshed`` instead of a duplicate event.
+
 Usage:
     .venv/bin/python scripts/daily_incubator_refresh.py --dry-run
     .venv/bin/python scripts/daily_incubator_refresh.py --apply
@@ -45,6 +50,10 @@ ORDER BY s.scanned_at DESC
 LIMIT 1
 """
 
+#: One update per active entry, guarded to ONE per ET day. ``last_seen_at`` is what this statement itself writes,
+#: so the guard is the row's own "already refreshed today" marker: a same-slot re-run (a retry after the executor
+#: died mid-run) matches no row, its INSERT is skipped, and ``days_active`` is not bumped twice. Without the guard a
+#: retry after the first attempt's commit duplicated every event and double-counted the day (LQ-20261107-128).
 UPDATE_INCUBATOR = """
 UPDATE incubator_universe SET
     latest_score = %s,
@@ -58,6 +67,7 @@ UPDATE incubator_universe SET
     last_seen_at = NOW(),
     updated_at = NOW()
 WHERE id = %s
+  AND (last_seen_at IS NULL OR last_seen_at < date_trunc('day', NOW()))
 """
 
 EVENT_INSERT = """
@@ -138,13 +148,18 @@ def refresh_ticker(conn, inc, dry_run=False):
                  event_type, reason_codes)
         return event_type.lower()
 
-    # Update incubator_universe
+    # Update incubator_universe (guarded to one per ET day: see UPDATE_INCUBATOR)
     cur.execute(UPDATE_INCUBATOR, [
         new_score, new_score, new_score,
         new_rvol, new_gap,
         new_catalyst, new_catalyst_verified,
         inc["id"],
     ])
+    if cur.rowcount == 0:
+        # This entry already carries today's refresh (an earlier attempt of this slot committed, or another
+        # writer stamped last_seen_at): writing the event again would duplicate the day.
+        log.debug("%s already refreshed today — no event written", symbol)
+        return "already_refreshed"
 
     # Write event
     payload = {
@@ -262,11 +277,26 @@ def main(argv=None):
 def lane_output(counts: dict) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: incubator_events rows, one per active entry with
     fresh scan data). attempted = active entries; an entry without recent scan data is a typed skip; nothing to
-    refresh = ``no_new_input``."""
+    refresh = ``no_new_input``.
+
+    A row this attempt did NOT write is never counted as produced: an entry an earlier attempt of the same slot
+    already refreshed (``already_refreshed``) and — the 2026-10-16/11-03 connection drop — the whole scan-refresh
+    pass when the connection died before its commit (``scan_refresh_lost``). The 11-03-shaped run used to report
+    ``produced_count = processed - no_data`` even though every one of those rows had been rolled back."""
     processed, no_data = int(counts.get("processed") or 0), int(counts.get("no_data") or 0)
-    produced = max(processed - no_data, 0)
-    return {"produced_count": produced, "attempted_count": processed, "skipped_reasons": {"no_scan_data": no_data},
-            "empty_reason": "no_new_input" if produced == 0 else None}
+    already = int(counts.get("already_refreshed") or 0)
+    lost = int(counts.get("scan_refresh_lost") or 0)
+    produced = max(processed - no_data - already - lost, 0)
+    skipped = {"no_scan_data": no_data}
+    if already:
+        skipped["already_refreshed"] = already
+    if lost:
+        skipped["scan_refresh_lost"] = lost
+    empty_reason = None
+    if produced == 0:
+        empty_reason = "scan_refresh_lost" if lost else ("already_refreshed" if already else "no_new_input")
+    return {"produced_count": produced, "attempted_count": processed, "skipped_reasons": skipped,
+            "empty_reason": empty_reason}
 
 
 def _run(args):
@@ -278,7 +308,7 @@ def _run(args):
         active = [dict(zip(cols, row)) for row in cur.fetchall()]
         log.info("Found %d active incubator entries to refresh", len(active))
 
-        counts = {"improved": 0, "degraded": 0, "stayed_active": 0, "no_data": 0}
+        counts = {"improved": 0, "degraded": 0, "stayed_active": 0, "no_data": 0, "already_refreshed": 0}
 
         for inc in active:
             result = refresh_ticker(conn, inc, dry_run=args.dry_run)
@@ -379,6 +409,7 @@ def _run(args):
         log.info("Degraded:           %d", counts["degraded"])
         log.info("Stayed active:      %d", counts["stayed_active"])
         log.info("No data:            %d", counts["no_data"])
+        log.info("Already refreshed:  %d", counts["already_refreshed"])
         log.info("Catalyst refreshed: %d", catalyst_refreshed)
         log.info("Total processed:    %d", len(active))
         log.info("Mode:               %s", "DRY-RUN" if args.dry_run else "APPLIED")

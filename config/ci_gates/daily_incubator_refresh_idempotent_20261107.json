@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "daily_incubator_refresh_idempotent_20261107",
+  "files": [
+    "tests/test_daily_incubator_refresh_idempotent_20261107.py"
+  ],
+  "anchor": "DAILY_INCUBATOR_REFRESH_IDEMPOTENT_20261107",
+  "comment": [
+    "ANCHOR: DAILY_INCUBATOR_REFRESH_IDEMPOTENT_20261107 — LQ-20261107-128: a same-slot re-run of the",
+    "daily-incubator-refresh lane is write-once (the UPDATE carries a last_seen_at < date_trunc('day', NOW())",
+    "guard and a rowcount 0 skips the event insert), and a run whose scan-refresh pass was rolled back reports",
+    "scan_refresh_lost instead of produced = processed - no_data. Hermetic fake connections; no DB, no .env."
+  ]
+}
