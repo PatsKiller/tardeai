@@ -14,7 +14,7 @@ before the upsert is reachable (no INSERT, no commit, no receipt). A real run wr
 """
 import json, os, re, sys, math
 from collections import Counter
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 
 import position_truth as pt
@@ -114,14 +114,20 @@ def _level(value):
 def compute_support_resistance(conn, symbol: str) -> dict:
     """Compute support/resistance from recent price history in ticker_prices.
 
-    Non-finite closes are dropped (a single 'NaN' close made every level of the BHVN card NaN, 2026-10-21)."""
+    Non-finite closes are dropped (a single 'NaN' close made every level of the BHVN card NaN, 2026-10-21).
+    ``latest_date`` is the price_date of ``latest``: a card must be able to date the price it shows
+    (LQ-20261107-110), and the age of that date is what says whether the price is current."""
     cur = conn.cursor()
-    cur.execute("SELECT close_price FROM ticker_prices WHERE symbol=%s AND price_date >= CURRENT_DATE - 60 ORDER BY price_date", (symbol,))
-    prices = [p for p in (_level(r[0]) for r in cur.fetchall()) if p is not None]
+    cur.execute("SELECT close_price, price_date FROM ticker_prices WHERE symbol=%s "
+                "AND price_date >= CURRENT_DATE - 60 ORDER BY price_date", (symbol,))
+    rows = [(p, d) for p, d in ((_level(r[0]), r[1]) for r in cur.fetchall()) if p is not None]
     cur.close()
+    prices = [p for p, _ in rows]
+    latest_date = rows[-1][1] if rows else None
 
     if len(prices) < 10:
-        return {"support": None, "resistance": None, "latest": prices[-1] if prices else None}
+        return {"support": None, "resistance": None, "latest": prices[-1] if prices else None,
+                "latest_date": latest_date, "low_20": None, "high_20": None}
 
     latest = prices[-1]
     low_20 = min(prices[-20:]) if len(prices) >= 20 else min(prices)
@@ -136,8 +142,59 @@ def compute_support_resistance(conn, symbol: str) -> dict:
     # low_20/high_20 are the UNROUNDED window edges. The card writer rounds a level to a precision
     # that keeps its ordering (a 2-dp round put support at 0.02 above a 0.0173 price, LQ-57),
     # so it needs the raw edge; every existing reader still gets the rounded pair it always got.
-    return {"support": support, "resistance": resistance, "latest": latest, "low_50": low_50,
-            "high_50": high_50, "low_20": low_20, "high_20": high_20}
+    return {"support": support, "resistance": resistance, "latest": latest, "latest_date": latest_date,
+            "low_50": low_50, "high_50": high_50, "low_20": low_20, "high_20": high_20}
+
+
+def _date_of(value):
+    """A date from a DB date/datetime or an ISO-ish stamp ('2026-11-07 11:00:02 ET'). None if unknown.
+
+    Only the first ten characters are read on purpose: the Finviz cache stamps with a trailing ' ET',
+    and a "is this ISO?" test on the string is defeated by the T in 'ET' (a known trap on this host)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except ValueError:
+        return None
+
+
+def price_mark(*, series_price, series_date, finviz_row=None, finviz_as_of=None,
+               last_close_date=None) -> dict:
+    """The card's price with its provenance and whether it is the last session's (LQ-20261107-110).
+
+    Order is the operator price rule, implemented by the shared ladder (``resolve_mark``): the Finviz
+    cache when it has the symbol, then the newest close in ``ticker_prices`` — always with the date
+    that makes the number checkable. A price nobody can date is not servable as "the price".
+
+    ``is_current`` is True when the price's date is the most recent completed session's date, False
+    when it is older (the card is then flagged, not silently shown as today's), and None when the
+    calendar or the date is unavailable — unknown stays unknown rather than defaulting to False.
+    """
+    from lib.portfolio_positions import resolve_mark
+
+    finviz = None
+    if isinstance(finviz_row, dict) and _level(finviz_row.get("price")):
+        finviz = {"price": finviz_row.get("price"), "as_of": finviz_as_of}
+    mark = resolve_mark({"symbol": "", "price": series_price, "as_of": series_date}, finviz=finviz)
+    src = str(mark.get("source") or "none")
+    if src == "finviz":
+        as_of_date = _date_of(finviz_as_of)
+    elif src == "stored_mark":
+        as_of_date = _date_of(series_date)
+    else:
+        as_of_date = None
+    is_current = None
+    if as_of_date is not None and last_close_date is not None:
+        is_current = as_of_date >= last_close_date
+    return {"price": _level(mark.get("price")), "source": src,
+            "as_of": str(mark.get("as_of")) if mark.get("as_of") else None,
+            "date": as_of_date.isoformat() if as_of_date else None,
+            "is_current": is_current}
 
 
 def _round_level(value, price):
@@ -351,6 +408,13 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
 
     catalysts_by_sym = load_catalysts(cur, target)
     enrichment = _load("ticker_enrichment_cache.json")
+    # Finviz live cache (the repricer's, same state dir) is the first price source; its own
+    # _meta.last_fetched dates it. Symbols it does not carry stay on the dated ticker_prices close.
+    fq_raw = _load("finviz_quote_cache.json")
+    finviz_quotes = {str(k).upper(): v for k, v in fq_raw.items()
+                     if isinstance(v, dict) and k != "_meta"}
+    finviz_as_of = (fq_raw.get("_meta") or {}).get("last_fetched") if isinstance(fq_raw, dict) else None
+    last_close_date = _last_session_date()
     rm = _load("risk_management.json")
     stops_by_sym = {p["symbol"]: p for p in rm.get("positions", []) if p.get("stop_price")}
 
@@ -488,11 +552,16 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
 
         # Price/support/resistance from DB
         sr = compute_support_resistance(conn, sym)
-        latest_price = _level(sr.get("latest"))
 
-        # If no DB price, try enrichment
-        if not latest_price:
-            latest_price = _level(e.get("price"))
+        # The price ladder (LQ-20261107-110): the Finviz cache when it carries this symbol, else the
+        # newest ticker_prices close — dated either way, so the card can say how old its price is.
+        mark = price_mark(series_price=_level(sr.get("latest")), series_date=sr.get("latest_date"),
+                          finviz_row=finviz_quotes.get(sym), finviz_as_of=finviz_as_of,
+                          last_close_date=last_close_date)
+        latest_price = mark["price"] or _level(e.get("price"))  # enrichment price: undated, marked unknown
+        if not mark["price"] and latest_price:
+            mark = {"price": latest_price, "source": "enrichment_cache", "as_of": None,
+                    "date": None, "is_current": None}
 
         support = _level(sr.get("low_20")) if sr.get("low_20") is not None else _level(sr.get("support"))
         resistance = _level(sr.get("high_20")) if sr.get("high_20") is not None else _level(sr.get("resistance"))
@@ -517,17 +586,23 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
         atr = _level(e.get("atr"))
         beta = e.get("beta")
 
-        # Strategy type — from DB classification (no hard-coded ticker logic)
-        sector = e.get("sector", "")
-        company = str(e.get("company", ""))
-        div_yield = e.get("dividend_yield_pct") or e.get("yield_pct")
-
-        # Look up classification from DB
-        cur.execute("SELECT strategy_type FROM ticker_strategy_classifications WHERE symbol=%s AND active=TRUE", (sym,))
+        # Strategy type — from the DB classification, never inferred from the ticker (LQ-20261107-110).
+        # The card stores WHICH classification it came from and WHERE that row came from, so a served
+        # "income" is traceable to a named source and date instead of being an unattributed claim.
+        cur.execute(
+            "SELECT strategy_type, classification_source, confidence, updated_at "
+            "FROM ticker_strategy_classifications WHERE symbol=%s AND active=TRUE", (sym,))
         db_class = cur.fetchone()
 
+        strategy_class = strategy_class_source = strategy_class_as_of = strategy_class_confidence = None
+        type_reasons = []
         if db_class:
-            # Map DB strategy_type to the simpler categories used by strategy_cards
+            strategy_class = db_class["strategy_type"]
+            strategy_class_source = db_class.get("classification_source")
+            strategy_class_confidence = _level(db_class.get("confidence"))
+            as_of_date = _date_of(db_class.get("updated_at"))
+            strategy_class_as_of = as_of_date.isoformat() if as_of_date else None
+            # Map DB strategy_type to the simpler categories used by strategy_cards.
             _type_map = {
                 "dividend_growth_compounder": "income", "covered_call_income": "income",
                 "high_yield_income_bdc": "income", "bond_income": "income",
@@ -537,10 +612,18 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
                 "speculative_growth": "speculative_growth",
                 "swing_trade": "speculative_growth",
             }
-            strategy_type = _type_map.get(db_class["strategy_type"], "core_holding")
+            strategy_type = _type_map.get(strategy_class)
+            if strategy_type is None:
+                # A registered class this map does not know is NOT "core holding" — say so and keep
+                # the raw class on the card, so a new strategy shows up as a gap, not as a guess.
+                strategy_type = "core_holding"
+                type_reasons.append("strategy_class_unmapped")
+                print(f"  [strategy-cards] WARNING: {sym} class {strategy_class!r} is not mapped — "
+                      f"serving core_holding with the raw class recorded")
         else:
             # No DB classification — mark as unclassified, do not infer
             strategy_type = "core_holding"
+            type_reasons.append("strategy_class_missing")
             print(f"  [strategy-cards] WARNING: {sym} has no DB classification — using default core_holding")
 
         # Compute entry/stop/target through the coherence gate (LQ-20261107-57): a level is written
@@ -571,7 +654,7 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
         thesis = tp.get("thesis") or ar.get("summary") or f"{sym} — {strategy_type.replace('_', ' ')}"
         confidence = ar.get("confidence") or bt.get("backtest_score", 0) / 100 if bt.get("backtest_score") else 0.5
         needs_iter = (not latest_price or not support or not ar.get("recommendation")
-                      or bool(level_reasons))
+                      or bool(level_reasons) or bool(type_reasons) or mark["is_current"] is False)
 
         tech_summary = f"RSI {rsi:.0f}" if rsi else ""
         if sma200 is not None: tech_summary += f" · SMA200 {sma200:+.1f}%"
@@ -597,11 +680,25 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
                           "catalysts": catalyst_items,
                           # What the card IS, and why any level is missing (LQ-20261107-57):
                           # "not_priceable" means no price evidence exists for this symbol (the
-                          # watchlist's ai_discovered writer put prose tokens such as NOPX/AWARD/
+                          # watchlist's ai_discovered writer put prose tokens such as BROKE/AWARD/
                           # ALERT there); every other card states the levels it withheld and why,
                           # so a blank cell on the page has a reason behind it rather than a bug.
                           "status": "not_priceable" if latest_price is None else "ok",
                           "level_reasons": level_reasons,
+                          # Where the price came from and what day it is (LQ-20261107-110): a price
+                          # nobody can date is not servable as "the price", and a close from two
+                          # sessions ago is not this session's close.
+                          "price_source": mark["source"], "price_as_of": mark["as_of"],
+                          "price_date": mark["date"], "price_is_current": mark["is_current"],
+                          # What the strategy_type above was mapped FROM (LQ-20261107-110): the raw
+                          # class, the source that wrote it, the day and the confidence. A screener
+                          # hit is a discovery, so "income" for a mega-cap is a claim the reader can
+                          # now trace to (source, date) instead of having to guess.
+                          "strategy_class": strategy_class,
+                          "strategy_class_source": strategy_class_source,
+                          "strategy_class_as_of": strategy_class_as_of,
+                          "strategy_class_confidence": strategy_class_confidence,
+                          "type_reasons": type_reasons,
                           # Provenance: which agent this came from, and what the
                           # synthesis suppressed. Without the first, "whichever job
                           # finished last" is invisible; without the second, a
@@ -628,6 +725,12 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
                         "target_price": target_price, "risk_reward": risk_reward,
                         "ideal_entry": ideal_entry, "needs_iteration": needs_iter,
                         "level_reasons": level_reasons,
+                        "price_source": mark["source"], "price_date": mark["date"],
+                        "price_is_current": mark["is_current"],
+                        "strategy_class": strategy_class, "strategy_class_source": strategy_class_source,
+                        "strategy_class_as_of": strategy_class_as_of,
+                        "strategy_class_confidence": strategy_class_confidence,
+                        "type_reasons": type_reasons,
                         "status": "not_priceable" if latest_price is None else "ok"})
 
     if dry_run:
@@ -659,14 +762,19 @@ def lane_output(results: list) -> dict:
 
 
 def card_quality_summary(results: list) -> dict:
-    """Counts the LQ-20261107-57 audit reads, from the cards this run actually built.
+    """Counts the LQ-20261107-57 / LQ-20261107-110 audit reads, from the cards this run built.
 
     A card cannot be counted wrong by this summary: ``support == resistance``, ``stop >= price`` and
     ``risk_reward < 0`` are computed from the same dicts that are upserted, so the summary and the
-    table cannot drift. ``not_priceable`` counts symbols with no price evidence at all.
+    table cannot drift. ``not_priceable`` counts symbols with no price evidence at all; the price
+    counts separate a price from an older session (``price_not_current``) from one whose date or
+    calendar is unknown (``price_unknown``) — unknown never counts as current.
     """
     rows = results or []
     reasons = Counter(reason for r in rows for reason in (r.get("level_reasons") or []))
+    sources = Counter(str(r.get("price_source") or "none") for r in rows)
+    classes = Counter(str(r.get("strategy_class_source") or "none") for r in rows)
+    type_reasons = Counter(reason for r in rows for reason in (r.get("type_reasons") or []))
     return {
         "not_priceable": sum(1 for r in rows if r.get("latest_price") is None),
         "support_equals_resistance": sum(
@@ -676,8 +784,29 @@ def card_quality_summary(results: list) -> dict:
             and r.get("stop_loss") >= r.get("latest_price")),
         "negative_risk_reward": sum(
             1 for r in rows if r.get("risk_reward") is not None and r.get("risk_reward") < 0),
+        "price_not_current": sum(1 for r in rows if r.get("price_is_current") is False),
+        "price_unknown": sum(1 for r in rows if r.get("price_is_current") is None),
+        "price_source": dict(sorted(sources.items())),
         "level_reasons": dict(sorted(reasons.items())),
+        "strategy_class_source": dict(sorted(classes.items())),
+        "type_reasons": dict(sorted(type_reasons.items())),
     }
+
+
+def _last_session_date():
+    """The date of the most recent completed session; ``None`` when the calendar cannot say.
+
+    ``None`` is an explicit unknown, not a default: :func:`price_mark` turns it into
+    ``is_current=None`` ("cannot tell") and the card is flagged for iteration. It never reads as
+    "current", and an unusable calendar (no ``exchange_calendars``) must not stop a card build.
+    """
+    # nosemgrep: tq-py-broad-except-returns-default -- unknown is the state, not a default
+    try:
+        from lib.cio_market_aware_freshness import last_session_close
+        close = last_session_close(datetime.now(timezone.utc))
+        return close.date() if close is not None else None
+    except Exception:  # noqa: BLE001 -- an unusable calendar must leave the price date unknown, never stop the card
+        return None  # -> is_current=None, i.e. "cannot tell", never "current"
 
 
 def cli():

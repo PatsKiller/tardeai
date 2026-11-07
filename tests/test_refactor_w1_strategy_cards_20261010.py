@@ -11,6 +11,7 @@ from __future__ import annotations
 import inspect
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -58,7 +59,8 @@ class _Cur:
         elif "FROM watchlist_items" in sql:
             self._rows = [{"symbol": s} for s in self.db.symbols]
         elif "FROM ticker_prices" in sql:
-            self._rows = [(10.0 + i * 0.1,) for i in range(30)]
+            # (close, price_date): the writer dates every price it serves (LQ-20261107-110).
+            self._rows = [(10.0 + i * 0.1, date(2026, 11, 6)) for i in range(30)]
         elif "FROM ticker_strategy_classifications" in sql:
             self._one = {"strategy_type": "core_index"}
         else:

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -324,6 +325,9 @@ def test_queue_host_intent_writes_one_intent_row_and_folds_duplicates(tmp_path, 
 import materialize_watchlist_strategy_cards as mat  # noqa: E402
 
 
+_PRICE_DATE = date(2026, 8, 28)  # the session date of the closes below
+
+
 class _TPConn:
     def __init__(self, closes):
         self.closes = closes
@@ -336,7 +340,8 @@ class _TPConn:
                 pass
 
             def fetchall(self):
-                return [(c,) for c in outer.closes]
+                # (close, price_date): the writer dates every price it serves (LQ-110).
+                return [(c, _PRICE_DATE) for c in outer.closes]
 
             def close(self):
                 pass
@@ -378,7 +383,7 @@ def test_materialize_never_upserts_nan_levels(monkeypatch):
             if s.startswith("INSERT INTO watchlist_strategy_cards"):
                 self.conn.upserts.append(params)
             self._one = None
-            self._all = [(c,) for c in self.conn.closes] if "FROM ticker_prices" in s else []
+            self._all = [(c, _PRICE_DATE) for c in self.conn.closes] if "FROM ticker_prices" in s else []
 
         def fetchall(self):
             return self._all

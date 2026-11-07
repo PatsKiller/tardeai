@@ -14,13 +14,21 @@ The rule this file pins: every level is on the correct side of the price and of 
 on, or it is NULL with a named reason and the card is flagged ``needs_iteration``. A blank cell with
 a reason is a correct answer; an invented support line is indistinguishable from a real one.
 
+LQ-20261107-110 adds the two other facts the same audit found missing on the served card: **when** a
+price is from (measured: 963 of 5,541 card prices were more than 5% off the last session's close, and
+the last bar for 4,444 symbols was a day old) and **what** the ``strategy_type`` was mapped from (the
+raw class, the source that wrote it, the day, the confidence — a class the map does not know used to
+become a silent ``core_holding``, 671 cards today, 556 of them registered as ``recovery_watch``).
+
 Hermetic: fake connection, no DB, no state write, no provider call.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -254,23 +262,60 @@ def test_the_quality_summary_cannot_report_a_defect_for_a_coherent_card():
 
 
 # --------------------------------------------------------------------------------------------------
+# The price ladder and its date (LQ-20261107-110)
+# --------------------------------------------------------------------------------------------------
+
+def test_the_finviz_quote_wins_and_carries_the_cache_date():
+    mark = mat.price_mark(series_price=10.0, series_date=date(2026, 11, 5),
+                          finviz_row={"price": 10.5}, finviz_as_of="2026-11-07 11:00:02 ET",
+                          last_close_date=date(2026, 11, 6))
+    assert (mark["price"], mark["source"], mark["date"], mark["is_current"]) == (10.5, "finviz", "2026-11-07", True)
+
+
+def test_a_db_close_from_an_older_session_is_not_current():
+    mark = mat.price_mark(series_price=10.0, series_date=date(2026, 11, 5), last_close_date=date(2026, 11, 6))
+    assert (mark["price"], mark["source"], mark["date"], mark["is_current"]) == (10.0, "stored_mark", "2026-11-05", False)
+
+
+def test_a_db_close_from_the_last_session_is_current():
+    mark = mat.price_mark(series_price=10.0, series_date=date(2026, 11, 6), last_close_date=date(2026, 11, 6))
+    assert mark["is_current"] is True
+
+
+def test_an_unknown_date_stays_unknown_and_is_never_called_current():
+    mark = mat.price_mark(series_price=None, series_date=None, last_close_date=date(2026, 11, 6))
+    assert mark["price"] is None and mark["is_current"] is None
+    # No calendar -> unknown, not "stale": the writer must not invent a verdict it cannot support.
+    assert mat.price_mark(series_price=10.0, series_date=date(2026, 11, 6), last_close_date=None)["is_current"] is None
+
+
+def test_the_et_suffix_does_not_defeat_the_date():
+    """'2026-11-07 ... ET' — a naive ISO test on the string is fooled by the T in ET."""
+    assert mat._date_of("2026-11-07 11:00:02 ET") == date(2026, 11, 7)
+    assert mat._date_of(date(2026, 11, 6)) == date(2026, 11, 6)
+    assert mat._date_of("not a date") is None
+
+
+# --------------------------------------------------------------------------------------------------
 # Through the writer: the pending upsert and the card payload carry the same answer
 # --------------------------------------------------------------------------------------------------
 
 class _Cur:
-    def __init__(self, db):
-        self.db, self._rows, self._one = db, [], None
+    def __init__(self, conn):
+        self.conn, self._rows, self._one = conn, [], None
 
     def execute(self, sql, params=None):
-        self.db.sql.append(sql)
+        self.conn.sql.append(sql)
         if "INSERT" in sql:
-            if self.db.readonly:
+            if self.conn.readonly:
                 raise RuntimeError("cannot execute INSERT in a read-only transaction")
-            self.db.inserts.append(params)
+            self.conn.inserts.append(params)
         elif "FROM ticker_prices" in sql:
-            self._rows = [(c,) for c in self.db.prices.get(params[0], [])]
+            self._rows = [(c, self.conn.db["price_date"]) for c in self.conn.db["prices"].get(params[0], [])]
         elif "FROM ticker_strategy_classifications" in sql:
-            self._one = {"strategy_type": "core_index"}
+            # The class row carries its own provenance; a test may replace it (class_row=None: none).
+            self._one = (self.conn.db["class_row"] if "class_row" in self.conn.db
+                         else {"strategy_type": "core_index"})
         else:
             self._rows = []
 
@@ -285,8 +330,8 @@ class _Cur:
 
 
 class _Conn:
-    def __init__(self, prices):
-        self.prices, self.sql, self.inserts = prices, [], []
+    def __init__(self, db):
+        self.db, self.sql, self.inserts = db, [], []
         self.commits, self.readonly = 0, False
 
     def set_session(self, readonly=False, **_kw):
@@ -307,21 +352,28 @@ class _Conn:
 
 @pytest.fixture
 def writer(tmp_path, monkeypatch):
-    db = {"conn": None, "prices": {}}
+    db = {"conn": None, "prices": {}, "price_date": date(2026, 11, 6), "sql": []}
 
     def _get_conn():
-        db["conn"] = _Conn(db["prices"])
+        db["conn"] = _Conn(db)
         return db["conn"]
 
     monkeypatch.setattr(mat, "_get_conn", _get_conn)
+    monkeypatch.setattr(mat, "_last_session_date", lambda: date(2026, 11, 6))
     monkeypatch.setattr(mat, "STATE_DIR", tmp_path / "portfolio_state")  # absent files -> defaults
     return db
 
 
+def _write_json(path, payload):
+    """Write a fixture the way a store must be written: temp file beside it, then os.replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(payload))
+    os.replace(tmp, path)
+
+
 def _write_enrichment(tmp_path, payload):
-    d = tmp_path / "portfolio_state"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "ticker_enrichment_cache.json").write_text(json.dumps(payload))
+    _write_json(tmp_path / "portfolio_state" / "ticker_enrichment_cache.json", payload)
 
 
 def test_a_flat_history_writes_no_support_and_no_resistance(writer):
@@ -371,3 +423,84 @@ def test_the_receipt_summary_carries_the_quality_counts(writer, tmp_path, monkey
     assert mat.cli() == 0
     assert captured["summary"]["quality"]["support_equals_resistance"] == 0
     assert captured["summary"]["quality"]["level_reasons"] == {"flat_range": 1}
+
+
+def test_a_card_dates_its_price_and_flags_a_close_from_an_older_session(writer):
+    """The card said "the price" with no date, so a two-session-old close read as today's (LQ-110)."""
+    writer["prices"]["AAA"] = [10.0] * 20
+    writer["price_date"] = date(2026, 11, 4)          # last session is 11-06
+    card = mat.materialize(["AAA"], dry_run=True)[0]
+    assert card["price_source"] == "stored_mark" and card["price_date"] == "2026-11-04"
+    assert card["price_is_current"] is False and card["needs_iteration"] is True
+
+
+def test_a_card_whose_price_is_the_last_session_is_not_flagged_for_its_price(writer):
+    writer["prices"]["AAA"] = [10.0] * 20
+    card = mat.materialize(["AAA"], dry_run=True)[0]
+    assert card["price_is_current"] is True
+
+
+def test_the_finviz_cache_prices_the_symbol_it_carries(writer, tmp_path):
+    """The ladder is Finviz first: the holdings the cache carries are priced from it, not the old close."""
+    _write_json(tmp_path / "portfolio_state" / "finviz_quote_cache.json", {
+        "_meta": {"last_fetched": "2026-11-07 11:00:02 ET"},
+        "AAA": {"price": 12.5},
+    })
+    writer["prices"]["AAA"] = [10.0] * 20
+    card = mat.materialize(["AAA"], dry_run=True)[0]
+    assert card["latest_price"] == 12.5 and card["price_source"] == "finviz"
+    assert card["price_date"] == "2026-11-07" and card["price_is_current"] is True
+
+
+def test_an_undated_enrichment_price_is_unknown_not_current(writer, tmp_path):
+    _write_enrichment(tmp_path, {"NOPX": {"price": 4.2}})
+    card = mat.materialize(["NOPX"], dry_run=True)[0]
+    assert card["latest_price"] == 4.2 and card["price_source"] == "enrichment_cache"
+    assert card["price_date"] is None and card["price_is_current"] is None
+
+
+# --------------------------------------------------------------------------------------------------
+# Strategy type: the card says which class it was mapped from, and what wrote that class (LQ-110)
+# --------------------------------------------------------------------------------------------------
+
+def test_a_card_names_the_class_and_the_source_it_came_from(writer):
+    """A served type must be traceable to its row: class, source, day, confidence (LQ-20261107-110)."""
+    writer["class_row"] = {"strategy_type": "core_index", "classification_source": "manual",
+                           "confidence": 1.0, "updated_at": datetime(2026, 4, 27, 11, 55, 38)}
+    writer["prices"]["AAA"] = [10.0] * 20
+    card = mat.materialize(["AAA"], dry_run=True)[0]
+    assert card["strategy_type"] == "growth_etf"
+    assert card["strategy_class"] == "core_index"
+    assert card["strategy_class_source"] == "manual"
+    assert card["strategy_class_as_of"] == "2026-04-27"
+    assert card["strategy_class_confidence"] == 1.0
+    assert card["type_reasons"] == []
+
+
+def test_an_unmapped_class_keeps_its_raw_name_and_says_why(writer):
+    """A registered class the map does not know is a gap, not a core holding nobody can see."""
+    writer["class_row"] = {"strategy_type": "moon_shot", "classification_source": "screener",
+                           "confidence": 0.7, "updated_at": date(2026, 4, 29)}
+    writer["prices"]["AAA"] = [10.0] * 20
+    card = mat.materialize(["AAA"], dry_run=True)[0]
+    assert card["strategy_type"] == "core_holding"
+    assert card["strategy_class"] == "moon_shot"
+    assert card["type_reasons"] == ["strategy_class_unmapped"]
+    assert card["needs_iteration"] is True
+
+
+def test_a_symbol_with_no_classification_says_so(writer):
+    writer["class_row"] = None
+    writer["prices"]["AAA"] = [10.0] * 20
+    card = mat.materialize(["AAA"], dry_run=True)[0]
+    assert card["strategy_type"] == "core_holding" and card["strategy_class"] is None
+    assert card["type_reasons"] == ["strategy_class_missing"]
+
+
+def test_the_quality_summary_counts_the_class_sources(writer):
+    writer["class_row"] = {"strategy_type": "swing_trade", "classification_source": "screener",
+                           "confidence": 0.7, "updated_at": date(2026, 5, 5)}
+    writer["prices"]["AAA"] = [10.0] * 20
+    quality = mat.card_quality_summary(mat.materialize(["AAA"], dry_run=True))
+    assert quality["strategy_class_source"] == {"screener": 1}
+    assert quality["type_reasons"] == {}
