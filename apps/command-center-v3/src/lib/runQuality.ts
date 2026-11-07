@@ -53,10 +53,12 @@ export function notAsDesignedCount(s: Record<string, unknown> | null | undefined
   return s && typeof s.quality_not_as_designed === 'number' ? s.quality_not_as_designed : null
 }
 
-/** The query for the Quality tab: every job (`filter=all`), narrowed to one grade when a tile is picked. */
+/** The query for the Quality tab: every job (`filter=all`), narrowed to the picked grades (`degraded,empty` = either;
+ *  an unknown key is dropped). */
 export function qualityHistoryQuery(o: { quality: string | null; offset?: number; limit?: number; q?: string }): string {
   const p = new URLSearchParams({ filter: 'all', offset: String(o.offset ?? 0), limit: String(o.limit ?? 50) })
-  if (o.quality && isQualityKey(o.quality)) p.set('quality', o.quality)
+  const picked = [...new Set(String(o.quality ?? '').split(',').map(k => k.trim()).filter(isQualityKey))]
+  if (picked.length) p.set('quality', picked.join(','))
   if (o.q && o.q.trim()) p.set('q', o.q.trim())
   return `/api/v2/jobs-history?${p.toString()}`
 }

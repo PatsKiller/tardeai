@@ -3,6 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import DetailHeader from './DetailHeader'
+import JobsSortFilterBar, { useSortFilterParams } from './JobsSortFilterBar'
+import { CLIENT_SORTS, ranMatches, sortRows } from '../lib/jobsSortFilter'
 import { measuredNumber, operatorTime } from '../lib/schedulerOperations'
 import {
   CHECK_KINDS, SCHEDULER_CHECKS_API, SCHEDULER_PILLS, checkKinds, checkLabel, checkTone, driftText, filterChecks, freshnessText,
@@ -113,7 +115,11 @@ export function SchedulerChecksTab({ onTotal }: { onTotal?: (tab: string, total:
   }
   const stale = observationExpired(data?.as_of) || !!api.stale
   const all = data?.rows ?? []
-  const rows = filterChecks(all, { kind, scheduler, q })
+  const { ran, sort } = useSortFilterParams(CLIENT_SORTS)
+  // Last run = completed, else started, else requested; measured against the observation time.
+  const lastAt = (r: CheckRow) => r.last_completed || r.last_started || r.last_requested || null
+  const nowMs = Date.parse(String(data?.as_of || '')) || Date.now()
+  const rows = sortRows(filterChecks(all, { kind, scheduler, q }).filter(r => ranMatches(lastAt(r), ran, nowMs)), sort, lastAt, r => r.lane_id)
   const counts = kindCounts(all)
   const sel = all.find(r => r.lane_id === selected)
   return <section aria-label="Scheduler checks" data-testid="jobs-n8n-checks" style={{ display: 'grid', gap: 10, minWidth: 0 }}>
@@ -142,6 +148,7 @@ export function SchedulerChecksTab({ onTotal }: { onTotal?: (tab: string, total:
     <label style={{ display: 'grid', gap: 4, maxWidth: 420 }}><span style={muted}>Find a job or scheduler entry</span>
       <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Name, owner or reason" style={searchInput} />
     </label>
+    <JobsSortFilterBar sorts={CLIENT_SORTS} what="scheduler entries" />
     <div className="jobs-n8n-list">{rows.map(r => <CheckCard key={r.lane_id} row={r} stale={stale} onOpen={id => setParam('lane', id, true)} />)}</div>
     {!rows.length && <p style={{ ...panel, ...muted }}>{api.loading && !data ? 'Loading scheduler checks…' : data ? (all.length ? 'No entries match.' : 'No scheduler problems observed.') : 'Scheduler checks are not available.'}</p>}
     {selected && <div role="dialog" aria-modal="true" aria-labelledby="scheduler-lane-title" data-testid="scheduler-lane-sheet"

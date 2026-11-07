@@ -18,6 +18,8 @@ import {
 } from '../lib/jobsN8n'
 import type { N8nFilter, N8nRowX } from '../lib/opsControlsN8n'
 import type { OpsControlsState } from '../lib/opsControls'
+import JobsSortFilterBar, { useSortFilterParams } from './JobsSortFilterBar'
+import { CLIENT_SORTS, HISTORY_SORTS, joinMulti, parseMulti, pickedLabel, ranMatches, sortRows, toggleMulti, withSortFilter } from '../lib/jobsSortFilter'
 import { ageText, INCIDENTS_PATH, matchesFilter, sortIncidents, sourceText, type Incident, type IncidentsWire } from '../lib/incidents'
 import { rowModel } from '../lib/incidentRow'
 
@@ -38,11 +40,11 @@ const searchInput: CSSProperties = { minHeight: 44, padding: '0 12px', borderRad
 /** Three tiles per row on a phone (the mockup's 3 × 2 grid), wider on a desktop. A null value renders "—".
  *  With `onPick`, each keyed tile is a 44 px toggle button that filters the list below (operator 2026-11-06: "You
  *  can't click on the statuses to filter"); the active one is pressed, outlined and ticked. */
-export function TileGrid({ tiles, label, active = null, onPick }: { tiles: Tile[]; label: string; active?: string | null; onPick?: (key: string) => void }) {
+export function TileGrid({ tiles, label, active = null, onPick }: { tiles: Tile[]; label: string; active?: string | readonly string[] | null; onPick?: (key: string) => void }) {
   return <div role="group" aria-label={label} data-testid="jobs-n8n-tiles" className="jobs-n8n-tiles">
     {tiles.map(t => {
       const tone = t.value ? t.tone : 'neutral'
-      const on = !!t.key && t.key === active
+      const on = !!t.key && (Array.isArray(active) ? active.includes(t.key) : t.key === active)
       const body = <>
         <strong style={{ display: 'block', fontFamily: FONT.mono, fontSize: TYPE.lg, color: toneVars(on ? t.tone : tone).color }}>{t.value ?? '—'}</strong>
         <span style={{ ...muted, display: 'block', textTransform: 'uppercase', letterSpacing: '.04em', fontSize: TYPE.xs, color: on ? TOKENS.text[0] : TOKENS.text[2] }}>{on ? '✓ ' : ''}{t.label}</span>
@@ -50,7 +52,7 @@ export function TileGrid({ tiles, label, active = null, onPick }: { tiles: Tile[
       const base: CSSProperties = { ...panel, padding: '8px 10px', borderColor: toneVars(on ? t.tone : tone).border }
       if (!onPick || !t.key) return <div key={t.label} data-testid="jobs-n8n-tile" style={base}>{body}</div>
       return <button key={t.label} type="button" data-testid="jobs-n8n-tile" data-status={t.key} aria-pressed={on}
-        aria-label={`${t.label}: ${t.value ?? 'not measured'}${on ? ', filtering the list; tap to clear' : ', tap to filter the list'}`}
+        aria-label={`${t.label}: ${t.value ?? 'not measured'}${on ? ', in the filter; tap to remove' : ', tap to add to the filter'}`}
         onClick={() => onPick(t.key!)}
         style={{ ...base, minHeight: 44, width: '100%', textAlign: 'left', cursor: 'pointer', font: 'inherit', color: TOKENS.text[0], boxSizing: 'border-box',
           background: on ? toneVars(t.tone).bg : TOKENS.bg[1], borderWidth: on ? 2 : 1, padding: on ? '7px 9px' : '8px 10px' }}>{body}</button>
@@ -79,6 +81,19 @@ function useStatusParam(valid: (s: string) => boolean, name = 'status'): [string
   return [status, set]
 }
 
+/** A multi-select `?<name>=a,b` (OR within the list): tiles toggle in and out. Unknown keys in a shared link drop. */
+function useMultiParam(valid: (s: string) => boolean, name: string): [string[], (list: string[]) => void] {
+  const [params, setParams] = useSearchParams()
+  const list = parseMulti(params.get(name), valid)
+  const set = (next: string[]) => {
+    const p = new URLSearchParams(params)
+    const v = joinMulti(next)
+    if (v) p.set(name, v); else p.delete(name)
+    setParams(p, { replace: true })
+  }
+  return [list, set]
+}
+
 /** The shared style block for this page's grids (phone 3-up tiles; card list 1-up on a phone). */
 export function JobsN8nStyles() {
   return <style>{`.jobs-n8n-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}@media(min-width:821px){.jobs-n8n-tiles{grid-template-columns:repeat(6,minmax(0,1fr))}}.jobs-n8n-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:10px}.job-history-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}@media(max-width:820px){.job-history-facts{grid-template-columns:1fr 1fr}}@media(max-width:420px){.job-history-facts{grid-template-columns:1fr}}`}</style>
@@ -96,17 +111,20 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'quality' | 'a
   const isQ = tab === 'quality'
   const tilesOf = (s: HistoryListWire['summary'] | null | undefined): Tile[] => (isQ ? qualityTiles(s) : historyTiles(s, tab as 'needs' | 'all' | 'fixes'))
   const tiles = tilesOf(null)
-  // The Quality tab filters by `?quality=<grade>`; the other job tabs by `?status=`.
-  const [status, setStatus] = useStatusParam(s => tiles.some(t => t.key === s), isQ ? 'quality' : 'status')
+  // The Quality tab filters by `?quality=a,b` (any of the picked grades); the other job tabs by `?status=a,b`.
+  // `?ran=` (last run) and `?sort=` apply on every job tab; the server filters, sorts and pages.
+  const [picked, setPicked] = useMultiParam(s => tiles.some(t => t.key === s), isQ ? 'quality' : 'status')
+  const status = joinMulti(picked)
+  const { ran, sort } = useSortFilterParams(HISTORY_SORTS)
   useEffect(() => { const t = setTimeout(() => { setDebounced(query); setOffset(0) }, 300); return () => clearTimeout(t) }, [query])
-  useEffect(() => { setOffset(0) }, [status])
-  const list = useApi<DescribedListWire>(isQ ? qualityHistoryQuery({ quality: status, offset, q: debounced })
-    : describedHistoryQuery({ filter: effectiveHistoryFilter(tab as 'needs' | 'all' | 'fixes', filter, status), offset, q: debounced, status }), 60_000)
+  useEffect(() => { setOffset(0) }, [status, ran, sort])
+  const list = useApi<DescribedListWire>(withSortFilter(isQ ? qualityHistoryQuery({ quality: status, offset, q: debounced })
+    : describedHistoryQuery({ filter: effectiveHistoryFilter(tab as 'needs' | 'all' | 'fixes', filter, status), offset, q: debounced, status }), { ran, sort }), 60_000)
   const detail = useApi<HistoryDetailWire>(detailQuery(selectedId || ''), 60_000, { enabled: !!selectedId })
   const data = list.data
   useEffect(() => {
-    if (data && onTotal && filter === TAB_HISTORY_FILTER[tab] && !debounced && !status) onTotal(tab, data.total)
-  }, [data, filter, debounced, status, tab, onTotal])
+    if (data && onTotal && filter === TAB_HISTORY_FILTER[tab] && !debounced && !status && !ran) onTotal(tab, data.total)
+  }, [data, filter, debounced, status, ran, tab, onTotal])
   useEffect(() => { if (selectedId) title.current?.focus() }, [selectedId, detail.data])
   const select = (id: string | null) => {
     const next = new URLSearchParams(params)
@@ -117,8 +135,11 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'quality' | 'a
   const listRow = data?.rows.find(r => r.lane_id === selectedId)
   const listName = listRow ? jobTitle(listRow) : undefined
   const detailRow = row as (typeof row & Partial<DescribedRow>) | null
-  const activeTile = status ? tilesOf(data?.summary).find(t => t.key === status) ?? null : null
-  const filteredTotal = data && (isQ ? (data as { quality?: string | null }).quality === status?.toUpperCase() : data.status === status) ? data.total : null
+  const activeLabels = tilesOf(data?.summary).filter(t => t.key && picked.includes(t.key)).map(t => t.label)
+  // Only count the list once the server echoes the same picks (a stale page never labels a new selection).
+  const echoed = data && (isQ ? (data as { qualities?: string[] }).qualities : (data as { statuses?: string[] }).statuses)
+  const same = (a: readonly string[] | null | undefined, b: readonly string[]) => !!a && a.length === b.length && b.every(k => a.includes(isQ ? k.toUpperCase() : k))
+  const filteredTotal = data && same(echoed, picked) ? data.total : null
   const offDesign = isQ ? notAsDesignedCount(data?.summary) : null
   const intro = isQ ? 'Not just "did it run": did it run live and produce something real. Every job graded by what its last run made.'
     : tab === 'needs' ? 'Failed, missed and late jobs, worst first.'
@@ -126,9 +147,10 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'quality' | 'a
   return <section aria-label={isQ ? 'Quality' : tab === 'needs' ? 'Needs you' : tab === 'fixes' ? 'Fixes' : 'All jobs'} data-testid={`jobs-n8n-${tab}`} style={{ display: 'grid', gap: 10, minWidth: 0 }}>
     <p style={muted}>{intro}{data ? ` Checked ${etTime(data.computed_at)}.` : ''}</p>
     {list.error && <div role="alert" style={{ ...panel, color: TOKENS.warning }}>Run history could not be read: {list.error}.{data ? ' The last observation remains below.' : ''}</div>}
-    <TileGrid tiles={tilesOf(data?.summary)} label={isQ ? 'Run quality — tap a grade to filter' : 'Run history summary — tap a status to filter'} active={status} onPick={k => setStatus(toggleStatus(status, k))} />
-    {activeTile && <StatusFilterBar label={activeTile.label} count={filteredTotal} onClear={() => setStatus(null)} />}
-    {isQ && <QualityLegend activeKey={status} notAsDesigned={offDesign} />}
+    <TileGrid tiles={tilesOf(data?.summary)} label={isQ ? 'Run quality — tap grades to filter (pick several)' : 'Run history summary — tap statuses to filter (pick several)'} active={picked} onPick={k => setPicked(toggleMulti(picked, k))} />
+    {!!activeLabels.length && <StatusFilterBar label={pickedLabel(activeLabels)} count={filteredTotal} onClear={() => setPicked([])} />}
+    {isQ && <QualityLegend activeKey={picked.length === 1 ? picked[0] : null} notAsDesigned={offDesign} />}
+    <JobsSortFilterBar sorts={HISTORY_SORTS} />
     {isQ && <label style={{ display: 'grid', gap: 4, maxWidth: 420 }}><span style={muted}>Find a job</span>
       <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Job name" style={searchInput} />
     </label>}
@@ -143,7 +165,7 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'quality' | 'a
     <div className="jobs-n8n-list">
       {data?.rows.map(r => <JobCard key={r.lane_id} row={r} computedAt={data.computed_at} categories={data.categories} onOpen={select} />)}
     </div>
-    {!data?.rows.length && <p style={{ ...panel, ...muted }}>{list.loading ? 'Loading run history…' : data ? (status ? (isQ ? 'No jobs with this grade.' : 'No jobs with this status.') : tab === 'needs' ? 'Nothing needs you: no failed, missed or late job.' : 'No jobs in this view.') : 'No run history is available.'}</p>}
+    {!data?.rows.length && <p style={{ ...panel, ...muted }}>{list.loading ? 'Loading run history…' : data ? (status || ran ? (isQ ? 'No jobs match these grades and filters.' : 'No jobs match these filters.') : tab === 'needs' ? 'Nothing needs you: no failed, missed or late job.' : 'No jobs in this view.') : 'No run history is available.'}</p>}
     {data && data.total > data.rows.length && <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', ...muted }}>
       <button type="button" style={pill(false)} disabled={data.offset === 0} onClick={() => setOffset(Math.max(0, data.offset - data.limit))}>Previous</button>
       <span>{data.offset + 1}–{data.offset + data.rows.length} of {data.total}</span>
@@ -243,8 +265,11 @@ export function N8nLanesTab({ state, loading, error }: { state: OpsControlsState
   const nowMs = Date.parse(String(n?.outcomes_as_of || state?.as_of || '')) || Date.now()
   const counts = n8nFilterCounts(rows)
   const qq = q.trim().toLowerCase()
-  const shown = sortLanes(rows.filter(r => matchesN8nFilter(r, filter) && (!status || !isN8nStatus(status) || matchesN8nStatus(r, status))
-    && (matchesN8nQuery(r, q) || (!!qq && (info.get(r.lane_id)?.title || '').toLowerCase().includes(qq)))))
+  const { ran, sort } = useSortFilterParams(CLIENT_SORTS)
+  const lastAt = (r: N8nRowX) => r.outcome?.last_run?.at || r.outcome?.last_run_at || r.outcome?.last_success_at || null
+  const shown = sortRows(sortLanes(rows.filter(r => matchesN8nFilter(r, filter) && (!status || !isN8nStatus(status) || matchesN8nStatus(r, status))
+    && (matchesN8nQuery(r, q) || (!!qq && (info.get(r.lane_id)?.title || '').toLowerCase().includes(qq))) && ranMatches(lastAt(r), ran, nowMs))),
+    sort, lastAt, r => info.get(r.lane_id)?.title || r.lane_id)
   const laneTiles = n8nTiles(summaryOf(rows, n?.summary), rows)
   const activeTile = status ? laneTiles.find(t => t.key === status) ?? null : null
   const select = (id: string | null) => {
@@ -268,6 +293,7 @@ export function N8nLanesTab({ state, loading, error }: { state: OpsControlsState
     <label style={{ display: 'grid', gap: 4, maxWidth: 420 }}><span style={muted}>Find a lane</span>
       <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Lane id" style={searchInput} />
     </label>
+    <JobsSortFilterBar sorts={CLIENT_SORTS} what="lanes" />
     <div className="jobs-n8n-list">
       {shown.map(r => <LaneCardView key={r.lane_id} card={laneCard(r, nowMs)} onOpen={select} info={infoOf(r.lane_id)} />)}
     </div>
@@ -304,7 +330,11 @@ export function IncidentsTab() {
   const { data, loading, error } = useApi<IncidentsWire>(INCIDENTS_PATH, 60_000)
   const [active, setActive] = useState(true)
   const nowMs = Date.now()
-  const rows = sortIncidents((data?.incidents ?? []).filter(i => matchesFilter(i, active ? 'active' : 'all')))
+  const { ran, sort } = useSortFilterParams(CLIENT_SORTS)
+  // An incident's "last run" is its latest activity: updated, else opened.
+  const lastAt = (i: Incident) => i.updated_at || i.opened_at || null
+  const rows = sortRows(sortIncidents((data?.incidents ?? []).filter(i => matchesFilter(i, active ? 'active' : 'all') && ranMatches(lastAt(i), ran, nowMs))),
+    sort, lastAt, i => i.title || i.id)
   const c = data?.summary?.counts
   const tiles: Tile[] = [
     { label: 'Open', value: c ? c.open : null, tone: 'danger' }, { label: 'Fixing', value: c ? c.fixing : null, tone: 'warning' },
@@ -320,6 +350,7 @@ export function IncidentsTab() {
       <button type="button" aria-pressed={active} onClick={() => setActive(true)} style={pill(active)}>Active</button>
       <button type="button" aria-pressed={!active} onClick={() => setActive(false)} style={pill(!active)}>All</button>
     </div>
+    <JobsSortFilterBar sorts={CLIENT_SORTS} what="incidents" />
     <div className="jobs-n8n-list">{rows.map(i => <IncidentCardView key={i.id} inc={i} nowMs={nowMs} />)}</div>
     {!rows.length && <p style={{ ...panel, ...muted }}>{loading && !data ? 'Loading incidents…' : data ? (active ? 'No active incident.' : 'No incident recorded.') : 'Incidents are not available.'}</p>}
   </section>
