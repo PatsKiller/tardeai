@@ -29,6 +29,14 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 HOLDINGS = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
+# The normalized ACTUAL_CASH event's dedupe_key for a trade_transactions row. One
+# constant for the writer and the reconciliation, so the two cannot drift apart.
+LEDGER_EVENT_PREFIX = "txn:"
+
+
+def ledger_event_key(dedupe_key: str) -> str:
+    return f"{LEDGER_EVENT_PREFIX}{dedupe_key}"
+
 
 def ensure_cost_tables(cur, conn):
     cur.execute("""CREATE TABLE IF NOT EXISTS investment_cost_events (
@@ -80,7 +88,7 @@ def ingest_actual_fees(cur, conn) -> dict:
             ON CONFLICT (dedupe_key) DO NOTHING""",
             ("schwab" if "schwab" in (acct or "") else
              ("fidelity" if "fidelity" in (acct or "") else (acct or "unknown")), acct,
-             dk, d, f"txn:{dk}", sym,
+             dk, d, ledger_event_key(dk), sym,
              # P1-1: the ledger's `fees` column is a COMBINED charge — never
              # infer a subtype (SEC/TAF/commission) the source doesn't state
              "broker_charge_unclassified",
@@ -290,16 +298,51 @@ def costs_unmatched(cur, query: dict | None = None) -> dict:
 def costs_reconciliation(cur, query: dict | None = None) -> dict:
     """P14 — INDEPENDENT checks, not tautologies."""
     out = []
-    # 1. normalized actual events vs raw ledger fee totals
+    # 1. coverage, per ledger row: every posted fee is normalized exactly once at the
+    #    same amount. Aggregate sums can cancel an error (one row short, another long),
+    #    so this compares row by row; the total check below then has to be explained.
+    cur.execute("""SELECT t.fees, e.amount
+                   FROM trade_transactions t
+                   LEFT JOIN investment_cost_events e
+                     ON e.source_system='trade_transactions' AND e.superseded=false
+                    AND e.dedupe_key = %s || t.dedupe_key
+                   WHERE t.fees IS NOT NULL AND t.fees != 0""", (LEDGER_EVENT_PREFIX,))
+    unmatched = mismatched = 0
+    for fees, amount in cur.fetchall():
+        if amount is None:
+            unmatched += 1
+        elif abs(float(fees) - float(amount)) >= 0.005:
+            mismatched += 1
+    out.append({"check": "ledger_rows_normalized", "ok": not (unmatched or mismatched),
+                "unmatched_rows": unmatched, "amount_mismatches": mismatched,
+                "note": "every posted fee normalized exactly once, at its ledger amount"})
+    # 2. the two totals, with any difference fully explained by named orphans
     cur.execute("SELECT COALESCE(sum(fees),0) FROM trade_transactions WHERE fees IS NOT NULL")
     raw = float(cur.fetchone()[0])
     cur.execute("""SELECT COALESCE(sum(amount),0) FROM investment_cost_events
                    WHERE source_system='trade_transactions' AND cost_class='ACTUAL_CASH'
                      AND superseded=false""")
     norm = float(cur.fetchone()[0])
-    out.append({"check": "ledger_fees_vs_normalized", "ok": abs(raw - norm) < 0.01,
-                "raw_ledger": raw, "normalized_events": norm})
-    # 2. option fill fees vs outcome-recorded fees — PARTITIONED by position status
+    # A normalized charge whose ledger row is gone is NOT lost normalization: the
+    # cost ledger keeps the charge after the trade ledger re-keys or drops a trade
+    # (six such charges, $0.78, after the 2026-10-28 re-import). They are named, so
+    # the difference is explained and never rounded away — and the events are not
+    # deleted: this store is the record of cash actually paid.
+    cur.execute("""SELECT count(*), COALESCE(sum(e.amount),0),
+                          COALESCE(string_agg(e.dedupe_key, ', ' ORDER BY e.dedupe_key), '')
+                   FROM investment_cost_events e
+                   LEFT JOIN trade_transactions t ON e.dedupe_key = %s || t.dedupe_key
+                   WHERE e.source_system='trade_transactions' AND e.cost_class='ACTUAL_CASH'
+                     AND e.superseded=false AND t.dedupe_key IS NULL""", (LEDGER_EVENT_PREFIX,))
+    orphan_n, orphan_amt, orphan_keys = cur.fetchone()
+    orphan_amt = float(orphan_amt)
+    out.append({"check": "ledger_fees_vs_normalized",
+                "ok": abs(raw + orphan_amt - norm) < 0.01,
+                "raw_ledger": raw, "normalized_events": norm,
+                "orphaned_events": int(orphan_n), "orphaned_amount": orphan_amt,
+                "orphaned_keys": orphan_keys,
+                "note": "difference must be exactly the charges whose ledger row no longer exists"})
+    # 3. option fill fees vs outcome-recorded fees — PARTITIONED by position status
     cur.execute("""SELECT p.status, COALESCE(sum(COALESCE(e.commission,0)+COALESCE(e.regulatory_fee,0)
                           +COALESCE(e.exchange_fee,0)+COALESCE(e.other_fee,0)),0)
                    FROM options_fill_evidence e
