@@ -311,6 +311,21 @@ def _gate_state(ok: Optional[bool]) -> str:
     return "unknown" if ok is None else ("pass" if ok else "fail")
 
 
+BELOW_ONE_SHARE = "below one share"
+
+
+def _tranche_shares(t: Mapping[str, Any]) -> Optional[int]:
+    """Whole shares the tranche's dollars buy, or None when the engine did not compute one.
+
+    ``shares`` arrives as an int from the plan engine; a bool is not a share count (it is an
+    ``int`` subclass), and a fractional value is floored to the whole shares it can buy.
+    """
+    v = t.get("shares")
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return int(v)
+
+
 def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
     """Add the fields the two consumers read (LQ-366 fold rehearsal), without removing any.
 
@@ -319,6 +334,10 @@ def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
     * the brief (scripts/market_event_brief.py): market_gate.checks, plan.tranche (the highest tranche
       ready now) and plan.accounts[] (per account, the dollars of every tranche ready now: nothing is
       recorded as entered, so all ready tranches are deployable).
+    A ready tranche whose dollars buy no whole share contributes 0 to ``plan.accounts[].tranche_usd``
+    and is reported as ``below_one_share`` instead: on the two small accounts the 30/30/40 split
+    lands under one share for most names, and counting those dollars would make "NEXT TRANCHE $"
+    promise money that cannot be spent (LQ-20261107-396). The account row is never omitted for it.
     The candidate's ``gates`` is the chip LIST; the brief's dict view is ``gate_checks``.
     """
     mg = doc.get("market_gate") or {}
@@ -376,13 +395,28 @@ def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
                 tranches.append({"n": t.get("tranche"), "pct": t.get("pct"), "account_label": acct.get("account_label"),
                                  "shares": t.get("shares"), "usd": t.get("usd"), "entry_low": zone[0],
                                  "entry_high": zone[1] if len(zone) > 1 else None, "condition": t.get("trigger"),
+                                 "below_one_share": _tranche_shares(t) == 0,
                                  "status": "ready" if t.get("ready") else "waiting"})
             ready = [t for t in nm.get("tranches") or [] if t.get("ready") and isinstance(t.get("usd"), (int, float))]
             if ready:
+                # A share count that floors to 0 cannot be bought, so its dollars are a budget,
+                # not a purchasable amount: they are excluded from the dollars the brief prints
+                # as the next tranche, and the account says so rather than showing a number that
+                # buys nothing (LQ-20261107-396 — on the $5k and $525 accounts most names land
+                # here). The account row is emitted either way: it is never dropped, only
+                # labelled. An UNKNOWN share count (None) is not assumed to be zero — it stays in
+                # the total, because excluding it would understate what is actually deployable.
+                unbuyable = [t for t in ready if _tranche_shares(t) == 0]
+                buyable = [t for t in ready if _tranche_shares(t) != 0]
                 zone = ready[0].get("entry_zone") or []
-                acct_rows.append({"account_label": acct.get("account_label"), "tranches": [t.get("tranche") for t in ready],
-                                  "tranche_usd": round(sum(t["usd"] for t in ready), 2),
-                                  "shares": sum(int(t.get("shares") or 0) for t in ready) or None,
+                acct_rows.append({"account_label": acct.get("account_label"),
+                                  "tranches": [t.get("tranche") for t in buyable],
+                                  "tranche_usd": round(sum(t["usd"] for t in buyable), 2),
+                                  "shares": sum(int(t.get("shares") or 0) for t in buyable) or None,
+                                  "below_one_share": bool(unbuyable),
+                                  "below_one_share_usd": round(sum(t["usd"] for t in unbuyable), 2),
+                                  "below_one_share_tranches": [t.get("tranche") for t in unbuyable],
+                                  "below_one_share_label": BELOW_ONE_SHARE if unbuyable else None,
                                   "entry_zone": "-".join(f"{z:.2f}" for z in zone if isinstance(z, (int, float))),
                                   "invalidation": nm.get("invalidation")})
         c["plan"] = {"tranche": ready_n or None, "tranches": tranches, "accounts": acct_rows,
