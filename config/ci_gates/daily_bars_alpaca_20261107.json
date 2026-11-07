@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "daily_bars_alpaca_20261107",
+  "files": [
+    "tests/test_daily_bars_alpaca_20261107.py"
+  ],
+  "anchor": "DAILY_BARS_ALPACA_20261107",
+  "comment": [
+    "ANCHOR: DAILY_BARS_ALPACA_20261107 — daily OHLCV is a price series and comes from Alpaca, the provider config/data_source_authority.json grants `bars` to (market_data_snapshot_loader.fetch_alpaca_daily_bars), never yfinance (operator price rule 2026-11-07; SPEC_MARKET_EVENT_REENTRY_20261107 §2). fetch_yfinance_bars refuses 'daily' before importing yfinance; bar_time is midnight America/New_York of the session so a refresh upserts the stored session instead of adding a second row; technical_intelligence.load_bars uses the Alpaca read for daily. Fakes only; no network, no DB."
+  ]
+}

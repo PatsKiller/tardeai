@@ -6,9 +6,15 @@ on-demand technical lookup (``technical_intelligence.load_bars`` fetches when a 
 asks for a symbol). Nothing refreshes a symbol nobody opens, so SPY's daily bars stopped on 2026-10-09 and QQQ and
 SMH never had any. The engine's technical, volatility and correlation categories need 200+ sessions of closes.
 
-This lane refreshes exactly the reference list, through the existing writer path
-(``market_data_snapshot_loader.fetch_yfinance_bars`` + ``store_bars``: source ``yfinance``, upsert on
-(symbol, timeframe, bar_time)). Default is a dry run that fetches and prints and writes nothing.
+This lane refreshes exactly the reference list through ``store_bars`` (upsert on
+(symbol, timeframe, bar_time)); ``bar_time`` is midnight ET of the session, so a refresh updates the stored
+session and is idempotent. Measured again 2026-11-07 (LQ-20261107-337): the lane had NEVER run — no registry
+entry, no crontab line, no receipt — and its only source was yfinance.
+
+Source (2026-11-07): daily OHLCV comes from Alpaca, the provider ``config/data_source_authority.json`` grants
+``bars`` to (``market_data_snapshot_loader.fetch_alpaca_daily_bars``). Never yfinance — the operator price rule
+of 2026-11-07 and SPEC_MARKET_EVENT_REENTRY_20261107 §2. Default is a dry run that fetches and prints and
+writes nothing.
 
     python3 scripts/market_reference_bars_refresh.py                          # dry run, incremental
     python3 scripts/market_reference_bars_refresh.py --backfill-sessions 400  # dry run, 400-session backfill
@@ -33,6 +39,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT))
 
 LANE_ID = "market-reference-bars"
+DAILY_SOURCE = "alpaca"  # config/data_source_authority.json grants `bars` to alpaca; yfinance is not a price source
 SYMBOLS_PATH = ROOT / "config" / "market_reference_symbols.json"
 INCREMENTAL_MIN_DAYS = 10  # covers a long weekend plus a holiday on the incremental path
 DEFAULT_BACKFILL_SESSIONS = 400  # the engine's longest lookback (200-DMA, 1-year z-scores) plus margin
@@ -65,6 +72,7 @@ def last_daily_bars(cur, symbols: list[str]) -> dict[str, date]:
 
 
 def run(*, apply: bool, backfill_sessions: int | None, conn, fetch, store, today: date | None = None) -> dict:
+    """``fetch(symbol, days)`` returns store_bars-shaped daily bars; ``store(conn, bars)`` writes them."""
     today = today or datetime.now(timezone.utc).date()
     symbols = reference_symbols()
     cur = conn.cursor()
@@ -72,7 +80,7 @@ def run(*, apply: bool, backfill_sessions: int | None, conn, fetch, store, today
     rows, empty, stored_total, fetched_total = [], [], 0, 0
     for sym in symbols:
         days = fetch_days(last.get(sym), today, backfill_sessions)
-        bars = fetch(sym, "daily", days) or []
+        bars = fetch(sym, days) or []
         fetched_total += len(bars)
         stored = store(conn, bars) if (apply and bars) else 0
         stored_total += stored
@@ -94,6 +102,7 @@ def run(*, apply: bool, backfill_sessions: int | None, conn, fetch, store, today
         "schema": "MarketReferenceBarsRun@v1",
         "lane_id": LANE_ID,
         "mode": "apply" if apply else "dry_run",
+        "source": DAILY_SOURCE,
         "symbols": len(symbols),
         "fetched_bars": fetched_total,
         "stored_bars": stored_total,
@@ -114,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     apply = a.apply and not a.dry_run
     started = datetime.now(timezone.utc)
 
-    import market_data_snapshot_loader as mdl  # existing writer path (fetch_yfinance_bars, store_bars)
+    import market_data_snapshot_loader as mdl  # writer path (fetch_alpaca_daily_bars, store_bars)
 
     conn = mdl.get_conn()
     if not apply:
@@ -124,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
             apply=apply,
             backfill_sessions=a.backfill_sessions,
             conn=conn,
-            fetch=mdl.fetch_yfinance_bars,
+            fetch=mdl.fetch_alpaca_daily_bars,
             store=mdl.store_bars,
         )
     finally:
@@ -149,7 +158,8 @@ def main(argv: list[str] | None = None) -> int:
             exit_code=rc,
             started_at=started,
             script="scripts/market_reference_bars_refresh.py",
-            summary={k: out[k] for k in ("symbols", "fetched_bars", "stored_bars", "empty")},
+            summary={**{k: out[k] for k in ("symbols", "fetched_bars", "stored_bars", "empty")},
+                     "source": out["source"]},
             error=f"no bars for {', '.join(out['empty'])}" if out["empty"] else None,
             produced_count=out["stored_bars"],
             attempted_count=out["symbols"],

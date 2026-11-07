@@ -111,6 +111,19 @@ def _fetch(symbol, start, end, timeframe):
     return bars, None
 
 
+def alpaca_daily_bars(symbol, start, end):
+    """Public Alpaca daily-bar read for lanes outside the chart (returns (alpaca-shaped bars, error or None)).
+
+    ``config/data_source_authority.json`` grants ``bars`` to the ``alpaca`` provider; it is the source the
+    Market Risk Engine's reference closes already come from (``market_quotes_extended.fetch``). Daily bars are
+    a PRICE series, so they never come from yfinance (operator price rule 2026-11-07; SPEC_MARKET_EVENT_REENTRY
+    20261107 §2 "never yfinance"). Read-only: market data only, no account, no order route.
+    Alpaca stamps a daily bar at 00:00 US/Eastern expressed in UTC (04:00Z in EDT, 05:00Z in EST), so a caller
+    that needs the SESSION date must convert, not string-slice.
+    """
+    return _fetch(symbol, start, end, "1Day")
+
+
 def _schwab_bars(symbol, start, end, timeframe):
     """TIER 2 (best-effort): Schwab price history via schwab_transport (read-only). Returns Alpaca-shaped
     bars or [] if not wired/unavailable — so the caller falls through to the Finviz image.

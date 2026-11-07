@@ -60,12 +60,14 @@ def test_dry_run_never_stores_and_apply_does(monkeypatch):
         stored.extend(bars)
         return len(bars)
 
-    fetch = lambda s, tf, days: _bars(s, 3)  # noqa: E731
+    fetch = lambda s, days: _bars(s, 3)  # noqa: E731
     dry = mrb.run(
         apply=False, backfill_sessions=None, conn=_Conn({}), fetch=fetch, store=store, today=date(2026, 10, 31)
     )
     assert dry["mode"] == "dry_run" and dry["stored_bars"] == 0 and stored == []
     assert dry["fetched_bars"] == 6 and dry["empty"] == []
+    assert dry["source"] == "alpaca"  # the lane names the granted `bars` supply, never yfinance
+
     live = mrb.run(
         apply=True, backfill_sessions=None, conn=_Conn({}), fetch=fetch, store=store, today=date(2026, 10, 31)
     )
@@ -78,7 +80,7 @@ def test_empty_symbol_is_named(monkeypatch):
         apply=False,
         backfill_sessions=None,
         conn=_Conn({"SPY": date(2026, 10, 9)}),
-        fetch=lambda s, tf, d: [] if s == "UUP" else _bars(s, 2),
+        fetch=lambda s, d: [] if s == "UUP" else _bars(s, 2),
         store=lambda c, b: 0,
         today=date(2026, 10, 31),
     )

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """market_data_snapshot_loader.py — Fetch and cache OHLCV bars for technical analysis.
 
-Uses yfinance as primary source (free, reliable for daily/intraday).
-Falls back to Polygon/FMP for extended hours data if available.
+DAILY is a price series: it comes from Alpaca, the provider ``config/data_source_authority.json`` grants
+``bars`` to (:func:`fetch_alpaca_daily_bars`). It never comes from yfinance — the operator price rule of
+2026-11-07 and SPEC_MARKET_EVENT_REENTRY_20261107 §2 ("never yfinance") — and Polygon was retired
+2026-09-13, so no retired stub is kept here. Intraday bars still use yfinance (display-only technicals,
+never a price source).
 
 Usage:
     .venv/bin/python scripts/market_data_snapshot_loader.py --symbol XMTR --timeframes 1m,5m,daily --days 30 --apply
@@ -14,8 +17,12 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, time, timezone, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+ET = ZoneInfo("America/New_York")
+DAILY_SOURCE = "alpaca"  # the granted `bars` supply; never yfinance (see the module docstring)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -32,12 +39,35 @@ TIMEFRAME_MAP = {
     "1m": {"yf_interval": "1m", "yf_period": "5d", "max_days": 7},
     "5m": {"yf_interval": "5m", "yf_period": "5d", "max_days": 60},
     "15m": {"yf_interval": "15m", "yf_period": "5d", "max_days": 60},
-    "daily": {"yf_interval": "1d", "yf_period": None, "max_days": 365},
-}
+}  # intraday only: 'daily' is Alpaca's (fetch_alpaca_daily_bars), so it has no yfinance window here
+
+SIP_DELAY_CONFIG = PROJECT_ROOT / "config" / "market_quotes_extended.json"
+
+
+def _sip_delay_minutes(default: float = 16.0) -> float:
+    """The free plan's SIP delay (config/market_quotes_extended.json ``sip_delay_minutes``, measured 2026-10-31).
+
+    Measure again 2026-11-07: a request whose ``end`` is inside the delay is refused with HTTP 403
+    "subscription does not permit querying recent SIP data" — the whole window fails, not just the last bar.
+    """
+    try:
+        cfg = json.loads(SIP_DELAY_CONFIG.read_text(encoding="utf-8"))
+        return float(cfg.get("sip_delay_minutes") or default)
+    except (OSError, ValueError, TypeError):
+        return default
 
 
 def fetch_yfinance_bars(symbol: str, timeframe: str, days: int) -> list:
-    """Fetch OHLCV bars via yfinance."""
+    """Intraday OHLCV bars via yfinance (display-only technicals).
+
+    DAILY is refused here on purpose. Until 2026-11-07 this function served daily bars, and every daily row in
+    ``market_ohlcv_bars`` still carries ``source='yfinance'`` because of it: SPY stopped on 2026-10-09 the last
+    time an on-demand lookup ran, QQQ and SMH never had one. Daily bars are a price series; the operator price
+    rule (2026-11-07) and the market-event spec forbid yfinance for it. Use :func:`fetch_alpaca_daily_bars`.
+    """
+    if timeframe == "daily":
+        log.warning(f"{symbol}: daily bars are not a yfinance series — use fetch_alpaca_daily_bars")
+        return []
     import yfinance as yf
     cfg = TIMEFRAME_MAP.get(timeframe)
     if not cfg:
@@ -46,16 +76,9 @@ def fetch_yfinance_bars(symbol: str, timeframe: str, days: int) -> list:
 
     try:
         ticker = yf.Ticker(symbol)
-        if timeframe == "daily":
-            end = datetime.now()
-            start = end - timedelta(days=days)
-            df = ticker.history(start=start.strftime("%Y-%m-%d"),
-                                end=end.strftime("%Y-%m-%d"),
-                                interval="1d")
-        else:
-            # Intraday: yfinance limits lookback
-            actual_days = min(days, cfg["max_days"])
-            df = ticker.history(period=f"{actual_days}d", interval=cfg["yf_interval"])
+        # Intraday: yfinance limits lookback
+        actual_days = min(days, cfg["max_days"])
+        df = ticker.history(period=f"{actual_days}d", interval=cfg["yf_interval"])
 
         if df is None or df.empty:
             return []
@@ -82,10 +105,52 @@ def fetch_yfinance_bars(symbol: str, timeframe: str, days: int) -> list:
         return []
 
 
-def fetch_polygon_bars(symbol: str, timeframe: str, days: int) -> list:
-    """Polygon retired 2026-09-13 (config/data_source_authority.json). Bars come from the
-    declared quote/price domain (Alpaca, yfinance backup); this loader reports source 'none'."""
-    return []
+def fetch_alpaca_daily_bars(symbol: str, days: int) -> list:
+    """Daily OHLCV through Alpaca — the provider ``config/data_source_authority.json`` grants ``bars`` to.
+
+    ``bar_time`` is midnight America/New_York of the SESSION, not the UTC instant Alpaca stamps (00:00 ET as
+    04:00Z/05:00Z). That is the key the 2025-2026 yfinance rows already carry, so a refresh UPDATES the stored
+    session (``ON CONFLICT (symbol, timeframe, bar_time)`` in :func:`store_bars`) instead of inserting a second
+    row for the same day — a UTC-sliced key would silently double every session.
+
+    A symbol Alpaca knows nothing about is ``[]``; an error is ``[]`` and logged (the lane names the symbol
+    rather than storing a hole). Read-only market data: no account, no order route.
+
+    The window ENDS ``sip_delay_minutes`` before now, not at now: the free plan refuses a request that reaches
+    into its SIP delay with HTTP 403 for the whole window (see :func:`_sip_delay_minutes`).
+    """
+    sym = str(symbol or "").upper().strip()
+    if not sym:
+        return []
+    end = datetime.now(timezone.utc) - timedelta(minutes=_sip_delay_minutes())
+    start = end - timedelta(days=max(1, int(days)))
+    try:
+        import ohlc_charts as oc
+        raw, err = oc.alpaca_daily_bars(sym, start.isoformat(), end.isoformat())
+    except Exception as e:  # noqa: BLE001 - reported to the lane as an empty symbol
+        log.warning(f"alpaca daily-bar fetch failed for {sym}: {type(e).__name__}")
+        return []
+    if err:
+        log.warning(f"alpaca daily bars {sym}: {err}")
+    out = []
+    for b in raw or []:
+        try:
+            ts = datetime.fromisoformat(str(b["t"]).replace("Z", "+00:00"))
+            session = ts.astimezone(ET).date()
+            out.append({
+                "symbol": sym,
+                "timeframe": "daily",
+                "bar_time": datetime.combine(session, time(0, 0), tzinfo=ET),
+                "open": float(b["o"]),
+                "high": float(b["h"]),
+                "low": float(b["l"]),
+                "close": float(b["c"]),
+                "volume": float(b.get("v") or 0),
+                "source": DAILY_SOURCE,
+            })
+        except (KeyError, TypeError, ValueError) as e:
+            log.warning(f"alpaca daily bar {sym} unusable ({type(e).__name__}): {b!r}")
+    return out
 
 
 def store_bars(conn, bars: list) -> int:
@@ -117,19 +182,13 @@ def load_symbol(conn, symbol: str, timeframes: list, days: int, apply: bool = Fa
     result = {"symbol": symbol, "timeframes": {}}
 
     for tf in timeframes:
-        # Try yfinance first
-        bars = fetch_yfinance_bars(symbol, tf, days)
-        source = "yfinance"
-
-        # Fall back to Polygon for intraday if yfinance returns nothing
-        if not bars and tf != "daily":
-            bars = fetch_polygon_bars(symbol, tf, days)
-            source = "polygon" if bars else "none"
-
-        # For daily, try Polygon as fallback too
-        if not bars and tf == "daily":
-            bars = fetch_polygon_bars(symbol, tf, days)
-            source = "polygon" if bars else "none"
+        if tf == "daily":
+            # Daily is a price series: the granted Alpaca `bars` supply, never yfinance.
+            bars, source = fetch_alpaca_daily_bars(symbol, days), DAILY_SOURCE
+        else:
+            bars, source = fetch_yfinance_bars(symbol, tf, days), "yfinance"
+            if not bars:
+                source = "none"
 
         stored = 0
         if bars and apply:

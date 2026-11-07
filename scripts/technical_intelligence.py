@@ -184,11 +184,11 @@ def load_bars(symbol: str, tf: str, conn=None, *, allow_fetch: bool = True) -> d
             if tf == "1h" and "1h" not in mdl.TIMEFRAME_MAP:
                 mdl.TIMEFRAME_MAP["1h"] = {"yf_interval": "60m", "yf_period": "3mo",
                                            "max_days": 180}
-            if tf == "daily":
-                mdl.TIMEFRAME_MAP["daily"]["max_days"] = 730  # weekly/monthly resample depth
             days = {"5m": 30, "15m": 60, "1h": 180, "daily": 730}.get(tf, 365)
-            fetched = mdl.fetch_yfinance_bars(sym, tf, days) or \
-                mdl.fetch_polygon_bars(sym, tf, days)
+            # Daily bars are a price series: Alpaca, never yfinance (operator price rule 2026-11-07).
+            # Weekly/monthly are resamples of this same series (TF_FETCH.resample_of).
+            fetched = (mdl.fetch_alpaca_daily_bars(sym, days) if tf == "daily"
+                       else mdl.fetch_yfinance_bars(sym, tf, days))
             if fetched:
                 mdl.store_bars(conn, fetched)
                 conn.commit()
