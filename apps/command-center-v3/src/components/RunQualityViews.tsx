@@ -50,13 +50,15 @@ export function QualityDetail({ q, statusLabel }: { q: RunQuality | null | undef
   const g = gradeChip(q)
   if (!q || !g) return null
   const rows = checkRows(q)
+  // The ⚠ block below lists the design issues; don't repeat them as "Not as designed: …" reasons.
+  const reasons = notAsDesigned(q) && q.design_issues?.length ? (q.reasons ?? []).filter(r => !/^Not as designed:/i.test(r)) : (q.reasons ?? [])
   return <section aria-label="Run quality" data-testid="quality-detail" style={{ display: 'grid', gap: 10, padding: 12, border: `1px solid ${toneVars(g.tone).border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0, maxWidth: 760 }}>
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
       <strong style={{ fontSize: TYPE.md }}>Run quality</strong>
       <QualityChips q={q} />
       {statusLabel && <span style={muted}>run status said: {statusLabel}</span>}
     </div>
-    {!!q.reasons?.length && <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>{q.reasons.map((r, i) => <li key={i} style={wrap}>{r}</li>)}</ul>}
+    {!!reasons.length && <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>{reasons.map((r, i) => <li key={i} style={wrap}>{r}</li>)}</ul>}
     {notAsDesigned(q) && !!q.design_issues?.length && <div style={{ display: 'grid', gap: 4 }}>
       <span style={{ ...muted, color: toneVars('warning').color }}>⚠ Not as designed</span>
       <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4 }}>{q.design_issues.map((r, i) => <li key={i} style={wrap}>{r}</li>)}</ul>
