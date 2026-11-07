@@ -35,21 +35,46 @@ sys.path.insert(0, str(ROOT / "scripts"))
 LABEL = "strategy_type_repair"
 WRITER = "repair_finviz_strategy_type_20261107"
 SOURCE = "finviz_news"
-BATCH = 500
-PREDICATE = ("source = %s AND strategy_type IS NOT NULL AND upper(strategy_type) = upper(symbol)")
 
+#: Every statement is a literal: the table name is never interpolated into SQL. The predicate is the
+#: same in all three statements per table — the rows counted, archived and updated are exactly one set.
 TABLES = {
-    "news_articles": ("SELECT id, symbol, strategy_type, title FROM news_articles WHERE {p} ORDER BY id",
-                      "SELECT count(*) FROM news_articles WHERE {p}"),
-    "catalyst_events": ("SELECT id, symbol, strategy_type, headline FROM catalyst_events WHERE {p} ORDER BY id",
-                        "SELECT count(*) FROM catalyst_events WHERE {p}"),
+    "news_articles": {
+        "select": ("SELECT id, symbol, strategy_type, title FROM news_articles"
+                   " WHERE source = %s AND strategy_type IS NOT NULL"
+                   " AND upper(strategy_type) = upper(symbol) ORDER BY id"),
+        "sample": ("SELECT id, symbol, strategy_type, title FROM news_articles"
+                   " WHERE source = %s AND strategy_type IS NOT NULL"
+                   " AND upper(strategy_type) = upper(symbol) ORDER BY id LIMIT 3"),
+        "count": ("SELECT count(*) FROM news_articles"
+                  " WHERE source = %s AND strategy_type IS NOT NULL"
+                  " AND upper(strategy_type) = upper(symbol)"),
+        "update": "UPDATE news_articles SET strategy_type = NULL WHERE id = ANY(%s)",
+    },
+    "catalyst_events": {
+        "select": ("SELECT id, symbol, strategy_type, headline FROM catalyst_events"
+                   " WHERE source = %s AND strategy_type IS NOT NULL"
+                   " AND upper(strategy_type) = upper(symbol) ORDER BY id"),
+        "sample": ("SELECT id, symbol, strategy_type, headline FROM catalyst_events"
+                   " WHERE source = %s AND strategy_type IS NOT NULL"
+                   " AND upper(strategy_type) = upper(symbol) ORDER BY id LIMIT 3"),
+        "count": ("SELECT count(*) FROM catalyst_events"
+                  " WHERE source = %s AND strategy_type IS NOT NULL"
+                  " AND upper(strategy_type) = upper(symbol)"),
+        "update": "UPDATE catalyst_events SET strategy_type = NULL WHERE id = ANY(%s)",
+    },
 }
+#: The predicate as text, for the archive manifest only (never executed from here).
+WHERE_TEXT = "source=%r AND strategy_type IS NOT NULL AND upper(strategy_type)=upper(symbol)" % SOURCE
 
 
 def _count(cur, table: str) -> int:
-    cur.execute(TABLES[table][1].format(p=PREDICATE), (SOURCE,))
+    """Rows carrying the pollution. An unreadable count raises: a missing count is not a zero."""
+    cur.execute(TABLES[table]["count"], (SOURCE,))
     row = cur.fetchone()
-    return int(row[0] or 0) if row else 0
+    if not row or row[0] is None:
+        raise RuntimeError(f"{table}: count unavailable; refusing to report it as zero")
+    return int(row[0])
 
 
 def _archive_and_null(conn, table: str) -> dict:
@@ -57,7 +82,7 @@ def _archive_and_null(conn, table: str) -> dict:
     from lib.retention_archive import (archive_root, verify_archive, write_jsonl_gz, write_manifest)
 
     cur = conn.cursor()
-    cur.execute(TABLES[table][0].format(p=PREDICATE), (SOURCE,))
+    cur.execute(TABLES[table]["select"], (SOURCE,))
     rows = cur.fetchall()
     if not rows:
         return {"table": table, "archived": 0, "updated": 0}
@@ -70,11 +95,11 @@ def _archive_and_null(conn, table: str) -> dict:
     if n != len(rows):
         raise RuntimeError(f"{table}: archive wrote {n} rows, expected {len(rows)}")
     write_manifest(dest, table=table, rows=n, sha256=sha, bytes=size, label=LABEL, writer=WRITER,
-                   kind="column_values", where=PREDICATE.replace("%s", repr(SOURCE)))
+                   kind="column_values", where=WHERE_TEXT)
     ok, why = verify_archive(dest, expected_rows=n, expected_sha256=sha, key="id", expected_keys=ids)
     if not ok:
         raise RuntimeError(f"{table}: archive verification failed ({why}); nothing updated")
-    cur.execute(f"UPDATE {table} SET strategy_type = NULL WHERE id = ANY(%s)", (ids,))
+    cur.execute(TABLES[table]["update"], (ids,))
     if cur.rowcount != len(ids):
         conn.rollback()
         raise RuntimeError(f"{table}: updated {cur.rowcount} of {len(ids)} archived rows; rolled back")
@@ -112,7 +137,7 @@ def main(argv=None) -> int:
                           "before": before}, indent=2))
         if not args.apply:
             for t in TABLES:
-                cur.execute(TABLES[t][0].format(p=PREDICATE) + " LIMIT 3", (SOURCE,))
+                cur.execute(TABLES[t]["sample"], (SOURCE,))
                 print(f"  {t} sample: " + json.dumps([dict(zip(("id", "symbol", "strategy_type", "title"), r))
                                                       for r in cur.fetchall()]))
             print(json.dumps({"writes": "none", "would_update": before,

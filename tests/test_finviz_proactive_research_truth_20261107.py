@@ -315,6 +315,7 @@ def test_an_unreadable_document_falls_back_to_the_file_and_says_so(monkeypatch, 
 
     monkeypatch.setitem(sys.modules, "lib.holdings_document", types.SimpleNamespace(load_document=_boom))
     (tmp_path / "data" / "portfolios" / "state").mkdir(parents=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture inside pytest's tmp_path, not a live store
     (tmp_path / "data" / "portfolios" / "state" / "holdings.json").write_text(
         json.dumps({"holdings": [{"symbol": "aapl"}]}))
     monkeypatch.setattr(lane, "ROOT", tmp_path)
