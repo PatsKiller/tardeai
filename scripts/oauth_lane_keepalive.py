@@ -16,6 +16,10 @@ n8n refactor (2026-10-10, wave 1):
   Telegram send or the receipt are reachable (AGENTS.md §6).
 - Exit 1 when a lane that was healthy before (it has a ``last_ok``) is not ok now — the alert is deduped
   to 12 h, so the exit code is the per-run signal. Exit 0 otherwise (never-set-up lanes are not failures).
+- A failing lane is classified (``rate_limited`` / ``auth`` / ``other``) and the alert says what to do
+  about THAT cause: an exhausted free quota (HTTP 429 from the proxy) heals by waiting, so the alert
+  must not print the re-login command (2026-11-07 — the chatgpt lane was rate limited for 54 runs
+  while /health reported authenticated=true).
 - A real run writes ``<state_root>/data/runtime/oauth_lane_keepalive_last.json`` (LaneRunReceipt@v1;
   ``ok_at`` only on exit 0). The status file resolves under the persistent-state root, not the release.
 - The in-script Telegram send is UNCHANGED (moving it to the incident router is a follow-up).
@@ -51,6 +55,39 @@ HINTS = {
     "hermes": "hermes portal login",
     "local": "start ollama (systemctl --user start ollama or `ollama serve`)",
 }
+
+RATE_LIMIT_STEPS = ("429", "rate limit", "rate_limit", "rate_limited", "too many requests",
+                    "usage limit", "quota exceeded")
+AUTH_STEPS = ("auth_expired", "session expired", "session ended", "not logged in", "please log in again",
+              "token refresh failed")
+
+
+def _failure_kind(detail):
+    """Why a lane is down: "rate_limited", "auth", or "other" — the operator's next action depends on it.
+
+    A free-OAuth quota that is exhausted upstream (HTTP 429 from the local proxy) heals by waiting; the
+    fix is NOT a re-login. Before 2026-11-07 every failure carried the lane's one-line HINT, so the
+    chatgpt lane — rate limited since 2026-11-06T00:00Z while ``/health`` reported authenticated=true,
+    token_expired=false — told the operator to run a credential command 54 runs in a row. Running it
+    would have been an operator-only action aimed at the wrong cause.
+    """
+    low = str(detail or "").lower()
+    if any(t in low for t in RATE_LIMIT_STEPS):
+        return "rate_limited"
+    if any(t in low for t in AUTH_STEPS):
+        return "auth"
+    return "other"
+
+
+def _hint_line(lane, kind, detail):
+    """The one line the alert shows under a failing lane — what to do, or why there is nothing to do."""
+    if kind == "rate_limited":
+        return ("no action yet: the free Codex quota is exhausted upstream and heals on its own "
+                "(the proxy advertises Retry-After 900 s). Do NOT re-login — /health reports "
+                "authenticated=true; a re-login would not clear a 429.")
+    if kind == "auth":
+        return f"fix: {HINTS.get(lane, '')}"
+    return f"fix: {HINTS.get(lane, '')} (unclassified failure: {str(detail)[:80]})"
 
 
 def _load_status():
@@ -93,12 +130,26 @@ def _ping_lane(lane):
 
 
 def _reach_lane(lane):
-    """Dry-run probe: (ok, detail) WITHOUT a generate. Grok/ChatGPT: the proxy's read-only /health."""
+    """Dry-run probe: (ok, detail) WITHOUT a generate. Grok/ChatGPT: the proxy's read-only /health.
+
+    ``serving``/``last_upstream`` are read when the proxy states them: a 200 from /health means the
+    process is alive, not that the lane can answer (2026-11-07: chatgpt reported ready for 54 runs
+    while every real call was 429). Reading the last upstream outcome keeps the dry run honest
+    without spending a generate on a lane that is known to be rate limited.
+    """
     if lane in ("grok", "chatgpt"):
         try:
             from lib.oauth_lane_status import _probe_health
             snap = _probe_health(lane)
-            return bool(snap.get("ready")), f"/health: {snap.get('status')} (dry run: no generate, token not rolled)"
+            if not snap.get("ready"):
+                return False, (f"/health: {snap.get('status')} "
+                               "(dry run: no generate, token not rolled)")
+            last = snap.get("last_upstream") or {}
+            if snap.get("serving") is False and str(last.get("state")) == "rate_limited":
+                return False, (f"rate_limited upstream (last call {last.get('at')}): "
+                               "dry run sent no generate; the proxy says the free quota is exhausted "
+                               "and retries after 900 s")
+            return True, "/health: ready (dry run: no generate, token not rolled)"
         except Exception as e:  # noqa: BLE001
             return False, f"/health probe failed: {str(e)[:100]}"
     return _ping_lane(lane)  # local / hermes: already read-only (GET /api/tags, auth.json read)
@@ -110,17 +161,20 @@ def _evaluate(lanes, state, now, probe):
     for lane in lanes:
         prev = state.get(lane, {})
         ok, detail = probe(lane)
+        kind = None if ok else _failure_kind(detail)
         rec = {"lane": lane, "ok": ok, "detail": detail, "last_check": now,
                "last_ok": now if ok else prev.get("last_ok"),
                "consec_fail": 0 if ok else int(prev.get("consec_fail", 0)) + 1,
                "last_alert": prev.get("last_alert")}
+        if kind:
+            rec["kind"] = kind
         # Alert when a lane is NOT ok and we haven't alerted recently (deduped). Skip 'hermes' if it was never
         # set up (don't nag about an optional lane that was never logged in) — only alert on a *regression*.
         was_ok = bool(prev.get("last_ok"))
         should_alert = (not ok) and (lane != "hermes" or was_ok) and \
             (now - int(prev.get("last_alert") or 0) > ALERT_DEDUP_SEC)
         if should_alert:
-            alerts.append(f"  • {lane.upper()}: {detail}\n    fix: {HINTS.get(lane, '')}")
+            alerts.append(f"  • {lane.upper()}: {detail}\n    {_hint_line(lane, kind, detail)}")
             rec["last_alert"] = now
         if not ok and was_ok:
             regressions.append(lane)
@@ -207,9 +261,14 @@ def main(argv=None):
                "alerts_sent": len(alerts), "regressions": regressions, "lanes": out}
     print(json.dumps(summary, indent=2, default=str))
     code = 1 if regressions else 0
+    receipt_summary = {"checked": len(lanes), "ok": summary["ok"], "regressions": regressions,
+                       "alerts": len(alerts)}
+    kinds = {lane: rec["kind"] for lane, rec in out.items() if rec.get("kind")}
+    if kinds:
+        # Why each failing lane is down, so a 54-run streak can be read as a quota wait, not a dead login.
+        receipt_summary["failed_kinds"] = kinds
     write_lane_receipt("oauth_lane_keepalive", ok=code == 0, exit_code=code, started_at=started,
-                       summary={"checked": len(lanes), "ok": summary["ok"], "regressions": regressions,
-                                "alerts": len(alerts)},
+                       summary=receipt_summary,
                        path=_runtime_dir() / "oauth_lane_keepalive_last.json")
     return code
 

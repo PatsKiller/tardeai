@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "OAUTH_LANE_KEEPALIVE_RATE_LIMIT_20261107",
+  "files": [
+    "tests/test_oauth_lane_keepalive_rate_limit_20261107.py"
+  ],
+  "anchor": "OAUTH_LANE_KEEPALIVE_RATE_LIMIT_20261107",
+  "comment": [
+    "ANCHOR: OAUTH_LANE_KEEPALIVE_RATE_LIMIT_20261107 — oauth-lane-keepalive failed 54 runs in a row",
+    "(exit 1, status failed, ok_at 2026-11-06T00:00:30Z) and every one of those alerts ended with",
+    "'fix: hermes auth add openai-codex --type oauth'. That command is an operator-only credential",
+    "operation, and it was aimed at the wrong cause: the proxy's own /health said authenticated=true,",
+    "token_expired=false, serving=false, last_upstream.state=rate_limited. The free Codex quota was",
+    "exhausted upstream — a wait, not a logout. A free-OAuth lane that is rate limited is now classified",
+    "rate_limited (vs auth / other), the alert for it says the quota heals on its own and explicitly",
+    "says NOT to re-login, and the kind is recorded in the status file and the lane receipt so a long",
+    "streak can be read without guessing. The dry run also stops trusting a 200 from /health: it passes",
+    "the proxy's serving/last_upstream through lib.oauth_lane_status and reports a rate-limited lane",
+    "without spending a generate. Exit stays 1 — the lane really is unusable; only the advice changes.",
+    "Hermetic: fake probes and fake health snapshots, no network, no DB, no credential."
+  ]
+}
