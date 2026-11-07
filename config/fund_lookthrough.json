@@ -152,9 +152,9 @@
       }
     },
     "SPCX": {
-      "name": "SPAC and New Issue ETF",
-      "lookthrough": "none",
-      "why": "no reliable current factsheet \u2014 never guess"
+      "name": "Space Exploration Technologies Corp.",
+      "lookthrough": "direct",
+      "why": "single company, not a fund \u2014 sector comes from the Finviz enrichment via symbol_profiles (Industrials / Aerospace & Defense). The 2026-07-18 seed named 'SPAC and New Issue ETF', a different instrument that shares the ticker string; corrected 2026-11-07 after the /v3/defense/classic walk showed SPCX's sector as unknown while three stores agreed it is an operating company (LQ-20261107-224)."
     },
     "DIVI": {
       "name": "Franklin International Core Dividend Tilt",

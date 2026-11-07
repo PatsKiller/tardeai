@@ -1,0 +1,23 @@
+{
+  "schema": "CiGate@v1",
+  "name": "defense_book_sector_source_20261107",
+  "files": [
+    "tests/test_defense_book_sector_source_20261107.py"
+  ],
+  "anchor": "DEFENSE_BOOK_SECTOR_SOURCE_20261107",
+  "comment": [
+    "ANCHOR: DEFENSE_BOOK_SECTOR_SOURCE_20261107 — LQ-20261107-224, the Your-book sector column",
+    "on /v3/defense/classic showed \"unknown\" for SPCX, T, V, ANET, PFE and XAR. The request that",
+    "builds the column 500'd on the default sector, and SPCX additionally had no rank to serve:",
+    "config/fund_lookthrough.json (seeded 2026-07-18) called it \"SPAC and New Issue ETF\", a",
+    "different instrument sharing the ticker string, with lookthrough \"none\", while",
+    "symbol_profiles (Finviz) and the enrichment cache both called it Space Exploration Technologies",
+    "Corp., Industrials / Aerospace & Defense. book_sector_ranks consults the seed before the",
+    "profile, so one stale line hid an answer already on file. The tests pin: a blind fund still",
+    "renders its reason and is never guessed, an unclaimed symbol resolves from symbol_profiles,",
+    "the Finviz name -> ETF-label alias map still applies, effective_sector_exposure books a",
+    "company directly only when the seed does not mark it blind, and the shipped seed no longer",
+    "blinds SPCX. Hermetic: temporary root, injected cursor, synthetic symbols; no database, no",
+    "network, no real instrument names in the fixtures."
+  ]
+}
