@@ -282,10 +282,33 @@ def _codex_authed():
         return False
 
 
+class CodexRateLimited(RuntimeError):
+    """The ChatGPT OAuth session is rate limited upstream — a provider/quota condition, not an auth failure.
+
+    It must not be folded into the generic "proxy unreachable" path: re-login cannot fix a quota, and the CLI
+    fallback shares the very same OAuth session, so attempting it only burns 15-240 s per call and then reports
+    a re-auth hint that is wrong (the 2026-11-06 hermes-deep-research-local rows: proxy health
+    ``authenticated: true``, ``last_upstream.state: rate_limited``, three targets failed per tick with
+    ``CODEX_HEADLESS_UNAVAILABLE: … re-login`` while the session was perfectly logged in).
+    """
+
+
+def _proxy_refusal_detail(resp, base):
+    """The proxy's own explanation of a refusal, clipped for a log line."""
+    try:
+        body = resp.json() or {}
+        detail = body.get("detail") or body.get("error") or ""
+    except Exception:
+        detail = ""
+    detail = str(detail).strip() or str(getattr(resp, "text", "") or "").strip()
+    return detail[:200] or f"HTTP {getattr(resp, 'status_code', '?')} from {base}"
+
+
 def _call_codex_proxy(model, prompt, timeout=240):
     """ChatGPT via the local ChatGPT OAuth proxy (scripts/chatgpt_oauth_proxy.py, :8646) — the same free
     openai-codex OAuth, served OpenAI-compatible so ALL Hermes tasks can use it headless. Returns None if the
-    proxy is unreachable/unauthenticated (caller falls back to the CLI)."""
+    proxy is unreachable/unauthenticated (caller falls back to the CLI); raises CodexRateLimited when the proxy
+    says the upstream session is out of quota, which no retry against the same session can fix."""
     import os as _os
     base = _os.environ.get("CHATGPT_PROXY_URL", "http://127.0.0.1:8646").rstrip("/")
     try:
@@ -299,8 +322,18 @@ def _call_codex_proxy(model, prompt, timeout=240):
                           timeout=timeout)
         if r.status_code == 401:
             return None
+        if r.status_code == 429:
+            raise CodexRateLimited(_proxy_refusal_detail(r, base))
         r.raise_for_status()
-        return (r.json().get("choices") or [{}])[0].get("message", {}).get("content", "") or None
+        content = (r.json().get("choices") or [{}])[0].get("message", {}).get("content", "") or None
+        upstream = h.get("last_upstream") or {}
+        if not content and upstream.get("state") == "rate_limited":
+            raise CodexRateLimited(
+                "the proxy returned no content and reports last_upstream state=rate_limited "
+                f"({upstream.get('detail') or 'no detail'})")
+        return content
+    except CodexRateLimited:
+        raise
     except Exception:
         return None
 
@@ -309,7 +342,15 @@ def call_codex_cli(model, prompt):
     """ChatGPT via the FREE openai-codex OAuth (no API key, no metered billing). Prefers the local ChatGPT
     OAuth proxy (:8646, works headless for any Hermes task); falls back to the pseudo-TTY one-shot CLI."""
     # 1) Proxy first — works headless and is shared by all Hermes tasks.
-    via_proxy = _call_codex_proxy(model, prompt)
+    try:
+        via_proxy = _call_codex_proxy(model, prompt)
+    except CodexRateLimited as exc:
+        # Keeps "UNAVAILABLE" in the message on purpose: rows stay classified as a lane-level failure
+        # (status 'unavailable', which its breaker counts) instead of silently becoming an "error" row.
+        raise RuntimeError(
+            "CODEX_UNAVAILABLE_RATE_LIMITED: upstream ChatGPT OAuth quota/rate limit — not an auth failure "
+            "(re-login will not help); the CLI fallback shares the same session, so it was not attempted: "
+            f"{exc}") from exc
     if via_proxy:
         return via_proxy
     # 2) Fallback: direct CLI under a pseudo-TTY.
