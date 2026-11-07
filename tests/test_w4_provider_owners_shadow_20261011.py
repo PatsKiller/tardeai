@@ -11,8 +11,9 @@ dispatcher fires their write-free dry run on the natural schedule while the cron
 * social-ingest-all  cron L243  social owner (social_posts writer_target).
 
 Excluded, and pinned so a later PR cannot slip them in unreviewed:
-* news-ingestion / news-ingestion-tail (L193, L649, L650): scripts/news_ingestion.py has no --dry-run (an unknown
-  flag falls through to the live --priority branch) and writes no LaneRunReceipt; the rows are KEEP_ON_CRON.
+* news-ingestion (L193): the plain ingest path writes no LaneRunReceipt; the row is KEEP_ON_CRON.
+  (news-ingestion-tail, L649/L650, left this list on 2026-11-07 — LQ-20261107-20's overnight onboarding gave the
+  --tail-rotate branch a LaneRunReceipt and the lane a shadow dispatcher row, pinned by its OVN-DS2 wave packet.)
 * sec-filings-feed (L1002): no LaneRunReceipt, its dry run is the argv default (no dry_run_arg), and its cron line
   sources the whole tmpfs secret render (which carries ALPACA_* per config/secret_registry.yaml).
 
@@ -57,7 +58,9 @@ W4 = {
     "social-ingest-all": ("L243", "0 6 * * 1-5", "social_ingest.py",
                           ["scripts/social_ingest.py", "--source", "all"]),
 }
-EXCLUDED = ("news-ingestion", "news-ingestion-tail", "sec-filings-feed")
+#: 2026-11-07: news-ingestion-tail left this list — the LQ-20261107-20 overnight onboarding added its --dry-run,
+#: its LaneRunReceipt and its shadow dispatcher row (pinned by the OVN-DS2 packet, tests/support/n8n_cutover_waves.py).
+EXCLUDED = ("news-ingestion", "sec-filings-feed")
 #: 2026-10-15: lanes a cutover wave promoted to canary leave the shadow pins below; tests/test_n8n_cutover_wave_20261015.py
 #: pins their canary shape (tests/support/n8n_cutover_waves.py).
 W4_SHADOW = {k: v for k, v in W4.items() if k not in CW.PROMOTED}
@@ -180,10 +183,13 @@ def test_excluded_lanes_stay_off_the_dispatcher():
         assert (row.get("scheduler") or {}).get("stage") is None, lane
         assert lane not in ALLOW, lane
     src = (ROOT / "scripts" / "news_ingestion.py").read_text(encoding="utf-8")
-    # onboarding B3 (2026-10-15) added the offline --dry-run guard (tests/test_onboard_dryrun_b3_20261015.py); the lane
-    # still writes no LaneRunReceipt, so it stays off the dispatcher until its onboarding row adds one.
-    assert "write_lane_receipt" not in src  # refactor first, then a W4 row
+    # onboarding B3 (2026-10-15) added the offline --dry-run guard (tests/test_onboard_dryrun_b3_20261015.py); the plain
+    # ingest lane still writes no LaneRunReceipt, so it stays off the dispatcher until its onboarding row adds one.
+    # 2026-11-07: the receipt exists only for the --tail-rotate branch (news-ingestion-tail, its own lane).
     assert '"--dry-run" in _dr_sys.argv[1:]' in src
+    tail_branch = src.split('elif "--tail-rotate" in sys.argv:', 1)
+    assert 'write_lane_receipt' not in tail_branch[0]  # the plain --priority/--full path stays receipt-free
+    assert 'write_lane_receipt("news-ingestion-tail"' in tail_branch[1]
 
 
 START = datetime(2026, 10, 12, 4, 0, tzinfo=timezone.utc)  # Monday 00:00 America/New_York

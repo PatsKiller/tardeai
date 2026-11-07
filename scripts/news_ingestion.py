@@ -628,7 +628,22 @@ if __name__ == "__main__":
             result = ingest(mode="priority", single_symbol=single)
         elif "--tail-rotate" in sys.argv:
             run_mode = "tail_rotate"
-            result = ingest(mode=run_mode)
+            # LaneRunReceipt for the news-ingestion-tail lane (LQ-20261107-20 overnight onboarding): the registry
+            # output_signal for this lane is this receipt's ok_at. Only the --tail-rotate branch writes it; the
+            # same file also serves the separate news-ingestion lane for --priority/--full runs.
+            from lib.lane_last_receipt import now_iso, write_lane_receipt
+
+            _started_at = now_iso()
+            try:
+                result = ingest(mode=run_mode)
+            except Exception as _e:  # noqa: BLE001 — the receipt must record the failure before it propagates
+                write_lane_receipt("news-ingestion-tail", ok=False, started_at=_started_at,
+                                   script="scripts/news_ingestion.py", error=f"{type(_e).__name__}: {_e}")
+                raise
+            write_lane_receipt("news-ingestion-tail", ok=True, started_at=_started_at,
+                               script="scripts/news_ingestion.py",
+                               summary={k: result.get(k) for k in
+                                        ("scanned", "new_articles", "offset", "next_offset", "tail_size")})
         elif "--full" in sys.argv:
             run_mode = "full"
             result = ingest(mode=run_mode)

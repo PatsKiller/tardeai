@@ -39,8 +39,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+#: Registry lane id and the repo-relative script path, for the LaneRunReceipt (state root resolves the path).
+LANE_ID = "enrich-proposal-technicals"
+SCRIPT_REL = "scripts/enrich_proposal_technicals.py"
 
-def main():
+
+def main(argv=None) -> int:
+    # LaneRunReceipt: the registry output_signal for this lane is this receipt's ok_at (LQ-20261107-20
+    # overnight onboarding). A real run writes it -- a failed one too, carrying the previous ok_at forward so a
+    # broken lane goes stale instead of green. The --dry-run branch returns above, before this point.
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+
+    started_at = now_iso()
+    try:
+        symbols, refreshed, failed = _run()
+    except Exception as exc:  # noqa: BLE001 — the receipt must record the failure before it propagates
+        write_lane_receipt(LANE_ID, ok=False, started_at=started_at, script=SCRIPT_REL,
+                           error=f"{type(exc).__name__}: {exc}")
+        raise
+    ok = not (symbols and refreshed == 0)
+    write_lane_receipt(LANE_ID, ok=ok, started_at=started_at, script=SCRIPT_REL,
+                       summary={"symbols": symbols, "refreshed": refreshed, "failed": failed},
+                       error=None if ok else "every proposal symbol's snapshot failed")
+    return 0 if ok else 1
+
+
+def _run() -> tuple[int, int, int]:
+    """Refresh the Finviz technicals and the per-proposal snapshot; return (symbols, refreshed, failed)."""
     from db_adapter import _execute, _get_conn
     from finviz_enrichment import enrich_tickers
 
@@ -53,7 +78,7 @@ def main():
     syms = sorted({(r["symbol"] or "").upper() for r in rows if r.get("symbol")})
     if not syms:
         print("[enrich_proposal_technicals] no active proposal symbols")
-        return
+        return (0, 0, 0)
     enrich_tickers(syms, project_root=str(ROOT), views=[141, 171], skip_fundamentals=True)
     print(f"[enrich_proposal_technicals] refreshed finviz technicals for {len(syms)} symbol(s)")
 
@@ -61,6 +86,7 @@ def main():
     import proposal_enrichment_bridge as peb
     from proposal_technical_snapshot import generate_snapshot
 
+    refreshed = failed = 0
     for row in rows:
         pid = int(row["id"])
         sym = str(row["symbol"] or "").upper()
@@ -77,14 +103,17 @@ def main():
                 (ir, pid),
             )
             conn.commit()
+            refreshed += 1
             print(f"  {sym} #{pid}: snapshot + intel_readiness={ir}")
         except Exception as e:
+            failed += 1
             print(f"  {sym} #{pid}: snapshot failed — {e}")
             try:
                 conn.rollback()
             except Exception:
                 pass
+    return (len(syms), refreshed, failed)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

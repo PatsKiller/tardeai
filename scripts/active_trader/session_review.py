@@ -71,6 +71,10 @@ for _p in (_HERE.parents[1], _HERE.parents[2]):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
+#: Registry lane id and the repo-relative script path, for the LaneRunReceipt (state root resolves the path).
+LANE_ID = "active-trader-session-review"
+SCRIPT_REL = "scripts/active_trader/session_review.py"
+
 try:
     from active_trader import momentum_alerts as ma
     from active_trader import momentum_alerts_api as api
@@ -635,9 +639,23 @@ def main(argv=None) -> int:
     ap.add_argument("--symbol", action="append")
     ap.add_argument("--apply", action="store_true", help="persist the review (+ Telegram when mode=send)")
     a = ap.parse_args(argv)
-    from db_adapter import get_connection
-    conn = get_connection()
-    res = run_day(a.day, apply=a.apply, symbols=[s.upper() for s in a.symbol] if a.symbol else None, conn=conn)
+    # LaneRunReceipt: the registry output_signal for this lane is this receipt's ok_at (LQ-20261107-20
+    # overnight onboarding). A real run writes it -- a failed one too, carrying the previous ok_at forward
+    # so a broken lane goes stale instead of green. The --dry-run branch returns above, before this point.
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+
+    started_at = now_iso()
+    try:
+        from db_adapter import get_connection
+        conn = get_connection()
+        res = run_day(a.day, apply=a.apply, symbols=[s.upper() for s in a.symbol] if a.symbol else None, conn=conn)
+    except Exception as exc:  # noqa: BLE001 — the receipt must record the failure before it propagates
+        write_lane_receipt(LANE_ID, ok=False, started_at=started_at, script=SCRIPT_REL,
+                           error=f"{type(exc).__name__}: {exc}")
+        raise
+    write_lane_receipt(LANE_ID, ok=True, started_at=started_at, script=SCRIPT_REL,
+                       summary={"day": res.get("day"), "symbols": res.get("symbols"),
+                                "applied": bool(res.get("apply")), "mode": res.get("mode")})
     if not a.apply:
         for s in res["review"]["symbols"]:
             print(f"\n== {s['symbol']} ({s['bars']} bars)\n" + render_table(s))
