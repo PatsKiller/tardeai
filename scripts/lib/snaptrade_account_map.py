@@ -24,7 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def _state_root() -> Path:
     try:
-        from lib.canonical_store_registry import production_state_root  # type: ignore
+        from lib.canonical_store_registry import production_state_root  # type: ignore -- resolved via scripts/ on sys.path at runtime
         return Path(production_state_root())
     except Exception:  # noqa: BLE001 -- fall back to the documented default location
         return Path.home() / "trade-ai-releases" / "persistent-state"
