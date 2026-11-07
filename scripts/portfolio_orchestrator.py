@@ -67,6 +67,32 @@ def _stage_failed(stage: str, exc: BaseException, *, fatal: bool = False):
     print(f"  [{stage}] ❌ {type(exc).__name__}: {str(exc)[:200] or '(no message)'}")
 
 
+def _run_stage(stage: str, fn, *args, default=None, **kwargs):
+    """Run one top-level pipeline stage; a failure is RECORDED and the run continues.
+
+    Stages 2–5 (analytics, tax, rebalancing, risk) were the only bare calls left
+    after the 2026-07-20 stage registry landed, so an exception there killed the
+    process before _report_stage_failures could write the durable artifact or
+    alert — the run left one traceback in a log and nothing else.
+
+    2026-11-04..11-06 is what that costs: analyze_concentration hit a NULL
+    asset_type at [2/10] on every run (fixed on 11-07 by LQ-20261107-72 /
+    FU-007), so everything after it — including the ticker_snapshot_daily
+    persistence at [4/10] and therefore candidate_setup_advisory, whose
+    snapshot_date is inherited from that table — stopped for four days, and the
+    first signal was a staleness warning on /v3/health (LQ-20261107-225).
+
+    A stage that cannot run is a degraded run, not a dead one: the caller gets
+    `default` (a shape its downstream `.get()` calls already tolerate) and the
+    end-of-run report alerts, writes the artifact and exits 2.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:
+        _stage_failed(stage, exc)
+        return default
+
+
 def _soft_fail(context: str, exc: BaseException):
     """Record a NON-fatal degradation: an optional enrichment that silently
     produced nothing.
@@ -388,20 +414,20 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     # 2 — Analytics
     from portfolio_analyzer import analyze_portfolio
     print("\n[2/10] Analytics...")
-    analysis = analyze_portfolio(portfolio)
+    analysis = _run_stage("analytics", analyze_portfolio, portfolio, default={})
     fc = analysis.get("flag_count",{})
     print(f"  ✅ {sum(fc.values())} flags ({fc.get('CRITICAL',0)} crit · {fc.get('HIGH',0)} high)")
 
     # 3 — Tax
     from portfolio_tax import analyze_taxes
     print("\n[3/10] Tax analysis...")
-    tax = analyze_taxes(portfolio, state_dir)
+    tax = _run_stage("tax", analyze_taxes, portfolio, state_dir, default={})
     print(f"  ✅ {len(tax.get('harvest_candidates',[]))} harvest candidates")
 
     # 4 — Rebalancing
     from portfolio_rebalancer import compute_rebalancing
     print("\n[4/10] Rebalancing...")
-    rebalancing = compute_rebalancing(portfolio)
+    rebalancing = _run_stage("rebalancing", compute_rebalancing, portfolio, default={})
     print(f"  ✅ {rebalancing.get('order_count',0)} orders | ${rebalancing.get('total_to_rebalance',0):,.0f} net")
 
     # 4b — Trade Journal
@@ -478,7 +504,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     from portfolio_risk import analyze_risk
     print("\n[5/10] Risk analysis...")
     ta_state = root/"data"/"state.json"
-    risk = analyze_risk(portfolio, str(ta_state) if ta_state.exists() else None)
+    risk = _run_stage("risk", analyze_risk, portfolio,
+                      str(ta_state) if ta_state.exists() else None, default={})
     beta = risk.get("risk_metrics",{}).get("weighted_beta",0)
     print(f"  ✅ beta {beta:.2f} | {len(risk.get('high_risk_positions',[]))} high-risk")
 
@@ -2078,6 +2105,13 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ {type(e).__name__}: {e}")
         import traceback; traceback.print_exc()
+        # A run that DIES must still leave the durable record + alert: 2026-11-04..11-06
+        # crashed here three days running and the only trace was a traceback in a log.
+        _stage_failed("pipeline", e, fatal=True)
+        try:
+            _report_stage_failures(Path(args.project_root) / "data" / "portfolios" / "state")
+        except Exception as _rf:
+            print(f"  [stage-failures] could not report the fatal error: {type(_rf).__name__}: {_rf}")
         sys.exit(1)
     # Exit non-zero when stages failed so cron/monitoring can SEE a degraded run
     # instead of reading a clean exit as a healthy one.

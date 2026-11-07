@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "orchestrator_stage_isolation_lq225_20261107",
+  "files": [
+    "tests/test_orchestrator_unwrapped_stages_lq225_20261107.py"
+  ],
+  "anchor": "ORCHESTRATOR_STAGE_ISOLATION_LQ225_20261107",
+  "comment": [
+    "ANCHOR: ORCHESTRATOR_STAGE_ISOLATION_LQ225_20261107 — stages 2-5 of the portfolio pipeline",
+    "go through the stage registry, and a run that dies still records a fatal failure (LQ-20261107-225)."
+  ]
+}
