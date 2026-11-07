@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
+import { shouldFetchSectorMonitor, sectorMonitorPayload } from '../../lib/sectorMonitorSource'
 import { BB, DASH, T, metricChip, numStyle, statePill } from '../../lib/watchTokens'
 
 interface Props {
@@ -11,6 +12,12 @@ interface Props {
   generatedAt?: string | null
   industryCapturedAt?: string | null
   compact?: boolean
+  /** The page's own /api/v2/sectors/monitor payload (LQ-20261107-312). Supplying it — even as
+   *  `null` while the page is still loading — stops this board opening a second identical
+   *  4-7 s read. Omitted only when the board is rendered alone. */
+  monitor?: any
+  /** Refresh the payload this board was given, when the page owns the fetch. */
+  onRefreshMonitor?: () => void
 }
 
 type DecisionStatus = 'ELIGIBLE NOW' | 'RESEARCH WATCH' | 'AVOID / REDUCE' | 'NO DECISION'
@@ -166,9 +173,15 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 export default function ActionableSectorDecisionBoard({
   sectors = [], industries = [], recommendations, generatedAt, industryCapturedAt, compact = false,
+  monitor, onRefreshMonitor,
 }: Props) {
   const navigate = useNavigate()
-  const { data: sectorMonitor, refetch: refetchSectorMonitor } = useApi<any>('/api/v2/sectors/monitor', 120_000)
+  // LQ-20261107-312: the sectors page already holds this payload and hands it in; fetching it
+  // again was the second of two identical reads per /v3/sectors load.
+  const { data: ownMonitor, refetch: refetchOwnMonitor } = useApi<any>(
+    '/api/v2/sectors/monitor', 120_000, { enabled: shouldFetchSectorMonitor(monitor) })
+  const sectorMonitor = sectorMonitorPayload(monitor, ownMonitor)
+  const refetchSectorMonitor = onRefreshMonitor ?? refetchOwnMonitor
   const [showMethod, setShowMethod] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')

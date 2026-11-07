@@ -170,6 +170,8 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
         recommendations={recommendations}
         generatedAt={defensePosture?.momentum?.generated_at}
         industryCapturedAt={defenseIndustries?.captured_at}
+        monitor={data}
+        onRefreshMonitor={refetch}
         compact
       />
 

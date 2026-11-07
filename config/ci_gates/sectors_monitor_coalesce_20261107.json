@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sectors_monitor_coalesce_20261107",
+  "files": [
+    "tests/test_sectors_monitor_coalesce_20261107.py"
+  ],
+  "anchor": "SECTORS_MONITOR_COALESCE_20261107",
+  "comment": [
+    "ANCHOR: SECTORS_MONITOR_COALESCE_20261107 — LQ-20261107-312: one /v3/sectors load issued two identical GETs to /api/v2/sectors/monitor (measured 2026-11-07T21:40Z, requests #23 and #25, same millisecond cache-buster) and the route costs 4-7 s per call. The route joins the single-flight allowlist so concurrent identical reads share one computation, and the sectors page now hands its payload to the decision board so the second request is never issued. Hermetic: no server, no browser, no database, no network."
+  ]
+}

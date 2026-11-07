@@ -42,6 +42,10 @@ DEFAULT_COALESCE_PATHS = (
     "/api/v2/risk",
     "/api/v2/needs-action",
     "/api/v2/defense/posture",
+    # LQ-20261107-312: /v3/sectors mounts two components that each GET this route with the
+    # same millisecond cache-buster, so every page load computed the 4-7 s read model twice
+    # (measured 2026-11-07: requests #23 and #25, identical URL, one navigation).
+    "/api/v2/sectors/monitor",
     "/api/v2/portfolio/book-map",
     "/api/v2/system-health",
     "/api/v3/advisory",
