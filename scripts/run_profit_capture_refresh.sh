@@ -30,8 +30,16 @@ mkdir -p "$PROJ/logs" "$ART"
 ts() { date -u '+%Y-%m-%d %H:%M:%S UTC'; }
 run() { echo "[$(ts)] >>> $1" >> "$LOG"; eval "$PY scripts/$2" >> "$LOG" 2>&1 \
         || echo "[$(ts)] WARN $1 rc=$?" >> "$LOG"; }
+# The lane's declared output is the cron redirect (logs/profit_capture_refresh_cron.log,
+# CRON_LOG_REDIRECT in config/lane_registry.json), and this script used to print nothing
+# there — so the scheduler read the lane as SILENT from 2026-10-04 even though every
+# Sunday fire completed (safe_flock_events.jsonl: tradeai_profit_capture_refresh
+# completed 2026-11-01T03:30:29-05:00, exit 0; the 10-25 pair started 03:30:01 and
+# completed 03:30:28). Say the start, the headline and the end on stdout too; the
+# detailed run log stays in $LOG.
+say() { echo "$1"; echo "$1" >> "$LOG"; }
 
-echo "[$(ts)] === profit-capture refresh start ($STAMP) ===" >> "$LOG"
+say "[$(ts)] === profit-capture refresh start ($STAMP) ==="
 
 # 1) refresh the canonical all-trades measurable set (picks up newly closed trades + fresh MFE)
 run "analyze"  "analyze_profit_capture_all_trades.py --apply --json $ART/pc_refresh.json --markdown $ART/pc_refresh.md"
@@ -52,12 +60,16 @@ run "shadow"   "profit_protection_shadow_thresholds.py --apply --run-id ppsr_aut
 run "validate" "validate_profit_capture_rule_quality.py --json $ART/pc_val.json --markdown $ART/pc_val.md"
 
 # 6) log the headline: max reliable_n this run + floor distance (so the operator can watch it climb)
-PGPASSWORD="$(grep '^DB_PASSWORD=' "$PROJ/.env" | cut -d= -f2)" \
+RELIABLE_N="$(PGPASSWORD="$(grep '^DB_PASSWORD=' "$PROJ/.env" | cut -d= -f2)" \
   psql -h localhost -U trade_ai -d trade_ai -tAc \
   "SELECT 'reliable_n='||coalesce(max(reliable_sample_size),0)||' / floor 20 ; verdicts='||
           string_agg(DISTINCT graft_verdict,',')
-   FROM profit_protection_rule_backtests WHERE run_id='ppbt_auto_$DAY'" \
-  >> "$LOG" 2>&1 || echo "[$(ts)] WARN reliable_n query failed" >> "$LOG"
+   FROM profit_protection_rule_backtests WHERE run_id='ppbt_auto_$DAY'" 2>>"$LOG")"
+if [ -n "$RELIABLE_N" ]; then
+  say "$RELIABLE_N"
+else
+  say "[$(ts)] WARN reliable_n query failed"
+fi
 
 # 7) commit + push ONLY when the SUBSTANTIVE signal changes — the per-rule (reliable_n + graft
 #    verdict) signature — not on cosmetic timestamp-only regen. When unchanged, revert the
@@ -91,4 +103,4 @@ else
   fi
 fi
 
-echo "[$(ts)] === profit-capture refresh done ($STAMP) ===" >> "$LOG"
+say "[$(ts)] === profit-capture refresh done ($STAMP) ==="

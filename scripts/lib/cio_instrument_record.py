@@ -255,16 +255,29 @@ class InstrumentRecordStore:
         # Hash the observed version separately: legacy callers can mutate the
         # returned dict in-place before upsert. That is not a newer read.
         self._observed_hashes: dict[str, str] = {}
+        # The file is append-only, so a write only needs the bytes appended since
+        # this store last read it. Re-parsing the whole canonical store per row
+        # (it is hundreds of MB) made a 5,000-row prospect pass run for hours and
+        # exceed the curator lane's 600 s timeout, so the run was killed before
+        # its receipt was written (WORK-QUEUE 2026-11-07, cio-opportunity-curator).
+        self._scan_end = 0
+        self._disk_hashes: dict[str, str] = {}
+        # Test-visible count: lines absorbed by the incremental scan, never the
+        # whole file again.
+        self._tail_lines_parsed = 0
 
     # ---------------------------------------------------------------- read
     def _load(self) -> dict[str, dict[str, Any]]:
         if self._cache is not None:
             return self._cache
         proj: dict[str, dict[str, Any]] = {}
+        size_before, ended_clean, last = 0, True, ""
         try:
             if self.path.is_file():
+                size_before = self.path.stat().st_size
                 with open(self.path, encoding="utf-8", errors="replace") as fh:
                     for line in fh:
+                        last = line
                         line = line.strip()
                         if not line:
                             continue
@@ -275,11 +288,53 @@ class InstrumentRecordStore:
                         key = str(row.get("subject_key") or "")
                         if key:
                             proj[key] = row
+                ended_clean = not last or last.endswith("\n")
         except OSError:
             pass
         self._cache = proj
         self._observed_hashes = {k: content_hash(r) for k, r in proj.items()}
+        self._disk_hashes = dict(self._observed_hashes)
+        # The index may only start where this read actually ended: an append that
+        # landed mid-read, or a half-written final line, would otherwise be
+        # skipped and a stale write would look current. Cold (0) re-reads.
+        try:
+            unchanged = self.path.stat().st_size == size_before
+        except OSError:
+            unchanged = False
+        self._scan_end = size_before if (ended_clean and unchanged) else 0
         return proj
+
+    def _absorb_tail(self, fh) -> None:
+        """Index the complete lines appended since the last read (caller holds the lock).
+
+        Only complete lines are consumed, so a concurrent partial append is read
+        on the next call rather than half-parsed. A file that shrank (rotation,
+        truncation) resets the index and is read in full.
+        """
+        size = os.fstat(fh.fileno()).st_size
+        if size < self._scan_end:
+            self._scan_end = 0
+            self._disk_hashes = {}
+        if size == self._scan_end:
+            return
+        fh.seek(self._scan_end)
+        chunk = fh.read()
+        end = chunk.rfind("\n") + 1
+        if end <= 0:
+            return
+        for line in chunk[:end].splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:                                # noqa: BLE001
+                continue
+            key = str(row.get("subject_key") or "")
+            if key:
+                self._disk_hashes[key] = content_hash(row)
+                self._tail_lines_parsed += 1
+        self._scan_end += end
 
     def load(self, key: str) -> Optional[dict[str, Any]]:
         return self._load().get(str(key))
@@ -354,21 +409,16 @@ class InstrumentRecordStore:
         import fcntl
         with open(self.path, "a+", encoding="utf-8") as fh:
             fcntl.flock(fh, fcntl.LOCK_EX)
-            fh.seek(0)
-            current = None
-            for line in fh:
-                try:
-                    candidate = json.loads(line)
-                except ValueError:
-                    continue  # legacy read semantics; never repair a line
-                if isinstance(candidate, dict) and candidate.get("subject_key") == key:
-                    current = candidate
-            if (content_hash(current) if current else None) != observed:
+            self._absorb_tail(fh)
+            current = self._disk_hashes.get(key)
+            if current != observed:
                 raise StaleInstrumentRecordWrite("canonical tip changed after read; re-read and reapply the owned patch")
             row["updated_ts"] = _now()
             fh.seek(0, 2)
             fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
             fh.flush()
+            self._scan_end = os.fstat(fh.fileno()).st_size
+            self._disk_hashes[key] = content_hash(row)
             fcntl.flock(fh, fcntl.LOCK_UN)
         proj[key] = row
         self._observed_hashes[key] = content_hash(row)

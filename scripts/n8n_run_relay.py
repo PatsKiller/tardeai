@@ -96,6 +96,11 @@ DEFAULT_GATEWAY = "http://127.0.0.1:18091"
 #: limit is at most 3 ASCII digits before int(): no Unicode digits ("²", "١٢"), no huge-int parsing.
 DUE_LIMIT_DIGITS = len(str(DUE_MAX_LIMIT))
 DUE_QUERY_KEYS = frozenset({"source", "lane", "limit"})
+#: Bounds on the per-line evidence the due op keeps (2026-11-07): which lanes the gateway answered due, and the
+#: per-lane reason a lane was withheld. Deliberately coarse: the relay log is append-only, so one minute's answer
+#: must not be able to write an arbitrarily long line. 512 chars holds 20 typical lane ids or 25 error pairs.
+DUE_LOG_LANES_MAX = 512
+DUE_LOG_ERRORS_MAX = 512
 RUN_MODES = frozenset({"dry_run", "live"})
 MAX_BODY = 1024
 MIN_KEY_BYTES = 32
@@ -860,20 +865,39 @@ class Relay:
             return self._refuse("relay_gateway_unreachable", 502, op="due", source=source, lanes=lanes)
         ok = reply.get("schema") == "DueResponse@v1" and reply.get("ok") is True
         items = reply.get("items") if ok and isinstance(reply.get("items"), list) else []
-        self._log(
-            {
-                "at": datetime.now(timezone.utc).isoformat(),
-                "op": "due",
-                "state": "OK" if ok else "REFUSED",
-                "reason": None if ok else str(reply.get("reason") or "")[:64],
-                "source": source,
-                "lanes": lanes,
-                "limit": limit,
-                "items": len(items),
-                "truncated": reply.get("truncated", 0) if ok else 0,
-                "gateway_http_status": gateway_status,
-            }
-        )
+        row: dict[str, Any] = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "op": "due",
+            "state": "OK" if ok else "REFUSED",
+            "reason": None if ok else str(reply.get("reason") or "")[:64],
+            "source": source,
+            "lanes": lanes,
+            "limit": limit,
+            "items": len(items),
+            "truncated": reply.get("truncated", 0) if ok else 0,
+            "gateway_http_status": gateway_status,
+        }
+        # 2026-11-07 (WORK-QUEUE items 33-36): `items` alone cannot tell "the lane was never due" from "the lane
+        # was due and the caller dropped it". Three lanes are allowlisted and eligible in this release
+        # (self-heal-fixer-shadow since 2026-11-03, defense-cash-alternatives and dividend-calendar-refresh since
+        # 2026-11-06) and none has ever been requested; the relay's only record of the due answer is a count.
+        # Lane ids and error codes only — no argv, no receipt, no credential — and each field is bounded so a
+        # wide answer cannot enlarge one log line without limit.
+        if ok:
+            due_lanes = [
+                str(item["lane_id"])[:64] for item in items if isinstance(item, dict) and item.get("lane_id")
+            ]
+            row["due_lanes"] = ",".join(due_lanes)[:DUE_LOG_LANES_MAX]
+            errors = reply.get("errors")
+            if isinstance(errors, list) and errors:
+                codes = [
+                    f"{str(err.get('lane_id'))[:64]}:{str(err.get('code'))[:40]}"
+                    for err in errors
+                    if isinstance(err, dict)
+                ]
+                if codes:
+                    row["due_errors"] = ",".join(codes)[:DUE_LOG_ERRORS_MAX]
+        self._log(row)
         if ok:
             return 200, reply
         return (gateway_status if isinstance(gateway_status, int) and gateway_status >= 400 else 403), reply

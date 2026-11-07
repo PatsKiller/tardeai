@@ -580,3 +580,160 @@ def test_inventory_current_directory_is_not_proof_of_child_execution_pin(tmp_pat
     row = normalize(result, {"lanes": [lane()]}, {"lanes": []}, {"units": []})[0]
     assert row["current_pinned"] is None
     assert row["declared_current_root"] is True
+
+
+# ── Staleness is judged against the lane's own schedule, not the wall clock (2026-11-06) ──────────────
+# The live projection at 21:00 ET reported ten market-hours cron lanes SILENT although each had produced
+# for its final fire of the day: freshness was measured as now-minus-output against the cadence, so a
+# 09:00-16:45 lane is "late" every evening and a Sunday lane is "late" all week. The deadline is now the
+# most recent scheduled fire that has had max_run_s to finish (cron_schedule.last_fire_at_or_before, the
+# same DST-safe rule heartbeat_watch.classify and supervisor_breach_detector._expected_since use).
+FRI_2119_ET = datetime(2026, 11, 7, 2, 19, tzinfo=timezone.utc)  # Fri 2026-11-06 21:19 EST
+
+
+def _market_hours_lane(**over):
+    row = {
+        "lane_id": "market-lane",
+        "owner": "signals",
+        "state": "ACTIVE",
+        "scheduler": {"kind": "cron", "expression": "*/15 9-16 * * 1-5", "match": "scripts/test_lane.py"},
+        "expected_cadence_hours": 0.25,
+        "output_signal": {"kind": "file_mtime", "path": "data/result.json"},
+    }
+    row.update(over)
+    return row
+
+
+def _write_output(tmp_path, at):
+    import os
+
+    out = tmp_path / "data/result.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text('{"ok":true}')
+    os.utime(out, (at.timestamp(), at.timestamp()))
+
+
+def _project_at(tmp_path, lanes, cron_text, now, workflows=None, runs=None):
+    obs = observations(cron_text, workflows)
+    # The harness stamps observations at its own module-level NOW; a 300 s freshness window rejects a
+    # snapshot that stale, so this helper stamps them at the instant under test.
+    for source in obs.values():
+        if isinstance(source, dict) and source.get("as_of"):
+            source["as_of"] = now.isoformat()
+    from scripts.lib.scheduler_operations import build_projection
+
+    return build_projection({"lanes": lanes}, obs, root=tmp_path, now=now, runs=runs or [], runs_measured=runs is not None)
+
+
+def test_market_hours_lane_is_fresh_after_its_last_fire_of_the_day(tmp_path):
+    """Revert the schedule rule -> output age (4.5 h) exceeds the 15 min cadence and the row reads SILENT."""
+    _write_output(tmp_path, datetime(2026, 11, 6, 21, 45, 2, tzinfo=timezone.utc))  # 16:45:02 ET, the last fire
+    row = _project_at(
+        tmp_path, [_market_hours_lane()], "*/15 9-16 * * 1-5 python scripts/test_lane.py", FRI_2119_ET
+    )["rows"][0]
+    assert row["last_due"].startswith("2026-11-06T21:45:00")
+    assert row["freshness_basis"].startswith("schedule:*/15 9-16 * * 1-5")
+    assert row["freshness"] == "FRESH"
+    assert row["runtime_state"] != "SILENT"
+
+
+def test_a_missed_fire_inside_the_window_is_still_caught(tmp_path):
+    """A lane whose final fire produced nothing is not excused by the schedule rule."""
+    _write_output(tmp_path, datetime(2026, 11, 6, 21, 30, 2, tzinfo=timezone.utc))  # 16:30, missed 16:45
+    row = _project_at(
+        tmp_path, [_market_hours_lane()], "*/15 9-16 * * 1-5 python scripts/test_lane.py", FRI_2119_ET
+    )["rows"][0]
+    assert row["freshness"] == "AGING"
+    assert row["runtime_state"] == "SLOW"
+
+
+def test_several_missed_fires_are_silence_not_slowness(tmp_path):
+    _write_output(tmp_path, datetime(2026, 11, 6, 20, 45, 2, tzinfo=timezone.utc))  # 15:45: misses 16:00+
+    row = _project_at(
+        tmp_path, [_market_hours_lane()], "*/15 9-16 * * 1-5 python scripts/test_lane.py", FRI_2119_ET
+    )["rows"][0]
+    assert row["freshness"] == "STALE"
+    assert row["runtime_state"] == "SILENT"
+
+
+def test_a_weekly_lane_is_not_late_midweek(tmp_path):
+    wed_noon_et = datetime(2026, 11, 4, 17, 0, tzinfo=timezone.utc)
+    _write_output(tmp_path, datetime(2026, 11, 2, 2, 0, 6, tzinfo=timezone.utc))  # Sun 21:00:06 ET
+    weekly = {
+        "lane_id": "weekly-lane",
+        "owner": "platform",
+        "state": "ACTIVE",
+        "scheduler": {"kind": "cron", "expression": "0 21 * * 0", "match": "scripts/test_lane.py"},
+        "expected_cadence_hours": 168,
+        "output_signal": {"kind": "file_mtime", "path": "data/result.json"},
+    }
+    row = _project_at(tmp_path, [weekly], "0 21 * * 0 python scripts/test_lane.py", wed_noon_et)["rows"][0]
+    assert row["freshness"] == "FRESH"
+    assert row["runtime_state"] != "SILENT"
+
+
+def test_an_n8n_lane_reads_its_own_workflow_schedule(tmp_path):
+    """An n8n lane that names its workflow is judged by that workflow's scheduleTrigger, not its cadence."""
+    _write_output(tmp_path, datetime(2026, 11, 6, 20, 25, 30, tzinfo=timezone.utc))  # 15:25 ET
+    lane_row = {
+        "lane_id": "n8n-lane",
+        "owner": "signals",
+        "state": "ACTIVE",
+        "scheduler": {"kind": "n8n", "expression": "wf-catalyst"},
+        "expected_cadence_hours": 1,
+        "output_signal": {"kind": "file_mtime", "path": "data/result.json"},
+    }
+    workflows = [
+        {
+            "id": "wf-catalyst",
+            "name": "catalyst",
+            "active": True,
+            "schedules": [{"interval": [{"field": "cronExpression", "expression": "25 6-15 * * 1-5"}]}],
+        }
+    ]
+    row = _project_at(tmp_path, [lane_row], None, FRI_2119_ET, workflows)["rows"][0]
+    assert row["freshness_basis"] == "schedule:25 6-15 * * 1-5"
+    assert row["freshness"] == "FRESH"
+
+
+def test_a_dispatcher_lane_is_not_judged_by_the_shared_trigger(tmp_path):
+    """The dispatcher fires every minute for the whole fleet; that is not any one lane's cadence."""
+    _write_output(tmp_path, datetime(2026, 11, 7, 2, 10, 5, tzinfo=timezone.utc))  # 5 min before "now"
+    lane_row = {
+        "lane_id": "dispatched-lane",
+        "owner": "signals",
+        "state": "ACTIVE",
+        "scheduler": {"kind": "n8n", "expression": "dispatcher"},
+        "expected_cadence_hours": 1,
+        "output_signal": {"kind": "file_mtime", "path": "data/result.json"},
+    }
+    workflows = [
+        {
+            "id": "tradeai-dispatcher",
+            "name": "dispatcher",
+            "active": True,
+            "schedules": [{"interval": [{"field": "cronExpression", "expression": "* * * * *"}]}],
+        }
+    ]
+    row = _project_at(tmp_path, [lane_row], None, FRI_2119_ET, workflows)["rows"][0]
+    assert row["freshness_basis"] is None
+    assert row["freshness"] == "FRESH"  # within its declared 1 h cadence
+
+
+def test_due_schedules_override_a_line_that_fires_after_the_last_write(tmp_path):
+    """premarket_watch fires to 09:55 but stops producing at 09:29: due_schedules names the fires that write."""
+    _write_output(tmp_path, datetime(2026, 11, 6, 14, 25, 5, tzinfo=timezone.utc))  # 09:25 ET
+    lane_row = _market_hours_lane(
+        scheduler={
+            "kind": "cron",
+            "expression": "*/5 6-9 * * 1-5",
+            "match": "scripts/test_lane.py",
+            # The line fires to 09:55; the lane writes only through 09:25 (the real registry shape).
+            "due_schedules": ["*/5 6-8 * * 1-5", "0-25/5 9 * * 1-5"],
+        },
+        expected_cadence_hours=5 / 60,
+    )
+    row = _project_at(
+        tmp_path, [lane_row], "*/5 6-9 * * 1-5 python scripts/test_lane.py", FRI_2119_ET
+    )["rows"][0]
+    assert row["freshness"] == "FRESH"
