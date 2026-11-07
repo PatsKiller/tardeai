@@ -7,7 +7,8 @@
     "tests/test_report_maturity_bar_m1_m5_20260919.py",
     "tests/test_cio_goals_and_dispatcher.py",
     "tests/test_cio_goals_and_reactive.py",
-    "tests/test_cio_action_ledger.py"
+    "tests/test_cio_action_ledger.py",
+    "tests/test_cio_wake_turn_effects_lane_receipt.py"
   ],
   "comment": [
     "2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on",

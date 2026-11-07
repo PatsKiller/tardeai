@@ -44,6 +44,58 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _n(value: Any) -> int:
+    """How many: a list's length, or a number that is already a count.
+
+    The cycle's own result mixes the two shapes — `goal_enqueue.enqueued` is a
+    list of wakes while `situations.dedup_skipped` is an int — so `len()` on the
+    raw value raises on a live run and would take the receipt write down with
+    it (measured against the 2026-11-07T02:25Z status file).
+    """
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def production_counts(res: Optional[dict]) -> tuple[int, int, Optional[str]]:
+    """(produced, attempted, empty_reason) for this cycle's own lane receipt.
+
+    "Produced" counts durable rows this cycle WROTE: wakes it enqueued, situation
+    plans it created, curation directives it emitted. It deliberately excludes
+    what the cycle merely LOOKED at (candidates scanned, dedup skips): a count
+    that rises whenever the queue is busy would let an idle cycle report a busy
+    one, and AGENTS.md §13.4 refuses a metric that cannot distinguish the two.
+
+    ``empty_reason`` is set only when nothing was produced, and it names the
+    reason rather than leaving a bare zero — a bare zero is indistinguishable
+    from a writer that failed (a missing value shown as 0).
+
+    Pure: reads the result dict, never state, and never raises.
+    """
+    res = res if isinstance(res, dict) else {}
+    goals = res.get("goal_enqueue") if isinstance(res.get("goal_enqueue"), dict) else {}
+    situations = res.get("situations") if isinstance(res.get("situations"), dict) else {}
+
+    wakes_enqueued = _n(res.get("event_enqueued")) + _n(goals.get("enqueued"))
+    plans_created = _n(situations.get("plans_created"))
+    curation_emitted = _n(res.get("curation_emitted"))
+    produced = wakes_enqueued + plans_created + curation_emitted
+
+    skipped = (
+        _n(res.get("event_skipped"))
+        + _n(res.get("event_stale"))
+        + _n(goals.get("skipped_dedup"))
+        + _n(goals.get("blocked_not_ready"))
+        + _n(situations.get("dedup_skipped"))
+    )
+    attempted = produced + skipped
+    empty_reason = None if produced else "no_wake_no_situation_plan_no_curation_due"
+    return produced, attempted, empty_reason
+
+
 def _enabled() -> bool:
     if KILL.exists():
         return False
@@ -636,7 +688,11 @@ def _execute(argv=None) -> tuple[int, bool]:
     write_lane_receipt("cio-reactive-cycle", ok=not bool(errs), exit_code=code,
                        started_at=started, summary={"enabled": bool(res.get("enabled")),
                                                   "errors": len(errs), "hard_errors": len(hard)})
-    return code, not bool(errs)
+    # The cycle's result is handed back so the caller can write the SECOND
+    # receipt this unit owns (cio-wake-turn-effects) with its production count.
+    # Without it that receipt could only say "exit 0", which rule 8 says is not
+    # evidence of work.
+    return code, not bool(errs), res
 
 
 def main(argv=None) -> int:
@@ -661,10 +717,12 @@ def main(argv=None) -> int:
     started = now_iso()
     previous = sys.argv
     sys.argv = [previous[0], *argv]
+    res = None
     try:
         result = _execute()
         if isinstance(result, tuple):
-            rc, receipt_ok = result
+            rc, receipt_ok = int(result[0]), bool(result[1])
+            res = result[2] if len(result) > 2 else None
         else:
             rc = int(result) if isinstance(result, int) else 0
             receipt_ok = rc == 0
@@ -677,7 +735,19 @@ def main(argv=None) -> int:
         raise
     finally:
         sys.argv = previous
-    write_lane_receipt(lane, ok=receipt_ok, exit_code=rc, started_at=started, script="cio_reactive_cycle.py", summary={"completed": receipt_ok})
+    # LaneRunReceipt@v2: name what the run PRODUCED, not only that it exited 0.
+    # `produced_count` is the registry's json_key signal for this lane read
+    # against `ok_at`, so a run that wrote nothing is said to have written
+    # nothing instead of glowing green on its exit code.
+    produced, attempted, empty_reason = production_counts(res)
+    write_lane_receipt(
+        lane, ok=receipt_ok, exit_code=rc, started_at=started,
+        script="cio_reactive_cycle.py",
+        summary={"completed": receipt_ok},
+        produced_count=produced,
+        attempted_count=attempted,
+        empty_reason=empty_reason,
+    )
     return rc
 
 

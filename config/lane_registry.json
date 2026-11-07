@@ -1118,11 +1118,13 @@
         "kind": "systemd",
         "expression": "tradeai-cio-reactive.timer"
       },
-      "expected_cadence_hours": 24.0,
+      "expected_cadence_hours": 1.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/cio/wake_turn_effects.jsonl"
+        "kind": "json_key",
+        "path": "data/runtime/cio-wake-turn-effects_last.json",
+        "key": "ok_at",
+        "detail": "LaneRunReceipt@v2 written by scripts/cio_reactive_cycle.py on every real run of the unit; produced_count names the wakes it enqueued plus the situation plans and curation directives it emitted. It replaced data/cio/wake_turn_effects.jsonl, which this unit never wrote: that file is a conditional audit row from cio_rehydrate.apply_after_cycle and its only caller (attach_operator_turn, intent=defer) has no live scheduler, so its mtime could never prove this unit ran."
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
