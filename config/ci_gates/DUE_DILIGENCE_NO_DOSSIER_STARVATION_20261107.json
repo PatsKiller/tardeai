@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "DUE_DILIGENCE_NO_DOSSIER_STARVATION_20261107",
+  "files": [
+    "tests/test_due_diligence_questions_no_dossier_20261107.py"
+  ],
+  "anchor": "DUE_DILIGENCE_NO_DOSSIER_STARVATION_20261107",
+  "comment": [
+    "ANCHOR: DUE_DILIGENCE_NO_DOSSIER_STARVATION_20261107 — LQ-20261107-142. The lane took the top 5",
+    "pending material_changes by magnitude every run. Measured 2026-11-07 on the live database: 1,426",
+    "eligible pending changes, the top five (XRPN, SNYR, MB, BF-B, ALIT) all had NOTHING linked, so",
+    "dossier() returned empty, the row was skipped, questioned_at stayed NULL, and the next run fetched",
+    "the same five. The highest-ranked change WITH evidence was rank 6 — permanently unreachable — and",
+    "the lane had written no question since the cutover while every run's receipt read ok /",
+    "nothing_due (the log holds the identical block repeatedly).",
+    "The run now scans a bounded window past the curated cap (DDQ_SCAN_MULTIPLIER / DDQ_SCAN_MAX),",
+    "orders it with one set-based evidence query (evidence_subjects), and curates the changes dossier()",
+    "can actually reason about. Ordering only: dossier() remains the authority, so a window the",
+    "prefilter calls unlinked is still attempted. A run that takes changes and can reason about none of",
+    "them is ok=false / no_dossier_evidence (no ok_at advance), never nothing_due; a genuinely empty",
+    "queue is still ok / nothing_due.",
+    "Hermetic: module executed from source, DB/DDL/curation/researcher stubbed, state root in tmp_path."
+  ]
+}

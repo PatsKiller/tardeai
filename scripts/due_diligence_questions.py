@@ -95,6 +95,16 @@ LANE_ID = "due-diligence-questions"
 MAX_CHANGES = int(os.getenv("DDQ_MAX_CHANGES", "5"))
 MAX_ROUTED = int(os.getenv("DDQ_MAX_ROUTED", "2"))
 DOSSIER_NEWS = int(os.getenv("DDQ_DOSSIER_NEWS", "12"))
+#: How far past the curated cap one run may look for changes it can actually reason about.
+#:
+#: The pending queue is ordered by magnitude, and a change whose subject has NOTHING linked can never be
+#: reasoned about: the loop skips it, ``questioned_at`` stays NULL, and the next run fetches it again. Five
+#: such rows at the head of the queue therefore starved everything behind them — measured 2026-11-07:
+#: 1,426 pending changes, the highest-ranked change WITH evidence at rank 6, and the lane had written no
+#: question since the cutover while its receipt read ``ok / nothing_due``. The cap counts changes CURATED;
+#: the window bounds how many rows a run may examine to find them.
+SCAN_MULTIPLIER = int(os.getenv("DDQ_SCAN_MULTIPLIER", "20"))
+SCAN_MAX = int(os.getenv("DDQ_SCAN_MAX", "500"))
 
 #: SubjectStateNarrative@v1 and DueDiligenceQuestion@v1 are written and read within
 #: this module — the narrative is cited by the questions, and route() reads back
@@ -298,6 +308,39 @@ def dossier(cur, subject_guid) -> list[dict]:
     for it in items:
         it["text"] = _INTERNAL_NOISE.sub("[internal]", it["text"] or "")
     return items
+
+
+#: The SAME evidence set ``dossier`` assembles, asked of a whole window at once. It is used only to ORDER the
+#: queue (see ``evidence_subjects``), never to decide that a change has nothing to say: the loop still calls
+#: ``dossier()`` on every change it curates, so a prefilter that disagrees with ``dossier`` can leave an
+#: attempt on the table but can never make the lane skip work ``dossier`` would have found.
+EVIDENCE_SUBJECTS_SQL = """
+    SELECT s.sg FROM (SELECT unnest(%s::uuid[]) AS sg) s
+     WHERE EXISTS (SELECT 1 FROM news_articles n
+                    WHERE n.subject_guid = s.sg AND n.title IS NOT NULL)
+        OR EXISTS (SELECT 1 FROM document_mentions d
+                    WHERE d.subject_guid = s.sg AND d.source_table = 'news_articles')
+        OR EXISTS (SELECT 1 FROM catalyst_events c WHERE c.subject_guid = s.sg)
+        OR EXISTS (SELECT 1 FROM document_mentions d
+                    WHERE d.subject_guid = s.sg AND d.source_table = 'catalyst_events')
+        OR EXISTS (SELECT 1 FROM hermes_external_research r
+                    WHERE r.subject_guid = s.sg AND r.recommendation IS NOT NULL)
+        OR EXISTS (SELECT 1 FROM research_insights i WHERE i.subject_guid = s.sg)
+"""
+
+
+def evidence_subjects(cur, subject_guids) -> set:
+    """The subset of ``subject_guids`` with at least one item ``dossier`` would return.
+
+    One set-based query, not four singleton queries per change: measuring a 100-row window with
+    ``dossier()`` alone took 134 s on 2026-11-07, longer than this lane's own cadence. Returns string GUIDs
+    so the caller can compare against a row's ``subject_guid`` however the driver hands it back.
+    """
+    guids = [str(g) for g in subject_guids if g]
+    if not guids:
+        return set()
+    cur.execute(EVIDENCE_SUBJECTS_SQL, (guids,))
+    return {str(r[0]) for r in cur.fetchall()}
 
 
 PROMPT = """A tracked company just did something unlike itself. Below is everything
@@ -820,7 +863,9 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=MAX_CHANGES)
     args = ap.parse_args(argv)
     if args.dry_run:
-        print(f"DRY-RUN due-diligence-questions: would curate up to {args.limit} changes route={args.route}; no lock, DB, schema, researcher, model or writes")
+        window = max(args.limit, min(args.limit * SCAN_MULTIPLIER, SCAN_MAX))
+        print(f"DRY-RUN due-diligence-questions: would curate up to {args.limit} changes out of a scan window "
+              f"of up to {window} route={args.route}; no lock, DB, schema, researcher, model or writes")
         return 0
 
     try:
@@ -854,10 +899,26 @@ def _apply_run(args, started: datetime) -> int:
     if warn:
         print(f"  WARN {warn}", file=sys.stderr)
 
-    changes = pending_changes(cur, args.limit)
+    # Look past the curated cap for changes this run can actually reason about. The queue is ordered by
+    # magnitude, so without this the same dossier-less rows are fetched, skipped and fetched again, and
+    # nothing behind them is ever reached (see SCAN_MULTIPLIER). The prefilter ORDERS the queue; it does not
+    # decide that a change is uncurateable — dossier() is still called on everything this run takes, and an
+    # unlinked row is only ever skipped by that answer. So when the window holds fewer linked changes than
+    # the cap, the remaining slots are filled anyway.
+    scan_n = max(args.limit, min(args.limit * SCAN_MULTIPLIER, SCAN_MAX))
+    changes = pending_changes(cur, scan_n)
+    with_evidence = evidence_subjects(cur, [c.get("subject_guid") for c in changes]) if changes else set()
+    linked = [c for c in changes if str(c.get("subject_guid")) in with_evidence]
+    unlinked = [c for c in changes if str(c.get("subject_guid")) not in with_evidence]
+    curated = (linked + unlinked)[:args.limit]
     result = {"schema": SCHEMA_QUESTION, "authority": AUTHORITY,
               "cap_env_warning": warn,
-              "changes_considered": len(changes), "narratives": 0, "questions": 0,
+              "changes_pending_window": len(changes), "scan_window": scan_n,
+              "scan_truncated": bool(changes) and len(changes) >= scan_n,
+              "changes_considered": len(curated), "narratives": 0, "questions": 0,
+              "skipped": {"no_dossier": 0},
+              "no_dossier_sample": [c.get("symbol") for c in unlinked[:5]],
+              "window_without_evidence": len(unlinked),
               "dropped": {}, "lanes": [], "rows_produced": None, "routed": None}
     if not args.apply:
         result.update(dry_run=True, external_calls=0, writes=0)
@@ -867,7 +928,8 @@ def _apply_run(args, started: datetime) -> int:
     result["answer_lifecycle"] = reconcile_answers(cur, apply=True)
     conn.commit()
     print(f"{SCHEMA_QUESTION} — apply={args.apply} route={args.route} "
-          f"changes={len(changes)}")
+          f"changes={len(curated)} (queue window {len(changes)} of up to {scan_n}, "
+          f"{len(unlinked)} without evidence)")
     if not changes:
         result["rows_produced"] = 0 if args.apply else None
         # Routing must NOT depend on new changes arriving. An earlier version
@@ -888,9 +950,12 @@ def _apply_run(args, started: datetime) -> int:
     attempted_calls = 0
     failed_calls = 0
     stopped = False
-    for ch in changes:
+    for ch in curated:
         items = dossier(cur, ch["subject_guid"])
         if not items:
+            # The window said this subject had evidence and dossier() found none. Prefilter and dossier can
+            # only disagree at the margin; count it rather than let it leave a silent hole in the receipt.
+            result["skipped"]["no_dossier"] += 1
             print(f"  {ch['symbol']}: no dossier — nothing linked in the corpus yet")
             continue
         attempted_calls += 1
@@ -946,6 +1011,14 @@ def _apply_run(args, started: datetime) -> int:
         _write_lane_receipt(ok=False, exit_code=3, produced_count=total_q, empty_reason=None,
                             error="escalation_stopped", started_at=started)
         return 3
+    # The lane HAD work and could reason about none of it: every change it took had nothing linked in the
+    # corpus. That is a coverage gap in the evidence, not an empty lane, and `nothing_due` would advance
+    # ok_at over it — measured 2026-11-07: five dossier-less rows at the head of the queue hid 1,426 pending
+    # changes and the receipt read `ok / nothing_due` on every run.
+    if attempted_calls == 0 and result["skipped"]["no_dossier"]:
+        _write_lane_receipt(ok=False, exit_code=1, produced_count=0, empty_reason=None,
+                            error="no_dossier_evidence", started_at=started)
+        return 1
     if all_failed:
         _write_lane_receipt(ok=False, exit_code=1, produced_count=total_q, empty_reason=None,
                             error="all_model_calls_failed", started_at=started)
