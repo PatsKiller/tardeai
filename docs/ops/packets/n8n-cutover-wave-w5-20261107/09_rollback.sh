@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# W5 rollback. Each step is independent; run the ones that were applied, newest first.
+#   R1 cron lines back : python3 scripts/pipelines/cutover/_cutover.py rollback --lane <lane> --apply   (per lane;
+#                        uncomments exactly the `n8n-cutover <lane>` tagged lines) — or restore the 04 backup file.
+#   R2 effect owners   : effect_claim.py set-owner --process <p> --owner cron --expect-epoch <e>  (keyed: reconcile-pullback-outcomes directive-keyword-enhancer finviz-market-movers hermes-usefulness-backfill sec-filings-feed aegis-evening-packet validate-expense-ratios journal-review-builder proposal-llm-review-worker social-scalp-scanner enrich-proposal-technicals hermes-discovery-ingestors news-ingestion-tail sec-fundamentals-ingest agent-calibration-engine reclassify-momentum-proposals generate-analyst-reports-autonomous-weekly due-diligence-questions)
+#   R3 relay live list : restore ~/.config/tradeai/n8n-live-lanes.env.bak-*-W5 and restart tradeai-n8n-run-relay
+#   R4 registry        : revert the wave PR (rows back to shadow / dry_run) and promote; or dispatch.mode off.
+# Lanes: reconcile-pullback-outcomes build-hermes-canonical-status directive-keyword-enhancer fee-efficiency-analyzer overnight-batch-tax finviz-market-movers hermes-usefulness-backfill ask-alerts sec-filings-feed tmp-scratch-cleanup reconcile-watch-outcomes aegis-evening-packet validate-expense-ratios journal-review-builder proposal-llm-review-worker social-scalp-scanner active-trader-session-review enrich-proposal-technicals hermes-discovery-ingestors news-ingestion-tail sec-fundamentals-ingest agent-calibration-engine reclassify-momentum-proposals generate-analyst-reports-autonomous-weekly due-diligence-questions
+echo "read the header; nothing is run automatically"

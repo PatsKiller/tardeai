@@ -431,8 +431,8 @@
       ],
       "idempotent_today": "no:uuid ids, now()-based windows",
       "wave": "tierB",
-      "cron_claim": false,
-      "n8n_claim": false
+      "cron_claim": true,
+      "n8n_claim": true
     },
     "agent-outcome-linker": {
       "process": "agent-outcome-linker",
@@ -1085,6 +1085,244 @@
       ],
       "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
       "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "reconcile-pullback-outcomes": {
+      "process": "reconcile-pullback-outcomes",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 9 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "OVN-8",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "directive-keyword-enhancer": {
+      "process": "directive-keyword-enhancer",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "25,55 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "finviz-market-movers": {
+      "process": "finviz-market-movers",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/15 6-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "hermes-usefulness-backfill": {
+      "process": "hermes-usefulness-backfill",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "sec-filings-feed": {
+      "process": "sec-filings-feed",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "20 8,12,17,21 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "OVN-9",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "aegis-evening-packet": {
+      "process": "aegis-evening-packet",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "45 19 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "OVN-9",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "validate-expense-ratios": {
+      "process": "validate-expense-ratios",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "40 7 1 * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "OVN-9",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "journal-review-builder": {
+      "process": "journal-review-builder",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 18 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "OVN-3",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "proposal-llm-review-worker": {
+      "process": "proposal-llm-review-worker",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/30 6-19 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "OVN-3",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "social-scalp-scanner": {
+      "process": "social-scalp-scanner",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0,30 6-9 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "enrich-proposal-technicals": {
+      "process": "enrich-proposal-technicals",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 */2 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "hermes-discovery-ingestors": {
+      "process": "hermes-discovery-ingestors",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 */2 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "news-ingestion-tail": {
+      "process": "news-ingestion-tail",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 10,14,18 * * 0,6",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "sec-fundamentals-ingest": {
+      "process": "sec-fundamentals-ingest",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 21 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "reclassify-momentum-proposals": {
+      "process": "reclassify-momentum-proposals",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/30 9-16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "generate-analyst-reports-autonomous-weekly": {
+      "process": "generate-analyst-reports-autonomous-weekly",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 21 * * 0",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "CW0",
+      "n8n_claim": true,
+      "cron_claim": true
+    },
+    "due-diligence-questions": {
+      "process": "due-diligence-questions",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "*/20 * * * *",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "llm"
+      ],
+      "idempotent_today": "no: not traced; one effect per scheduled slot is enforced by this key",
+      "wave": "OVN-9",
       "n8n_claim": true,
       "cron_claim": true
     }

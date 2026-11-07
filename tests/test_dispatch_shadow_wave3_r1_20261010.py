@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -194,7 +195,8 @@ def test_allowlist_lock_is_the_cron_line_lock(lane):
     else:  # catalyst-momentum-engine-overnight: scripts/safe_flock.sh <lock> (needs lock_kind flock before canary)
         assert lane == "catalyst-momentum-engine-overnight" and f"safe_flock.sh {e['lock']} " in text
     if lane in FLOCK_ADDED:
-        assert f"flock -n {e['lock']} $PY" in text
+        # W5 (2026-11-07) wrapped keyed lanes in effect_claim_cron.sh between the flock and $PY.
+        assert re.search(rf"flock -n {re.escape(e['lock'])} (env TRADEAI_EFFECT_CLAIM=\S+ bash scripts/effect_claim_cron\.sh \S+ )?\$PY", text), text
 
 
 #: Receipt names a script builds rather than spells: signal_fusion.py `f"signal_fusion_{mode}"` (--full / --active);

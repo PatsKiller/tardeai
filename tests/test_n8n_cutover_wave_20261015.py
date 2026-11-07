@@ -378,7 +378,9 @@ def test_retired_lanes_are_dispatcher_cutover_rows(lane):
 def test_agent_reviewed_contracts_follow_the_registry_to_canary(lane):
     c = {x["id"]: x for x in json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())["contracts"]
          if isinstance(x, dict)}[lane]
-    assert c["status"] == "REVIEWED" and c["stage"] == "canary"
+    row0 = _repo_rows()[lane]["scheduler"]
+    # The contract follows the registry: canary, or cutover once the lane is cut over (STAGE_DRIFT re-take W5 2026-11-07).
+    assert c["status"] == "REVIEWED" and c["stage"] in ("canary", "cutover") and c["stage"] == row0["stage"]
     assert c["review"]["reviewed_by"].startswith("agent")
     assert c["review"]["stage_rereview"]["by"] == "n8n_cutover_wave.py contract-canary"
     row = _repo_rows()[lane]["scheduler"]

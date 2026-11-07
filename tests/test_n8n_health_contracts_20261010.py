@@ -148,8 +148,12 @@ def test_a_new_shadow_lane_without_a_contract_fails(committed):
 def test_a_new_lane_with_a_draft_contract_fails_until_reviewed(committed):
     doc, reg, idx = committed
     d = copy.deepcopy(doc)
-    c = _contract(doc, "fee-efficiency-analyzer")
+    # Any committed contract as the template, forced to DRAFT: the premise is "a new lane's draft", and the
+    # template lane's own contract is free to be REVIEWED (fee-efficiency-analyzer was, on 2026-11-07).
+    c = copy.deepcopy(_contract(doc, "fee-efficiency-analyzer"))
     c["id"] = "zz-new-lane"
+    c["status"] = "DRAFT"
+    c["stage"] = NEW_ROW["scheduler"]["stage"]
     d["contracts"].append(c)
     reg2 = _registry_with(reg, NEW_ROW)
     assert any(e.startswith("DRAFT_NOT_GRANDFATHERED zz-new-lane") for e in H.check(d, reg2, idx, TODAY)["errors"])
@@ -162,8 +166,10 @@ def test_canary_needs_a_reviewed_contract_without_unknowns(committed):
     reg2 = copy.deepcopy(reg)
     row = next(r for r in reg2["lanes"] if r["lane_id"] == "fee-efficiency-analyzer")
     row["scheduler"]["stage"] = "canary"
+    d0 = copy.deepcopy(doc)  # the draft premise is built here, not read from the committed contract's status
+    next(c for c in d0["contracts"] if c["id"] == "fee-efficiency-analyzer")["status"] = "DRAFT"
     assert any(
-        e.startswith("DRAFT_AT_LIVE_STAGE fee-efficiency-analyzer") for e in H.check(doc, reg2, idx, TODAY)["errors"]
+        e.startswith("DRAFT_AT_LIVE_STAGE fee-efficiency-analyzer") for e in H.check(d0, reg2, idx, TODAY)["errors"]
     )
     d = copy.deepcopy(doc)
     c = next(c for c in d["contracts"] if c["id"] == "fee-efficiency-analyzer")

@@ -48,6 +48,7 @@ n8n-siem-bridge news-ingestion news-ingestion-tail options-intent-matcher option
 portfolio-server-watchdog process-reaper research-scheduler rotation-autopilot run-ensemble-worker
 run-governed-symbol-thesis-acquisition run-options-monitor screener-go-alerts send-telegram-proposal-alert
 sync-memory-to-drive telegram-smart-alerts tmp-scratch-cleanup topic-research-synthesizer trade-close-llm-analyzer-structured
+build-hermes-canonical-status directive-keyword-enhancer proposal-llm-review-worker
 trade-integrity-audit watchlist-proposal-bridge
 """.split())
 HOLDS = {"defense-execution", "options-lifecycle-run", "coder-dispatch", "n8n-workflow-drift-check"}
@@ -106,7 +107,8 @@ def test_exactly_the_reviewed_49_active_lanes_become_eligible():
     newly = sorted(lid for lid, r in ROWS.items()
                    if r.get("state") == "ACTIVE" and not _elig(r, LD.EMPTY_CUTOVER_POLICY)[0] and _elig(r)[0])
     assert newly == NEWLY_ELIGIBLE_ACTIVE
-    assert len(newly) == 49
+    # 49 reviewed 2026-10-16, plus 3 that W5 (2026-11-07) put on canary with reviewed allowlist entries.
+    assert len(newly) == 52
     for lid in newly:
         assert _elig(ROWS[lid])[1].startswith("eligible:cutover_directive_23_25:"), lid
 

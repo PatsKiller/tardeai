@@ -1,0 +1,553 @@
+{
+  "wave": "W5",
+  "ready": [
+    "reconcile-pullback-outcomes",
+    "build-hermes-canonical-status",
+    "directive-keyword-enhancer",
+    "fee-efficiency-analyzer",
+    "overnight-batch-tax",
+    "finviz-market-movers",
+    "hermes-usefulness-backfill",
+    "ask-alerts",
+    "sec-filings-feed",
+    "tmp-scratch-cleanup",
+    "reconcile-watch-outcomes",
+    "aegis-evening-packet",
+    "validate-expense-ratios",
+    "journal-review-builder",
+    "proposal-llm-review-worker",
+    "social-scalp-scanner",
+    "active-trader-session-review",
+    "enrich-proposal-technicals",
+    "hermes-discovery-ingestors",
+    "news-ingestion-tail",
+    "sec-fundamentals-ingest",
+    "agent-calibration-engine",
+    "reclassify-momentum-proposals",
+    "generate-analyst-reports-autonomous-weekly",
+    "due-diligence-questions"
+  ],
+  "effect_keyed": [
+    "reconcile-pullback-outcomes",
+    "directive-keyword-enhancer",
+    "finviz-market-movers",
+    "hermes-usefulness-backfill",
+    "sec-filings-feed",
+    "aegis-evening-packet",
+    "validate-expense-ratios",
+    "journal-review-builder",
+    "proposal-llm-review-worker",
+    "social-scalp-scanner",
+    "enrich-proposal-technicals",
+    "hermes-discovery-ingestors",
+    "news-ingestion-tail",
+    "sec-fundamentals-ingest",
+    "agent-calibration-engine",
+    "reclassify-momentum-proposals",
+    "generate-analyst-reports-autonomous-weekly",
+    "due-diligence-questions"
+  ],
+  "plan": [
+    {
+      "lane_id": "reconcile-pullback-outcomes",
+      "row_id": "cron:L749",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/pullback_outcomes.lock",
+      "live_arg": [],
+      "slots": [
+        "45 9 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 760,
+          "text": "45 9 * * 0 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scripts/reconcile_pullback_outcomes.py >> logs/pullback_outcomes.log 2>&1  # Watch Desk v2 D1 weekly trigger-outcome reconciler"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "build-hermes-canonical-status",
+      "row_id": "cron:L594",
+      "family_id": "F47",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/hermes_canon_status.lock",
+      "live_arg": [],
+      "slots": [
+        "15 */2 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 601,
+          "text": "15 */2 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_canon_status.lock $PY scripts/build_hermes_canonical_status.py >> logs/hermes_canonical_status.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "directive-keyword-enhancer",
+      "row_id": "cron:L521",
+      "family_id": "F39",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/directive_kw_enhancer.lock",
+      "live_arg": [],
+      "slots": [
+        "25,55 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 522,
+          "text": "25,55 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/directive_kw_enhancer.lock $PY scripts/directive_keyword_enhancer.py --backfill --apply >> logs/directive_keyword_enhancer.log 2>&1  # LLM auto-enhance keyword-less trend/sector directives (local+oauth)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "fee-efficiency-analyzer",
+      "row_id": "cron:L551",
+      "family_id": "F50",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/fee_efficiency.lock",
+      "live_arg": [
+        "--emit"
+      ],
+      "slots": [
+        "25 7 * * 1"
+      ],
+      "cron_lines": [
+        {
+          "line": 552,
+          "text": "25 7 * * 1 cd $PROJ && flock -n /tmp/fee_efficiency.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/fee_efficiency_analyzer.py --emit\" >> logs/fee_efficiency.log 2>&1  # weekly portfolio fee/cost-efficiency findings -> Reports"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "overnight-batch-tax",
+      "row_id": "cron:L344",
+      "family_id": "F35",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/tax_sweep.lock",
+      "live_arg": [],
+      "slots": [
+        "35 6 * * 1"
+      ],
+      "cron_lines": [
+        {
+          "line": 345,
+          "text": "35 6 * * 1 cd $PROJ && flock -n /tmp/tax_sweep.lock $PY scripts/overnight_batch.py --tax-sweep >> logs/tax_sweep.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "finviz-market-movers",
+      "row_id": "cron:L760",
+      "family_id": "F43",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/finviz_market_movers.lock",
+      "live_arg": [],
+      "slots": [
+        "*/15 6-16 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 771,
+          "text": "*/15 6-16 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min \u2014 premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-usefulness-backfill",
+      "row_id": "cron:L949",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/usefulness_backfill.lock",
+      "live_arg": [],
+      "slots": [
+        "15 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 963,
+          "text": "15 * * * * cd $PROJ && LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/usefulness_backfill.lock bash scripts/run_with_deepseek_offpeak.sh --scheduled -- timeout 50m $PY scripts/hermes_external_feedback_loop.py --apply --max-rows 2000 >> logs/usefulness_backfill.log 2>&1  # usefulness backfill"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "ask-alerts",
+      "row_id": "cron:L488",
+      "family_id": "F39",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/ask_alerts.lock",
+      "live_arg": [
+        "--check"
+      ],
+      "slots": [
+        "*/30 8-18 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 489,
+          "text": "*/30 8-18 * * 1-5 cd $PROJ && flock -n /tmp/ask_alerts.lock $PY scripts/ask_alerts.py --check >> logs/ask_alerts.log 2>&1  # fire ask-box alerts (IPO news / price) to Telegram"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "sec-filings-feed",
+      "row_id": "cron:L1004",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/tradeai_sec_filings_feed.lock",
+      "live_arg": [],
+      "slots": [
+        "20 8,12,17,21 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 1018,
+          "text": "20 8,12,17,21 * * 1-5 CUR=$(readlink -f $HOME/trade-ai-releases/portfolio-server/CURRENT) && cd \"$CUR\" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> $HOME/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "tmp-scratch-cleanup",
+      "row_id": "cron:L1065",
+      "family_id": "",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/tradeai_tmp_scratch_cleanup.lock",
+      "live_arg": [],
+      "slots": [
+        "30 3 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 1079,
+          "text": "30 3 * * 0 cd $PROJ && flock -n /tmp/tradeai_tmp_scratch_cleanup.lock $PY scripts/tmp_scratch_cleanup.py --apply >> $HOME/trade-ai-releases/persistent-state/logs/tmp_scratch_cleanup.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "reconcile-watch-outcomes",
+      "row_id": "cron:L750",
+      "family_id": "F50",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/watch_outcomes.lock",
+      "live_arg": [],
+      "slots": [
+        "50 9 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 761,
+          "text": "50 9 * * 0 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_outcomes.lock $PY scripts/reconcile_watch_outcomes.py >> logs/watch_outcomes.log 2>&1  # Watch Desk v3 source scoreboard"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "aegis-evening-packet",
+      "row_id": "cron:L893",
+      "family_id": "F38",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/aegis_evening_packet.lock",
+      "live_arg": [],
+      "slots": [
+        "45 19 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 907,
+          "text": "45 19 * * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && PYTHONPATH=$HOME/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/aegis_evening_packet.lock $PY scripts/aegis_evening_packet.py >> logs/aegis_evening_packet.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "validate-expense-ratios",
+      "row_id": "cron:L552",
+      "family_id": "F42",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/expense_ratio_validate.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "40 7 1 * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 553,
+          "text": "40 7 1 * * cd $PROJ && flock -n /tmp/expense_ratio_validate.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/validate_expense_ratios.py --apply\" >> logs/expense_ratio_validate.log 2>&1  # monthly: re-validate fund/ETF expense ratios (data quality)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "journal-review-builder",
+      "row_id": "cron:L459",
+      "family_id": "F50",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/journal_review.lock",
+      "live_arg": [],
+      "slots": [
+        "30 18 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 460,
+          "text": "30 18 * * 1-5 cd $PROJ && flock -n /tmp/journal_review.lock $PY scripts/journal_review_builder.py >> logs/journal_review.log 2>&1  # paper-trade journal review (LLM grade+lesson, idempotent)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "proposal-llm-review-worker",
+      "row_id": "cron:L686",
+      "family_id": "F39",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/proposal_llm_review_worker.lock",
+      "live_arg": [
+        "--run",
+        "--limit",
+        "4"
+      ],
+      "slots": [
+        "*/30 6-19 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 693,
+          "text": "*/30 6-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/proposal_llm_review_worker.lock timeout 25m $PY scripts/proposal_llm_review_worker.py --run --limit 4 >> logs/proposal_llm_review_worker.log 2>&1  # stage-2b LLM review queue drain (was UNSCHEDULED \u2014 rows sat PENDING for days; added 2026-07-04)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "social-scalp-scanner",
+      "row_id": "cron:L248",
+      "family_id": "F43",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/social_scalp.lock",
+      "live_arg": [],
+      "slots": [
+        "0,30 6-9 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 249,
+          "text": "0,30 6-9 * * 1-5 cd $PROJ && flock -n /tmp/social_scalp.lock $PY scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "active-trader-session-review",
+      "row_id": "cron:L1015",
+      "family_id": "F35",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/at_session_review.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "5 12 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 1029,
+          "text": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "enrich-proposal-technicals",
+      "row_id": "cron:L609",
+      "family_id": "F45",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/enrich_proposal_tech.lock",
+      "live_arg": [],
+      "slots": [
+        "15 */2 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 616,
+          "text": "15 */2 * * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/enrich_proposal_tech.lock $PY scripts/enrich_proposal_technicals.py >> logs/enrich_proposal_technicals.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "hermes-discovery-ingestors",
+      "row_id": "cron:L687",
+      "family_id": "F47",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/hermes_discovery_ingest.lock",
+      "live_arg": [
+        "--scheduled",
+        "--json"
+      ],
+      "slots": [
+        "0 */2 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 694,
+          "text": "0 */2 * * * cd $PROJ && flock -n /tmp/hermes_discovery_ingest.lock $PY scripts/hermes_discovery_ingestors.py --scheduled --json >> logs/hermes_discovery_ingest.log 2>&1  # URDL observe-only intake, do-no-harm governed (2026-07-05); entity-spike/tag-lift/llm-review stay config-disabled pending operator"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "news-ingestion-tail",
+      "row_id": "cron:L652",
+      "family_id": "F23",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/news_tail_rotate.lock",
+      "live_arg": [
+        "--tail-rotate"
+      ],
+      "slots": [
+        "0 10,14,18 * * 0,6"
+      ],
+      "cron_lines": [
+        {
+          "line": 659,
+          "text": "0 10,14,18 * * 0,6 cd $PROJ && flock -n /tmp/news_tail_rotate.lock timeout 90m $PY scripts/news_ingestion.py --tail-rotate >> logs/news_ingestion.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "sec-fundamentals-ingest",
+      "row_id": "cron:L999",
+      "family_id": "F44",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/sec_fundamentals_ingest.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "30 21 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 1013,
+          "text": "30 21 * * * cd $PROJ && flock -n /tmp/sec_fundamentals_ingest.lock $PY scripts/sec_fundamentals_ingest.py --apply >> logs/sec_fundamentals_ingest.log 2>&1  # TRADEAI_LANE sec-fundamentals-ingest (operator 2026-09-27 fundamentals F1, PR #1292)"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "agent-calibration-engine",
+      "row_id": "cron:L316",
+      "family_id": "F50",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/agent_calibration_engine.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "0 12 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 317,
+          "text": "0 12 * * 0 cd $PROJ && flock -n /tmp/agent_calibration_engine.lock env TRADEAI_EFFECT_CLAIM=agent-calibration-engine bash scripts/effect_claim_cron.sh agent-calibration-engine $PY scripts/agent_calibration_engine.py --apply >> logs/agent_calibration.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "reclassify-momentum-proposals",
+      "row_id": "cron:L611",
+      "family_id": "F45",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/reclassify_momentum.lock",
+      "live_arg": [
+        "--apply"
+      ],
+      "slots": [
+        "*/30 9-16 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 618,
+          "text": "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/reclassify_momentum.lock $PY scripts/reclassify_momentum_proposals.py --apply >> logs/reclassify_momentum.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "generate-analyst-reports-autonomous-weekly",
+      "row_id": "cron:L573",
+      "family_id": "F48",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/analyst_reports_weekly.lock",
+      "live_arg": [
+        "--mode",
+        "weekly"
+      ],
+      "slots": [
+        "15 21 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 575,
+          "text": "15 21 * * 0 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/analyst_reports_weekly.lock $PY scripts/generate_analyst_reports_autonomous.py --mode weekly >> logs/analyst_reports_autonomous.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "due-diligence-questions",
+      "row_id": "cron:L959",
+      "family_id": "F39",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/ddq.lock",
+      "live_arg": [],
+      "slots": [
+        "*/20 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 973,
+          "text": "*/20 * * * * cd $PROJ && LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/ddq.lock bash scripts/run_with_deepseek_offpeak.sh --scheduled -- timeout 15m $PY scripts/due_diligence_questions.py --apply --route >> logs/due_diligence_questions.log 2>&1  # stages 3-5 curation + routing"
+        }
+      ],
+      "reasons": []
+    }
+  ]
+}

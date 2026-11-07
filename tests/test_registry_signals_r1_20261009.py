@@ -45,7 +45,8 @@ def test_watch_review_workers_split_one_row_per_crontab_line():
 
 def test_due_diligence_questions_signal_is_run_log():
     sig = ROWS["due-diligence-questions"]["output_signal"]
-    assert sig == {"kind": "file_mtime", "path": "logs/due_diligence_questions.log"}
+    # LQ-20261107-27 (W5): the lane writes a LaneRunReceipt; the run log only proved the process started.
+    assert sig == {"kind": "json_key", "key": "ok_at", "path": "data/runtime/due-diligence-questions_last.json"}
 
 
 def test_n8n_governance_rows_cadence_without_state_change():
