@@ -6,14 +6,49 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from copy import deepcopy
+import threading
 from scripts.lib.cio_company_facts import missing, public_research, timestamp
 from scripts.lib import cio_company_quality as quality
 
 
+# The InstrumentRecord store is one append-only JSONL of ~400 MB. Re-parsing it on every
+# request made /api/v2/portfolio/holdings take 4.5 s in resolve alone, 4.2 s of it here
+# (LQ-20261107-201, cProfile 2026-11-07: 41,809 json.loads per call). The snapshot is
+# memoised per store file and recomputed whenever the file's identity, size or mtime
+# changes, so an append is always seen. Each caller gets its own deep copy (~0.1 s).
+_SNAPSHOT_MEMO: dict[str, tuple[tuple, dict]] = {}
+_SNAPSHOT_LOCK = threading.Lock()
+
+
+def _file_signature(path: Path) -> tuple | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+
+
 def load_snapshot(root: Path | str | None = None, *, records: list[dict] | None = None) -> dict:
-    if records is None:
-        from scripts.lib.cio_instrument_record import _store_for_root
-        records = _store_for_root(root).all()
+    if records is not None:
+        return _build_snapshot(records)
+    from scripts.lib.cio_instrument_record import _store_for_root
+    store = _store_for_root(root)
+    key = str(store.path)
+    with _SNAPSHOT_LOCK:
+        sig = _file_signature(store.path)
+        hit = _SNAPSHOT_MEMO.get(key)
+        if sig is not None and hit is not None and hit[0] == sig:
+            return deepcopy(hit[1])
+        snap = _build_snapshot(store.all())
+        # Only memoise when the file did not change while it was read.
+        if sig is not None and _file_signature(store.path) == sig:
+            _SNAPSHOT_MEMO[key] = (sig, snap)
+        else:
+            _SNAPSHOT_MEMO.pop(key, None)
+        return deepcopy(snap)
+
+
+def _build_snapshot(records: list[dict]) -> dict:
     from scripts.lib.cio_instrument_record import select_canonical_record
     grouped: dict[str, list[dict]] = {}
     for r in records:

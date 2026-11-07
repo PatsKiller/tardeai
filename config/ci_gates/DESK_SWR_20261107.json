@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "DESK_SWR_20261107",
+  "files": [
+    "tests/test_desk_swr_20261107.py"
+  ],
+  "anchor": "DESK_SWR_20261107",
+  "comment": [
+    "ANCHOR: DESK_SWR_20261107 — LQ-20261107-201. Desk reads took 16-44 s warm against a 30 s browser limit,",
+    "so the pages showed 'unavailable'. Allowlisted desk GETs now serve the last good body at once (stamped _swr",
+    "with as_of and age) and refresh in the background, single-flight; a restart serves the persisted 0600 copy.",
+    "The CIO facts snapshot is memoised per InstrumentRecord store file and reloaded after any append.",
+    "Listing it schedules nothing."
+  ]
+}

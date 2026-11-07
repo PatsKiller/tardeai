@@ -1637,7 +1637,30 @@ def _coalesce_get(path, query, fn):
         principal = current_principal()
     except Exception:
         return fn()  # identity unknown: never share a body
-    return coalesce_get(path, query, fn, principal=principal)
+
+    def run():
+        return coalesce_get(path, query, fn, principal=principal)
+
+    # Slow desk reads serve the last good body at once and refresh in the background
+    # (scripts/lib/stale_serve.py, LQ-20261107-201: 16-44 s computes against a 30 s browser limit).
+    try:
+        try:
+            from lib import stale_serve as _swr
+            from lib.cc_auth import set_request_principal
+        except ImportError:
+            from scripts.lib import stale_serve as _swr
+            from scripts.lib.cc_auth import set_request_principal
+        if not _swr.is_swr_path(path):
+            return run()
+        swr = _swr.default()
+    except Exception:
+        return run()
+
+    def refresh():
+        set_request_principal(principal)  # the principal is thread-local; the refresh runs on its own thread
+        return run()
+
+    return swr.get(_swr.request_key(path, query, principal), run, refresh)
 
 
 def _peer_closed(conn) -> bool:

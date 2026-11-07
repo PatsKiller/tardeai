@@ -46,6 +46,14 @@ DEFAULT_COALESCE_PATHS = (
     "/api/v2/system-health",
     "/api/v3/advisory",
     "/api/v3/maturity/memory",
+    # Desk reads behind the stale-while-revalidate layer (scripts/lib/stale_serve.py,
+    # LQ-20261107-201): a cold start or a refresh computes once, not once per tab.
+    "/api/v2/desks/agents",
+    "/api/v2/desks/defense",
+    "/api/v2/desks/reentry",
+    "/api/v2/defense/engine",
+    "/api/v2/portfolio/holdings",
+    "/api/v3/cio/home",
 )
 TTL_S = float(os.environ.get("TRADEAI_COALESCE_TTL_S") or 2.0)
 WAIT_S = float(os.environ.get("TRADEAI_COALESCE_WAIT_S") or 180.0)
