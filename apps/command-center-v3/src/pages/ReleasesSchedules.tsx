@@ -74,14 +74,15 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <Chip tone={tone} variant="solid">{children}</Chip>
 }
 
-function DeploysTab({ s, stopEffective, stopState }: {
+function DeploysTab({ s, stopEffective, stopState, inFlightApi }: {
   s: Record<SectionKey, SectionView<any>>
+  /** The page's single in-flight read (LQ-20261107-308); the tab and the board share it. */
+  inFlightApi: ReturnType<typeof useApi<DeployInFlightWire>>
   /** Tri-state: `false` is a measured off; `null` is an unread latch and is never rendered as promotable. */
   stopEffective: boolean | null
   stopState?: string | null
 }) {
   const [helpOpen, setHelpOpen] = useState(false)
-  const inFlightApi = useApi<DeployInFlightWire>('/api/v2/ops/in-flight', 60_000)
   const hist = (s.history.value as { releases: ReleaseRow[]; receipts_total: number } | null)
   const errs = s.release_errors.value as { rows: ReleaseError[]; window_hours: number; not_covered: string } | null
   const nx = s.next_release.value as NextRelease | null
@@ -113,7 +114,7 @@ function DeploysTab({ s, stopEffective, stopState }: {
       nextFreshness={s.next_release.state}
       servingFreshness={s.serving.state}
     />
-    <DeployInFlightBoard />
+    <DeployInFlightBoard shared={inFlightApi as any} />
     <Section title="Releasing next · main HEAD" testId="rs-next" v={s.next_release}>
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
         <span style={mono}>{nx.short_sha}</span>, nx.subject ?? '—', nx.is_serving ? 'serving now' : countOrUnavailable(nx.commits_ahead),
@@ -499,7 +500,7 @@ export default function ReleasesSchedules() {
     </div>
 
 
-    {tab === 'deploys' ? <DeploysTab s={s} stopEffective={stop.effective} stopState={stop.state} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
+    {tab === 'deploys' ? <DeploysTab s={s} stopEffective={stop.effective} stopState={stop.state} inFlightApi={flight} /> : tab === 'jobs' ? <JobsHealth /> : <><p style={muted}>Schedules below declare intended fires. The Jobs tab shows whether each job actually ran and succeeded.</p><N8nTab s={s} /></>}
     </section>
   </div>
   </OpsDeskFrame>
