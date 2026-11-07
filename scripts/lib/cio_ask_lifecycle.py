@@ -42,6 +42,12 @@ SOURCE_ANSWERED_STATUSES = frozenset({"ok", "no_data", "not_applicable", "reject
 # never requested again (last relay request 2026-11-02T18:00Z). A transient provider latency must not be able to
 # stop Ask-the-CIO tracking until an agent notices.
 TRANSIENT_SOURCE_STATUSES = frozenset({"timeout"})
+
+# How far behind the last poll a material feed is re-read. The producers stamp ``observed_at`` when the fact
+# happened and write the row later, so the poll cannot use "everything since my last run" as a cursor
+# (LQ-20261107-147). Same default as ``cio_ask_reanswer`` (config ``reanswer.lookback_hours``).
+SOURCE_LOOKBACK_HOURS = 48.0
+
 _REASON_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
 
 
@@ -816,12 +822,18 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
     by_guid = {e.get("security_guid") for t in tracked for e in t.get("entities", []) if e.get("security_guid")}
     for source in sources:
         checkpoints = [e for e in events if e.get("kind") == "ask.source_checkpoint" and e.get("source") == source.name]
-        since = parsed((checkpoints[-1] if checkpoints else {}).get("watermark"))
-        since = since or min((parsed(t.get("created_at")) or now for t in tracked), default=now)
+        polled_through = parsed((checkpoints[-1] if checkpoints else {}).get("watermark"))
+        polled_through = polled_through or min((parsed(t.get("created_at")) or now for t in tracked), default=now)
+        # The checkpoint is the instant the feed was last polled, NOT the newest event it returned. The producers
+        # stamp ``observed_at`` when the fact happened and write the row hours later (measured 2026-11-07:
+        # material_changes rows carried an observed_at 1.9-18.9 h before their created_at), so a cursor that ran to
+        # the previous poll instant matched no row a late writer adds at all -- the feed went blind (LQ-20261107-147).
+        # Re-read the configured window behind the last poll instead, exactly as the re-answer path does
+        # (scripts/lib/cio_ask_reanswer.py), and let the check-request id absorb the repeats.
+        lookback_hours = float((config.get("reanswer") or {}).get("lookback_hours") or SOURCE_LOOKBACK_HOURS)
+        since = polled_through - timedelta(hours=lookback_hours)
         try:
             found = source.fetch(by_guid, since)
-            # Requests are persisted before moving the cursor, below; a full page cannot advance beyond its last event.
-            watermark = max((parsed(x.get("observed_at")) or since for x in found), default=now)
             for event in found:
                 for thread in tracked:
                     if event.get("security_guid") not in {e.get("security_guid") for e in thread.get("entities", [])}:
@@ -847,8 +859,8 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
             append(
                 store,
                 "ask.source_checkpoint",
-                {"source": source.name, "watermark": stamp(watermark)},
-                key=(source.name, stamp(watermark)),
+                {"source": source.name, "watermark": stamp(now), "lookback_hours": lookback_hours},
+                key=(source.name, stamp(now)),
                 now=now,
             )
         except Exception as exc:

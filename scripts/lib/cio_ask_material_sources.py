@@ -69,7 +69,10 @@ class SecFilingEventsFile:
                 except json.JSONDecodeError:
                     continue
                 g = str(r.get("subject_guid") or "")
-                at = _parse(r.get("filed_at") or r.get("observed_at"))
+                # ``filed_at`` is a bare date ("2026-11-06"), so reading it first stamped every filing at midnight
+                # of its filing day: a cursor could not pass that day (the same filing was re-read on every poll) and
+                # a filing the producer indexed late was unreachable. Track when it arrived, fall back to the date.
+                at = _parse(r.get("observed_at") or r.get("filed_at"))
                 if g not in guids or not at or at < since:
                     continue
                 out.append(

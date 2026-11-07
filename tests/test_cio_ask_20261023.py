@@ -657,6 +657,34 @@ def test_sec_filing_file_source_matches_on_subject_guid(tmp_path):
     assert [g["event_id"] for g in got] == ["e1"] and "8-K" in got[0]["summary"]
 
 
+def test_sec_filing_source_keeps_the_arrival_time_not_the_filing_date(tmp_path):
+    """``filed_at`` is a bare date ("2026-11-06"), which parses to midnight. Using it as the event time made
+    the cursor stick to a day boundary (the same filing re-read on every poll) and hid any filing the producer
+    indexed late for an earlier date. Live 2026-11-07: accession 0001628280-26-071689 carried
+    filed_at "2026-11-06" and observed_at "2026-11-06T22:20:01.715224+00:00"."""
+    src = tmp_path / "sec.jsonl"
+    src.write_text(
+        json.dumps(
+            {
+                "event_guid": "e-late",
+                "subject_guid": TSLA_GUID,
+                "symbol": "TSLA",
+                "form": "8-K",
+                "filed_at": "2026-11-06",
+                "observed_at": "2026-11-06T22:20:01.715224+00:00",
+                "severity": "medium",
+            }
+        )
+        + "\n"
+    )
+    from datetime import datetime, timezone
+
+    # a poll whose cursor is already past midnight of the filing date still sees the filing indexed that evening
+    got = rean.SecFilingEventsFile(src).fetch({TSLA_GUID}, datetime(2026, 11, 6, 20, tzinfo=timezone.utc))
+    assert [g["event_id"] for g in got] == ["e-late"]
+    assert got[0]["observed_at"] == "2026-11-06T22:20:01.715224+00:00"
+
+
 # ── dry run and test isolation ─────────────────────────────────────────────────────────────────────────────────────
 
 

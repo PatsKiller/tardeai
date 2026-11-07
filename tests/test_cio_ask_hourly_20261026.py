@@ -761,3 +761,71 @@ def test_native_publication_only_queues_even_with_transport_fields(tmp_path):
     out = runtime._post_to_telegram(copied, TID, "Synthetic answer")
     assert out == {"state": "queued", "ref": "outbox-fixture"}
     assert d.store.channel_links(TID) == []
+
+
+# ── the material poll must not outrun a producer that writes late (LQ-20261107-147) ─────────────────────────────
+
+
+class LaggingSource:
+    """A material feed whose row is stamped when the fact happened and written hours later.
+
+    Measured on the live table 2026-11-07: every ``material_changes`` row carried an ``observed_at`` 1.9 to 18.9
+    hours before its ``created_at``, so a poll whose cursor is the previous poll instant never matches one.
+    """
+
+    name = "fixture_feed"
+
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+        self.calls = []
+
+    def fetch(self, guids, since):
+        self.calls.append(since)
+        return [
+            r for r in self.rows
+            if r["security_guid"] in guids and life.parsed(r["observed_at"]) > since
+        ]
+
+
+def test_an_idle_poll_does_not_outrun_a_feed_that_writes_late(tmp_path):
+    """A row written between polls but stamped before the last poll is the normal case, not an edge case."""
+    d = fixture(tmp_path)
+    feed = LaggingSource()
+    first = run(d, events_only=True, now=NOW - timedelta(minutes=5), event_sources=[feed])
+    assert first["checked_count"] == 0
+    # the producer writes its row at NOW, describing a change stamped three hours earlier
+    feed.rows.append(
+        {
+            "event_id": "late-1",
+            "security_guid": ENTITY.security_guid,
+            "symbol": "EXMP",
+            "kind": "material_change:catalyst_new",
+            "observed_at": life.stamp(NOW - timedelta(hours=3)),
+            "summary": "EXMP late-written catalyst",
+        }
+    )
+    result = run(d, events_only=True, now=NOW, event_sources=[feed])
+    requested = [
+        e for e in d.store.events()
+        if e.get("kind") == "ask.check_requested"
+        and ((e.get("trigger") or {}).get("event_id") == "late-1")
+    ]
+    assert requested, "a row written after the last poll but stamped before it was never seen"
+    assert result["checked_count"] == 1
+    # the window is the configured lookback behind the last poll, not "everything since the thread began"
+    assert feed.calls[-1] == (NOW - timedelta(minutes=5)) - timedelta(hours=48)
+
+
+def test_rescanning_the_lookback_window_does_not_recheck_an_event_already_seen(tmp_path):
+    """Re-reading the window is safe: the check request id makes a second sighting a no-op."""
+    d = fixture(tmp_path)
+    feed = LaggingSource(
+        [{"event_id": "seen-1", "security_guid": ENTITY.security_guid, "symbol": "EXMP",
+          "kind": "material_change:catalyst_new", "observed_at": life.stamp(NOW - timedelta(minutes=10)),
+          "summary": "EXMP catalyst"}]
+    )
+    assert run(d, events_only=True, now=NOW - timedelta(minutes=5), event_sources=[feed])["checked_count"] == 1
+    before = len(d.store.events())
+    again = run(d, events_only=True, now=NOW, event_sources=[feed])
+    assert again["checked_count"] == 0
+    assert [e for e in d.store.events()[before:] if e.get("kind") == "ask.check_requested"] == []
