@@ -144,7 +144,9 @@ def _quote_age_seconds(as_of) -> float | None:
         if stamp.tzinfo is None:
             stamp = stamp.replace(tzinfo=timezone.utc)
         return max(0.0, (datetime.now(timezone.utc) - stamp).total_seconds())
-    except Exception:
+    except Exception:  # noqa: BLE001 -- an unreadable stamp cannot be aged
+        # nosemgrep: tq-py-broad-except-returns-default -- None means "cannot date this quote", which the
+        # caller treats as no quote; an undated price is exactly what the operator rule forbids.
         return None
 
 
@@ -158,9 +160,11 @@ def _fresh_price(symbol: str) -> dict | None:
         try:
             from lib.data_broker.market_quote import get_price_batch
         except ImportError:  # pragma: no cover - imported as scripts.watchlist_entry_planner
-            from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore
+            from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore -- package import when scripts/ is not on sys.path
         quote = (get_price_batch(_broker_db_query(), [symbol.upper()], max_age_hours=1) or {}).get(symbol.upper())
-    except Exception:
+    except Exception:  # noqa: BLE001 -- a failed read is no quote
+        # nosemgrep: tq-py-broad-except-returns-default -- None already means "no quote that satisfies
+        # the rule", and the caller skips the symbol as no_fresh_price rather than planning off a close.
         return None
     if not quote or quote.get("price") is None:
         return None

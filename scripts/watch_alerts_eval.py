@@ -102,9 +102,11 @@ def _price_quotes(ex, symbols: list[str]) -> dict[str, dict]:
         try:
             from lib.data_broker.market_quote import get_price_batch
         except ImportError:
-            from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore
+            from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore -- package import when scripts/ is not on sys.path
         return get_price_batch(ex, symbols, max_age_hours=12, finviz_first=True) or {}
     except Exception as exc:  # noqa: BLE001 -- never crash the lane; never fire on an unread price
+        # nosemgrep: tq-py-broad-except-returns-default -- "" is the safe state and it is not silent:
+        # the log line below names the failure, and an alert on an unread price must not fire.
         _log(f"price batch unavailable ({type(exc).__name__}: {str(exc)[:80]}); price alerts skipped this pass")
         return {}
 
