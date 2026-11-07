@@ -9,12 +9,37 @@ Runs daily (add to cron). Checks:
   4. Pipeline self-monitoring failures
 
 Uses alert_dispatcher for routing, dedup, and fatigue detection.
+
+A real run writes one durable LaneRunReceipt (``data/runtime/alert-missing-conditions_last.json``)
+and the registry reads its ``ok_at`` as this lane's output proof. ``ok_at`` advances only on exit 0,
+so a crashed pass goes stale instead of green. ``--dry-run`` is an offline plan: it runs before the
+.env load and every DB/network/sender import and write, and writes no receipt.
 """
 import json
 import os
 import sys
 from datetime import datetime, date
 from pathlib import Path
+
+LANE_ID = "alert-missing-conditions"
+
+
+def _dry_run_plan() -> int:
+    """The offline plan: one DRY-RUN line plus one LaneOutput@v1 line, no env load and no write."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+    from lib.lane_output import emit as _emit, output_block as _block
+
+    print(f"DRY-RUN {LANE_ID}: would check stale proposals (PENDING > 7 days), Anthropic API credit depletion "
+          "(one paid probe), email-digest staleness and rebalance-data staleness, and dispatch each finding "
+          "through alert_dispatcher; no env load, no DB, no network, no probe, no send, no file write")
+    _emit(LANE_ID, "dry_run", _block(produced=0, attempted=0, empty_reason="dry_run", unit="alert"))
+    return 0
+
+
+if __name__ == "__main__" and "--dry-run" in sys.argv[1:]:
+    # n8n onboarding convention (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md §E): the dry run wins over
+    # the live path and reaches the write nowhere. Runs before the .env load below.
+    raise SystemExit(_dry_run_plan())
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -58,12 +83,17 @@ def check_stale_proposals(conn):
     return count
 
 
-def check_api_credits(conn):
-    """Check if Anthropic API is accessible."""
+def check_api_credits(conn) -> tuple[int, str]:
+    """Check whether the Anthropic API answer shows depleted credit.
+
+    Returns ``(alerts_sent, probe_outcome)``. ``probe_outcome`` is carried into the run receipt so a probe
+    that could not run (no key, timeout, HTTP error) is visible instead of reading as "credits fine": the
+    old form returned 0 for both.
+    """
     from alert_dispatcher import alert_api_credits_depleted
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
-        return 0
+        return 0, "no_key"
 
     try:
         import requests
@@ -88,11 +118,11 @@ def check_api_credits(conn):
             if "credit" in error_msg.lower() or "balance" in error_msg.lower():
                 result = alert_api_credits_depleted("Anthropic", error_msg,
                                                      source="alert_missing_conditions")
-                return 1 if result.get("sent") else 0
+                return (1 if result.get("sent") else 0), "credits_depleted"
         # 200 = credits OK (will consume minimal tokens, but confirms access)
-    except Exception:
-        pass
-    return 0
+        return 0, "ok" if resp.status_code == 200 else f"http_{resp.status_code}"
+    except Exception as exc:  # noqa: BLE001 -- the outcome is recorded in the receipt, not swallowed
+        return 0, f"error:{type(exc).__name__}"
 
 
 def check_email_digest(conn):
@@ -158,26 +188,52 @@ def check_rebalance_staleness(conn):
     return 0
 
 
-def main():
+def main(argv=None) -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Alert on conditions that have no dedicated alert.")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="offline plan: print what would be checked; no env load, DB, network, probe, send or write")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        return _dry_run_plan()
+
+    # A real run writes one durable LaneRunReceipt; the registry reads ok_at as this lane's output proof.
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+
+    started = now_iso()
     print(f"[alert_missing_conditions] Starting — {datetime.now().isoformat()}")
-    conn = _get_conn()
+    summary: dict = {}
+    code = 0
+    error = None
     try:
-        stale_proposals = check_stale_proposals(conn)
-        print(f"  Stale proposal alerts: {stale_proposals}")
+        conn = _get_conn()
+        try:
+            summary["stale_proposal_alerts"] = check_stale_proposals(conn)
+            print(f"  Stale proposal alerts: {summary['stale_proposal_alerts']}")
 
-        api_credits = check_api_credits(conn)
-        print(f"  API credit alerts: {api_credits}")
+            summary["api_credit_alerts"], summary["api_probe"] = check_api_credits(conn)
+            print(f"  API credit alerts: {summary['api_credit_alerts']} (probe: {summary['api_probe']})")
 
-        email = check_email_digest(conn)
-        print(f"  Email digest alerts: {email}")
+            summary["email_digest_alerts"] = check_email_digest(conn)
+            print(f"  Email digest alerts: {summary['email_digest_alerts']}")
 
-        rebalance = check_rebalance_staleness(conn)
-        print(f"  Rebalance staleness alerts: {rebalance}")
+            summary["rebalance_stale_alerts"] = check_rebalance_staleness(conn)
+            print(f"  Rebalance staleness alerts: {summary['rebalance_stale_alerts']}")
 
-        print(f"[alert_missing_conditions] Complete — {datetime.now().isoformat()}")
-    finally:
-        conn.close()
+            print(f"[alert_missing_conditions] Complete — {datetime.now().isoformat()}")
+        finally:
+            conn.close()
+    except Exception as exc:  # noqa: BLE001 -- typed into the receipt; a pass that could not run is not ok
+        code = 1
+        error = type(exc).__name__
+        print(f"[alert_missing_conditions] FAILED: {error}", file=sys.stderr)
+    summary["alerts"] = sum(v for k, v in summary.items()
+                            if k.endswith("_alerts") and isinstance(v, int) and not isinstance(v, bool))
+    write_lane_receipt(LANE_ID, ok=code == 0, started_at=started, script="alert_missing_conditions.py",
+                       exit_code=code, summary=summary, error=error)
+    return code
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
