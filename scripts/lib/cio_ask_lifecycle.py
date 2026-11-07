@@ -35,7 +35,31 @@ REQUEST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
 # runtime failure. Its gap is already recorded, so failing the check forever only re-opens the lane's
 # breaker every hour while the engine stays off (2026-11-01).
 SOURCE_ANSWERED_STATUSES = frozenset({"ok", "no_data", "not_applicable", "rejected", "disabled"})
+# A status that means "the source ran out of time" rather than "the source is broken". It is not an answer, so the
+# check still does not conclude a result (SOURCE_CHECK_INCOMPLETE, nothing is recorded as no_change) — but it is
+# deferred to the next slot instead of failing the lane. 2026-11-02: internal.cio_record_research and news.articles
+# timed out, three hourly checks failed in a row, the n8n breaker opened for cio-ask-lifecycle, and the lane was
+# never requested again (last relay request 2026-11-02T18:00Z). A transient provider latency must not be able to
+# stop Ask-the-CIO tracking until an agent notices.
+TRANSIENT_SOURCE_STATUSES = frozenset({"timeout"})
 _REASON_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+
+
+def _trailing_source_deferrals(events) -> int:
+    """How many of the thread's most recent checks were deferred because a source timed out.
+
+    Deferral is bounded on purpose. One timed-out source must not fail the lane, but a source that times out every
+    hour is an outage: deferring forever would leave the lane green (``ok``) while the thread never updates and
+    nobody is told. The chain breaks at any check that concluded something, so a healthy hour resets it.
+    """
+    count = 0
+    for event in reversed([e for e in events if e.get("kind") == "ask.check_finished"]):
+        if event.get("outcome") != "deferred":
+            break
+        if not str(event.get("reason") or "").startswith("CHECK_DEFERRED:"):
+            break  # an ANSWER_COOLDOWN deferral: the sources answered, so the source chain is intact
+        count += 1
+    return count
 
 
 def _check_failed_reason(exc: BaseException) -> str:
@@ -909,6 +933,9 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                     exc.source_check = sorted(
                         {f"{x.get('source')}:{x.get('status')}" for x in errors if x.get("source")}
                     )
+                    # A source that ran out of time did not conclude anything; the check is deferred to the
+                    # next slot, never silently counted as done and never charged to the lane as a failure.
+                    exc.source_check_transient = all(x.get("status") in TRANSIENT_SOURCE_STATUSES for x in errors)
                     raise exc
                 prior_checks = [
                     e
@@ -1080,6 +1107,38 @@ def run_once(*, deps=None, dry_run=False, events_only=False, now=None, collect=N
                     # Name the sources that did not answer, so the next failure is diagnosable
                     # instead of a bare ValueError (2026-11-01).
                     reason += ":" + ",".join(detail)
+                if getattr(exc, "source_check_transient", False):
+                    # Nothing was concluded, so nothing is recorded as no_change — but a timed-out source is
+                    # deferred, not failed: the thread retries at the next slot and the run stays ok, so the
+                    # breaker cannot turn provider latency into a permanent outage (2026-11-02).
+                    limit = max(
+                        1,
+                        int(
+                            (config.get("lifecycle") or {}).get("max_consecutive_source_deferrals", 6)
+                        ),
+                    )
+                    if _trailing_source_deferrals(tevents) < limit:
+                        life = finish_check(
+                            d,
+                            tid,
+                            rid,
+                            now=now,
+                            outcome="deferred",
+                            state="deferred",
+                            reason=reason.replace("CHECK_FAILED:", "CHECK_DEFERRED:", 1),
+                            checked=False,
+                            automated=True,
+                            next_eligible_at=stamp(next_hour(now)),
+                        )
+                        report["deferred_count"] += 1
+                        report["threads"].append(
+                            {"thread_id": tid, "lifecycle": life, "consumer_readback": {"state": "not_measured"}}
+                        )
+                        continue
+                    # The deferral budget is spent: this is not provider latency any more, it is an outage, and
+                    # the thread must say so. Failing once per budget (not every hour) keeps the breaker shut
+                    # while the failure lands in the receipt, the thread's reason and the lane's source_errors.
+                    reason = reason.replace("SOURCE_CHECK_INCOMPLETE", "SOURCE_TIMEOUT_LIMIT", 1)
                 life = finish_check(
                     d,
                     tid,
