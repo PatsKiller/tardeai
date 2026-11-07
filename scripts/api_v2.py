@@ -47036,6 +47036,7 @@ def _redeploy_history(query=None):
     """
     q = query or {}
     last: Exception | None = None
+    rollback_failed: str | None = None
     for _attempt in (1, 2):  # read-only: a retry can only cost one more SELECT
         conn = None
         try:
@@ -47049,14 +47050,19 @@ def _redeploy_history(query=None):
             return res
         except Exception as e:  # noqa: BLE001 -- retried once, then reported with its type
             last = e
-            try:
-                if conn is not None:
+            if conn is not None:
+                try:
                     conn.rollback()  # a failed statement leaves the thread-local transaction aborted
-            except Exception:  # noqa: BLE001
-                pass
-    print(f"  [redeploy/history] build_history failed after retry: {type(last).__name__}: {last}",
-          file=_sys_heal.stderr)
-    return {"ok": False, "error": str(last)[:200], "error_type": type(last).__name__}
+                except Exception as rb:  # noqa: BLE001 -- carried into the report below, never swallowed
+                    rollback_failed = f"{type(rb).__name__}: {rb}"
+    detail = f"{type(last).__name__}: {last}"
+    if rollback_failed:
+        detail += f" (and the rollback failed: {rollback_failed})"
+    print(f"  [redeploy/history] build_history failed after retry: {detail}", file=_sys_heal.stderr)
+    out = {"ok": False, "error": str(last)[:200], "error_type": type(last).__name__}
+    if rollback_failed:
+        out["rollback_error"] = rollback_failed[:200]
+    return out
 
 
 def _redeploy_capital_pools(query=None):

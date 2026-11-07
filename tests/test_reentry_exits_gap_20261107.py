@@ -89,6 +89,28 @@ def test_after_the_retry_it_names_the_exception_instead_of_a_bare_ok_false(monke
     assert "InFailedSqlTransaction" in capsys.readouterr().err, "the server log gets the failure too"
 
 
+def test_a_rollback_that_itself_fails_is_reported_beside_the_read_error(monkeypatch, capsys):
+    """The rollback guard must never be a silent ``except: pass`` — a broken connection is news."""
+    import db_adapter
+
+    class _DeadConn(_FakeConn):
+        def rollback(self):
+            super().rollback()
+            raise RuntimeError("connection already closed")
+
+    monkeypatch.setattr(db_adapter, "_get_conn", lambda: _DeadConn())
+
+    def always_aborted(cur, *, days=3650):
+        raise ABORTED
+
+    monkeypatch.setattr(redeploy_capital_book, "build_history", always_aborted)
+    res = api_v2._redeploy_history({"days": "365"})
+    assert res["error_type"] == "InFailedSqlTransaction"
+    assert res["rollback_error"] == "RuntimeError: connection already closed"
+    logged = capsys.readouterr().err
+    assert "InFailedSqlTransaction" in logged and "and the rollback failed: RuntimeError" in logged
+
+
 # ── the desk: the gap carries the reason it used to swallow ──────────────────
 
 
