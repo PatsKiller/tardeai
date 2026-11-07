@@ -556,6 +556,60 @@ def _systemd_next_elapse(unit: str) -> Optional[str]:
     return iso
 
 
+SUPERSESSION_HOPS = 4
+
+
+def _follow_supersession(
+    lanes: dict[str, dict[str, Any]], lane_id: str, lane: dict[str, Any]
+) -> Optional[dict[str, Any]]:
+    """The lane that now owns a retired lane's schedule.
+
+    A producer whose lane is RETIRED but whose row names ``superseded_by`` is
+    still scheduled — under the successor.  Following the chain (bounded, cycle
+    safe) is what keeps a clock truthful after a C1 manifest flip: without it
+    the surface shows ``lane state RETIRED`` forever and no next run at all.
+    Returns None when the chain ends on a lane that is missing or not ACTIVE.
+    """
+    seen = {lane_id}
+    current_id, current = lane_id, lane
+    for _ in range(SUPERSESSION_HOPS):
+        if str(current.get("state") or "").upper() == "ACTIVE":
+            return {"lane_id": current_id, "lane": current, "followed_from": sorted(seen - {current_id})}
+        nxt = str(current.get("superseded_by") or "").strip()
+        if not nxt or nxt in seen or not lanes.get(nxt):
+            return None
+        seen.add(nxt)
+        current_id, current = nxt, lanes[nxt]
+    return None
+
+
+def _pipeline_step_schedule(lane: dict[str, Any], root: Optional[Path] = None) -> Optional[dict[str, Any]]:
+    """The absorbed step's own cron, when a retired lane records its ``c1_flip``.
+
+    A pipeline lane can run on more days than the step it absorbed
+    (``premarket-data-pipeline`` fires daily; its ``indicator_cache_refresh``
+    step is ``45 5 * * 1-5``), so the step's declared ``cron_schedule`` — not
+    the host lane's expression — is the producer's real schedule.
+    """
+    flip = lane.get("c1_flip") if isinstance(lane.get("c1_flip"), dict) else {}
+    manifest = str(flip.get("manifest") or "")
+    stage = str(flip.get("stage") or "")
+    step_id = str(flip.get("step_id") or "")
+    if not (manifest and stage and step_id):
+        return None
+    path = (Path(root) if root else PROJECT_ROOT) / "config" / "pipelines" / f"{manifest}.json"
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    steps = ((doc.get("stages") or {}).get(stage) or {}).get("steps") or []
+    for step in steps:
+        if isinstance(step, dict) and str(step.get("id") or "") == step_id:
+            expr = str(step.get("cron_schedule") or "").strip()
+            return {"expression": expr, "step_id": step_id, "pipeline": f"{manifest}:{stage}"} if expr else None
+    return None
+
+
 def next_scheduled_run(
     lane_ids: Iterable[str],
     *,
@@ -576,11 +630,20 @@ def next_scheduled_run(
         if not lane:
             reasons.append(f"{lane_id}: not in lane_registry")
             continue
+        followed: list[str] = []
+        step: Optional[dict[str, Any]] = None
         if str(lane.get("state") or "").upper() != "ACTIVE":
-            reasons.append(f"{lane_id}: lane state {lane.get('state')}")
-            continue
+            hop = _follow_supersession(lanes, lane_id, lane)
+            if hop is None:
+                reasons.append(f"{lane_id}: lane state {lane.get('state')}")
+                continue
+            step = _pipeline_step_schedule(lane, root)
+            followed = hop["followed_from"]
+            lane_id, lane = hop["lane_id"], hop["lane"]
         sched = lane.get("scheduler") or {}
         kind, expr = sched.get("kind"), str(sched.get("expression") or "")
+        if step and kind == "cron":
+            expr = step["expression"]
         fire: Optional[datetime] = None
         if kind == "cron":
             # a multi-line lane stores its schedules joined by " + ": the soonest next fire of any of them
@@ -595,7 +658,14 @@ def next_scheduled_run(
         else:
             reasons.append(f"{lane_id}: scheduler kind {kind!r} declares no time")
         if fire is not None and (best is None or fire < best[0]):
-            best = (fire, {"lane_id": lane_id, "scheduler_kind": kind, "expression": expr})
+            resolved: dict[str, Any] = {"lane_id": lane_id, "scheduler_kind": kind, "expression": expr}
+            if followed:
+                resolved["followed_from"] = followed
+            if step:
+                resolved["schedule_source"] = "pipeline_step"
+                resolved["step_id"] = step["step_id"]
+                resolved["pipeline"] = step["pipeline"]
+            best = (fire, resolved)
     if best is None:
         return {"next_run_at": None, "reason": "; ".join(reasons) or "no declared schedule"}
     return {"next_run_at": best[0].isoformat(), "reason": None, **best[1]}
