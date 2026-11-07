@@ -628,6 +628,17 @@ def show_status():
 
 # ── Entry Point ──────────────────────────────────────────────────────────
 
+LANE_ID = "agent-event-router"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
+
 def main():
     dry_run = "--dry-run" in sys.argv
     status_only = "--status" in sys.argv
@@ -640,18 +651,46 @@ def main():
     _log("=" * 60)
 
     if status_only:
+        # An inspection, not a scheduled run: the lane's own receipt stays untouched.
         show_status()
         return
 
+    if dry_run:
+        try:
+            processed = drain_queue(True)
+        except Exception as e:
+            _log(f"FATAL: {e}")
+            import traceback
+            traceback.print_exc()
+            raise SystemExit(1)
+        _log(f"Processed {processed} events (dry run — nothing written).")
+        # Writes nothing; prints what a real run would write (lane_last_receipt.dry_run_report).
+        _receipt_lib().dry_run_report(
+            LANE_ID, {"would_process": processed},
+            would_write=["agent_event_queue (status transitions)", "watchlist_agent_jobs (insert)"])
+        return
+
+    lr = _receipt_lib()
+    started = lr.now_iso()
     try:
-        processed = drain_queue(dry_run)
-        _log(f"Processed {processed} events.")
-    except Exception as e:
-        _log(f"FATAL: {e}")
+        processed = drain_queue(False)
+    except BaseException as exc:
+        # Every exit writes: a failed run must show as failed, never keep a previous ok_at looking green.
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="agent_event_router.py", error=type(exc).__name__,
+                              output={"produced_count": 0, "attempted_count": 0,
+                                      "skipped_reasons": {"run_failed": 1}})
+        _log(f"FATAL: {exc}")
         import traceback
         traceback.print_exc()
-        sys.exit(1)
-
+        raise SystemExit(1)
+    _log(f"Processed {processed} events.")
+    # produced_count = events drained (the lane's registry output_signal is data/runtime/agent-event-router_last.json).
+    lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                          script="agent_event_router.py", summary={"processed": processed},
+                          output={"produced_count": processed, "attempted_count": processed,
+                                  "skipped_reasons": {},
+                                  "empty_reason": "no_pending_events" if processed == 0 else None})
     _log("")
 
 

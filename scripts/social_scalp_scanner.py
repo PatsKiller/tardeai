@@ -1055,7 +1055,23 @@ def _send_wait_alert(symbol: str, score: int, finviz_data: dict, mention_count: 
     _send_symbol_alert(symbol, msg, priority="P2")  # WAIT: watched, not time-critical
 
 
+LANE_ID = "social-scalp-scanner"
+#: What the last run_scan() call did, for main()'s lane receipt (module global because run_scan predates the
+#: receipt and its callers are the scanner's own cron/n8n invocations).
+LAST_COUNTS: dict = {}
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
+
 def run_scan():
+    LAST_COUNTS.clear()
+    LAST_COUNTS.update(candidates=0, saved=0, go=0, reason=None)
     conn = get_db()
     logger.info("=== Social Scalp Scan starting ===")
 
@@ -1064,6 +1080,7 @@ def run_scan():
     candidates = get_social_candidates(conn)
     if not candidates:
         logger.info("No candidates — exiting")
+        LAST_COUNTS["reason"] = "no_social_candidates"
         conn.close()
         return
 
@@ -1091,6 +1108,8 @@ def run_scan():
 
     if not symbols_to_enrich:
         logger.info("No symbols to enrich after filters — exiting")
+        LAST_COUNTS["candidates"] = len(candidates)
+        LAST_COUNTS["reason"] = "no_symbols_after_filters"
         conn.close()
         return
 
@@ -1280,6 +1299,7 @@ def run_scan():
             decision,
             candidate["sources"],
         )
+        LAST_COUNTS["saved"] += 1
         stamp_discovery_trace(conn, "scalp_scan_results", symbol, discovery_trace_id)
         stamp_route_fields(conn, "scalp_scan_results", symbol, route, catalyst_enrichment)
         stamp_scout_fields(conn, "scalp_scan_results", symbol, route)
@@ -1407,7 +1427,38 @@ def run_scan():
         # AVOID — stored only, no alert. Dashboard reads scalp_scan_results to show the AVOID list.
 
     logger.info("=== Scan complete: %d GO/A+ alerts fired ===", go_count)
+    LAST_COUNTS.update(candidates=len(candidates), go=go_count,
+                       reason=None if LAST_COUNTS["saved"] else "no_rows_saved")
     conn.close()
+
+
+def _write_ok_receipt(lr, started) -> None:
+    """The lane receipt for a completed scan: produced_count = scalp_scan_results rows saved (the lane's registry
+    output_signal is data/runtime/social-scalp-scanner_last.json); attempted = candidates examined."""
+    lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                          script="social_scalp_scanner.py", summary=dict(LAST_COUNTS),
+                          output={"produced_count": int(LAST_COUNTS.get("saved") or 0),
+                                  "attempted_count": int(LAST_COUNTS.get("candidates") or 0),
+                                  "skipped_reasons": {}, "empty_reason": LAST_COUNTS.get("reason")})
+
+
+def _run_with_receipt(after=None) -> int:
+    """run_scan() plus the lane receipt on EVERY exit (ok, empty and failed); ``after`` = post-scan step."""
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    try:
+        run_scan()
+        if after is not None:
+            after()
+    except BaseException as exc:
+        # A failed run must show as failed, never keep a previous ok_at looking green.
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="social_scalp_scanner.py", error=type(exc).__name__,
+                              output={"produced_count": 0, "attempted_count": 0,
+                                      "skipped_reasons": {"run_failed": 1}})
+        raise
+    _write_ok_receipt(lr, started)
+    return 0
 
 
 def main(argv=None) -> int:
@@ -1415,16 +1466,39 @@ def main(argv=None) -> int:
     advanced (lib/scalp_list_trigger, consumer social-scalp-scanner); with SCALP_HOT_TIER off it fires on the legacy
     0,30 slots. The gate reads only; nothing in the scan, its GO de-dup or its sends changes. No flag: as before."""
     argv = sys.argv[1:] if argv is None else list(argv)
-    if "--on-list-advance" not in argv:
-        run_scan()
+    if "--dry-run" in argv:
+        # The n8n dry arm (the allowlist's dry_run_arg). This script has no read-only mode, and its scan SENDS
+        # Telegram alerts and writes rows — so a dry run must not reach it at all: print what a real run would do.
+        print("DRY-RUN social-scalp-scanner: would read social candidates -> scalp filters -> Finviz "
+              "enrichment -> upsert scalp_scan_results + trade_ai_scans, then send GO/A+ and WAIT alerts for "
+              "non-AVOID rows; nothing read from the DB, no source call, no send, no lane receipt")
         return 0
+    if "--on-list-advance" not in argv:
+        return _run_with_receipt()
     from lib import scalp_list_trigger as _trig
 
     gate = _trig.gate_main("social-scalp-scanner")
     if not gate["decision"]["fire"]:
+        # A real run with nothing due: the lane is alive, and the receipt says why it produced nothing.
+        lr = _receipt_lib()
+        lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=lr.now_iso(),
+                              script="social_scalp_scanner.py",
+                              output={"produced_count": 0, "attempted_count": 0,
+                                      "skipped_reasons": {}, "empty_reason": "list_not_advanced"})
         return 0
-    run_scan()
-    _trig.commit("social-scalp-scanner", gate["list_env"], decision=gate["decision"]["decision"])
+    # The gate decided to scan: the scan and its commit keep their order, and the same receipt covers both.
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    try:
+        run_scan()
+        _trig.commit("social-scalp-scanner", gate["list_env"], decision=gate["decision"]["decision"])
+    except BaseException as exc:
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="social_scalp_scanner.py", error=type(exc).__name__,
+                              output={"produced_count": 0, "attempted_count": 0,
+                                      "skipped_reasons": {"run_failed": 1}})
+        raise
+    _write_ok_receipt(lr, started)
     return 0
 
 

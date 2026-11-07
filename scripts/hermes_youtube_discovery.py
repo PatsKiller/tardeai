@@ -107,66 +107,112 @@ def get_targets(limit):
     return targets
 
 
+LANE_ID = "hermes-youtube-discovery"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="fetch transcripts + stage findings (default: dry-run)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="offline plan; wins over --apply (normally handled before imports, so main() stays test-safe)")
     ap.add_argument("--limit", type=int, default=5, help="number of target symbols per run")
     ap.add_argument("--videos", type=int, default=2, help="videos per target")
     args = ap.parse_args()
+    apply = bool(args.apply) and not args.dry_run
 
     if KILL.exists():
         log.info("kill switch present — aborting")
-        return
+        if apply:
+            lr = _receipt_lib()
+            # The lane ran and was deliberately suppressed: nothing produced, and the reason says so.
+            lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=lr.now_iso(),
+                                  script="hermes_youtube_discovery.py",
+                                  output={"produced_count": 0, "attempted_count": 0,
+                                          "skipped_reasons": {"kill_switch": 1},
+                                          "empty_reason": "kill_switch_present"})
+        return 0
 
-    from db_adapter import get_connection
-    syms = get_targets(args.limit)
-    log.info("Targets (%d): %s", len(syms), ", ".join(syms))
+    lr = _receipt_lib() if apply else None
+    started = lr.now_iso() if lr else None
+    try:
+        from db_adapter import get_connection
+        syms = get_targets(args.limit)
+        log.info("Targets (%d): %s", len(syms), ", ".join(syms))
 
-    ingest_video = None
-    conn = cur = None
-    if args.apply:
-        from youtube_transcript_ingest import ingest_video as _iv
-        ingest_video = _iv
-        conn = get_connection(); cur = conn.cursor()
+        ingest_video = None
+        conn = cur = None
+        if apply:
+            from youtube_transcript_ingest import ingest_video as _iv
+            ingest_video = _iv
+            conn = get_connection(); cur = conn.cursor()
 
-    staged = ingested = found_total = 0
-    for sym in syms:
-        urls = searx_youtube(f"{sym} stock analysis", args.videos)
-        found_total += len(urls)
-        got = []
-        if args.apply:
-            for u in urls:
-                try:
-                    res = ingest_video(u, added_by="hermes_youtube_discovery")
-                    if res and "error" not in res:
-                        got.append(u)
-                        if res.get("status") not in ("already_exists",):
-                            ingested += 1
-                except Exception as e:
-                    log.warning("  ingest failed %s: %s", u, e)
-                time.sleep(1.5)  # be gentle — YouTube rate-limits
-            if urls:
-                summary = (f"Hermes YouTube discovery for {sym}: {len(urls)} videos found via SearXNG, "
-                           f"{len(got)} transcripts available. Feeds RAG via curation.")
-                # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
-                from lib.writers.hermes_research_writer import write_research_rows
-                rc = write_research_rows(cur, [{
-                    "research_type": "youtube_discovery", "symbol": sym, "topic": f"youtube_discovery: {sym}",
-                    "summary": summary, "confidence_score": 0.6, "status": "staged", "source": "hermes",
-                    "source_urls_json": urls, "hermes_agent_name": "hermes_youtube_discovery",
-                    "model_used": "gemma3:4b",
-                }], producer="hermes_youtube_discovery")
-                conn.commit(); staged += rc.rows_written
-        log.info("  %s: %d videos%s", sym, len(urls), f", {len(got)} transcripts" if args.apply else "")
-        time.sleep(1)
+        staged = ingested = found_total = failed = 0
+        for sym in syms:
+            urls = searx_youtube(f"{sym} stock analysis", args.videos)
+            found_total += len(urls)
+            got = []
+            if apply:
+                for u in urls:
+                    try:
+                        res = ingest_video(u, added_by="hermes_youtube_discovery")
+                        if res and "error" not in res:
+                            got.append(u)
+                            if res.get("status") not in ("already_exists",):
+                                ingested += 1
+                    except Exception as e:
+                        failed += 1
+                        log.warning("  ingest failed %s: %s", u, e)
+                    time.sleep(1.5)  # be gentle — YouTube rate-limits
+                if urls:
+                    summary = (f"Hermes YouTube discovery for {sym}: {len(urls)} videos found via SearXNG, "
+                               f"{len(got)} transcripts available. Feeds RAG via curation.")
+                    # One write module per store (SoT Phase 9): SQL lives in lib.writers.hermes_research_writer.
+                    from lib.writers.hermes_research_writer import write_research_rows
+                    rc = write_research_rows(cur, [{
+                        "research_type": "youtube_discovery", "symbol": sym, "topic": f"youtube_discovery: {sym}",
+                        "summary": summary, "confidence_score": 0.6, "status": "staged", "source": "hermes",
+                        "source_urls_json": urls, "hermes_agent_name": "hermes_youtube_discovery",
+                        "model_used": "gemma3:4b",
+                    }], producer="hermes_youtube_discovery")
+                    conn.commit(); staged += rc.rows_written
+            log.info("  %s: %d videos%s", sym, len(urls), f", {len(got)} transcripts" if apply else "")
+            time.sleep(1)
 
-    if conn:
-        conn.close()
-    mode = "APPLIED" if args.apply else "DRY-RUN"
+        if conn:
+            conn.close()
+    except BaseException as exc:
+        if lr:
+            # Every exit writes: a failed run never keeps a previous ok_at looking green.
+            lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                  script="hermes_youtube_discovery.py", error=type(exc).__name__,
+                                  output={"produced_count": 0, "attempted_count": 0,
+                                          "skipped_reasons": {"run_failed": 1}})
+        raise
+
+    mode = "APPLIED" if apply else "DRY-RUN"
     log.info("[%s] %d targets, %d videos found, %d staged, %d new transcripts", mode, len(syms), found_total, staged, ingested)
-    if not args.apply:
+    if not apply:
         log.info("Dry-run — re-run with --apply to fetch transcripts + stage.")
+        return 0
+    # produced_count = hermes_research_intelligence rows staged (the lane's registry output_signal is
+    # data/runtime/hermes-youtube-discovery_last.json); attempted_count = videos found and considered.
+    lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                          script="hermes_youtube_discovery.py",
+                          summary={"targets": len(syms), "videos_found": found_total,
+                                   "staged": staged, "new_transcripts": ingested},
+                          output={"produced_count": staged, "attempted_count": found_total,
+                                  "skipped_reasons": {"ingest_failed": failed},
+                                  "empty_reason": "no_findings_staged" if staged == 0 else None})
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

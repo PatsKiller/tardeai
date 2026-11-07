@@ -472,9 +472,27 @@ def ensure_schema(conn) -> None:
     conn.commit()
 
 
+LANE_ID = "run-scalp-shadow-logger"
+#: What the last run() call did, for main()'s lane receipt (module global because run() predates the receipt
+#: and its callers use the return code; the wrapper scripts/run_scalp_shadow_logger.sh runs this module).
+LAST_COUNTS: dict = {}
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
+
 def run(args) -> int:
+    LAST_COUNTS.clear()
+    LAST_COUNTS.update(scored=0, rows_written=0, trigger_rows_written=0, reason=None)
     if KILL_FILE.exists():
-        print(f"HALT: kill file {KILL_FILE} present"); return 0
+        print(f"HALT: kill file {KILL_FILE} present")
+        LAST_COUNTS["reason"] = "kill_switch"
+        return 0
     cfg = load_config()
     # M3-S7: notifications.emit MAY be true now (Telegram alert tiers enabled). Proposals remain OFF
     # by construction — this module has no proposal/order path (enforced by the AST isolation test).
@@ -500,7 +518,9 @@ def run(args) -> int:
         as_of = now
         fetch_days = 3
         if minute < 0 or minute >= n_min:
-            print(f"outside RTH (minute={minute}); nothing to log"); return 0
+            print(f"outside RTH (minute={minute}); nothing to log")
+            LAST_COUNTS["reason"] = "outside_rth"
+            return 0
 
     symbols = ([s.strip().upper() for s in args.symbols.split(",")] if args.symbols
                else resolve_universe(conn, cfg))
@@ -730,6 +750,8 @@ def run(args) -> int:
     print(f"\n  lane distribution: {dict(dist)}")
     _emit = bool(cfg.get("notifications", {}).get("emit", False))
     print(f"  scored={len(results)} rows_written={written} emit={_emit}")
+    LAST_COUNTS.update(scored=len(results), rows_written=written, trigger_rows_written=twritten,
+                       reason=None if results else "no_scored_symbols")
 
     # M3-S7: ignition alerts (§3.4) — ALERTS ONLY, never proposals. Gated by notifications.emit.
     # LIVE runs send via alert_dispatcher (which dedupes once/day/symbol + rate-limits 15/hr);
@@ -845,7 +867,39 @@ def main(argv=None) -> int:
         ap.error("provide --replay YYYY-MM-DD or --live")
     if args.dry_run:
         args.apply = False
-    return run(args)
+    if not args.apply:
+        # A dry run (--dry-run, or a bare non-apply run) writes no lane receipt: it reports what a real run
+        # would write. The wrapper this lane ships with forwards --dry-run here (run_scalp_shadow_logger.sh).
+        rc = run(args)
+        if rc == 0:
+            _receipt_lib().dry_run_report(
+                LANE_ID, dict(LAST_COUNTS),
+                would_write=["scalp_ignition_events (insert)",
+                             "scalp_t2_shadow (insert, when the moomoo arm is enabled and armed)",
+                             "active_trader decision journal (live runs only)"])
+        return rc
+    lr = _receipt_lib()
+    started = lr.now_iso()
+    try:
+        rc = run(args)
+    except BaseException as exc:
+        # Every exit writes: a failed run never keeps a previous ok_at looking green.
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                              script="scalp_shadow_logger.py", error=type(exc).__name__,
+                              output={"produced_count": 0, "attempted_count": 0,
+                                      "skipped_reasons": {"run_failed": 1}})
+        raise
+    produced = int(LAST_COUNTS.get("rows_written") or 0) + int(LAST_COUNTS.get("trigger_rows_written") or 0)
+    reason = LAST_COUNTS.get("reason")
+    # produced_count = scalp_ignition_events rows written (ignition + TRIGGER lanes after dedup); the lane's
+    # registry output_signal is data/runtime/run-scalp-shadow-logger_last.json.
+    lr.write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started,
+                          script="scalp_shadow_logger.py", summary=dict(LAST_COUNTS),
+                          output={"produced_count": produced,
+                                  "attempted_count": int(LAST_COUNTS.get("scored") or 0),
+                                  "skipped_reasons": {},
+                                  "empty_reason": reason or ("no_rows_written" if produced == 0 else None)})
+    return rc
 
 
 if __name__ == "__main__":

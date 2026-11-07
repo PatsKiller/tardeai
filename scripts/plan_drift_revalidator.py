@@ -99,23 +99,59 @@ def find_defective(top: int, cap: int) -> list[dict]:
     return out
 
 
+LANE_ID = "plan-drift-revalidator"
+
+
+def _receipt_lib():
+    try:
+        from scripts.lib import lane_last_receipt as lr
+    except ImportError:
+        from lib import lane_last_receipt as lr
+    return lr
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="re-plan defective symbols (default: dry-run report)")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="dry-run report (default; wins over --apply — normally handled before imports)")
     ap.add_argument("--top", type=int, default=250, help="Hermes-rank scope (default 250)")
     ap.add_argument("--cap", type=int, default=25, help="max symbols re-planned per run (default 25)")
     a = ap.parse_args()
+    apply = bool(a.apply) and not a.dry_run
 
-    bad = find_defective(a.top, a.cap)
+    lr = _receipt_lib() if apply else None
+    started = lr.now_iso() if lr else None
+    try:
+        bad = find_defective(a.top, a.cap)
+    except BaseException as exc:
+        if lr:
+            lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                  script="plan_drift_revalidator.py", error=type(exc).__name__,
+                                  output={"produced_count": 0, "attempted_count": 0,
+                                          "skipped_reasons": {"run_failed": 1}})
+        raise
     print(f"{len(bad)} defective plan(s) (drift > {DRIFT_PCT}% or target <= limit, plan age > {MIN_PLAN_AGE_H}h, "
           f"Hermes top-{a.top}, cap {a.cap})")
     for b in bad:
         print(f"  {b['symbol']:6s} #{b['rank']:<4} {b['kind']:10s} price {b['price']} vs limit {b['limit']} "
               f"(drift {b['drift_pct']}%) target {b['target']} · plan {b['plan_age']}")
     if not bad:
+        if lr:
+            # A real run that found nothing to do: the lane is alive and its job is done.
+            lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
+                                  script="plan_drift_revalidator.py",
+                                  summary={"defective": 0},
+                                  output={"produced_count": 0, "attempted_count": 0,
+                                          "skipped_reasons": {},
+                                          "empty_reason": "no_defective_plans"})
         return 0
-    if not a.apply:
+    if not apply:
         print("dry run — re-run with --apply to rebuild these plans via watchlist_entry_planner")
+        # Writes nothing; prints what a real run would write (lane_last_receipt.dry_run_report).
+        _receipt_lib().dry_run_report(
+            LANE_ID, {"defective": len(bad), "would_replan": [b["symbol"] for b in bad]},
+            would_write=["watchlist entry plans (rebuild via watchlist_entry_planner)"])
         return 0
 
     # Run the planner in SUBPROCESS batches of 5 — one long in-process run dies when the DB
@@ -138,7 +174,19 @@ def main() -> int:
             results.append({"batch": batch, "ok": False, "tail": "timeout 900s"})
             print(f"  batch {batch}: TIMEOUT")
     print(json.dumps({"replanned_batches": results}, indent=2, default=str))
-    return 0
+    failed = [r for r in results if not r["ok"]]
+    replanned = sum(len(r["batch"]) for r in results if r["ok"])
+    # The lane's exit code now states its own outcome (it used to return 0 after a failed batch), so a cron or
+    # n8n run that re-planned nothing is visibly not green.
+    rc = 1 if failed else 0
+    lr.write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
+                          script="plan_drift_revalidator.py",
+                          summary={"defective": len(bad), "replanned": replanned,
+                                   "failed_batches": len(failed)},
+                          output={"produced_count": replanned, "attempted_count": len(bad),
+                                  "skipped_reasons": {"batch_failed": len(failed)},
+                                  "empty_reason": "no_batch_replanned" if replanned == 0 else None})
+    return rc
 
 
 if __name__ == "__main__":
