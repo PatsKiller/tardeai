@@ -297,6 +297,8 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
         if m:
             declared_env[m.group(1)] = m.group(2)
     mapped_env: list[str] = []
+    # Directories the whole cron line changes into: `PYTHONPATH=<one of these>` names the lane's own tree.
+    cd_targets = {toks[j + 1] for j in range(len(toks) - 1) if toks[j] == "cd"}
     i = 0
     while i < len(prefix):
         t = prefix[i]
@@ -329,6 +331,14 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
         if _ENV_PROLOGUE.match(t) or t in (";", "&&", "||"):
             # `set -a; . ./.env; set +a;` inside the bash -c wrapper: reproduced from `env_names`, never sourced.
             # The separators themselves are inert (an unwrapped line never reaches this loop with one).
+            i += 1
+            continue
+        if (t.startswith("PYTHONPATH=") and "PYTHONPATH" not in declared_env
+                and t.split("=", 1)[1] in cd_targets):
+            # `cd <tree> && PYTHONPATH=<tree> ...` (aegis-evening-packet, cron L907): naming the directory the line
+            # already changes into is the lane's own tree, not a hidden import root. It is also redundant there —
+            # scripts/aegis_evening_packet.py:25 puts ROOT on sys.path itself — which is why the executor need not
+            # reproduce it. Any other value stays unmapped: the executor does not reproduce an arbitrary import path.
             i += 1
             continue
         if re.match(r"^[A-Z_][A-Z0-9_]*=", t):
