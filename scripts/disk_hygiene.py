@@ -1488,9 +1488,18 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
         entry_re = re.compile(t_cfg["entry_regex"])
         ref_repo = _expand(t_cfg["reference_repo"], rules["_home"])
         bundle_dir = _expand(t_cfg["bundle_dir"], rules["_home"])
-        for path in paths:
-            if only is not None and str(path) != only:
-                continue
+        # 2026-11-06 DISKHYG: SR.activity is a full recursive lstat of each scratch dir (~530 dirs, millions of
+        # entries on this host) and ran serially; sampled mid-plan it was the whole run (one thread, no `du`
+        # child, fd walking ~/.cache/agent-tmp/*). lstat/scandir release the GIL, so scan them on the bounded
+        # git.size_workers pool. Every activity is still measured before any `nested_repos` git call below.
+        t_paths = [p for p in paths if only is None or str(p) == only]
+        workers = max(1, int((rules.get("git") or {}).get("size_workers") or 4))
+        scan_now = ctx["now"].timestamp()
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            t_activity = dict(zip(t_paths, pool.map(
+                lambda p: SR.activity(p, protected=lambda q, root=p: scratch_protected(q, root, rules), now=scan_now),
+                t_paths)))
+        for path in t_paths:
             item = row(path, "T", "agent_scratch")
             if not path.is_dir() or path.is_symlink():
                 item["reasons"].append("not_scratch_directory")
@@ -1503,8 +1512,7 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
             # tests/test_disk_standing_apply_20261024.py:1053 raised StopIteration because the gate's own
             # inspection changed the verdict it was computing. Measuring first makes the candidate set
             # independent of the inspection; the fingerprint carries this measured value.
-            activity, why = SR.activity(path, protected=lambda p, root=path: scratch_protected(p, root, rules),
-                                        now=ctx["now"].timestamp())
+            activity, why = t_activity[path]
             bundles, nested_why = nested_repos(path, ref_repo) if path.is_dir() and not path.is_symlink() else ([], None)
             if nested_why:
                 item["reasons"].append(nested_why)

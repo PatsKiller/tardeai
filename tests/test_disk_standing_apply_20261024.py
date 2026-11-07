@@ -1297,3 +1297,24 @@ def test_unreadable_unit_file_outside_a_dropin_still_refuses(world, monkeypatch)
     monkeypatch.setattr(Path, "read_text", lambda self, *a, **kw: (_ for _ in ()).throw(PermissionError(13, "denied", str(self))) if self == unit else real_read(self, *a, **kw))
     snap = COLLECT(rules, NOW, runner=_runner_for(_show("LoadState=loaded\nNeedDaemonReload=no\n"))[0], github=FixtureGithub())
     assert not snap["sources"]["units"]["complete"]
+
+
+def test_rule_t_activity_scans_all_finish_before_any_nested_repo_inspection(world, monkeypatch):
+    """DISKHYG: rule T activity scans run on a pool, but every one is measured before nested_repos runs git."""
+    home, rules, _, _ = world
+    if not (rules.get("standing_apply") or {}).get("agent_scratch"):
+        pytest.skip("rule T not configured in fixture")
+    tmp = home / ".cache" / "agent-tmp"
+    for i in range(5):
+        (tmp / f"fixture-{i}").mkdir(parents=True)
+        (tmp / f"fixture-{i}" / "f").write_text("x")
+    events = []
+    real_activity = DH.SR.activity
+    monkeypatch.setattr(DH.SR, "activity", lambda p, **kw: (events.append(("scan", p)), real_activity(p, **kw))[1])
+    monkeypatch.setattr(DH, "nested_repos", lambda p, *_: (events.append(("git", p)), ([], None))[1])
+    DH.standing_plan(rules, NOW, evidence(), measure=False)
+    kinds = [k for k, p in events if str(p).startswith(str(tmp))]
+    assert kinds.count("scan") >= 5 and kinds.count("git") >= 5
+    last_scan = max(i for i, k in enumerate(kinds) if k == "scan")
+    first_git = min(i for i, k in enumerate(kinds) if k == "git")
+    assert last_scan < first_git
