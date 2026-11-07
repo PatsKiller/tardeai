@@ -146,21 +146,39 @@ def _load_json(path: Path) -> dict[str, Any]:
         return {"state": "ERROR", "reason": str(e)[:300]}
 
 
+def _canonical_age_hours(timestamp_str: str) -> float | None:
+    """``reentry_rules._age_hours`` — the one reader of a market timestamp (ISO, ``YYYY-MM-DD``,
+    ``… ET``/``EST``/``EDT``/``UTC``/``GMT``/``Z``; a naive stamp is Eastern). Stdlib-only, so it is
+    safe on this no-network path, and it is the same reader the re-entry and watch desks use."""
+    try:
+        from scripts.lib.reentry_rules import _age_hours as impl
+    except ImportError:  # the package loads as lib.* when scripts/ is on sys.path, so scripts.lib is not importable here
+        from lib.reentry_rules import _age_hours as impl  # type: ignore -- documented dual-path fallback, the pattern reentry_decision_desk already uses; the module is the same file either way
+    return impl(timestamp_str)
+
+
 def _age_hours(timestamp_str: str | None) -> float | None:
-    """Hours since a timestamp. Accepts ISO and 'YYYY-MM-DD'."""
+    """Hours since a timestamp, or None when there is no stamp this desk can read.
+
+    Delegates to the shared reader. The local parser that used to live here tested ISO with
+    ``"T" in ts`` — and **"ET" contains a T** — so the price state's own
+    ``"%Y-%m-%d %H:%M:%S ET"`` spelling took the ISO branch, ``fromisoformat`` raised, and the bare
+    ``except`` answered None. ``_load_holdings`` read that None as *not stale*, so the 24 h gate
+    failed **open** on any stamp it could not read (LQ-20261107-36).
+
+    None here means **unknown**. Every caller must read unknown as stale, never as fresh:
+    ``_load_holdings`` does (``state`` is STALE when the age is unknown) and ``_age_days`` keeps
+    None out of the ``/ 24`` divisions.
+    """
     if not timestamp_str:
         return None
-    try:
-        ts = timestamp_str.strip()
-        if "T" in ts:
-            dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        else:
-            dt = datetime.strptime(ts[:10], "%Y-%m-%d")
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600)
-    except Exception:
-        return None
+    return _canonical_age_hours(str(timestamp_str))
+
+
+def _age_days(timestamp_str: str | None) -> float | None:
+    """``_age_hours`` in days, or None — never a division of None."""
+    age_h = _age_hours(timestamp_str)
+    return None if age_h is None else age_h / 24
 
 
 def _f(value: Any) -> float | None:
@@ -280,10 +298,13 @@ def _load_holdings() -> dict[str, Any]:
             as_of = str(h.get("as_of"))
 
     age_h = _age_hours(as_of or raw.get("as_of"))
+    # Unknown is STALE. A snapshot the desk cannot date — an unreadable stamp, or none at all — is
+    # not evidence that the portfolio is current. The old test `(age_h and age_h > STALE_HOURS_HOLDINGS)`
+    # read None as fresh, and "ET" contains a T, so a "… ET" stamp fell straight into that hole.
     return {
-        "state": "STALE" if (age_h and age_h > STALE_HOURS_HOLDINGS) else "AVAILABLE",
+        "state": "STALE" if (age_h is None or age_h > STALE_HOURS_HOLDINGS) else "AVAILABLE",
         "as_of": as_of,
-        "age_hours": round(age_h, 1) if age_h else None,
+        "age_hours": round(age_h, 1) if age_h is not None else None,
         "positions": positions,
         "total_value": total_value,
         "count": len(positions),
@@ -1247,7 +1268,7 @@ def _load_catalysts() -> dict[str, Any]:
                 "as_of": news.get("generated_at", ""),
                 "title": str(item.get("headline", item.get("title", "")))[:200],
                 "quality": str(item.get("score", item.get("quality", ""))),
-                "staleness_days": _age_hours(news.get("generated_at")) / 24 if news.get("generated_at") else None,
+                "staleness_days": _age_days(news.get("generated_at")),
             })
 
     # From catalyst_cache (date-agnostic latest file)
@@ -1271,7 +1292,7 @@ def _load_catalysts() -> dict[str, Any]:
                         "title": str(c.get("headline", c.get("title", "")))[:200],
                         "type": str(c.get("catalyst_type", "")),
                         "tier": str(enrichment.get("catalyst_tier", "")),
-                        "staleness_days": _age_hours(data.get("_cached_at")) / 24 if data.get("_cached_at") else None,
+                        "staleness_days": _age_days(data.get("_cached_at")),
                     })
 
     return {
@@ -1290,11 +1311,11 @@ def _load_earnings() -> dict[str, Any]:
             s = _norm_symbol(sym)
             ed = data.get("earnings_date")
             fetched = data.get("fetched_at")
-            stale = _age_hours(fetched) / 24 if fetched else None
+            stale = _age_days(fetched)
             by_symbol[s] = {
                 "next_earnings_date": ed,
                 "fetched_at": fetched,
-                "staleness_days": round(stale, 1) if stale else None,
+                "staleness_days": round(stale, 1) if stale is not None else None,
             }
     return {"state": "AVAILABLE", "by_symbol": by_symbol, "count": len(by_symbol)}
 
@@ -3435,6 +3456,11 @@ def build_advisory_desk(*, max_age_s: float = DEFAULT_MAX_AGE_S, force: bool = F
                     "ingestion_health": "lib.data_broker.advisory_desk._load_ingestion_health",
                 },
                 "holdings_count": holdings.get("count", 0),
+                # The snapshot's own freshness, so a build over an undated (or unreadable-clock)
+                # holdings file says so instead of presenting the rows as current (LQ-20261107-36).
+                "holdings_state": holdings.get("state"),
+                "holdings_as_of": holdings.get("as_of"),
+                "holdings_age_hours": holdings.get("age_hours"),
                 "watchlist_count": watchlist.get("count", 0),
                 "closed_count": closed.get("count", 0),
                 "portfolio_total_value": holdings.get("portfolio_total_value"),

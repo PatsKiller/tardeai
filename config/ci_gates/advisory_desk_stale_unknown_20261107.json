@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "advisory_desk_stale_unknown_20261107",
+  "files": [
+    "tests/test_advisory_desk_stale_unknown_20261107.py"
+  ],
+  "comment": [
+    "LQ-20261107-36: advisory_desk._age_hours tested ISO with `\"T\" in ts` and \"ET\" contains a T,",
+    "so the price state's own '… ET' spelling made the helper answer None; the holdings gate read",
+    "None as fresh. The helper now delegates to reentry_rules._age_hours and an unreadable or",
+    "absent stamp is STALE (unknown), never AVAILABLE."
+  ]
+}
