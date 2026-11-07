@@ -249,10 +249,12 @@ class _GuardCur:
     def execute(self, sql, params=None):
         s = " ".join(sql.split())
         self.sql.append(s)
-        if s.startswith("SELECT id, title, summary FROM news_articles"):
-            self._pending = [(11, "Pasqal quantum start-up raises", "")]
-        elif s.startswith("SELECT id, headline, description FROM catalyst_events"):
-            self._pending = [(42, "Pasqal quantum start-up raises", "")]
+        # The guard selects the row's source too: a provider-tagged feed (finviz_news) is evidence the
+        # article belongs to the symbol, so the purge must not delete it on absent headline text alone.
+        if s.startswith("SELECT id, title, summary, source FROM news_articles"):
+            self._pending = [(11, "Pasqal quantum start-up raises", "", "yahoo_rss")]
+        elif s.startswith("SELECT id, headline, description, source FROM catalyst_events"):
+            self._pending = [(42, "Pasqal quantum start-up raises", "", "yahoo_rss")]
         elif s.startswith("SELECT id FROM catalyst_symbol_impact"):
             self._pending = [(7,), (8,)]
         else:

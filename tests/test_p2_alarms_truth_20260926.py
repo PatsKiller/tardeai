@@ -51,7 +51,7 @@ def test_r04_catalyst_children_are_deleted_before_the_parent(monkeypatch):
     import news_symbol_guard as g
     monkeypatch.setattr(g, "headline_matches_symbol", lambda *a, **k: (False, "foreign_company"))
     monkeypatch.setattr(g, "_company_description", lambda *a, **k: "", raising=False)
-    cur = _Cur([(42, "Pasqal quantum start-up", "")])
+    cur = _Cur([(42, "Pasqal quantum start-up", "", "yahoo_rss")])  # (id, headline, description, source)
     conn = _Conn(cur)
     # 2026-10-21 (registry-owned retention, D3.3): the deletes are archive-first through _archived_delete
     # (lib.retention_archive.managed_purge); the child-before-parent order is what this test pins.

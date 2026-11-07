@@ -12,6 +12,33 @@ _FOREIGN_COMPANY_MARKERS = (
     "pasqal", "ionq", "rigetti", "quantum computing inc", "xanadu quantum",
 )
 
+#: Sources whose feed carries an explicit PROVIDER ticker list per article (Finviz `news_export` returns
+#: a `tickers` list with each item). For these the provider already linked the article to the symbol, so
+#: "the headline never spells the company out" is absence of evidence, not evidence of a wrong tag — the
+#: text heuristic cannot adjudicate them and must not delete them. A contradiction (52-week level, a
+#: foreign issuer) still rejects. Measured 2026-11-06: the purge deleted 15 of NVIDIA's own headlines
+#: ("Nvidia is the top performer in the Dow ...") because they say the company name, not the ticker.
+PROVIDER_TAGGED_SOURCES = frozenset({"finviz_news"})
+
+# Corporate-form words that never identify an issuer on their own ("NVIDIA Corporation" -> nvidia).
+_CORP_SUFFIX_RE = re.compile(
+    r"\b(?:incorporated|inc|corporation|corp|company|co|ltd|limited|plc|llc|lp|llp|nv|n\.v\.|sa|s\.a\.|"
+    r"ag|se|holdings?|group|the|trust|fund|etf)\b\.?",
+    re.I,
+)
+# `symbol_profiles.description_1s` is a PARAGRAPH, not a "Name, Inc." field: "NVIDIA Corporation operates as
+# a data center scale AI infrastructure company in the United States ...". The issuer's name ends at the first
+# clause boundary or the first predicate verb. The old first-comma split returned that whole sentence for
+# NVDA/AAPL/V/SPCX, so the alias could never match the word "Nvidia"/"Apple"/"Visa" in a headline and the
+# remediation purge removed every row those symbols had (2026-11-06, 23 rows archived).
+_NAME_BOUNDARY_RE = re.compile(
+    r"[,\;\.\:]|\s+(?:operates?|provides?|designs?|manufactures?|develops?|engages?|offers?|sells?|"
+    r"is|are|was|were|has|have|owns?|holds?|acquires?|supplies?|delivers?|serves?|specializes?|"
+    r"focuses?|produces?|distributes?|markets?|licenses?|invests?|leases?|maintains?|builds?|creates?|"
+    r"makes?|generates?|derives?|through|together|formerly)\b",
+    re.I,
+)
+
 
 # "<name> stock hits 52-week high at 27.99 USD": a headline stating the security's own 52-week
 # extreme. Deliberately narrow; it must NOT match a price target, a deal size or guidance, all of
@@ -69,17 +96,40 @@ def price_contradiction(title: str, summary: str = "", *, reference_52w: tuple |
 
 
 def _company_tokens(description: str | None) -> list[str]:
+    """Lower-case names a headline may use for the issuer, from its profile description.
+
+    "Space Exploration Technologies Corp. provides ..." -> "space exploration technologies";
+    "NVIDIA Corporation operates as ..." -> "nvidia"; "Netflix, Inc. provides ..." -> "netflix".
+    A single-word result also yields itself as the alias, which is what a headline actually writes
+    ("Nvidia is the top performer"); a multi-word one is used whole, so a generic first word like
+    "space" or "united" cannot match an unrelated headline.
+    """
     if not description:
         return []
-    first = str(description).split(",")[0].strip()
-    tokens = []
-    if first:
-        tokens.append(first.lower())
-        # "Merlin, Inc." → merlin
-        core = re.sub(r"\b(inc|corp|ltd|plc|co)\b\.?", "", first, flags=re.I).strip()
-        if core and core.lower() != first.lower():
-            tokens.append(core.lower())
-    return [t for t in tokens if len(t) >= 3]
+    text = str(description).strip()
+    if not text:
+        return []
+    head = _NAME_BOUNDARY_RE.split(text, maxsplit=1)[0].strip()
+    out: list[str] = []
+
+    def add(name: str) -> None:
+        cleaned = " ".join(_CORP_SUFFIX_RE.sub(" ", name).split()).strip(" .'-–")
+        if len(cleaned) < 3:
+            return
+        if cleaned.lower() not in out:
+            out.append(cleaned.lower())
+        words = cleaned.split()
+        if len(words) == 1 and len(words[0]) >= 4 and words[0].lower() not in out:
+            out.append(words[0].lower())
+
+    add(head)
+    # The legacy "<Name>, Inc. <description>" spelling: the comma clause IS the name — but only when it is
+    # a NAME. On a paragraph field the first comma can be arbitrary ("... company in the United States,
+    # Japan, Taiwan ..."), and adding that clause put the whole sentence in the alias list.
+    first_comma = text.split(",")[0].strip()
+    if first_comma and first_comma != head and len(first_comma.split()) <= 4 and len(first_comma) <= 40:
+        add(first_comma)
+    return [t for t in out if len(t) >= 3]
 
 
 def headline_matches_symbol(
@@ -89,11 +139,17 @@ def headline_matches_symbol(
     *,
     company_description: str | None = None,
     reference_52w: tuple | None = None,
+    provider_tagged: bool = False,
 ) -> tuple[bool, str]:
     """Return (ok, reason). False = do not attach this headline to symbol.
 
     ``reference_52w`` (our 52-week low, high) enables a hard veto evaluated before any positive
     match: a contradicted 52-week extreme means another issuer, however the ticker appears.
+
+    ``provider_tagged`` says the feed itself listed this ticker for the article (see
+    ``PROVIDER_TAGGED_SOURCES``). No textual match then reads as "cannot tell", not "wrong tag": the
+    row is kept (``provider_tag``) unless a contradiction rejects it. Passing False keeps the strict
+    Yahoo-RSS behaviour.
     """
     sym = (symbol or "").upper().strip()
     if not sym or not title:
@@ -126,6 +182,9 @@ def headline_matches_symbol(
     if sym == "MRLN" and "merlin" in text.lower():
         return True, "merlin_alias"
 
+    if provider_tagged:
+        # The provider supplied the ticker; nothing in the text contradicts it (every veto ran above).
+        return True, "provider_tag"
     return False, "no_symbol_or_company_match"
 
 
@@ -157,22 +216,24 @@ def purge_mismatched_for_symbol(conn, symbol: str, *, apply: bool = True, auto_c
     desc = row[0] if row else None
 
     cur.execute(
-        "SELECT id, title, summary FROM news_articles WHERE upper(symbol)=%s",
+        "SELECT id, title, summary, source FROM news_articles WHERE upper(symbol)=%s",
         (sym,),
     )
     news_del, cat_del = [], []
-    for nid, title, summary in cur.fetchall():
-        ok, _ = headline_matches_symbol(sym, title or "", summary or "", company_description=desc)
+    for nid, title, summary, source in cur.fetchall():
+        ok, _ = headline_matches_symbol(sym, title or "", summary or "", company_description=desc,
+                                        provider_tagged=(source or "") in PROVIDER_TAGGED_SOURCES)
         if ok:
             continue
         news_del.append(nid)
 
     cur.execute(
-        "SELECT id, headline, description FROM catalyst_events WHERE upper(symbol)=%s",
+        "SELECT id, headline, description, source FROM catalyst_events WHERE upper(symbol)=%s",
         (sym,),
     )
-    for cid, headline, description in cur.fetchall():
-        ok, _ = headline_matches_symbol(sym, headline or "", description or "", company_description=desc)
+    for cid, headline, description, source in cur.fetchall():
+        ok, _ = headline_matches_symbol(sym, headline or "", description or "", company_description=desc,
+                                        provider_tagged=(source or "") in PROVIDER_TAGGED_SOURCES)
         if ok:
             continue
         cat_del.append(cid)
@@ -274,7 +335,7 @@ def count_mismatched_watchlist(conn, *, limit: int = 120) -> dict:
         row = cur.fetchone()
         desc = row[0] if row else None
         cur.execute(
-            """SELECT headline, description FROM catalyst_events
+            """SELECT headline, description, source FROM catalyst_events
                WHERE upper(symbol)=%s AND catalyst_type <> 'other'
                ORDER BY COALESCE(published_at, created_at) DESC NULLS LAST LIMIT 1""",
             (sym,),
@@ -282,8 +343,9 @@ def count_mismatched_watchlist(conn, *, limit: int = 120) -> dict:
         cat = cur.fetchone()
         if not cat:
             continue
-        headline, description = cat[0] or "", cat[1] or ""
-        ok, reason = headline_matches_symbol(sym, headline, description, company_description=desc)
+        headline, description, source = cat[0] or "", cat[1] or "", cat[2] or ""
+        ok, reason = headline_matches_symbol(sym, headline, description, company_description=desc,
+                                             provider_tagged=source in PROVIDER_TAGGED_SOURCES)
         if not ok:
             mismatches.append({"symbol": sym, "headline": (headline or "")[:120], "reason": reason})
     return {"scanned": len(sym_list), "mismatch_count": len(mismatches), "mismatches": mismatches[:20]}

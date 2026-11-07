@@ -13,7 +13,9 @@ Uses the same FINVIZ_API_TOKEN as the screeners (no extra creds). Deduped by sou
 import argparse
 import json
 import os
+import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +23,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 LANE_ID = "finviz-proactive-research"
 _ENV_KEYS = frozenset({"DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD", "FINVIZ_API_TOKEN"})
+#: A symbol Finviz can carry news for. The DB holdings document also lists identifiers a feed never tags
+#: (CUSIPs such as 543354104, fund ids), and counting those as "held coverage" would overstate the book.
+_RESEARCH_SYMBOL_RE = re.compile(r"^[A-Z]{1,6}(?:\.[A-Z]{1,2})?$")
 
 
 def _load_env():
@@ -45,25 +50,69 @@ def write_news_articles(*args, **kwargs):
     return write(*args, **kwargs)
 
 
-def _universe(cur, max_n):
-    """Held + active watchlist + research-discovery candidates — the names worth proactive coverage."""
-    syms = []
+def _holdings_symbols() -> tuple[list[str], str]:
+    """Held symbols, DB first.
+
+    The database is the holdings system of record (operator 2026-11-03); ``holdings.json`` is the
+    documented fallback and its use is REPORTED, never silent. The old reader opened the file inside a bare
+    ``except Exception: pass``, so a missing or unreadable file silently dropped every holding from the
+    universe — the names most worth proactive coverage.
+    """
+    try:
+        from lib.holdings_document import load_document
+        doc = load_document()
+        rows = doc.get("holdings") or []
+        syms = [str(h.get("symbol", "")).upper() for h in rows
+                if isinstance(h, dict) and h.get("symbol") and not h.get("is_cash")]
+        return syms, str(doc.get("document_source") or "unknown")
+    except Exception as exc:  # noqa: BLE001 -- the file below IS the documented fallback; the reason is reported
+        reason = f"holdings_json_fallback:{type(exc).__name__}"
     try:
         hj = json.loads((ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text())
-        syms += [str(h.get("symbol", "")).upper() for h in hj.get("holdings", [])
-                 if h.get("symbol") and not h.get("is_cash")]
-    except Exception:
-        pass
+        return ([str(h.get("symbol", "")).upper() for h in hj.get("holdings", [])
+                 if h.get("symbol") and not h.get("is_cash")], reason)
+    except Exception as exc:  # noqa: BLE001 -- reported as unavailable, not flattened to an empty book
+        return [], f"holdings_unavailable:{type(exc).__name__}"
+
+
+def _universe(cur, max_n, *, rotation=None):
+    """Held + active watchlist + research-discovery candidates, and the coverage facts of the slice.
+
+    Held names are never truncated: the book always gets proactive coverage, however large the watchlist.
+    The rest of the cap is a ROTATING window over the alphabetically ordered watchlist (stable within a
+    UTC hour, so a rerun in the same hour is reproducible), because a plain ``out[:max_n]`` permanently
+    starved everything after "ALPX": 5,678 watchlist symbols against a 400 cap meant only the first 400
+    ever saw a headline.
+    """
+    held, held_source = _holdings_symbols()
+    researchable = [s for s in held if _RESEARCH_SYMBOL_RE.match(s)]
+    unresearchable = [s for s in held if not _RESEARCH_SYMBOL_RE.match(s)]
     cur.execute("""SELECT DISTINCT symbol FROM watchlist_items
                    WHERE status <> 'removed' AND symbol ~ '^[A-Z]{1,5}$'
                    ORDER BY symbol""")
-    syms += [r[0] for r in cur.fetchall()]
-    # de-dup, keep order, cap
+    watch = [r[0] for r in cur.fetchall()]
     seen, out = set(), []
-    for s in syms:
+    for s in researchable:
         if s and s not in seen:
             seen.add(s); out.append(s)
-    return out[:max_n]
+    holdings_n = len(out)
+    stats = {"holdings": holdings_n, "holdings_used": min(holdings_n, max_n),
+             "holdings_source": held_source, "watchlist_available": len(watch),
+             "watchlist_used": 0, "truncated": len(watch), "rotation": 0,
+             "held_without_ticker": len(unresearchable),
+             "held_without_ticker_sample": unresearchable[:5]}
+    if holdings_n >= max_n:
+        return out[:max_n], stats
+    watch = [w for w in watch if w not in seen]
+    room = max_n - holdings_n
+    if watch and room:
+        k = (rotation if rotation is not None else int(time.time() // 3600)) % len(watch)
+        watch = watch[k:] + watch[:k]
+        stats["rotation"] = k
+    out.extend(watch[:room])
+    stats["watchlist_used"] = min(len(watch), room)
+    stats["truncated"] = max(0, len(watch) - room)
+    return out, stats
 
 
 def run(max_n=150, lookback_hours=72, dry_run=False, summary=None):
@@ -73,11 +122,15 @@ def run(max_n=150, lookback_hours=72, dry_run=False, summary=None):
     except Exception as e:
         print(f"ABORT: deps unavailable ({e})"); return 1
     conn = _get_conn(); cur = conn.cursor()
-    universe = set(_universe(cur, max_n))
+    universe_list, ustat = _universe(cur, max_n)
+    universe = set(universe_list)
     # ONE request for all ticker-tagged Stock news, then distribute to the universe (a headline can tag
     # several tickers, e.g. "CVX,NOC,LMT" → saved once per universe ticker it mentions).
     allnews = fetch_finviz_stock_news_all(lookback_hours=lookback_hours)
     print(f"finviz proactive research: {len(allnews)} stock-news items vs {len(universe)}-symbol universe "
+          f"({ustat['holdings_used']} held from {ustat['holdings_source']}, "
+          f"{ustat['watchlist_used']} of {ustat['watchlist_available']} watchlist, "
+          f"{ustat['truncated']} not covered this run, rotation {ustat['rotation']}) "
           f"({'DRY' if dry_run else 'LIVE'})")
     saved, skipped, covered = 0, 0, set()
     failed_writes = 0
@@ -103,7 +156,10 @@ def run(max_n=150, lookback_hours=72, dry_run=False, summary=None):
                 tg = tag_content(text="", title=head)
                 pub = datetime.fromtimestamp(int(it["datetime"]), tz=timezone.utc) if it.get("datetime") else None
                 receipt = write_news_articles(cur, [{
-                    "symbol": sym, "strategy_type": sym, "title": head, "summary": "",
+                    # strategy_type is a STRATEGY classification (topic_curator, iris taxonomy,
+                    # rag_retrieval all key on it). Writing the ticker here polluted 440 news rows and
+                    # the catalyst rows built from them; left absent so the classifier owns its value.
+                    "symbol": sym, "title": head, "summary": "",
                     "source": "finviz_news", "source_url": url, "published_at": pub,
                     "relevance_score": sc.get("relevance_score", 0.5),
                     "strategy_tags": json.dumps(tg.get("strategy_tags", [])),
@@ -120,11 +176,23 @@ def run(max_n=150, lookback_hours=72, dry_run=False, summary=None):
         conn.commit()
     print(json.dumps({"news_items": len(allnews), "universe": len(universe),
                       "symbols_covered": len(covered), "saved": saved, "skipped_dup": skipped,
+                      "universe_coverage": ustat,
                       "mode": "DRY" if dry_run else "LIVE"}, indent=2))
     if summary is not None:
         summary.update(news_items=len(allnews), universe=len(universe), symbols_covered=len(covered),
-                       saved=saved, skipped_dup=skipped, failed_writes=failed_writes)
+                       saved=saved, skipped_dup=skipped, failed_writes=failed_writes,
+                       universe_coverage=ustat)
     return 0
+
+
+def _universe_preview(max_n):
+    """The universe the next live run would use, with its coverage facts — read-only, no provider call."""
+    conn = _get_conn(); cur = conn.cursor()
+    try:
+        symbols, stats = _universe(cur, max_n)
+    finally:
+        conn.close()
+    return symbols, stats
 
 
 def main(argv=None):
@@ -132,9 +200,35 @@ def main(argv=None):
     ap.add_argument("--max", type=int, default=150)
     ap.add_argument("--lookback-hours", type=int, default=72)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--preview-universe", action="store_true",
+                    help="print the universe the next live run would use (read-only DB read; dry run is static)")
     args = ap.parse_args(argv)
+    if args.preview_universe and not args.dry_run:
+        # The evidence path: read the universe (holdings from the DB document + the watchlist window), no
+        # provider call, no write. Kept separate from --dry-run because the preview must stay offline-only
+        # (tests/test_refactor_shard_04_20261011.py: a preview that opens a socket or .env is a defect).
+        print(f"PREVIEW {LANE_ID}: universe the next live run would use (max {args.max}, no fetch, no write)")
+        try:
+            symbols, stats = _universe_preview(args.max)
+        except Exception as exc:  # noqa: BLE001 -- a preview that cannot read the universe must say so
+            print(f"PREVIEW {LANE_ID}: universe unavailable ({type(exc).__name__}: {exc})")
+            return 1
+        print(json.dumps({"lane": LANE_ID, "mode": "PREVIEW", "max": args.max,
+                          "universe_size": len(symbols), "coverage": stats,
+                          "held_in_universe": symbols[:stats["holdings_used"]],
+                          "writes": "none"}, indent=2))
+        return 0
     if args.dry_run:
+        # Offline dry run: states what the live arm would do, touching no DB, no .env and no provider.
         print(f"DRY-RUN {LANE_ID}: would ingest Finviz headlines for up to {args.max} research symbols")
+        print(json.dumps({
+            "lane": LANE_ID, "mode": "DRY", "max": args.max,
+            "lookback_hours": args.lookback_hours,
+            "universe": "held symbols first (DB holdings document, holdings.json fallback) + a rotating "
+                        "watchlist window to fill --max; held names are never truncated",
+            "would_fetch": f"one Finviz stock-news request, lookback {args.lookback_hours}h",
+            "would_write": "news_articles rows for universe tickers the provider tags (no strategy_type)",
+            "writes": "none", "reads": "none (use --preview-universe for the universe facts)"}, indent=2))
         return 0
     from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()

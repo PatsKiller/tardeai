@@ -1,0 +1,27 @@
+{
+  "schema": "CiGate@v1",
+  "name": "FINVIZ_PROACTIVE_RESEARCH_TRUTH_20261107",
+  "files": [
+    "tests/test_finviz_proactive_research_truth_20261107.py"
+  ],
+  "anchor": "FINVIZ_PROACTIVE_RESEARCH_TRUTH_20261107",
+  "comment": [
+    "ANCHOR: FINVIZ_PROACTIVE_RESEARCH_TRUTH_20261107 — LQ-20261107-52. Three defects in the Finviz",
+    "proactive-research lane, all measured on 2026-11-07:",
+    "(1) news_symbol_guard took the issuer name from the first comma clause of",
+    "symbol_profiles.description_1s, a PARAGRAPH. For NVDA/AAPL/V the alias was the whole sentence",
+    "('NVIDIA Corporation operates as a data center scale AI infrastructure company in the United",
+    "States'), so a headline saying 'Nvidia' never matched, the health agent's remediate() counted the",
+    "rows as mis-tagged, and purge_mismatched_watchlist deleted them: 23 rows on 2026-11-06 (archive",
+    "db_retention/news_articles/*-symbol_guard_news-*), 15 of them NVIDIA's own.",
+    "(2) The lane wrote the TICKER into news_articles.strategy_type (440 rows, plus 369 catalyst_events",
+    "built from them) — a column topic_curator, the iris taxonomy and rag_retrieval read as a strategy",
+    "classification.",
+    "(3) The universe was holdings + watchlist[:max] in alphabetical order, so with 5,678 watchlist",
+    "symbols and --max 400 nothing after 'ALPX' was ever covered.",
+    "The test also pins what must NOT change: a contradicted 52-week level and a foreign issuer still",
+    "reject a provider-tagged row, a Yahoo row with no textual evidence still rejects, and a multi-word",
+    "issuer never degrades to a generic first word ('space'). Hermetic: synthetic cursors, synthetic",
+    "descriptions, no DB, no provider call, no network."
+  ]
+}
