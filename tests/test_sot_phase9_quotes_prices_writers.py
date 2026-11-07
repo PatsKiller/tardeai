@@ -378,23 +378,6 @@ def test_producer_portfolio_repricer_sync_uses_module_with_legacy_contract(monke
     assert pr.write_ticker_prices is tp.write_ticker_prices  # writer_target re-exports the module
 
 
-def test_producer_watchlist_sweep_backfills_through_module(monkeypatch):
-    import watchlist_enrichment_sweep as wes
-
-    class _Ticker:
-        def __init__(self, sym):
-            self.info = {"regularMarketPrice": 24.5, "regularMarketPreviousClose": 24.0}
-
-    monkeypatch.setitem(sys.modules, "yfinance", types.SimpleNamespace(Ticker=_Ticker))
-    conn = FakeConn(FakeCursor(fetchone=None))  # no fresh market_quotes row -> yfinance fallback
-    assert wes._price(conn, "SPCX") == (24.5, 2.08)
-    assert conn.cur.sqls[0].startswith("SELECT price, day_change_pct FROM market_quotes")
-    sql, params = conn.cur.calls[1]
-    assert columns_of(sql) == ["symbol", "source", "price", "day_change_pct"]
-    assert params == ("SPCX", "yfinance", 24.5, 2.08)
-    assert conn.committed == 1
-
-
 def test_producer_ingest_alpaca_writes_through_module_and_rail_rejects_negative(monkeypatch, capsys):
     import external_market_data_ingest as emdi
 

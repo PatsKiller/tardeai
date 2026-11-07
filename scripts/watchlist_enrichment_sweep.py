@@ -19,8 +19,8 @@ Bounded (2026-10-16): a run starts no new batch once ``--budget-s`` seconds (DEF
 symbols it did not reach are reported as ``deadline_deferred`` and stay stalest-first, so the next run picks them up
 first (each batch commits on its own; re-enriching a row overwrites it, so a partial or repeated run is idempotent).
 
---dry-run reads the selection and the CACHED enrichment only: no Finviz fetch (enrich_tickers), no yfinance
-price fallback and its market_quotes backfill, no watchlist_items UPDATE, no ticker_prices sync, no receipt.
+--dry-run reads the selection and the CACHED enrichment only: no Finviz fetch (enrich_tickers), no
+market_quotes backfill, no watchlist_items UPDATE, no ticker_prices sync, no receipt.
 A real run writes <state_root>/data/runtime/watchlist-enrichment-sweep_last.json (ok_at only on success) and
 exits 1 when symbols were selected but none could be updated.
 """
@@ -60,8 +60,28 @@ def _receipt_lib():
     return lr
 
 
+def _finviz_price(symbol):
+    """(price, None) from the Finviz live quote cache when it is fresh, else (None, None).
+
+    Operator 2026-11-07: live prices come from Finviz (then a fresh broker quote), never yfinance. resolve_mark is the
+    one ladder; here only the Finviz rung applies, so a stale or missing Finviz row gives no price (unknown, not zero).
+    """
+    try:
+        try:
+            from lib import portfolio_positions as pp
+        except ImportError:  # imported as scripts.watchlist_enrichment_sweep
+            from scripts.lib import portfolio_positions as pp
+        mark = pp.resolve_mark({"symbol": symbol}, quote=None, finviz=pp.finviz_cache().get(symbol.upper()))
+    except Exception as exc:
+        print(f"  [sweep] finviz price unavailable for {symbol}: {type(exc).__name__}: {str(exc)[:80]}")
+        return None, None
+    if mark.get("price") and mark.get("source") == "finviz" and not mark.get("stale"):
+        return float(mark["price"]), None
+    return None, None
+
+
 def _price(conn, symbol, *, allow_fetch: bool = True):
-    """Fresh market_quotes price; else (allow_fetch only) yfinance + market_quotes backfill."""
+    """Fresh market_quotes price; else the fresh Finviz cache price (read only, no backfill). Never yfinance."""
     try:
         cur = conn.cursor()
         cur.execute("""SELECT price, day_change_pct FROM market_quotes WHERE symbol=%s
@@ -70,31 +90,9 @@ def _price(conn, symbol, *, allow_fetch: bool = True):
         r = cur.fetchone()
         if r and r[0] is not None:
             return float(r[0]), (float(r[1]) if r[1] is not None else None)
-    except Exception:
-        pass
-    if not allow_fetch:  # dry run: never fetch, never backfill (AGENTS.md §6)
-        return None, None
-    # Fallback: no FRESH market_quotes row (e.g. a brand-new IPO the Alpaca/finviz repricer lags on) →
-    # pull from yfinance and backfill market_quotes so downstream stays current.
-    try:
-        import yfinance as yf
-        info = yf.Ticker(symbol).info or {}
-        px, prev = info.get("regularMarketPrice"), info.get("regularMarketPreviousClose")
-        if px:
-            chg = round((px - prev) / prev * 100, 2) if prev else None
-            try:
-                # One write path per store (Phase 9): fetched_at is the DB default (now()),
-                # which is what the NOW() literal here used to say.
-                from lib.writers.market_quotes_writer import write_market_quotes
-                write_market_quotes(conn, [{"symbol": symbol, "price": px, "day_change_pct": chg}],
-                                    source="yfinance")
-                conn.commit()
-            except Exception:
-                conn.rollback()
-            return float(px), chg
-    except Exception:
-        pass
-    return None, None
+    except Exception as exc:
+        print(f"  [sweep] market_quotes read failed for {symbol}: {type(exc).__name__}: {str(exc)[:80]}")
+    return _finviz_price(symbol)
 
 
 def _num(v):
@@ -272,7 +270,7 @@ def main(argv=None) -> int:
         _receipt_lib().dry_run_report(LANE_ID, {"selected": res["total"], "would_update": res["enriched"]},
                                       would_write=["watchlist_items (rsi/trend/score/price...)",
                                                    "data/state/ticker_enrichment_cache.json (Finviz fetch)",
-                                                   "market_quotes (yfinance fallback)", "ticker_prices"])
+                                                   "ticker_prices"])
         return 0
     from datetime import datetime, timezone
     started = datetime.now(timezone.utc).isoformat()
