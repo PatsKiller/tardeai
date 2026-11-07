@@ -1,0 +1,1 @@
+{"schema":"CiGate@v1","name":"defense_engine_cash_lane_20261107","files":["tests/test_defense_engine_cash_lane_20261107.py"],"anchor":"LQ-20261107-263","comment":"the engine's cash source names its writer lane; a stale cash file reads stale, not 'no scheduled writer'"}

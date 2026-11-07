@@ -65,7 +65,7 @@ DEFAULTS: dict[str, Any] = {
         "industries": ["Industries", 26.0, ["industry-momentum-groups"]],
         "radar": ["Hedging radar", 26.0, ["hedging-radar"]],
         "options": ["Options lifecycle", 26.0, ["options-lifecycle-run"]],
-        "cash": ["Cash alternatives", 26.0, []],
+        "cash": ["Cash alternatives", 26.0, ["defense-cash-alternatives"]],
     },
 }
 
