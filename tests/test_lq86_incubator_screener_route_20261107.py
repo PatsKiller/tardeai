@@ -111,7 +111,7 @@ def test_the_env_flag_wins_and_the_bridge_does_not_read_mode(monkeypatch):
 
 def test_an_unreadable_governor_does_not_invent_a_refusal(monkeypatch):
     monkeypatch.delenv(ils.VIA_BRIDGE_ENV, raising=False)
-    _governor(monkeypatch, None)
+    _governor(monkeypatch, ils.UNREADABLE)
     assert ils.preflight() == (ils.ROUTE_UNKNOWN, None)
 
 

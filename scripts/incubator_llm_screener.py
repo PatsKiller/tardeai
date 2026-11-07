@@ -410,8 +410,12 @@ EXIT_REFUSED = 3
 EXIT_NO_SCREENS = 4
 
 
+#: The governor could not be asked at all. An explicit unknown, never a falsey "no".
+UNREADABLE = "unreadable"
+
+
 def governor_decision(process_id=LLM_PROCESS_ID):
-    """The governor's answer for this process's in-process lane, or None when it cannot be read."""
+    """The governor's answer dict for this process's in-process lane, or ``UNREADABLE``."""
     try:
         from lib.llm_consumption import should_call
     except Exception:
@@ -419,11 +423,11 @@ def governor_decision(process_id=LLM_PROCESS_ID):
             # same module, flat import: this script puts scripts/ on sys.path itself
             from llm_consumption import should_call  # type: ignore -- flat-module fallback, see scripts/lib/llm_consumption.py
         except Exception:
-            return None
+            return UNREADABLE
     try:
         return should_call(process_id, "deepseek-flash")
     except Exception:
-        return None
+        return UNREADABLE
 
 
 def preflight():
@@ -438,7 +442,7 @@ def preflight():
     if _via_bridge():
         return ROUTE_ENV, None
     decision = governor_decision()
-    if decision is None:
+    if decision is UNREADABLE:
         return ROUTE_UNKNOWN, None
     if decision.get("allow"):
         return ROUTE_IN_PROCESS, None
