@@ -1,15 +1,26 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
+from scripts import n8n_run_executor as ex
+from scripts import conflict_resolver as resolver
 from scripts.conflict_resolver import fixture_inputs, run
+from scripts.lib import n8n_output_verdict as ov
 from scripts.lib.conflicts.adapters import security_inputs
 from scripts.lib.conflicts.engine import Input
 from scripts.lib.conflicts.ledger import ConflictLedger
 
+REPO = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 23, 19, tzinfo=timezone.utc)
+SHA = "a" * 40
+
+
+def _live_rule():
+    rules = ex.parse_expected_outputs((REPO / "config/n8n_health_contracts.json").read_bytes())
+    return rules["conflict-resolver"]
 
 
 def bundle(stance="WATCH", extra="ADD"):
@@ -62,3 +73,50 @@ def test_fixture_invalid_timestamp_is_not_converted_to_current_evidence(tmp_path
         "context": {"held": False}}, "canonical": {"source": "CIO", "value": "ADD", "as_of": "invalid"}}]}))
     result = run(tmp_path, fixture_inputs(path), now=NOW)
     assert any(f["kind"] == "DATA_ERROR" for f in result["findings"])
+
+
+def test_zero_bundle_shadow_run_grades_produced_against_the_live_contract(tmp_path, monkeypatch):
+    """LQ-20261107-134: produced/attempted count the report written, not the bundles evaluated.
+
+    A slot where the watch universe and the re-entry desk are both empty still writes its one comparison report.
+    The receipt used to say produced 1 / attempted 0 (``len(bundles)``), which the live contract's verdict rejects
+    as ``counts_inconsistent`` — RUN_FAILED output_unverifiable, and three such slots open the breaker.
+    """
+    run_id = "shadow-empty-bundles"
+    monkeypatch.setenv("TRADEAI_RUN_ID", run_id)
+    monkeypatch.setenv("TRADEAI_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")
+    monkeypatch.setenv("TRADEAI_CODE_SHA", SHA)
+    started = datetime.now(timezone.utc) - timedelta(seconds=1)
+    # the receipt's own started_at/ok_at must sit inside the executor's attempt window, so this one run is "now"
+    result = run(tmp_path, [], now=started, shadow=True, run_id=run_id, memory_writer=lambda event: True)
+    finished = datetime.now(timezone.utc) + timedelta(seconds=1)
+    report = tmp_path / "data/conflicts/reports" / (hashlib.sha256(run_id.encode()).hexdigest() + ".json")
+    assert report.exists(), "a zero-bundle run still writes its one comparison report"
+    assert result["findings_count"] == 0 and result["comparison"] == {"before": 0, "after": 0}
+    last = json.loads((tmp_path / "data/runtime/conflict-resolver_last.json").read_text())
+    assert (last["produced_count"], last["attempted_count"]) == (1, 1)
+    assert last["summary"]["bundles_evaluated"] == 0
+    attempt = json.loads((tmp_path / "data/runtime/lane_attempts/conflict-resolver" / f"{run_id}.json").read_text())
+    verdict = ov.evaluate(_live_rule(), attempt, run_id=run_id, lane_id="conflict-resolver", mode="live", attempt=1,
+                          started_at=started.isoformat(), finished_at=finished.isoformat(), code_sha=SHA)
+    assert verdict["verdict"] == "produced", verdict
+
+
+def test_a_failed_shadow_run_still_reads_as_a_typed_failure_not_green(tmp_path, monkeypatch):
+    """The counter fix must not turn a real failure green: exit 2 writes 0/0 and stays RUN_FAILED."""
+    run_id = "shadow-bad-input"
+    monkeypatch.setenv("TRADEAI_RUN_ID", run_id)
+    monkeypatch.setenv("TRADEAI_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")
+    monkeypatch.setenv("TRADEAI_CODE_SHA", SHA)
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    assert resolver.main(["--shadow", "--state-root", str(tmp_path), "--input-file", str(bad)]) == 2
+    last = json.loads((tmp_path / "data/runtime/conflict-resolver_last.json").read_text())
+    assert (last["status"], last["produced_count"], last["attempted_count"]) == ("failed", 0, 0)
+    assert last["empty_reason"] == "run_failed"
+    attempt = json.loads((tmp_path / "data/runtime/lane_attempts/conflict-resolver" / f"{run_id}.json").read_text())
+    verdict = ov.evaluate(_live_rule(), attempt, run_id=run_id, lane_id="conflict-resolver", mode="live", attempt=1,
+                          started_at=attempt["started_at"], finished_at=attempt["finished_at"], code_sha=SHA)
+    assert (verdict["verdict"], verdict["why"]) == ("empty_violation", "receipt_status_failed"), verdict

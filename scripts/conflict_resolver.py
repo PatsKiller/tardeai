@@ -159,10 +159,17 @@ def _run(root, bundles, *, now, shadow=False, run_id=None, memory_writer=None, p
         with target.open("x") as handle:
             json.dump(report, handle, ensure_ascii=False, indent=2)
         from scripts.lib.lane_last_receipt import write_lane_receipt
+        # produced/attempted count the SAME population: the one comparison report this run set out to write and
+        # wrote. ``len(bundles)`` used to be attempted_count, but a bundle evaluated and a report written are two
+        # different units — with no bundles at all the receipt read produced 1 / attempted 0, which
+        # n8n_output_verdict rejects as counts_inconsistent, so a live run FAILED output_unverifiable and opened the
+        # breaker (the 2026-11-02 breaker; the same shape cost macro-calendar-refresh three days, LQ-20261107-134).
+        # bundles evaluated is reported in summary.bundles_evaluated, correctly named.
         receipt = write_lane_receipt("conflict-resolver", ok=True, exit_code=0, started_at=now.isoformat(),
             script="scripts/conflict_resolver.py", path=root / "data/runtime/conflict-resolver_last.json",
-            summary={"phase": "shadow", "notifications": 0, "rulebook_sha256": report["rulebook_sha256"]},
-            produced_count=1, attempted_count=len(bundles), output_evidence=[{"path": str(target),
+            summary={"phase": "shadow", "notifications": 0, "rulebook_sha256": report["rulebook_sha256"],
+                     "bundles_evaluated": len(bundles)},
+            produced_count=1, attempted_count=1, output_evidence=[{"path": str(target),
                 "sha256": hashlib.sha256(target.read_bytes()).hexdigest(), "kind": "comparison_report"}])
         if receipt is None:
             raise RuntimeError("conflict resolver receipt write failed")
