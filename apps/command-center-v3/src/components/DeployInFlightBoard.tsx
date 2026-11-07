@@ -261,8 +261,11 @@ function PlainEnglishCell({ p }: { p: InFlightPr }) {
   )
 }
 
-export default function DeployInFlightBoard() {
-  const api = useApi<Wire>(IN_FLIGHT_PATH, 60_000)
+/** LQ-20261107-308: a page that already reads the in-flight endpoint passes its read down (`shared`), so the board does
+ *  not fire a second request. Standalone use (no prop) still fetches for itself; polling is then off for the shared case. */
+export default function DeployInFlightBoard({ shared }: { shared?: ReturnType<typeof useApi<Wire>> } = {}) {
+  const own = useApi<Wire>(IN_FLIGHT_PATH, 60_000, { enabled: !shared })
+  const api = shared ?? own
   const [busy, setBusy] = useState<string | null>(null)   // "approve:2211" | "hold:2211" | "push:2211" | "refresh_hints"
   const [last, setLast] = useState<ActionOutcome | null>(null)
   const [overrideBudget, setOverrideBudget] = useState(false)

@@ -572,19 +572,72 @@ def handle(path: str, method: str, query: Optional[dict[str, Any]], db_query: An
         return None
     if (method or "GET").upper() != "GET":
         return 405, {"ok": False, "error": "read_only"}
+    return 200, {"ok": True, "data": _serve(base, db_query)}
+
+
+# LQ-20261107-308: the request path never runs gh. A request serves the cached payload at once and, when it is
+# older than CACHE_TTL_S, starts ONE background refresh (single-flight). A cold cache waits at most
+# COLD_WAIT_S for that refresh and otherwise answers a "warming" UNAVAILABLE payload (never an empty list).
+# A failed refresh keeps the last good payload, marked STALE with the reason, instead of caching the failure.
+COLD_WAIT_S = 8.0
+_INFLIGHT: dict[str, threading.Event] = {}
+
+
+def _refresh(base: str, db_query: Any, done: threading.Event) -> None:
+    try:
+        data = build(db_query)
+    except Exception as exc:  # noqa: BLE001 - the error is the evidence
+        data = {"schema": SCHEMA, "authority": AUTHORITY, "generated_at": _iso(datetime.now(timezone.utc)),
+                "source": SOURCE, "prs": None, "count": None, "status": "UNAVAILABLE",
+                "freshness": "UNAVAILABLE", "reason": f"{type(exc).__name__}: {str(exc)[:240]}"}
+    with _CACHE_LOCK:
+        prev = _CACHE.get(base)
+        if data.get("freshness") == "UNAVAILABLE" and prev and prev[1].get("freshness") != "UNAVAILABLE":
+            kept = {**prev[1], "freshness": "STALE", "refresh_error": data.get("reason")}
+            _CACHE[base] = (prev[0], kept)   # keep the old timestamp: the next request retries the refresh
+        else:
+            _CACHE[base] = (time.monotonic(), data)
+        _INFLIGHT.pop(base, None)
+    done.set()
+
+
+def _start_refresh(base: str, db_query: Any) -> threading.Event:
+    with _CACHE_LOCK:
+        ev = _INFLIGHT.get(base)
+        if ev is not None:
+            return ev
+        ev = threading.Event()
+        _INFLIGHT[base] = ev
+    threading.Thread(target=_refresh, args=(base, db_query, ev), daemon=True, name="in-flight-refresh").start()
+    return ev
+
+
+def _serve(base: str, db_query: Any) -> dict:
     with _CACHE_LOCK:
         hit = _CACHE.get(base)
-    if hit and time.monotonic() - hit[0] < CACHE_TTL_S:
-        return 200, {"ok": True, "data": {**hit[1], "cache": "HIT"}}
-    data = build(db_query)
+    if hit:
+        age = time.monotonic() - hit[0]
+        state = "HIT"
+        if age >= CACHE_TTL_S:
+            _start_refresh(base, db_query)
+            state = "STALE_REFRESHING"
+        return {**hit[1], "cache": state, "cache_age_s": round(age, 1)}
+    ev = _start_refresh(base, db_query)
+    ev.wait(COLD_WAIT_S)
     with _CACHE_LOCK:
-        _CACHE[base] = (time.monotonic(), data)
-    return 200, {"ok": True, "data": {**data, "cache": "MISS"}}
+        hit = _CACHE.get(base)
+    if hit:
+        return {**hit[1], "cache": "MISS", "cache_age_s": 0.0}
+    return {"schema": SCHEMA, "authority": AUTHORITY, "generated_at": _iso(datetime.now(timezone.utc)),
+            "source": SOURCE, "prs": None, "count": None, "status": "UNAVAILABLE", "freshness": "UNAVAILABLE",
+            "reason": f"warming: the first GitHub read has not finished within {COLD_WAIT_S:.0f}s; retry shortly",
+            "cache": "WARMING"}
 
 
 def clear_cache() -> None:
     with _CACHE_LOCK:
         _CACHE.clear()
+        _INFLIGHT.clear()
 
 
 __all__ = ["SCHEMA", "ROUTE", "AUTHORITY", "SOURCE", "build", "handle", "clear_cache", "list_open_prs",
