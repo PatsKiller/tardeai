@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -105,7 +106,9 @@ def activity(path: Path, *, max_entries: int = 250000, protected: Callable[[Path
             count += 1
             if count > max_entries:
                 return None, "activity_scan_limit"
-            if p.is_dir() and not p.is_symlink():
+            # lstat's mode is a directory only for a real directory (a symlink to one is S_IFLNK), so the
+            # old is_dir() + is_symlink() pair (two more syscalls per entry) is one test on the stat in hand.
+            if stat.S_ISDIR(st.st_mode):
                 with os.scandir(p) as entries:
                     pending.extend(Path(e.path) for e in entries)
     except OSError:

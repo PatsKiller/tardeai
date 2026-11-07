@@ -1033,6 +1033,14 @@ ARCHIVED_RELATIVE_FILES = frozenset({"claims/claims_history.jsonl"})
 ARCHIVED_RELATIVE_PREFIXES = ("claims/worklog_archive/",)
 
 
+#: LQ-20261107-41: the live (non-archived) coordination tree grew past the old 128 MiB total (145.6 MB on 2026-11-07:
+#: 69 MB of inbox notes, 24 MB review evidence) and every standing run then refused with evidence_incomplete:
+#: coordination, which reclaimed nothing while the disk sat at 93%. The scan still fails closed past these caps;
+#: they now leave room for the tree's real size. Paths are read as text, so memory is the bound.
+COORD_MAX_FILE_BYTES = 64 * 1024**2
+COORD_MAX_TOTAL_BYTES = 512 * 1024**2
+
+
 def is_archived_coordination(relative: str) -> bool:
     """True when a coordination-root-relative POSIX path is an archival record, never a live reference."""
     return relative in ARCHIVED_RELATIVE_FILES or relative.startswith(ARCHIVED_RELATIVE_PREFIXES)
@@ -1054,7 +1062,7 @@ def scan_coordination(base: Path, now: datetime) -> dict[str, Any]:
             raise ValueError("coordination_symlink")
         size = path.stat().st_size
         total += size
-        if size > 32 * 1024**2 or total > 128 * 1024**2:
+        if size > COORD_MAX_FILE_BYTES or total > COORD_MAX_TOTAL_BYTES:
             raise ValueError("coordination_scan_limit")
         text = path.read_text()
         refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
