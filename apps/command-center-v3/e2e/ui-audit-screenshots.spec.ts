@@ -23,7 +23,7 @@ const OUT = path.join(__dirname, 'screenshots', 'ui-audit', THEME ? `${DIR}-${TH
 // rendered; a tab that is not found is skipped, never failed, so the audit run always completes.
 const ROUTES: Array<{ path: string; slug: string; tabs?: string[] }> = [
   { path: '/', slug: 'home' },
-  { path: '/portfolio', slug: 'portfolio', tabs: ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] },
+  { path: '/portfolio', slug: 'portfolio', tabs: ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] },
   { path: '/trading', slug: 'trading', tabs: ['Trade AI', 'Options', 'Open Trades', 'Proposals'] },
   { path: '/watch', slug: 'watch', tabs: ['Intelligence', 'Watchpool', 'Sectors', 'Pullback'] },
   { path: '/watch/intelligence/DELL', slug: 'symbol-DELL' },

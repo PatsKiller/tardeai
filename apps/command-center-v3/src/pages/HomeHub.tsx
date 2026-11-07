@@ -551,8 +551,8 @@ function HomeClassic({ onDrill }: Props) {
                   <div style={{ fontSize: 10, color: TOKENS.success, marginTop: 2 }}>
                     {deployTop?.symbol ? `Latest: ${deployTop.symbol} · ${fmt$(deployTop.proceeds_usd ?? 0, 0)}` : 'Review redeploy targets — advisory only'}
                   </div>
-                  <Link to="/portfolio?tab=Redeploy" style={{ display: 'inline-block', marginTop: 8, fontSize: 10, fontWeight: 700, color: TOKENS.info, textDecoration: 'none' }}>
-                    Portfolio → Redeploy →
+                  <Link to="/redeploy" style={{ display: 'inline-block', marginTop: 8, fontSize: 10, fontWeight: 700, color: TOKENS.info, textDecoration: 'none' }}>
+                    Redeploy desk →
                   </Link>
                 </div>
               )}

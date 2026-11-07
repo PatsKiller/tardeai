@@ -1,6 +1,6 @@
 import W7Lookthrough, { W7Allocation } from '../components/W7Lookthrough'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import RotationPublicationNotice from '../components/RotationPublicationNotice'
 import { useRotationAvailability } from '../hooks/useRotationAvailability'
@@ -13,7 +13,6 @@ import { mergeLiveStop } from '../lib/stopReviewTooltip'
 import { storedStopFor, storedStopsAsOf } from '../lib/storedStops'
 import { useAnalystReportMap } from '../hooks/useAnalystReportMap'
 import StopManagement from '../components/StopManagement'
-import RedeployPanel from '../components/RedeployPanel'
 import AllocationPanel from '../components/AllocationPanel'
 import ReturnsPanel from '../components/ReturnsPanel'
 import DividendsPanel from '../components/DividendsPanel'
@@ -31,6 +30,7 @@ import TaxPanel from '../components/TaxPanel'
 import {
   parsePortfolioDeepLink,
   pickHoldingForDeepLink,
+  portfolioTabRedirect,
   resolvePortfolioSig,
   type PortfolioSignalTab,
 } from '../lib/portfolioDeepLink'
@@ -38,7 +38,7 @@ import { downloadHoldingsCsv } from '../lib/exportHoldingsCsv'
 import { BB, T, DASH } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] as const
+const TABS = ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Stop Management'] as const
 const COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9', '#fb923c']
 
 const ACCT_COLORS = ['#60a5fa', '#22c55e', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#e879f9']
@@ -457,6 +457,10 @@ export default function PortfolioHub({ onDrill }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allHoldings.length, searchParams])
 
+  // Old ?tab=Redeploy links go to the Redeploy desk (after every hook, so the hook order never changes).
+  const tabRedirect = portfolioTabRedirect(searchParams.get('tab'))
+  if (tabRedirect) return <Navigate to={tabRedirect} replace />
+
   return (
     <div>
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
@@ -505,6 +509,8 @@ export default function PortfolioHub({ onDrill }: Props) {
           {TABS.map(t => (
             <button key={t} onClick={() => selectTab(t)} style={{ ...hubTab(tab === t, terminalUi), minHeight: 44 }}>{t}</button>
           ))}
+          {/* Design pages/jobs v002 (operator-approved 2026-11-06): Redeploy is its own desk; this was a duplicate sub-tab. */}
+          <Link to="/redeploy" data-testid="portfolio-redeploy-link" style={{ ...hubTab(false, terminalUi), minHeight: 44, display: 'inline-flex', alignItems: 'center', textDecoration: 'none', boxSizing: 'border-box' }}>Redeploy desk →</Link>
         </div>
       </div>
 
@@ -522,8 +528,6 @@ export default function PortfolioHub({ onDrill }: Props) {
         onExportCsv={() => downloadHoldingsCsv(holdingsList)}
         onOpenStopAudit={() => selectTab('Stop Management')}
       />}
-
-      {tab === 'Redeploy' && <RedeployPanel />}
 
       {tab === 'Stop Management' && (
         <StopManagement

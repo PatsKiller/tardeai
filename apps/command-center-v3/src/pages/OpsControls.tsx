@@ -10,7 +10,7 @@ import { useApi } from '../hooks/useApi'
 import CountTile from '../components/CountTile'
 import { dataApprovalTiles } from '../lib/measuredCount'
 import { Link, useSearchParams } from 'react-router-dom'
-import JobsHealth from '../components/JobsHealth'
+import { JOBS_N8N_PATH } from '../lib/jobsN8n'
 import './OpsEvidencePages.css'
 import { Chip, ChipRow, Tooltip } from '../components/primitives'
 import { TOKENS, TYPE } from '../lib/watchTokens'
@@ -29,7 +29,7 @@ import {
 } from '../lib/opsControlsData'
 import {
   failuresBadge, GLOSSARY, healthView, lastRunView, liveSourceText, matchesN8nFilter, matchesN8nQuery, N8N_FILTERS, n8nFilterCounts, nextRunView,
-  readinessView, runsText, sortRows as sortN8nRows, stageView, summaryOf, type N8nFilter, type N8nRowX,
+  readinessView, runsText, sortRows as sortN8nRows, stageView, type N8nFilter, type N8nRowX,
 } from '../lib/opsControlsN8n'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import {
@@ -345,10 +345,8 @@ export function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const safeParams = reason.trim() ? { reason: reason.trim() } : {}
   const relParams = { reason: reason.trim().length >= 4 ? reason.trim() : 'operator, Ops Controls' }
   const jobs = d?.jobs
-  const phone = usePhoneWidth()
-  // FQ-068: the control panel leads. Jobs health is a diagnostic summary (source writers, watchers,
-  // coverage); it starts closed on a phone so the controls are the first thing on the page, and open
-  // on a desktop where it fits. Nothing is removed.
+  // FQ-068: the control panel leads. Jobs health (source writers, watchers, coverage) and run history moved to
+  // Ops › Jobs & n8n (design pages/jobs v002); a link card stands where the diagnostics block was.
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <Panel title="Deploys & kill switch">
       <p style={muted} data-testid="ops-deploys-explainer">Mergify merges; the host poller promotes. Safe direction (deploy STOP, Engage kill switch): one click, no passkey. Resume (clear the deploy STOP): passkey and the typed phrase. Emergency promote is host CLI only. Clearing the kill switch stays host terminal only.</p>
@@ -369,10 +367,7 @@ export function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
         . Mergify queue lives on the Mergify dashboard. Emergency promote: host CLI under release-write naming the SHA.
       </p>
     </Panel>
-    <details data-testid="ops-jobs-health-details" open={!phone} style={{ ...panel, padding: '8px 12px' }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 700, fontSize: TYPE.base, color: TOKENS.text[0] }}>Jobs health and diagnostics — did every scheduled job run and succeed?</summary>
-      <div style={{ marginTop: 8 }}><JobsHealth /></div>
-    </details>
+    <MovedToJobsN8n testId="ops-jobs-moved" tab="needs" what="Jobs health, run history and fixes — did every scheduled job run and succeed?" />
     <JobsSchedules d={d} run={run} />
   </div>
 }
@@ -563,13 +558,15 @@ const pl: CSSProperties = { whiteSpace: 'pre-line' }
 function Tip({ tip, children }: { tip: string; children: ReactNode }) {
   return <Tooltip content={<span style={pl}>{tip}</span>}><span style={tipHead}>{children}</span></Tooltip>
 }
-const TILES: Array<{ key: 'live_healthy' | 'live_failing' | 'rehearsing' | 'ready_to_promote' | 'never_ran'; label: string; tone: Tone; filter: N8nFilter | null; tip: string }> = [
-  { key: 'live_healthy', label: 'Live & healthy', tone: 'success', filter: 'live', tip: 'Lanes whose fires are real (live) today and whose last run succeeded, with no unanswered slot, open dead letter or breaker.' },
-  { key: 'live_failing', label: 'Live & failing', tone: 'danger', filter: 'failing', tip: 'Live lanes whose last run failed or timed out, that have an unreleased dead letter or open breaker, or that missed a scheduled slot.' },
-  { key: 'rehearsing', label: 'Rehearsing (shadow)', tone: 'info', filter: 'shadow', tip: 'Lanes n8n runs as a dry run today: shadow lanes, and canary lanes not on the live list. The cron line still does the real work.' },
-  { key: 'ready_to_promote', label: 'Ready to promote', tone: 'info', filter: 'ready', tip: 'Lanes that meet every measurable documented condition for their next step (shadow → canary, or canary → cutover). Promotion is still the operator’s call by a reviewed registry PR.' },
-  { key: 'never_ran', label: 'Never ran', tone: 'warning', filter: null, tip: 'Active lanes with no run in the n8n coordination ledger.' },
-]
+
+/** Design pages/jobs v002 (operator-approved 2026-11-06): viewing moved to Ops › Jobs & n8n; the switches stay here. */
+export function MovedToJobsN8n({ testId, tab, what }: { testId: string; tab: 'needs' | 'n8n'; what: string }) {
+  return <Link to={tab === 'needs' ? JOBS_N8N_PATH : `${JOBS_N8N_PATH}?tab=${tab}`} data-testid={testId}
+    style={{ ...panel, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, minHeight: 44, padding: '10px 12px', textDecoration: 'none', color: TOKENS.text[0], margin: '8px 0', boxSizing: 'border-box' }}>
+    <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}><b>Moved to Jobs &amp; n8n</b><span style={{ display: 'block', ...muted }}>{what} — read-only there. The switches stay on this page.</span></span>
+    <span aria-hidden="true" style={{ color: TOKENS.primary, fontWeight: 700, whiteSpace: 'nowrap' }}>Open →</span>
+  </Link>
+}
 
 function N8nTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const n = d?.n8n
@@ -579,34 +576,14 @@ function N8nTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const nowMs = Date.parse(String(n?.outcomes_as_of || d?.as_of || '')) || Date.now()
   const counts = n8nFilterCounts(rows)
-  const summary = summaryOf(rows, n?.summary)
   const shown = sortN8nRows(rows.filter(r => matchesN8nFilter(r, filter) && matchesN8nQuery(r, q)))
   const toggle = (id: string) => setOpen(prev => { const x = new Set(prev); if (x.has(id)) x.delete(id); else x.add(id); return x })
   const head = (text: string, tip: string) => <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><Tip tip={tip}>{text}</Tip></th>
 
   return <Panel title="n8n lanes" right={n?.outcomes_as_of ? <span style={muted}>run data as of {et(n.outcomes_as_of)} · refreshes every {n.cache_ttl_s ?? 60} s</span> : null}>
     <SectionGate sec={n}>
-      <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-n8n-explainer">
-        Every lane <b>n8n</b> schedules or dispatches, with what its <b>last run</b> actually did (from the n8n coordination ledger), when it runs
-        <b> next</b>, and whether it may climb the ladder <Tip tip={GLOSSARY.shadow}>shadow</Tip> → <Tip tip={GLOSSARY.canary}>canary</Tip> → <Tip tip={GLOSSARY.cutover}>cutover</Tip>.
-        A lane fires for real only when its stage allows <Tip tip={GLOSSARY.live}>live</Tip> <i>and</i> it is on the <Tip tip={GLOSSARY.live_list}>live list</Tip>; otherwise n8n runs it as a <Tip tip={GLOSSARY.dry_run}>dry run</Tip>.
-        <b> When does it go live?</b> <Tip tip={GLOSSARY.promotion}>Promotion</Tip> is your decision, made by a reviewed registry PR; the Promotion column shows the evidence and what is missing.
-      </p>
+      <MovedToJobsN8n testId="ops-n8n-moved" tab="n8n" what="n8n lane summary, stage, last run and why a lane is not live" />
       {n?.outcomes_state === 'UNAVAILABLE' ? <Banner tone="warning" title="Run outcomes unavailable">{s(n.outcomes_reason)} — last run, health and readiness are not measured; nothing is assumed.</Banner> : null}
-
-      {summary ? <div role="group" aria-label="n8n summary" data-testid="ops-n8n-summary"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, margin: '8px 0', minWidth: 0 }}>
-        {TILES.map(tile => {
-          const v = summary[tile.key], tv = toneVars(v ? tile.tone : 'neutral'), sel = tile.filter !== null && filter === tile.filter
-          return <Tooltip key={tile.key} content={tile.tip} as="div">
-            <button type="button" aria-pressed={sel} disabled={tile.filter === null} onClick={() => tile.filter && setFilter(sel ? 'all' : tile.filter)}
-              style={{ width: '100%', textAlign: 'left', background: tv.bg, border: `1px solid ${sel ? tv.color : tv.border}`, borderRadius: RADIUS.md, padding: '8px 10px', cursor: tile.filter ? 'pointer' : 'default', minWidth: 0 }}>
-              <div style={{ fontFamily: FONT.mono, fontSize: TYPE.lg, fontWeight: 700, color: tv.color }}>{v}</div>
-              <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>{tile.label}</div>
-            </button>
-          </Tooltip>
-        })}
-      </div> : null}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter n8n lanes">
         {N8N_FILTERS.map(([k, text]) => {

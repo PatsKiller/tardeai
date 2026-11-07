@@ -86,17 +86,18 @@ check('FQ-067: every controls cell carries its column label for the phone card l
   assert.match(html, /data-label="Risky direction"/)
 })
 
-check('FQ-068: controls lead; the diagnostics block is a details section', () => {
+check('FQ-068 + jobs v002: controls lead; the diagnostics moved to Jobs & n8n behind a link card', () => {
   const html = wrap(React.createElement(JobsTab, {
     d: { deploy: { state: 'OK', mode: 'AUTO', epoch: 1, latch: 'ABSENT' }, policy: { state: 'ACTIVE' } },
     run: () => {},
   }))
   const controls = html.indexOf('Deploys &amp; kill switch')
-  const health = html.indexOf('data-testid="ops-jobs-health-details"')
+  const health = html.indexOf('data-testid="ops-jobs-moved"')
   assert.ok(controls >= 0, 'the controls panel renders')
-  assert.ok(health >= 0, 'the diagnostics section renders')
-  assert.ok(controls < health, 'the controls panel comes before the diagnostics section')
-  assert.match(html, /<details[^>]*data-testid="ops-jobs-health-details"[^>]*>/)
+  assert.ok(health >= 0, 'the link card to Jobs & n8n renders')
+  assert.ok(controls < health, 'the controls panel comes before the link card')
+  assert.match(html, /<a(?=[^>]*href="\/ops\/jobs-n8n")(?=[^>]*data-testid="ops-jobs-moved")[^>]*>/)
+  assert.doesNotMatch(html, /ops-jobs-health-details/)
 })
 
 check('FQ-068: an unavailable page says who can use it and how to get access', () => {
