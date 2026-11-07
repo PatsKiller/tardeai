@@ -32,6 +32,7 @@ import math
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -121,6 +122,57 @@ def _bar(high, low, close):
     if not (math.isfinite(h) and math.isfinite(lo_) and math.isfinite(c)):
         return None
     return {"high": h, "low": lo_, "close": c}
+
+
+#: The operator price rule (2026-11-07): a live price is the Finviz cache when it is younger than
+#: portfolio_positions.price_stale_after_s, else a fresh broker quote — and never a stored DB print
+#: older than this. A bar's last close is history; it is not a today price.
+QUOTE_MAX_AGE_S = 30 * 60
+
+
+def _quote_age_seconds(as_of) -> float | None:
+    """Seconds since the quote's own stamp, or None when it cannot be read (an unreadable stamp is not a price)."""
+    try:
+        if isinstance(as_of, (int, float)):
+            stamp = datetime.fromtimestamp(float(as_of), timezone.utc)
+        elif isinstance(as_of, str):
+            stamp = datetime.fromisoformat(as_of.strip().replace("Z", "+00:00"))
+        elif isinstance(as_of, datetime):
+            stamp = as_of
+        else:
+            return None
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc) - stamp).total_seconds())
+    except Exception:
+        return None
+
+
+def _fresh_price(symbol: str) -> dict | None:
+    """The symbol's live quote from the one shared price helper, or None.
+
+    None means: no quote satisfies the operator rule right now. The caller must not fall back to the
+    bars' last close — that fallback is the defect this function exists to remove.
+    """
+    try:
+        try:
+            from lib.data_broker.market_quote import get_price_batch
+        except ImportError:  # pragma: no cover - imported as scripts.watchlist_entry_planner
+            from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore
+        quote = (get_price_batch(_broker_db_query(), [symbol.upper()], max_age_hours=1) or {}).get(symbol.upper())
+    except Exception:
+        return None
+    if not quote or quote.get("price") is None:
+        return None
+    source = str(quote.get("source") or "")
+    if source == "finviz_quote_cache":
+        # The overlay is applied only when the cache row is younger than the configured limit, so a
+        # price carrying that source already satisfies the rule.
+        return quote
+    age = _quote_age_seconds(quote.get("as_of"))
+    if age is None or age > QUOTE_MAX_AGE_S:
+        return None
+    return quote
 
 
 def _bars_data_broker(symbol, days=70):
@@ -537,6 +589,19 @@ def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_c
         if not bars:
             failed += 1; _skip("no_bars"); continue
         t = _tech(bars)
+        # 2026-11-07 (LQ-20261107-04): t["price"] was the bars' last close — a yfinance close used as
+        # today's price, and it flowed into atr_pct, sma50_dist, the plan record, the readiness-zone
+        # test, the LLM prompt and the alerter. Replace it with a live quote; with none the symbol is
+        # not planned at all rather than planned off history.
+        quote = _fresh_price(sym)
+        if not quote:
+            failed += 1
+            _skip("no_fresh_price")
+            print(f"  {sym}: no quote within {QUOTE_MAX_AGE_S // 60} min — not planned off the bars' close")
+            continue
+        t["price"] = float(quote["price"])
+        t["price_source"] = quote.get("source")
+        t["price_as_of"] = quote.get("as_of")
         conn, cur = _live(conn, cur)   # _bars can stall long enough for the server to drop us
         an = _analyst(cur, sym)
         conn.commit()  # end the read before the 30-120 s LLM call
@@ -656,6 +721,10 @@ def plan_run(lane="grok", symbols=None, limit=25, scope="watchlist", buy_rated_c
             prop["tag_source"] = "demoted_urgency_or_confidence"
             p["proposal"] = prop
         p["scope"] = scope
+        # What the plan was priced against, so the page and every later reader can date it instead of
+        # assuming the close (LQ-20261107-04).
+        p["price_source"] = t.get("price_source")
+        p["price_as_of"] = str(t.get("price_as_of")) if t.get("price_as_of") is not None else None
         # What this run would page for (pre-promotion buy-rated names never page). Persisted so
         # cio_entry_state_runner — the one swing-entry sender (2026-10-19) — can pick the plan up.
         p["alert_eligible"] = not c.get("_buy_rated")

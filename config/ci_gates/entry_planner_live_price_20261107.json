@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "entry_planner_live_price_20261107",
+  "files": [
+    "tests/test_entry_planner_live_price_20261107.py"
+  ],
+  "anchor": "ENTRY_PLANNER_LIVE_PRICE_20261107",
+  "comment": [
+    "ANCHOR: ENTRY_PLANNER_LIVE_PRICE_20261107 — the entry planner prices a plan from a live quote (Finviz cache, else a fresh broker quote <= 30 min) and never from the bars' last close (LQ-20261107-04): no qualifying quote means no plan, and the price's source and stamp travel into the stored plan."
+  ]
+}
