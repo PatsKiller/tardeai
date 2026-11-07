@@ -133,9 +133,12 @@ def test_the_cli_prints_the_computed_day_change_after_a_successful_reprice(tmp_p
     _no_lock(monkeypatch)
     state, target = _state(tmp_path, total_value=1_000)
 
-    def fake_reprice(portfolio, state_dir):
+    def fake_reprice(portfolio, state_dir, stats=None):
+        # ``stats`` is the caller-owned run summary main() hands to the lane run receipt (2026-11-07).
         out = json.loads(json.dumps(portfolio))
         out["portfolio_totals"]["day_change"] = 10.0
+        if stats is not None:
+            stats["holdings"] = len(out.get("holdings") or [])
         return out
 
     monkeypatch.setattr(pr, "reprice_portfolio", fake_reprice)
