@@ -24,6 +24,14 @@ alongside so a provider swap cannot silently change meaning.
 Shard03: --dry-run is an offline flag/action plan, never a provider call or persist.
 The two cron modes leave distinct LaneRunReceipt@v1 artifacts, sharing their existing output
 and cron lock. DATA_INSUFFICIENT remains a visible business finding; no execution authority.
+
+Output location (2026-11-07, LQ-20261107-113): the day's jsonl and ``latest.json`` are written
+under the PERSISTENT state root (``$TRADEAI_STATE_ROOT`` else
+``persistent_state_root.resolve_durable_dir``), never ``<release>/data/runtime``. They used to resolve
+from ``Path(__file__)``, so a release wrote the snapshot into its own tree and the next promote
+orphaned it (audit 2026-11-07: ``portfolio-server/3fadf59fb-.../data/runtime/opening_intelligence/
+2026-11-02.jsonl``). ``data/runtime/opening_intelligence/*.jsonl`` and ``latest.json`` under
+persistent-state are the only copies a reader should use.
 """
 from __future__ import annotations
 
@@ -40,7 +48,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 ET = ZoneInfo("America/New_York")
-SNAPSHOT_DIR = ROOT / "data" / "runtime" / "opening_intelligence"
+SNAPSHOT_REL = "data/runtime/opening_intelligence"
 
 # Provider capability states (§9)
 TRUE_FUTURES_REALTIME = "TRUE_FUTURES_REALTIME"
@@ -313,12 +321,34 @@ def build_snapshot(provider: Optional[OpeningMarketProvider] = None,
     }
 
 
+def snapshot_dir() -> Path:
+    """Where the day's jsonl and ``latest.json`` live: the persistent state root, never this checkout.
+
+    LQ-20261107-113. ``ROOT/data/runtime`` is the release tree the code happens to run from. It only
+    reaches durable state when the deploy that built the release happened to symlink ``data/runtime``
+    at persistent-state; a release cut before that symlink wrote the snapshot into its own tree and the
+    next promote orphaned it (``portfolio-server/3fadf59fb-.../data/runtime/opening_intelligence/
+    2026-11-02.jsonl`` in the 2026-11-07 n8n audit). Resolution order mirrors
+    ``lib.lane_last_receipt``: explicit ``TRADEAI_STATE_ROOT`` -> ``persistent_state_root``'s durable
+    dir (persistent when provisioned, else this checkout) -> never a hard-coded release path.
+    """
+    env = os.environ.get("TRADEAI_STATE_ROOT")
+    if env:
+        return Path(env) / SNAPSHOT_REL
+    try:
+        from lib.persistent_state_root import resolve_durable_dir
+    except ImportError:  # imported as scripts.opening_intelligence
+        from scripts.lib.persistent_state_root import resolve_durable_dir
+    return Path(resolve_durable_dir(SNAPSHOT_REL, ROOT))
+
+
 def persist(snap: dict) -> Path:
-    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    day = SNAPSHOT_DIR / f"{snap['market_date']}.jsonl"
+    d = snapshot_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    day = d / f"{snap['market_date']}.jsonl"
     with day.open("a") as fh:
         fh.write(json.dumps(snap, default=str) + "\n")
-    (SNAPSHOT_DIR / "latest.json").write_text(json.dumps(snap, indent=1, default=str))
+    (d / "latest.json").write_text(json.dumps(snap, indent=1, default=str))
     return day
 
 

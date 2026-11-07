@@ -2,6 +2,7 @@
 """Opening-intelligence tests. Deterministic fixtures — no network, no broker."""
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -149,3 +150,56 @@ def test_module_has_no_execution_calls():
     for banned in ("place_order", "submit_order", "options_approval_queue",
                    "resolve_approval", "execution_eligible = True"):
         assert banned not in src, f"execution surface referenced: {banned}"
+
+
+# ── the snapshot lives in persistent state, never in the release tree (LQ-20261107-113) ────
+# The old code bound SNAPSHOT_DIR = ROOT/"data/runtime"/... at import; every release wrote the day's
+# jsonl into its own tree and the next promote orphaned it (audit 2026-11-07:
+# portfolio-server/3fadf59fb-.../data/runtime/opening_intelligence/2026-11-02.jsonl).
+
+def _snap(market_date="2026-08-03"):
+    return {"market_date": market_date, "captured_at": "2026-08-03T13:15:00+00:00",
+            "opening_bias": oi.MIXED, "source_kind": "TRUE_FUTURES", "evidence": []}
+
+
+def test_snapshot_dir_is_resolved_not_a_release_relative_constant():
+    assert not hasattr(oi, "SNAPSHOT_DIR"), (
+        "a module-level SNAPSHOT_DIR is bound to Path(__file__) at import: whatever release the code "
+        "runs from owns the output and the next promote orphans it")
+
+
+def test_snapshot_dir_follows_tradeai_state_root(tmp_path, monkeypatch):
+    state = tmp_path / "persistent-state"
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))
+    assert oi.snapshot_dir() == state / "data" / "runtime" / "opening_intelligence"
+
+
+def test_snapshot_dir_falls_back_to_the_durable_root(tmp_path, monkeypatch):
+    state = tmp_path / "persistent-state"
+    (state / "data" / "runtime" / "opening_intelligence").mkdir(parents=True)
+    monkeypatch.delenv("TRADEAI_STATE_ROOT", raising=False)
+    monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(state))
+    assert oi.snapshot_dir() == state / "data" / "runtime" / "opening_intelligence"
+
+
+def test_persist_writes_only_under_the_state_root(tmp_path, monkeypatch):
+    state = tmp_path / "persistent-state"
+    release = tmp_path / "release"  # a fake release checkout the code happens to run from
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))
+    monkeypatch.setattr(oi, "ROOT", release)
+
+    day = oi.persist(_snap())
+
+    assert day == state / "data" / "runtime" / "opening_intelligence" / "2026-08-03.jsonl"
+    assert day.read_text().strip(), "the day's jsonl line must be written"
+    latest = state / "data" / "runtime" / "opening_intelligence" / "latest.json"
+    assert json.loads(latest.read_text())["market_date"] == "2026-08-03"
+    assert not release.exists(), "nothing may be written into the release tree"
+
+
+def test_persist_appends_to_the_same_day_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    oi.persist(_snap("2026-08-03"))
+    oi.persist(_snap("2026-08-03"))
+    day = tmp_path / "state" / "data" / "runtime" / "opening_intelligence" / "2026-08-03.jsonl"
+    assert len(day.read_text().splitlines()) == 2
