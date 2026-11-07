@@ -129,6 +129,39 @@ def _run_phase(name: str, func, *args, timeout_min: int = 30) -> dict:
     return result
 
 
+SOCIAL_LANE_FRESH_HOURS = 12.0
+
+
+def _social_lane_is_fresh(now=None, receipt=None) -> bool:
+    """True when the social-sentiment lane's own receipt shows an ok run within SOCIAL_LANE_FRESH_HOURS.
+
+    Unknown (no receipt, unreadable, no timestamp) is NOT fresh: the overnight run then does the work itself.
+    AEGIS_OVERNIGHT_FORCE_SOCIAL=1 forces the old behaviour.
+    """
+    import os
+    from datetime import datetime, timezone
+    if os.environ.get("AEGIS_OVERNIGHT_FORCE_SOCIAL") == "1":
+        return False
+    try:
+        if receipt is None:
+            import json
+            from pathlib import Path
+            try:
+                from scripts.lib.lane_last_receipt import receipt_path
+            except ImportError:
+                from lib.lane_last_receipt import receipt_path
+            receipt = json.loads(Path(receipt_path("aegis-social-sentiment")).read_text())
+        if receipt.get("status") != "ok":
+            return False
+        ok_at = datetime.fromisoformat(str(receipt.get("ok_at")).replace("Z", "+00:00"))
+        if ok_at.tzinfo is None:
+            ok_at = ok_at.replace(tzinfo=timezone.utc)
+        age = ((now or datetime.now(timezone.utc)) - ok_at).total_seconds() / 3600.0
+        return 0 <= age <= SOCIAL_LANE_FRESH_HOURS
+    except Exception:
+        return False
+
+
 def main():
     run_id = f"aegis-overnight-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     _log(f"{'='*60}")
@@ -163,7 +196,13 @@ def main():
 
     # 1c: Social sentiment (Reddit + Brave)
     from aegis_social_sentiment import main as social_main
-    results["social"] = _run_phase("social_sentiment", social_main)
+    # LQ-20261107-118: the scheduled lane aegis-social-sentiment owns this write. A second nightly copy wrote a
+    # second set of rows under the same source name and the page served it. Skip when the lane has run lately.
+    if _social_lane_is_fresh():
+        _log("  social sentiment: lane aegis-social-sentiment ran recently; skipping the second copy")
+        results["social"] = {"skipped": "lane_fresh", "written": 0}
+    else:
+        results["social"] = _run_phase("social_sentiment", social_main)
 
     # 1d: Transcript + discovery intelligence
     from aegis_transcript_discovery import main as transcript_main

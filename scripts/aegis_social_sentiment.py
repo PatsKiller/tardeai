@@ -313,6 +313,10 @@ def fetch_brave_social(symbols: list[str], max_queries: int = 10) -> dict[str, d
 
 # ── Sentiment normalization ──────────────────────────────────────────────
 
+#: StockTwits symbol streams return at most this many messages per request.
+ST_PAGE = 30
+
+
 def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict,
                         stocktwits_data: dict | None = None) -> dict:
     """Normalize raw social data into a structured sentiment record."""
@@ -357,8 +361,14 @@ def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict,
         summary_parts.append(f"[brave] {m.get('title', '')[:60]}")
     summary = " | ".join(summary_parts)[:500]
 
+    # LQ-20261107-118: a StockTwits stream returns one page (ST_PAGE messages), so a full page means
+    # "at least this many", not a count. 7339 of 7460 history rows read exactly 30. A saturated page cannot
+    # evidence a spike; the count stays, flagged, and the spike is withheld rather than always-true.
+    st_n = sum(1 for m in social_mentions if m.get("channel") == "stocktwits")
+    source_counts = {"reddit": len(social_mentions) - st_n, "stocktwits": st_n, "brave": len(b_mentions)}
+    st_saturated = st_n >= ST_PAGE
     # Spike detection: >5 mentions for a single symbol is unusual
-    unusual_spike = mention_count >= 5
+    unusual_spike = mention_count >= 5 and not st_saturated
 
     # Confidence: social is always lower trust
     confidence = min(0.30 + (mention_count * 0.03), 0.60)
@@ -374,7 +384,15 @@ def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict,
         "theme_tags": themes,
         "top_posts_summary": summary,
         "confidence": round(confidence, 2),
+        "source_counts": source_counts,
+        "stocktwits_saturated": st_saturated,
     }
+
+
+def source_name_for(counts: dict) -> str:
+    """Name only the sources that returned something; an empty/retired source is not claimed."""
+    names = [k for k in ("reddit", "stocktwits", "brave") if (counts or {}).get(k, 0) > 0]
+    return "+".join(names) or "none"
 
 
 # ── late-write fence (first assert_fence wave, 2026-10-16) ──────────────────
@@ -411,12 +429,14 @@ def persist_sentiment(symbol: str, sentiment: dict, source_family: str):
             mention_count=EXCLUDED.mention_count, sentiment_score=EXCLUDED.sentiment_score,
             top_posts_summary=EXCLUDED.top_posts_summary, confidence=EXCLUDED.confidence,
             observed_at=NOW()""",
-        (RUN_ID, symbol, source_family, "reddit+stocktwits+brave", sentiment["mention_count"],
+        (RUN_ID, symbol, source_family, source_name_for(sentiment.get("source_counts")), sentiment["mention_count"],
          sentiment["bullish_count"], sentiment["bearish_count"], sentiment["neutral_count"],
          sentiment["sentiment_score"], sentiment["volume_zscore"], sentiment["unusual_spike"],
          sentiment["theme_tags"], sentiment["top_posts_summary"],
          sentiment["confidence"],
-         json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:social"}, default=str))
+         json.dumps({"run_id": RUN_ID, "agent": AGENT, "source": "aegis:social",
+                    "source_counts": sentiment.get("source_counts"),
+                    "mention_count_is_lower_bound": bool(sentiment.get("stocktwits_saturated"))}, default=str))
     )
 
 

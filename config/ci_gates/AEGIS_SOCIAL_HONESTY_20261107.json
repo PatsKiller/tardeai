@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "AEGIS_SOCIAL_HONESTY_20261107",
+  "files": ["tests/test_aegis_social_honesty_20261107.py"],
+  "anchor": "AEGIS_SOCIAL_HONESTY_20261107",
+  "comment": ["ANCHOR: AEGIS_SOCIAL_HONESTY_20261107 — LQ-20261107-118: social source_name lists contributors, saturated StockTwits page withholds the spike, overnight skips a fresh lane."]
+}
