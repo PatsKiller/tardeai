@@ -121,24 +121,43 @@ def _f(x: Any) -> Optional[float]:
     return v if v == v else None   # NaN → None
 
 
-def _age_s(as_of: Any, now: datetime) -> Optional[float]:
+def _as_of_dt(as_of: Any) -> Optional[datetime]:
+    """A price ``as_of`` as an aware datetime: the cache's ``"%Y-%m-%d %H:%M:%S ET"`` spelling or ISO-8601.
+    None when it is empty or cannot be parsed."""
     if not as_of:
         return None
     s = str(as_of).strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S ET",):
-        try:
-            from zoneinfo import ZoneInfo
-            dt = datetime.strptime(s, fmt).replace(tzinfo=ZoneInfo("America/New_York"))
-            return (now - dt).total_seconds()
-        except ValueError:
-            pass
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S ET").replace(tzinfo=ZoneInfo("America/New_York"))
+    except ValueError:
+        pass
     try:
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
         return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return (now - dt).total_seconds()
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _utc_iso(as_of: Any) -> Optional[str]:
+    """``as_of`` in UTC ISO-8601 (``…Z``); an unparseable value is passed through unchanged (never invented).
+
+    ``finviz_quote_cache.json`` stamps ``last_fetched`` as ``"%Y-%m-%d %H:%M:%S ET"``, and emitting that
+    spelling from ``finviz_cache()`` handed every consumer a timestamp only this module could read. Strict
+    readers drop the fact instead of mis-stamping it (``cio_ask_research._iso`` -> ``FactRejected``;
+    ``prospectus.inputs`` stores a null ``as_of``), and looser ones silently truncate it to a date
+    (``advisory_desk._age_hours`` reads "2026-11-07 01:45:01 ET" as midnight UTC, overstating the age by up
+    to a day). Normalising here fixes each consumer at once, including ``resolve_mark``'s own cache rung.
+    """
+    dt = _as_of_dt(as_of)
+    if dt is not None:
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return str(as_of) if as_of else None
+
+
+def _age_s(as_of: Any, now: datetime) -> Optional[float]:
+    dt = _as_of_dt(as_of)
+    return None if dt is None else (now - dt).total_seconds()
 
 
 def is_cash(position: dict) -> bool:
@@ -202,7 +221,7 @@ def finviz_cache(path: Optional[Path] = None) -> dict:
             if not _finviz_row_source(source):
                 continue
             out[str(sym).upper()] = {"price": _f(row["price"]),
-                                     "as_of": row.get("last_fetched") or row.get("last_updated"),
+                                     "as_of": _utc_iso(row.get("last_fetched") or row.get("last_updated")),
                                      "source": source or None}
     _FV_MEMO[str(p)] = (mt, out)
     return out
