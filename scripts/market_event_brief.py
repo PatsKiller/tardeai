@@ -380,8 +380,23 @@ def main(argv: Optional[list[str]] = None) -> int:
     now = datetime.now(timezone.utc)
     slot = args.slot or slot_for(now, policy)
     mode = "live" if send else "dry_run"
+    receipt_path = _state_root() / RECEIPT_REL
+
+    def receipt(*, ok: bool, exit_code: int, produced: int, attempted: int, skipped: Optional[dict[str, int]],
+                empty_reason: Optional[str], summary: dict[str, Any], error: Optional[str] = None) -> None:
+        """LQ-20261107-415: the executor grades a live run ONLY from the per-attempt LaneRunReceipt@v2 (the allowlist
+        sets ``output_receipt: "v2"``), so every live exit writes one. ``_last.json`` keeps ``ok_at`` for the registry's
+        output_signal. A dry run writes nothing."""
+        if not send:
+            return
+        from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(LANE_ID, ok=ok, exit_code=exit_code, started_at=started, script="scripts/market_event_brief.py",
+                           summary=summary, error=error, path=receipt_path, produced_count=produced, attempted_count=attempted,
+                           skipped_reasons=skipped or {}, empty_reason=empty_reason)
+
     if not slot:
         lane_output.emit(LANE_ID, mode, lane_output.output_block(produced=0, attempted=0, empty_reason="no_slot_due", unit="briefs"), started_at=started)
+        receipt(ok=True, exit_code=0, produced=0, attempted=0, skipped=None, empty_reason="no_slot_due", summary={"slot": None})
         print("no scheduled slot is due; nothing to do")
         return 0
     try:
@@ -389,6 +404,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     except Exception as exc:  # noqa: BLE001 -- the lane fails visibly; a brief is never rendered from nothing
         print(f"market-event-brief: payload unavailable ({type(exc).__name__}): {exc}", file=sys.stderr)
         lane_output.emit(LANE_ID, mode, lane_output.output_block(produced=0, attempted=1, skipped={"payload_unavailable": 1}, empty_reason="payload_unavailable", unit="briefs"), started_at=started)
+        receipt(ok=False, exit_code=1, produced=0, attempted=1, skipped={"payload_unavailable": 1}, empty_reason="payload_unavailable",
+                summary={"slot": slot}, error=f"payload unavailable ({type(exc).__name__}: {exc})")
         return 1
     stale = bool(payload.get("stale"))
     state_path = Path(args.state) if args.state else _state_root() / STATE_REL
@@ -403,17 +420,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     delivered = bool(send and any(result["channels"].values()))
     if send and delivered:
         save_state(state_path, state)
-        rec = _state_root() / RECEIPT_REL
-        save_state(rec, {"schema": SCHEMA, "ok_at": datetime.now(timezone.utc).isoformat(), "slot": slot, "channels": result["channels"],
-                         "texts": result["texts"]})
     elif not send and result.get("email_body"):
         print(result["subject"]); print(result["email_body"]); print("---- TELEGRAM ----"); print(result["telegram_text"])
         for t in result.get("texts_planned", []):
             print(f"[text would send] {t['event_id']}: {t.get('text') or t.get('refused')}")
     produced = 1 if (delivered if send else bool(result.get("email_body"))) else 0
-    lane_output.emit(LANE_ID, mode, lane_output.output_block(produced=produced, attempted=1, skipped={result["skipped"]: 1} if result.get("skipped") else None,
-                                                             empty_reason=result.get("skipped") or ("no_channel_confirmed" if send and not delivered else None), unit="briefs"), started_at=started)
-    return 1 if (send and not delivered and not result.get("skipped")) else 0
+    failed = send and not delivered and not result.get("skipped")
+    empty_reason = result.get("skipped") or ("no_channel_confirmed" if send and not delivered else None)
+    skipped = {result["skipped"]: 1} if result.get("skipped") else ({"no_channel_confirmed": 1} if failed else None)
+    lane_output.emit(LANE_ID, mode, lane_output.output_block(produced=produced, attempted=1, skipped=skipped,
+                                                             empty_reason=empty_reason, unit="briefs"), started_at=started)
+    receipt(ok=not failed, exit_code=1 if failed else 0, produced=produced, attempted=1, skipped=skipped, empty_reason=empty_reason,
+            summary={"schema": SCHEMA, "slot": slot, "channels": result["channels"], "texts": result["texts"]},
+            error="no delivery channel confirmed" if failed else None)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
