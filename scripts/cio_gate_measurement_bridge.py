@@ -67,9 +67,9 @@ SCHEDULED_ENTRYPOINT = (
 PROJECT_ROOT = Path(os.environ.get("TRADE_AI_PROJECT_ROOT") or Path(__file__).resolve().parents[1])
 
 try:  # callers put either ROOT or ROOT/scripts on sys.path
-    from agent_runtime.gate_status import measurements_path as _measurements_path  # type: ignore
+    from agent_runtime.gate_status import measurements_path as _measurements_path  # type: ignore -- dual-import: script vs package path
 except ImportError:
-    from scripts.agent_runtime.gate_status import measurements_path as _measurements_path  # type: ignore
+    from scripts.agent_runtime.gate_status import measurements_path as _measurements_path  # type: ignore -- dual-import: script vs package path
 
 # Sentinel returned instead of a number when no store answers a gate. Kept
 # distinct from ``None``-as-missing-key so a caller can tell "I looked and there

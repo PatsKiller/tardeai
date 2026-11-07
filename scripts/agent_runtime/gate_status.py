@@ -44,9 +44,9 @@ SERVED_RELEASE_LINK = Path(
 def _state_root_fn():
     """production_state_root, imported either way round (callers put ROOT or ROOT/scripts on sys.path)."""
     try:
-        from lib.canonical_store_registry import is_release_dir, production_state_root  # type: ignore  # noqa: PLC0415
+        from lib.canonical_store_registry import is_release_dir, production_state_root  # type: ignore  # noqa: PLC0415 -- dual-import: script vs package path
     except ImportError:
-        from scripts.lib.canonical_store_registry import is_release_dir, production_state_root  # type: ignore  # noqa: PLC0415
+        from scripts.lib.canonical_store_registry import is_release_dir, production_state_root  # type: ignore  # noqa: PLC0415 -- dual-import: script vs package path
     return is_release_dir, production_state_root
 
 
