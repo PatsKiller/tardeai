@@ -350,6 +350,13 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "crontab-snapshot-for-health-agent",
         # R1 cron canary climbed to cutover 2026-10-13 17:56 ET (_cutover.py --apply; cron line `# RETIRED`).
         "research-insight-extractor",
+        # 2026-11-07 (docs/ops/scheduler-registry-corrections-20261107.json): two host cron lanes whose lines were
+        # cut over to the dispatcher keep canary stage while the ledger shows their live runs — finviz-sector-research
+        # (32 live dispatcher runs, last 2026-11-06T21:15Z) and hermes-watchlist-scorer (every 15 min, last
+        # 2026-11-07T02:30Z). Their scheduler.kind is n8n and the retired cron text stays in command_text, so they
+        # belong here and not with the n8n-native lanes, none of which ever had a host line.
+        "finviz-sector-research",
+        "hermes-watchlist-scorer",
     } | set(_CW_CUT_OVER)  # 2026-10-15 n8n cutover waves (scripts/n8n_cutover_wave.py cutover; cron lines `# RETIRED`)
     # 2026-10-11: heartbeat-watch is n8n-native (no host line ever existed): a dispatcher row (shadow then canary),
     # fired by tradeai-heartbeat-watcher and tradeai-dispatcher; it flips no host scheduler (match names its script only).

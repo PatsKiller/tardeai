@@ -3759,7 +3759,7 @@
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5",
+        "expression": "*/15 9-16 * * 1-5 + 9,39 0-8,17-23 * * * + 9,39 9-16 * * 0,6",
         "command_text": "moomoo_live_read_sync.py",
         "match": "moomoo_live_read_sync.py"
       },
@@ -6250,7 +6250,7 @@
         "kind": "cron",
         "expression": "5 12 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
-        "match": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply"
+        "match": "scripts/active_trader/session_review.py --apply"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -6284,7 +6284,7 @@
         "kind": "cron",
         "expression": "10 16 * * 1-5",
         "command_text": "cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
-        "match": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply"
+        "match": "scripts/active_trader/session_review.py --apply"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -6353,7 +6353,7 @@
       "lane_id": "positions-sync",
       "scheduler": {
         "kind": "cron",
-        "expression": "9,24,39,54 9-16 * * 1-5",
+        "expression": "9,24,39,54 9-16 * * 1-5 + 0,30 0-8,17-23 * * * + 0,30 9-16 * * 0,6",
         "command_text": "cd $PROJ && flock -n /tmp/positions_sync.lock timeout 240 bash -c \"set -a; . ./.env; set +a; GIT_SHA=$(basename $(readlink -f $PROJ) | cut -d- -f1) $PY scripts/positions_sync.py --apply\" >> logs/positions_sync.log 2>&1",
         "match": "scripts/positions_sync.py --apply"
       },
@@ -7371,7 +7371,7 @@
         "kind": "cron",
         "expression": "30 17 * * 1-5",
         "command_text": "run_orchestrator_slot.sh",
-        "match": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
+        "match": "scripts/run_orchestrator_slot.sh",
         "schedules": [
           "30 17 * * 1-5"
         ]
@@ -15320,13 +15320,14 @@
       "lane_id": "finviz-sector-research",
       "owner": "scalp",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 10,16 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/finviz_sector_research.py",
         "stage": "canary",
         "wave": "R2-05",
         "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "cadence": "15 10,16 * * 1-5"
       },
       "expected_cadence_hours": 66.0,
       "state": "ACTIVE",
@@ -17119,7 +17120,7 @@
         "match": "scripts/tmp_hygiene_auto.py"
       },
       "expected_cadence_hours": 1.0,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-22",
       "state_reason": "Hourly /tmp auto-apply: scripts/tmp_hygiene_auto.py = a fresh tmp plan (rules S, P, B, E, G of config/disk_hygiene_rules.json tmp) then tmp_hygiene.apply (re-validation, caps), deletions ledger + run report + this LaneRunReceipt; P2 >= 90% / P1 >= 97% /tmp inode use via telegram_alert (alert_condition_state dedupe). Operator 2026-10-22 (verbatim): \"It needs to be able to delete it. Just looking at it won't do anything.\" (config/disk_hygiene_rules.json tmp.auto_apply.standing_approval). Host timer, never n8n: AGENTS.md §24.12 admits only lane disk-hygiene to n8n-executed deletion and the allowlist never-list keeps destructive retention off n8n; n8n keeps tmp-hygiene (--plan, daily) and disk-usage-monitor (inode bands) and watches this lane's receipt. NEVER_SCHEDULED until the operator installs the unit (docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md activation), then ACTIVE.",
       "output_signal": {
@@ -17141,7 +17142,7 @@
         "match": "scripts/tmp_hygiene_auto.py --pressure-only"
       },
       "expected_cadence_hours": 0.25,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-22",
       "state_reason": "Every 5 min: /tmp inode use >= tmp.auto_apply.pressure_trigger_pct (85%) runs the same auto-apply early (at most once per pressure_min_interval_minutes); below it writes only its receipt. Operator 2026-10-22 (verbatim): \"It needs to be able to delete it. Just looking at it won't do anything.\" (config/disk_hygiene_rules.json tmp.auto_apply.standing_approval). Host timer, never n8n: AGENTS.md §24.12 admits only lane disk-hygiene to n8n-executed deletion and the allowlist never-list keeps destructive retention off n8n; n8n keeps tmp-hygiene (--plan, daily) and disk-usage-monitor (inode bands) and watches this lane's receipt. NEVER_SCHEDULED until the operator installs the unit (docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md activation), then ACTIVE.",
       "output_signal": {
@@ -17180,13 +17181,14 @@
       "lane_id": "hermes-watchlist-scorer",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/15 * * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_watchlist_scorer.py",
         "stage": "canary",
         "wave": "R2-10",
         "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1",
-        "cutover_wave": "HS-20261021"
+        "cutover_wave": "HS-20261021",
+        "cadence": "*/15 * * * *"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
@@ -17355,7 +17357,7 @@
       "owner": "execution",
       "scheduler": {
         "kind": "cron",
-        "expression": "7,22,37,52 9-16 * * 1-5",
+        "expression": "7,22,37,52 9-16 * * 1-5 + 3,33 0-8,17-23 * * * + 3,33 9-16 * * 0,6",
         "match": "scripts/schwab_position_sync.py"
       },
       "expected_cadence_hours": 64.25,
@@ -18753,7 +18755,7 @@
     {
       "lane_id": "pr-merge-reconcile",
       "owner": "platform",
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-27",
       "reason_confidence": "ESTABLISHED",
       "scheduler": {
@@ -18844,7 +18846,7 @@
         "expression": "tradeai-prospectus-deliver.timer"
       },
       "expected_cadence_hours": 24,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-26",
       "state_reason": "operator 2026-10-26: prospectus reports 'sent out both in Word and PDF as a notification [on] Telegram and [email]' (email = run audit + holdings PDF/Word attachments, go-live direction the same day). Host sender because an n8n lane never sends (AGENTS.md §23.14, §24.1). Unit files in config/systemd/user; install is the coordinator's/operator's step.",
       "reason_confidence": "ESTABLISHED",
@@ -24006,7 +24008,7 @@
       "owner": "execution",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5",
+        "expression": "*/15 9-16 * * 1-5 + 6,36 0-8,17-23 * * * + 6,36 9-16 * * 0,6",
         "match": "scripts/alpaca_live_read_sync.py"
       },
       "expected_cadence_hours": 64.25,
@@ -24766,7 +24768,8 @@
       "owner": "os",
       "scheduler": {
         "kind": "systemd",
-        "expression": "systemd-tmpfiles-clean.timer"
+        "expression": "systemd-tmpfiles-clean.timer",
+        "scope": "system"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
@@ -25294,7 +25297,7 @@
       "unit_enabled_state": "disabled",
       "status": "DISABLED_UNRULED",
       "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled. Re-checked read-only 2026-11-07: the unit file exists but ~/.config/systemd/user/timers.target.wants/ holds no link to it, so the timer is still not enabled, and the cron lane iris-taxonomy-agent-at-0-10 (ACTIVE, 0 10 * * 0, same script) does the work. The state stays ACTIVE because retiring the writer is approval item O-4 (AGENTS.md §17), which is the operator's call, not an agent's.",
       "proposed_state": {
         "state": "PAUSED",
         "state_since": "2026-09-27",
@@ -26337,6 +26340,331 @@
         "priority": 7,
         "retry_policy": "none"
       }
+    },
+    {
+      "lane_id": "social-ingest-scalp-hot",
+      "owner": "research",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/10 6-10 * * 1-5",
+        "match": "social_ingest.py --source stocktwits --scalp-list",
+        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/social_ingest_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/social_ingest.py --source stocktwits --scalp-list >> logs/social_ingest_scalp_hot.log 2>&1"
+      },
+      "expected_cadence_hours": 1.0,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/social_ingest_scalp_hot.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "note": "host line 649 carries '# TRADEAI_LANE social-ingest-scalp-hot'; it has no registry row"
+    },
+    {
+      "lane_id": "ai-usage-governor",
+      "owner": "coordination",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "ai_usage_governor.py --hours 720"
+      },
+      "expected_cadence_hours": 0.25,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "writes the usage store and /dev/null only; no per-run artifact is declared on this host"
+      },
+      "note": "host line 1112; it sets coordinator/NUDGER_OFF when the LLM quota is spent"
+    },
+    {
+      "lane_id": "tradeai-health-tick",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-health-tick.timer",
+        "cadence": "*:0/5"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-incident-daily",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-daily.timer",
+        "cadence": "*-*-* 08:00 America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-incident-supervisor",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-supervisor.timer",
+        "cadence": "*:2/10"
+      },
+      "expected_cadence_hours": 0.1667,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-incident-watchers",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-watchers.timer",
+        "cadence": "*:0/5"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-n8n-breaker-probe",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-n8n-breaker-probe.timer",
+        "cadence": "*:0/10"
+      },
+      "expected_cadence_hours": 0.1667,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-n8n-lab-watchdog",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-n8n-lab-watchdog.timer",
+        "cadence": "every 5min after last active"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-monthly",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-platform-maintenance-monthly.timer",
+        "cadence": "*-*-01 06:00"
+      },
+      "expected_cadence_hours": 744,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-nightly",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-platform-maintenance-nightly.timer",
+        "cadence": "*-*-* 01:15"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-weekly",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-platform-maintenance-weekly.timer",
+        "cadence": "Sun 03:00"
+      },
+      "expected_cadence_hours": 168,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-telegram-callback-poller",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-telegram-callback-poller.service"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "openclaw-aegis-evening-surveillance",
+      "owner": "aegis",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:aegis-evening-surveillance",
+        "emitted_by": "openclaw-scheduler",
+        "match": "aegis-evening-surveillance",
+        "cadence": "0 20 * * 1-5 America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Aegis Evening Surveillance, 0 20 * * 1-5 America/New_York"
+    },
+    {
+      "lane_id": "openclaw-920bef5f-3b4b-4066-b695-92e72825e00a",
+      "owner": "alex",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:920bef5f-3b4b-4066-b695-92e72825e00a",
+        "emitted_by": "openclaw-scheduler",
+        "match": "920bef5f-3b4b-4066-b695-92e72825e00a",
+        "cadence": "0 9 1 * * America/New_York"
+      },
+      "expected_cadence_hours": 744,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Alex Monthly Retirement Check-in, 0 9 1 * *"
+    },
+    {
+      "lane_id": "openclaw-d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+      "owner": "iris",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+        "emitted_by": "openclaw-scheduler",
+        "match": "d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+        "cadence": "0 9 * * 0 America/New_York"
+      },
+      "expected_cadence_hours": 168,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Iris Weekly Research Digest, 0 9 * * 0"
+    },
+    {
+      "lane_id": "openclaw-729e2b82-7ace-4a13-8456-c469cb1072e9",
+      "owner": "maria",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:729e2b82-7ace-4a13-8456-c469cb1072e9",
+        "emitted_by": "openclaw-scheduler",
+        "match": "729e2b82-7ace-4a13-8456-c469cb1072e9",
+        "cadence": "5 16 * * 1-5 America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "SentinelOne (S) entry monitor, 5 16 * * 1-5"
+    },
+    {
+      "lane_id": "openclaw-b8b18bf7-5154-42c6-b290-45f04854dfe0",
+      "owner": "maria",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:b8b18bf7-5154-42c6-b290-45f04854dfe0",
+        "emitted_by": "openclaw-scheduler",
+        "match": "b8b18bf7-5154-42c6-b290-45f04854dfe0",
+        "cadence": "0 9 * * * America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Reflection AI listing tracker, 0 9 * * *"
+    },
+    {
+      "lane_id": "agent-nudger",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "agent_nudger.py --apply",
+        "command_text": "/usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.py --apply >> ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log 2>&1"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "note": "Observed crontab -l 2026-11-07 line 1098. Coordination nudger; writes its own log beside the coordinator inbox. Reads the claim board only, never a broker or a credential."
+    },
+    {
+      "lane_id": "tradeai-deploy-on-main",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-deploy-on-main.timer"
+      },
+      "expected_cadence_hours": 0.0333,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/deploy_on_main",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/deploy_on_main_poll.py writes one <UTC>_poller_*.json receipt per poll"
+      },
+      "note": "Observed systemctl --user 2026-11-07: tradeai-deploy-on-main.timer UnitFileState=enabled, ActiveState=inactive (No next elapse); tradeai-deploy-on-main.service ActiveState=failed, UnitFileState=disabled. Promote-only poller (deploy_on_main_poll.py writes one receipt per poll under data/runtime/deploy_on_main). Merge-deploy control is a held class: OUT OF SCOPE to start, enable or repair - reported to the lead.",
+      "state_reason": "2026-11-07: the scheduler is the .timer unit (OnCalendar=*:0/2, UnitFileState=enabled), not the .service it starts; declaring the .service left the timer an undeclared unit and the disabled, failed service a phantom orphan. Declared state is unchanged - the timer is enabled but active=inactive/dead and its service has been failed since 2026-10-26T14:10Z, which the census reports as RUN_FAILED."
     }
   ],
   "freshness_contracts": [

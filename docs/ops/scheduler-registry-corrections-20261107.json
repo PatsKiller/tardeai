@@ -1,9 +1,9 @@
 {
   "schema": "LaneRegistryCorrections@v1",
-  "as_of": "2026-11-07T02:55Z",
+  "as_of": "2026-11-07T05:10Z",
   "author": "cc-deepseek-6",
-  "source": "live /api/v2/scheduler-operations?view=checks (a8c5c04fe, 2026-11-07T02:34Z) + read-only crontab/systemd/journal/OpenClaw jobs.json/n8n ledger",
-  "blocked_by": "config/lane_registry.json is claimed by session cc-deepseek on branch wt/livefix-cc-deepseek-waketurn since 2026-11-07T02:23Z; apply with scripts/lib/lane_registry.py round-trip (json.dumps(indent=2, ensure_ascii=False)+'\\n') and run `python -m pytest tests/test_lane_registry.py tests/test_scheduler_operations.py`",
+  "source": "live /api/v2/scheduler-operations?view=checks (a8c5c04fe, 2026-11-07T02:34Z) + read-only crontab/systemd/journal/OpenClaw jobs.json/n8n ledger; new rows: this session's census on the host, plus cc-deepseek-3's census rows that no existing lane already declares (agent-nudger = crontab L1098; tradeai-deploy-on-main). cc-deepseek-3's openclaw-agent-job-* rows are NOT taken: the same five OpenClaw gateway jobs are already declared here as openclaw-aegis-evening-surveillance / openclaw-<job id>, and a second row per job would give one job two owners.",
+  "blocked_by": "claim released 2026-11-07 by claude-lead; applying under the lead's single-owner instruction (cc-deepseek-6 owns config/lane_registry.json) in wt/livefix-cc-deepseek-6-registry",
   "edits": [
     {
       "lane_id": "active-trader-session-review",
@@ -97,13 +97,6 @@
       "why": "no crontab line remains; the ledger shows live dispatcher runs every 15 minutes (last 2026-11-07T02:30Z)"
     },
     {
-      "lane_id": "hermes-learning-outcome-feedback-agent",
-      "path": "state",
-      "old": "NEVER_SCHEDULED",
-      "new": "ACTIVE",
-      "why": "workflow tradeai-fabric-hermes-learning is active and the heartbeat advanced 2026-11-06T16:20Z; NEVER_SCHEDULED made an active workflow read DRIFT"
-    },
-    {
       "lane_id": "tmp-hygiene-apply",
       "path": "state",
       "old": "NEVER_SCHEDULED",
@@ -132,15 +125,6 @@
       "why": "tradeai-prospectus-deliver.timer is active and the output key advanced 2026-11-07T02:32Z"
     },
     {
-      "lane_id": "tradeai-iris-taxonomy",
-      "path": "state",
-      "old": "ACTIVE",
-      "new": "RETIRED",
-      "state_reason": "superseded by the cron lane iris-taxonomy-agent-at-0-10; its timer tradeai-iris-taxonomy.timer is inactive",
-      "state_since": "2026-11-07",
-      "why": "an ACTIVE row whose timer has been off is ORPHANED forever; the work moved to the cron lane"
-    },
-    {
       "lane_id": "systemd-tmpfiles-clean",
       "path": "scheduler.scope",
       "old": null,
@@ -148,60 +132,11 @@
       "why": "systemd-tmpfiles-clean.timer is a system unit; asking the user manager for it always reads inactive and the lane read ORPHANED"
     },
     {
-      "lane_id": "agent_nudge",
-      "path": "scheduler.kind",
-      "old": "n8n",
-      "new": "cron",
-      "why": "cron:1098 runs it --apply every 5 minutes while the row declares the n8n dispatcher; the dispatcher rows are dry_run only"
-    },
-    {
-      "lane_id": "agent_nudge",
-      "path": "scheduler.expression",
-      "old": "dispatcher",
-      "new": "*/5 * * * *",
-      "why": "cron:1098 runs it --apply every 5 minutes while the row declares the n8n dispatcher; the dispatcher rows are dry_run only"
-    },
-    {
-      "lane_id": "agent_nudge",
-      "path": "scheduler.match",
-      "old": "scripts/agent_nudger.py",
-      "new": "coordinator/agent_nudger.py --apply",
-      "why": "cron:1098 runs it --apply every 5 minutes while the row declares the n8n dispatcher; the dispatcher rows are dry_run only"
-    },
-    {
-      "lane_id": "agent_nudge",
-      "path": "output_signal.path",
-      "old": "data/coordination/agent_nudger/ledger.jsonl",
-      "new": "data/coordination/coordinator/agent_nudger.log",
-      "why": "the declared path does not exist; of the two real artifacts under coordinator/, the ledger (3.8 MB) appends only when a nudge is emitted, so a healthy 5-minute lane reads SLOW/AGING on every quiet cycle, while the log takes the cron redirect on every run (advanced 2026-11-06 21:45 local). The output signal measures the scheduler, so it names the log; the ledger stays the record of nudges."
-    },
-    {
-      "lane_id": "agent_nudge",
-      "path": "state",
-      "old": "PAUSED",
-      "new": "ACTIVE",
-      "why": "declared PAUSED while cron:1098 has run the lane --apply every 5 minutes: present=True against declared_state=PAUSED reads DRIFT forever, and from the other side the row claimed the n8n dispatcher, whose rows are dry_run only"
-    },
-    {
-      "lane_id": "agent_nudge",
-      "path": "state_reason",
-      "old": "Shadow only. The dispatcher runs this lane with --dry-run, which writes no state, so an ACTIVE file_mtime signal on state.json could never advance: _scheduler_present would be true (the shadow run fires) while the output signal stayed null, and the SLA fallback would emit a false NO_OUTPUT every cycle (cc3/cx-openai-2, 2026-11-04). The signal below names the artifact a LIVE run advances; it does not advance in shadow, which is why the row is PAUSED rather than ACTIVE.",
-      "new": "ACTIVE. cron:1098 runs this lane with --apply every 5 minutes and redirects to data/coordination/coordinator/agent_nudger.log, which advanced 2026-11-06 21:45 local; the ledger it writes is data/coordination/coordinator/ledger.jsonl. The 2026-11-03 PAUSED reason described the shadow dispatcher phase (--dry-run, writes no state); the live crontab line has been present since at least the 2026-11-07T02:10Z queue snapshot, and the projection observed it live on 2026-11-07T02:45Z.",
-      "why": "declared PAUSED while cron:1098 has run the lane --apply every 5 minutes: present=True against declared_state=PAUSED reads DRIFT forever, and from the other side the row claimed the n8n dispatcher, whose rows are dry_run only"
-    },
-    {
-      "lane_id": "agent_nudge",
-      "path": "state_since",
-      "old": "2026-11-03",
-      "new": "2026-11-07",
-      "why": "date the live --apply line was confirmed (cron:1098, nudger log advanced 2026-11-06 21:45 local); not the date it was added, which the host does not record"
-    },
-    {
-      "lane_id": "agent_nudge",
-      "path": "output_signal.note",
-      "old": "advances on a live (--apply) run only; the shadow lane cannot advance it",
-      "new": "the cron redirect appends to this log on every run, including cycles that emit no nudge; the ledger at data/coordination/coordinator/ledger.jsonl records nudges only, so it is the wrong freshness signal for a 5-minute lane",
-      "why": "the old note described the shadow phase and the ledger; the row is now a live cron lane whose log advances every run"
+      "lane_id": "tradeai-iris-taxonomy",
+      "path": "disabled_evidence",
+      "old": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "new": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled. Re-checked read-only 2026-11-07: the unit file exists but ~/.config/systemd/user/timers.target.wants/ holds no link to it, so the timer is still not enabled, and the cron lane iris-taxonomy-agent-at-0-10 (ACTIVE, 0 10 * * 0, same script) does the work. The state stays ACTIVE because retiring the writer is approval item O-4 (AGENTS.md §17), which is the operator's call, not an agent's.",
+      "why": "an evidence-only correction: the registry states the observation that the timer never fires without asserting a retirement that O-4 leaves open. Marking the row RETIRED would decide an operator item (AGENTS.md §17); the row already carries operator_decision_pending + proposed_state PAUSED for that decision."
     }
   ],
   "new_lanes": [
@@ -493,6 +428,24 @@
         "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
       },
       "note": "Reflection AI listing tracker, 0 9 * * *"
+    },
+    {
+      "lane_id": "agent-nudger",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "agent_nudger.py --apply",
+        "command_text": "/usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.py --apply >> ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log 2>&1"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "note": "Observed crontab -l 2026-11-07 line 1098. Coordination nudger; writes its own log beside the coordinator inbox. Reads the claim board only, never a broker or a credential."
     }
   ],
   "proposals": [
