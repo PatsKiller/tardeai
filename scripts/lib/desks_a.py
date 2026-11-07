@@ -280,6 +280,10 @@ def reentry_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     # Exits: sells (trade_transactions vs deploy_events) + your saved classifications (ui_prefs).
     exit_rows_raw = [r for r in (exits or {}).get("rows") or [] if isinstance(r, dict)] if isinstance(exits, dict) else []
     exit_gap = None if isinstance(exits, dict) and exits.get("ok", True) is not False and "rows" in exits else "Sell history could not be read."
+    reason = str((exits or {}).get("error") or "").strip() if isinstance(exits, dict) else ""
+    if exit_gap and reason:
+        # LQ-20261107-176: a bare gap told the reader nothing; the reason died inside a swallowed exception.
+        exit_gap = f"{exit_gap} ({exits.get('error_type') or 'error'}: {reason})"
     prefs = _select(db_query, "SELECT key, value, updated_at FROM ui_prefs WHERE key = ANY(%s)",
                     (["portfolio.reentry.event-classifications.v1", "portfolio.reentry.resistance.v1"],))
     pref = {r.get("key"): r for r in prefs or []}

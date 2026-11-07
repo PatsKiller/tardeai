@@ -47024,19 +47024,39 @@ def _redeploy_book(query=None):
 
 
 def _redeploy_history(query=None):
-    """GET /api/v2/redeploy/history — all material sells vs deploy_events (unresolved proceeds)."""
-    try:
-        from db_adapter import _get_conn
-        from lib.redeploy_capital_book import build_history
+    """GET /api/v2/redeploy/history — all material sells vs deploy_events (unresolved proceeds).
 
-        q = query or {}
-        conn = _get_conn()
-        cur = conn.cursor()
-        res = build_history(cur, days=int(q.get("days") or 3650))
-        conn.commit()
-        return res
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:200]}
+    LQ-20261107-176: the reentry desk calls this in-process, on the request thread's own connection. One transient
+    statement failure there (another thread's ensure-tables DDL holding deploy_events, an idle-ping connection
+    rebuild, a statement timeout) leaves the thread-local transaction aborted, so every later read on that
+    connection fails too — and the desk showed "Sell history could not be read." while a standalone GET, on a fresh
+    connection, answered fine. A failed read now rolls the transaction back and is retried once; if it still fails,
+    the answer carries the exception's NAME as well as its text, because a bare ``ok: false`` is what made the
+    failure undiagnosable.
+    """
+    q = query or {}
+    last: Exception | None = None
+    for _attempt in (1, 2):  # read-only: a retry can only cost one more SELECT
+        conn = None
+        try:
+            from db_adapter import _get_conn
+            from lib.redeploy_capital_book import build_history
+
+            conn = _get_conn()
+            cur = conn.cursor()
+            res = build_history(cur, days=int(q.get("days") or 3650))
+            conn.commit()
+            return res
+        except Exception as e:  # noqa: BLE001 -- retried once, then reported with its type
+            last = e
+            try:
+                if conn is not None:
+                    conn.rollback()  # a failed statement leaves the thread-local transaction aborted
+            except Exception:  # noqa: BLE001
+                pass
+    print(f"  [redeploy/history] build_history failed after retry: {type(last).__name__}: {last}",
+          file=_sys_heal.stderr)
+    return {"ok": False, "error": str(last)[:200], "error_type": type(last).__name__}
 
 
 def _redeploy_capital_pools(query=None):
@@ -47630,7 +47650,12 @@ def _desks_a_payload(desk: str):
     if desk == "strategy":
         kwargs["leaderboard"] = _strategy_leaderboard()
     payload = _json_clean(desks_a.build(desk, **kwargs))
-    _DESKS_A_CACHE[desk] = (_t.time(), payload)
+    # LQ-20261107-176: a degraded board used to be cached for 60 s, so one transient read failure blanked Sell
+    # history for every poll in that window. Cache only a complete board; a degraded one is retried next poll.
+    exits = kwargs.get("exits")
+    degraded = desk == "reentry" and isinstance(exits, dict) and exits.get("ok") is False
+    if not degraded:
+        _DESKS_A_CACHE[desk] = (_t.time(), payload)
     return payload
 
 

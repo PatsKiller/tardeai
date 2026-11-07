@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reentry_exits_gap_20261107",
+  "files": [
+    "tests/test_reentry_exits_gap_20261107.py"
+  ],
+  "anchor": "REENTRY_EXITS_GAP_20261107",
+  "comment": [
+    "ANCHOR: REENTRY_EXITS_GAP_20261107 — LQ-20261107-176: the reentry desk calls _redeploy_history in-process on the request thread's own DB connection, so one transient statement failure there aborts that thread's transaction and every later read on it fails; the desk then showed 'Sell history could not be read.' while a standalone GET answered. The reader now rolls back and retries once, answers error_type when it still fails, logs to stderr, and a degraded reentry board is never cached for the 60 s window. No live database is touched: the connection and build_history are injected."
+  ]
+}
