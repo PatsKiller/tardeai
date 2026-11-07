@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "control_plane_pages_lq223_20261107",
+  "files": [
+    "tests/test_control_plane_pages_lq223_20261107.py"
+  ],
+  "anchor": "CONTROL_PLANE_PAGES_LQ223_20261107",
+  "comment": [
+    "ANCHOR: CONTROL_PLANE_PAGES_LQ223_20261107 — LQ-20261107-223: control-plane pages answer from their real stores.",
+    "identity projects IdentityRegistry@v1 entities (keyed, never by ticker); workflows skips a bounded number of",
+    "complete corrupt lines and reports skipped_corrupt_lines (a mostly corrupt file stays INVALID_SCHEMA); learning",
+    "rows carry the LearningEvidenceStatus keys; the office audit becomes dated claims; /system reports SERVING only",
+    "with a persistent-state root (an empty root is UNAVAILABLE, never LIVE); the r24 renderer never prints 'undefined'."
+  ]
+}

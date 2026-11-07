@@ -108,7 +108,8 @@ const chipStyle: CSSProperties = {
 
 export function renderField(value: unknown): string {
   if (value === null) return 'null'
-  if (value === undefined) return 'undefined'
+  // LQ-20261107-223: a missing field reads "absent", never the JavaScript word.
+  if (value === undefined) return 'absent'
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   if (Array.isArray(value)) return value.map(item => renderField(item)).join(', ')

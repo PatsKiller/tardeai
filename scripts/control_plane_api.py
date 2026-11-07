@@ -44,6 +44,9 @@ CONTROL_PLANE_DOMAINS: dict[str, dict[str, Any]] = {
         "store_ids": ("cio.workflow_lineage",),
         "fallbacks": ("data/cio/cio_workflow_lineage.jsonl", "data/runtime/workflow_traces.json"),
         "wrap_dict": False,
+        # LQ-20261107-223: one torn line (two interleaved appends) in 267,583 failed the whole list.
+        # This append-only history skips a few unparseable complete lines and says how many.
+        "skip_corrupt_lines": True,
     },
     "research": {
         "kind": "collection",
@@ -157,7 +160,9 @@ _JSONL_COMPACT_EVERY = 5000
 # never cached. Callers get deep copies, so nothing they do reaches the cache.
 _JSONL_CACHE_MAX = 16
 _JSONL_FINGERPRINT_BYTES = 4096
-_jsonl_cache: dict[tuple[str, int, int], dict[str, Any]] = {}
+_jsonl_cache: dict[tuple[str, int, int, bool], dict[str, Any]] = {}
+#: A tolerant read gives up (INVALID_SCHEMA) beyond this many corrupt lines, or one per thousand if more.
+_JSONL_CORRUPT_FLOOR = 10
 _jsonl_cache_lock = threading.Lock()
 
 
@@ -177,8 +182,23 @@ def _jsonl_fingerprint(handle: Any, offset: int) -> str:
     return digest.hexdigest()
 
 
-def _read_jsonl_resumable(path: Path, *, keep: Any, compact: Any) -> tuple[list[dict[str, Any]] | None, str]:
-    key = (str(path), id(keep), id(compact))
+def _corrupt_limit(lines: int) -> int:
+    return max(_JSONL_CORRUPT_FLOOR, lines // 1000)
+
+
+def _jsonl_skipped(path: Path, *, keep: Any, compact: Any, tolerant: bool) -> int:
+    """Corrupt lines the last tolerant read of ``path`` skipped (0 when none, or not cached)."""
+    with _jsonl_cache_lock:
+        entry = _jsonl_cache.get((str(path), id(keep), id(compact), tolerant)) or {}
+        return int(entry.get("skipped") or 0)
+
+
+def _read_jsonl_resumable(
+    path: Path, *, keep: Any, compact: Any, tolerant: bool = False
+) -> tuple[list[dict[str, Any]] | None, str]:
+    """Resumable compacting read. ``tolerant`` skips (and counts) unparseable complete lines up to
+    ``_corrupt_limit``; a strict read answers INVALID_SCHEMA for any one, as before."""
+    key = (str(path), id(keep), id(compact), tolerant)
     with _jsonl_cache_lock:
         try:
             with path.open("rb") as handle:
@@ -190,26 +210,41 @@ def _read_jsonl_resumable(path: Path, *, keep: Any, compact: Any) -> tuple[list[
                     or st.st_size < entry["offset"]
                     or _jsonl_fingerprint(handle, entry["offset"]) != entry["fingerprint"]
                 ):
-                    entry = {"dev_ino": (st.st_dev, st.st_ino), "offset": 0, "rows": []}
+                    entry = {"dev_ino": (st.st_dev, st.st_ino), "offset": 0, "rows": [], "lines": 0, "skipped": 0}
                 if st.st_size == entry["offset"] and "fingerprint" in entry:
                     return copy.deepcopy(entry["rows"]), "AVAILABLE"
                 rows = copy.deepcopy(entry["rows"])
                 compact_at = max(_JSONL_COMPACT_EVERY, 2 * len(rows))
                 offset = entry["offset"]
+                lines = int(entry.get("lines") or 0)
+                skipped = int(entry.get("skipped") or 0)
                 tail: dict[str, Any] | None = None
                 handle.seek(offset)
                 for raw in handle:
                     complete = raw.endswith(b"\n")
-                    line = raw.decode("utf-8")
+                    try:
+                        line = raw.decode("utf-8")
+                    except UnicodeDecodeError:
+                        if not tolerant:
+                            raise
+                        line = "\ufffd"  # counted as a corrupt line below
                     if line.strip():
                         try:
                             value = json.loads(line)
                         except ValueError:
-                            _jsonl_cache.pop(key, None)
-                            return None, "INVALID_SCHEMA"
+                            value = None
                         if not isinstance(value, dict):
-                            _jsonl_cache.pop(key, None)
-                            return None, "INVALID_SCHEMA"
+                            if not tolerant:
+                                _jsonl_cache.pop(key, None)
+                                return None, "INVALID_SCHEMA"
+                            if not complete:
+                                break  # a writer mid-append: neither counted nor cached; read again next time
+                            lines += 1
+                            skipped += 1
+                            offset += len(raw)
+                            continue
+                        if complete:
+                            lines += 1
                         if keep is None or keep(value):
                             if not complete:
                                 tail = value  # a final line with no newline yet: answer with it, never cache it
@@ -222,6 +257,8 @@ def _read_jsonl_resumable(path: Path, *, keep: Any, compact: Any) -> tuple[list[
                         offset += len(raw)
                 rows = compact(rows)
                 _jsonl_cache.pop(key, None)
+                if skipped > _corrupt_limit(lines):
+                    return None, "INVALID_SCHEMA"
                 if len(_jsonl_cache) >= _JSONL_CACHE_MAX:
                     _jsonl_cache.pop(next(iter(_jsonl_cache)))
                 _jsonl_cache[key] = {
@@ -229,6 +266,8 @@ def _read_jsonl_resumable(path: Path, *, keep: Any, compact: Any) -> tuple[list[
                     "offset": offset,
                     "fingerprint": _jsonl_fingerprint(handle, offset),
                     "rows": copy.deepcopy(rows),
+                    "lines": lines,
+                    "skipped": skipped,
                 }
                 if tail is not None:
                     rows = compact([*rows, tail])
@@ -245,7 +284,7 @@ def _read_jsonl_resumable(path: Path, *, keep: Any, compact: Any) -> tuple[list[
 
 
 def _read_jsonl(
-    path: Path, *, keep: Any = None, compact: Any = None
+    path: Path, *, keep: Any = None, compact: Any = None, tolerant: bool = False
 ) -> tuple[list[dict[str, Any]] | None, str]:
     """Read an append-only projection without failing the whole endpoint on one bad row.
 
@@ -266,7 +305,7 @@ def _read_jsonl(
     time (``_read_jsonl_resumable``); without one it is a plain streaming read.
     """
     if compact is not None:
-        return _read_jsonl_resumable(path, keep=keep, compact=compact)
+        return _read_jsonl_resumable(path, keep=keep, compact=compact, tolerant=tolerant)
     try:
         rows: list[dict[str, Any]] = []
         compact_at = _JSONL_COMPACT_EVERY
@@ -558,7 +597,118 @@ def _jsonl_compactor(domain: str, path: Path) -> Any:
     return None
 
 
+# ── LQ-20261107-223: shape each store into the row contract its page renders ─────────────────────────────────────
+#
+# The pages render fixed columns; a row missing them showed the literal "undefined". Each projection keeps every
+# source field and only adds the contract keys it can derive. A value it cannot derive is None (shown "absent"),
+# never invented: no score, no evidence class, no security id minted from a ticker.
+
+_LEARNING_KIND_BY_SCHEMA = {"OutcomeObservation@v1": "outcome", "DecisionDisposition": "decision"}
+_LEARNING_KEYS = ("item_id", "kind", "status", "score", "evidence_class", "proof_refs", "limiting_factor", "next_proof")
+_OFFICE_AUDIT_FRESH_S = 7 * 86400
+
+
+def _identity_rows(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """``IdentityRegistry@v1`` entities as identity rows. ``entity_id`` is the registered key, never a ticker."""
+    as_of = registry.get("updated_at")
+    rows = []
+    for key, ent in (registry.get("entities") or {}).items():
+        if not isinstance(ent, dict):
+            continue
+        row = dict(ent)
+        row.update(
+            {
+                "entity_id": ent.get("subject_guid") or str(key),
+                "issuer": ent.get("issuer_guid"),
+                "security": ent.get("security_guid"),
+                "listing": ent.get("listing_guid"),
+                "aliases": ent.get("aliases") or [],
+                "identifiers": ent.get("identifiers") or {},
+                "state": ent.get("identity_status"),
+                "unresolved_reason": ent.get("unresolved_reason"),
+                "source": "identity.registry",
+                "as_of": ent.get("last_seen") or as_of,
+            }
+        )
+        rows.append(row)
+    return rows
+
+
+def _learning_row(row: dict[str, Any]) -> dict[str, Any]:
+    if all(k in row for k in _LEARNING_KEYS):
+        return row
+    out = dict(row)
+    kind = row.get("kind") or _LEARNING_KIND_BY_SCHEMA.get(str(row.get("schema") or ""))
+    realized = row.get("realized_state") if isinstance(row.get("realized_state"), dict) else {}
+    linked = realized.get("linked")
+    status = row.get("status")
+    if status is None and isinstance(linked, bool):
+        status = "LINKED" if linked else "UNLINKED"
+    out.setdefault("item_id", row.get("outcome_id") or row.get("disposition_id") or row.get("decision_id"))
+    out["kind"] = kind
+    out["status"] = status
+    out.setdefault("score", None)
+    out.setdefault("evidence_class", None)
+    refs = row.get("proof_refs", row.get("source_refs"))
+    out["proof_refs"] = list(refs) if isinstance(refs, list) else []
+    out.setdefault("limiting_factor", "outcome not linked to its decision" if linked is False else None)
+    out.setdefault("next_proof", None)
+    return out
+
+
+def _office_audit_claims(audit: dict[str, Any], path: Path) -> list[dict[str, Any]]:
+    """A CIO office browser-audit run (scripts/cc_v3_cio_office_audit.py) as one claim per audited viewport."""
+    try:
+        evidence_ref = str(path.relative_to(_state_root()))
+    except ValueError:
+        evidence_ref = path.name
+    audited_at = audit.get("audited_at")
+    fresh = False
+    try:
+        ts = datetime.fromisoformat(str(audited_at).replace("Z", "+00:00"))
+        fresh = (datetime.now(timezone.utc) - ts).total_seconds() <= _OFFICE_AUDIT_FRESH_S
+    except (TypeError, ValueError):
+        pass
+    target = audit.get("target") or "/v3/cio"
+    claims = []
+    for res in audit.get("results") or []:
+        if not isinstance(res, dict):
+            continue
+        viewport, width = res.get("viewport"), res.get("width")
+        issues = [str(i) for i in res.get("issues") or []]
+        failed = [str(s.get("section")) for s in res.get("sections") or [] if isinstance(s, dict) and not s.get("ok")]
+        ok = bool(res.get("ok")) and not failed
+        limits = [f"audited_at {audited_at}" + ("" if fresh else " (older than 7 days)")]
+        if failed:
+            limits.append("failed sections: " + ", ".join(failed))
+        if issues:
+            limits.append("issues: " + "; ".join(issues[:5]))
+        claims.append(
+            {
+                "claim_id": f"office-audit:{viewport}:{width}",
+                "claim": f"{target} renders every audited section at {viewport} {width}px",
+                "status": "PASSED" if ok else "FAILED",
+                "implementation_ref": "scripts/cc_v3_cio_office_audit.py",
+                "test_ref": "tests/test_cc_v3_cio_office_audit.py",
+                "evidence_ref": evidence_ref,
+                "evidence_class": "CURRENT_SMOKE" if fresh else None,
+                "limitations": "; ".join(limits),
+                "reproduction_command": "python scripts/cc_v3_cio_office_audit.py",
+                "section": "runtime",
+                "audited_at": audited_at,
+            }
+        )
+    return claims
+
+
 def _extract_rows(value: Any, *, domain: str, path: Path) -> list[dict[str, Any]] | None:
+    rows = _extract_rows_raw(value, domain=domain, path=path)
+    if rows is not None and domain == "learning":
+        return [_learning_row(r) for r in rows]
+    return rows
+
+
+def _extract_rows_raw(value: Any, *, domain: str, path: Path) -> list[dict[str, Any]] | None:
     """Return usable rows, or None to skip this path (do not AVAILABLE-empty-steal)."""
     spec = CONTROL_PLANE_DOMAINS.get(domain) or {}
     wrap_dict = bool(spec.get("wrap_dict"))
@@ -573,6 +723,11 @@ def _extract_rows(value: Any, *, domain: str, path: Path) -> list[dict[str, Any]
 
     if not isinstance(value, dict):
         return None
+
+    if domain == "identity" and isinstance(value.get("entities"), dict):
+        return _identity_rows(value)
+    if domain == "audit" and isinstance(value.get("results"), list) and "audited_at" in value:
+        return _office_audit_claims(value, path)
 
     for key in ("items", "rows", "data"):
         nested = value.get(key)
@@ -598,7 +753,9 @@ def _extract_rows(value: Any, *, domain: str, path: Path) -> list[dict[str, Any]
     return None
 
 
-def _select_rows(paths: tuple[Path, ...], *, domain: str) -> tuple[list[dict[str, Any]], str]:
+def _select_rows(
+    paths: tuple[Path, ...], *, domain: str, meta: dict[str, Any] | None = None
+) -> tuple[list[dict[str, Any]], str]:
     """First-AVAILABLE over registry-ordered candidates.
 
     missing → continue
@@ -622,7 +779,10 @@ def _select_rows(paths: tuple[Path, ...], *, domain: str) -> tuple[list[dict[str
         if path.suffix.lower() == ".jsonl":
             keep = _workflow_list_keep if domain == "workflows" else None
             compact = _jsonl_compactor(domain, path)
-            value, quality = _read_jsonl(path, keep=keep, compact=compact)
+            tolerant = bool(CONTROL_PLANE_DOMAINS.get(domain, {}).get("skip_corrupt_lines")) and compact is not None
+            value, quality = _read_jsonl(path, keep=keep, compact=compact, tolerant=tolerant)
+            if tolerant and quality == "AVAILABLE" and meta is not None:
+                meta["skipped_corrupt_lines"] = _jsonl_skipped(path, keep=keep, compact=compact, tolerant=True)
         else:
             value, quality = _read_json(path)
         if quality == "INVALID_SCHEMA":
@@ -647,12 +807,16 @@ def _select_rows(paths: tuple[Path, ...], *, domain: str) -> tuple[list[dict[str
 
 
 def _rows_from_json(paths: tuple[Path, ...], query: dict[str, Any], *, domain: str) -> tuple[dict[str, Any], str]:
-    rows, quality = _select_rows(paths, domain=domain)
+    meta: dict[str, Any] = {}
+    rows, quality = _select_rows(paths, domain=domain, meta=meta)
     # STALE is a stamped score payload, not an empty store. AVAILABLE stays the
     # only quality that means current.
     if quality not in {"AVAILABLE", "STALE"}:
         return _empty_page(query), quality
-    return _paged(rows, query), quality
+    page = _paged(rows, query)
+    if meta.get("skipped_corrupt_lines"):
+        page["skipped_corrupt_lines"] = meta["skipped_corrupt_lines"]
+    return page, quality
 
 
 def _load_rows(paths: tuple[Path, ...], *, domain: str = "") -> tuple[list[dict[str, Any]], str]:
@@ -960,7 +1124,15 @@ def _system() -> dict[str, Any]:
     return {
         "authority": READ_ONLY_ADVISORY,
         "memory_behavior_influence": 0,
-        "runtime": {"source_sha": _sha(), "state": "UNKNOWN", "persistent_state": "UNKNOWN"},
+        # LQ-20261107-223: what this process knows first-hand. It answered this GET, so it is SERVING (never
+        # LIVE: that is a governance claim this projection cannot make); the state root is present or not.
+        "runtime": {
+            "source_sha": _sha(),
+            "state": "SERVING",
+            "state_basis": "this process answered GET /api/v3/control-plane/system",
+            "state_root": str(_state_root()),
+            "persistent_state": "PRESENT" if (_state_root() / "data").is_dir() else "MISSING",
+        },
         "services": [], "timers": [], "workers": [{"agent_id": "hermes", "runtime_state": hermes.get("state", "UNKNOWN"), "mode": hermes.get("mode", "EVENT_DRIVEN_QUEUE")}], "queues": [hermes],
         "research": {"state": "UNKNOWN"}, "notifications": {"state": "UNKNOWN"},
     }
@@ -1175,7 +1347,10 @@ def handle(path: str, *, method: str = "GET", query: dict[str, Any] | None = Non
             return 200, _envelope(detail, quality=quality)
         return 404, _envelope({"error": "unknown control-plane route"}, quality="NO_RELEVANT_EVENTS")
     if spec.get("kind") == "computed" and domain == "system":
-        return 200, _envelope(_system())
+        system = _system()
+        # An empty state root is not a live system (test_an_empty_state_root_is_never_reported_live).
+        present = system["runtime"]["persistent_state"] == "PRESENT"
+        return 200, _envelope(system, quality="AVAILABLE" if present else "UNAVAILABLE")
     if spec.get("kind") == "computed" and domain == "stores":
         data, quality = _stores(query)
         return 200, _envelope(data, quality=quality)

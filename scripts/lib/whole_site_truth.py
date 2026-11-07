@@ -53,7 +53,8 @@ UNKNOWN = "UNKNOWN"  # could not be determined — never guessed
 #: without the live domain also answering.
 CONTROL_PLANE_SURFACES: dict[str, dict[str, Any]] = {
     "/v3/control-plane": {"domain": None, "bundled_fixture": None, "tranche": "hub"},
-    "/v3/control-plane/system": {"domain": None, "bundled_fixture": None, "tranche": "hub"},
+    # LQ-20261107-223: the page GETs /api/v3/control-plane/system; it is not a navigation-only route.
+    "/v3/control-plane/system": {"domain": "system", "bundled_fixture": None, "tranche": "hub"},
     "/v3/control-plane/agents": {
         "domain": "agents",
         "bundled_fixture": "pages/control-plane/r22/mocks/agents.json",
