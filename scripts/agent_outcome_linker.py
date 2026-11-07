@@ -8,8 +8,12 @@ Usage:
 Without --apply, or with --dry-run (which wins over --apply), the run is a preview: the session is READ ONLY
 at the server and save_links() is never called. An --apply run writes the lane receipt
 <state_root>/data/runtime/agent-outcome-linker_last.json (ok_at only on success).
+
+An --apply run pages until the queue is drained or its budget is spent (--max-links / --max-seconds, default
+20000 links / 100 s, inside the executor's 180 s), and records `drained`, `budget_exhausted`, `pages` and
+`backlog_recommendations` so an OK receipt proves how much of the backlog is left (LQ-20261107-140).
 """
-import argparse, json, os, sys, uuid
+import argparse, json, os, sys, time, uuid
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -23,9 +27,18 @@ def _f(v): return float(v) if isinstance(v, Decimal) else v
 def _uid(): return f"LNK_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}"
 
 LANE_ID = "agent-outcome-linker"
-#: SELECT caps in link_to_proposals / link_to_trades. A run that fills a cap may have left links behind.
+#: SELECT page sizes in link_to_proposals / link_to_trades. A page that comes back full means the run stopped
+#: on its page size, not on the backlog — there is more to link.
 PROPOSAL_LINK_LIMIT = 1000
 TRADE_LINK_LIMIT = 500
+#: A run no longer stops at the first full page (LQ-20261107-140). It repeated one page per day and hit the
+#: 1500-link cap every single run, so the ~1.09M unlinked (recommendation, proposal) pairs behind the newest
+#: 1500 could never drain — July alone holds 664k. The run now pages until both SELECTs come back short
+#: (drained) or it spends its budget. The n8n executor kills this lane at 180 s
+#: (config/n8n_run_allowlist.json: timeout_s 180), so the default budget stops well inside that: the run
+#: always writes its own receipt and is never mistaken for a hang. Override with --max-links / --max-seconds.
+MAX_LINKS_PER_RUN = 20000
+MAX_SECONDS_PER_RUN = 100.0
 
 
 def _get_conn():
@@ -139,16 +152,121 @@ def save_links(conn, links, dry_run=True):
     return inserted
 
 
+def _page_totals(links):
+    by_type = {}
+    for lnk in links:
+        by_type[lnk["outcome_type"]] = by_type.get(lnk["outcome_type"], 0) + 1
+    return len(links), by_type
+
+
+def _run_pages(conn, budget, clock=time.monotonic):
+    """Apply pages until the queue is drained or the budget is spent (LQ-20261107-140).
+
+    Each pass links one page per outcome table and commits it (save_links). The loop ends when both SELECTs
+    come back short — that is the only honest "drained" — or when the link/time budget is gone, which the
+    receipt records as budget_exhausted, so an OK run never claims it caught up when it did not.
+    """
+    started = clock()
+    built = inserted = pages = 0
+    by_type = {}
+    proposal_full = trade_full = False
+    drained = False
+    while True:
+        proposal_links = link_to_proposals(conn)
+        trade_links = link_to_trades(conn)
+        page = proposal_links + trade_links
+        pages += 1
+        if page:
+            inserted += save_links(conn, page, dry_run=False)
+            built += len(page)
+            _, page_by_type = _page_totals(page)
+            for k, v in page_by_type.items():
+                by_type[k] = by_type.get(k, 0) + v
+        proposal_full = len(proposal_links) >= PROPOSAL_LINK_LIMIT
+        trade_full = len(trade_links) >= TRADE_LINK_LIMIT
+        if not (proposal_full or trade_full):
+            drained = True
+            break
+        if built >= budget["max_links"] or (clock() - started) >= budget["max_seconds"]:
+            break
+    return {
+        "total_links": built,
+        "by_outcome_type": by_type,
+        "inserted": inserted,
+        "pages": pages,
+        "proposal_cap_hit": proposal_full,
+        "trade_cap_hit": trade_full,
+        "drained": drained,
+        "budget_exhausted": not drained,
+        "budget": budget,
+    }
+
+
+_BACKLOG_SQL = {
+    # One row per recommendation that has a linkable outcome and no link to one. Counted per recommendation
+    # (index-backed, ~0.5 s) rather than per candidate pair (1.09M rows, a full join re-scan), because the
+    # number that matters for "is the backlog shrinking" is how many recommendations are still unlinked.
+    "proposals": """
+        SELECT count(*) FROM agent_recommendation_registry r
+        WHERE r.recommendation_time IS NOT NULL
+          AND EXISTS (SELECT 1 FROM paper_trade_proposals p
+                      WHERE p.symbol = r.symbol
+                        AND p.created_at > r.recommendation_time
+                        AND p.created_at < r.recommendation_time + interval '7 days')
+          AND NOT EXISTS (SELECT 1 FROM agent_recommendation_outcome_links l
+                          WHERE l.recommendation_id = r.recommendation_id AND l.proposal_id IS NOT NULL)
+    """,
+    "trades": """
+        SELECT count(*) FROM agent_recommendation_registry r
+        WHERE r.recommendation_time IS NOT NULL
+          AND EXISTS (SELECT 1 FROM paper_trades pt
+                      WHERE pt.symbol = r.symbol
+                        AND pt.created_at > r.recommendation_time
+                        AND pt.created_at < r.recommendation_time + interval '14 days')
+          AND NOT EXISTS (SELECT 1 FROM agent_recommendation_outcome_links l
+                          WHERE l.recommendation_id = r.recommendation_id AND l.paper_trade_id IS NOT NULL)
+    """,
+}
+
+
+def backlog_counts(conn):
+    """Recommendations still waiting for a link, as {"proposals": n, "trades": n}.
+
+    An unreadable count stays None — never 0 — so a receipt can say "backlog unknown" instead of a confident
+    zero. A failed statement aborts the transaction, so the rollback below is part of the contract.
+    """
+    out = {}
+    for key, sql in _BACKLOG_SQL.items():
+        try:
+            cur = conn.cursor()
+            cur.execute(sql)
+            row = cur.fetchone()
+            out[key] = int(row[0]) if row and row[0] is not None else None
+        except Exception:
+            out[key] = None
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description="Agent Outcome Linker")
     parser.add_argument("--dry-run", action="store_true", help="preview only; wins over --apply")
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--max-links", type=int, default=MAX_LINKS_PER_RUN,
+                        help=f"stop a run after this many links (default {MAX_LINKS_PER_RUN})")
+    parser.add_argument("--max-seconds", type=float, default=MAX_SECONDS_PER_RUN,
+                        help=f"stop a run after this many seconds (default {MAX_SECONDS_PER_RUN}; "
+                             "the n8n executor kills the lane at 180)")
     parser.add_argument("--agent", help="Filter by agent")
     parser.add_argument("--symbol", help="Filter by symbol")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
     dry_run = args.dry_run or not args.apply
+    budget = {"max_links": max(1, int(args.max_links)), "max_seconds": max(1.0, float(args.max_seconds))}
     started = datetime.now(timezone.utc).isoformat()
     out: dict = {"mode": "dry_run" if dry_run else "applied"}
     try:
@@ -156,25 +274,28 @@ def main():
         if dry_run:
             _receipt_lib().enforce_readonly(conn)
         try:
-            proposal_links = link_to_proposals(conn)
-            trade_links = link_to_trades(conn)
-            all_links = proposal_links + trade_links
-            by_type = {}
-            for lnk in all_links:
-                by_type[lnk["outcome_type"]] = by_type.get(lnk["outcome_type"], 0) + 1
-            out.update({
-                "total_links": len(all_links),
-                "by_outcome_type": by_type,
-                # a full page means the SELECT cap, not the backlog, decided this run's size
-                "proposal_cap_hit": len(proposal_links) >= PROPOSAL_LINK_LIMIT,
-                "trade_cap_hit": len(trade_links) >= TRADE_LINK_LIMIT,
-            })
             if dry_run:
+                # A dry run may look at exactly one page: nothing is written, so a second page would return
+                # the same rows forever. The backlog counts are what say how much a real run would face.
+                proposal_links = link_to_proposals(conn)
+                trade_links = link_to_trades(conn)
+                all_links = proposal_links + trade_links
+                total, by_type = _page_totals(all_links)
+                out.update({
+                    "total_links": total,
+                    "by_outcome_type": by_type,
+                    # a full page means the SELECT page size, not the backlog, decided this run's size
+                    "proposal_cap_hit": len(proposal_links) >= PROPOSAL_LINK_LIMIT,
+                    "trade_cap_hit": len(trade_links) >= TRADE_LINK_LIMIT,
+                    "pages": 1,
+                    "budget": budget,
+                })
                 # Structural (AGENTS.md §6): save_links is not reachable from this branch.
                 out["inserted"] = 0
-                out["would_insert"] = len(all_links)
+                out["would_insert"] = total
             else:
-                out["inserted"] = save_links(conn, all_links, dry_run=False)
+                out.update(_run_pages(conn, budget))
+            out["backlog_recommendations"] = backlog_counts(conn)
         finally:
             conn.close()
     except Exception as exc:
@@ -188,8 +309,11 @@ def main():
     if args.json:
         print(json.dumps(out, indent=2, default=str))
     else:
+        backlog = out.get("backlog_recommendations") or {}
+        backlog_txt = ", ".join(f"{k}={v if v is not None else 'unknown'}" for k, v in backlog.items()) or "unknown"
         print(f"Linker: {out['total_links']} links ({out['mode']})"
-              + (" [cap hit: backlog may exceed one run]" if out["proposal_cap_hit"] or out["trade_cap_hit"] else ""))
+              + (" [page full: backlog exceeds this run]" if out["proposal_cap_hit"] or out["trade_cap_hit"] else "")
+              + f" [unlinked recommendations: {backlog_txt}]")
     if dry_run:
         _dry_report(LANE_ID, out, would_write=["agent_recommendation_outcome_links"],
             json_stdout=args.json)

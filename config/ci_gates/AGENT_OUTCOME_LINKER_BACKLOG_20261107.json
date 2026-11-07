@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "AGENT_OUTCOME_LINKER_BACKLOG_20261107",
+  "files": [
+    "tests/test_agent_outcome_linker_backlog_20261107.py"
+  ],
+  "anchor": "AGENT_OUTCOME_LINKER_BACKLOG_20261107",
+  "comment": [
+    "ANCHOR: AGENT_OUTCOME_LINKER_BACKLOG_20261107 — agent-outcome-linker stopped at its first page every run",
+    "(1000 proposals + 500 trades) and reported ok, while 1,086,356 unlinked (recommendation, proposal) pairs —",
+    "663,920 of them from July alone — sat behind it. The receipt said ok and nothing in it said the queue was",
+    "more than a thousand runs long.",
+    "The gate pins the new contract in scripts/agent_outcome_linker.py: an --apply run pages until both SELECTs",
+    "come back short (drained) or its budget is spent (--max-links / --max-seconds, default 20000 links / 100 s",
+    "inside the executor's 180 s kill), the receipt records drained, budget_exhausted, pages, the budget and",
+    "backlog_recommendations, a dry run reads exactly one page and never writes, and an unreadable backlog count",
+    "is None — never a confident 0.",
+    "Hermetic: fake connections record every statement; no database, no network."
+  ]
+}
