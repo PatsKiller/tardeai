@@ -61,6 +61,24 @@ def test_foreign_exchange_prefix_is_another_security():
     assert sm.mentions("Listed as NASDAQ: ZQX in New York", "ZQX")
 
 
+@pytest.mark.parametrize("text", [
+    'Zqx Medical, Inc. ("Zqx") (NasdaqGS: ZQX), a medical technology company',   # press-release long forms
+    "ZqxRx Limited (NYSE AMERICAN: ZQX) announced",
+    "ZqxRx (NYSEAM:ZQX) - Stock Analysis",
+    "Zqx Corp (NYSE MKT: ZQX) files 8-K",
+    "SOLZQ (OTCPK:ZQX) - Stock Analysis",
+    "Stock Market Today: ZQX rises 4%",                                              # prose before a colon
+])
+def test_us_venue_long_forms_and_prose_colons_are_not_foreign(text):
+    assert sm.mentions(text, "ZQX"), sm.mention(text, "ZQX")
+
+
+@pytest.mark.parametrize("text", ["Zqx Group Ltd. (TASE: ZQX) announced", "Zqx Bhd (KLSE:ZQX) returns",
+                                  "Zqx Resources (TSXV:ZQX) rallies", "Zqx SA (ENXTPA:ZQX) guidance"])
+def test_foreign_venue_codes_stay_foreign(text):
+    assert sm.mention(text, "ZQX")["reason"] == sm.FOREIGN_LISTING
+
+
 def test_hyphen_and_ampersand_compounds_are_not_the_ticker():
     assert not sm.mentions("T-Mobile adds subscribers", "T")
     assert not sm.mentions("Sell-T rally", "T")

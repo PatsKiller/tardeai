@@ -63,9 +63,12 @@ _NB, _NA = r"(?<![^\W_])", r"(?![^\W_])"
 _CANDIDATE = re.compile(_NB + r"\$?(" + _SYMBOL.pattern + r")" + _NA)
 
 #: Exchange prefixes that name the US listing. Any other prefix (TSX, ASX, LSE, B3, ...) is another security.
+#: Press releases spell the venue long ("NasdaqGS:", "NYSE American:", "NYSEAM:"), so a prefix is compared
+#: upper-cased with its spaces removed, and also by its last word.
 US_EXCHANGES = frozenset({"NYSE", "NASDAQ", "NASDAQGS", "NASDAQGM", "NASDAQCM", "NYSEARCA", "NYSEAMERICAN",
-                          "AMEX", "ARCA", "BATS", "CBOE", "OTC", "OTCMKTS", "OTCQX", "OTCQB", "PINK", "US"})
-_PREFIX = re.compile(r"([A-Z]{2,12})\s*:\s*$")
+                          "NYSEAM", "NYSEMKT", "AMEX", "ARCA", "BATS", "CBOE", "OTC", "OTCMKTS", "OTCQX", "OTCQB",
+                          "OTCPK", "PINK", "US"})
+_PREFIX = re.compile(r"([A-Za-z]{2,12})(?:\s+([A-Za-z]{2,12}))?\s*:\s*$")
 
 #: Tickers that are also everyday words in headlines. A bare upper-case hit is not trusted for these.
 COMMON_WORD_TICKERS = frozenset("""
@@ -110,8 +113,12 @@ def _occurrence_problem(text: str, start: int, end: int) -> Optional[str]:
     if re.match(r"&[A-Za-z]", after) or re.search(r"[A-Za-z]&$", before):
         return NO_MENTION  # S&P, AT&T when asked for AT or P
     m = _PREFIX.search(before.rstrip("(").rstrip())
-    if m and m.group(1) not in US_EXCHANGES:
-        return FOREIGN_LISTING
+    if m:
+        last = m.group(2) or m.group(1)
+        if (m.group(1) + (m.group(2) or "")).upper() in US_EXCHANGES or last.upper() in US_EXCHANGES:
+            return None
+        if last.isupper():
+            return FOREIGN_LISTING  # an exchange CODE (TSX, KLSE, ENXTPA); "Today:" in prose is not one
     return None
 
 

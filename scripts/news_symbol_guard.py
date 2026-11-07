@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from lib import symbol_match
+
 _TICKER_RE = re.compile(r"\(([A-Z]{1,5})\)|\(NASDAQ:([A-Z]{1,5})\)|\(NYSE:([A-Z]{1,5})\)", re.I)
 _WORD_RE = re.compile(r"(?<![A-Z])([A-Z]{1,5})(?![A-Z])")
 
@@ -71,7 +73,7 @@ def fifty_two_week_reference(cur, symbol: str) -> tuple[float, float] | None:
 def price_contradiction(title: str, summary: str = "", *, reference_52w: tuple | None = None) -> str | None:
     """Reason string when a headline's stated 52-week extreme cannot be this security.
 
-    The ticker-token test upper-cases text first, so "Eaton Vance Tax Advantaged Div stock"
+    The ticker-token test upper-cased text first (until RE-6, 2026-11-07), so "Eaton Vance Tax Advantaged Div stock"
     matched DIV (a $20 ETF) and four $27.99 Eaton Vance headlines were attached to it
     (2026-07-29). Compares to our 52-week EXTREME, not spot: a "52-week high" headline
     legitimately quotes a level above today's price (spot comparison wrongly rejected RDWR).
@@ -170,12 +172,16 @@ def headline_matches_symbol(
     if f"({sym})" in upper or f"(NASDAQ:{sym})" in upper or f"(NYSE:{sym})" in upper:
         return True, "ticker_paren"
 
-    # Multi-ticker roundup lists still mention our symbol.
-    if re.search(rf"(?<![A-Z]){re.escape(sym)}(?![A-Z])", upper):
+    # Multi-ticker roundup lists still mention our symbol. The shared exact-symbol matcher (RE-6) reads
+    # the ORIGINAL case: upper-casing first turned "don't" into a T token (18 of 33 T rows, 11-07).
+    # A single-letter or word ticker without a cashtag falls through to the company-name check.
+    if symbol_match.mention(text, sym)["matched"]:
         return True, "ticker_token"
 
+    # Curly apostrophes on either side: "Wendy’s" in a headline is the profile's "wendy's".
+    low = text.lower().replace("’", "'")
     for alias in _company_tokens(company_description):
-        if alias in text.lower():
+        if alias.replace("’", "'") in low:
             return True, "company_name"
 
     # "Merlin (MRLN) ..." style without strict word boundary on short names

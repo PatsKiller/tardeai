@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "news_symbol_guard_apostrophe_20261107",
+  "files": [
+    "tests/test_news_symbol_guard_apostrophe_20261107.py"
+  ],
+  "anchor": "NEWS_SYMBOL_GUARD_APOSTROPHE_20261107",
+  "comment": [
+    "ANCHOR: NEWS_SYMBOL_GUARD_APOSTROPHE_20261107 — the news guard's ticker test is the shared exact-symbol matcher (RE-6, LQ-20261107-191): it reads the original case, so \"don't\" is never the ticker T, a prose word is never an upper-case ticker, T-Mobile and TSX:T are not T; a single-letter ticker is kept by cashtag or company name; a curly-apostrophe company name still matches the profile name."
+  ]
+}

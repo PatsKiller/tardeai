@@ -74,9 +74,11 @@ def test_div_mismatch_is_vetoed_before_the_ticker_token_match():
     assert ok is False and why.startswith("price_conflict_52w_high")
 
 
-def test_without_reference_behaviour_is_unchanged():
+def test_without_reference_a_prose_word_is_not_the_ticker():
+    # Was: ok + ticker_token (the guard upper-cased "Div" into DIV). Since RE-6 (LQ-20261107-191) the
+    # ticker test is the case-sensitive shared matcher, so the word alone no longer attaches.
     ok, why = guard.headline_matches_symbol("DIV", DIV_HEADLINE)
-    assert ok is True and why == "ticker_token"
+    assert ok is False and why == "no_symbol_or_company_match"
 
 
 def test_correct_52w_headline_is_not_rejected():
