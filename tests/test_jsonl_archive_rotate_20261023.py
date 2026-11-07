@@ -311,6 +311,182 @@ def test_real_rules_block_pins():
 
 def test_removal_is_limited_to_verified_intermediates():
     src = (ROOT / "scripts" / "ops" / "jsonl_archive_rotate.py").read_text()
-    assert src.count(".unlink(") == 2  # rotate_store intermediates + recover fragments, both byte-verified
+    # Every unlink is byte-verified: the two fragment-merge markers (removed only after the fragment is found
+    # in the live file), rotate_store's consumed intermediates (after the manifest), recover_one's fragments,
+    # recover_source's source (head in the archive, tail live) and recover's replayed fragment.
+    assert src.count(".unlink(") == 6
+    assert src.count("os.unlink(marker)") == 2 and src.count("os.unlink(src)") == 1
     for bad in ("shutil.rmtree", "os.remove(", "truncate(", "--force"):
         assert bad not in src
+
+
+# ── LQ-20261107-295: the three data-loss classes reproduced in codex's 2026-11-04 safety audit ───────────────────
+# A. a short write is counted as a full one and the fragment is unlinked anyway;
+# B. an unreadable /proc view reads as "no holder" and the store rotates under an unseen writer;
+# C. recover installs the rotated-aside source in front of an already-installed tail (duplicating the hot rows)
+#    and never replays a .frag left by a failed _install.
+
+STAMP_295 = "20261023T204500Z"
+
+
+def _crash_state(tmp_path, *, with_archive=True):
+    """The on-disk state of a crash AFTER the tail was installed and BEFORE the fragment was merged:
+    live = hot tail + one row written since the install, plus an orphan .frag holding one more row."""
+    cfg = _cfg()
+    store = cfg["stores"][0]
+    p = tmp_path / "data" / "cio" / "s1.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    original = b"".join(
+        [_row(i, NOW - timedelta(days=10, minutes=-i)) for i in range(200)]
+        + [_row(i, NOW - timedelta(hours=5, minutes=-i)) for i in range(200, 250)]
+    )
+    # the split the rotation would have computed: 200 old rows move, 50 recent stay
+    probe = tmp_path / "probe.jsonl"
+    probe.write_bytes(original)
+    split = J.find_split(probe, fields=["at"], cutoff=NOW - timedelta(days=3), min_tail_rows=5)["split"]
+    probe.unlink()
+    head, tail = original[:split], original[split:]
+    src = p.with_name(f".s1.jsonl.rotating-{STAMP_295}")
+    src.write_bytes(original)
+    p.write_bytes(tail + _row(900, NOW))
+    if with_archive:
+        adir = J.archive_dir(cfg, tmp_path, "s1")
+        adir.mkdir(parents=True, exist_ok=True)
+        gz = adir / f"s1.{STAMP_295}.jsonl.gz"
+        with open(gz, "wb") as raw:
+            with gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6, mtime=0) as g:
+                g.write(head)
+        J.RA.write_manifest(
+            gz, writer=J.WRITER, label="s1", kind="jsonl_head", rows=200,
+            sha256=J.RA._sha256_file(gz), sha256_uncompressed=hashlib.sha256(head).hexdigest(),
+            store="data/cio/s1.jsonl", hot_days=3, cutoff=(NOW - timedelta(days=3)).isoformat(),
+            before={"bytes": len(original), "lines": 250, "sha256": hashlib.sha256(original).hexdigest()},
+            after={"archive": {"path": str(gz), "bytes_uncompressed": split, "lines": 200,
+                               "sha256_uncompressed": hashlib.sha256(head).hexdigest()},
+                   "live_tail": {"bytes": len(tail), "lines": 50, "sha256": hashlib.sha256(tail).hexdigest()}},
+        )
+    frag = p.with_name(f".s1.jsonl.frag-{STAMP_295}-0")
+    frag.write_bytes(_row(901, NOW))
+    return cfg, store, p, src, frag, original, head, tail
+
+
+def test_short_write_is_completed_not_counted(tmp_path, monkeypatch):
+    """A: POSIX permits a short write. Every byte must reach the file, or the call must raise."""
+    payload = b'{"at": "2026-10-23T20:45:00+00:00", "i": 1}\n' * 500
+    src, live = tmp_path / "src", tmp_path / "live"
+    src.write_bytes(payload)
+    real = os.write
+    calls = {"n": 0}
+
+    def half_write(fd, data):
+        data = bytes(data)
+        calls["n"] += 1
+        return real(fd, data[: max(1, len(data) // 2)])
+
+    monkeypatch.setattr(os, "write", half_write)
+    n = J._append_range(src, live, 0, len(payload))
+    assert n == len(payload)
+    assert live.read_bytes() == payload
+    assert calls["n"] > 1
+
+
+def test_zero_write_raises_instead_of_counting_bytes(tmp_path, monkeypatch):
+    src, live = tmp_path / "src", tmp_path / "live"
+    src.write_bytes(b"one\n" * 10)
+    monkeypatch.setattr(os, "write", lambda fd, data: 0)
+    with pytest.raises(J.RotateError):
+        J._append_range(src, live, 0, 40)
+
+
+def test_unreadable_proc_view_refuses_before_touching_the_store(tmp_path):
+    """B: an unreadable fd view cannot prove 'no holder'. Refuse; leave the store untouched."""
+    p = _seed(tmp_path)
+    before = p.read_bytes()
+    proc = tmp_path / "proc"
+    (proc / "777" / "fd").mkdir(parents=True)
+    os.chmod(proc / "777" / "fd", 0o000)
+    try:
+        res = J.rotate_store(_cfg()["stores"][0], _cfg(), tmp_path, NOW, proc_root=proc, sleep=_no_sleep)
+    finally:
+        os.chmod(proc / "777" / "fd", 0o700)
+    assert res["ok"] is False and res["reason"] == "fd_visibility_unknown", res
+    # the refusal names the process, so an operator knows what to look at
+    assert "777:" in res["detail"], res["detail"]
+    assert p.read_bytes() == before
+    assert not (tmp_path / "archive").exists()
+
+
+def test_fd_unknown_labels_name_the_process(tmp_path):
+    proc = tmp_path / "proc"
+    (proc / "4242" / "fd").mkdir(parents=True)
+    (proc / "4242" / "comm").write_text("systemd\n")
+    store = tmp_path / "s.jsonl"
+    store.write_text("{}\n")
+    os.chmod(proc / "4242" / "fd", 0o000)
+    try:
+        holders, unknown = J._scan_holders(store, proc)
+    finally:
+        os.chmod(proc / "4242" / "fd", 0o700)
+    assert holders == []
+    assert unknown == ["4242:systemd:fd_dir_denied"], unknown
+
+
+def test_plan_totals_count_stores_blocked_by_fd_visibility(tmp_path, monkeypatch):
+    """A plan can list 5 stores to rotate while --apply would refuse all 5. The totals must say so."""
+    monkeypatch.setattr(J, "_scan_holders", lambda path, proc_root: ([], ["4242:systemd:fd_dir_denied"]))
+    _seed(tmp_path)
+    plan = J.build_plan(_cfg(), tmp_path, NOW)
+    assert plan["totals"]["rotate"] == 1, plan["totals"]
+    assert plan["totals"]["fd_blocked"] == 1, plan["totals"]
+    assert plan["stores"][0]["fd_visibility"] == "unknown"
+    assert plan["stores"][0]["fd_unknown"] == ["4242:systemd:fd_dir_denied"]
+
+
+def test_missing_proc_root_refuses_instead_of_assuming_no_holder(tmp_path):
+    p = _seed(tmp_path)
+    before = p.read_bytes()
+    res = J.rotate_store(_cfg()["stores"][0], _cfg(), tmp_path, NOW,
+                         proc_root=tmp_path / "no-such-proc", sleep=_no_sleep)
+    assert res["ok"] is False and res["reason"] == "fd_visibility_unknown", res
+    assert p.read_bytes() == before
+
+
+def test_recover_does_not_duplicate_an_installed_tail_and_replays_the_fragment(tmp_path, proc):
+    """C: crash after the tail install. The hot rows must stay singular and the orphan .frag must land."""
+    cfg, store, p, src, frag, original, head, tail = _crash_state(tmp_path)
+    out = J.recover(cfg, tmp_path, NOW, proc_root=proc, sleep=_no_sleep)
+    rows = _rows_of(p.read_bytes())
+    assert rows == list(range(200, 250)) + [900, 901], rows
+    assert not src.exists() and not frag.exists()
+    assert out[0]["ok"] is True, out
+    # idempotent: a second recover changes nothing and appends nothing twice
+    before = p.read_bytes()
+    J.recover(cfg, tmp_path, NOW, proc_root=proc, sleep=_no_sleep)
+    assert p.read_bytes() == before
+
+
+def test_recover_keeps_a_source_whose_head_has_no_verified_archive(tmp_path, proc):
+    """C: if the tail is installed but the archive is missing, the head exists only in the source. Keep it."""
+    cfg, store, p, src, frag, original, head, tail = _crash_state(tmp_path, with_archive=False)
+    live_before = p.read_bytes()
+    out = J.recover(cfg, tmp_path, NOW, proc_root=proc, sleep=_no_sleep)
+    assert src.exists(), "the source holds the only copy of the head: it is never removed unverified"
+    assert not out[0]["ok"]
+    rows = _rows_of(p.read_bytes())
+    assert rows[:5] == list(range(200, 205))  # nothing was installed in front of the live tail
+    assert 901 in rows  # the fragment is still replayed
+
+
+def test_partial_fragment_append_resumes_and_never_duplicates(tmp_path):
+    """C: a crash in the middle of the fragment write must resume, not append the whole fragment twice."""
+    live = tmp_path / "live"
+    frag = tmp_path / ".live.frag-x-0"
+    payload = b'{"i": 2}\n{"i": 3}\n{"i": 4}\n'
+    frag.write_bytes(payload)
+    live.write_bytes(b'{"i": 1}\n' + payload[:9])  # the bytes that landed before the crash
+    res = J._merge_fragment(frag, live, cfg=_cfg(), proc_root=tmp_path, sleep=_no_sleep)
+    assert live.read_bytes() == b'{"i": 1}\n' + payload
+    assert res["resumed_from"] == 9
+    again = J._merge_fragment(frag, live, cfg=_cfg(), proc_root=tmp_path, sleep=_no_sleep)
+    assert again["already_merged"] is True
+    assert live.read_bytes() == b'{"i": 1}\n' + payload

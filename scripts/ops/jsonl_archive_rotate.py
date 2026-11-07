@@ -98,6 +98,14 @@ class RotateError(RuntimeError):
     """A check failed; the live store is left as it was (or merged back), nothing is lost."""
 
 
+class ProcVisibilityUnknown(RotateError):
+    """The /proc fd view could not be enumerated, so "no holder" cannot be proven. Fail closed.
+
+    2026-11-04 safety audit class B: an unreadable /proc entry used to read as an absent holder, so a writer
+    that still held the renamed-aside inode could append into it after the rotation had verified and unlinked
+    it — the row landed in neither the live file nor the archive."""
+
+
 # ── config ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -228,52 +236,95 @@ def count_lines(path: Path, start: int = 0, end: Optional[int] = None) -> int:
 # ── host facts ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
-def fd_holders(path: Path, proc_root: Path = Path("/proc")) -> list[tuple[int, str]]:
-    """(pid, fd) of every visible process with ``path``'s inode open. Unreadable entries are skipped."""
+def _pid_comm(proc_root: Path, pid: str) -> str:
+    """A short label for a pid, for the refusal message. Best effort: a process may exit mid-scan."""
+    try:
+        name = (proc_root / pid / "comm").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return "?"
+    return (name or "?")[:32]
+
+
+def _scan_holders(path: Path, proc_root: Path) -> tuple[list[tuple[int, str]], list[str]]:
+    """(holders, unknown). ``unknown`` names the pids whose fd table this user should be able to read but cannot:
+    a process that cannot be inspected might hold the file, so "nobody holds it" is unprovable while one exists.
+    Another uid's unreadable fd table is not unknown for a 0600 store this user owns, because that process cannot
+    open the file at all. A label is ``pid:comm:reason``, so an operator reading a refusal knows which process to
+    look at. On 2026-11-07 the live host names systemd (--user), codex (sandboxed), tailscaled, gpg-agent, sd-pam
+    and flock: all same-uid, all hide their fd tables, none can be read by an unprivileged agent process."""
     try:
         st = os.stat(path)
     except OSError:
-        return []
+        return [], []
     key = (st.st_dev, st.st_ino)
-    out = []
+    out: list[tuple[int, str]] = []
+    unk: dict[str, set[str]] = {}
     try:
         pids = [e.name for e in os.scandir(proc_root) if e.name.isdigit()]
     except OSError:
-        return []
+        # no /proc view at all: we can prove nothing about who holds this inode
+        return [], [str(proc_root)]
     me = os.getpid()
+    uid = os.getuid()
     for pid in pids:
         if int(pid) == me:
             continue
         fd_dir = proc_root / pid / "fd"
         try:
             fds = os.listdir(fd_dir)
+        except FileNotFoundError:
+            continue  # the process exited between the scan and the read
         except OSError:
+            try:
+                same_user = os.stat(proc_root / pid).st_uid == uid
+            except OSError:
+                same_user = True  # cannot even tell who it is: treat as unknown
+            if same_user:
+                unk.setdefault(pid, set()).add("fd_dir_denied")
             continue
         for fd in fds:
             try:
                 s = os.stat(fd_dir / fd)
+            except FileNotFoundError:
+                continue
             except OSError:
+                # the fd table lists this entry but its target needs ptrace access we do not have
+                unk.setdefault(pid, set()).add("fd_stat_denied")
                 continue
             if (s.st_dev, s.st_ino) == key:
                 out.append((int(pid), fd))
-    return out
+    unknown = [f"{pid}:{_pid_comm(proc_root, pid)}:{'/'.join(sorted(why))}" for pid, why in unk.items()]
+    return out, unknown
+
+
+def fd_holders(path: Path, proc_root: Path = Path("/proc"), *, strict: bool = False) -> list[tuple[int, str]]:
+    """(pid, fd) of every visible process with ``path``'s inode open.
+
+    ``strict`` is for the paths that decide whether a rotation may proceed: an fd table we cannot read raises
+    :class:`ProcVisibilityUnknown` instead of reading as "nobody holds it". Reporting callers (the dry-run plan)
+    use the default and stay best-effort."""
+    holders, unknown = _scan_holders(path, proc_root)
+    if unknown and strict:
+        raise ProcVisibilityUnknown("fd_visibility_unknown:" + ",".join(unknown[:8]))
+    return holders
 
 
 def persistent_holders(path: Path, *, samples: int = 2, gap_s: float = 1.0, proc_root: Path = Path("/proc"),
-                       sleep=time.sleep) -> list[tuple[int, str]]:
-    seen = set(fd_holders(path, proc_root))
+                       sleep=time.sleep, strict: bool = True) -> list[tuple[int, str]]:
+    seen = set(fd_holders(path, proc_root, strict=strict))
     for _ in range(max(0, samples - 1)):
         if not seen:
             return []
         sleep(gap_s)
-        seen &= set(fd_holders(path, proc_root))
+        seen &= set(fd_holders(path, proc_root, strict=strict))
     return sorted(seen)
 
 
-def quiesce(path: Path, *, timeout_s: float, proc_root: Path = Path("/proc"), sleep=time.sleep) -> bool:
+def quiesce(path: Path, *, timeout_s: float, proc_root: Path = Path("/proc"), sleep=time.sleep,
+            strict: bool = True) -> bool:
     deadline = time.monotonic() + float(timeout_s)
     sleep(0.2)
-    while fd_holders(path, proc_root):
+    while fd_holders(path, proc_root, strict=strict):
         if time.monotonic() >= deadline:
             return False
         sleep(0.2)
@@ -391,6 +442,8 @@ def plan_store(store: Mapping[str, Any], cfg: Mapping[str, Any], root: Path, now
         out.update({"reason": "no_parseable_timestamp", "lines": s["lines"], "ts_fields": list(store["ts_fields"])})
         return out
     head_lines = s["head_lines"]
+    # best-effort: the plan never refuses, but it says when the fd view is incomplete, because --apply refuses
+    holders, unknown = _scan_holders(live, Path("/proc"))
     out.update({
         "action": "rotate" if s["split"] > 0 else "keep",
         "cutoff": cutoff.isoformat(),
@@ -405,25 +458,61 @@ def plan_store(store: Mapping[str, Any], cfg: Mapping[str, Any], root: Path, now
         "keep_lines": s["lines"] - head_lines,
         "sha256_before": s["sha256"],
         "archive_to": str(archive_dir(cfg, root, sid) / f"{sid}.{_stamp(now)}.jsonl.gz"),
-        "fd_holders_now": len(fd_holders(live)),
+        "fd_holders_now": len(holders),
+        "fd_visibility": "unknown" if unknown else "ok",
+        "fd_unknown": unknown[:8],
     })
     if not s["split"]:
         out["reason"] = "nothing_older_than_hot_tail"
     return out
 
 
+def _uncovered_stores(cfg: Mapping[str, Any], root: Path, min_bytes: int) -> list[dict[str, Any]]:
+    """JSONL files at or above the rotation threshold that no ``jsonl_retention.stores`` row names.
+
+    Read-only coverage report: it answers "the big store keeps growing" for the stores the rules never cover,
+    which no per-store plan line can show. Only the directories that already hold a configured store are
+    scanned (a sibling of a rotating store, not the whole state root)."""
+    covered = {str((root / s["path"]).resolve()) for s in cfg["stores"] if s.get("path")}
+    seen: dict[str, dict[str, Any]] = {}
+    for s in cfg["stores"]:
+        if not s.get("path"):
+            continue
+        d = (root / s["path"]).parent
+        if not d.is_dir():
+            continue
+        for p in sorted(d.glob("*.jsonl")):
+            try:
+                if p.is_symlink() or not p.is_file():
+                    continue
+                st = p.stat()
+            except OSError:
+                continue
+            if st.st_size < min_bytes or str(p.resolve()) in covered:
+                continue
+            seen[str(p)] = {"path": str(p), "bytes": st.st_size,
+                            "why": "not in jsonl_retention.stores: the rotation never touches it"}
+    return sorted(seen.values(), key=lambda r: -int(r["bytes"]))
+
+
 def build_plan(cfg: Mapping[str, Any], root: Path, now: datetime, only: Optional[set[str]] = None) -> dict[str, Any]:
     stores = [plan_store(s, cfg, root, now) for s in cfg["stores"] if not only or s["id"] in only]
+    uncovered = _uncovered_stores(cfg, root, int(cfg.get("min_rotate_bytes") or 0)) if not only else []
     return {
         "schema": PLAN_SCHEMA,
         "generated_at": now.isoformat(),
         "state_root": str(root),
         "stores": stores,
+        "uncovered": {"count": len(uncovered), "bytes": sum(int(r["bytes"]) for r in uncovered),
+                      "files": uncovered},
         "totals": {
             "rotate": sum(1 for s in stores if s["action"] == "rotate"),
             "archive_bytes": sum(int(s.get("archive_bytes") or 0) for s in stores if s["action"] == "rotate"),
             "archive_lines": sum(int(s.get("archive_lines") or 0) for s in stores if s["action"] == "rotate"),
             "keep_bytes": sum(int(s.get("keep_bytes") or 0) for s in stores if s["action"] == "rotate"),
+            # --apply refuses every store whose fd view is incomplete, so a plan whose rotate count is non-zero
+            # and whose blocked count matches it would rotate nothing as written
+            "fd_blocked": sum(1 for s in stores if s.get("action") == "rotate" and s.get("fd_visibility") == "unknown"),
         },
     }
 
@@ -518,14 +607,26 @@ def _install(tail: Path, live: Path, *, stamp: str, cfg: Mapping[str, Any], proc
         _fsync_dir(live.parent)
         frag = live.with_name(f".{live.name}.frag-{stamp}-{attempt}")
         os.rename(tail, frag)
-        if not quiesce(frag, timeout_s=float(cfg.get("quiesce_timeout_s") or 30), proc_root=proc_root, sleep=sleep):
-            raise RotateError(f"fragment_not_quiescent:{frag}")
         size = frag.stat().st_size
-        _append_range(frag, live, 0, size)
-        sha, lines = _sha_lines_range(frag, 0, size)
-        frags.append({"path": str(frag), "bytes": size, "lines": lines, "sha256": sha})
+        merged = _merge_fragment(frag, live, cfg=cfg, proc_root=proc_root, sleep=sleep)
+        frags.append({"path": str(frag), "bytes": size, "lines": merged["lines"], "sha256": merged["sha256"]})
         return frags
     raise RotateError("install_attempts_exhausted")
+
+
+def _write_all(fd: int, data: bytes) -> int:
+    """Write every byte, looping over the partial writes POSIX permits. A zero-byte write raises.
+
+    2026-11-04 safety audit class A: ``os.write`` was called once and its return value ignored, so a short write
+    under pressure counted as a full one and the caller unlinked the only remaining copy of the rest."""
+    view = memoryview(data)
+    sent = 0
+    while sent < len(view):
+        n = os.write(fd, view[sent:])
+        if n <= 0:
+            raise RotateError(f"short_write: {sent} of {len(view)} bytes written")
+        sent += n
+    return sent
 
 
 def _append_range(src: Path, live: Path, start: int, end: int) -> int:
@@ -545,13 +646,135 @@ def _append_range(src: Path, live: Path, start: int, end: int) -> int:
                     if cut > 0:
                         fh.seek(cut - len(chunk), os.SEEK_CUR)
                         chunk = chunk[:cut]
-                os.write(fd, chunk)
-                n += len(chunk)
+                n += _write_all(fd, chunk)
                 left -= len(chunk)
         os.fsync(fd)
     finally:
         os.close(fd)
+    if n != (end - start):
+        raise RotateError(f"append_incomplete: {n} of {end - start} bytes appended to {live}")
     return n
+
+
+_MERGE_WINDOW_SLACK = 16 << 20  # bytes a concurrent writer may append between our marker and our read-back
+
+
+def _find_bytes(path: Path, needle: bytes, start: int) -> Optional[int]:
+    """Offset of ``needle`` at or after ``start``, or None. Streams, so a store of any size is searchable."""
+    if not needle:
+        return start
+    overlap = len(needle) - 1
+    buf = b""
+    base = start
+    with open(path, "rb") as fh:
+        fh.seek(start)
+        while True:
+            chunk = fh.read(CHUNK)
+            if not chunk:
+                return None
+            data = buf + chunk
+            i = data.find(needle)
+            if i >= 0:
+                return base + i
+            buf = data[-overlap:] if overlap else b""
+            base += len(data) - len(buf)
+
+
+def _append_bytes(live: Path, data: bytes) -> int:
+    """One O_APPEND write (atomic on Linux, so concurrent writers cannot interleave inside it), fsynced."""
+    fd = os.open(str(live), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        n = _write_all(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    return n
+
+
+def _merge_fragment(frag: Path, live: Path, *, cfg: Mapping[str, Any], proc_root: Path, sleep) -> dict[str, Any]:
+    """Append a fragment to ``live`` exactly once, even across a crash, and verify the merged bytes.
+
+    2026-11-04 safety audit classes A and C. The bytes are located by CONTENT, not by a fixed offset: every
+    writer of these stores appends to the live file concurrently, so any window we compute can contain their
+    rows as well as ours. The marker ``<frag>.merge.json`` is written before the append and names the sha256
+    and the offset to search from, so a second attempt finds a previous attempt's bytes instead of appending
+    them twice, and resumes from the bytes that landed when a crash truncated the write. The caller removes the
+    fragment only after the whole fragment is found in the live file."""
+    if not quiesce(frag, timeout_s=float(cfg.get("quiesce_timeout_s") or 30), proc_root=proc_root,
+                   sleep=sleep, strict=True):
+        raise RotateError(f"fragment_not_quiescent:{frag}")
+    size = frag.stat().st_size
+    sha, lines = _sha_lines_range(frag, 0, size)
+    data = frag.read_bytes()
+    live_size = live.stat().st_size if live.exists() else 0
+    if not size:
+        return {"path": str(frag), "bytes": 0, "lines": 0, "sha256": sha, "offset": live_size,
+                "already_merged": True}
+    marker = frag.with_name(frag.name + ".merge.json")
+    offset: Optional[int] = None
+    if marker.is_file():
+        try:
+            doc = json.loads(marker.read_text(encoding="utf-8"))
+            if isinstance(doc.get("offset"), int) and doc.get("sha256") == sha:
+                offset = doc["offset"]
+        except (OSError, ValueError, TypeError):
+            offset = None
+    # With our own marker, our bytes cannot begin before the offset it recorded. Without one (a fragment left
+    # by a crash before the marker, or by an older version) search the recent tail: reading a whole hot store
+    # on every install would cost more than the rotation itself.
+    search_from = offset if offset is not None else max(0, live_size - size - _MERGE_WINDOW_SLACK)
+    if offset is None:
+        offset = live_size
+        marker.write_text(json.dumps({"schema": "JsonlFragmentMerge@v1", "fragment": frag.name,
+                                      "offset": offset, "bytes": size, "sha256": sha},
+                                     sort_keys=True) + "\n", encoding="utf-8")
+        _fsync_file(marker)
+    if live.exists():
+        found = _find_bytes(live, data, search_from)
+        if found is not None:  # a previous attempt landed it (possibly before other writers' rows)
+            os.unlink(marker)
+            return {"path": str(frag), "bytes": size, "lines": lines, "sha256": sha, "offset": found,
+                    "already_merged": True}
+    # a crash mid-write leaves a PREFIX of the fragment just before whatever the writers appended after it:
+    # the occurrence of its first line that the fragment's bytes follow names where our bytes began.
+    have = 0
+    if live.exists():
+        first_line = data[: (data.find(b"\n") + 1) or len(data)]
+        pos = None
+        scan = search_from
+        while True:
+            p = _find_bytes(live, first_line, scan)
+            if p is None or p > live.stat().st_size:
+                break
+            if _read_window(live, p, min(size, live.stat().st_size - p)) == data[: min(size, live.stat().st_size - p)]:
+                pos = p
+                scan = p + len(first_line)
+                continue
+            break
+        if pos is not None:
+            have = min(size, live.stat().st_size - pos)
+    if have < size:
+        _append_bytes(live, data[have:])
+    found = _find_bytes(live, data, search_from)
+    if found is None:
+        raise RotateError(f"fragment_verify_failed:{frag}")
+    os.unlink(marker)
+    return {"path": str(frag), "bytes": size, "lines": lines, "sha256": sha, "offset": found,
+            "resumed_from": have}
+
+
+def _read_window(path: Path, start: int, max_bytes: int) -> bytes:
+    with open(path, "rb") as fh:
+        fh.seek(start)
+        return fh.read(max_bytes)
+
+
+def _fsync_file(path: Path) -> None:
+    fd = os.open(str(path), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _late_sweep(items: list[dict], live: Path) -> list[dict]:
@@ -578,7 +801,11 @@ def rotate_store(store: Mapping[str, Any], cfg: Mapping[str, Any], root: Path, n
     if p["action"] != "rotate":
         return {**p, "ok": True}
     live = root / store["path"]
-    holders = persistent_holders(live, proc_root=proc_root, sleep=sleep)
+    try:
+        holders = persistent_holders(live, proc_root=proc_root, sleep=sleep)
+    except ProcVisibilityUnknown as exc:
+        # class B: without a complete fd view "no long-lived holder" is unprovable. The store is untouched.
+        return {**p, "ok": False, "action": "refused", "reason": "fd_visibility_unknown", "detail": str(exc)}
     if holders:
         return {**p, "ok": False, "action": "refused", "reason": "long_lived_fd_holder",
                 "holders": [f"{a}/{b}" for a, b in holders]}
@@ -679,20 +906,122 @@ def recover_one(live: Path, src: Path, *, cfg: Mapping[str, Any], proc_root: Pat
     return {"recovered": str(src), "merged_fragments": frags, "fragments_removed": removed}
 
 
+def _archive_accounting(gz: Path) -> Optional[dict[str, Any]]:
+    """The uncompressed head an archive holds: (bytes, sha256) from the manifest, else from the gzip itself."""
+    side = RA.manifest_path(gz)
+    if side.is_file():
+        try:
+            doc = json.loads(side.read_text(encoding="utf-8"))
+            a = ((doc.get("after") or {}).get("archive") or {})
+            if isinstance(a.get("bytes_uncompressed"), int) and isinstance(a.get("sha256_uncompressed"), str):
+                return {"bytes": a["bytes_uncompressed"], "sha256": a["sha256_uncompressed"]}
+        except (OSError, ValueError, TypeError):
+            pass
+    try:
+        sha, _lines, nbytes = _gz_sha_lines(gz)
+    except OSError:
+        return None
+    return {"bytes": nbytes, "sha256": sha}
+
+
+def _stamp_time(name: str) -> Optional[datetime]:
+    m = _STAMP_RX.search(name)
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _tail_already_installed(store: Mapping[str, Any], live: Path, src: Path, size: int,
+                            head_bytes: Optional[int], stamp_time: Optional[datetime]) -> bool:
+    """True when ``live`` already begins with the hot tail that this rotation would have installed.
+
+    This is the state a crash after ``renameat2(RENAME_EXCHANGE)`` leaves behind. Installing the source in front
+    of it (what recover used to do) duplicates every hot row; class C of the 2026-11-04 audit."""
+    if head_bytes is None:
+        if stamp_time is None:
+            return False
+        cutoff = stamp_time - timedelta(days=float(store["hot_days"]))
+        s = find_split(src, fields=store["ts_fields"], cutoff=cutoff, min_tail_rows=int(store["min_tail_rows"]))
+        head_bytes = s["split"]
+    tail_bytes = size - head_bytes
+    if tail_bytes <= 0 or not live.exists() or live.stat().st_size < tail_bytes:
+        return False
+    src_sha, _ = _sha_lines_range(src, head_bytes, size)
+    live_sha, _ = _sha_lines_range(live, 0, tail_bytes)
+    return src_sha == live_sha
+
+
+def recover_source(store: Mapping[str, Any], cfg: Mapping[str, Any], root: Path, live: Path, src: Path, *,
+                   proc_root: Path, sleep, stamp: str) -> dict[str, Any]:
+    """Put one renamed-aside source where it belongs without losing or duplicating a row.
+
+    Four crash phases, decided from the bytes on disk rather than from a guess:
+      * the tail was never installed → the source goes back in front of the rows written meanwhile;
+      * the tail is live and its head is verified in the archive → the source is fully accounted for and removed;
+      * the tail is live but no archive holds its head → the source is KEPT (it is the only copy of the head);
+      * the source grew after it was consumed (a holder wrote into the renamed inode) → those bytes are appended
+        to the live file before the source is removed.
+    """
+    sid = store["id"]
+    size = src.stat().st_size
+    st = _stamp_time(src.name)
+    stamp_for_archive = _stamp(st) if st is not None else stamp
+    gz = archive_dir(cfg, root, sid) / f"{sid}.{stamp_for_archive}.jsonl.gz"
+    acct = _archive_accounting(gz) if gz.exists() else None
+    if acct is not None:
+        if acct["bytes"] > size:
+            return {"ok": False, "reason": "archive_larger_than_source", "src": str(src)}
+        head_sha, _ = _sha_lines_range(src, 0, acct["bytes"])
+        if head_sha != acct["sha256"]:
+            return {"ok": False, "reason": "source_head_mismatch", "src": str(src),
+                    "note": "the archive does not hold this source's head; the source is kept"}
+    if _tail_already_installed(store, live, src, size, acct["bytes"] if acct else None, st):
+        if acct is None:
+            return {"ok": False, "reason": "source_head_not_archived", "src": str(src),
+                    "note": "the tail is live and the head exists only in the source, which is kept"}
+        extra = src.stat().st_size
+        appended = _append_range(src, live, size, extra) if extra > size else 0
+        os.unlink(src)  # head verified in the archive, tail verified live, extra bytes appended
+        return {"ok": True, "phase": "tail_installed", "source_removed": str(src), "extra_bytes": appended}
+    return {"ok": True, "phase": "source_reinstalled",
+            **recover_one(live, src, cfg=cfg, proc_root=proc_root, sleep=sleep, stamp=stamp)}
+
+
 def recover(cfg: Mapping[str, Any], root: Path, now: datetime, *, proc_root: Path = Path("/proc"),
             sleep=time.sleep) -> list[dict]:
-    out = []
+    out: list[dict] = []
+    stamp = _stamp(now)
     for store in cfg["stores"]:
         if not store.get("path"):
             continue
         live = root / store["path"]
         for src in sorted(live.parent.glob(f".{live.name}.rotating-*")):
-            if not quiesce(src, timeout_s=float(cfg.get("quiesce_timeout_s") or 30), proc_root=proc_root,
-                           sleep=sleep):
-                out.append({"id": store["id"], "src": str(src), "ok": False, "reason": "not_quiescent"})
+            try:
+                if not quiesce(src, timeout_s=float(cfg.get("quiesce_timeout_s") or 30), proc_root=proc_root,
+                               sleep=sleep, strict=True):
+                    out.append({"id": store["id"], "src": str(src), "ok": False, "reason": "not_quiescent"})
+                    continue
+                out.append({"id": store["id"],
+                            **recover_source(store, cfg, root, live, src, proc_root=proc_root, sleep=sleep,
+                                             stamp=stamp)})
+            except ProcVisibilityUnknown as exc:
+                out.append({"id": store["id"], "src": str(src), "ok": False, "reason": "fd_visibility_unknown",
+                            "detail": str(exc)})
+        # fragments from a failed _install: replayed AFTER the source decision so they land at the live end
+        for frag in sorted(live.parent.glob(f".{live.name}.frag-*")):
+            if not frag.is_file() or frag.name.endswith(".merge.json"):
                 continue
-            out.append({"id": store["id"], "ok": True,
-                        **recover_one(live, src, cfg=cfg, proc_root=proc_root, sleep=sleep, stamp=_stamp(now))})
+            try:
+                merged = _merge_fragment(frag, live, cfg=cfg, proc_root=proc_root, sleep=sleep)
+            except RotateError as exc:
+                out.append({"id": store["id"], "fragment": str(frag), "ok": False, "reason": str(exc)})
+                continue
+            if frag.exists():
+                frag.unlink()  # the merged region hashed to the fragment's sha256 before this point
+            out.append({"id": store["id"], "fragment": str(frag), "ok": True, **merged})
         for t in sorted(live.parent.glob(f".{live.name}.tail-*")):
             out.append({"id": store["id"], "orphan_tail": str(t), "note": "kept; its rows are also in the source"})
     return out

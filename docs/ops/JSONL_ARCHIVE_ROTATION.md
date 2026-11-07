@@ -4,6 +4,8 @@
 Status:      PROPOSED (branch ops/jsonl-retention-20261023; lane jsonl-archive-rotate at SHADOW, contract DRAFT)
 as_of:       2026-10-23T12:15:00-04:00
 Measured at: base 53aa1b619 (origin/main); read-only dry run over the real stores 2026-10-23 11:12 ET (§4)
+Repaired:    2026-11-07 (LQ-20261107-295) on d0c818a3f — crash-safety classes A/B/C closed, `uncovered` added (§3);
+             activation is BLOCKED on this host because eight same-uid processes hide their fd tables (§3)
 Owner:       platform
 Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 Runbook-Id:  jsonl-archive-rotate
@@ -68,6 +70,50 @@ A copy-then-truncate without the writer's lock loses every row appended between 
 
 A failure at any step merges the source back. `--recover` handles a crash.
 
+### Crash safety, repaired 2026-11-07 (LQ-20261107-295)
+
+The 2026-11-04 activation audit (`inbox/cc-deepseek-7/20261104T115615Z-codex-ROTATION-preactivation-SAFETY-BLOCK.md`) reproduced three loss paths in synthetic stores. Each is closed in code and pinned by a test:
+
+| Class | What went wrong | What the code does now |
+|---|---|---|
+| A | `os.write`'s return value was ignored, so a short write counted as a full one and the caller unlinked the only other copy | `_write_all` loops over partial writes and raises on a zero-byte write; `_append_range` refuses unless every byte landed |
+| B | an unreadable `/proc` entry read as "no holder", so a writer holding the renamed inode could append after the unlink | `_scan_holders` separates holders from *unknown* entries; `persistent_holders`/`quiesce` are strict and `rotate_store` refuses with `fd_visibility_unknown` before it renames anything. Only the owning uid's unreadable fd table is unknown (a 0600 store cannot be opened by anyone else). The dry run reports `fd_visibility` |
+| C | `--recover` installed the rotated-aside source in front of an already-installed tail (duplicating the hot rows) and never replayed a `.frag` | `recover_source` decides from the bytes on disk: tail live + head verified in the archive → the source is removed; tail live + no verified archive → the source is KEPT (`source_head_not_archived`); otherwise the source goes back in front. Every `.frag` is replayed after that, and a fragment merged once is found by content, so a second recovery appends nothing (`<frag>.merge.json` records the offset; a truncated write resumes from the bytes that landed) |
+
+`--recover` is still the operator's command (`--recover --confirm APPLY`); nothing about these repairs activates the lane.
+
+The `--dry-run` output also carries `uncovered`: JSONL files at or above `min_rotate_bytes` in the directories of configured stores that no `jsonl_retention.stores` row names. It answers "that store keeps growing" for stores the rotation has no rule for, which no per-store plan line can show.
+
+### Activation blocker found 2026-11-07: the fd view is never complete on this host
+
+`--apply` refuses a store when any same-uid process's fd table cannot be read (class B). On this host that
+condition is permanent, so the repaired lane would rotate **nothing** if promoted:
+
+```
+totals: {'rotate': 5, 'archive_bytes': 424724347, 'archive_lines': 755575, 'fd_blocked': 5}
+fd_unknown (every store): 2879:systemd:fd_stat_denied, 2938:(sd-pam):fd_dir_denied,
+  318771:tailscaled:fd_dir_denied, 325966:flock:fd_dir_denied, 1736334:codex:fd_dir_denied,
+  1881843:gpg-agent:fd_dir_denied, 2248703:codex, 3811324:codex, 3925973:codex
+```
+
+Eight processes run as uid 1000 and hide their descriptors: `systemd --user` (fd directory listable, each
+entry's target needs ptrace access), `(sd-pam)`, `tailscaled`, a `flock(1)`, `gpg-agent` and four `codex`
+agents (fd directory owned by root — sandboxed in their own user namespace). An unprivileged process cannot
+read any of them, `ptrace_scope` is 1, and there is no passwordless `sudo`. So "nobody holds this store" is
+unprovable for every store, on every run, and the lane correctly refuses.
+
+That is the audit's demanded behaviour ("refuse/coordinate unknown descriptor visibility"), but it means the
+lane cannot be promoted as written. The operator has three routes, each a decision (§17):
+
+| Route | What it needs | Guarantee |
+|---|---|---|
+| Read every fd table | the lane runs with `CAP_SYS_PTRACE` (a root-run systemd unit or a sudoers rule for this one command) | full: holders are enumerated, the current code needs no change |
+| Coordinate with writers | every writer takes `LOCK_SH` on `<store>.rotate.lock` around open+append, and the rotation takes `LOCK_EX` and holds it across rename, install and unlink | full only if every writer is in-repo; an outside writer silently voids it |
+| Accept a narrower view | an operator-signed allowlist of specific uninspectable processes (by pid and start time, revalidated each run) | weaker: an allowlisted process that does hold the store is missed |
+
+Until one is chosen, the lane stays at SHADOW/`--dry-run` and the `uncovered` report is the operator's
+inventory of what is growing.
+
 The tripwire is a `RetentionArchiveTripwire@v1` line per archive. `scripts/lib/retention_tripwire.py` reads it nightly through `report_db_hygiene.py`, and any live reference to `archive/file_prune` becomes an ARCHIVE_TRIPWIRE P1.
 
 ## 4. Dry run, 2026-10-23 11:46 ET (packet `--preview`: read-only, real stores, writes nothing to the state root)
@@ -89,6 +135,36 @@ The retention selection (read-only) picks the two raw segments from the 2026-09-
 Together they come to 1.82 GB. Nothing removes them (§6).
 
 The first dry run (11:12 ET) used the wrong timestamp field for daily_intelligence_heartbeats. It read `observed_at`, but the rows carry `generated_at` and `date`, so it found no parseable timestamp and would have cut the store to its 200-row minimum. The field is fixed. The code now refuses any store that has no parseable timestamp (`no_parseable_timestamp`) instead of rotating it by row count.
+
+## 4a. Dry run 2026-11-07 21:46 UTC (LQ-20261107-295; read-only, real stores, `writes: nothing`)
+
+The same code path the repaired lane runs, over the live stores:
+
+| Store | Lines | Archive lines / bytes | Keep lines / bytes |
+|---|---|---|---|
+| aif_memory_retrievals | 510,446 | 284,080 / 146,995,110 | 226,366 / 122,883,123 |
+| research_call_accounting | 709,774 | 409,246 / 250,614,118 | 300,528 / 183,962,689 |
+| cio_workflow_lineage | — | skip (`rotate_false`) | — |
+| health_inspector_fixes | 115,849 | 27,946 / 13,236,236 | 87,903 / 41,228,564 |
+| advisory_notif_decisions | 173,001 | 33,235 / 6,511,015 | 139,766 / 27,414,645 |
+| daily_intelligence_heartbeats | 10,896 | 1,068 / 7,367,868 | 9,828 / 67,927,345 |
+| **total** | | **755,575 / 424,724,347** | **443,416,366 bytes** |
+
+`"uncovered": {"count": 28, "bytes": 3717016961}` — 28 JSONL files of 3.72 GB that no `jsonl_retention.stores`
+row names, so the rotation would never touch them however often it runs. The largest:
+
+| Bytes | File |
+|---|---|
+| 421,487,422 | `data/cio/cio_instrument_records.jsonl` |
+| 354,381,461 | `data/cio/research_contradiction_candidates.jsonl` (listed in `not_candidates`: dedup over the whole file) |
+| 329,729,228 | `data/runtime/advisory_kb_lessons.jsonl` (already rotated by `rotate_advisory_kb_lessons.py`) |
+| 288,853,507 | `data/cio/memory_contexts.jsonl` (`not_candidates`) |
+| 249,850,716 | `data/cio/cio_opportunity_assessments.jsonl` |
+| 230,495,606 | `data/cio/cio_action_ledger.jsonl` |
+
+This is the answer to "the big CIO JSONLs keep growing": the two biggest of the 2026-10-23 set are covered, and
+the stores that grew since are not in the rules at all. Adding one needs a reader-safety reason, as §2 records
+for every existing row; the `uncovered` list makes the candidates visible without changing any rule.
 
 ## 5. Running it
 
