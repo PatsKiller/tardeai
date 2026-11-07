@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PATTERN_EXTRACTOR_TRADE_DEDUPE",
+  "files": [
+    "tests/test_pattern_extractor_trade_dedupe_20261107.py"
+  ],
+  "anchor": "PATTERN_EXTRACTOR_TRADE_DEDUPE_20261107",
+  "comment": [
+    "ANCHOR: PATTERN_EXTRACTOR_TRADE_DEDUPE_20261107 — LQ-20261107-132. agent_recommendation_outcomes holds",
+    "9,241 scored rows for 118 closed trades (one row per recommendation per matching trade, and six",
+    "generations of trade_closed ids), so pattern_library reported '864 trades' built from duplicates and a",
+    "float_nano bucket that was entirely float_m = 0.0 missing data. The extractor collapses to one row per",
+    "trade before any bucketing, and a zero rvol/float is no longer a bucket. Listing it schedules nothing."
+  ]
+}

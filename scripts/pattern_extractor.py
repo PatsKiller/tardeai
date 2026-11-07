@@ -4,6 +4,12 @@
 Analyzes agent_recommendation_outcomes (joined with trade_ai_scans where available)
 to discover repeatable patterns, then upserts them into pattern_library.
 
+The unit of analysis is the underlying trade, not the outcome row (LQ-20261107-132). One closed
+trade is scored once per watchlist recommendation that could have pointed at it, so the table held
+9,241 scored rows for 118 trades; statistics taken over rows made "864 trades" out of 22 and produced
+pattern_library rows that were the same trade counted hundreds of times. ``dedupe_to_trades`` collapses
+rows to one per trade before any bucketing.
+
 Pattern dimensions:
   - catalyst_type    (catalyst text keyword bucketing)
   - rvol_range       (low / medium / high / extreme)
@@ -29,6 +35,7 @@ import logging
 import os
 import sys
 from collections import defaultdict
+from decimal import Decimal, InvalidOperation
 
 LANE_ID = "pattern-extractor"
 
@@ -85,7 +92,9 @@ DEFAULT_MIN_TRADES = 5
 # ── bucketing helpers ───────────────────────────────────────────────────
 
 def _rvol_bucket(rvol: float | None) -> str | None:
-    if rvol is None:
+    # 0.0 is what a scan row carries when the ratio could not be computed, not a quiet session: a
+    # relvol of zero is a stock that did not trade. Bucketing it as 'low' invents a population.
+    if rvol is None or rvol <= 0:
         return None
     if rvol < 1.5:
         return 'low'
@@ -97,7 +106,10 @@ def _rvol_bucket(rvol: float | None) -> str | None:
 
 
 def _float_bucket(float_m: float | None) -> str | None:
-    if float_m is None:
+    # Same sentinel, same trap: no listed company has a 0.0M float, so 0.0 is missing data. Every
+    # trade in float_nano had float_m = 0.0 (2026-11-07), which is how a bucket of unknowns earned a
+    # KILLED label.
+    if float_m is None or float_m <= 0:
         return None
     if float_m < 10:
         return 'nano'
@@ -142,8 +154,56 @@ def _catalyst_bucket(catalyst: str | None) -> str | None:
     return 'other'
 
 
+def _normalised(value):
+    """A comparable text form of a NUMERIC value: None stays None, 0.0 and Decimal('0.00') both become '0'."""
+    if value is None:
+        return None
+    try:
+        return format(Decimal(str(value)).normalize(), 'f')
+    except (InvalidOperation, ValueError):
+        return str(value)
+
+
+def _trade_key(row: dict) -> tuple:
+    """What identifies the closed trade behind an outcome row.
+
+    ``trade_id`` cannot serve as that identity: it is the id ``trade_closed`` carried at scoring time,
+    and trade_closed has been reloaded six times since (id bands 78-98801, 125875-182534,
+    216087-273212, 301351-381768, 420632-482901, 503805-584085). Measured 2026-11-07: 1 of 9,231
+    scored rows still joins to a current trade_closed row, and one trade wears several ids (SPCX
+    2026-10-07..2026-10-14, -3,218.62, is 503846, 544274 and 583949). The trade itself is its symbol,
+    the session it opened and closed in, its entry and exit price, and the dollars it made or lost.
+
+    ``realized_pnl`` belongs in the key because the prices do not imply it: CSWC 2026-02-27..07-23 left
+    at 22.9714/23.3100 made both $3.78 and $5.75 — two sizes, two trades.
+    """
+    return (
+        row.get('symbol'),
+        str(row.get('entry_date') or ''),
+        str(row.get('exit_date') or ''),
+        _normalised(row.get('entry_price')),
+        _normalised(row.get('exit_price')),
+        _normalised(row.get('realized_pnl')),
+    )
+
+
+def dedupe_to_trades(rows: list[dict]) -> list[dict]:
+    """Collapse outcome rows to one per underlying trade, deterministically (lowest id survives).
+
+    agent_outcome_scorer scores every watchlist recommendation against every matching closed trade,
+    so a trade can arrive hundreds of times (LDOS -336.91: 658 rows, 297 war_ids, 4 agents). The
+    surviving row is the oldest recommendation for that trade; every field the statistics read is
+    identical within a group by construction, and the per-recommendation fields are counted once per
+    trade rather than once per recommendation.
+    """
+    kept: dict[tuple, dict] = {}
+    for row in sorted(rows, key=lambda r: (r.get('id') is None, r.get('id') or 0)):
+        kept.setdefault(_trade_key(row), row)
+    return list(kept.values())
+
+
 def _compute_pattern_stats(trades: list[dict]) -> dict:
-    """Compute stats for a group of trades."""
+    """Compute stats for a group of trades (one row per trade — see dedupe_to_trades)."""
     total = len(trades)
     # realized_pnl arrives from PostgreSQL as Decimal. Mixing it with the float
     # win_rate raised "unsupported operand type(s) for *: 'float' and
@@ -191,7 +251,7 @@ def _classify(stats: dict) -> str:
 def run(min_trades: int = DEFAULT_MIN_TRADES, dry_run: bool = False) -> dict:
     """Main extraction logic."""
     summary = {'patterns_found': 0, 'proven': 0, 'killed': 0, 'neutral': 0,
-               'upserted': 0, 'errors': 0}
+               'upserted': 0, 'errors': 0, 'outcome_rows': 0, 'trades_analysed': 0}
 
     try:
         conn = psycopg2.connect(**DB_CONFIG)
@@ -227,16 +287,20 @@ def run(min_trades: int = DEFAULT_MIN_TRADES, dry_run: bool = False) -> dict:
             ORDER BY o.entry_date
         """)
         rows = cur.fetchall()
-        logger.info('Loaded %d scored outcomes for pattern analysis', len(rows))
+        trades = dedupe_to_trades(rows)
+        summary['outcome_rows'] = len(rows)
+        summary['trades_analysed'] = len(trades)
+        logger.info('Loaded %d scored outcome rows -> %d underlying trades (%d duplicate rows collapsed)',
+                    len(rows), len(trades), len(rows) - len(trades))
 
-        if not rows:
+        if not trades:
             logger.info('No outcomes to analyze -- exiting cleanly.')
             return summary
 
         # ── bucket trades into pattern groups ───────────────────────────
         buckets: dict[str, list[dict]] = defaultdict(list)
 
-        for r in rows:
+        for r in trades:
             rvol_b = _rvol_bucket(r.get('rvol'))
             float_b = _float_bucket(r.get('float_m'))
             gap_b = _gap_bucket(r.get('gap_pct'))
