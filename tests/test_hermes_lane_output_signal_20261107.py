@@ -72,7 +72,7 @@ def test_the_writer_puts_the_declared_artifact_where_the_grader_looks(
     # The state-root parent exists on the host (durable_write_targets skips a target whose parent is absent and
     # whose root carries no provisioning stamp), so create it here the same way.
     (state / Path(module.RESULT_REL).parent).mkdir(parents=True, exist_ok=True)
-    (state / "PERSISTENT_STATE_ROOT.json").write_text("{}", encoding="utf-8")
+    (state / "PERSISTENT_STATE_ROOT.json").write_text("{}", encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- a throwaway provisioning stamp under pytest tmp_path, not a store; the test reads it back immediately
     monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(state))
 
     targets = module.result_targets()
@@ -97,7 +97,7 @@ def test_the_dry_run_writes_nothing(modules, tmp_path, monkeypatch, name, lane_i
     module = modules[name]
     state = tmp_path / "state"
     (state / Path(module.RESULT_REL).parent).mkdir(parents=True, exist_ok=True)
-    (state / "PERSISTENT_STATE_ROOT.json").write_text("{}", encoding="utf-8")
+    (state / "PERSISTENT_STATE_ROOT.json").write_text("{}", encoding="utf-8")  # nosemgrep: tq-py-nonatomic-store-write -- a throwaway provisioning stamp under pytest tmp_path, not a store; the test reads it back immediately
     monkeypatch.setenv("TRADEAI_PERSISTENT_STATE_ROOT", str(state))
     monkeypatch.chdir(tmp_path)
     before = {p for p in tmp_path.rglob("*") if p.is_file()}
