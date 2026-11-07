@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "COMMITMENT_OUTCOME_DEDUPE_20261107",
+  "files": [
+    "tests/test_commitment_outcome_dedupe_20261107.py"
+  ],
+  "anchor": "COMMITMENT_OUTCOME_DEDUPE_20261107",
+  "comment": [
+    "ANCHOR: COMMITMENT_OUTCOME_DEDUPE_20261107 — LQ-20261107-54: commitment outcomes dedupe on commitment_id; readers use the effective",
+    "outcome, and ledger cleanup exists only as a read-only dry-run plan."
+  ]
+}

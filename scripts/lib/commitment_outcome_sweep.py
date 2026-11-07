@@ -330,3 +330,96 @@ def append_jsonl(path: Path | str, rows: Iterable[Mapping[str, Any]]) -> int:
             fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
             n += 1
     return n
+
+
+# --- LQ-20261107-54: one effective outcome per commitment -------------------------
+#: The dedupe key of the outcome ledger is the commitment, not the idempotency key.
+#: The idempotency key hashes the observation, so a re-evaluation with a different
+#: reason lands a second row: 883 commitments carry a legacy INSUFFICIENT_EVIDENCE
+#: (claim_not_falsifiable) row AND the UNSCOREABLE row the 2026-10-09 fix writes.
+#: Readers that count rows double-count them; readers must use `effective_outcomes`.
+#: Precedence, strongest first: a real score beats UNSCOREABLE beats the legacy row.
+_RANK = {"CONFIRMED": 0, "REFUTED": 0, "EXPIRED": 1, UNSCOREABLE: 2, "INSUFFICIENT_EVIDENCE": 3}
+
+
+def outcome_dedupe_key(row: Mapping[str, Any]) -> str:
+    return str(row.get("commitment_id") or "")
+
+
+def _rank(row: Mapping[str, Any]) -> int:
+    return _RANK.get(str(row.get("outcome") or ""), 9)
+
+
+def effective_outcomes(ledger: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """One outcome per commitment_id. Among duplicates the lowest rank wins; ties
+    keep the earliest row (append-only: the first settled word stands)."""
+    best: dict[str, dict[str, Any]] = {}
+    for row in ledger:
+        key = outcome_dedupe_key(row)
+        if not key:
+            continue
+        cur = best.get(key)
+        if cur is None or _rank(row) < _rank(cur):
+            best[key] = dict(row)
+    return best
+
+
+def outcome_summary(commitments: list[Mapping[str, Any]], ledger: list[Mapping[str, Any]],
+                    *, now: datetime | None = None) -> dict[str, Any]:
+    """Row counts versus effective counts, and the scoring state of every commitment.
+
+    `scored` = CONFIRMED + REFUTED only; EXPIRED (horizon closed unobserved),
+    UNSCOREABLE and legacy INSUFFICIENT_EVIDENCE are not scores.
+    """
+    when = now or _now()
+    eff = effective_outcomes(ledger)
+    rows_by_id: dict[str, int] = {}
+    for r in ledger:
+        k = outcome_dedupe_key(r)
+        rows_by_id[k] = rows_by_id.get(k, 0) + 1
+    dated = [c for c in commitments if c.get("due_at")]
+    dated_ids = {str(c.get("commitment_id")) for c in dated}
+    due = [c for c in dated if (_parse_ts(c.get("due_at")) or when) <= when]
+    by_eff: dict[str, int] = {}
+    for r in eff.values():
+        by_eff[str(r.get("outcome"))] = by_eff.get(str(r.get("outcome")), 0) + 1
+    newest = max((str(c.get("produced_at") or c.get("created_at") or "") for c in dated), default="")
+    return {
+        "schema": "CommitmentOutcomeSummary@v1",
+        "commitments": len(commitments),
+        "dated_commitments": len(dated),
+        "due": len(due),
+        "due_without_outcome": sum(1 for c in due if str(c.get("commitment_id")) not in eff),
+        "newest_dated_commitment_produced_at": newest or None,
+        "ledger_rows": len(ledger),
+        "effective_outcomes": len(eff),
+        "commitments_with_duplicate_outcomes": sum(1 for v in rows_by_id.values() if v > 1),
+        "effective_by_outcome": by_eff,
+        "scored": by_eff.get("CONFIRMED", 0) + by_eff.get("REFUTED", 0),
+        "orphan_outcomes": sum(1 for k in eff if k not in dated_ids),
+    }
+
+
+def plan_ledger_cleanup(ledger: list[Mapping[str, Any]]) -> dict[str, Any]:
+    """DRY-RUN PLAN ONLY. Names the superseded rows; performs no I/O.
+
+    Never delete: the proposed action is to archive each superseded row to a side
+    file with a `supersedes` link, leaving the live ledger append-only.
+    """
+    eff = effective_outcomes(ledger)
+    superseded = []
+    for r in ledger:
+        k = outcome_dedupe_key(r)
+        keep = eff.get(k)
+        if keep is not None and r.get("idempotency_key") != keep.get("idempotency_key"):
+            superseded.append({"commitment_id": k, "superseded_outcome": r.get("outcome"),
+                               "superseded_idempotency_key": r.get("idempotency_key"),
+                               "kept_outcome": keep.get("outcome"),
+                               "kept_idempotency_key": keep.get("idempotency_key")})
+    pairs: dict[str, int] = {}
+    for i in superseded:
+        k = f"{i['superseded_outcome']}->{i['kept_outcome']}"
+        pairs[k] = pairs.get(k, 0) + 1
+    return {"schema": "CommitmentOutcomeCleanupPlan@v1", "dry_run": True, "writes": 0,
+            "rows": len(ledger), "keep": len(eff), "superseded": len(superseded),
+            "superseded_by_pair": pairs, "items": superseded}
