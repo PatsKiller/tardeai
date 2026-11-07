@@ -123,7 +123,7 @@ class FakeReceiptModule(types.ModuleType):
 def fake_receipt_module(monkeypatch):
     """``main`` imports ``lib.lane_last_receipt`` inside the function; the real ``lib`` package stays, only the
     receipt writer is replaced, so nothing is written to the state root."""
-    import lib  # noqa: F401  (the real package: ``scripts/`` is on sys.path once the lane module is imported)
+    import lib  # noqa: F401 -- imports the real 'lib' parent package; only its lane_last_receipt is replaced
     mod = FakeReceiptModule()
     monkeypatch.setitem(sys.modules, "lib.lane_last_receipt", mod)
     monkeypatch.setattr(fb, "_load_env", lambda: None)  # no env file is read
