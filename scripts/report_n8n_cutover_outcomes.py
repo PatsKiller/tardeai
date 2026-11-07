@@ -549,7 +549,10 @@ def lane_states(
         tags = commented_by_lane.get(lane, [])
         n8n_tag = [t for t in tags if t["kind"] in ("N8N_CUTOVER", "N8N_ONLY_TEST")]
         consolidated = [t for t in tags if t["kind"] == "CONSOLIDATED"]
-        native = kind == "n8n" and state == "ACTIVE"
+        # A shadow lane is never n8n-live, and neither is a lane whose registry dispatch mode is dry_run (LQ-114,
+        # 2026-11-07: jsonl-archive-rotate is an ACTIVE n8n row at stage shadow and was counted as live).
+        rehearsing = sched.get("stage") == "shadow" or str((reg.get("dispatch") or {}).get("mode") or "") == "dry_run"
+        native = kind == "n8n" and state == "ACTIVE" and not rehearsing
         relay_live = lane in live
         n8n_live = relay_live or native
         live_done = int(o.get("useful_live_output", 0)) + int(o.get("verified_empty", 0)) + int(o.get("unverified_ok", 0))
