@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_SCORER_MARK_REASON_20261107",
+  "files": [
+    "tests/test_hermes_scorer_mark_reason_20261107.py"
+  ],
+  "anchor": "HERMES_SCORER_MARK_REASON_20261107",
+  "comment": [
+    "ANCHOR: HERMES_SCORER_MARK_REASON_20261107 — LQ-20261107-143 (residual). The lead's ruling asks for a",
+    "real mark with a staleness guard and skip+reason. cc-deepseek-5's LQ-189 commit 15e21c9b6 supplied the",
+    "mark (resolve_mark: Finviz first, newest market_quotes / ticker_prices row as the backup quote) and made",
+    "a stale mark write NULL — but nothing recorded WHY R/R was dropped, so a 40-minute-old mark and a name",
+    "with no stop were identical in the run summary. The file pins: fresh mark = price and no note; stale mark",
+    "= (None, 'stale_mark'); no mark = (None, 'no_mark'); a name without target or stop gets no note (no R/R",
+    "to lose); the summary carries rr_skipped counts and the first 20 symbols, and the printed line carries",
+    "the counts. RE-3 shape: a receipt must tell 'cannot see' apart from 'nothing to lose'.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}

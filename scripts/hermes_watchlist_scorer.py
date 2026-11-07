@@ -782,8 +782,10 @@ def run(limit=None, *, dry_run=False):
     # never written as if it were a live one (data-truth audit 2026-11-07, LQ-20261107-143 defect 3).
     marks = _marks(cur, [r.get("symbol") for r in rows])
     for r in rows:
-        m = marks.get(str(r.get("symbol") or "").upper()) or {}
-        r["price"] = m.get("price") if m.get("price") and not m.get("stale") else None
+        r["price"] = _marked_price(r, marks.get(str(r.get("symbol") or "").upper()))[0]
+    # Why R/R was dropped for a name that had an R/R to lose. Without this, a 40-minute-old mark and a
+    # name with no stop look identical in the summary and the history row (RE-3; LQ-20261107-143).
+    rr_skipped, rr_skipped_symbols = _mark_notes(rows, marks)
     errors = {"reasons": {}, "symbols": []}
     scored, unscored = [], 0
     for r in rows:
@@ -842,11 +844,13 @@ def run(limit=None, *, dry_run=False):
             dry_run=True, mode=mode, items=len(rows), scored=len(scored), unscored=unscored,
             landed=len(scored), errored=len(errors["symbols"]), skipped_errors=dict(errors["reasons"]),
             error_symbols=errors["symbols"][:20], top=[(s, round(c, 1)) for s, c, *_ in scored[:10]],
-            excluded=excluded, excluded_symbols=excluded_syms[:20], rank_changes=rank_changes)
+            excluded=excluded, excluded_symbols=excluded_syms[:20], rank_changes=rank_changes,
+            rr_skipped=rr_skipped, rr_skipped_symbols=rr_skipped_symbols)
         summary["would_alert"] = failure_condition(summary)
         print(f"[hermes-scorer] DRY-RUN {mode}: {summary['items']} items, {summary['scored']} scored, "
               f"{summary['unscored']} unscored, {summary['errored']} errored {summary['skipped_errors']}, "
               f"{rank_changes} rank changes, {len(excluded_syms)} excluded {excluded} "
+              f"rr_skipped={rr_skipped} "
               f"— nothing written, nothing sent (would_alert={summary['would_alert']})", flush=True)
         return summary
 
@@ -910,14 +914,45 @@ def run(limit=None, *, dry_run=False):
     conn.commit()
     errored = len(errors["symbols"])
     print(f"[hermes-scorer] {mode}: scored {len(scored)} watchlist names, "
-          f"{skipped} unchanged (history-skip), {errored} errored {dict(errors['reasons'])} of {len(rows)} items "
+          f"{skipped} unchanged (history-skip), {errored} errored {dict(errors['reasons'])} of {len(rows)} items, "
+          f"rr_skipped={rr_skipped} "
           f"(top: " + ", ".join(f"{s}={round(c,1)}" for s, c, *_ in scored[:5]) + ")", flush=True)
     return _empty_summary(
         mode=mode, items=len(rows), scored=len(scored), unscored=unscored, written=written,
         skipped_unchanged=skipped, landed=written + skipped, errored=errored,
         skipped_errors=dict(errors["reasons"]), error_symbols=errors["symbols"][:20],
         top=[(s, round(c, 1)) for s, c, *_ in scored[:10]],
-        excluded=excluded, excluded_symbols=excluded_syms[:20], rank_changes=rank_changes)
+        excluded=excluded, excluded_symbols=excluded_syms[:20], rank_changes=rank_changes,
+        rr_skipped=rr_skipped, rr_skipped_symbols=rr_skipped_symbols)
+
+
+def _marked_price(wi, mark):
+    """(price, why) for one watchlist row: a stale or absent mark is not a price, and says which it is.
+
+    Only a name that carries BOTH a target and a stop has an R/R to lose, so only that name is worth a
+    note — otherwise a NULL price is expected and the note would be noise (LQ-20261107-143, RE-3).
+    """
+    m = mark or {}
+    px = _finite(m.get("price"))
+    if px is not None and px > 0 and not m.get("stale"):
+        return px, None
+    if _finite(wi.get("target_price")) is None or _finite(wi.get("stop_loss")) is None:
+        return None, None
+    return None, ("stale_mark" if (px is not None and px > 0) else "no_mark")
+
+
+def _mark_notes(rows, marks):
+    """({reason: count}, first 20 {symbol, reason}) for the run summary and the printed line."""
+    counts, syms = {}, []
+    for r in rows:
+        sym = str(r.get("symbol") or "").upper()
+        _px, why = _marked_price(r, marks.get(sym))
+        if not why:
+            continue
+        counts[why] = counts[why] + 1 if why in counts else 1
+        if len(syms) < 20:
+            syms.append({"symbol": sym, "reason": why})
+    return counts, syms
 
 
 def _marks(cur, symbols):
