@@ -5,6 +5,7 @@ import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTo
 import DetailHeader from './DetailHeader'
 import { HistoryDetail } from './JobRunHistory'
 import { JobCard, JobDescription } from './JobCatalogViews'
+import { SchedulerLaneDetail } from './SchedulerChecksViews'
 import { detailQuery, etTime, type HistoryDetailWire } from '../lib/jobRunHistory'
 import {
   JOB_CATALOG_PATH, describedHistoryQuery, effectiveHistoryFilter, jobTitle, toggleStatus, type Category, type DescribedListWire, type DescribedRow,
@@ -142,6 +143,7 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'all' | 'fixes
       {detailRow && <div style={{ marginBottom: 12, maxWidth: 760 }}><JobDescription row={detailRow} categories={(detail.data as (HistoryDetailWire & { categories?: Category[] }) | null)?.categories} /></div>}
       {row && detail.data ? <HistoryDetail row={row} computedAt={detail.data.computed_at} />
         : <p role="status">{detail.error ? 'Run history for this job could not be read.' : detail.loading ? 'Loading run history…' : 'This job is not in the job list.'}</p>}
+      <div style={{ marginTop: 16, maxWidth: 960, minWidth: 0 }}><SchedulerLaneDetail laneId={selectedId} compact /></div>
       <p style={{ ...muted, marginTop: 16 }}>See every job by category in the <Link to={JOB_CATALOG_PATH} style={{ color: TOKENS.info }}>Job catalog</Link>. Read-only page. No Run, Retry or Pause buttons here; those stay in <Link to={OPS_CONTROLS_PATH} style={{ color: TOKENS.info }}>Ops Controls</Link> behind your sign-in.</p>
     </div>}
   </section>

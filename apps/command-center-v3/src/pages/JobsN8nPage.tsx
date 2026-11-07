@@ -2,6 +2,7 @@ import { useCallback, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import { IncidentsTab, JobsHistoryTab, JobsN8nStyles, N8nLanesTab } from '../components/JobsN8nViews'
+import { SchedulerChecksTab } from '../components/SchedulerChecksViews'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import { JOBS_N8N_TABS, OPS_CONTROLS_PATH, resolveJobsN8nTab, tabLabel, type JobsN8nTab } from '../lib/jobsN8n'
@@ -13,8 +14,8 @@ const tabStyle = (on: boolean): CSSProperties => ({
   color: on ? TOKENS.info : TOKENS.text[1], border: `1px solid ${on ? TOKENS.info : TOKENS.border}`, background: on ? toneVars('info').bg : TOKENS.bg[1], fontWeight: on ? 600 : 400,
 })
 
-/** Ops › Jobs & n8n (design pages/jobs v002, operator-approved 2026-11-06). Read-only: five tabs over existing GETs.
- *  `?tab=needs|all|n8n|incidents|fixes`; job detail `?history=<lane>`, lane detail `?lane=<lane>` (full-screen sheets). */
+/** Ops › Jobs & n8n (design pages/jobs v002, operator-approved 2026-11-06). Read-only: six tabs over existing GETs.
+ *  `?tab=needs|all|checks|n8n|incidents|fixes` (checks = scheduler checks merged from Coordination › Automation, 2026-11-06); job detail `?history=<lane>`, lane detail `?lane=<lane>` (full-screen sheets). */
 export default function JobsN8nPage() {
   const [params, setParams] = useSearchParams()
   const tab = resolveJobsN8nTab(params.get('tab'))
@@ -39,6 +40,7 @@ export default function JobsN8nPage() {
         <Link to={JOB_CATALOG_PATH} data-testid="jobs-n8n-catalog-link" style={{ minHeight: 44, display: 'flex', alignItems: 'center', color: TOKENS.info, fontSize: TYPE.base, textDecoration: 'none' }}>Browse every job by category and what it does → Job catalog</Link>
         <div role="tabpanel" style={{ minWidth: 0 }}>
           {(tab === 'needs' || tab === 'all' || tab === 'fixes') && <JobsHistoryTab key={tab} tab={tab} onTotal={onTotal} />}
+          {tab === 'checks' && <SchedulerChecksTab onTotal={onTotal} />}
           {tab === 'n8n' && <N8nLanesTab state={controls.data ?? null} loading={controls.loading} error={controls.error ?? null} />}
           {tab === 'incidents' && <IncidentsTab />}
         </div>

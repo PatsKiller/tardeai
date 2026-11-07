@@ -1023,3 +1023,56 @@ def load_projection(
     result["run_source_reason"] = reason
     result["source_sha"] = (ROOT / "GIT_SHA").read_text().strip() if (ROOT / "GIT_SHA").is_file() else None
     return result
+
+
+# ── Jobs & n8n views (operator 2026-11-06: Coordination › Automation merged into Jobs & n8n, then retired) ─────────
+# The full projection is ~2 MB (every row carries its run timeline and raw scheduler observations). A phone reads one
+# of two slices instead: ``checks`` (the rows an operator can act on, without timelines, plus state counts over every
+# row) and ``lane`` (one row in full). Pure functions over a built projection; same verdicts, nothing recomputed.
+
+ACTIONABLE_STATES = ("RUN_FAILED", "SILENT", "DRIFT", "ORPHANED", "SLOW", "RUN_SKIPPED_LOCK")
+NEVER_PROBLEM_STATES = ("NOT_MEASURED", "EXPECTED_SILENT", "INFRASTRUCTURE")
+NO_SIGNAL_UNDECLARED = "NO_SIGNAL_WITH_REASON missing"
+HEAVY_KEYS = ("timeline", "scheduler_observations", "evidence_sources")
+
+
+def is_problem(row: dict[str, Any]) -> bool:
+    """Same rule as the Command Center's schedulerProblems (lib/schedulerOperations.ts)."""
+    state = row.get("runtime_state")
+    if state in NEVER_PROBLEM_STATES:
+        return False
+    if state in ACTIONABLE_STATES:
+        return True
+    if state == "NO_SIGNAL":
+        return str(row.get("health_reason") or "").startswith(NO_SIGNAL_UNDECLARED)
+    slo = row.get("slo_verdict")
+    return bool(row.get("duplicate_scheduler") is True or row.get("scheduler_drift") is True
+                or (slo is not None and slo not in ("NOT_MEASURED", "OK")))
+
+
+def slim_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in row.items() if k not in HEAVY_KEYS}
+
+
+def checks_view(projection: dict[str, Any]) -> dict[str, Any]:
+    rows = list(projection.get("rows") or [])
+    problems = [slim_row(r) for r in rows if is_problem(r)]
+    return {
+        "schema": "SchedulerChecks@v1", "authority": projection.get("authority", AUTHORITY),
+        "status": projection.get("status"), "as_of": projection.get("as_of"), "source_sha": projection.get("source_sha"),
+        "sources": projection.get("sources"), "total": len(rows),
+        "state_counts": dict(Counter(str(r.get("runtime_state")) for r in rows)),
+        "unregistered": sum(1 for r in rows if r.get("declared_in_registry") is False),
+        "duplicate": sum(1 for r in rows if r.get("duplicate_scheduler") is True),
+        "drift": sum(1 for r in rows if r.get("scheduler_drift") is True),
+        "rows": problems,
+    }
+
+
+def lane_view(projection: dict[str, Any], lane_id: str) -> dict[str, Any]:
+    row = next((r for r in projection.get("rows") or [] if r.get("lane_id") == lane_id), None)
+    return {
+        "schema": "SchedulerLane@v1", "authority": projection.get("authority", AUTHORITY),
+        "status": projection.get("status"), "as_of": projection.get("as_of"), "source_sha": projection.get("source_sha"),
+        "row": row,
+    }

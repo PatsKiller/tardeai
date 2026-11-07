@@ -1,7 +1,7 @@
 // Coordination — what is waiting, in progress, written, consumed or refused in the n8n
 // coordination ledger (GET /api/v2/coordination/events). Read-only. 2026-10-07 roadmap Phase 1.
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import SchedulerOperations from './SchedulerOperations'
+// SchedulerOperations (Automation) retired 2026-11-06; merged into components/SchedulerChecksViews.tsx.
 import N8nToday from './N8nToday'
 import DeploysPanel from '../components/home/DeploysPanel'
 import AgentClaimsPanel from './AgentClaimsPanel'
@@ -38,9 +38,12 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
 // 2026-10-23 (operator, 13:15 ET): the Work pipeline — one row per work item, incubator stages with RAG and next step —
 // is the DEFAULT tab; the per-file claim table is kept as "Files held" (?tab=agents); Automation moved to ?tab=operations.
 // 2026-10-25 (board 16, batch 27): ?tab=jobs embeds the one Jobs & health view (same component and data as /ops/jobs).
-const TABS = ['pipeline', 'operations', 'jobs', 'today', 'events', 'migration', 'release', 'agents', 'work', 'coordinators'] as const
+// 'operations' (Automation) retired 2026-11-06 on operator order: merged into Ops › Jobs & n8n › Scheduler checks.
+// Old ?tab=operations links land on a pointer (RETIRED_TABS); SchedulerOperations.tsx is kept, not deleted.
+const TABS = ['pipeline', 'jobs', 'today', 'events', 'migration', 'release', 'agents', 'work', 'coordinators'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', operations: 'Automation', jobs: 'Jobs & health', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Deploys', agents: 'Files held', work: 'Work board', coordinators: 'Coordinators' }
+const RETIRED_TABS = ['operations'] as const
+const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', jobs: 'Jobs & health', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Deploys', agents: 'Files held', work: 'Work board', coordinators: 'Coordinators' }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', minHeight: 44, borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -101,6 +104,7 @@ export default function CoordinationPage({ jobsHealth }: { jobsHealth?: ReactNod
     const t = searchParams.get('tab')
     return (TABS as readonly string[]).includes(t || '') ? (t as CoordinationTab) : 'pipeline'
   })
+  const retired = (RETIRED_TABS as readonly string[]).includes(searchParams.get('tab') || '')
   const boardApi = useApi<MigrationBoardPayload>('/api/v2/coordination/migration-board', 60_000, { enabled: tab === 'migration' })
   const board = useMemo(() => projectMigrationBoard(boardApi.loading && !boardApi.data ? null : boardApi.data), [boardApi.data, boardApi.loading])
   const boardSort = useSort(board.rows, { key: 'tranche', dir: 'asc' }, boardGetter)
@@ -121,7 +125,8 @@ export default function CoordinationPage({ jobsHealth }: { jobsHealth?: ReactNod
           </button>
         ))}
       </nav>
-      {tab === 'coordinators' ? <CoordinatorsPanel /> : tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'jobs' ? (jobsHealth ?? <a href="/v3/ops/jobs" style={{ color: TOKENS.primary, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs &amp; health →</a>) : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
+      {retired ? <div data-testid="coordination-automation-retired" style={{ ...panel, fontSize: TYPE.sm, color: TOKENS.text[1] }}>Automation moved to <a href="/v3/ops/jobs-n8n?tab=checks" style={{ color: TOKENS.primary, fontWeight: 700 }}>Ops › Jobs &amp; n8n › Scheduler checks →</a> Every job's scheduler, output, duration, lock skips and host run timeline are in its detail sheet there.</div> : null}
+      {tab === 'coordinators' ? <CoordinatorsPanel /> : tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'jobs' ? (jobsHealth ?? <a href="/v3/ops/jobs" style={{ color: TOKENS.primary, minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>Open Jobs &amp; health →</a>) : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
         <div style={{ display: 'grid', gap: 12 }} data-testid="coordination-deploy-tab">
           <div data-testid="coordination-releases-link" style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Mergify merges to main on the ET schedule; the host poller promotes. Deploy STOP is below; resume and the kill switch live on Ops → Controls. Serving pin and history are on Releases &amp; schedules. Emergency promote is host CLI only.</div>

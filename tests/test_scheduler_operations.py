@@ -329,7 +329,7 @@ def test_metadata_failure_cannot_create_workflow_success(monkeypatch):
     assert ops.collect_n8n()["measured"] is False
 
 
-def _api_route(monkeypatch, method="GET", projection=None):
+def _api_route(monkeypatch, method="GET", projection=None, query=None):
     from scripts.lib import scheduler_operations as ops
 
     source = (Path(__file__).resolve().parents[1] / "scripts/api_v2.py").read_text()
@@ -342,7 +342,7 @@ def _api_route(monkeypatch, method="GET", projection=None):
         return projection
 
     monkeypatch.setattr(ops, "load_projection", load)
-    scope = {"base_path": "/api/v2/scheduler-operations", "method": method, "_db_query": lambda sql: None}
+    scope = {"base_path": "/api/v2/scheduler-operations", "method": method, "query": query, "_db_query": lambda sql: None}
     exec("def route():\n" + source[start:end], scope)
     return scope["route"]()
 
@@ -354,6 +354,17 @@ def test_api_projection_is_additive_and_post_refused(monkeypatch):
         405,
         {"ok": False, "error": "read_only"},
     )
+
+
+def test_api_slices_for_jobs_page(monkeypatch):
+    fixture = {"schema": "SchedulerOperations@v1", "rows": [
+        {"lane_id": "x", "runtime_state": "DRIFT", "timeline": [{"run_id": "1"}]},
+        {"lane_id": "y", "runtime_state": "LIVE", "timeline": []}]}
+    status, body = _api_route(monkeypatch, projection=fixture, query={"view": "checks"})
+    assert status == 200 and body["data"]["schema"] == "SchedulerChecks@v1"
+    assert [r["lane_id"] for r in body["data"]["rows"]] == ["x"] and "timeline" not in body["data"]["rows"][0]
+    status, body = _api_route(monkeypatch, projection=fixture, query={"lane": "x"})
+    assert status == 200 and body["data"]["row"]["timeline"] == [{"run_id": "1"}]
 
 
 def test_api_failure_never_echoes_sensitive_exception_text(monkeypatch):
