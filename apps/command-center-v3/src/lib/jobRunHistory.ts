@@ -19,11 +19,14 @@ export interface FixEvent { at: string; kind: string; by: string; outcome: strin
 export interface Cadence {
   expressions: string[]; timezone: string; every_hours: number | null; market_days_only: boolean; schedule_gap?: string | null
 }
+import type { RunQuality } from './runQuality.ts'
 export interface HistoryListRow {
   lane_id: string; job: string; scheduler: string; state: string; status: HistoryStatus; status_reason: string | null
   cadence: Cadence; last_run: HistoryRun | null; last_success_at: string | null
   missed_count: number | null; missed_gap: string | null; fix_count: number; last_fix: FixEvent | null
   history_sources: string[]; history_gap: string | null; output_written_at?: string | null
+  /** Run-quality grade (scripts/lib/run_quality.py, design pages/jobs v003); absent on older payloads. */
+  quality?: RunQuality | null
 }
 export interface HistoryDetailRow extends Omit<HistoryListRow, 'output_written_at'> {
   runs: HistoryRun[]; slots: HistorySlot[]; fixes: FixEvent[]

@@ -1,3 +1,4 @@
+import { QualityChips, QualityReason } from './RunQualityViews'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -50,8 +51,12 @@ export function JobCard({ row, computedAt, categories, onOpen, href, showCategor
         <strong style={{ ...wrap, fontSize: TYPE.md, display: 'block' }} data-testid="job-title">{name}</strong>
         <span style={{ ...muted, ...wrap, display: 'block' }}>{row.title ? <span style={{ fontFamily: FONT.mono }}>{row.lane_id} · </span> : null}{schedulerLabel(row.scheduler)} · {cadenceText(row.cadence)}</span>
       </div>
-      <span style={chip(statusTone(row.status))}>{STATUS_LABEL[row.status] ?? row.status}</span>
+      <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <span style={chip(statusTone(row.status))}>{STATUS_LABEL[row.status] ?? row.status}</span>
+        <QualityChips q={row.quality} />
+      </span>
     </div>
+    <QualityReason q={row.quality} />
     <JobDescription row={row} categories={categories} />
     {showCategory && <span style={{ ...muted }}>Category: {categoryLabel(categoryKeyOf(row), categories)}</span>}
     {row.status_reason && <div style={{ ...wrap, color: TOKENS.text[1], fontSize: TYPE.sm }}>{row.status_reason}</div>}

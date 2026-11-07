@@ -10,9 +10,9 @@ import {
 export const JOBS_N8N_PATH = '/ops/jobs-n8n'
 export const OPS_CONTROLS_PATH = '/system/ops-controls'
 
-export type JobsN8nTab = 'needs' | 'all' | 'checks' | 'n8n' | 'incidents' | 'fixes'
+export type JobsN8nTab = 'needs' | 'quality' | 'all' | 'checks' | 'n8n' | 'incidents' | 'fixes'
 export const JOBS_N8N_TABS: ReadonlyArray<readonly [JobsN8nTab, string]> = [
-  ['needs', 'Needs you'], ['all', 'All jobs'], ['checks', 'Scheduler checks'], ['n8n', 'n8n lanes'], ['incidents', 'Incidents'], ['fixes', 'Fixes'],
+  ['needs', 'Needs you'], ['quality', 'Quality'], ['all', 'All jobs'], ['checks', 'Scheduler checks'], ['n8n', 'n8n lanes'], ['incidents', 'Incidents'], ['fixes', 'Fixes'],
 ] as const
 
 /** `?tab=` → a known tab; anything else (absent, typo, old link) opens the default "Needs you". */
@@ -22,7 +22,7 @@ export function resolveJobsN8nTab(raw: string | null | undefined): JobsN8nTab {
 }
 
 /** The run-history filter each job tab reads. "All jobs" starts on all and offers the scheduler filters. */
-export const TAB_HISTORY_FILTER: Record<'needs' | 'all' | 'fixes', HistoryFilter> = { needs: 'attention', all: 'all', fixes: 'fixed' }
+export const TAB_HISTORY_FILTER: Record<'needs' | 'quality' | 'all' | 'fixes', HistoryFilter> = { needs: 'attention', quality: 'all', all: 'all', fixes: 'fixed' }
 export const ALL_JOBS_FILTERS: ReadonlyArray<readonly [HistoryFilter, string]> = [
   ['all', 'All'], ['n8n', 'n8n'], ['cron', 'Host cron'], ['systemd', 'systemd'], ['other', 'Event / none'],
 ] as const
