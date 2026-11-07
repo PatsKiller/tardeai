@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_DIRECTIVE_DISCOVERY_EMPTY_REASON_20261107",
+  "files": [
+    "tests/test_hermes_directive_discovery_empty_reason_20261107.py"
+  ],
+  "anchor": "HERMES_DIRECTIVE_DISCOVERY_EMPTY_REASON_20261107",
+  "comment": [
+    "ANCHOR: HERMES_DIRECTIVE_DISCOVERY_EMPTY_REASON_20261107 — hermes-directive-discovery fires every",
+    "30 min and exited ok with 'summary.staged = 0'; lib/run_quality could only say 'the receipt does",
+    "not say why', because the receipt carried trend_directives/staged/skipped_stale and nothing else.",
+    "The producer now counts why it staged nothing (hermes_disabled, skipped_stale, matched,",
+    "already_pending, over_cap) and states empty_reason when staged = 0: the reviewed idle token",
+    "no_new_input only when every match was already staged/surfaced (so a correct idle zero can grade",
+    "GOOD), and a sentence — which stays EMPTY — when the cause is configuration (no directive, hermes",
+    "disabled, all stale) or no match at all. Two traps this gate pins: a zero must never go silent,",
+    "and no new summary key may shadow the count (run_quality reads COUNT_KEYS in order, where",
+    "'candidates' and 'total' outrank 'staged'). Hermetic: fake cursor, stubbed discovery, no DB.",
+    "Live read-only 2026-11-07: 375 directives, 7 hermes-disabled, 4379 matches, 4377 already pending,",
+    "2 staged — the lane is saturated by an undrained staging table, not by a defect in this script."
+  ]
+}

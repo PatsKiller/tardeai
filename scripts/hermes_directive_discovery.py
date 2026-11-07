@@ -105,6 +105,37 @@ def _already_pending(cur, did, sym):
     return cur.fetchone() is not None
 
 
+def _empty_reason(report):
+    """Why this run staged nothing. A bare ``staged: 0`` is the receipt saying OK about nothing.
+
+    Until 2026-11-07 the receipt carried only the counts, so a zero run could only be reported as
+    "the receipt does not say why" (lib/run_quality.py). "no_new_input" is the reviewed idle token
+    from config/run_quality_idle_reasons.json — used only when every match really was already
+    pending/surfaced, which is nothing new to stage. A zero caused by configuration (no directive,
+    hermes disabled, every directive stale) or by no match at all is NOT idle: a sentence is
+    returned instead, so the lane keeps its EMPTY grade and now names the cause.
+    """
+    trend = report.get("trend_directives") or 0
+    disabled = report.get("hermes_disabled") or 0
+    stale = report.get("skipped_stale") or 0
+    matched = report.get("matched") or 0
+    pending = report.get("already_pending") or 0
+    over_cap = report.get("over_cap") or 0
+    if trend == 0:
+        return "no active trend directives exist (watch_directives status='active' AND kind='trend')"
+    eligible = trend - disabled - stale
+    if eligible <= 0:
+        return (f"all {trend} active trend directives were ineligible: {disabled} with "
+                f"hermes_enabled = false, {stale} stale or removal-flagged")
+    if matched == 0:
+        return (f"{eligible} hermes-enabled trend directives matched nothing in the last "
+                f"{RESEARCH_WINDOW_DAYS} days of hermes_research_intelligence or intelligence_entities")
+    if pending + over_cap >= matched:
+        return "no_new_input"      # every match was already staged/surfaced in 24 h, or beyond the cap
+    return (f"{matched} matches across {eligible} directives, none staged: {pending} already pending, "
+            f"{over_cap} beyond the per-directive cap")
+
+
 def run(apply=False, cap=PER_DIRECTIVE_CAP):
     conn = _conn()
     if not apply:
@@ -119,10 +150,12 @@ def run(apply=False, cap=PER_DIRECTIVE_CAP):
         stale_ids = set((load_critique_snapshot().get("index") or {}).get("stale_directive_ids") or [])
     except Exception:
         stale_ids = set()
-    report = {"mode": "apply" if apply else "dry_run", "trend_directives": len(directives), "staged": 0,
-              "skipped_stale": 0, "detail": []}
+    report = {"mode": "apply" if apply else "dry_run", "trend_directives": len(directives),
+              "hermes_disabled": 0, "staged": 0, "skipped_stale": 0, "matched": 0,
+              "already_pending": 0, "over_cap": 0, "detail": []}
     for did, label, spec, hermes_enabled in directives:
         if not hermes_enabled:
+            report["hermes_disabled"] += 1
             continue
         spec = spec if isinstance(spec, dict) else json.loads(spec)
         if did in stale_ids or is_removal_flagged(spec) or spec.get("composite_verdict") == "reject":
@@ -131,9 +164,12 @@ def run(apply=False, cap=PER_DIRECTIVE_CAP):
         cands = _discover_for(cur, spec)
         staged_here = 0
         for sym, (thesis, strength) in list(cands.items()):
+            report["matched"] += 1
             if staged_here >= cap:
-                break
+                report["over_cap"] += 1
+                continue
             if _already_pending(cur, did, sym):
+                report["already_pending"] += 1
                 continue
             if apply:
                 cur.execute("""INSERT INTO hermes_directive_hits_staging
@@ -146,6 +182,8 @@ def run(apply=False, cap=PER_DIRECTIVE_CAP):
             report["detail"].append({"directive": label, "symbol": sym, "thesis": thesis[:60]})
         if apply:
             conn.commit()
+    if report["staged"] == 0:
+        report["empty_reason"] = _empty_reason(report)
     if not apply:
         conn.rollback()
         report["would_write"] = {"table": "hermes_directive_hits_staging", "rows": report["staged"]}
@@ -179,10 +217,21 @@ def main(argv=None) -> int:
                       error=f"{type(exc).__name__}: {exc}")
         raise
     write_receipt("hermes-directive-discovery", ok=True, exit_code=0, started_at=started_at,
-                  summary={k: report[k] for k in ("trend_directives", "staged", "skipped_stale")})
+                  summary=_receipt_summary(report))
     write_receipt("hermes_directive_discovery", ok=True, started_at=started_at,
-                  summary={k: report[k] for k in ("trend_directives", "staged", "skipped_stale")})
+                  summary=_receipt_summary(report))
     return 0
+
+
+def _receipt_summary(report):
+    """The counters that explain the count, plus the reason when the count is zero.
+
+    "matched" rather than "candidates" on purpose: run_quality reads summary count keys in
+    COUNT_KEYS order and ``candidates`` / ``total`` would shadow ``staged`` as this lane's output.
+    """
+    keys = ("trend_directives", "hermes_disabled", "staged", "skipped_stale", "matched",
+            "already_pending", "over_cap", "empty_reason")
+    return {k: report[k] for k in keys if k in report}
 
 
 if __name__ == "__main__":
