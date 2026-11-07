@@ -13,9 +13,13 @@ Refactor wave 2 (cron -> n8n, 2026-10-10; cron:L383 --run --limit 50):
 - ``--dry-run`` runs on a READ ONLY session and returns from ``refresh_one`` before any fetch,
   governed-cloud (paid) call, UPDATE or DecisionPayload emit; it reports the symbols it would refresh.
 - holdings.json is read from the SERVED state dir (persistent root first), not the checkout copy.
-- A real ``--run`` writes data/runtime/holdings_llm_refresh_last.json (LaneRunReceipt@v1, ok_at only
-  on success) and exits 1 when it had candidates and refreshed none (lane dead). Per-symbol
-  parse_error/empty results are findings, counted in the receipt, not a failed run.
+- A real ``--run`` writes data/runtime/holdings_llm_refresh_last.json (LaneRunReceipt@v1 plus the
+  @v2 output block, ok_at only on success) and exits 1 when it had candidates and refreshed none
+  (lane dead). Per-symbol parse_error/empty results are findings, counted in the receipt, not a
+  failed run.
+- A run that finds nothing due says WHY (``empty_reason``, 2026-11-07). ``nothing_due`` — the reviewed
+  idle token — only when every stock holding was assessed inside the 12 h window; an empty portfolio
+  or a ``--symbol`` that is not held gets a sentence, so the EMPTY grade names the real cause.
 
 Governed bridge (2026-10-15, n8n llm lane batch 1): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
 the allowlist ``llm_route`` of lane holdings-llm-refresh) ``generate_cloud`` makes ONE governed-bridge request as
@@ -109,12 +113,28 @@ def get_holdings(conn):
     return stocks
 
 
-def fetch_holdings_needing_refresh(conn, holdings, limit=15, symbol=None):
-    """Get holdings that need LLM refresh (stale or never run)."""
+#: A holding assessed within this window is not due again.
+FRESH_WINDOW_S = 43200  # 12 hours
+
+
+def _age_s(last_llm) -> float | None:
+    """Seconds since the last assessment, or None when the holding has never been assessed."""
+    if not last_llm:
+        return None
+    tz = last_llm.tzinfo or timezone.utc
+    return (datetime.now(timezone.utc) - last_llm.replace(tzinfo=tz)).total_seconds()
+
+
+def select_holdings(conn, holdings, limit=15, symbol=None):
+    """(candidates, stats): the holdings due for an LLM refresh, and why the rest are not.
+
+    ``stats`` is what lets the receipt say WHY a run produced nothing (2026-11-07): a bare
+    ``candidates: 0`` graded EMPTY — "the receipt does not say why" (lib/run_quality.py). The counts are taken
+    over every holding considered, not over the (capped) candidate list, so they describe the portfolio.
+    """
     cur = conn.cursor()
-    symbols = [h['symbol'] for h in holdings]
-    if symbol:
-        symbols = [s for s in symbols if s == symbol.upper()]
+    considered = [h for h in holdings if not symbol or h["symbol"] == symbol.upper()]
+    symbols = [h["symbol"] for h in considered]
 
     cur.execute("""
         SELECT symbol, holdings_llm_summary, holdings_llm_at
@@ -124,21 +144,48 @@ def fetch_holdings_needing_refresh(conn, holdings, limit=15, symbol=None):
             holdings_llm_at ASC NULLS FIRST
         LIMIT %s
     """, [symbols, limit])
-    rows = {r['symbol']: r for r in cur.fetchall()}
+    rows = {r["symbol"]: r for r in cur.fetchall()}
 
-    result = []
-    for h in holdings:
-        sym = h['symbol']
-        if sym not in [s for s in symbols]:
-            continue
-        wi = rows.get(sym, {})
-        last_llm = wi.get('holdings_llm_at')
-        # Refresh if never run or older than 12 hours
-        if not last_llm or (datetime.now(timezone.utc) - last_llm.replace(tzinfo=timezone.utc if last_llm.tzinfo is None else last_llm.tzinfo)).total_seconds() > 43200:
-            result.append(h)
-        if len(result) >= limit:
-            break
-    return result
+    stats = {"considered": len(considered), "fresh": 0, "stale": 0, "no_watchlist_row": 0,
+             "cap_reached": False, "symbol": symbol.upper() if symbol else None}
+    stale = []
+    for h in considered:
+        wi = rows.get(h["symbol"])
+        age = _age_s((wi or {}).get("holdings_llm_at"))
+        if wi is None:
+            stats["no_watchlist_row"] += 1
+        if age is not None and age <= FRESH_WINDOW_S:
+            stats["fresh"] += 1
+        else:
+            stats["stale"] += 1
+            stale.append(h)
+    candidates = stale[:limit]
+    stats["cap_reached"] = len(stale) > limit
+    return candidates, stats
+
+
+def fetch_holdings_needing_refresh(conn, holdings, limit=15, symbol=None):
+    """Get holdings that need LLM refresh (stale or never run). Thin wrapper over select_holdings."""
+    return select_holdings(conn, holdings, limit=limit, symbol=symbol)[0]
+
+
+def empty_reason(holdings, stats) -> str | None:
+    """Why this run is about to produce nothing — or None when it has candidates to refresh.
+
+    ``nothing_due`` is the reviewed idle token (config/run_quality_idle_reasons.json): it is returned ONLY
+    when every considered holding really was assessed inside the 12 h window, so the run is a correct idle.
+    Every other zero is a sentence, which keeps the EMPTY grade and names the cause instead of hiding it:
+    an empty portfolio is a data problem, not "nothing due".
+    """
+    if stats.get("considered", 0) == 0:
+        if stats.get("symbol"):
+            return (f"requested symbol {stats['symbol']} is not among the {len(holdings)} stock "
+                    f"holding(s) holdings.json lists")
+        return ("holdings.json lists no stock holding to assess: "
+                f"{len(holdings)} row(s) after the cash/fund/unresolved-CUSIP/zero-share filter")
+    if stats.get("stale", 0) == 0:
+        return "nothing_due"
+    return None
 
 
 def fetch_news(conn, symbol, limit=5):
@@ -335,7 +382,7 @@ def main(argv=None) -> int:
     parser.add_argument("--symbol", type=str)
     args = parser.parse_args(argv)
 
-    from lib.lane_last_receipt import enforce_readonly, now_iso, write_receipt
+    from lib.lane_last_receipt import enforce_readonly, now_iso, write_lane_receipt
 
     started_at = now_iso()
     conn = get_db()
@@ -345,9 +392,11 @@ def main(argv=None) -> int:
         holdings = get_holdings(conn)
         log.info(f"Found {len(holdings)} stock holdings")
 
-        candidates = fetch_holdings_needing_refresh(
+        candidates, stats = select_holdings(
             conn, holdings, limit=args.limit, symbol=args.symbol)
-        log.info(f"{len(candidates)} need LLM refresh")
+        reason = empty_reason(holdings, stats) if not candidates else None
+        log.info(f"{len(candidates)} need LLM refresh "
+                 f"({stats['fresh']} of {stats['considered']} assessed within 12 h)")
 
         results = []
         for h in candidates:
@@ -369,20 +418,31 @@ def main(argv=None) -> int:
         if args.dry_run:
             print(f"  [dry-run] would call the governed cloud lane for {len(candidates)} symbol(s) and "
                   f"UPDATE watchlist_items for each; nothing written")
+            if reason:
+                print(f"  [dry-run] nothing due — the receipt would state empty_reason={reason!r}")
             return 0
         statuses: dict = {}
         for r in results:
             statuses[r.get("status", "?")] = statuses.get(r.get("status", "?"), 0) + 1
         ok = not candidates or refreshed > 0
-        write_receipt("holdings_llm_refresh", ok=ok, started_at=started_at,
-                      summary={"holdings": len(holdings), "candidates": len(candidates),
-                               "refreshed": refreshed, "errors": errors, "statuses": statuses},
-                      error=None if ok else f"0/{len(candidates)} refreshed")
+        # write_lane_receipt, not its W3 alias write_receipt(): only the former accepts the @v2 output kwargs.
+        write_lane_receipt("holdings_llm_refresh", script="holdings_llm_refresh", ok=ok,
+                           started_at=started_at,
+                           summary={"holdings": len(holdings), "candidates": len(candidates),
+                                    "refreshed": refreshed, "errors": errors, "statuses": statuses},
+                           error=None if ok else f"0/{len(candidates)} refreshed",
+                           # LaneRunReceipt@v2 output: the counts the quality grader reads, and — when nothing was
+                           # produced — the reason. Before this, a zero-candidate run said only "candidates: 0" and
+                           # lib/run_quality.py could report nothing better than "the receipt does not say why".
+                           output={"produced_count": refreshed, "attempted_count": len(candidates),
+                                   "skipped_reasons": {"fresh_within_window": stats["fresh"],
+                                                       "no_watchlist_row": stats["no_watchlist_row"]},
+                                   "empty_reason": reason})
         return 0 if ok else 1
     except Exception as exc:
         if not args.dry_run:
-            write_receipt("holdings_llm_refresh", ok=False, started_at=started_at,
-                          error=f"{type(exc).__name__}: {exc}")
+            write_lane_receipt("holdings_llm_refresh", script="holdings_llm_refresh", ok=False,
+                               started_at=started_at, error=f"{type(exc).__name__}: {exc}")
         raise
     finally:
         conn.close()
