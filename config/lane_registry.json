@@ -12675,9 +12675,10 @@
         "kind": "cron",
         "expression": "*/5 6-15 * * 1-5",
         "match": "scripts/finviz_enrichment.py --scalp-hot",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5",
-        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/finviz_enrichment_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/finviz_enrichment.py --scalp-hot >> logs/finviz_enrichment_scalp_hot.log 2>&1  # TRADEAI_LANE finviz-enrichment-scalp-hot"
+        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/finviz_enrichment_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/finviz_enrichment.py --scalp-hot >> logs/finviz_enrichment_scalp_hot.log 2>&1  # TRADEAI_LANE finviz-enrichment-scalp-hot",
+        "cutover_wave": "W5C"
       },
       "expected_cadence_hours": 0.084,
       "state": "ACTIVE",
@@ -12713,7 +12714,7 @@
       "adopted_on": "2026-10-14",
       "adopted_reason": "scalp/premarket dispatcher shadow (operator directive 2026-10-14: move the scalp and premarket lanes off cron onto the n8n dispatcher; R1 class ingest, AGENTS §23.18, 4.4.0 cron-row shape): a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block. The cron line keeps doing the real work; the dispatcher fires the dry run only. output_signal moved from the cron log mtime to the LaneRunReceipt@v1 main_scalp_hot already writes (scripts/finviz_enrichment.py main_scalp_hot). expected_cadence_hours 62.08 -> 0.084 (*/5 on market days, active_days). recommendation stays KEEP_ON_CRON: the reconciler forces it from the market_day_gate.sh stay_on_cron marker; lane_dispatch.dispatch_eligible lifts that top-level marker only through config/lane_dispatch_policy_exceptions.json (this lane added, EXEMPTIBLE_LANES widened in the same PR), as for trade-ai-scalp-live.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/5 6-15 * * 1-5"
         ],

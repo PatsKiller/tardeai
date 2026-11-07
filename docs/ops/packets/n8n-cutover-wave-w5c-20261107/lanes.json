@@ -1,0 +1,30 @@
+{
+  "wave": "W5C",
+  "ready": [
+    "finviz-enrichment-scalp-hot"
+  ],
+  "effect_keyed": [
+    "finviz-enrichment-scalp-hot"
+  ],
+  "plan": [
+    {
+      "lane_id": "finviz-enrichment-scalp-hot",
+      "row_id": "cron:L640",
+      "family_id": "F52",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/finviz_enrichment_scalp_hot.lock",
+      "live_arg": [],
+      "slots": [
+        "*/5 6-15 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 647,
+          "text": "*/5 6-15 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/finviz_enrichment_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/finviz_enrichment.py --scalp-hot >> logs/finviz_enrichment_scalp_hot.log 2>&1  # TRADEAI_LANE finviz-enrichment-scalp-hot"
+        }
+      ],
+      "reasons": []
+    }
+  ]
+}

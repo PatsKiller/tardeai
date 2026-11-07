@@ -25309,8 +25309,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Finviz enrichment owner's scalp hot tier: every 5 min on market days 06:00-16:00 ET (SCALP_HOT_TIER=1) refresh the hot fields (float, ATR, RSI, change-from-open, relative volume) of up to ENRICH_SYMBOL_CAP names on the shared scalp list into the enrichment cache, the store every consumer reads through the finviz_enrichment_snapshot projection. No send, no order, no broker credential.",
         "business_function": "scalp_advisory",
