@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HEALTH_AGENT_RECEIPT_OBSERVED_20261107",
+  "files": [
+    "tests/test_health_agent_receipt_observed_20261107.py"
+  ],
+  "anchor": "HEALTH_AGENT_RECEIPT_OBSERVED_20261107",
+  "comment": [
+    "ANCHOR: HEALTH_AGENT_RECEIPT_OBSERVED_20261107 — health-agent-llm-review ran at 2026-11-07T01:30Z,",
+    "stored its review (status stored, 3271 chars, exit 0, ok_at set) and was graded DEGRADED because",
+    "its receipt summary carried a top-level 'pipeline_failed: 13'. lib.run_quality.receipt_flags reads",
+    "any summary key ending in 'failed' as THIS RUN's failure count, so the pipeline failures the review",
+    "observed read as 13 reviews that failed — the same subject-counter class the reader already handles",
+    "for stale/degraded. The receipt now states the lane's own outcome at the top level and what it",
+    "observed under 'observed', keeping the count, the 24 h window and the pipelines that failed; it also",
+    "names those pipelines (GROUP BY pipeline_key), so a bare number becomes evidence. Nothing is muted:",
+    "status/no_response/store_failed still drive the exit code and ok_at. Hermetic: synthetic cursors,",
+    "no DB, no model, no network."
+  ]
+}
