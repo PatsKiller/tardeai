@@ -497,6 +497,8 @@ def _uncovered_stores(cfg: Mapping[str, Any], root: Path, min_bytes: int) -> lis
 
 def build_plan(cfg: Mapping[str, Any], root: Path, now: datetime, only: Optional[set[str]] = None) -> dict[str, Any]:
     stores = [plan_store(s, cfg, root, now) for s in cfg["stores"] if not only or s["id"] in only]
+    # nosemgrep: tq-py-missing-as-zero -- min_rotate_bytes is a filter threshold, not a measurement: 0 means
+    # "report every JSONL regardless of size", and the rules always carry the key
     uncovered = _uncovered_stores(cfg, root, int(cfg.get("min_rotate_bytes") or 0)) if not only else []
     return {
         "schema": PLAN_SCHEMA,

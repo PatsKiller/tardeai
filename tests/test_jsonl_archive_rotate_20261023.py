@@ -421,7 +421,7 @@ def test_fd_unknown_labels_name_the_process(tmp_path):
     (proc / "4242" / "fd").mkdir(parents=True)
     (proc / "4242" / "comm").write_text("systemd\n")
     store = tmp_path / "s.jsonl"
-    store.write_text("{}\n")
+    store.write_text("{}\n")  # nosemgrep: tq-py-nonatomic-store-write -- a synthetic pytest tmp_path file the scanner only stats; no live store is touched
     os.chmod(proc / "4242" / "fd", 0o000)
     try:
         holders, unknown = J._scan_holders(store, proc)
