@@ -279,6 +279,45 @@ def _is_generic_term(name: str) -> bool:
     return (name or "").strip().casefold() in GENERIC_NAME_TERMS
 
 
+#: LQ-20261107-122. Phrases that name an EXCHANGE, a WIRE SERVICE or a PLACE. They
+#: are in every news body and are never the issuer being discussed. Measured on
+#: the live spine 2026-11-07 (document_mentions, 24h): NASDAQ bound NDAQ (686 and
+#: 332 rows), GLOBE NEWSWIRE bound GL (494), NEW YORK bound NYT. Each one came in
+#: through a different door (bare ticker, company name, any-case window), so the
+#: check runs at all three. Exact, case-insensitive, whole phrase only: "Nasdaq
+#: Inc" or "New York Life" are not in this list and still resolve normally.
+#:
+#: Deliberately NOT here: a single city that is also an issuer's ordinary name
+#: (Atlanta Braves, Boston Scientific, Seattle Genetics, Houston American,
+#: Dallas-based companies), nor "United" or "Washington", which are GENERIC_NAME_TERMS
+#: or real issuers. A stoplist that removed a real issuer would be the same
+#: invented-mapping error in reverse. "CBOE" is also a real issuer's ticker (Cboe
+#: Global Markets), so it is NOT stoplisted; the exchange-name mentions it would
+#: stop are a lead decision, not a silent change.
+NON_ISSUER_PHRASES: frozenset[str] = frozenset({
+    # exchanges
+    "nasdaq", "nasdaq stock market", "nasdaq gs", "nasdaq global select",
+    "nasdaq global market", "nasdaq capital market", "nyse", "nyse american",
+    "nyse arca", "new york stock exchange", "amex", "otc", "otcqb",
+    "otcqx", "otc markets",
+    # wire services and news aggregators
+    "globe newswire", "globenewswire", "business wire", "businesswire",
+    "pr newswire", "prnewswire", "accesswire", "reuters", "associated press",
+    "benzinga", "marketwatch", "seeking alpha", "tipranks", "investing.com",
+    # places (the city or country, alone)
+    "new york", "new york city", "new jersey", "los angeles", "san francisco",
+    "san diego", "san jose", "silicon valley", "wall street", "hong kong",
+    "london", "chicago", "toronto", "united states", "china", "europe", "asia",
+    "japan",
+})
+
+
+def is_non_issuer_phrase(text: str) -> bool:
+    """True when `text` is an exchange, wire or place name and never an issuer."""
+    norm = " ".join((text or "").split()).casefold().rstrip(".")
+    return norm in NON_ISSUER_PHRASES
+
+
 def _anycase_refused_single(word: str) -> bool:
     """Every list that says a lone word is prose, chrome or not a company."""
     cf = word.casefold()
@@ -352,7 +391,8 @@ def _anycase_windows(text: str, *, doc, resolve_name, is_exact_name,
                 continue
             toks = words[i:i + n]
             phrase = " ".join(toks)
-            if phrase.casefold() in seen or _is_generic_term(phrase):
+            if (phrase.casefold() in seen or _is_generic_term(phrase)
+                    or is_non_issuer_phrase(phrase)):   # LQ-20261107-122
                 continue
             if (toks[0].casefold() in _ANYCASE_PROSE_STOP
                     or toks[-1].casefold() in _ANYCASE_PROSE_STOP):
@@ -443,6 +483,8 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
     unresolved: list[str] = []
 
     for cand in extract_candidates(text):
+        if is_non_issuer_phrase(cand):   # LQ-20261107-122: NASDAQ is not NDAQ
+            continue
         tag = RI.resolve(doc, cand)
         if tag is None:
             unresolved.append(cand)
@@ -508,6 +550,10 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
         resolve_name = None                                # type: ignore
 
     for name in extract_name_mentions(text):
+        # LQ-20261107-122: "GLOBE NEWSWIRE" bound GL and "NEW YORK" bound NYT.
+        # An exchange, wire or place name is never the issuer discussed.
+        if is_non_issuer_phrase(name):
+            continue
         # A lone capitalised word opening a sentence is punctuation, not a
         # security -- even when it happens to BE a ticker alias. Measured
         # 2026-09-21: the alias attempt below was guarded by nothing, while
