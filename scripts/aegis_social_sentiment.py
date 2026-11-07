@@ -391,7 +391,9 @@ def normalize_sentiment(symbol: str, reddit_data: dict, brave_data: dict,
 
 def source_name_for(counts: dict) -> str:
     """Name only the sources that returned something; an empty/retired source is not claimed."""
-    names = [k for k in ("reddit", "stocktwits", "brave") if (counts or {}).get(k, 0) > 0]
+    from collections import Counter
+    tally = Counter(counts or {})
+    names = [k for k in ("reddit", "stocktwits", "brave") if tally[k] > 0]
     return "+".join(names) or "none"
 
 
