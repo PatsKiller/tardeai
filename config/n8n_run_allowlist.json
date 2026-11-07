@@ -2807,12 +2807,14 @@
       "command": [
         "$PY",
         "scripts/hermes_research_agenda.py",
-        "--json"
+        "--apply"
       ],
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--json"
+      ],
       "lock": "/tmp/hermes_agenda.lock",
       "lock_kind": "flock",
       "timeout_s": 300,
@@ -2825,7 +2827,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "Real work imports shared DB/search or research helpers whose secret-render closure is owned by the integrator. This script loads only declared names, and explicit preview returns before those dependencies.",
       "env_evidence": "Shard04 source audit and offline CLI tests; no credential values read.",
-      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00"
+      "source": "Authorized read-only crontab snapshot 2026-10-11T14:57:08.697196+00:00 | OVN-3c 2026-11-07 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv ['--json'], lock = the cron flock lock /tmp/hermes_agenda.lock (shared: the lock proves no double run)."
     },
     {
       "lane_id": "hermes-research-worker-pool",
@@ -3875,7 +3877,6 @@
     {
       "lane_id": "goal-gate-bridge",
       "env_names": [
-        "TRADEAI_STATE_ROOT",
         "TRADE_AI_PROJECT_ROOT"
       ],
       "env_allowlist_mode": "report",
@@ -4694,10 +4695,7 @@
       "timeout_s": 900,
       "market_gate": false,
       "output_signal": "data/runtime/self_heal_fixer_shadow/receipt.json",
-      "env_names": [
-        "HOME",
-        "TRADEAI_STATE_ROOT"
-      ],
+      "env_names": [],
       "env_allowlist_mode": "report",
       "env_report_reason": "A --cycle run makes no model call, but the module's live-mode provider-key path exists and reads HOME-relative paths; report until a run with enforce mode is proven for the dry cycle.",
       "env_evidence": "scripts/self_heal_fixer.py: state_root() reads TRADEAI_STATE_ROOT (default under HOME); provider key_file and {home} substitution read HOME. The D1 package executed the dry cycle with rc=0 and no model call.",
@@ -4831,7 +4829,19 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/agent-watchlist-engine_last.json"
+      "output_signal": "data/runtime/agent-watchlist-engine_last.json",
+      "env_names": [
+        "CLOUD_REVIEW",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "drain-discovery-backlog",
@@ -4849,7 +4859,18 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/drain-discovery-backlog_last.json"
+      "output_signal": "data/runtime/drain-discovery-backlog_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "incubator-llm-screener",
@@ -4874,7 +4895,21 @@
       },
       "receipt_signal_marker": true,
       "market_gate": false,
-      "output_signal": "data/runtime/incubator-llm-screener_last.json"
+      "output_signal": "data/runtime/incubator-llm-screener_last.json",
+      "env_names": [
+        "CLOUD_REVIEW",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "DOTENV_LOADED",
+        "TRADEAI_LLM_VIA_BRIDGE",
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "portfolio-lookthrough-themes",
@@ -4897,7 +4932,14 @@
       },
       "receipt_signal_marker": true,
       "market_gate": false,
-      "output_signal": "data/runtime/portfolio-lookthrough-themes_last.json"
+      "output_signal": "data/runtime/portfolio-lookthrough-themes_last.json",
+      "env_names": [
+        "TRADEAI_LLM_VIA_BRIDGE",
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "reconcile-exit-advisory-outcomes",
@@ -4915,7 +4957,13 @@
       ],
       "live_arg": [],
       "market_gate": false,
-      "output_signal": "data/runtime/reconcile-exit-advisory-outcomes_last.json"
+      "output_signal": "data/runtime/reconcile-exit-advisory-outcomes_last.json",
+      "env_names": [
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "event-detector",
@@ -4932,7 +4980,18 @@
       ],
       "live_arg": [],
       "market_gate": true,
-      "output_signal": "data/runtime/event-detector_last.json"
+      "output_signal": "data/runtime/event-detector_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "reconcile-pullback-outcomes",
@@ -4989,8 +5048,7 @@
         "HERMES_API_BASE",
         "HERMES_BRIDGE_URL",
         "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_ROOT",
-        "XDG_RUNTIME_DIR"
+        "TRADEAI_ROOT"
       ],
       "env_allowlist_mode": "report",
       "env_evidence": "build_hermes_canonical_status.py reads HERMES_API_BASE (os.environ, line 29) and passes os.environ to the http client's XDG block; DB names via db_adapter; STATE_ROOT/ROOT via lib/lane_registry.",
@@ -5138,7 +5196,8 @@
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child; the import closure is not bounded by literal reads. No broker credential name is admitted.",
-      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `*/30 8-18 * * 1-5 ... scripts/ask_alerts.py`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted)."
+      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `*/30 8-18 * * 1-5 ... scripts/ask_alerts.py`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted).",
+      "env_evidence": "W5 template set (3e5058a4b): DB_* plus project/state-root names the script and its DB helper read; evidence line added 2026-11-07 by the lead after the committed-allowlist test (hidden by a collection error) caught its absence"
     },
     {
       "lane_id": "sec-filings-feed",
@@ -5169,7 +5228,8 @@
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child; the import closure is not bounded by literal reads. No broker credential name is admitted.",
-      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `20 8,12,17,21 * * 1-5 ... --apply`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted)."
+      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `20 8,12,17,21 * * 1-5 ... --apply`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted).",
+      "env_evidence": "W5 template set (3e5058a4b): DB_* plus project/state-root names the script and its DB helper read; evidence line added 2026-11-07 by the lead after the committed-allowlist test (hidden by a collection error) caught its absence"
     },
     {
       "lane_id": "tmp-scratch-cleanup",
@@ -5200,7 +5260,8 @@
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child; the import closure is not bounded by literal reads. No broker credential name is admitted.",
-      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `30 3 * * 0 ... --apply`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted)."
+      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `30 3 * * 0 ... --apply`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted).",
+      "env_evidence": "W5 template set (3e5058a4b): DB_* plus project/state-root names the script and its DB helper read; evidence line added 2026-11-07 by the lead after the committed-allowlist test (hidden by a collection error) caught its absence"
     },
     {
       "lane_id": "reconcile-watch-outcomes",
@@ -5230,7 +5291,8 @@
       ],
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child; the import closure is not bounded by literal reads. No broker credential name is admitted.",
-      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `50 9 * * 0 ... scripts/reconcile_watch_outcomes.py`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted)."
+      "source": "OVN-9 2026-11-07 (operator: everything moves to n8n overnight): shadow-stage allowlist entry for the live cron line `50 9 * * 0 ... scripts/reconcile_watch_outcomes.py`; live_arg null at shadow, the cron line keeps doing the real work. Dry run proven write-free (cc-deepseek-9 DONE report, quoted).",
+      "env_evidence": "W5 template set (3e5058a4b): DB_* plus project/state-root names the script and its DB helper read; evidence line added 2026-11-07 by the lead after the committed-allowlist test (hidden by a collection error) caught its absence"
     },
     {
       "lane_id": "journal-review-builder",
@@ -5523,7 +5585,13 @@
         "--apply"
       ],
       "market_gate": false,
-      "output_signal": "logs/reclassify_momentum.log"
+      "output_signal": "logs/reclassify_momentum.log",
+      "env_names": [
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "generate-analyst-reports-autonomous-weekly",
@@ -5545,7 +5613,13 @@
         "weekly"
       ],
       "market_gate": false,
-      "output_signal": "data/runtime/generate-analyst-reports-autonomous-weekly_last.json"
+      "output_signal": "data/runtime/generate-analyst-reports-autonomous-weekly_last.json",
+      "env_names": [
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "2026-11-07 lead: names the script reads directly (os.environ/getenv grep) plus DB_* where it opens a DB connection and the state/project roots lane_last_receipt reads; transitive library reads are not inventoried",
+      "env_report_reason": "W5 (3e5058a4b) admitted this lane with no env declaration, so global enforce refused it env_names_missing (same defect as goal-gate-bridge, LQ-20261107-33). Report mode keeps the legacy env until one clean live RUN_DONE; flip to enforce after the inventory is confirmed from the report receipt's dropped_names."
     },
     {
       "lane_id": "due-diligence-questions",
@@ -5584,7 +5658,8 @@
         "via": "cio-governed-bridge",
         "process_id": "due_diligence_questions"
       },
-      "offpeak_gate": "scheduled"
+      "offpeak_gate": "scheduled",
+      "env_evidence": "W5 template set (3e5058a4b): DB_* plus project/state-root names the script and its DB helper read; evidence line added 2026-11-07 by the lead after the committed-allowlist test (hidden by a collection error) caught its absence"
     },
     {
       "lane_id": "research-intelligence-queue",

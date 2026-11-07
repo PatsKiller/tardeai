@@ -9123,9 +9123,10 @@
         "kind": "cron",
         "expression": "45 7 * * *",
         "match": "scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 07:30",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "R2-04",
-        "command_text": "45 7 * * * cd $PROJ && flock -n /tmp/hermes_agenda.lock $PY scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1  # Phase 2 agenda: after 07:30 topic bridge (2026-08-04)"
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_agenda.lock env TRADEAI_EFFECT_CLAIM=hermes-research-agenda-at-45-7 bash scripts/effect_claim_cron.sh hermes-research-agenda-at-45-7 $PY scripts/hermes_research_agenda.py --apply --json >> logs/hermes_agenda.log 2>&1",
+        "cutover_wave": "OVN-3c"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -9155,7 +9156,7 @@
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "45 7 * * *"
         ],

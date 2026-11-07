@@ -7873,7 +7873,8 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "refactor_shard_04",
-      "stage": "shadow",
+      "stage": "canary",
+      "state_note": "OVN-3c 2026-11-07: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act.",
       "purpose": {
         "text": "Rank research agenda topics from discovery and outcome feedback, then apply bounded topic lifecycle changes.",
         "business_function": "research",
@@ -7926,8 +7927,8 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
         },
         {
           "check": "dry_run_writes_nothing",
