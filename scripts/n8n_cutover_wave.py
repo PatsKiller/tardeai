@@ -405,7 +405,14 @@ def canary_row(row: Mapping[str, Any], lines: list[tuple[int, str]], wave: str) 
     return new
 
 
-def canary_entry(entry: Mapping[str, Any], parsed: Mapping[str, Any], lock: str, wave: str) -> dict[str, Any]:
+def run_date() -> str:
+    """The day the tool runs, UTC (LQ-20261107-35). The canary note used to carry a literal 2026-10-15,
+    the day the wave framework was written, so every later wave was dated by an old build."""
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def canary_entry(entry: Mapping[str, Any], parsed: Mapping[str, Any], lock: str, wave: str,
+                 date: Optional[str] = None) -> dict[str, Any]:
     new = json.loads(json.dumps(entry))
     new["live_arg"] = list(parsed["live_arg"])
     new["lock"] = lock
@@ -414,7 +421,7 @@ def canary_entry(entry: Mapping[str, Any], parsed: Mapping[str, Any], lock: str,
         new["market_gate"] = True
     if parsed.get("offpeak_gate"):
         new["offpeak_gate"] = parsed["offpeak_gate"]
-    note = (f" | {wave} 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv "
+    note = (f" | {wave} {date or run_date()} (n8n_cutover_wave.py): canary — live_arg = the cron line's argv "
             f"{parsed['live_arg']!r}, lock = the cron flock lock {lock} (shared: the lock proves no double run).")
     src = str(new.get("source") or "")
     if wave not in src:
@@ -483,7 +490,7 @@ def agent_review(contract: Mapping[str, Any], entry: Mapping[str, Any], lock: Op
     return new, ""
 
 
-def canary_contract(contract: Mapping[str, Any], wave: str, date: str = "2026-10-15") -> dict[str, Any]:
+def canary_contract(contract: Mapping[str, Any], wave: str, date: Optional[str] = None) -> dict[str, Any]:
     new = json.loads(json.dumps(contract))
     new["stage"] = "canary"
     healthy = [h for h in new.get("healthy") or [] if h.get("check") not in ("shadow_dry_run_done",)]
@@ -492,7 +499,7 @@ def canary_contract(contract: Mapping[str, Any], wave: str, date: str = "2026-10
                            "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or "
                                    "RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"})
     new["healthy"] = healthy
-    note = f"{wave} {date}: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    note = f"{wave} {date or run_date()}: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     new["state_note"] = (str(new.get("state_note") or "") + " | " + note).lstrip(" |")
     return new
 
