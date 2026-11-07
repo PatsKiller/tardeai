@@ -249,7 +249,7 @@ class FakeDB:
             if f"from {name}" in s:
                 if rows is None:
                     return None
-                if "group by" in s:
+                if "group by" in s and name == "market_event_candidates":
                     return [{"episode_id": "E1", "state": "READY", "n": 1}]
                 return rows
         return []
@@ -288,7 +288,7 @@ def test_active_full_shape_labels_only():
                                      "last_price": 58.0, "quality_score": 0.7, "discount_score": 0.4,
                                      "reason_evidence": {"sector": "Technology"},
                                      "updated_at": "2026-11-08T13:00:00+00:00"}],
-        "market_ohlcv_bars": bars,
+        "market_quotes": bars,
         "trade_transactions": [],
     })
     doc = _active(db)
@@ -302,6 +302,22 @@ def test_active_full_shape_labels_only():
     assert "SYNTHKEY" not in blob
     assert all("insert " not in s.lower() and "update " not in s.lower() and "delete " not in s.lower()
                for s in db.sql)
+
+
+def test_bars_never_read_yfinance_or_ohlcv_table():
+    # spec section 2: Finviz-only; market_ohlcv_bars daily is yfinance-only, so it must not be read
+    assert "market_ohlcv_bars" not in api.BARS_SQL and "market_quotes" in api.BARS_SQL
+    assert "yfinance" not in api.BAR_SOURCES and set(api.BAR_SOURCES) == {"finviz", "alpaca"}
+    db = FakeDB({"market_quotes": []})
+    assert api.read_bars(db, ["SYNTH_B"], NOW.date()) == {}
+    assert db.sql and all("market_ohlcv_bars" not in s for s in db.sql)
+
+
+def test_bars_drop_history_before_a_split_break():
+    rows = [{"symbol": "SYNTH_S", "bar_time": f"2026-10-{d:02d}", "open": c, "high": c, "low": c, "close": c,
+             "volume": 1} for d, c in ((1, 450.0), (2, 452.0), (5, 150.0), (6, 151.0))]
+    b = api.read_bars(FakeDB({"market_quotes": rows}), ["SYNTH_S"], NOW.date())["SYNTH_S"]
+    assert [x["close"] for x in b] == [150.0, 151.0]
 
 
 def test_wash_reader_flags_a_recent_taxable_loss_sale():

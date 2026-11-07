@@ -2,7 +2,8 @@
 
 Read-only. Reads:
 * the WP1/WP2 tables ``market_event_episodes`` and ``market_event_candidates`` (spec §4.2);
-* daily bars from ``market_ohlcv_bars`` (timeframe 'daily');
+* daily bars built from ``market_quotes`` (sources finviz and alpaca only, never yfinance: spec §2),
+  one bar per ET regular session (09:30-16:15) from the quotes fetched that day;
 * the Market Risk snapshot;
 * settled cash per account from the holdings rows;
 * sells from ``trade_transactions``, for the wash-sale annotation.
@@ -101,18 +102,47 @@ def read_candidates(db_query: DbQuery, episode_id: Any) -> tuple[list[dict[str, 
     return rows, None
 
 
+BAR_SOURCES = ("finviz", "alpaca")
+BARS_SQL = (
+    "SELECT symbol, d AS bar_time, (array_agg(price ORDER BY fetched_at))[1] AS open, max(price) AS high, "
+    "min(price) AS low, (array_agg(price ORDER BY fetched_at DESC))[1] AS close, max(volume) AS volume "
+    "FROM (SELECT symbol, price, volume, fetched_at, "
+    "(fetched_at AT TIME ZONE 'America/New_York')::date AS d, "
+    "(fetched_at AT TIME ZONE 'America/New_York')::time AS t FROM market_quotes "
+    "WHERE symbol = ANY(%s) AND source = ANY(%s) AND fetched_at >= %s AND price > 0) q "
+    "WHERE extract(isodow FROM d) < 6 AND t >= '09:30' AND t <= '16:15' "
+    "GROUP BY symbol, d ORDER BY symbol, d"
+)
+
+
 def read_bars(db_query: DbQuery, symbols: Sequence[str], today: date) -> dict[str, list[dict[str, Any]]]:
     if not symbols:
         return {}
-    rows = _rows(db_query,
-                 "SELECT symbol, bar_time, open, high, low, close, volume FROM market_ohlcv_bars "
-                 "WHERE timeframe = 'daily' AND symbol = ANY(%s) AND bar_time >= %s ORDER BY symbol, bar_time",
-                 (list(symbols), (today - timedelta(days=BARS_LOOKBACK_DAYS)).isoformat())) or []
+    # market_ohlcv_bars daily is yfinance-only (cc-opus-3, 11-07), so bars come from market_quotes.
+    # Quotes are sampled, so high/low are the sampled extremes, not the true session range.
+    rows = _rows(db_query, BARS_SQL,
+                 (list(symbols), list(BAR_SOURCES), (today - timedelta(days=BARS_LOOKBACK_DAYS)).isoformat())) or []
     out: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
         out.setdefault(str(r["symbol"]).upper(), []).append(
             {"date": _iso(r.get("bar_time")), **{k: r.get(k) for k in ("open", "high", "low", "close", "volume")}})
-    return out
+    return {sym: _after_last_split(b) for sym, b in out.items()}
+
+
+SPLIT_JUMP_RATIO = 1.67  # a session-to-session close move this large (either way) is read as a split, not a price
+
+
+def _after_last_split(bars: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep only the bars after the last split-sized break, so a split never reads as a crash or a new low."""
+    start = 0
+    for i in range(1, len(bars)):
+        try:
+            a, b = float(bars[i - 1]["close"]), float(bars[i]["close"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if a > 0 and b > 0 and max(a / b, b / a) >= SPLIT_JUMP_RATIO:
+            start = i
+    return bars[start:]
 
 
 def read_sectors(db_query: DbQuery, symbols: Sequence[str]) -> dict[str, str]:
