@@ -5,11 +5,17 @@ instruments (long OR short) instead of silently dropping them.
 
 Sources, in priority order: the curated config/etf_fund_universe.json (explicit etf/inverse/fund) →
 symbol_profiles sector/description heuristics (ETF/Fund/Index keywords) → mutual-fund code heuristic
-(5 letters ending in X, e.g. FCNTX/AMANX) → holdings bucket → default stock. Persists to a new
-symbol_profiles.instrument_type column + writes data/runtime/instrument_types_latest.json for the UI/rotation.
-Read-only re: trading.
+(5 letters ending in X, e.g. FCNTX/AMANX) → holdings bucket → default stock. Persists
+symbol_profiles.instrument_type (+ direction_hint/expense_ratio/quote_type) and writes
+data/runtime/instrument_types_latest.json for the UI/rotation. Read-only re: trading.
 
---dry-run classifies from the DB + curated universe on a READ ONLY session (no ALTER TABLE, no
+The four symbol_profiles columns are a MIGRATION (migrations/2026_11_07_symbol_profiles_instrument_cols.sql),
+never a per-run ALTER TABLE: ADD COLUMN takes an ACCESS EXCLUSIVE lock on the whole table and db_adapter's
+lock_timeout is 3s, so one concurrent reader is enough to kill the run (etf-analyst-enrich died on exactly
+that on 2026-11-07). This script only READS information_schema and exits 2 naming the migration when a
+column is absent. Its own writes are DML.
+
+--dry-run classifies from the DB + curated universe on a READ ONLY session (no DDL, no
 yfinance quoteType fetch, no symbol_profiles upsert, no instrument_types_latest.json write, no receipt;
 AGENTS.md §6). A real run writes data/runtime/classify-instruments_last.json.
 """
@@ -27,6 +33,32 @@ UNIVERSE = ROOT / "config" / "etf_fund_universe.json"
 OUT = ROOT / "data" / "runtime" / "instrument_types_latest.json"
 _FUND_CODE = re.compile(r"^[A-Z]{4,5}X$")  # mutual-fund tickers usually end in X (FCNTX, AMANX, VFIAX)
 _ETF_KW = ("etf", "ishares", "spdr", "invesco qqq", "vaneck", "select sector", "index fund")
+
+LANE_ID = "classify-instruments"
+# The columns the run writes to. Created by MIGRATION, never by this script (a per-run ADD COLUMN takes an
+# ACCESS EXCLUSIVE lock on symbol_profiles against a 3s lock_timeout — see the module docstring).
+PROFILE_COLUMNS = ("instrument_type", "direction_hint", "expense_ratio", "quote_type")
+MIGRATION = "migrations/2026_11_07_symbol_profiles_instrument_cols.sql"
+
+
+class MissingColumns(RuntimeError):
+    """symbol_profiles lacks an instrument column and the migration has not been applied here."""
+
+
+def present_columns(cur) -> list:
+    """Which instrument columns exist (information_schema SELECT — never a table lock)."""
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_name = 'symbol_profiles'
+                     AND column_name = ANY(%s)""", (list(PROFILE_COLUMNS),))
+    return sorted(r[0] for r in cur.fetchall())
+
+
+def check_columns(cur) -> None:
+    """Read-only schema check (was four per-run DDL statements). Raises MissingColumns naming the migration."""
+    have = set(present_columns(cur))
+    missing = [c for c in PROFILE_COLUMNS if c not in have]
+    if missing:
+        raise MissingColumns(f"symbol_profiles is missing {missing}; apply {MIGRATION}")
 
 
 def _receipt(**kw):
@@ -46,6 +78,13 @@ def main(argv=None):
     started_at = datetime.now(timezone.utc).isoformat()
     try:
         rc, summary = _run(argv, dry_run=False)
+    except MissingColumns as exc:
+        # Configuration, not a crash: say which migration is missing and exit 2 (fund_technicals_enrich.py's rule).
+        _receipt(ok=False, exit_code=2, started_at=started_at, error=str(exc),
+                 output={"produced_count": 0, "attempted_count": 0,
+                         "skipped_reasons": {"schema_migration_missing": 1}})
+        print(json.dumps({"ok": False, "error": str(exc)}))
+        return 2
     except Exception as exc:  # failed real run: failed receipt (ok_at kept), then exit non-zero
         _receipt(ok=False, started_at=started_at, error=f"{type(exc).__name__}: {exc}",
                  output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
@@ -72,12 +111,11 @@ def _run(argv, dry_run):
     if dry_run:
         from lib.lane_last_receipt import enforce_readonly
         enforce_readonly(conn)  # the server refuses any write (AGENTS.md §6)
+        have_cols = present_columns(cur)  # reported, not required: a dry run writes nothing
     else:
-        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS instrument_type text")
-        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS direction_hint text")
-        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS expense_ratio numeric")
-        cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS quote_type text")
-        conn.commit()
+        check_columns(cur)  # READ information_schema; the DDL lives in MIGRATION, never here
+        conn.commit()       # release the read txn before the (minutes-long) yfinance loop below
+        have_cols = None
     enrich = "--no-fetch" not in argv and not dry_run
 
     # 1) curated universe = ground truth
@@ -173,8 +211,14 @@ def _run(argv, dry_run):
         counts[info["type"]] = counts.get(info["type"], 0) + 1
     if dry_run:  # returns before the upsert and the runtime JSON write
         conn.close()
+        missing = [c for c in PROFILE_COLUMNS if c not in have_cols]
         print(json.dumps({"ok": True, "dry_run": True, "classified": len(cls), "counts": counts,
-                          "would_write": {"symbol_profiles_rows": len(cls), "file": str(OUT)}}, indent=2))
+                          "instrument_columns_present": have_cols,
+                          "instrument_columns_missing": missing,
+                          # The real run would stop on the check, not write: name the migration, not a DDL statement.
+                          "required_migration": MIGRATION if missing else None,
+                          "would_write": ({} if missing else
+                                          {"symbol_profiles_rows": len(cls), "file": str(OUT)})}, indent=2))
         return 0
 
     # persist instrument_type + expense ratio + quote_type back to symbol_profiles

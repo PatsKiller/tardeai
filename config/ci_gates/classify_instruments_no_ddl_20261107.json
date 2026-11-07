@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "classify_instruments_no_ddl_20261107",
+  "files": [
+    "tests/test_classify_instruments_no_ddl_20261107.py",
+    "tests/test_refactor_w2_portfolio_lanes_20261010.py",
+    "tests/test_lane_produced_count_cw_1_20261015.py"
+  ],
+  "comment": [
+    "classify-instruments ran FOUR ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS statements on every live",
+    "run, each taking an ACCESS EXCLUSIVE lock on the whole table against db_adapter's 3s lock_timeout — the same",
+    "defect that killed etf-analyst-enrich on 2026-11-07 07:00 ET ('canceling statement due to lock timeout').",
+    "The DDL is migrations/2026_11_07_symbol_profiles_instrument_cols.sql now; the run only reads",
+    "information_schema and exits 2 naming the migration when a column is absent. Pins: no DDL in the run path,",
+    "no write statement at all from the real run, the migration defines all four columns, the missing-column exit",
+    "is 2 with a failed receipt, and the dry run promises no write. Hermetic fakes; no DB, no network."
+  ]
+}

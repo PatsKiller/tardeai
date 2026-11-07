@@ -3,8 +3,9 @@
 - technicals_gap_backfill.py (cron:L470): --dry-run lists the missing symbols on a READ ONLY session and
   returns before yfinance, the ticker_snapshot_daily upsert and the --alert send; a real run writes
   technicals-gap-backfill_last.json; no-data symbols are a finding (exit 0).
-- classify_instruments.py (cron:L504): --dry-run runs no ALTER TABLE, no yfinance quoteType fetch, no
-  symbol_profiles upsert and no instrument_types_latest.json write; a real run writes
+- classify_instruments.py (cron:L504): --dry-run runs no DDL, no yfinance quoteType fetch, no
+  symbol_profiles upsert and no instrument_types_latest.json write; a real run reads information_schema
+  (the columns are a migration, 2026-11-07), issues no write statement of its own, and writes
   classify-instruments_last.json (ok_at only on success).
 Hermetic: fake db_adapter / yfinance modules, TRADEAI_STATE_ROOT = tmp.
 """
@@ -166,6 +167,10 @@ def test_gap_failed_write_is_failed_receipt(tgb, state, monkeypatch):
 
 
 def _ci_rows(sql, params):
+    if "information_schema.columns" in sql:
+        # The run reads the schema and exits 2 (naming the migration) instead of its old per-run DDL;
+        # every column exists here, as it does in production (2026-11-07).
+        return [(c,) for c in ("instrument_type", "direction_hint", "expense_ratio", "quote_type")]
     if sql.startswith("SELECT upper(symbol), sector, description_1s"):
         return [("AAA", "Technology", "Makes chips"), ("SPYX", "Fund", "index fund")]
     if "quote_type IS NULL" in sql:
@@ -201,15 +206,17 @@ def test_classify_real_run_writes_profiles_file_and_receipt(ci, state, monkeypat
     monkeypatch.setitem(sys.modules, "yfinance", _YF(info={"quoteType": "EQUITY"}))
     monkeypatch.setattr("time.sleep", lambda s: None)
     assert mod.main([]) == 0
-    assert any(s.startswith("ALTER TABLE symbol_profiles") for s in conn.writes())
+    # DDL is a migration now: the run itself issues no write statement, only a schema read (2026-11-07).
+    assert conn.writes() == [], conn.writes()
+    assert any("information_schema.columns" in s for s in conn.sql)
     assert upsert.called and mod.OUT.exists()
     rec = _receipt(state, "classify-instruments")
     assert rec["status"] == "ok" and rec["summary"]["profile_rows_updated"] == upsert.call_count
 
 
 def test_classify_failure_is_failed_receipt(ci, state):
-    mod, conn, _ = ci
-    conn.fail_on = "ALTER"
+    mod, conn, upsert = ci
+    upsert.side_effect = RuntimeError("simulated write failure")  # the lane's own DML, not DDL
     with pytest.raises(RuntimeError):
         mod.main(["--no-fetch"])
     assert _receipt(state, "classify-instruments")["status"] == "failed"

@@ -36,14 +36,24 @@ def test_lane_is_opted_in_with_code_that_writes_produced_count(lane):
     H.assert_opted_in(lane)
 
 
+_PROFILE_COLUMNS = ("instrument_type", "direction_hint", "expense_ratio", "quote_type")
+
+
 class _Cur:
     description = ()
 
-    def execute(self, *a, **k):
+    def __init__(self):
+        self._rows = []
+
+    def execute(self, sql="", *a, **k):
+        # classify-instruments READS the schema and exits 2 instead of running per-run DDL (2026-11-07);
+        # every column exists in this fake database, as it does in production.
+        self._rows = ([(c,) for c in _PROFILE_COLUMNS]
+                      if isinstance(sql, str) and "information_schema.columns" in sql else [])
         return None
 
     def fetchall(self):
-        return []
+        return list(self._rows)
 
     def fetchone(self):
         return None
