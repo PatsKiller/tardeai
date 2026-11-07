@@ -372,17 +372,20 @@ export default function ReEntryCurrentIntelligence({
   const alertRows: any[] = unwrap(alerts.data)?.alerts ?? unwrap(alerts.data)?.items ?? []
   const resistanceMap: Record<string, any> = prefValue(resistancePref.data)?.symbols ?? {}
   const analystMap: Record<string, any> = unwrap(analyst.data)?.map ?? {}
-  const deskMap: Record<string, any> = {}
-  for (const deskRow of (unwrap(reentryDesk.data)?.rows ?? []) as any[]) {
-    const deskSymbol = String(deskRow?.symbol || '').toUpperCase()
-    if (deskSymbol) deskMap[deskSymbol] = deskRow
-  }
   const compositeMap = prefValue(compositePref.data) as Record<string, { armed?: boolean }> | null
   const armedCount = compositeMap
     ? Object.values(compositeMap).filter(item => item && item.armed).length
     : 0
 
-  const rows = useMemo(() => summaries.map(summary => {
+  const rows = useMemo(() => {
+    // The decision desk's rows, indexed once per render, keyed by symbol. It is the only source of
+    // this system's MACD read (histogram direction + signal) — see deriveIntel.
+    const deskMap: Record<string, any> = {}
+    for (const deskRow of (unwrap(reentryDesk.data)?.rows ?? []) as any[]) {
+      const deskSymbol = String(deskRow?.symbol || '').toUpperCase()
+      if (deskSymbol) deskMap[deskSymbol] = deskRow
+    }
+    return summaries.map(summary => {
     const mandate = normalizedMandate(mandates[summary.symbol])
     const watch = watchMap[summary.symbol]
     const card = cardMap[summary.symbol]
@@ -451,7 +454,8 @@ export default function ReEntryCurrentIntelligence({
       analyst: analystRow,
       score: intel.score,
     }
-  }), [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data, regimeLabel, reentryDesk.data])
+    })
+  }, [summaries, mandatesPref.data, eventsPref.data, dispositionsPref.data, watchMap, cards.data, holdings.data, resistancePref.data, analyst.data, alerts.data, regimeLabel, reentryDesk.data])
 
   const laneCounts: ReEntryLaneCounts = useMemo(() => {
     const active = rows.filter(row => !row.suppressed)
