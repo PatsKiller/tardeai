@@ -106,7 +106,27 @@ def test_cli_builder_is_the_lane_builder(monkeypatch, tmp_path):
     import defense_engine_build as deb
     seen = {}
     monkeypatch.setattr(dis, "ROOT", tmp_path)
-    monkeypatch.setattr(deb, "build", lambda root, now=None: seen.update(root=root, now=now) or {"ok": 1})
+    from lib import defense_stops_slice as dss
+    live = {"as_of": "synthetic", "positions": {"rows": []}}
+    monkeypatch.setattr(dss, "resolve_live", lambda root: (live, None))
+    monkeypatch.setattr(deb, "build", lambda root, now=None, truth=None: seen.update(root=root, now=now, truth=truth)
+                        or {"ok": 1})
     now = datetime.now(timezone.utc)
     assert dis._build_projection_in_process(now) == {"ok": 1}
-    assert seen == {"root": tmp_path, "now": now}
+    # the in-process build is the lane builder, fed live stops host-side (option b: the lane reads the slice)
+    assert seen == {"root": tmp_path, "now": now, "truth": live}
+
+
+def test_cli_refreshes_the_stops_slice_only_when_not_dry_run(monkeypatch, tmp_path):
+    from lib import defense_stops_slice as dss
+    from lib import defense_engine as de
+    live = {"as_of": "2030-01-07T15:00:00+00:00", "positions": {"rows": [{"symbol": "ZZAA", "counted": True}],
+                                                                "stop_breakdown": None}}
+    monkeypatch.setattr(dss, "resolve_live", lambda root: (live, None))
+    monkeypatch.setattr(dis, "ROOT", tmp_path)
+    dry = dis._refresh_stops_slice(True)
+    assert dry["wrote"] is False and dry["rows"] == 1 and list(tmp_path.rglob("*")) == []
+    wet = dis._refresh_stops_slice(False)
+    assert wet["wrote"] is True and wet["error"] is None
+    import json as _json
+    assert _json.loads((tmp_path / de.STOPS_SLICE_REL).read_text())["schema"] == de.STOPS_SLICE_SCHEMA

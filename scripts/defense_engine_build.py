@@ -2,9 +2,14 @@
 """Build data/runtime/defense_engine_latest.json (DefenseProjection@v1) — design defense/v001.
 
 Reads only: the Market Risk snapshot (built and book-joined exactly as GET /api/v2/market-risk/latest does),
-cio_truth.resolve (positions and stops; SELECTs only), and the labelled side files in data/runtime/.
-No broker call, no credential, no LLM, no order. The output is advisory and is refused if it carries any
-size / order / share / level field (lib.defense_engine.assert_advisory).
+the stored stops slice (DefenseStopsSlice@v1, data/runtime/defense_stops_slice_latest.json: the positions and
+stop breakdown of cio_truth.resolve, written host-side by lib.defense_stops_slice), and the labelled side files
+in data/runtime/. No broker call, no credential, no LLM, no order. The output is advisory and is refused if it
+carries any size / order / share / level field (lib.defense_engine.assert_advisory).
+
+Import boundary (n8n broker-reach gate, scripts/audit_lane_transitive_capabilities.py): this file must not import
+cio_truth, holdings_document or db_adapter, even lazily -- their graph reaches schwab_position_sync. A host caller
+that wants live stops resolves them itself (lib.defense_stops_slice.resolve_live) and passes ``truth=``.
 
     python3 scripts/defense_engine_build.py --dry-run      # print the projection, write nothing
     python3 scripts/defense_engine_build.py                # write the projection atomically
@@ -78,12 +83,11 @@ def load_market_risk(root: Path) -> tuple[dict | None, str | None]:
 
 
 def load_truth(root: Path) -> tuple[dict | None, str | None]:
-    try:
-        from lib import cio_truth
-        from lib.holdings_document import default_db_query
-        return cio_truth.resolve(root, db_query=default_db_query()), None
-    except Exception as e:  # noqa: BLE001
-        return None, f"cio_truth unavailable: {type(e).__name__}"
+    """Positions and stops from the stored slice; a missing, unreadable or foreign file is a stated gap."""
+    doc, gap = _read(root / de.STOPS_SLICE_REL)
+    if gap:
+        return None, gap
+    return de.truth_from_slice(doc)
 
 
 def policy_tiers(root: Path) -> dict | None:
@@ -95,14 +99,22 @@ def policy_tiers(root: Path) -> dict | None:
         return None
 
 
-def build(root: Path, now: datetime | None = None) -> dict:
+_FROM_SLICE = object()
+
+
+def build(root: Path, now: datetime | None = None, *, truth=_FROM_SLICE) -> dict:
+    """``truth``: a cio_truth.resolve document a host caller already resolved (None = unavailable); omitted, the
+    stored stops slice is read."""
     rt = root / "data" / "runtime"
     gaps: dict = {}
     side: dict = {}
     for key, name in SIDE.items():
         side[key], gaps[GAP_KEY.get(key, key)] = _read(rt / name)
     mr, gaps["market_risk"] = load_market_risk(root)
-    truth, gaps["stops"] = load_truth(root)
+    if truth is _FROM_SLICE:
+        truth, gaps["stops"] = load_truth(root)
+    else:
+        gaps["stops"] = None if isinstance(truth, dict) else "cio_truth unavailable"
     cfg_raw, _ = _read(root / "config" / "defense_recommendations.json")
     try:
         from lib.desks_a import lane_states

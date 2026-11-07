@@ -5,7 +5,8 @@ The Defense page used to keep its own copies of sector state, hedge thesis and e
 
 * the Market Risk projection as the API serves it (engine snapshot + book join): tier, score, shock type,
   heatmap, book_exposure, protect, hedge, position stances, deep-brief base rates, de-escalation rule;
-* cio_truth.resolve: counted positions and the stop breakdown;
+* cio_truth.resolve: counted positions and the stop breakdown (via the stored DefenseStopsSlice@v1, see
+  ``stops_slice``; or passed in live by a host caller);
 * the labelled side inputs: inverse stoplights, cash alternatives, recommendations, the sector desk copy,
   industries, hedging radar, options lifecycle.
 
@@ -28,6 +29,14 @@ from typing import Any, Iterable, Optional
 
 SCHEMA = "DefenseProjection@v1"
 OUT_REL = "data/runtime/defense_engine_latest.json"
+#: The stops/positions slice of cio_truth.resolve that the build reads (DefenseStopsSlice@v1). The host side
+#: (lib.defense_stops_slice) resolves and writes it; the builder only reads the file, so the n8n lane
+#: defense-engine-build never imports cio_truth -> holdings_document -> db_adapter (broker-reach gate).
+STOPS_SLICE_SCHEMA = "DefenseStopsSlice@v1"
+STOPS_SLICE_REL = "data/runtime/defense_stops_slice_latest.json"
+#: The position-row fields the projection reads (_stops_section, _held_exit_review, held_symbols).
+STOPS_SLICE_ROW_FIELDS = ("symbol", "account_id", "account_label", "counted", "market_value", "stop_category",
+                          "stop_note", "distance_to_stop_pct", "resting_stop_distance_pct")
 LADDER = ("GREEN", "BLUE", "YELLOW", "ORANGE", "RED")
 
 #: Desk-level forbidden keys on top of lib.market_risk.contract.BEHAVIOR_FIELDS (checked case-insensitively).
@@ -686,6 +695,32 @@ def _held_exit_review(mr: dict, truth: dict) -> list[dict]:
         out.append({"symbol": sym, "value_usd": round(sum(_num(p.get("market_value")) or 0 for p in mine), 2),
                     "accounts": len({p.get("account_id") for p in mine})})
     return sorted(out, key=lambda r: -r["value_usd"])
+
+
+def stops_slice(truth: Optional[dict], *, source: str = "cio_truth.resolve") -> Optional[dict]:
+    """The part of a cio_truth.resolve document this projection reads, as a DefenseStopsSlice@v1 document.
+
+    Pure. ``as_of`` is the resolve time; rows keep only STOPS_SLICE_ROW_FIELDS; the stop breakdown is copied
+    whole. None when ``truth`` carries no positions object. ``truth_from_slice`` turns it back into the shape
+    ``build_projection(truth=...)`` reads, so a slice-fed build and a live-fed build see the same fields."""
+    if not isinstance(truth, dict) or not isinstance(truth.get("positions"), dict):
+        return None
+    pos = truth["positions"]
+    rows = [{k: p.get(k) for k in STOPS_SLICE_ROW_FIELDS if k in p} for p in pos.get("rows") or [] if isinstance(p, dict)]
+    bd = pos.get("stop_breakdown")
+    return {"schema": STOPS_SLICE_SCHEMA, "source": source, "as_of": truth.get("generated_at") or truth.get("as_of"),
+            "positions": {"rows": rows, "stop_breakdown": bd if isinstance(bd, dict) else None}}
+
+
+def truth_from_slice(doc: Optional[dict]) -> tuple[Optional[dict], Optional[str]]:
+    """(truth-shaped dict, gap) from a DefenseStopsSlice@v1 document; a wrong schema is a stated gap."""
+    if not isinstance(doc, dict):
+        return None, "stops slice not on file"
+    if doc.get("schema") != STOPS_SLICE_SCHEMA:
+        return None, f"stops slice schema {doc.get('schema')!r} is not {STOPS_SLICE_SCHEMA}"
+    pos = doc.get("positions") if isinstance(doc.get("positions"), dict) else {}
+    return {"generated_at": doc.get("as_of"), "positions": {"rows": list(pos.get("rows") or []),
+                                                            "stop_breakdown": pos.get("stop_breakdown")}}, None
 
 
 def held_symbols(truth: Optional[dict]) -> Optional[set[str]]:
