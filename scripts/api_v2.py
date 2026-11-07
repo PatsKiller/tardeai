@@ -56542,6 +56542,18 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
+    # n8n catalog (LQ-20261107-150, operator 2026-11-07): what n8n is configured to handle, by category, joined with
+    # the relay live list and the lane audit verdicts. Read-only; 60 s single-flight cache; a missing store is a note.
+    if base_path == "/api/v2/ops/n8n-catalog":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from scripts.lib.n8n_catalog import get_n8n_catalog as _n8n_catalog
+
+            return 200, {"ok": True, "data": _n8n_catalog(query)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
     # AI-proposed conflict rules (operator 2026-10-25; docs/ops/CONFLICT_RULE_PROPOSALS.md). Must precede the
     # /api/v3/conflicts/{key} catch-all below. GET is read-only; POST .../decision is operator identity + CSRF only
     # and answers 503 PROPOSAL_DECISIONS_NOT_ACTIVATED until config decision_writes_enabled is flipped.

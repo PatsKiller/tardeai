@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import OpsDeskFrame from '../components/OpsDeskFrame'
 import { IncidentsTab, JobsHistoryTab, JobsN8nStyles, N8nLanesTab } from '../components/JobsN8nViews'
 import { SchedulerChecksTab } from '../components/SchedulerChecksViews'
+import { N8nCatalogTab } from '../components/N8nCatalogViews'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 import { JOBS_N8N_TABS, OPS_CONTROLS_PATH, resolveJobsN8nTab, tabLabel, type JobsN8nTab } from '../lib/jobsN8n'
@@ -15,7 +16,7 @@ const tabStyle = (on: boolean): CSSProperties => ({
 })
 
 /** Ops › Jobs & n8n (design pages/jobs v002, operator-approved 2026-11-06). Read-only: six tabs over existing GETs.
- *  `?tab=needs|quality|all|checks|n8n|incidents|fixes` (quality = run-quality grades, design v003 approved 2026-11-06) (checks = scheduler checks merged from Coordination › Automation, 2026-11-06); job detail `?history=<lane>`, lane detail `?lane=<lane>` (full-screen sheets). */
+ *  `?tab=needs|quality|all|checks|n8n|catalog|incidents|fixes` (catalog = what n8n handles + audit verdicts, LQ-20261107-150) (quality = run-quality grades, design v003 approved 2026-11-06) (checks = scheduler checks merged from Coordination › Automation, 2026-11-06); job detail `?history=<lane>`, lane detail `?lane=<lane>` (full-screen sheets). */
 export default function JobsN8nPage() {
   const [params, setParams] = useSearchParams()
   const tab = resolveJobsN8nTab(params.get('tab'))
@@ -42,6 +43,7 @@ export default function JobsN8nPage() {
           {(tab === 'needs' || tab === 'quality' || tab === 'all' || tab === 'fixes') && <JobsHistoryTab key={tab} tab={tab} onTotal={onTotal} />}
           {tab === 'checks' && <SchedulerChecksTab onTotal={onTotal} />}
           {tab === 'n8n' && <N8nLanesTab state={controls.data ?? null} loading={controls.loading} error={controls.error ?? null} />}
+          {tab === 'catalog' && <N8nCatalogTab />}
           {tab === 'incidents' && <IncidentsTab />}
         </div>
         <p data-testid="jobs-n8n-readonly-note" style={{ color: TOKENS.text[2], fontSize: TYPE.sm, margin: 0 }}>
