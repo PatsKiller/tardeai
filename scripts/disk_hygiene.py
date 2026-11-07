@@ -94,6 +94,9 @@ MANIFEST_SCHEMA = "DiskHygieneManifest@v1"
 APPLY_SCHEMA = "DiskHygieneApplyReport@v1"
 #: Fixed in code (not config) so the n8n env allowlist inventory stays a literal, statically checked read.
 GRANT_ENV = "TRADEAI_DISK_HYGIENE_GRANT"
+#: Default wall budget for the pressure loop (pressure.run_budget_s overrides): under the hourly slot and the 3600 s timeout.
+RUN_BUDGET_S = 2400
+
 #: Executor request identity; default --apply refuses it, separately reviewed --standing may admit it.
 RUN_ID_ENV = "TRADEAI_RUN_ID"
 SKIP_DEPENDENCY = "dependency_unavailable"
@@ -253,6 +256,8 @@ def _validate_lifecycle(standing: Mapping[str, Any], doc: Mapping[str, Any]) -> 
             raise RulesError("pressure_order")
         if type(pr.get("max_passes")) is not int or not 1 <= pr["max_passes"] <= 10:
             raise RulesError("pressure_max_passes")
+        if "run_budget_s" in pr and (type(pr["run_budget_s"]) is not int or not 60 <= pr["run_budget_s"] <= 3300):
+            raise RulesError("pressure_run_budget_s")
         if "daily_hour_et" in pr and (type(pr["daily_hour_et"]) is not int or not 0 <= pr["daily_hour_et"] <= 23):
             raise RulesError("pressure_daily_hour_et")
 
@@ -2773,12 +2778,20 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
 
     pcfg = (rules.get("standing_apply") or {}).get("pressure") or {}
     max_passes = int(pcfg.get("max_passes") or 1) if a.until_target is not None else 1
+    # One run must end well inside its hourly slot (n8n takes the flock -n lock, so an overlap skips the next slot).
+    # A pass re-scans everything (~20 min on the live host): do not start one that cannot finish inside the budget.
+    run_budget_s = int(pcfg.get("run_budget_s") or RUN_BUDGET_S)
+    longest_pass_s = 0.0
     alert_pct = pcfg.get("alert_pct", 85)
     passes: list[dict] = []
     total_removed, total_bytes, m_last, stopped = 0, 0, None, "single_pass"
     clock = time.monotonic()
     rep: dict[str, Any] = {}
     for pass_no in range(1, max_passes + 1):
+        pass_started = time.monotonic()
+        if pass_no > 1 and (pass_started - clock) + longest_pass_s > run_budget_s:
+            stopped = "wall_budget"
+            break
         pass_now = now + timedelta(seconds=time.monotonic() - clock)
         before = disk_usage_sample(rules["_home"])
         if pass_no > 1:
@@ -2818,6 +2831,7 @@ def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, 
         rep["pressure_pass"] = {"pass": pass_no, "usage_before": before, "usage_after": after, "removed": removed,
                                 "reclaimed_bytes": rep.get("reclaimed_bytes"), "target_pct": a.until_target}
         passes.append(rep["pressure_pass"])
+        longest_pass_s = max(longest_pass_s, time.monotonic() - pass_started)
         if a.standing and a.until_target is not None:
             stamp = pass_now.strftime("%Y%m%dT%H%M%SZ")
             atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_pressure_pass_{stamp}_p{pass_no}.json", rep, indent=1)

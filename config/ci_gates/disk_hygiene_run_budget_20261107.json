@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_run_budget_20261107",
+  "files": ["tests/test_disk_hygiene_run_budget_20261107.py"],
+  "anchor": "LQ-121",
+  "comment": "LQ-121: the disk-hygiene pressure loop stops before a pass that cannot finish inside the run wall budget."
+}
