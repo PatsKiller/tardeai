@@ -154,7 +154,8 @@ def note_failure(lane: str, error: str | None, *, now: float | None = None, path
     now = time.time() if now is None else now
     data = _read_cooldowns(path)
     prev = data.get(lane) or {}
-    streak = int(prev.get("streak") or 0) + 1 if float(prev.get("until") or 0) > now - COOLDOWN_MAX_S else 1
+    prev_until = prev.get("until")
+    streak = int(prev.get("streak", 1)) + 1 if isinstance(prev_until, (int, float)) and prev_until > now - COOLDOWN_MAX_S else 1
     wait = min(COOLDOWN_MAX_S, COOLDOWN_BASE_S[kind] * (2 ** min(streak - 1, 3)))
     entry = {"kind": kind, "streak": streak, "until": now + wait, "set_at": now, "error": (error or "")[:120]}
     data[lane] = entry
@@ -175,10 +176,10 @@ def cooldown_remaining(lane: str, *, now: float | None = None, path: Path | None
     """Seconds left on the lane's cooldown, 0.0 when it is not cooling down."""
     now = time.time() if now is None else now
     entry = _read_cooldowns(path).get((lane or "").strip().lower()) or {}
-    try:
-        return max(0.0, float(entry.get("until") or 0) - now)
-    except (TypeError, ValueError):
-        return 0.0
+    until = entry.get("until")
+    if not isinstance(until, (int, float)):
+        return 0.0  # no cooldown recorded (explicitly: not "unknown availability")
+    return max(0.0, float(until) - now)
 
 
 def lane_available(lane: str) -> bool:
