@@ -145,3 +145,31 @@ def test_dry_run_starts_nothing(tmp_path, capsys):
 def test_missing_rss_renders_unknown_not_zero():
     md = tm.render_md({"pairs": [], "persistent": []}, [{"label": "boot", "rss_kb": None, "hwm_kb": 2048}])
     assert "| boot | n/a | 2 | n/a |" in md
+
+
+def test_api_routes_refuse_broker_paths_even_with_include_broker(tmp_path):
+    f = tmp_path / "api.txt"
+    f.write_text("/api/v2/overview\n/api/v2/brokers/schwab/token-health\n/api/v2/orders\n/api/v3/cio/home\n")
+    routes, skipped = tm.load_routes(f, include_broker=True, api=True)
+    assert routes == ["/api/v2/overview", "/api/v3/cio/home"] and len(skipped) == 2
+    f.write_text("/v3/advisory\n")
+    with pytest.raises(ValueError):
+        tm.load_routes(f, api=True)
+    assert tm.BROKER_API_RE.search("http://127.0.0.1:7787/api/v2/brokers/schwab/token-health?probe=0"), "page mode aborts it"
+
+
+def test_api_rss_table_ranks_repeat_growth_over_first_touch():
+    rows = [
+        {"pass": "pass1", "route": "/a", "status": 200, "seconds": 1, "rss_before_kb": 0, "rss_after_kb": 90_000},
+        {"pass": "pass2", "route": "/a", "status": 200, "seconds": 1, "rss_before_kb": 0, "rss_after_kb": 0},
+        {"pass": "pass1", "route": "/b", "status": 200, "seconds": 2, "rss_before_kb": 0, "rss_after_kb": 10_000},
+        {"pass": "pass2", "route": "/b", "status": 200, "seconds": 3, "rss_before_kb": 0, "rss_after_kb": 10_000},
+        {"pass": "pass3", "route": "/b", "status": 200, "seconds": 1, "rss_before_kb": 0, "rss_after_kb": 10_000},
+        {"pass": "pass2", "route": "/c", "status": "TimeoutError", "seconds": 90, "rss_before_kb": None, "rss_after_kb": 5},
+    ]
+    t = tm.api_rss_table(rows)
+    assert [r["route"] for r in t[:2]] == ["/b", "/a"], "growth that recurs after pass 1 ranks first"
+    assert t[0]["later_kb"] == 20_000 and t[0]["max_s"] == 3.0
+    c = next(r for r in t if r["route"] == "/c")
+    assert c["first_kb"] is None and c["later_n"] == 0, "unknown RSS is not a zero delta"
+    assert "| n/a |" in tm.render_api_md([c])

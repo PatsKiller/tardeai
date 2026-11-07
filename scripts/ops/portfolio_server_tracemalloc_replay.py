@@ -50,6 +50,7 @@ import subprocess
 import sys
 import time
 import tracemalloc
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -61,6 +62,11 @@ SNAP_SIGNAL = signal.SIGUSR1
 
 #: Pages whose name is the broker execution subsystem. Skipped by default (AGENTS.md rule 2).
 BROKER_PAGE_RE = re.compile(r"broker|schwab|alpaca|place[-_]?order", re.I)
+#: API calls a page makes into the broker subsystem. Aborted in page mode and refused in --api mode, always:
+#: run3 (LQ-229) saw a page call /api/v2/brokers/schwab/token-health, which held a thread for 2,650 s.
+BROKER_API_RE = re.compile(r"/api/v\d+/brokers?/|schwab|alpaca|/orders?\b|place[-_]?order", re.I)
+#: Snapshot dumps of a 25-frame trace of a 1 GB heap took more than 600 s in run3; allow for that.
+SNAP_TIMEOUT_S = 1800.0
 #: Files that must never be visible to the second instance.
 SECRET_NAME_RE = re.compile(r"(^|/)\.env($|\.)|credential|secret|_tokens?\.(json|env|ya?ml)$", re.I)
 #: A key with one of these words is never forwarded to the second instance, whatever its source.
@@ -110,8 +116,12 @@ FORCED = {
 
 
 # ── pure helpers (unit-tested) ────────────────────────────────────────────────
-def load_routes(path: Path, *, include_broker: bool = False) -> tuple[list[str], list[str]]:
-    """``(routes, skipped)``: one ``/v3/...`` path per line; blanks and ``#`` comments ignored."""
+def load_routes(path: Path, *, include_broker: bool = False, api: bool = False) -> tuple[list[str], list[str]]:
+    """``(routes, skipped)``: one path per line; blanks and ``#`` comments ignored.
+
+    ``api=True``: every line must be an ``/api/`` path and broker API paths are skipped whatever
+    ``include_broker`` says (rule 2: no agent reaches the broker subsystem, even in a sandbox).
+    """
     routes: list[str] = []
     skipped: list[str] = []
     for raw in Path(path).read_text(encoding="utf-8").splitlines():
@@ -120,7 +130,13 @@ def load_routes(path: Path, *, include_broker: bool = False) -> tuple[list[str],
             continue
         if not line.startswith("/"):
             raise ValueError(f"route must be a path starting with '/': {line!r}")
-        if not include_broker and BROKER_PAGE_RE.search(line):
+        if api:
+            if not line.startswith("/api/"):
+                raise ValueError(f"--api routes must start with /api/: {line!r}")
+            if BROKER_API_RE.search(line) or BROKER_PAGE_RE.search(line):
+                skipped.append(line)
+                continue
+        elif not include_broker and BROKER_PAGE_RE.search(line):
             skipped.append(line)
             continue
         routes.append(line)
@@ -309,19 +325,67 @@ def render_md(report: dict, rss: list[dict]) -> str:
     return "\n".join(out) + "\n"
 
 
+def api_rss_table(rows: list[dict], n: int = TOP_N) -> list[dict]:
+    """Per-route VmRSS growth from ``api_rss.jsonl`` rows, ranked by growth AFTER the first pass.
+
+    The first call of a route pays first-touch caches; growth that recurs in later passes is the leak
+    signal. A row with an unknown RSS (None) is left out of the sums, never counted as zero.
+    """
+    by: dict[str, dict] = {}
+    for r in rows:
+        t = by.setdefault(r["route"], {"route": r["route"], "first_kb": None, "later_kb": 0, "later_n": 0,
+                                       "per_pass_kb": {}, "max_s": 0.0, "statuses": set()})
+        t["statuses"].add(r.get("status"))
+        t["max_s"] = max(t["max_s"], float(r.get("seconds") or 0.0))
+        before, after = r.get("rss_before_kb"), r.get("rss_after_kb")
+        if before is None or after is None:
+            continue
+        d = after - before
+        t["per_pass_kb"][r["pass"]] = d
+        if r["pass"] == "pass1":
+            t["first_kb"] = d
+        else:
+            t["later_kb"] += d
+            t["later_n"] += 1
+    out = []
+    for t in by.values():
+        t["statuses"] = sorted(str(s) for s in t["statuses"])
+        out.append(t)
+    out.sort(key=lambda t: (t["later_kb"], t["first_kb"] or 0), reverse=True)
+    return out[:n]
+
+
+def render_api_md(table: list[dict]) -> str:
+    out = ["## Per-route VmRSS growth (sequential GETs, one at a time)", "",
+           "| # | route | pass1 +MB | later passes +MB | per pass MB | max s | status |", "|---|---|---|---|---|---|---|"]
+    for i, t in enumerate(table, 1):
+        first = "n/a" if t["first_kb"] is None else f"{t['first_kb'] / 1024:.1f}"
+        per = ", ".join(f"{k}:{v / 1024:.1f}" for k, v in sorted(t["per_pass_kb"].items()))
+        out.append(f"| {i} | `{t['route']}` | {first} | {t['later_kb'] / 1024:.1f} | {per} | {t['max_s']:.1f} | "
+                   f"{'/'.join(t['statuses'])} |")
+    return "\n".join(out) + "\n"
+
+
 def report_dir(out: Path) -> dict:
     order = ["boot"] + sorted(
         (p.stem.removeprefix("snap-") for p in out.glob("snap-pass*.tmsnap")), key=lambda s: int(s[4:])
     )
     snaps = [(label, tracemalloc.Snapshot.load(str(out / f"snap-{label}.tmsnap"))) for label in order
              if (out / f"snap-{label}.tmsnap").exists()]
-    if len(snaps) < 2:
-        raise SystemExit(f"{out}: need at least two snapshots, found {[s[0] for s in snaps]}")
-    report = build_report(snaps)
     rss = [json.loads(x) for x in (out / "rss.jsonl").read_text().splitlines()] if (out / "rss.jsonl").exists() else []
+    api_rows = ([json.loads(x) for x in (out / "api_rss.jsonl").read_text().splitlines() if x.strip()]
+                if (out / "api_rss.jsonl").exists() else [])
+    if len(snaps) < 2 and not api_rows:
+        raise SystemExit(f"{out}: need at least two snapshots, found {[s[0] for s in snaps]}")
+    report = build_report(snaps) if len(snaps) >= 2 else {"schema": "TracemallocReplayReport@v1", "frames": 0,
+                                                            "pairs": [], "persistent": []}
     report["rss"] = rss
+    md = render_md(report, rss)
+    if api_rows:
+        report["api_rss"] = api_rss_table(api_rows, n=40)
+        md += "\n" + render_api_md(report["api_rss"])
     (out / "report.json").write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
-    (out / "report.md").write_text(render_md(report, rss), encoding="utf-8")
+    (out / "report.md").write_text(md, encoding="utf-8")
     return report
 
 
@@ -337,17 +401,21 @@ def boot(server: Path, out: Path) -> None:
     """Run portfolio_server.py as __main__ with tracemalloc on; SIGUSR1 + a label file dump a snapshot."""
     import runpy
 
-    tracemalloc.start(FRAMES)
+    frames = int(os.environ.get("TM_REPLAY_FRAMES", FRAMES))
+    if frames > 0:
+        tracemalloc.start(frames)
 
     def _snap(_signum, _frame):
         label = (out / "next-label").read_text().strip()
         gc.collect()
-        snap = tracemalloc.take_snapshot()
-        tmp = out / f"snap-{label}.tmsnap.tmp"
-        snap.dump(str(tmp))
-        os.replace(tmp, out / f"snap-{label}.tmsnap")
+        if frames > 0:
+            snap = tracemalloc.take_snapshot()
+            tmp = out / f"snap-{label}.tmsnap.tmp"
+            snap.dump(str(tmp))
+            os.replace(tmp, out / f"snap-{label}.tmsnap")
         row = {"label": label, "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "rss_kb": _status_kb("VmRSS"),
-               "hwm_kb": _status_kb("VmHWM"), "traced": tracemalloc.get_traced_memory()[0]}
+               "hwm_kb": _status_kb("VmHWM"),
+               "traced": tracemalloc.get_traced_memory()[0] if frames > 0 else None}
         with open(out / "rss.jsonl", "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
 
@@ -375,12 +443,18 @@ def _wait_health(port: int, proc: subprocess.Popen, timeout: float = 240.0) -> f
     raise RuntimeError(f"replay instance not healthy after {timeout:.0f}s (last: {last})")
 
 
-def _snapshot(proc: subprocess.Popen, out: Path, label: str, timeout: float = 600.0) -> None:
+def _rss_rows(out: Path) -> int:
+    p = out / "rss.jsonl"
+    return len(p.read_text().splitlines()) if p.exists() else 0
+
+
+def _snapshot(proc: subprocess.Popen, out: Path, label: str, timeout: float = SNAP_TIMEOUT_S) -> None:
+    """Signal the instance and wait for its rss.jsonl row (written after the dump, when tracing is on)."""
     (out / "next-label").write_text(label)
-    target = out / f"snap-{label}.tmsnap"
+    n0 = _rss_rows(out)
     proc.send_signal(SNAP_SIGNAL)  # our own child, inside our own pid namespace
     t0 = time.monotonic()
-    while not target.exists():
+    while _rss_rows(out) <= n0:
         if time.monotonic() - t0 > timeout:
             raise RuntimeError(f"snapshot {label} not written in {timeout:.0f}s")
         time.sleep(1)
@@ -396,7 +470,7 @@ def replay_pass(port: int, routes: list[str], out: Path, label: str, *, batch: i
 
         def _route(route):
             req = route.request
-            if "/api/" in req.url and req.method != "GET":
+            if "/api/" in req.url and (req.method != "GET" or BROKER_API_RE.search(req.url)):
                 route.abort()
             else:
                 route.continue_()
@@ -432,6 +506,30 @@ def replay_pass(port: int, routes: list[str], out: Path, label: str, *, batch: i
         browser.close()
 
 
+def api_pass(port: int, routes: list[str], out: Path, label: str, pid: int, *, cap_s: float = 90.0) -> None:
+    """GET each API path alone, in order, and record the server's VmRSS before and after it."""
+    with open(out / "api_rss.jsonl", "a", encoding="utf-8") as log:
+        for r in routes:
+            if BROKER_API_RE.search(r):  # load_routes already dropped these; belt and braces
+                continue
+            before = _status_kb("VmRSS", str(pid))
+            t0 = time.monotonic()
+            size = None
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{port}{r}", timeout=cap_s) as resp:  # noqa: S310 -- loopback in a private netns
+                    status = resp.status
+                    size = len(resp.read())
+            except urllib.error.HTTPError as exc:
+                status = exc.code
+            except Exception as exc:  # noqa: BLE001 -- recorded per route; the pass continues
+                status = f"{type(exc).__name__}: {exc}"[:200]
+            row = {"pass": label, "route": r, "status": status, "seconds": round(time.monotonic() - t0, 2),
+                   "bytes": size, "rss_before_kb": before, "rss_after_kb": _status_kb("VmRSS", str(pid)),
+                   "hwm_kb": _status_kb("VmHWM", str(pid))}
+            log.write(json.dumps(row) + "\n")
+            log.flush()
+
+
 def drive(args) -> int:
     out = Path(args.out)
     work = Path("/tmp/lq229")  # sandbox tmpfs
@@ -443,21 +541,25 @@ def drive(args) -> int:
     env = server_env(scripts_dir=str(root / "scripts"), runtime_dir=f"/run/user/{os.getuid()}",
                      boot_stamp=str(work / "boot.json"), db_user=os.environ.get("USER") or str(os.getuid()))
     py = str(root / ".venv" / "bin" / "python")
-    routes, skipped = load_routes(Path(args.routes), include_broker=args.include_broker_pages)
+    routes, skipped = load_routes(Path(args.routes), include_broker=args.include_broker_pages, api=args.api)
+    env["TM_REPLAY_FRAMES"] = str(args.frames)
     log = open(out / "server.log", "w", encoding="utf-8")  # noqa: SIM115 -- lives as long as the child
     proc = subprocess.Popen(  # noqa: S603 -- fixed argv, our own copy of the build
         [py, os.path.abspath(__file__), "--boot", str(root / "scripts" / "portfolio_server.py"), "--out", str(out)],
         cwd=str(root), env=env, stdout=log, stderr=subprocess.STDOUT,
     )
     meta = {"build": str(args.build), "port": args.port, "routes": len(routes), "skipped": skipped,
-            "passes": args.passes, "pid_in_sandbox": proc.pid}
+            "passes": args.passes, "pid_in_sandbox": proc.pid, "api": args.api, "frames": args.frames}
     try:
         meta["boot_s"] = round(_wait_health(args.port, proc), 1)
         time.sleep(args.settle)
         _snapshot(proc, out, "boot")
         for n in range(1, args.passes + 1):
             t0 = time.monotonic()
-            replay_pass(args.port, routes, out, f"pass{n}", batch=args.batch)
+            if args.api:
+                api_pass(args.port, routes, out, f"pass{n}", proc.pid)
+            else:
+                replay_pass(args.port, routes, out, f"pass{n}", batch=args.batch)
             meta[f"pass{n}_s"] = round(time.monotonic() - t0, 1)
             time.sleep(args.settle)
             _snapshot(proc, out, f"pass{n}")
@@ -483,6 +585,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch", type=int, default=6)
     ap.add_argument("--settle", type=float, default=15.0, help="seconds idle before each snapshot")
     ap.add_argument("--include-broker-pages", action="store_true")
+    ap.add_argument("--api", action="store_true",
+                    help="routes are /api/ GET paths, fetched one at a time with VmRSS before/after (no browser)")
+    ap.add_argument("--frames", type=int, default=FRAMES, help="tracemalloc frames; 0 = RSS only, tracing off")
     ap.add_argument("--dry-run", action="store_true", help="print the sandbox and plan; start nothing")
     ap.add_argument("--report", type=Path, help="re-rank the snapshots already in this directory")
     ap.add_argument("--boot", type=Path, help=argparse.SUPPRESS)
@@ -506,15 +611,16 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"{build} is not a portfolio-server build")
     if args.port == LIVE_PORT:
         ap.error("--port must not be the live port")
-    routes, skipped = load_routes(args.routes, include_broker=args.include_broker_pages)
+    routes, skipped = load_routes(args.routes, include_broker=args.include_broker_pages, api=args.api)
     out = args.out.resolve()
     inner = [str(build / ".venv" / "bin" / "python"), os.path.abspath(__file__), "--inner",
              "--build", str(build), "--routes", str(out / "routes.txt"), "--out", str(out),
              "--port", str(args.port), "--passes", str(args.passes), "--batch", str(args.batch),
-             "--settle", str(args.settle)] + (["--include-broker-pages"] if args.include_broker_pages else [])
+             "--settle", str(args.settle), "--frames", str(args.frames)] + (
+                 ["--include-broker-pages"] if args.include_broker_pages else []) + (["--api"] if args.api else [])
     argv_bw = bwrap_argv(build=build, out_dir=out, home=Path.home(), uid=os.getuid(), inner=inner)
     plan = {"build": str(build), "port": args.port, "passes": args.passes, "routes": len(routes),
-            "skipped_broker_pages": skipped, "masked": [str(p) for p in secret_masks(build)],
+            "api": args.api, "frames": args.frames, "skipped_broker_pages": skipped, "masked": [str(p) for p in secret_masks(build)],
             "env_keys": sorted(server_env(scripts_dir="<copy>/scripts", runtime_dir="<tmpfs>",
                                           boot_stamp="<tmpfs>", db_user="<peer>")),
             "bwrap": argv_bw}
