@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_incident_fanin_reopen_20261107",
+  "files": [
+    "tests/test_n8n_incident_fanin_reopen_20261107.py"
+  ],
+  "anchor": "N8N_INCIDENT_FANIN_REOPEN_20261107",
+  "comment": [
+    "ANCHOR: n8n_incident_fanin_reopen_20261107 — LQ-20261107-116. The fan-in's key is per (source, item, UTC day) and",
+    "the gateway's CONSUMED is terminal, so a finding that closed and came back the same day used to be republished",
+    "under its closed key: the receipt said open, the ledger said closed, and it could never be closed again.",
+    "The fix walks to the next occurrence key (<key>-r1, -r2, ...) after a recovery closure, never after an operator",
+    "ack, and caps the walk. Registered because a new pytest file that no gate names is not run by CI."
+  ]
+}

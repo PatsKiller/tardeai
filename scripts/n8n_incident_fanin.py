@@ -8,7 +8,10 @@ the gateway's n8n workflow-error events (lane n8n-workflow-error, one incident p
 comms-intent consumer's open incidents and dead letters (scripts/n8n_comms_intent_consumer.py). Every open finding becomes ONE coordination event on lane `incident-fanin`
 (idempotent per source+item+UTC day), walked to ARTIFACT_WRITTEN with a reference to the
 source receipt. A finding that disappears is closed with a `consumer_ack` from
-`recovery-observer`. Operator acks (Telegram) are a separate, later hook.
+`recovery-observer`. Operator acks (Telegram) are a separate, later hook. A finding that comes
+back after that close the same day opens the next occurrence key (``<key>-r1``, ``-r2``, …):
+the day key is terminal once consumed, so reusing it would publish an incident the ledger has
+already closed and that nothing could close again.
 
     python3 scripts/n8n_incident_fanin.py --dry-run
     python3 scripts/n8n_incident_fanin.py --apply
@@ -53,6 +56,13 @@ RECEIPT_REL = "data/runtime/n8n_incident_fanin_last.json"
 NOTES: dict[str, str] = {}  # per-source availability notes, copied onto the receipt (2026-10-08)
 LANE_REGISTRY_RECEIPT_REL = "data/runtime/n8n_lane_registry_drift_last.json"
 AUTHORITY = "READ_ONLY_ADVISORY"
+# The consumer name this script signs its own closures with (``recovered`` below). A key CONSUMED by anyone else
+# is an operator ack (scripts/incident_notifier.py), a decision to stop reporting that occurrence — never reopened.
+RECOVERY_CONSUMER = "recovery-observer"
+# One (source, item) gets one key per UTC day, and a key is CONSUMED for good once its occurrence ends. A finding
+# that closes and comes back the same day therefore needs the next occurrence key; the cap keeps a flapping source
+# from minting keys without end (after it the finding keeps the last key and is reported in that state).
+MAX_OCCURRENCES = 20
 SEV = {
     "NO_OUTPUT": "P2",
     "SILENT": "P2",
@@ -1427,6 +1437,22 @@ def idem_key(f: dict[str, Any], day: str) -> str:
     return "inc-" + hashlib.sha256(f"{f['source']}|{f['item']}|{day}".encode("utf-8")).hexdigest()[:24]
 
 
+def occurrence_key(key: str, occurrence: int) -> str:
+    """``key`` itself for the first occurrence of the day, ``<key>-r<n>`` for each occurrence after a close. Pure.
+
+    A key is CONSUMED once its occurrence ends and CONSUMED is terminal in the gateway (``EDGES`` has no edge out
+    of it), so a finding that closes and returns cannot reuse the key: the gateway would report it CONSUMED and it
+    could be neither accepted as open again nor closed a second time (LQ-20261107-116)."""
+    return key if occurrence <= 0 else f"{key}-r{occurrence}"
+
+
+def _closed_by_recovery(status: dict[str, Any]) -> bool:
+    """True when the gateway holds this key CONSUMED by this script's own recovery closure — the earlier
+    occurrence ended and the finding is back, so the caller opens the next occurrence key. An operator ack (any
+    other consumer) is not a recurrence: the key stays closed for the day, exactly as before."""
+    return str(status.get("state") or "") == "CONSUMED" and str(status.get("consumer") or "") == RECOVERY_CONSUMER
+
+
 def _stable(ts: Any, fallback: datetime) -> datetime:
     try:
         d = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
@@ -1435,8 +1461,8 @@ def _stable(ts: Any, fallback: datetime) -> datetime:
         return fallback
 
 
-def build_event(f: dict[str, Any], *, day: str, now: datetime, sha: str) -> dict[str, Any]:
-    key = idem_key(f, day)
+def build_event(f: dict[str, Any], *, day: str, now: datetime, sha: str, occurrence: int = 0) -> dict[str, Any]:
+    key = occurrence_key(idem_key(f, day), occurrence)
     now = _stable(f.get("detected_at"), now)  # payload must not drift between runs
     return {
         "event_id": f"evt-{LANE}-{key}",
@@ -1578,6 +1604,18 @@ def main(argv: list[str] | None = None) -> int:
         write_lane_registry_receipt(root, [f for f in findings if f["source"] == "lane_registry"], now, sha)
     for f in findings:
         ev = build_event(f, day=day, now=now, sha=sha)
+        occurrence = 0
+        st: dict[str, Any] = {}
+        if client is not None:
+            st = client.status(ev["idempotency_key"])
+            # The finding is open at its source but the key is already closed by an earlier occurrence today.
+            # Accepting it again is refused and closing it again is refused, so publishing it as-is would say
+            # "closed" in the ledger and "open" in this receipt for the rest of the day (LQ-20261107-116). Walk on
+            # to the next occurrence key. An operator ack is left alone (``_closed_by_recovery``).
+            while _closed_by_recovery(st) and occurrence < MAX_OCCURRENCES:
+                occurrence += 1
+                ev = build_event(f, day=day, now=now, sha=sha, occurrence=occurrence)
+                st = client.status(ev["idempotency_key"])
         current_keys.add(ev["idempotency_key"])
         row = {
             **{k: f[k] for k in ("source", "item", "severity", "detail", "detected_at")},
@@ -1597,10 +1635,11 @@ def main(argv: list[str] | None = None) -> int:
         ):
             if extra in f:
                 row[extra] = f[extra]
+        if occurrence:
+            row["occurrence"] = occurrence  # which return of this finding today the row describes
         if client is None:
             row["state"] = "DRY_RUN"
         else:
-            st = client.status(ev["idempotency_key"])
             if st.get("state") == "UNREACHABLE":
                 acc = st
             elif st.get("state") == "REFUSED" and st.get("reason") == "unknown_event":
