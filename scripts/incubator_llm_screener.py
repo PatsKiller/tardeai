@@ -15,6 +15,30 @@ the allowlist ``llm_route`` of lane incubator-llm-screener) the screen is ONE go
 in-process cloud_review (CLOUD_REVIEW=1) is skipped, so no provider client is reachable. A refusal is a per-symbol
 ``error`` (no UPDATE). --dry-run makes no model call. The cron line is unchanged.
 """
+import sys as _dr_sys
+
+if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
+    # n8n onboarding (LQ-20261107-25, 2026-11-07): --dry-run is an OFFLINE plan and wins over --run. It returns here,
+    # before the .env load, before argparse and before get_db(), so an onboarding dry run needs no database password
+    # and reaches no provider: the executor runs this arm as the lane's write-free shadow step (AGENTS §23 onboarding
+    # steps 3-8). Before this arm the flag existed but the DB connection came first, so the shadow step failed with
+    # `psycopg2.OperationalError: no password supplied` -- a dry run that cannot run is not a proof.
+    import os as _dr_os
+
+    _dr_sys.path.insert(0, _dr_os.path.join(_dr_os.path.dirname(_dr_os.path.abspath(__file__))))
+    from lib.lane_output import emit as _dr_emit, output_block as _dr_block
+
+    _dr_lane = "incubator-llm-screener"
+    _dr_would = (
+        "fetch up to --limit incubator candidates at score >= 40, enrich each (catalyst, news, social, technical), "
+        "screen it through the governed bridge as process incubator_llm_screener and write llm_screen_grade / "
+        "llm_screen_verdict back to incubator_universe"
+    )
+    print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
+          "nothing read from env/DB/network, no model call, no send, no file write")
+    _dr_emit(_dr_lane, "dry_run", _dr_block(produced=0, attempted=0, empty_reason="dry_run", unit="incubator_candidate"))
+    raise SystemExit(0)
+
 import argparse
 import json
 import logging
