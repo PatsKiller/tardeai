@@ -119,7 +119,7 @@ def test_the_lane_map_reads_the_lane_registry_so_a_wrapper_scheduler_is_found(mo
         {"lane_id": "multi-a", "state": "ACTIVE",
          "scheduler": {"kind": "cron", "match": ["scripts/multi.py --band open", "scripts/multi.py --band close"]}},
         {"lane_id": "unrelated", "state": "ACTIVE", "scheduler": {"kind": "cron", "match": "scripts/other.py"}},
-    ]}))
+    ]}))  # nosemgrep: tq-py-nonatomic-store-write -- tmp_path fixture, not a store
     lane_map, error = jcm._lane_map()
     assert error.endswith("Error"), f"the missing allowlist is reported: {error}"
     assert lane_map == {"topic_ingestion": ["topic-ingestion"], "multi": ["multi-a"]}, lane_map
@@ -133,7 +133,7 @@ def test_an_unreadable_catalogue_reports_an_error_and_maps_nothing(monkeypatch, 
 
 def _registry(tmp_path, lanes):
     (tmp_path / "config").mkdir(exist_ok=True)
-    (tmp_path / "config/lane_registry.json").write_text(json.dumps({"lanes": lanes}))
+    (tmp_path / "config/lane_registry.json").write_text(json.dumps({"lanes": lanes}))  # nosemgrep: tq-py-nonatomic-store-write -- tmp_path fixture
 
 
 def test_a_wrapper_lane_schedules_the_job_it_runs(monkeypatch, tmp_path):
