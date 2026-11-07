@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "run_quality_20261106",
+  "files": [
+    "tests/test_run_quality_20261106.py"
+  ],
+  "anchor": "RUN_QUALITY_20261106",
+  "comment": [
+    "ANCHOR: RUN_QUALITY_20261106 — /api/v2/jobs-history per-lane run QUALITY grade (GOOD/DEGRADED/EMPTY/FAILED/NOT_LIVE/",
+    "UNPROVEN) with plain-English reasons, checks and not-as-designed flags; ?quality= filter (400 on unknown);",
+    "scripts/run_quality_snapshot.py is the only writer of run_quality_history.jsonl (dry-run default). Hermetic."
+  ]
+}
