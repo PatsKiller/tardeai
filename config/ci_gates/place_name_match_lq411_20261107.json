@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "place_name_match_lq411_20261107",
+  "files": [
+    "tests/test_place_name_match_lq411_20261107.py"
+  ],
+  "anchor": "PLACE_NAME_MATCH_LQ411_20261107",
+  "comment": [
+    "ANCHOR: PLACE_NAME_MATCH_LQ411_20261107 — a place name never binds an issuer, judged at the",
+    "width that actually matched (YORK/LAS VEGAS -> YSS/LVS via progressive-prefix narrowing)."
+  ]
+}

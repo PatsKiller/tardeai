@@ -44,6 +44,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
+# scripts.lib FIRST, as in _instruments() below: a bare `lib.` import can load a
+# second copy beside the scripts.lib one.
+try:
+    from scripts.lib.non_issuer_phrases import is_non_issuer_phrase
+except Exception:  # pragma: no cover - direct-script import path
+    from lib.non_issuer_phrases import is_non_issuer_phrase  # type: ignore
+
 SCHEMA = "CompanyNameIndex@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
@@ -78,6 +85,16 @@ def normalize_name(name: Any) -> str:
             s = s[:-2].strip()
             changed = True
     return s
+
+
+def _phrase_form(name: Any) -> str:
+    """The name as written: punctuation to spaces, whitespace collapsed, legal suffixes KEPT.
+
+    `normalize_name` strips "INC"/"CORP"/class letters, which is right for matching
+    against the feed and wrong for judging a stoplist: "Nasdaq Inc" is the issuer
+    NDAQ, while "NASDAQ" alone is the exchange. LQ-20261107-411.
+    """
+    return _WS.sub(" ", _PUNCT.sub(" ", str(name or "").upper())).strip()
 
 
 def _instruments() -> dict[str, Any]:
@@ -279,20 +296,18 @@ def is_exact_name(name: Any) -> bool:
     return len(set(hits)) == 1
 
 
-def resolve_name(name: Any) -> Optional[dict[str, Any]]:
-    """Company name -> {symbol, description, cusip}, or None.
+def _match(norm: str) -> tuple[list[str], Optional[str], Optional[str]]:
+    """(symbols, matched_on, matched_width) for a normalised name.
 
-    None covers three cases and deliberately does not distinguish them to the
-    caller: unknown to the feed, ambiguous, or too short to be meaningful. All
-    three mean "do not attach this question to an issuer".
+    `matched_width` is the part of `norm` that actually identified the instrument:
+    the whole name for an exact or compacted hit, the surviving leading tokens for a
+    narrowed one. LQ-20261107-411 needs it — the stoplist must judge the words that
+    MATCHED, not the words the text around them contained.
     """
-    norm = normalize_name(name)
-    if len(norm) < 3:
-        return None
-    exact, first = _build()
-
+    exact, _first = _build()
     hits = exact.get(norm)
-    matched_on = "exact"
+    matched_on: Optional[str] = "exact"
+    width: Optional[str] = norm
 
     if not hits:
         # PROGRESSIVE PREFIX. The feed CONTRACTS words, it does not merely
@@ -308,6 +323,7 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
         tokens = norm.split()
         for k in range(len(tokens), 0, -1):
             prefix = " ".join(tokens[:k])
+            width = prefix
             if len(prefix) < 3:
                 # A narrowed prefix obeys the same "too short to be meaningful" floor as the query.
                 # 2026-10-14: the CIO stance chrome "RE-ENTER" normalised to "RE ENTER", narrowed to
@@ -322,7 +338,7 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
             if len(cands) > 1:
                 # Ambiguous at this width; a SHORTER prefix can only be more
                 # ambiguous, so stop rather than keep shrinking into a guess.
-                return None
+                return [], None, prefix
 
     # COMPACTED BRAND. The feed often glues a spoken two-word name into one
     # token: "SENTINELONE INC A" for "Sentinel One". Progressive prefix cannot
@@ -335,10 +351,66 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
         if compact != norm and len(compact) >= 3:
             compact_hits = exact.get(compact)
             if compact_hits and len(set(compact_hits)) == 1:
-                hits, matched_on = compact_hits, "compacted"
+                hits, matched_on, width = compact_hits, "compacted", compact
 
     if not hits or len(set(hits)) != 1:
-        return None                      # unknown, or ambiguous — never guess
+        return [], None, width      # unknown, or ambiguous — never guess
+    return list(hits), matched_on, width
+
+
+def _non_issuer_match(name: Any, hits: list[str], matched_on: Optional[str],
+                      width: Optional[str]) -> Optional[str]:
+    """The exchange/wire/place phrase this match rests on, or None.
+
+    Two shapes, and the difference matters (LQ-20261107-411):
+
+    * the name AS WRITTEN is the phrase — "LAS VEGAS", "york". Judged on
+      `_phrase_form`, which keeps legal suffixes, because `normalize_name` strips
+      "INC" and would turn the issuer "Nasdaq Inc" into the exchange "NASDAQ"
+      (LQ-122's control case).
+    * the matcher NARROWED onto the phrase — "Las Vegas Review-Journal" ->
+      "LAS VEGAS", "York University" -> "YORK". Judged on the surviving width,
+      which has no suffix left to lose.
+    """
+    form = _phrase_form(name)
+    if is_non_issuer_phrase(form):
+        return form.casefold()
+    if hits and matched_on == "name_prefix" and width and is_non_issuer_phrase(width):
+        return width.casefold()
+    return None
+
+
+def non_issuer_match(name: Any) -> Optional[str]:
+    """The non-issuer phrase (exchange, wire, place) this name binds on, or None.
+
+    The same judgement `resolve_name` makes when it refuses a place name, exposed so
+    a row-cleanup rule can NAME the reason without re-implementing the narrowing.
+    "Las Vegas Sands" -> None (a company); "Las Vegas" -> "las vegas" (a place);
+    "Las Vegas Review-Journal" -> "las vegas" (narrowed onto the place).
+    """
+    norm = normalize_name(name)
+    if len(norm) < 3:
+        return None
+    hits, matched_on, width = _match(norm)
+    return _non_issuer_match(name, hits, matched_on, width)
+
+
+def resolve_name(name: Any) -> Optional[dict[str, Any]]:
+    """Company name -> {symbol, description, cusip}, or None.
+
+    None covers four cases and deliberately does not distinguish them to the
+    caller: unknown to the feed, ambiguous, too short to be meaningful, or the
+    words that matched name a market/wire/place rather than a company. All four
+    mean "do not attach this question to an issuer".
+    """
+    norm = normalize_name(name)
+    if len(norm) < 3:
+        return None
+    hits, matched_on, width = _match(norm)
+    if _non_issuer_match(name, hits, matched_on, width):
+        return None
+    if not hits:
+        return None
 
     sym = hits[0]
     rec = _instruments().get(sym) or {}

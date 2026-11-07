@@ -84,8 +84,15 @@ def test_city_name_does_not_bind_nyt():
 
 
 def test_the_fixtures_would_bind_without_the_stoplist(monkeypatch):
-    """Proof the stoplist is what stops the binding, not an empty registry."""
+    """Proof the stoplist is what stops the binding, not an empty registry.
+
+    LQ-20261107-411 put the same vocabulary behind a second door: progressive-prefix
+    narrowing in `company_name_index.resolve_name` can match words the text did not
+    contain, so it refuses a place/wire/exchange too. Both doors are opened here, or
+    the fixtures would not bind and the assertion would prove nothing.
+    """
     monkeypatch.setattr(T, "NON_ISSUER_PHRASES", frozenset())
+    monkeypatch.setattr(C, "is_non_issuer_phrase", lambda text: False)
     assert "NDAQ" in _bound(T.tag_inbound("NASDAQ closed higher.", registry=REG))
     assert "GL" in _bound(T.tag_inbound("GLOBE NEWSWIRE reports.", registry=REG))
     assert "NYT" in _bound(T.tag_inbound("news out of NEW YORK.", registry=REG))
