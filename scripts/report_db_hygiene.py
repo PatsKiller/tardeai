@@ -10,7 +10,10 @@ turns into open incidents until they are fixed:
   BACKUP_NAMED_TABLE   a bak_/_bak_/_backup_/_legacy table exists
   SIZE_BUDGET          pg_database_size exceeds size_budget_gb
   TABLE_BUDGET         a table exceeds its table_budget_mb
-  STALE_WINDOW         rows older than window_days + 2 remain for a DELETE/ARCHIVE row (retention not enforcing)
+  STALE_WINDOW         rows older than window_days + 2 remain that retention CAN delete (retention not
+                       enforcing). Counted with the same single-column foreign-key guard db_retention.py
+                       applies, so a row deliberately kept because a child row still references it
+                       (fk_guard, db_retention.py) is not a finding; those are carried in ``stale_held``.
   DEAD_QUEUE           known queue tables with rows older than 30 d in terminal states
   RETENTION_SCHEDULERS a second scheduler for db_retention is installed (cron + timer)
   ARCHIVE_TRIPWIRE     (P1) a live consumer (repo scripts/config, crontab, user systemd unit) names an
@@ -70,6 +73,86 @@ def state_root() -> Path:
     return Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
 
 
+# --- STALE_WINDOW: count what retention can actually delete -----------------------------------------
+# 2026-11-06: the reader counted every old row and called it "retention not enforcing", while the writer
+# deliberately keeps a row whose child still references it (db_retention.fk_guard: "Expired rows nothing
+# references are deleted; referenced rows wait until their children expire under their own policy"). On
+# 2026-11-06 the two disagreed on every such table — decision_packets had 6,340 old rows and ZERO that
+# retention could delete (every one was referenced by a blueprint, run, contradiction or successor), and
+# aegis_steph_escalations reported the 3 rows its resolution history holds on purpose. A nightly P2 that
+# says a policy is not enforced when it is enforcing exactly as designed is noise that hides the real one.
+IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
+#: One row per foreign key: referenced table, child table (schema-qualified, quoted), child column, parent
+#: column. Single-column keys only — the shape db_retention.fk_guard() handles; a composite key is left to
+#: the writer's own loud error, never guessed at here.
+_FK_ROWS_SQL = """
+SELECT pa.relname,
+       format('%I.%I', n.nspname, ch.relname),
+       quote_ident(a.attname),
+       quote_ident(af.attname)
+  FROM pg_constraint c
+  JOIN pg_class ch ON ch.oid = c.conrelid
+  JOIN pg_class pa ON pa.oid = c.confrelid
+  JOIN pg_namespace n ON n.oid = ch.relnamespace
+  JOIN pg_namespace pn ON pn.oid = pa.relnamespace
+  JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
+  JOIN pg_attribute af ON af.attrelid = c.confrelid AND af.attnum = c.confkey[1]
+ WHERE c.contype = 'f' AND pn.nspname = 'public' AND array_length(c.conkey, 1) = 1
+"""
+
+
+def fk_guard_sql(rows) -> str:
+    """The guard db_retention.fk_guard() builds, from catalog rows (parent, child, child_col, parent_col).
+
+    Identifiers arrive already quoted by Postgres (``format``/``quote_ident``), so nothing user-supplied is
+    spliced: a table called ``select`` is ``"select"`` here, exactly as it is in the writer.
+    """
+    out = []
+    for row in rows:
+        if len(row) != 4:
+            continue
+        _parent, child, child_col, parent_col = row
+        out.append(f' AND NOT EXISTS (SELECT 1 FROM {child} ch WHERE ch.{child_col} = t.{parent_col})')
+    return "".join(out)
+
+
+def stale_window_findings(policies: dict, tables: set, columns: dict, q_fn=q) -> tuple[list[dict], list[dict]]:
+    """(findings, held) for every policy whose window has rows still inside it.
+
+    ``findings`` holds STALE_WINDOW only where retention could have deleted rows and did not.
+    ``held`` is the visibility half: tables whose old rows are all referenced by children, in the shape
+    ``{"table", "rows", "held_by_references"}``. Pure over ``q_fn``: tests pass a dict-backed fake.
+    """
+    findings: list[dict] = []
+    held: list[dict] = []
+    for t, r in policies.items():
+        if r.get("class") == "KEEP_FOREVER" or not r.get("window_days"):
+            continue
+        col = r.get("ts_column")
+        if t not in tables or col not in columns.get(t, set()):
+            continue
+        if not IDENT.match(str(t)) or not IDENT.match(str(col)):
+            findings.append({"code": "STALE_WINDOW", "item": t, "severity": "P3",
+                             "detail": "table or column name is not a plain identifier; count skipped"})
+            continue
+        w = int(r["window_days"])
+        try:
+            stale = int(q_fn(f"SELECT count(*) FROM \"{t}\" t WHERE t.\"{col}\" < now() - interval '{w + 2} days'")[0][0])
+            if stale == 0:
+                continue
+            guard = fk_guard_sql([row for row in q_fn(_FK_ROWS_SQL) if row and row[0] == t])
+            deletable = int(q_fn(f"SELECT count(*) FROM \"{t}\" t WHERE t.\"{col}\" < now() - interval '{w + 2} days'{guard}")[0][0])
+        except (RuntimeError, IndexError) as e:
+            findings.append({"code": "STALE_WINDOW", "item": t, "severity": "P3", "detail": f"count failed: {e}"})
+            continue
+        if deletable > 0:
+            findings.append({"code": "STALE_WINDOW", "item": t, "severity": "P2",
+                             "detail": f"{deletable} rows older than {w}+2 d; retention not enforcing"})
+        if stale > deletable:
+            held.append({"table": t, "rows": stale - deletable, "held_by_references": True})
+    return findings, held
+
+
 def tripwire_findings() -> list[dict]:
     """Reader half of the row-archive tripwire (2026-10-11). Never fails the report: a reader that
     cannot run is itself a finding."""
@@ -122,16 +205,8 @@ def collect(reg: dict, min_table_mb: int) -> dict:
     cols = {}
     for t, c in q("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public'"):
         cols.setdefault(t, set()).add(c)
-    for t, r in policies.items():
-        if r.get("class") == "KEEP_FOREVER" or not r.get("window_days") or t not in tnames or r["ts_column"] not in cols.get(t, set()):
-            continue
-        w = int(r["window_days"])
-        try:
-            n = int(q(f'SELECT count(*) FROM "{t}" WHERE "{r["ts_column"]}" < now() - interval \'{w + 2} days\'')[0][0])
-        except RuntimeError as e:
-            findings.append({"code": "STALE_WINDOW", "item": t, "severity": "P3", "detail": f"count failed: {e}"}); continue
-        if n > 0:
-            findings.append({"code": "STALE_WINDOW", "item": t, "severity": "P2", "detail": f"{n} rows older than {w}+2 d; retention not enforcing"})
+    stale, stale_held = stale_window_findings(policies, tnames, cols)
+    findings.extend(stale)
     for t, (c, where) in QUEUES.items():
         if t in tnames and c in cols.get(t, set()):
             n = int(q(f'SELECT count(*) FROM "{t}" WHERE "{c}" < now() - interval \'30 days\' AND ({where})')[0][0])
@@ -149,6 +224,9 @@ def collect(reg: dict, min_table_mb: int) -> dict:
         by[f["code"]] = by.get(f["code"], 0) + 1
     return {"schema": SCHEMA, "authority": "READ_ONLY_ADVISORY", "as_of": datetime.now(timezone.utc).isoformat(), "db_bytes": db_bytes,
             "size_budget_gb": budget, "tables": len(tables), "policies": len(policies), "findings": findings, "by_code": by, "archive_usage": arch_usage,
+            # additive (nothing reads it as a verdict): old rows retention keeps on purpose, because a
+            # child row still references them. Visible, but not an "enforcement" finding.
+            "stale_held": stale_held,
             "ok": not any(f["severity"] in {"P1", "P2"} for f in findings)}
 
 
