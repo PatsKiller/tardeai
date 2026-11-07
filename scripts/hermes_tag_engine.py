@@ -26,6 +26,12 @@ Zero paid LLM. Advisory-only; honors data/runtime/HERMES_DISABLED.
 the governed cloud classifier are counted (``retag.llm_would_call``) and keep their rule/fallback tag in the
 preview; ``generate_cloud`` is never imported or called. The --apply path and the bare preview are unchanged.
 
+Lane receipt (LQ-20261107-298): a real ``--apply`` run writes a LaneRunReceipt@v2 whose ``produced_count`` is the
+number of ``hermes_tag_efficacy`` rows it upserted — the lane's declared output_signal is that table's
+``updated_at``, so the count and the signal say the same thing. Without it the jobs page graded every live run
+UNPROVEN ``output_unverifiable`` (a ``db_max`` signal cannot be read from a receipt, and the run reported no item
+count). A dry run writes no receipt; it prints ``receipt_preview`` instead.
+
 Governed route (2026-10-15, n8n fabric cutover prerequisite G5): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run
 executor from the allowlist ``llm_route`` of lane hermes-learning-tag-engine) the classifier call goes only through the
 governed bridge as process ``hermes_tag_engine`` ($0.05/day registry cap); a refusal keeps the rule/fallback tag.
@@ -396,6 +402,63 @@ def tag_efficacy(cur, cfg, apply, *, dry_run=False):
     return out
 
 
+# ───────────────────── lane receipt (n8n output verdict) ─────────────────────
+#: Lane id on the n8n fabric (config/n8n_run_allowlist.json; health contract ``expected_output``).
+LANE_ID = "hermes-learning-tag-engine"
+
+
+def lane_output(result: dict) -> dict:
+    """LaneRunReceipt@v2 output fields for one REAL ``--apply`` run (LQ-20261107-298).
+
+    ``produced_count`` is the number of ``hermes_tag_efficacy`` rows this run wrote — one upsert per tag in
+    ``tag_efficacy``. The lane's registry ``output_signal`` is ``db_max hermes_tag_efficacy.updated_at``, so this
+    count is exactly the rows whose ``updated_at`` the run moved: zero means that column did not advance and the
+    lane produced nothing measurable, which the contract's ``min_produced`` rule must see as an empty, not as an
+    exit-0 success. (Before this, the lane wrote no receipt at all: the jobs page graded every live run UNPROVEN
+    ``output_unverifiable`` because a ``db_max`` signal is not readable from a receipt and the run reported no item
+    count.)
+
+    The retag and quality legs are reported beside the count in ``output_evidence``, never folded into it: the
+    contract's declared unit is efficacy rows, and a run that retagged research but wrote no efficacy row has not
+    advanced the declared output.
+    """
+    eff = result.get("efficacy") or {}
+    tags = [t for t in (eff.get("tags") or []) if isinstance(t, dict)]
+    produced = len(tags)
+    retag = result.get("retag") or {}
+    quality = result.get("quality") or {}
+    evidence = [{"kind": "store_rows", "ref": "hermes_tag_efficacy", "upserted": produced}]
+    if isinstance(retag.get("batch"), int):
+        evidence.append({"kind": "store_rows", "ref": "hermes_research_intelligence.strategy_tags",
+                         "rows_tagged": retag["batch"]})
+    if isinstance(quality.get("rows_updated"), int):
+        evidence.append({"kind": "store_rows", "ref": "hermes_research_intelligence.quality_score",
+                         "rows_updated": quality["rows_updated"]})
+    return {"produced_count": produced, "attempted_count": produced, "skipped_reasons": {},
+            "empty_reason": None if produced else "no_tags_to_score",
+            "output_evidence": evidence}
+
+
+def _write_receipt(ok: bool, started: str, *, result: dict | None = None, error: str | None = None) -> None:
+    """Best-effort LaneRunReceipt@v2. Never raises; a real ``--apply`` run only, never a dry run (AGENTS.md §6)."""
+    try:
+        try:
+            from lib.lane_last_receipt import write_lane_receipt
+        except ImportError:
+            from scripts.lib.lane_last_receipt import write_lane_receipt
+        res = result or {}
+        if res.get("ok") is False:  # the kill switch: the lane did its job by standing down, and says so
+            ok, error = False, "HERMES_DISABLED"
+        out = lane_output(res) if ok else {
+            "produced_count": 0, "attempted_count": 0,
+            "skipped_reasons": ({"disabled": 1} if error == "HERMES_DISABLED" else {"dependency_unavailable": 1})}
+        write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=started,
+                           script="hermes_tag_engine.py", error=error,
+                           summary={"apply": bool(res.get("apply"))}, output=out)
+    except Exception as exc:  # noqa: BLE001 -- the run's own result comes first
+        print(f"  WARN lane receipt not written: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
 def run(apply=False, dry_run=False):
     if KILL_SWITCH.exists():
         out = {"ok": False, "reason": "HERMES_DISABLED kill switch present — tag engine idle"}
@@ -410,6 +473,11 @@ def run(apply=False, dry_run=False):
         out["quality"] = quality_v2(cur, cfg, False)
         out["efficacy"] = tag_efficacy(cur, cfg, False, dry_run=True)
         conn.close()
+        # What a live --apply of this same state would write. The dry run writes no receipt (nothing to attest).
+        out["receipt_preview"] = {"lane_id": LANE_ID,
+                                  "would_write_produced_count": lane_output(out)["produced_count"],
+                                  "unit": "rows upserted into hermes_tag_efficacy",
+                                  "note": "a dry run writes nothing; the live --apply run writes this receipt"}
         out["ts"] = datetime.now(timezone.utc).isoformat()
         print(json.dumps(out, indent=2, default=str))
         return out
@@ -431,7 +499,17 @@ def main():
     ap.add_argument("--dry-run", action="store_true",
                     help="LLM-free dry run: no model call, read-only DB session, no DDL; wins over --apply")
     a = ap.parse_args()
-    run(apply=a.apply and not a.dry_run, dry_run=a.dry_run)
+    apply = a.apply and not a.dry_run
+    started = datetime.now(timezone.utc).isoformat()
+    try:
+        result = run(apply=apply, dry_run=a.dry_run)
+    except Exception as exc:
+        # A raised real run still leaves its failed receipt (LaneRunReceipt@v2): the attempt existed and failed.
+        if apply:
+            _write_receipt(False, started, error=type(exc).__name__)
+        raise
+    if apply:
+        _write_receipt(True, started, result=result)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_TAG_ENGINE_RECEIPT_LQ298_20261107",
+  "files": [
+    "tests/test_hermes_tag_engine_receipt_lq298_20261107.py"
+  ],
+  "anchor": "HERMES_TAG_ENGINE_RECEIPT_LQ298_20261107",
+  "comment": [
+    "ANCHOR: HERMES_TAG_ENGINE_RECEIPT_LQ298_20261107 — LQ-20261107-298.",
+    "hermes-learning-tag-engine graded UNPROVEN output_unverifiable: a live --apply run wrote no",
+    "LaneRunReceipt@v2 and its declared output_signal (db_max hermes_tag_efficacy.updated_at) cannot",
+    "be read from a receipt, so the jobs page had neither a written-output nor an item count to check.",
+    "Pins: produced_count = the hermes_tag_efficacy rows upserted (the rows whose updated_at the run",
+    "moves); the executor's own verdict reads the immutable attempt receipt (produced / empty_violation);",
+    "run_quality.read_receipt + item_count now see the count; a dry run writes no receipt; a raised run",
+    "and the kill switch leave failed receipts. Hermetic: recording fake DB, tmp state root, no network."
+  ]
+}

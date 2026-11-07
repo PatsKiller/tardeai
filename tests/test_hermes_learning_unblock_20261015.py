@@ -169,7 +169,10 @@ def tag_env(monkeypatch, tmp_path):
     monkeypatch.setattr(TE, "_conn", _conn)
     monkeypatch.setattr(TE, "_cfg", lambda: copy.deepcopy(TAG_CFG))
     monkeypatch.setattr(TE, "KILL_SWITCH", tmp_path / "HERMES_DISABLED")
-    return types.SimpleNamespace(log=log, conns=conns, llm_calls=llm_calls, writes=writes)
+    # LQ-20261107-298: the --apply path now writes a LaneRunReceipt@v2. Without this the test would write it into
+    # the LIVE persistent state root (data/runtime/hermes-learning-tag-engine_last.json) with a fake run's counts.
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    return types.SimpleNamespace(log=log, conns=conns, llm_calls=llm_calls, writes=writes, root=tmp_path)
 
 
 def test_tag_engine_dry_run_makes_no_model_call_and_writes_nothing(tag_env, monkeypatch, capsys):
@@ -196,6 +199,8 @@ def test_tag_engine_dry_run_respects_the_live_llm_budget(tag_env, monkeypatch):
 
 
 def test_tag_engine_apply_path_is_unchanged(tag_env, monkeypatch, capsys):
+    """The write shape of --apply (retag, quality, efficacy DDL + upserts) is the historical one; what it gains is
+    the LaneRunReceipt@v2 LQ-20261107-298 adds at the end, which no check above counts."""
     called: list = []
     monkeypatch.setattr(TE, "_llm_tags", lambda txt, vocab, timeout, mx: called.append(txt) or ["breakout"])
     monkeypatch.setattr(sys, "argv", ["hermes_tag_engine.py", "--apply"])
@@ -208,6 +213,8 @@ def test_tag_engine_apply_path_is_unchanged(tag_env, monkeypatch, capsys):
     ddl = [s for s in _writes(tag_env.log) if s.startswith(("CREATE", "ALTER"))]
     assert len(ddl) == 3 and any(s.startswith("INSERT INTO hermes_tag_efficacy") for s in _writes(tag_env.log))
     assert not any(c.readonly for c in tag_env.conns) and sum(c.commits for c in tag_env.conns) == 2
+    receipt = json.loads((tag_env.root / "data" / "runtime" / "hermes-learning-tag-engine_last.json").read_text())
+    assert receipt["produced_count"] == len(out["efficacy"]["tags"]) == 1  # the one tag the fake ledger answers
 
 
 def test_tag_engine_bare_preview_is_unchanged(tag_env, monkeypatch, capsys):
@@ -388,6 +395,10 @@ def tune_env(monkeypatch, tmp_path):
     weights = tmp_path / "hermes_score_weights.yaml"
     weights.write_text("version: 3\nweights:\n  momentum: 0.5\n  value: 0.5\n", encoding="utf-8")
     monkeypatch.setattr(ST, "WEIGHTS_FILE", weights)
+    # LQ-20261107-55: the graft is stored DB-first with a persistent-state mirror, never in the release
+    # config. Pin both tiers at this tmp file and keep the unit test off the live config store.
+    monkeypatch.setenv("HERMES_SCORE_WEIGHTS_FILE", str(weights))
+    monkeypatch.setenv("HERMES_SCORE_WEIGHTS_DB", "0")
     monkeypatch.setattr(ST, "GRAFT_ARCHIVE_DIR", tmp_path / "grafts")
     monkeypatch.setattr(ST, "_conn", _conn)
     monkeypatch.setattr(ST, "_LEARN_ONLY", False)
