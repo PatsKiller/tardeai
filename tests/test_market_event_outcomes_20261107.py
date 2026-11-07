@@ -132,7 +132,7 @@ class _Cur:
         self.sql.append(q)
         if "to_regclass" in q: self._r = [(True,)]
         elif "FROM market_event_episodes" in q: self._r = [("EP-1", date(2026, 11, 4), "OPEN", datetime(2026, 11, 5, tzinfo=ET))]
-        elif "FROM market_event_candidates" in q: self._r = [("EP-1", "AAA", 100.0, "WATCH", None)]
+        elif "FROM market_event_candidates" in q: self._r = [("EP-1", "AAA", 100.0, 95.0, "WATCH", None)]
         elif "FROM ticker_prices" in q: self._r = [("AAA", date(2026, 11, 4), 100.0), ("AAA", date(2026, 11, 11), 110.0)]
         else: raise AssertionError("unexpected write in dry run: " + q)
     def fetchone(self): return self._r[0]

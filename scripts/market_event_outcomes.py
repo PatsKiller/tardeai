@@ -62,10 +62,11 @@ def load_world(cur, today: date) -> dict:
     episodes = [dict(zip(("episode_id", "baseline_date", "state", "opened_at"), r)) for r in cur.fetchall()]
     cands: dict[str, list] = {e["episode_id"]: [] for e in episodes}
     if episodes:
-        cur.execute("SELECT episode_id, symbol, baseline_price, state, plan FROM market_event_candidates "
+        cur.execute("SELECT episode_id, symbol, baseline_price, last_price, state, plan FROM market_event_candidates "
                     "WHERE episode_id = ANY(%s)", ([e["episode_id"] for e in episodes],))
-        for eid, sym, bp, st, plan in cur.fetchall():
+        for eid, sym, bp, lp, st, plan in cur.fetchall():
             cands[eid].append({"symbol": sym, "baseline_price": float(bp) if bp is not None else None,
+                               "last_price": float(lp) if lp is not None else None,
                                "state": st, "plan": plan if isinstance(plan, dict) else None})
     syms = sorted({c["symbol"] for cs in cands.values() for c in cs})
     closes: dict[str, dict[date, float]] = {}
