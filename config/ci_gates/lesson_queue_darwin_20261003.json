@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "lesson_queue_darwin_20261003",
   "files": [
-    "tests/test_lesson_queue_darwin_20261003.py"
+    "tests/test_lesson_queue_darwin_20261003.py",
+    "tests/test_wire_advisory_lessons_occ_20261107.py"
   ],
   "comment": [
     "Policy Review P2: only outcome-backed lessons queue; Darwin scores only market outcomes (2026-10-03)."

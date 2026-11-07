@@ -62,6 +62,21 @@ def _trade_source(r) -> str:
 
 LAST_COUNTS: dict = {}
 
+# trade_lesson_memory.symbol is VARCHAR(10). Option trades carry an OCC contract symbol (root + YYMMDD + C/P +
+# 8-digit strike, e.g. RTX260918C00160000 = 18 chars) that overflowed the column on every run.
+_OCC_RE = re.compile(r"^([A-Z][A-Z.]{0,5})\d{6}[CP]\d{8}$")
+SYMBOL_MAX = 10
+
+
+def _store_symbol(raw) -> tuple[str, str | None]:
+    """(symbol to store, contract to keep in the lesson text). An OCC contract stores its underlying root and
+    keeps the full contract in the text, so no information is lost and the varchar(10) column is respected."""
+    sym = str(raw or "").strip().upper()
+    m = _OCC_RE.match(sym)
+    if m:
+        return m.group(1), sym
+    return sym, None
+
 
 def lane_output(counts: dict) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: trade_lesson_memory rows upserted, one per
@@ -99,6 +114,14 @@ def _execute():
             rmult = round(float(r["pnl"] or 0) / risk, 3) if risk else None
         except Exception:
             rmult = None
+        symbol, contract = _store_symbol(r["symbol"])
+        if not symbol or len(symbol) > SYMBOL_MAX:
+            skipped += 1
+            print(f"  skip trade {r['trade_id']} [{r['lane']}]: symbol_too_long ({len(symbol)} > {SYMBOL_MAX})")
+            continue
+        lesson_text = f"[{r['lane']} · {_trade_source(r)}] {lesson}"
+        if contract:
+            lesson_text = f"{lesson_text} (contract {contract})"
         try:
             res = _db(
                 """INSERT INTO trade_lesson_memory
@@ -107,15 +130,20 @@ def _execute():
                       action_owner, pnl, r_multiple, human_review_only, source_payload_hash)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,%s)
                    ON CONFLICT (trade_id, lesson_category, source_payload_hash) DO UPDATE
-                     SET improved_lesson=EXCLUDED.improved_lesson, exit_quality=EXCLUDED.exit_quality,
-                         created_at=now()
+                     SET improved_lesson=EXCLUDED.improved_lesson, exit_quality=EXCLUDED.exit_quality
                    RETURNING id""",
-                (r["trade_id"], r["symbol"], r["strategy_id"], r["close_date"], r["exit_reason"],
+                (r["trade_id"], symbol, r["strategy_id"], r["close_date"], r["exit_reason"],
                  f"external:{r['lane']}:{_trade_source(r)}", _grade_quality(grade), _category(lesson),
-                 "external_advisory", f"[{r['lane']} · {_trade_source(r)}] {lesson}", lesson,
+                 "external_advisory", lesson_text, lesson,
                  f"external_{r['lane']}", r["pnl"], rmult, sph),
                 fetch="one")
-            wired += 1 if res else 0
+            if res is None:
+                # db_adapter._execute returns None on a SQL error (it prints and swallows it). That is a failure,
+                # not a silent zero: count it so the receipt and the exit code show it.
+                skipped += 1
+                print(f"  skip trade {r['trade_id']} [{r['lane']}]: insert returned no row (SQL error logged above)")
+            else:
+                wired += 1
         except Exception as e:
             skipped += 1
             print(f"  skip trade {r['trade_id']} [{r['lane']}]: {str(e)[:100]}")
