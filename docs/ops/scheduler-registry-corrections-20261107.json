@@ -1,0 +1,507 @@
+{
+  "schema": "LaneRegistryCorrections@v1",
+  "as_of": "2026-11-07T02:55Z",
+  "author": "cc-deepseek-6",
+  "source": "live /api/v2/scheduler-operations?view=checks (a8c5c04fe, 2026-11-07T02:34Z) + read-only crontab/systemd/journal/OpenClaw jobs.json/n8n ledger",
+  "blocked_by": "config/lane_registry.json is claimed by session cc-deepseek on branch wt/livefix-cc-deepseek-waketurn since 2026-11-07T02:23Z; apply with scripts/lib/lane_registry.py round-trip (json.dumps(indent=2, ensure_ascii=False)+'\\n') and run `python -m pytest tests/test_lane_registry.py tests/test_scheduler_operations.py`",
+  "edits": [
+    {
+      "lane_id": "active-trader-session-review",
+      "path": "scheduler.match",
+      "old": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply",
+      "new": "scripts/active_trader/session_review.py --apply",
+      "why": "marker embeds the schedule, so the run line can never contain it: the lane read ORPHANED while cron:1030 ran it, and cron:1030 read unregistered"
+    },
+    {
+      "lane_id": "active-trader-session-review-close",
+      "path": "scheduler.match",
+      "old": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply",
+      "new": "scripts/active_trader/session_review.py --apply",
+      "why": "same as active-trader-session-review; two lanes share one command and each declares one window"
+    },
+    {
+      "lane_id": "orchestrator-slot",
+      "path": "scheduler.match",
+      "old": "30 17 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_orchestrator_slot.sh",
+      "new": "scripts/run_orchestrator_slot.sh",
+      "why": "marker embeds the schedule: lane ORPHANED while cron:1051 runs it, and cron:1051 read unregistered"
+    },
+    {
+      "lane_id": "positions-sync",
+      "path": "scheduler.expression",
+      "old": "9,24,39,54 9-16 * * 1-5",
+      "new": "9,24,39,54 9-16 * * 1-5 + 0,30 0-8,17-23 * * * + 0,30 9-16 * * 0,6",
+      "why": "host line 1102 runs the lane off-hours too; the projection called it a duplicate at an undeclared window (weekend line included as well)"
+    },
+    {
+      "lane_id": "alpaca-live-read-sync",
+      "path": "scheduler.expression",
+      "old": "*/15 9-16 * * 1-5",
+      "new": "*/15 9-16 * * 1-5 + 6,36 0-8,17-23 * * * + 6,36 9-16 * * 0,6",
+      "why": "host line 1107 is the off-hours copy; undeclared window -> duplicate (weekend line included as well)"
+    },
+    {
+      "lane_id": "schwab-position-sync",
+      "path": "scheduler.expression",
+      "old": "7,22,37,52 9-16 * * 1-5",
+      "new": "7,22,37,52 9-16 * * 1-5 + 3,33 0-8,17-23 * * * + 3,33 9-16 * * 0,6",
+      "why": "cron:1104 (off-hours daily) and cron:1105 (weekend RTH) unregistered; declared row names only the weekday RTH line"
+    },
+    {
+      "lane_id": "moomoo-live-read-sync",
+      "path": "scheduler.expression",
+      "old": "*/15 9-16 * * 1-5",
+      "new": "*/15 9-16 * * 1-5 + 9,39 0-8,17-23 * * * + 9,39 9-16 * * 0,6",
+      "why": "cron:1109 (off-hours daily) and cron:1110 (weekend RTH) unregistered"
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "path": "scheduler.kind",
+      "old": "cron",
+      "new": "n8n",
+      "why": "the crontab line is gone and the ledger has live n8n dispatcher runs (32 live, last 2026-11-06T21:15Z); the row still declares cron"
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "path": "scheduler.expression",
+      "old": "15 10,16 * * 1-5",
+      "new": "dispatcher",
+      "why": "the crontab line is gone and the ledger has live n8n dispatcher runs (32 live, last 2026-11-06T21:15Z); the row still declares cron"
+    },
+    {
+      "lane_id": "finviz-sector-research",
+      "path": "scheduler.cadence",
+      "old": null,
+      "new": "15 10,16 * * 1-5",
+      "why": "the crontab line is gone and the ledger has live n8n dispatcher runs (32 live, last 2026-11-06T21:15Z); the row still declares cron"
+    },
+    {
+      "lane_id": "hermes-watchlist-scorer",
+      "path": "scheduler.kind",
+      "old": "cron",
+      "new": "n8n",
+      "why": "no crontab line remains; the ledger shows live dispatcher runs every 15 minutes (last 2026-11-07T02:30Z)"
+    },
+    {
+      "lane_id": "hermes-watchlist-scorer",
+      "path": "scheduler.expression",
+      "old": "*/15 * * * *",
+      "new": "dispatcher",
+      "why": "no crontab line remains; the ledger shows live dispatcher runs every 15 minutes (last 2026-11-07T02:30Z)"
+    },
+    {
+      "lane_id": "hermes-watchlist-scorer",
+      "path": "scheduler.cadence",
+      "old": null,
+      "new": "*/15 * * * *",
+      "why": "no crontab line remains; the ledger shows live dispatcher runs every 15 minutes (last 2026-11-07T02:30Z)"
+    },
+    {
+      "lane_id": "hermes-learning-outcome-feedback-agent",
+      "path": "state",
+      "old": "NEVER_SCHEDULED",
+      "new": "ACTIVE",
+      "why": "workflow tradeai-fabric-hermes-learning is active and the heartbeat advanced 2026-11-06T16:20Z; NEVER_SCHEDULED made an active workflow read DRIFT"
+    },
+    {
+      "lane_id": "tmp-hygiene-apply",
+      "path": "state",
+      "old": "NEVER_SCHEDULED",
+      "new": "ACTIVE",
+      "why": "tradeai-tmp-hygiene-apply.timer is active and the output key advanced 2026-11-07T02:20Z"
+    },
+    {
+      "lane_id": "tmp-hygiene-pressure",
+      "path": "state",
+      "old": "NEVER_SCHEDULED",
+      "new": "ACTIVE",
+      "why": "tradeai-tmp-hygiene-pressure.timer is active and the output key advanced 2026-11-07T02:30Z"
+    },
+    {
+      "lane_id": "pr-merge-reconcile",
+      "path": "state",
+      "old": "NEVER_SCHEDULED",
+      "new": "ACTIVE",
+      "why": "tradeai-pr-merge-reconcile.timer is active"
+    },
+    {
+      "lane_id": "prospectus-deliver",
+      "path": "state",
+      "old": "NEVER_SCHEDULED",
+      "new": "ACTIVE",
+      "why": "tradeai-prospectus-deliver.timer is active and the output key advanced 2026-11-07T02:32Z"
+    },
+    {
+      "lane_id": "tradeai-iris-taxonomy",
+      "path": "state",
+      "old": "ACTIVE",
+      "new": "RETIRED",
+      "state_reason": "superseded by the cron lane iris-taxonomy-agent-at-0-10; its timer tradeai-iris-taxonomy.timer is inactive",
+      "state_since": "2026-11-07",
+      "why": "an ACTIVE row whose timer has been off is ORPHANED forever; the work moved to the cron lane"
+    },
+    {
+      "lane_id": "systemd-tmpfiles-clean",
+      "path": "scheduler.scope",
+      "old": null,
+      "new": "system",
+      "why": "systemd-tmpfiles-clean.timer is a system unit; asking the user manager for it always reads inactive and the lane read ORPHANED"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "scheduler.kind",
+      "old": "n8n",
+      "new": "cron",
+      "why": "cron:1098 runs it --apply every 5 minutes while the row declares the n8n dispatcher; the dispatcher rows are dry_run only"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "scheduler.expression",
+      "old": "dispatcher",
+      "new": "*/5 * * * *",
+      "why": "cron:1098 runs it --apply every 5 minutes while the row declares the n8n dispatcher; the dispatcher rows are dry_run only"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "scheduler.match",
+      "old": "scripts/agent_nudger.py",
+      "new": "coordinator/agent_nudger.py --apply",
+      "why": "cron:1098 runs it --apply every 5 minutes while the row declares the n8n dispatcher; the dispatcher rows are dry_run only"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "output_signal.path",
+      "old": "data/coordination/agent_nudger/ledger.jsonl",
+      "new": "data/coordination/coordinator/ledger.jsonl",
+      "why": "declared path does not exist; the real ledger under coordinator/ is 3.8 MB and advanced 2026-11-06T21:40 local"
+    }
+  ],
+  "new_lanes": [
+    {
+      "lane_id": "social-ingest-scalp-hot",
+      "owner": "research",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/10 6-10 * * 1-5",
+        "match": "social_ingest.py --source stocktwits --scalp-list",
+        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/social_ingest_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/social_ingest.py --source stocktwits --scalp-list >> logs/social_ingest_scalp_hot.log 2>&1"
+      },
+      "expected_cadence_hours": 1.0,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/social_ingest_scalp_hot.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "note": "host line 649 carries '# TRADEAI_LANE social-ingest-scalp-hot'; it has no registry row"
+    },
+    {
+      "lane_id": "ai-usage-governor",
+      "owner": "coordination",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "ai_usage_governor.py --hours 720"
+      },
+      "expected_cadence_hours": 0.25,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "writes the usage store and /dev/null only; no per-run artifact is declared on this host"
+      },
+      "note": "host line 1112; it sets coordinator/NUDGER_OFF when the LLM quota is spent"
+    },
+    {
+      "lane_id": "tradeai-health-tick",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-health-tick.timer",
+        "cadence": "*:0/5"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-incident-daily",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-daily.timer",
+        "cadence": "*-*-* 08:00 America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-incident-supervisor",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-supervisor.timer",
+        "cadence": "*:2/10"
+      },
+      "expected_cadence_hours": 0.1667,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-incident-watchers",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-watchers.timer",
+        "cadence": "*:0/5"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-n8n-breaker-probe",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-n8n-breaker-probe.timer",
+        "cadence": "*:0/10"
+      },
+      "expected_cadence_hours": 0.1667,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-n8n-lab-watchdog",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-n8n-lab-watchdog.timer",
+        "cadence": "every 5min after last active"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-monthly",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-platform-maintenance-monthly.timer",
+        "cadence": "*-*-01 06:00"
+      },
+      "expected_cadence_hours": 744,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-nightly",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-platform-maintenance-nightly.timer",
+        "cadence": "*-*-* 01:15"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-weekly",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-platform-maintenance-weekly.timer",
+        "cadence": "Sun 03:00"
+      },
+      "expected_cadence_hours": 168,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "tradeai-telegram-callback-poller",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-telegram-callback-poller.service"
+      },
+      "expected_cadence_hours": 0.083,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "systemd user timer/service: output goes to the journal; no per-run artifact is declared yet"
+      }
+    },
+    {
+      "lane_id": "openclaw-aegis-evening-surveillance",
+      "owner": "aegis",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:aegis-evening-surveillance",
+        "emitted_by": "openclaw-scheduler",
+        "match": "aegis-evening-surveillance",
+        "cadence": "0 20 * * 1-5 America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Aegis Evening Surveillance, 0 20 * * 1-5 America/New_York"
+    },
+    {
+      "lane_id": "openclaw-920bef5f-3b4b-4066-b695-92e72825e00a",
+      "owner": "alex",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:920bef5f-3b4b-4066-b695-92e72825e00a",
+        "emitted_by": "openclaw-scheduler",
+        "match": "920bef5f-3b4b-4066-b695-92e72825e00a",
+        "cadence": "0 9 1 * * America/New_York"
+      },
+      "expected_cadence_hours": 744,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Alex Monthly Retirement Check-in, 0 9 1 * *"
+    },
+    {
+      "lane_id": "openclaw-d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+      "owner": "iris",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+        "emitted_by": "openclaw-scheduler",
+        "match": "d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+        "cadence": "0 9 * * 0 America/New_York"
+      },
+      "expected_cadence_hours": 168,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Iris Weekly Research Digest, 0 9 * * 0"
+    },
+    {
+      "lane_id": "openclaw-729e2b82-7ace-4a13-8456-c469cb1072e9",
+      "owner": "maria",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:729e2b82-7ace-4a13-8456-c469cb1072e9",
+        "emitted_by": "openclaw-scheduler",
+        "match": "729e2b82-7ace-4a13-8456-c469cb1072e9",
+        "cadence": "5 16 * * 1-5 America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "SentinelOne (S) entry monitor, 5 16 * * 1-5"
+    },
+    {
+      "lane_id": "openclaw-b8b18bf7-5154-42c6-b290-45f04854dfe0",
+      "owner": "maria",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:b8b18bf7-5154-42c6-b290-45f04854dfe0",
+        "emitted_by": "openclaw-scheduler",
+        "match": "b8b18bf7-5154-42c6-b290-45f04854dfe0",
+        "cadence": "0 9 * * * America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "OpenClaw agent job: delivers to the operator's chat surface; no per-run host artifact"
+      },
+      "note": "Reflection AI listing tracker, 0 9 * * *"
+    }
+  ],
+  "proposals": [
+    {
+      "item": "ollama-retired-host-runtime",
+      "action": "stop and disable ollama.service (system scope)",
+      "why": "the registry marks the lane RETIRED but the system service is active; the lane is correctly DRIFT until the unit stops. Agent may not run systemctl."
+    },
+    {
+      "item": "db-retention-timer",
+      "action": "re-enable db-retention.timer and move its log out of the checkout",
+      "why": "timer inactive while the row is ACTIVE; db_retention.log has not advanced since 2026-10-04, so retention is not running. Needs operator systemctl."
+    },
+    {
+      "item": "tradeai-agent-runtime-{atlas,concierge,hermes,pulse}",
+      "action": "decide: re-enable the four timers, or retire the rows",
+      "why": "all four tradeai-agent-runtime@*.timer units are inactive while four ACTIVE rows expect them; without knowing intent a registry change would either hide a dead runtime or invent one. No systemctl authority."
+    },
+    {
+      "item": "catalyst-momentum-engine (queue items 9-11)",
+      "action": "decide the cutover: schedule scripts/run_family_slot.py --family catalyst-momentum-engine, or keep the three band lines",
+      "why": "the merged lane is registered against run_family_slot.py, which no crontab line runs, while crontab 382/383/384 still runs the three band lines the registry marks RETIRED (premarket/market) and live (overnight). Either answer needs a crontab edit or a registry revert; both are outside this task's authority."
+    },
+    {
+      "item": "tradeai-deploy-on-main",
+      "action": "investigate the failed service and the inactive 2-minute timer; retire or re-enable",
+      "why": "tradeai-deploy-on-main.service is failed and the timer is inactive; registering it would either mask the failure or invent a schedule."
+    },
+    {
+      "item": "tradeai-momentum-lifecycle-candidate (active n8n workflow)",
+      "action": "deactivate if it is a candidate copy, or name its owner and cadence",
+      "why": "an active */5 n8n workflow with no lane and no ledger runs; agent may not activate/deactivate workflows."
+    },
+    {
+      "item": "openclaw jobs without lanes besides the five added",
+      "action": "none today",
+      "why": "the three disabled jobs (steph weekly/monthly, gemma weekly, INTC follow-up) already read EXPECTED_SILENT and need no row until enabled."
+    }
+  ]
+}
