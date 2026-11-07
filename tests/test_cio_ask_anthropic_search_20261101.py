@@ -142,7 +142,10 @@ def test_search_transport_failure_is_typed_not_raised():
         raise URLError("bridge down")
 
     out = ws.search("q", transport=boom)
-    assert out["ok"] is False and out["error"] == "URLError" and out["results"] == []
+    # LQ-20261107-212: the type name stays first, and the socket reason now follows it. A bare
+    # "URLError" was the whole diagnosis the run row carried when the bridge was unreachable.
+    assert out["ok"] is False and out["error"].startswith("URLError") and out["results"] == []
+    assert "bridge down" in out["error"]
 
 
 def test_search_with_no_results_is_not_ok():

@@ -101,7 +101,22 @@ def search(query: str, *, count: int = 5, timeout_s: float = 60.0,
     }
     try:
         document = (transport or _post)(url, body, timeout_s)
-    except (HTTPError, URLError, OSError, ValueError) as exc:
+    except HTTPError as exc:
+        # 2026-11-07 (LQ-20261107-212): the status used to be thrown away — the run row said only
+        # "HTTPError", so a lane degraded for a day with no nameable cause. The code and the reason
+        # line are what let an operator tell unauthorized (401) from misrouted (404), throttled (429)
+        # and broken (5xx). The response BODY is never read: it can quote the question or an auth
+        # error page, and this row is written to the ledger and surfaced in the Ops UI.
+        return {"ok": False, "provider": "anthropic", "results": [],
+                "error": f"HTTP {exc.code} {exc.reason}".strip(), "status": int(exc.code)}
+    except URLError as exc:
+        # urllib's reason is usually the socket error (e.g. "Connection refused"), which is the one
+        # fact that separates "the bridge is down" from "the bridge said no". The class name stays
+        # first so an existing "URLError" match keeps working.
+        reason = str(getattr(exc, "reason", None) or "").strip()
+        return {"ok": False, "provider": "anthropic", "results": [],
+                "error": f"URLError: {reason}" if reason else "URLError"}
+    except (OSError, ValueError) as exc:
         return {"ok": False, "provider": "anthropic", "results": [], "error": type(exc).__name__}
     if not isinstance(document, dict) or document.get("error"):
         reason = "BRIDGE_REFUSED"
