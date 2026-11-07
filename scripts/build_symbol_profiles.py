@@ -37,6 +37,13 @@ from lib.writers.symbol_profiles_writer import (  # noqa: E402,F401  (re-export)
 )
 
 
+#: The provider carries nothing for this symbol — yfinance has no summary or sector and Finviz has no row either
+#: (VIX, ABB and friends, every week). It is a typed skip, not a run defect: the ``no_`` prefix is the shape
+#: ``run_quality._BENIGN_SKIP`` treats as "nothing to do" (as ``no_new_input`` / ``nothing_due`` do), so a run that
+#: filled every profile it could is not graded DEGRADED for the ones upstream does not have. A real provider outage
+#: is still a FAILURE, not a skip: ``_work_landed`` returns False and the lane exits 1 when nothing at all landed.
+NO_PROFILE = "no_provider_profile"
+
 # ETFs have no sector in yfinance .info — give the card a real sector so it shows sector + vs-sector.
 # Mirrors open_trades_intelligence._ETF_SECTOR (reference data, kept in sync).
 _ETF_SECTOR = {
@@ -265,7 +272,7 @@ def run(symbols=None, force=False, watchlist_top=0, dry_run=False):
                     fvz_used += 1
             if not (desc or sector):
                 missed += 1
-                skipped["provider_no_profile"] = skipped.get("provider_no_profile", 0) + 1
+                skipped[NO_PROFILE] = skipped.get(NO_PROFILE, 0) + 1
                 continue
             fields = {"description_1s": desc, "sector": sector, "industry": industry}
         rcpt, db_skip = _upsert_one(sym, fields, source, retry_sleep)
@@ -411,7 +418,7 @@ def _output_of(summary) -> dict:
         return block
     produced = int((summary or {}).get("updated") or 0)
     attempted = int((summary or {}).get("checked") or 0)
-    skipped = {"provider_no_profile": int((summary or {}).get("no_profile") or 0),
+    skipped = {NO_PROFILE: int((summary or {}).get("no_profile") or 0),
                "writer_rejected": int((summary or {}).get("rejected") or 0)}
     return _output(produced=produced, attempted=attempted, skipped=skipped,
                    empty_reason=None if produced else ("no_stale_symbols" if not attempted else "all_skipped"))

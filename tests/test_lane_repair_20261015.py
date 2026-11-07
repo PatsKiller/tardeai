@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_symbol_profiles as bsp  # noqa: E402
 import watchlist_entry_planner as wep  # noqa: E402
+from scripts.lib import run_quality  # noqa: E402
 import watchlist_entry_planner_lane as wepl  # noqa: E402
 from lib import indicator_universe_lane as iul  # noqa: E402
 from lib import lane_output as lo  # noqa: E402
@@ -203,7 +204,16 @@ def test_bsp_provider_misses_are_typed_skips_not_failures(bsp_env, monkeypatch, 
                                                                                                   rows_rejected=0))
     assert bsp.main([]) == 0
     own = json.loads((state / "data/runtime/build-symbol-profiles-at-0-19_last.json").read_text())
-    assert own["status"] == "ok" and own["summary"]["output"]["skipped_reasons"] == {"provider_no_profile": 1}
+    out = own["summary"]["output"]
+    assert own["status"] == "ok" and out["skipped_reasons"] == {"no_provider_profile": 1}
+    # 2026-11-07 (LQ item 30): a symbol the provider carries nothing for is a nothing-to-do reason. The old key
+    # ``provider_no_profile`` did not match run_quality._BENIGN_SKIP, so a run that filled every profile it could
+    # graded DEGRADED on the ones upstream does not have -- 35 skipped vs 33 produced on three lanes, every run.
+    assert run_quality.receipt_flags({"ok": True, "skipped_reasons": out["skipped_reasons"]},
+                                     out["produced_count"]) == []
+    assert run_quality.receipt_flags({"ok": True, "skipped_reasons": {"provider_no_profile": 35}}, 33) == [
+        "skipped 35 items, more than it produced (33)"]
+    assert run_quality.receipt_flags({"ok": True, "skipped_reasons": {"no_provider_profile": 35}}, 33) == []
 
 
 def test_bsp_offline_dry_run_emits_lane_output_and_writes_nothing(state, capsys, monkeypatch):
