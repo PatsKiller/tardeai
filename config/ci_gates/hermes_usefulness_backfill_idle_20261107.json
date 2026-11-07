@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_usefulness_backfill_idle_20261107",
+  "files": [
+    "tests/test_hermes_usefulness_backfill_idle_20261107.py"
+  ],
+  "anchor": "HERMES_USEFULNESS_BACKFILL_IDLE_20261107",
+  "comment": [
+    "ANCHOR: HERMES_USEFULNESS_BACKFILL_IDLE_20261107 — the hourly usefulness-backfill lane must state the",
+    "reviewed idle reason (no_new_input) and its produced/attempted counts in its LaneRunReceipt, so a run that",
+    "has nothing to score grades GOOD (idle) instead of EMPTY \"the receipt does not say why\" (LQ-20261107-120)."
+  ]
+}

@@ -31,6 +31,9 @@ _ENV_KEYS = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
 N8N_PROCESS_ID = "hermes_usefulness_score_n8n"
 #: The flag the n8n run executor binds from the allowlist llm_route; read directly.
 VIA_BRIDGE_ENV = "TRADEAI_LLM_VIA_BRIDGE"
+#: The idle reason a run with nothing to score states in its receipt (reviewed token, see
+#: config/run_quality_idle_reasons.json and the expected_output closed enum in check_n8n_workflow_framework.py).
+NO_ELIGIBLE_REASON = "no_new_input"
 
 
 def _via_bridge():
@@ -137,8 +140,12 @@ def main(argv=None):
                            started_at=started, script="hermes_external_feedback_loop.py", error=type(exc).__name__)
         raise
     rc = 1 if result["failed"] or result["aborted"] else 0
+    # LaneRunReceipt@v2 counts: what the run actually produced (rows scored) and what it selected. Without them a
+    # zero-work run is indistinguishable from a silent failure on the Jobs page (LQ-20261107-120).
     write_lane_receipt("hermes-usefulness-backfill", ok=rc == 0, exit_code=rc,
-                       started_at=started, script="hermes_external_feedback_loop.py", summary=result)
+                       started_at=started, script="hermes_external_feedback_loop.py", summary=result,
+                       produced_count=result["scored"], attempted_count=result["selected"],
+                       empty_reason=result.get("empty_reason"))
     return rc
 
 
@@ -199,7 +206,15 @@ def _run_feedback(args):
               f"(still eligible — they were never written)")
     c.close()
     print("RESULT:", json.dumps({"scored_now": scored, "per_lane_usefulness": agg}))
-    return {"selected": len(rows), "scored": scored, "failed": failed, "aborted": bool(aborted)}
+    result = {"selected": len(rows), "scored": scored, "failed": failed, "aborted": bool(aborted)}
+    if not rows:
+        # Nothing eligible is a CORRECT outcome for this hourly lane, not a failure: every sent research row that
+        # can be scored already is (this loop is the only writer of usefulness_score; the researcher's INSERT
+        # leaves it NULL and the loop rates the row at the next tick). State it, so the Jobs page can grade the
+        # run GOOD (idle) in plain words instead of EMPTY "the receipt does not say why". "no_new_input" is the
+        # reviewed idle token (config/run_quality_idle_reasons.json) and part of the expected_output closed enum.
+        result["empty_reason"] = NO_ELIGIBLE_REASON
+    return result
 
 
 if __name__ == "__main__":
