@@ -75,6 +75,12 @@ def test_no_price_says_unknown_and_invents_nothing():
     assert sap.price_line(None, None, None, None, None) == sap.price_line(None, None, None, None, None)
 
 
+def test_a_sub_dollar_mark_is_never_rounded_to_zero():
+    """SRNE is $0.0003: "$0.00" would show an invented zero as the live mark."""
+    line = sap.price_line(0.0003, "finviz", "2026-11-07T14:58:00Z", 60, False)
+    assert "$0.0003" in line and "$0.00 " not in line
+
+
 def test_age_text_is_human_and_refuses_nonsense():
     assert sap.age_text(45) == "45s" and sap.age_text(720) == "12m" and sap.age_text(10800) == "3.0h"
     assert sap.age_text(None) is None and sap.age_text("bad") is None and sap.age_text(-5) is None

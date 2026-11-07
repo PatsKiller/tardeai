@@ -67,7 +67,8 @@ def price_line(price: Any, source: Any, as_of: Any, age_s: Any = None, stale: An
     px = _f(price)
     if px is None or px <= 0:
         return "mark UNKNOWN (no priced source: Finviz, broker quote and stored mark all unavailable)"
-    shown = f"${px:,.2f}"
+    # A sub-dollar mark keeps four decimals: SRNE is $0.0003, and "$0.00" would put an invented zero in an alert.
+    shown = f"${px:,.4f}" if px < 1 else f"${px:,.2f}"
     src = str(source or "unknown source")
     when = str(as_of) if as_of else "no timestamp"
     if stale is False:
