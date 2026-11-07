@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sec_form4_parser_20261107",
+  "files": [
+    "tests/test_sec_form4_parser_20261107.py"
+  ],
+  "comment": [
+    "sec_data_ingest must store the Form 4's own transactions (LQ-20261107-58): 7,039 rows carried the ISSUER as",
+    "the filer, the constant 'Form 4' as the type, and 0/0/0 with a NULL transaction date, because the writer read",
+    "only the submissions index. The parser now opens the ownership XML: reporting owner as filer_name, the",
+    "transaction code (P/S/A/M/F) as transaction_type, shares/price/total_value/ownership_after/transaction_date.",
+    "Hermetic: synthetic XML (the repo is public) and a fake cursor applying PG rules for the guarded insert and",
+    "the table's unique key."
+  ]
+}

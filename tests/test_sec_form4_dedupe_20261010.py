@@ -61,6 +61,11 @@ class _Cur:
         self.t, self.rowcount = table, 0
 
     def execute(self, sql, params=None):
+        if sql.strip().startswith("SELECT 1 FROM sec_form4"):  # LQ-58: which kind of guarded miss
+            row = dict(params)
+            self.rowcount = 1 if any(r["symbol"] == row["symbol"] and (r.get("sec_url") or "") == row["sec_url"]
+                                     for r in self.t.rows) else 0
+            return
         if isinstance(params, dict):
             row = dict(params)
             row["transaction_date"] = None
@@ -80,6 +85,9 @@ class _Cur:
             return
         self.t.rows.append(row)
         self.rowcount = 1
+
+    def fetchone(self):
+        return (1,) if self.rowcount else None
 
 
 class _Conn:
@@ -124,10 +132,14 @@ def test_same_url_for_another_symbol_still_lands(monkeypatch):
     assert sdi.ingest_form4(["ACMEB"])["new_filings"] == 3  # dual-class share symbols share an accession
 
 
-def test_url_less_filing_dedupes_on_filing_identity():
+def test_url_less_filing_dedupes_on_transaction_identity():
+    # LQ-20261107-58: the guard now always names the transaction (filer + date + code) as well as the
+    # symbol; `transaction_date` is set from the ownership XML and falls back to the filing date, so a
+    # URL-less row is identified by the same tuple the table's unique key uses.
     params = sdi._form4_insert_params("ACME", {**FILINGS[0], "sec_url": ""}, {"strategy_tags": [], "agent_tags": []})
     assert params["sec_url"] == ""
-    assert "x.filing_date IS NOT DISTINCT FROM" in sdi.FORM4_INSERT_SQL
+    assert "x.transaction_date IS NOT DISTINCT FROM %(transaction_date)s::date" in sdi.FORM4_INSERT_SQL
+    assert "x.transaction_type IS NOT DISTINCT FROM %(transaction_type)s" in sdi.FORM4_INSERT_SQL
 
 
 @pytest.mark.skipif(not os.environ.get("TRADEAI_SCRATCH_PG_DSN"), reason="scratch PostgreSQL DSN not set")
@@ -139,8 +151,10 @@ def test_real_sql_against_scratch_postgres():  # pragma: no cover - opt-in, neve
     cur = conn.cursor()
     cur.execute("CREATE TEMP TABLE sec_form4 (id bigserial primary key, symbol text not null,"
                 " filer_name text default '', filer_relation text default '', transaction_type text default '',"
-                " filing_date date, transaction_date date, sec_url text default '', strategy_tags jsonb default '[]',"
-                " agent_tags jsonb default '[]', UNIQUE (symbol, filer_name, transaction_date, transaction_type))")
+                " shares numeric default 0, price numeric default 0, total_value numeric default 0,"
+                " ownership_after numeric default 0, filing_date date, transaction_date date, sec_url text default '',"
+                " strategy_tags jsonb default '[]', agent_tags jsonb default '[]',"
+                " UNIQUE (symbol, filer_name, transaction_date, transaction_type))")
     tags = {"strategy_tags": [], "agent_tags": []}
     counts = []
     for _ in range(2):
