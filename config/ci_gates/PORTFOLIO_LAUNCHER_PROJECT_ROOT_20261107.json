@@ -1,0 +1,27 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PORTFOLIO_LAUNCHER_PROJECT_ROOT_20261107",
+  "files": [
+    "tests/test_portfolio_launcher_project_root_20261107.py"
+  ],
+  "anchor": "PORTFOLIO_LAUNCHER_PROJECT_ROOT_20261107",
+  "comment": [
+    "ANCHOR: PORTFOLIO_LAUNCHER_PROJECT_ROOT_20261107 — three cadence lanes graded DEGRADED because",
+    "each launcher hard-coded the dev checkout as PROJECT_ROOT. The systemd controller runs",
+    "portfolio-server/CURRENT/scripts/pipelines/run_portfolio_maintenance_pipeline.sh, whose own PROJ",
+    "is the served release, but the launchers it dispatches (run_portfolio.sh, _weekly, _monthly)",
+    "executed a hard-coded dev checkout instead. So a cadence ran code",
+    "from a tree the release train never updates: the 2026-11-06 12:30Z daily run died in _get_sector",
+    "with AttributeError: 'NoneType' object has no attribute 'upper' — a bug already fixed in the",
+    "release that had launched it (c072bb634, FU-007) — and the weekly slot died in",
+    "portfolio_weekly_report.py on the same class of NoneType formatting.",
+    "The default now follows the launcher's own tree (BASH_SOURCE); PROJECT_ROOT still overrides,",
+    "which tests and drills use.",
+    "The gate pins: each launcher executes its own tree, writes its log there, and honours an explicit",
+    "override; and no launcher carries an absolute default or names the dev checkout. The behavioural",
+    "tests EXECUTE the launcher and therefore SKIP while a default is absolute — executing an",
+    "unfixed launcher runs the real pipeline against live state — so the static assertions are the",
+    "ones that fail on the defect. Hermetic otherwise: stub python/python3/tee, throwaway tree, no",
+    "network, no DB, no Telegram."
+  ]
+}

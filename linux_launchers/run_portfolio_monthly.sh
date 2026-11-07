@@ -3,7 +3,10 @@ set -euo pipefail
 # P2 audit remediation (2026-09-26): overridable for tests; the report step now
 # FAILS the launcher (exit code) instead of printing "skipped (non-fatal)" while the
 # cadence pipeline recorded status=ok — both reports had been failing silently for months.
-PROJECT_ROOT="${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
+# 2026-11-07: the default is the tree this launcher ships in, not a fixed dev checkout, so a
+# cadence launched from the served release (portfolio-server/CURRENT) runs the release's code.
+# PROJECT_ROOT still overrides, for tests and drills.
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 REPORT_RC=0
 LOG_DIR="$PROJECT_ROOT/logs"
 STAMP="$(date '+%Y%m%d-%H%M%S')"

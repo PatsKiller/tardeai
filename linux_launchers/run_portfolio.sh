@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
-PROJECT_ROOT="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# The tree this launcher ships in, not a fixed checkout (2026-11-07). The cadence controller runs
+# .../portfolio-server/CURRENT/scripts/pipelines/run_portfolio_maintenance_pipeline.sh, which
+# executes this file from the served release; a hard-coded dev checkout meant every cadence ran
+# code from a different tree than the one it was launched from, so a fix already shipped in a
+# release never reached these lanes (the 2026-11-06 daily run failed on a bug fixed in the release
+# that had just launched it). PROJECT_ROOT still overrides, for tests and drills.
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 LOG_DIR="$PROJECT_ROOT/logs"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 LOG_FILE="$LOG_DIR/run_portfolio-$STAMP.log"
