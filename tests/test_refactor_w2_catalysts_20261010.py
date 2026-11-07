@@ -291,7 +291,9 @@ def test_news_dry_run_is_read_only_and_never_uses_the_llm(monkeypatch, capsys):
     cap = capsys.readouterr()
     out = json.loads(cap.out)
     assert out["dry_run"] is True and out["would_create"] == 2 and out["created"] == 0
-    assert out["skipped"]["not_in_ticker_universe"] == 1
+    # a gate refusal is a structural exclusion, not a skip the run chose (WORK-QUEUE item 26), and `attempted`
+    # counts only the candidates that passed the gates: 3 rows, 1 refused as not-in-universe, 2 eligible.
+    assert out["excluded"]["not_in_ticker_universe"] == 1 and out["attempted"] == 2
     assert _dry_line(cap.err)["summary"]["would_create"] == 2
 
 
@@ -309,21 +311,28 @@ def test_news_real_run_inserts_and_writes_receipt(monkeypatch, _state):
     rec = _receipt(_state, "news-to-catalyst")
     assert rec["status"] == "ok" and rec["summary"]["created"] == 2
     # the v2 output verdict the page and the executor read (WORK-QUEUE item 26: the receipt carried only
-    # summary.candidates/created, so an empty run could not say why it was empty)
-    assert rec["produced_count"] == 2 and rec["attempted_count"] == 3
-    assert rec["skipped_reasons"] == {"not_in_ticker_universe": 1} and rec["empty_reason"] is None
+    # summary.candidates/created, so an empty run could not say why it was empty; and a gate refusal is an
+    # exclusion, not a skip the run chose — attempted_count counts the candidates that passed the gates)
+    assert rec["produced_count"] == 2 and rec["attempted_count"] == 2
+    assert rec["excluded_reasons"] == {"not_in_ticker_universe": 1} and rec["skipped_reasons"] == {}
+    assert rec["empty_reason"] is None
 
 
 def test_news_empty_run_names_the_kind_of_empty():
     """No unprocessed article, every candidate already present, and every candidate refused are three different
     empties; the receipt must not print the same "produced nothing" for all of them."""
     assert ntc.lane_output({"candidates": 0, "created": 0, "skipped": {}})["empty_reason"] == "no_unprocessed_news"
-    assert ntc.lane_output({"candidates": 2, "created": 0,
+    assert ntc.lane_output({"candidates": 2, "created": 0, "attempted": 2,
                             "skipped": {"already_present": 2}})["empty_reason"] == "already_present"
-    assert ntc.lane_output({"candidates": 2, "created": 0,
-                            "skipped": {"not_in_ticker_universe": 2}})["empty_reason"] == "no_eligible_candidates"
-    out = ntc.lane_output({"candidates": 2, "created": 1, "skipped": {"not_in_ticker_universe": 1}})
-    assert (out["produced_count"], out["empty_reason"], out["skipped_reasons"]) == (1, None, {"not_in_ticker_universe": 1})
+    # a gate refused every candidate, so none of them was attempted: an excluded candidate is never a skip
+    out = ntc.lane_output({"candidates": 2, "created": 0, "attempted": 0,
+                           "excluded": {"not_in_ticker_universe": 2}})
+    assert (out["empty_reason"], out["excluded_reasons"], out["skipped_reasons"]) == (
+        "no_eligible_candidates", {"not_in_ticker_universe": 2}, {})
+    # WORK-QUEUE item 26: 333 gate refusals among 500 candidates must not read as "skipped more than produced"
+    out = ntc.lane_output({"candidates": 500, "attempted": 167, "created": 80,
+                           "excluded": {"research_directive_slug": 333}})
+    assert (out["produced_count"], out["attempted_count"], out["skipped_reasons"]) == (80, 167, {})
 
 
 def test_news_crash_leaves_failed_receipt(monkeypatch, _state):
