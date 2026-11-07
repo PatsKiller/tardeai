@@ -250,3 +250,21 @@ def test_canonical_mark_beats_the_lagging_price_copy():
 def test_price_still_serves_when_no_canonical_mark_exists():
     m = pp.resolve_mark({**LAG, "canonical_mark": None}, now=NOW)
     assert m["price"] == 27.0 and m["source"] == "stored_mark"
+
+
+def test_finviz_beats_an_older_market_quotes_row():
+    """Revert to first-candidate-wins -> the 16:45 ET quote row (27.0) beats the 23:30 ET Finviz fetch (30.0)."""
+    now = dt.datetime(2026, 10, 6, 5, 0, tzinfo=dt.timezone.utc)
+    old_q = {"price": 27.0, "as_of": "2026-10-05T20:45:00+00:00", "source": "data_broker.market_quotes:finviz_elite"}
+    fresh_fv = {"price": 30.0, "as_of": "2026-10-05 23:30:02 ET"}
+    m = pp.resolve_mark(LAG, quote=old_q, finviz=fresh_fv, now=now)
+    assert m["price"] == 30.0 and m["source"] == "finviz"
+
+
+def test_finviz_wins_even_over_a_newer_db_row():
+    now = dt.datetime(2026, 10, 6, 5, 0, tzinfo=dt.timezone.utc)
+    q = {"price": 31.0, "as_of": "2026-10-06T04:50:00+00:00", "source": "market_quotes"}
+    fv = {"price": 30.0, "as_of": "2026-10-05 23:30:02 ET"}
+    assert pp.resolve_mark(LAG, quote=q, finviz=fv, now=now)["price"] == 30.0
+    m = pp.resolve_mark(LAG, quote=q, finviz=None, now=now)   # no Finviz row: the DB quote is the fallback
+    assert m["price"] == 31.0 and m["source"].startswith("data_broker")

@@ -8,9 +8,9 @@ first — and the holdings API preferred it for Schwab accounts (22 of 27 rows w
 Rules this module enforces (docs/architecture/POSITIONS_SOURCE_OF_TRUTH_2026-10-05.md):
   * A stored position record is quantity, cost, account and lot facts. A price stored on it is only a
     fallback mark with its own as_of — never the truth.
-  * The price comes from the Command Center data broker quote (market_quotes via
-    lib.data_broker.market_quote.get_price_batch) with its as_of; then the Finviz live cache the repricer
-    reads; then the stored repricer/broker mark, flagged with its age. `current_price` is never read.
+  * The price comes from the Finviz live cache (finviz_quote_cache.json, refreshed by the repricer) with
+    its as_of; a data-broker market_quotes row only when Finviz has no price for the symbol; then the
+    stored repricer/broker mark, flagged with its age. `current_price` is never read.
   * value = shares × price; P&L = value − cost. Every surface goes through `resolve_mark` /
     `value_and_pl` so two pages can never show two prices for the same position.
 Pure functions: no I/O except `load_config`.
@@ -152,12 +152,16 @@ def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Option
     if is_cash(position):
         return {"price": 1.0, "source": "cash_unit", "as_of": None, "age_s": None, "live": False, "stale": False}
     cands = []
-    if quote and (_f(quote.get("price")) or 0) > 0:
+    # Finviz is the live price (operator 2026-11-07: "live prices shouldn't be pulled from any database, it should
+    # always be refreshed by FinViz"). A market_quotes row serves only for a symbol Finviz has no price for.
+    # Data-truth audit 2026-11-07: market_quotes ranked first and showed 20 of 26 holdings at an older price
+    # (PFE 27.56 from a 16:45 ET row while the 23:30 ET Finviz fetch said 29.39).
+    if finviz and (_f(finviz.get("price")) or 0) > 0:
+        cands.append((_f(finviz["price"]), "finviz", finviz.get("as_of"), True))
+    elif quote and (_f(quote.get("price")) or 0) > 0:
         src = str(quote.get("source") or "market_quotes")
         cands.append((_f(quote["price"]), f"data_broker:{src}" if not src.startswith("data_broker") else src,
                       quote.get("as_of") or quote.get("fetched_at"), True))
-    if finviz and (_f(finviz.get("price")) or 0) > 0:
-        cands.append((_f(finviz["price"]), "finviz", finviz.get("as_of"), True))
     # The repricer's named mark first. `price` is the position build's copy (holdings_export rebuilds it from the
     # morning positions run as market_value ÷ shares, price_field_role "derived_from_broker_mv"), so it lags the
     # repricer all day. Data-truth audit 2026-11-07: preferring `price` showed 24 of 30 holdings at stale prices
