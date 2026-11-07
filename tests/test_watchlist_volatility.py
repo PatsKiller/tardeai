@@ -35,6 +35,7 @@ def _isolate_atr20(tmp_path, monkeypatch):
         return 1.25
 
     monkeypatch.setattr(wv, "_fetch_atr20", _stub_fetch)
+    monkeypatch.setattr(wv, "_fetch_atr20_data_broker", _stub_fetch)  # the request path's fetch (LQ-258)
     yield calls
 
 

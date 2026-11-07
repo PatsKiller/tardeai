@@ -9,6 +9,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 ATR20_CACHE_PATH = PROJECT_ROOT / "data" / "runtime" / "atr20_cache.json"
 ATR20_CACHE_TTL_H = 6
 MAX_ATR20_FETCH_PER_REQUEST = 30
+#: a symbol the data broker had no bars for is not asked again on the request path for this long
+ATR20_MISS_TTL_H = 1
 
 
 def volatility_band(atr_pct: float | None) -> str | None:
@@ -71,6 +73,26 @@ def _fetch_atr20(symbol: str) -> float | None:
         return None
 
 
+def _fetch_atr20_data_broker(symbol: str) -> float | None:
+    """20-day ATR from the host Data Broker's stored daily bars only (market_ohlcv_bars, read-only,
+    zero provider calls) — for the watchlist REQUEST path.
+
+    LQ-20261107-258: ``_fetch_atr20`` goes yfinance first; inside GET /api/v2/watchlist/items that
+    was a 5.5 s yfinance import plus up to 60 Yahoo fetches per cold request (25-35 s), and the
+    project rule is Finviz/data broker, never yfinance. A symbol the broker has no fresh bars for
+    gets no ATR on this read; the cached value, when fresh, is still applied."""
+    try:
+        import sys
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from watchlist_entry_planner import _bars_data_broker  # noqa: E402
+        bars = _bars_data_broker(symbol.upper(), 70)
+        if not bars:
+            return None
+        return _atr_from_bars(bars, 20)
+    except Exception:
+        return None
+
+
 def atr20_for_symbol(symbol: str, price: float | None = None, *, allow_fetch: bool = True) -> dict:
     """Return atr_20 + atr_20_pct (+ band). Uses disk cache with TTL."""
     sym = (symbol or "").upper().strip()
@@ -125,6 +147,17 @@ def _atr20_cache_fresh(row: dict, now: datetime) -> bool:
         return False
 
 
+def _atr20_recent_miss(row: dict, now: datetime) -> bool:
+    ts = row.get("miss_ts")
+    if not ts:
+        return False
+    try:
+        age_h = (now - datetime.fromisoformat(str(ts).replace("Z", "+00:00"))).total_seconds() / 3600
+        return 0 <= age_h < ATR20_MISS_TTL_H
+    except Exception:
+        return False
+
+
 def _apply_atr20_to_item(it: dict, atr: float) -> None:
     try:
         px = float(it.get("price") or it.get("latest_price") or 0) or None
@@ -140,7 +173,10 @@ def _apply_atr20_to_item(it: dict, atr: float) -> None:
 
 
 def attach_atr20_batch(items: list[dict], *, max_fetch: int | None = None) -> None:
-    """Fill atr_20 on items — cache-first; fetch misses with plan symbols prioritized."""
+    """Fill atr_20 on items — cache-first; fetch misses with plan symbols prioritized.
+
+    Request path (GET /api/v2/watchlist/items): misses are filled from the data broker's stored
+    bars only (``_fetch_atr20_data_broker``), never yfinance (LQ-20261107-258)."""
     if not items:
         return
     cap = max_fetch
@@ -162,7 +198,7 @@ def attach_atr20_batch(items: list[dict], *, max_fetch: int | None = None) -> No
 
     ordered = sorted(items, key=_rank)
 
-    # Pass 1: apply fresh cache (no network).
+    # Pass 1: apply fresh cache (no network). A recent miss is not retried (LQ-20261107-258).
     need_fetch: list[dict] = []
     for it in ordered:
         sym = str(it.get("symbol") or "").upper()
@@ -171,22 +207,27 @@ def attach_atr20_batch(items: list[dict], *, max_fetch: int | None = None) -> No
         row = cache.get(sym) or {}
         if _atr20_cache_fresh(row, now):
             _apply_atr20_to_item(it, float(row["atr_20"]))
-        else:
+        elif not _atr20_recent_miss(row, now):
             need_fetch.append(it)
 
-    # Pass 2: fetch misses — plans + top Hermes rank first.
+    # Pass 2: fetch misses — plans + top Hermes rank first. Every ATTEMPT spends budget: before
+    # LQ-20261107-258 only a hit did, so symbols without bars were re-queried on every request,
+    # all 200 of them (19.5 s of bar reads on a cold cache).
     for it in need_fetch:
         if budget <= 0:
             break
         sym = str(it.get("symbol") or "").upper()
-        fetched = _fetch_atr20(sym)
+        budget -= 1
+        dirty = True
+        fetched = _fetch_atr20_data_broker(sym)
         if fetched is None:
+            prev = cache.get(sym) or {}
+            # keep an older value for other readers; mark when the request path last missed
+            cache[sym] = {**prev, "miss_ts": now.isoformat()}
             continue
         atr = round(float(fetched), 4)
         cache[sym] = {"atr_20": atr, "ts": now.isoformat()}
         _apply_atr20_to_item(it, atr)
-        budget -= 1
-        dirty = True
 
     if dirty:
         _save_atr20_cache(cache)

@@ -89,7 +89,25 @@ KNOWN_STRATEGIES = frozenset({"long_call", "long_put", "debit_call_vertical", "d
 PACKET_UNVERIFIED = "PACKET_UNVERIFIED"
 
 
-def _packet_view(packet: dict[str, Any], now: datetime) -> Optional[dict[str, Any]]:
+def staleness_inputs() -> dict[str, Any]:
+    """The running earnings-gate version and ``buy_ready_block_max_age_s``, resolved ONCE per index.
+
+    LQ-20261107-258: left to ``staleness()``, every packet re-read and re-parsed
+    assets/portfolio_intent.yaml (options_desk_enterprise.load_desk_config): 225 parses, 9.3 of
+    the 9.7 s the route took. Same values, same fail-closed rules; {} when the desk module cannot
+    load, so ``staleness()`` resolves them itself exactly as before."""
+    try:
+        try:
+            import options_desk_enterprise as ode  # type: ignore
+        except ImportError:
+            from scripts import options_desk_enterprise as ode  # type: ignore
+        return {"current_gate_version": ode.EARNINGS_GATE_VERSION,
+                "max_age_s": float(ode.load_desk_config().get("buy_ready_block_max_age_s") or 0)}
+    except Exception:  # noqa: BLE001 -- unresolved here means per-packet resolution, the old path
+        return {}
+
+
+def _packet_view(packet: dict[str, Any], now: datetime, view_kw: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
     """The shared read-side verdict (lib.buy_ready_options_alternatives.packet_view, live-proof
     2026-09-28). None when that build does not carry it — the caller then fails closed."""
     try:
@@ -100,7 +118,7 @@ def _packet_view(packet: dict[str, Any], now: datetime) -> Optional[dict[str, An
         except ImportError:
             return None
     try:
-        return packet_view(packet, now=now)
+        return packet_view(packet, now=now, **(view_kw or {}))
     except Exception as exc:  # noqa: BLE001 -- a view that cannot be built is withheld, never shown unchecked
         return {"status": PACKET_UNVERIFIED, "stale": {"code": PACKET_UNVERIFIED, "reason": f"view failed ({type(exc).__name__})"},
                 "gate_version": None, "packet": None}
@@ -122,14 +140,14 @@ def _unit_is_current_and_qualified(a: dict[str, Any]) -> bool:
     return True
 
 
-def options_verdict(packet: dict[str, Any], *, now: datetime) -> dict[str, Any]:
+def options_verdict(packet: dict[str, Any], *, now: datetime, view_kw: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """What the lane may say about the packet's options alternatives. Fail closed:
     STALE_PRE_FIX / PACKET_UNVERIFIED → qualified_count 0 and no OK status, whatever the file claims."""
     alt = packet.get("options_alt") or {}
     alts_raw = packet.get("options_alternatives") or {}
     claimed = {"status": alt.get("status") or alts_raw.get("status"),
                "qualified": [a.get("strategy") for a in (alts_raw.get("alternatives") or []) if a.get("qualified") is True]}
-    view = _packet_view(packet, now)
+    view = _packet_view(packet, now, view_kw)
     if view is None:
         return {"status": PACKET_UNVERIFIED, "reason": "this build cannot verify stored verdicts (packet_view absent) — alternatives withheld",
                 "qualified_count": 0, "considered": len(alts_raw.get("alternatives") or []), "gate_version": None,
@@ -154,7 +172,7 @@ def options_verdict(packet: dict[str, Any], *, now: datetime) -> dict[str, Any]:
 
 
 def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dropped: list[dict[str, Any]],
-                 now: datetime) -> dict[str, Any]:
+                 now: datetime, view_kw: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     eq = packet.get("equity") or {}
     alt = packet.get("options_alt") or {}
     alts = packet.get("options_alternatives") or {}
@@ -168,7 +186,7 @@ def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dro
     rr_plan = _f(eq.get("rr"))
     rr_plan_entry = hi
     rr_quote = reward_risk(target, price, stop)
-    oa_verdict = options_verdict(packet, now=now)   # not `verdict`: that name is the CIO verdict block above
+    oa_verdict = options_verdict(packet, now=now, view_kw=view_kw)   # not `verdict`: that name is the CIO verdict block above
     return {
         "symbol": sym,
         "state": str(eq.get("state") or packet.get("state") or "").upper() or None,
@@ -206,13 +224,14 @@ def index_packets(packet_dir: Path, *, proposals: Optional[list[dict[str, Any]]]
     rows: list[dict[str, Any]] = []
     stale: list[dict[str, Any]] = []
     errors: list[str] = []
+    view_kw = staleness_inputs()
     for path in sorted(Path(packet_dir).glob("*.json")) if Path(packet_dir).exists() else []:
         try:
             packet = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             errors.append(f"{path.name}: {type(exc).__name__}")
             continue
-        row = index_packet(packet, proposals=proposals or [], dropped=dropped or [], now=now)
+        row = index_packet(packet, proposals=proposals or [], dropped=dropped or [], now=now, view_kw=view_kw)
         # The expiry window counts trading days only: a Friday packet must not fall out of
         # Ready now on Sunday because 48 wall-clock hours passed while the exchange was shut.
         row["packet_trading_age_h"] = trading_age_hours(row["saved_at"], now) if row["packet_age_h"] is not None else None

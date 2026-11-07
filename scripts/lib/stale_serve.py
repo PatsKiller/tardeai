@@ -30,6 +30,17 @@ only served to the same key.
 Only an allowlist of read routes is wrapped (``SWR_PATHS``; env ``TRADEAI_SWR_GET_PATHS``
 replaces it, ``TRADEAI_SWR=0`` turns it off).
 
+Invalidate on write (LQ-20261107-258). ``invalidate(path)`` records the time and drops the
+path's bodies; a body whose compute STARTED before that time is never served or stored
+again, from memory or from disk, so the next read computes inline with the write included,
+and a refresh that was already running when the write landed cannot put the old view back.
+``invalidate_for_write(path)`` maps a POST path to the cached reads it can change
+(``WRITE_INVALIDATES``); the server calls it after every POST. The times persist in
+``store_dir/_invalidated.json``, so a restart honours them.
+
+``PATH_MAX_STALE_S`` caps the stale window per route: the watchlist carries prices, and
+the page does not show the ``_swr`` age yet, so it is never served more than an hour old.
+
 Stdlib only. READ_ONLY_ADVISORY: it caches read responses and writes only its own cache
 files; MBI=0.
 """
@@ -53,7 +64,23 @@ DEFAULT_SWR_PATHS = (
     "/api/v2/portfolio/holdings",
     "/api/v3/advisory",
     "/api/v3/cio/home",
+    # LQ-20261107-258: 25-35 s cold (per-row decision snapshots, ATR bars, the picked SQL),
+    # 3 MB, and the first thing a phone loads. Cleared on every watchlist write below.
+    "/api/v2/watchlist/items",
 )
+#: A cached read older than this is recomputed inline, whatever MAX_STALE_S says.
+PATH_MAX_STALE_S = {
+    "/api/v2/watchlist/items": 3600.0,
+}
+#: cached GET path -> substrings of the POST paths that can change it. Over-matching only
+#: costs one inline compute; under-matching would show an operator the pre-write list.
+_WATCH_WRITE_MARKERS = ("watch", "screener", "discovery", "prospect", "hermes", "star",
+                        "directive", "curation")
+WRITE_INVALIDATES = {
+    "/api/v2/watchlist/items": _WATCH_WRITE_MARKERS,
+    "/api/v3/data-broker/watch-curation": _WATCH_WRITE_MARKERS,
+}
+INVALIDATIONS_FILE = "_invalidated.json"
 FRESH_S = float(os.environ.get("TRADEAI_SWR_FRESH_S") or 60.0)
 MAX_STALE_S = float(os.environ.get("TRADEAI_SWR_MAX_STALE_S") or 6 * 3600.0)
 MAX_ENTRIES = 64
@@ -90,6 +117,12 @@ def request_key(path: str, query: dict | None, principal: str = "") -> str:
     return (principal or "") + "|" + base + "?" + "&".join(items)
 
 
+def key_path(key: str) -> str:
+    """The route part of a ``request_key``: ``principal|/path?query`` -> ``/path``."""
+    rest = key.split("|", 1)[1] if "|" in key else key
+    return rest.split("?", 1)[0].rstrip("/")
+
+
 def is_good(result: Any) -> bool:
     return (isinstance(result, tuple) and len(result) == 2 and result[0] == 200
             and isinstance(result[1], dict) and result[1].get("ok") is not False)
@@ -100,12 +133,15 @@ def _iso(ts: float) -> str:
 
 
 class _Entry:
-    __slots__ = ("computed_at", "result", "source")
+    __slots__ = ("computed_at", "result", "source", "started_at")
 
-    def __init__(self, computed_at: float, result: tuple, source: str) -> None:
+    def __init__(self, computed_at: float, result: tuple, source: str,
+                 started_at: float | None = None) -> None:
         self.computed_at = computed_at
         self.result = result
         self.source = source
+        # when the compute began: what it read can be no newer than this
+        self.started_at = computed_at if started_at is None else started_at
 
 
 class StaleServe:
@@ -123,8 +159,68 @@ class StaleServe:
         self._mem: dict[str, _Entry] = {}
         self._refreshing: set[str] = set()
         self._errors: dict[str, str] = {}
+        self._invalidated: dict[str, float] | None = None   # loaded from disk on first use
         self.stats = {"computed": 0, "fresh": 0, "stale": 0, "disk": 0, "refreshed": 0,
-                      "refresh_failed": 0, "persist_failed": 0}
+                      "refresh_failed": 0, "persist_failed": 0, "invalidated": 0,
+                      "dropped_pre_write": 0}
+
+    # ------------------------------------------------------------- invalidation
+    def _invalid_map(self) -> dict[str, float]:
+        if self._invalidated is None:
+            loaded: dict[str, float] = {}
+            if self.store_dir is not None:
+                try:
+                    doc = json.loads((self.store_dir / INVALIDATIONS_FILE).read_text(encoding="utf-8"))
+                    loaded = {str(k): float(v) for k, v in (doc.get("paths") or {}).items()
+                              if isinstance(v, (int, float))}
+                except (OSError, ValueError, AttributeError):
+                    loaded = {}
+            self._invalidated = loaded
+        return self._invalidated
+
+    def _valid(self, key: str, entry: _Entry) -> bool:
+        with self._lock:
+            cut = self._invalid_map().get(key_path(key))
+        return cut is None or entry.started_at > cut
+
+    def invalidate(self, path: str) -> None:
+        """Every body for ``path`` (any principal, any query) computed from a read that began
+        before now is dead: it is dropped here and refused if a refresh or the disk offers it."""
+        base = (path or "").split("?", 1)[0].rstrip("/")
+        now = self.clock()
+        with self._lock:
+            inv = self._invalid_map()
+            inv[base] = now
+            for k in [k for k in self._mem if key_path(k) == base]:
+                self._mem.pop(k, None)
+            snapshot = dict(inv)
+        self.stats["invalidated"] += 1
+        self._persist_invalidations(snapshot)
+
+    def _persist_invalidations(self, snapshot: dict[str, float]) -> None:
+        if self.store_dir is None:
+            return
+        try:
+            self.store_dir.mkdir(parents=True, exist_ok=True)
+            f = self.store_dir / INVALIDATIONS_FILE
+            tmp = f.with_name(f"{f.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump({"schema": SCHEMA, "paths": snapshot}, fh)
+            os.replace(tmp, f)
+        except Exception:  # noqa: BLE001 -- the in-memory cut still holds for this process; counted
+            self.stats["persist_failed"] += 1
+
+    def invalidated_at(self, path: str) -> float | None:
+        """When ``path`` was last invalidated (None: never). Callers that share an in-flight
+        compute (request_coalesce) put it in their key, so a read after a write never joins a
+        compute that began before it."""
+        with self._lock:
+            return self._invalid_map().get((path or "").split("?", 1)[0].rstrip("/"))
+
+    def _max_stale(self, key: str) -> float:
+        cap = PATH_MAX_STALE_S.get(key_path(key))
+        return self.max_stale_s if cap is None else min(self.max_stale_s, cap)
 
     # ------------------------------------------------------------- storage
     def _file(self, key: str) -> Path | None:
@@ -145,7 +241,9 @@ class StaleServe:
         computed_at, status, body = doc.get("computed_at"), doc.get("status"), doc.get("body")
         if not isinstance(computed_at, (int, float)) or not is_good((status, body)):
             return None
-        return _Entry(float(computed_at), (status, body), "disk")
+        started_at = doc.get("started_at")
+        return _Entry(float(computed_at), (status, body), "disk",
+                      float(started_at) if isinstance(started_at, (int, float)) else None)
 
     def _persist(self, key: str, entry: _Entry) -> None:
         f = self._file(key)
@@ -155,6 +253,7 @@ class StaleServe:
             f.parent.mkdir(parents=True, exist_ok=True)
             tmp = f.with_name(f"{f.name}.{os.getpid()}.{threading.get_ident()}.tmp")
             doc = {"schema": SCHEMA, "key": key, "computed_at": entry.computed_at,
+                   "started_at": entry.started_at,
                    "as_of": _iso(entry.computed_at), "status": entry.result[0], "body": entry.result[1]}
             fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -163,8 +262,12 @@ class StaleServe:
         except Exception:  # noqa: BLE001 -- a cache write must never fail the request; counted in stats
             self.stats["persist_failed"] += 1
 
-    def _remember(self, key: str, result: tuple) -> _Entry:
-        entry = _Entry(self.clock(), result, "computed")
+    def _remember(self, key: str, result: tuple, started_at: float | None = None) -> _Entry | None:
+        """Store a good result, or None when a write landed after its compute began."""
+        entry = _Entry(self.clock(), result, "computed", started_at)
+        if not self._valid(key, entry):
+            self.stats["dropped_pre_write"] += 1
+            return None
         with self._lock:
             self._mem.pop(key, None)
             self._mem[key] = entry
@@ -193,10 +296,11 @@ class StaleServe:
 
     def _refresh(self, key: str, refresh: Callable[[], Any]) -> None:
         try:
+            started = self.clock()
             result = refresh()
             if is_good(result):
-                self._remember(key, result)
-                self.stats["refreshed"] += 1
+                if self._remember(key, result, started) is not None:
+                    self.stats["refreshed"] += 1
             else:
                 status = result[0] if isinstance(result, tuple) and result else None
                 with self._lock:
@@ -217,17 +321,25 @@ class StaleServe:
             entry = self._mem.get(key)
         if entry is None:
             entry = self._disk_read(key)
-            if entry is not None:
+            if entry is not None and self._valid(key, entry):
                 with self._lock:
                     self._mem.setdefault(key, entry)
                     entry = self._mem[key]
-        if entry is None or now - entry.computed_at > self.max_stale_s:
+        if entry is not None and not self._valid(key, entry):
+            with self._lock:
+                if self._mem.get(key) is entry:
+                    self._mem.pop(key, None)
+            entry = None
+        if entry is None or now - entry.computed_at > self._max_stale(key):
+            started = self.clock()
             result = compute()
             self.stats["computed"] += 1
             if not is_good(result):
                 return result
-            return self._stamp(self._remember(key, result), stale=False, refreshing=False,
-                               source="computed", key=key)
+            kept = self._remember(key, result, started)
+            # a write landed mid-compute: serve this caller its answer, keep nothing
+            return self._stamp(kept or _Entry(self.clock(), result, "computed", started),
+                               stale=False, refreshing=False, source="computed", key=key)
         source = entry.source
         if now - entry.computed_at <= self.fresh_s:
             self.stats["fresh"] += 1
@@ -244,6 +356,20 @@ class StaleServe:
 
 def _daemon_thread(fn: Callable[[], None]) -> None:
     threading.Thread(target=fn, name="swr-refresh", daemon=True).start()
+
+
+def invalidate_for_write(path: str, server: StaleServe | None = None) -> list[str]:
+    """After a POST to ``path``: invalidate every cached read it can change. Returns them."""
+    if not enabled():
+        return []
+    p = (path or "").split("?", 1)[0].lower()
+    hit = [get_path for get_path, markers in WRITE_INVALIDATES.items()
+           if any(m in p for m in markers)]
+    if hit:
+        srv = server or default()
+        for get_path in hit:
+            srv.invalidate(get_path)
+    return hit
 
 
 def default_store_dir() -> Path:

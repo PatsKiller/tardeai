@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_buyready_latency_20261107",
+  "files": [
+    "tests/test_watchlist_buyready_latency_20261107.py"
+  ],
+  "anchor": "watchlist_buyready_latency_20261107",
+  "comment": [
+    "ANCHOR: watchlist_buyready_latency_20261107 — LQ-20261107-258. GET /api/v2/watchlist/items?sort=hermes took 32.6 s",
+    "cold (34.8 s in the 15:35 ET page walk) and GET /api/v2/buy-ready/packets 6-15 s, both computing in the request;",
+    "phones load them first. In-process profile: buy-ready re-parsed assets/portfolio_intent.yaml once per packet (225",
+    "parses, 9.3 of 9.7 s); the watchlist built per-row decision snapshots (12 s cold), imported yfinance (5.5 s) and",
+    "fetched up to 60 Yahoo histories for ATR, and ran a 2-3 s picked SQL. This gate pins: the index resolves the gate",
+    "version and block max age once with identical verdicts; the watchlist ATR comes from the data broker's stored bars,",
+    "never yfinance, and every ATR attempt spends the per-request budget with a miss not retried for an hour (a hit-only",
+    "budget re-read bars for all 200 symbols, 19.5 s); the watchlist is served stale-while-revalidate (one hour cap, since",
+    "the page does not show _swr age yet); and every watchlist write invalidates it and watch-curation, including a refresh",
+    "or single-flight compute that began before the write, across a restart.",
+    "Registered because a new pytest file that no gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}

@@ -1656,11 +1656,34 @@ def _coalesce_get(path, query, fn):
     except Exception:
         return run()
 
+    def run_after_writes():
+        # LQ-20261107-258: a read after an invalidating write must not join a single-flight
+        # compute that began before the write, so the last invalidation is part of its key.
+        cut = swr.invalidated_at(path)
+        if cut is None:
+            return run()
+        return coalesce_get(path, query, fn, principal=f"{principal}#inv{cut!r}")
+
     def refresh():
         set_request_principal(principal)  # the principal is thread-local; the refresh runs on its own thread
-        return run()
+        return run_after_writes()
 
-    return swr.get(_swr.request_key(path, query, principal), run, refresh)
+    return swr.get(_swr.request_key(path, query, principal), run_after_writes, refresh)
+
+
+def _swr_invalidate_after_write(raw_path) -> None:
+    """After any POST: drop the cached reads that write can change (stale_serve.WRITE_INVALIDATES),
+    so the operator's next watchlist read is computed with their write, never the pre-write body
+    (LQ-20261107-258). Runs whether the write succeeded or not; a needless invalidation costs one
+    inline compute. Never affects the response."""
+    try:
+        try:
+            from lib import stale_serve as _swr
+        except ImportError:
+            from scripts.lib import stale_serve as _swr
+        _swr.invalidate_for_write(urlparse(raw_path or "").path)
+    except Exception:  # noqa: BLE001 -- cache bookkeeping must never fail a write that already ran
+        return
 
 
 def _peer_closed(conn) -> bool:
@@ -2486,6 +2509,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         finally:
             with _INFLIGHT_LOCK:
                 _INFLIGHT.pop(tid, None)
+            _swr_invalidate_after_write(self.path)
 
     def _do_POST_inner(self):
         if not self._cc_auth_gate():

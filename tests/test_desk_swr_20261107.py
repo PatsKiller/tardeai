@@ -213,7 +213,8 @@ def test_server_routes_slow_reads_through_stale_serve_with_the_principal():
     fn = src[src.index("def _coalesce_get("):src.index("def _peer_closed(")]
     assert "_swr.is_swr_path(path)" in fn
     assert "set_request_principal(principal)" in fn  # the background refresh keeps the caller's identity
-    assert "swr.get(_swr.request_key(path, query, principal), run, refresh)" in fn
+    # LQ-20261107-258: the compute is keyed on the last invalidating write (still the same principal-keyed SWR key)
+    assert "swr.get(_swr.request_key(path, query, principal), run_after_writes, refresh)" in fn
 
 
 # --------------------------------------------------------------- facts snapshot memo
