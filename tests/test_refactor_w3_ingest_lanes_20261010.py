@@ -160,6 +160,13 @@ def _pipeline_stub(monkeypatch, calls):
 # ── sync_dividend_data (L216) ────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _no_cash_alternatives(monkeypatch):
+    """The Defense cash-alternatives source (2026-11-06) adds 17 static symbols to the dividend priority universe; it is pinned in
+    tests/test_stale_source_lanes_20261106.py. These tests pin the held/Watch/classification universe ({KO, PEP}) exactly."""
+    monkeypatch.setattr(sdd, "_cash_alternatives", lambda: [])
+
+
 def _div_conn(**kw):
     def responder(sql, _p):
         if "FROM ticker_strategy_classifications" in sql:
