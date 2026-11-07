@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "trade_journey_links_conflicts_20261107",
+  "files": [
+    "tests/test_trade_journey_links_conflicts_20261107.py"
+  ],
+  "anchor": "LQ-20261107-234",
+  "comment": [
+    "ANCHOR: LQ-20261107-234 — journal origin attribution and conflict detection. A read that returned no result set",
+    "(db_adapter._execute swallows every SQL error and returns None) is a gap, never an empty store: a missing",
+    "trade_recommendation_links table reads as `link_status: unavailable` with the migration named, not as `ok` with",
+    "`no recommendation was recorded`. A closed round trip is one lot; the CIO book's position_status and the re-entry",
+    "desk's CURRENTLY HELD are per symbol, so those two conflicts only fire when the holdings snapshot no longer holds",
+    "the symbol (None = holdings not read, which hides nothing). Fakes only: no database, no network, no production state."
+  ]
+}

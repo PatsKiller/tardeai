@@ -607,21 +607,34 @@ def reentry_block(desk_row: Optional[dict[str, Any]], *, desk_at: Optional[str],
 
 def conflicts_for(*, closed: bool, exit_cause: dict[str, Any], holding: Optional[dict[str, Any]],
                   opp_now: Optional[dict[str, Any]], desk_row: Optional[dict[str, Any]],
-                  desk_at: Optional[str], exit_at: Optional[str]) -> list[dict[str, Any]]:
-    """Disagreements between inputs about this trade — both values, both sources, both times. Never resolved here."""
+                  desk_at: Optional[str], exit_at: Optional[str], symbol: Optional[str] = None,
+                  held_symbols: Optional[Iterable[str]] = None) -> list[dict[str, Any]]:
+    """Disagreements between inputs about this trade — both values, both sources, both times. Never resolved here.
+
+    Join key: a *lot*. A closed round trip is one lot out of an account; the CIO book's ``position_status`` and
+    the re-entry desk's ``CURRENTLY HELD`` are per **symbol**, and the symbol stays owned whenever any account
+    still holds a share (a partial stop leaves the fraction behind). Comparing a lot against a symbol reported
+    every partial exit as a disagreement between sources — 91 of the 100 rows on 2026-11-07. ``held_symbols``
+    is the holdings snapshot's symbol set: when the symbol is still held the two stores do not disagree at all,
+    so there is no conflict to show. ``None`` means the holdings read did not happen — unknown, so every check
+    still runs rather than silently agreeing.
+    """
     out: list[dict[str, Any]] = []
+    sym = _up(symbol)
+    held_elsewhere = held_symbols is not None and bool(sym) and sym in {_up(s) for s in held_symbols}
     if exit_cause.get("kind") == "stop_likely_filled" and holding:
         out.append({"field": "position", "summary": "Holdings still show the position; awaiting fill (mark under the stop)",
                     "a": {"value": f"held {holding.get('fill_qty')} sh", "source": "holdings_accounts",
                           "at": holding.get("as_of")},
                     "b": {"value": f"stop {_money(exit_cause.get('level_ref'))} at/above mark", "source": "stop_last_known",
                           "at": holding.get("mark_at")}})
-    if closed and opp_now and str(opp_now.get("position_status") or "") == "owned" and not holding:
+    if closed and opp_now and str(opp_now.get("position_status") or "") == "owned" and not holding and not held_elsewhere:
         out.append({"field": "position_status", "summary": "CIO still treats this as owned after the exit",
                     "a": {"value": f"{opp_now.get('stance')} · owned", "source": "cio_opportunity_projection",
                           "at": opp_now.get("as_of")},
                     "b": {"value": "closed", "source": "schwab_round_trips", "at": exit_at}})
-    if desk_row and (desk_row.get("intel") or {}).get("state") == "CURRENTLY HELD" and (closed or exit_cause.get("kind") == "stop_likely_filled"):
+    if desk_row and (desk_row.get("intel") or {}).get("state") == "CURRENTLY HELD" and (
+            exit_cause.get("kind") == "stop_likely_filled" or (closed and not held_elsewhere)):
         out.append({"field": "reentry_state", "summary": "Re-entry desk still sees the position as held",
                     "a": {"value": "CURRENTLY HELD", "source": "reentry_decision_desk", "at": desk_at},
                     "b": {"value": exit_cause.get("label"), "source": "fills + stops", "at": exit_at}})
@@ -637,6 +650,7 @@ def build_journey(trade: dict[str, Any], *, link: Optional[dict[str, Any]] = Non
                   stops: Optional[list[dict[str, Any]]] = None, bars: Optional[list[dict[str, Any]]] = None,
                   bars_meta: Optional[dict[str, Any]] = None, desk_row: Optional[dict[str, Any]] = None,
                   desk_at: Optional[str] = None, insight: Optional[dict[str, Any]] = None,
+                  held_symbols: Optional[Iterable[str]] = None,
                   identity: Optional[dict[str, Any]] = None, now: Optional[datetime] = None) -> dict[str, Any]:
     """One TradeJourney@v1 row from one trade (a closed round trip or an open position) and its inputs."""
     now = now or datetime.now(timezone.utc)
@@ -685,7 +699,7 @@ def build_journey(trade: dict[str, Any], *, link: Optional[dict[str, Any]] = Non
                             closed=closed or cause["kind"] == "stop_likely_filled", now=now)
     holding = trade.get("holding")
     conflicts = conflicts_for(closed=closed, exit_cause=cause, holding=holding, opp_now=opp_now, desk_row=desk_row,
-                              desk_at=desk_at, exit_at=_iso(exit_at))
+                              desk_at=desk_at, exit_at=_iso(exit_at), symbol=sym, held_symbols=held_symbols)
 
     # timeline
     ev: list[dict[str, Any]] = []
@@ -1215,7 +1229,8 @@ def build_trade_journeys(trades: list[dict[str, Any]], *, inputs: dict[str, Any]
                    if not t.get("account") or not s.get("account") or _acct(s.get("account")) == _acct(t.get("account"))],
             bars=(inputs.get("bars") or {}).get(sym), bars_meta=(inputs.get("bars_meta") or {}).get(sym),
             desk_row=(inputs.get("desk_rows") or {}).get(sym), desk_at=inputs.get("desk_at"),
-            insight=(inputs.get("insights") or {}).get(sym), identity=(inputs.get("identities") or {}).get(sym), now=now)
+            insight=(inputs.get("insights") or {}).get(sym), identity=(inputs.get("identities") or {}).get(sym),
+            held_symbols=inputs.get("held_symbols"), now=now)
         if prospects is not None:
             row = from_cio_prospect(row, prospects.get(sym))
         rows.append(row)
@@ -1266,14 +1281,26 @@ def _db_query() -> Optional[Callable[..., Any]]:
 
 def _q(db: Optional[Callable[..., Any]], sql: str, params: Any = None, gaps: Optional[list] = None,
        what: str = "") -> list[dict[str, Any]]:
+    """Rows from one read. A read that did not happen records a gap — it is never an empty result.
+
+    ``db_adapter._execute`` catches every SQL error, prints it and returns ``None``, so a missing table
+    arrives here as ``None`` rather than as an exception. Folding that to ``[]`` made a store that does
+    not exist indistinguishable from one that had no matching row.
+    """
     if db is None:
         return []
     try:
-        return [dict(r) for r in (db(sql, params) or [])]
+        res = db(sql, params)
     except Exception as exc:  # noqa: BLE001
         if gaps is not None:
             gaps.append({"input": what, "why": f"{type(exc).__name__}: {str(exc)[:120]}"})
         return []
+    if res is None:
+        if gaps is not None:
+            gaps.append({"input": what, "why": "no result set — the read failed or the store is not available "
+                                               "(db_adapter._execute swallows SQL errors and returns None)"})
+        return []
+    return [dict(r) for r in res]
 
 
 def _state_root() -> Path:
@@ -1427,6 +1454,7 @@ def gather(db: Optional[Callable[..., Any]], *, days: int = DEFAULT_DAYS, symbol
 
     # open positions
     holdings_at = None
+    held_syms: Optional[list[str]] = None  # None = the holdings read did not happen; [] = read, nothing held
     try:
         try:
             from lib import portfolio_positions as pp
@@ -1508,7 +1536,16 @@ def gather(db: Optional[Callable[..., Any]], *, days: int = DEFAULT_DAYS, symbol
                                                    (ids,), gaps, "recommendation_registry")}
                 reads.append("recommendation_registry")
         else:
-            gaps.append({"input": "trade_recommendation_links", "why": "table not available (learning loop PR1 migration)"})
+            # Name which of the two it is: a store that does not exist (nothing can ever link) or a read that
+            # failed now. Both are "unavailable", and neither may be reported as an empty link table.
+            link_status = "unavailable"
+            probe = _q(db, "SELECT to_regclass('public.trade_recommendation_links') AS t")
+            missing = bool(probe) and probe[0].get("t") is None
+            gaps.append({"input": "trade_recommendation_links",
+                         "why": ("the table does not exist (learning loop PR1 migration "
+                                 "migrations/2026_10_21_learning_loop_pr1.sql is not applied), so no trade can be "
+                                 "linked to a recommendation" if missing else
+                                 f"read failed: {lg[0].get('why')}")})
 
     # CIO entry calls
     es_rows = _q(db, """SELECT symbol, state, prior_state, evaluated_at FROM cio_entry_states
@@ -1594,7 +1631,7 @@ def gather(db: Optional[Callable[..., Any]], *, days: int = DEFAULT_DAYS, symbol
               "opp_now": opp_now, "opp_at": opp_at, "entry_states": entry_states, "stops": stops, "stops_at": stops_at,
               "bars": bars if with_bars else {}, "bars_meta": bars_meta, "desk_rows": desk_rows, "desk_at": desk_at,
               "insights": insights, "identities": identities, "trades_at": trades_at, "holdings_at": holdings_at,
-              "gaps": gaps, "reads": reads}
+              "held_symbols": held_syms, "gaps": gaps, "reads": reads}
     return trades, inputs
 
 
