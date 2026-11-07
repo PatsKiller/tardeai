@@ -31,6 +31,10 @@ async function fixtures(page: Page, old = false, unavailable = false) {
   })
 }
 
+// Coordination › Automation retired 2026-11-06 (operator order): merged into Ops › Jobs & n8n › Scheduler checks.
+// Kept for the record and for SchedulerOperations.tsx should the tab be restored; not run while it is retired.
+test.skip(true, 'Automation tab retired 2026-11-06; see src/lib/schedulerChecks.test.mjs')
+
 test('scheduler rows, problem filter and durable run timeline', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))

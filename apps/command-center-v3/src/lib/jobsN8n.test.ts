@@ -16,7 +16,7 @@ const NOW = Date.parse('2026-11-06T20:00:00Z')
 const lane = (id: string, extra: Partial<N8nRowX> = {}): N8nRowX => ({ lane_id: id, on_live_list: true, stage: 'canary', ...extra })
 
 t('five tabs in the approved order; Needs you is the default', () => {
-  eq(JOBS_N8N_TABS.map(([k]) => k), ['needs', 'all', 'n8n', 'incidents', 'fixes'])
+  eq(JOBS_N8N_TABS.map(([k]) => k), ['needs', 'all', 'checks', 'n8n', 'incidents', 'fixes'])
   eq(resolveJobsN8nTab(null), 'needs')
   eq(resolveJobsN8nTab('N8N'), 'n8n')
   eq(resolveJobsN8nTab('today'), 'needs')

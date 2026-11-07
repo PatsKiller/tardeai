@@ -10,9 +10,9 @@ import {
 export const JOBS_N8N_PATH = '/ops/jobs-n8n'
 export const OPS_CONTROLS_PATH = '/system/ops-controls'
 
-export type JobsN8nTab = 'needs' | 'all' | 'n8n' | 'incidents' | 'fixes'
+export type JobsN8nTab = 'needs' | 'all' | 'checks' | 'n8n' | 'incidents' | 'fixes'
 export const JOBS_N8N_TABS: ReadonlyArray<readonly [JobsN8nTab, string]> = [
-  ['needs', 'Needs you'], ['all', 'All jobs'], ['n8n', 'n8n lanes'], ['incidents', 'Incidents'], ['fixes', 'Fixes'],
+  ['needs', 'Needs you'], ['all', 'All jobs'], ['checks', 'Scheduler checks'], ['n8n', 'n8n lanes'], ['incidents', 'Incidents'], ['fixes', 'Fixes'],
 ] as const
 
 /** `?tab=` → a known tab; anything else (absent, typo, old link) opens the default "Needs you". */

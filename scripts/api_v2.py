@@ -56290,7 +56290,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return None
                 return [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
 
-            return 200, {"ok": True, "data": _scheduler_projection(db_query=_signal_query)}
+            _proj = _scheduler_projection(db_query=_signal_query)
+            _sq = query or {}
+            # Jobs & n8n slices (Automation merged there 2026-11-06): ?lane=<id> one row in full, ?view=checks the
+            # actionable rows without timelines. No query keeps the full projection for existing readers.
+            if _sq.get("lane"):
+                from scripts.lib.scheduler_operations import lane_view as _lane_view
+                return 200, {"ok": True, "data": _lane_view(_proj, str(_sq.get("lane")))}
+            if _sq.get("view") == "checks":
+                from scripts.lib.scheduler_operations import checks_view as _checks_view
+                return 200, {"ok": True, "data": _checks_view(_proj)}
+            return 200, {"ok": True, "data": _proj}
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
