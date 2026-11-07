@@ -18,7 +18,10 @@ Usage:
 --dry-run is an offline CLI plan that returns before DB collection, model calls or writes.
 The legacy run_review(dry_run=True) API remains a read-only data preview. A real run writes
 data/runtime/health_agent_llm_review_last.json (LaneRunReceipt@v1; ok_at only when the review was
-stored) under the persistent state root and exits 1 when no review was stored.
+stored) under the persistent state root and exits 1 when no review was stored. The receipt states
+this lane's own outcome at the top level and what it OBSERVED about the system under ``observed``
+(2026-11-07: a top-level ``pipeline_failed`` counter read as this lane's failure and graded a healthy
+run DEGRADED).
 """
 import json
 import logging
@@ -73,6 +76,14 @@ def _collect_daily_health_data(conn):
                    FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '24 hours'""")
     r = cur.fetchone()
     data["pipeline"] = {"failed": r[0] or 0, "total": r[1] or 0}
+
+    # Which pipelines failed, so the receipt can prove what it counted (2026-11-07)
+    cur.execute("""SELECT COALESCE(pipeline_key, 'unknown'), COUNT(*)
+                   FROM pipeline_runs
+                   WHERE started_at > NOW() - INTERVAL '24 hours' AND status='failed'
+                   GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 8""")
+    data["pipeline"]["failed_by_key"] = [{"pipeline": row[0], "failed": row[1]}
+                                         for row in cur.fetchall()]
 
     # Claude interventions (last 24h)
     cur.execute("""SELECT component, problem, status, session_log
@@ -134,6 +145,7 @@ def run_review(dry_run=False):
     n_failed = sum(j["count"] for j in data["failed_jobs"])
     n_interventions = len(data["claude_interventions"])
     pipeline_fail = data["pipeline"]["failed"]
+    pipeline_total = data["pipeline"]["total"]
 
     prompt = f"""/no_think You are the Trade AI System Health Analyst. Review today's operational data and provide an intelligence briefing.
 
@@ -191,7 +203,9 @@ RISK FORECAST:
     log.info(f"Sending to local LLM ({n_health} events, {n_failed} failed jobs, {pipeline_fail} pipeline failures)...")
 
     counts = {"health_events": n_health, "failed_jobs": n_failed,
-              "interventions": n_interventions, "pipeline_failed": pipeline_fail}
+              "interventions": n_interventions, "pipeline_failed": pipeline_fail,
+              "pipeline_total": pipeline_total,
+              "pipeline_failed_by_key": data["pipeline"].get("failed_by_key") or []}
     if dry_run:
         log.info(f"[DRY RUN] Would send prompt ({len(prompt)} chars) to "
                  f"{os.getenv('LOCAL_LLM_MODEL', 'gemma3:4b')} and upsert llm_intelligence_cache"
@@ -258,8 +272,40 @@ def main(argv=None) -> int:
     return 0 if ok else 1
 
 
+def _receipt_summary(res):
+    """The receipt's summary: this lane's own outcome, with what it OBSERVED kept apart from it.
+
+    Until 2026-11-07 the summary was the raw result of :func:`run_review`, so ``pipeline_failed = 13``
+    sat at the top level next to ``status: stored``. ``lib.run_quality.receipt_flags`` reads any
+    summary key ending in ``failed`` as *this run's* failure count ("summary reports failed = 13"),
+    so a healthy review — it stored 3271 characters and exited 0 — was graded DEGRADED for honestly
+    reporting the system's pipeline failures. The number is a measurement of the subject, not a
+    defect of the review, so it belongs under ``observed``. It is not hidden: the count, the window
+    and the pipelines that failed all stay in the receipt, and the review itself is in
+    ``llm_intelligence_cache`` (section ``health_review``).
+    """
+    if not isinstance(res, dict):
+        return {}
+    summary = {k: res[k] for k in ("status", "response_chars") if k in res}
+    observed = {k: res[k] for k in ("health_events", "failed_jobs", "interventions") if k in res}
+    pipeline = {"window_hours": 24}
+    if res.get("pipeline_total") is not None:
+        pipeline["total"] = res["pipeline_total"]
+    if res.get("pipeline_failed") is not None:
+        pipeline["failed"] = res["pipeline_failed"]
+    if res.get("pipeline_failed_by_key"):
+        pipeline["failed_by_key"] = res["pipeline_failed_by_key"]
+    if len(pipeline) > 1:
+        observed["pipeline_runs"] = pipeline
+    if observed:
+        summary["observed"] = observed
+    return summary
+
+
 def _write_receipts(**kwargs):
     from lib.lane_last_receipt import write_receipt
+    if "summary" in kwargs:
+        kwargs["summary"] = _receipt_summary(kwargs["summary"])
     for lane in (RECEIPT_NAME, "health-agent-llm-review"):
         write_receipt(lane, **kwargs)
 
