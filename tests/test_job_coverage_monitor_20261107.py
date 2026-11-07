@@ -111,15 +111,14 @@ def test_the_lane_map_reads_the_lane_registry_so_a_wrapper_scheduler_is_found(mo
     jobs = [_job("topic_ingestion"), _job("multi")]
     monkeypatch.setattr(jcm, "REGISTRY", jobs)
     monkeypatch.setattr(jcm, "PROJECT_ROOT", tmp_path)
-    (tmp_path / "config").mkdir()
-    (tmp_path / "config/lane_registry.json").write_text(json.dumps({"lanes": [
+    _registry(tmp_path, [
         {"lane_id": "topic-ingestion", "state": "ACTIVE",
          "scheduler": {"kind": "cron", "match": "scripts/run_family_slot.py --family topic-ingestion"},
          "command": ["bash gate.sh timeout 30m $PY scripts/topic_ingestion.py --use-llm-queries"]},
         {"lane_id": "multi-a", "state": "ACTIVE",
          "scheduler": {"kind": "cron", "match": ["scripts/multi.py --band open", "scripts/multi.py --band close"]}},
         {"lane_id": "unrelated", "state": "ACTIVE", "scheduler": {"kind": "cron", "match": "scripts/other.py"}},
-    ]}))  # nosemgrep: tq-py-nonatomic-store-write -- tmp_path fixture, not a store
+    ])
     lane_map, error = jcm._lane_map()
     assert error.endswith("Error"), f"the missing allowlist is reported: {error}"
     assert lane_map == {"topic_ingestion": ["topic-ingestion"], "multi": ["multi-a"]}, lane_map
