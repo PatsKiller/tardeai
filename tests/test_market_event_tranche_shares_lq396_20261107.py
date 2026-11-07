@@ -118,9 +118,17 @@ def test_an_unknown_share_count_is_not_treated_as_zero():
     doc = api.consumer_view(_doc([_account("Small", [_leg(1, 40.0, None)])]))
     row = _row(doc)
     assert row["tranche_usd"] == 40.0
+    assert row["shares"] is None                   # the total is unknown, not a confident "0 sh"
     assert row["below_one_share"] is False
     assert row["below_one_share_label"] is None
     assert doc["candidates"][0]["plan"]["tranches"][0]["below_one_share"] is False
+
+
+def test_a_known_share_count_still_totals_when_another_leg_is_known_zero():
+    doc = api.consumer_view(_doc([_account("Small", [_leg(1, 40.0, 2), _leg(2, 3.10, 0)])], ready=2))
+    row = _row(doc)
+    assert row["shares"] == 2 and row["tranche_usd"] == 40.0
+    assert row["below_one_share_usd"] == 3.10
 
 
 def test_share_values_are_read_as_whole_shares():

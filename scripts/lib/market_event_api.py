@@ -408,11 +408,15 @@ def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
                 # the total, because excluding it would understate what is actually deployable.
                 unbuyable = [t for t in ready if _tranche_shares(t) == 0]
                 buyable = [t for t in ready if _tranche_shares(t) != 0]
+                buyable_shares = [_tranche_shares(t) for t in buyable]
+                # A buyable tranche whose share count the engine did not compute makes this total
+                # unknown: folding it to 0 would report "0 shares" for dollars that are counted.
+                total_shares = sum(buyable_shares) if all(v is not None for v in buyable_shares) else None
                 zone = ready[0].get("entry_zone") or []
                 acct_rows.append({"account_label": acct.get("account_label"),
                                   "tranches": [t.get("tranche") for t in buyable],
                                   "tranche_usd": round(sum(t["usd"] for t in buyable), 2),
-                                  "shares": sum(int(t.get("shares") or 0) for t in buyable) or None,
+                                  "shares": total_shares or None,
                                   "below_one_share": bool(unbuyable),
                                   "below_one_share_usd": round(sum(t["usd"] for t in unbuyable), 2),
                                   "below_one_share_tranches": [t.get("tranche") for t in unbuyable],
