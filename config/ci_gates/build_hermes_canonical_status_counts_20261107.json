@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "BUILD_HERMES_CANONICAL_STATUS_COUNTS",
+  "files": [
+    "tests/test_build_hermes_canonical_status_counts_20261107.py"
+  ],
+  "anchor": "BUILD_HERMES_CANONICAL_STATUS_COUNTS_20261107",
+  "comment": [
+    "ANCHOR: BUILD_HERMES_CANONICAL_STATUS_COUNTS_20261107 — LQ-20261107-139. The canonical snapshot that the",
+    "portal, the matrix Markdown and the Word doc are regenerated from carried crons_count 209 / timers_count 38",
+    "as literals from 2026-06-07 against a host with 327 active crontab lines and 83 user timers. The two are",
+    "measured now, with the definition written beside them, and a host that cannot be asked yields null with the",
+    "reason instead of a remembered number or a zero. Listing it schedules nothing."
+  ]
+}

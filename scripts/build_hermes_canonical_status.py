@@ -107,6 +107,63 @@ def endpoint_errors(results):
     return {ep: r["_error"] for ep, r in results.items() if isinstance(r, dict) and "_error" in r}
 
 
+# ── header counts ────────────────────────────────────────────────────────────────────────────────
+# These four were literals from the first commit (baa3ac462, 2026-06-07): crons 209 and timers 38
+# against a host that had 327 active crontab lines and 83 user timers (2026-11-07, LQ-20261107-139).
+# A stale count cannot be reconciled by its reader — 209, 327 and 438 were all "the" number to
+# somebody — so the two that the host can answer are measured, with their definition written beside
+# them, and a host that cannot be asked yields None with the reason rather than a remembered number.
+CRON_COUNT_DEFINITION = ("active lines in `crontab -l`: a line that is neither blank nor a '#' "
+                         "comment (environment assignments such as SHELL= count as active)")
+TIMER_COUNT_DEFINITION = ("lines of `systemctl --user list-units --type=timer --all --no-legend`: "
+                          "every loaded user timer, active or not")
+STATIC_COUNT_NOTE = "static System-page header scope; not measured from the host"
+
+
+def _run(cmd, env=None):
+    """(returncode, stdout) of a host command; (-1, '') when it cannot be started at all."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=10, env=env)
+        return p.returncode, p.stdout
+    except Exception:
+        return -1, ""
+
+
+def count_active_crontab_lines(text):
+    """Active crontab lines. A failed `crontab -l` prints a message, not a crontab — see _measure."""
+    return sum(1 for line in text.splitlines() if line.strip() and not line.lstrip().startswith('#'))
+
+
+def count_user_timers(text):
+    return sum(1 for line in text.splitlines() if line.strip())
+
+
+def _measure(command, counter, label, env=None):
+    """(count | None, error | None). A command that failed answers nothing; it does not answer 0."""
+    rc, out = _run(command, env=env)
+    if rc != 0:
+        return None, f"{label} failed (exit {rc}); the count is unknown, not zero"
+    return counter(out), None
+
+
+def measure_host_counts():
+    """The snapshot's header counts: measured where the host can answer, marked static where not."""
+    crons, crons_err = _measure(["crontab", "-l"], count_active_crontab_lines, "crontab -l")
+    timers, timers_err = _measure(["systemctl", "--user", "list-units", "--type=timer", "--all", "--no-legend"],
+                                  count_user_timers, "systemctl --user list-units --type=timer", env=XDG)
+    measured_at = datetime.now(timezone.utc).isoformat()
+    return {
+        "crons_count": crons,
+        "timers_count": timers,
+        "counts_provenance": {
+            "crons_count": {"definition": CRON_COUNT_DEFINITION, "measured_at": measured_at, "error": crons_err},
+            "timers_count": {"definition": TIMER_COUNT_DEFINITION, "measured_at": measured_at, "error": timers_err},
+            "services_count": {"value": 2, "measured": False, "note": STATIC_COUNT_NOTE},
+            "llm_jobs_count": {"value": 6, "measured": False, "note": STATIC_COUNT_NOTE},
+        },
+    }
+
+
 def build_snapshot():
     """Read-only: the snapshot dict plus the raw endpoint results. Writes nothing."""
     results = {ep: api(ep) for ep in ENDPOINTS}
@@ -115,6 +172,7 @@ def build_snapshot():
     db = {d.get("table"): d for d in (wf.get("db_lineage") or []) if isinstance(d, dict)}
 
     deep_timer = timer("hermes-deep-research-local")
+    counts = measure_host_counts()
     codex = next((l for l in auth.get("lanes", []) if l.get("provider") == "openai-codex"), {})
     serverops = next((p for p in (ps.get("profiles") or []) if p.get("profile") == "serverops"), {})
     so_tools = serverops.get("tools", "")
@@ -123,7 +181,9 @@ def build_snapshot():
     snap = {
         "portal_snapshot_timestamp": datetime.now().isoformat(),
         "hermes_version": "v0.16.0",
-        "timers_count": 38, "crons_count": 209, "services_count": 2, "llm_jobs_count": 6,  # System-page header scope
+        "timers_count": counts["timers_count"], "crons_count": counts["crons_count"],
+        "services_count": 2, "llm_jobs_count": 6,  # static System-page header scope
+        "counts_provenance": counts["counts_provenance"],
         "workflows_count": wf.get("workflow_count"),
         "graph_nodes_count": len(wf.get("graph_nodes") or []),
         "db_tables_count": len(wf.get("db_lineage") or []),
