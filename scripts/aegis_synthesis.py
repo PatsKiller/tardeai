@@ -1129,20 +1129,30 @@ def _resolve_price(sym: str, holdings_by_sym: dict, finviz_cache: dict, rm_price
             mark.get("as_of"), bool(mark.get("stale")))
 
 
+class _BrokerUnanswered:
+    """The broker question was not answered — distinct from an answer with no rows."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return "BROKER_UNANSWERED"
+
+
+BROKER_UNANSWERED = _BrokerUnanswered()
+
+
 def _broker_quotes(symbols: list):
-    """{SYMBOL: {price, as_of, source}} from the data broker; ``None`` when it could not be asked.
+    """{SYMBOL: {price, as_of, source}} from the data broker; ``BROKER_UNANSWERED`` when it could not be asked.
 
     A quote is the rule's second rung: it serves only when it is FRESH, which ``resolve_mark`` enforces. An
-    empty dict means the broker answered with no rows for these symbols; ``None`` means the question was not
-    answered, which the caller records — the two are different states, and only one of them is evidence.
+    empty dict means the broker answered with no rows for these symbols; the sentinel means the question was
+    not answered, which the caller records — the two are different states, and only one of them is evidence.
     """
     try:
         from lib.data_broker.market_quote import get_price_batch
         return get_price_batch(_db_query, [s for s in symbols if s], max_age_hours=0.5)
-    except Exception as exc:  # noqa: BLE001 — the state is returned, not a confident empty
+    except Exception as exc:  # noqa: BLE001 — the state is returned as a sentinel, not a confident empty
         print(f"  [stop-coverage] broker quote rung unavailable ({type(exc).__name__}) — prices come from "
               "Finviz or a stored mark flagged stale")
-        return None
+        return BROKER_UNANSWERED
 
 
 def _holdings_document() -> dict:
@@ -1199,10 +1209,11 @@ def generate_stop_coverage_briefs() -> dict:
     print(f"  [stop-coverage] Evaluating {len(unique_stops)} stop-protected positions...")
 
     quotes = _broker_quotes([p.get("symbol", "") for p in unique_stops])
-    # None = the broker could not be asked; {} = it answered with no rows. The second rung is only
-    # silently absent in the second case, so the state is carried into the run, not folded into "{}".
-    quote_state = "unavailable" if quotes is None else ("ok" if quotes else "no_rows")
-    quotes = quotes or {}
+    # BROKER_UNANSWERED = the broker could not be asked; {} = it answered with no rows. The second rung
+    # is only silently absent in the second case, so the state is carried into the run rather than folded.
+    quote_state = ("unavailable" if quotes is BROKER_UNANSWERED
+                   else ("ok" if quotes else "no_rows"))
+    quotes = {} if quotes is BROKER_UNANSWERED else quotes
 
     stats = {"total": len(unique_stops), "fresh": 0, "failed": 0,
              "triggered": 0, "danger": 0, "warning": 0, "intact": 0,

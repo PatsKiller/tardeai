@@ -88,8 +88,8 @@ def test_the_risk_management_price_is_a_last_resort_and_is_not_live():
     assert source == "stored_mark" and valid is True and stale is True
 
 
-def test_a_broker_that_cannot_be_asked_is_none_not_an_empty_answer(monkeypatch):
-    """{} means "no rows for these symbols"; None means "did not answer". Only the second is a gap."""
+def test_a_broker_that_cannot_be_asked_is_a_sentinel_not_an_empty_answer(monkeypatch):
+    """{} means "no rows for these symbols"; the sentinel means "did not answer". Only the second is a gap."""
     import types
 
     def boom(*_a, **_k):
@@ -99,7 +99,8 @@ def test_a_broker_that_cannot_be_asked_is_none_not_an_empty_answer(monkeypatch):
     stub.get_price_batch = boom
     monkeypatch.setitem(sys.modules, "lib.data_broker.market_quote", stub)
 
-    assert synth._broker_quotes([SYM]) is None
+    assert synth._broker_quotes([SYM]) is synth.BROKER_UNANSWERED
+    assert repr(synth.BROKER_UNANSWERED) == "BROKER_UNANSWERED"
 
 
 def test_a_broker_that_answers_with_no_rows_is_an_empty_dict(monkeypatch):
