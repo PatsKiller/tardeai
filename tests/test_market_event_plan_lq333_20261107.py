@@ -324,6 +324,51 @@ def test_active_full_shape_labels_only():
                for s in db.sql)
 
 
+def _ready_payload():
+    bars = [{"symbol": "SYNTH_B", "bar_time": b["date"], **{k: b[k] for k in ("open", "high", "low", "close",
+                                                                                "volume")}} for b in _based()]
+    shift = (NOW.date() - timedelta(days=1)) - date.fromisoformat(bars[-1]["bar_time"])
+    for b in bars:
+        b["bar_time"] = (date.fromisoformat(b["bar_time"]) + shift).isoformat()
+    return _active(FakeDB({
+        "market_event_episodes": [{"episode_id": "broad_selloff:market:2026-11-04", "kind": "broad_selloff",
+                                   "scope": "market", "state": "OPEN", "opened_at": "2026-11-05T14:00:00+00:00",
+                                   "baseline_date": "2026-11-04"}],
+        "market_event_candidates": [{"episode_id": "E1", "symbol": "SYNTH_B", "rank": 1, "state": "WATCH",
+                                     "last_price": 58.0, "quality_score": 70, "discount_score": 40,
+                                     "reason_evidence": {"sector": "Technology", "forward_pe": 18.2},
+                                     "updated_at": "2026-11-08T13:00:00+00:00"}],
+        "market_quotes": bars, "trade_transactions": [],
+    }))
+
+
+def test_consumer_contract_banner_fields():
+    # apps/command-center-v3/src/lib/marketEvent.ts normalizeMarketEvent reads these paths
+    d = _ready_payload()
+    ep, mg, c = d["episode"], d["market_gate"], d["candidates"][0]
+    assert ep["id"] == ep["episode_id"] and ep["title"].startswith("Broad selloff") and ep["tier"] == mg["tier"]
+    assert mg["state"] in ("pass", "fail", "unknown") and mg["chips"]
+    assert all(set(g) >= {"id", "label", "state"} and g["state"] in ("pass", "partial", "fail", "unknown")
+               for g in c["gates"])
+    assert isinstance(c["gates"], list) and c["fwd_pe"] == 18.2
+    legs = c["plan"]["tranches"]
+    assert [x["n"] for x in legs] == [1, 2, 3] and {x["status"] for x in legs} <= {"ready", "waiting"}
+    assert all(set(x) >= {"pct", "account_label", "shares", "usd", "entry_low", "entry_high", "condition"} for x in legs)
+    assert d["accounts"][0]["account_label"] == "Brokerage A" and "deployable_usd" in d["accounts"][0]
+
+
+def test_consumer_contract_brief_fields():
+    # scripts/market_event_brief.py reads plan.tranche, plan.accounts[].tranche_usd, market_gate.checks
+    d = _ready_payload()
+    c = d["candidates"][0]
+    assert c["state"] == "READY" and c["plan"]["tranche"] == c["tranches_ready"] >= 1
+    rows = c["plan"]["accounts"]
+    ready_usd = sum(x["usd"] for x in c["plan"]["tranches"] if x["status"] == "ready")
+    assert rows and rows[0]["account_label"] == "Brokerage A" and rows[0]["tranche_usd"] == round(ready_usd, 2)
+    assert isinstance(d["market_gate"]["checks"], dict) and isinstance(c["gate_checks"], dict)
+    assert "SYNTHKEY" not in json.dumps(d, default=str)
+
+
 def test_bars_never_read_yfinance_or_ohlcv_table():
     # spec section 2: Finviz-only; market_ohlcv_bars daily is yfinance-only, so it must not be read
     assert "market_ohlcv_bars" not in api.BARS_SQL and "market_quotes" in api.BARS_SQL

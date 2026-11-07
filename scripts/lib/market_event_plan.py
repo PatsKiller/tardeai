@@ -582,7 +582,7 @@ def build(*, episode: Optional[Mapping[str, Any]], candidates: Sequence[Mapping[
         ev = evaluate_candidate(c, bars_by_symbol.get(sym) or [], mg, policy)
         merged = {**{k: c.get(k) for k in ("symbol", "sector", "rank", "source", "baseline_price", "last_price",
                                            "drawdown_pct", "quality_score", "discount_score",
-                                           "fell_for_reason")},
+                                           "fell_for_reason", "reason_evidence")},
                   **ev, "stored_state": c.get("state")}
         merged["symbol"] = sym
         evaluated.append(merged)

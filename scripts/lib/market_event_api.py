@@ -257,7 +257,7 @@ def build_active(*, db_query: DbQuery, snapshot: Optional[Mapping[str, Any]],
     cand_age = _age_hours(cand_stamp, now)
     if top and (cand_age is None or cand_age > STALE_SNAPSHOT_HOURS):
         stale.append(f"candidates last updated {cand_stamp}")
-    return {
+    return consumer_view({
         "schema": SCHEMA,
         "advisory_only": True,
         "note": plan.ADVISORY_NOTE,
@@ -271,7 +271,92 @@ def build_active(*, db_query: DbQuery, snapshot: Optional[Mapping[str, Any]],
                          "candidates": cand_stamp},
         "stale": bool(stale),
         "stale_reasons": stale,
-    }
+    })
+
+
+_EVIDENCE_NUMBERS = {"fwd_pe": "forward_pe", "sector_median_pe": "sector_median_pe", "peg": "peg", "roic_pct": "roic_pct"}
+
+
+def _gate_state(ok: Optional[bool]) -> str:
+    return "unknown" if ok is None else ("pass" if ok else "fail")
+
+
+def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
+    """Add the fields the two consumers read (LQ-366 fold rehearsal), without removing any.
+
+    * the banner and sheet (apps/command-center-v3/src/lib/marketEvent.ts): episode.id/title/tier,
+      market_gate.state/chips, and per candidate a gates[] chip list and plan.tranches[] across accounts;
+    * the brief (scripts/market_event_brief.py): market_gate.checks, plan.tranche (the highest tranche
+      ready now) and plan.accounts[] (per account, the dollars of every tranche ready now: nothing is
+      recorded as entered, so all ready tranches are deployable).
+    The candidate's ``gates`` is the chip LIST; the brief's dict view is ``gate_checks``.
+    """
+    mg = doc.get("market_gate") or {}
+    evaluated = bool(mg.get("evaluated"))
+    prim = mg.get("primary") or {}
+    prim_ok = (bool(prim.get("score_falling") or prim.get("tier_stepped_down")) if evaluated and prim else None)
+    chips = [{"id": "market_primary", "label": "Market risk easing", "state": _gate_state(prim_ok)}]
+    for c in mg.get("confirmations") or []:
+        ok = c.get("confirms")
+        st = "unknown" if str(c.get("state") or "").upper() in ("", "UNKNOWN") else _gate_state(bool(ok))
+        chips.append({"id": f"market_{c.get('category')}", "label": str(c.get("name") or c.get("category")),
+                      "state": st})
+    mg["state"] = "pass" if mg.get("passed") else ("fail" if evaluated else "unknown")
+    mg["chips"] = chips
+    mg["checks"] = {ch["id"]: ch["state"] == "pass" for ch in chips}
+    ep = doc.get("episode")
+    if isinstance(ep, dict):
+        ep.setdefault("id", ep.get("episode_id"))
+        ep.setdefault("tier", mg.get("tier"))
+        kind = str(ep.get("kind") or "market event").replace("_", " ")
+        scope = ep.get("scope")
+        ep.setdefault("title", " · ".join(x for x in (kind.capitalize(),
+                                                        None if scope in (None, "market") else str(scope),
+                                                        f"baseline {ep['baseline_date']}" if ep.get("baseline_date")
+                                                        else None) if x))
+    rows_by_symbol: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    for acct in doc.get("accounts") or []:
+        for nm in acct.get("names") or []:
+            rows_by_symbol.setdefault(str(nm.get("symbol")), []).append((acct, nm))
+    for c in doc.get("candidates") or []:
+        ev = c.get("reason_evidence") if isinstance(c.get("reason_evidence"), dict) else {}
+        for out_key, ev_key in _EVIDENCE_NUMBERS.items():
+            if c.get(out_key) is None and isinstance(ev.get(ev_key), (int, float)):
+                c[out_key] = ev[ev_key]
+        sig = ((c.get("name_gate") or {}).get("signals") or {}) if (c.get("name_gate") or {}).get("evaluated") else {}
+        name_chips = [{"id": k, "label": lbl, "state": _gate_state(sig.get(k)) if sig else "unknown"}
+                      for k, lbl in (("no_new_low", "No new low"), ("rsi_turning_up", "RSI turning up"),
+                                     ("accumulation", "Accumulation"), ("sma20_reclaim", "Above 20-day average"))]
+        c["gates"] = name_chips + chips
+        c["gate_checks"] = {ch["id"]: ch["state"] == "pass" for ch in c["gates"]}
+        ready_n = int(c.get("tranches_ready") or 0)
+        tranches, acct_rows, notes = [], [], []
+        inv = risk = budget = None
+        for acct, nm in rows_by_symbol.get(str(c.get("symbol")), []):
+            inv = nm.get("invalidation") if inv is None else inv
+            if isinstance(nm.get("loss_at_invalidation_usd"), (int, float)):
+                risk = (risk or 0.0) + nm["loss_at_invalidation_usd"]
+            if isinstance(acct.get("risk_budget_per_name_usd"), (int, float)):
+                budget = (budget or 0.0) + acct["risk_budget_per_name_usd"]
+            notes += [f"{acct.get('account_label')}: {a}" for a in nm.get("annotations") or []]
+            for t in nm.get("tranches") or []:
+                zone = t.get("entry_zone") or [None, None]
+                tranches.append({"n": t.get("tranche"), "pct": t.get("pct"), "account_label": acct.get("account_label"),
+                                 "shares": t.get("shares"), "usd": t.get("usd"), "entry_low": zone[0],
+                                 "entry_high": zone[1] if len(zone) > 1 else None, "condition": t.get("trigger"),
+                                 "status": "ready" if t.get("ready") else "waiting"})
+            ready = [t for t in nm.get("tranches") or [] if t.get("ready") and isinstance(t.get("usd"), (int, float))]
+            if ready:
+                zone = ready[0].get("entry_zone") or []
+                acct_rows.append({"account_label": acct.get("account_label"), "tranches": [t.get("tranche") for t in ready],
+                                  "tranche_usd": round(sum(t["usd"] for t in ready), 2),
+                                  "shares": sum(int(t.get("shares") or 0) for t in ready) or None,
+                                  "entry_zone": "-".join(f"{z:.2f}" for z in zone if isinstance(z, (int, float))),
+                                  "invalidation": nm.get("invalidation")})
+        c["plan"] = {"tranche": ready_n or None, "tranches": tranches, "accounts": acct_rows,
+                     "invalidation": inv, "risk_usd": risk, "risk_budget_usd": budget, "notes": notes} \
+            if tranches or notes else None
+    return doc
 
 
 def _sector_of(c: Mapping[str, Any]) -> Optional[str]:
