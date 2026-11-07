@@ -200,6 +200,9 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
             idle = scratch.get("idle_days")
             if type(idle) not in (int, float) or not idle >= 1:
                 raise RulesError("agent_scratch_idle_days")
+            hrs = scratch.get("idle_hours")
+            if hrs is not None and (type(hrs) not in _NUM or not hrs >= 6):
+                raise RulesError("agent_scratch_idle_hours")
             try:
                 re.compile(str(scratch.get("entry_regex")))
             except re.error as exc:
@@ -227,6 +230,12 @@ def _validate_lifecycle(standing: Mapping[str, Any], doc: Mapping[str, Any]) -> 
             raise RulesError("abandoned_worktree_shape")
         if type(wt.get("idle_days")) not in _NUM or not wt["idle_days"] >= 1:
             raise RulesError("abandoned_worktree_idle_days")
+        ih = wt.get("integrated_idle_hours")
+        if ih is not None and (type(ih) not in _NUM or not ih >= 1):
+            raise RulesError("abandoned_worktree_integrated_idle_hours")
+        ig = wt.get("integration_ref_glob")
+        if ig is not None and (not isinstance(ig, str) or not ig.startswith("refs/heads/wt/")):
+            raise RulesError("abandoned_worktree_integration_ref_glob")
         if type(wt.get("max_archive_mb")) not in _NUM or not 0 < wt["max_archive_mb"] <= 2048:
             raise RulesError("abandoned_worktree_max_archive_mb")
         if not isinstance(wt.get("archive_ns"), str) or not ARCHIVE_NS_RE.match(wt["archive_ns"]):
@@ -1527,6 +1536,7 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
         except OSError as exc:
             raise RulesError("agent_tmp_unreadable") from exc
         idle_days = float(t_cfg["idle_days"])
+        idle_secs = scratch_idle_seconds(t_cfg)
         entry_re = re.compile(t_cfg["entry_regex"])
         ref_repo = _expand(t_cfg["reference_repo"], rules["_home"])
         bundle_dir = _expand(t_cfg["bundle_dir"], rules["_home"])
@@ -1562,8 +1572,8 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
             item["archive_ns"] = (cfg.get("abandoned_worktree") or {}).get("archive_ns", "refs/archive/closeout")
             if why:
                 item["reasons"].append(why)
-            if activity is None or ctx["now"].timestamp() - activity <= idle_days * 86400:
-                item["reasons"].append(f"scratch_not_older_than_{idle_days:g}_days")
+            if activity is None or ctx["now"].timestamp() - activity <= idle_secs:
+                item["reasons"].append(f"scratch_not_older_than_{idle_days:g}_days" if not t_cfg.get("idle_hours") else f"scratch_not_older_than_{t_cfg['idle_hours']:g}_hours")
             item["evidence"]["idle_days"] = round((ctx["now"].timestamp() - activity) / 86400.0, 2) if activity else None
             item["fingerprint"] = {"activity": activity, "kind": "agent_scratch", "bundles": bundles}
             results.append(item)
@@ -1625,6 +1635,39 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
 _C_HOLDS_FROM_G = ("not_owned_repo", "worktree_locked", "in_use_cwd", "referenced", "no_head", "status_failed", "symlink", "not_git")
 
 
+def integration_basis(repo: Path, head: Optional[str], ref_glob: Optional[str], timeout: float = 60) -> Optional[str]:
+    """LQ-190: "ancestor" / "patch-equivalent" when every commit of ``head`` is in a ref matching ``ref_glob``
+    (the live-integration branch), else None. Unknown (no head, no ref, git error) is None, never integrated."""
+    if not head or not ref_glob:
+        return None
+    rc, out = _git(repo, "for-each-ref", "--format=%(refname)", ref_glob, timeout=timeout)
+    refs = [x for x in out.split() if rc == 0 and x]
+    for ref in refs:
+        if _git(repo, "merge-base", "--is-ancestor", head, ref, timeout=timeout)[0] == 0:
+            return "ancestor"
+    for ref in refs:
+        rc, out = _git(repo, "cherry", ref, head, timeout=timeout)
+        lines = out.splitlines()
+        if rc == 0 and lines and all(x.startswith("-") for x in lines):
+            return "patch-equivalent"
+    return None
+
+
+def worktree_idle_hold(idle_s: Optional[float], idle_days: float, basis: Optional[str], floor_hours: float) -> Optional[str]:
+    """The idle reason for rule C, or None. Integrated work waives the long window but keeps a short floor."""
+    if basis and idle_s is not None and idle_s > floor_hours * 3600:
+        return None
+    if basis and idle_s is not None:
+        return f"worktree_not_idle_{floor_hours:g}_hours_integrated"
+    if idle_s is None or idle_s <= idle_days * 86400:
+        return f"worktree_not_idle_{idle_days:g}_days"
+    return None
+
+
+def scratch_idle_seconds(t_cfg: Mapping[str, Any]) -> float:
+    return float(t_cfg["idle_hours"]) * 3600 if t_cfg.get("idle_hours") else float(t_cfg["idle_days"]) * 86400
+
+
 def _abandoned_row(path: Path, lay: Mapping, original: Mapping, w_item: Mapping, branch: Optional[str], head: Optional[str],
                    rules: Mapping[str, Any], ctx: Mapping[str, Any], c_cfg: Mapping[str, Any], row) -> dict:
     """Rule C: a linked worktree rule W does not take, closed by archive-then-remove when abandoned."""
@@ -1652,8 +1695,12 @@ def _abandoned_row(path: Path, lay: Mapping, original: Mapping, w_item: Mapping,
     reasons += [w for w in (why, git_why) if w]
     activity = max(activity or 0, git_activity or 0)
     idle = float(c_cfg["idle_days"])
-    if not activity or now - activity <= idle * 86400:
-        reasons.append(f"worktree_not_idle_{idle:g}_days")
+    basis = integration_basis(Path(lay["main_repo"]), head, c_cfg.get("integration_ref_glob"),
+                              timeout=float((rules.get("git") or {}).get("git_timeout_s") or 60)) if c_cfg.get("integration_ref_glob") else None
+    hold = worktree_idle_hold(now - activity if activity else None, idle, basis, float(c_cfg.get("integrated_idle_hours") or 6))
+    if hold:
+        reasons.append(hold)
+    item["evidence"]["integrated_into_live_branch"] = basis
     item["evidence"]["idle_days"] = round((now - activity) / 86400.0, 2) if activity else None
     untracked = None
     if not path.is_symlink() and path.is_dir():

@@ -483,6 +483,7 @@
       "_why": "Rule T (2026-10-30, AGENTS.md §24.13): ~/.cache/agent-tmp grew to 43 GB across per-task agent scratch dirs nothing reclaimed. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). <root>/<entry>/ is a candidate only when: a real dir directly under exactly this path; name fullmatches entry_regex; newest mtime (bounded scan, symlinks never followed) older than idle_days; no .git entry inside (worktrees are rule W); no never-touch path; and its path appears in no coordination document, live claim/worklog, open PR, or running process cwd/fd. There is no PR-merged check: the board reference is the hold. Removed by rmtree. Operator-only values (§17).",
       "path": "~/.cache/agent-tmp",
       "idle_days": 2,
+      "idle_hours": 12,
       "entry_regex": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
       "require_claim_absent": true,
       "require_process_absent": true,
@@ -493,6 +494,8 @@
     "abandoned_worktree": {
       "_why": "Rule C (2026-10-31, AGENTS.md §24.14; DSN-20261030-workspace-lifecycle P2-T1): on 2026-10-30, 332 abandoned linked worktrees held 59.6 GiB that rule W (clean + merged only) never takes. Read by scripts/disk_hygiene.py (load_rules validates; standing_results applies). A linked worktree rule W does not take is a candidate only when: owned repo; not protected, canonical or under ~/trade-ai-releases; no open PR on its branch; its path in no live claim/worklog, crontab, unit, pointer or process cwd/fd; not `git worktree lock`ed; newest activity of the tree and its gitdir older than idle_days; untracked non-ignored bytes <= max_archive_mb and no untracked nested repo; no REAL credential-like file, untracked or ignored (symlinks are fine). Closed by archive-then-remove (scripts/lib/workspace_closeout.py): HEAD + tracked changes + untracked non-ignored files are committed with a temporary index to <archive_ns>/<slug>-<hash> (never pushed), then `git worktree remove --force`; branches and refs are never deleted. Restore: git worktree add <path> <ref>. archive_retention_days feeds rule X, which is plan-only (reported, never removed). Operator-only values (§17).",
       "idle_days": 7,
+      "integration_ref_glob": "refs/heads/wt/live-integration-*",
+      "integrated_idle_hours": 6,
       "max_archive_mb": 200,
       "archive_ns": "refs/archive/closeout",
       "archive_retention_days": 90

@@ -916,7 +916,7 @@ def _scratch_dirs(home, names, days=10):
 def test_agent_scratch_idle_threshold_and_entry_pattern_come_from_config(world):
     home, rules, _, _ = world
     rules["standing_apply"]["rules"] = ["A", "S", "T", "W"]
-    rules["standing_apply"]["agent_scratch"].update(idle_days=5, entry_regex=r"^task-[a-z0-9-]+$")
+    rules["standing_apply"]["agent_scratch"].update(idle_days=5, idle_hours=None, entry_regex=r"^task-[a-z0-9-]+$")
     (four,) = _scratch_dirs(home, ("task-four",), days=4)
     six, odd = _scratch_dirs(home, ("task-six", "Odd_Name"), days=6)
     result = DH.standing_plan(rules, NOW, evidence())
