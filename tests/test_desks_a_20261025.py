@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -407,16 +408,36 @@ def test_every_desk_payload_is_small_and_shaped_for_the_frame(tmp_path, name):
 
 
 def test_tabs_match_the_approved_boards():
-    expected = {"reentry": ["ready-now", "exits-review", "resistance-levels", "analyst-evidence"],
-                "strategy": ["leaderboard", "plan-vs-performance", "planner", "desk", "incubator", "backtests"],
-                "defense": ["where-to-act", "your-book", "hedges", "review-log"],
-                "agents": ["runtime", "learning", "calibration", "memory", "promotion-cases", "legacy-analytics"]}
-    for name, tabs in expected.items():
+    """Re-Entry, Defense and Agents render the server projection (DeskBoard → /api/v2/desks/<desk>), so
+    their tab ids are pinned backend-against-page.
+
+    Strategy no longer renders that projection. Design strategy/v001 (operator-approved 2026-11-06)
+    narrowed /v3/strategy to Setups and Earnings quality on real data, so its tabs are pinned against
+    the page, and the closure below keeps the old contract that nothing dead-ends: every legacy tab id
+    the projection still builds has an alias into those two.
+    """
+    projected = {"reentry": ["ready-now", "exits-review", "resistance-levels", "analyst-evidence"],
+                 "defense": ["where-to-act", "your-book", "hedges", "review-log"],
+                 "agents": ["runtime", "learning", "calibration", "memory", "promotion-cases", "legacy-analytics"]}
+    for name, tabs in projected.items():
         assert list(desk.build(name, root=Path("/nonexistent"), now=NOW, states=REG)["tabs"]) == tabs
-        page = {"reentry": "ReEntryDesk", "strategy": "StrategyDesk", "defense": "DefenseDesk", "agents": "AgentsDesk"}[name]
+        page = {"reentry": "ReEntryDesk", "defense": "DefenseDesk", "agents": "AgentsDesk"}[name]
         text = (ROOT / f"apps/command-center-v3/src/pages/desks/{page}.tsx").read_text(encoding="utf-8")
         for tab in tabs:
             assert f"id: '{tab}'" in text
+
+    strategy = (ROOT / "apps/command-center-v3/src/pages/desks/StrategyDesk.tsx").read_text(encoding="utf-8")
+    assert ("export const STRATEGY_TABS = [\n"
+            "  { id: 'setups', label: 'Setups' },\n"
+            "  { id: 'earnings', label: 'Earnings quality' },\n"
+            "] as const") in strategy
+    legacy = list(desk.build("strategy", root=Path("/nonexistent"), now=NOW, states=REG)["tabs"])
+    assert legacy == ["leaderboard", "plan-vs-performance", "planner", "desk", "incubator", "backtests"]
+    aliases = strategy[strategy.index("const TAB_ALIASES"):strategy.index("const WINDOWS")]
+    for tab in legacy:
+        m = re.search(rf"(?<![\w-])['\"]?{re.escape(tab)}['\"]?:\s*'([^']+)'", aliases)
+        assert m, f"legacy Strategy tab {tab!r} has no alias — an old deep link would land nowhere"
+        assert m.group(1) in ("setups", "earnings"), (tab, m.group(1))
 
 
 def test_route_is_get_only_and_rail_opens_new_desks_with_classic_kept():
@@ -428,9 +449,15 @@ def test_route_is_get_only_and_rail_opens_new_desks_with_classic_kept():
     for route, page in (("portfolio/re-entry", "ReEntryDesk"), ("strategy", "StrategyDesk"), ("defense", "DefenseDesk"), ("agents", "AgentsDesk")):
         assert f'path="{route}" element={{<RouteErrorBoundary route="/v3/{route}"><{page}' in app
         assert f'path="{route}/classic"' in app
-    rail = (ROOT / "apps/command-center-v3/src/components/NavRail.tsx").read_text(encoding="utf-8")
+    # Design nav/v001 (operator-approved 2026-11-06): the rail renders the one NAV table in
+    # lib/navConfig.ts instead of its own link list, so the four desks are pinned there and the rail is
+    # pinned to that table — a link re-added to the rail's own JSX would no longer be covered here.
+    nav = (ROOT / "apps/command-center-v3/src/lib/navConfig.ts").read_text(encoding="utf-8")
     for to in ("/portfolio/re-entry", "/defense", "/strategy", "/agents"):
-        assert f"{{ to: '{to}'" in rail
+        assert f"{{ to: '{to}'" in nav, to
+    rail = (ROOT / "apps/command-center-v3/src/components/NavRail.tsx").read_text(encoding="utf-8")
+    assert "from '../lib/navConfig'" in rail and "{ NAV," in rail
+    assert "to: '/" not in rail, "NavRail carries a link list of its own again — the NAV table is no longer what it shows"
 
 
 def test_board13_duplicates_replaced_by_links():
@@ -439,10 +466,17 @@ def test_board13_duplicates_replaced_by_links():
     assert "<BacktestPanel" not in journal and "/v3/strategy?tab=backtests" in journal
     rotation = (src / "pages/RotationIntelligence.tsx").read_text(encoding="utf-8")
     assert "Ask the Rotation Advisor" not in rotation and "/v3/cio/questions" in rotation
-    strategy = (src / "pages/desks/StrategyDesk.tsx").read_text(encoding="utf-8")
-    assert "<BacktestPanel" in strategy
     reentry = (src / "pages/desks/ReEntryDesk.tsx").read_text(encoding="utf-8")
     assert "ReEntryAnalystLookthroughBoard" not in reentry and "ReEntryRotationWorkspace" not in reentry
+    # TRIPWIRE, not an approval: board 13 (2026-10-24) put backtests on the Strategy desk; design
+    # strategy/v001 (operator-approved 2026-11-06) narrowed that desk to Setups + Earnings quality and did
+    # not say where backtests go. components/BacktestPanel.tsx therefore renders on NO route, while the two
+    # links that promise it ("Open Strategy → Backtests" in Journal, "Backtest →" in the classic
+    # StrategyHub) resolve to the Setups alias. A PROPOSAL for that home shipped with LQ-20261107-10;
+    # when it is implemented this fails, and this test is what to update.
+    importers = sorted(str(p.relative_to(src)) for p in (src / "pages").rglob("*.tsx")
+                       if re.search(r"<BacktestPanel\b|import[^\n]*\bBacktestPanel\b", p.read_text(encoding="utf-8")))
+    assert importers == [], f"BacktestPanel has a home again ({importers}) — update this test and retire the proposal"
 
 
 # ── design defense/v001: D1 engine row, D4 unheld cards ─────────────────────

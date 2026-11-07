@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -5,6 +6,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_cio_overview_is_default_scorecard_landing() -> None:
+    """The CIO landing is ONE status model, and the 2026-11-06 IA keeps it on the default tab.
+
+    Design intel/v001 (operator-approved 2026-11-06) renamed the landing tab Overview → Today and moved
+    Decisions into it, so the ids this test pins are the Today ones; every former tab still resolves
+    (``CIO_HUB_TAB_ALIASES``), which is asserted below as a closure over the whole table.
+    """
     hub = (ROOT / "apps/command-center-v3/src/pages/CioHub.tsx").read_text(encoding="utf-8")
     tabs = (ROOT / "apps/command-center-v3/src/lib/cioHubTabs.ts").read_text(encoding="utf-8")
     strip = (ROOT / "apps/command-center-v3/src/components/cio/CioScorecardStrip.tsx").read_text(encoding="utf-8")
@@ -12,23 +19,33 @@ def test_cio_overview_is_default_scorecard_landing() -> None:
     modal = (ROOT / "apps/command-center-v3/src/components/cio/CioEvidenceModal.tsx").read_text(encoding="utf-8")
 
     assert "CIO_HUB_DEFAULT_TAB" in tabs
-    assert "overview" in tabs
-    assert "'cio-brain': 'overview'" in tabs
-    assert "'cio-now': 'decisions'" in tabs
+    assert "today" in tabs
+    # intel/v001: the four tabs, and the legacy ids that used to open the landing still land on it
+    # (Overview → Today, ``?tab=cio-now`` → Today); the old brain report keeps its own home in Report.
+    assert "export const CIO_HUB_TABS = [\n  'today',\n  'holdings',\n  'questions',\n  'report',\n] as const" in tabs
+    assert "export const CIO_HUB_DEFAULT_TAB: CioHubTab = 'today'" in tabs
+    assert "'cio-brain': 'report'" in tabs
+    assert "'cio-now': 'today'" in tabs
+    assert "overview: 'today'" in tabs
+    # Closure: every alias target is a declared tab, so no bookmark can land on a tab that is not rendered.
+    aliases = tabs[tabs.index("CIO_HUB_TAB_ALIASES"):tabs.index("export const CIO_HUB_DEFAULT_TAB")]
+    targets = set(re.findall(r":\s*'([a-z-]+)'\s*,", aliases))
+    assert targets <= {"today", "holdings", "questions", "report"}, targets
     assert "resolveCioHubTab" in hub
     assert "CioEvidenceModal" in hub
     assert 'data-testid="cio-overview"' in hub
     assert 'data-testid="cio-scorecard-strip"' in strip
     assert 'data-testid="cio-judgment-band"' in judgment
     assert 'data-testid="cio-evidence-modal"' in modal
-    # Approved board 17 (desks-redesign 2026-10-24): the Overview landing is ONE status model,
-    # "Is the CIO working?", replacing the Observability and Scorecard panels that disagreed. It
-    # renders cio_truth.status_for (served on /api/v2/cio/pages as cio_status), which evaluates the
-    # same scorecard tiles, so the scorecard measurements stay on the landing.
+    # Approved board 17 (desks-redesign 2026-10-24): the landing is ONE status model, "Is the CIO
+    # working?", replacing the Observability and Scorecard panels that disagreed. It renders
+    # cio_truth.status_for (served on /api/v2/cio/pages as cio_status), which evaluates the same
+    # scorecard tiles, so the scorecard measurements stay on the landing. intel/v001 kept it as the
+    # first block of the Today tab.
     overview = hub[hub.index('data-testid="cio-overview"'):]
-    overview = overview[:overview.index("{tab === 'decisions'")]
+    overview = overview[:overview.index("{tab === 'holdings'")]
     assert "<W7CioStatus data={pageTruth} />" in overview
-    assert "useW7Pages(tab === 'overview'" in hub
+    assert "useW7Pages(tab === 'today'" in hub
     panels = (ROOT / "apps/command-center-v3/src/components/W7PagePanels.tsx").read_text(encoding="utf-8")
     assert 'title="Is the CIO working?" testId="cio-single-status"' in panels
     assert "useApi<any>('/api/v2/cio/pages'" in panels
