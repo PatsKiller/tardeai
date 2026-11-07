@@ -79,6 +79,11 @@ def plan_lane(lane_id: str, observation: Mapping[str, Any], root: Path) -> dict[
         rr = o.get("run_receipt") or {}
         if not rr.get("run_id"):
             return {"fired": False, "why": "no run receipt"}
+        # LQ-20261107-210: a run that found nothing to remind about (planner NO_ACTION, zero actions) put one new
+        # event on the ledger every hour that no consumer could ever settle (674 accumulated). Nothing happened,
+        # so nothing is fired. An unknown count (missing field) still fires: unknown is not zero.
+        if rr.get("action_count") == 0 and rr.get("outcome") == "NO_ACTION" and rr.get("delivery_status") == "NO_ACTION":
+            return {"fired": False, "why": "no_action"}
         rel = "data/runtime/approval_package_reminder_last.json"
         return {"fired": True, "idempotency_key": "apr-" + _key(rr["run_id"]), "subject_key": f"approval-reminder:{rr['run_id']}",
                 "artifact_rel": rel, "store": "data/runtime", "at": rr.get("started_at") or rr.get("ended_at")}
