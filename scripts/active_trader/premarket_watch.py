@@ -49,7 +49,7 @@ import json
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 from zoneinfo import ZoneInfo
@@ -79,6 +79,7 @@ CADENCE_JOURNAL = "momentum_alerts_premarket_1m.jsonl"
 LIFECYCLE_FILE = "momentum_alerts_premarket_lifecycle.json"
 RUN_LOCK_FILE = "premarket_watch.run.lock"
 ORIGIN_1M = "active_trader_premarket"
+LANE_ID = "active-trader-premarket-watch"
 
 
 @dataclass(frozen=True)
@@ -1155,9 +1156,56 @@ def _universe(a, cfg: PremarketConfig) -> tuple[list[dict], list[dict]]:
     return universe, pool
 
 
+def receipt_fields(counts: Mapping[str, Any], error: Optional[str] = None) -> dict[str, Any]:
+    """What one pass of this lane did, in the shape a lane receipt states it.
+
+    The page had no per-run record at all (the cron line is not wrapped by safe_flock, so nothing journals it),
+    and the declared output is a heartbeat that carried no run timestamp — so a pass that evaluated 8 symbols
+    and alerted on none was indistinguishable from a pass that never happened. ``run_quality.read_receipt``
+    reads the declared output document when it looks like a receipt; these fields are what make it one.
+
+    Produced counts only what left the lane (an alert journalled, a 1-minute state change); symbols examined
+    are ATTEMPTED. A pass whose every tick raised produced nothing and is NOT ok, however cleanly it exited.
+    """
+    produced = int(counts.get("alerts") or 0) + int(counts.get("state_changes") or 0)
+    attempted = int(counts.get("evaluated") or 0)
+    ticks = int(counts.get("ticks") or 0)
+    tick_errors = int(counts.get("tick_errors") or 0)
+    every_tick_failed = ticks > 0 and tick_errors >= ticks and produced == 0
+    ok = error is None and not every_tick_failed
+    return {
+        "ok": ok,
+        "exit_code": 0 if ok else 1,
+        "error": error or ("every tick failed" if every_tick_failed else None),
+        "produced_count": produced,
+        "attempted_count": attempted,
+        # "no_…" is the shape run_quality._BENIGN_SKIP reads as an idle slot rather than an unexplained empty one.
+        "empty_reason": None if produced else "no_alert_in_window",
+    }
+
+
+def heartbeat_doc(summary: Mapping[str, Any], *, started: datetime, at: float) -> dict[str, Any]:
+    """The heartbeat the lane publishes, now dated like a run receipt.
+
+    ``mode`` is carried through unchanged: ``shadow`` means journal only, no Telegram, and ``run_quality``
+    grades from that field — a muted lane must not read as live. Adding timestamps is what lets the page say
+    "ran at 09:25 and produced nothing" instead of "last at an unknown time"; it changes no existing key.
+    """
+    fields = receipt_fields({"evaluated": summary.get("evaluated"), "alerts": summary.get("alerts"),
+                             "state_changes": summary.get("state_changes")})
+    return {
+        **summary,
+        "lane_id": LANE_ID,
+        "started_at": started.astimezone(timezone.utc).isoformat(),
+        "finished_at": datetime.fromtimestamp(at, timezone.utc).isoformat(),
+        **fields,
+    }
+
+
 def _run(a, cfg: PremarketConfig, *, now: float, day: str, as_of: str) -> int:
     data = PremarketMoomoo(levels=cfg.book_levels, prints=cfg.tape_prints)
     universe_box: dict[str, Any] = {}
+    started = datetime.now(timezone.utc)   # the pass's start; the heartbeat dates itself against it
 
     start_cfg = cfg
 
@@ -1205,7 +1253,8 @@ def _run(a, cfg: PremarketConfig, *, now: float, day: str, as_of: str) -> int:
         if a.apply:
             try:
                 p = ma.journal_dir() / HEARTBEAT_FILE
-                p.write_text(json.dumps({"ts_epoch": tick_now, **summary}, default=str), encoding="utf-8")
+                p.write_text(json.dumps({"ts_epoch": tick_now, **heartbeat_doc(summary, started=started, at=tick_now)},
+                                        default=str), encoding="utf-8")
             except Exception:  # noqa: BLE001
                 pass
         return summary
