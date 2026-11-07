@@ -177,6 +177,24 @@ def accrue_fund_expenses(cur, conn, as_of: str | None = None) -> dict:
             "historical_note": "accruals use the as_of day holdings snapshot; backfill runs must pass historical as_of with matching snapshots — today's MV is never applied retroactively"}
 
 
+def produced_rows(fees: dict, accruals: dict) -> int:
+    """Rows this run wrote into investment_cost_events: new posted-fee charges + OER accrual rows.
+
+    The receipt must state this. Its only output signal is its own ``ok_at``, so without a count a healthy
+    run grades UNPROVEN ("its only output signal is its own receipt and the receipt reports no item
+    count") — the state the 2026-11-06 run was one fix away from. ``summary.accrued_rows`` alone cannot
+    serve: on 2026-11-06 twenty-six holdings lacked a rate, so it was 0 while the run still wrote 8
+    normalized fee charges. A run that writes nothing states ``no_new_events`` (a reviewed idle reason).
+    """
+    ingested = fees.get("ingested_new") if isinstance(fees, dict) else None
+    accrued = accruals.get("accrued_rows") if isinstance(accruals, dict) else None
+    total = 0
+    for value in (ingested, accrued):
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            total += value
+    return total
+
+
 def _filters(q: dict) -> tuple[str, list]:
     """P1-5: THE shared filter matrix for every cost endpoint."""
     where, args = ["superseded=false"], []
@@ -412,8 +430,11 @@ def main(argv=None):
         write_lane_receipt("investment-costs", ok=False, exit_code=1, started_at=started,
                            error=type(exc).__name__)
         raise
+    produced = produced_rows(fees, accruals)
     write_lane_receipt("investment-costs", ok=not accruals.get("error") and bool(reconciliation.get("all_ok")),
                        exit_code=0, started_at=started,
+                       produced_count=produced,
+                       empty_reason=None if produced else "no_new_events",
                        summary={"ingested_new": fees.get("ingested_new"),
                                 "accrued_rows": accruals.get("accrued_rows"),
                                 "missing_rate_count": len(accruals.get("missing_expense_ratio", [])),

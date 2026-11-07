@@ -9568,7 +9568,7 @@
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
-        "unit": "daily OER accrual rows inserted into investment_cost_events",
+        "unit": "rows written into investment_cost_events: new posted-fee charges normalized + daily OER accrual rows",
         "rule": "min_produced",
         "min_produced": 1,
         "window_h": null,
@@ -9578,11 +9578,13 @@
           "no_input_unexpected",
           "dependency_unavailable"
         ],
-        "empty_allowed_reasons": [],
+        "empty_allowed_reasons": [
+          "no_new_events"
+        ],
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/investment-costs_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/investment-costs/<run_id>.json); today the v1 receipt reports this unit as summary.accrued_rows"
+            "ref": "data/runtime/investment-costs_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/investment-costs/<run_id>.json) = summary.ingested_new + summary.accrued_rows, stated by scripts/investment_costs.py since 2026-11-07; a run that writes nothing states empty_reason no_new_events (26 holdings without a rate make accrued_rows 0 on a normal day — 2026-11-06: 8 ingested, 0 accrued)"
           },
           {
             "kind": "store_rows",
