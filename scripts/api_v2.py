@@ -17277,8 +17277,11 @@ def _defense_engine_get(query=None):
         return _out(True, "request_build", 0.0, False, why, hit[1])
     try:
         import defense_engine_build as _deb
+        from lib.defense_stops_slice import resolve_live as _resolve_live
 
-        built = _json_clean(_deb.build(PROJECT_ROOT, now=now))
+        # the API process is host-side: resolve live stops (the stored slice is the n8n lane's input, 17:55 only)
+        _truth, _ = _resolve_live(PROJECT_ROOT)
+        built = _json_clean(_deb.build(PROJECT_ROOT, now=now, truth=_truth))
         _DEFENSE_ENGINE_CACHE["doc"] = (_t.time(), built)
         return _out(True, "request_build", 0.0, False, why, built)
     except Exception as e:  # noqa: BLE001 -- the old file, labelled, beats a 500

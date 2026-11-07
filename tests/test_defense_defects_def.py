@@ -77,17 +77,28 @@ def test_engine_serves_fresh_file(tmp_path, monkeypatch):
 def test_engine_stale_file_is_rebuilt_in_request(tmp_path, monkeypatch):
     import defense_engine_build as deb
     monkeypatch.setattr(api_v2, "PROJECT_ROOT", _root(tmp_path, _doc(5)))
-    monkeypatch.setattr(deb, "build", lambda root, now=None: {**_doc(0), "tier": {"tier": "RED"}})
+    import lib.defense_stops_slice as dss
+    seen = {}
+    monkeypatch.setattr(dss, "resolve_live", lambda root: ({"synthetic": True}, None))
+
+    def fake(root, now=None, truth=None):
+        seen["truth"] = truth
+        return {**_doc(0), "tier": {"tier": "RED"}}
+    monkeypatch.setattr(deb, "build", fake)
     api_v2._DEFENSE_ENGINE_CACHE.clear()
     out = api_v2._defense_engine_get()
     assert out["served_from"] == "request_build" and "h old" in out["fallback_reason"]
     assert out["data"]["tier"]["tier"] == "RED" and out["data"]["served"]["served_from"] == "request_build"
+    assert seen["truth"] == {"synthetic": True}  # the request build uses live stops, not the 17:55 slice
 
 
 def test_engine_build_failure_serves_old_file_labelled_stale(tmp_path, monkeypatch):
     import defense_engine_build as deb
 
-    def boom(root, now=None):
+    import lib.defense_stops_slice as dss
+    monkeypatch.setattr(dss, "resolve_live", lambda root: (None, "synthetic gap"))
+
+    def boom(root, now=None, truth=None):
         raise RuntimeError("synthetic")
     monkeypatch.setattr(api_v2, "PROJECT_ROOT", _root(tmp_path, _doc(5)))
     monkeypatch.setattr(deb, "build", boom)
