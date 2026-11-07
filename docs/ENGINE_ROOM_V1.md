@@ -50,8 +50,17 @@ in-process cache + content ETag; repeat poll = 304 in 14ms / 0B**, watchlist/ite
 - Feed (`lib/research_intelligence.py`) reads persisted sources for the topics lane.
 - **Sourceless advisory degrades to wire at write:** `enrich_narrative()` only
   synthesizes advisory framing (implications / ticker recs / sizing) for items with
-  real `sources[]`; sourceless items get `provenance_grade: "wire"` and no advisory.
-  This alone cleared all 11 `unsourced_advisory` lint flags.
+  real `sources[]`; sourceless items get `provenance_grade: "ungrounded"`
+  (`provenance_reason: "no_sources"`) and no advisory. This alone cleared all 11
+  `unsourced_advisory` lint flags.
+  **2026-11-07 (DATA TRUTH P0):** the grade was `"wire"`, which made a model-written,
+  source-free brief read like a news-service dispatch. It is now `"ungrounded"`, and a
+  synth brief whose `evidence_json.grounded_count` is present and 0 is **withheld**:
+  the desk serves `WITHHELD_SUMMARY`, `sources: []`, `publish_state:
+  "withheld_ungrounded"` and `quality_tier: "ungrounded"` instead of its text
+  (`hermes:44896` asserted a false SSDI/MAGI rule). `topic_research_synthesizer.py`
+  no longer writes a brief from zero sources, and refuses one whose claims trace to
+  none of its cited sources.
 - Per-figure as-of: synthesizer prompt now requires precise dating (source-article
   date or exact date), never "as of mid-2026".
 - **Regeneration:** the remaining 10 flagged briefs (all `Industry: …`

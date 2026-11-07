@@ -1,0 +1,23 @@
+{
+  "schema": "CiGate@v1",
+  "name": "TOPIC_RESEARCH_NO_SOURCES_20261107",
+  "files": [
+    "tests/test_topic_research_synth_sourceless_20261107.py"
+  ],
+  "anchor": "TOPIC_RESEARCH_NO_SOURCES_20261107",
+  "comment": [
+    "ANCHOR: TOPIC_RESEARCH_NO_SOURCES_20261107 — DATA TRUTH P0, defect 2 (2026-11-07):",
+    "hermes:44896 was promoted, labelled provenance_grade 'wire', and asserted that 'SSDI benefits",
+    "themselves are generally excluded from MAGI calculations' while its own source list was empty",
+    "(grounded_on [], grounded_count 0). The claim is false — the taxable part of SSDI is in AGI",
+    "and therefore in MAGI — and the model wrote it from memory because the synthesizer called it",
+    "with zero articles. Two defects, one lane: the producer wrote a brief it had no source for, and",
+    "the desk graded model output as a wire dispatch and promoted it.",
+    "The gate pins: the synthesizer refuses to synthesize when no article survives the relevance",
+    "gate (the model is never called); it refuses a brief whose claims trace to none of its cited",
+    "sources; a partial trace is recorded in evidence_json.claim_trace and disclosed in data_i_doubt;",
+    "a grounding-tracked zero-source synth is graded 'ungrounded'/'no_sources' and its text withheld;",
+    "and the predicate needs an EXPLICIT zero — an absent or unreadable grounded_count is unknown,",
+    "never zero, so other research types are untouched."
+  ]
+}

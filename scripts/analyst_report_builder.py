@@ -2992,6 +2992,59 @@ def build_sector_theme_report(
     }
 
 
+def _recent_research_rows(topic: str | None, days: int, limit: int = 12) -> tuple[list[dict], int]:
+    """Recent research for the intelligence deep dive, minus briefs the desk withholds.
+
+    ``lib/research_intelligence`` withholds a synth brief written without sources (``grounded_count``
+    present and 0) from the desk.  This report reads the store directly, so it calls that same
+    predicate rather than restating it — otherwise the sentence the desk hides reappears here
+    (hermes:44896 asserted a false SSDI/MAGI rule; 2026-11-07 DATA TRUTH audit).
+
+    Returns ``(rows, withheld)`` so the report can say *why* it is thinner instead of claiming
+    nothing matched.
+    """
+    import sys
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.research_intelligence import is_withheld_synth
+
+    if topic:
+        rows = _db_query(
+            """SELECT topic, left(summary, 200) AS summary, research_type, model_used,
+                      evidence_json, created_at
+               FROM hermes_research_intelligence
+               WHERE created_at > NOW() - make_interval(days => %s)
+                 AND (topic ILIKE %s OR summary ILIKE %s)
+               ORDER BY created_at DESC LIMIT %s""",
+            (int(days), f"%{topic}%", f"%{topic}%", int(limit)),
+        ) or []
+    else:
+        rows = _db_query(
+            """SELECT topic, left(summary, 200) AS summary, research_type, model_used,
+                      evidence_json, created_at
+               FROM hermes_research_intelligence
+               WHERE created_at > NOW() - make_interval(days => %s)
+               ORDER BY created_at DESC LIMIT %s""",
+            (int(days), int(limit)),
+        ) or []
+    kept, withheld = [], 0
+    for r in rows:
+        r = dict(r)
+        if is_withheld_synth(r.get("model_used"), r.get("evidence_json")):
+            withheld += 1
+            continue
+        kept.append({k: r.get(k) for k in ("topic", "summary", "research_type", "created_at")})
+    return kept, withheld
+
+
+def _hermes_bullets(hermes: list[dict], withheld: int) -> list[str]:
+    """Bullets for the Hermes section — and a plain reason when briefs were dropped."""
+    bullets = [f"{h.get('topic', 'Research')}: {h.get('summary', '')}" for h in hermes]
+    if withheld:
+        bullets.append(
+            f"{withheld} brief(s) withheld — written without sources, so not shown here.")
+    return bullets or ["No Hermes research matched this topic window."]
+
+
 def build_intelligence_deep_report(*, topic: str | None = None, days: int = 7) -> dict:
     """Intelligence deep dive — Layer 4, Hermes, alerts, synthesis conflicts."""
     import sys
@@ -3004,23 +3057,7 @@ def build_intelligence_deep_report(*, topic: str | None = None, days: int = 7) -
     except Exception as e:
         intel = {"error": str(e)[:200]}
 
-    if topic:
-        hermes = _db_query(
-            """SELECT topic, left(summary, 200) AS summary, research_type, created_at
-               FROM hermes_research_intelligence
-               WHERE created_at > NOW() - make_interval(days => %s)
-                 AND (topic ILIKE %s OR summary ILIKE %s)
-               ORDER BY created_at DESC LIMIT 12""",
-            (int(days), f"%{topic_label}%", f"%{topic_label}%"),
-        ) or []
-    else:
-        hermes = _db_query(
-            """SELECT topic, left(summary, 200) AS summary, research_type, created_at
-               FROM hermes_research_intelligence
-               WHERE created_at > NOW() - make_interval(days => %s)
-               ORDER BY created_at DESC LIMIT 12""",
-            (int(days),),
-        ) or []
+    hermes, hermes_withheld = _recent_research_rows(topic, days)
 
     ensembles = _db_query(
         """SELECT subject, final_decision, final_score, consensus_reached, reasoning_summary, created_at
@@ -3094,6 +3131,7 @@ def build_intelligence_deep_report(*, topic: str | None = None, days: int = 7) -
                 "pending": safety.get("pending"),
                 "unsafe": safety.get("unsafe"),
                 "hermes_count": len(hermes),
+                "hermes_withheld": hermes_withheld,
                 "ensemble_count": len(ensembles),
             },
         },
@@ -3101,10 +3139,7 @@ def build_intelligence_deep_report(*, topic: str | None = None, days: int = 7) -
             "id": "fundamental_news",
             "title": "Hermes Research Synthesis",
             "content": "Hermes stop/trailing recommendations are summarized in Action Queue where actionable.",
-            "bullets": [] if report_actions else [
-                f"{h.get('topic', 'Research')}: {h.get('summary', '')}"
-                for h in hermes
-            ] or ["No Hermes research matched this topic window."],
+            "bullets": [] if report_actions else _hermes_bullets(hermes, hermes_withheld),
         },
         {
             "id": "ensemble_validation",

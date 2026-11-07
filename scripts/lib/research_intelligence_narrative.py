@@ -635,7 +635,10 @@ def enrich_narrative(
                 symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
             )
         else:
-            out["provenance_grade"] = "wire"  # sourceless → no synthesized advisory
+            # Zero sources: not wire copy and not a grounded brief. Calling it "wire" made a
+            # model-written, source-free brief read like a dispatch from a news service (2026-11-07).
+            out["provenance_grade"] = "ungrounded"
+            out["provenance_reason"] = "no_sources"
         return _polish_narrative_depth(out, title=title, cats=cats)
 
     body_src = " ".join(x for x in [summary, thesis] if x)
@@ -728,5 +731,7 @@ def enrich_narrative(
             symbol=symbol, is_held=is_held, research_type=research_type, portfolio=portfolio,
         )
     else:
-        out["provenance_grade"] = "wire"  # sourceless → no synthesized advisory
+        # Zero sources: not wire copy and not a grounded brief — see the stored-narrative branch above.
+        out["provenance_grade"] = "ungrounded"
+        out["provenance_reason"] = "no_sources"
     return _polish_narrative_depth(out, title=title, cats=cats)
