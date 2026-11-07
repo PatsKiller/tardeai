@@ -163,6 +163,7 @@ from scripts.lib.effect_claim import (  # noqa: E402
 from scripts.lib.n8n_due import parse_key as parse_slot_key  # noqa: E402
 from scripts.lib.n8n_process_keys import is_process_key, parse_process_key  # noqa: E402
 from scripts.lib.n8n_fabric_store import FabricStoreError, RunOutcomeStore  # noqa: E402
+from scripts.lib import n8n_executor_drain as executor_drain  # noqa: E402
 from scripts.n8n_coordination_gateway import default_ledger_path  # noqa: E402
 
 RECEIPT_SCHEMA = "RunReceipt@v1"
@@ -1389,8 +1390,10 @@ def drain(
     outputs: Any = None,
     policies: Any = None,
     registry_rows: Any = None,
+    should_stop=None,
 ) -> list[dict[str, Any]]:
     """Claim and execute until the queue is empty (or max_runs). One receipt per claimed row, always.
+    ``should_stop`` (LQ-20261107-137): checked before every claim; True = claim nothing more (release drain).
     ``stage_rows``: the registry lanes for the stage clamp (None = unreadable, fail closed).
     ``outcomes`` / ``effects`` (2026-10-14): the run_outcomes recorder and the effect-key gate; None = off.
     2026-10-15: ``allowlist`` may be a PolicyFile / loader, re-validated per claimed row (DD08); ``outputs`` the
@@ -1398,6 +1401,8 @@ def drain(
     not recorded)."""
     out: list[dict[str, Any]] = []
     while max_runs is None or len(out) < max_runs:
+        if should_stop is not None and should_stop():
+            break
         row = store.claim_next()
         if row is None:
             break
@@ -1772,6 +1777,7 @@ class ExecutorV2:
         outcomes: RunOutcomeStore | None = None,
         effects: EffectGate | None = None,
         outputs: Any = None,
+        drain_check=None,
     ) -> None:
         cfg = dict(load_executor_config(None))
         cfg.update(config or {})
@@ -1812,6 +1818,11 @@ class ExecutorV2:
         self._last_receipt: dict[str, Any] | None = None
         # B1: runs whose finish / finalize_outcome exhausted the bounded retry; retried every step, never reaped
         self._pending: dict[str, dict[str, Any]] = {}
+        #: LQ-20261107-137: ``drain_check(now)`` -> ExecutorDrainRequest state or None. Default: the request file.
+        self.drain_check = drain_check or (
+            lambda now: executor_drain.drain_state(self.state_root, self.code_root, now)
+        )
+        self._draining: dict[str, Any] | None = None
 
     # -- helpers --
     def entries(self) -> Mapping[str, Mapping[str, Any]]:
@@ -1850,9 +1861,34 @@ class ExecutorV2:
         if self._last_reap is None or now - self._last_reap >= self.reap_every_s:
             self.reap(now)
             self._last_reap = now
-        started = self.fill(self.clock())
+        draining = self._check_drain(now)
+        started = 0 if draining else self.fill(self.clock())
         self.write_status(self.clock())
         return started
+
+    def _check_drain(self, now: float) -> dict[str, Any] | None:
+        """LQ-20261107-137: a promote asked this executor to hand over to a newer release. A failing check is
+        no drain (keep working, as before)."""
+        try:
+            d = self.drain_check(now)
+        except Exception as exc:  # noqa: BLE001 - a broken drain check must never stop the executor
+            self._log({"executor": "drain_check_error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+            d = None
+        if d and not self._draining:
+            self._log({"executor": "draining", **d})
+        self._draining = dict(d) if d else None
+        return self._draining
+
+    def drain_done(self) -> str | None:
+        """'drained' when draining and nothing is in flight or pending; 'drain_forced' past the deadline."""
+        d = self._draining
+        if not d:
+            return None
+        if d.get("forced"):
+            return "drain_forced"
+        if not self.busy() and not self.pending():
+            return "drained"
+        return None
 
     def fill(self, now: float) -> int:
         started = 0
@@ -2253,6 +2289,7 @@ class ExecutorV2:
                 for k in ("run_id", "lane_id", "mode", "state", "exit_code", "finished_at", "verdict", "worker_id")
             },
             "retry_policies_sha256": getattr(self.policies, "sha256", None),
+            "draining": None if self._draining is None else dict(self._draining),
             "authority": "READ_ONLY_ADVISORY",
         }
 
@@ -2281,7 +2318,7 @@ class ExecutorV2:
                 return
             self.wait(poll_s)
 
-    def serve(self, *, poll_s: float | None = None) -> None:
+    def serve(self, *, poll_s: float | None = None) -> str:
         """Daemon loop. A ledger / I/O / runtime error in one tick (F19: ``database is locked`` past the busy
         timeout; a LedgerError; an OSError writing status; a RuntimeError such as a thread that cannot start) is
         logged and retried next tick: exiting would let systemd kill the cgroup and every running lane with it."""
@@ -2291,6 +2328,12 @@ class ExecutorV2:
                 self.step()
             except (sqlite3.OperationalError, LedgerError, OSError, RuntimeError) as exc:
                 self._log({"executor": "step_error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+            done = self.drain_done()
+            if done:
+                # LQ-20261107-137: nothing in flight (or the deadline passed). Exit 0; Restart=always starts the
+                # new release, whose code_root is the request's target, so the request is inert for it.
+                self._log({"executor": done, **(self._draining or {}), "busy": len(self.busy())})
+                return done
             self.wait(poll)
 
 
@@ -2404,12 +2447,24 @@ def main(argv: list[str] | None = None) -> int:
                 ex.drain_until_idle()
                 return 0
             ex.serve(poll_s=max(0.5, min(float(args.interval), float(exec_cfg["poll_s"]))))
+            return 0  # LQ-20261107-137: a release drain finished; never fall through to the v1 loop
         except KeyboardInterrupt:
             return 0
         finally:
             ledger.close()
+    def v1_draining() -> dict[str, Any] | None:
+        try:
+            return executor_drain.drain_state(state_root, code_root, time.time())
+        except Exception:  # noqa: BLE001 - a broken drain check is no drain
+            return None
+
     try:
         while True:
+            draining = v1_draining()
+            if draining:  # v1 is serial: between drain() passes nothing is in flight
+                print(json.dumps({"executor": "drain_forced" if draining.get("forced") else "drained",
+                                  **draining}), flush=True)
+                return 0
             drain(
                 store,
                 allowlist,
@@ -2422,6 +2477,7 @@ def main(argv: list[str] | None = None) -> int:
                 outputs=outputs,
                 policies=policies,
                 registry_rows=registry_rows,
+                should_stop=lambda: v1_draining() is not None,
             )
             if args.once:
                 return 0

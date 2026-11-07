@@ -1095,10 +1095,24 @@ restart_root_frozen_units() {
     done
   fi
   local u pid cwd failures=0
-  local -a restarted=() restart_failed=()
+  local -a restarted=() restart_failed=() deferred=()
   for u in "${keep[@]}"; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
     systemctl --user is-active --quiet "$u" || { log "  skip $u (not running)"; continue; }
+    # LQ-20261107-137: a plain restart SIGTERMs the executor's whole cgroup, so every in-flight lane run ended
+    # RUN_TIMEOUT/executor_lost. Ask it to drain instead: it stops claiming, finishes in-flight runs, exits 0, and
+    # Restart=always starts it on this release. Only the helper's own result token skips the restart; anything
+    # else (no helper, a crash, an executor too old to acknowledge) falls through to the old restart.
+    if [[ "$u" == "tradeai-n8n-run-executor.service" && "$have_py" == "1" && -f "${ROOT}/scripts/n8n_executor_drain.py" ]]; then
+      local dres=""
+      dres="$("$VENV_PYTHON" "${ROOT}/scripts/n8n_executor_drain.py" request --target "$dir" --unit "$u" \
+        --wait-s "${TRADEAI_EXECUTOR_DRAIN_WAIT_S:-90}" 2>/dev/null | sed -n 's/^DRAIN_RESULT=//p' | tail -1)" || dres=""
+      case "$dres" in
+        re_resolved) log "  $u drained its in-flight runs and restarted itself"; restarted+=("$u"); continue ;;
+        deferred_draining) log "  DEFER $u: in-flight run(s) still running; it restarts itself on this release when idle"; deferred+=("$u"); continue ;;
+        *) log "  $u drain not acknowledged (${dres:-no result}); restarting (in-flight runs end executor_lost)" ;;
+      esac
+    fi
     if ! systemctl --user restart "$u" 2>/dev/null; then
       log "  FAIL $u restart failed — it may still serve the PREVIOUS release"
       restart_failed+=("$u")
@@ -1129,7 +1143,7 @@ restart_root_frozen_units() {
       vpre=(env -u TRADE_AI_CI -u TRADEAI_TEST_HARNESS)
     fi
     "${vpre[@]}" "$VENV_PYTHON" "${ROOT}/scripts/current_bound_units.py" verify --current "$dir" --event "$event" \
-      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" || vrc=$?
+      --restarted "${restarted[*]}" --restart-failed "${restart_failed[*]}" --deferred "${deferred[*]}" || vrc=$?
     case "$vrc" in
       0) ;;
       4) log "  ERROR current-bound verify REFUSED to page or write its receipt (harness guard) — check the deploy env" ;;
