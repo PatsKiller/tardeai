@@ -64622,7 +64622,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 db_names.extend(["tax_agent"])
             if agent_id == "aegis":
                 db_names.extend(["aegis_core"])
-            agent_filter = " OR ".join(f"agent ILIKE '%{n}%'" for n in db_names)
+
+            # LQ-20261107-141: the agent value is caller-supplied. It reaches SQL only as a bound parameter, with
+            # LIKE wildcards escaped, never as SQL text.
+            def _ilike_pat(v: str) -> str:
+                return "%" + str(v).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+            agent_filter = " OR ".join("agent ILIKE %s ESCAPE '\\'" for _ in db_names)
+            agent_params = tuple(_ilike_pat(n) for n in db_names)
 
             # Stats
             stats_row = (
@@ -64633,6 +64640,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                        AVG(CASE WHEN created_at > NOW()-INTERVAL '30 days' THEN confidence END) as avg_conf_30d
                 FROM watchlist_agent_results WHERE {agent_filter}
             """,
+                    agent_params,
                     fetch="one",
                 )
                 or {}
@@ -64654,81 +64662,102 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             # Confidence histogram (30d)
             histogram = (
-                _db_query(f"""
+                _db_query(
+                    f"""
                 SELECT width_bucket(confidence, 0, 1, 10) as bucket, COUNT(*) as cnt
                 FROM watchlist_agent_results
                 WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '30 days' AND confidence IS NOT NULL
                 GROUP BY 1 ORDER BY 1
-            """)
+            """,
+                    agent_params,
+                )
                 or []
             )
 
             # Confidence trend (14d rolling, last 90d)
             trend = (
-                _db_query(f"""
+                _db_query(
+                    f"""
                 SELECT created_at::date as date, AVG(confidence) as avg, COUNT(*) as n
                 FROM watchlist_agent_results
                 WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '90 days'
                 GROUP BY 1 ORDER BY 1
-            """)
+            """,
+                    agent_params,
+                )
                 or []
             )
 
             # Decision mix (30d)
             mix = (
-                _db_query(f"""
+                _db_query(
+                    f"""
                 SELECT recommendation, COUNT(*) as cnt
                 FROM watchlist_agent_results
                 WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '30 days'
                 GROUP BY 1 ORDER BY 2 DESC
-            """)
+            """,
+                    agent_params,
+                )
                 or []
             )
 
             # Recent results (25)
             recent = (
-                _db_query(f"""
+                _db_query(
+                    f"""
                 SELECT id, symbol, recommendation, confidence, summary,
                        created_at, model_used, reason_codes, request_type
                 FROM watchlist_agent_results
                 WHERE {agent_filter}
                 ORDER BY created_at DESC LIMIT 25
-            """)
+            """,
+                    agent_params,
+                )
                 or []
             )
 
             # Top symbols
             top_syms = (
-                _db_query(f"""
+                _db_query(
+                    f"""
                 SELECT symbol, COUNT(*) as cnt, AVG(confidence) as avg_conf
                 FROM watchlist_agent_results
                 WHERE ({agent_filter}) AND created_at > NOW()-INTERVAL '90 days'
                 GROUP BY 1 ORDER BY 2 DESC LIMIT 15
-            """)
+            """,
+                    agent_params,
+                )
                 or []
             )
 
             # Debates
             debates = (
-                _db_query(f"""
+                _db_query(
+                    """
                 SELECT id, symbol, debate_type, agents_involved, outcome_summary,
                        winning_view, created_at, resolved
                 FROM agent_debate_log
-                WHERE agents_involved::text ILIKE '%{agent_id}%'
+                WHERE agents_involved::text ILIKE %s ESCAPE '\\'
                 ORDER BY created_at DESC LIMIT 10
-            """)
+            """,
+                    (_ilike_pat(agent_id),),
+                )
                 or []
             )
 
             # Intelligence rules / outcome lessons
             lessons = (
-                _db_query(f"""
+                _db_query(
+                    """
                 SELECT id, rule_type, strategy_id, symbol, rule_text, confidence_adjustment,
                        source_trade_id, created_at, changed_by
                 FROM agent_intelligence_rules
-                WHERE changed_by ILIKE '%{agent_id}%' OR changed_by ILIKE '%{db_names[0]}%'
+                WHERE changed_by ILIKE %s ESCAPE '\\'
                 ORDER BY created_at DESC LIMIT 10
-            """)
+            """,
+                    (_ilike_pat(agent_id),),
+                )
                 or []
             )
 
@@ -64737,11 +64766,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
 
             # Performance history
             perf = (
-                _db_query(f"""
+                # LQ-20261107-141: the column is ``agent`` (013_classification_rule_engine.sql; written by
+                # scripts/update_agent_performance.py from watchlist_agent_results.agent). ``agent_name`` does not
+                # exist, so this read failed and performance_history was always empty.
+                _db_query(
+                    f"""
                 SELECT * FROM agent_performance_history
-                WHERE agent_name ILIKE '%{agent_id}%' OR agent_name ILIKE '%{db_names[0]}%'
+                WHERE {agent_filter}
                 ORDER BY created_at DESC LIMIT 20
-            """)
+            """,
+                    agent_params,
+                )
                 or []
             )
 
@@ -64834,12 +64869,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 # Event queue for this agent
                 events = (
-                    _db_query(f"""
+                    _db_query(
+                        """
                     SELECT event_type, symbol, priority, status, created_at, processed_at
                     FROM agent_event_queue
-                    WHERE agents_to_notify::text ILIKE '%{agent_id}%'
+                    WHERE agents_to_notify::text ILIKE %s ESCAPE '\\'
                     ORDER BY created_at DESC LIMIT 20
-                """)
+                """,
+                        (_ilike_pat(agent_id),),
+                    )
                     or []
                 )
                 result["event_queue"] = [{k: _json_clean(v) for k, v in r.items()} for r in events]
@@ -64854,13 +64892,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             try:
                 # Handoffs involving this agent
                 handoffs = (
-                    _db_query(f"""
+                    _db_query(
+                        """
                     SELECT id, from_agent, to_agent, intent, confidence, reason,
                            action_type, status, created_at
                     FROM agent_handoffs
-                    WHERE from_agent ILIKE '%{agent_id}%' OR to_agent ILIKE '%{agent_id}%'
+                    WHERE from_agent ILIKE %s ESCAPE '\\' OR to_agent ILIKE %s ESCAPE '\\'
                     ORDER BY created_at DESC LIMIT 20
-                """)
+                """,
+                        (_ilike_pat(agent_id), _ilike_pat(agent_id)),
+                    )
                     or []
                 )
                 result["handoffs"] = [{k: _json_clean(v) for k, v in r.items()} for r in handoffs]
@@ -64919,7 +64960,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 # SLA status — calendar-aware
                 last_result = (
                     _db_query(
-                        f"SELECT MAX(created_at) as ts FROM watchlist_agent_results WHERE {agent_filter}", fetch="one"
+                        f"SELECT MAX(created_at) as ts FROM watchlist_agent_results WHERE {agent_filter}",
+                        agent_params,
+                        fetch="one",
                     )
                     or {}
                 )
