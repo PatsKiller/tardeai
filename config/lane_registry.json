@@ -26976,6 +26976,106 @@
       }
     },
     {
+      "lane_id": "market-event-detect",
+      "owner": "research",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/market_event_detect.py",
+        "cadence": "*/30 * * * *",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 0.5,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "state_reason": "Operator P0 2026-11-07 (SPEC_MARKET_EVENT_REENTRY_20261107 \u00a74.1), LQ-20261107-332, relayed by claude-lead: market-event detector + re-entry candidate ranker, every 30 min, weekends included. Stage SHADOW: the clamp runs it --dry-run (reads DB read-only, prints, writes nothing). Promotion to --apply is the lead's after migrations/2026_11_07_market_event.sql is applied.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/market-event-detect_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/market_event_detect.py run() writes the LaneRunReceipt v2 on --apply (tests/test_market_event_wp12_20261107.py: dry run writes nothing); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_market_event_wp12_20261107.py (16 synthetic tests: triggers, seed-once, one open per kind+scope, close rule, absent-not-negative, split guard, peer floor/cap, fell_for_reason ranked last, re-rank keeps WP3 fields, dry run writes nothing). Live read-only dry run 2026-11-07: 1 episode, 91 candidates, 1.5 s.",
+      "review_by": "2026-11-21",
+      "note": "Advisory only (MBI_BEHAVIOR = 0): reads market_quotes (alpaca/finviz only), ticker_snapshot_daily, positions/watchlist/stop-out tables, catalyst_events, sec_xbrl and the MRE snapshot; writes market_event_episodes / market_event_candidates on --apply. No broker, sender, model or network. Exit 2 on --apply when the tables are missing.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/30 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "market-event-brief",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "state_reason": "SPEC_MARKET_EVENT_REENTRY_20261107 (operator-approved 2026-11-07): advisory market-event lane, shadow first; the lead promotes.",
+      "reason_confidence": "ESTABLISHED",
+    "reason_evidence": "SOURCE_AUTHORIZATION_ONLY: handoffs/SPEC_MARKET_EVENT_REENTRY_20261107.md (operator-approved 2026-11-07) declares this lane and its schedule; shadow dry_run admission only. No runtime output claimed.",
+      "review_by": "2026-11-14",
+      "expected_cadence_hours": 24,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "match": "scripts/market_event_brief.py"
+      },
+      "dispatch": {
+        "class": "report",
+        "retry_policy": "none",
+        "mode": "dry_run",
+        "cron": [
+          "0 20 * * 0",
+          "0 7,9 * * 1-5",
+          "15 10 * * 1-5",
+          "30 12,15,16 * * 1-5"
+        ],
+        "after": [],
+        "priority": 2,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/market-event-brief_last.json",
+        "expected_cadence_hours": 24,
+        "kind": "json_key",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "WP4 brief (spec 4.5): Sun 20:00, Mon-Fri 07:00/09:00/10:15/12:30/15:30/16:30 ET while an episode is OPEN/STABILIZING/RECOVERING. Email full, Telegram compact, Fi text only on open/close and a name turning READY. Delivers email/Telegram/Fi text on --deliver, so it is send-like: declared class report while dry_run (a dry run sends nothing); the R2 (send class) ruling is the lead's before live_arg is used."
+    },
+    {
       "lane_id": "unit-run-snapshot",
       "owner": "platform",
       "scheduler": {

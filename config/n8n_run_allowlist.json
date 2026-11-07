@@ -4763,6 +4763,55 @@
       "source": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead. n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads and prints only. Canary live_arg (separate PR): [\"--apply\"]."
     },
     {
+      "lane_id": "market-event-detect",
+      "command": [
+        "$PY",
+        "scripts/market_event_detect.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_market_event_detect.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/market-event-detect_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ENV_FILE"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce; no broker, sender or model name is read.",
+      "env_evidence": "scripts/market_event_detect.py: TRADEAI_ENV_FILE (optional .env path for DB_* via lib.ops_lanes.db_params); TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT via lib.lane_last_receipt.runtime_dir; executor base names otherwise.",
+      "source": "LQ-20261107-332 (SPEC_MARKET_EVENT_REENTRY_20261107), relayed by claude-lead. n8n-native lane: no cron line, no systemd unit. SHADOW: live_arg null. Canary live_arg (lead's step, after the migration): [\"--apply\"]."
+    },
+    {
+      "lane_id": "market-event-brief",
+      "command": [
+        "$PY",
+        "$CODE_ROOT/scripts/market_event_brief.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--deliver"
+      ],
+      "lock": "/tmp/tradeai_market_event_brief.lock",
+      "lock_kind": "safe_flock",
+      "timeout_s": 180,
+      "cwd": "$CODE_ROOT",
+      "market_gate": false,
+      "output_signal": "data/runtime/market-event-brief_last.json",
+      "output_receipt": "v2",
+      "env_names": [],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "New lane: inventory the env NAMES from its first dry-run receipt before enforce (brief needs the gog keyring, Telegram and Command Center token names).",
+      "source": "SPEC_MARKET_EVENT_REENTRY_20261107 4.1/4.2/4.5; dry_run first."
+    },
+    {
       "lane_id": "unit-run-snapshot",
       "command": [
         "$PY",
