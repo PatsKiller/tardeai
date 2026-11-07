@@ -368,7 +368,7 @@ def evaluate_candidate(candidate: Mapping[str, Any], bars: Iterable[Mapping[str,
         res["reasons"] = ["entered per operator record; plan shown for the remaining tranches"]
     elif not g.get("evaluated"):
         res["state"] = prev if prev in STATES else "WATCH"
-        return res
+        return _hold_fell_for_reason(candidate, res)
     sig = g.get("signals") or {}
     if not g.get("evaluated"):
         return res
@@ -388,6 +388,28 @@ def evaluate_candidate(candidate: Mapping[str, Any], bars: Iterable[Mapping[str,
         res["tranches_ready"] = t
         if t < 2:
             res["reasons"].append("second tranche waits for the market gate")
+    return _hold_fell_for_reason(candidate, res)
+
+
+def _operator_starred(candidate: Mapping[str, Any]) -> bool:
+    ev = candidate.get("reason_evidence") if isinstance(candidate.get("reason_evidence"), Mapping) else {}
+    return candidate.get("operator_star") is True or (ev or {}).get("operator_star") is True
+
+
+def _hold_fell_for_reason(candidate: Mapping[str, Any], res: dict[str, Any]) -> dict[str, Any]:
+    """Spec §4.3: a name that fell for its own reason is never READY without an operator star.
+
+    It is held at STABILIZING with no tranche ready. ENTERED (the operator's own record) and
+    INVALIDATED are left as they are. Only an explicit ``operator_star is True`` releases the hold.
+    """
+    res["fell_for_reason"] = bool(candidate.get("fell_for_reason"))
+    if not res["fell_for_reason"] or _operator_starred(candidate):
+        return res
+    if res.get("state") == "READY":
+        res["state"] = "STABILIZING"
+        res["tranches_ready"] = 0
+        res["held_for_star"] = True
+        res["reasons"].append("fell for its own reason: held below READY until the operator stars it")
     return res
 
 

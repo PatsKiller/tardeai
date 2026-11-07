@@ -129,6 +129,26 @@ def test_new_low_under_recorded_invalidation_invalidates_and_sticks():
     assert again["state"] == "INVALIDATED"
 
 
+def test_fell_for_reason_is_never_ready_without_an_operator_star():
+    bars = _based()
+    held = mep.evaluate_candidate({"symbol": "SYNTH_F", "fell_for_reason": True}, bars, {"passed": True}, POL)
+    assert held["state"] == "STABILIZING" and held["tranches_ready"] == 0 and held["held_for_star"] is True
+    # a stored READY carried on a not-evaluated day is held too
+    short = mep.evaluate_candidate({"symbol": "SYNTH_F", "state": "READY", "fell_for_reason": True}, bars[:5],
+                                   {"passed": True}, POL)
+    assert short["state"] == "STABILIZING" and short["tranches_ready"] == 0
+    # only an explicit star releases it; a truthy non-True value does not
+    starred = mep.evaluate_candidate({"symbol": "SYNTH_F", "fell_for_reason": True, "operator_star": True}, bars,
+                                     {"passed": True}, POL)
+    assert starred["state"] == "READY" and starred["tranches_ready"] >= 1
+    fake = mep.evaluate_candidate({"symbol": "SYNTH_F", "fell_for_reason": True, "operator_star": "yes"}, bars,
+                                  {"passed": True}, POL)
+    assert fake["state"] == "STABILIZING"
+    entered = mep.evaluate_candidate({"symbol": "SYNTH_F", "state": "ENTERED", "fell_for_reason": True}, bars,
+                                     {"passed": True}, POL)
+    assert entered["state"] == "ENTERED"
+
+
 def test_entered_is_carried_never_inferred():
     bars = _based()
     ev = mep.evaluate_candidate({"symbol": "SYNTH_E", "state": "ENTERED"}, bars, {"passed": False}, POL)
