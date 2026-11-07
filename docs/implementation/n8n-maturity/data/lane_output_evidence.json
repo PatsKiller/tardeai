@@ -110,12 +110,12 @@
   "classifier-health-check": {
    "output_signal": {
     "kind": "json_key",
-    "path": "~/trade-ai-releases/portfolio-server/CURRENT/data/monitoring/classifier_health.json",
+    "path": "data/monitoring/classifier_health.json",
     "key": "checked_at"
    },
    "verified_token": "data/monitoring/classifier_health.json",
    "source_file": "scripts/monitoring/classifier_health_check.py",
-   "evidence": "scripts/monitoring/classifier_health_check.py:41 writes data/monitoring/classifier_health.json (cwd CURRENT; NOT under the state root, release-local dir) every run; host mtime 2026-10-09T07:55:01-04:00, checked_at 2026-10-09T11:55:01Z"
+   "evidence": "2026-11-07 cc-deepseek-3: supersedes the 2026-10-09 'release-local, cwd CURRENT' note. classifier_health_check.py RESULT_REL writes data/monitoring/classifier_health.json through lib.persistent_state_root.durable_write_targets every run — the served persistent-state copy first, then the checkout. Host: <state_root>/data/monitoring/classifier_health.json mtime 2026-11-06T12:55:01Z. Declared state-root relative because scripts/lib/run_quality.py resolves output only under <state_root>/data."
   },
   "classify-candidates": {
    "output_signal": {
@@ -211,11 +211,11 @@
   "hermes-backlog-health-check": {
    "output_signal": {
     "kind": "file_mtime",
-    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/backlog_health/latest_backlog_health_summary.json"
+    "path": "data/hermes/backlog_health/latest_backlog_health_summary.json"
    },
    "verified_token": "latest_backlog_health_summary.json",
    "source_file": "scripts/hermes_backlog_health_check.py",
-   "evidence": "scripts/hermes_backlog_health_check.py:153 write_text latest_backlog_health_summary.json (OUT=PROJECT_ROOT/docs/hermes/backlog_health, :20); host mtime 2026-10-09T02:45:15 (timer 06:45 UTC)",
+   "evidence": "2026-11-07 cc-deepseek-3: hermes_backlog_health_check.py RESULT_REL + write_summary write latest_backlog_health_summary.json through durable_write_targets every real run — state root first, then checkout; the docs copy (:22) is kept for readers. Declared state-root relative because scripts/lib/run_quality.py resolves output only under <state_root>/data; as the checkout docs file it graded EMPTY ('output not written by that run').",
    "owner": "hermes"
   },
   "hermes-discovery-scorecard": {
@@ -249,11 +249,11 @@
   "hermes-librarian-backlog-loop": {
    "output_signal": {
     "kind": "file_mtime",
-    "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json"
+    "path": "data/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json"
    },
    "verified_token": "latest_librarian_loop_dryrun.json",
    "source_file": "scripts/hermes_autonomous_librarian_backlog_loop.py",
-   "evidence": "scripts/hermes_autonomous_librarian_backlog_loop.py:212 write_text latest_librarian_loop_dryrun.json in both dry-run and apply modes; host mtime 2026-10-09T03:46:25 (timer 07:45 UTC)",
+   "evidence": "2026-11-07 cc-deepseek-3: hermes_autonomous_librarian_backlog_loop.py RESULT_REL + write_report write latest_librarian_loop_dryrun.json through durable_write_targets in dry-run and apply modes — state root first, then checkout; the docs copy (:22) is kept for readers. Declared state-root relative because scripts/lib/run_quality.py resolves output only under <state_root>/data; as the checkout docs file it graded EMPTY ('output not written by that run').",
    "owner": "hermes"
   },
   "hermes-observation-check": {
