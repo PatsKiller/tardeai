@@ -265,14 +265,15 @@ def test_activity_feed_leaves_a_fixed_row_unqualified(api, monkeypatch):
     assert out["activity"][0]["resolution"] is None
 
 
-# ── live-schema proof (read-only: SELECT + EXPLAIN, never an UPDATE) ─────────
+# ── live-schema proof (read-only SELECTs; no UPDATE is ever executed) ────────
 
 
 @pytest.fixture(scope="module")
 def live_conn():
     try:
         sys.path.insert(0, str(SCRIPTS))
-        from db_adapter import _get_conn  # type: ignore
+        # scripts/ is on sys.path at import time; db_adapter has no stubs under this import path
+        from db_adapter import _get_conn  # type: ignore -- untyped module loaded by path
 
         conn = _get_conn()
     except Exception as exc:  # pragma: no cover — CI without a DB

@@ -113,15 +113,19 @@ def reconcile_superseded(conn, *, window_hours: int = DEFAULT_WINDOW_HOURS, limi
         result["closed"] = len(rows) if touched < 0 else touched
         return result
     except Exception as exc:  # noqa: BLE001 — reconciliation must not break the pass
+        result["error"] = f"{type(exc).__name__}: {exc}"
         try:
             conn.rollback()
-        except Exception:
-            pass
-        result["error"] = f"{type(exc).__name__}: {exc}"
+        except Exception as rb_exc:
+            # Report it: an un-rolled-back connection is the difference between "nothing
+            # was written" and "an unknown amount was written".
+            result["error"] += f" (rollback also failed: {type(rb_exc).__name__}: {rb_exc})"
         return result
     finally:
         if cur is not None:
             try:
                 cur.close()
             except Exception:
+                # nosemgrep: tq-py-except-pass -- closing a cursor has no caller-visible
+                # failure mode; the outcome was already committed to result above.
                 pass
