@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_CANONICAL_STATUS_TABLES",
+  "files": [
+    "tests/test_hermes_canonical_status_tables_20261107.py"
+  ],
+  "anchor": "HERMES_CANONICAL_STATUS_TABLES_20261107",
+  "comment": [
+    "ANCHOR: HERMES_CANONICAL_STATUS_TABLES_20261107 — LQ-20261107-53. /api/v2/hermes/workflow-matrix read",
+    "three audit JSONs from PROJECT_ROOT/data/hermes; data/* is gitignored, so a release carries none of",
+    "them and the route answered db_lineage [] / workflow_count null as if the matrix were empty. The",
+    "snapshot built from it wrote db_tables_count 0 for a host whose lineage names 6 tables. The route now",
+    "resolves them through the state root and reports presence per file; the snapshot names its tables and",
+    "reports an unreadable or stale source as unknown rather than 0. Listing this schedules nothing."
+  ]
+}

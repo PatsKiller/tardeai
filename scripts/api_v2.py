@@ -36485,29 +36485,73 @@ def _hermes_codex_dev_status(query=None):
 
 def _hermes_workflow_matrix(query=None):
     """GET /api/v2/hermes/workflow-matrix — read-only aggregate of the Phase 209 audit (profiles, graph
-    nodes, workflow owners, DB lineage) + operator guidance. Reads the latest audit JSON if present."""
+    nodes, workflow owners, DB lineage) + operator guidance. Reads the latest audit JSON.
+
+    The three audit JSONs are RUNTIME state written under ``data/hermes``, and ``data/*`` is
+    gitignored: a release rsync carries none of them, so reading the release's own copy found no files
+    and this endpoint answered ``db_lineage: []`` / ``workflow_count: null`` as if the matrix were
+    empty (LQ-20261107-53; the snapshot built from it said "0 DB tables"). Resolve the files through
+    the state root first, keep the release as a fallback for a bare checkout, and report per file
+    where it came from. A file that is absent or unreadable now yields ``None`` for the values it
+    would have answered — an absent source is unknown, never an empty matrix.
+    """
     import json as _jw
 
-    base = PROJECT_ROOT / "data" / "hermes"
+    #: Why the state root could not be resolved, when it could not (None on a host that has one).
+    state_root_error = None
+    audit_dirs = []
+    try:
+        from lib.n8n_pilot_observations import state_root as _state_root
+
+        audit_dirs.append(Path(_state_root()) / "data" / "hermes")
+    except Exception as exc:  # noqa: BLE001 — reported below; the release copy remains the fallback
+        state_root_error = type(exc).__name__
+    audit_dirs.append(PROJECT_ROOT / "data" / "hermes")
 
     def load(name):
-        p = base / name
-        try:
-            return _jw.loads(p.read_text()) if p.exists() else None
-        except Exception:
-            return None
+        """(payload | None, source meta). ``present`` describes the file, never its contents."""
+        meta = {"present": False, "path": None, "modified_at": None, "error": None}
+        for d in audit_dirs:
+            p = d / name
+            if not p.exists():
+                continue
+            meta.update(present=True, path=str(p),
+                        modified_at=datetime.fromtimestamp(p.stat().st_mtime, timezone.utc).isoformat())
+            try:
+                payload = _jw.loads(p.read_text())
+            except Exception as exc:  # noqa: BLE001 — a corrupt file is reported, not read as empty
+                meta["error"] = type(exc).__name__
+                return None, meta
+            return payload if isinstance(payload, dict) else None, meta
+        return None, meta
 
-    owners = load("hermes_workflow_owner_matrix_latest.json") or {}
-    lineage = load("hermes_db_lineage_latest.json") or {}
-    nodes = load("hermes_graph_node_inventory_latest.json") or {}
+    owners, owners_src = load("hermes_workflow_owner_matrix_latest.json")
+    lineage, lineage_src = load("hermes_db_lineage_latest.json")
+    nodes, nodes_src = load("hermes_graph_node_inventory_latest.json")
+
+    def _answered(src):
+        return src["present"] and src["error"] is None
+
+    def _seq(src, payload, key):
+        """A list when the file answered (possibly empty); None when it did not."""
+        return (payload.get(key) or []) if _answered(src) else None
+
+    def _val(src, payload, key):
+        return payload.get(key) if _answered(src) else None
+
     return {
         "generated_note": "read-only Phase 209 workflow matrix",
-        "graph_nodes": nodes.get("nodes", []),
-        "workflow_owners": owners.get("rows", []),
-        "workflow_count": owners.get("workflow_count"),
-        "any_cli_profile_in_jobs": owners.get("any_cli_profile_in_jobs"),
-        "db_lineage": lineage.get("tables", []),
-        "safe_views_count": len(lineage.get("safe_views", [])),
+        "graph_nodes": _seq(nodes_src, nodes, "nodes"),
+        "workflow_owners": _seq(owners_src, owners, "rows"),
+        "workflow_count": _val(owners_src, owners, "workflow_count"),
+        "any_cli_profile_in_jobs": _val(owners_src, owners, "any_cli_profile_in_jobs"),
+        "db_lineage": _seq(lineage_src, lineage, "tables"),
+        "safe_views_count": len(lineage.get("safe_views") or []) if _answered(lineage_src) else None,
+        "audit_sources": {
+            "dirs": [str(d) for d in audit_dirs],
+            "state_root_error": state_root_error,
+            "files": {"workflow_owners": owners_src, "db_lineage": lineage_src, "graph_nodes": nodes_src},
+        },
         "chat_usage": {
             "default": "general non-trading help (tools off)",
             "tradeai": "Trade AI advisory/review — governed cloud, tool-less",

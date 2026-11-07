@@ -115,9 +115,18 @@ def endpoint_errors(results):
 # them, and a host that cannot be asked yields None with the reason rather than a remembered number.
 CRON_COUNT_DEFINITION = ("active lines in `crontab -l`: a line that is neither blank nor a '#' "
                          "comment (environment assignments such as SHELL= count as active)")
-TIMER_COUNT_DEFINITION = ("lines of `systemctl --user list-units --type=timer --all --no-legend`: "
+TIMER_COUNT_DEFINITION = ("non-blank lines of `systemctl --user list-timers --all --no-legend`: "
                           "every loaded user timer, active or not")
+SYSTEM_TIMER_COUNT_DEFINITION = ("non-blank lines of `systemctl list-timers --all --no-legend`: the "
+                                 "system-scope timers, reported separately so neither scope is mistaken "
+                                 "for the other")
 STATIC_COUNT_NOTE = "static System-page header scope; not measured from the host"
+#: A lineage file older than this cannot answer "writes in the last 24 h". The producers
+#: (audit_hermes_db_lineage.py, audit_hermes_workflow_owners.py) are not scheduled, so the file on
+#: this host is from 2026-06-07 — its writes_24h describes that June day, not today.
+LINEAGE_MAX_AGE_DAYS = 2
+TABLE_COUNT_DEFINITION = ("entries in the `tables` list of data/hermes/hermes_db_lineage_latest.json, "
+                          "as served by /api/v2/hermes/workflow-matrix; the snapshot names every table")
 
 
 def _run(cmd, env=None):
@@ -149,19 +158,92 @@ def _measure(command, counter, label, env=None):
 def measure_host_counts():
     """The snapshot's header counts: measured where the host can answer, marked static where not."""
     crons, crons_err = _measure(["crontab", "-l"], count_active_crontab_lines, "crontab -l")
-    timers, timers_err = _measure(["systemctl", "--user", "list-units", "--type=timer", "--all", "--no-legend"],
-                                  count_user_timers, "systemctl --user list-units --type=timer", env=XDG)
+    timers, timers_err = _measure(["systemctl", "--user", "list-timers", "--all", "--no-legend"],
+                                  count_user_timers, "systemctl --user list-timers", env=XDG)
+    sys_timers, sys_timers_err = _measure(["systemctl", "list-timers", "--all", "--no-legend"],
+                                          count_user_timers, "systemctl list-timers")
     measured_at = datetime.now(timezone.utc).isoformat()
     return {
         "crons_count": crons,
         "timers_count": timers,
+        "timers_system_count": sys_timers,
         "counts_provenance": {
             "crons_count": {"definition": CRON_COUNT_DEFINITION, "measured_at": measured_at, "error": crons_err},
             "timers_count": {"definition": TIMER_COUNT_DEFINITION, "measured_at": measured_at, "error": timers_err},
+            "timers_system_count": {"definition": SYSTEM_TIMER_COUNT_DEFINITION, "measured_at": measured_at,
+                                    "error": sys_timers_err},
             "services_count": {"value": 2, "measured": False, "note": STATIC_COUNT_NOTE},
             "llm_jobs_count": {"value": 6, "measured": False, "note": STATIC_COUNT_NOTE},
         },
     }
+
+
+def _age_days(iso_text, now=None):
+    """Age of an ISO-8601 timestamp in days, or None when it is absent or unreadable."""
+    if not isinstance(iso_text, str) or not iso_text:
+        return None
+    try:
+        at = datetime.fromisoformat(iso_text)
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return round(((now or datetime.now(timezone.utc)) - at.astimezone(timezone.utc)).total_seconds() / 86400, 2)
+
+
+def derive_matrix(wf):
+    """(snapshot fields, provenance) for everything the workflow-matrix endpoint answers.
+
+    An endpoint that could not answer yields ``None`` — the old shape turned a missing file into
+    "0 DB tables", which reads as a measured zero and left the reader nothing to reconcile. The
+    tables are named, not only counted (LQ-20261107-53), and the lineage's own age is carried: a
+    ``writes_24h`` recorded on 2026-06-07 is not today's write count, so it is reported as unknown
+    rather than as a five-month-old number with a 24-hour label.
+    """
+    wf = wf if isinstance(wf, dict) else {}
+    audit = wf.get("audit_sources") if isinstance(wf.get("audit_sources"), dict) else {}
+    files = audit.get("files") if isinstance(audit.get("files"), dict) else {}
+    lin = files.get("db_lineage") if isinstance(files.get("db_lineage"), dict) else {}
+    nodes_src = files.get("graph_nodes") if isinstance(files.get("graph_nodes"), dict) else {}
+    lineage_at = lin.get("modified_at")
+    age = _age_days(lineage_at)
+    answered = bool(lin.get("present")) and not lin.get("error")
+    fresh = answered and age is not None and age <= LINEAGE_MAX_AGE_DAYS
+
+    tables = wf.get("db_lineage") if isinstance(wf.get("db_lineage"), list) else None
+    names = None if tables is None else [
+        {"table": t.get("table"), "exists": t.get("exists"), "rows": t.get("rows"),
+         "writes_24h": t.get("writes_24h") if fresh else None, "last_write": t.get("last_write")}
+        for t in tables if isinstance(t, dict)]
+    by_table = {n["table"]: n for n in (names or [])}
+    graph_nodes = wf.get("graph_nodes") if isinstance(wf.get("graph_nodes"), list) else None
+    fields = {
+        "workflows_count": wf.get("workflow_count") if isinstance(wf.get("workflow_count"), int) else None,
+        "graph_nodes_count": None if graph_nodes is None else len(graph_nodes),
+        "graph_nodes": None if graph_nodes is None else [
+            {"id": n.get("id"), "name": n.get("name"), "owner": n.get("owner_hint")}
+            for n in graph_nodes if isinstance(n, dict)],
+        "db_tables": names,
+        "db_tables_count": None if names is None else len(names),
+        "safe_views_count": wf.get("safe_views_count") if isinstance(wf.get("safe_views_count"), int) else None,
+        "db_writes_24h": {"research_intelligence": (by_table.get("hermes_research_intelligence") or {}).get("writes_24h"),
+                          "memory_events": (by_table.get("hermes_memory_events") or {}).get("writes_24h")},
+    }
+    provenance = {
+        "db_tables_count": {
+            "definition": TABLE_COUNT_DEFINITION, "source": lin.get("path"), "modified_at": lineage_at,
+            "age_days": age, "stale": bool(answered and not fresh),
+            "error": lin.get("error") or (None if answered else "lineage source not found"),
+        },
+        "db_writes_24h": {
+            "definition": ("writes_24h recorded when the lineage file was generated; reported only when that "
+                           f"file is at most {LINEAGE_MAX_AGE_DAYS:g} days old"),
+            "source": lin.get("path"), "modified_at": lineage_at, "age_days": age, "fresh": fresh,
+        },
+        "graph_nodes_count": {"source": nodes_src.get("path"), "modified_at": nodes_src.get("modified_at"),
+                              "error": nodes_src.get("error") or (None if nodes_src.get("present") else "graph source not found")},
+    }
+    return fields, provenance
 
 
 def build_snapshot():
@@ -169,7 +251,7 @@ def build_snapshot():
     results = {ep: api(ep) for ep in ENDPOINTS}
     wf = results["workflow-matrix"]; auth = results["llm-auth-status"]; sll = results["self-learning-loops"]
     leg = results["legacy-agents"]; health = results["health"]; ps = results["profiles-status"]
-    db = {d.get("table"): d for d in (wf.get("db_lineage") or []) if isinstance(d, dict)}
+    matrix, matrix_provenance = derive_matrix(wf)
 
     deep_timer = timer("hermes-deep-research-local")
     counts = measure_host_counts()
@@ -182,15 +264,16 @@ def build_snapshot():
         "portal_snapshot_timestamp": datetime.now().isoformat(),
         "hermes_version": "v0.16.0",
         "timers_count": counts["timers_count"], "crons_count": counts["crons_count"],
+        "timers_system_count": counts["timers_system_count"],
         "services_count": 2, "llm_jobs_count": 6,  # static System-page header scope
-        "counts_provenance": counts["counts_provenance"],
-        "workflows_count": wf.get("workflow_count"),
-        "graph_nodes_count": len(wf.get("graph_nodes") or []),
-        "db_tables_count": len(wf.get("db_lineage") or []),
-        "safe_views_count": wf.get("safe_views_count"),
+        "counts_provenance": {**counts["counts_provenance"], **matrix_provenance},
+        "workflows_count": matrix["workflows_count"],
+        "graph_nodes_count": matrix["graph_nodes_count"],
+        "db_tables": matrix["db_tables"],
+        "db_tables_count": matrix["db_tables_count"],
+        "safe_views_count": matrix["safe_views_count"],
         "cli_profile_used_by_automation": wf.get("any_cli_profile_in_jobs"),
-        "db_writes_24h": {"research_intelligence": (db.get("hermes_research_intelligence") or {}).get("writes_24h"),
-                          "memory_events": (db.get("hermes_memory_events") or {}).get("writes_24h")},
+        "db_writes_24h": matrix["db_writes_24h"],
         "profiles": [{"profile": p.get("profile"), "model": p.get("model"),
                       "tools": p.get("tools"), "soul_hash": p.get("soul_hash")} for p in (ps.get("profiles") or [])],
         "llm_lanes": [{"lane": l.get("lane"), "provider": l.get("provider"), "authed": l.get("authed"),
@@ -204,7 +287,7 @@ def build_snapshot():
                                 "loops": [{"loop": l["loop"], "rows": l.get("rows"),
                                            "feeds_prompts": l.get("affects_future_prompts"),
                                            "mutates_scoring": l.get("affects_scoring")} for l in sll.get("loops", [])]},
-        "graph_nodes": [{"id": n.get("id"), "name": n.get("name"), "owner": n.get("owner_hint")} for n in (wf.get("graph_nodes") or [])],
+        "graph_nodes": matrix["graph_nodes"],
         "retired_agents": leg.get("count") or len(leg.get("items", [])),
         "gateway_status": sysd(["is-active", "hermes-gateway.service"]) + "/" + sysd(["is-enabled", "hermes-gateway.service"]),
         "kill_switch": {"active": health.get("kill_switch_active"),

@@ -72,6 +72,12 @@ export default function HermesPanel() {
   const { data: codex } = useApi<any>('/api/v2/hermes/codex-dev-status', 120_000)
   const { data: legacy } = useApi<any>('/api/v2/hermes/legacy-agents', 300_000)
   const { data: wfm } = useApi<any>('/api/v2/hermes/workflow-matrix', 300_000)
+  // A null count from the matrix means its audit file could not be read: an absent source is unknown,
+  // never a measured 0 (LQ-20261107-53). A writes_24h recorded when the lineage was generated is only
+  // "24h" while that file is fresh, so its date is shown instead of the number once it is older.
+  const lineageSrc = wfm?.audit_sources?.files?.db_lineage
+  const lineageAt = lineageSrc?.modified_at ? String(lineageSrc.modified_at).slice(0, 10) : null
+  const lineageStale = !!lineageAt && Date.now() - Date.parse(lineageSrc.modified_at) > 2 * 86_400_000
   const { data: sll } = useApi<any>('/api/v2/hermes/self-learning-loops', 300_000)
   const { data: rmx } = useApi<any>('/api/v2/hermes/researcher-matrix', 300_000)
   const { data: auth } = useApi<any>('/api/v2/hermes/llm-auth-status', 120_000)
@@ -172,13 +178,16 @@ export default function HermesPanel() {
         <div style={card}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Workflow Matrix — who owns what</div>
           <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 6 }}>
-            {wfm.workflow_count} workflows · {wfm.graph_nodes?.length || 0} graph nodes · {wfm.db_lineage?.length || 0} DB tables · {wfm.safe_views_count} safe views ·
+            {wfm.workflow_count == null ? 'workflows unknown' : `${wfm.workflow_count} workflows`} · {wfm.graph_nodes == null ? 'graph nodes unknown' : `${wfm.graph_nodes.length} graph nodes`} · {wfm.db_lineage == null ? 'DB tables unknown' : `${wfm.db_lineage.length} DB tables`} · {wfm.safe_views_count == null ? 'safe views unknown' : `${wfm.safe_views_count} safe views`} ·
             CLI profile used by automation: <b style={{ color: wfm.any_cli_profile_in_jobs ? '#ef4444' : '#22c55e' }}>{String(!!wfm.any_cli_profile_in_jobs)}</b>
           </div>
           <div style={{ fontSize: 11, marginBottom: 4 }}>🔎 <b>Who owns Librarian?</b> <span style={{ color: 'var(--text3)' }}>{wfm.quick_answers?.who_owns_librarian}</span></div>
           <div style={{ fontSize: 11, marginBottom: 4 }}>🔎 <b>tradeai vs tradeai12b:</b> <span style={{ color: 'var(--text3)' }}>{wfm.quick_answers?.tradeai_vs_tradeai12b}</span></div>
           <div style={{ fontSize: 11, marginBottom: 8 }}>🔎 <b>tradeai12b automated?</b> <span style={{ color: 'var(--text3)' }}>{wfm.quick_answers?.tradeai12b_automated}</span></div>
-          {(wfm.db_lineage || []).filter((t: any) => t.exists).length > 0 && (
+          {(wfm.db_lineage || []).filter((t: any) => t.exists).length > 0 && lineageStale && (
+            <div style={{ fontSize: 10, color: 'var(--text3)' }}>DB writes/24h: unknown — lineage last rebuilt {lineageAt}</div>
+          )}
+          {!lineageStale && (wfm.db_lineage || []).filter((t: any) => t.exists).length > 0 && (
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>DB writes/24h: {(wfm.db_lineage || []).filter((t: any) => t.exists && t.writes_24h).map((t: any) => `${t.table.replace('hermes_', '')}=${t.writes_24h}`).join(' · ')}</div>
           )}
         </div>

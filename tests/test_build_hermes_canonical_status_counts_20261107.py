@@ -43,6 +43,10 @@ TIMERS_TEXT = """\
 hermes-deep-research-local.timer loaded active waiting daily research
 backup.timer                        loaded inactive dead
 """
+SYSTEM_TIMERS_TEXT = """\
+snapd.snap-repair.timer            snapd.snap-repair.service
+ua-timer.timer                     ua-timer.service
+"""
 
 
 def test_active_crontab_lines_ignore_comments_and_blanks():
@@ -65,7 +69,8 @@ def test_measure_reads_the_host(monkeypatch):
     assert counts["crons_count"] == 4
     assert counts["timers_count"] == 2
     assert "crontab -l" in counts["counts_provenance"]["crons_count"]["definition"]
-    assert "list-units" in counts["counts_provenance"]["timers_count"]["definition"]
+    assert "list-timers" in counts["counts_provenance"]["timers_count"]["definition"]
+    assert counts["timers_system_count"] == 2          # system scope is measured separately
     assert counts["counts_provenance"]["crons_count"]["error"] is None
 
 
@@ -116,11 +121,14 @@ def test_the_snapshot_says_unknown_when_the_host_cannot_be_asked(monkeypatch):
     assert snap["crons_count"] is None and snap["timers_count"] is None
 
 
-def _host(monkeypatch, *, crons, timers):
-    """Route the two measurement commands to canned (returncode, stdout) pairs."""
+def _host(monkeypatch, *, crons, timers, sys_timers=None):
+    """Route the measurement commands to canned (returncode, stdout) pairs."""
     def fake_run(cmd, **_kw):
         text = " ".join(cmd)
-        rc, out = timers if "list-units" in text else crons
+        if "list-timers" in text:
+            rc, out = (sys_timers or (0, SYSTEM_TIMERS_TEXT)) if "--user" not in text else timers
+        else:
+            rc, out = crons
         return rc, out
 
     monkeypatch.setattr(b, "_run", fake_run)
