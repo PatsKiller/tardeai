@@ -174,6 +174,69 @@ def _is_effect_claim_wrapper(tok: str) -> bool:
     return tok == EFFECT_CLAIM_WRAPPER or tok.endswith("/" + EFFECT_CLAIM_WRAPPER)
 
 
+#: The env-sourcing prologue most wrapped cron lines carry inside `bash -c "..."`: `set -a; . ./.env; set +a;`.
+#: The executor reproduces it from the allowlist `env_names` (never by sourcing the file), so the gate maps it.
+_ENV_PROLOGUE = re.compile(r"^(set|-a|\+a|\.|source|\./\.env|\./\.env\..*)$")
+
+
+def _split_semicolons(tokens: list[str]) -> list[str]:
+    """`set -a; . ./.env` -> ['set','-a',';','.','./.env']; a `;` glued to the previous token is its own separator."""
+    out: list[str] = []
+    for tok in tokens:
+        while tok.endswith(";") and len(tok) > 1:
+            tok = tok[:-1]
+            if tok:
+                out.append(tok)
+            out.append(";")
+            tok = ""
+        if tok:
+            out.append(tok)
+    return out
+
+
+def _expand_bash_c(toks: list[str]) -> tuple[list[str], set[int], list[str]]:
+    """Flatten `bash -c '<cmd>'` groups into the tokens of `<cmd>`; return (tokens, inner separators, problems).
+
+    2026-11-07 (LQ-20261107-22): most cron lines wrap the lane in `bash -c "set -a; . ./.env; set +a; $PY
+    scripts/x.py"`, so the script sits inside one quoted token and the gate answered `script_not_on_cron_line`
+    for a line that plainly carries it. Flattening leaves the argv the executor must run identical to the cron
+    argv, which is what this check exists to prove; the inner `;` separators become their own tokens so the
+    prefix scan sees the env prologue, and their indices are returned because they delimit the prologue, NOT the
+    cron line — a segment reset there would hide an env assignment written before the wrapper (FOO=bar bash -c …).
+    The env prologue is mapped (the executor reproduces it from `env_names`); a `-c` string holding more than one
+    script command is refused, not guessed.
+    """
+    out: list[str] = []
+    inner_seps: set[int] = set()
+    problems: list[str] = []
+    i = 0
+    while i < len(toks):
+        tok = toks[i]
+        shell = tok.rsplit("/", 1)[-1] in ("bash", "sh", "dash")
+        if shell and i + 2 < len(toks) and toks[i + 1] == "-c":
+            inner = toks[i + 2]
+            try:
+                parts = shlex.split(inner, posix=True)
+            except ValueError:
+                problems.append(f"bash_c_wrapper_unparseable:{inner!r}")
+                out.extend(toks[i:i + 3])
+                i += 3
+                continue
+            parts = _split_semicolons(parts)
+            scripts = [p for p in parts if p.endswith((".py", ".sh")) and "/" in p]
+            if len(scripts) > 1:
+                problems.append(f"bash_c_wrapper_multiple_scripts:{scripts}")
+            for j, part in enumerate(parts):
+                if part == ";":
+                    inner_seps.add(len(out) + j)
+            out.extend(parts)
+            i += 3
+            continue
+        out.append(tok)
+        i += 1
+    return out, inner_seps, problems
+
+
 def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] = None) -> dict[str, Any]:
     """Locate the allowlist command inside the cron command and return the live argv, wrappers and problems.
 
@@ -190,12 +253,15 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
     unmapped (the executor does not reproduce it)."""
     toks = _tokens(cmd)
     problems: list[str] = []
+    toks, inner_seps, bashc_problems = _expand_bash_c(toks)
+    problems.extend(bashc_problems)
     script = next((t for t in entry_command if t.endswith((".py", ".sh")) and "/" in t), None)
     if script is None:
         return {"problems": ["allowlist_command_has_no_script"], "live_arg": None}
     idx = next((i for i, t in enumerate(toks) if t == script or t.endswith("/" + script)), None)
     if idx is None:
-        return {"problems": [f"script_not_on_cron_line:{script}"], "live_arg": None}
+        problems.append(f"script_not_on_cron_line:{script}")
+        return {"problems": problems, "live_arg": None}
     args: list[str] = []
     for t in toks[idx + 1:]:
         if t in _ARGV_STOP or t.startswith(">>") or t.startswith("2>") or t.startswith(">"):
@@ -210,7 +276,7 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
     # wrappers before the script (back to the last shell operator segment start)
     seg_start = 0
     for i in range(idx):
-        if toks[i] in ("&&", ";", "||"):
+        if toks[i] in ("&&", "||") or (toks[i] == ";" and i not in inner_seps):
             seg_start = i + 1
     prefix = toks[seg_start:idx]
     market_gate = _MARKET_GATE in prefix or any(t.endswith("/market_day_gate.sh") for t in prefix)
@@ -258,6 +324,11 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
                 i += 1
             continue
         if t.endswith("market_day_gate.sh") or _PREFIX_OK.match(t) or t.startswith("/tmp/") or t.startswith("$PY"):
+            i += 1
+            continue
+        if _ENV_PROLOGUE.match(t) or t in (";", "&&", "||"):
+            # `set -a; . ./.env; set +a;` inside the bash -c wrapper: reproduced from `env_names`, never sourced.
+            # The separators themselves are inert (an unwrapped line never reaches this loop with one).
             i += 1
             continue
         if re.match(r"^[A-Z_][A-Z0-9_]*=", t):
