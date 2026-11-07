@@ -235,6 +235,7 @@ def test_the_preview_reports_the_sweep_facts(lane, monkeypatch, tmp_path):
     monkeypatch.setattr(lane, "_get_conn", lambda: conn)
     state = tmp_path / "data" / "runtime"
     state.mkdir(parents=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture inside pytest's tmp_path, not a live store
     (state / "finviz_proactive_research_universe.json").write_text(json.dumps({
         "schema": "FinvizProactiveUniverse@v1",
         "attempts": {s: "2026-11-07T15:30:00+00:00" for s in watch[:4]}}))
