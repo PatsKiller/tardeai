@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "MOVE_RETRACES_SCORING_20261107",
+  "files": [
+    "tests/test_move_retraces_scoring_20261107.py"
+  ],
+  "anchor": "MOVE_RETRACES_SCORING_20261107",
+  "comment": [
+    "ANCHOR: MOVE_RETRACES_SCORING_20261107 \u2014 LQ-20261107-54: the pure MOVE_RETRACES scorer returns UNSCOREABLE, never a verdict, when baseline is not a price level."
+  ]
+}
