@@ -3743,11 +3743,16 @@
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 9-16 * * 1-5",
+        "expression": "*/15 9-16 * * 1-5 + 9,39 0-8,17-23 * * * + 9,39 9-16 * * 0,6",
         "command_text": "moomoo_live_read_sync.py",
-        "match": "moomoo_live_read_sync.py"
+        "match": "moomoo_live_read_sync.py",
+        "schedules": [
+          "*/15 9-16 * * 1-5",
+          "9,39 0-8,17-23 * * *",
+          "9,39 9-16 * * 0,6"
+        ]
       },
-      "expected_cadence_hours": 24,
+      "expected_cadence_hours": 0.5,
       "active_days": [
         0,
         1,
@@ -3778,7 +3783,8 @@
         "token": "moomoo",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "state_reason": "2026-11-07: an off-hours pair (`9,39 0-8,17-23 * * *` and `9,39 9-16 * * 0,6`) was added to the crontab and this row still declared market hours only, so both lines read as unregistered crons. Declared schedules now cover every observed line; the loosest gap between runs is 30 minutes, which is the cadence used for staleness."
     },
     {
       "lane_id": "llm-spend-report-daily",
@@ -15304,13 +15310,14 @@
       "lane_id": "finviz-sector-research",
       "owner": "scalp",
       "scheduler": {
-        "kind": "cron",
-        "expression": "15 10,16 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/finviz_sector_research.py",
-        "stage": "canary",
+        "cadence": "15 10,16 * * 1-5",
+        "stage": "cutover",
         "wave": "R2-05",
-        "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "15 10,16 * * 1-5 cd $PROJ && flock -n /tmp/finviz_sector.lock $PY scripts/finviz_sector_research.py >> logs/finviz_sector.log 2>&1"
       },
       "expected_cadence_hours": 66.0,
       "state": "ACTIVE",
@@ -15332,7 +15339,7 @@
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. Cutover to the n8n dispatcher recorded in the registry 2026-11-07.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-11",
@@ -15355,7 +15362,8 @@
         "evidence": "run ledger data/runtime/n8n_runs (read-only) 2026-10-14: 5 natural dispatcher dry_run fires RUN_DONE exit 0 (d:finviz-sector-research:dry_run:20261012T1015 .. d:finviz-sector-research:dry_run:20261014T1015), 0 RUN_SKIPPED_LOCK, 0 RUN_FAILED / RUN_TIMEOUT / RUN_REFUSED (d:, e:, f: dry_run receipts); output_signal unchanged on 5/5 RUN_DONE. Admitted under the operator ruling 2026-10-14 ~11:05 ET via Agent A (cut over when defects fixed + n8n dry run passes + lane regression tests pass + >=1 successful LIVE n8n run with cron present under the shared lock; multi-day soak and natural-slot waits removed; a forced live relay fire counts if the lane's own window gate lets it run).",
         "lock_proof": "scheduler.command_text == the live cron line L526 command (crontab -l 2026-10-14, read-only); its only flock lock /tmp/finviz_sector.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null"
-      }
+      },
+      "state_reason": "2026-11-07: declared as a crontab line, but the line no longer exists and the n8n run ledger holds live RUN_DONE runs for this lane id requested by n8n:workflow:tradeai-dispatcher. The lane is fired by the dispatcher; the declared cadence moved to scheduler.cadence."
     },
     {
       "lane_id": "proposal-backtest-engine",
@@ -17164,13 +17172,14 @@
       "lane_id": "hermes-watchlist-scorer",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/15 * * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_watchlist_scorer.py",
-        "stage": "canary",
+        "cadence": "*/15 * * * *",
+        "stage": "cutover",
         "wave": "R2-10",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1",
-        "cutover_wave": "HS-20261021"
+        "cutover_wave": "HS-20261021",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
@@ -17194,7 +17203,7 @@
         "f_evidence": "core advisory/protection/data path; healthy logs today"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-21: n8n shadow (dry_run health probe) alongside cron; the live write path is still the cron line. 2026-10-21 (operator waiver): n8n canary - dispatch.mode live alongside the unchanged cron line L451 under the one flock /tmp/hermes_scorer.lock; Operator decision 2026-10-21 ~13:05 ET, verbatim: \"push live now\" (promote shadow -> canary today, waiving the usual 3-market-day shadow evidence wait); 2026-10-21, verbatim: \"comment out whats working now this can be a fallback\" (retire cron L451 after the first live n8n RUN_DONE; the commented line is the fallback). Shadow evidence at promotion: RUN_DONE dry_run fires 12:55 and 13:00 ET, exit 0, 1408 items, 812 scored, 0 errored; shadow released in a6ac0ebbe (PR #1899).",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-21: n8n shadow (dry_run health probe) alongside cron; the live write path is still the cron line. 2026-10-21 (operator waiver): n8n canary - dispatch.mode live alongside the unchanged cron line L451 under the one flock /tmp/hermes_scorer.lock; Operator decision 2026-10-21 ~13:05 ET, verbatim: \"push live now\" (promote shadow -> canary today, waiving the usual 3-market-day shadow evidence wait); 2026-10-21, verbatim: \"comment out whats working now this can be a fallback\" (retire cron L451 after the first live n8n RUN_DONE; the commented line is the fallback). Shadow evidence at promotion: RUN_DONE dry_run fires 12:55 and 13:00 ET, exit 0, 1408 items, 812 scored, 0 errored; shadow released in a6ac0ebbe (PR #1899). Cutover to the n8n dispatcher recorded in the registry 2026-11-07.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
         "mode": "live",
@@ -17218,7 +17227,8 @@
         "lock_proof": "scheduler.command_text == the live cron line L451 command; its only flock lock /tmp/hermes_scorer.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
         "rollback": "revert this registry/allowlist/contract commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null; remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/hermes-scorer-canary-20261021/README.md)",
         "next": "cutover: after the first live n8n RUN_DONE with rows written, 02_retire_cron_line.sh comments L451 (cron grant) and the follow-up registry PR flips this row with `n8n_cutover_wave.py cutover --lanes hermes-watchlist-scorer`"
-      }
+      },
+      "state_reason": "2026-11-07: declared as a crontab line, but the line no longer exists and the n8n run ledger holds live RUN_DONE runs for this lane id requested by n8n:workflow:tradeai-dispatcher. The lane is fired by the dispatcher; the declared cadence moved to scheduler.cadence."
     },
     {
       "lane_id": "archive-offbox-sync",
@@ -17339,13 +17349,18 @@
       "owner": "execution",
       "scheduler": {
         "kind": "cron",
-        "expression": "7,22,37,52 9-16 * * 1-5",
-        "match": "scripts/schwab_position_sync.py"
+        "expression": "7,22,37,52 9-16 * * 1-5 + 3,33 0-8,17-23 * * * + 3,33 9-16 * * 0,6",
+        "match": "scripts/schwab_position_sync.py",
+        "schedules": [
+          "7,22,37,52 9-16 * * 1-5",
+          "3,33 0-8,17-23 * * *",
+          "3,33 9-16 * * 0,6"
+        ]
       },
-      "expected_cadence_hours": 64.25,
+      "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "state_since": "2026-10-22",
-      "state_reason": "ACTIVE (cron): operator decision 2026-10-22, verbatim: \"keep step (a) as-is and resume it on cron now, because the holdings data matters. I'll flip its registry row to 'ACTIVE (cron)' in the same change, so the truth monitor doesn't flag a mismatch. It moves to the n8n lane after 19.0.0.\" The runner is HOST cron line 501 (7,22,37,52 9-16 * * 1-5, America/New_York, Mon-Fri), un-paused by step (a) of docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh (unchanged; operator-run, never by an agent), and this row flips in the same change (§9.3: a crontab edit is a registry edit). History: the line was commented \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" from 2026-10-15 to the resume; the row was PAUSED from 2026-10-22 (PR #1927) until this flip. Until the operator runs step (a), scripts/check_registry_runtime_truth.py reports ACTIVE_CRON_LINE_ABSENT for this row on the host; that finding clears when line 501 is live. The n8n lane in f09_staged stays inert until AGENTS.md 19.0.0 is ACTIVE.",
+      "state_reason": "2026-11-07: an off-hours pair (`3,33 0-8,17-23 * * *` and `3,33 9-16 * * 0,6`) was added to the crontab and this row still declared market hours only, so both lines read as unregistered crons. Declared schedules now cover every observed line; the loosest gap between runs is 30 minutes, which is the cadence used for staleness.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "operator decision 2026-10-22 (quoted in state_reason and note); resume-operator.sh step a targets the exact line-501 text; tests/test_registry_runtime_truth_20261018.py test_the_committed_schwab_position_sync_row_tells_the_truth",
       "output_signal": {
@@ -26319,6 +26334,259 @@
         "priority": 7,
         "retry_policy": "none"
       }
+    },
+    {
+      "lane_id": "social-ingest-scalp-hot",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/10 6-10 * * 1-5",
+        "match": "scripts/social_ingest.py --source stocktwits --scalp-list",
+        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/social_ingest_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/social_ingest.py --source stocktwits --scalp-list >> logs/social_ingest_scalp_hot.log 2>&1"
+      },
+      "expected_cadence_hours": 1.12,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/social_ingest_scalp_hot.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "note": "Observed crontab -l 2026-11-07 line 649, which already carries `# TRADEAI_LANE social-ingest-scalp-hot`; the registry had no row, so the line read as an unregistered cron."
+    },
+    {
+      "lane_id": "agent-nudger",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * *",
+        "match": "agent_nudger.py --apply",
+        "command_text": "/usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.py --apply >> ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log 2>&1"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "note": "Observed crontab -l 2026-11-07 line 1098. Coordination nudger; writes its own log beside the coordinator inbox. Reads the claim board only, never a broker or a credential."
+    },
+    {
+      "lane_id": "ai-usage-governor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "ai_usage_governor.py --hours 720",
+        "command_text": "flock -n /tmp/ai_usage_governor.lock /usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/ai_usage_governor.py --hours 720 >/dev/null 2>&1"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "ACTION_ONLY_LOG",
+        "detail": "ai_usage_governor.py appends coordinator/ai_usage_governor.log only when it records an action, and the crontab line discards stdout to /dev/null. A quiet window writes no bytes, so an mtime signal would report a false silence; measured per-run proof is absent."
+      },
+      "note": "Observed crontab -l 2026-11-07 line 1112. Enforces config/ai_usage_policy.json for the agent fleet; no broker, order or credential path."
+    },
+    {
+      "lane_id": "tradeai-deploy-on-main",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-deploy-on-main.timer"
+      },
+      "expected_cadence_hours": 0.0333,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/deploy_on_main",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/deploy_on_main_poll.py writes one <UTC>_poller_*.json receipt per poll"
+      },
+      "note": "Observed systemctl --user 2026-11-07: tradeai-deploy-on-main.timer UnitFileState=enabled, ActiveState=inactive (No next elapse); tradeai-deploy-on-main.service ActiveState=failed, UnitFileState=disabled. Promote-only poller (deploy_on_main_poll.py writes one receipt per poll under data/runtime/deploy_on_main). Merge-deploy control is a held class: OUT OF SCOPE to start, enable or repair - reported to the lead.",
+      "state_reason": "2026-11-07: the scheduler is the .timer unit (OnCalendar=*:0/2, UnitFileState=enabled), not the .service it starts; declaring the .service left the timer an undeclared unit and the disabled, failed service a phantom orphan. Declared state is unchanged - the timer is enabled but active=inactive/dead and its service has been failed since 2026-10-26T14:10Z, which the census reports as RUN_FAILED."
+    },
+    {
+      "lane_id": "tradeai-incident-daily",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-daily.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "JOURNAL_ONLY",
+        "detail": "scripts/incident_daily_brief.py prints its brief to stdout and the unit sets no StandardOutput=append:, so systemd journal is the only record and no durable per-run artifact exists to measure."
+      },
+      "note": "Observed systemctl --user 2026-11-07: OnCalendar=*-*-* 08:00 America/New_York, active."
+    },
+    {
+      "lane_id": "tradeai-incident-supervisor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-supervisor.timer"
+      },
+      "expected_cadence_hours": 0.1667,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "JOURNAL_ONLY",
+        "detail": "scripts/incident_supervisor.py prints its triage to stdout and the unit sets no StandardOutput=append:, so systemd journal is the only record and no durable per-run artifact exists to measure."
+      },
+      "note": "Observed systemctl --user 2026-11-07: OnCalendar=*-*-* *:02/10:00, active."
+    },
+    {
+      "lane_id": "tradeai-incident-watchers",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-incident-watchers.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/coordination/incidents/watchers_last.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/incident_watchers.py writes watchers_last.json beside the incident ledger"
+      },
+      "note": "Observed systemctl --user 2026-11-07: OnCalendar=*-*-* *:00/5:00, active."
+    },
+    {
+      "lane_id": "tradeai-n8n-breaker-probe",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-n8n-breaker-probe.timer"
+      },
+      "expected_cadence_hours": 0.1667,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/governance/n8n_breaker_probe_state.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/n8n_breaker_probe.py state_rel, receipts written per probe"
+      },
+      "note": "Observed systemctl --user 2026-11-07: OnCalendar=*-*-* *:00/10:00, active."
+    },
+    {
+      "lane_id": "openclaw-agent-job-aegis-evening-surveillance",
+      "owner": "aegis",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:aegis-evening-surveillance",
+        "emitted_by": "openclaw-scheduler",
+        "match": "aegis-evening-surveillance",
+        "cadence": "0 20 * * 1-5"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only ~/.openclaw/cron/jobs.json 2026-11-07: job aegis-evening-surveillance (`Aegis Evening Surveillance`) enabled=True, schedule 0 20 * * 1-5 America/New_York.",
+      "output_signal": {
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE: an OpenClaw agent-scheduled job. Its effect is delivered inside the agent's own session and recorded by OpenClaw (jobs.json), not as a Trade AI artifact, so no host per-run proof exists and none is expected.",
+        "exempt_since": "2026-11-07"
+      },
+      "note": "Observed ~/.openclaw/cron/jobs.json 2026-11-07: `Aegis Evening Surveillance` owned by agent aegis. No crontab or systemd entry exists, so this row is kind event (the OpenClaw gateway's internal scheduler fires it) and the census must not report it ORPHANED."
+    },
+    {
+      "lane_id": "openclaw-agent-job-920bef5f-3b4b-4066-b695-92e72825e00a",
+      "owner": "alex",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:920bef5f-3b4b-4066-b695-92e72825e00a",
+        "emitted_by": "openclaw-scheduler",
+        "match": "920bef5f-3b4b-4066-b695-92e72825e00a",
+        "cadence": "0 9 1 * *"
+      },
+      "expected_cadence_hours": 720.0,
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only ~/.openclaw/cron/jobs.json 2026-11-07: job 920bef5f-3b4b-4066-b695-92e72825e00a (`Alex Monthly Retirement Check-in`) enabled=True, schedule 0 9 1 * * America/New_York.",
+      "output_signal": {
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE: an OpenClaw agent-scheduled job. Its effect is delivered inside the agent's own session and recorded by OpenClaw (jobs.json), not as a Trade AI artifact, so no host per-run proof exists and none is expected.",
+        "exempt_since": "2026-11-07"
+      },
+      "note": "Observed ~/.openclaw/cron/jobs.json 2026-11-07: `Alex Monthly Retirement Check-in` owned by agent alex. No crontab or systemd entry exists, so this row is kind event (the OpenClaw gateway's internal scheduler fires it) and the census must not report it ORPHANED."
+    },
+    {
+      "lane_id": "openclaw-agent-job-d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+      "owner": "iris",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+        "emitted_by": "openclaw-scheduler",
+        "match": "d7ab6f85-fd4c-4521-ac81-e989c08b4403",
+        "cadence": "0 9 * * 0"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only ~/.openclaw/cron/jobs.json 2026-11-07: job d7ab6f85-fd4c-4521-ac81-e989c08b4403 (`Iris Weekly Research Digest`) enabled=True, schedule 0 9 * * 0 America/New_York.",
+      "output_signal": {
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE: an OpenClaw agent-scheduled job. Its effect is delivered inside the agent's own session and recorded by OpenClaw (jobs.json), not as a Trade AI artifact, so no host per-run proof exists and none is expected.",
+        "exempt_since": "2026-11-07"
+      },
+      "note": "Observed ~/.openclaw/cron/jobs.json 2026-11-07: `Iris Weekly Research Digest` owned by agent iris. No crontab or systemd entry exists, so this row is kind event (the OpenClaw gateway's internal scheduler fires it) and the census must not report it ORPHANED."
+    },
+    {
+      "lane_id": "openclaw-agent-job-729e2b82-7ace-4a13-8456-c469cb1072e9",
+      "owner": "maria",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:729e2b82-7ace-4a13-8456-c469cb1072e9",
+        "emitted_by": "openclaw-scheduler",
+        "match": "729e2b82-7ace-4a13-8456-c469cb1072e9",
+        "cadence": "5 16 * * 1-5"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only ~/.openclaw/cron/jobs.json 2026-11-07: job 729e2b82-7ace-4a13-8456-c469cb1072e9 (`SentinelOne (S) entry monitor`) enabled=True, schedule 5 16 * * 1-5 America/New_York.",
+      "output_signal": {
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE: an OpenClaw agent-scheduled job. Its effect is delivered inside the agent's own session and recorded by OpenClaw (jobs.json), not as a Trade AI artifact, so no host per-run proof exists and none is expected.",
+        "exempt_since": "2026-11-07"
+      },
+      "note": "Observed ~/.openclaw/cron/jobs.json 2026-11-07: `SentinelOne (S) entry monitor` owned by agent maria. No crontab or systemd entry exists, so this row is kind event (the OpenClaw gateway's internal scheduler fires it) and the census must not report it ORPHANED."
+    },
+    {
+      "lane_id": "openclaw-agent-job-b8b18bf7-5154-42c6-b290-45f04854dfe0",
+      "owner": "maria",
+      "scheduler": {
+        "kind": "event",
+        "expression": "openclaw-cron:b8b18bf7-5154-42c6-b290-45f04854dfe0",
+        "emitted_by": "openclaw-scheduler",
+        "match": "b8b18bf7-5154-42c6-b290-45f04854dfe0",
+        "cadence": "0 9 * * *"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Read-only ~/.openclaw/cron/jobs.json 2026-11-07: job b8b18bf7-5154-42c6-b290-45f04854dfe0 (`Reflection AI listing tracker`) enabled=True, schedule 0 9 * * * America/New_York.",
+      "output_signal": {
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE: an OpenClaw agent-scheduled job. Its effect is delivered inside the agent's own session and recorded by OpenClaw (jobs.json), not as a Trade AI artifact, so no host per-run proof exists and none is expected.",
+        "exempt_since": "2026-11-07"
+      },
+      "note": "Observed ~/.openclaw/cron/jobs.json 2026-11-07: `Reflection AI listing tracker` owned by agent maria. No crontab or systemd entry exists, so this row is kind event (the OpenClaw gateway's internal scheduler fires it) and the census must not report it ORPHANED."
     }
   ],
   "freshness_contracts": [
