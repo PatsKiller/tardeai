@@ -12,15 +12,29 @@ Read-only re: trading. Bounded + polite (yfinance). Run after classify_instrumen
 
 Lane ``etf-analyst-enrich`` (cron L505). ``--dry-run`` opens a READ ONLY session and runs only SELECTs: the
 ETF/fund rows, how many constituents already have analyst history, and whether the two analyst columns
-exist. It returns before the per-run ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` (DDL stays on the real
-path only; moving it to a migration is a follow-up), before any yfinance request and before any
-symbol_profiles / yahoo_analyst_targets_history write. No receipt.
+exist (naming the migration that adds them when they do not). It returns before any yfinance request and
+before any symbol_profiles / yahoo_analyst_targets_history write. No receipt.
+
+No DDL (2026-11-07, LQ-20261107-105): this script used to run ``ALTER TABLE symbol_profiles ADD COLUMN IF
+NOT EXISTS`` on every real run. An ADD COLUMN takes an ACCESS EXCLUSIVE lock on symbol_profiles — the
+whole table, against every reader and writer — and ``db_adapter`` sets ``lock_timeout = 3s`` on each
+connection, so one concurrent transaction on the table killed the run:
+
+    $ pg log 2026-11-07 07:00:09.375 EST [731183] trade_ai@trade_ai
+    ERROR:  canceling statement due to lock timeout
+    STATEMENT:  ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS analyst_look_through_pct numeric
+
+The DDL now lives in ``migrations/2026_11_07_symbol_profiles_analyst_cols.sql`` (the same refactor
+``fund_technicals_enrich.py`` took on 2026-10-10, for the same cause). The script only CHECKS the columns
+with an ``information_schema`` SELECT and raises ``MissingColumns`` naming the migration file if one is
+absent. A run never asks for a table lock, so no other lane can make it time out.
 
 A real run writes ``<state_root>/data/runtime/etf-analyst-enrich_last.json`` (LaneRunReceipt@v1; ``ok_at``
 only on success). Exit codes: 0 = ran (ETFs without holdings data, or no constituent needing a fetch, are
 findings); 1 = the run failed: crash / DB unavailable (failed receipt, exception re-raised), yfinance
 unavailable, ETF/fund rows existed but pass 1 got no holdings and no direct target for any of them, or
-constituents needed a fetch and 0 were fetched; 2 = usage error.
+constituents needed a fetch and 0 were fetched; 2 = usage error, or the analyst columns are missing and
+the migration above has not been applied.
 """
 import json
 import sys
@@ -34,8 +48,31 @@ from lib.writers.symbol_profiles_writer import upsert_profile
 LANE_ID = "etf-analyst-enrich"
 ETF_CAP = 45
 CONSTITUENT_CAP = 120
+REQUIRED_COLUMNS = ("analyst_look_through_pct", "analyst_basis")
+MIGRATION = "migrations/2026_11_07_symbol_profiles_analyst_cols.sql"
 _ETF_SQL = """SELECT upper(symbol), instrument_type, direction_hint FROM symbol_profiles
                    WHERE instrument_type IN ('etf','inverse_etf','fund')"""
+
+
+class MissingColumns(RuntimeError):
+    """symbol_profiles lacks an analyst column and the migration has not been applied here."""
+
+
+def present_columns(cur) -> list[str]:
+    """Which of the two analyst columns exist (information_schema SELECT — never a table lock)."""
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_name = 'symbol_profiles'
+                     AND column_name = ANY(%s)""", (list(REQUIRED_COLUMNS),))
+    return sorted(r[0] for r in cur.fetchall())
+
+
+def check_columns(cur) -> None:
+    """Read-only schema check (was a per-run ALTER TABLE). Raises MissingColumns naming the migration."""
+    have = set(present_columns(cur))
+    missing = [c for c in REQUIRED_COLUMNS if c not in have]
+    if missing:
+        raise MissingColumns(f"symbol_profiles is missing {missing}; apply {MIGRATION}")
+
 
 
 def _receipt_lib():
@@ -65,28 +102,30 @@ def preview() -> dict:
     conn = _get_conn()
     _receipt_lib().enforce_readonly(conn)
     cur = conn.cursor()
-    cur.execute("""SELECT column_name FROM information_schema.columns
-                   WHERE table_name = 'symbol_profiles'
-                     AND column_name IN ('analyst_look_through_pct', 'analyst_basis')""")
-    have_cols = sorted(r[0] for r in cur.fetchall())
+    have_cols = present_columns(cur)
     cur.execute(_ETF_SQL)
     etfs = cur.fetchall()
     cur.execute("SELECT count(DISTINCT upper(symbol)) FROM yahoo_analyst_targets_history")
     with_history = int((cur.fetchone() or (0,))[0] or 0)
     conn.rollback()
     batch = [r[0] for r in etfs[:ETF_CAP]]
+    missing = [c for c in REQUIRED_COLUMNS if c not in have_cols]
     return {"etfs_funds": len(etfs), "would_fetch_etfs": len(batch), "first_etfs": batch[:10],
             "symbols_with_analyst_history": with_history, "constituent_fetch_cap": CONSTITUENT_CAP,
             "analyst_columns_present": have_cols,
-            "would_run_ddl": len(have_cols) < 2}
+            "analyst_columns_missing": missing,
+            # The real run would stop on the check, not write: name the migration, not a phantom DDL statement.
+            "required_migration": MIGRATION if missing else None}
 
 
 def enrich():
     conn = _get_conn()
     cur = conn.cursor()
-    cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS analyst_look_through_pct numeric")
-    cur.execute("ALTER TABLE symbol_profiles ADD COLUMN IF NOT EXISTS analyst_basis text")
-    conn.commit()
+    # Read-only schema check. The ALTER these two columns used to need took ACCESS EXCLUSIVE on
+    # symbol_profiles and died on db_adapter's 3s lock_timeout whenever another transaction held the
+    # table (2026-11-07 07:00 ET). The DDL is a migration now (see the module docstring).
+    check_columns(cur)
+    conn.rollback()  # end the check's read transaction before the long yfinance passes
     cur.execute(_ETF_SQL)
     etfs = cur.fetchall()
     try:
@@ -187,17 +226,25 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     lr = _receipt_lib()
     if a.dry_run:
-        # Structural (AGENTS.md §6): enrich() -- DDL, yfinance, upserts -- is not reachable from this branch.
+        # Structural (AGENTS.md §6): enrich() -- yfinance, upserts -- is not reachable from this branch.
         plan = preview()
         lr.dry_run_report(
             LANE_ID, plan,
-            would_write=([] if not plan["would_run_ddl"] else ["ALTER TABLE symbol_profiles ADD COLUMN (analyst cols)"])
-            + [f"symbol_profiles analyst_look_through_pct/analyst_basis (<= {plan['would_fetch_etfs']} rows)",
-               f"yahoo_analyst_targets_history (<= {CONSTITUENT_CAP} constituent rows)"])
+            # No DDL is ever "would do": a missing column stops the run (exit 2) and names the migration.
+            would_write=([] if plan["required_migration"] else
+                         [f"symbol_profiles analyst_look_through_pct/analyst_basis (<= {plan['would_fetch_etfs']} rows)",
+                          f"yahoo_analyst_targets_history (<= {CONSTITUENT_CAP} constituent rows)"]))
         return 0
     started = lr.now_iso()
     try:
         res = enrich()
+    except MissingColumns as exc:
+        # Configuration, not a crash: say which migration is missing and exit 2 (fund_technicals_enrich.py's rule).
+        lr.write_lane_receipt(LANE_ID, ok=False, exit_code=2, started_at=started, script="etf_analyst_enrich.py",
+                              error=str(exc), output={"produced_count": 0, "attempted_count": 0,
+                                                      "skipped_reasons": {"schema_migration_missing": 1}})
+        print(json.dumps({"ok": False, "error": str(exc)}))
+        return 2
     except Exception as exc:
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="etf_analyst_enrich.py",
                               error=f"{type(exc).__name__}: {exc}",

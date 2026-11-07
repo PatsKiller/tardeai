@@ -553,10 +553,10 @@ def test_finviz_crash_writes_failed_receipt(tmp_path, monkeypatch):
 # ── etf_analyst_enrich (L505) ────────────────────────────────────────────────────────────────────────────
 
 
-def _etf_conn():
+def _etf_conn(have: tuple[str, ...] = ("analyst_basis",)):
     def responder(sql, _p):
         if "information_schema.columns" in sql:
-            return {"all": [("analyst_basis",)]}
+            return {"all": [(c,) for c in have]}
         if "FROM symbol_profiles" in sql:
             return {"all": [("SPY", "etf", None), ("SH", "inverse_etf", "short")]}
         if "count(DISTINCT" in sql:
@@ -575,7 +575,10 @@ def test_etf_analyst_dry_run_reaches_no_ddl_or_write(tmp_path, monkeypatch, caps
     monkeypatch.setitem(sys.modules, "yfinance", _boom_module("yfinance"))
     assert eae.main(["--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert "DRY-RUN" in out and '"etfs_funds": 2' in out and '"would_run_ddl": true' in out
+    # A missing column is reported as the migration to apply, never as an ALTER the real run would make.
+    assert "DRY-RUN" in out and '"etfs_funds": 2' in out
+    assert '"analyst_columns_missing": ["analyst_look_through_pct"]' in out
+    assert '"would_write": []' in out and "ALTER" not in out
     assert conn.readonly and conn.writes() == [] and conn.commits == 0 and _no_receipts(tmp_path)
 
 
@@ -585,8 +588,8 @@ def test_etf_analyst_ddl_is_not_reachable_from_dry_run():
     assert "ALTER" not in inspect.getsource(eae.preview)
 
 
-def test_etf_analyst_real_run_receipt(tmp_path, monkeypatch):
-    conn = _etf_conn()
+def test_etf_analyst_real_run_issues_no_ddl(tmp_path, monkeypatch):
+    conn = _etf_conn(("analyst_basis", "analyst_look_through_pct"))
     written = []
     monkeypatch.setattr(eae, "_get_conn", lambda: conn)
     monkeypatch.setattr(eae, "upsert_profile", lambda cur, sym, fields, source: written.append(sym))
@@ -596,7 +599,19 @@ def test_etf_analyst_real_run_receipt(tmp_path, monkeypatch):
     assert eae.main([]) == 0
     r = _receipt(tmp_path, "etf-analyst-enrich")
     assert r["status"] == "ok" and r["ok_at"] and r["summary"]["etfs_with_direct_target"] == 2
-    assert any(s.startswith("ALTER TABLE symbol_profiles") for s in conn.sql)  # DDL stays on the real path
+    # The DDL is a migration since 2026-11-07 (LQ-20261107-105): the run only reads information_schema.
+    assert not [s for s in conn.sql if s.split(" ", 1)[0].upper() in _WRITE_VERBS]
+    assert any("information_schema.columns" in s for s in conn.sql)
+
+
+def test_etf_analyst_missing_columns_exits_2_naming_the_migration(tmp_path, monkeypatch, capsys):
+    conn = _etf_conn(())  # neither analyst column exists
+    monkeypatch.setattr(eae, "_get_conn", lambda: conn)
+    assert eae.main([]) == 2
+    out = capsys.readouterr().out
+    assert "migrations/2026_11_07_symbol_profiles_analyst_cols.sql" in out
+    r = _receipt(tmp_path, "etf-analyst-enrich")
+    assert r["status"] == "failed" and r["ok_at"] is None
 
 
 def test_etf_analyst_honest_exit_rules():

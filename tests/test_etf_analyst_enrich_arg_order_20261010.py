@@ -48,7 +48,9 @@ class _Cur:
         self._rows = []
 
     def execute(self, sql, params=None):
-        if "FROM symbol_profiles" in sql:
+        if "information_schema.columns" in sql:  # the read-only schema check (LQ-20261107-105)
+            self._rows = [("analyst_basis",), ("analyst_look_through_pct",)]
+        elif "FROM symbol_profiles" in sql:
             self._rows = [("SPY", "etf", None)]
         else:  # analyst-history reads: nothing stored yet
             self._rows = []
@@ -65,6 +67,9 @@ class _Conn:
         return self.cur
 
     def commit(self):
+        pass
+
+    def rollback(self):
         pass
 
 
