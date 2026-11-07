@@ -10,6 +10,8 @@ Ops › Jobs & n8n. One joined, read-only payload so the phone makes one call:
 
 Mode per lane (the catalog artifact's rule):
   scheduler ``cron`` and in the relay list  -> ``both``  (n8n + cron, cutover pending)
+  scheduler ``n8n`` and the registry says it only rehearses (``scheduler.stage`` shadow or ``dispatch.mode``
+    dry_run) -> ``dry``, whatever its last run says
   scheduler ``n8n`` and (in the relay list or its last run was live) -> ``live``
   scheduler ``n8n`` otherwise -> ``dry``  (dry run on n8n)
   anything else -> ``none``  (not on n8n)
@@ -27,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
+REGISTRY_REL = Path("config") / "lane_registry.json"
 VERDICTS_REL = "data/runtime/n8n_lane_audit/verdicts.json"
 VERDICTS_SCHEMA = "n8n_lane_audit.v1"
 SCHEMA = "N8nCatalog@v1"
@@ -54,13 +57,48 @@ def verdict_class(verdict: Optional[str]) -> str:
     return "not_provable"
 
 
-def derive_mode(row: Mapping[str, Any], relay: Optional[frozenset]) -> str:
+def rehearsal_lanes(registry: Path) -> tuple[frozenset[str], Optional[str]]:
+    """Lane ids the registry declares as rehearsing only: ``scheduler.stage`` shadow, or ``dispatch.mode`` dry_run.
+
+    ``(ids, note)``. An unreadable registry yields no ids and a note, so the caller falls back to the last-run
+    reading rather than dropping every lane's mode. Read-only: this never writes the registry.
+    """
+    try:
+        doc = json.loads(Path(registry).read_text(encoding="utf-8"))
+        lanes = doc.get("lanes")
+        if not isinstance(lanes, list):
+            raise ValueError("lanes is not a list")
+    except FileNotFoundError:
+        return frozenset(), (f"Lane registry {Path(registry).name} not found; a shadow lane's mode falls back "
+                             "to its last run.")
+    except (OSError, ValueError, AttributeError) as exc:
+        return frozenset(), (f"Lane registry could not be read ({type(exc).__name__}); a shadow lane's mode falls "
+                             "back to its last run.")
+    out: set[str] = set()
+    for r in lanes:
+        if not isinstance(r, Mapping) or not r.get("lane_id"):
+            continue
+        stage = (r.get("scheduler") or {}).get("stage")
+        dispatch = r.get("dispatch") or {}
+        if stage == "shadow" or str(dispatch.get("mode") or "") == "dry_run":
+            out.add(str(r["lane_id"]))
+    return frozenset(out), None
+
+
+def derive_mode(row: Mapping[str, Any], relay: Optional[frozenset],
+                rehearsing: Optional[frozenset] = None) -> str:
     """The catalog mode of one jobs-history row. ``relay`` None (list unreadable) counts as an empty list."""
     sched = row.get("scheduler")
-    in_relay = bool(relay) and row.get("lane_id") in relay
+    lane_id = row.get("lane_id")
+    in_relay = bool(relay) and lane_id in relay
     if sched == "cron" and in_relay:
         return "both"
     if sched == "n8n":
+        if rehearsing and lane_id in rehearsing:
+            # The registry is the authority on how a lane runs (LQ-114: a shadow lane is never n8n-live). A
+            # single manual --apply leaves a mode=live receipt that jobs_history rightly keeps as the last LIVE
+            # run, so reading the mode off that receipt called jsonl-archive-rotate live (LQ-20261107-383).
+            return "dry"
         last_mode = (row.get("last_run") or {}).get("mode")
         return "live" if in_relay or last_mode == "live" else "dry"
     return "none"
@@ -135,7 +173,8 @@ def read_relay(root: Path, environ: Mapping[str, str]) -> tuple[Optional[frozens
 
 
 def build(snapshot: Mapping[str, Any], relay: Optional[frozenset], relay_meta: Mapping[str, Any],
-          verdicts: Mapping[str, dict], verdict_meta: Mapping[str, Any]) -> dict:
+          verdicts: Mapping[str, dict], verdict_meta: Mapping[str, Any],
+          rehearsing: Optional[frozenset] = None) -> dict:
     """Join one jobs-history snapshot with the relay list and the verdicts. Pure."""
     rows_in = list(snapshot.get("rows") or [])
     cats = [dict(c) for c in snapshot.get("categories") or []]
@@ -146,7 +185,7 @@ def build(snapshot: Mapping[str, Any], relay: Optional[frozenset], relay_meta: M
     lanes: list[dict] = []
     for r in rows_in:
         lane_id = r.get("lane_id")
-        mode = derive_mode(r, relay)
+        mode = derive_mode(r, relay, rehearsing)
         v = verdicts.get(lane_id)
         lanes.append({
             "lane_id": lane_id,
@@ -262,7 +301,8 @@ def state_root(environ: Mapping[str, str]) -> Path:
 
 def compute(*, environ: Optional[Mapping[str, str]] = None, root: Optional[Path] = None,
             state: Optional[Path] = None, snapshot_fn: Optional[Callable[[], Mapping[str, Any]]] = None,
-            llm_query: Optional[Callable[[str, Any], Optional[list]]] = None) -> dict:
+            llm_query: Optional[Callable[[str, Any], Optional[list]]] = None,
+            registry: Optional[Path] = None) -> dict:
     environ = os.environ if environ is None else environ
     root = Path(root or ROOT)
     explicit_state = state is not None
@@ -281,7 +321,10 @@ def compute(*, environ: Optional[Mapping[str, str]] = None, root: Optional[Path]
     relay, relay_meta = read_relay(root, environ)
     verdicts, verdict_meta = read_verdicts(state / VERDICTS_REL)
     verdicts = overlay_receipt_errors(verdicts, state)
-    out = build(snap, relay, relay_meta, verdicts, verdict_meta)
+    rehearsing, registry_note = rehearsal_lanes(Path(registry or (root / REGISTRY_REL)))
+    out = build(snap, relay, relay_meta, verdicts, verdict_meta, rehearsing=rehearsing)
+    if registry_note:
+        out["notes"].append(registry_note)
     out["work_items"], wnote = read_work_items(state, (v.get("work_item") for v in verdicts.values()))
     if wnote:
         out["notes"].append(wnote)
