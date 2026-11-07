@@ -690,3 +690,19 @@ def test_absent_is_still_reported_as_silence_not_unverifiable(tmp_path):
     assert obs["readable"] is True
     assert obs["last_output_at"] is None
     assert "(absent)" in str(obs["detail"])
+
+
+def test_none_signal_keeps_the_declared_reason(tmp_path):
+    """A reviewed kind=none declaration is not a missing one: the screen must repeat what the registry says."""
+    from scripts.lib import lane_registry as lr
+
+    obs = lr.observe_signal(
+        {"kind": "none", "reason": "SIGNAL_FREE_EXEMPT", "detail": "service runtime has no durable artifact"},
+        root=tmp_path,
+        db_query=None,
+    )
+    assert obs["readable"] is False
+    assert obs["detail"] == "SIGNAL_FREE_EXEMPT · service runtime has no durable artifact"
+
+    bare = lr.observe_signal({"kind": "none"}, root=tmp_path, db_query=None)
+    assert bare["detail"] == "no output signal declared"

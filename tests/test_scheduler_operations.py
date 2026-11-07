@@ -580,3 +580,86 @@ def test_inventory_current_directory_is_not_proof_of_child_execution_pin(tmp_pat
     row = normalize(result, {"lanes": [lane()]}, {"lanes": []}, {"units": []})[0]
     assert row["current_pinned"] is None
     assert row["declared_current_root"] is True
+
+
+def test_own_declared_multi_window_cadence_is_not_a_duplicate(tmp_path):
+    """Several windows joined by " + " are one lane's cadence; 19 healthy lanes read DRIFT on 2026-11-07."""
+    multi = lane()
+    multi["scheduler"]["expression"] = "45 20 * * 1-5 + 45 2 * * *"
+    text = (
+        "45 20 * * 1-5 flock -n /tmp/test.lock python scripts/test_lane.py\n"
+        "45 2 * * * flock -n /tmp/test.lock python scripts/test_lane.py"
+    )
+    row = project(tmp_path, [multi], observations(text))["rows"][0]
+    assert row["duplicate_scheduler"] is False
+    assert "duplicate_reason" not in row
+    assert row["runtime_state"] != "DRIFT"
+
+
+def test_host_line_at_an_undeclared_window_is_a_duplicate(tmp_path):
+    single = lane()
+    single["scheduler"]["expression"] = "45 20 * * 1-5"
+    text = (
+        "45 20 * * 1-5 flock -n /tmp/test.lock python scripts/test_lane.py\n"
+        "45 2 * * * flock -n /tmp/test.lock python scripts/test_lane.py"
+    )
+    row = project(tmp_path, [single], observations(text))["rows"][0]
+    assert row["duplicate_scheduler"] is True
+    assert "45 2 * * *" in row["duplicate_reason"]
+    assert row["runtime_state"] == "DRIFT"
+
+
+def test_host_requested_run_does_not_make_a_cron_lane_n8n_scheduled(tmp_path):
+    """The coordination ledger also records host/agent callers; only an n8n-requested run is double scheduling."""
+    host_run = {
+        "lane_id": "test-lane",
+        "mode": "live",
+        "state": "RUN_DONE",
+        "exit_code": 0,
+        "requested_by": "host:cc-wave-c",
+        "finished_at": NOW.isoformat(),
+    }
+    text = "*/5 * * * * python scripts/test_lane.py"
+    row = project(tmp_path, [lane()], observations(text), [host_run])["rows"][0]
+    assert row["duplicate_scheduler"] is False
+
+    n8n_run = dict(host_run, requested_by="n8n:workflow:tradeai-dispatcher")
+    row = project(tmp_path, [lane()], observations(text), [n8n_run])["rows"][0]
+    assert row["duplicate_scheduler"] is True
+    assert "n8n" in row["duplicate_reason"]
+
+
+def test_inactive_lane_on_the_shared_dispatcher_is_not_reported_running(tmp_path):
+    """The dispatcher's own active flag is not this lane's registration: agent_nudge read DRIFT while PAUSED."""
+    paused = lane(kind="n8n", state="PAUSED")
+    paused["scheduler"].update({"expression": "dispatcher", "match": ""})
+    obs = observations("", [{"id": "tradeai-dispatcher", "active": True, "schedules": []}])
+    rows = project(tmp_path, [paused], obs)["rows"]
+    row = next(r for r in rows if r["lane_id"] == "test-lane")
+    assert row["runtime_state"] == "EXPECTED_SILENT"
+    assert "shared n8n dispatcher" in row["health_reason"]
+    assert not any(r["lane_id"] == "unregistered-n8n-tradeai-dispatcher" for r in rows)
+
+
+def test_event_lane_claims_the_openclaw_job_it_names(tmp_path):
+    """An event row naming its OpenClaw job owns that job; four reminder lanes stood beside an 'unowned' copy."""
+    event = lane(kind="event")
+    event["scheduler"].update({"expression": "openclaw-cron:job-1", "match": "job-1"})
+    obs = observations("")
+    obs["openclaw"] = {
+        "measured": True,
+        "jobs": [
+            {"id": "job-1", "enabled": True, "schedule": {"kind": "cron", "expr": "0 15 * * 1-5", "tz": "America/New_York"}}
+        ],
+    }
+    rows = project(tmp_path, [event], obs)["rows"]
+    assert [r["lane_id"] for r in rows] == ["test-lane"]
+    row = rows[0]
+    assert row["schedule"] == "0 15 * * 1-5 (America/New_York)"
+    assert row["scheduler_observations"] == [
+        {"id": "job-1", "kind": "openclaw", "enabled": True, "schedule": {"kind": "cron", "expr": "0 15 * * 1-5", "tz": "America/New_York"}}
+    ]
+
+    obs["openclaw"]["jobs"][0]["enabled"] = False
+    row = project(tmp_path, [event], obs)["rows"][0]
+    assert row["runtime_state"] == "ORPHANED"
