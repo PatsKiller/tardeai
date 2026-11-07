@@ -385,7 +385,7 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
     summary = article.get("summary", "")[:1000]
     source = article.get("source", "unknown")
     relevance = scores.get("relevance_score", 0)
-    wrote_catalyst = False
+    catalyst_state = "skipped"          # no catalyst named: the default, and the honest one
 
     if relevance > 0.3:
         try:
@@ -397,6 +397,7 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
         if str(ctype or "").strip().lower() in {"", "other", "unknown", "none"}:
             ctype = None                        # not an event; the sentiment row below is still written
         if ctype:
+            catalyst_state = "error"            # until the insert proves otherwise
             try:
                 cur.execute("SAVEPOINT ds_cat")
                 cur.execute("""INSERT INTO catalyst_events
@@ -408,11 +409,14 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
                      severity, round(float(relevance), 2), round(float(relevance) * 10, 1),
                      source, article.get("published_at")))
                 cur.execute("RELEASE SAVEPOINT ds_cat")
-                wrote_catalyst = True
-            except Exception:
+                catalyst_state = "written"
+            except Exception as exc:  # noqa: BLE001 -- one article must not abort the whole run
+                # Say so rather than returning "no catalyst": a failed write is not the same fact as an
+                # article that names none, and the caller reports the two separately.
+                print(f"catalyst insert failed for {symbol}: {type(exc).__name__}: {exc}"[:300], file=sys.stderr)
                 try:
                     cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
-                except Exception:
+                except Exception:  # nosemgrep: tq-py-except-pass -- the rollback of a savepoint that the failed insert left open; the failure above is already printed
                     pass
 
     try:
@@ -433,7 +437,7 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
         except Exception:
             pass
 
-    return wrote_catalyst
+    return catalyst_state
 
 
 def _company_description(cur, sym: str) -> str | None:
@@ -454,6 +458,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
     source_counts: dict[str, int] = {}
     skipped_mismatch = 0
     skipped_not_a_catalyst = 0
+    failed_catalyst_writes = 0
 
     for sym, strategy_type in symbols:
         company_desc = _company_description(cur, sym)
@@ -510,8 +515,11 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
             }], source=a["source"])
             if not receipt.rows_written:
                 continue
-            if not _feed_downstream(conn, sym, strategy_type, a, _scores, _tags):
+            _cat_state = _feed_downstream(conn, sym, strategy_type, a, _scores, _tags)
+            if _cat_state == "skipped":
                 skipped_not_a_catalyst += 1
+            elif _cat_state == "error":
+                failed_catalyst_writes += 1
             source_counts[a["source"]] = source_counts.get(a["source"], 0) + 1
             total_new += 1
         total_scanned += 1
@@ -528,6 +536,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
         "new_articles": total_new,
         "skipped_symbol_mismatch": skipped_mismatch,
         "skipped_not_a_catalyst": skipped_not_a_catalyst,
+        "failed_catalyst_writes": failed_catalyst_writes,
         "by_source": {s: c for s, c in source_counts.items() if c > 0},
     }
 

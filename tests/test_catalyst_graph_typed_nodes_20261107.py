@@ -135,27 +135,27 @@ def _feed(article_title: str, relevance: float = 0.9):
     from scripts.news_ingestion import _feed_downstream
 
     conn = _Conn()
-    wrote = _feed_downstream(
+    state = _feed_downstream(
         conn, "SYNTH", "momentum",
         {"title": article_title, "summary": "", "source": "synthetic_fixture", "published_at": None},
         {"relevance_score": relevance}, {})
-    return wrote, conn.cur
+    return state, conn.cur
 
 
 def test_a_news_article_that_names_no_catalyst_writes_no_catalyst_row():
     """The regression: this path wrote 77.6% untyped rows into a store of events."""
-    wrote, cur = _feed("Analyst weighs in on the sector outlook for next year")
+    state, cur = _feed("Analyst weighs in on the sector outlook for next year")
 
-    assert wrote is False
+    assert state == "skipped"
     assert cur.catalyst_inserts() == []
     # the article is still reported as sentiment: only the catalyst claim is withheld
     assert any("INSERT INTO sentiment_observations" in s for s, _p in cur.statements)
 
 
 def test_an_article_naming_a_catalyst_still_writes_its_row():
-    wrote, cur = _feed("Synthetic Systems wins contract for a program milestone")
+    state, cur = _feed("Synthetic Systems wins contract for a program milestone")
 
-    assert wrote is True
+    assert state == "written"
     inserts = cur.catalyst_inserts()
     assert len(inserts) == 1
     params = dict(zip(
@@ -166,8 +166,8 @@ def test_an_article_naming_a_catalyst_still_writes_its_row():
 
 
 def test_a_low_relevance_article_writes_neither_kind_of_row():
-    wrote, cur = _feed("Synthetic Systems wins contract for a program milestone", relevance=0.1)
-    assert wrote is False
+    state, cur = _feed("Synthetic Systems wins contract for a program milestone", relevance=0.1)
+    assert state == "skipped"
     assert cur.catalyst_inserts() == []
 
 
@@ -178,6 +178,7 @@ def test_the_ingest_stats_report_the_skips():
 
     src = inspect.getsource(news_ingestion)
     assert '"skipped_not_a_catalyst"' in src
+    assert '"failed_catalyst_writes"' in src
     assert "skipped_not_a_catalyst += 1" in src
 
 
