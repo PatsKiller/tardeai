@@ -63,17 +63,32 @@ def rec_direction(text: str | None) -> str:
 # ── daily-close cache ─────────────────────────────────────────────────────────
 def refresh_close_cache(cur, cfg, backfill=False):
     """Upsert daily closes from market_quotes (last quote per symbol per day); SPY additionally
-    from price_cache. Nightly touches only the last few days; --backfill-closes does history."""
-    window = "" if backfill else "WHERE fetched_at >= NOW() - make_interval(days => %s)"
+    from price_cache. Nightly touches only the last few days; --backfill-closes does history.
+
+    Two details below are load-bearing; both were wrong before 2026-11-07 (LQ-20261107-126):
+
+    * every quote-timestamp key is table-qualified. PostgreSQL resolves an unqualified ORDER BY name
+      against the SELECT-list output names first, and `(…fetched_at…)::date` is itself named
+      `fetched_at` — so a bare `fetched_at DESC` sorted by the day bucket again, a no-op inside the
+      DISTINCT ON group, and each day kept an arbitrary quote of that day. `market_quotes.fetched_at`
+      cannot bind to that output column; `market_quotes.id DESC` breaks the remaining tie.
+    * the day bucket is the New York session date. `fetched_at::date` follows the server's TimeZone
+      setting, so one quote could land in a different day for a differently configured connection.
+    """
+    window = "" if backfill else "WHERE market_quotes.fetched_at >= NOW() - make_interval(days => %s)"
     window_params = None if backfill else (int(cfg["close_cache_refresh_days"]),)
     cur.execute(  # nosemgrep: tq-py-sql-fstring -- window is one of two literal clauses; the day count is a param
         f"""INSERT INTO daily_close_cache (symbol, price_date, close_price, source)
-                    SELECT DISTINCT ON (UPPER(symbol), fetched_at::date)
-                           UPPER(symbol), fetched_at::date, price, 'market_quotes'
+                    SELECT DISTINCT ON
+                           (UPPER(symbol), (market_quotes.fetched_at AT TIME ZONE 'America/New_York')::date)
+                           UPPER(symbol), (market_quotes.fetched_at AT TIME ZONE 'America/New_York')::date,
+                           price, 'market_quotes'
                     FROM market_quotes
                     {window}
                     {"AND" if window else "WHERE"} price IS NOT NULL AND price > 0
-                    ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
+                    ORDER BY UPPER(symbol),
+                             (market_quotes.fetched_at AT TIME ZONE 'America/New_York')::date,
+                             market_quotes.fetched_at DESC, market_quotes.id DESC
                     ON CONFLICT (symbol, price_date) DO UPDATE SET
                       close_price = EXCLUDED.close_price, source = EXCLUDED.source""", window_params)
     n_mq = cur.rowcount
