@@ -137,6 +137,14 @@ PHRASE_TERMS: frozenset[str] = frozenset({
     "allocations", "action", "mapping", "zones", "pulse", "insight", "sensitive", "driven", "critical",
 })
 
+#: An English hyphenation: a hyphen followed by a lower-case letter. A PROPER name hyphenates two
+#: capitalised parts ("T-Mobile", "Bio-Rad", "Kimberly-Clark", "O-I Glass", "Asia-Pacific"); prose
+#: glues a lower-case word onto the head ("Shell-company", "Cross-reference XLV", "New York-based",
+#: "Post-mortem", "Net-net", "Research-only", "C-suite"). Measured 2026-11-07 on the live table: this
+#: shape selects 848 rows, every sampled one a false positive, and keeps every genuine hyphenated
+#: issuer name in the 100-row adjudicated sample (LQ-287) and the top-offender census alike.
+_HYPHEN_PROSE = re.compile(r"(?<=[A-Za-z0-9])-[a-z]")
+
 _NORM = re.compile(r"[^a-z0-9 ]+")
 
 
@@ -185,6 +193,11 @@ def false_positive_reason(matched_text: Any, symbol: Any, matched_via: Any, *, t
         ambiguous = "ambiguous_name"
     elif len(tokens) > 1 and any(t in PHRASE_TERMS for t in tokens):
         ambiguous = "prose_phrase"
+    elif _HYPHEN_PROSE.search(name):
+        # "Shell-company" -> SHEL and "Cross-reference XLV" -> CRT were written at 16:25 ET on
+        # 2026-11-07, AFTER the stoplist shipped: neither name is on a list, and normalising the
+        # hyphen away ("shell company", "cross reference xlv") made both look like stored names.
+        ambiguous = "prose_compound"
     elif matched_via == "ticker_alias" and len(tokens) == 1 and _is_ordinary_word(name):
         ambiguous = "ordinary_word_alias"
     if ambiguous is None:
@@ -271,22 +284,63 @@ def _row(r: dict[str, Any], role: Optional[str],
     }
 
 
+#: A sentinel for "no issuer". `issuer_guid` stays NULL in the row — NULL means UNKNOWN and must never
+#: be rewritten — but the uniqueness rule needs a value, because PostgreSQL treats every NULL as
+#: distinct and the old index therefore never fired: measured 2026-11-07, 1,599 (document, role)
+#: groups carried duplicates, 32,550 rows have a NULL issuer and every duplicate is in them.
+_ISSUER_SENTINEL = "00000000-0000-0000-0000-000000000000"
+_CONFLICT_EXPR = ("(source_table, source_id, "
+                  "COALESCE(issuer_guid, '00000000-0000-0000-0000-000000000000'::uuid), role)")
+_CONFLICT_PLAIN = "(source_table, source_id, issuer_guid, role)"
+_COALESCE_INDEX = "uq_docmentions_issuer_coalesce"
+_MEMO_ATTR = "_dm_conflict_target"      # memo on the CONNECTION: one probe per connection, not per document
+
+
+def _conflict_target(cur) -> str:
+    """The ON CONFLICT clause this database supports.
+
+    The expression index arrives with migrations/2026_11_07_document_mentions_issuer_coalesce.sql, which the
+    operator applies — possibly AFTER this code ships. So the clause is chosen from what the database
+    actually has, exactly like the LQ-273 lane keeps its pre-migration UPDATE: before the index the old
+    clause still works (the old index is left in place), after it the NULL-issuer duplicate cannot land.
+    Probed once per connection (memoised on the connection object, which psycopg2 exposes from its cursor).
+    """
+    conn = getattr(cur, "connection", None)
+    if conn is not None and hasattr(conn, _MEMO_ATTR):
+        return getattr(conn, _MEMO_ATTR)
+    target = _CONFLICT_PLAIN
+    cur.execute("SELECT 1 FROM pg_indexes WHERE indexname = %s LIMIT 1", (_COALESCE_INDEX,))
+    if cur.fetchone():
+        target = _CONFLICT_EXPR
+    if conn is not None:
+        try:
+            setattr(conn, _MEMO_ATTR, target)
+        except (AttributeError, TypeError):
+            # A connection object that forbids attributes re-probes on the next call: correct, just
+            # one extra read-only query per document.
+            return target
+    return target
+
+
 def persist(conn, *, source_table: str, source_id: Any,
             rows: Iterable[dict[str, Any]]) -> int:
     """Idempotent write. Re-running the extractor is a no-op, not a duplicate."""
     cur = conn.cursor()
+    target = None                             # probed lazily: an undecided row must reach no query at all
     n = 0
     for r in rows:
         if not r.get("role") or not r.get("role_source"):
             continue                      # undecided: not this function's call
+        if target is None:
+            target = _conflict_target(cur)
         cur.execute(
-            """INSERT INTO document_mentions
+            f"""INSERT INTO document_mentions
                  (source_table, source_id, symbol, subject_guid, issuer_guid,
                   identity_status, role, role_source, role_confidence,
                   matched_via, matched_text)
                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-               ON CONFLICT (source_table, source_id, issuer_guid, role)
-               DO NOTHING""",
+               ON CONFLICT {target}
+               DO NOTHING""",  # noqa: S608 -- target is one of two literals above, never input
             (source_table, int(source_id), r["symbol"], r["subject_guid"],
              r["issuer_guid"], r.get("identity_status"), r["role"],
              r["role_source"], r.get("role_confidence"),

@@ -41,8 +41,23 @@ CREATE TABLE IF NOT EXISTS document_mentions (
 
 -- One row per (document, issuer, role). Re-running the extractor must be a
 -- no-op, not a duplicate.
+--
+-- This index does NOT enforce that for an unresolved mention: PostgreSQL treats
+-- every NULL as distinct, so a NULL-issuer row never conflicts and the backfill
+-- re-inserted it on every pass (measured 2026-11-07: 1,599 duplicate groups, all
+-- of them NULL-issuer, 1,681 extra rows). It is kept because existing writers use
+-- it as their ON CONFLICT target; the rule it cannot express is enforced by
+-- uq_docmentions_issuer_coalesce below.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_docmentions
     ON document_mentions (source_table, source_id, issuer_guid, role);
+
+-- The same rule with "no issuer" collapsed to one value. NULL still means UNKNOWN
+-- in the row -- only the index coalesces it. Applied by
+-- migrations/2026_11_07_document_mentions_issuer_coalesce.sql.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_docmentions_issuer_coalesce
+    ON document_mentions (source_table, source_id,
+                          COALESCE(issuer_guid, '00000000-0000-0000-0000-000000000000'::uuid),
+                          role);
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dm_issuer  ON document_mentions (issuer_guid);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_dm_subject ON document_mentions (subject_guid);
