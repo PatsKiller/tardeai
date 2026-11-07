@@ -184,12 +184,37 @@ def item_count(receipt: dict | None) -> tuple[int | float | None, str | None]:
     return None, None
 
 
+#: Summary counters that name a population the run worked on — how many inputs it found stale, how many subjects it
+#: scored as degraded — not a leftover it failed to fix. ``daily-incubator-refresh`` reports ``degraded`` as 66 of
+#: 1506 entries whose score fell; ``indicator-engine`` and ``finviz-enrichment`` report ``stale`` as the count of
+#: symbols selected for recompute. Read as health flags they marked a healthy run DEGRADED. They still flag when the
+#: receipt states no typed output account (``_typed_account``) or when the count exceeds what that account covers,
+#: because then nothing else explains it.
+_SUBJECT_COUNTERS = {"stale", "degraded"}
+
+
+def _typed_account(receipt: dict) -> tuple:
+    """(attempted_count, skipped_reasons) the receipt states about its own run.
+    Reads the LaneRunReceipt@v2 top-level fields, or a ``summary.output`` LaneOutput@v1 block (indicator-engine and
+    other lanes whose script prints its output block inside the summary). (None, {}) = no typed account stated."""
+    summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
+    block = summary.get("output") if isinstance(summary.get("output"), dict) else {}
+    attempted = _num(receipt.get("attempted_count"))
+    if attempted is None:
+        attempted = _num(block.get("attempted_count"))
+    reasons = receipt.get("skipped_reasons") if isinstance(receipt.get("skipped_reasons"), dict) else {}
+    if not reasons and isinstance(block.get("skipped_reasons"), dict):
+        reasons = block["skipped_reasons"]
+    return attempted, reasons
+
+
 def receipt_flags(receipt: dict | None, count=None) -> list[str]:
     """Plain-English degradation flags the receipt states about its own run (partial, fallback, gaps, errors, ...)."""
     if not receipt:
         return []
     flags = []
     summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
+    attempted, _ = _typed_account(receipt)
 
     def truthy(v):
         return (v is True) or (_num(v) is not None and v > 0) or (isinstance(v, (list, dict)) and len(v) > 0) or \
@@ -214,6 +239,14 @@ def receipt_flags(receipt: dict | None, count=None) -> list[str]:
                 shown = value if _num(value) is not None else (len(value) if isinstance(value, (list, dict)) else "set")
                 flags.append(f"{where} reports {key} = {shown}")
             elif k in {"unread", "stale", "stale_inputs", "degraded", "partial", "warnings"} and truthy(value):
+                n = _num(value)
+                if where == "summary" and k in _SUBJECT_COUNTERS and n is not None and attempted is not None \
+                        and n <= attempted:
+                    # The receipt states a typed output account covering this population: the counter is how many
+                    # items the run selected as stale / scored as degraded, and skipped_reasons says what happened
+                    # to each. It is not a leftover the run left behind, so it is reported as a subject outcome
+                    # (below) rather than a degradation.
+                    continue
                 shown = value if _num(value) is not None or value is True else len(value) if isinstance(value, (list, dict)) else "set"
                 flags.append(f"{where} reports {key} = {shown}")
     if receipt.get("receipt_complete") is False:
@@ -226,6 +259,26 @@ def receipt_flags(receipt: dict | None, count=None) -> list[str]:
     if skipped and count is not None and skipped > count and not benign:
         flags.append(f"skipped {skipped:g} items, more than it produced ({count:g})")
     return list(dict.fromkeys(flags))
+
+
+def subject_notes(receipt: dict | None) -> list[str]:
+    """Plain-English notes for subject counters a typed output account explains (see ``_SUBJECT_COUNTERS``).
+    They describe what the run found, not a run defect, so they ride ``checks`` and never grade the run DEGRADED."""
+    if not receipt:
+        return []
+    summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
+    attempted, reasons = _typed_account(receipt)
+    notes = []
+    for key, value in summary.items():
+        k = str(key).lower()
+        n = _num(value)
+        if k not in _SUBJECT_COUNTERS or n is None or n <= 0 or attempted is None or n > attempted:
+            continue
+        why = ", ".join(f"{r} = {v:g}" for r, v in reasons.items() if _num(v))
+        notes.append(f"summary reports {k} = {n:g} of {attempted:g} attempted"
+                     + (f" ({why})" if why else "")
+                     + " — how many items it selected or scored that way, not a run defect")
+    return notes
 
 
 # ── grading (pure) ────────────────────────────────────────────────────────────────────────────────────────────────
@@ -465,6 +518,9 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     flags = receipt_flags(receipt, count) if same_receipt else []
     checks["receipt_flags"] = _check("fail" if flags else ("pass" if same_receipt else "unknown"), len(flags),
                                      "; ".join(flags) or None)
+    notes = subject_notes(receipt) if same_receipt else []
+    if notes:
+        checks["subject_outcomes"] = _check("pass", None, "; ".join(notes))
     degraded += flags
     if count is not None and median and len(past) >= MIN_COUNT_HISTORY and count < COUNT_DROP * median:
         degraded.append(f"item count {count:g} is {100 * (1 - count / median):.0f}% below its median {median:g} "

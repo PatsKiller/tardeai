@@ -257,6 +257,45 @@ def test_benign_skipped_reasons_do_not_degrade():
     assert g(row(run()), lane(), ev(receipt=rc))["grade"] == "GOOD"
 
 
+def test_subject_outcome_bucket_is_not_a_degraded_run():
+    """daily-incubator-refresh reports how many entries it IMPROVED, DEGRADED, kept or had no data for. 66 degraded
+    entries is what it found, not a defect in the run: the typed output account covers all 1506 attempted."""
+    rc = receipt(produced_count=1316, attempted_count=1506, skipped_reasons={"no_scan_data": 190},
+                 summary={"improved": 175, "degraded": 66, "stayed_active": 1075, "no_data": 190, "processed": 1506})
+    q = g(row(run()), lane(), ev(receipt=rc))
+    assert q["grade"] == "GOOD", q
+    assert q["checks"]["receipt_flags"] == {"result": "pass", "value": 0}
+    assert "degraded = 66 of 1506 attempted" in q["checks"]["subject_outcomes"]["detail"]
+
+
+def test_stale_selection_count_inside_the_output_block_is_not_a_degraded_run():
+    """indicator-engine's summary.stale is how many symbols it selected for recompute; its output block says it
+    attempted all 27 and skipped 25 for a typed reason (no OHLCV). That is a stated coverage gap, not a leftover."""
+    out = {"produced_count": 2, "attempted_count": 27, "skipped_reasons": {"no_ohlcv": 25}}
+    rc = receipt(summary={"universe": 813, "stale": 27, "capped": 0, "upserted": 2, "output": out})
+    q = g(row(run()), lane(), ev(receipt=rc))
+    assert q["grade"] == "GOOD", q
+    assert "stale = 27 of 27 attempted" in q["checks"]["subject_outcomes"]["detail"]
+    assert "no_ohlcv = 25" in q["checks"]["subject_outcomes"]["detail"]
+
+
+def test_stale_beyond_the_output_account_is_still_a_degradation():
+    """A stale count the run did NOT account for is a leftover, and it stays a flag: 40 stale against 5 attempted
+    means 35 rows it never looked at."""
+    rc = receipt(produced_count=5, attempted_count=5, summary={"stale": 40})
+    q = g(row(run()), lane(), ev(receipt=rc))
+    assert q["grade"] == "DEGRADED"
+    assert "summary reports stale = 40" in q["reasons"][0]
+
+
+def test_stale_without_a_typed_account_is_still_a_degradation():
+    """No typed account = nothing explains the counter, so the conservative reading (leftover) stands."""
+    rc = receipt(produced_count=5, summary={"stale": 3})
+    q = g(row(run()), lane(), ev(receipt=rc))
+    assert q["grade"] == "DEGRADED"
+    assert "summary reports stale = 3" in q["reasons"][0]
+
+
 # ── UNPROVEN ────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_unproven_no_run_record_says_what_is_missing():
