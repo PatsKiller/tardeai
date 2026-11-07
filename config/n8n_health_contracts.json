@@ -3086,9 +3086,9 @@
       "id": "crontab-snapshot-for-health-agent",
       "kind": "lane",
       "workflow_id": "c0d4c7845e5c4fcc",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "stage": "canary",
       "purpose": {
         "text": "n8n-scheduled (*/20) live crontab snapshot for the health agent (NoNewPrivileges strips crontab setgid inside the unit).",
         "business_function": "governance",
@@ -3294,7 +3294,14 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent cc-n8nfix-worker 2026-11-06 via n8n_cutover_wave.agent_review (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json; cron line RETIRED 2026-10-09 so the lock is the allowlist lock); lane is READ_ONLY_ADVISORY; operator REVIEW pass still owed",
+        "reviewed_on": "2026-11-06",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "state_note": "2026-11-06: stage canary (relay refused it as native_n8n_no_stage since 2026-10-31; cron retired 2026-10-09)."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -10694,9 +10701,9 @@
       "id": "n8n-incident-fanin",
       "kind": "lane",
       "workflow_id": "722fac0e043ea5c4",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "stage": "canary",
       "purpose": {
         "text": "n8n-scheduled (*/5) live run of n8n_incident_fanin.py: one list of open incidents from existing receipts as coordination events.",
         "business_function": "alerts-ops",
@@ -10900,16 +10907,23 @@
           "reason": "empty_output",
           "notifier_priority": "P1"
         }
-      }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent cc-n8nfix-worker 2026-11-06 via n8n_cutover_wave.agent_review (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json; cron line RETIRED 2026-10-09 so the lock is the allowlist lock); lane is READ_ONLY_ADVISORY; operator REVIEW pass still owed",
+        "reviewed_on": "2026-11-06",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "state_note": "2026-11-06: stage canary (relay refused it as native_n8n_no_stage since 2026-10-31; cron retired 2026-10-09)."
     },
     {
       "schema": "N8nHealthContract@v1",
       "id": "n8n-pilot-dispatch",
       "kind": "lane",
       "workflow_id": "078e8fcbea0c5020",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "stage": "canary",
       "purpose": {
         "text": "n8n-scheduled (*/15) live run of n8n_pilot_dispatch.py: mirror five pilots' durable receipts into gateway coordination events.",
         "business_function": "monitoring",
@@ -11112,16 +11126,23 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent cc-n8nfix-worker 2026-11-06 via n8n_cutover_wave.agent_review (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json; cron line RETIRED 2026-10-09 so the lock is the allowlist lock); lane is READ_ONLY_ADVISORY; operator REVIEW pass still owed",
+        "reviewed_on": "2026-11-06",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "state_note": "2026-11-06: stage canary (relay refused it as native_n8n_no_stage since 2026-10-31; cron retired 2026-10-09)."
     },
     {
       "schema": "N8nHealthContract@v1",
       "id": "n8n-research-intake-consumer",
       "kind": "lane",
       "workflow_id": "21fd15d5f8a4c4da",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "n8n:ACTIVE",
-      "stage": null,
+      "stage": "canary",
       "purpose": {
         "text": "n8n-scheduled (*/15) live run of n8n_research_intake_consumer.py: turn research_request/v1 gateway events into enqueued research work.",
         "business_function": "research",
@@ -11328,7 +11349,14 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "reviewed_by": "agent cc-n8nfix-worker 2026-11-06 via n8n_cutover_wave.agent_review (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json; cron line RETIRED 2026-10-09 so the lock is the allowlist lock); lane is READ_ONLY_ADVISORY; operator REVIEW pass still owed",
+        "reviewed_on": "2026-11-06",
+        "prepared_by": "build_n8n_health_contracts.py DRAFT"
+      },
+      "state_note": "2026-11-06: stage canary (relay refused it as native_n8n_no_stage since 2026-10-31; cron retired 2026-10-09)."
     },
     {
       "schema": "N8nHealthContract@v1",
