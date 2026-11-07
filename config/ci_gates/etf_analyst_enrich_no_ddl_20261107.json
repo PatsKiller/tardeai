@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "etf_analyst_enrich_no_ddl_20261107",
+  "files": [
+    "tests/test_etf_analyst_enrich_no_ddl_20261107.py",
+    "tests/test_refactor_w3_ingest_lanes_20261010.py"
+  ],
+  "comment": [
+    "etf_analyst_enrich took an ACCESS EXCLUSIVE lock on symbol_profiles on every run and died on db_adapter's",
+    "3s lock_timeout (2026-11-07 07:00 ET: 'canceling statement due to lock timeout' on the ADD COLUMN). The DDL",
+    "is migrations/2026_11_07_symbol_profiles_analyst_cols.sql now; the run only reads information_schema and",
+    "exits 2 naming the migration when a column is absent. Pins: no ALTER in the run, no write statement at all,",
+    "the migration defines both columns, and the dry run promises no table write. Hermetic fakes."
+  ]
+}
