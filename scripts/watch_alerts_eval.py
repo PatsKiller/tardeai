@@ -85,6 +85,30 @@ def _quote_is_current(fetched_at) -> bool:
     return state not in ("STALE", "DATA_UNAVAILABLE")
 
 
+def _price_quotes(ex, symbols: list[str]) -> dict[str, dict]:
+    """Current prices for a batch of symbols, through the one shared price helper.
+
+    Operator price rule (2026-11-07): Finviz cache when it is younger than the configured limit, else the
+    fresher broker / market_quotes row — never a stored DB print older than that. The previous path read
+    market_quotes directly, which served PFE 27.56 from 16:45 ET while Finviz at 23:30 ET said 29.39
+    (data-truth audit 2026-11-07). One batch call per pass, not one read per alert.
+
+    A helper failure returns {} and is logged: price alerts then do not fire this pass, which is the safe
+    direction (an alert on an unverified price is worse than no alert), and the log names the cause.
+    """
+    if not symbols:
+        return {}
+    try:
+        try:
+            from lib.data_broker.market_quote import get_price_batch
+        except ImportError:
+            from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore
+        return get_price_batch(ex, symbols, max_age_hours=12, finviz_first=True) or {}
+    except Exception as exc:  # noqa: BLE001 -- never crash the lane; never fire on an unread price
+        _log(f"price batch unavailable ({type(exc).__name__}: {str(exc)[:80]}); price alerts skipped this pass")
+        return {}
+
+
 def _log(msg: str) -> None:
     try:
         print(msg)
@@ -95,6 +119,13 @@ def _log(msg: str) -> None:
 def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str], list[int]]:
     lines: list[str] = []
     fired_ids: list[int] = []
+    # One batch for every price-cross alert, through the shared Finviz-first helper (see _price_quotes).
+    price_symbols = sorted({
+        (a.get("symbol") or "").upper() for a in alerts
+        if a.get("condition_type") in ("price_cross_above", "price_cross_below")
+        and (a.get("symbol") or "").strip()
+    })
+    quotes = _price_quotes(ex, price_symbols)
     for alert in alerts:
         uid = f"watch_alert:{alert['id']}:{today}"
         if ex("SELECT 1 FROM alert_events WHERE alert_uid=%s LIMIT 1", (uid,), fetch="one"):
@@ -111,16 +142,15 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
         threshold = alert.get("threshold")
         hit, current = False, None
         if condition in ("price_cross_above", "price_cross_below") and symbol and threshold is not None:
-            quote = ex(
-                "SELECT price, fetched_at FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
-                (symbol,), fetch="one",
-            )
-            current = float(quote["price"]) if quote and quote.get("price") else None
-            # 2026-09-25: the latest row was used regardless of age. A price
-            # alert must not fire (or stay silent) on a stale print; a STALE
-            # quote is skipped this pass and named in the log.
-            if current is not None and not _quote_is_current(quote.get("fetched_at")):
-                _log(f"skip alert {alert['id']} {symbol}: quote {quote.get('fetched_at')} is stale for its session")
+            quote = quotes.get(symbol) or {}
+            current = quote.get("price")
+            # A price alert must not fire (or stay silent) on a stale print; a quote with no current
+            # price, or one stale for its session, is skipped this pass and named in the log.
+            if current is None:
+                _log(f"skip alert {alert['id']} {symbol}: no current quote ({quote.get('source') or 'helper returned none'})")
+                continue
+            if not _quote_is_current(quote.get("as_of")):
+                _log(f"skip alert {alert['id']} {symbol}: quote {quote.get('as_of')} from {quote.get('source')} is stale for its session")
                 continue
             hit = current is not None and (
                 current >= float(threshold) if condition.endswith("above") else current <= float(threshold)

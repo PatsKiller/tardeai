@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_alerts_eval_price_20261107",
+  "files": [
+    "tests/test_alerts_eval_price_20261107.py"
+  ],
+  "anchor": "WATCH_ALERTS_EVAL_PRICE_20261107",
+  "comment": [
+    "ANCHOR: WATCH_ALERTS_EVAL_PRICE_20261107 — price-cross watch alerts read the one shared price helper (get_price_batch, Finviz first) instead of market_quotes directly (LQ-20261107-04): a fresh Finviz quote fires even when the DB row is stale, no helper quote never falls back to market_quotes, and a stale quote still never fires."
+  ]
+}
