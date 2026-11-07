@@ -12,10 +12,14 @@ CLI:
 
 Lane rag-indexer (cron L252, behind llm_priority_guard.sh and `timeout 5m`; neither is changed here).
 
---dry-run (AGENTS.md §6): selects the rows and builds the embed texts, then `continue`s BEFORE
-embed_text (no embedding call), before the INSERT and before the IER write-back; the session is READ
-ONLY at the server (lane_last_receipt.enforce_readonly) and no pipeline_registry run is recorded. It
-prints the RAG_INDEXER_SUMMARY line (dry_run=true) plus one DRY-RUN report line; no receipt.
+--dry-run (AGENTS.md §6) is an OFFLINE PREVIEW: it parses the source list, prints one
+`DRY-RUN rag-indexer: would index sources=... hours=... backfill=...` line and exits 0. It opens no DB
+connection (so it cannot report row counts — counting needs the database), loads no embedding runtime,
+sends no telemetry, writes nothing, writes no receipt, and records no pipeline_registry run (the
+`__main__` guard skips run_start). The row-level preview is `index_source(dry_run=True)`: it selects the
+rows and builds the embed texts, then `continue`s BEFORE embed_text, before the INSERT and before the
+IER write-back. That is a library path for tests and programmatic callers; main() never reaches it,
+because the CLI preview returns before connecting (offline previews since 1c733d98f).
 
 A real run writes <state_root>/data/runtime/rag-indexer_last.json (LaneRunReceipt@v1, built from the
 RAG_INDEXER_SUMMARY counts; ok_at only on success). Exit codes: 0 = ran (nothing new to index is 0;
@@ -267,7 +271,9 @@ def index_source(source_type, hours_back=None, backfill=False, conn=None, dry_ru
 
     `stats` (optional dict) receives selected / indexed / embed_failed / skipped_empty (rows the
     text builder refused, plus rows the SQL prefilter declined) / samples (dry run only).
-    dry_run builds the texts and counts, but calls no embedder and writes nothing."""
+    dry_run builds the texts and counts, but calls no embedder and writes nothing. main() never passes
+    it — the CLI preview is offline and returns before connecting — so this is the library-level preview
+    for tests and programmatic callers (a caller that already holds a connection)."""
     st = stats if stats is not None else {}
     st.update(selected=0, indexed=0, embed_failed=0, skipped_empty=0, skipped_empty_prefilter=0)
     config = SOURCE_CONFIGS.get(source_type)
@@ -402,7 +408,7 @@ def main(argv=None) -> int:
     parser.add_argument("--hours", type=int, default=None, help="Only index items from last N hours")
     parser.add_argument("--backfill", action="store_true", help="Index ALL rows regardless of age")
     parser.add_argument("--dry-run", action="store_true",
-                        help="Select and build texts, report counts; no embedding call, no write")
+                        help="Offline preview: print what a real run would cover; no DB, no embedding call, no write")
     args = parser.parse_args(argv)
 
     sources = list(SOURCE_CONFIGS.keys()) if args.source == "all" else [x.strip() for x in args.source.split(",")]
@@ -413,43 +419,35 @@ def main(argv=None) -> int:
     if args.dry_run:
         print(f"DRY-RUN {LANE_ID}: would index sources={','.join(sources)} hours={args.hours} backfill={args.backfill}; no DB, embedding runtime, telemetry or writes")
         return 0
+    # Past this point the run is real: --dry-run returned above, so no path here is reachable in preview.
     started = datetime.now(timezone.utc).isoformat()
     try:
         conn = _get_conn()
     except Exception as exc:
         logger.error(f"RAG indexer: DB connection failed: {type(exc).__name__}")
-        if not args.dry_run:
-            _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
-                                              script="rag_indexer.py", error=f"{type(exc).__name__}: db connect")
+        _receipt_lib().write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
+                                          script="rag_indexer.py", error=f"{type(exc).__name__}: db connect")
         raise
-    if args.dry_run:
-        _receipt_lib().enforce_readonly(conn)
 
     total = 0
     summary = {}
     for st in sources:
         stats = {}
-        n, s = index_source(st, hours_back=args.hours, backfill=args.backfill, conn=conn,
-                            dry_run=args.dry_run, stats=stats)
+        n, s = index_source(st, hours_back=args.hours, backfill=args.backfill, conn=conn, stats=stats)
         summary[st] = stats
         total += n
 
     conn.close()
-    logger.info(f"RAG indexer complete: {total} total {'would-index' if args.dry_run else 'new'} embeddings")
-    # One machine-readable line per run: the skip count is recorded, not just logged in prose.
-    print("RAG_INDEXER_SUMMARY " + json.dumps({"dry_run": args.dry_run, "total": total, "sources": summary},
+    logger.info(f"RAG indexer complete: {total} total new embeddings")
+    # One machine-readable line per real run: the skip count is recorded, not just logged in prose. A
+    # preview prints the DRY-RUN line above and never this one, so ``dry_run`` is constant here.
+    print("RAG_INDEXER_SUMMARY " + json.dumps({"dry_run": False, "total": total, "sources": summary},
                                               default=str, sort_keys=True), flush=True)
     failed = run_failed(summary)
     rc = 1 if failed else 0
     compact = {k: {f: v.get(f) for f in ("selected", "indexed", "embed_failed", "skipped_empty", "error")
                    if v.get(f) is not None} for k, v in summary.items()}
     errors = sorted(k for k, v in summary.items() if v.get("error"))
-    if args.dry_run:
-        _receipt_lib().dry_run_report(LANE_ID, {"would_index": total, "sources": compact,
-                                                "source_errors": errors, "exit_would_be": rc},
-                                      would_write=[f"content_embeddings (insert, {EMBED_MODEL}) x would_index",
-                                                   "intelligence entity rag_last_indexed (upsert)"])
-        return rc
     _receipt_lib().write_lane_receipt(LANE_ID, ok=not failed, exit_code=rc, started_at=started,
                                       script="rag_indexer.py",
                                       summary={"total": total, "sources": compact, "source_errors": errors})

@@ -467,7 +467,10 @@ def test_rag_source_order_dry_run_continues_before_embed():
     src = inspect.getsource(rag.index_source)
     assert src.index("if dry_run:") < src.index("embed_text(") < src.index("INSERT INTO content_embeddings")
     main_src = inspect.getsource(rag.main)
-    assert main_src.index("enforce_readonly(conn)") < main_src.index("index_source(")
+    # Since 1c733d98f the CLI preview is offline and returns before opening a connection, so main()
+    # never reaches index_source(dry_run=True): the row-level preview above is the library path.
+    assert main_src.index("if args.dry_run:") < main_src.index("_get_conn()")
+    assert "enforce_readonly" not in main_src
 
 
 # ── journal_review_builder ──────────────────────────────────────────────────
