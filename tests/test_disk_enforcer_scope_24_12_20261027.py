@@ -367,6 +367,8 @@ def test_pressure_guard_pages_the_governed_route(monkeypatch, tmp_path, capsys):
 
     sent: list[str] = []
     monkeypatch.setattr(g, "RECEIPT", tmp_path / "receipts.jsonl")
+    # The report-only path under test: pin the arming switch off (the live config is operator-armed since 2026-11-07).
+    monkeypatch.setattr(g, "act_config", lambda *a, **k: {"active": False, "why_not_active": "test: disarmed"})
     # Free space rises 1 GiB between the two reads from unrelated host activity: the guard did none of it.
     reads = iter([(91.0, 40 * 1024**3, 468 * 1024**3), (90.8, 41 * 1024**3, 468 * 1024**3)])
     monkeypatch.setattr(g, "disk_used_pct", lambda path="/": next(reads))

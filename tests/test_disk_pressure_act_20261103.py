@@ -186,9 +186,11 @@ def test_armed_with_zero_eligible_items_refuses_and_never_applies(monkeypatch, t
 # ---------------------------------------------------------------- the arming contract
 
 
-def test_the_switch_ships_off_in_the_reviewed_config():
+def test_the_switch_is_armed_only_by_the_operator():
+    # Shipped disarmed 2026-11-03; the operator armed it in a direct session 2026-11-07 ("release the breaker").
     doc = json.loads((ROOT / "config" / "disk_hygiene_rules.json").read_text(encoding="utf-8"))
-    assert doc["pressure_act"]["armed"] is False, "this PR adds the capability; arming is the operator's"
+    pa = doc["pressure_act"]
+    assert pa["armed"] is False or (pa["armed"] is True and str(pa.get("armed_by", "")).startswith("John (operator)"))
     assert doc["pressure_act"].get("_owner", "").startswith("operator")
 
 

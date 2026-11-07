@@ -526,9 +526,9 @@
   },
   "pressure_act": {
     "_why": "Operator switch for scripts/disk_pressure_guard.py: when armed, the 85% pressure guard TRIGGERS this cleaner (--standing dry run -> quoted selection -> --apply) instead of only reporting, which is the operator's 2026-11-03 disk permanent-fix item 3 ('Make the pressure guard ACT at 85%: it triggers the cleaner, not just a report'). Read fail-closed by scripts/disk_pressure_guard.py:act_config(): anything other than the literal true is DISARMED. Acting additionally requires standing_apply.enabled is true and standing_apply.approval.status APPROVED, so the cleaner's existing kill switch still binds. Default OFF: shipped disarmed; no agent arms it.",
-    "armed": false,
-    "armed_by": null,
-    "armed_at": null,
+    "armed": true,
+    "armed_by": "John (operator), direct session 2026-11-07: release the breaker, no kill switch needed (read-only accounts)",
+    "armed_at": "2026-11-07T04:20:28Z",
     "_owner": "operator only (AGENTS.md §17): arming changes what runs unattended at 85% used, so it is proposed and the operator sets it"
   },
   "jsonl_retention": {

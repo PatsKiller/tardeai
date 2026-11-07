@@ -150,7 +150,8 @@ def test_enabled_false_and_dry_run_change_nothing(env):
 
 
 def test_config_defaults():
-    assert CFG["enabled"] is False and CFG["never_probe_extra"] == []
+    # enabled by the operator 2026-11-07 ("we don't need the kill switch anymore"): long-open breakers self-heal
+    assert CFG["enabled"] is True and CFG["never_probe_extra"] == []
     for word in ("scalp", "sender", "secret", "deploy", "guard", "position", "paper", "broker", "stop", "execution"):
         assert word in BP.NEVER_PROBE
     assert BP.blocked("Tradeai-SCALP-feed", CFG)  # case-insensitive
