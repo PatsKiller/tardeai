@@ -57,11 +57,28 @@ def main(argv=None) -> int:
         write_lane_receipt(LANE_ID, ok=False, started_at=started_at, script=SCRIPT_REL,
                            error=f"{type(exc).__name__}: {exc}")
         raise
-    ok = not (symbols and refreshed == 0)
+    outcome, reason = receipt_outcome(symbols, refreshed, failed, _FINVIZ_GOT.get("n"))
+    ok = outcome != "error"
     write_lane_receipt(LANE_ID, ok=ok, started_at=started_at, script=SCRIPT_REL,
                        summary={"symbols": symbols, "refreshed": refreshed, "failed": failed},
-                       error=None if ok else "every proposal symbol's snapshot failed")
+                       error=None if ok else f"source_error:{reason}", outcome=outcome, outcome_reason=reason)
     return 0 if ok else 1
+
+
+#: Filled by _run: how many symbols the Finviz call answered for (None = not reached / unknown).
+_FINVIZ_GOT: dict = {}
+
+
+def receipt_outcome(symbols: int, refreshed: int, failed: int, finviz_got=None) -> tuple[str, str | None]:
+    """ok | empty | error for one run (LQ-192). No active proposal symbols is a true empty; a Finviz call that
+    answered for none of the symbols, or every snapshot failing, is an ERROR (unknown, not "nothing to do")."""
+    if not symbols:
+        return "empty", "no_active_proposal_symbols"
+    if finviz_got == 0:
+        return "error", "finviz_returned_no_symbols"
+    if refreshed == 0:
+        return "error", "every_snapshot_failed"
+    return "ok", (f"partial_failures:{failed}" if failed else None)
 
 
 def _run() -> tuple[int, int, int]:
@@ -79,7 +96,8 @@ def _run() -> tuple[int, int, int]:
     if not syms:
         print("[enrich_proposal_technicals] no active proposal symbols")
         return (0, 0, 0)
-    enrich_tickers(syms, project_root=str(ROOT), views=[141, 171], skip_fundamentals=True)
+    got = enrich_tickers(syms, project_root=str(ROOT), views=[141, 171], skip_fundamentals=True)
+    _FINVIZ_GOT["n"] = len(got) if hasattr(got, "__len__") else None
     print(f"[enrich_proposal_technicals] refreshed finviz technicals for {len(syms)} symbol(s)")
 
     conn = _get_conn()

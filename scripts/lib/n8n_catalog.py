@@ -93,6 +93,30 @@ def read_verdicts(path: Path) -> tuple[dict[str, dict], dict]:
     return out, {**meta, "written_at": doc.get("written_at"), "by": doc.get("by"), "rows": len(out)}
 
 
+def overlay_receipt_errors(verdicts: Mapping[str, dict], state: Path) -> dict[str, dict]:
+    """LQ-192: a lane whose latest receipt says ``outcome: error`` is FAIL_RUN, whatever the audit file last said
+    (a PASS written before the source broke, or no verdict at all). Unreadable receipts are skipped, never guessed."""
+    out = {k: dict(v) for k, v in verdicts.items()}
+    try:
+        files = sorted((Path(state) / "data" / "runtime").glob("*_last.json"))
+    except OSError:
+        return out
+    for f in files:
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict) or doc.get("outcome") != "error" or not doc.get("lane_id"):
+            continue
+        lane = str(doc["lane_id"])
+        if verdict_class((out.get(lane) or {}).get("verdict")) == "fail":
+            continue
+        out[lane] = {"verdict": "FAIL_RUN", "defect": f"latest receipt outcome=error: {doc.get('outcome_reason') or 'no reason recorded'}",
+                     "fix_suggestion": None, "work_item": (out.get(lane) or {}).get("work_item"),
+                     "audited_at": doc.get("finished_at")}
+    return out
+
+
 def read_relay(root: Path, environ: Mapping[str, str]) -> tuple[Optional[frozenset], dict]:
     """The effective relay live list (what the relay itself would run live) and its provenance."""
     try:
@@ -256,6 +280,7 @@ def compute(*, environ: Optional[Mapping[str, str]] = None, root: Optional[Path]
                 "gaps": [f"jobs-history unavailable ({type(exc).__name__})"]}
     relay, relay_meta = read_relay(root, environ)
     verdicts, verdict_meta = read_verdicts(state / VERDICTS_REL)
+    verdicts = overlay_receipt_errors(verdicts, state)
     out = build(snap, relay, relay_meta, verdicts, verdict_meta)
     out["work_items"], wnote = read_work_items(state, (v.get("work_item") for v in verdicts.values()))
     if wnote:

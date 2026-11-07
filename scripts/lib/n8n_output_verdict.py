@@ -185,6 +185,8 @@ def evaluate(
     base.update({"produced_count": produced, "attempted_count": attempted, "skipped_reasons": dict(skipped)})
     if doc.get("status") != "ok":
         return {**base, "verdict": "empty_violation", "why": "receipt_status_failed"}
+    if doc.get("outcome") == "error":
+        return {**base, "verdict": "empty_violation", "why": "receipt_outcome_error", "reason": doc.get("outcome_reason")}
     fatal = sorted(r for r, c in skipped.items() if c > 0 and r in (set(rule["fatal_skip_reasons"]) | NO_WORK_FAILURES))
     if fatal:
         return {**base, "verdict": "empty_violation", "why": "fatal_skip", "fatal": fatal}

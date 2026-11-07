@@ -268,11 +268,28 @@ def main(argv=None) -> int:
         error = "every news_articles insert errored"
     else:
         error = None
+    outcome, reason = receipt_outcome(summary, failed=failed, window_unknown=window_unknown, window_empty=window_empty,
+                                      inserts_failed=inserts_failed)
     write_receipt(RECEIPT_NAME, ok=not failed, summary=summary, started_at=started, error=error,
-                  output=lane_output(summary, window_rows=window_rows))
+                  output=lane_output(summary, window_rows=window_rows), outcome=outcome, outcome_reason=reason)
     if failed:
         print(f"[hermes-bridge] FAILED: {error}", file=sys.stderr)
     return 1 if failed else 0
+
+
+def receipt_outcome(summary: dict, *, failed: bool, window_unknown: bool, window_empty: bool,
+                    inserts_failed: bool) -> tuple[str, str]:
+    """ok | empty | error (LQ-192). An unreadable window, a dead feed window or all-failed inserts are ERRORS;
+    nothing new to bridge is a true empty."""
+    if window_unknown:
+        return "error", "window_count_unreadable"
+    if window_empty:
+        return "error", "no_source_rows_in_window"
+    if inserts_failed:
+        return "error", "every_insert_errored"
+    if failed:
+        return "error", "run_failed"
+    return ("empty", "no_new_input") if int(summary["bridged"]) == 0 else ("ok", "bridged")
 
 
 def lane_output(summary: dict, window_rows=None) -> dict:

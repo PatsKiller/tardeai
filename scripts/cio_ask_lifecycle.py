@@ -52,6 +52,8 @@ def main(argv=None):
         output_evidence=outputs,
         empty_reason=receipt_empty_reason(summary, events_only=args.events_only, has_outputs=bool(outputs)),
         error="; ".join(summary.get("source_errors", []))[:400] or None,
+        outcome="error" if summary.get("source_errors") else None,
+        outcome_reason="source_error" if summary.get("source_errors") else None,
     )
     return 0 if summary.get("ok") else 1
 

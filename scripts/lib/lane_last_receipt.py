@@ -58,6 +58,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+#: 2026-11-07 (LQ-192): what the run's RESULT was. ``empty`` = the source answered and had nothing; ``error`` = the
+#: source call or the work failed, so the zero is unknown, not "nothing to do". ``ok`` = produced work (or no count).
+OUTCOMES = ("ok", "empty", "error")
 SCHEMA = "LaneRunReceipt@v1"
 SCHEMA_V2 = "LaneRunReceipt@v2"
 #: Attempt identity the n8n executor sets on the lane's env (scripts/n8n_run_executor.py RUN_ID_ENV ...).
@@ -192,7 +195,13 @@ def build_receipt(
     run_id: str | None = None,
     output: Mapping[str, Any] | None = None,
     previous_consecutive_failures: int | None = None,
+    outcome: str | None = None,
+    outcome_reason: str | None = None,
 ) -> dict[str, Any]:
+    if outcome is not None and outcome not in OUTCOMES:
+        raise ValueError(f"outcome must be one of {OUTCOMES}")
+    if outcome == "error":
+        ok = False  # an error outcome never advances ok_at, whatever the caller's exit code said
     finished = finished_at or now_iso()
     doc: dict[str, Any] = {
         "schema": SCHEMA,
@@ -207,6 +216,19 @@ def build_receipt(
         "pid": os.getpid(),
         "summary": _scrub_summary(summary),
     }
+    produced = produced_count if produced_count is not None else (output or {}).get("produced_count")
+    if not ok:
+        derived = "error"
+    elif outcome:
+        derived = outcome
+    elif isinstance(produced, int) and not isinstance(produced, bool) and produced == 0:
+        derived = "empty"
+    else:
+        derived = "ok"
+    doc["outcome"] = derived
+    reason = outcome_reason or (empty_reason if derived == "empty" else None) or (output or {}).get("empty_reason") \
+        if derived != "error" else (outcome_reason or (_scrub_error(str(error)) if error else None))
+    doc["outcome_reason"] = str(reason)[:120] if reason else None
     if previous_consecutive_failures is not None:
         # additive (v1 readers ignore unknown keys): 0 after a success, previous + 1 after a failure
         doc["consecutive_failures"] = 0 if ok else int(previous_consecutive_failures) + 1
@@ -306,6 +328,8 @@ def write_lane_receipt(
     output_evidence: list[Mapping[str, Any]] | None = None,
     empty_reason: str | None = None,
     output: Mapping[str, Any] | None = None,
+    outcome: str | None = None,
+    outcome_reason: str | None = None,
 ) -> Path | None:
     """Atomically replace the lane receipt for one REAL run. Returns the path, or None on failure.
 
@@ -332,6 +356,8 @@ def write_lane_receipt(
             output_evidence=output_evidence,
             empty_reason=empty_reason,
             output=output,
+            outcome=outcome,
+            outcome_reason=outcome_reason,
         )
         if doc.get("run_id") and (doc.get("schema") == SCHEMA_V2 or doc.get("output_fields") == SCHEMA_V2):
             # the per-attempt copy is always schema v2 (n8n_output_verdict requires it); the #1772 ``output=``

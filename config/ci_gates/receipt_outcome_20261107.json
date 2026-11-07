@@ -1,0 +1,1 @@
+{"schema":"CiGate@v1","name":"receipt_outcome_20261107","files":["tests/test_receipt_outcome_20261107.py"],"anchor":"LQ-20261107-192","comment":"receipt outcome ok|empty|error; error is FAIL_RUN in the catalog"}
