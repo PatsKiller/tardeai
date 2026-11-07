@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CATALYST_SYMBOL_IMPACT_READER_20261107",
+  "files": [
+    "tests/test_catalyst_impact_reader_20261107.py"
+  ],
+  "anchor": "CATALYST_SYMBOL_IMPACT_READER_20261107",
+  "comment": [
+    "ANCHOR: CATALYST_SYMBOL_IMPACT_READER_20261107 — catalyst_symbol_impact held accurate per-symbol",
+    "impact rows and no operator-facing surface read them. The lane has written them since 2026-09-15",
+    "(10,306 rows; 126 on 2026-11-06, matching its receipt) and the only readers were news_symbol_guard",
+    "(purge) and lib/catalyst_graph.",
+    "scripts/lib/catalyst_impact_reader.py is the reader behind GET /api/v3/catalyst/symbol-impact",
+    "(served by scripts/api_v3_catalyst.py); scripts/../apps/command-center-v3/src/components/watch/",
+    "CatalystImpactPanel.tsx renders it in the live watch card detail, and",
+    "src/lib/catalystImpact.test.ts pins the panel's wording.",
+    "The gate pins: rows are typed for the page (Decimals and timestamps converted, direction",
+    "normalised); every user value travels as a driver parameter and neither statement is anything but",
+    "SELECT; a non-ticker symbol is refused before any SQL runs; days/limit are bounded; an empty window",
+    "says when the writer last recorded something (no_rows_in_window) and a symbol the writer never saw",
+    "says no_rows — neither is presented as '0 catalysts'; and a failed read is a 500, never an empty 200.",
+    "Hermetic: a fake DB callable records every statement. No database, no network."
+  ]
+}

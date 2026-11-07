@@ -18,6 +18,7 @@ import {
   scopeOf,
 } from '../components/watch/WatchDecisionParts'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
+import CatalystImpactPanel from '../components/watch/CatalystImpactPanel'
 
 //: FQ-077 / cc-deepseek-5 R4: a one-shot `matchMedia(...).matches` read during render never updates, so rotating a
 //: phone across the breakpoint left the page in its old layout until an unrelated re-render. A subscribed hook is the
@@ -825,6 +826,8 @@ export default function WatchIntelligenceUnified() {
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <b style={{ color: BB.text2 }}>Catalyst vs industry:</b> UNAVAILABLE (typed gap)
                   </div>
+                  {/* The per-symbol impact rows the lane has always written and nothing read (LQ-20261107-135). */}
+                  <CatalystImpactPanel symbol={c.symbol} />
                   <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 3 }}>
                     <b style={{ color: BB.text2 }}>Absolute perf:</b> {(c as any).absolute_performance_summary || '—'}
                   </div>
