@@ -34,6 +34,12 @@ to ``data/runtime/lane_attempts/<lane_id>/<run_id>.json`` (:func:`attempt_receip
 The process exit field is ``exit`` (not ``exit_code``) in both versions.
 
 Monitor bookkeeping only: MBI_BEHAVIOR = 0, no broker, no send.
+
+2026-11-06 (run QUALITY, ``scripts/lib/run_quality.py``): ``summary`` is free-form EVIDENCE about the run's product,
+and the run's own status is the top-level ``status`` field. So a summary must not carry a run-verdict word under
+``status`` / ``overall_status`` / ``verdict``: the jobs page reads those as the run's status, and a monitor whose
+product is a verdict about its SUBJECT (``source-attribution-monitor``'s overlap health) was graded DEGRADED for
+doing its job. Name a subject verdict ``subject_status``.
 """
 
 from __future__ import annotations

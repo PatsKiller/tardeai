@@ -298,6 +298,12 @@ def test_source_attribution_monitor_appends_a_snapshot(sam, monkeypatch, tmp_pat
     sam.main()
     assert len(json.loads(sam.HIST.read_text())["snapshots"]) == 1
     H.check(tmp_path, "source-attribution-monitor", run_id, produced=1, expect="produced")
+    # the overlap verdict is about the SUBJECT, not about this run: summary.status is the RUN's status, and the
+    # jobs page graded a healthy run DEGRADED for 14 days while the verdict sat there (run_quality, 2026-11-06).
+    rc = json.loads((tmp_path / "data" / "runtime" / "source-attribution-monitor_last.json").read_text())
+    snap = json.loads(sam.HIST.read_text())["snapshots"][-1]
+    assert rc["status"] == "ok" and rc["summary"]["subject_status"] == snap["status"]
+    assert "status" not in rc["summary"]
 
 
 def test_source_attribution_monitor_dry_run_writes_nothing(sam, monkeypatch, tmp_path):

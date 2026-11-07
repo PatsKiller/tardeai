@@ -46,12 +46,19 @@ LANE_ID = "source-attribution-monitor"
 
 def _write_lane_receipt(started: str, snap: dict) -> None:
     """Real run only: data/runtime/source-attribution-monitor_last.json with LaneRunReceipt@v2 output fields
-    (n8n expected_output, unit: the snapshot appended to source_attribution_history.json -> produced_count 1)."""
+    (n8n expected_output, unit: the snapshot appended to source_attribution_history.json -> produced_count 1).
+
+    The snapshot's ``status`` is a verdict about the SUBJECT (news<->trade overlap against its target), not about
+    this run: the run did its whole job whenever it appended a snapshot. It is carried as ``subject_status``
+    because a summary ``status`` reads as the RUN's own status — /api/v2/jobs-history did exactly that and graded
+    a healthy run DEGRADED for 14 days (run_quality.receipt_flags, fixed 2026-11-06)."""
     sys.path.insert(0, str(ROOT / "scripts"))
     from lib.lane_last_receipt import write_lane_receipt
 
     write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, script="source_attribution_monitor.py",
-                       summary={k: snap.get(k) for k in ("date", "overlap_pct", "status", "total_attributions")},
+                       summary={"date": snap.get("date"), "overlap_pct": snap.get("overlap_pct"),
+                                "subject_status": snap.get("status"),
+                                "total_attributions": snap.get("total_attributions")},
                        output={"produced_count": 1, "attempted_count": 1, "skipped_reasons": {}})
 
 

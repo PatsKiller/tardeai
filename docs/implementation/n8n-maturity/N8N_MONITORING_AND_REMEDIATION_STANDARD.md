@@ -176,7 +176,19 @@ fan-in stale threshold (`GOVERNANCE_STALE_FACTOR`, `DIAGNOSIS_STALE_FACTOR`).
   degraded / failed, no baseline basis, no `review_by` on a provisional baseline, no notifier priority);
   `DRAFT_NOT_GRANDFATHERED` (a DRAFT for a lane not in the file's `grandfathered_draft` list — a new lane needs a
   REVIEWED contract before its registry PR); `DRAFT_AT_LIVE_STAGE` (canary or cutover with a non-REVIEWED contract
-  or any UNKNOWN); `ORPHAN_CONTRACT`. It warns `REVIEW_OVERDUE`.
+  or any UNKNOWN); `STAGE_DRIFT` (the contract's `stage` disagrees with the registry row's `scheduler.stage`);
+  `ORPHAN_CONTRACT`. It warns `REVIEW_OVERDUE`.
+- **`stage` is a copy of the registry's** — the registry is the runtime source (the n8n executor's stage clamp reads
+  it), so the copy is re-taken when the lane graduates in the same PR. Until 2026-11-06 nothing re-took it: 36
+  contracts still said shadow/canary while the registry ran the lanes at canary/cutover, which made
+  `/api/v2/jobs-history` report each lane "not as designed" and would have stopped `scripts/lib/nightly_cutover.py`
+  from retiring any cutover lane (`health_contract_not_reviewed_cutover`). All 36 were synced and the drift is a gate
+  error from then on. `target_reason` follows the same rule when it is a `stage:<s>` label; the sync is recorded in
+  the contract's `state_note`.
+- **`summary` in a lane receipt is evidence, not status.** The run's own status is the receipt's top level
+  (`LaneRunReceipt@v2.status`). A verdict about what the lane MONITORS goes under `subject_status`; a run-verdict
+  word under `summary.status` is read as the run's status by `scripts/lib/run_quality.py` (that is how
+  `source-attribution-monitor` read DEGRADED for 14 days while running perfectly, fixed 2026-11-06).
 - **Filled 2026-10-10:** 68 contracts, all DRAFT and grandfathered: 59 lanes (the 4 live per-lane n8n lanes and 55
   shadow lanes of waves 1–3, incl. the 19 staged R1 rows), 6 generic workflows, 3 host monitors (SIEM bridge,
   diagnoser, incident notifier). Baselines: 4 `LEARNED_PROVISIONAL` (the 4 live lanes, 50 live runs each), 64

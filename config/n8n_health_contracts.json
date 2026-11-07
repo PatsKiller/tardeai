@@ -300,8 +300,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Weekdays 11:00 and 15:00 ET: Aegis social sentiment for the tracked universe \u2014 Reddit and StockTwits free reads (Brave only when AEGIS_BRAVE_ENABLED=1) into social_sentiment_history.",
         "business_function": "research",
@@ -513,8 +513,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Weekdays 09:00 ET: Aegis transcript discovery \u2014 index YouTube transcripts and articles already in the DB for the tracked universe (Brave/YouTube fetch only when AEGIS_BRAVE_ENABLED=1).",
         "business_function": "research",
@@ -1152,7 +1152,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "Link agent recommendations to measurable outcomes (weekday 11:00)",
@@ -1363,7 +1363,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -1371,8 +1371,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Sunday 11:00 ET: score watchlist agent results against closed trades and scans into agent_recommendation_outcomes, agent_calibration, agent_intelligence_rules and source_performance.",
         "business_function": "research",
@@ -1801,8 +1801,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Bind catalysts to durable entities and write the derived catalyst graph projection (rebuildable from catalyst_events).",
         "business_function": "research",
@@ -2007,7 +2007,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -2229,8 +2229,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Populate catalyst_symbol_impact (price at event, expected direction/magnitude, portfolio weight) for recent catalysts on watchlist, proposals and holdings.",
         "business_function": "research",
@@ -2440,7 +2440,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -2660,7 +2660,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "Saturday 06:30 assigns instrument_type (stock/etf/fund/inverse_etf) and a direction hint to every symbol and writes instrument_types_latest.json.",
@@ -3310,7 +3310,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "SOURCE_ONLY refactor shard01 shadow proposal",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Refresh scan scores and observed catalysts for active incubator candidates",
         "business_function": "research",
@@ -4417,8 +4417,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Saturday 07:00 ET: ETF/fund analyst look-through \u2014 fetch constituent analyst targets from yfinance and write yahoo_analyst_targets_history plus the symbol_profiles analyst columns.",
         "business_function": "portfolio data",
@@ -4630,8 +4630,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Saturday 07:15 ET: YTD price return, trailing dividend yield and TTM dividend for ETFs/funds from yfinance onto symbol_profiles.",
         "business_function": "portfolio data",
@@ -5058,8 +5058,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Weekday 20:30 ET: link proposals to their outcomes and feed them back to agent calibration, alert effectiveness, strategy performance and sample tracking.",
         "business_function": "research",
@@ -5285,8 +5285,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Owner of the finviz_enrichment domain: on weekdays at 13:00 ET, refresh the six Finviz Elite export views (111/121/131/141/171/161: price, RSI, float, RVOL, ATR, valuation, performance, sector) for the stale names of the watchlist universe into the shared enrichment cache, the store every consumer reads through the finviz_enrichment_snapshot projection.",
         "business_function": "research",
@@ -5739,7 +5739,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "refactor_shard_04",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Ingest advisory Finviz headlines for the research universe.",
         "business_function": "research",
@@ -5964,7 +5964,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "SOURCE_ONLY refactor shard01 shadow proposal",
-      "stage": "shadow",
+      "stage": "canary",
       "purpose": {
         "text": "Run configured Finviz screeners and record discovered candidates, classifications and membership",
         "business_function": "research",
@@ -6327,7 +6327,7 @@
         "expected_output_basis": "expected_output derived 2026-10-15 from Every 5 min (dispatcher): appends OPEN/CLEARED breach rows only when a watched lane turns STALE, re-emits after 24h, or clears (heartbeat_watch.py:193-236, :291); all-FRESH runs append nothing and stay ok; receipt summary 'rows_written' (:295). produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
       },
       "review_by": "2026-10-25",
-      "state_note": "Owner REVIEWED 2026-10-11 for shadow (#1700); re-REVIEWED same day for canary: purpose and upstream_stale filled, stage canary, live healthy checks. Requires TRADEAI_N8N_RELAY_LIVE_LANES to include heartbeat-watch after promote (set_live_lane.sh). Sends nothing (\u00a724.1).",
+      "state_note": "Owner REVIEWED 2026-10-11 for shadow (#1700); re-REVIEWED same day for canary: purpose and upstream_stale filled, stage canary, live healthy checks. Requires TRADEAI_N8N_RELAY_LIVE_LANES to include heartbeat-watch after promote (set_live_lane.sh). Sends nothing (\u00a724.1). | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'.",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "breach rows appended to data/runtime/supervisor_breaches.jsonl",
@@ -6365,8 +6365,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:canary",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Analyst-signal discovery: turn analyst rating/target changes into TICKER and sector TREND candidates.",
         "business_function": "research",
@@ -6815,8 +6815,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Pre-warm the Command Center Hermes Governance panel cache (research-scope audit + budget-guard posture).",
         "business_function": "monitoring",
@@ -7026,7 +7026,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -7255,7 +7255,7 @@
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
       "target_reason": "refactor_shard_04",
-      "stage": "shadow",
+      "stage": "cutover",
       "purpose": {
         "text": "Collect advisory catalyst context for momentum candidates through the host search routing engine.",
         "business_function": "research",
@@ -7480,8 +7480,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:canary",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "06:40/12:40/18:40: bridge Hermes ticker-level news (hermes_research_intelligence) into news_articles (source='hermes') for the catalyst chain",
         "business_function": "research",
@@ -8394,8 +8394,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Weekdays 11:15 and 15:15 ET: forum sentiment for the tracked universe from the local SearXNG (3 queries per symbol), keyword-classified into social_sentiment_history.",
         "business_function": "research",
@@ -9038,8 +9038,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Every 30 min: stage-0 identity sweep \u2014 stamp subject identity (GUID / identity envelope) columns on five research data tables from the local identity registry.",
         "business_function": "research",
@@ -9377,7 +9377,7 @@
         "expected_output_basis": "expected_output derived 2026-10-15 from scripts/incident_notifier.py:36,:76,:792 appends one history row per message sent; it sends only for open P1/P2 incidents (P3 never, P2 held 22:00-07:00 ET), so a tick with no open incident is normal (cron */5)."
       },
       "review_by": "2026-10-25",
-      "state_note": "registry state ACTIVE",
+      "state_note": "registry state ACTIVE | 2026-11-06: stage synced to registry cutover (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'.",
       "review": {
         "baseline_correction_requires_review": true,
         "baseline_correction_changed_fields": [
@@ -9848,7 +9848,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "After losing days / tilt-tagged trades, queue one TradeInView review item for the operator cockpit.",
@@ -10074,8 +10074,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Every 30 min 06:00\u201316:30 weekday materialization of watchlist strategy cards (price, support/resistance, stop, R:R).",
         "business_function": "research",
@@ -10290,7 +10290,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -11546,8 +11546,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:canary",
-      "stage": "canary",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
       "purpose": {
         "text": "06:45/12:45/18:45: classify unprocessed news_articles into scored catalyst_events (keyword classifier + DB weights)",
         "business_function": "research",
@@ -11788,8 +11788,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Weekday 07:50 ET: record the current watchlist synthesis decisions into decision_outcomes and back-fill their later prices, so recommendations can be scored against what the price did.",
         "business_function": "research",
@@ -12000,8 +12000,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:canary",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "06:50/12:50/18:50: extract structured insights (strategy type, thesis, horizon, confidence) from recent news and catalysts",
         "business_function": "research",
@@ -12446,8 +12446,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "SEC Form 4 owner: on weekdays at 20:00 ET, pull recent Form 4 insider filings from the free SEC EDGAR APIs for every actively classified symbol and insert new ones into sec_form4.",
         "business_function": "research",
@@ -13798,8 +13798,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Daily 06:00 read-only snapshot of source-attribution health (overlap, attributions, tier counts) with deltas/regression flags",
         "business_function": "monitoring",
@@ -14004,7 +14004,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry shadow (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -14012,8 +14012,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Weekdays 11:30 and 15:30 ET: fold the latest social_sentiment_history labels for the tracked universe into intelligence_entities social fields.",
         "business_function": "research",
@@ -14429,7 +14429,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "Weekday 20:00: score agent accuracy from decision_outcomes vs agent recommendations",
@@ -14641,7 +14641,7 @@
         "reviewed_on": "2026-10-15",
         "prepared_by": "build_n8n_health_contracts.py DRAFT"
       },
-      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CW1 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry cutover (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -15289,7 +15289,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "Every 30 min market hours: enrich ALL active watchlist items with rsi/trend/score/setup-advisory/price reusing existing computations",
@@ -15509,8 +15509,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Classify recent scans without the optional LLM flag and refresh incubator_universe and incubator_events; no order or broker action.",
         "business_function": "research",
@@ -15950,7 +15950,7 @@
       "status": "DRAFT",
       "target_reason": "generic workflow (AGENTS.md \u00a723.11)",
       "stage": null,
-      "state_note": "HELD, imported inactive and unpublished since 2026-10-10 15:58 ET (W0 rollback, grant f9c459a230d3bc58): its GET /due filter names lane approval-escalate, which has no registry row",
+      "state_note": "HELD, imported inactive and unpublished since 2026-10-10 15:58 ET (W0 rollback, grant f9c459a230d3bc58): its GET /due filter names lane approval-escalate, which has no registry row | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'.",
       "purpose": {
         "text": "Every 5 minutes, runs host lane approval-escalate through /due and /run; it reads guard state through a read-only projection and never mints, approves or extends a grant.",
         "business_function": "monitoring",
@@ -21439,8 +21439,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Resolve due research commitments from stored evidence and append evaluated outcomes and lesson candidates to the explicitly configured persistent commitment store.",
         "business_function": "research",
@@ -21662,8 +21662,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Fetch Finviz sector and industry group exports and persist group performance observations for research consumers.",
         "business_function": "research",
@@ -21878,8 +21878,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Detect material price, news, catalyst and filing changes in the research universe and persist deduplicated stage-one discoveries for subsequent research.",
         "business_function": "research",
@@ -22294,8 +22294,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Compute local historical proposal backtest evidence and persist snapshots and strategy results; never execute a proposal.",
         "business_function": "research",
@@ -22498,8 +22498,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Turn settled outcomes and ratified lessons into cognition-only InstrumentRecord beliefs using the existing behavior rail.",
         "business_function": "research",
@@ -22898,8 +22898,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "owner": "platform",
       "purpose": {
         "text": "Strict offline preview overrides --apply; real argv retains --all --limit and --apply; real-run mentions/watermark counts in lane receipt.",
@@ -23860,7 +23860,7 @@
           "notifier_priority": "P2"
         }
       },
-      "state_note": "HS-20261021 2026-10-21: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "HS-20261021 2026-10-21: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'. | 2026-11-06: stage synced to registry cutover (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -24926,7 +24926,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "stage": "shadow",
+      "stage": "canary",
       "target_reason": "Named4.0.0 live exception; initial shadow admission before tomorrow canary/cutover",
       "purpose": {
         "text": "Run the existing named Trade-AI scalp cycle on its original five-minute RTH schedule through the governed host executor. The live exception reads Finviz through the host data broker, writes trade_ai_scans, its persisted advisory alert state and shared scalp universe, and submits new GO advisory notifications through the host communications chokepoint. Dry run performs no scan, writes or sends. This grants no order, stop, broker-execution, session or2FA authority.",
@@ -25746,7 +25746,7 @@
           "notifier_priority": "P2"
         }
       },
-      "state_note": "2026-10-19 registry truth: stage shadow -> canary to match the registry row and the host (effect owner n8n, live RUN_DONE runs since 2026-10-17, relay live list). Fields otherwise unchanged; the output-proof gap (no LaneRunReceipt@v2 on the learn steps) is recorded in the registry row's reason_evidence."
+      "state_note": "2026-10-19 registry truth: stage shadow -> canary to match the registry row and the host (effect owner n8n, live RUN_DONE runs since 2026-10-17, relay live list). Fields otherwise unchanged; the output-proof gap (no LaneRunReceipt@v2 on the learn steps) is recorded in the registry row's reason_evidence. | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -26736,7 +26736,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "Weekly (Sun 19:00) company-profile refresh: one-to-two-sentence description, sector and industry for every stale watch-grade symbol (watch_universe + holding proxies + CIO top-ranked + Finviz-stub retries) into symbol_profiles via lib/writers/symbol_profiles_writer.py (yfinance, Finviz fallback).",
@@ -28022,7 +28022,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "09:15 opening-intelligence persist + render of the opening read (--render prints text).",
@@ -28231,8 +28231,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "canary",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Daily Discovery Inbox scorecard: intake/decision/dedupe/promotion health + do-no-harm 7d comparison.",
         "business_function": "research",
@@ -28432,7 +28432,7 @@
           "notifier_priority": "P2"
         }
       },
-      "state_note": "CH1 2026-10-16: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CH1 2026-10-16: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry cutover (was canary); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -28650,8 +28650,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:cutover",
+      "stage": "cutover",
       "purpose": {
         "text": "Every 6h (+15 min after L603): extract lesson + grade from external paper-trade post-mortems into trade_lesson_memory and refresh strategy_lesson_rollup",
         "business_function": "portfolio data",
@@ -28857,7 +28857,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "10:00 weekday roll-off of stale/failed incubator entries (marks ROLLED_OFF, no deletes).",
@@ -29062,7 +29062,7 @@
           "notifier_priority": "P1"
         }
       },
-      "state_note": "CH1 2026-10-16: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+      "state_note": "CH1 2026-10-16: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act. | 2026-11-06: stage synced to registry cutover (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -29070,7 +29070,7 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
+      "target_reason": "stage:canary",
       "stage": "canary",
       "purpose": {
         "text": "Monthly pattern extraction from recommendation outcomes into pattern_library (PROVEN/KILLED/NEUTRAL).",
@@ -31175,8 +31175,8 @@
       "kind": "lane",
       "workflow_id": "dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
         "text": "Daily at 06:30 ET (and on demand), audit every open PR read-only: age, last update, draft, hold markers (DO-NOT-MERGE / PROPOSED), commits behind main, mergeability (git merge-tree), required checks on the head; findings CONFLICT, SUPERSEDED and DUPLICATE (P2), STACKED and STALE_HOLD (P3), plus local branches with commits on no remote (P3 rollup). A live run writes the receipt that GET /api/v2/needs-action reads, and queues one DIGEST host intent only when the finding set gained a finding, plus a weekly digest. It never acts on a PR.",
         "business_function": "engineering-hygiene",
@@ -31354,7 +31354,7 @@
         "reviewed_by": "operator PatsKiller 2026-10-21 (\"yes approve pr-hygiene-audit too\")",
         "reviewed_on": "2026-10-21"
       },
-      "state_note": "Agent-written 2026-10-21; REVIEWED by the operator 2026-10-21 (\"yes approve pr-hygiene-audit too\"). Lane stays at SHADOW: promotion to live is the operator's word and also needs TRADEAI_PR_HYGIENE_REPO set in the executor env for the merge-tree and unpushed scans (host change, operator).",
+      "state_note": "Agent-written 2026-10-21; REVIEWED by the operator 2026-10-21 (\"yes approve pr-hygiene-audit too\"). Lane stays at SHADOW: promotion to live is the operator's word and also needs TRADEAI_PR_HYGIENE_REPO set in the executor env for the merge-tree and unpushed scans (host change, operator). | 2026-11-06: stage synced to registry canary (was shadow); the registry is the runtime source (the executor stage clamp reads it), and the unsynced copy is what made this lane read 'not as designed'.",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "open PRs audited",
@@ -34133,7 +34133,7 @@
       "workflow_id": "tradeai-cio-ask-lifecycle-native",
       "status": "REVIEWED",
       "stage": "canary",
-      "target_reason": "stage:canary (2026-10-29): code prerequisites complete (governed bridge processes cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} registered; Ask writer authority operator-approved 2026-10-24); the verified per-thread check + memory/readback/delivery is operator-reviewed runtime evidence before cutover.",
+      "target_reason": "stage:canary",
       "purpose": {
         "text": "Check every monitored Ask thread on the hour, every day, and issue another advisory answer only after material change and cooldown admission.",
         "business_function": "research",
@@ -34346,7 +34346,7 @@
       "workflow_id": "tradeai-cio-ask-lifecycle-native",
       "status": "REVIEWED",
       "stage": "canary",
-      "target_reason": "stage:canary (2026-10-29): code prerequisites complete (governed bridge processes cio_ask_reanswer + cio_ask_critique_{deepseek,grok,chatgpt} registered; Ask writer authority operator-approved 2026-10-24); the verified per-thread check + memory/readback/delivery is operator-reviewed runtime evidence before cutover.",
+      "target_reason": "stage:canary",
       "purpose": {
         "text": "Poll existing material feeds/cursors every five minutes, rechecking only new material events and retryable blockers.",
         "business_function": "research",
