@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_desk_resistance_label_20261107",
+  "files": [
+    "tests/test_cio_desk_resistance_label_20261107.py"
+  ],
+  "anchor": "CIO_DESK_RESISTANCE_LABEL_20261107",
+  "comment": [
+    "ANCHOR: CIO_DESK_RESISTANCE_LABEL_20261107 — ticker_prices is a daily CLOSE store, so portfolio_repricer.close_session_date stamps the session the price in hand belongs to (never CURRENT_DATE: the all-day */15 cron wrote a Saturday row holding Friday's close), the CIO subject brief drops bars dated to a non-session, and a level the price holds above reads as a broken breakout floor rather than overhead resistance."
+  ]
+}

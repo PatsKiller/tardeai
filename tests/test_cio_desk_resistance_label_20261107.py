@@ -12,6 +12,8 @@ Two defects, both read live in the V answer of 2026-11-07:
    which reads as a level overhead when it is in fact a floor already broken through.
 
 Every fixture is synthetic; no database, no provider call.
+
+CIO_DESK_RESISTANCE_LABEL_20261107
 """
 
 from __future__ import annotations
