@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "N8N_DIAGNOSIS_SCOPE_ACCOUNT_20261107",
+  "files": [
+    "tests/test_n8n_diagnosis_scope_account_20261107.py"
+  ],
+  "anchor": "N8N_DIAGNOSIS_SCOPE_ACCOUNT_20261107",
+  "comment": [
+    "ANCHOR: N8N_DIAGNOSIS_SCOPE_ACCOUNT_20261107 — measured 2026-11-07 09:03 ET: 287 open n8n:* SIEM rows = 39 on 35 catalogue lanes + 6 of the diagnoser's own + 242 on lanes the remediation catalogue does not carry; the receipt wrote all 248 out-of-scope rows into skipped_reasons and run_quality graded the lane DEGRADED ('skipped 248 items, more than it produced (39)') for a cycle that diagnosed every one of its in-scope rows. This gate pins: skipped_reasons carries only the run's own skips (below_<SEV>, already_diagnosed), excluded_reasons carries the structural ones (not_an_n8n_row, own_row, lane_not_in_catalogue) plus catalogue_uncovered_rows, counts reports skipped and excluded separately, both halves still sum to every skipped row (nothing hidden), the OLD receipt shape still grades DEGRADED and a cycle with a genuinely large in-scope skip still does, and who may be diagnosed is unchanged (no catalogue lane, no own row)."
+  ]
+}

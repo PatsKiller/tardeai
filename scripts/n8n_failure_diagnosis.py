@@ -107,6 +107,13 @@ REQUESTED_BY = "host:n8n-failure-diagnosis"
 CALLER_ID = "n8n-failure-diagnosis"
 DIAGNOSED_KEEP_DAYS = 7
 PENDING_GRACE_S = 300
+#: Skip reasons that are not about this run at all: the row was never in the lane's scope, so it is reported under
+#: ``excluded_reasons`` and never counted as a skip the run chose. A row whose lane is not a catalogue lane cannot
+#: be diagnosed no matter how long the cycle runs; the same holds for the diagnoser's own rows (no self-healing
+#: loop) and for SIEM components that are not n8n lanes. Lumping them in made a cycle that diagnosed every one of
+#: its in-scope rows read as "skipped 248 items, more than it produced (39)" on 2026-11-07, when 245 of the 284 open
+#: n8n SIEM rows belonged to 110 lanes absent from the catalogue.
+EXCLUDED_REASONS = frozenset({"not_an_n8n_row", "own_row", "lane_not_in_catalogue"})
 #: The dry-run stand-in when no --fixture is given: a recorded, harmless answer (never a model call).
 DEFAULT_FIXTURE = {"cause": "dry-run fixture: no model was called", "confidence": 0.0, "action_id": "suggest_only",
                    "rationale": "dry run", "citations": [], "recommendation": "NONE"}
@@ -1277,7 +1284,7 @@ def counts(diag: dict, pending_events: list[dict]) -> dict[str, int]:
         # A dry-run has not enrolled anything; the existing decision counters remain separate projections.
         "p1_enrolled_new": int((diag.get("_p1_enrollment") or {}).get("p1_enrolled_new") or 0),
         "p1_open": int((diag.get("_p1_enrollment") or {}).get("p1_open") or 0),
-        "eligible": len(res), "skipped": len(diag["skipped"]),
+        "eligible": len(res), **_scope_account(diag["skipped"]),
         "model_called": sum(1 for r in res if r.get("model_called")),
         "diagnosed": sum(1 for r in res if r.get("verdict")),
         "no_diagnosis": sum(1 for r in res if r.get("outcome") == "no_diagnosis"),
@@ -1377,7 +1384,7 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
         report = {"schema": SCHEMA, "mode": "dry-run", "as_of": now.isoformat(), "source_notes": {**notes, **diag["notes"]},
                   "counts": c, "model_calls": 0, "fixture": bool(args.fixture),
                   "would": [_public(r) for r in diag["results"]], "pending": pending_events,
-                  "skipped_reasons": _reasons(diag["skipped"]), "ok": sources_ok}
+                  **_scope_receipt(diag["skipped"]), "ok": sources_ok}
         print(json.dumps(report, default=str))
         return 0 if sources_ok else 1
     # ---- apply: the only path that calls a model, executes an action or writes
@@ -1409,6 +1416,7 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
                    - c["held"] - c["cached_diagnosis"])
     blind = int(prev.get("consecutive_blind") or 0) + 1 if (needs_model > 0 and not c["model_called"]
                                                             and not c["deferred"]) else 0
+    scope = _scope_receipt(diag["skipped"])
     receipt = {
         "schema": SCHEMA, "lane_id": D.LANE_ID, "authority": "READ_ONLY_ADVISORY", "mode": "apply",
         "as_of": now.isoformat(), "ok": ok, "ok_at": now.isoformat() if ok else prev.get("ok_at"),
@@ -1429,7 +1437,8 @@ def main(argv: Optional[list[str]] = None, *, conn_factory=None, governed_call=N
                          key=lambda e: (str(e.get("lane")), str(e["key"]))),
         "escalation_routes": {"P1": "fan-in -> incident notifier -> Telegram, once per signature",
                               "P2": "receipt digest only (operator digest); never an individual message"},
-        "skipped_reasons": _reasons(diag["skipped"]),
+        "skipped_reasons": scope["skipped_reasons"], "excluded_reasons": scope["excluded_reasons"],
+        "catalogue_uncovered_rows": scope["catalogue_uncovered_rows"],
     }
     _atomic(root / STATE_REL, state)
     _atomic(root / RECEIPT_REL, receipt)
@@ -1442,6 +1451,32 @@ def _reasons(skipped: list[dict]) -> dict[str, int]:
     for s in skipped:
         out[s["reason"]] = out.get(s["reason"], 0) + 1
     return out
+
+
+def _split_reasons(skipped: list[dict]) -> tuple[dict[str, int], dict[str, int]]:
+    """(the skips this run chose, the rows outside its scope) — never one lump.
+
+    ``run_quality.receipt_flags`` grades a lane DEGRADED when the receipt's skip total exceeds what the run
+    produced, which is the right alarm for a cycle that quietly no-ops and the wrong one for rows the lane was
+    never allowed to touch. Both halves are still written to the receipt; only the run's own half is a skip.
+    """
+    inside = [s for s in skipped if s.get("reason") not in EXCLUDED_REASONS]
+    outside = [s for s in skipped if s.get("reason") in EXCLUDED_REASONS]
+    return _reasons(inside), _reasons(outside)
+
+
+def _scope_account(skipped: list[dict]) -> dict[str, int]:
+    """The counts block's account: ``skipped`` is the run's own, ``excluded`` is everything out of scope."""
+    return {"skipped": sum(1 for s in skipped if s.get("reason") not in EXCLUDED_REASONS),
+            "excluded": sum(1 for s in skipped if s.get("reason") in EXCLUDED_REASONS)}
+
+
+def _scope_receipt(skipped: list[dict]) -> dict[str, Any]:
+    """The receipt's skip account. ``catalogue_uncovered_rows`` is the one number a reader needs when the excluded
+    half is large: how many open n8n SIEM rows belong to lanes the remediation catalogue does not carry."""
+    skipped_reasons, excluded_reasons = _split_reasons(skipped)
+    return {"skipped_reasons": skipped_reasons, "excluded_reasons": excluded_reasons,
+            "catalogue_uncovered_rows": int(excluded_reasons.get("lane_not_in_catalogue") or 0)}
 
 
 def _rw_store(ledger: Path):  # pragma: no cover - live ledger only
