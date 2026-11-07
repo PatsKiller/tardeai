@@ -353,9 +353,10 @@
       "reader": "social_posts"
     },
     "yfinance_info_snapshot": {
-      "reader": "yfinance_info_snapshot",
-      "stale_days": 30,
-      "refreshable": true
+      "covered_by": [
+        "fundamentals"
+      ],
+      "note": "Reader retired 2026-11-07 (LQ-20261107-249): yfinance_info_snapshot has never existed on this host (migration unapplied). Institutional % and short % of float are the Finviz enrichment cache's (ownership_flows); the other five fields it projected have no house source."
     },
     "earnings_calendar": {
       "reader": "earnings_calendar",

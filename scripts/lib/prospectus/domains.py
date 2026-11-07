@@ -438,16 +438,17 @@ def r_social(ctx: Ctx):
     return ([row] if row.get("count") else []), (out or {}).get("as_of"), {"social": {k: row.get(k) for k in ("count", "bullish", "bearish")}}
 
 
-def r_yfinance(ctx: Ctx):
-    out = _plib("data_broker.yfinance_info").get_info_batch(_db(ctx), [ctx.bundle.symbol])
-    row = ((out or {}).get("symbols") or {}).get(ctx.bundle.symbol) or {}
-    info = row.get("payload") or row.get("info") or {}
-    for k, label in (("enterpriseToEbitda", "EV/EBITDA"), ("revenueGrowth", "Revenue growth (yoy, fraction)"),
-                     ("fiveYearAvgDividendYield", "5-year average dividend yield %"), ("heldPercentInstitutions", "Institutional holding (fraction)"),
-                     ("shortPercentOfFloat", "Short % of float (fraction)"), ("totalDebt", "Total debt $"), ("ebitda", "EBITDA $")):
-        ctx.bundle.add("fundamental", f"{label} (yfinance snapshot)", value=info.get(k), source="yfinance_info_snapshot",
-                       as_of=row.get("as_of"))
-    return ([info] if info else []), row.get("as_of"), {"yfinance": {k: info.get(k) for k in ("enterpriseToEbitda", "totalDebt", "ebitda", "totalCash")}}
+# `r_yfinance` retired 2026-11-07 (LQ-20261107-249). Its store, `yfinance_info_snapshot`, has never existed on
+# this host: the migration (migrations/2026_10_10_yfinance_info_snapshot.sql) is in the repo and has never been
+# applied, so for twelve days the reader could only ever report a failed read. Of the seven fields it projected,
+# two — institutional holding and short % of float — are already published from the Finviz enrichment cache via
+# inputs.assemble → blocks.ownership_flows (source "Finviz enrichment cache"), and the other five (EV/EBITDA,
+# revenue growth yoy, 5-year average dividend yield, total debt $, EBITDA $) have no house source at all. Deleting
+# the reader therefore loses no reported fact. `config/prospectus.json` now maps the domain to
+# `covered_by: ["fundamentals"]` — the same Finviz path — so the domain row reads "fundamentals=used|empty"
+# instead of grading a broken source. The ETF profile's fund-metadata reader
+# (`prospectus.etf_profile.yfinance_snapshot`) stays: it degrades to a stated gap and is the one remaining consumer
+# that would need the store if a future decision creates it (§D.12).
 
 
 def r_news_sentiment(ctx: Ctx):
@@ -517,7 +518,7 @@ READERS: dict[str, Callable] = {
     "watch_directives": r_watch_directives, "private_company": r_private_company, "macro": r_macro,
     "fundamentals": r_fundamentals, "agent_debate": r_agent_debate, "ai_reports": r_ai_reports,
     "intelligence_research_index": r_research_index, "sec_filing_events": r_sec, "counterfactual_ledger": r_counterfactual,
-    "opportunity_assessment": r_opportunity, "social_posts": r_social, "yfinance_info_snapshot": r_yfinance,
+    "opportunity_assessment": r_opportunity, "social_posts": r_social,
     "news_sentiment": r_news_sentiment, "transcripts": r_transcripts,
 }
 

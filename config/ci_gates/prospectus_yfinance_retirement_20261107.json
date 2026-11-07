@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "prospectus_yfinance_retirement_20261107",
+  "files": [
+    "tests/test_prospectus_yfinance_retirement_20261107.py",
+    "tests/test_prospectus_domains_20261026.py",
+    "tests/test_yfinance_info_snapshot_lane_20261026.py"
+  ],
+  "anchor": "PROSPECTUS_YFINANCE_RETIREMENT_20261107",
+  "comment": [
+    "ANCHOR: PROSPECTUS_YFINANCE_RETIREMENT_20261107 — yfinance_info_snapshot has never existed on this host",
+    "(migration migrations/2026_10_10_yfinance_info_snapshot.sql in the repo, unapplied; the owner lane fails",
+    "every slot with 'unconfigured'). The prospectus reader r_yfinance is retired, not repaired: of its seven",
+    "fields, institutional % and short % of float are already published from the Finviz enrichment cache",
+    "(inputs.assemble -> blocks.ownership_flows) and the other five have no house source, so deleting it loses",
+    "no reported fact. config/prospectus.json maps the domain to covered_by ['fundamentals'] (the same Finviz",
+    "path), so the domain row grades from that coverage instead of from a store that cannot be read. The ETF",
+    "profile's fund-metadata reader stays and already degrades to a stated gap.",
+    "Hermetic: synthetic ZZ* Finviz record, no DB, no network, no provider call."
+  ]
+}
