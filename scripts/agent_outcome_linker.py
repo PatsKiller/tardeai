@@ -14,6 +14,7 @@ An --apply run pages until the queue is drained or its budget is spent (--max-li
 `backlog_recommendations` so an OK receipt proves how much of the backlog is left (LQ-20261107-140).
 """
 import argparse, json, os, sys, time, uuid
+from collections import Counter
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -153,10 +154,9 @@ def save_links(conn, links, dry_run=True):
 
 
 def _page_totals(links):
-    by_type = {}
-    for lnk in links:
-        by_type[lnk["outcome_type"]] = by_type.get(lnk["outcome_type"], 0) + 1
-    return len(links), by_type
+    # Counter, not dict.get(k, 0): a tally that starts at zero is a count of links seen, not a data value
+    # whose absence would be a wrong 0.
+    return len(links), dict(Counter(lnk["outcome_type"] for lnk in links))
 
 
 def _run_pages(conn, budget, clock=time.monotonic):
@@ -168,7 +168,7 @@ def _run_pages(conn, budget, clock=time.monotonic):
     """
     started = clock()
     built = inserted = pages = 0
-    by_type = {}
+    by_type: Counter = Counter()
     proposal_full = trade_full = False
     drained = False
     while True:
@@ -180,8 +180,7 @@ def _run_pages(conn, budget, clock=time.monotonic):
             inserted += save_links(conn, page, dry_run=False)
             built += len(page)
             _, page_by_type = _page_totals(page)
-            for k, v in page_by_type.items():
-                by_type[k] = by_type.get(k, 0) + v
+            by_type.update(page_by_type)
         proposal_full = len(proposal_links) >= PROPOSAL_LINK_LIMIT
         trade_full = len(trade_links) >= TRADE_LINK_LIMIT
         if not (proposal_full or trade_full):
@@ -191,7 +190,7 @@ def _run_pages(conn, budget, clock=time.monotonic):
             break
     return {
         "total_links": built,
-        "by_outcome_type": by_type,
+        "by_outcome_type": dict(by_type),
         "inserted": inserted,
         "pages": pages,
         "proposal_cap_hit": proposal_full,
@@ -242,12 +241,15 @@ def backlog_counts(conn):
             cur.execute(sql)
             row = cur.fetchone()
             out[key] = int(row[0]) if row and row[0] is not None else None
-        except Exception:
+        except Exception as exc:
+            # The count is unknown (recorded as None above), so nothing is hidden. A failed statement left the
+            # transaction aborted; clearing it is what lets the rest of the run continue.
             out[key] = None
             try:
                 conn.rollback()
-            except Exception:
-                pass
+            except Exception as rb_exc:
+                print(f"backlog_counts: {key} count failed ({type(exc).__name__}) and the rollback failed too "
+                      f"({type(rb_exc).__name__})", file=sys.stderr)
     return out
 
 
