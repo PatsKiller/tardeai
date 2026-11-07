@@ -1,0 +1,16 @@
+{
+  "schema": "MarketEvent@v1",
+  "episode": {"episode_id": "ME-SYNTH-001", "kind": "broad_selloff", "state": "STABILIZING", "opened_at": "2026-11-06T21:00:00Z", "baseline_date": "2026-11-04"},
+  "market_gate": {"tier": "RED", "score": 71, "checks": {"mre_tier_stepping_down": true, "put_call_normalizing": false, "breadth_improving": true, "futures_up": false}},
+  "candidates": [
+    {"symbol": "AAAA", "rank": 1, "state": "READY", "drawdown_pct": -24.5, "quality_score": 84, "fell_for_reason": false, "gates": {"holds_support": true, "rsi_turn": true, "obv_cmf": true, "reclaim_sma20": false},
+     "reason_evidence": {"forward_pe": 19.2}, "plan": {"tranche": 1, "accounts": [
+       {"account_label": "Acct One", "tranche_usd": 3000, "shares": 20, "entry_zone": "148-152", "invalidation": 139.5},
+       {"account_label": "Acct Two", "tranche_usd": 1500, "shares": 10, "entry_zone": "148-152", "invalidation": 139.5}]}},
+    {"symbol": "BBBB", "rank": 2, "state": "STABILIZING", "drawdown_pct": -31.0, "quality_score": 77, "fell_for_reason": false, "gates": {"holds_support": true, "rsi_turn": false, "obv_cmf": false, "reclaim_sma20": false}, "reason_evidence": {"forward_pe": 22.8}, "plan": {}},
+    {"symbol": "CCCC", "rank": 3, "state": "WATCH", "drawdown_pct": -18.2, "quality_score": 70, "fell_for_reason": true, "gates": {}, "reason_evidence": {"forward_pe": 15.1}, "plan": {}}
+  ],
+  "accounts": [{"account_label": "Acct One", "deployable_usd": 42000, "reserve_usd": 5000}, {"account_label": "Acct Two", "deployable_usd": 18000, "reserve_usd": 2500}],
+  "computed_at": "2026-11-08T23:50:00Z",
+  "stale": false
+}

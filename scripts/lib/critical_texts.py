@@ -34,6 +34,9 @@ CONFIG_REL = "config/critical_text_classes.json"
 CONTACT_REL = "data/coordination/coordinator/operator_contact.json"
 STATE_REL = "data/runtime/critical_texts_sent.json"
 MAX_TEXT_CHARS = 160
+# Advisory classes lead with their own label instead of "ACT NOW": the market-event text (SPEC_MARKET_EVENT_REENTRY_20261107
+# D4) says an episode opened/closed or a name turned READY: information for the operator, never an instruction to trade.
+HEAD_LABELS = {"market_event": "MARKET EVENT"}
 DEFAULT_MAX_PER_HOUR = 10
 DEFAULT_DEDUPE_HOURS = 12
 
@@ -179,7 +182,7 @@ def format_text(event: dict[str, Any], *, link_base: Any = None) -> str:
         raise CriticalTextError("a critical text needs the number that triggered it")
     if not action:
         raise CriticalTextError("a critical text needs one suggested action")
-    head = f"ACT NOW {symbol}" + (f" ({account})" if account else "")
+    head = f"{HEAD_LABELS.get(alert_class, 'ACT NOW')} {symbol}" + (f" ({account})" if account else "")
     if alert_class in LINK_CLASSES:
         # D35 B4: the login text is useless without the one-tap page, so the link is required and is never truncated.
         # A producer may hand in the finished page (critical_producers._b4 sets ``link``); it is normalised through the

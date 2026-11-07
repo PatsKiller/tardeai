@@ -63,6 +63,11 @@
       "enabled": true,
       "part": "B",
       "title": "A position has grown past its account cap"
+    },
+    "market_event": {
+      "enabled": true,
+      "part": "M",
+      "title": "Market event (SPEC_MARKET_EVENT_REENTRY_20261107 D4): an episode opens or closes, or a name turns READY. Advisory only; no order."
     }
   }
 }

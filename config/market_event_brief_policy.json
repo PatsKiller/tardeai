@@ -1,0 +1,21 @@
+{
+  "schema": "MarketEventBriefPolicy@v1",
+  "note": "WP4 delivery thresholds for the market-event-brief lane (SPEC_MARKET_EVENT_REENTRY_20261107 4.5). Ranking, gates and sizing live in market_event_policy.json; this file only shapes the brief. No address or account id belongs here.",
+  "timezone": "America/New_York",
+  "active_states": ["OPEN", "STABILIZING", "RECOVERING"],
+  "slots": {
+    "sun": ["20:00"],
+    "mon": ["07:00", "09:00", "10:15", "12:30", "15:30", "16:30"],
+    "tue": ["07:00", "09:00", "10:15", "12:30", "15:30", "16:30"],
+    "wed": ["07:00", "09:00", "10:15", "12:30", "15:30", "16:30"],
+    "thu": ["07:00", "09:00", "10:15", "12:30", "15:30", "16:30"],
+    "fri": ["07:00", "09:00", "10:15", "12:30", "15:30", "16:30"]
+  },
+  "slot_grace_minutes": 40,
+  "top_n": 10,
+  "telegram_top_n": 5,
+  "text_classes": {"alert_class": "market_event", "max_chars": 160, "max_per_hour": 10},
+  "api_path": "/api/v2/market-event/active",
+  "api_base": "http://127.0.0.1:7777",
+  "stale_after_minutes": 90
+}
