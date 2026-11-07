@@ -1,0 +1,249 @@
+{
+ "schema": "LlmEvalSet@v1",
+ "class": "verdict",
+ "synthetic": true,
+ "note": "Frozen synthetic cases for the monthly Model Scout (LQ-20261107-197). Every company and ticker is invented; no holdings, account or market data. Do not edit a case in place: add a new set version so scores stay comparable month to month.",
+ "version": "2026-11-07.1",
+ "cases": [
+  {
+   "id": "verdict-01",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $2 and it names exactly one company. Request: deep-dive memo on Quillmere Robotics; estimated cost $2.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-02",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Brantwick Foods; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-03",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Oslen Grid Systems; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-04",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $5 and it names exactly one company. Request: deep-dive memo on Pellucid Biotherapeutics; estimated cost $6.",
+   "expected": {
+    "verdict": "REJECT"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-05",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $2 and it names exactly one company. Request: deep-dive memo on Harrowgate Freight; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-06",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $2 and it names exactly one company. Request: deep-dive memo on Tamsin Semiconductor; estimated cost $2.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-07",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Corvale Insurance; estimated cost $4.",
+   "expected": {
+    "verdict": "REJECT"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-08",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Fenwright Media; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-09",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $5 and it names exactly one company. Request: deep-dive memo on Galloway Polymers; estimated cost $2.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-10",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $5 and it names exactly one company. Request: deep-dive memo on Marrowfield Energy; estimated cost $4.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-11",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Inverkeel Water; estimated cost $2.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-12",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $5 and it names exactly one company. Request: deep-dive memo on Dunmoor Aerospace; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-13",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $5 and it names exactly one company. Request: deep-dive memo on Kestrelline Software; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-14",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $2 and it names exactly one company. Request: deep-dive memo on Ashbury Textiles; estimated cost $2.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-15",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $2 and it names exactly one company. Request: deep-dive memo on Velloran Mining; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-16",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $2 and it names exactly one company. Request: deep-dive memo on Northhollow Retail; estimated cost $4.",
+   "expected": {
+    "verdict": "REJECT"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-17",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Prestwyn Pharma; estimated cost $1.",
+   "expected": {
+    "verdict": "APPROVE"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-18",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $2 and it names exactly one company. Request: deep-dive memo on Selwick Logistics; estimated cost $6.",
+   "expected": {
+    "verdict": "REJECT"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-19",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Ombrel Solar; estimated cost $4.",
+   "expected": {
+    "verdict": "REJECT"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "verdict-20",
+   "class": "verdict",
+   "system": "Apply the stated rule exactly to the request. Return only JSON with keys verdict (APPROVE or REJECT) and reason.",
+   "prompt": "Rule: approve a research request only if its estimated cost is at most $3 and it names exactly one company. Request: deep-dive memo on Wyndcastle Telecom; estimated cost $6.",
+   "expected": {
+    "verdict": "REJECT"
+   },
+   "check": {
+    "kind": "fields"
+   }
+  }
+ ]
+}

@@ -1,0 +1,82 @@
+{
+  "schema": "LlmTaskClasses@v1",
+  "version": "2026-11-07.1",
+  "source": "DSN-20261107-ANTHROPIC-FIRST-ROUTING §3C and §5.1 (operator-approved 2026-11-07 13:52 ET); LQ-20261107-197",
+  "authority": "READ_ONLY_ADVISORY: scripts/lib/model_chooser.py reads this matrix; it changes no lane by itself. The Model Scout never writes it.",
+  "rule": "A task class maps to an ordered chain of logical steps. An anthropic step names a TIER (bulk / mid / standard), never a raw model id; the tier resolves to a model through config/anthropic_credit_policy.json models (tier_model_source below). A deepseek step names a logical policy from config/llm_model_registry.json logical_policies. Upgrading a model is a one-line tier change plus an eval, not a code change.",
+  "tier_model_source": {
+    "file": "config/anthropic_credit_policy.json",
+    "key": "models",
+    "note": "The design names the model registry as the home of tier -> model; today the live mapping is the credit policy's models block, which AnthropicTransport already reads. Keeping one source: the chooser resolves from there. Moving it is a lead decision."
+  },
+  "step_kinds": {
+    "anthropic": "provider anthropic, field tier (bulk | mid | standard)",
+    "deepseek": "provider deepseek, field policy (a logical_policies key); offpeak_only true means use only outside pricing_peak_hours_utc",
+    "grok": "provider grok (subscription lane); decommissioning true means the step is dropped at the Grok decommission (design §4 step 5)"
+  },
+  "classes": {
+    "extract": {
+      "label": "extract / classify / tag",
+      "examples": ["news tagging", "Hermes ingest", "holdings refresh"],
+      "chain": [
+        {"provider": "anthropic", "tier": "bulk"},
+        {"provider": "deepseek", "policy": "FAST", "offpeak_only": true},
+        {"provider": "grok", "decommissioning": true}
+      ]
+    },
+    "summarize": {
+      "label": "short narrative / summary",
+      "examples": ["watchlist flash narratives", "digests"],
+      "chain": [
+        {"provider": "anthropic", "tier": "bulk"},
+        {"provider": "deepseek", "policy": "FAST"},
+        {"provider": "grok", "decommissioning": true}
+      ]
+    },
+    "score": {
+      "label": "score / rank",
+      "examples": ["Hermes usefulness", "gap resolver"],
+      "chain": [
+        {"provider": "anthropic", "tier": "bulk"},
+        {"provider": "deepseek", "policy": "FAST"}
+      ]
+    },
+    "reason": {
+      "label": "reason / synthesize",
+      "examples": ["CIO replies", "plan enrichment", "research write-ups"],
+      "chain": [
+        {"provider": "anthropic", "tier": "mid"},
+        {"provider": "anthropic", "tier": "bulk", "degraded": true},
+        {"provider": "grok", "decommissioning": true}
+      ]
+    },
+    "critique": {
+      "label": "critique / fact-check",
+      "examples": ["CIO Ask critique", "prospectus / AI-claim check"],
+      "chain": [
+        {"provider": "anthropic", "tier": "mid"},
+        {"provider": "anthropic", "tier": "bulk", "degraded": true}
+      ]
+    },
+    "diagnose": {
+      "label": "diagnose ops failure",
+      "examples": ["n8n failure diagnosis", "incident supervisor"],
+      "chain": [
+        {"provider": "anthropic", "tier": "mid"},
+        {"provider": "anthropic", "tier": "bulk", "degraded": true}
+      ]
+    },
+    "verdict": {
+      "label": "high-stakes verdict",
+      "examples": ["CIO verdict", "risk engine", "strategy", "adjudication"],
+      "chain": [
+        {"provider": "anthropic", "tier": "standard"},
+        {"provider": "anthropic", "tier": "mid"}
+      ],
+      "fail_closed": true,
+      "fail_closed_note": "No third step: when both Anthropic tiers are unavailable the call fails closed and alerts (design §3C)."
+    }
+  },
+  "eval_classes": ["extract", "summarize", "score", "reason", "critique", "verdict"],
+  "eval_classes_note": "The Model Scout evaluates candidates on these six (design §5.2 step 4); diagnose shares the mid tier with reason and critique and has no separate set."
+}

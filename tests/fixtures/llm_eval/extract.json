@@ -1,0 +1,329 @@
+{
+ "schema": "LlmEvalSet@v1",
+ "class": "extract",
+ "synthetic": true,
+ "note": "Frozen synthetic cases for the monthly Model Scout (LQ-20261107-197). Every company and ticker is invented; no holdings, account or market data. Do not edit a case in place: add a new set version so scores stay comparable month to month.",
+ "version": "2026-11-07.1",
+ "cases": [
+  {
+   "id": "extract-01",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Quillmere Robotics (XQLM) said it had agreed to acquire a regional competitor for $610 million in cash. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Quillmere Robotics",
+    "ticker": "XQLM",
+    "event_type": "acquisition",
+    "amount_usd": 610000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-02",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a first-quarter filing, Brantwick Foods (XBRW) said it had authorised a share repurchase programme of $900 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Brantwick Foods",
+    "ticker": "XBRW",
+    "event_type": "buyback",
+    "amount_usd": 900000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-03",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a first-quarter filing, Oslen Grid Systems (XOSG) said it had lowered its full-year revenue guidance by $250 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Oslen Grid Systems",
+    "ticker": "XOSG",
+    "event_type": "guidance_cut",
+    "amount_usd": 250000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-04",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Pellucid Biotherapeutics (XPLB) said it had declared a special dividend totalling $45 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Pellucid Biotherapeutics",
+    "ticker": "XPLB",
+    "event_type": "dividend",
+    "amount_usd": 45000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-05",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a first-quarter filing, Harrowgate Freight (XHGF) said it had priced a senior notes offering of $610 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Harrowgate Freight",
+    "ticker": "XHGF",
+    "event_type": "debt_offering",
+    "amount_usd": 610000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-06",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Tamsin Semiconductor (XTSM) said it had agreed to acquire a regional competitor for $380 million in cash. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Tamsin Semiconductor",
+    "ticker": "XTSM",
+    "event_type": "acquisition",
+    "amount_usd": 380000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-07",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Corvale Insurance (XCVI) said it had authorised a share repurchase programme of $45 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Corvale Insurance",
+    "ticker": "XCVI",
+    "event_type": "buyback",
+    "amount_usd": 45000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-08",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a second-quarter filing, Fenwright Media (XFWM) said it had lowered its full-year revenue guidance by $900 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Fenwright Media",
+    "ticker": "XFWM",
+    "event_type": "guidance_cut",
+    "amount_usd": 900000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-09",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a first-quarter filing, Galloway Polymers (XGPL) said it had declared a special dividend totalling $45 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Galloway Polymers",
+    "ticker": "XGPL",
+    "event_type": "dividend",
+    "amount_usd": 45000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-10",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a second-quarter filing, Marrowfield Energy (XMFE) said it had priced a senior notes offering of $1250 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Marrowfield Energy",
+    "ticker": "XMFE",
+    "event_type": "debt_offering",
+    "amount_usd": 1250000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-11",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a second-quarter filing, Inverkeel Water (XIKW) said it had agreed to acquire a regional competitor for $900 million in cash. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Inverkeel Water",
+    "ticker": "XIKW",
+    "event_type": "acquisition",
+    "amount_usd": 900000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-12",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Dunmoor Aerospace (XDMA) said it had authorised a share repurchase programme of $610 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Dunmoor Aerospace",
+    "ticker": "XDMA",
+    "event_type": "buyback",
+    "amount_usd": 610000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-13",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Kestrelline Software (XKSW) said it had lowered its full-year revenue guidance by $900 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Kestrelline Software",
+    "ticker": "XKSW",
+    "event_type": "guidance_cut",
+    "amount_usd": 900000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-14",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Ashbury Textiles (XATX) said it had declared a special dividend totalling $380 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Ashbury Textiles",
+    "ticker": "XATX",
+    "event_type": "dividend",
+    "amount_usd": 380000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-15",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Velloran Mining (XVLM) said it had priced a senior notes offering of $610 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Velloran Mining",
+    "ticker": "XVLM",
+    "event_type": "debt_offering",
+    "amount_usd": 610000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-16",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a second-quarter filing, Northhollow Retail (XNHR) said it had agreed to acquire a regional competitor for $250 million in cash. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Northhollow Retail",
+    "ticker": "XNHR",
+    "event_type": "acquisition",
+    "amount_usd": 250000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-17",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a second-quarter filing, Prestwyn Pharma (XPWP) said it had authorised a share repurchase programme of $900 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Prestwyn Pharma",
+    "ticker": "XPWP",
+    "event_type": "buyback",
+    "amount_usd": 900000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-18",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a third-quarter filing, Selwick Logistics (XSWL) said it had lowered its full-year revenue guidance by $610 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Selwick Logistics",
+    "ticker": "XSWL",
+    "event_type": "guidance_cut",
+    "amount_usd": 610000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-19",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a second-quarter filing, Ombrel Solar (XOMS) said it had declared a special dividend totalling $45 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Ombrel Solar",
+    "ticker": "XOMS",
+    "event_type": "dividend",
+    "amount_usd": 45000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  },
+  {
+   "id": "extract-20",
+   "class": "extract",
+   "system": "Read the passage. Return only JSON with keys company, ticker, event_type (one of acquisition, buyback, guidance_cut, dividend, debt_offering) and amount_usd (a number in US dollars).",
+   "prompt": "In a second-quarter filing, Wyndcastle Telecom (XWCT) said it had priced a senior notes offering of $900 million. The board expects the step to complete within two quarters.",
+   "expected": {
+    "company": "Wyndcastle Telecom",
+    "ticker": "XWCT",
+    "event_type": "debt_offering",
+    "amount_usd": 900000000
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.0
+   }
+  }
+ ]
+}

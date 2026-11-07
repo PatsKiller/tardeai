@@ -1,0 +1,269 @@
+{
+ "schema": "LlmEvalSet@v1",
+ "class": "score",
+ "synthetic": true,
+ "note": "Frozen synthetic cases for the monthly Model Scout (LQ-20261107-197). Every company and ticker is invented; no holdings, account or market data. Do not edit a case in place: add a new set version so scores stay comparable month to month.",
+ "version": "2026-11-07.1",
+ "cases": [
+  {
+   "id": "score-01",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Fenwright Media. Note: Fenwright Media announced its chief executive will resign effective immediately.",
+   "expected": {
+    "relevance": 5
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-02",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Galloway Polymers. Note: Galloway Polymers's largest customer said it will cut orders by a fifth next year.",
+   "expected": {
+    "relevance": 4
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-03",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Marrowfield Energy. Note: A trade body covering Marrowfield Energy's industry revised its sector growth forecast slightly lower.",
+   "expected": {
+    "relevance": 3
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-04",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Inverkeel Water. Note: A competitor of Inverkeel Water in an unrelated product line opened a new office.",
+   "expected": {
+    "relevance": 2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-05",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Dunmoor Aerospace. Note: A local football club unrelated to Dunmoor Aerospace signed a new sponsor.",
+   "expected": {
+    "relevance": 1
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-06",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Kestrelline Software. Note: Kestrelline Software announced its chief executive will resign effective immediately.",
+   "expected": {
+    "relevance": 5
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-07",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Ashbury Textiles. Note: Ashbury Textiles's largest customer said it will cut orders by a fifth next year.",
+   "expected": {
+    "relevance": 4
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-08",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Velloran Mining. Note: A trade body covering Velloran Mining's industry revised its sector growth forecast slightly lower.",
+   "expected": {
+    "relevance": 3
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-09",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Northhollow Retail. Note: A competitor of Northhollow Retail in an unrelated product line opened a new office.",
+   "expected": {
+    "relevance": 2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-10",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Prestwyn Pharma. Note: A local football club unrelated to Prestwyn Pharma signed a new sponsor.",
+   "expected": {
+    "relevance": 1
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-11",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Selwick Logistics. Note: Selwick Logistics announced its chief executive will resign effective immediately.",
+   "expected": {
+    "relevance": 5
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-12",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Ombrel Solar. Note: Ombrel Solar's largest customer said it will cut orders by a fifth next year.",
+   "expected": {
+    "relevance": 4
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-13",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Wyndcastle Telecom. Note: A trade body covering Wyndcastle Telecom's industry revised its sector growth forecast slightly lower.",
+   "expected": {
+    "relevance": 3
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-14",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Quillmere Robotics. Note: A competitor of Quillmere Robotics in an unrelated product line opened a new office.",
+   "expected": {
+    "relevance": 2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-15",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Brantwick Foods. Note: A local football club unrelated to Brantwick Foods signed a new sponsor.",
+   "expected": {
+    "relevance": 1
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-16",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Oslen Grid Systems. Note: Oslen Grid Systems announced its chief executive will resign effective immediately.",
+   "expected": {
+    "relevance": 5
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-17",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Pellucid Biotherapeutics. Note: Pellucid Biotherapeutics's largest customer said it will cut orders by a fifth next year.",
+   "expected": {
+    "relevance": 4
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-18",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Harrowgate Freight. Note: A trade body covering Harrowgate Freight's industry revised its sector growth forecast slightly lower.",
+   "expected": {
+    "relevance": 3
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-19",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Tamsin Semiconductor. Note: A competitor of Tamsin Semiconductor in an unrelated product line opened a new office.",
+   "expected": {
+    "relevance": 2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  },
+  {
+   "id": "score-20",
+   "class": "score",
+   "system": "Rate how relevant the note is to the stated holding on a 1-5 scale (5 = directly material). Return only JSON with key relevance (an integer).",
+   "prompt": "Holding: Corvale Insurance. Note: A local football club unrelated to Corvale Insurance signed a new sponsor.",
+   "expected": {
+    "relevance": 1
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 1
+   }
+  }
+ ]
+}

@@ -1,0 +1,269 @@
+{
+ "schema": "LlmEvalSet@v1",
+ "class": "reason",
+ "synthetic": true,
+ "note": "Frozen synthetic cases for the monthly Model Scout (LQ-20261107-197). Every company and ticker is invented; no holdings, account or market data. Do not edit a case in place: add a new set version so scores stay comparable month to month.",
+ "version": "2026-11-07.1",
+ "cases": [
+  {
+   "id": "reason-01",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Quillmere Robotics had revenue of $200 million last year. Revenue grows 8% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 32.4
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-02",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Brantwick Foods had revenue of $200 million last year. Revenue grows 8% this year, and the operating margin this year is 12%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 25.9
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-03",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Oslen Grid Systems had revenue of $320 million last year. Revenue grows 10% this year, and the operating margin this year is 12%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 42.2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-04",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Pellucid Biotherapeutics had revenue of $320 million last year. Revenue grows 8% this year, and the operating margin this year is 10%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 34.6
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-05",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Harrowgate Freight had revenue of $320 million last year. Revenue grows 20% this year, and the operating margin this year is 12%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 46.1
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-06",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Tamsin Semiconductor had revenue of $200 million last year. Revenue grows 15% this year, and the operating margin this year is 20%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 46.0
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-07",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Corvale Insurance had revenue of $200 million last year. Revenue grows 5% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 31.5
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-08",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Fenwright Media had revenue of $200 million last year. Revenue grows 10% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 33.0
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-09",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Galloway Polymers had revenue of $320 million last year. Revenue grows 15% this year, and the operating margin this year is 20%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 73.6
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-10",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Marrowfield Energy had revenue of $200 million last year. Revenue grows 5% this year, and the operating margin this year is 10%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 21.0
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-11",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Inverkeel Water had revenue of $200 million last year. Revenue grows 15% this year, and the operating margin this year is 20%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 46.0
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-12",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Dunmoor Aerospace had revenue of $320 million last year. Revenue grows 15% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 55.2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-13",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Kestrelline Software had revenue of $200 million last year. Revenue grows 10% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 33.0
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-14",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Ashbury Textiles had revenue of $200 million last year. Revenue grows 5% this year, and the operating margin this year is 10%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 21.0
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-15",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Velloran Mining had revenue of $600 million last year. Revenue grows 10% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 99.0
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-16",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Northhollow Retail had revenue of $600 million last year. Revenue grows 8% this year, and the operating margin this year is 12%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 77.8
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-17",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Prestwyn Pharma had revenue of $450 million last year. Revenue grows 20% this year, and the operating margin this year is 12%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 64.8
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-18",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Selwick Logistics had revenue of $600 million last year. Revenue grows 8% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 97.2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-19",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Ombrel Solar had revenue of $600 million last year. Revenue grows 8% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 97.2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  },
+  {
+   "id": "reason-20",
+   "class": "reason",
+   "system": "Answer the arithmetic question from the figures given. Return only JSON with key answer (a number rounded to one decimal place).",
+   "prompt": "Wyndcastle Telecom had revenue of $450 million last year. Revenue grows 10% this year, and the operating margin this year is 15%. What is this year's operating income in millions of dollars?",
+   "expected": {
+    "answer": 74.2
+   },
+   "check": {
+    "kind": "fields",
+    "numeric_tolerance": 0.1
+   }
+  }
+ ]
+}

@@ -12,6 +12,13 @@ disagreement is written to ``data/runtime/model_chooser_receipts.jsonl`` (``Mode
 ``advise`` — the chooser's lane is used only when the caller passed none; ``enforce`` — the chooser's lane
 replaces a caller lane that the process does not allow. No paid provider is ever introduced by the chooser:
 it only picks among the process's declared allowed_lanes. Authority READ_ONLY_ADVISORY.
+
+Task classes (LQ-20261107-197, DSN-20261107 §3C/§5.1): ``config/llm_task_classes.json`` maps a task class to an
+ordered chain of logical steps (anthropic tier / deepseek policy / grok). ``task_class_route`` resolves that chain,
+turning each anthropic tier into its model through the credit policy's ``models`` block. ``choose`` reports the
+process's task class and resolved route next to its lane; it does not yet change the lane (the shadow → advise →
+enforce rollout of the task-class route is a lead step). A process without ``task_class`` reports
+TASK_CLASS_UNASSIGNED.
 """
 from __future__ import annotations
 
@@ -56,6 +63,61 @@ def process(process_id: str, env: dict | None = None) -> dict | None:
         return None
 
 
+TASK_CLASS_UNASSIGNED = "TASK_CLASS_UNASSIGNED"
+TASK_CLASS_UNKNOWN = "TASK_CLASS_UNKNOWN"
+
+
+def _json_file(path: Path) -> dict:
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def task_classes(env: dict | None = None) -> dict:
+    env = os.environ if env is None else env
+    p = Path(env.get("TRADEAI_LLM_TASK_CLASSES") or _proj_root() / "config" / "llm_task_classes.json")
+    return _json_file(p)
+
+
+def _tier_models(matrix: dict, env: dict) -> dict:
+    src = matrix.get("tier_model_source") or {}
+    p = Path(env.get("TRADEAI_ANTHROPIC_CREDIT_POLICY") or _proj_root() / str(src.get("file") or "config/anthropic_credit_policy.json"))
+    models = _json_file(p).get(str(src.get("key") or "models"))
+    return models if isinstance(models, dict) else {}
+
+
+def task_class_route(task_class: str | None, env: dict | None = None) -> dict:
+    """Resolve a task class to its ordered route. Pure given the two config files. Never raises.
+
+    Each step keeps its logical name (tier / policy) and gains ``model`` where it resolves; an anthropic tier with no
+    model row resolves to None and is flagged ``unresolved`` rather than guessed."""
+    env = os.environ if env is None else env
+    if not task_class:
+        return {"task_class": None, "status": TASK_CLASS_UNASSIGNED, "chain": []}
+    matrix = task_classes(env)
+    spec = (matrix.get("classes") or {}).get(task_class)
+    if not isinstance(spec, dict):
+        return {"task_class": task_class, "status": TASK_CLASS_UNKNOWN, "chain": []}
+    tiers = _tier_models(matrix, env)
+    chain = []
+    for step in spec.get("chain") or []:
+        if not isinstance(step, dict):
+            continue
+        out = dict(step)
+        if step.get("provider") == "anthropic":
+            out["model"] = tiers.get(str(step.get("tier") or "")) or None
+        elif step.get("provider") == "deepseek":
+            out["model"] = _model_for(str(step.get("policy") or "FAST"), "deepseek-flash")
+        else:
+            out["model"] = None
+        out["unresolved"] = step.get("provider") in ("anthropic", "deepseek") and not out["model"]
+        chain.append(out)
+    return {"task_class": task_class, "status": "OK", "chain": chain, "fail_closed": bool(spec.get("fail_closed")),
+            "primary_model": chain[0]["model"] if chain else None}
+
+
 def _model_for(policy: str, lane: str) -> str | None:
     try:
         try:
@@ -70,7 +132,7 @@ def _model_for(policy: str, lane: str) -> str | None:
 
 
 def choose(process_id: str, *, purpose: str | None = None, caller: str | None = None, requested_lane: str | None = None,
-           budget_state: dict | None = None, env: dict | None = None) -> dict:
+           budget_state: dict | None = None, env: dict | None = None, task_class: str | None = None) -> dict:
     """Pure given the registry. Never raises."""
     env = os.environ if env is None else env
     p = process(process_id, env) or {}
@@ -103,7 +165,10 @@ def choose(process_id: str, *, purpose: str | None = None, caller: str | None = 
         free = [l for l in allowed if l in FREE_FIRST]
         if free:
             lane, reason = free[0], "paid cap exhausted → free allowed lane"
+    route = task_class_route(task_class or p.get("task_class"), env)
     return {"schema": SCHEMA, "process_id": process_id, "purpose": purpose, "caller": caller, "requested_lane": requested_lane,
+            "task_class": route["task_class"], "task_class_status": route["status"],
+            "task_class_primary_model": route.get("primary_model"), "task_class_route": route["chain"],
             "lane": lane, "policy": policy if lane in DEEPSEEK_LANES else None, "model": _model_for(policy, lane),
             "allowed_lanes": allowed, "lane_policy": lane_policy or None, "registered": bool(p), "reason": reason,
             "mode": mode(env), "authority": "READ_ONLY_ADVISORY"}

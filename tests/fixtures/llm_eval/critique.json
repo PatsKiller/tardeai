@@ -1,0 +1,249 @@
+{
+ "schema": "LlmEvalSet@v1",
+ "class": "critique",
+ "synthetic": true,
+ "note": "Frozen synthetic cases for the monthly Model Scout (LQ-20261107-197). Every company and ticker is invented; no holdings, account or market data. Do not edit a case in place: add a new set version so scores stay comparable month to month.",
+ "version": "2026-11-07.1",
+ "cases": [
+  {
+   "id": "critique-01",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Quillmere Robotics said unit shipments rose to 5250 thousand in the quarter and that its net debt fell to $610 million.\nClaim: Quillmere Robotics's net debt fell to $610 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-02",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Brantwick Foods said unit shipments rose to 7600 thousand in the quarter and that its net debt fell to $900 million.\nClaim: Brantwick Foods's net debt rose to $1000 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-03",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Oslen Grid Systems said unit shipments rose to 4100 thousand in the quarter and that its net debt fell to $250 million.\nClaim: Oslen Grid Systems's net debt fell to $250 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-04",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Pellucid Biotherapeutics said unit shipments rose to 7600 thousand in the quarter and that its net debt fell to $45 million.\nClaim: Pellucid Biotherapeutics's net debt rose to $145 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-05",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Harrowgate Freight said unit shipments rose to 5250 thousand in the quarter and that its net debt fell to $610 million.\nClaim: Harrowgate Freight's net debt fell to $610 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-06",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Tamsin Semiconductor said unit shipments rose to 5250 thousand in the quarter and that its net debt fell to $380 million.\nClaim: Tamsin Semiconductor's net debt rose to $480 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-07",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Corvale Insurance said unit shipments rose to 5250 thousand in the quarter and that its net debt fell to $45 million.\nClaim: Corvale Insurance's net debt fell to $45 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-08",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Fenwright Media said unit shipments rose to 7600 thousand in the quarter and that its net debt fell to $900 million.\nClaim: Fenwright Media's net debt rose to $1000 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-09",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Galloway Polymers said unit shipments rose to 2400 thousand in the quarter and that its net debt fell to $45 million.\nClaim: Galloway Polymers's net debt fell to $45 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-10",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Marrowfield Energy said unit shipments rose to 2400 thousand in the quarter and that its net debt fell to $1250 million.\nClaim: Marrowfield Energy's net debt rose to $1350 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-11",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Inverkeel Water said unit shipments rose to 4100 thousand in the quarter and that its net debt fell to $900 million.\nClaim: Inverkeel Water's net debt fell to $900 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-12",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Dunmoor Aerospace said unit shipments rose to 1800 thousand in the quarter and that its net debt fell to $610 million.\nClaim: Dunmoor Aerospace's net debt rose to $710 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-13",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Kestrelline Software said unit shipments rose to 4100 thousand in the quarter and that its net debt fell to $900 million.\nClaim: Kestrelline Software's net debt fell to $900 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-14",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Ashbury Textiles said unit shipments rose to 5250 thousand in the quarter and that its net debt fell to $380 million.\nClaim: Ashbury Textiles's net debt rose to $480 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-15",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Velloran Mining said unit shipments rose to 1800 thousand in the quarter and that its net debt fell to $610 million.\nClaim: Velloran Mining's net debt fell to $610 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-16",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Northhollow Retail said unit shipments rose to 1800 thousand in the quarter and that its net debt fell to $250 million.\nClaim: Northhollow Retail's net debt rose to $350 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-17",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Prestwyn Pharma said unit shipments rose to 5250 thousand in the quarter and that its net debt fell to $900 million.\nClaim: Prestwyn Pharma's net debt fell to $900 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-18",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Selwick Logistics said unit shipments rose to 1800 thousand in the quarter and that its net debt fell to $610 million.\nClaim: Selwick Logistics's net debt rose to $710 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-19",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Ombrel Solar said unit shipments rose to 5250 thousand in the quarter and that its net debt fell to $45 million.\nClaim: Ombrel Solar's net debt fell to $45 million.",
+   "expected": {
+    "supported": true
+   },
+   "check": {
+    "kind": "fields"
+   }
+  },
+  {
+   "id": "critique-20",
+   "class": "critique",
+   "system": "Decide whether the claim is supported by the source passage alone. Return only JSON with keys supported (true or false) and reason.",
+   "prompt": "Source: Wyndcastle Telecom said unit shipments rose to 2400 thousand in the quarter and that its net debt fell to $900 million.\nClaim: Wyndcastle Telecom's net debt rose to $1000 million.",
+   "expected": {
+    "supported": false
+   },
+   "check": {
+    "kind": "fields"
+   }
+  }
+ ]
+}

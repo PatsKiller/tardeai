@@ -1,0 +1,240 @@
+{
+ "schema": "LaneRegistrationProposal@v1",
+ "lane_id": "llm-model-scout",
+ "proposed_by": "cc-opus-1",
+ "proposed_at": "2026-11-07",
+ "why_a_proposal": "config/lane_registry.json is single-writer and was held by another live claim when this was built; the allowlist and health-contract rows are kept here with it so the three land together in one fold (cross-validation pairs them). No cron line, no systemd unit: an n8n dispatcher lane, like unit-run-snapshot.",
+ "fold_into": {
+  "config/lane_registry.json": "lanes[]",
+  "config/n8n_run_allowlist.json": "lanes[]",
+  "config/n8n_health_contracts.json": "contracts[]"
+ },
+ "prerequisites": [
+  "migrations/2026_11_07_llm_model_scout_runs.sql applied by the lead (the lane writes the row only when to_regclass finds the table; without it the JSON backup and the receipt are still written)"
+ ],
+ "lane_registry": {
+  "lane_id": "llm-model-scout",
+  "owner": "platform",
+  "scheduler": {
+   "kind": "n8n",
+   "expression": "dispatcher",
+   "match": "scripts/llm_model_scout.py",
+   "cadence": "0 6 1 * *",
+   "stage": "shadow",
+   "wave": "W4",
+   "timezone": "America/New_York"
+  },
+  "expected_cadence_hours": 744,
+  "active_days": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "state": "ACTIVE",
+  "state_since": "2026-11-07",
+  "state_reason": "DSN-20261107-ANTHROPIC-FIRST-ROUTING §5.2 (operator-approved 2026-11-07 13:52 ET); LQ-20261107-197: monthly Model Scout on the 1st at 06:00 ET, read-only and advisory. Stage SHADOW: the stage clamp runs it --dry-run (lists provider models, diffs against the registry, prints, writes nothing). Canary (--write) is a later registry step by the lead after the migration is applied.",
+  "output_signal": {
+   "kind": "json_key",
+   "path": "data/runtime/llm-model-scout_last.json",
+   "key": "ok_at",
+   "evidence": "SOURCE_ONLY",
+   "evidence_ref": "scripts/llm_model_scout.py main() writes the LaneRunReceipt (v2 output fields) on --write only (tests/test_llm_model_scout_20261107.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+  },
+  "reason_confidence": "ESTABLISHED",
+  "reason_evidence": "tests/test_llm_model_scout_20261107.py (diff new/retired/missing; registry never written; no key in output; dry run writes nothing).",
+  "review_by": "2026-12-07",
+  "note": "GET /v1/models only (Anthropic, DeepSeek, xAI while Grok is kept); no generation call, no broker, no sender. Exit 0 ok; 3 = P1 (a routed model is no longer listed, or a routed model is marked retired); 1 = no provider readable; 2 = refused.",
+  "severity": "High",
+  "dispatch": {
+   "mode": "dry_run",
+   "cron": [
+    "0 6 1 * *"
+   ],
+   "tz": "America/New_York",
+   "wave": "W4",
+   "class": "ingest",
+   "priority": 7,
+   "retry_policy": "none"
+  }
+ },
+ "n8n_run_allowlist": {
+  "lane_id": "llm-model-scout",
+  "command": [
+   "$PY",
+   "scripts/llm_model_scout.py"
+  ],
+  "dry_run_arg": [
+   "--dry-run"
+  ],
+  "live_arg": null,
+  "lock": "/tmp/tradeai_llm_model_scout.lock",
+  "lock_kind": "flock",
+  "timeout_s": 180,
+  "market_gate": false,
+  "output_signal": "data/runtime/llm-model-scout_last.json",
+  "output_receipt": "v2",
+  "env_names": [
+   "ANTHROPIC_API_KEY",
+   "deepseek_tradeai",
+   "DEEPSEEK_API_KEY",
+   "XAI_API_KEY",
+   "TRADEAI_STATE_ROOT",
+   "TRADEAI_PERSISTENT_STATE_ROOT"
+  ],
+  "env_allowlist_mode": "report",
+  "env_report_reason": "report until the import closure is re-inventoried for enforce; key values are read to authenticate the list-models GET and are never printed or written (redactor).",
+  "env_evidence": "scripts/llm_model_scout.py load_keys(): the four key names (process env first, then --env-file); TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT via canonical_store_registry.production_state_root and lib.lane_last_receipt; DB_* via db_adapter on --write only.",
+  "source": "DSN-20261107-ANTHROPIC-FIRST-ROUTING §5.2 (operator-approved 2026-11-07 13:52 ET); LQ-20261107-197. n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads and prints only. Canary live_arg (separate step): [\"--write\"]."
+ },
+ "n8n_health_contract": {
+  "schema": "N8nHealthContract@v1",
+  "id": "llm-model-scout",
+  "kind": "lane",
+  "workflow_id": "dispatcher",
+  "status": "REVIEWED",
+  "target_reason": "stage:shadow",
+  "stage": "shadow",
+  "purpose": {
+   "text": "On the 1st of each month at 06:00 ET, list each provider's models (GET /v1/models), diff them against config/llm_model_registry.json and the credit policy's routed tier models, record price/context/limits for new ids (never a guessed price), plan the capped eval, and write data/runtime/llm_model_scout/<YYYY-MM>.json plus one llm_model_scout_runs row. Advisory: it never changes routing.",
+   "business_function": "model_governance",
+   "source": "scripts/llm_model_scout.py; DSN-20261107-ANTHROPIC-FIRST-ROUTING §5.2 (operator-approved 2026-11-07 13:52 ET); LQ-20261107-197"
+  },
+  "owner": "platform",
+  "connects_to": [
+   {
+    "name": "n8n -> host relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+    "kind": "service",
+    "direction": "calls",
+    "source": "AGENTS.md §23.3"
+   },
+   {
+    "name": "$PY scripts/llm_model_scout.py",
+    "kind": "runner",
+    "direction": "calls",
+    "source": "config/n8n_run_allowlist.json command"
+   },
+   {
+    "name": "/tmp/tradeai_llm_model_scout.lock",
+    "kind": "lock",
+    "direction": "read_write",
+    "source": "config/n8n_run_allowlist.json lock (flock)"
+   },
+   {
+    "name": "Anthropic / DeepSeek / xAI GET /v1/models",
+    "kind": "service",
+    "direction": "read",
+    "source": "list-models only; no generation endpoint"
+   },
+   {
+    "name": "config/llm_model_registry.json + config/anthropic_credit_policy.json models + config/llm_task_classes.json",
+    "kind": "config",
+    "direction": "read",
+    "source": "never written"
+   },
+   {
+    "name": "data/runtime/llm_model_scout/<YYYY-MM>.json + llm_model_scout_runs",
+    "kind": "store",
+    "direction": "write",
+    "source": "--write only"
+   },
+   {
+    "name": "data/runtime/llm-model-scout_last.json",
+    "kind": "receipt",
+    "direction": "write",
+    "source": "LaneRunReceipt@v2 on --write only"
+   }
+  ],
+  "healthy": [
+   {
+    "check": "dry_run_writes_nothing",
+    "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no output, no receipt"
+   },
+   {
+    "check": "last_live_run_done",
+    "text": "after promotion: the monthly fire ends RUN_DONE in mode live"
+   },
+   {
+    "check": "output_advanced",
+    "text": "LaneRunReceipt data/runtime/llm-model-scout_last.json ok_at advances on each live run"
+   },
+   {
+    "check": "fresh",
+    "text": "receipt ok_at within 32 days"
+   },
+   {
+    "check": "duration_within_baseline",
+    "text": "duration <= 144 s (80% of timeout_s 180)"
+   },
+   {
+    "check": "output_produced",
+    "text": "a live run reports produced_count 1 (one report)"
+   }
+  ],
+  "degraded": [
+   {
+    "check": "late",
+    "text": "output_signal older than 32 days but younger than 35 days"
+   },
+   {
+    "check": "slow",
+    "text": "duration above 144 s"
+   }
+  ],
+  "failed": [
+   {
+    "check": "run_failed",
+    "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED; exit 3 is a P1 finding: a routed model is no longer listed or is marked retired"
+   },
+   {
+    "check": "no_receipt",
+    "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+   },
+   {
+    "check": "stale",
+    "text": "output_signal older than 35 days"
+   }
+  ],
+  "baseline": {
+   "freshness_degraded_after_h": 768.0,
+   "freshness_failed_after_h": 840.0,
+   "freshness_rule": "monthly cadence: degraded beyond 32 days, failed beyond 35 days",
+   "timeout_s": 180,
+   "class": "ingest",
+   "computed_on": "2026-11-07",
+   "basis": "CLASS_DEFAULT_PROVISIONAL",
+   "source": "no live runs yet (shadow); one manual dry run 2026-11-07 finished in a few seconds",
+   "runs_considered": 0,
+   "duration_degraded_above_s": 144.0
+  },
+  "alerting": {
+   "lane_severity": "High",
+   "severity_basis": "a routed model the provider no longer lists breaks a lane silently (design §5.2 step 2, P1)",
+   "failed": {
+    "siem_severity": "ERROR",
+    "notifier_priority": "P1"
+   },
+   "degraded": {
+    "siem_severity": "INFO",
+    "notifier_priority": "P3"
+   },
+   "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; the receipt's error names each P1 model. The lane itself sends nothing.",
+   "enforced": "partial: SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md §7)."
+  },
+  "remediation": {
+   "catalogue_entry": false,
+   "diagnosis_excluded": true,
+   "note": "not in config/n8n_remediation_catalogue.json: a P1 is an operator/lead decision (registry change), never an automatic fix."
+  },
+  "evidence": {
+   "receipt": "data/runtime/llm-model-scout_last.json",
+   "verify": [
+    "python3 scripts/llm_model_scout.py --dry-run   # lists and diffs; writes nothing",
+    "SELECT period, generated_at, p1_count, new_count FROM llm_model_scout_runs ORDER BY generated_at DESC LIMIT 3"
+   ]
+  }
+ }
+}

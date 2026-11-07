@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "llm_model_scout_20261107",
+  "files": [
+    "tests/test_llm_model_scout_20261107.py",
+    "tests/test_model_chooser_task_class_20261107.py"
+  ],
+  "anchor": "LLM_MODEL_SCOUT_20261107",
+  "comment": [
+    "ANCHOR: LLM_MODEL_SCOUT_20261107 — Model Router task classes and the monthly Model Scout (LQ-20261107-197, DSN-20261107-ANTHROPIC-FIRST-ROUTING §3C/§5): config/llm_task_classes.json names tiers, never raw model ids, and the chooser resolves each class through the credit policy's tier models (TASK_CLASS_UNASSIGNED when a process has none; the lane decision is unchanged); scripts/llm_model_scout.py diffs each provider's list-models answer against the registry: new ids, deprecation fields, and a routed id the provider no longer lists or marks retired is P1 (exit 3); a failed discovery is UNKNOWN, never a P1; no price is guessed; the eval is capped at $2 and refuses live; the scout never writes the registry, task classes or policy; no key value reaches stdout, the report or the receipt. Fake fetches and tmp_path only; no network."
+  ]
+}

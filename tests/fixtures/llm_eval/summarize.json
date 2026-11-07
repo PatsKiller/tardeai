@@ -1,0 +1,349 @@
+{
+ "schema": "LlmEvalSet@v1",
+ "class": "summarize",
+ "synthetic": true,
+ "note": "Frozen synthetic cases for the monthly Model Scout (LQ-20261107-197). Every company and ticker is invented; no holdings, account or market data. Do not edit a case in place: add a new set version so scores stay comparable month to month.",
+ "version": "2026-11-07.1",
+ "cases": [
+  {
+   "id": "summarize-01",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Quillmere Robotics reported quarterly revenue of $525 million, up 18% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Quillmere",
+     "525",
+     "18%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-02",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Brantwick Foods reported quarterly revenue of $760 million, down 12% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Brantwick",
+     "760",
+     "12%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-03",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Oslen Grid Systems reported quarterly revenue of $410 million, up 7% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Oslen",
+     "410",
+     "7%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-04",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Pellucid Biotherapeutics reported quarterly revenue of $760 million, down 23% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Pellucid",
+     "760",
+     "23%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-05",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Harrowgate Freight reported quarterly revenue of $525 million, up 23% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Harrowgate",
+     "525",
+     "23%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-06",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Tamsin Semiconductor reported quarterly revenue of $525 million, down 23% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Tamsin",
+     "525",
+     "23%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-07",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Corvale Insurance reported quarterly revenue of $525 million, up 7% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Corvale",
+     "525",
+     "7%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-08",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Fenwright Media reported quarterly revenue of $760 million, down 18% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Fenwright",
+     "760",
+     "18%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-09",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Galloway Polymers reported quarterly revenue of $240 million, up 7% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Galloway",
+     "240",
+     "7%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-10",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Marrowfield Energy reported quarterly revenue of $240 million, down 18% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Marrowfield",
+     "240",
+     "18%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-11",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Inverkeel Water reported quarterly revenue of $410 million, up 23% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Inverkeel",
+     "410",
+     "23%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-12",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Dunmoor Aerospace reported quarterly revenue of $180 million, down 4% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Dunmoor",
+     "180",
+     "4%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-13",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Kestrelline Software reported quarterly revenue of $410 million, up 23% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Kestrelline",
+     "410",
+     "23%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-14",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Ashbury Textiles reported quarterly revenue of $525 million, down 12% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Ashbury",
+     "525",
+     "12%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-15",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Velloran Mining reported quarterly revenue of $180 million, up 18% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Velloran",
+     "180",
+     "18%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-16",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Northhollow Retail reported quarterly revenue of $180 million, down 23% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Northhollow",
+     "180",
+     "23%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-17",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Prestwyn Pharma reported quarterly revenue of $525 million, up 7% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Prestwyn",
+     "525",
+     "7%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-18",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Selwick Logistics reported quarterly revenue of $180 million, down 23% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Selwick",
+     "180",
+     "23%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-19",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Ombrel Solar reported quarterly revenue of $525 million, up 18% from a year earlier. Management attributed the move to stronger demand in its core segment. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Ombrel",
+     "525",
+     "18%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  },
+  {
+   "id": "summarize-20",
+   "class": "summarize",
+   "system": "Summarise the passage in at most 40 words. Return only JSON with key summary.",
+   "prompt": "Wyndcastle Telecom reported quarterly revenue of $240 million, down 4% from a year earlier. Management attributed the move to weaker orders from wholesale customers. The company kept its staffing plans unchanged and said inventory levels were in line with seasonal norms. Analysts on the call asked mainly about pricing and the timing of a planned plant expansion.",
+   "expected": {
+    "must_mention": [
+     "Wyndcastle",
+     "240",
+     "4%"
+    ],
+    "max_words": 40
+   },
+   "check": {
+    "kind": "summary"
+   }
+  }
+ ]
+}
