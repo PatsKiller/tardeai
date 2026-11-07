@@ -55,6 +55,10 @@ out = getattr(mod, sys.argv[4])(**json.loads(sys.argv[5]))
 sys.stdout.write("\n" + json.dumps(out, default=str))
 """
 
+# Contracts whose verdict moves with store files, not seconds: serve the last answer while one
+# child refreshes it (LQ-20261107-259: control-plane-surface-authority took 15 s on every TTL expiry).
+STALE_OK_SEC = {"control_plane_surface_authority": 1800.0}
+
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -150,8 +154,14 @@ def run_isolated(
     *,
     timeout: float | None = None,
     ttl: float | None = None,
+    stale_ttl: float | None = None,
 ) -> dict[str, Any]:
     """Return ``module.fn(**kwargs)`` computed in a child process under a deadline.
+
+    ``stale_ttl`` (seconds, default off) turns the cache stale-while-revalidate: a result
+    older than ``ttl`` but younger than ``stale_ttl`` is returned at once, marked
+    ``served_stale``, and one background child refreshes it. Only the very first call
+    after a restart (or after ``stale_ttl`` of silence) pays the cold computation.
 
     Never raises for a slow, failing or crashing computation: those come back as a
     dict with ``status`` ``TIMEOUT`` or ``UNAVAILABLE`` and the reason. Successful
@@ -162,11 +172,16 @@ def run_isolated(
     kwargs = dict(kwargs or {})
     deadline = timeout_sec() if timeout is None else timeout
     keep_for = cache_ttl_sec() if ttl is None else ttl
+    if stale_ttl is None:
+        stale_ttl = STALE_OK_SEC.get(fn)
     key = f"{module}:{fn}:{json.dumps(kwargs, sort_keys=True, default=str)}"
 
     hit = _cache.get(key)
     if hit and time.monotonic() - hit[0] < keep_for:
         return hit[1]
+    if hit and stale_ttl and time.monotonic() - hit[0] < stale_ttl:
+        _refresh_in_background(key, module, fn, kwargs, deadline)
+        return {**hit[1], "served_stale": True, "stale_age_sec": round(time.monotonic() - hit[0], 1)}
 
     lock = _lock_for(key)
     if not lock.acquire(timeout=deadline):
@@ -183,6 +198,23 @@ def run_isolated(
         return body
     finally:
         lock.release()
+
+
+def _refresh_in_background(key: str, module: str, fn: str, kwargs: dict[str, Any], deadline: float) -> None:
+    """Start at most one background refresh for ``key``; a caller never waits for it."""
+    lock = _lock_for(key)
+    if not lock.acquire(blocking=False):
+        return  # a refresh (or a cold compute) is already running
+
+    def _work() -> None:
+        try:
+            body = _run_child(module, fn, kwargs, deadline)
+            if not body.get("isolation_failure"):
+                _cache[key] = (time.monotonic(), body)
+        finally:
+            lock.release()
+
+    threading.Thread(target=_work, name="isolated-refresh", daemon=True).start()
 
 
 def clear_cache() -> None:

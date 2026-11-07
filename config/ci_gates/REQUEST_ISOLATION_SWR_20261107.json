@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "REQUEST_ISOLATION_SWR_20261107",
+  "files": ["tests/test_request_isolation_swr_20261107.py"],
+  "anchor": "REQUEST_ISOLATION_SWR_20261107",
+  "comment": ["ANCHOR: REQUEST_ISOLATION_SWR_20261107 — LQ-20261107-259: a heavy isolated read serves its last answer while one child refreshes it, so only the first call after a restart is cold."]
+}
