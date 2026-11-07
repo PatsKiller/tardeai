@@ -312,22 +312,15 @@ def _prefer_maria_oauth() -> bool:
     return oauth_may_preempt_flash(_job_provider_lane())
 
 
-_REFUSAL_PREFIXES = ("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
-                     "i'm unable to", "i am unable to", "i cannot act as", "i can't act as",
-                     "i cannot provide", "i can't provide")
+from lib.llm_refusal import is_refusal as _shared_is_refusal  # LQ-20261107-407
 
 
 def _is_refusal(text) -> bool:
-    """Cloud-lane persona/jailbreak refusals ("I cannot fulfill...", "**Refusal** This request
-    requires the active profile to switch to a trading-advisory identity...") come back as
-    successful generations, so they were stored and DISPLAYED as CIO synthesis (FATN/SMCI/WNW,
-    2026-07-06). Detect them at the call site and fall back to the local lane instead."""
-    if not text:
-        return False
-    head = str(text).lstrip("*#_ ").lower()[:400]
-    if head.startswith(_REFUSAL_PREFIXES):
-        return True
-    return "**refusal**" in head or "requires the active profile to switch" in head
+    """Cloud-lane persona/jailbreak refusals ("I cannot perform investment synthesis...",
+    "**Refusal** ...", "I am operating in the default Hermes profile...") come back as successful
+    generations, so they were stored and DISPLAYED as CIO synthesis (FATN/SMCI/WNW 2026-07-06;
+    TLSI/ADTN/BCAT/ISRG 2026-11-12). One shared predicate, scripts/lib/llm_refusal.py."""
+    return _shared_is_refusal(text)
 
 
 def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
@@ -591,7 +584,10 @@ _CONSERV = {"SELL": 0, "AVOID": 0, "IGNORE": 1, "TRIM": 2, "RESEARCH_MORE": 3, "
 
 
 def _rec_from(raw):
-    """Pull (recommendation, confidence) from an LLM synthesis response (JSON preferred, keyword fallback)."""
+    """Pull (recommendation, confidence) from an LLM synthesis response (JSON preferred, keyword fallback).
+    A refusal yields no vote: its words ("sell", "hold") are not a recommendation."""
+    if _is_refusal(raw):
+        return "", 0.0
     try:
         j = json.loads(raw[raw.find('{'):raw.rfind('}') + 1])
         return (
@@ -694,11 +690,13 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
             process_id=flash_pid, task_summary=f"{task} deepseek-flash",
             manual_trigger=manual_trigger)
 
+    refused_lanes: list = []  # lanes whose output was a refusal: no vote, no narrative
     if "grok" in want:
         try:
             if llm_lane.available("grok"):
                 grok_raw = _gen_oauth("grok", 120)
                 if _is_refusal(grok_raw):
+                    refused_lanes.append("grok")
                     grok_raw = None
                 elif grok_raw and not str(grok_raw).startswith("LLM error"):
                     grok_rec, grok_conf = _rec_from(grok_raw)
@@ -719,6 +717,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
                     _dual_chatgpt_count += 1
                 chatgpt_raw = _gen_oauth("chatgpt", 180)
                 if _is_refusal(chatgpt_raw):
+                    refused_lanes.append("chatgpt")
                     chatgpt_raw = None
                 elif chatgpt_raw and not str(chatgpt_raw).startswith("LLM error"):
                     chatgpt_rec, chatgpt_conf = _rec_from(chatgpt_raw)
@@ -736,6 +735,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
             else:
                 ds_raw = _gen_flash(120)
                 if _is_refusal(ds_raw):
+                    refused_lanes.append("deepseek-flash")
                     deepseek_status = "REFUSED"
                 elif ds_raw and str(ds_raw).startswith("LLM error"):
                     err = str(ds_raw).upper()
@@ -783,6 +783,7 @@ def _synthesis_lanes(prompt: str, lanes=None, max_tokens: int = 2000, manual_tri
         "deepseek_model": "deepseek-flash",
         "declared_lanes": want,
         "participating_lanes": [v["lane"] for v in votes],
+        "refused_lanes": list(refused_lanes),
         "consensus_kind": "triple" if "deepseek-flash" in want else "dual",
     }
     recon = _reconcile_cio_votes(votes)
@@ -2719,10 +2720,7 @@ CRITICAL INSTRUCTIONS:
     synthesis_narrative = syn.get("synthesis_narrative") or syn.get("full_narrative", "")
     # LLM refusals ("**I cannot fulfill this request.**...") are failure artifacts, not synthesis —
     # normalize them and FAIL CLOSED: do not upsert / clobber prior good synthesis.
-    _nlead = synthesis_narrative.lstrip("*#_ ").lower()[:60]
-    if _nlead.startswith(("i cannot fulfill", "i can't fulfill", "i cannot help", "i can't help",
-                          "i'm unable to", "i am unable to", "i cannot act as", "i can't act as",
-                          "i cannot provide", "i can't provide")):
+    if _is_refusal(synthesis_narrative):
         synthesis_narrative = "LLM error: model refused the synthesis prompt (refusal suppressed)"
     if isinstance(synthesis_narrative, str) and synthesis_narrative.startswith("LLM error"):
         print(f"  [synthesis] {symbol}: refusal/error narrative — keeping prior synthesis, no upsert")
