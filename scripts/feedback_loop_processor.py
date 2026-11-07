@@ -114,9 +114,13 @@ _OWN_TRADE_CTE = """
     )
 """
 
+# ``p`` is the chain's own proposal row (LEFT JOIN in the re-evaluation query). A chain
+# whose proposal row no longer exists can never resolve — it is terminal `orphaned`, not
+# `pending`: `pending` claims a trade may still arrive for a proposal that is gone.
 _NEW_STATE_SQL = """
     CASE WHEN o.trade_id IS NOT NULL AND o.status = 'closed' THEN 'closed'
          WHEN o.trade_id IS NOT NULL THEN 'linked'
+         WHEN p.id IS NULL THEN 'orphaned'
          WHEN c.proposal_status IN ('REJECTED', 'EXPIRED', 'expired') THEN 'orphaned'
          ELSE 'pending' END
 """
@@ -153,6 +157,7 @@ def link_proposal_outcomes(conn, dry_run=False, plan_out=None):
                {_NEW_STATE_SQL} AS new_status
         FROM proposal_outcome_chain c
         LEFT JOIN own_trade o ON o.pid = c.proposal_id
+        LEFT JOIN paper_trade_proposals p ON p.id = c.proposal_id
         WHERE o.trade_id IS DISTINCT FROM c.paper_trade_id
            OR o.status IS DISTINCT FROM c.trade_status
            OR o.pnl IS DISTINCT FROM c.trade_pnl

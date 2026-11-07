@@ -166,6 +166,17 @@ def test_a_fabricated_lookalike_trade_is_not_used():
     assert params[10] == "orphaned"
 
 
+def test_a_chain_whose_proposal_row_is_gone_is_terminal_not_pending():
+    """49 chains name a proposal that no longer exists (3 `closed`, 6 `linked`, 40 orphaned
+    on 2026-11-07). `pending` would claim a trade may still arrive for a deleted proposal,
+    and the feed never reads `pending`, so those 9 rows would sit false forever."""
+    conn = FakeConn(_chain_handler([], []))
+    flp.link_proposal_outcomes(conn, dry_run=True)
+    reval = [s for s, _ in conn.cur.calls if "FROM proposal_outcome_chain c" in s][0]
+    assert "LEFT JOIN paper_trade_proposals p ON p.id = c.proposal_id" in reval
+    assert "WHEN p.id IS NULL THEN 'orphaned'" in reval
+
+
 def test_the_backlog_is_drained_oldest_first_not_newest_100():
     conn = FakeConn(_chain_handler([], []))
     flp.link_proposal_outcomes(conn, dry_run=True)
