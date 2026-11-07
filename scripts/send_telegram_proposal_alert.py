@@ -92,6 +92,10 @@ def main():
     if args.send:
         args.dry_run = False
 
+    # The run's own start, for the receipt at the end. This lane polls every 2 minutes and is silent
+    # when no proposal needs an alert, so its log is not evidence that it ran (WORK-QUEUE 2026-11-07).
+    started = datetime.now(timezone.utc).isoformat()
+
     from telegram_proposal_alert_policy import (
         build_proposal_alert_packet, should_send_alert, format_telegram_message,
     )
@@ -367,6 +371,22 @@ def main():
         for r in results:
             md.append(f"- {r['symbol']} [{r['alert_type']}] {'SENT' if r.get('sent') else 'DRY_RUN'}")
         Path(args.output_md).write_text("\n".join(md))
+
+    # One receipt per REAL run. The cron polls every 2 minutes and prints only when it acts, so
+    # logs/proposal_alerts.log stops advancing whenever no proposal needs an alert — on 2026-11-06 the
+    # cron fired through 16:58 ET while the log's last line was 16:32, and the lane was graded "late"
+    # from then until Monday. The receipt is the run evidence; a dry run writes nothing.
+    if not args.dry_run:
+        from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt(
+            "send-telegram-proposal-alert",
+            ok=True, exit_code=0, started_at=started,
+            script="scripts/send_telegram_proposal_alert.py",
+            attempted_count=len(proposals),
+            produced_count=sent_count,
+            empty_reason=None if sent_count else "no pending proposal needed an alert this run",
+            summary={"mode": "send", "total_proposals": len(proposals), "alerts_sent": sent_count},
+        )
 
 
 if __name__ == "__main__":
