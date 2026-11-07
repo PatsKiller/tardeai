@@ -97,7 +97,6 @@ def bind_catalyst(row: Mapping[str, Any], registry: Mapping[str, Any]) -> dict[s
     if not is_catalyst_type(row.get("catalyst_type")):
         return None
 
-    ctype = str(row.get("catalyst_type")).strip().lower()
     entity = lookup_symbol(registry, symbol)
     if not entity:
         return None

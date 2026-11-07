@@ -416,8 +416,9 @@ def _feed_downstream(conn, symbol: str, strategy_type: str, article: dict, score
                 print(f"catalyst insert failed for {symbol}: {type(exc).__name__}: {exc}"[:300], file=sys.stderr)
                 try:
                     cur.execute("ROLLBACK TO SAVEPOINT ds_cat")
-                except Exception:  # nosemgrep: tq-py-except-pass -- the rollback of a savepoint that the failed insert left open; the failure above is already printed
-                    pass
+                except Exception as exc2:  # noqa: BLE001 -- recorded, never silent
+                    print(f"savepoint rollback failed for {symbol}: {type(exc2).__name__}: {exc2}"[:300],
+                          file=sys.stderr)
 
     try:
         from content_scoring import SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE
