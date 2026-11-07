@@ -128,6 +128,43 @@ def test_recovery_watch_fails_closed_without_a_store(tmp_path, monkeypatch):
     assert prices == {}
 
 
+def test_recovery_watch_prices_a_position_only_the_database_knows(tmp_path, monkeypatch):
+    """Holdings are DB-first (`lib.holdings_document.load_document`): a position added since the last
+    holdings.json export must be priced, not silently skipped because the file is behind."""
+    now = datetime.now(timezone.utc)
+    _seed(tmp_path, monkeypatch, holdings=[],          # the export has not caught up
+          cache={"PFE": {"price": 29.39, "last_fetched": _et(now - timedelta(minutes=3))}})
+    from lib import holdings_document
+
+    monkeypatch.setattr(holdings_document, "load_document", lambda *a, **k: {
+        "holdings": [{"symbol": "PFE", "shares": 25.0, "account": "schwab_ira"}],
+        "document_source": "database", "document_fallback_reason": None})
+
+    prices, status = rwd._live_prices(["PFE"])
+
+    assert status == "ok"
+    assert prices["PFE"]["price"] == pytest.approx(29.39)
+    assert prices["PFE"]["shares"] == 25.0
+    assert prices["PFE"]["account"] == "schwab_ira"
+
+
+def test_recovery_watch_says_why_the_document_fell_back_to_the_file(tmp_path, monkeypatch):
+    """A database-failure fallback is reported as such, and the file's own read state still decides
+    whether the book is missing, empty or unreadable."""
+    _seed(tmp_path, monkeypatch, holdings=None, cache=None)
+    from lib import holdings_document
+
+    monkeypatch.setattr(holdings_document, "load_document", lambda *a, **k: {
+        "holdings": [], "document_source": "file",
+        "document_fallback_reason": "database unreachable: connection refused",
+        "document_store_state": "absent"})
+
+    prices, status = rwd._live_prices(["NVDA"])
+
+    assert status == "absent"
+    assert prices == {}
+
+
 def test_recovery_watch_exit_price_falls_back_to_the_trigger_capture_only():
     """The stop-out writer labels where its exit price came from (live mark, trigger capture, or nothing).
 

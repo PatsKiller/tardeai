@@ -102,7 +102,7 @@ def _live_prices(symbols) -> tuple[dict, str]:
 
     One reader for the operator's live-price rule: `lib.portfolio_positions.resolve_mark` reads the Finviz
     live cache itself (freshness = the symbol's own `last_fetched`, 30-minute window), falls back to a fresh
-    fresh broker backup quote, and flags anything older `stale`. A symbol the position store does not hold
+    broker backup quote, and flags anything older `stale`. A symbol the position store does not hold
     (a stopped-out name being re-reviewed) is resolved from the same cache with an empty position row, so it
     gets the same window instead of a technical_snapshot price from an earlier session.
 
@@ -110,11 +110,19 @@ def _live_prices(symbols) -> tuple[dict, str]:
     unknown (no breach, no recovery %, verdict left to manual review), which is the honest answer: a
     four-day-old mark is not today's price. Returns `(prices, store_status)` where store_status is the
     position store's read state ("ok", "absent", "unreadable", ...), never a silent empty book.
+
+    Holdings are read DB-first through `lib.holdings_document.load_document` (operator rule, 2026-11-07):
+    it renders the book from the database when that is reachable and falls back to holdings.json with a
+    stated reason otherwise, so a position added since the last export is priced instead of missing.
     """
     from lib import portfolio_positions as pp
+    from lib.holdings_document import load_document
 
     want = {str(s).upper() for s in (symbols or []) if s}
-    doc, status = pp.read_store_document()
+    doc = load_document()
+    status = str(doc.get("document_store_state") or "")
+    if not status:
+        status = "ok" if doc.get("document_source") else "unknown"   # DB render: no file state to report
     rows: dict[str, dict] = {}
     for row in (doc or {}).get("holdings") or []:
         if isinstance(row, dict):
