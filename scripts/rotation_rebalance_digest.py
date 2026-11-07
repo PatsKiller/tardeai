@@ -46,6 +46,7 @@ from lib.rotation_publication import ready
 
 BASE = "http://localhost:7777/api/v2/rotation"
 ROOT = Path(__file__).resolve().parent.parent
+LANE_ID = "rotation-rebalance-digest"
 
 
 def _get(path: str) -> dict:
@@ -61,6 +62,12 @@ def _post(path: str, body: dict | None = None) -> dict:
 
 
 def main() -> int:
+    # A real run writes one durable LaneRunReceipt (data/runtime/<lane>_last.json); the registry reads
+    # ok_at as this lane's output proof. ok_at advances only on exit 0, so a withheld publication goes
+    # stale instead of green. The --dry-run branch above returns before this import.
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+
+    started = now_iso()
     try:
         summ = (_get("/summary").get("data")) or {}
     except Exception:
@@ -124,15 +131,25 @@ def main() -> int:
     lines.append("Review at /v3/rotation · advisory only · nothing placed.")
     msg = "\n".join(lines)
 
+    # "accepted" is what send_telegram reports (the platform took responsibility for the event:
+    # delivered, queued for a digest, or recorded for Command Center). It is NOT a delivery claim.
+    accepted = None
+    send_error = None
     try:
         sys.path.insert(0, str(ROOT / "scripts"))
         from telegram_alert import send_telegram
-        send_telegram(msg, priority="P2", producer="rotation_rebalance_digest")
-    except Exception:
+        accepted = bool(send_telegram(msg, priority="P2", producer="rotation_rebalance_digest"))
+    except Exception as exc:  # noqa: BLE001 -- typed into the receipt, then the digest goes to stdout
+        send_error = type(exc).__name__
         print(msg)
-    print(json.dumps({"overweights": len(over), "underweights": len(under),
-                      "ideas": len(ideas), "directives_seeded": len(seeded), "publication_status": status}))
-    return 0 if available else 1
+    summary = {"overweights": len(over), "underweights": len(under), "ideas": len(ideas),
+               "directives_seeded": len(seeded), "degraded_holdings": len(degraded),
+               "publication_status": status, "digest_accepted": accepted, "send_error": send_error}
+    print(json.dumps(summary))
+    code = 0 if available else 1
+    write_lane_receipt(LANE_ID, ok=code == 0, started_at=started, script="rotation_rebalance_digest.py",
+                       exit_code=code, summary=summary)
+    return code
 
 
 if __name__ == "__main__":
