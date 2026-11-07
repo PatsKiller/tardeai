@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -373,16 +374,11 @@ def outcome_summary(commitments: list[Mapping[str, Any]], ledger: list[Mapping[s
     """
     when = now or _now()
     eff = effective_outcomes(ledger)
-    rows_by_id: dict[str, int] = {}
-    for r in ledger:
-        k = outcome_dedupe_key(r)
-        rows_by_id[k] = rows_by_id.get(k, 0) + 1
+    rows_by_id = Counter(outcome_dedupe_key(r) for r in ledger)
     dated = [c for c in commitments if c.get("due_at")]
     dated_ids = {str(c.get("commitment_id")) for c in dated}
     due = [c for c in dated if (_parse_ts(c.get("due_at")) or when) <= when]
-    by_eff: dict[str, int] = {}
-    for r in eff.values():
-        by_eff[str(r.get("outcome"))] = by_eff.get(str(r.get("outcome")), 0) + 1
+    by_eff = Counter(str(r.get("outcome")) for r in eff.values())
     newest = max((str(c.get("produced_at") or c.get("created_at") or "") for c in dated), default="")
     return {
         "schema": "CommitmentOutcomeSummary@v1",
@@ -394,8 +390,8 @@ def outcome_summary(commitments: list[Mapping[str, Any]], ledger: list[Mapping[s
         "ledger_rows": len(ledger),
         "effective_outcomes": len(eff),
         "commitments_with_duplicate_outcomes": sum(1 for v in rows_by_id.values() if v > 1),
-        "effective_by_outcome": by_eff,
-        "scored": by_eff.get("CONFIRMED", 0) + by_eff.get("REFUTED", 0),
+        "effective_by_outcome": dict(by_eff),
+        "scored": by_eff["CONFIRMED"] + by_eff["REFUTED"],
         "orphan_outcomes": sum(1 for k in eff if k not in dated_ids),
     }
 
@@ -416,10 +412,7 @@ def plan_ledger_cleanup(ledger: list[Mapping[str, Any]]) -> dict[str, Any]:
                                "superseded_idempotency_key": r.get("idempotency_key"),
                                "kept_outcome": keep.get("outcome"),
                                "kept_idempotency_key": keep.get("idempotency_key")})
-    pairs: dict[str, int] = {}
-    for i in superseded:
-        k = f"{i['superseded_outcome']}->{i['kept_outcome']}"
-        pairs[k] = pairs.get(k, 0) + 1
+    pairs = Counter(f"{i['superseded_outcome']}->{i['kept_outcome']}" for i in superseded)
     return {"schema": "CommitmentOutcomeCleanupPlan@v1", "dry_run": True, "writes": 0,
             "rows": len(ledger), "keep": len(eff), "superseded": len(superseded),
-            "superseded_by_pair": pairs, "items": superseded}
+            "superseded_by_pair": dict(pairs), "items": superseded}
