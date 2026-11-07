@@ -164,10 +164,15 @@ def test_opening_intelligence_render(monkeypatch, tmp_path, bias, produced, expe
     import opening_intelligence as m
 
     run_id = H.attempt_env(monkeypatch, tmp_path, "opening-intelligence-render")
-    monkeypatch.setattr(m, "SNAPSHOT_DIR", tmp_path / "opening_intelligence")
+    # LQ-20261107-113: the snapshot directory is resolved per call from TRADEAI_STATE_ROOT (attempt_env sets it to
+    # tmp_path) through persistent_state_root, never from a module-level path bound to the release tree. There is no
+    # SNAPSHOT_DIR to monkeypatch any more — pinning its absence keeps a future edit from reproducing the bug that
+    # wrote the lane's history into whichever release ran it.
+    assert not hasattr(m, "SNAPSHOT_DIR")
     monkeypatch.setattr(m, "build_snapshot", lambda: _snapshot(m, bias))
     assert m.main(["--persist", "--render"]) == 0
-    assert (tmp_path / "opening_intelligence" / "2026-10-15.jsonl").is_file()  # the snapshot is still appended
+    # the snapshot is still appended, and it lands in durable state under the state root
+    assert (tmp_path / "data" / "runtime" / "opening_intelligence" / "2026-10-15.jsonl").is_file()
     H.check(tmp_path, "opening-intelligence-render", run_id, produced=produced, expect=expect)
 
 
