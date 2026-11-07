@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1510,8 +1512,55 @@ def _qa_flag_counts_from_snapshots() -> dict[str, int]:
         return {}
 
 
-def freshness_report(*, db_query) -> dict[str, Any]:
-    """Category-level freshness SLO report for ops / dashboard strip."""
+#: LQ-20261107-218: the report rebuilds a 200-item feed plus four queries, 2-23 s under load, and the freshness chip
+#: on three pages waits on it. A last-good copy is served at once; one background thread refreshes it once it is
+#: older than the TTL. Per process, keyed on the db_query callable (a different reader never sees another's data).
+_FRESHNESS_TTL_S = 60.0
+_FRESHNESS_CACHE: dict[str, Any] = {"fn": None, "ts": 0.0, "data": None, "refreshing": False}
+_FRESHNESS_LOCK = threading.Lock()
+
+
+def _freshness_refresh(db_query) -> None:
+    try:
+        data = _freshness_report_compute(db_query=db_query)
+        if isinstance(data, dict) and data.get("ok") is not False:
+            with _FRESHNESS_LOCK:
+                _FRESHNESS_CACHE.update(fn=db_query, ts=time.monotonic(), data=data)
+    except Exception:
+        pass  # keep serving the last good copy; the next request retries
+    finally:
+        with _FRESHNESS_LOCK:
+            _FRESHNESS_CACHE["refreshing"] = False
+
+
+def freshness_report(*, db_query, use_cache: bool = True) -> dict[str, Any]:
+    """Category-level freshness SLO report for ops / dashboard strip.
+
+    Served from a last-good cache (stale-while-revalidate); the first call for a reader computes inline.
+    ``use_cache=False`` always computes. A cached answer carries ``_cache`` = {"age_s", "stale"} so a reader can tell."""
+    if not use_cache:
+        return _freshness_report_compute(db_query=db_query)
+    with _FRESHNESS_LOCK:
+        c = _FRESHNESS_CACHE
+        hit = c["data"] is not None and c["fn"] is db_query
+        age = time.monotonic() - c["ts"] if hit else None
+        start_refresh = bool(hit and age > _FRESHNESS_TTL_S and not c["refreshing"])
+        if start_refresh:
+            c["refreshing"] = True
+        data = c["data"] if hit else None
+    if start_refresh:
+        threading.Thread(target=_freshness_refresh, args=(db_query,), daemon=True, name="ri-freshness-refresh").start()
+    if hit:
+        return {**data, "_cache": {"age_s": round(age, 1), "stale": age > _FRESHNESS_TTL_S}}
+    fresh = _freshness_report_compute(db_query=db_query)
+    if isinstance(fresh, dict) and fresh.get("ok") is not False:
+        with _FRESHNESS_LOCK:
+            _FRESHNESS_CACHE.update(fn=db_query, ts=time.monotonic(), data=fresh)
+    return fresh
+
+
+def _freshness_report_compute(*, db_query) -> dict[str, Any]:
+    """Uncached category-level freshness SLO report."""
     policy = load_freshness_policy()
     slo = policy.get("slo") or {}
     feed = build_feed(db_query=db_query, limit=200, include_archived=False)
