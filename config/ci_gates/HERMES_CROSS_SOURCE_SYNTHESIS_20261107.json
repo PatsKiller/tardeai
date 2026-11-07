@@ -1,0 +1,28 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_CROSS_SOURCE_SYNTHESIS_20261107",
+  "files": [
+    "tests/test_hermes_cross_source_synthesis_20261107.py"
+  ],
+  "anchor": "HERMES_CROSS_SOURCE_SYNTHESIS_20261107",
+  "comment": [
+    "ANCHOR: HERMES_CROSS_SOURCE_SYNTHESIS_20261107 — hermes-cross-source-synthesizer failed 4 runs in",
+    "a row with a receipt that said only 'NO_BRIEFS'. Two defects in one script:",
+    "(1) collect_signal_bundle filtered content_entity_links on extracted_at, a column the table does",
+    "not have (it has created_at). PostgreSQL aborts the whole transaction on that first failed",
+    "statement, so the other five sources answered 'current transaction is aborted' and TWO more were",
+    "silently turned into []. The bundle the model received was empty (0 signals) on every run until",
+    "2026-11-07; live read-only after the fix: 20 entity_spikes, 15 news_themes, 10 discovery_signals,",
+    "10 sector_rotation, 10 research_themes, 10 agenda_actions = 75 signals.",
+    "(2) the prompt never asked for limitations/source_views, which hermes_staging_ingest requires for",
+    "hermes_research_intelligence, so every brief the lane ever produced was rejected ('limitations",
+    "array is empty or missing') — even the 5 it generated on 2026-11-05.",
+    "The gate pins: one failing source costs one source (rollback restores the transaction and the",
+    "error is recorded, never a silent []); the entity query names a column that exists; synthesize",
+    "reports WHY it returned nothing; the prompt asks for the required fields; a brief without",
+    "limitations is still stageable (method limitation, not invented evidence) while a brief with no",
+    "sources at all is still rejected; and the NO_BRIEFS receipt carries the cause.",
+    "Hermetic: fake connections/cursors with real postgres aborted-transaction semantics, stubbed",
+    "generate_cloud, the real validate_payload. No DB, no model, no network."
+  ]
+}
