@@ -107,8 +107,15 @@ def budget(root: Path) -> dict:
                 "today_used_usd": snap.get("today_used_usd"), "daily_cap_usd": snap.get("daily_cap_usd"),
                 "status": snap.get("status")}
     except Exception as exc:  # noqa: BLE001 - the budget panel degrades; the list still renders
-        return {"credit_remaining_usd": None, "today_used_usd": None, "daily_cap_usd": None,
-                "status": "UNAVAILABLE", "error": type(exc).__name__}
+        # CreditDenied carries WHY the book refused (CREDIT_UNAVAILABLE, CREDIT_CONFIGURATION_INVALID,
+        # CREDIT_CLOCK_INVALID …). The class name alone told the operator "the credit check was refused"
+        # and no more; LQ-20261107-178 showed the real cause was an unreadable journal.
+        reason = getattr(exc, "reason", None)
+        out = {"credit_remaining_usd": None, "today_used_usd": None, "daily_cap_usd": None,
+               "status": "UNAVAILABLE", "error": type(exc).__name__}
+        if isinstance(reason, str) and reason.strip():
+            out["reason"] = reason.strip()[:64]
+        return out
 
 
 QUEUE_STATUS = {"running": "running", "failed": "failed", "blocked_data": "blocked_data"}

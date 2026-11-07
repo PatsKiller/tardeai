@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PROSPECTUS_DIAGNOSIS_LQ178_20261107",
+  "files": [
+    "tests/test_prospectus_diagnosis_lq178_20261107.py"
+  ],
+  "anchor": "PROSPECTUS_DIAGNOSIS_LQ178_20261107",
+  "comment": [
+    "ANCHOR: PROSPECTUS_DIAGNOSIS_LQ178_20261107 — LQ-20261107-178, the prospectus writer's two failures.",
+    "The budget panel dropped CreditDenied's reason, so the page said 'the credit check was refused' while the",
+    "real cause was an unreadable credit journal (CREDIT_UNAVAILABLE). The panel now carries the reason code and",
+    "the page names the actual next step. A writer reply ended by the token cap was parsed, failed as",
+    "OUTPUT_NOT_JSON, retried three times identically and closed; finish_doc now names it OUTPUT_TRUNCATED.",
+    "Hermetic: no network, no DB; the credit book's snapshot is stubbed to raise."
+  ]
+}

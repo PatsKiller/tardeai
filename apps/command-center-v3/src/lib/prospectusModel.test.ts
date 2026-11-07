@@ -167,5 +167,19 @@ eq('a prose failure reason is kept verbatim',
 check('a prose reason is still available as the raw title',
       failureHeadline('Writer refused: too few cited facts (2 of 6 required)').raw.includes('too few cited facts'))
 
+// LQ-20261107-178: the server now sends CreditDenied's reason code, and a reply cut off at the token cap
+// is named as truncation. Both must explain themselves without the operator reading a log.
+const creditJournal = creditState({ credit_remaining_usd: null, status: 'UNAVAILABLE', error: 'CreditDenied', reason: 'CREDIT_UNAVAILABLE' })
+check('credit journal: says the journal could not be read', /usage journal could not be read/i.test(creditJournal.reason), creditJournal.reason)
+check('credit journal: says it is not a retry', /not a retry/i.test(creditJournal.reason), creditJournal.reason)
+const creditConfig = creditState({ credit_remaining_usd: null, status: 'UNAVAILABLE', error: 'CreditDenied', reason: 'CREDIT_CONFIGURATION_INVALID' })
+check('credit config: names a settings fault', /settings are invalid/i.test(creditConfig.reason), creditConfig.reason)
+const creditNoReason = creditState({ credit_remaining_usd: null, status: 'UNAVAILABLE', error: 'CreditDenied' })
+check('credit: an unknown reason keeps the old sentence', /credit check was refused/i.test(creditNoReason.reason))
+const truncated = failureHeadline('GenerationFailed: OUTPUT_TRUNCATED')
+check('truncation: plain words, no code', !/OUTPUT_TRUNCATED|GenerationFailed/.test(truncated.text), truncated.text)
+check('truncation: says the writer ran out of room', /ran out of room/i.test(truncated.text), truncated.text)
+eq('truncation: raw preserved', truncated.raw, 'GenerationFailed: OUTPUT_TRUNCATED')
+
 console.log(`prospectusModel: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

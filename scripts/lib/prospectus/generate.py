@@ -505,8 +505,13 @@ def finish_doc(bundle: Bundle, text: str, prov: dict, *, gate: dict, settings: d
                fallback: Optional[dict] = None, batch: Optional[dict] = None) -> dict:
     """Parse, guard and assemble one Prospectus@v1 document from the writer's text (sync or batch)."""
     from . import quality_gate as qg
-    if str(prov.get("finish_reason") or "") == "refusal":
+    reason = str(prov.get("finish_reason") or "")
+    if reason == "refusal":
         raise GenerationFailed("REFUSAL")
+    # LQ-20261107-178: a reply cut off at the token cap is not a format error, and retrying it with the
+    # same budget fails the same way three times and marks the row permanently failed. Name the cause.
+    if reason in ("max_tokens", "length"):
+        raise GenerationFailed("OUTPUT_TRUNCATED")
     parsed = parse_output(text)
     sections, verdict, log = validate(parsed, bundle, mode=mode, previous=previous)
     scenarios = validate_scenarios(parsed.get("scenarios"), bundle, log=log)

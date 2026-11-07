@@ -38,6 +38,8 @@ export type ProspectusBudget = {
   /** Additive (livs 2026-11-04): the server's own verdict on the credit read — "UNAVAILABLE" plus an error. */
   status?: string | null
   error?: string | null
+  /** LQ-20261107-178: CreditDenied's own reason code, so the tile can say WHY the book refused. */
+  reason?: string | null
 }
 
 /** Optional, additive (not in the 10-26 contract): the server says whether this viewer is the operator.
@@ -212,13 +214,19 @@ export function creditState(b: ProspectusBudget | null | undefined): { measured:
   // The server's own verdict counts too: a payload can say UNAVAILABLE with no error text, and reading only
   // `error` would then report "Not measured" when the source in fact refused to answer (self-review, 2026-11-04).
   if (err || status === 'UNAVAILABLE' || status === 'ERROR') {
-    return {
-      measured: false,
-      headline: 'Unavailable',
-      reason: /creditdenied/i.test(err)
-        ? 'The credit check was refused, so the remaining balance is unknown.'
-        : 'The credit service did not answer, so the remaining balance is unknown.',
-    }
+    const why = String(b?.reason ?? '').trim().toUpperCase()
+    // LQ-20261107-178: the server now sends CreditDenied's reason code. "Refused" hid an unreadable
+    // journal (CREDIT_UNAVAILABLE); each code names the actual next step.
+    const reason = why === 'CREDIT_UNAVAILABLE'
+      ? 'The credit lane is switched off because its usage journal could not be read — an operator repair, not a retry.'
+      : why === 'CREDIT_CONFIGURATION_INVALID'
+        ? 'The credit settings are invalid, so the remaining balance cannot be read — an operator fix, not a retry.'
+        : why === 'CREDIT_CLOCK_INVALID'
+          ? 'The credit window is misconfigured (start/expiry), so the remaining balance cannot be read.'
+          : /creditdenied/i.test(err)
+            ? 'The credit check was refused, so the remaining balance is unknown.'
+            : 'The credit service did not answer, so the remaining balance is unknown.'
+    return { measured: false, headline: 'Unavailable', reason }
   }
   const rem = toNumber(b?.credit_remaining_usd)
   if (rem != null) return { measured: true, headline: '', reason: '' }
@@ -247,6 +255,12 @@ export function failureHeadline(reason: unknown): { text: string; raw: string } 
   if (/OUTPUT_NOT_JSON/i.test(raw)) {
     return {
       text: 'The draft could not be generated — the writer’s reply was not in the expected format. Open it and re-run the rewrite.',
+      raw,
+    }
+  }
+  if (/OUTPUT_TRUNCATED/i.test(raw)) {
+    return {
+      text: 'The draft could not be generated — the writer ran out of room before finishing it. Open it and re-run the rewrite.',
       raw,
     }
   }
