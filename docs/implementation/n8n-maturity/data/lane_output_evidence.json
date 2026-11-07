@@ -333,6 +333,16 @@
    "source_file": "scripts/hermes_think_tank.py",
    "evidence": "scripts/hermes_think_tank.py:34 AUDIT written when --apply (:343; cron passes --apply); host mtime 2026-10-09T10:20:47"
   },
+  "holdings-llm-refresh": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/runtime/holdings_llm_refresh_last.json",
+    "key": "ok_at"
+   },
+   "verified_token": "write_receipt",
+   "source_file": "scripts/holdings_llm_refresh.py",
+   "evidence": "scripts/holdings_llm_refresh.py:338 imports write_receipt from lib.lane_last_receipt (the W3 spelling of write_lane_receipt, lane_last_receipt.py:354). A real run writes it at :377 (ok) or :384 (ok=False on failure); ok_at is stamped only when ok and carries the previous ok_at forward on failure (lane_last_receipt.py:199). A --dry-run writes no receipt. LaneRunReceipt@v1 at <state_root>/data/runtime/holdings_llm_refresh_last.json — note the UNDERSCORE file name, not the hyphenated lane id (receipt_path() uses the name passed to write_receipt)."
+  },
   "mint-identity-registry": {
    "output_signal": {
     "kind": "file_mtime",
@@ -443,6 +453,16 @@
    "verified_token": "pro_analyst_coverage_history.json",
    "source_file": "scripts/pro_analyst_monitor.py",
    "evidence": "scripts/pro_analyst_monitor.py:17,141 HIST.write_text(updated_at, snapshots) - final step of fetch->read_model->monitor chain (pills_latest.json is also rewritten by other jobs, so not used); host mtime 2026-10-09T06:17:24"
+  },
+  "rag-indexer": {
+   "output_signal": {
+    "kind": "json_key",
+    "path": "data/runtime/rag-indexer_last.json",
+    "key": "ok_at"
+   },
+   "verified_token": "write_lane_receipt",
+   "source_file": "scripts/rag_indexer.py",
+   "evidence": "scripts/rag_indexer.py:452 calls lib.lane_last_receipt.write_lane_receipt(LANE_ID, ok=not failed, started_at=...) at the end of a real run (:421 the same with ok=False when the DB connection fails); ok_at advances only on success and the previous ok_at is carried forward on failure (lane_last_receipt.py:199). A --dry-run returns at :413-415 before any connection and before any receipt. LaneRunReceipt@v1 at <state_root>/data/runtime/rag-indexer_last.json."
   },
   "recommendation-intelligence-engine": {
    "output_signal": {
