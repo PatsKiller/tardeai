@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "FINVIZ_SNAPSHOT_REFRESH_LQ336_20261107",
+  "files": [
+    "tests/test_finviz_snapshot_refresh_lq336_20261107.py"
+  ],
+  "anchor": "FINVIZ_SNAPSHOT_REFRESH_LQ336_20261107",
+  "comment": [
+    "ANCHOR: FINVIZ_SNAPSHOT_REFRESH_LQ336_20261107 — LQ-20261107-336 (WP0a).",
+    "ticker_snapshot_daily stopped at 2026-11-03: its only writer is stage 11 of portfolio_orchestrator.py and",
+    "stage 1 crashed on 11-04..06 (asset_type None -> .upper(), FU-007). fundamental_data's only writer is the",
+    "Monday --fundamentals lane. Pins the refresh lane: the row carries the last SESSION close (a Saturday run",
+    "dates Friday); universe = holdings + active watchlist + recent screener members, deduped, with stale",
+    "screens reported not silently widened in; a record the run did not refresh is never dated as this close;",
+    "produced_count is a READ-BACK of ticker_snapshot_daily (save_ticker_snapshot_daily swallows its own",
+    "failure and returns None); skipped_reasons partitions attempted; a dry run writes no receipt and makes",
+    "no fetch. Hermetic: fake connections, fake cache, tmp state root, no network."
+  ]
+}
