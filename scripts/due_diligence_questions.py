@@ -795,8 +795,9 @@ def _write_lane_receipt(*, ok: bool = True, exit_code: int = 0, produced_count: 
     never raises into the caller, so a receipt failure cannot change this run's result or exit code.
 
     ``ok`` is the RUN's verdict, not "the process reached the end": an escalated stop is a deliberate halt on
-    found work, and a run whose every model call failed produced nothing for a reason that is not an empty
-    lane. Both write ``ok=False`` so ``ok_at`` stays where the last good run left it and the lane goes stale
+    found work, a run whose every model call failed produced nothing for a reason that is not an empty lane, and
+    a run where SOME calls failed and nothing was written could not ask what it found. All of them write
+    ``ok=False`` so ``ok_at`` stays where the last good run left it and the lane goes stale
     (``lane_last_receipt`` carries ``previous_ok_at`` forward), instead of reporting ``nothing_due`` — a green
     over work the lane saw and did not do.
     """
@@ -948,6 +949,14 @@ def _apply_run(args, started: datetime) -> int:
     if all_failed:
         _write_lane_receipt(ok=False, exit_code=1, produced_count=total_q, empty_reason=None,
                             error="all_model_calls_failed", started_at=started)
+        return 1
+    # A PARTIAL failure is not an empty lane either. A provider that answers some calls and rejects others
+    # leaves the desk with nothing written for the calls it could not make; `nothing_due` would say there was
+    # nothing to ask about and advance ok_at over work the lane could not do. It is its own error so the
+    # operator can tell a degraded route from a broken one.
+    if failed_calls > 0 and total_q == 0:
+        _write_lane_receipt(ok=False, exit_code=1, produced_count=total_q, empty_reason=None,
+                            error="partial_model_call_failure", started_at=started)
         return 1
     _write_lane_receipt(ok=True, exit_code=0, produced_count=total_q,
                         empty_reason=None if total_q else "nothing_due", started_at=started)

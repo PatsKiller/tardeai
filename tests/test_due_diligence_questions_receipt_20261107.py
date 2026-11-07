@@ -134,8 +134,9 @@ def test_the_lane_id_matches_the_registry_and_the_allowlist_signal(tmp_path, mon
 # --- the run's verdict: a halt or a broken provider route is not an empty lane ---------------------
 #
 # A green receipt over work the lane found and did not do is the failure mode this lane's signal exists to
-# catch: `ok_at` advancing makes the health contract report healthy while the desk gets nothing. The three
-# paths below all used to fall through to `ok=True, exit 0, empty_reason="nothing_due"`.
+# catch: `ok_at` advancing makes the health contract report healthy while the desk gets nothing. The halt,
+# the broken route and the partial failure below all used to fall through to
+# `ok=True, exit 0, empty_reason="nothing_due"`.
 
 _CHANGE = {"subject_guid": "g-1", "change_guid": "c-1", "symbol": "AAA", "kind": "news", "magnitude": 1}
 
@@ -146,7 +147,7 @@ def _wire_apply(mod, monkeypatch, *, changes, ask_model):
     mod.cap_env_warning = lambda: None
     mod.reconcile_answers = lambda cur, apply=True: {}
     mod.pending_changes = lambda cur, limit: changes
-    mod.dossier = lambda cur, guid: [{"doc": "linked in the corpus"}]
+    mod.dossier = lambda cur, guid: [{"id": "d-1", "date": "2026-11-06", "text": "linked in the corpus"}]
     mod.route = lambda cur, limit: {"routed": 0}
     mod.ask_model = ask_model
 
@@ -194,6 +195,46 @@ def test_every_model_call_failing_is_a_failed_run_not_an_empty_one(tmp_path, mon
     assert not doc.get("ok_at"), f"a broken route advanced ok_at: {doc}"
     assert doc.get("empty_reason") is None, doc
     assert doc["error"] == "all_model_calls_failed", doc
+
+
+def test_a_partial_model_call_failure_is_a_failed_run_not_an_empty_one(tmp_path, monkeypatch):
+    """One call answered, the next rejected, nothing written: the lane could not ask what it found.
+
+    `nothing_due` says the corpus had nothing to ask about. A provider that answers some calls and refuses
+    others leaves the desk with nothing written for the calls it could not make, so the old tail
+    (`ok=True, empty_reason="nothing_due"`) greened a run over work the lane saw and did not do.
+    """
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "state"))
+    mod = _load()
+    persisted: list[str] = []
+    # A previous GOOD run's ok_at: this run must carry it forward, not advance it (the whole point of ok=False).
+    prior = _receipt(tmp_path)
+    prior.parent.mkdir(parents=True, exist_ok=True)
+    prior.write_text(json.dumps({"ok_at": "2026-11-07T00:00:00+00:00"}), encoding="utf-8")
+
+    def _one_answers_one_refuses(ch, items):
+        if ch["symbol"] == "BBB":
+            raise RuntimeError("provider route flaked on the second call")
+        return {"parsed": {}, "lane": "deepseek-free"}  # answered; produced no citable question
+
+    _wire_apply(
+        mod,
+        monkeypatch,
+        changes=[dict(_CHANGE), dict(_CHANGE, subject_guid="g-2", change_guid="c-2", symbol="BBB")],
+        ask_model=_one_answers_one_refuses,
+    )
+    mod.persist = lambda cur, ch, narrative, questions, meta, n: (persisted.append(ch["symbol"]), ("n", 0))[1]
+
+    assert mod.main(["--apply"]) == 1
+
+    assert persisted == ["AAA"], f"the answered call's work was not what the run did: {persisted}"
+    doc = _receipt_doc(tmp_path)
+    assert doc["status"] == "failed", doc
+    assert doc["exit"] == 1, doc
+    assert doc["ok_at"] == "2026-11-07T00:00:00+00:00", f"a partial failure advanced ok_at: {doc}"
+    assert doc["consecutive_failures"] == 1, doc
+    assert doc.get("empty_reason") is None, f"a partial failure reported an empty lane: {doc}"
+    assert doc["error"] == "partial_model_call_failure", doc
 
 
 def test_a_crash_writes_a_failed_receipt_before_it_propagates(tmp_path, monkeypatch):
