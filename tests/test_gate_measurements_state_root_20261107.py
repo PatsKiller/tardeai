@@ -45,6 +45,9 @@ def test_reader_follows_a_release_root_to_persistent_state(tmp_path, monkeypatch
     assert gs.measurements_path(dev) == dev / "data" / "cio" / "agent_gate_measurements.json"
     doc = {"schema": "AgentGateMeasurement@v1", "measured_at": "2026-11-07T15:00:00+00:00",
            "agents": {"alex": {"gates": {"g1": {"status": "FAIL"}}}}}
-    (state / "data" / "cio" / "agent_gate_measurements.json").write_text(json.dumps(doc))
+    target = state / "data" / "cio" / "agent_gate_measurements.json"
+    tmp = target.with_suffix(".tmp")
+    tmp.write_text(json.dumps(doc))
+    tmp.replace(target)
     out = gs.gate_status(release, "alex")
     assert out["failing"] == 1 and out["source"].startswith(str(state))
