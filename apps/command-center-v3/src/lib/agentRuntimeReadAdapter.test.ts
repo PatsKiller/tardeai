@@ -93,6 +93,22 @@ async function run() {
     check('STALE when data older than budget', view.state === 'STALE' && view.live && view.snapshot.runs.stale === 1)
   }
 
+  // as_of is the READ time; the newest run's own time is reported separately (LQ-20261107-228)
+  {
+    const rows = [{ status: 'COMPLETED', environment: 'SHADOW', updated_at: '2026-05-01T10:00:00Z' }]
+    const fetchImpl = (async () => jsonResponse(200, listing(rows))) as unknown as typeof fetch
+    const view = await resolveAgentRuntimeView({ baseUrl: '', now, fetchImpl })
+    check('asOf is the read time, not the newest run', view.snapshot.asOf === new Date(NOW).toISOString())
+    check('newestRunAt carries the newest run time', view.snapshot.newestRunAt === '2026-05-01T10:00:00.000Z')
+    check('an old newest run is still reported STALE', view.state === 'STALE')
+    const server = (async () => jsonResponse(200, listing(rows, { as_of: '2026-07-26T11:58:00Z' }))) as unknown as typeof fetch
+    const v2 = await resolveAgentRuntimeView({ baseUrl: '', now, fetchImpl: server })
+    check('a server as_of wins over the read time', v2.snapshot.asOf === '2026-07-26T11:58:00Z')
+    const none = (async () => jsonResponse(200, listing([]))) as unknown as typeof fetch
+    const v3 = await resolveAgentRuntimeView({ baseUrl: '', now, fetchImpl: none })
+    check('no runs: asOf is the read time, no newestRunAt', v3.snapshot.asOf === new Date(NOW).toISOString() && v3.snapshot.newestRunAt === undefined)
+  }
+
   // env helper
   {
     check('readApiBaseFromEnv unset => same-origin ""', readApiBaseFromEnv({}) === '')

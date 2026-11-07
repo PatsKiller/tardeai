@@ -127,7 +127,10 @@ export async function resolveAgentRuntimeView(config: ReadApiConfig): Promise<Re
     if (!Number.isNaN(ts)) newest = Math.max(newest, ts)
   }
 
-  const asOf = payload.as_of ?? (newest ? new Date(newest).toISOString() : new Date(now()).toISOString())
+  // as_of is when this data was READ (or the server's own stamp). The newest run's time is a different fact — using it
+  // as as_of showed 2026-08-03 on a page read today (LQ-20261107-228) — so it travels separately as newestRunAt.
+  const asOf = payload.as_of ?? new Date(now()).toISOString()
+  const newestRunAt = newest ? new Date(newest).toISOString() : undefined
   const ageMs = newest ? now() - newest : Number.POSITIVE_INFINITY
   const stale = rows.length > 0 && ageMs > staleAfterMs
   if (stale) runs.stale = runs.total
@@ -136,6 +139,7 @@ export async function resolveAgentRuntimeView(config: ReadApiConfig): Promise<Re
     contract: 'agent-runtime-monitoring-v1',
     source: 'SHADOW',
     asOf,
+    ...(newestRunAt ? { newestRunAt } : {}),
     adapterState: 'CONNECTED_READ_ONLY',
     runs,
     evidence: { ...AGENT_RUNTIME_SNAPSHOT.evidence },

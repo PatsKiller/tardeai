@@ -35,6 +35,8 @@ export interface AgentRuntimeSnapshot {
   contract: 'agent-runtime-monitoring-v1'
   source: EvidenceState
   asOf: string
+  /** Newest run's own timestamp (ISO). asOf is when the data was READ; this is how old the evidence is. */
+  newestRunAt?: string
   adapterState: 'NOT_CONNECTED' | 'FIXTURE_ONLY' | 'CONNECTED_READ_ONLY'
   runs: {
     total: number
