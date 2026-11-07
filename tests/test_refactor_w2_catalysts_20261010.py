@@ -203,6 +203,9 @@ def test_engine_real_run_writes_per_band_receipt(monkeypatch, _state):
     assert [r["symbol"] for r in staged] == ["AAA", "BBB"] and marker["staged"] == 2
     rec = _receipt(_state, "catalyst-momentum-engine-overnight")
     assert rec["status"] == "ok" and rec["summary"]["staged"] == 2 and rec["summary"]["search_errors"] == 0
+    # the v2 output verdict the page and the executor read (WORK-QUEUE item 25: the contract said "produced_count
+    # emission: NOT YET", so a live run was output_unverifiable)
+    assert (rec["produced_count"], rec["attempted_count"], rec["empty_reason"]) == (2, 2, None)
 
 
 def test_engine_all_searches_errored_exits_1_and_stages_nothing(monkeypatch, _state):
@@ -216,7 +219,22 @@ def test_engine_all_searches_errored_exits_1_and_stages_nothing(monkeypatch, _st
 def test_engine_no_catalyst_found_is_a_finding_not_a_failure(monkeypatch, _state):
     staged, _ = _engine_live(monkeypatch, lambda sym, q: [])
     assert cme.main() == 0 and staged == []
-    assert _receipt(_state, "catalyst-momentum-engine-overnight")["status"] == "ok"
+    rec = _receipt(_state, "catalyst-momentum-engine-overnight")
+    assert rec["status"] == "ok"
+    # an answered-but-empty search must be counted, not indistinguishable from a quiet market: on 2026-11-07 the
+    # overnight band reported candidates 4 / confirmed 0 / errors 0 twice a day while a control query against the
+    # same SearXNG returned 26 results without time_range=day and 0 with it.
+    assert rec["summary"]["search_empty"] == 2 and rec["summary"]["search_errors"] == 0
+    assert (rec["produced_count"], rec["attempted_count"], rec["empty_reason"]) == (0, 2, "no_new_input")
+    assert rec["skipped_reasons"] == {"no_search_coverage": 2}
+
+
+def test_engine_lane_output_separates_empty_search_from_search_error():
+    empty = cme.lane_output({"candidates": 4, "staged": 0, "search_empty": 4, "search_errors": 0})
+    errored = cme.lane_output({"candidates": 4, "staged": 0, "search_empty": 1, "search_errors": 3})
+    assert empty["skipped_reasons"] == {"no_search_coverage": 4} and empty["empty_reason"] == "no_new_input"
+    assert errored["skipped_reasons"] == {"no_search_coverage": 1, "search_errors": 3}
+    assert cme.lane_output({"candidates": 2, "staged": 1, "search_empty": 1})["empty_reason"] is None
 
 
 # ── news_to_catalyst ─────────────────────────────────────────────────────────────────────────────────

@@ -2187,7 +2187,7 @@
           "stat / jq the receipt: data/runtime/catalyst-momentum-engine-overnight_last.json"
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-15 from 18:00/22:00 daily overnight band: stages a row only for candidates with RVOL>=5 & score>=30 (band :103) that have a catalyst source (:286), so most overnight runs stage 0; kill switch returns 0 without a receipt (:175); only all-searches-failed is an error (:345-349); receipt summary 'staged' (:343-344, :189). produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
+        "expected_output_basis": "expected_output derived 2026-10-15 from 18:00/22:00 daily overnight band: stages a row only for candidates with RVOL>=5 & score>=30 (band :103) that have a catalyst source (:286), so most overnight runs stage 0; kill switch returns 0 without a receipt (:175); only all-searches-failed is an error (:345-349); receipt summary 'staged' (:343-344, :189). produced_count IS emitted since 2026-11-07 (LaneRunReceipt@v2 output: produced = rows staged, attempted = candidates, skipped no_search_coverage when the search answered with nothing and did not error)"
       },
       "review_by": "2026-10-25",
       "expected_output": {
@@ -2209,7 +2209,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/catalyst-momentum-engine-overnight_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/catalyst-momentum-engine-overnight/<run_id>.json); today the v1 receipt reports this unit as summary.staged"
+            "ref": "data/runtime/catalyst-momentum-engine-overnight_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/catalyst-momentum-engine-overnight/<run_id>.json); emitted since 2026-11-07 (before that the v1 receipt carried the same number as summary.staged)"
           },
           {
             "kind": "store_rows",
