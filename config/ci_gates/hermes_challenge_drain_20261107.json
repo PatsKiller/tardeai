@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_challenge_drain_20261107",
+  "files": [
+    "tests/test_hermes_challenge_drain_20261107.py"
+  ],
+  "anchor": "HERMES_CHALLENGE_DRAIN_20261107",
+  "comment": [
+    "ANCHOR: HERMES_CHALLENGE_DRAIN_20261107 — the closed-loop Hermes challenge queue drains on the scheduled consumer (LQ-20261107-233).",
+    "The age-based drain existed but its only caller was scripts/closed_loop_reconcile.py, which no scheduler",
+    "runs; the queue reached 191 pending with an oldest age of 2 064 h while hermes_cio_worker (systemd, every",
+    "15 min) expired only challenges whose plan had completed research. These tests pin that --drain expires a",
+    "stale challenge and keeps a current one, that history is appended and never deleted, that a quiet run",
+    "reports an unchanged queue, and that a failing drain is reported in the run JSON without raising or",
+    "failing the research run. Synthetic CIO dirs under tmp_path; no network, no live store."
+  ]
+}

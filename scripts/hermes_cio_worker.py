@@ -14,6 +14,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 # Allow both `lib.*` (scripts/ on path) and `scripts.lib.*` (repo root on path).
 # agent_memory_admission hard-imports scripts.lib; missing repo root made the
@@ -23,6 +24,30 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 if str(_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(_ROOT / "scripts"))
+
+
+def drain_stale_challenges(*, max_age_days: int = 7) -> dict[str, Any]:
+    """Expire stale, duplicate and test challenges from the closed-loop queue (append-only).
+
+    2026-11-07 (LQ-20261107-233): the age-based drain existed but had no scheduler — its only caller
+    was ``scripts/closed_loop_reconcile.py``, which nothing runs, so the queue reached 191 pending
+    with an oldest age of 2 064 h while this worker, the scheduled consumer of the same store,
+    expired only the challenges whose plan had completed research. It now runs on every ``--drain``
+    (the systemd timer's exact invocation), so a challenge that goes stale is closed within one tick.
+
+    Never deletes: ``intelligence_lineage.drain_hermes_challenges`` appends EXPIRED/CANCELLED events
+    and leaves every row in place. A failure here is reported, never raised — a closed-loop queue
+    must not be able to take a research run down.
+    """
+    try:
+        from lib.intelligence_lineage import drain_hermes_challenges
+    except ImportError:
+        from scripts.lib.intelligence_lineage import drain_hermes_challenges  # type: ignore
+    try:
+        out = drain_hermes_challenges(apply=True, max_age_days=max_age_days)
+    except Exception as exc:  # noqa: BLE001 -- the worker must survive a torn or unreadable store
+        return {"ok": False, "applied": False, "error": f"{type(exc).__name__}: {exc}"}
+    return {"ok": True, **out}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,11 +100,16 @@ def main(argv: list[str] | None = None) -> int:
         out = expire_satisfied_overlays(apply=True)
     elif args.research_id:
         out = worker.run_research_id(args.research_id)
-    elif args.drain:
-        out = worker.run_once(limit=max(1, args.max))
     else:
-        # default --once
-        out = worker.run_once(limit=1)
+        if args.drain:
+            out = worker.run_once(limit=max(1, args.max))
+        else:
+            # default --once
+            out = worker.run_once(limit=1)
+        # The scheduled drain is this worker's run (`--drain … --json`, every 15 min): close
+        # challenges that went stale since the last tick before processing new research.
+        if isinstance(out, dict):
+            out["challenge_drain"] = drain_stale_challenges()
 
     if args.json:
         print(json.dumps(out, indent=2, default=str))
