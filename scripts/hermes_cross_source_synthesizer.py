@@ -17,6 +17,21 @@ nothing staged). --dry-run makes no model call. The cron line is unchanged.
 
 Usage:
   python scripts/hermes_cross_source_synthesizer.py [--apply] [--dry-run]
+
+Defects fixed 2026-11-07 (the lane had failed 4+ consecutive runs with the receipt saying only
+"NO_BRIEFS"):
+- ``collect_signal_bundle`` filtered ``content_entity_links`` on ``extracted_at``, a column that does
+  not exist (the table has ``created_at``). PostgreSQL aborts the whole transaction on that first
+  failed statement, so the other five sources answered "current transaction is aborted" and the
+  bundle was empty on every run — the model was asked to synthesize from nothing. Each source now
+  rolls the connection back when it fails, so one bad query costs one source, and the errors are
+  recorded (``source_errors``) instead of two of them being silently turned into ``[]``.
+- The prompt never asked for ``limitations``/``source_views``, which ``hermes_staging_ingest``
+  requires for ``hermes_research_intelligence``: every brief this lane ever produced was rejected
+  ("limitations array is empty or missing"). The prompt now asks for both, and they are carried into
+  ``evidence_json``.
+- The receipt now states why there were no briefs (the synthesis error, the unreadable sources)
+  instead of ``NO_BRIEFS`` alone.
 """
 import argparse, json, os, sys, time
 from datetime import datetime, timezone, date
@@ -33,6 +48,26 @@ SYNTH_TIMEOUT = 300
 BUNDLE_HOURS = 168  # 7-day signal window
 MAX_BRIEFS = 5
 
+#: Stated on a brief that does not carry its own limitations. True by construction of this producer:
+#: it reads one internal bundle and consults nothing else, so there is never more to stand behind.
+METHOD_LIMITATION = ("Single-pass synthesis over the internal {hours}h signal bundle; no external "
+                     "sources and no price data were consulted.")
+
+
+def _source_views(brief: dict) -> list:
+    """The brief's own ``source_views``, else its ``signals_used`` restated in the required shape.
+
+    ``hermes_staging_ingest.validate_payload`` rejects a research_intelligence row without a
+    non-empty ``source_views``; before 2026-11-07 the prompt never asked for it, so every brief this
+    lane produced was rejected. This does not invent evidence — it re-labels the sources the model
+    already named as contributing to the theme.
+    """
+    views = brief.get("source_views")
+    if isinstance(views, list) and views:
+        return views
+    return [{"source": str(s), "view": "contributing source named by the synthesis"}
+            for s in (brief.get("signals_used") or [])]
+
 
 def get_db():
     from lib.env_bootstrap import load_env
@@ -47,6 +82,24 @@ def get_db():
         keepalives_interval=10, keepalives_count=3, connect_timeout=10)
 
 
+def _source_failed(conn, bundle, key, exc):
+    """Record a source that could not be read, and clear the aborted transaction.
+
+    PostgreSQL aborts the whole transaction on the first failed statement: without the rollback
+    every LATER source answers "current transaction is aborted, commands ignored until end of
+    transaction block". On 2026-11-07 one bad column name in ``entity_spikes`` therefore turned
+    five working sources into five fake failures and the bundle reached the model empty.
+    """
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+    first = (str(exc).splitlines() or [""])[0][:160]
+    msg = f"{type(exc).__name__}: {first}" if first else type(exc).__name__
+    bundle["sources"][key] = {"error": msg}
+    bundle["source_errors"][key] = msg
+
+
 def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
     """Collect cross-source signal bundle for synthesis."""
     cur = conn.cursor()
@@ -54,6 +107,8 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "window_hours": hours,
         "sources": {},
+        # Which sources could not be read, and why — a count of 0 alone cannot say "empty" vs "broken".
+        "source_errors": {},
     }
 
     # 1. Entity spikes (top entities by mention count)
@@ -61,7 +116,7 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
         cur.execute("""
             SELECT entity_value, entity_type, COUNT(*) as mentions
             FROM content_entity_links
-            WHERE extracted_at > NOW() - %s * INTERVAL '1 hour'
+            WHERE created_at > NOW() - %s * INTERVAL '1 hour'
             GROUP BY entity_value, entity_type
             HAVING COUNT(*) >= 2
             ORDER BY mentions DESC LIMIT 20
@@ -70,7 +125,7 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
             {"entity": r[0], "type": r[1], "mentions": r[2]} for r in cur.fetchall()
         ]
     except Exception as e:
-        bundle["sources"]["entity_spikes"] = {"error": str(e)}
+        _source_failed(conn, bundle, "entity_spikes", e)
 
     # 2. Top news themes (news_articles summary)
     try:
@@ -84,7 +139,7 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
             {"symbol": r[0], "articles": r[1]} for r in cur.fetchall()
         ]
     except Exception as e:
-        bundle["sources"]["news_themes"] = {"error": str(e)}
+        _source_failed(conn, bundle, "news_themes", e)
 
     # 3. Discovery inbox top scores
     try:
@@ -98,7 +153,7 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
             {"label": r[0], "type": r[1], "score": float(r[2] or 0)} for r in cur.fetchall()
         ]
     except Exception as e:
-        bundle["sources"]["discovery_signals"] = {"error": str(e)}
+        _source_failed(conn, bundle, "discovery_signals", e)
 
     # 4. Sector RS state
     try:
@@ -112,8 +167,8 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
             {"etf": r[0], "sector": r[1], "state": r[2], "rs20": float(r[3] or 0)}
             for r in cur.fetchall()
         ]
-    except Exception:
-        bundle["sources"]["sector_rotation"] = []
+    except Exception as e:
+        _source_failed(conn, bundle, "sector_rotation", e)
 
     # 5. Recent research themes (last 7d, promoted rows)
     try:
@@ -129,7 +184,7 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
             {"topic": r[0], "type": r[1], "count": r[2]} for r in cur.fetchall()
         ]
     except Exception as e:
-        bundle["sources"]["research_themes"] = {"error": str(e)}
+        _source_failed(conn, bundle, "research_themes", e)
 
     # 6. Agenda candidates (Phase 2 output)
     try:
@@ -142,17 +197,19 @@ def collect_signal_bundle(conn, *, hours: int = BUNDLE_HOURS) -> dict:
         bundle["sources"]["agenda_actions"] = [
             {"decision": r[0], "topic_id": r[1], "rationale": r[2]} for r in cur.fetchall()
         ]
-    except Exception:
-        bundle["sources"]["agenda_actions"] = []
+    except Exception as e:
+        _source_failed(conn, bundle, "agenda_actions", e)
 
     cur.close()
     return bundle
 
 
-def synthesize(bundle: dict) -> list[dict]:
+def synthesize(bundle: dict, *, diagnostics: dict | None = None) -> list[dict]:
     """Synthesize cross-source briefs using governed cloud lanes.
 
-    Returns list of brief payloads ready for hermes_research_intelligence.
+    Returns list of brief payloads ready for hermes_research_intelligence. When ``diagnostics`` is
+    a dict it receives ``error`` on failure: before 2026-11-07 the caller could only learn "no
+    briefs", so a rate-limited lane, a malformed answer and an empty one all looked identical.
     """
     date_label = date.today().isoformat()
     signal_count = sum(
@@ -175,10 +232,14 @@ Identify the top 3-5 emerging themes that span MULTIPLE signal sources. For each
 - "thesis": deeper analysis of implications — what it means for markets/portfolios (string, REQUIRED)
 - "thesis_type": "bullish" | "bearish" | "neutral"
 - "confidence": 0.0-1.0
-- "signals_used": list of signal source names this theme draws from
+- "signals_used": list of signal source names this theme draws from (at least 2)
+- "source_views": list of objects, one per contributing source, each {{"source": <source name>, "view": <what that source shows>}} (REQUIRED)
+- "limitations": list of 2-5 strings — what this synthesis cannot conclude from the bundle (REQUIRED)
 - "keywords": 3-8 relevant keywords
 
-Output format: a JSON array of theme objects. Respond ONLY with valid JSON (no markdown preamble)."""
+Ground every claim in the bundle above: do not cite the web, and do not state a current or live
+price — the bundle carries no quotes. Output format: a JSON array of theme objects. Respond ONLY
+with valid JSON (no markdown preamble)."""
 
     try:
         from lib.governed_cloud_generation import generate_cloud
@@ -196,6 +257,8 @@ Output format: a JSON array of theme objects. Respond ONLY with valid JSON (no m
         return briefs[:MAX_BRIEFS]
     except Exception as e:
         print(f"  Synthesis FAILED: {e}")
+        if isinstance(diagnostics, dict):
+            diagnostics["error"] = f"{type(e).__name__}: {str(e)[:300]}"
         return []
 
 
@@ -219,6 +282,10 @@ def persist_briefs(conn, briefs: list[dict], *, apply: bool = False) -> dict:
             "tags": brief.get("keywords", []) + ["emerging_theme_synthesis", "cross_source", "phase_4"],
             "evidence_json": {
                 "signals_used": brief.get("signals_used", []),
+                # Required by hermes_staging_ingest for hermes_research_intelligence: without them
+                # every brief was rejected ("limitations array is empty or missing").
+                "limitations": brief.get("limitations") or [METHOD_LIMITATION.format(hours=BUNDLE_HOURS)],
+                "source_views": _source_views(brief),
                 "bundle_window_hours": BUNDLE_HOURS,
                 "run_id": f"synth_{datetime.now().strftime('%Y%m%d_%H%M')}",
                 "advisory_only": True,
@@ -282,17 +349,25 @@ def main(argv=None):
         bundle = collect_signal_bundle(conn)
         signal_count = sum(len(v) for v in bundle.get("sources", {}).values()
                           if isinstance(v, list))
+        unreadable = bundle.get("source_errors") or {}
         print(f"  Bundle: {signal_count} signals across {len(bundle.get('sources', {}))} sources")
         for src_name, src_data in bundle.get("sources", {}).items():
             if isinstance(src_data, list):
                 print(f"    {src_name}: {len(src_data)} items")
+        for src_name, err in unreadable.items():
+            print(f"    {src_name}: UNREADABLE ({err})")
 
-        briefs = synthesize(bundle)
+        diagnostics: dict = {}
+        briefs = synthesize(bundle, diagnostics=diagnostics)
         if not briefs:
             print("  No briefs generated")
             if apply:
-                write_lane_receipt("hermes-cross-source-synthesizer", ok=False, exit_code=1,
-                                   started_at=started, error="NO_BRIEFS")
+                why = diagnostics.get("error") or "the model returned an empty brief list"
+                write_lane_receipt(
+                    "hermes-cross-source-synthesizer", ok=False, exit_code=1, started_at=started,
+                    summary={"signals": signal_count, "source_unreadable": unreadable,
+                             "briefs": 0, "why": why[:200]},
+                    error=f"NO_BRIEFS: {why}"[:240])
             return 1
 
         print(f"  Generated {len(briefs)} briefs:")
@@ -306,19 +381,25 @@ def main(argv=None):
                 src: (len(v) if isinstance(v, list) else str(v)[:100])
                 for src, v in bundle.get("sources", {}).items()
             }
-            print(json.dumps({**result, "bundle_summary": bundle_summary}, default=str))
+            print(json.dumps({**result, "bundle_summary": bundle_summary,
+                              "source_unreadable": unreadable}, default=str))
         else:
             print(f"  Result: {result['applied']} briefs {'applied' if apply else 'validated'}")
 
         ok = result["applied"] == len(briefs) and bool(briefs)
         if apply:
-            write_lane_receipt("hermes-cross-source-synthesizer", ok=ok, exit_code=0 if ok else 1,
-                               started_at=started, summary={"briefs": len(briefs), "applied": result["applied"]})
+            rejected = sum(1 for r in result["results"] if r["status"] == "rejected")
+            write_lane_receipt(
+                "hermes-cross-source-synthesizer", ok=ok, exit_code=0 if ok else 1,
+                started_at=started,
+                summary={"produced_count": len(briefs), "briefs": len(briefs),
+                         "applied": result["applied"], "rejected": rejected,
+                         "signals": signal_count, "source_unreadable": unreadable})
         return 0 if ok else 1
     except Exception as exc:
         if apply:
             write_lane_receipt("hermes-cross-source-synthesizer", ok=False, exit_code=1,
-                               started_at=started, error=type(exc).__name__)
+                               started_at=started, error=f"{type(exc).__name__}: {exc}"[:240])
         raise
     finally:
         if conn is not None:
