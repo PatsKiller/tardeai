@@ -41,6 +41,21 @@ PROCESS_ID = "multi_tier_trade_reviewer"
 
 log = logging.getLogger("multi_tier_reviewer")
 
+
+class LaneRefused(RuntimeError):
+    """The model lane produced no text AND said why. ``reason`` is that why, verbatim.
+
+    Until 2026-11-07 every generator swallowed its exception and returned None, so a governed-lane
+    refusal and an empty completion were indistinguishable to the caller: the result said
+    ``empty_response`` and the receipt said ``one or more trade reviews failed``. The weekly tier
+    failed this way for weeks — "manual approval required for multi_tier_trade_reviewer (chatgpt)"
+    was in the log and in no receipt, so the lane row could not prove what was wrong with it.
+    """
+    def __init__(self, lane: str, error: Exception | str):
+        self.lane = lane
+        self.reason = f"{lane} lane refused: {error}"[:300]
+        super().__init__(self.reason)
+
 # ── Advisory cloud review (ChatGPT+Grok) gating ──────────────────────────
 # OFF by default; opt in with CLOUD_REVIEW=1. Capped per run to avoid slow fan-out.
 CLOUD_REVIEW_ENABLED = os.getenv("CLOUD_REVIEW", "0") == "1"
@@ -106,7 +121,7 @@ def _generate_deepseek(prompt, max_tokens=800, temperature=0.3):
         )
     except Exception as exc:
         log.warning("Governed DeepSeek review failed: %s", exc)
-        return None
+        raise LaneRefused("deepseek-flash", exc) from exc
 
 
 def _generate_openai(prompt, model, max_tokens=1500, temperature=0.5):
@@ -139,7 +154,7 @@ def _generate_openai(prompt, model, max_tokens=1500, temperature=0.5):
         )
     except Exception as e:                                       # noqa: BLE001
         log.warning(f"Governed ChatGPT lane {model} failed: {e}")
-    return None
+        raise LaneRefused("chatgpt", e) from e
 
 
 def _generate_anthropic(prompt, model, max_tokens=2000, temperature=0.5):
@@ -149,16 +164,18 @@ def _generate_anthropic(prompt, model, max_tokens=2000, temperature=0.5):
         api_key = os.getenv("ANTHROPIC_API_KEY", "")
         if not api_key:
             log.warning("No ANTHROPIC_API_KEY set")
-            return None
+            raise LaneRefused("anthropic", "no ANTHROPIC_API_KEY set")
         client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model=model, max_tokens=max_tokens, temperature=temperature,
             messages=[{"role": "user", "content": prompt}],
         )
         return msg.content[0].text if msg.content else None
+    except LaneRefused:
+        raise
     except Exception as e:
         log.warning(f"Anthropic {model} failed: {e}")
-    return None
+        raise LaneRefused("anthropic", e) from e
 
 
 def _generate(prompt, tier):
@@ -439,10 +456,17 @@ def review_trade(conn, trade, tier, dry_run=False):
         return {"success": True, "dry_run": True}
 
     log.info(f"Reviewing {symbol} #{trade_id} with {cfg['model']} ({tier})...")
-    raw = _generate(prompt, tier)
+    try:
+        raw = _generate(prompt, tier)
+    except LaneRefused as exc:
+        # The gate's own words, in the result and in the receipt — not "empty_response".
+        log.warning(f"{symbol} #{trade_id} ({tier}): {exc.reason}")
+        return {"success": False, "symbol": symbol, "tier": tier, "model": cfg['model'],
+                "error": exc.reason}
     if not raw:
         log.warning(f"LLM returned empty for {symbol} ({tier})")
-        return {"success": False, "error": "empty_response"}
+        return {"success": False, "symbol": symbol, "tier": tier, "model": cfg['model'],
+                "error": "empty_response"}
 
     # Parse JSON
     parsed = None
@@ -514,14 +538,26 @@ def run_tier(tier, trade_id=None, dry_run=False):
             prior_by_id[t['id']] = _get_existing_reviews(conn, t['id'])
 
         weekly_prompt = _build_weekly_prompt(trades, prior_by_id, tier)
+        summary_error = None
         if not dry_run:
-            raw = _generate(weekly_prompt, tier)
-            if raw:
-                _save_weekly_summary(conn, tier, cfg['model'], raw[:3000], len(trades), raw)
-                log.info(f"Weekly summary saved ({len(trades)} trades, {cfg['model']})")
+            try:
+                raw = _generate(weekly_prompt, tier)
+            except LaneRefused as exc:
+                summary_error = exc.reason
+                log.warning(f"Weekly summary not generated: {exc.reason}")
+            else:
+                if raw:
+                    _save_weekly_summary(conn, tier, cfg['model'], raw[:3000], len(trades), raw)
+                    log.info(f"Weekly summary saved ({len(trades)} trades, {cfg['model']})")
+                else:
+                    summary_error = f"{cfg['provider']} lane returned an empty completion"
+                    log.warning("Weekly summary not generated: empty completion")
 
         conn.close()
-        return {"tier": tier, "trades_reviewed": len(trades), "results": results}
+        out = {"tier": tier, "trades_reviewed": len(trades), "results": results}
+        if summary_error:
+            out["summary_error"] = summary_error
+        return out
 
     elif tier == "monthly":
         # Review all weekly summaries from past month + any flagged trades
@@ -548,14 +584,26 @@ def run_tier(tier, trade_id=None, dry_run=False):
             prior_by_id[t['id']] = _get_existing_reviews(conn, t['id'])
 
         monthly_prompt = _build_weekly_prompt(trades, prior_by_id, tier)
+        summary_error = None
         if not dry_run:
-            raw = _generate(monthly_prompt, tier)
-            if raw:
-                _save_weekly_summary(conn, tier, cfg['model'], raw[:5000], len(trades), raw)
-                log.info(f"Monthly summary saved ({len(trades)} trades, {cfg['model']})")
+            try:
+                raw = _generate(monthly_prompt, tier)
+            except LaneRefused as exc:
+                summary_error = exc.reason
+                log.warning(f"Monthly summary not generated: {exc.reason}")
+            else:
+                if raw:
+                    _save_weekly_summary(conn, tier, cfg['model'], raw[:5000], len(trades), raw)
+                    log.info(f"Monthly summary saved ({len(trades)} trades, {cfg['model']})")
+                else:
+                    summary_error = f"{cfg['provider']} lane returned an empty completion"
+                    log.warning("Monthly summary not generated: empty completion")
 
         conn.close()
-        return {"tier": tier, "trades_reviewed": len(trades)}
+        out = {"tier": tier, "trades_reviewed": len(trades)}
+        if summary_error:
+            out["summary_error"] = summary_error
+        return out
 
     else:
         return {"error": f"Unknown tier: {tier}"}
@@ -573,14 +621,32 @@ def run_tier(tier, trade_id=None, dry_run=False):
 def run_outcome(result):
     """(ok, exit_code) for one run. No closed trades is a clean no-op, not a failure; a review the
     model lane refused (e.g. "manual approval required") or returned empty for IS a failure, so the
-    nightly run stops reporting exit 0 while reviewing nothing (cron:L401, 4/4 runs 10-06..10-09)."""
+    nightly run stops reporting exit 0 while reviewing nothing (cron:L401, 4/4 runs 10-06..10-09).
+
+    A summary the lane refused is a failure too: the monthly tier writes NO per-trade results, so
+    before 2026-11-07 its receipt was exit 0 with trades_reviewed > 0 and no summary at all.
+    """
     if result.get("error"):
         return False, 2
     results = result.get("results") or []
     failed = sum(1 for r in results if not r.get("success"))
-    if failed:
+    if failed or result.get("summary_error"):
         return False, 1
     return True, 0
+
+
+def _failed_reasons(results, limit=5):
+    """The first few distinct failure reasons, verbatim and bounded — a receipt has to name the gate."""
+    seen = []
+    for entry in results:
+        r = entry or {}
+        reason = r.get("error")
+        if r.get("success") or not reason or reason in seen:
+            continue
+        seen.append(reason)
+        if len(seen) >= limit:
+            break
+    return seen
 
 
 def main(argv=None):
@@ -606,11 +672,19 @@ def main(argv=None):
     print(json.dumps(result, indent=2, default=str))
     if not args.dry_run:
         results = result.get("results") or []
+        summary = {"tier": args.tier, "trades_reviewed": result.get("trades_reviewed", 0),
+                   "succeeded": sum(1 for r in results if r.get("success")),
+                   "failed": sum(1 for r in results if not r.get("success"))}
+        reasons = _failed_reasons(results)
+        if reasons:
+            summary["failed_reasons"] = reasons
+        if result.get("summary_error"):
+            summary["summary_error"] = result["summary_error"]
         _receipt(args.tier, ok=ok, exit_code=code, started_at=started_at,
-                 error=None if ok else (result.get("error") or "one or more trade reviews failed"),
-                 summary={"tier": args.tier, "trades_reviewed": result.get("trades_reviewed", 0),
-                          "succeeded": sum(1 for r in results if r.get("success")),
-                          "failed": sum(1 for r in results if not r.get("success"))})
+                 error=None if ok else (result.get("error") or result.get("summary_error")
+                                        or (reasons[0] if reasons else None)
+                                        or "one or more trade reviews failed"),
+                 summary=summary)
     return code
 
 
