@@ -622,9 +622,22 @@ ENGINE_REL = ("data", "runtime", "defense_engine_latest.json")  # resolved under
 
 def _build_projection_in_process(now: datetime):
     """Read-only in-process build of the defense projection with the same builder the
-    defense-engine-build lane runs (scripts/defense_engine_build.py). Writes nothing."""
+    defense-engine-build lane runs (scripts/defense_engine_build.py), fed live stops (cio_truth.resolve via
+    lib.defense_stops_slice, host side) so a dry run sees what a live one would. Writes nothing."""
     import defense_engine_build as _deb
-    return _deb.build(ROOT, now=now)
+    from lib.defense_stops_slice import resolve_live
+    truth, _gap = resolve_live(ROOT)
+    return _deb.build(ROOT, now=now, truth=truth)
+
+
+def _refresh_stops_slice(dry_run: bool) -> dict:
+    """Refresh data/runtime/defense_stops_slice_latest.json (DefenseStopsSlice@v1), the stops input the
+    n8n-safe builder reads. Host side; never written on dry_run; fail soft."""
+    try:
+        from lib.defense_stops_slice import refresh
+        return refresh(ROOT, dry_run=dry_run)
+    except Exception as e:  # noqa: BLE001 - a failed slice refresh must not break the evaluation
+        return {"wrote": False, "error": f"{type(e).__name__}: {e}"[:300]}
 
 
 def _write_projection(doc: dict) -> str | None:
@@ -816,6 +829,9 @@ if __name__ == "__main__":
     from lib.market_risk.stoplight_notify import load_config as _notify_config
     _dry = "--dry-run" in sys.argv[1:]
     conn = _get_conn(); cur = conn.cursor()
+    _sl = _refresh_stops_slice(_dry)
+    print(f"stops_slice: wrote={_sl.get('wrote')} rows={_sl.get('rows')} as_of={_sl.get('as_of')} "
+          f"error={_sl.get('error')}" + (" (DRY RUN — not written)" if _dry else ""))
     r = evaluate_all(cur, conn, notify=bool(_notify_config().get("enabled")), dry_run=_dry,
                      build_projection=_build_projection_in_process)
     _ts = r.get("thesis_source") or {}

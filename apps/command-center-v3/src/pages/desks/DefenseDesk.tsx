@@ -29,7 +29,9 @@ export default function DefenseDesk() {
   const projection = desk.data && typeof desk.data === 'object' && 'tabs' in desk.data ? desk.data : null
   const ep = unwrapProjection(engine.data)
   const sources: DeskSource[] = [
-    ...(ep ? [{ id: 'defense-engine', label: 'Defense engine', asOf: ep.generated_at, laneIds: ['defense-engine-build'], gap: ep.served?.stale ? ep.served.fallback_reason ?? 'served stale' : undefined }]
+    // Writer of record: the 17:55 inverse-stoplights cron builds and writes the projection today; switch to the
+    // defense-engine-build lane id when that n8n lane is promoted past dry-run (config/n8n_run_allowlist.json).
+    ...(ep ? [{ id: 'defense-engine', label: 'Defense engine', asOf: ep.generated_at, laneIds: ['defense-inverse-stoplights'], gap: ep.served?.stale ? ep.served.fallback_reason ?? 'served stale' : undefined }]
       : [{ id: 'defense-engine', label: 'Defense engine', gap: engine.loading ? 'Loading the defense projection.' : 'The defense projection has not answered.' }]),
     ...(projection
       ? projection.sources.map(s => ({ id: s.id, label: s.label, asOf: s.as_of, laneIds: s.lane_ids, maxAgeHours: s.max_age_hours, gap: s.gap ?? undefined }))

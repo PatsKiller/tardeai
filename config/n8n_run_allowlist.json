@@ -4701,7 +4701,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "A --cycle run makes no model call, but the module's live-mode provider-key path exists and reads HOME-relative paths; report until a run with enforce mode is proven for the dry cycle.",
       "env_evidence": "scripts/self_heal_fixer.py: state_root() reads TRADEAI_STATE_ROOT (default under HOME); provider key_file and {home} substitution read HOME. The D1 package executed the dry cycle with rc=0 and no model call.",
-      "source": "Operator decision 2026-11-04 (D11 shadow): n8n runs the fixer's dry cycle only; live execution remains the host lane self-heal-fixer (PAUSED, KEEP_ON_CRON). AGENTS \u00a724.5: no push, PR or remote write from a scheduled job."
+      "source": "Operator decision 2026-11-04 (D11 shadow): n8n runs the fixer's dry cycle only; live execution remains the host lane self-heal-fixer (PAUSED, KEEP_ON_CRON). AGENTS §24.5: no push, PR or remote write from a scheduled job."
     },
     {
       "lane_id": "defense-cash-alternatives",
@@ -4785,8 +4785,37 @@
       "env_report_reason": "report until the import closure is re-inventoried for enforce; no broker, sender or model name is read.",
       "env_evidence": "scripts/unit_run_snapshot.py: names listed are the only process env it reads (DB_* via psycopg2 connect where present; TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT via lib.lane_last_receipt.runtime_dir); TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
       "source": "Operator decision 2026-11-06 (stale Command Center sources become n8n lanes, not retired), relayed by claude-lead. n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run reads and prints only. Canary live_arg (separate PR): [\"--apply\"]."
+    },
+    {
+      "lane_id": "defense-engine-build",
+      "command": [
+        "$PY",
+        "scripts/defense_engine_build.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_defense_engine_build.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/defense_engine_latest.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "MARKET_RISK_EPISODES_PATH",
+        "MARKET_RISK_SENT_LEDGER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "Rehearsal only (live_arg null). The book join's DB read goes through session13_db -> lib/env_bootstrap, whose loaded names are bound at run time; report until an enforce-mode dry run is observed.",
+      "env_evidence": "scripts/defense_engine_build.py -> lib/market_risk_book_join.py (MARKET_RISK_SENT_LEDGER; TRADEAI_STATE_ROOT and HOME are executor base names) -> session13_db.py (DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD); lib/market_risk/escalation.py (MARKET_RISK_EPISODES_PATH). Stops come from the stored DefenseStopsSlice@v1 file, not cio_truth.",
+      "source": "Defense option (b), claude-lead 2026-11-06: the builder's stops read moved to a stored slice (data/runtime/defense_stops_slice_latest.json, written host-side by the 17:55 defense-inverse-stoplights cron) so its import closure reaches no broker module (scripts/audit_lane_transitive_capabilities.py; tests/test_defense_engine_lane_reach.py) with no baseline exception. Rehearsing: dry_run_arg --dry-run prints the projection and writes nothing; live_arg null, so a live request is refused as data. No workflow, no registry dispatch, not in the relay live-lanes list. Promotion (live_arg, registry row, workflow) is a separate reviewed change."
     }
-],
+  ],
   "blocked_reasons": {
     "n8n-activation-grants": "AGENTS 3.0.0 §23.10 P16 read-only checker (scripts/check_n8n_activation_grants.py). Blocked 2026-10-09 by the allowlist's own safety test: the command path, the receipt name n8n_activation_grants_last.json and any natural lock name contain the gateway FORBIDDEN_ROUTE_TOKENS token 'grant'. The check is read-only, but renaming the entrypoint to dodge the token or exempting it is an operator decision, not an agent's. Registry row NEVER_SCHEDULED; no workflow generated.",
     "dof-run-pipeline": "AGENTS 23.3 forbids a DOF SQL path; the six-stage runner contains SQL writers and a model-scoring stage. No foreign cwd/interpreter contract, shared cron lock, nonzero aggregate failure exit, dry-run or stable receipt. Keep outside runnable lanes until supervisor/operator resolves authority and producer contracts.",
