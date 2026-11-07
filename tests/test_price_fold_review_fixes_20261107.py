@@ -48,3 +48,15 @@ def test_defense_market_quote_carries_provider_and_yfinance_is_not_fresh():
     row = out["CCC"]
     assert row["source"] == "market_quotes:yfinance"
     assert row["stale"] is True  # a yfinance quote is never a fresh mark
+
+
+def test_api_v2_fresh_batch_refuses_yfinance(monkeypatch):
+    import api_v2
+    from lib.data_broker import market_quote
+
+    def fake_batch(q, syms, **kw):
+        return {"AAA": {"price": 5.0, "as_of": None, "source": "data_broker.market_quotes:yfinance"},
+                "BBB": {"price": 6.0, "as_of": None, "source": "finviz_quote_cache"}}
+    monkeypatch.setattr(market_quote, "get_price_batch", fake_batch)
+    out = api_v2._fresh_price_batch(["AAA", "BBB"])
+    assert "AAA" not in out and out["BBB"]["price"] == 6.0

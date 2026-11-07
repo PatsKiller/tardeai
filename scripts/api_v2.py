@@ -3237,6 +3237,112 @@ def _db_query(sql, params=None, fetch="all"):
         return None
 
 
+#: Operator price rule (operator 2026-11-07): a live price is a Finviz quote fetched within 30 minutes
+#: (finviz_quote_cache.json), else a fresh Schwab/Alpaca/moomoo quote. A stored market_quotes row older
+#: than 30 minutes is stale and is never served as a current price. Same bound as
+#: positions.price_stale_after_s in config/portfolio_positions.yaml.
+FRESH_PRICE_MAX_AGE_HOURS = 0.5
+
+
+def _iso_quote_time(value):
+    """A quote timestamp as ISO-8601 with its own offset (None stays None).
+
+    The Finviz cache writes ``2026-11-07 00:15:02 ET``; every freshness helper downstream parses ISO,
+    so an unparsed ``… ET`` string would read as DATA_UNAVAILABLE and the fresh price would be dropped.
+    An unrecognised string is returned unchanged — callers then treat its age as unknown, never fresh.
+    """
+    s = str(value or "").strip()
+    if not s:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S ET").replace(tzinfo=ZoneInfo("America/New_York")).isoformat()
+    except ValueError:
+        return s
+
+
+def _fresh_price_batch(symbols, *, live=False):
+    """{SYMBOL: {price, chg_pct, as_of, source}} under the operator price rule (2026-11-07).
+
+    One price source for api_v2's request paths: the shared data-broker read
+    (lib.data_broker.market_quote.get_price_batch — the Finviz cache first, then a market_quotes row)
+    bounded to 30 minutes, so a symbol with no current price is ABSENT instead of being served at its
+    last stored value. ``live=False`` keeps bulk pages (watchlist, rotation review) off the provider
+    waterfall; a single-symbol request path may pass ``live=True`` for the bounded quote-only fallback
+    (Schwab/Alpaca/moomoo). No new fetcher is written here: this is the shared helper only.
+    """
+    syms = [str(s or "").upper().strip() for s in symbols or [] if str(s or "").strip()]
+    if not syms:
+        return {}
+    try:
+        from lib.data_broker.market_quote import get_price_batch
+
+        batch = get_price_batch(_db_query, syms, max_age_hours=FRESH_PRICE_MAX_AGE_HOURS, skip_live=not live) or {}
+    except Exception:  # noqa: BLE001 — an unreadable quote source means "no price", never a stale one
+        return {}
+    out = {}
+    for sym, q in batch.items():
+        if not isinstance(q, dict) or q.get("price") is None:
+            continue
+        if "yfinance" in str(q.get("source") or "").lower():
+            continue  # operator 2026-11-07: a yfinance quote is never a current price
+        try:
+            price = float(q["price"])
+        except (TypeError, ValueError):
+            continue
+        if price <= 0:
+            continue
+        out[str(sym).upper()] = {
+            "price": price,
+            "chg_pct": q.get("chg_pct"),
+            "as_of": _iso_quote_time(q.get("as_of")),
+            "source": q.get("source") or "unknown",
+        }
+    return out
+
+
+def _canonical_quotes_fresh(symbols):
+    """Canonical Watch quote artifacts with the operator price rule applied BEFORE composition.
+
+    lib.watch_canonical_quote.batch_canonical_quotes() chooses between market_quotes and the
+    watchlist enrichment snapshot — both stored rows, of any age. A current price (Finviz ≤30 min,
+    else a fresh broker row) replaces that choice, and the quote's own identity, observation time,
+    session and freshness state travel WITH it (the same-record contract). Without a current price
+    the stored selector's answer stands, flagged by its own freshness state — never silently fresh.
+
+    This is the batch_fn hook of apply_canonical_quote_overlay(): every field it returns describes
+    the one record the price came from.
+    """
+    from lib.watch_canonical_quote import batch_canonical_quotes as _batch
+    from lib.watch_canonical_quote import derive_freshness as _freshness
+
+    syms = [str(s or "").upper() for s in symbols or [] if s]
+    arts = _batch(syms) if syms else {}
+    for sym, q in _fresh_price_batch(syms).items():
+        state, session = _freshness(q["as_of"], hold_last_close=True)
+        if state == "DATA_UNAVAILABLE":
+            continue
+        src = str(q["source"])
+        ident = f"{src}:{q['as_of']}"
+        arts[sym] = {
+            "symbol": sym,
+            "last": q["price"],
+            "day_change_pct": q.get("chg_pct"),
+            "price_as_of": q["as_of"],
+            "observed_at": q["as_of"],
+            "price_source": src,
+            "quote_id": ident,
+            "source_record_id": ident,
+            "market_session": session,
+            "freshness_state": state,
+            "market_state": "OK" if state != "STALE" else "STALE",
+            "missing": [],
+            "winning_branch": src,
+        }
+    return arts
+
+
 def _system_pipeline_health():
     """GET /api/v2/system/pipeline-health — one aggregated view of every pipeline stage's
     live numbers: ingestion → curation → LLM → RAG → jobs → hermes. Read-only.
@@ -4556,6 +4662,41 @@ def _pp_cfg_dust_usd() -> float:
         return 50.0
 
 
+def _holding_price_fallback(position, t_snap, e_cache):
+    """(price, source, as_of) for a holding with NO current quote and NO stored mark.
+
+    A technical-snapshot price is labelled as such. When the technicals have no price either and the
+    BROKER itself reports no market value — Schwab's delisted-CUSIP rows carry broker_market_value 0.0
+    and broker_position_price 0.0 — the row is labelled with the broker ("schwab: no market value").
+    Labelling that zero "technical_snapshot" invented a data source for a number the technicals never
+    produced (LQ-20261107-07: CUSIPs 543354104, 628518102, 12507E201).
+    """
+    tech_price = None
+    for src in (t_snap or {}, e_cache or {}):
+        if isinstance(src, dict) and src.get("price") is not None:
+            tech_price = src.get("price")
+            break
+    try:
+        px = float(tech_price) if tech_price is not None else 0.0
+    except (TypeError, ValueError):
+        px = 0.0
+    if px > 0:
+        return px, "technical_snapshot", _json_clean((t_snap or {}).get("as_of") or (e_cache or {}).get("as_of") or "")
+    mv = position.get("broker_market_value")
+    try:
+        broker_mv = float(mv) if mv not in (None, "") else None
+    except (TypeError, ValueError):
+        broker_mv = None
+    if position.get("delisted") is True or broker_mv == 0.0:
+        broker = str(position.get("broker") or str(position.get("account") or "").split("_")[0] or "broker").lower()
+        return (
+            0.0,
+            f"{broker}: no market value",
+            _json_clean(position.get("last_reconciled_at") or position.get("updated_at") or ""),
+        )
+    return px, "technical_snapshot", _json_clean((t_snap or {}).get("as_of") or (e_cache or {}).get("as_of") or "")
+
+
 def portfolio_holdings():
     h = _load_json(STATE_DIR / "holdings.json") or {}
     ec = _load_json(STATE_DIR / "ticker_enrichment_cache.json") or {}
@@ -4862,13 +5003,9 @@ def portfolio_holdings():
             _px, _px_source = float(_mark["price"]), _mark["source"]
             _price_as_of = _mark["as_of"] or ""
         else:
-            _tp = _pick(t_snap, e_cache, key="price")
-            try:
-                _px = float(_tp) if _tp is not None else 0.0
-            except (TypeError, ValueError):
-                _px = 0.0
-            _px_source = "technical_snapshot"
-            _price_as_of = _json_clean(t_snap.get("as_of") or e_cache.get("as_of") or "")
+            # No fresh quote and no stored mark: technicals if they have a price, else the BROKER's own
+            # answer ($0 broker rows are labelled with the broker, not "technical_snapshot").
+            _px, _px_source, _price_as_of = _holding_price_fallback(p, t_snap, e_cache)
         _px_live = bool(_mark.get("live")) and _px > 0
         _px_stale = bool(_mark.get("stale"))
         # Stamp the price with WHEN its source was fetched (protective-stop freshness gate). It is the
@@ -10023,10 +10160,17 @@ def _wl_items(query: dict = None):
     # Canonical quote contract: shared CASE-bound selector for both Watch
     # surfaces. Fail-closed — never leave pre-overlay legacy price/change when
     # import/DB/compose fails (no silent pass that keeps legacy prices).
+    #
+    # Operator price rule 2026-11-07 (LQ-20261107-07): the selector above chooses between two STORED
+    # snapshots (market_quotes, watchlist enrichment) and never reads the Finviz cache, so a 16:53 ET
+    # row could price a card at 00:15 ET. _canonical_quotes_fresh is the selector's batch_fn: a current
+    # price (Finviz ≤30 min, else a fresh Schwab/Alpaca/moomoo row via the shared data-broker read)
+    # replaces that choice, with its own identity and observation time. Routing the lateral join below
+    # through get_price_batch alone would change nothing — the overlay overwrites its price column.
     try:
         from lib.watch_canonical_quote import apply_canonical_quote_overlay as _apply_cq
 
-        _apply_cq(_items)
+        _apply_cq(_items, batch_fn=_canonical_quotes_fresh)
     except Exception as _cq_err:
         # Helper import/runtime broken — still fail closed, log type only.
         try:
@@ -24739,25 +24883,24 @@ RECOVERY_CASE_ACTIONS = ("create_reentry_plan", "watch", "close_case", "snooze")
 
 
 def _recovery_latest_quote(symbol: str):
-    """The newest market_quotes row for one symbol: price, its OWN observation time and source. None when absent."""
-    row = _db_query(
-        "SELECT price, source, fetched_at FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
-        (str(symbol or "").upper(),),
-        fetch="one",
-    )
-    if not isinstance(row, dict):
+    """The CURRENT price for one symbol, with its OWN observation time and source.
+
+    Operator price rule 2026-11-07: a Finviz quote ≤30 min old, else a fresh Schwab/Alpaca/moomoo
+    row via the shared data-broker read. The old read served the newest market_quotes row at any age
+    (a recovery card priced its entry/stop math off a 16:53 ET row after midnight). No current price
+    returns None, so the case reads "no current quote" instead of a stale number.
+    """
+    sym = str(symbol or "").upper().strip()
+    q = _fresh_price_batch([sym]).get(sym) if sym else None
+    if not q:
         return None
     try:
-        price = float(row.get("price")) if row.get("price") not in (None, "") else None
+        price = float(q.get("price")) if q.get("price") not in (None, "") else None
     except (TypeError, ValueError):
         price = None
     if price is None or price != price or price <= 0:
         return None
-    return {
-        "price": price,
-        "observed_at": _json_clean(row.get("fetched_at")),
-        "source": row.get("source") or "market_quotes",
-    }
+    return {"price": price, "observed_at": _json_clean(q.get("as_of")), "source": q.get("source") or "unknown"}
 
 
 def _recovery_case_projection(conn=None, quote_for=None, now=None) -> dict:
@@ -29265,15 +29408,17 @@ def _research_intelligence_stage_promote(body=None):
                 new_status = "directive_created"
 
         else:  # paper_proposal — PENDING row in the normal review chain
-            qrow = _db_query(
-                """SELECT DISTINCT ON (symbol) price FROM market_quotes
-                   WHERE upper(symbol)=%s ORDER BY symbol, fetched_at DESC""",
-                (sym,),
-                fetch="one",
-            )
-            px = float(qrow["price"]) if qrow and qrow.get("price") else None
+            # Operator price rule 2026-11-07: size off a CURRENT price (Finviz ≤30 min, else a fresh
+            # broker quote), never off a stored market_quotes row of any age. live=True is bounded
+            # (one symbol, quote-only waterfall) and this is an operator-invoked request path.
+            _q = _fresh_price_batch([sym], live=True).get(sym) or {}
+            px = float(_q["price"]) if _q.get("price") else None
             if not px or px <= 0:
-                return {"ok": False, "error": f"no current price for {sym} — cannot size a proposal"}
+                return {
+                    "ok": False,
+                    "error": f"no current price for {sym} (no Finviz or broker quote within 30 min) — "
+                    "cannot size a proposal",
+                }
             side = "short" if idea.get("side") in ("sell", "trim") else "long"
             # Advisory review levels only — operator + gates set the real plan
             stop = round(px * (1.08 if side == "short" else 0.92), 2)
@@ -48139,9 +48284,13 @@ def _rotation_summary(force=False):
                         "basis": "5-15% of the position — advisory, operator-confirmed, not auto-placed",
                         "action": "trim",
                     }
-        # ── Live prices + advisory review QUANTITIES (shares). Read-only: latest market_quotes (DB) + the
-        # holdings snapshot. No broker, no order, no live HTTP from this request. Quantities are review
-        # RANGES derived from the advisory $ range — operator confirms; nothing is sized or placed. ──
+        # ── Live prices + advisory review QUANTITIES (shares). Read-only, no order, no broker write.
+        # Operator price rule 2026-11-07 (LQ-20261107-07): the DISTINCT ON read below served a
+        # market_quotes row of ANY age, and the holdings.json fallback served a stored mark — a review
+        # range priced off either was not current. _fresh_price_batch gives Finviz ≤30 min first, then a
+        # fresh Schwab/Alpaca/moomoo row, and omits the symbol when there is no current price (the card
+        # then shows no quantity rather than an off-price one). Quantities are review RANGES — operator
+        # confirms; nothing is sized or placed.
         import re as _re3
 
         _price = {}
@@ -48157,30 +48306,15 @@ def _rotation_summary(force=False):
             for _id in research_ideas:
                 _syms.add((_id.get("from_symbol") or "").upper())
                 _syms.add((_id.get("to_symbol") or "").upper())
+            for _h in _hold_rows:  # held ETFs/funds the candidate lists may not carry
+                if not _h.get("is_cash"):
+                    _syms.add((_h.get("symbol") or "").upper())
             _syms = [s for s in _syms if _re3.fullmatch(r"[A-Z]{1,5}", s or "")]
-            if _syms:
-                from db_adapter import _get_conn as _gc3
-
-                _c3 = _gc3().cursor()
-                _c3.execute(
-                    """SELECT DISTINCT ON (symbol) symbol, price, day_change_pct
-                               FROM market_quotes WHERE symbol = ANY(%s)
-                               ORDER BY symbol, fetched_at DESC""",
-                    (_syms,),
-                )
-                for _s, _p, _dc in _c3.fetchall():
-                    if _p is not None:
-                        _price[_s.upper()] = {
-                            "price": round(float(_p), 2),
-                            "day_change_pct": round(float(_dc), 2) if _dc is not None else None,
-                        }
-            # holdings fallback (covers ETFs/funds market_quotes may lack) + held share counts
-            for _h in _hold_rows:
-                _hs = (_h.get("symbol") or "").upper()
-                if _hs and not _h.get("is_cash") and float(_h.get("price") or 0) > 0:
-                    _price.setdefault(
-                        _hs, {"price": round(float(_h.get("price")), 2), "day_change_pct": _h.get("day_change_pct")}
-                    )
+            for _s, _q in _fresh_price_batch(_syms).items():
+                _price[_s] = {
+                    "price": round(float(_q["price"]), 2),
+                    "day_change_pct": round(float(_q["chg_pct"]), 2) if _q.get("chg_pct") is not None else None,
+                }
         except Exception:
             _price = {}
 
@@ -48264,18 +48398,13 @@ def _rotation_summary(force=False):
                 )
             _eprice = {}
             try:
-                from db_adapter import _get_conn as _gce
-
-                _ce = _gce().cursor()
-                _ce.execute(
-                    """SELECT DISTINCT ON (symbol) symbol, price, day_change_pct FROM market_quotes
-                               WHERE symbol = ANY(%s) ORDER BY symbol, fetched_at DESC""",
-                    ([i["symbol"] for i in _uni],),
-                )
-                for _s, _p, _dc in _ce.fetchall():
-                    _eprice[_s.upper()] = {
-                        "price": round(float(_p), 2) if _p is not None else None,
-                        "day_change_pct": round(float(_dc), 2) if _dc is not None else None,
+                # Operator price rule 2026-11-07: the sleeve candidates carry a CURRENT price only
+                # (Finviz ≤30 min, else a fresh broker row); the old DISTINCT ON read served whichever
+                # market_quotes row was newest, of any age. No current price ⇒ price stays null.
+                for _s, _q in _fresh_price_batch([i["symbol"] for i in _uni]).items():
+                    _eprice[_s] = {
+                        "price": round(float(_q["price"]), 2),
+                        "day_change_pct": round(float(_q["chg_pct"]), 2) if _q.get("chg_pct") is not None else None,
                     }
             except Exception:
                 pass
@@ -52869,15 +52998,16 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 400, {"ok": False, "error": "valid symbol required"}
                 conn = _get_conn()
                 cur = conn.cursor()
-                cur.execute(
-                    """SELECT DISTINCT ON (symbol) price FROM market_quotes WHERE upper(symbol)=%s
-                               ORDER BY symbol, fetched_at DESC""",
-                    (sym,),
-                )
-                _r = cur.fetchone()
-                px = float(_r[0]) if _r and _r[0] else None
+                # Operator price rule 2026-11-07: the proposal's entry is a CURRENT price (Finviz ≤30 min,
+                # else a fresh broker quote), not the newest stored market_quotes row at any age. live=True
+                # is bounded: one symbol, quote-only waterfall, operator-invoked request path.
+                _q = _fresh_price_batch([sym], live=True).get(sym) or {}
+                px = float(_q["price"]) if _q.get("price") else None
                 if not px or px <= 0:
-                    return 400, {"ok": False, "error": f"no current price for {sym}"}
+                    return 400, {
+                        "ok": False,
+                        "error": f"no current price for {sym} (no Finviz or broker quote within 30 min)",
+                    }
                 # advisory review levels (placeholders; operator confirms sizing). Short profits when price falls.
                 if side == "short":
                     stop, tgt = round(px * 1.08, 2), round(px * 0.90, 2)
