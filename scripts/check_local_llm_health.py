@@ -162,16 +162,23 @@ def _check_no_unsafe_jobs():
 
 
 def _routing_blocked(resolved: str, was_blocked: bool, *, safe_model: str, retired: str,
-                     requested: str = "qwen3:14b") -> bool:
+                     requested: str = "qwen3:14b", disabled: set | None = None) -> bool:
     """A disabled model must be blocked and must never resolve to itself.
 
     2026-11-07: local generative is retired — scripts/local_llm.py is a facade over DeepSeek Flash
     and `_resolve_model("qwen3:14b")` answers ("LOCAL_GENERATIVE_RETIRED", True). The old test
     `resolved == SAFE_MODEL` therefore could never pass again, and failed the gate every week.
-    The safe model is still accepted, so the check holds if the facade is ever un-retired."""
-    if not was_blocked or not resolved:
+    The safe model is still accepted, so the check holds if the facade is ever un-retired.
+
+    A policy that disables every model (``"*"``) also satisfies the check whoever the request
+    resolves to: nothing can reach a local generative model. The request resolving to itself stays
+    a failure in that case too — a blocklist that reports "blocked" while handing back the blocked
+    model is not a blocklist."""
+    if not was_blocked or not resolved or resolved == requested:
         return False
-    return resolved != requested and resolved in {retired, safe_model}
+    if disabled and "*" in disabled:
+        return True
+    return resolved in {retired, safe_model}
 
 
 def main():
@@ -238,12 +245,14 @@ def main():
         check("gemma3_json", False, str(e))
 
     # 5. Disabled model routing: blocked, and never resolved to the disabled model itself
-    from local_llm import _resolve_model, OLLAMA_MODEL as RETIRED_MODEL
+    from local_llm import _resolve_model, DISABLED_MODELS as POLICY, OLLAMA_MODEL as RETIRED_MODEL
     resolved, was_blocked = _resolve_model("qwen3:14b")
     blocked_ok = _routing_blocked(resolved, was_blocked, safe_model=SAFE_MODEL,
-                                  retired=RETIRED_MODEL)
-    check("disabled_model_routing", blocked_ok,
-          f"qwen3:14b → {resolved}, blocked={was_blocked}")
+                                  retired=RETIRED_MODEL, disabled=POLICY)
+    detail = f"qwen3:14b → {resolved}, blocked={was_blocked}"
+    if blocked_ok and "*" in POLICY:
+        detail += " (local generative retired: every model disabled)"
+    check("disabled_model_routing", blocked_ok, detail)
 
     # 6. At most one generation model loaded
     loaded_after = _get_loaded_models()

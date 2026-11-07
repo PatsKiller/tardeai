@@ -1,0 +1,29 @@
+{
+  "schema": "CiGate@v1",
+  "name": "LOCAL_LLM_HEALTH_GATE_20261107",
+  "files": [
+    "tests/test_check_local_llm_health_gate_20261107.py",
+    "tests/test_local_llm_health_gate_20261107.py"
+  ],
+  "anchor": "LOCAL_LLM_HEALTH_GATE_20261107",
+  "comment": [
+    "ANCHOR: LOCAL_LLM_HEALTH_GATE_20261107 — trade-close-llm-analyzer-source failed every weekly run",
+    "(exit 1, log 2026-10-25 and 2026-11-01) with 'Refusing to run --apply with failed health",
+    "checks'. Two checks of the preflight could not pass, for reasons unrelated to machine safety:",
+    "(1) no_unsafe_jobs excluded only self, parent and grandparent, but under cron the tree is",
+    "cron -> /bin/bash -c -> safe_flock.sh -> analyzer -> health check, so the shell whose command",
+    "line NAMES trade_close_llm_analyzer.py --apply sat one level above the exclude set and the lane",
+    "reported itself as a concurrent unsafe job. The exclusion is now the whole ancestor chain; a",
+    "genuinely concurrent classifier/analyzer --apply is still flagged.",
+    "(2) disabled_model_routing required qwen3:14b to resolve to LOCAL_LLM_SAFE_MODEL, but after the",
+    "local-generative retirement local_llm._resolve_model returns LOCAL_GENERATIVE_RETIRED with",
+    "DISABLED_MODELS == {'*'} — every model blocked, the stronger form of the property the check",
+    "exists to prove. A total blocklist now satisfies the check whichever model the request resolves",
+    "to; a request that resolves to itself, an unblocked request, an empty resolution and a partial",
+    "blocklist with an unrecognised resolution all still fail.",
+    "Both test files were unregistered: no config/ci_gates entry named either, so neither ran in the",
+    "CIO hardening lane. This gate registers the pair. Hermetic: fabricated ps output, fabricated",
+    "resolutions, no Ollama, no network, no subprocess; no process is started, stopped or unloaded by",
+    "the tests."
+  ]
+}
