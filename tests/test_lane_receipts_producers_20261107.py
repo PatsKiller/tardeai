@@ -86,7 +86,11 @@ def test_each_lane_declares_a_runtime_receipt_and_its_module_writes_that_lane(la
     mod = _import(module_name)
     assert mod.LANE_ID == lane_id
     src = (ROOT / "scripts" / f"{module_name}.py").read_text(encoding="utf-8")
-    assert "write_lane_receipt" in src and "dry_run_report" in src
+    assert "write_lane_receipt" in src, "the lane writes the receipt its contract reads"
+    # A lane has a dry-run arm; two of them report on paper (dry_run_report) and the rest carry an
+    # offline --dry-run guard, so either form satisfies "a dry run exists and writes nothing" (each
+    # lane's own test below asserts the no-write part).
+    assert "dry_run_report" in src or '"--dry-run"' in src
 
 
 # ── lane 1: agent-event-router ───────────────────────────────────────────────────────────────────
