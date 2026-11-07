@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "TRADE_JOURNEY_SWR_20261107",
+  "files": [
+    "tests/test_trade_journey_swr_20261107.py"
+  ],
+  "anchor": "TRADE_JOURNEY_SWR_20261107",
+  "comment": [
+    "ANCHOR: TRADE_JOURNEY_SWR_20261107 — LQ-20261107-217. /v3/trade-in-view sat on 'Loading trade journeys...'",
+    "until the browser gave up: the journey projection was rebuilt inline on every request (11.4 s warm, 19.5 s",
+    "cold on 2026-11-07). The list and per-trade routes now serve the last good body at once, stamped _swr, and",
+    "refresh behind it through lib/stale_serve.py (LQ-20261107-201, same mechanism as DESK_SWR_20261107). The list",
+    "body persists to its own 0600 store so a restart is not a cold compute; detail bodies are memory-only and",
+    "bounded. Listing it schedules nothing."
+  ]
+}
