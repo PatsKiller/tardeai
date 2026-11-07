@@ -328,10 +328,11 @@ def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = No
                 r = extract_insight(text, symbol=a.get("symbol"), source_type="news",
                                     source_reference=f"news:{a['id']}", dry_run=dry_run,
                                     source_url=a.get("source_url"), session=session)
+                conn.commit()  # LQ-20261107-198: the batch path shares one connection; commit each row or close() discards it
                 results.append(r)
                 _note(r, skips)
             except Exception as e:
-                conn.rollback()  # a failed row must not poison the shared transaction
+                conn.rollback()  # a failed row must not poison the shared transaction (earlier rows are already committed)
                 if errors is not None:
                     errors.append(f"news:{a['id']}: {type(e).__name__}: {str(e)[:120]}")
     finally:
@@ -364,6 +365,7 @@ def extract_from_catalysts(limit: int = 100, dry_run: bool = False, errors: list
                 r = extract_insight(text, symbol=c.get("symbol"), source_type="catalyst",
                                     source_reference=f"catalyst:{c['id']}", dry_run=dry_run,
                                     source_url=c.get("source_url"), session=session)
+                conn.commit()  # LQ-20261107-198: see extract_from_news
                 results.append(r)
                 _note(r, skips)
             except Exception as e:
