@@ -201,6 +201,21 @@ def stated_idle_reason(receipt: dict | None) -> str | None:
     return None
 
 
+#: Keys that mark a list entry as a per-MODE or per-STEP execution record rather than a produced item. A lane that
+#: runs several modes writes ``summary.results = [{"mode": "synth", "rc": 0, "log": …}]`` — one entry per mode — so
+#: its length is how many modes ran, not how many items came out. Reading it as an item count graded
+#: topic-research-synthesizer GOOD "produced 1" on a run whose log said ``candidates: 0, synthesized: 0``
+#: (DATA-TRUTH-AUDIT-20261107 §4; the same receipt shape is used by research-scheduler, topic-ingestion,
+#: cio-event-detector and catalyst-graph).
+EXECUTION_RECORD_KEYS = ("mode", "rc", "exit", "exit_code", "gate_prediction", "log")
+
+
+def _produced_items(value) -> bool:
+    """A list counts as produced units only when its entries are items, not per-mode execution records."""
+    return isinstance(value, list) and not any(
+        isinstance(e, dict) and any(k in e for k in EXECUTION_RECORD_KEYS) for e in value)
+
+
 def item_count(receipt: dict | None) -> tuple[int | float | None, str | None]:
     """(count, key used). Top-level produced_count first, then the summary's count-like keys in COUNT_KEYS order."""
     if not receipt:
@@ -213,9 +228,58 @@ def item_count(receipt: dict | None) -> tuple[int | float | None, str | None]:
             value = doc.get(key)
             if _num(value) is not None:
                 return value, f"{source}.{key}"
-            if key in {"results", "rows", "items", "candidates"} and isinstance(value, list):
+            if key in {"results", "rows", "items", "candidates"} and _produced_items(value):
                 return len(value), f"{source}.{key}[]"
     return None, None
+
+
+#: Per-step lists a pipeline receipt may carry. ``portfolio-maintenance-daily`` reports ``steps`` with one
+#: ``FAILED(rc=1)`` and the rest ``EXCLUDED_NOT_RUN`` under ``overall_status: degraded``.
+STEP_LISTS = ("steps", "results")
+
+
+def step_success_codes(receipt: dict) -> tuple[int, ...]:
+    """The exit codes a STEP may end on without being a failure: 0, 75, and the codes the receipt declares.
+
+    A check lane puts its verdict in the exit code, so a receipt states the codes its supervisor accepts in
+    ``success_exit_codes`` (``source-litmus-vs-yahoo`` exits 1 on a BLOCK and its unit declares
+    ``SuccessExitStatus=0 1``). A step record is held to the same declaration; without one the rule stays
+    fail-closed, exactly as at the top level. When the ``success_exit_codes`` rule lands in this module, this
+    helper should delegate to it rather than restate it."""
+    codes = {0, 75}
+    declared = receipt.get("success_exit_codes")
+    if isinstance(declared, (list, tuple)):
+        codes.update(code for code in declared if type(code) is int)
+    return tuple(sorted(codes))
+
+
+def failed_step(receipt: dict | None) -> dict | None:
+    """The first per-step record that says it failed, or None.
+
+    A failed step is the run's outcome, not a partial: a receipt that says ``overall_status: degraded`` while
+    ``portfolio_daily_report`` exited 1 was graded DEGRADED (DATA-TRUTH-AUDIT-20261107 §4). ``EXCLUDED_NOT_RUN``
+    and ``OK`` steps say nothing bad. A record whose ``rc``/``exit_code`` the receipt declares as success
+    (``step_success_codes``) is not a failure either.
+    """
+    if not receipt:
+        return None
+    ok_codes = step_success_codes(receipt)
+    summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
+    for doc in (receipt, summary):
+        for key in STEP_LISTS:
+            entries = doc.get(key)
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                status = str(entry.get("status") or "").lower()
+                code = entry.get("rc", entry.get("exit_code", entry.get("exit")))
+                failed_code = _num(code) is not None and code not in ok_codes
+                if status.startswith("fail") or failed_code:
+                    return {"name": entry.get("name") or entry.get("mode") or "a step",
+                            "status": entry.get("status"), "rc": code}
+    return None
 
 
 #: Summary counters that name a population the run worked on — how many inputs it found stale, how many subjects it
@@ -488,6 +552,14 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
                        + (f"; {streak:g} failures in a row" if streak and streak > 1 else ""))
         checks["run_result"] = _check("fail", graded["result"])
         return result("FAILED", None, graded=graded)
+    # 3b. a step that failed is the run's outcome, however the receipt summarises it ("degraded", "ok").
+    # Placed after the status rule so a receipt that already declares failure keeps that (more specific) reason.
+    step = failed_step(receipt) if same_receipt else None
+    if step is not None:
+        detail = str(step["status"] or f"rc={step['rc']}")
+        checks["run_result"] = _check("fail", detail, f"step {step['name']}")
+        reasons.append(f"Ran live {_ago(when, now)}, but {step['name']} failed ({detail})")
+        return result("FAILED", "step_failed")
     # 4. skipped / shadow inside a live slot
     receipt_skip = same_receipt and receipt_status(receipt) == "skipped"
     if graded["result"] in {"skipped_lock", "skipped"} or receipt_skip:
@@ -562,6 +634,15 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
         count, count_key = item_count(receipt)
     if count is None and led and _num(led.get("produced")) is not None:
         count, count_key = led["produced"], "n8n output_verdict.produced_count"
+    # 6a. a receipt that says how many rows it WROTE, and wrote none, produced nothing durable — however many
+    # items it examined. hermes-watchlist-scorer reported produced 629 with written 0 and skipped_unchanged 629
+    # and graded GOOD "produced 629" (DATA-TRUTH-AUDIT-20261107 §4): it re-looked at everything and produced
+    # nothing. ``count_key`` moves to summary.written so the count is read for what it is, and to no history.
+    if count is not None and count > 0 and count_key != "summary.written" and same_receipt:
+        summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
+        unchanged = _num(summary.get("skipped_unchanged")) or 0
+        if _num(summary.get("written")) == 0 and unchanged >= count:
+            count, count_key = 0, "summary.written"
     past = [h for h in evidence.get("history") or [] if h.get("count_key") == count_key and _num(h.get("count")) is not None
             and (_at(h.get("run_started_at")) or now) < (run_start or now) - SAME_RUN]
     if count_key == "n8n output_verdict.produced_count":
