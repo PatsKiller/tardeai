@@ -22,6 +22,7 @@ import json
 import sys
 import time
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -673,6 +674,8 @@ def _perf_conn():
     def responder(sql, _p):
         if "information_schema.columns" in sql:
             return {"all": [("ytd_return_pct",), ("dividend_yield_pct",), ("ttm_dividend",), ("perf_updated_at",)]}
+        if "ytd_return_pct" in sql:  # the stored-values pre-read (2026-11-07, plausibility filter)
+            return {"all": [("SPY", None, None), ("QQQ", None, None), ("SCHD", None, None)]}
         if "FROM symbol_profiles" in sql:
             return {"all": [("SPY",), ("QQQ",), ("SCHD",)]}
         return None
@@ -685,7 +688,7 @@ def test_etf_performance_dry_run_and_no_fetch_run_no_ddl(tmp_path, monkeypatch, 
     conn = _perf_conn()
     monkeypatch.setattr(epe, "_get_conn", lambda: conn)
     monkeypatch.setattr(epe, "upsert_profile", _boom)
-    monkeypatch.setitem(sys.modules, "yfinance", _boom_module("yfinance"))
+    monkeypatch.setattr(epe, "finviz_cache", _boom)
     monkeypatch.setattr(sys, "argv", ["etf_performance_enrich.py", flag])
     assert epe.main() == 0
     out = capsys.readouterr().out
@@ -717,11 +720,17 @@ def _perf_yf(info):
     return types.SimpleNamespace(Ticker=lambda s: types.SimpleNamespace(info=info, history=hist))
 
 
+def _perf_cache(ytd=None, dy=None):
+    """The shared Finviz cache as ``finviz_cache()`` returns it: one record per symbol, freshly cached."""
+    at = datetime.now(timezone.utc).isoformat()
+    return {s: {"perf_ytd_pct": ytd, "div_yield_pct": dy, "cached_at": at} for s in ("SPY", "QQQ", "SCHD")}
+
+
 def test_etf_performance_real_run_receipt(tmp_path, monkeypatch):
     conn = _perf_conn()
     monkeypatch.setattr(epe, "_get_conn", lambda: conn)
     monkeypatch.setattr(epe, "upsert_profile", lambda *a, **k: types.SimpleNamespace(rows_written=1, rows_rejected=0))
-    monkeypatch.setitem(sys.modules, "yfinance", _perf_yf({"ytdReturn": 0.1, "yield": 0.02}))
+    monkeypatch.setattr(epe, "finviz_cache", lambda *a, **k: _perf_cache(10.0, 1.5))
     monkeypatch.setattr(sys, "argv", ["x"])
     assert epe.main() == 0
     r = _receipt(tmp_path, "etf-performance-enrich")
@@ -733,7 +742,7 @@ def test_etf_performance_nothing_fetched_exits_1(tmp_path, monkeypatch):
     prev = _seed_ok(tmp_path, "etf-performance-enrich")
     monkeypatch.setattr(epe, "_get_conn", lambda: _perf_conn())
     monkeypatch.setattr(epe, "upsert_profile", lambda *a, **k: types.SimpleNamespace(rows_written=0, rows_rejected=0))
-    monkeypatch.setitem(sys.modules, "yfinance", _perf_yf({}))
+    monkeypatch.setattr(epe, "finviz_cache", lambda *a, **k: _perf_cache())
     monkeypatch.setattr(sys, "argv", ["x"])
     assert epe.main() == 1
     r = _receipt(tmp_path, "etf-performance-enrich")

@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ETF_PERFORMANCE_PLAUSIBILITY",
+  "files": [
+    "tests/test_etf_performance_plausibility_20261107.py"
+  ],
+  "anchor": "ETF_PERFORMANCE_PLAUSIBILITY_20261107",
+  "comment": [
+    "ANCHOR: ETF_PERFORMANCE_PLAUSIBILITY_20261107 — LQ-20261107-184. etf-performance-enrich wrote YTD and",
+    "dividend yield from yfinance and served them unchanged: on 2026-11-07 the live DB held CRED 1424.59%,",
+    "DVIN 1649.37%, DVAL 894.82%, DLLL 542.77% and ten yields above 25% (UNWPX 95.02%) on symbol_profiles.",
+    "A value outside PERF_BOUNDS is now never written and an implausible stored value is cleared to NULL; the",
+    "source is the shared Finviz enrichment cache (no network, no yfinance); and the 300-symbol cap that",
+    "starved 139 of 439 rows is now a 5000-symbol runaway guard. Listing this schedules nothing."
+  ]
+}
