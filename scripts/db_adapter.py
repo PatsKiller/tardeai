@@ -217,6 +217,10 @@ def _get_conn():
                 _c.execute("SET idle_in_transaction_session_timeout = '120s'")
                 _c.execute("SET lock_timeout = '3s'")
                 _c.execute("SET statement_timeout = '180s'")
+                # LQ-20261107-416: JIT compiled the /watchlist/items query for ~3 s (Optimization 1.4 s +
+                # Emission 1.3 s) to save milliseconds; off took _wl_items from 7.5 s to 4 s. Every query here is
+                # OLTP-shaped, so JIT is pure overhead (AGENTS: measured, not assumed).
+                _c.execute("SET jit = off")
             conn.commit()
         except Exception:
             try:
