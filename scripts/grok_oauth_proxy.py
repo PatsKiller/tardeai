@@ -10,7 +10,7 @@ Endpoints (127.0.0.1:8645 by default):
   POST /v1/chat/completions  -> OpenAI chat-completions response (streaming + non-streaming)
 
 If the Grok session has ended, a call returns 401 with a re-login hint:
-  hermes auth add xai-oauth --type oauth
+  hermes -p tradeai auth add xai-oauth --type oauth
 """
 import base64
 import json
@@ -21,21 +21,32 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERMES = os.environ.get("HERMES_BIN", os.path.expanduser("~/.local/bin/hermes"))
+# LQ-20261107-257: hermes must run under the Trade AI profile. With no `-p`, hermes applies the default
+# ~/.hermes/SOUL.md ("default general-purpose ... not the Trade AI advisory identity"), which refuses trade
+# research: on 2026-11-07 41 of 62 grok research rows were rejected as llm_refusal ("This request conflicts
+# with the active default Hermes profile, which prohibits trade analysis"), and ~60% of grok rows since at
+# least 2026-10-24 were refusal text stored as success. A/B on one synthetic prompt: default profile refused,
+# `hermes -p tradeai` answered with a thesis and a verdict. Empty value = hermes default profile.
+HERMES_PROFILE = os.environ.get("GROK_PROXY_HERMES_PROFILE", "tradeai").strip()
 HOST = os.environ.get("GROK_PROXY_HOST", "127.0.0.1")
 PORT = int(os.environ.get("GROK_PROXY_PORT", "8645"))
 DEFAULT_MODEL = os.environ.get("GROK_PROXY_MODEL", "grok-3-mini")
-AUTH_JSON = os.path.expanduser("~/.hermes/auth.json")
+# /health reads the credential of the profile the calls run under, not the default one (LQ-20261107-257).
+AUTH_JSON = os.path.expanduser(
+    f"~/.hermes/profiles/{HERMES_PROFILE}/auth.json" if HERMES_PROFILE else "~/.hermes/auth.json"
+)
 TIMEOUT = int(os.environ.get("GROK_PROXY_TIMEOUT", "240"))
 KEEPALIVE_INTERVAL = int(os.environ.get("GROK_PROXY_KEEPALIVE_INTERVAL", "25"))
 MODELS = ["grok-4", "grok-3", "grok-3-mini"]
 _SESSION_LINE = re.compile(r"\n?session_id:\s*\S+\s*$")
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
-_RELOGIN = "hermes auth add xai-oauth --type oauth"
+_RELOGIN = ("hermes " + (f"-p {HERMES_PROFILE} " if HERMES_PROFILE else "")
+            + "auth add xai-oauth --type oauth")
 
 
 def _xai_token_state():
-    """Returns (present, expired) from ~/.hermes/auth.json — exp claim only, no secret use.
+    """Returns (present, expired) from AUTH_JSON (the profile's auth.json) — exp claim only, no secret use.
 
     Rolling OAuth: the on-disk JWT exp often lags until hermes refreshes on the next real call.
     If a refresh_token is present, treat as refreshable (not expired) so keepalive/UI can roll it."""
@@ -126,10 +137,16 @@ def _finish_sse_stream(handler, completion_id, model, created, text, include_usa
     handler.wfile.flush()
 
 
+def _hermes_argv(prompt, model, provider):
+    """hermes argv for one completion, under HERMES_PROFILE when set (LQ-20261107-257)."""
+    profile = ["-p", HERMES_PROFILE] if HERMES_PROFILE else []
+    return [HERMES, *profile, "chat", "-q", prompt, "-Q", "-m", model, "--provider", provider]
+
+
 def _run_grok(prompt, model):
     import subprocess
     r = subprocess.run(
-        [HERMES, "chat", "-q", prompt, "-Q", "-m", model, "--provider", "xai-oauth"],
+        _hermes_argv(prompt, model, "xai-oauth"),
         capture_output=True, text=True, timeout=TIMEOUT,
         env={**os.environ, "TERM": "dumb"},
     )

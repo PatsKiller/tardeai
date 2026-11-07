@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "oauth_proxy_profile_lq257_20261107",
+  "files": [
+    "tests/test_oauth_proxy_profile_lq257_20261107.py"
+  ],
+  "anchor": "OAUTH_PROXY_PROFILE_LQ257_20261107",
+  "comment": [
+    "ANCHOR: OAUTH_PROXY_PROFILE_LQ257_20261107 — LQ-20261107-257: the grok and chatgpt OAuth proxies run",
+    "`hermes -p tradeai chat ...`. Without -p hermes applies its default SOUL, which refuses trade research (41 of 62",
+    "grok research rows rejected as llm_refusal on 2026-11-07). The profile is env-overridable",
+    "(GROK_/CHATGPT_PROXY_HERMES_PROFILE; empty = hermes default); /health reads that profile's auth.json and the",
+    "re-login hint names the profile."
+  ]
+}
