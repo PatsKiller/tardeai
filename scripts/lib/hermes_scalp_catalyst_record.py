@@ -100,8 +100,21 @@ def _sym_pattern(symbol: str) -> re.Pattern:
     return re.compile(rf"{_NB}\$?{re.escape(symbol)}{_NA}")
 
 
+#: Apostrophes as they are typed (the typographic ones are what news sites publish).
+_APOSTROPHES = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "´": "'", "`": "'"})
+
+
+def _straight(text: str) -> str:
+    return text.translate(_APOSTROPHES)
+
+
 def _phrase_pattern(phrase: str) -> re.Pattern:
-    words = [re.escape(w) for w in phrase.split()]
+    """Case-insensitive whole-phrase match in which an apostrophe is OPTIONAL ("Wendy’s" meets "Wendys").
+
+    2026-11-07 (LQ-20261107-131): the feed stores "Wendy's Co" and the headline read "How Wendy’s CEO plans…", so
+    a real Wendy's story was UNVERIFIED_IDENTITY. Both sides are normalised to a straight apostrophe and the pattern
+    accepts its absence, which also covers "O'Reilly" / "OReilly" and the possessive "Wendy's" / "Wendys"."""
+    words = [_straight(re.escape(w)).replace("'", "'?") for w in phrase.split()]
     return re.compile(_NB + r"[\s\-_]+".join(words) + _NA, re.I)
 
 
@@ -160,6 +173,7 @@ def _slug_text(url: Any) -> str:
 def _mentions(text: str, symbol: str, phrases: list[str]) -> Optional[str]:
     if not text:
         return None
+    text = _straight(text)
     if symbol and _sym_pattern(symbol).search(text):
         return f"ticker {symbol}"
     for p in phrases:
@@ -168,11 +182,32 @@ def _mentions(text: str, symbol: str, phrases: list[str]) -> Optional[str]:
     return None
 
 
+def _names_company(text: str, phrases: list[str]) -> bool:
+    """Does the text name the company itself (not merely carry its ticker)? Both are identity; the writer's
+    relevance gate trusts an undated page only on this one."""
+    text = _straight(text or "")
+    return bool(text) and any(_phrase_pattern(p).search(text) for p in phrases)
+
+
+def _matched_kind(*texts: str, symbol: str, phrases: list[str]) -> Optional[str]:
+    """``"company"`` when any of the texts names the company, else ``"ticker"`` when one carries the ticker."""
+    for text in texts:
+        if _names_company(text, phrases):
+            return "company"
+    for text in texts:
+        if text and symbol and _sym_pattern(symbol).search(_straight(text)):
+            return "ticker"
+    return None
+
+
 def verify_identity(symbol: str, record: Mapping[str, Any], company_names: Iterable[str] = ()) -> dict[str, Any]:
-    """{"status": VERIFIED | UNVERIFIED_IDENTITY, "reason", "evidence", "names"} for one catalyst record.
+    """{"status": VERIFIED | UNVERIFIED_IDENTITY, "reason", "evidence", "names", "matched"} for one catalyst record.
 
     The headline is ``catalyst_summary``; its source is ``sources[0]`` (the researcher takes the headline from the
-    first source). A record with no sources is judged on its headline alone."""
+    first source). A record with no sources is judged on its headline alone. ``matched`` says WHAT named the issuer
+    — ``"ticker"`` or ``"company"`` — because the writer's relevance gate (lib/catalyst_source_relevance) trusts an
+    undated page only when it names the company: a page carrying the ticker alone is how a car warning light became
+    VSA's catalyst on 2026-11-06."""
     sym = str(symbol or "").strip().upper()
     phrases = name_phrases(company_names)
     out: dict[str, Any] = {"schema": IDENTITY_SCHEMA, "symbol": sym, "names": phrases}
@@ -184,7 +219,7 @@ def verify_identity(symbol: str, record: Mapping[str, Any], company_names: Itera
         why_generic = why_generic or generic_index_page(first.get("title"), first.get("url"))
     if why_generic:
         return {**out, "status": UNVERIFIED_IDENTITY, "reason": f"headline source is a {why_generic}",
-                "evidence": None}
+                "evidence": None, "matched": None}
     checks = [("headline", headline)]
     if first is not None:
         checks += [("source title", str(first.get("title") or "")),
@@ -193,10 +228,12 @@ def verify_identity(symbol: str, record: Mapping[str, Any], company_names: Itera
     for where, text in checks:
         hit = _mentions(text, sym, phrases)
         if hit:
-            return {**out, "status": VERIFIED, "reason": f"{where} names the {hit}", "evidence": where}
+            return {**out, "status": VERIFIED, "reason": f"{where} names the {hit}", "evidence": where,
+                    "matched": _matched_kind(text, symbol=sym, phrases=phrases)}
     named = " / ".join([sym] + phrases) if phrases else sym
     return {**out, "status": UNVERIFIED_IDENTITY,
-            "reason": f"neither the headline nor its source names {named} (whole word)", "evidence": None}
+            "reason": f"neither the headline nor its source names {named} (whole word)", "evidence": None,
+            "matched": None}
 
 
 def sec_name_index(doc: Any) -> dict[str, list[str]]:

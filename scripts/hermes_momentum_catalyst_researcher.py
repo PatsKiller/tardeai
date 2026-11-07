@@ -247,8 +247,43 @@ def _searxng_search(query: str) -> list:
     return []
 
 
-def research_ticker(symbol, *, dry_run=False, priority=False, caller=None):
-    """Research a single ticker for catalysts."""
+_SEC_NAMES: dict = {}
+
+
+def _company_names(symbol):
+    """The SEC company titles for ``symbol`` from ``<root>/data/runtime/sec_company_tickers.json`` (read-only,
+    parsed once per (path, mtime, size)); [] when the file or the symbol is missing.
+
+    The relevance gate matches the company by name, and the name has to come from the same feed the readers use
+    (``lib.hermes_scalp_catalyst_record.sec_name_index``). A missing file is a fail-closed case: without names an
+    undated page can only match the ticker, which is exactly what the gate refuses."""
+    from lib.hermes_scalp_catalyst_record import SEC_TICKERS_REL, sec_name_index
+
+    path = PROJECT_ROOT / SEC_TICKERS_REL
+    try:
+        st = path.stat()
+        key = (str(path), st.st_mtime_ns, st.st_size)
+        if _SEC_NAMES.get("key") != key:
+            _SEC_NAMES["key"] = key
+            try:
+                _SEC_NAMES["index"] = sec_name_index(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                _SEC_NAMES["index"] = {}
+    except OSError:
+        return []
+    return list((_SEC_NAMES.get("index") or {}).get(str(symbol or "").upper(), []))
+
+
+def research_ticker(symbol, *, dry_run=False, priority=False, caller=None, now=None):
+    """Research a single ticker for catalysts.
+
+    2026-11-07 (LQ-20261107-131): the catalyst is chosen from the results that are ABOUT this company (whole-word
+    ticker or company name in the page's own text) and CURRENT (dated within FRESH_DAYS), and confidence counts
+    those -- never ``len(all_sources)``. Before this, ``all_sources[0]`` was the catalyst and three unrelated pages
+    made a "high confidence" news_momentum (CIIT, VSA, DFH on 2026-11-06). The gate is
+    :func:`lib.catalyst_source_relevance.select_evidence`."""
+    from lib.catalyst_source_relevance import rejected_summary, select_evidence
+
     queries = [
         "latest news",
         "premarket catalyst",
@@ -264,17 +299,18 @@ def research_ticker(symbol, *, dry_run=False, priority=False, caller=None):
                 all_sources.append(s)
         time.sleep(0.5)  # Rate limit
 
-    # Classify
+    decision = select_evidence(symbol, all_sources, _company_names(symbol), now=now)
+
     catalyst_type = "no_clear_catalyst"
     catalyst_summary = "No clear catalyst found"
     confidence = 0.2
-
-    if all_sources and not all_sources[0].get("error"):
-        best = all_sources[0]
+    if decision["best"] is not None:
+        best = decision["best"]["source"]
         catalyst_type = classify_catalyst(best.get("title", "") + " " + best.get("content", ""))
-        catalyst_summary = best.get("title", "")[:100]
-        confidence = min(0.7, 0.3 + 0.1 * len(all_sources))
+        catalyst_summary = (best.get("title") or "")[:100]
+        confidence = decision["confidence"]
 
+    evidence = [e["source"] for e in decision["evidence"]]
     return {
         "symbol": symbol,
         "research_timestamp": datetime.now().isoformat(),
@@ -282,9 +318,11 @@ def research_ticker(symbol, *, dry_run=False, priority=False, caller=None):
         "catalyst_summary": catalyst_summary,
         "catalyst_strength": "high" if confidence >= 0.5 else "low",
         "confidence": confidence,
-        "source_count": len([s for s in all_sources if not s.get("error")]),
-        "source_domains": list(set(urllib.parse.urlparse(s.get("url", "")).netloc for s in all_sources if s.get("url"))),
-        "sources": all_sources,
+        "source_count": len(evidence),
+        "source_domains": list(set(urllib.parse.urlparse(s.get("url", "")).netloc for s in evidence if s.get("url"))),
+        "sources": evidence,
+        "sources_rejected": rejected_summary(decision),
+        "relevance_basis": decision["basis"],
         "advisory_only": True,
         "not_trade_signal": True,
         "no_execution": True,

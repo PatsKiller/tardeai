@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CATALYST_SOURCE_RELEVANCE_20261107",
+  "files": [
+    "tests/test_catalyst_source_relevance_20261107.py"
+  ],
+  "anchor": "CATALYST_SOURCE_RELEVANCE_20261107",
+  "comment": [
+    "ANCHOR: CATALYST_SOURCE_RELEVANCE_20261107 — LQ-20261107-131. A search result is a catalyst only",
+    "when the page's own text names the issuer (whole-word ticker or company name, the read-side",
+    "matcher reused) AND the page is current (dated within 14 days; an undated page counts only when",
+    "it names the COMPANY). Measured 2026-11-07 on the live 2026-11-06 run: CIIT was 'news_momentum",
+    "high 0.6' on a 688-day-old Wikinews page, a bank login page and a certification page; VSA on a",
+    "car warning-light article; DFH 'high 0.6' on a Forbes page 298 days old and a stock chart. The",
+    "same file pins the survivors (PMN 8 days, DXCM, CDT, XRPN, Wendy's via the apostrophe fix) so a",
+    "future tightening cannot quietly blind the lane. Registered because a new pytest file that no",
+    "gate names is not run by CI (check_test_coverage --fail-on-new)."
+  ]
+}

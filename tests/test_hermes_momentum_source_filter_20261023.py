@@ -172,7 +172,9 @@ def test_research_ticker_skips_index_before_first_source_and_dedupes(monkeypatch
         return [{"title": "ALL NEWS", "url": "https://example.invalid/markets/"}, first, second]
 
     monkeypatch.setattr(hr, "search_catalyst", search)
-    record = hr.research_ticker("TEST", dry_run=True)
+    # now= is the fixtures' own day: the relevance gate measures freshness against it (LQ-20261107-131), so a fixed
+    # fixture date without a fixed clock would age out of its window and this suite would fail for the clock's reason.
+    record = hr.research_ticker("TEST", dry_run=True, now=datetime(2026, 10, 23, 12))
     assert record["catalyst_summary"] == first["title"]
     assert record["sources"] == [first, second] and record["source_count"] == 2
     assert record["research_timestamp"] == "2026-10-23T12:00:00"
@@ -190,11 +192,20 @@ def test_all_generic_results_produce_no_clear_catalyst(monkeypatch):
     assert record["source_count"] == 0 and record["sources"] == [] and record["confidence"] == 0.2
 
 
-def test_filter_does_not_promote_wrong_company_article_or_replace_identity_gate(monkeypatch):
+def test_a_wrong_company_article_is_refused_not_recorded_as_the_catalyst(monkeypatch):
+    """Supersedes "selection only; identity and approval remain the readers' checks" (2026-10-23 contract).
+
+    On 2026-11-06 that split let three unrelated pages become CIIT's "high confidence" news_momentum and a car
+    warning-light article VSA's catalyst (audit78_result2, LQ-20261107-131): the read side demoted them, but the
+    store still carried them and every consumer that read ``catalyst_type`` believed them. The writer now refuses a
+    source that does not name the issuer, and says so in ``sources_rejected``.
+    """
     other = article("other-company", "Different Company wins a contract")
     monkeypatch.setattr(hr, "search_catalyst", lambda *a, **k: [other])
-    record = hr.research_ticker("TEST", dry_run=True)
-    assert record["sources"] == [other]
+    record = hr.research_ticker("TEST", dry_run=True, now=datetime(2026, 10, 23, 12))
+    assert record["sources"] == [] and record["source_count"] == 0
+    assert record["catalyst_type"] == "no_clear_catalyst" and record["confidence"] == 0.2
+    assert record["sources_rejected"] == [{"url": other["url"], "why": "unrelated"}]
     assert (
         validator.verify_identity("TEST", record, ["Testlab Therapeutics Inc"])["status"]
         == validator.UNVERIFIED_IDENTITY
