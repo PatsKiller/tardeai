@@ -113,10 +113,32 @@ def test_cio_truth_stop_rows_carry_the_stored_order_id():
     assert '"stop_order_id": p.get("order_id")' in src
 
 
-def test_cio_truth_stop_rows_carry_the_stored_order_kind():
+def test_cio_truth_stop_rows_carry_the_stored_order_kind(tmp_path):
+    """The published stop row keeps the broker order KIND.
+
+    2026-11-07 (LQ-20261107-09): this was a source-text assertion (`'"stop_history", "stop_order_type")}' in src`).
+    It went red when `stop_state_observed` and `stop_observation` were appended to the same key tuple — the keys it
+    meant to protect were still there, the literal adjacency was not. A test that reads the source proves nothing
+    about the document a page reads, so it now builds the document and reads the row.
+    """
+    from datetime import datetime, timezone
+
     from scripts.lib import cio_truth
-    src = Path(cio_truth.__file__).read_text()
-    assert '"stop_history", "stop_order_type")}' in src
+
+    now = datetime(2026, 11, 4, 15, tzinfo=timezone.utc)
+    doc = cio_truth.resolve(tmp_path, now, inputs={
+        "holdings": {"as_of": now.isoformat(), "generated_at": now.isoformat(),
+                     "holdings": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH", "shares": 1,
+                                   "price": 110, "market_value": 110, "day_change": 0}]},
+        "broker_stops": [{"account": "SyntheticAccountAlpha", "symbol": "SYNTH",
+                          "order_id": "synthetic-stop-one", "order_type": "TRAILING_STOP",
+                          "stop_price": None, "qty": 1, "status": "WORKING",
+                          "captured_at": now.isoformat()}],
+        "stop_fills": {}, "companies": {}, "policy": {}, "planned_stops": {},
+    })
+    row = doc["stops"]["rows"][0]
+    assert row["stop_order_type"] == "TRAILING_STOP"
+    assert row["stop_order_id"] == "synthetic-stop-one"
 
 
 def test_an_active_trailing_observation_keeps_its_kind_and_never_invents_a_price():
