@@ -61,6 +61,7 @@ type Item = {
   is_holdings?: boolean
   sources?: { title?: string; url?: string; source?: string }[]
   source_count?: number
+  source_status?: 'sourced' | 'unsourced' | 'not_applicable'
   actionability?: string
   model?: string
   sentiment?: string
@@ -340,9 +341,16 @@ function FreshnessDot({ tier, label, asOf }: { tier?: string; label?: string; as
 
 // v3.1 (E1): sources render as clickable domain-labeled links — every claim
 // can be walked back to where it came from
-function SourceLinks({ sources }: { sources?: { title?: string; url?: string; source?: string }[] }) {
+function SourceLinks({ sources, unsourced }: { sources?: { title?: string; url?: string; source?: string }[]; unsourced?: boolean }) {
   const withUrl = (sources || []).filter(s => s.url)
-  if (!withUrl.length) return null
+  // An unsourced brief must say so; silence reads as "complete" (LQ-20261107-244).
+  if (!withUrl.length) {
+    return unsourced ? (
+      <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.caution }}>
+        No sources — unverified
+      </div>
+    ) : null
+  }
   const domain = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u.slice(0, 30) } }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline' }} onClick={e => e.stopPropagation()}>
@@ -1206,7 +1214,7 @@ function ArticleCard({
         </>
       )}
 
-      {(featured || view === 'list') && <SourceLinks sources={item.sources} />}
+      {(featured || view === 'list') && <SourceLinks sources={item.sources} unsourced={item.source_status === 'unsourced'} />}
 
       {/* key takeaways */}
       {(featured || view === 'list') && takeaways.length > 0 && (
@@ -1265,6 +1273,7 @@ function ArticleCard({
           {item.source_system}
           {item.research_type ? ` · ${item.research_type}` : ''}
           {item.source_count ? ` · ${item.source_count} sources` : ''}
+          {item.source_status === 'unsourced' || (item.source_status == null && !item.source_count && item.research_type !== 'topic_monitor') ? ' · NO SOURCES' : ''}
           {confPct(item.confidence) != null ? ` · ${confPct(item.confidence)}% conf` : ''}
           {item.narrative_source === 'stored_llm' ? ' · LLM narrative' : ''}
         </div>

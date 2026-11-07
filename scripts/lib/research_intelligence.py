@@ -368,9 +368,12 @@ def _sources_from_row(r: dict) -> list[dict]:
     if isinstance(ev, dict):
         for g in (ev.get("grounded_on") or [])[:6]:
             if isinstance(g, dict):
-                sources.append({
-                    "title": g.get("title"), "url": g.get("url"), "source": g.get("source"),
-                })
+                # An entry naming neither a title nor a URL is not a source; counting it would make an
+                # unsourced brief read "1 source" (LQ-20261107-244).
+                if g.get("title") or g.get("url"):
+                    sources.append({
+                        "title": g.get("title"), "url": g.get("url"), "source": g.get("source"),
+                    })
         for k in ("key_questions", "questions", "open_questions"):
             # handled elsewhere
             pass
@@ -379,7 +382,7 @@ def _sources_from_row(r: dict) -> list[dict]:
         for u in su[:4]:
             if isinstance(u, str):
                 sources.append({"url": u})
-            elif isinstance(u, dict):
+            elif isinstance(u, dict) and (u.get("url") or u.get("title")):
                 sources.append(u)
     return sources[:8]
 
@@ -435,6 +438,7 @@ def _withhold_ungrounded(item: dict, stored_status: Any) -> dict:
     item["lede"] = WITHHELD_SUMMARY
     item["sources"] = []
     item["source_count"] = 0
+    item["source_status"] = "unsourced"
     # Nothing derived from the withheld text stays on the card — a confidence score or a question list
     # would keep advertising content the desk is not publishing.
     item["confidence"] = None
@@ -580,6 +584,10 @@ def _item_base(
         "is_holdings": is_held,
         "sources": sources[:8],
         "source_count": len(sources),
+        # Explicit, so no consumer infers "unsourced" from an empty list (LQ-20261107-244). A
+        # topic-monitor registry row is a schedule, not a brief, so it is not judged on sources.
+        "source_status": ("not_applicable" if research_type == "topic_monitor"
+                          else "sourced" if sources else "unsourced"),
         "actionability": actionability,
         "sentiment": sent,
         "key_questions": key_q,
