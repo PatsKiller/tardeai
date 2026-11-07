@@ -119,6 +119,18 @@ Pipeline order is now `[1/5] YouTube → [2/5] Google News → [3/5] Yahoo searc
 [5/5] DuckDuckGo`. Board after fix: Yahoo search **live**, Brave off-board, DDG live, YouTube dead until the
 next quota reset.
 
+## Proactive research universe (`finviz_proactive_research.py`)
+
+Held symbols come first and are never truncated. The rest of the cap is filled **staleness-first**: the
+watchlist symbols this lane asked the provider about least recently, never-asked first, keyed on the newest of
+`news_articles(source='finviz_news')` and the lane's own sweep cursor
+(`data/runtime/finviz_proactive_research_universe.json`, written by a live run only). Measured 2026-11-07:
+5,679 active watchlist symbols, a 400-symbol cap, 141 symbols ever covered — the hour rotation this replaced
+moved the window by one symbol per hour, ~1,419 days per sweep at four runs a weekday. The cap and lookback
+come from `config/finviz_proactive_research.json`; the n8n allowlist and `lane_registry` still pass the same
+values explicitly and must agree. `--preview-universe` prints the window the next live run would use
+(read-only, no provider call).
+
 ## Files
 - `scripts/topic_ingestion.py` → `search_yahoo_news`, `search_brave_news` (gated), `_youtube_search` +
   `_yt_budget_*` quota guard, `process_topic` SOURCE 3/4/5 blocks

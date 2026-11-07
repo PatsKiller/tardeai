@@ -1,0 +1,17 @@
+{
+  "schema": "FinvizProactiveResearch@v1",
+  "lane_id": "finviz-proactive-research",
+  "max_symbols": 400,
+  "lookback_hours": 12,
+  "selection": "staleness_first",
+  "comment": [
+    "ANCHOR: FINVIZ_UNIVERSE_FAIRNESS_LQ211_20261107 — the scheduled window for scripts/finviz_proactive_research.py.",
+    "max_symbols / lookback_hours are the values the weekday lane runs with. config/n8n_run_allowlist.json",
+    "(lanes[84]) and config/lane_registry.json still pass them explicitly (--max 400 --lookback-hours 12) as well;",
+    "the two must agree, and tests/test_finviz_universe_fairness_lq211_20261107.py fails when they drift.",
+    "selection=staleness_first: held symbols first (never truncated), then the watchlist ordered by when this lane",
+    "last asked the provider about the symbol — never-asked first — so the ~5,679-symbol watchlist is swept window",
+    "by window instead of re-reading the first 400 alphabetically. The sweep cursor is",
+    "data/runtime/finviz_proactive_research_universe.json (recorded by a live run only)."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "FINVIZ_UNIVERSE_FAIRNESS_LQ211_20261107",
+  "files": [
+    "tests/test_finviz_universe_fairness_lq211_20261107.py"
+  ],
+  "anchor": "FINVIZ_UNIVERSE_FAIRNESS_LQ211_20261107",
+  "comment": [
+    "ANCHOR: FINVIZ_UNIVERSE_FAIRNESS_LQ211_20261107 — LQ-20261107-211, the finviz proactive research universe.",
+    "Measured 2026-11-07: 5,679 active watchlist symbols, a 400-symbol cap, and 141 symbols ever covered by",
+    "news_articles source='finviz_news' (440 rows). LQ-20261107-52 replaced the alphabetical cut with an hourly",
+    "rotation that advanced the window by one symbol per hour (~1,419 days per sweep at four runs a weekday).",
+    "This gate pins what replaced it: staleness-first selection over both kinds of evidence (the newest",
+    "finviz_news row and the lane's own attempt record), a cap read from config/finviz_proactive_research.json",
+    "rather than the script's old 150/72 constants, and a refused run when that config is unusable.",
+    "Hermetic: fake cursors and provider/scoring modules, tmp_path state root, no database, no network."
+  ]
+}

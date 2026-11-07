@@ -393,8 +393,11 @@ def test_finviz_unknown_flag_exit_two(state, flag):
     assert exc.value.code == 2 and snapshot(state) == {}
 
 
-@pytest.mark.parametrize("argv", [[], ["--max", "400", "--lookback-hours", "12"]])
+@pytest.mark.parametrize("argv", [["--max", "400", "--lookback-hours", "12"]])
 def test_finviz_cron_argv_fake_receipt_and_soft_error(state, capsys, argv):
+    """LQ-20261107-211 moved the default window out of the argparse constants, so the bare argv is compared
+    against the lane's config in its own test instead: the frozen pre-refactor main below carries 150/72 as
+    literals and could not reproduce the new default by construction."""
     mod = load_script("finviz_proactive_research")
     calls = []
     result = {"failed_writes": 0, "saved": 2}
@@ -424,6 +427,22 @@ def test_finviz_cron_argv_fake_receipt_and_soft_error(state, capsys, argv):
     assert mod.main(argv) == 0  # established soft-failure exit is preserved
     receipt = json.loads(path.read_text())
     assert receipt["status"] == "failed" and receipt["exit"] == 0 and receipt["ok_at"] == previous
+
+
+def test_finviz_bare_argv_reads_the_lane_config_instead_of_a_frozen_constant(state):
+    """No flags: the window is the reviewed config value, not the 150/72 the old argparse carried."""
+    mod = load_script("finviz_proactive_research")
+    calls = []
+
+    def run(max_n, lookback_hours, dry_run, summary=None):
+        calls.append((max_n, lookback_hours, dry_run))
+        return 0
+
+    mod.run = run
+    mod._load_env = lambda: None
+    assert mod.main([]) == 0
+    cfg = json.loads((ROOT / "config" / "finviz_proactive_research.json").read_text())
+    assert calls == [(cfg["max_symbols"], cfg["lookback_hours"], False)]
 
 
 def test_scorecard_preview_rejects_old_database_and_host_access(state, capsys):

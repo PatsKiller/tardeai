@@ -216,7 +216,8 @@ def _install_fake_lane_deps(monkeypatch, captured):
     monkeypatch.setattr(lane, "_get_conn", lambda: _FakeConn())
     monkeypatch.setattr(lane, "_universe", lambda cur, max_n, **kw: (["NVDA"], {
         "holdings": 1, "holdings_used": 1, "holdings_source": "positions_current",
-        "watchlist_available": 0, "watchlist_used": 0, "truncated": 0, "rotation": 0}))
+        "watchlist_available": 0, "watchlist_used": 0, "truncated": 0,
+        "selection": "staleness_first", "window_asked_at": None, "next_in_line": None}))
     return lane
 
 
@@ -234,8 +235,10 @@ class _FakeConn:
         pass
 
 
-def test_writer_does_not_send_the_ticker_as_strategy_type(monkeypatch):
+def test_writer_does_not_send_the_ticker_as_strategy_type(monkeypatch, tmp_path):
     captured: list[dict] = []
+    # a LIVE run records its sweep cursor; keep it in the test's own state root, never the live one
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
     lane = _install_fake_lane_deps(monkeypatch, captured)
     rc = lane.run(max_n=5, lookback_hours=12, dry_run=False, summary={})
     assert rc == 0
@@ -261,7 +264,7 @@ class _UniverseCursor:
 def test_holdings_are_never_truncated_by_the_cap(monkeypatch):
     import finviz_proactive_research as lane
     monkeypatch.setattr(lane, "_holdings_symbols", lambda: (["NVDA", "SPCX", "AAPL", "V"], "positions_current"))
-    symbols, stats = lane._universe(_UniverseCursor(["AAA", "BBB", "CCC"]), 5, rotation=0)
+    symbols, stats = lane._universe(_UniverseCursor(["AAA", "BBB", "CCC"]), 5)
     assert symbols[:4] == ["NVDA", "SPCX", "AAPL", "V"]
     assert stats["holdings"] == 4 and stats["holdings_used"] == 4
     assert stats["watchlist_used"] == 1 and stats["truncated"] == 2
@@ -270,7 +273,7 @@ def test_holdings_are_never_truncated_by_the_cap(monkeypatch):
 def test_a_holdings_only_book_smaller_than_the_cap_never_crashes(monkeypatch):
     import finviz_proactive_research as lane
     monkeypatch.setattr(lane, "_holdings_symbols", lambda: (["NVDA"], "positions_current"))
-    symbols, stats = lane._universe(_UniverseCursor([]), 400, rotation=0)
+    symbols, stats = lane._universe(_UniverseCursor([]), 400)
     assert symbols == ["NVDA"] and stats["truncated"] == 0
 
 
@@ -280,20 +283,23 @@ def test_a_cusip_holding_is_reported_not_counted_as_research_coverage(monkeypatc
     import finviz_proactive_research as lane
     monkeypatch.setattr(lane, "_holdings_symbols",
                         lambda: (["NVDA", "543354104", "BRK.B"], "positions_current"))
-    symbols, stats = lane._universe(_UniverseCursor([]), 400, rotation=0)
+    symbols, stats = lane._universe(_UniverseCursor([]), 400)
     assert symbols == ["NVDA", "BRK.B"]
     assert stats["holdings"] == 2 and stats["held_without_ticker"] == 1
     assert stats["held_without_ticker_sample"] == ["543354104"]
 
 
-def test_the_watchlist_window_rotates_so_the_alphabet_tail_is_reached(monkeypatch):
+def test_the_watchlist_window_advances_so_the_alphabet_tail_is_reached(monkeypatch):
+    """LQ-20261107-211 superseded the hour rotation this case used to pin: the window now advances by the
+    symbols a run actually asked about (never-asked first), so two runs never repeat a window."""
     import finviz_proactive_research as lane
     monkeypatch.setattr(lane, "_holdings_symbols", lambda: ([], "positions_current"))
     watch = ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF"]
-    first, s0 = lane._universe(_UniverseCursor(watch), 3, rotation=0)
-    later, s1 = lane._universe(_UniverseCursor(watch), 3, rotation=3)
-    assert first == ["AAA", "BBB", "CCC"] and s0["rotation"] == 0
-    assert later == ["DDD", "EEE", "FFF"] and s1["rotation"] == 3
+    first, s0 = lane._universe(_UniverseCursor(watch), 3)
+    asked = {s: lane._as_utc("2026-11-07T15:30:00+00:00") for s in first}
+    later, s1 = lane._universe(_UniverseCursor(watch), 3, attempts=asked)
+    assert first == ["AAA", "BBB", "CCC"] and s0["next_in_line"] == "DDD"
+    assert later == ["DDD", "EEE", "FFF"] and s1["selection"] == "staleness_first"
 
 
 def test_holdings_come_from_the_db_document_first(monkeypatch):
