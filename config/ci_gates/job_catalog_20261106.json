@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "job_catalog_20261106",
+  "files": [
+    "tests/test_jobs_history_descriptions.py"
+  ],
+  "anchor": "JOB_CATALOG_20261106",
+  "comment": [
+    "ANCHOR: JOB_CATALOG_20261106 — job descriptions merged from config/job_descriptions/*.json (bad parts skipped,",
+    "never raised), owner-based category fallback, ?status= / ?category= on /api/v2/jobs-history, and the read-only",
+    "/api/v2/jobs-catalog per-category counts + status mix. Hermetic."
+  ]
+}

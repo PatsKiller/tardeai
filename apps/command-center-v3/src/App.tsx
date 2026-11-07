@@ -43,6 +43,7 @@ import ReleasesSchedules from './pages/ReleasesSchedules'
 import OpsControlsPage from './pages/OpsControls'
 import JobsPage from './pages/JobsPage'
 import JobsN8nPage from './pages/JobsN8nPage'
+import JobCatalogPage from './pages/JobCatalogPage'
 import OpsIncidents from './pages/OpsIncidents'
 import OpsDeskFrame from './components/OpsDeskFrame'
 import JobsHealth from './components/JobsHealth'
@@ -304,6 +305,7 @@ function Shell() {
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="ops/jobs" element={<RouteErrorBoundary route="/v3/ops/jobs"><JobsPage onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="ops/jobs-n8n" element={<RouteErrorBoundary route="/v3/ops/jobs-n8n"><JobsN8nPage /></RouteErrorBoundary>} />
+            <Route path="ops/jobs-catalog" element={<RouteErrorBoundary route="/v3/ops/jobs-catalog"><JobCatalogPage /></RouteErrorBoundary>} />
             <Route path="ops/incidents" element={<RouteErrorBoundary route="/v3/ops/incidents"><OpsIncidents /></RouteErrorBoundary>} />
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />

@@ -28,6 +28,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 import os
 from pathlib import Path
 import sqlite3
@@ -62,6 +63,24 @@ _LEDGER_RESULT = {"RUN_DONE": "succeeded", "RUN_FAILED": "failed", "RUN_TIMEOUT"
                   "RUN_REFUSED": "refused", "RUN_SKIPPED_LOCK": "skipped_lock", "REQUESTED": "requested",
                   "RUNNING": "running"}
 _FAILED = {"failed", "timed_out", "refused"}
+LOG = logging.getLogger(__name__)
+
+# ── plain-English job descriptions + categories (operator 2026-11-06: "at least a line or two of normalization of what
+# each job does" and "another page that categorizes all of the jobs") ─────────────────────────────────────────────
+#: ``{"<lane_id>": {"title", "category", "does", "breaks"}}`` parts, merged in file-name order (a later part wins).
+DESCRIPTIONS_DIR = ROOT / "config/job_descriptions"
+#: The ordered category list ``[{"key", "label", "blurb"}]`` the catalog groups by.
+CATEGORIES_PATH = ROOT / "config/job_categories.json"
+_DESCRIPTION_FIELDS = ("title", "category", "does", "breaks")
+#: Fallback category from the registry ``owner`` when a lane has no description (or names an unknown category).
+OWNER_CATEGORY = {
+    "platform": "ops", "os": "ops", "ops": "ops", "tradeai-core": "ops",
+    "portfolio": "portfolio", "execution": "portfolio",
+    "research": "research", "cio": "cio", "advisory": "cio", "learning": "learning",
+    "proposals": "signals", "scalp": "signals", "watch": "signals", "options": "signals", "signals": "signals",
+    "agents": "agents_llm", "hermes": "agents_llm", "coordination": "agents_llm",
+    "comms": "alerts", "notifications": "alerts", "defense": "risk",
+}
 
 
 def _at(value):
@@ -466,6 +485,8 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
     for job in inputs.get("fixer_jobs") or []:
         lane = str(job.get("lane") or "")
         fixer_by_lane[lane.removeprefix("incident-")].append(job)
+    categories = inputs.get("categories") or []
+    category_keys = {c["key"] for c in categories}
     rows = []
     for lane in registry.get("lanes") or []:
         lane_id = W.identity(lane)
@@ -478,11 +499,13 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
                            fixer_jobs=[j for k in keys for j in fixer_by_lane.get(k, [])],
                            episodes=episodes.get(lane_id, []), actions=actions.get(lane_id, []),
                            cron_heal=inputs.get("cron_heal") or {}, since=since)
-        rows.append(lane_history(lane, now=now, trading_day=trading_day, ledger=ledger, journal=journal,
-                                 ledger_since=inputs.get("ledger_since"), journal_since=inputs.get("journal_since"),
-                                 last_live_success=_at((inputs.get("last_live_success") or {}).get(lane_id)),
-                                 receipt=(inputs.get("receipts") or {}).get(lane_id),
-                                 output_at=(inputs.get("output_times") or {}).get(lane_id), fixes=fixes))
+        row = lane_history(lane, now=now, trading_day=trading_day, ledger=ledger, journal=journal,
+                           ledger_since=inputs.get("ledger_since"), journal_since=inputs.get("journal_since"),
+                           last_live_success=_at((inputs.get("last_live_success") or {}).get(lane_id)),
+                           receipt=(inputs.get("receipts") or {}).get(lane_id),
+                           output_at=(inputs.get("output_times") or {}).get(lane_id), fixes=fixes)
+        row.update(describe(lane, (inputs.get("descriptions") or {}).get(lane_id), category_keys))
+        rows.append(row)
     # Every status key is present (a counted 0 is a real 0), so the page never has to default a missing count.
     counts = {k: 0 for k in ("ok", "ok_unverified", "failed", "missed", "late", "running", "not_measured", "paused",
                              "retired", "never_scheduled")}
@@ -499,10 +522,74 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
                     "no_run_history": sum(1 for r in active if not r["history_sources"] or r["history_sources"] == ["run receipt (last run only)"])},
         "sources": inputs.get("sources") or [],
         "gaps": inputs.get("gaps") or [],
+        "categories": categories,
+        "described": sum(1 for r in rows if r["does"]),
         "rows": rows,
         "note": "Times are the writers' own times. An output file's write time is not a successful run. "
                 "Missed slots are counted only where per-run history covers the slot.",
     }
+
+
+def describe(lane: dict, entry: dict | None, category_keys: set[str]) -> dict:
+    """The lane's plain-English fields (each None when not written) plus its owner-based fallback category.
+
+    ``category`` is only a described, known key; ``category_key`` is what the catalog groups by (described, else the
+    owner fallback, else ``other``)."""
+    entry = entry if isinstance(entry, dict) else {}
+    out = {}
+    for field in _DESCRIPTION_FIELDS:
+        value = entry.get(field)
+        out[field] = _text(value, 160 if field == "title" else 400) or None if isinstance(value, str) and value.strip() else None
+    if out["category"] and category_keys and out["category"] not in category_keys:
+        out["category"] = None
+    owner = str(lane.get("owner") or "").strip() or None
+    fallback = OWNER_CATEGORY.get(owner or "", "other")
+    if category_keys and fallback not in category_keys:
+        fallback = "other"
+    return {**out, "owner": owner, "category_fallback": fallback, "category_key": out["category"] or fallback}
+
+
+def read_categories(path: Path) -> tuple[list[dict], str | None]:
+    """The ordered category list; a missing or malformed file is a gap, never an error."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        LOG.warning("job categories unreadable at %s: %s", path, type(exc).__name__)
+        return [], "the job category list could not be read"
+    items = doc.get("categories") if isinstance(doc, dict) else doc
+    out, seen = [], set()
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict) and isinstance(item.get("key"), str) and item["key"] not in seen:
+            seen.add(item["key"])
+            out.append({"key": item["key"], "label": str(item.get("label") or item["key"]), "blurb": str(item.get("blurb") or "")})
+    return out, None if out else "the job category list is empty"
+
+
+def read_descriptions(directory: Path) -> tuple[dict, dict]:
+    """Merge every ``*.json`` part (sorted by name; a later part wins per lane). A missing directory, an unreadable
+    file or bad JSON is logged and noted, never raised."""
+    merged, files, bad = {}, [], []
+    try:
+        parts = sorted(p for p in directory.glob("*.json") if p.is_file())
+    except OSError:
+        parts = []
+    for part in parts:
+        try:
+            doc = json.loads(part.read_text(encoding="utf-8"))
+            if not isinstance(doc, dict):
+                raise ValueError("not an object")
+        except (OSError, ValueError) as exc:
+            LOG.warning("job descriptions part %s skipped: %s", part.name, exc)
+            bad.append(part.name)
+            continue
+        files.append(part.name)
+        for lane_id, entry in doc.items():
+            if isinstance(lane_id, str) and isinstance(entry, dict):
+                merged[lane_id] = entry
+    note = f"{len(merged)} job descriptions from {len(files)} file(s)" if files else "no description file yet"
+    if bad:
+        note += f"; skipped unreadable: {', '.join(bad)}"
+    return merged, {"name": "job descriptions", "newest_record_at": None, "covers_from": None, "note": note}
 
 
 # ── loading (read-only) ───────────────────────────────────────────────────────────────────────────────────────────
@@ -680,7 +767,8 @@ def read_receipts(registry: dict, root: Path) -> tuple[dict, dict]:
     return receipts, outputs
 
 
-def _load(root: Path, registry_path: Path, now: datetime) -> dict:
+def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path | None = None,
+          categories_path: Path | None = None) -> dict:
     from scripts.cron_outage_watchdog import bind_components
     from scripts.market_session import is_trading_day
     registry = _read_json(registry_path, 32 * 1024 * 1024) or {}
@@ -722,6 +810,12 @@ def _load(root: Path, registry_path: Path, now: datetime) -> dict:
               "receipts": receipts, "output_times": outputs, "incidents": incidents,
               "fixer_jobs": [j for j in (fixer.get("jobs") or {}).values() if isinstance(j, dict)],
               "episodes": episodes, "actions": actions, "cron_heal": cron_heal, "sources": sources, "gaps": gaps}
+    descriptions, described_source = read_descriptions(descriptions_dir or DESCRIPTIONS_DIR)
+    sources.append(described_source)
+    categories, categories_gap = read_categories(categories_path or CATEGORIES_PATH)
+    if categories_gap:
+        gaps.append(categories_gap)
+    inputs.update(descriptions=descriptions, categories=categories)
     if not registry.get("lanes"):
         gaps.append("the job list could not be read")
     return build(registry, inputs, now=now, trading_day=is_trading_day)
@@ -735,9 +829,9 @@ _REFRESHING: set = set()
 _ATTENTION = {"failed", "missed", "late", "not_measured"}
 
 
-def _refresh(key, root, registry):
+def _refresh(key, root, registry, extra):
     try:
-        result = _load(root, registry, datetime.now(timezone.utc))
+        result = _load(root, registry, datetime.now(timezone.utc), **extra)
         with _LOCK:
             _CACHE[key] = (time.monotonic(), result)
     finally:
@@ -745,12 +839,14 @@ def _refresh(key, root, registry):
             _REFRESHING.discard(key)
 
 
-def snapshot(*, state_root=None, registry_path=None, now=None) -> dict:
+def snapshot(*, state_root=None, registry_path=None, now=None, descriptions_dir=None, categories_path=None) -> dict:
     root = Path(state_root or os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases/persistent-state")
     registry = Path(registry_path or ROOT / "config/lane_registry.json")
+    extra = {"descriptions_dir": Path(descriptions_dir) if descriptions_dir else None,
+             "categories_path": Path(categories_path) if categories_path else None}
     if now is not None:
-        return _load(root, registry, now)
-    key = (str(root), str(registry))
+        return _load(root, registry, now, **extra)
+    key = (str(root), str(registry), str(extra["descriptions_dir"]), str(extra["categories_path"]))
     with _LOCK:
         cached = _CACHE.get(key)
         stale = cached is None or time.monotonic() - cached[0] > CACHE_SECONDS
@@ -758,22 +854,40 @@ def snapshot(*, state_root=None, registry_path=None, now=None) -> dict:
         if background:
             _REFRESHING.add(key)
     if cached is None:
-        result = _load(root, registry, datetime.now(timezone.utc))
+        result = _load(root, registry, datetime.now(timezone.utc), **extra)
         with _LOCK:
             _CACHE[key] = (time.monotonic(), result)
         return result
     if background:
-        threading.Thread(target=_refresh, args=(key, root, registry), name="jobs-history-refresh", daemon=True).start()
+        threading.Thread(target=_refresh, args=(key, root, registry, extra), name="jobs-history-refresh", daemon=True).start()
     return cached[1]
 
 
 def _list_row(row: dict) -> dict:
     keep = ("lane_id", "job", "scheduler", "state", "status", "status_reason", "last_run", "last_success_at",
-            "missed_count", "missed_gap", "fix_count", "last_fix", "history_sources", "history_gap")
-    out = {k: row[k] for k in keep}
+            "missed_count", "missed_gap", "fix_count", "last_fix", "history_sources", "history_gap",
+            "title", "category", "does", "breaks", "owner", "category_fallback", "category_key")
+    out = {k: row.get(k) for k in keep}
     out["cadence"] = {k: row["cadence"][k] for k in ("expressions", "timezone", "every_hours", "market_days_only")}
     out["output_written_at"] = (row.get("output") or {}).get("written_at")
     return out
+
+
+#: ``?status=`` values. Each matches the summary tile of the same meaning, so a tapped tile's count is the list's total.
+STATUS_FILTERS = {
+    "failed": lambda r: r["status"] == "failed",
+    "missed": lambda r: r["state"] == "ACTIVE" and bool(r["missed_count"]),  # = summary.with_missed
+    "late": lambda r: r["status"] == "late",
+    "ok": lambda r: r["status"] == "ok",
+    "ok_unverified": lambda r: r["status"] == "ok_unverified",
+    "running": lambda r: r["status"] == "running",
+    "not_measured": lambda r: r["status"] == "not_measured",
+    "paused": lambda r: r["status"] == "paused",
+    "retired": lambda r: r["status"] == "retired",
+    "never_scheduled": lambda r: r["status"] == "never_scheduled",
+    "fixed": lambda r: bool(r["fix_count"]),  # = summary.fixed_14d
+}
+_ORDER = {"failed": 0, "missed": 1, "late": 2, "running": 3, "not_measured": 4, "ok_unverified": 5, "ok": 6}
 
 
 def get_jobs_history(query=None, **kwargs) -> dict:
@@ -786,6 +900,12 @@ def get_jobs_history(query=None, **kwargs) -> dict:
     scope = query.get("filter", "attention")
     if scope not in {"attention", "all", "fixed", "n8n", "cron", "systemd", "other"}:
         raise ValueError("unknown filter")
+    status = str(query.get("status") or "").strip() or None
+    if status and status not in STATUS_FILTERS:
+        raise ValueError("unknown status")
+    category = str(query.get("category") or "").strip() or None
+    if category and category not in {c["key"] for c in result.get("categories") or []} | {r.get("category_key") for r in rows}:
+        raise ValueError("unknown category")
     if scope == "attention":
         rows = [r for r in rows if r["status"] in _ATTENTION or (r["missed_count"] or 0) > 0]
     elif scope == "fixed":
@@ -794,15 +914,49 @@ def get_jobs_history(query=None, **kwargs) -> dict:
         rows = [r for r in rows if r["scheduler"] == scope]
     elif scope == "other":
         rows = [r for r in rows if r["scheduler"] not in {"n8n", "cron", "systemd"}]
+    if status:
+        rows = [r for r in rows if STATUS_FILTERS[status](r)]
+    if category:
+        rows = [r for r in rows if r.get("category_key") == category]
     text = str(query.get("q") or "").strip().lower()
     if text:
-        rows = [r for r in rows if text in r["lane_id"].lower() or text in r["job"].lower()]
-    order = {"failed": 0, "missed": 1, "late": 2, "running": 3, "not_measured": 4, "ok_unverified": 5, "ok": 6}
-    rows = sorted(rows, key=lambda r: (order.get(r["status"], 7), -(r["missed_count"] or 0), r["job"].lower()))
+        rows = [r for r in rows if any(text in str(r.get(k) or "").lower() for k in ("lane_id", "job", "title", "does"))]
+    rows = sorted(rows, key=lambda r: (_ORDER.get(r["status"], 7), -(r["missed_count"] or 0), (r.get("title") or r["job"]).lower()))
     try:
         offset = max(0, int(query.get("offset", 0)))
         limit = max(1, min(200, int(query.get("limit", 50))))
     except (TypeError, ValueError):
         offset, limit = 0, 50
     return {**{k: v for k, v in result.items() if k != "rows"}, "rows": [_list_row(r) for r in rows[offset:offset + limit]],
-            "total": len(rows), "offset": offset, "limit": limit, "has_more": offset + limit < len(rows), "filter": scope}
+            "total": len(rows), "offset": offset, "limit": limit, "has_more": offset + limit < len(rows), "filter": scope,
+            "status": status, "category": category}
+
+
+#: How the catalog buckets a job's status (the card's "3 failed · 40 ok · 12 not measured").
+_MIX = {"failed": "failed", "missed": "missed", "late": "late", "running": "running", "ok": "ok",
+        "ok_unverified": "ok_unverified", "not_measured": "not_measured", "paused": "inactive", "retired": "inactive",
+        "never_scheduled": "inactive"}
+
+
+def get_jobs_catalog(query=None, **kwargs) -> dict:
+    """GET /api/v2/jobs-catalog: every category in config order with its job count, how many are described and a
+    status mix. Computed from the same cached projection as jobs-history (no extra store read)."""
+    result = snapshot(**kwargs)
+    rows = result["rows"]
+    cats = [dict(c) for c in result.get("categories") or []]
+    known = {c["key"] for c in cats}
+    for key in sorted({r["category_key"] for r in rows} - known):  # a fallback key the list lacks still shows
+        cats.append({"key": key, "label": key.replace("_", " ").capitalize(), "blurb": ""})
+    out = []
+    for c in cats:
+        members = [r for r in rows if r["category_key"] == c["key"]]
+        mix = {k: 0 for k in ("failed", "missed", "late", "running", "ok", "ok_unverified", "not_measured", "inactive")}
+        for r in members:
+            mix[_MIX.get(r["status"], "not_measured")] += 1
+        out.append({**c, "jobs": len(members), "described": sum(1 for r in members if r["does"]),
+                    "with_missed": sum(1 for r in members if STATUS_FILTERS["missed"](r)),
+                    "fixed_14d": sum(1 for r in members if r["fix_count"]), "status_mix": mix})
+    return {"schema": "JobCatalog@v1", "authority": AUTHORITY, "computed_at": result["computed_at"],
+            "jobs": len(rows), "described": result.get("described", 0), "categories": out,
+            "sources": result.get("sources") or [], "gaps": result.get("gaps") or [],
+            "note": "Categories come from the job descriptions; a job without one is grouped by its registry owner."}

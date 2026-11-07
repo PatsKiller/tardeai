@@ -56199,6 +56199,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
+    # Job catalog (operator 2026-11-06: "another page that categorizes all of the jobs"). Per-category job count,
+    # described count and status mix from the same cached jobs-history projection. Read-only.
+    if base_path == "/api/v2/jobs-catalog":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from scripts.lib.jobs_history import get_jobs_catalog as _jobs_catalog
+
+            return 200, {"ok": True, "data": _jobs_catalog(query)}
+        except ValueError as e:
+            return 400, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
     # AI-proposed conflict rules (operator 2026-10-25; docs/ops/CONFLICT_RULE_PROPOSALS.md). Must precede the
     # /api/v3/conflicts/{key} catch-all below. GET is read-only; POST .../decision is operator identity + CSRF only
     # and answers 503 PROPOSAL_DECISIONS_NOT_ACTIVATED until config decision_writes_enabled is flipped.

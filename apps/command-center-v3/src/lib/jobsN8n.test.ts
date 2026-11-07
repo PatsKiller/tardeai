@@ -37,7 +37,7 @@ t('history tiles never invent a zero', () => {
   eq(tiles.map(x => x.label), ['Failed', 'Missed a run', 'Late', 'Ran OK', 'Ran, unproven', 'Fixed · 14 d'])
   eq(tiles.map(x => x.value), [1, 2, null, 4, null, 5])
   eq(historyTiles(null, 'needs').every(x => x.value === null), true)
-  eq(historyTiles(s, 'fixes')[0], { label: 'Fixed · 14 d', value: 5, tone: 'success' })
+  eq(historyTiles(s, 'fixes')[0], { label: 'Fixed · 14 d', value: 5, tone: 'success', key: 'fixed' })
 })
 t('n8n tiles: server summary first; cut over from summary or stage; unknown stays null', () => {
   const summary = { live_healthy: 3, live_failing: 1, rehearsing: 2, ready_to_promote: 1, never_ran: 0 }

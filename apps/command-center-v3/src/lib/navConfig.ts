@@ -112,6 +112,7 @@ export const NAV: NavSection[] = [
       { label: 'Is it running', pages: [
         { to: '/health', label: 'Health', strip: true },
         { to: '/ops/jobs-n8n', label: 'Jobs & n8n', strip: true },
+        { to: '/ops/jobs-catalog', label: 'Job catalog' },
         { to: '/ops/jobs', label: 'Jobs & health' },
         { to: '/ops/incidents', label: 'Incidents', strip: true },
       ] },
