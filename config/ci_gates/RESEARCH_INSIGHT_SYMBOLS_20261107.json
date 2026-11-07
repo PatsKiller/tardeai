@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "RESEARCH_INSIGHT_SYMBOLS_20261107",
+  "files": [
+    "tests/test_research_insight_symbols_lq124_20261107.py"
+  ],
+  "anchor": "RESEARCH_INSIGHT_SYMBOLS_20261107",
+  "comment": [
+    "ANCHOR: RESEARCH_INSIGHT_SYMBOLS_20261107 — LQ-20261107-124, research-insight-extractor wrote three defects",
+    "into research_insights: a source row's topic code uppercased into its symbol column (67 of the last 198 rows,",
+    "5,197 of 52,520 overall), source_id NULL on every row although source_reference was populated, and the",
+    "extractor's neutral/0.5 default stored as an observation (47,388 rows, 90%). Each test pins one decision: a",
+    "value is a symbol only if it is ticker-shaped AND a known instrument; source_id is an exact URL-host match to",
+    "research_sources or NULL (never guessed from a feed name); a signal-less row is written active=false and is",
+    "reported as no_signal, not counted as produced. Hermetic: fake cursor/connection, synthetic rows only."
+  ]
+}

@@ -12,6 +12,7 @@ Usage:
 import json, os, re, sys, hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
@@ -27,6 +28,74 @@ _INCOME = {"dividend", "yield", "income", "distribution", "payout", "coupon", "D
            "ex-div", "covered call", "premium", "monthly income"}
 _HORIZON_SHORT = {"this week", "short-term", "swing", "day trade", "near-term", "immediate"}
 _HORIZON_LONG = {"long-term", "retirement", "compound", "decade", "5-year", "10-year", "lifetime"}
+
+# A ticker is 1-5 capitals. Every one of the 5,197 bad ``symbol`` values measured on 2026-11-07 is a topic code
+# (``d194_closed_end_funds_...``, ``k_medicaid_...``) carried in the source row's own ``symbol`` column.
+_TICKER_RE = re.compile(r"^[A-Z]{1,5}$")
+
+
+def symbol_universe(cur) -> set[str]:
+    """Every symbol the desks know as an instrument: the strategy classification table + the watchlist master.
+
+    This is the validation set for a *source-provided* symbol. It is deliberately wider than the set the free-text
+    scan uses (active strategy rows only): a bare uppercase word in prose is a ticker only if a desk tracks it,
+    whereas a source's own symbol field is a deliberate assertion that only needs to name a real instrument.
+    """
+    cur.execute("""SELECT upper(symbol) AS s FROM ticker_strategy_classifications WHERE symbol IS NOT NULL
+                   UNION
+                   SELECT upper(symbol) AS s FROM watchlist_symbol_master WHERE symbol IS NOT NULL""")
+    return {r["s"] for r in cur.fetchall() if r.get("s")}
+
+
+def validate_symbol(candidate, universe) -> str | None:
+    """A candidate is a symbol only when it is ticker-shaped AND a known instrument; otherwise it is a topic tag."""
+    s = str(candidate or "").strip().upper()
+    if not s or not _TICKER_RE.fullmatch(s):
+        return None
+    return s if s in universe else None
+
+
+def _url_host(url) -> str | None:
+    try:
+        host = (urlparse(str(url or "")).hostname or "").lower().strip(".")
+    except (ValueError, AttributeError):
+        return None
+    if host.startswith("www."):
+        host = host[4:]
+    return host or None
+
+
+def source_id_for_url(cur, url, cache: dict | None = None) -> int | None:
+    """The registered ``research_sources`` row for the article's own host, or None when the host is not registered.
+
+    Attribution is only ever an exact host match. ``news_articles.source`` values like ``google_news:Yahoo
+    Finance`` are feeds, not publishers, so nothing is inferred from them; an unregistered publisher stays NULL.
+    """
+    host = _url_host(url)
+    if not host:
+        return None
+    if cache is not None and host in cache:
+        return cache[host]
+    cur.execute("""SELECT id FROM research_sources
+                    WHERE source_type='web' AND lower(regexp_replace(source_name, '^www\\.', '')) = %s
+                    ORDER BY active DESC, id ASC LIMIT 1""", (host,))
+    r = cur.fetchone()
+    sid = int(r["id"]) if r and r.get("id") is not None else None
+    if cache is not None:
+        cache[host] = sid
+    return sid
+
+
+def has_signal(insight: dict) -> bool:
+    """False for the neutral default the keyword extractor emits when it finds nothing.
+
+    Measured 2026-11-07: 47,388 of 52,520 rows (90%) were ``neutral`` at confidence 0.5 — the default, not an
+    observation. Such a row is still written (it is how the batch selector knows the source was examined, since it
+    de-duplicates on ``source_reference``) but with ``active=false``, so no consumer reads it as research.
+    """
+    return (insight.get("thesis_type") != "neutral"
+            or insight.get("price_target") is not None
+            or insight.get("yield_thesis") is not None)
 
 
 def _get_conn(dry_run: bool = False):
@@ -47,24 +116,47 @@ def _get_conn(dry_run: bool = False):
 
 
 def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
-                    source_reference: str = None, dry_run: bool = False) -> dict:
+                    source_reference: str = None, dry_run: bool = False,
+                    source_url: str = None, session: dict | None = None) -> dict:
     """Extract structured insight from free text. Classification-first.
 
-    dry_run: classify only -- returns before the INSERT (AGENTS.md §6), READ ONLY session."""
+    dry_run: classify only -- returns before the INSERT (AGENTS.md §6), READ ONLY session.
+
+    session: an optional batch context (``{"conn", "cur", "known", "universe", "source_ids"}``). The cron path used
+    to open a database connection per article and re-read the symbol tables every time; a batch now shares one
+    connection and one symbol universe. When no session is given this function opens and closes its own.
+
+    2026-11-07 (LQ-20261107-124): three data defects, each fixed where it was produced —
+    (1) a source's ``symbol`` value is validated against the instrument universe instead of being uppercased
+        straight into the row (34% of the last run's rows carried a topic code as a symbol);
+    (2) ``source_id`` is resolved from the article's own URL host against ``research_sources`` (was NULL on all
+        52,520 rows);
+    (3) the neutral/0.5 default is written ``active=false``, so a row that says nothing is not read as research.
+    """
     import psycopg2.extras
-    conn = _get_conn(dry_run)
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    own = session is None
+    if own:
+        conn = _get_conn(dry_run)
+        session = {"conn": conn, "cur": conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)}
+    cur = session["cur"]
+
+    if "known" not in session:
+        cur.execute("SELECT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
+        session["known"] = {r["symbol"] for r in cur.fetchall()}
+    if "universe" not in session:
+        session["universe"] = symbol_universe(cur)
+    known, universe = session["known"], session["universe"]
 
     text_lower = text.lower()
     words = set(text_lower.split())
 
     # Detect symbols mentioned
     symbols_found = []
-    if symbol:
-        symbols_found.append(symbol.upper())
-    # Also scan for ticker patterns
-    cur.execute("SELECT symbol FROM ticker_strategy_classifications WHERE active=TRUE")
-    known = {r["symbol"] for r in cur.fetchall()}
+    given = validate_symbol(symbol, universe)
+    if given:
+        symbols_found.append(given)
+    # Also scan for ticker patterns — only tokens a desk actually tracks (an uppercase word in prose is not an
+    # assertion, and words like "ALL", "NOW", "IT" are real tickers).
     for w in re.findall(r'\b[A-Z]{2,5}\b', text):
         if w in known and w not in symbols_found:
             symbols_found.append(w)
@@ -152,99 +244,134 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
         "extraction_confidence": confidence,
     }
 
+    insight["source_id"] = (source_id_for_url(cur, source_url, session.setdefault("source_ids", {}))
+                            if source_url else None)
+    insight["active"] = has_signal(insight)
+    # The source's own value, kept for the run's accounting (a topic code is reported, never written as a symbol).
+    insight["source_symbol_not_ticker"] = bool(symbol) and given is None
+
     if dry_run:
         insight["id"] = None
-        conn.close()
+        if own:
+            conn.close()
         return insight
 
     # Store in DB
     cur.execute("""
         INSERT INTO research_insights
-            (symbol, strategy_type, source_type, source_reference, thesis_type, time_horizon,
+            (symbol, strategy_type, source_id, source_type, source_reference, thesis_type, time_horizon,
              confidence, headline, structured_thesis, supporting_entities, key_arguments,
              contradiction_flags, price_target, yield_thesis, risk_factors, raw_text,
-             extraction_model, extraction_confidence)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+             extraction_model, extraction_confidence, active)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING id
-    """, (insight["symbol"], insight["strategy_type"], source_type, source_reference,
+    """, (insight["symbol"], insight["strategy_type"], insight["source_id"], source_type, source_reference,
           thesis_type, time_horizon, confidence, insight["headline"][:200],
           structured, symbols_found, json.dumps(key_args, default=str),
           json.dumps(contradictions, default=str), price_target, yield_thesis,
-          json.dumps([], default=str), text[:2000], "keyword_v1", confidence))
+          json.dumps([], default=str), text[:2000], "keyword_v1", confidence, insight["active"]))
     row = cur.fetchone()
     insight["id"] = row["id"] if row else None
 
-    conn.commit()
-    conn.close()
+    if own:
+        conn.commit()
+        conn.close()
     return insight
+
+
+def _open_session(dry_run: bool) -> dict:
+    """One connection for a whole batch (the cron path used to open one per article)."""
+    import psycopg2.extras
+    conn = _get_conn(dry_run)
+    return {"conn": conn, "cur": conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)}
+
+
+def _count(skips: dict | None, key: str) -> None:
+    if skips is not None:
+        skips[key] = skips.get(key, 0) + 1  # nosemgrep: tq-py-missing-as-zero -- a skip counter starts at zero because nothing has been skipped yet; it counts rows this run examined and set aside, never a measurement of the source
+
+
+def _note(row: dict, skips: dict | None) -> None:
+    """Account for a row that was examined but carries no usable symbol / no signal (never silently dropped)."""
+    if row.get("source_symbol_not_ticker"):
+        _count(skips, "source_symbol_not_ticker")
+    if not row.get("active", True):
+        _count(skips, "no_signal")
 
 
 def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = None, skips: dict = None) -> list:
     """Extract insights from recent news articles that don't have linked insights yet.
 
     errors: when given, collects one string per failed extraction (was silently dropped).
-    skips: when given, counts candidates skipped before extraction (``text_too_short``)."""
-    import psycopg2.extras
-    conn = _get_conn(dry_run)
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    skips: when given, counts candidates skipped before extraction (``text_too_short``), a source ``symbol`` that
+    was a topic code (``source_symbol_not_ticker``), and rows with no signal (``no_signal``)."""
+    session = _open_session(dry_run)
+    cur, conn = session["cur"], session["conn"]
 
     cur.execute("""
-        SELECT na.id, na.symbol, na.title, na.summary, na.source, na.strategy_type
+        SELECT na.id, na.symbol, na.title, na.summary, na.source, na.strategy_type, na.source_url
         FROM news_articles na
         WHERE na.relevance_score >= 0.4
         AND NOT EXISTS (SELECT 1 FROM research_insights ri WHERE ri.source_reference = 'news:' || na.id::text)
         ORDER BY na.created_at DESC LIMIT %s
     """, (limit,))
     articles = cur.fetchall()
-    conn.close()
 
     results = []
-    for a in articles:
-        text = f"{a.get('title', '')}. {a.get('summary', '')}"
-        if len(text.strip()) < 20:
-            if skips is not None:
-                skips["text_too_short"] = skips.get("text_too_short", 0) + 1
-            continue
-        try:
-            r = extract_insight(text, symbol=a.get("symbol"), source_type="news",
-                                source_reference=f"news:{a['id']}", dry_run=dry_run)
-            results.append(r)
-        except Exception as e:
-            if errors is not None:
-                errors.append(f"news:{a['id']}: {type(e).__name__}: {str(e)[:120]}")
+    try:
+        for a in articles:
+            text = f"{a.get('title', '')}. {a.get('summary', '')}"
+            if len(text.strip()) < 20:
+                _count(skips, "text_too_short")
+                continue
+            try:
+                r = extract_insight(text, symbol=a.get("symbol"), source_type="news",
+                                    source_reference=f"news:{a['id']}", dry_run=dry_run,
+                                    source_url=a.get("source_url"), session=session)
+                results.append(r)
+                _note(r, skips)
+            except Exception as e:
+                conn.rollback()  # a failed row must not poison the shared transaction
+                if errors is not None:
+                    errors.append(f"news:{a['id']}: {type(e).__name__}: {str(e)[:120]}")
+    finally:
+        conn.close()
     return results
 
 
 def extract_from_catalysts(limit: int = 100, dry_run: bool = False, errors: list = None, skips: dict = None) -> list:
     """Extract insights from catalyst events (``errors`` / ``skips`` as in extract_from_news)."""
-    import psycopg2.extras
-    conn = _get_conn(dry_run)
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    session = _open_session(dry_run)
+    cur, conn = session["cur"], session["conn"]
 
     cur.execute("""
-        SELECT ce.id, ce.symbol, ce.headline, ce.description, ce.catalyst_type, ce.strategy_type
+        SELECT ce.id, ce.symbol, ce.headline, ce.description, ce.catalyst_type, ce.strategy_type, ce.source_url
         FROM catalyst_events ce
         WHERE ce.confidence >= 0.3
         AND NOT EXISTS (SELECT 1 FROM research_insights ri WHERE ri.source_reference = 'catalyst:' || ce.id::text)
         ORDER BY ce.created_at DESC LIMIT %s
     """, (limit,))
     catalysts = cur.fetchall()
-    conn.close()
 
     results = []
-    for c in catalysts:
-        text = f"{c.get('headline', '')}. {c.get('description', '')}"
-        if len(text.strip()) < 20:
-            if skips is not None:
-                skips["text_too_short"] = skips.get("text_too_short", 0) + 1
-            continue
-        try:
-            r = extract_insight(text, symbol=c.get("symbol"), source_type="catalyst",
-                                source_reference=f"catalyst:{c['id']}", dry_run=dry_run)
-            results.append(r)
-        except Exception as e:
-            if errors is not None:
-                errors.append(f"catalyst:{c['id']}: {type(e).__name__}: {str(e)[:120]}")
+    try:
+        for c in catalysts:
+            text = f"{c.get('headline', '')}. {c.get('description', '')}"
+            if len(text.strip()) < 20:
+                _count(skips, "text_too_short")
+                continue
+            try:
+                r = extract_insight(text, symbol=c.get("symbol"), source_type="catalyst",
+                                    source_reference=f"catalyst:{c['id']}", dry_run=dry_run,
+                                    source_url=c.get("source_url"), session=session)
+                results.append(r)
+                _note(r, skips)
+            except Exception as e:
+                conn.rollback()
+                if errors is not None:
+                    errors.append(f"catalyst:{c['id']}: {type(e).__name__}: {str(e)[:120]}")
+    finally:
+        conn.close()
     return results
 
 
@@ -268,6 +395,8 @@ def run_default(dry_run: bool = False, as_json: bool = False) -> int:
           + (f", {len(errors)} failed" if errors else ""))
     for e in errors[:5]:
         print(f"  failed: {e}")
+    if skips:
+        print("  skipped: " + ", ".join(f"{k}={v}" for k, v in sorted(skips.items())))
     if as_json:
         print(json.dumps({"news": len(n), "catalysts": len(c), "failed": len(errors),
                           "dry_run": dry_run}, indent=2))
@@ -283,20 +412,32 @@ def run_default(dry_run: bool = False, as_json: bool = False) -> int:
 
 
 def lane_output(results: list, *, failed: int, skips: dict, dry_run: bool) -> dict:
-    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows inserted into research_insights).
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: signal rows inserted into research_insights).
 
-    produced = insights with a RETURNING id (a dry run inserts nothing: 0, the would-insert count is ``dry_run``);
-    attempted = candidates (news + catalysts with no linked insight yet) extracted or failed. Every candidate already
-    has an insight (NOT EXISTS on source_reference) = ``no_new_input``."""
-    inserted = sum(1 for r in results if r.get("id") is not None)
+    produced = rows with a RETURNING id that carry a signal (``active``; a dry run inserts nothing: 0, the
+    would-insert count is ``dry_run``). A row examined and found signal-less is counted under
+    ``skipped_reasons.no_signal``, and one whose source ``symbol`` was a topic code under
+    ``source_symbol_not_ticker``. attempted = candidates (news + catalysts with no linked insight yet) extracted or
+    failed. Every candidate already has a row (NOT EXISTS on source_reference) = ``no_new_input``."""
+    produced = [r for r in results if r.get("id") is not None and r.get("active", True)]
+    inserted = len(produced)
     skipped = {k: int(v) for k, v in skips.items() if v}
     if failed:
         skipped["extract_failed"] = int(failed)
     if dry_run and results:
         skipped["dry_run"] = len(results)
     attempted = len(results) + int(failed)
+    if inserted:
+        empty_reason = None
+    elif not attempted:
+        empty_reason = "no_new_input"
+    elif dry_run:
+        empty_reason = None
+    else:
+        # examined and found nothing: the store gained a row, but not an insight
+        empty_reason = "no_signal" if results else None
     return {"produced_count": inserted, "attempted_count": max(attempted, inserted), "skipped_reasons": skipped,
-            "empty_reason": None if inserted else ("no_new_input" if not attempted else None)}
+            "empty_reason": empty_reason}
 
 
 def _receipt(**kw):
