@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PORTFOLIO_CADENCE_NULL_METRICS_20261106",
+  "files": [
+    "tests/test_portfolio_analyzer_null_asset_type_20261106.py",
+    "tests/test_portfolio_weekly_report_null_metrics_20261106.py"
+  ],
+  "anchor": "PORTFOLIO_CADENCE_NULL_METRICS_20261106",
+  "comment": [
+    "ANCHOR: PORTFOLIO_CADENCE_NULL_METRICS_20261106 — the portfolio-maintenance cadences",
+    "(daily/weekly/monthly) recorded overall_status=degraded because the report saw a",
+    "present-but-None figure and formatted it. dict.get(key, 0) does NOT substitute for a",
+    "present-but-None value: _get_sector called .upper() on asset_type=None (daily,",
+    "2026-11-06) and _generate_narrative formatted inst_trans_pct=None with :+.1f (weekly",
+    "2026-11-02, monthly 2026-11-01). Hermetic: synthetic fixtures, LLM stubbed, no live",
+    "holdings.json, no broker, no network, no DB."
+  ]
+}
