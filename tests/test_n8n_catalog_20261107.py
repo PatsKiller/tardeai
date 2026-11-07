@@ -176,3 +176,57 @@ def test_live_verdicts_file_shape_if_present():
         pytest.skip("no host verdicts file")
     v, meta = N.read_verdicts(p)
     assert meta["state"] == "ok" and meta["rows"] == len(v) > 0
+
+
+# ── LQ-20261107-180: per-category job health (same rule as GET /api/v2/jobs-catalog) + fix-item status ────────────
+
+def test_status_mix_matches_the_jobs_catalog_rule(tmp_path):
+    from scripts.lib import jobs_history as JH
+
+    assert N.MIX_KEYS == ("failed", "missed", "late", "running", "ok", "ok_unverified", "not_measured", "inactive")
+    for status, key in JH._MIX.items():
+        assert N.STATUS_MIX[status] == key, status
+    snap = {**SNAP, "rows": [dict(ROWS[0], status="failed"), dict(ROWS[1], status="paused"), ROWS[2],
+                             dict(ROWS[6], status="retired"), dict(ROWS[7], status="something_new")]}
+    out = N.build(snap, RELAY, {"paused": []}, {}, {})
+    research = next(c for c in out["categories"] if c["key"] == "research")
+    assert research["jobs"] == 4 and research["inactive"] == 2
+    assert research["status_mix"] == {"failed": 1, "missed": 0, "late": 0, "running": 0, "ok": 1,
+                                      "ok_unverified": 0, "not_measured": 0, "inactive": 2}
+    mystery = next(c for c in out["categories"] if c["key"] == "mystery")
+    assert mystery["status_mix"]["not_measured"] == 1  # an unknown status is never counted as ok
+
+
+def _ledger(tmp_path, items, name="LEAD-WORK-LEDGER-20261107.json"):
+    d = tmp_path / N.LEDGER_DIR_REL
+    d.mkdir(parents=True, exist_ok=True)
+    (d / name).write_text(json.dumps({"items": items}), encoding="utf-8")
+
+
+def test_work_items_resolve_short_refs_in_the_newest_ledger(tmp_path):
+    _ledger(tmp_path, [{"id": "LQ-20261106-57", "owner": "old", "status": "open"}], "LEAD-WORK-LEDGER-20261106.json")
+    _ledger(tmp_path, [{"id": "LQ-20261107-57", "owner": "cc-x", "priority": "P1", "status": "in_progress", "title": "t"},
+                       {"id": "INC-9", "owner": "cc-y", "status": "done"}])
+    out, note = N.read_work_items(tmp_path, ["LQ-57", "INC-9", "LQ-404", None, ""])
+    assert note is None
+    assert out["LQ-57"] == {"id": "LQ-20261107-57", "owner": "cc-x", "priority": "P1", "status": "in_progress", "title": "t"}
+    assert out["INC-9"]["status"] == "done"
+    assert out["LQ-404"] == {"id": "LQ-404", "owner": None, "priority": None, "status": None, "title": None}
+    assert set(out) == {"LQ-57", "INC-9", "LQ-404"}
+
+
+def test_missing_or_broken_ledger_is_a_note_not_a_raise(tmp_path):
+    out, note = N.read_work_items(tmp_path, ["LQ-1"])
+    assert out["LQ-1"]["status"] is None and "No lead work ledger" in note
+    d = tmp_path / N.LEDGER_DIR_REL
+    d.mkdir(parents=True)
+    (d / "LEAD-WORK-LEDGER-20261107.json").write_text("{not json", encoding="utf-8")
+    out, note = N.read_work_items(tmp_path, ["LQ-1"])
+    assert out["LQ-1"]["status"] is None and "could not be read" in note
+
+
+def test_compute_carries_work_items_for_verdict_refs(tmp_path):
+    _verdicts(tmp_path, [{"lane_id": "n8n-relay", "verdict": "FAIL_DATA", "defect": "d", "work_item": "LQ-57"}])
+    _ledger(tmp_path, [{"id": "LQ-20261107-57", "owner": "cc-x", "status": "open"}])
+    out = _compute(tmp_path)
+    assert out["work_items"]["LQ-57"]["owner"] == "cc-x"

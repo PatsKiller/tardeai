@@ -24,7 +24,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
 VERDICTS_REL = "data/runtime/n8n_lane_audit/verdicts.json"
@@ -161,8 +161,14 @@ def build(snapshot: Mapping[str, Any], relay: Optional[frozenset], relay_meta: M
         members = [x for x in countable if x["category_key"] == c.get("key")]
         on_n8n = sorted((x for x in members if x["mode"] != "none"),
                         key=lambda x: (MODES.index(x["mode"]), str(x["title"]).lower()))
+        rows_c = [r for r in rows_in if str(r.get("category_key") or "other") == c.get("key")]
+        mix = {k: 0 for k in MIX_KEYS}
+        for r in rows_c:
+            mix[STATUS_MIX.get(r.get("status"), "not_measured")] += 1
         out_cats.append({**c, "modes": {m: sum(1 for x in members if x["mode"] == m) for m in MODES},
-                         "lanes": [x["lane_id"] for x in on_n8n]})
+                         "lanes": [x["lane_id"] for x in on_n8n],
+                         # Same rule as GET /api/v2/jobs-catalog status_mix, so the two pages agree.
+                         "jobs": len(rows_c), "inactive": mix["inactive"], "status_mix": mix})
     audited_not_in_rows = sorted(set(verdicts) - {x["lane_id"] for x in lanes})
     notes = [n for n in (verdict_meta.get("note"), relay_meta.get("note")) if n]
     if audited_not_in_rows:
@@ -183,6 +189,46 @@ def build(snapshot: Mapping[str, Any], relay: Optional[frozenset], relay_meta: M
         "notes": notes,
         "authority": "read-only projection; nothing here changes a schedule or the live list",
     }
+
+
+#: Mirrors jobs_history._MIX (GET /api/v2/jobs-catalog status_mix); a test pins the two together.
+MIX_KEYS = ("failed", "missed", "late", "running", "ok", "ok_unverified", "not_measured", "inactive")
+STATUS_MIX = {"failed": "failed", "missed": "missed", "late": "late", "running": "running", "ok": "ok",
+              "ok_unverified": "ok_unverified", "not_measured": "not_measured", "paused": "inactive",
+              "retired": "inactive", "never_scheduled": "inactive", "inactive": "inactive"}
+LEDGER_DIR_REL = "data/coordination/coordinator"
+LEDGER_GLOB = "LEAD-WORK-LEDGER-*.json"
+
+
+def read_work_items(state: Path, refs: Iterable[str]) -> tuple[dict[str, dict], Optional[str]]:
+    """ref -> {id, owner, priority, status, title} from the newest lead work ledger. A short ref ("LQ-57") resolves to
+    the one ledger id ending in "-57"; an unresolved ref maps to status None. Read-only."""
+    refs = sorted({r for r in refs if r})
+    try:
+        paths = sorted((state / LEDGER_DIR_REL).glob(LEDGER_GLOB))
+    except OSError:
+        paths = []
+    if not paths:
+        return {r: {"id": r, "owner": None, "priority": None, "status": None, "title": None} for r in refs}, \
+            "No lead work ledger found: fix items show without status."
+    try:
+        doc = json.loads(paths[-1].read_text(encoding="utf-8"))
+        items = [i for i in (doc.get("items") or []) if isinstance(i, dict) and i.get("id")]
+    except (OSError, ValueError, AttributeError) as exc:
+        return {r: {"id": r, "owner": None, "priority": None, "status": None, "title": None} for r in refs}, \
+            f"The lead work ledger could not be read ({type(exc).__name__})."
+    by_id = {str(i["id"]): i for i in items}
+    out: dict[str, dict] = {}
+    for r in refs:
+        hit = by_id.get(r)
+        if hit is None and r.startswith("LQ-") and r.count("-") == 1:
+            n = r.split("-", 1)[1].lstrip("0")
+            cands = [i for k, i in by_id.items() if k.startswith("LQ-") and k.rsplit("-", 1)[-1].lstrip("0") == n]
+            hit = cands[0] if len(cands) == 1 else None
+        out[r] = {"id": str(hit["id"]) if hit else r, "owner": hit.get("owner") if hit else None,
+                  "priority": hit.get("priority") if hit else None, "status": hit.get("status") if hit else None,
+                  "title": (str(hit.get("title") or "")[:200] or None) if hit else None}
+    return out, None
 
 
 def state_root(environ: Mapping[str, str]) -> Path:
@@ -209,7 +255,11 @@ def compute(*, environ: Optional[Mapping[str, str]] = None, root: Optional[Path]
                 "gaps": [f"jobs-history unavailable ({type(exc).__name__})"]}
     relay, relay_meta = read_relay(root, environ)
     verdicts, verdict_meta = read_verdicts(state / VERDICTS_REL)
-    return build(snap, relay, relay_meta, verdicts, verdict_meta)
+    out = build(snap, relay, relay_meta, verdicts, verdict_meta)
+    out["work_items"], wnote = read_work_items(state, (v.get("work_item") for v in verdicts.values()))
+    if wnote:
+        out["notes"].append(wnote)
+    return out
 
 
 _CACHE: dict = {}

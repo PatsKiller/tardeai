@@ -32,7 +32,12 @@ export type CatalogLane = {
   work_item?: string | null
   audited_at?: string | null
 }
-export type CatalogCategory = { key: string; label: string; blurb?: string | null; modes: Record<CatalogMode, number>; lanes: string[] }
+export type CatalogCategory = {
+  key: string; label: string; blurb?: string | null; modes: Record<CatalogMode, number>; lanes: string[]
+  /** LQ-20261107-180: every job in the category (active + paused/retired) and the Job catalog's status mix. */
+  jobs?: number; inactive?: number; status_mix?: Record<string, number>
+}
+export type WorkItem = { id: string; owner?: string | null; priority?: string | null; status?: string | null; title?: string | null }
 export type N8nCatalogWire = {
   schema?: string
   computed_at?: string | null
@@ -47,6 +52,7 @@ export type N8nCatalogWire = {
   relay?: { source?: string | null; lanes?: number | null; paused?: string[]; note?: string | null }
   audit?: { state?: string; written_at?: string | null; by?: string | null; rows?: number; note?: string | null }
   notes?: string[]
+  work_items?: Record<string, WorkItem>
 }
 
 /** The four mode labels, verbatim from the operator's addendum. */

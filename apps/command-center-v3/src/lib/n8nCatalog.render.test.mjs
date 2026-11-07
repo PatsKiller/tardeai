@@ -102,5 +102,62 @@ check(empty.includes('every lane is not audited') && empty.includes('No categori
 const row = h(React.createElement(LaneRow, { lane: lanes['syn-dry'] }))
 check(buttons(row).length === 2 && buttons(row).every(b => (attr(b, 'data-tip') || '').length > 10), 'lane row: two chips, both with tips')
 
+// 6. LQ-20261107-180: the approved page in subtabs. Pure HTML builders, rendered per subtab.
+const A = await import(compile(join(app, 'src/lib/n8nCatalogApproved.ts')))
+const wire = {
+  computed_at: '2026-11-07T17:00:00+00:00', relay: { lanes: 3 },
+  audit: { written_at: '2026-11-07T16:15:00+00:00', by: 'synthetic-auditor', rows: 4 },
+  stats: { modes: { live: 2, both: 0, dry: 1, none: 5 }, verdicts: { PASS: 1, FAIL_DATA: 1, FAIL_RUN: 1, UNVERIFIABLE: 1 },
+    audit: { pass: 1, fail: 2, not_provable: 1, audited: 4 } },
+  categories: [{ key: 'research', label: 'Synthetic research', blurb: 'b', modes: { live: 2, both: 0, dry: 1, none: 5 },
+    lanes: ['syn-pass', 'syn-fail', 'syn-dry'], jobs: 10, inactive: 2,
+    status_mix: { failed: 1, missed: 0, late: 1, running: 0, ok: 4, ok_unverified: 2, not_measured: 0, inactive: 2 } }],
+  lanes: {
+    'syn-pass': lane('syn-pass', { verdict: 'PASS', audited_at: '2026-11-07T15:00:00+00:00' }),
+    'syn-fail': lane('syn-fail', { verdict: 'FAIL_DATA', defect: 'synthetic <stale> values', work_item: 'LQ-9', audited_at: '2026-11-07T15:00:00+00:00' }),
+    'syn-dry': lane('syn-dry', { mode: 'dry', in_relay: false }),
+    'syn-run': lane('syn-run', { mode: 'none', verdict: 'FAIL_RUN', audited_at: '2026-11-07T16:00:00+00:00' }),
+    'syn-unv': lane('syn-unv', { verdict: 'UNVERIFIABLE' }),
+  },
+  work_items: { 'LQ-9': { id: 'LQ-20261107-9', owner: 'syn-owner', status: 'in_progress' } },
+}
+const tipsOf = html => [...html.matchAll(/data-tip="([^"]*)"/g)].map(m => m[1])
+const btns = html => (html.match(/<button[^>]*>/g) || [])
+check(A.resolveSub('lanes') === 'lanes' && A.resolveSub('bogus') === 'overview' && A.resolveSub(null) === 'overview', 'sub resolves, unknown -> overview')
+for (const sub of ['overview', 'lanes', 'audit']) {
+  const page = A.pageHtml(wire, sub)
+  check((page.match(/role="tab"/g) || []).length === 3, `${sub}: three subtabs`)
+  check(new RegExp(`data-sub="${sub}" aria-selected="true"`).test(page) && (page.match(/aria-selected="true"/g) || []).length === 1, `${sub}: exactly its own pill selected`)
+  check(tipsOf(page).every(t => t.trim().length > 10), `${sub}: every ⓘ has tip text`)
+  check(!/>(Run|Retry|Pause|Resume|Re-run|Rerun|Approve)\b/.test(page), `${sub}: no write button`)
+  check(!/<script|<stale>/.test(page), `${sub}: escaped`)
+  check(!/(^|[^-\w])dry(?! run)[^-\w"]/i.test(page.replace(/<[^>]+>/g, ' ').replace(/Dry run|dry run/g, '')), `${sub}: never a bare "dry"`)
+}
+const ov = A.overviewHtml(wire)
+check((ov.match(/class="stat"/g) || []).length === 6, 'overview: six stat tiles')
+check(ov.includes('1 / 4') && ov.includes('Each of the 4 n8n-only lanes') && ov.includes('Audited Sat, Nov 7, 11:15 AM ET.'), 'overview: live counts and ET audit time')
+check(ov.includes('jobs as of Sat, Nov 7, 12:00 PM ET'), 'overview: as-of ET stamp')
+const vbtn = btns(ov).filter(b => b.includes('data-sub="audit"'))
+check(vbtn.length === 8 && vbtn.every(b => /data-filter="[A-Z_]+"/.test(b)), 'overview: 8 verdict counts, each opens the filtered audit tab')
+check(/FAIL DATA <b>1<\/b>/.test(ov) && /FAIL CONSUMER <b>0<\/b>/.test(ov), 'overview: per-verdict counts, a missing verdict reads 0')
+const ln = A.lanesHtml(wire)
+check(ln.includes('8 active + 2 paused/retired = 10 jobs'), 'lanes: active + paused/retired = total')
+check(ln.includes('1 failed ⓘ') && ln.includes('2 ok unproven ⓘ') && ln.includes('2 paused/retired ⓘ') && !ln.includes('0 missed'), 'lanes: job health chips, zeros hidden')
+check(ln.includes('href="/ops/jobs-n8n?tab=n8n&amp;lane=syn-fail"') && ln.includes('data-lane-link="syn-fail"'), 'lanes: lane tap -> ?lane= sheet')
+check(ln.includes('data-search') && /data-hay="[^"]*synthetic &lt;stale&gt; values/.test(ln), 'lanes: search box and searchable text')
+check(ln.includes('not in relay live list') === false, 'lanes: the dry-run lane is not flagged off the relay list')
+check(ln.includes('(in_progress, syn-owner)'), 'lanes: verdict tip carries fix status and owner')
+const au = A.auditHtml(wire)
+const order = [...au.matchAll(/<li data-lane="([^"]+)"/g)].map(m => m[1])
+check(JSON.stringify(order) === JSON.stringify(['syn-fail', 'syn-run', 'syn-unv', 'syn-pass']), `audit: FAIL first then not provable then PASS (${order})`)
+check(au.includes('fix LQ-20261107-9 · in_progress · syn-owner') && au.includes('status unknown') === false, 'audit: fix id, status and owner from the ledger')
+check(au.includes('Audit written Sat, Nov 7, 11:15 AM ET by synthetic-auditor'), 'audit: written-at ET stamp')
+const auF = A.auditHtml(wire, 'FAIL_RUN')
+check([...auF.matchAll(/<li data-lane="([^"]+)"/g)].map(m => m[1]).join() === 'syn-run' && auF.includes('data-filter="FAIL_RUN" aria-pressed="true"'), 'audit: verdict filter')
+const unk = A.auditHtml({ ...wire, work_items: {} })
+check(unk.includes('fix LQ-9 · status unknown'), 'audit: a fix id the ledger lacks says status unknown')
+const none = A.pageHtml({ notes: ['synthetic note'] }, 'overview')
+check(none.includes('synthetic note') && none.includes('<b class="live">— / —</b>') && none.includes('Not audited yet.'), 'missing data reads — and the note shows')
+
 if (failed) { console.error(`n8nCatalog.render: ${failed} failed`); process.exit(1) }
 console.log('n8nCatalog.render: all checks passed')

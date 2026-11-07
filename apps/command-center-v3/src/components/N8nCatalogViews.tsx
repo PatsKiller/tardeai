@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import { etTime } from '../lib/jobRunHistory'
@@ -7,7 +7,7 @@ import {
   MODES, MODE_LABEL, MODE_TIP, MODE_TONE, N8N_CATALOG_API, catalogStats, categoryLanes, laneChips, laneHref, notInRelay, scheduleText,
   type CatalogCategory, type CatalogLane, type N8nCatalogWire,
 } from '../lib/n8nCatalog'
-import { mountApproved } from '../lib/n8nCatalogApproved'
+import { mountApproved, resolveSub, type Nav, type SubKey } from '../lib/n8nCatalogApproved'
 
 // Ops › Jobs & n8n › n8n catalog (LQ-20261107-150). Read-only. Phone first: stacked cards, 44 px targets, every
 // mode chip / verdict chip / top stat explains itself: a tap opens the text inline (phone), hover or keyboard focus
@@ -112,9 +112,13 @@ export function N8nCatalogView({ data, loading, error }: { data: N8nCatalogWire 
 }
 
 /** The operator-approved design (artifact "n8n Lane Configuration"), rendered verbatim in a shadow root so its CSS
- *  matches the approved page exactly and cannot leak into the app. Fed by the same live read-only GET. */
-export function N8nCatalogApprovedView({ data }: { data: N8nCatalogWire }) {
+ *  matches the approved page exactly and cannot leak into the app. Fed by the same live read-only GET. Subtabs
+ *  (LQ-20261107-180) live in the URL: ?tab=catalog&sub=overview|lanes|audit[&verdict=FAIL_DATA]. */
+export function N8nCatalogApprovedView({ data, sub, filter, onNav }: { data: N8nCatalogWire; sub: SubKey; filter: string; onNav: (n: Nav) => void }) {
   const ref = useRef<HTMLDivElement>(null)
+  const navRef = useRef(onNav)
+  navRef.current = onNav
+  const query = useRef('')
   useEffect(() => {
     const box = ref.current
     if (!box) return
@@ -122,13 +126,29 @@ export function N8nCatalogApprovedView({ data }: { data: N8nCatalogWire }) {
     const theme = document.documentElement.dataset.theme
     if (theme) host.dataset.theme = theme
     box.replaceChildren(host)
-    mountApproved(host.attachShadow({ mode: 'open' }), data)
-  }, [data])
-  return <div ref={ref} data-testid="n8n-catalog-approved" style={{ minWidth: 0 }} />
+    const shadow = host.attachShadow({ mode: 'open' })
+    mountApproved(shadow, data, sub, { filter, q: query.current }, n => navRef.current(n))
+    // The search survives the minute refresh: remember what was typed.
+    const input = shadow.querySelector<HTMLInputElement>('[data-search]')
+    input?.addEventListener('input', () => { query.current = input.value })
+  }, [data, sub, filter])
+  return <div ref={ref} data-testid="n8n-catalog-approved" data-sub={sub} style={{ minWidth: 0 }} />
 }
 
 export function N8nCatalogTab() {
   const api = useApi<N8nCatalogWire>(N8N_CATALOG_API, 60_000)
-  if (api.data) return <N8nCatalogApprovedView data={api.data} />
+  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  const sub = resolveSub(params.get('sub'))
+  const filter = params.get('verdict') ?? ''
+  const onNav = (n: Nav) => {
+    if (n.lane) { navigate(laneHref(n.lane)); return }
+    const next = new URLSearchParams(params)
+    next.set('tab', 'catalog')
+    if (n.sub && n.sub !== 'overview') next.set('sub', n.sub); else next.delete('sub')
+    if (n.filter) next.set('verdict', n.filter); else next.delete('verdict')
+    setParams(next)
+  }
+  if (api.data) return <N8nCatalogApprovedView data={api.data} sub={sub} filter={sub === 'audit' ? filter : ''} onNav={onNav} />
   return <N8nCatalogView data={null} loading={api.loading} error={api.error ?? null} />
 }
