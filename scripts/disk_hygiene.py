@@ -272,16 +272,39 @@ def is_within(child: Path, parent: Path) -> bool:
     return c == p or c.startswith(p.rstrip("/") + "/")
 
 
+_NEVER_RESOLVED: dict[tuple, tuple] = {}
+
+
+def _never_resolved(rules: Mapping[str, Any]) -> tuple:
+    """(abspath, realpath) variants of every never-touch path, resolved once per distinct path list.
+
+    never_touch_reason runs once per entry of every scratch scan (up to 250k entries per path); resolving the
+    never-touch list inside it made a 10k-entry scan cost 6.4 s (LQ-41, 2026-11-07).
+    """
+    key = tuple(str(p) for p in rules["_never_paths"])
+    got = _NEVER_RESOLVED.get(key)
+    if got is None:
+        got = tuple(
+            tuple((str(v), str(v).rstrip("/") + "/") for v in {Path(os.path.abspath(nt)), _real(nt)})
+            for nt in rules["_never_paths"]
+        )
+        _NEVER_RESOLVED[key] = got
+    return got
+
+
 def never_touch_reason(path: Path, rules: Mapping[str, Any]) -> Optional[str]:
     """Why ``path`` is on the hard never-touch list, else None. Checked on the raw and the resolved path: equal to /
     inside / containing a never-touch path, a never-touch component name, or a credential-like component name."""
     home = rules["_home"]
+    resolved = _never_resolved(rules)
     for cand in {Path(os.path.abspath(path)), _real(path)}:
-        for nt in rules["_never_paths"]:
-            for ntp in {Path(os.path.abspath(nt)), _real(nt)}:
-                if is_within(cand, ntp):
+        c = str(cand)  # already absolute: is_within's per-call abspath() is redundant here
+        c_slash = c.rstrip("/") + "/"
+        for variants in resolved:
+            for ntp, ntp_slash in variants:
+                if c == ntp or c.startswith(ntp_slash):
                     return f"never_touch_path:{ntp}"
-                if is_within(ntp, cand):
+                if ntp.startswith(c_slash):
                     return f"contains_never_touch_path:{ntp}"
         try:
             parts = cand.relative_to(home).parts if is_within(cand, home) else cand.parts
@@ -290,10 +313,24 @@ def never_touch_reason(path: Path, rules: Mapping[str, Any]) -> Optional[str]:
         for part in parts:
             if part in rules["_never_names"]:
                 return f"never_touch_name:{part}"
-            for g in rules["_never_globs"]:
-                if fnmatch.fnmatch(part.lower(), g.lower()):
-                    return f"never_touch_glob:{g}:{part}"
+            glob = _never_glob_match(rules["_never_globs"], part)
+            if glob:
+                return f"never_touch_glob:{glob}:{part}"
     return None
+
+
+_GLOB_MATCH: dict[tuple, Optional[str]] = {}
+
+
+def _never_glob_match(globs: Iterable[str], part: str) -> Optional[str]:
+    """First credential-like glob matching one path component (case-insensitive); memoised, as components repeat."""
+    key = (tuple(globs), part)
+    if key not in _GLOB_MATCH:
+        if len(_GLOB_MATCH) > 200000:
+            _GLOB_MATCH.clear()
+        low = part.lower()
+        _GLOB_MATCH[key] = next((g for g in key[0] if fnmatch.fnmatch(low, g.lower())), None)
+    return _GLOB_MATCH[key]
 
 
 #: Directory names under which credential-named files are generated test fixtures, not credentials.

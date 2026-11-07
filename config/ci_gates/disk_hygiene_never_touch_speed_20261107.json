@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_never_touch_speed_20261107",
+  "files": ["tests/test_disk_hygiene_never_touch_speed_20261107.py"],
+  "anchor": "LQ-41",
+  "comment": "never_touch_reason resolves the never-touch list once, not per scanned entry; verdicts unchanged."
+}
