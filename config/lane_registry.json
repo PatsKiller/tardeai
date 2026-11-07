@@ -2583,12 +2583,11 @@
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 * * * 1-5 + */15 20-23 * * 0 + 10 16 * * 1-5",
+        "expression": "*/15 * * * * + 10 16 * * 1-5",
         "command_text": "portfolio_repricer.py",
         "match": "portfolio_repricer.py",
         "schedules": [
-          "*/15 * * * 1-5",
-          "*/15 20-23 * * 0",
+          "*/15 * * * *",
           "10 16 * * 1-5"
         ]
       },
