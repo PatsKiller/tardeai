@@ -1715,9 +1715,10 @@ def overview(*, days: int = 30) -> dict:
         anthropic = unavailable_snapshot()
     by_class: dict[str, dict] = {}
     for label in periods:
+        rows = [v[label] for v in by_lane.values() if label in v]  # a lane with no rows in a window has no entry
         by_class[label] = {
-            "provider_failure": sum(v.get(label, {}).get("failures", 0) for v in by_lane.values()),
-            "budget_refusal": sum(v.get(label, {}).get("budget_refusals", 0) for v in by_lane.values()),
+            "provider_failure": sum(r["failures"] for r in rows),
+            "budget_refusal": sum(r["budget_refusals"] for r in rows),
         }
     return {"by_lane": by_lane, "by_class": by_class, "top_processes": top,
             "generated_at": datetime.now(timezone.utc).isoformat(), "anthropic": anthropic}

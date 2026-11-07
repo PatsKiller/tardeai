@@ -319,10 +319,12 @@ export default function ConsumptionHub() {
             const label = lane === 'deepseek-v4-pro' ? 'DeepSeek V4 Pro' : lane
             const failToday = Number(t?.failures ?? 0)
             const failWeek = Number(w?.failures ?? 0)
-            const refToday = Number(t?.budget_refusals ?? 0)
-            const refWeek = Number(w?.budget_refusals ?? 0)
-            const okToday = Math.max(0, Number(t?.calls ?? 0) - failToday - refToday)
-            const okWeek = Math.max(0, Number(w?.calls ?? 0) - failWeek - refWeek)
+            // A lane with no rows in a window has no entry for it; the counts below are then genuinely zero.
+            const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+            const refToday = count(t?.budget_refusals)
+            const refWeek = count(w?.budget_refusals)
+            const okToday = Math.max(0, count(t?.calls) - failToday - refToday)
+            const okWeek = Math.max(0, count(w?.calls) - failWeek - refWeek)
             return [
               <div key={`${lane}-today`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid color-mix(in srgb, ${laneColor} 27%, transparent)` }}>
                 <div style={{ fontSize: 10, color: laneColor }}>{label} today</div>
