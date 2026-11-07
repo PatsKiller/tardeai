@@ -156,29 +156,95 @@ def search_catalyst(symbol, query_suffix="latest news", *, caller=None, dry_run=
         routed = [{"error": f"router:{type(e).__name__}"}]
     if routed is not None:
         return routed
-    params = urllib.parse.urlencode({
-        "q": query, "format": "json", "categories": "news",
-        "time_range": "day", "engines": "google news,bing news,duckduckgo"
-    })
+    results = _searxng_search(query)
+    if results and all(isinstance(r, dict) and r.get("error") for r in results):
+        return results
     try:
-        req = urllib.request.Request(f"{SEARXNG_URL}?{params}", method="GET")
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-        results = data.get("results", [])
+        from hermes_source_policy import filter_search_results
+        results = filter_search_results(results)
+    except Exception:
+        pass
+    return [{
+        "title": r.get("title", ""),
+        "url": r.get("url", ""),
+        "content": r.get("content", "")[:200],
+        "engine": r.get("engine", ""),
+        "published": r.get("publishedDate", ""),
+    } for r in filter_article_sources(results)[:MAX_SOURCES_PER_TICKER]]
+
+
+_ENGINE_COUNT: int | None = None
+
+
+def _enabled_engine_count() -> int:
+    """How many engines this SearXNG instance has enabled (0 = unknown; /config unreadable).
+
+    Cached for the process: the answer only changes with a SearXNG restart, and a lane call must not pay for it."""
+    global _ENGINE_COUNT
+    if _ENGINE_COUNT is None:
         try:
-            from hermes_source_policy import filter_search_results
-            results = filter_search_results(results)
-        except Exception:
-            pass
-        return [{
-            "title": r.get("title", ""),
-            "url": r.get("url", ""),
-            "content": r.get("content", "")[:200],
-            "engine": r.get("engine", ""),
-            "published": r.get("publishedDate", ""),
-        } for r in filter_article_sources(results)[:MAX_SOURCES_PER_TICKER]]
-    except Exception as e:
-        return [{"error": str(e)[:100]}]
+            cfg_url = SEARXNG_URL.rsplit("/", 1)[0] + "/config"
+            cfg = json.loads(urllib.request.urlopen(cfg_url, timeout=5).read())
+            _ENGINE_COUNT = sum(1 for e in cfg.get("engines") or [] if e.get("enabled"))
+        except Exception:  # noqa: BLE001 — an unreadable /config only disables the dead-tier verdict
+            _ENGINE_COUNT = 0
+    return _ENGINE_COUNT
+
+
+def _searxng_query(query: str, categories: str | None) -> dict:
+    """One SearXNG JSON search. Returns {"results": [...], "unresponsive": [engine names]}."""
+    params = {"q": query, "format": "json"}
+    if categories:
+        params["categories"] = categories
+    req = urllib.request.Request(f"{SEARXNG_URL}?{urllib.parse.urlencode(params)}", method="GET")
+    data = json.loads(urllib.request.urlopen(req, timeout=10).read())
+    return {
+        "results": data.get("results") or [],
+        "unresponsive": [str(e[0]) if isinstance(e, (list, tuple)) and e else str(e)
+                         for e in (data.get("unresponsive_engines") or [])],
+    }
+
+
+def _searxng_search(query: str) -> list:
+    """News tier first, then the instance's whole engine set; an all-empty answer from a dead tier is an error.
+
+    2026-11-07 root cause of "the overnight band staged nothing since 2026-10-29": the lane asked SearXNG for
+    ``categories=news`` **with ``time_range=day`` and an ``engines=`` allowlist**, and on the live instance that
+    combination cannot answer — measured at 09:2x ET on 2026-11-07, four candidates:
+
+    * ``news + day + engines`` (the old query): 0 results, 6-7 engines unresponsive;
+    * ``news`` alone: 0-2 results (brave.news suspended, google news CAPTCHA, reuters/startpage/yahoo errors);
+    * ``general``: 32-35 results, 1 chronic engine error;
+    * ``time_range=day``: **0 results for every category** — 33 general results collapse to 0 with the day filter.
+
+    The allowlist was also wrong on its own terms: ``duckduckgo`` is not a news engine (``duckduckgo news`` is),
+    and the three named engines were exactly the suspended ones. So: no day window, no engine allowlist, the news
+    category first and — only when the news tier *reports failed engines* — the instance's whole set second (a news
+    tier that answers with nothing and no failures is an honest "nothing today"). SearXNG answers HTTP 200 with an
+    empty list when every engine fails, which is why an empty answer used to read exactly like "no catalyst today";
+    when nothing answers from either tier and the general tier reports the whole instance unresponsive, this returns
+    the error row the engine's accuracy gate already understands."""
+    tiers: list[tuple[str, int]] = []
+    news_error: str | None = None
+    for categories in ("news", None):
+        try:
+            payload = _searxng_query(query, categories)
+        except Exception as e:  # noqa: BLE001 — an error row, never a raise (same contract as the old path)
+            if categories == "news":
+                news_error = str(e)[:100]
+                continue
+            return [{"error": news_error or str(e)[:100]}]
+        if payload["results"]:
+            return payload["results"]
+        tiers.append((categories or "general", len(payload["unresponsive"])))
+        if categories == "news" and not payload["unresponsive"]:
+            return []  # the news tier answered, with nothing today: not a tier failure
+    enabled = _enabled_engine_count()
+    dead = bool(enabled) and tiers and tiers[-1][1] >= enabled
+    if dead or news_error:
+        return [{"error": (news_error or "no_results_across_tiers:"
+                           + ",".join(f"{name}={n}_unresponsive" for name, n in tiers))}]
+    return []
 
 
 def research_ticker(symbol, *, dry_run=False, priority=False, caller=None):
