@@ -201,6 +201,52 @@ def test_unreadable_registry_exits_1(tmp_path):
     assert rc == 1 and not state.exists()
 
 
+# ── an all-FRESH tick says why it appended nothing (WORK-QUEUE item 18) ───────────────────────────
+
+def test_all_fresh_tick_states_why_it_appended_nothing(tmp_path):
+    reg, state, observe = _world(tmp_path, stale_lane=None)
+    assert H.run(registry_path=reg, state_root=state, now=SUNDAY, dry_run=False, observe=observe) == 0
+    doc = json.loads((state / "data" / "runtime" / "heartbeat-watch_last.json").read_text())
+    assert doc["status"] == "ok" and doc["ok_at"]
+    assert doc["empty_reason"] == "nothing_due"
+    assert doc["summary"]["rows_written"] == 0 and doc["summary"]["breach_rows"] == []
+    assert doc["summary"]["counts"] == {"FRESH": len(H.WATCH_SET)}
+    assert f"checked {len(H.WATCH_SET)} watched lanes" in doc["summary"]["empty_detail"]
+    # the typed reason must stay inside the closed enum the health-contract checker enforces, otherwise a
+    # later allowance flip (allowlist output_receipt: v2) would read it as empty_violation.
+    from scripts.check_n8n_workflow_framework import EMPTY_ALLOWED_REASONS
+
+    assert doc["empty_reason"] in EMPTY_ALLOWED_REASONS
+
+
+def test_a_breach_row_states_no_empty_reason(tmp_path):
+    reg, state, observe = _world(tmp_path)
+    assert H.run(registry_path=reg, state_root=state, now=SUNDAY, dry_run=False, observe=observe) == 0
+    doc = json.loads((state / "data" / "runtime" / "heartbeat-watch_last.json").read_text())
+    assert "empty_reason" not in doc and "empty_detail" not in doc["summary"]
+    assert doc["summary"]["rows_written"] == 1
+
+
+def test_a_blind_watched_lane_is_never_labelled_nothing_due(tmp_path):
+    reg, state, _ = _world(tmp_path, stale_lane=None)
+    blind = lambda sig: {"last_output_at": None, "readable": False, "detail": "bad json"}  # noqa: E731
+    assert H.run(registry_path=reg, state_root=state, now=SUNDAY, dry_run=False, observe=blind) == 0
+    doc = json.loads((state / "data" / "runtime" / "heartbeat-watch_last.json").read_text())
+    # the watcher could not certify the set: it must not claim the quiet normal case
+    assert "empty_reason" not in doc
+    assert doc["summary"]["unverifiable"] == list(H.WATCH_SET)
+
+
+def test_dry_run_shows_the_empty_reason_it_would_write(tmp_path, capsys):
+    reg, state, observe = _world(tmp_path, stale_lane=None)
+    before = _snapshot(tmp_path)
+    assert H.run(registry_path=reg, state_root=state, now=SUNDAY, dry_run=True, observe=observe) == 0
+    assert _snapshot(tmp_path) == before
+    report = json.loads(capsys.readouterr().out.split("DRY-RUN ", 1)[1])
+    assert report["summary"]["empty_reason"] == "nothing_due" and report["would_write"] == []
+
+
+
 # ── fan-in: STALE_2X is P1 and CLEARED closes it ────────────────────────────────────────────────────
 
 def _quiet_fanin(monkeypatch):

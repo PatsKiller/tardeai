@@ -33,7 +33,10 @@ incident notifier sends from:
 Each row is a single ``O_APPEND`` write, so it cannot interleave with the breach detector's own appends.
 
 The lane receipt is ``data/runtime/heartbeat-watch_last.json`` (LaneRunReceipt@v1). ``ok_at`` advances only when the
-check completed and every write landed.
+check completed and every write landed. A live run that checked the whole watch set and has nothing to append (no
+lane turned STALE, no CLEARED row is due) states ``empty_reason: nothing_due`` so a healthy all-FRESH tick is not
+read as a run that did no work; when any watched lane is UNVERIFIABLE the receipt claims no empty reason at all,
+because the watcher cannot certify the set and that run must stay visible.
 
 ``--dry-run`` reads the registry and the six signals, prints what a live run would write (``dry_run_report``) and
 writes nothing: no breach row, no receipt.
@@ -80,6 +83,9 @@ DEFAULT_MAX_RUN_S = 300.0
 REEMIT_AFTER = timedelta(hours=24)          # the fan-in reads breach rows of the last 48 h
 BREACH_KIND = "STALE_2X"
 BREACH_SCHEMA = "Breach@v1"
+#: The typed reason a live tick that checked every watched lane and had nothing to append reports
+#: (closed enum in check_n8n_workflow_framework.EMPTY_ALLOWED_REASONS).
+EMPTY_NOTHING_DUE = "nothing_due"
 LEDGER_REL = "data/runtime/supervisor_breaches.jsonl"
 TAIL_BYTES = 2_000_000
 TZ = ZoneInfo("America/New_York")
@@ -279,6 +285,17 @@ def run(*, registry_path: Path, state_root: Path, now: datetime, dry_run: bool,
                "late": [v["lane_id"] for v in verdicts if v["verdict"] == LATE],
                "missing_rows": missing, "breach_rows": [f"{r['lane_id']}:{r['state']}" for r in planned],
                "verdicts": verdicts}
+    # A tick that checked every watched lane and appended nothing is a healthy tick, not an empty run: say so
+    # with the typed reason the health contract's expected_output vocabulary uses. A lane the watcher cannot see
+    # (UNVERIFIABLE) is not "nothing due" — the set could not be certified, so the receipt keeps no empty reason.
+    blind = [v["lane_id"] for v in verdicts if v["verdict"] == UNVERIFIABLE]
+    if blind:
+        summary["unverifiable"] = blind
+    empty_reason = None
+    if not planned and not missing and not blind:
+        empty_reason = EMPTY_NOTHING_DUE
+        summary["empty_detail"] = (f"checked {len(verdicts)} watched lanes: none turned STALE and none needed a "
+                                   f"CLEARED row, so nothing was appended to {LEDGER_REL}")
     for v in verdicts:
         print(f"  {v['verdict']:<16} {v['lane_id']:<28} last={v['last_output_at']} expected_by={v['expected_by']} "
               f"[{v['basis']}]")
@@ -286,24 +303,33 @@ def run(*, registry_path: Path, state_root: Path, now: datetime, dry_run: bool,
         print(f"missing registry rows: {missing}", file=sys.stderr)
     if dry_run:
         return _finish(R, True, receipt, ok=not missing, summary=summary,
-                       would=[f"{LEDGER_REL} +{len(planned)} rows"] if planned else [], now=now)
+                       would=[f"{LEDGER_REL} +{len(planned)} rows"] if planned else [], now=now,
+                       empty_reason=empty_reason)
     try:
         append_rows(ledger, planned)
     except OSError as exc:
         summary["error"] = f"{type(exc).__name__}: breach ledger"
         return _finish(R, False, receipt, ok=False, summary=summary, would=[], now=now)
     summary["rows_written"] = len(planned)
-    return _finish(R, False, receipt, ok=not missing, summary=summary, would=[], now=now)
+    return _finish(R, False, receipt, ok=not missing, summary=summary, would=[], now=now,
+                   empty_reason=empty_reason)
 
 
 def _finish(R: Any, dry_run: bool, receipt: Path, *, ok: bool, summary: dict[str, Any], would: list[str],
-            now: datetime) -> int:
+            now: datetime, empty_reason: Optional[str] = None) -> int:
     if dry_run:
-        R.dry_run_report(LANE_ID, {k: v for k, v in summary.items() if k != "verdicts"}, would_write=would,
+        shown = dict(summary)
+        if empty_reason:
+            shown["empty_reason"] = empty_reason
+        R.dry_run_report(LANE_ID, {k: v for k, v in shown.items() if k != "verdicts"}, would_write=would,
                          receipt=receipt)
         return 0 if ok else 1
+    # empty_reason rides the v2 output fields additively: the document stays LaneRunReceipt@v1 for its v1 readers
+    # (system_health_freshness matches the schema string exactly) and carries the typed reason the grader and the
+    # health contract's expected_output vocabulary read.
     written = R.write_lane_receipt(LANE_ID, ok=ok, exit_code=0 if ok else 1, started_at=now,
-                                   script="scripts/heartbeat_watch.py", summary=summary, path=receipt)
+                                   script="scripts/heartbeat_watch.py", summary=summary, path=receipt,
+                                   output={"empty_reason": empty_reason} if empty_reason else None)
     if written is None:
         return 1
     return 0 if ok else 1
