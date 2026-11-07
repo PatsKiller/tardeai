@@ -91,13 +91,57 @@ def test_every_allowlisted_llm_caller_in_the_repo_carries_offpeak_protection():
     Scope, stated plainly: the guard reads the repo's allowlist. It cannot see the served release, which on
     2026-11-07 held 175 entries against main's 142 (33 lanes, this one included, exist only there)."""
     allow = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))["lanes"]
-    llm = {r["lane_id"] for r in json.loads((ROOT / "config" / "llm_direct_callers.json")
-                                            .read_text(encoding="utf-8"))["lanes"]}
-    found = G.problems(allow, llm_lane_ids=llm)
+    callers = json.loads((ROOT / "config" / "llm_direct_callers.json").read_text(encoding="utf-8"))["lanes"]
+    found = G.problems(allow, llm_lane_ids=G.deepseek_payers(callers))
     assert found == [], [f"{p['lane_id']}: {p['detail']}" for p in found]
     if "hermes-usefulness-backfill" in {e["lane_id"] for e in allow}:
         entry = next(e for e in allow if e["lane_id"] == "hermes-usefulness-backfill")
         assert entry["offpeak_gate"] in G.OFFPEAK_GATES
+
+
+def test_every_lane_this_repo_exempts_from_the_gate_states_its_evidence():
+    """LQ-20261107-247: an exemption is only allowed with the provider and the quoted source lines.
+
+    The five lanes below were flagged by this guard on the integration line. Each reaches Grok/ChatGPT OAuth, a local
+    model, or the governed bridge — never the metered DeepSeek key — so a DeepSeek window on their entry would skip
+    free work and protect nothing. The exemption is data with evidence, not a silence: drop the evidence and the lane
+    is a payer again (see the fail-closed tests below)."""
+    callers = {c["lane_id"]: c for c in
+               json.loads((ROOT / "config" / "llm_direct_callers.json").read_text(encoding="utf-8"))["lanes"]}
+    exempt = {"directive-keyword-enhancer", "generate-analyst-reports-autonomous-weekly",
+              "journal-review-builder", "portfolio-lookthrough-themes", "proposal-llm-review-worker"}
+    for lane in exempt:
+        block = callers[lane]["billing"]
+        assert block["deepseek_metered"] is False, lane
+        assert block["provider"].strip(), lane
+        assert len(block["evidence"]) > 80, (lane, "evidence must quote the source, not assert the conclusion")
+        assert G.pays_deepseek(callers[lane]) is False, lane
+
+
+# ── whose money: fail-closed, and only evidence buys an exemption ───────────────────────────────────────────────
+
+def test_a_caller_with_no_billing_block_is_a_deepseek_payer():
+    """The default has to be the expensive answer, or a new lane inherits the exemption it never earned."""
+    assert G.pays_deepseek({"lane_id": "new-llm-lane"}) is True
+    assert G.deepseek_payers([{"lane_id": "new-llm-lane"}]) == {"new-llm-lane"}
+
+
+def test_an_exemption_without_evidence_is_not_an_exemption():
+    for block in ({"deepseek_metered": False},
+                  {"deepseek_metered": False, "evidence": ""},
+                  {"deepseek_metered": False, "evidence": "   "},
+                  {"deepseek_metered": "false", "evidence": "quoted lines"},  # a string is not the boolean
+                  {"evidence": "quoted lines"},                              # the flag is what exempts
+                  "not a mapping"):
+        assert G.pays_deepseek({"lane_id": "x", "billing": block}) is True, block
+
+
+def test_only_a_boolean_false_with_evidence_exempts():
+    caller = {"lane_id": "x", "billing": {"deepseek_metered": False,
+                                          "provider": "grok OAuth",
+                                          "evidence": "scripts/x.py:1 imports llm_lane and calls lane='grok'"}}
+    assert G.pays_deepseek(caller) is False
+    assert G.deepseek_payers([caller, {"lane_id": "y"}]) == {"y"}
 
 
 # ── the operator surface: scripts/check_llm_offpeak_gates.py ────────────────────────────────────────────────────
@@ -128,6 +172,24 @@ def test_the_checker_is_clean_when_the_gate_is_declared(tmp_path, capsys):
                   ["hermes-usefulness-backfill"])
     assert C.main(argv) == 0
     assert "clean" in capsys.readouterr().out
+
+
+def test_the_checker_does_not_ask_a_non_payer_for_a_deepseek_gate(tmp_path, capsys):
+    """A lane whose caller record proves it reaches no DeepSeek key is counted, and left alone."""
+    from scripts import check_llm_offpeak_gates as C  # noqa: PLC0415
+
+    (tmp_path / "allow.json").write_text(json.dumps({"lanes": [_entry("grok-only-lane")]}), encoding="utf-8")
+    (tmp_path / "callers.json").write_text(json.dumps({"lanes": [{
+        "lane_id": "grok-only-lane",
+        "billing": {"deepseek_metered": False, "provider": "grok OAuth",
+                    "evidence": "scripts/grok_only.py:7 calls llm_lane.generate(lane='grok')"}}]}), encoding="utf-8")
+    argv = ["--allowlist", str(tmp_path / "allow.json"), "--callers", str(tmp_path / "callers.json")]
+    assert C.main(argv) == 0
+    assert "pay no DeepSeek" in capsys.readouterr().out
+    assert C.main(argv + ["--json"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["allowlisted_model_callers"] == 1 and doc["allowlisted_deepseek_payers"] == 0
+    assert doc["problems"] == 0
 
 
 def test_the_checker_never_reports_an_unreadable_file_as_clean(tmp_path, capsys):

@@ -23,6 +23,12 @@ rather than trust in the argv. What this module would catch is the next entry th
 Everything else is a problem. The gate vocabulary is pinned to the executor's own three gates by a test, so this file
 cannot drift into a fourth spelling the executor would not honour.
 
+2026-11-07 (LQ-20261107-247): ``config/llm_direct_callers.json`` lists *model* callers, not *DeepSeek* payers. A lane
+that reaches only Grok/ChatGPT OAuth, or a local model, has no DeepSeek billing window to honour — gating it would
+skip free work rather than prevent a metered call. ``deepseek_payers()`` reads the per-lane ``billing`` evidence in
+that registry, and callers ask for a gate only on the lanes that can reach the metered key. Fail-closed: no block,
+no evidence, no exemption.
+
 Pure: no filesystem, no network, no clock. Callers pass the parsed allowlist and the LLM caller lane ids.
 
 AUTHORITY: READ_ONLY_ADVISORY.
@@ -85,3 +91,33 @@ def problems(entries: Iterable[Mapping[str, Any]], *, llm_lane_ids: Iterable[str
     ids = list(llm_lane_ids)
     found = [p for e in entries if (p := entry_problem(e, llm_lane_ids=ids)) is not None]
     return sorted(found, key=lambda p: p["lane_id"])
+
+
+# ── who actually pays DeepSeek ───────────────────────────────────────────────────────────────────────────────────
+# LQ-20261107-247: the check below listed five allowlisted lanes that never reach the metered DeepSeek key — two
+# Grok/ChatGPT OAuth lanes, two Grok-or-local lanes and one local-Ollama lane — and told each of them to declare a
+# DeepSeek billing window it has no reason to honour. A gate on such a lane does not protect money; it skips free
+# work. So the question "does this lane pay DeepSeek" is answered from the lane's own source, and the answer is
+# recorded as evidence in config/llm_direct_callers.json, not as a flag on the allowlist entry.
+#
+# Fail-closed, and deliberately so (the LQ-43 shape, one level up): a lane is a DeepSeek payer unless its caller
+# record carries a ``billing`` block that says ``deepseek_metered: false`` AND quotes the evidence. An absent block,
+# a malformed block, a block without evidence, or ``deepseek_metered`` set to anything but the boolean false all
+# count as a payer: an exemption is a claim about a file, and a claim with no evidence is not one.
+BILLING_KEY = "billing"
+
+
+def pays_deepseek(caller: Mapping[str, Any]) -> bool:
+    """True when the lane can reach the metered DeepSeek key. Pure and fail-closed; see the note above."""
+    block = caller.get(BILLING_KEY)
+    if not isinstance(block, Mapping):
+        return True
+    if block.get("deepseek_metered") is not False:
+        return True
+    evidence = block.get("evidence")
+    return not (isinstance(evidence, str) and evidence.strip())
+
+
+def deepseek_payers(callers: Iterable[Mapping[str, Any]]) -> set[str]:
+    """The lane ids of a caller registry that can pay DeepSeek. Pure."""
+    return {str(c.get("lane_id")) for c in callers if c.get("lane_id") and pays_deepseek(c)}
