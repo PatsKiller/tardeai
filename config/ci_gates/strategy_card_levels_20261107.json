@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "STRATEGY_CARD_LEVELS_20261107",
+  "files": [
+    "tests/test_strategy_card_levels_20261107.py"
+  ],
+  "anchor": "STRATEGY_CARD_LEVELS_20261107",
+  "comment": [
+    "ANCHOR: STRATEGY_CARD_LEVELS_20261107 — LQ-20261107-57. A strategy card carries a level only when",
+    "the level is on the correct side of the price and of the level it depends on (stop < entry < price",
+    "< target, support < resistance, R/R > 0); otherwise the level is NULL with a named reason and the",
+    "card is flagged needs_iteration. Measured on the live table 2026-11-07: 319 cards served",
+    "support == resistance == price, 20 served a stop at or above the price, 2 (FLTR, FFLX) served a",
+    "negative R/R. Registered because a new pytest file that no gate names is not run by CI",
+    "(check_test_coverage --fail-on-new)."
+  ]
+}

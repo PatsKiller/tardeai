@@ -13,6 +13,7 @@ before the upsert is reachable (no INSERT, no commit, no receipt). A real run wr
 ``ok_at`` on success; a crash writes status=failed and re-raises, exit 1).
 """
 import json, os, re, sys, math
+from collections import Counter
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
@@ -84,8 +85,9 @@ def _get_conn():
     import psycopg2
     # Env first (the executor passes the allowlisted DB_PASSWORD), then the checkout .env line (cron sources none).
     pw = os.environ.get("DB_PASSWORD", "")
-    if not pw:
-        for line in (PROJECT_ROOT / ".env").read_text().splitlines():
+    env_file = PROJECT_ROOT / ".env"
+    if not pw and env_file.exists():  # a worktree has no .env: connect without one, do not raise
+        for line in env_file.read_text().splitlines():
             if line.startswith("DB_PASSWORD="): pw = line.split("=", 1)[1].strip()
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
@@ -131,7 +133,129 @@ def compute_support_resistance(conn, symbol: str) -> dict:
     support = round(low_20, 2)
     resistance = round(high_20, 2)
 
-    return {"support": support, "resistance": resistance, "latest": latest, "low_50": low_50, "high_50": high_50}
+    # low_20/high_20 are the UNROUNDED window edges. The card writer rounds a level to a precision
+    # that keeps its ordering (a 2-dp round put support at 0.02 above a 0.0173 price, LQ-57),
+    # so it needs the raw edge; every existing reader still gets the rounded pair it always got.
+    return {"support": support, "resistance": resistance, "latest": latest, "low_50": low_50,
+            "high_50": high_50, "low_20": low_20, "high_20": high_20}
+
+
+def _round_level(value, price):
+    """Round a level to a precision that cannot destroy it (LQ-57).
+
+    ``round(x, 2)`` is right for a $37 stock and wrong for a $0.0093 one: it turned a support of
+    0.0097 into 0.02 and a stop of 0.0094 into 0.01, ONTO or ABOVE the price. Twenty cards were
+    served with a stop at or above their price, most of them this rounding. Under $1 the card keeps
+    three decimals, under $0.10 four.
+    """
+    if value is None:
+        return None
+    p = _level(price)
+    if p is None or p >= 1:
+        return round(_level(value), 2)
+    return round(_level(value), 3 if p >= 0.1 else 4)
+
+
+def coherent_levels(*, latest_price, support, resistance, declared_stop, atr, strategy_type):
+    """The card's levels, or None for each one that would be a lie, plus why (LQ-20261107-57).
+
+    Measured on the live table before this function existed (2026-11-07, 5,848 rows):
+
+    * 319 rows served ``support == resistance`` (256 of them equal to the latest price). A 20-day
+      window whose low equals its high is not a range — one card had 44 prices and ONE distinct close — so
+      the card claimed a support and a resistance that carried no information, and then derived
+      entry/stop/target from them.
+    * 20 rows served ``stop_loss >= latest_price`` (penny rounding, and 52-week fallbacks whose support
+      sat above the market). A long card cannot carry a stop at or above the price it protects.
+    * 2 rows (two cards) served a NEGATIVE risk/reward: ``ideal_entry`` above ``target_price``, because
+      the guard only checked entry > stop and never that target > entry.
+
+    A level is therefore written only when it is internally consistent AND on the correct side of the
+    price. Anything else is NULL with a named reason, and the card is flagged needs_iteration. Absent
+    and explained beats present and wrong: an invented support line is indistinguishable from a real
+    one once it is on the page.
+    """
+    reasons: list[str] = []
+    price = _level(latest_price)
+    if price is None:
+        return {"support": None, "resistance": None, "ideal_entry": None, "stop_loss": None,
+                "target_price": None, "risk_reward": None, "reasons": ["no_price"]}
+
+    sup = _level(support)
+    res = _level(resistance)
+
+    # A window with no range is not support and resistance — it is one number twice. A window whose
+    # low sits ABOVE its high (support from the 52-week fallback, resistance from history) is the same
+    # lie, inverted; the two are reported apart because only the first is a flat market.
+    if sup is not None and res is not None and sup >= res:
+        reasons.append("flat_range" if sup == res else "inverted_range")
+        sup = res = None
+
+    # A price sitting ON a level is not a lie: a stock at its 20-day low has its support AT the market
+    # (a card at 11.27 whose 20-day low was also 11.27), and one at its high has its resistance there (2,023 and 906 names on
+    # 2026-11-07). What is false is a level on the WRONG SIDE of the price, and only that is dropped.
+    if sup is not None and sup > price:
+        reasons.append("support_not_below_price")
+        sup = None
+    if res is not None and res < price:
+        reasons.append("resistance_not_above_price")
+        res = None
+    if sup is not None:
+        rounded = _round_level(sup, price)
+        # Rounding must not manufacture the lie it was just checked against: keep the raw level.
+        sup = rounded if rounded is not None and rounded <= price else sup
+    if res is not None:
+        rounded = _round_level(res, price)
+        res = rounded if rounded is not None and rounded >= price else res
+    if sup is not None and res is not None and sup >= res:
+        # A range narrower than the card's precision (a 0.004-wide range at 10.54) renders as one
+        # number twice — the same lie as a flat window, so it is reported and dropped the same way.
+        reasons.append("flat_range" if sup == res else "inverted_range")
+        sup = res = None
+
+    entry = None
+    if sup is not None and sup <= price * 0.99:
+        raw = min(sup * 1.02, price * 0.98) if strategy_type == "income" else sup * 1.01
+        entry = _round_level(raw, price)
+        if entry is None or entry >= price:
+            entry = None
+            reasons.append("entry_not_below_price")
+    elif sup is not None:
+        # Support within 1% of the market: a "pullback entry" would be at or above the price.
+        reasons.append("support_at_market")
+
+    stop = _level(declared_stop)
+    if stop is not None and (stop >= price or (entry is not None and stop >= entry)):
+        # A declared stop at or above the market is not a stop for a long card. Do not launder it.
+        reasons.append("declared_stop_not_below_price")
+        stop = None
+    if stop is None and sup is not None:
+        candidate = _round_level(sup - _level(atr), price) if _level(atr) else _round_level(sup * 0.97, price)
+        if candidate is not None and candidate < price and (entry is None or candidate < entry):
+            stop = candidate
+        elif candidate is not None:
+            reasons.append("stop_not_below_price")
+    stop = _round_level(stop, price)
+
+    target = None
+    if res is not None:
+        candidate = _round_level(res * 1.02, price)
+        if entry is None or (candidate is not None and candidate > entry):
+            target = candidate
+        else:
+            reasons.append("target_not_above_entry")
+
+    risk_reward = None
+    if entry is not None and stop is not None and target is not None:
+        risk = entry - stop
+        reward = target - entry
+        if risk > 0 and reward > 0:
+            risk_reward = round(reward / risk, 2)
+        else:
+            reasons.append("risk_or_reward_not_positive")
+
+    return {"support": sup, "resistance": res, "ideal_entry": entry, "stop_loss": stop,
+            "target_price": target, "risk_reward": risk_reward, "reasons": reasons}
 
 
 def ground_truth_blocks(sym: str, recommendation, holdings: dict) -> tuple:
@@ -370,8 +494,8 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
         if not latest_price:
             latest_price = _level(e.get("price"))
 
-        support = _level(sr.get("support"))
-        resistance = _level(sr.get("resistance"))
+        support = _level(sr.get("low_20")) if sr.get("low_20") is not None else _level(sr.get("support"))
+        resistance = _level(sr.get("high_20")) if sr.get("high_20") is not None else _level(sr.get("resistance"))
 
         # Fallback: estimate support/resistance from enrichment 52-week range
         if not support and latest_price:
@@ -419,29 +543,22 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
             strategy_type = "core_holding"
             print(f"  [strategy-cards] WARNING: {sym} has no DB classification — using default core_holding")
 
-        # Compute entry/stop/target
-        stop_loss = _level(stop_data.get("stop_price"))
-        if not stop_loss and support and atr:
-            stop_loss = round(support - float(atr), 2)
-        elif not stop_loss and support:
-            stop_loss = round(support * 0.97, 2)  # 3% below support
-
-        ideal_entry = None
-        if support and latest_price:
-            if strategy_type == "income":
-                ideal_entry = round(min(support * 1.02, latest_price * 0.98), 2)
-            else:
-                ideal_entry = round(support * 1.01, 2)
-
-        target_price = None
-        if resistance:
-            target_price = round(resistance * 1.02, 2)
-
-        risk_reward = None
-        if ideal_entry and stop_loss and target_price and ideal_entry > stop_loss:
-            reward = target_price - ideal_entry
-            risk = ideal_entry - stop_loss
-            risk_reward = round(reward / risk, 2) if risk > 0 else None
+        # Compute entry/stop/target through the coherence gate (LQ-20261107-57): a level is written
+        # only when it is on the correct side of the price and of the level it depends on, otherwise
+        # it is NULL with a named reason. This replaces the stop/entry/target/risk_reward arithmetic
+        # that served support==resistance==price, stops at or above the price, and negative R/R.
+        levels = coherent_levels(
+            latest_price=latest_price,
+            support=support,
+            resistance=resistance,
+            declared_stop=stop_data.get("stop_price"),
+            atr=atr,
+            strategy_type=strategy_type,
+        )
+        support, resistance = levels["support"], levels["resistance"]
+        stop_loss, ideal_entry = levels["stop_loss"], levels["ideal_entry"]
+        target_price, risk_reward = levels["target_price"], levels["risk_reward"]
+        level_reasons = levels["reasons"]
 
         # Account fit
         account_fit = "taxable"
@@ -453,7 +570,8 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
         # Thesis
         thesis = tp.get("thesis") or ar.get("summary") or f"{sym} — {strategy_type.replace('_', ' ')}"
         confidence = ar.get("confidence") or bt.get("backtest_score", 0) / 100 if bt.get("backtest_score") else 0.5
-        needs_iter = not latest_price or not support or not ar.get("recommendation")
+        needs_iter = (not latest_price or not support or not ar.get("recommendation")
+                      or bool(level_reasons))
 
         tech_summary = f"RSI {rsi:.0f}" if rsi else ""
         if sma200 is not None: tech_summary += f" · SMA200 {sma200:+.1f}%"
@@ -477,6 +595,13 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
               json.dumps({"enrichment": {k: e.get(k) for k in ["rsi", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "beta", "sector", "industry"]},
                           "backtest": bt, "trade_plan": tp, "agent_rec": ar.get("recommendation"),
                           "catalysts": catalyst_items,
+                          # What the card IS, and why any level is missing (LQ-20261107-57):
+                          # "not_priceable" means no price evidence exists for this symbol (the
+                          # watchlist's ai_discovered writer put prose tokens such as NOPX/AWARD/
+                          # ALERT there); every other card states the levels it withheld and why,
+                          # so a blank cell on the page has a reason behind it rather than a bug.
+                          "status": "not_priceable" if latest_price is None else "ok",
+                          "level_reasons": level_reasons,
                           # Provenance: which agent this came from, and what the
                           # synthesis suppressed. Without the first, "whichever job
                           # finished last" is invisible; without the second, a
@@ -500,13 +625,17 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
 
         results.append({"symbol": sym, "strategy_type": strategy_type, "latest_price": latest_price,
                         "support": support, "resistance": resistance, "stop_loss": stop_loss,
-                        "target_price": target_price, "risk_reward": risk_reward, "needs_iteration": needs_iter})
+                        "target_price": target_price, "risk_reward": risk_reward,
+                        "ideal_entry": ideal_entry, "needs_iteration": needs_iter,
+                        "level_reasons": level_reasons,
+                        "status": "not_priceable" if latest_price is None else "ok"})
 
     if dry_run:
         conn.rollback()
         conn.close()
         print(f"[strategy-cards] DRY RUN: would upsert {len(pending)} cards into watchlist_strategy_cards "
               f"(nothing written)")
+        print(f"[strategy-cards] DRY RUN quality: {json.dumps(card_quality_summary(results), sort_keys=True)}")
         return results
 
     for params in pending:
@@ -527,6 +656,28 @@ def lane_output(results: list) -> dict:
     n = len(results or [])
     return {"produced_count": n, "attempted_count": n,
             "skipped_reasons": {} if n else {"universe_empty_unexpected": 1}, "empty_reason": None}
+
+
+def card_quality_summary(results: list) -> dict:
+    """Counts the LQ-20261107-57 audit reads, from the cards this run actually built.
+
+    A card cannot be counted wrong by this summary: ``support == resistance``, ``stop >= price`` and
+    ``risk_reward < 0`` are computed from the same dicts that are upserted, so the summary and the
+    table cannot drift. ``not_priceable`` counts symbols with no price evidence at all.
+    """
+    rows = results or []
+    reasons = Counter(reason for r in rows for reason in (r.get("level_reasons") or []))
+    return {
+        "not_priceable": sum(1 for r in rows if r.get("latest_price") is None),
+        "support_equals_resistance": sum(
+            1 for r in rows if r.get("support") is not None and r.get("support") == r.get("resistance")),
+        "stop_at_or_above_price": sum(
+            1 for r in rows if r.get("stop_loss") is not None and r.get("latest_price") is not None
+            and r.get("stop_loss") >= r.get("latest_price")),
+        "negative_risk_reward": sum(
+            1 for r in rows if r.get("risk_reward") is not None and r.get("risk_reward") < 0),
+        "level_reasons": dict(sorted(reasons.items())),
+    }
 
 
 def cli():
@@ -559,7 +710,9 @@ def cli():
                                output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
             raise
         write_lane_receipt("materialize_watchlist_strategy_cards", ok=True, exit_code=0, started_at=started,
-                           summary={"cards": len(results), "symbols_arg": syms}, output=lane_output(results))
+                           summary={"cards": len(results), "symbols_arg": syms,
+                                    "quality": card_quality_summary(results)},
+                           output=lane_output(results))
     if "--json" in sys.argv:
         print(json.dumps(results, indent=2, default=str))
     else:
