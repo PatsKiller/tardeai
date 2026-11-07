@@ -1124,32 +1124,40 @@ def _resolve_price(sym: str, holdings_by_sym: dict, finviz_cache: dict, rm_price
     pos.setdefault("symbol", sym)
     fq = finviz_cache.get(sym) if isinstance(finviz_cache, dict) else None
     mark = resolve_mark(pos, quote=quote, finviz=fq if isinstance(fq, dict) else None)
-    price = mark.get("price") or 0
-    return (price, mark.get("source") or "unavailable", bool(price and price > 0),
+    price = mark.get("price")            # None when nothing could price it — never 0 standing in for unknown
+    return (price, mark.get("source") or "none", bool(price and price > 0),
             mark.get("as_of"), bool(mark.get("stale")))
 
 
-def _broker_quotes(symbols: list) -> dict:
-    """{SYMBOL: {price, as_of, source}} from the data broker, or {} when it cannot answer.
+def _broker_quotes(symbols: list):
+    """{SYMBOL: {price, as_of, source}} from the data broker; ``None`` when it could not be asked.
 
-    A quote is the rule's second rung: it serves only when it is FRESH, which ``resolve_mark`` enforces.
-    The helper never raises: a broker outage degrades to Finviz/stale marks, not to a failed run.
+    A quote is the rule's second rung: it serves only when it is FRESH, which ``resolve_mark`` enforces. An
+    empty dict means the broker answered with no rows for these symbols; ``None`` means the question was not
+    answered, which the caller records — the two are different states, and only one of them is evidence.
     """
     try:
         from lib.data_broker.market_quote import get_price_batch
         return get_price_batch(_db_query, [s for s in symbols if s], max_age_hours=0.5)
-    except Exception:
-        return {}
+    except Exception as exc:  # noqa: BLE001 — the state is returned, not a confident empty
+        print(f"  [stop-coverage] broker quote rung unavailable ({type(exc).__name__}) — prices come from "
+              "Finviz or a stored mark flagged stale")
+        return None
 
 
 def _holdings_document() -> dict:
-    """The holdings document, DB first; the file is the fallback. Never raises."""
+    """The holdings document, DB first; the file is the fallback. The source travels with it."""
     store = STATE_DIR / "holdings.json"
     try:
         from lib.holdings_document import load_document
         return load_document(store)
-    except Exception:
-        return _load_json(store) or {}
+    except Exception as exc:  # noqa: BLE001 — load_document's contract is not to raise; if it does, the
+        # fallback is labelled, so a file read is never mistaken for the database document.
+        print(f"  [stop-coverage] holdings reader failed ({type(exc).__name__}) — reading {store.name}")
+        d = _load_json(store) or {}
+        d.setdefault("document_source", "holdings_json")
+        d.setdefault("document_fallback_reason", type(exc).__name__)
+        return d
 
 
 def generate_stop_coverage_briefs() -> dict:
@@ -1191,10 +1199,15 @@ def generate_stop_coverage_briefs() -> dict:
     print(f"  [stop-coverage] Evaluating {len(unique_stops)} stop-protected positions...")
 
     quotes = _broker_quotes([p.get("symbol", "") for p in unique_stops])
+    # None = the broker could not be asked; {} = it answered with no rows. The second rung is only
+    # silently absent in the second case, so the state is carried into the run, not folded into "{}".
+    quote_state = "unavailable" if quotes is None else ("ok" if quotes else "no_rows")
+    quotes = quotes or {}
 
     stats = {"total": len(unique_stops), "fresh": 0, "failed": 0,
              "triggered": 0, "danger": 0, "warning": 0, "intact": 0,
-             "price_unavailable": 0, "price_stale": 0, "steph_escalated": 0}
+             "price_unavailable": 0, "price_stale": 0, "steph_escalated": 0,
+             "broker_quotations": quote_state}
 
     for p in unique_stops:
         sym = p.get("symbol", "")
@@ -1209,6 +1222,7 @@ def generate_stop_coverage_briefs() -> dict:
             stats["price_stale"] += 1
         as_of_txt = f"as of {price_as_of}" if price_as_of else "undated"
         stale_txt = " — STALE, not a live price" if price_stale else ""
+        price_txt = f"${price:.2f}" if price_valid and price is not None else "price unavailable"
 
         # Holdings market value
         sym_holdings = holdings_by_sym.get(sym, [])
@@ -1334,7 +1348,7 @@ Reply ONLY JSON:
                    ON CONFLICT (run_id, symbol, category) DO NOTHING""",
                 (RUN_ID, sym, "stop_review",
                  what_changed[:200],
-                 f"Stop ${stop_price:.2f}, price ${price:.2f} ({price_source}, {as_of_txt}{stale_txt}), value ${total_mv:,.0f}",
+                 f"Stop ${stop_price:.2f}, price {price_txt} ({price_source}, {as_of_txt}{stale_txt}), value ${total_mv:,.0f}",
                  f"Is {sym} stop still valid? Should John hold, exit, or adjust the stop?",
                  conf,
                  json.dumps({"agent": AGENT, "source": "aegis:stop-coverage-escalation",

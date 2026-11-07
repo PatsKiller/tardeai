@@ -77,8 +77,9 @@ def test_an_undated_stored_mark_is_stale_too():
 
 
 def test_nothing_at_all_is_unavailable_not_zero_dressed_as_a_price():
+    """Unknown stays None. A 0 would read downstream as a priced position at zero, which is a lie."""
     price, source, valid, as_of, stale = synth._resolve_price(SYM, {}, {}, 0)
-    assert (price, source, valid) == (0, "none", False)
+    assert (price, source, valid) == (None, "none", False)
     assert as_of is None and stale is True
 
 
@@ -87,11 +88,36 @@ def test_the_risk_management_price_is_a_last_resort_and_is_not_live():
     assert source == "stored_mark" and valid is True and stale is True
 
 
+def test_a_broker_that_cannot_be_asked_is_none_not_an_empty_answer(monkeypatch):
+    """{} means "no rows for these symbols"; None means "did not answer". Only the second is a gap."""
+    import types
+
+    def boom(*_a, **_k):
+        raise RuntimeError("broker down")
+
+    stub = types.ModuleType("lib.data_broker.market_quote")
+    stub.get_price_batch = boom
+    monkeypatch.setitem(sys.modules, "lib.data_broker.market_quote", stub)
+
+    assert synth._broker_quotes([SYM]) is None
+
+
+def test_a_broker_that_answers_with_no_rows_is_an_empty_dict(monkeypatch):
+    import types
+
+    stub = types.ModuleType("lib.data_broker.market_quote")
+    stub.get_price_batch = lambda *_a, **_k: {}
+    monkeypatch.setitem(sys.modules, "lib.data_broker.market_quote", stub)
+
+    assert synth._broker_quotes([SYM]) == {}
+
+
 # ── aegis_evening_packet._holdings_protection ──────────────────────────────────────────────────────
 
 def _store(tmp_path, rows):
     store = tmp_path / "data" / "portfolios" / "state" / "holdings.json"
     store.parent.mkdir(parents=True, exist_ok=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- pytest tmp_path fixture, not a store
     store.write_text(json.dumps({"as_of": "2026-11-07T12:00:00Z", "holdings": rows,
                                  "portfolio_totals": {"total_value": 1000.0}}))
     return store
