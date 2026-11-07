@@ -335,9 +335,14 @@ def test_update_agent_performance(monkeypatch, tmp_path, n, expect):
     monkeypatch.setattr(m, "_get_conn", lambda: _Conn())
     monkeypatch.setattr(m, "score", lambda cur: {"outcomes": 9, "matched": 3, "rows": rows,
                                                  "period_start": "2026-10-08", "period_end": "2026-10-15"})
-    monkeypatch.setattr(m, "_write_rows", lambda cur, scored: [{"id": i, **r} for i, r in enumerate(scored["rows"])])
+    # _write_rows returns one entry per agent carrying the row id and whether the period row was
+    # inserted or refreshed (LQ-20261107-264); the double must answer the real shape, not an older one.
+    monkeypatch.setattr(m, "_write_rows", lambda cur, scored: [
+        {"id": i, "outcome": "inserted", **r} for i, r in enumerate(scored["rows"])])
     assert m.run() == 0
-    assert _last(tmp_path, "update_agent_performance")["summary"]["agents_scored"] == n  # established path
+    last = _last(tmp_path, "update_agent_performance")
+    assert last["summary"]["agents_scored"] == n  # established path
+    assert last["summary"]["inserted"] == n and last["summary"]["updated"] == 0
     H.check(tmp_path, "update-agent-performance", run_id, produced=n, expect=expect)
 
 

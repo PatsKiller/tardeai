@@ -206,7 +206,9 @@ def uap_conn(monkeypatch, state):
         [
             ("FROM decision_outcomes", [(1, "AAA", "buy", 100.0, 110.0, None, t)]),
             ("FROM watchlist_agent_results", [(9, "AAA", "Maria", "buy", 0.8, t - timedelta(hours=3))]),
-            ("INSERT INTO agent_performance_history", [(77,)]),
+            # LQ-20261107-264: the period already has a row, so the upsert must UPDATE it and never insert.
+            ("UPDATE agent_performance_history", [(77,)]),
+            ("INSERT INTO agent_performance_history", [(78,)]),
         ]
     )
     monkeypatch.setattr(uap, "_get_conn", lambda: conn)
@@ -243,10 +245,31 @@ def test_uap_score_is_select_only_and_db_adapter():
 
 def test_uap_real_run_writes_row_and_receipt(uap_conn, capsys):
     assert uap.run() == 0
-    assert len(uap_conn.mutations()) == 1 and ("commit",) in uap_conn.log
+    # LQ-20261107-264: an existing period row is refreshed (UPDATE), not duplicated (INSERT).
+    mutations = uap_conn.mutations()
+    assert len(mutations) == 1 and mutations[0].startswith("UPDATE agent_performance_history"), mutations
+    assert ("commit",) in uap_conn.log
     rc = _receipt("update_agent_performance")
     assert rc["status"] == "ok" and rc["summary"]["agents_scored"] == 1
+    assert rc["summary"]["updated"] == 1 and rc["summary"]["inserted"] == 0
     assert "Maria" in capsys.readouterr().out
+
+
+def test_uap_real_run_inserts_only_for_a_new_period(monkeypatch, state, capsys):
+    t = datetime(2026, 10, 1, 12, 0)
+    conn = FakeConn(
+        [
+            ("FROM decision_outcomes", [(1, "AAA", "buy", 100.0, 110.0, None, t)]),
+            ("FROM watchlist_agent_results", [(9, "AAA", "Maria", "buy", 0.8, t - timedelta(hours=3))]),
+            ("INSERT INTO agent_performance_history", [(78,)]),
+        ]
+    )
+    monkeypatch.setattr(uap, "_get_conn", lambda: conn)
+    assert uap.run() == 0
+    kinds = [m.split()[0] for m in conn.mutations()]
+    assert kinds == ["UPDATE", "INSERT"], kinds
+    rc = _receipt("update_agent_performance")
+    assert rc["summary"]["inserted"] == 1 and rc["summary"]["updated"] == 0
 
 
 # ── catalyst_calibration ────────────────────────────────────────────────────────────────────────

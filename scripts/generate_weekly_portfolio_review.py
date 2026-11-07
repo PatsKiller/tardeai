@@ -30,7 +30,7 @@ def generate():
     _rot_ever = cur.fetchone()["cnt"]
     rotations_label = (str(rotations) if _rot_ever
                        else "n/a (no rotation producer implemented)")
-    cur.execute("SELECT agent, accuracy_pct FROM agent_performance_history ORDER BY created_at DESC LIMIT 5")
+    cur.execute("SELECT agent, accuracy_pct, total_recommendations FROM agent_performance_history ORDER BY created_at DESC LIMIT 5")
     agents = cur.fetchall()
     cur.execute("SELECT scope_value, actual_accuracy, calibration_error, recommendation FROM confidence_calibration_history ORDER BY calibration_date DESC LIMIT 8")
     calibrations = cur.fetchall()
@@ -57,7 +57,11 @@ def generate():
     lines.append(f"Income: ${income:,.0f}/yr")
     if agents:
         lines.append("*Agent Performance*")
-        for a in agents: lines.append(f"  {a['agent']}: {a['accuracy_pct']}%")
+        # LQ-20261107-264: the same minimum-sample rule the dashboards use, so a 1-sample 100% is not
+        # printed as an accuracy. accuracy_label returns "not enough data" below AGENT_SAMPLE_INSIGHT.
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib.agent_performance_history import accuracy_label
+        for a in agents: lines.append(f"  {a['agent']}: {accuracy_label(a)}")
     print("\n".join(lines))
     return report
 

@@ -6,6 +6,7 @@ import MetricTile from '../components/MetricTile'
 import { DoughnutChart, BarChartJS } from '../components/charts'
 import AccountBadge from '../components/AccountBadge'
 import { useApi } from '../hooks/useApi'
+import { accuracyCell } from '../lib/agentAccuracy'
 
 interface CIODashboardData {
   decision_summary: { action: string; priority: string; cnt: number }[]
@@ -289,7 +290,7 @@ export default function CIODashboard() {
         {(agentPerf?.history || []).map((a: any, i: number) => (
           <div key={i} style={{ display: 'flex', gap: 12, padding: '4px 12px', borderBottom: '1px solid var(--border-subtle)', fontSize: 10 }}>
             <span style={{ fontWeight: 700, color: 'var(--accent)', minWidth: 80 }}>{a.agent}</span>
-            <span>Accuracy: {a.accuracy_pct}%</span>
+            <span>Accuracy: {accuracyCell(a)}</span>
             <span>Recs: {a.total_recommendations}</span>
           </div>
         ))}

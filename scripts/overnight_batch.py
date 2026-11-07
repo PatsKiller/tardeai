@@ -32,6 +32,7 @@ if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
 
 import json, sys, uuid
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -301,9 +302,26 @@ def record_daily_metrics():
     return metrics
 
 
+def _weekly_performance_rows(agents) -> list:
+    """Normalise the weekly aggregate into agent_performance_history rows.
+
+    Accuracy, rule violations and human overrides are NOT measured by this weekly aggregate, so they are
+    written as NULL ("not measured"), never as 0: a 0 beside 889 recommendations reads as a measured 0%
+    (LQ-20261107-264). The daily lane, scripts/update_agent_performance.py, owns accuracy for its 30-day window.
+    """
+    return [{"agent": a["agent"], "total_recommendations": int(a["total"]), "accuracy_pct": None,
+             # avg(confidence) is NULL only when every row for the agent has a NULL confidence: unknown stays
+             # unknown rather than becoming a confident 0.0.
+             "avg_confidence": float(a["avg_conf"]) if a["avg_conf"] is not None else None,
+             "rule_violations": None, "human_overrides": None}
+            for a in agents]
+
+
 def record_agent_performance():
     """Record weekly agent performance metrics."""
     import psycopg2.extras
+    from lib.agent_performance_history import upsert_period_rows
+
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -325,24 +343,21 @@ def record_agent_performance():
     """)
     agents = cur.fetchall()
 
-    for a in agents:
-        cur.execute("""
-            INSERT INTO agent_performance_history
-                (agent, period_start, period_end, total_recommendations, avg_confidence, accuracy_pct)
-            VALUES (%s, %s, %s, %s, %s, 0)
-        """, (a["agent"], datetime.now() - timedelta(days=7), datetime.now(),
-              a["total"], float(a["avg_conf"] or 0)))
+    # Aware ET time (the repo's operator-facing convention), so the period carries an unambiguous as-of;
+    # only the .date() is used, so the weekly window is unchanged.
+    end = datetime.now(ZoneInfo("America/New_York"))
+    # LQ-20261107-264: the 2026-05-24..05-31 rows were written twice, 15 minutes apart, by this function's
+    # plain INSERT. A re-run now refreshes the same period's rows instead of adding a second set.
+    upsert_period_rows(cur, (end - timedelta(days=7)).date(), end.date(), _weekly_performance_rows(agents))
 
     conn.commit()
     conn.close()
     return {"agents": len(agents)}
 
 
-
-    # ── Sunday 9 AM — Journal annotation reminder ──────────────────────────
-    if now.weekday() == 6 and now.hour == 9 and now.minute < 5:
-        print("[cron] Running journal reminder...")
-        send_journal_reminder()
+# Removed 2026-11-07 (LQ-20261107-264, ruff F821): an unreachable "Sunday 9 AM journal reminder" block
+# survived after this function's return, reading an undefined `now`. The reminder is its own lane,
+# scripts/journal_annotation_reminder.py; nothing called this copy.
 
 # End of reminder
 
@@ -426,7 +441,7 @@ def run(send_telegram: bool = False):
     except Exception as e:
         print(f"[overnight] Trade review (non-fatal): {e}")
 
-    print(f"[overnight] Done")
+    print("[overnight] Done")
     return {"metrics": metrics, "tier1": tier1, "tier2": tier2}
 
 

@@ -162,22 +162,18 @@ def score(cur) -> dict:
 
 
 def _write_rows(cur, scored: dict) -> list:
-    """The ONLY write: one agent_performance_history row per scored agent."""
-    written = []
-    for r in scored["rows"]:
-        cur.execute("""
-            INSERT INTO agent_performance_history
-                (agent, period_start, period_end, total_recommendations,
-                 accuracy_pct, avg_confidence, rule_violations, human_overrides)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        """, (
-            r["agent"], scored["period_start"], scored["period_end"], r["total"],
-            r["accuracy_pct"], r["avg_confidence"], 0, r["overrides"],
-        ))
-        perf_id = cur.fetchone()[0]
-        written.append({"id": perf_id, **r})
-    return written
+    """The ONLY write: one agent_performance_history row per scored agent.
+
+    LQ-20261107-264: this used to be a plain INSERT, so a second run of the same period added a duplicate
+    row (six such rows existed). ``upsert_period_rows`` updates the existing period row instead, under a
+    transaction-scoped advisory lock.
+    """
+    from lib.agent_performance_history import upsert_period_rows
+
+    rows = [{**r, "total_recommendations": r["total"], "human_overrides": r["overrides"]}
+            for r in scored["rows"]]
+    outcomes = upsert_period_rows(cur, scored["period_start"], scored["period_end"], rows)
+    return [{**r, "id": o["id"], "outcome": o["outcome"]} for r, o in zip(scored["rows"], outcomes)]
 
 
 #: n8n lane id; the real run's receipt carries LaneRunReceipt@v2 output fields (produced_count = rows inserted into
@@ -224,10 +220,16 @@ def run(as_json: bool = False, dry_run: bool = False) -> int:
                       output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     outcomes, matched_count = scored["outcomes"], scored["matched"]
+    inserted = sum(1 for w in written if w["outcome"] == "inserted")
+    updated = len(written) - inserted
     write_receipt("update_agent_performance", ok=True, started_at=started_at,
-                  summary={"outcomes": outcomes, "matched": matched_count, "agents_scored": len(written)},
+                  summary={"outcomes": outcomes, "matched": matched_count, "agents_scored": len(written),
+                           "inserted": inserted, "updated": updated},
                   output={"produced_count": len(written), "attempted_count": len(scored["rows"]),
                           "skipped_reasons": {},
+                          # produced_count counts rows written: a re-run refreshes the period's rows, and each
+                          # one is a row the lane produced (LQ-20261107-264 makes the second run an UPDATE).
+                          "inserted_count": inserted, "updated_count": updated,
                           # no recommendation matched an outcome with price data
                           "empty_reason": None if written else "no_new_input"})
 
@@ -241,7 +243,8 @@ def run(as_json: bool = False, dry_run: bool = False) -> int:
         print(f"[update_agent_performance] Analyzed {outcomes} outcomes, matched {matched_count} agent recommendations.")
         print(f"[update_agent_performance] Scored {len(written)} agents:")
         for w in written:
-            print(f"  {w['agent']:<15} | {w['total']:>3} recs | accuracy={w['accuracy_pct']:5.1f}% | conf={w['avg_confidence']:.3f} | overrides={w['overrides']}")
+            print(f"  {w['agent']:<15} | {w['total']:>3} recs | accuracy={w['accuracy_pct']:5.1f}% | "
+                  f"conf={w['avg_confidence']:.3f} | overrides={w['overrides']} | {w['outcome']}")
         if not written:
             print("  (no agent recommendations matched to outcomes with price data)")
     return 0

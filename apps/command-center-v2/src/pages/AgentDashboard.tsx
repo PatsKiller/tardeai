@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { timeAgo } from '../lib/format'
+import { accuracyCell } from '../lib/agentAccuracy'
 import { RACIMatrix } from '../components/RACIMatrix'
 import { EscalationLadder } from '../components/EscalationLadder'
 
@@ -10,6 +11,9 @@ const secTitle: React.CSSProperties = { fontSize: 11, fontWeight: 600, letterSpa
 const recColor: Record<string, string> = { BUY: '#0ecb81', HOLD: '#f0b90b', SELL: '#f6465d', TRIM: '#f6465d', ADD: '#0ecb81', NEUTRAL: '#8b95a5', AVOID: '#f6465d', RESEARCH_MORE: '#4a90f4' }
 
 const AGENTS = ['steph', 'maria', 'maria_research', 'risk_agent', 'tax_agent', 'alex', 'aegis', 'iris', 'social_scalp', 'scalp_critic']
+
+// LQ-20261107-264: an accuracy computed from too few scored recommendations is noise — the shared rule
+// (../lib/agentAccuracy, mirrored by the Python bar) renders it as "not enough data".
 
 export default function AgentDashboard() {
   const { agentId } = useParams<{ agentId: string }>()
@@ -395,9 +399,9 @@ export default function AgentDashboard() {
               {(d.performance_history || []).slice(0, 10).map((p: any, i: number) => (
                 <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{p.period || String(p.created_at || '').slice(0, 10)}</td>
-                  <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{p.accuracy_pct ? `${p.accuracy_pct}%` : '—'}</td>
+                  <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{accuracyCell(p)}</td>
                   <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{p.avg_confidence ? `${Number(p.avg_confidence).toFixed(0)}%` : '—'}</td>
-                  <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{p.total_actions || '—'}</td>
+                  <td style={{ padding: '6px 8px', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{p.total_recommendations ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
