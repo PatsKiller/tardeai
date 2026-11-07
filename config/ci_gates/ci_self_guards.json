@@ -22,6 +22,7 @@
     "tests/test_decision_trace_no_fabricated_notification_20261003.py",
     "tests/test_cio_operator_evidence_receipts_20261002.py",
     "tests/test_cio_source_clocks_20261002.py",
+    "tests/test_cio_source_clocks_supersession_20261107.py",
     "tests/test_llm_offpeak_guard_20261107.py",
     "tests/test_cio_xsurface_census_completeness_20261002.py",
     "tests/test_cio_payload_flow_20261002.py",
