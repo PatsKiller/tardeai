@@ -48,6 +48,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
+import math
 from pathlib import Path
 from typing import Any, Optional
 
@@ -355,10 +356,15 @@ def _capabilities() -> dict:
 
 
 def _f(v) -> Optional[float]:
+    """Finite float or None. NaN/inf become None (unknown), never 0 and never
+    a value that later reaches int()/round() and raises (HTTP 500)."""
     try:
-        return None if v is None else float(v)
+        x = float(v) if v is not None else None
     except (TypeError, ValueError):
         return None
+    if x is None or not math.isfinite(x):
+        return None
+    return x
 
 
 def _age_hours(ts) -> Optional[float]:
@@ -607,7 +613,12 @@ def _prices(cur, symbols) -> dict[str, float]:
             WHERE symbol = ANY(%s) ORDER BY symbol, price_date DESC""",
         (list(symbols),),
     )
-    return {r[0]: float(r[1]) for r in cur.fetchall() if r[1]}
+    out: dict[str, float] = {}
+    for sym, close in cur.fetchall():
+        px = _f(close)
+        if px is not None and px > 0:
+            out[sym] = px
+    return out
 
 
 def _held_map(cur) -> dict[str, list[dict[str, Any]]]:
