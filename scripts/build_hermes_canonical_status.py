@@ -34,12 +34,59 @@ ENDPOINTS = ("workflow-matrix", "llm-auth-status", "self-learning-loops", "resea
 XDG = {"XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}", **os.environ}
 
 
-def api(ep):
+PROBE_CONFIG = ROOT / "config" / "hermes_canonical_status_probe.json"
+_PROBE_DEFAULTS = {"first_call_timeout_s": 60.0, "timeout_s": 20.0, "retries": 2, "backoff_s": [3, 8]}
+_first_call_done = False
+
+
+def probe_config(path=None):
+    """Timeouts/retries from config; a missing or broken file falls back to the defaults (never raises)."""
+    cfg = dict(_PROBE_DEFAULTS)
     try:
-        with _cc_urlopen(f"{BASE}/{ep}", timeout=20) as r:
-            return json.loads(r.read()).get("data", {})
-    except Exception as e:
-        return {"_error": str(e)[:120]}
+        raw = json.loads(Path(path or PROBE_CONFIG).read_text())
+        for k in cfg:
+            if k in raw:
+                cfg[k] = raw[k]
+        cfg["first_call_timeout_s"] = float(cfg["first_call_timeout_s"])
+        cfg["timeout_s"] = float(cfg["timeout_s"])
+        cfg["retries"] = max(0, int(cfg["retries"]))
+        cfg["backoff_s"] = [float(x) for x in cfg["backoff_s"]] or [0.0]
+    except Exception:
+        cfg = dict(_PROBE_DEFAULTS)
+    return cfg
+
+
+def _transient(exc):
+    """Timeouts and connection failures (server restarting) retry; an HTTP status or bad JSON does not."""
+    import urllib.error
+    if isinstance(exc, urllib.error.HTTPError):
+        return False
+    return isinstance(exc, (TimeoutError, ConnectionError, OSError)) or isinstance(
+        getattr(exc, "reason", None), (TimeoutError, ConnectionError, OSError))
+
+
+def api(ep, *, cfg=None, opener=None, sleep=None):
+    """GET one hermes endpoint. The process's first request uses first_call_timeout_s (the portfolio-server
+    is slow right after a restart); transient failures retry with backoff_s."""
+    global _first_call_done
+    import time
+    cfg = cfg or probe_config()
+    opener = opener or _cc_urlopen
+    sleep = sleep or time.sleep
+    timeout = cfg["timeout_s"] if _first_call_done else cfg["first_call_timeout_s"]
+    _first_call_done = True
+    last = None
+    for attempt in range(cfg["retries"] + 1):
+        try:
+            with opener(f"{BASE}/{ep}", timeout=timeout) as r:
+                return json.loads(r.read()).get("data", {})
+        except Exception as e:
+            last = e
+            if attempt >= cfg["retries"] or not _transient(e):
+                break
+            sleep(cfg["backoff_s"][min(attempt, len(cfg["backoff_s"]) - 1)])
+            timeout = max(timeout, cfg["timeout_s"])
+    return {"_error": str(last)[:120]}
 
 
 def sysd(cmd):

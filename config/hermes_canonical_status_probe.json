@@ -1,0 +1,8 @@
+{
+  "schema": "HermesCanonicalStatusProbe@v1",
+  "comment": "Timeouts for scripts/build_hermes_canonical_status.py. The first call after a portfolio-server restart is slow (23.5 s observed 2026-11-07 14:15 ET, next call 0.09 s), so the first request gets a longer timeout and a timeout/connection failure is retried with backoff. HTTP 4xx/5xx and bad JSON are not retried.",
+  "first_call_timeout_s": 60,
+  "timeout_s": 20,
+  "retries": 2,
+  "backoff_s": [3, 8]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_canonical_status_retry_20261107",
+  "files": [
+    "tests/test_hermes_canonical_status_retry_20261107.py"
+  ],
+  "comment": [
+    "build-hermes-canonical-status tolerates a slow first call after a portfolio-server restart (config-driven timeout + retry)."
+  ]
+}
