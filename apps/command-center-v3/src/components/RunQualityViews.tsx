@@ -19,9 +19,10 @@ export function QualityChips({ q }: { q: RunQuality | null | undefined }) {
   </span>
 }
 
-/** The card's one-line quality reason (skipped for GOOD, where the status line already says enough). */
+/** The card's one-line quality reason (skipped for GOOD, where the status line already says enough, except GOOD ·
+ *  idle: there the line names why the run had nothing to do). */
 export function QualityReason({ q }: { q: RunQuality | null | undefined }) {
-  if (!q || q.grade === 'GOOD' || !q.headline) return null
+  if (!q || (q.grade === 'GOOD' && q.sub !== 'idle') || !q.headline) return null
   return <div data-testid="quality-reason" style={{ ...wrap, fontSize: TYPE.sm, color: TOKENS.text[1], background: TOKENS.bg[2], borderRadius: RADIUS.sm, padding: '6px 8px' }}>
     {q.headline}
     {notAsDesigned(q) && !!q.design_issues?.length && <><br />⚠ {q.design_issues[0]}</>}

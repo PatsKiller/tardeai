@@ -360,9 +360,26 @@ def _public(run: dict) -> dict:
     return {k: v for k, v in run.items() if not k.startswith("_")}
 
 
+#: A receipt run is the same run as a ledger/journal run that started within this of it.
+SAME_RUN = timedelta(minutes=2)
+_SKIPS = {"skipped_lock", "skipped"}
+#: Sources that know only the last run (no history): never the basis for counting missed slots.
+_RECEIPT_SOURCES = ("run receipt (last run only)", "lane receipt")
+
+
+def _same_run(run: dict, at: datetime) -> bool:
+    """``at`` (a receipt's start) is this run: it started within SAME_RUN of it, or inside its start..finish span."""
+    start = run.get("_start")
+    if not start or run.get("result") in _SKIPS:  # a lock-skip is its own attempt; the twin that held the lock is not it
+        return False
+    end = _at(run.get("finished_at")) or start
+    return start - SAME_RUN <= at <= max(end, start) + SAME_RUN
+
+
 def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], journal: list[dict],
                  ledger_since: datetime | None, journal_since: datetime | None, last_live_success: datetime | None,
-                 receipt: dict | None, output_at: datetime | None, fixes: list[dict]) -> dict:
+                 receipt: dict | None, output_at: datetime | None, fixes: list[dict],
+                 lane_receipt: dict | None = None) -> dict:
     lane_id = W.identity(lane)
     scheduler = lane.get("scheduler") or {}
     kind = scheduler.get("kind") or "unknown"
@@ -392,17 +409,32 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
             history_gap = "no per-run record exists for this job"
         if receipt:
             history_gap = "only the last run is known (from its own receipt); " + history_gap
+    # The lane's own run receipt (write_lane_receipt) is a run source: a run it records that no ledger row or journal
+    # entry already holds is added, so last run, last success and status agree with the run the grade is about.
+    if lane_receipt and lane_receipt.get("_start") and lane_receipt["_start"] <= now and not any(
+            _same_run(r, lane_receipt["_start"]) for r in runs):
+        runs = sorted(runs + [lane_receipt], key=lambda r: r["_start"] or datetime.min.replace(tzinfo=timezone.utc))
+        sources = list(dict.fromkeys(sources + ["lane receipt"]))
+        if history_gap and len(runs) == 1:
+            history_gap = "only the last run is known (from its own receipt); " + history_gap.split("; ", 1)[-1]
     live = [r for r in runs if r["mode"] == "live"]
     last = (live or runs)[-1] if runs else None
+    if last and last["result"] in _SKIPS and last.get("_start"):
+        # the lane's own receipt shows the twin that held the lock ran this slot: that run is the last run
+        twin = [r for r in live if r.get("source") == "lane receipt" and r["result"] not in _SKIPS and r.get("_start")
+                and abs(r["_start"] - last["_start"]) <= SAME_RUN]
+        last = twin[-1] if twin else last
     success_times = [t for t in [last_live_success, *(_at(r["finished_at"]) for r in live if r["result"] == "succeeded"),
-                                 receipt.get("_success_at") if receipt else None] if t and t <= now]
+                                 receipt.get("_success_at") if receipt else None,
+                                 lane_receipt.get("_success_at") if lane_receipt else None] if t and t <= now]
     last_success = max(success_times) if success_times else None
     slots = expected_slots(cadence, now, trading_day) if state == "ACTIVE" else []
-    judged = judge_slots(slots, runs if sources and sources[0] != "run receipt (last run only)" else [],
-                         now=now, covered_from=min(covered) if covered and sources and sources[0] != "run receipt (last run only)" else None)
+    # Missed slots are judged only where ledger/journal history covers them; a slot a receipt run started in is "ran".
+    history = bool(sources) and any(s not in _RECEIPT_SOURCES for s in sources)
+    judged = judge_slots(slots, runs, now=now, covered_from=min(covered) if covered and history else None)
     missed = [s for s in judged if s["status"] == "missed"]
     measured_slots = [s for s in judged if s["status"] != "not_measured"]
-    missed_count = len(missed) if measured_slots else None
+    missed_count = len(missed) if measured_slots and history else None
     elapsed = [s for s in slots if s["judge_at"] <= now]
     evidence_at = max([t for t in [last["_start"] if last else None, _at(last.get("finished_at")) if last else None, output_at] if t],
                       default=None)
@@ -424,7 +456,7 @@ def lane_history(lane: dict, *, now: datetime, trading_day, ledger: list[dict], 
             why += f"; its output file was still written at {_iso(output_at)} (it may run outside the recorded path)"
     elif not runs and not output_at:
         status, why = "not_measured", history_gap or "No run evidence"
-    elif not sources or sources == ["run receipt (last run only)"]:
+    elif not history:
         # Evidence is a single receipt or an output file time: judge lateness against the schedule, never call it a run.
         latest_due = elapsed[-1]["at"] if elapsed else None
         if latest_due is None and cadence["every_hours"] and evidence_at:
@@ -503,7 +535,8 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
                            ledger_since=inputs.get("ledger_since"), journal_since=inputs.get("journal_since"),
                            last_live_success=_at((inputs.get("last_live_success") or {}).get(lane_id)),
                            receipt=(inputs.get("receipts") or {}).get(lane_id),
-                           output_at=(inputs.get("output_times") or {}).get(lane_id), fixes=fixes)
+                           output_at=(inputs.get("output_times") or {}).get(lane_id), fixes=fixes,
+                           lane_receipt=(inputs.get("lane_receipts") or {}).get(lane_id))
         row.update(describe(lane, (inputs.get("descriptions") or {}).get(lane_id), category_keys))
         rows.append(row)
     # Every status key is present (a counted 0 is a real 0), so the page never has to default a missing count.
@@ -519,7 +552,7 @@ def build(registry: dict, inputs: dict, *, now: datetime, trading_day) -> dict:
                     "with_missed": sum(1 for r in active if r["missed_count"]),
                     "missed_not_measured": sum(1 for r in active if r["missed_count"] is None),
                     "fixed_14d": sum(1 for r in rows if r["fix_count"]),
-                    "no_run_history": sum(1 for r in active if not r["history_sources"] or r["history_sources"] == ["run receipt (last run only)"])},
+                    "no_run_history": sum(1 for r in active if all(s in _RECEIPT_SOURCES for s in r["history_sources"]))},
         "sources": inputs.get("sources") or [],
         "gaps": inputs.get("gaps") or [],
         "categories": categories,
@@ -767,6 +800,24 @@ def read_receipts(registry: dict, root: Path) -> tuple[dict, dict]:
     return receipts, outputs
 
 
+def read_lane_receipts(registry: dict, root: Path) -> dict:
+    """Each ACTIVE lane's own run receipt (run_quality.read_receipt: <lane>_last.json or a declared JSON receipt) as a
+    run, source "lane receipt". Only a receipt that names its run's start or finish counts (a bare as_of is not a run)."""
+    from scripts.lib.run_quality import read_receipt
+    out = {}
+    for lane in registry.get("lanes") or []:
+        if lane.get("state") != "ACTIVE":
+            continue
+        doc, _rel = read_receipt(lane, root)
+        if not doc or not any(_at(doc.get(k)) for k in ("started_at", "finished_at", "ok_at")):
+            continue
+        run = receipt_run(doc, None)
+        if run:
+            run["source"] = "lane receipt"
+            out[W.identity(lane)] = run
+    return out
+
+
 def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path | None = None,
           categories_path: Path | None = None) -> dict:
     from scripts.cron_outage_watchdog import bind_components
@@ -777,6 +828,7 @@ def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path
     ledger = read_ledger(root / "data/governance/n8n_coordination_ledger.sqlite", now)
     journal = read_journal(root / "logs/safe_flock_events.jsonl")
     receipts, outputs = read_receipts(registry, root)
+    lane_receipts = read_lane_receipts(registry, root)
     units = read_unit_runs(root / "data/runtime/unit_runs.jsonl")
     for name, part in (("n8n run ledger", ledger), ("cron wrapper journal", journal), ("systemd unit snapshot", units)):
         if part.get("gap"):
@@ -803,11 +855,11 @@ def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path
                     "covers_from": None, "note": None})
     cron_heal = _read_json(root / "data/runtime/cron_self_heal_state.json") or {}
     sources.append({"name": "lane receipts and output files", "newest_record_at": _iso(max(outputs.values(), default=None)),
-                    "covers_from": None, "note": f"{len(receipts)} receipts, {len(outputs)} output files"})
+                    "covers_from": None, "note": f"{len(receipts)} declared receipts, {len(lane_receipts)} lane receipts, {len(outputs)} output files"})
     inputs = {**{k: ledger[k] for k in ("ledger_runs", "dead_letters", "breakers", "last_live_success", "ledger_since")},
               "journal_events": journal["journal_events"], "journal_since": journal["journal_since"],
               "unit_runs": units["unit_runs"],
-              "receipts": receipts, "output_times": outputs, "incidents": incidents,
+              "receipts": receipts, "lane_receipts": lane_receipts, "output_times": outputs, "incidents": incidents,
               "fixer_jobs": [j for j in (fixer.get("jobs") or {}).values() if isinstance(j, dict)],
               "episodes": episodes, "actions": actions, "cron_heal": cron_heal, "sources": sources, "gaps": gaps}
     descriptions, described_source = read_descriptions(descriptions_dir or DESCRIPTIONS_DIR)

@@ -16,6 +16,11 @@ t('NOT_LIVE chip names the reason; unknown/absent grade shows nothing', () => {
   eq(gradeChip({ grade: 'NOT_LIVE', sub: 'skipped' }), { label: 'Not live · skipped', tone: 'neutral' }, 'skipped')
   eq(gradeChip({ grade: 'NOT_LIVE', sub: 'dry_run' })?.label, 'Not live · dry run', 'dry')
   eq(gradeChip({ grade: 'DEGRADED' }), { label: 'Degraded', tone: 'warning' }, 'degraded')
+  // RUNQFIX 2026-11-07: a run that stated a reviewed idle reason is GOOD · idle → "Good · nothing due"
+  eq(gradeChip({ grade: 'GOOD', sub: 'idle' }), { label: 'Good · nothing due', tone: 'success' }, 'idle')
+  eq(gradeChip({ grade: 'GOOD', sub: 'something_else' })?.label, 'Good', 'other GOOD subs stay plain')
+  eq(gradeChip({ grade: 'EMPTY', sub: 'unexpected' })?.label, 'Empty', 'EMPTY sub not shown')
+  eq(/nothing due/.test(QUALITY_GRADES.find(g => g.grade === 'GOOD').means), true, 'GOOD definition names nothing due')
   eq(gradeChip(null), null, 'null'); eq(gradeChip({ grade: 'OK' }), null, 'unknown grade')
 })
 t('not-as-designed only on an explicit false', () => {

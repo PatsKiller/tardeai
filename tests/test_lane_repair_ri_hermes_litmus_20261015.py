@@ -430,6 +430,32 @@ def test_narrative_writes_and_counts(monkeypatch):
     assert mod._lane_chain("auto") == ["grok", "chatgpt"] and "local" not in mod._lane_chain("local")
 
 
+def test_narrative_names_an_unreachable_provider_and_stops(monkeypatch):
+    """2026-11-07 01:30Z: grok's proxy refused every connection and chatgpt was unavailable. The run retried the
+    dead endpoint for all 25 rows (19 minutes) and the receipt called every row ``no_narrative`` — a content
+    absence. The provider was down: say so, and stop after the first row."""
+    def unreachable(kw):
+        raise ConnectionError("HTTPConnectionPool(host='127.0.0.1', port=8645): Connection refused")
+
+    mod, lane, writes = _narrative_world(monkeypatch, 25, unreachable)
+    assert mod.main(["--apply", "--limit", "25"]) == 1
+    assert len(lane.calls) == 2  # one row x two lanes, not 25 x 2 against a dead endpoint
+    rec = json.loads(LR.receipt_path("ri-narrative-enrich").read_text())
+    assert rec["status"] == "failed" and rec["produced_count"] == 0 and writes == []
+    assert rec["skipped_reasons"] == {"llm_provider_unavailable": 25}
+
+
+def test_narrative_keeps_no_narrative_for_a_content_failure(monkeypatch):
+    """A lane that answers with text but no parseable narrative is a content failure, not an outage: every row is
+    still tried and the receipt says ``no_narrative``."""
+    mod, lane, writes = _narrative_world(monkeypatch, 3, lambda kw: "I cannot help with that request.")
+    assert mod.main(["--apply", "--limit", "3"]) == 1
+    assert len(lane.calls) == 6  # 3 rows x 2 lanes: the provider is up, so each row is tried
+    rec = json.loads(LR.receipt_path("ri-narrative-enrich").read_text())
+    assert rec["skipped_reasons"] == {"no_narrative": 3} and writes == []
+    assert mod._PROVIDER_DOWN == {"llm_provider_unavailable", "llm_lanes_unavailable"}
+
+
 # ── 1d. the cron wrapper: bounded, one log copy, offline dry run ─────────────────────────────────────────────────
 
 

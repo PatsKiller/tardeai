@@ -147,6 +147,8 @@ GOVERNANCE_REFUSALS = ("PROCESS_NOT_REGISTERED", "POLICY_NOT_ALLOWED", "COST_CAP
                        "AMBIGUOUS_LEGACY_LANE", "manual_mode", "ManualRequired")
 PROCESS_ID = "ri_narrative_enrich"
 RECEIPT_LANE = "ri-narrative-enrich"
+#: Failure reasons that mean no lane can serve any row this run, so the loop stops instead of retrying row by row.
+_PROVIDER_DOWN = frozenset({"llm_provider_unavailable", "llm_lanes_unavailable"})
 
 
 class GovernanceRefused(RuntimeError):
@@ -176,15 +178,28 @@ def _generate_via_bridge(prompt: str, timeout: int) -> tuple[dict | None, str | 
 
 
 def _generate_parsed(prompt: str, lanes: list[str], timeout: int = 180) -> tuple[dict | None, str | None]:
-    """Try each lane until JSON narrative parses. OAuth after local failure."""
+    """Try each lane until JSON narrative parses. OAuth after local failure.
+
+    On success returns ``(narrative, lane)``. On failure returns ``(None, reason)`` with a typed reason, because the
+    two failures are not the same thing and the receipt must not conflate them:
+
+    * ``llm_lanes_unavailable`` — no lane could even be tried (every one reports unavailable);
+    * ``llm_provider_unavailable`` — each lane tried raised or returned nothing, i.e. the provider/proxy is down
+      (2026-11-07 01:30Z: grok's local proxy on 127.0.0.1:8645 refused every connection, chatgpt unavailable). The
+      run then stopped after the first row instead of retrying a dead endpoint 25 times for 19 minutes;
+    * ``no_narrative`` — a lane answered, but nothing in its text parsed as a narrative (a content failure).
+    """
     if _via_bridge():
         return _generate_via_bridge(prompt, timeout)
     import llm_lane
     last_err = None
+    tried = 0
+    answered = False
     for lane in lanes:
         if not llm_lane.available(lane):
             print(f"  · skip {lane} (unavailable)")
             continue
+        tried += 1
         try:
             if lane == "local":
                 os.environ["LOCAL_LLM_NUM_PREDICT"] = "1200"
@@ -201,6 +216,7 @@ def _generate_parsed(prompt: str, lanes: list[str], timeout: int = 180) -> tuple
             if not text or not str(text).strip():
                 print(f"  · {lane} empty response")
                 continue
+            answered = True
             text = str(text).strip()
             nar = _normalize_narrative(_extract_json(text) or {})
             if nar:
@@ -216,7 +232,9 @@ def _generate_parsed(prompt: str, lanes: list[str], timeout: int = 180) -> tuple
             continue
     if last_err:
         print(f"  · all lanes failed last={last_err}")
-    return None, None
+    if not tried:
+        return None, "llm_lanes_unavailable"
+    return None, ("no_narrative" if answered else "llm_provider_unavailable")
 
 
 def main(argv=None) -> int:
@@ -326,8 +344,18 @@ def main(argv=None) -> int:
         try:
             nar, used_lane = _generate_parsed(prompt, lanes, timeout=args.timeout)
             if not nar:
-                print(f"  ! no narrative hermes:{r['id']} (all lanes failed)")
+                reason = used_lane or "no_narrative"
+                print(f"  ! no narrative hermes:{r['id']} ({reason})")
                 fail += 1
+                skipped[reason] = skipped.get(reason, 0) + 1
+                if reason in _PROVIDER_DOWN:
+                    # Every lane is down. Retrying the same dead endpoint for every remaining row bought nothing on
+                    # 2026-11-07 (25 rows x 2 lanes over 19 minutes); stop and let the next run pick them up.
+                    left = len(selected) - idx - 1
+                    if left:
+                        skipped[reason] += left
+                        print(f"  ! LLM providers unreachable — stopping; {left} row(s) left for the next run")
+                    break
                 continue
             ev = r.get("evidence_json")
             if isinstance(ev, str):
@@ -356,8 +384,7 @@ def main(argv=None) -> int:
         except Exception as e:
             print(f"  ! hermes:{r['id']} {e}")
             fail += 1
-    if fail:
-        skipped["no_narrative"] = fail
+            skipped["error"] = skipped.get("error", 0) + 1
 
     print(f"[narrative-enrich] done ok={ok} fail={fail} attempted={attempted} skipped={skipped}")
     # Healthy = it produced, or there was nothing to try. Some rows failing to parse is a partial result, not a
