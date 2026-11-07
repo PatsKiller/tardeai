@@ -56182,6 +56182,20 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 
+    # Per-job run history (operator 2026-11-06: "all of the jobs, when they ran, when they didn't run, when it had to
+    # be fixed"). Read-only projection over the run ledger, wrapper journal, receipts and heal/incident stores.
+    if base_path == "/api/v2/jobs-history":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from scripts.lib.jobs_history import get_jobs_history as _jobs_history
+
+            return 200, {"ok": True, "data": _jobs_history(query)}
+        except ValueError as e:
+            return 400, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
     # AI-proposed conflict rules (operator 2026-10-25; docs/ops/CONFLICT_RULE_PROPOSALS.md). Must precede the
     # /api/v3/conflicts/{key} catch-all below. GET is read-only; POST .../decision is operator identity + CSRF only
     # and answers 503 PROPOSAL_DECISIONS_NOT_ACTIVATED until config decision_writes_enabled is flipped.

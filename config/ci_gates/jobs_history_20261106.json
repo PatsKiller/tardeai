@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jobs_history_20261106",
+  "files": [
+    "tests/test_jobs_history.py"
+  ],
+  "anchor": "JOBS_HISTORY_20261106",
+  "comment": [
+    "ANCHOR: JOBS_HISTORY_20261106 — /api/v2/jobs-history: per-job run history (n8n ledger, wrapper journal, receipts),",
+    "missed slots counted only inside measured coverage, retries/dead letters/breakers/incidents/self-heal as fix events,",
+    "writer times only, no argv/output exposed, ledger opened read-only. Hermetic."
+  ]
+}
