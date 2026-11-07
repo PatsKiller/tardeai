@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "document_mentions_deny_20261107",
+  "files": [
+    "tests/test_document_mentions_deny_20261107.py"
+  ],
+  "comment": [
+    "Wire services, exchanges, places and ordinary words bind an issuer only with ticker context."
+  ]
+}

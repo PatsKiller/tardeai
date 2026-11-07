@@ -29,6 +29,7 @@ issuer" is a legitimate and useful query; it simply must not be confused with
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable, Optional
 
 SCHEMA = "DocumentMention@v1"
@@ -98,6 +99,99 @@ NO_ISSUER_BY_DESIGN: frozenset[str] = frozenset({
 })
 
 
+# ── false-positive company matches ───────────────────────────────────────────
+#
+# Measured 2026-11-07 on the live table: the company-name index bound wire-service names, exchanges,
+# places and ordinary words to issuers ("GLOBE NEWSWIRE" -> GL 5,897 rows, "NASDAQ" -> NDAQ 20,549,
+# "ENHANCED" -> ENHA 7,562, "BULLISH" -> BLSH 2,836, "NEW YORK" -> NYT 1,090, "Price Target" -> TROW).
+# A wrong tag is worse than no tag: it looks like coverage and every join inherits it.
+#
+# The rule is deterministic and has two parts. A NAME THAT IS AMBIGUOUS binds an issuer only with
+# CONTEXT: the row is filed under that very symbol, or the text names the symbol as a ticker
+# ("(ENHA)", "NASDAQ: ENHA", "$ENHA"). Ambiguous means: on the stoplist below, a multi-word run built
+# from finance-prose terms, or -- for a ticker_alias match -- a lone token that is an ordinary word.
+# Distinctive names ("Apple", "Bloom Energy", "Morgan Stanley") are untouched.
+
+APPLIES_TO_MATCHED_VIA: frozenset[str] = frozenset({"company_name", "ticker_alias"})
+
+#: Wire services, exchanges, places, publishers, ordinary words. Casefolded, whole-string.
+AMBIGUOUS_NAMES: frozenset[str] = frozenset({
+    # wire services and publishers
+    "globe newswire", "globe", "access newswire", "accesswire", "pr newswire", "business wire",
+    "reuters", "associated press", "simply wall st", "simply wall street", "morningstar",
+    "benzinga", "marketwatch", "investopedia", "zacks", "seeking alpha", "motley fool",
+    # exchanges and market venues
+    "nasdaq", "nyse", "new york stock exchange", "eastern time", "eastern progress",
+    # places
+    "new york", "san diego", "san francisco", "chicago", "canada", "america", "british columbia",
+    "london", "boston", "texas", "california", "china", "europe", "asia", "united states",
+    # ordinary words that are also issuer names
+    "enhanced", "bullish", "bearish", "mixed", "ideal", "versus", "strategy", "next", "focus",
+    "series", "outlook", "healthcare", "performance", "distribution", "invest", "day", "volatility",
+    "bitcoin", "starlink", "spacex", "deep dive", "best growth stocks", "price target",
+})
+
+#: Prose terms: a multi-word run containing one is a phrase of analysis, not a company name.
+PHRASE_TERMS: frozenset[str] = frozenset({
+    "price", "target", "moving", "average", "liquidity", "volatility", "dive", "events", "dynamics",
+    "allocations", "action", "mapping", "zones", "pulse", "insight", "sensitive", "driven", "critical",
+})
+
+_NORM = re.compile(r"[^a-z0-9 ]+")
+
+
+def _norm(text: Any) -> str:
+    return " ".join(_NORM.sub(" ", str(text or "").casefold()).split())
+
+
+def _is_ordinary_word(token: str) -> bool:
+    """A lone token that is a common word or declared template chrome (fail closed: no list -> not judged here)."""
+    try:
+        from lib import inbound_identity_tagger as T  # noqa: PLC0415
+    except Exception:
+        return False
+    up = token.upper()
+    if up in T._STOPWORDS or up in T._TEMPLATE_CHROME or token.capitalize() in T._SENTENCE_STARTERS:
+        return True
+    common = T._common_words()
+    return bool(common) and token.casefold() in common
+
+
+def _has_context(symbol: str, text: str, own_symbol: Optional[str]) -> bool:
+    sym = (symbol or "").upper()
+    if not sym:
+        return False
+    if own_symbol and own_symbol.strip().upper() == sym:
+        return True
+    return bool(re.search(r"(?:\(|:\s*|\$)\s*" + re.escape(sym) + r"(?![A-Za-z0-9])", text or ""))
+
+
+def false_positive_reason(matched_text: Any, symbol: Any, matched_via: Any, *, text: str = "",
+                          own_symbol: Optional[str] = None) -> Optional[str]:
+    """Why a name/alias match must not become a mention, or None. Never guesses: context only ever ALLOWS."""
+    if matched_via not in APPLIES_TO_MATCHED_VIA:
+        return None                                        # a ticker match is a different claim
+    name = str(matched_text or "").strip()
+    if not name:
+        return None
+    n = _norm(name)
+    # Compared on the normalised forms so "Johnson & Johnson" / "Nasdaq-" still match their cleaned name;
+    # what is refused is a name found only INSIDE a longer word ("Ideal" in "idealistic").
+    if text and n and f" {n} " not in f" {_norm(text)} ":
+        return "no_word_boundary"
+    tokens = n.split()
+    ambiguous = None
+    if n in AMBIGUOUS_NAMES:
+        ambiguous = "ambiguous_name"
+    elif len(tokens) > 1 and any(t in PHRASE_TERMS for t in tokens):
+        ambiguous = "prose_phrase"
+    elif matched_via == "ticker_alias" and len(tokens) == 1 and _is_ordinary_word(name):
+        ambiguous = "ordinary_word_alias"
+    if ambiguous is None:
+        return None
+    return None if _has_context(str(symbol or ""), text, own_symbol) else ambiguous + "_without_context"
+
+
 def extract(text: str, *, own_symbol: Optional[str] = None,
             registry: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
     """Mentions with a deterministic role where one can be decided.
@@ -109,11 +203,13 @@ def extract(text: str, *, own_symbol: Optional[str] = None,
     from lib.inbound_identity_tagger import tag_inbound  # noqa: PLC0415
 
     tag = tag_inbound(text, registry=registry)
-    found = tag.get("resolved") or []
+    own = (own_symbol or "").strip().upper() or None
+    found = [r for r in (tag.get("resolved") or [])
+             if false_positive_reason(r.get("matched_text"), r.get("symbol"), r.get("matched_via"),
+                                      text=text, own_symbol=own) is None]
     if not found:
         return []
 
-    own = (own_symbol or "").strip().upper() or None
     rows: list[dict[str, Any]] = []
 
     # Rule 1: a single mention is the subject.
