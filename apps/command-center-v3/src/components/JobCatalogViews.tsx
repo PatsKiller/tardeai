@@ -10,7 +10,7 @@ import {
 } from '../lib/jobRunHistory'
 import {
   JOBS_CATALOG_API, MIX_MEANING, RESULT_MEANING, STATUS_MEANING, catalogFilterHref, chipTipText, filterBarText, mixStatusParam,
-  parseStatusFilter, toggleStatusFilter, categoryKeyOf, categoryLabel, describedHistoryQuery, descriptionLines, jobTitle, matchesCategory, mixParts,
+  parseStatusFilter, categoryKeyOf, categoryLabel, describedHistoryQuery, descriptionLines, jobTitle, matchesCategory, mixParts,
   mixText, mixTone, runHistoryHref, type StatusMix, type CatalogCategory, type CatalogWire, type Category, type DescribedListWire, type DescribedRow,
 } from '../lib/jobCatalog'
 
