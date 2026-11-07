@@ -49,3 +49,27 @@ def test_yfinance_is_never_a_backup():
     q = {"ZZTA": {"price": 19.0, "as_of": "2026-10-06T03:55:00+00:00", "source": "data_broker.market_quotes:yfinance"}}
     a = ct.finviz_reprice(DOC, {}, now=NOW, quotes=q)["holdings"][0]
     assert a["price"] == 20.0   # stored mark kept; no approved live source
+
+
+def test_a_yfinance_row_in_the_finviz_cache_is_not_a_finviz_price():
+    """The repricer writes its yfinance fallback into the Finviz cache; read raw, the holdings page called it
+    'finviz' (live 2026-11-07: two rows). It is dropped, so the stored mark stands."""
+    fv = {"ZZTA": {"price": 18.0, "last_fetched": "2026-10-05 23:50:00 ET",
+                   "source": "data_broker.market_quote:get_best_quote:yfinance"}}
+    a = ct.finviz_reprice(DOC, fv, now=NOW)["holdings"][0]
+    assert a["price"] == 20.0 and a["price_source"] == "finviz_elite"   # untouched stored row
+
+
+def test_a_self_named_overlay_row_is_not_a_finviz_price_but_a_finviz_row_is():
+    fv = {"ZZTA": {"price": 18.0, "last_fetched": "2026-10-05 23:50:00 ET", "source": "finviz_quote_cache"},
+          "ZZNB": {"price": 51.0, "last_fetched": "2026-10-05 23:50:00 ET", "source": "finviz_elite"}}
+    out = ct.finviz_reprice(DOC, fv, now=NOW)["holdings"]
+    assert out[0]["price"] == 20.0
+    assert out[1]["price"] == 51.0 and out[1]["price_source"] == "finviz"
+
+
+def test_the_finviz_as_of_leaves_as_a_utc_iso_instant():
+    a = ct.finviz_reprice(DOC, FV, now=NOW)["holdings"][0]
+    assert " ET" not in a["price_as_of"]
+    parsed = datetime.fromisoformat(a["price_as_of"].replace("Z", "+00:00"))
+    assert parsed == datetime(2026, 10, 6, 3, 50, tzinfo=timezone.utc)

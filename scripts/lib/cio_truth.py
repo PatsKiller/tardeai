@@ -150,6 +150,29 @@ def _day_coverage(rows) -> dict:
             "unknown_accounts": sorted({r.get("account_id") or "" for r in unknown} - {""})}
 
 
+def _finviz_rows_only(finviz):
+    """The Finviz cache minus rows that are not Finviz prices (operator 2026-11-07: never yfinance).
+
+    The repricer writes its yfinance fallback (AMANX, SRNE: ``data_broker.market_quote:get_best_quote:yfinance``)
+    into the same file; read raw, those rows were marked ``finviz`` on the holdings page. Same rule as
+    portfolio_positions.finviz_cache(); ``_meta`` and non-dict rows pass through untouched.
+    """
+    from .portfolio_positions import _finviz_row_source
+    if not isinstance(finviz, dict):
+        return finviz
+    return {k: v for k, v in finviz.items()
+            if not isinstance(v, dict) or k == "_meta" or _finviz_row_source(str(v.get("source") or "").strip())}
+
+
+def _fv_utc_iso(value):
+    """The cache's "2026-11-07 03:00:01 ET" stamp as a UTC ISO instant (unparseable -> unchanged)."""
+    from .portfolio_positions import _utc_iso
+    try:
+        return _utc_iso(value) or value
+    except Exception:  # noqa: BLE001 -- a stamp we cannot parse stays as written; resolve_mark ages it
+        return value
+
+
 def finviz_reprice(holdings_doc: dict, finviz: dict | None, *, now: datetime | None = None,
                    quotes: dict | None = None, cfg: dict | None = None) -> dict:
     """Mark every non-cash row at the Finviz live price (operator 2026-11-07: "live prices shouldn't be pulled
@@ -164,7 +187,7 @@ def finviz_reprice(holdings_doc: dict, finviz: dict | None, *, now: datetime | N
     its stored mark, labelled as such. Never raises.
     """
     from .portfolio_positions import is_cash, resolve_mark
-    finviz = finviz if isinstance(finviz, dict) else {}
+    finviz = _finviz_rows_only(finviz) if isinstance(finviz, dict) else {}
     quotes = quotes if isinstance(quotes, dict) else {}
     if not finviz and not quotes:
         return holdings_doc
@@ -175,7 +198,7 @@ def finviz_reprice(holdings_doc: dict, finviz: dict | None, *, now: datetime | N
         sym = str(r.get("symbol") or "").upper()
         row = finviz.get(sym)
         fv_px = _number(row.get("price")) if isinstance(row, dict) else None
-        fv = ({"price": fv_px, "as_of": row.get("last_fetched") or row.get("last_updated")}
+        fv = ({"price": fv_px, "as_of": _fv_utc_iso(row.get("last_fetched") or row.get("last_updated"))}
               if fv_px is not None and fv_px > 0 else None)
         q = quotes.get(sym) if isinstance(quotes.get(sym), dict) else None
         shares = _number(r.get("shares", r.get("quantity")))
@@ -1795,6 +1818,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     # fallback. A non-production root (fixtures, offline copies) never reaches the live DB.
     holdings_doc = inputs.get("holdings") if "holdings" in inputs else load_document(store_path(root))
     finviz = inputs.get("finviz_quotes") if "finviz_quotes" in inputs else _read_json(state / "finviz_quote_cache.json")
+    finviz = _finviz_rows_only(finviz)
     from .portfolio_positions import load_config as _pp_config, _age_s
     pp_cfg = _pp_config()
     quotes = inputs.get("backup_quotes") if "backup_quotes" in inputs else None
