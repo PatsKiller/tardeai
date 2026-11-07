@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         with conn.cursor() as cur:
             cur.execute(_READ_SQL, (args.days,))
             rows = [r[0] for r in cur.fetchall()]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- any read failure is "could not read"; a partial report would be a guess
         print(f"error: could not read analyst_consensus_history: {exc}", file=sys.stderr)
         return 1
     finally:

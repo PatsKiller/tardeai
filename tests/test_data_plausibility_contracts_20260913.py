@@ -55,9 +55,12 @@ def test_contract_is_well_formed(c):
         assert 0 <= float(c.get("max_empty_pct", -1)) < 100, "max_empty_pct is a share of rows, 0..100"
         assert int(c.get("window_days", 0)) > 0
     if c["rule"] == "null_rate":
+        # Every bound is required: a default would be a bound nobody chose, and an
+        # absent min_rows is exactly how this rule would fail open.
         assert c.get("window_column"), "null_rate is measured inside a window; name the timestamp column"
-        assert 0 <= float(c.get("max_null_pct", -1)) < 100, "max_null_pct is a share of rows, 0..100"
-        assert int(c.get("window_days", 0)) > 0
+        assert 0 <= float(c["max_null_pct"]) < 100, "max_null_pct is a share of rows, 0..100"
+        assert int(c["window_days"]) > 0
+        assert int(c["min_rows"]) >= 0
 
 
 def test_every_contract_has_a_distinct_target():

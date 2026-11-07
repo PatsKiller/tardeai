@@ -289,11 +289,18 @@ def _check_null_rate(cur, contract: dict) -> dict:
     would turn this contract green. It stays red until the producer writes.
     """
     cur.execute(_null_rate_sql(contract))
-    nulls, total = cur.fetchone()
-    nulls, total = int(nulls or 0), int(total or 0)
+    row = cur.fetchone()
+    if row is None:
+        # count(*) cannot be NULL, so no row means the measurement itself broke. Raising
+        # leaves it to measure() as CHECK_FAILED; defaulting to 0 would report a healthy
+        # empty window, which is the failure mode this rule exists to catch.
+        raise ValueError("null_rate: the count query returned no row")
+    nulls, total = int(row[0]), int(row[1])
     days = int(contract.get("window_days") or 30)
-    max_pct = float(contract.get("max_null_pct", 0.0))
-    min_rows = int(contract.get("min_rows") or 0)
+    # Both are declared: an absent bound is a contract nobody finished writing, and the
+    # well-formed test requires them, so there is no default to fall back to.
+    max_pct = float(contract["max_null_pct"])
+    min_rows = int(contract["min_rows"])
     scope = _safe_fragment(contract.get("where") or "") or "all"
     if total < min_rows:
         # Count the rows that exist, not the rows missing: severity bands are a

@@ -141,9 +141,26 @@ def test_a_thin_window_reports_at_most_the_rows_it_saw():
     assert r["violations"] == 5 and r["total"] == 5
 
 
-def test_an_empty_window_without_min_rows_is_quiet_and_that_is_why_min_rows_exists():
-    r = dpm._check_null_rate(_Cursor(0, 0), {k: v for k, v in MOTIVATING.items() if k != "min_rows"})
+def test_min_rows_is_required_so_a_contract_cannot_fail_open_by_omission():
+    """An absent min_rows would default to "no floor" — the fail-open this rule exists to close."""
+    without = {k: v for k, v in MOTIVATING.items() if k != "min_rows"}
+    with pytest.raises(KeyError):
+        dpm._check_null_rate(_Cursor(0, 0), without)
+
+
+def test_an_explicit_zero_min_rows_is_quiet():
+    """Declaring a zero floor is a decision; omitting the key is an unfinished contract."""
+    r = dpm._check_null_rate(_Cursor(0, 0), dict(MOTIVATING, min_rows=0))
     assert r["violations"] == 0
+
+
+def test_an_unreadable_measurement_raises_rather_than_reporting_a_healthy_zero():
+    class _NoRow(_Cursor):
+        def fetchone(self):
+            return None
+
+    with pytest.raises(ValueError):
+        dpm._check_null_rate(_NoRow(None, None), MOTIVATING)
 
 
 def test_the_check_dispatch_measures_the_rule_and_reports_its_status():
