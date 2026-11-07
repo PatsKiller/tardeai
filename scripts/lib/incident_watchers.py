@@ -266,6 +266,22 @@ def w_lane_health(ctx: Ctx, c: Mapping[str, Any]) -> WatchResult:
                 fingerprint=L.fingerprint_of("cron_outage", lane), title=f"cron/lane outage: {lane} missed its schedule",
                 where="scripts/cron_outage_watchdog.py", evidence=[f"receipt:{c['cron_watchdog_rel']}"],
                 severity="P1", job=lane))
+        # A lane the dispatcher only dry-runs writes no receipt by design; "missed" is the wrong
+        # sentence for it and a P1 is the wrong severity. Only the lanes whose live grade WOULD have
+        # been missed get a note (dry_run_only_missed_lane_ids): every other shadow lane is behaving
+        # as configured and nothing on the page claims otherwise, so a finding for each of them would
+        # replace one false alarm with forty pieces of noise. Its own fingerprint lets the old outage
+        # incident auto-resolve when the watchdog stops reporting it (LQ-20261107-245).
+        for lane in cw.get("dry_run_only_missed_lane_ids") or []:
+            row = next((r for r in cw.get("rows") or [] if isinstance(r, dict) and r.get("lane_id") == lane), {})
+            last = row.get("last_success_at")
+            evidence = [f"receipt:{c['cron_watchdog_rel']}",
+                        f"last live success {last}" if last else "no live success on record"]
+            res.findings.append(Finding(
+                fingerprint=L.fingerprint_of("lane_dry_run_only", lane),
+                title=f"lane {lane} is dry run only (shadow) — no live result by design",
+                where="scripts/cron_outage_watchdog.py", evidence=evidence,
+                severity="P3", job=lane))
     if gaps and not res.findings:
         res.gap = "; ".join(gaps)
     return res

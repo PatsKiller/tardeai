@@ -15,6 +15,27 @@ from scripts.lib.cron_schedule import cron_schedules, last_fire_at_or_before, pa
 
 SCHEMA = "CronOutageWatchdog@v1"
 
+#: Dispatch modes in which the dispatcher runs the lane's DRY-RUN argv, so no success receipt can exist
+#: by design (AGENTS §6: a dry run cannot reach the write). A stale receipt on such a lane is the age
+#: of the last time it ran live, not a missed schedule (LQ-20261107-245: prospectus-build was graded
+#: MISSED_RUNS for ten days while behaving exactly as configured).
+DRY_RUN_DISPATCH_MODES = frozenset({"dry_run", "shadow", "preflight"})
+
+
+def dry_run_dispatch_mode(lane: dict) -> str | None:
+    """The declared mode in which this lane cannot write a success receipt, or None.
+
+    ``dispatch.mode`` is the live truth the executor obeys (it picks live_arg vs dry_run_arg); a
+    ``scheduler.stage`` of shadow with dispatch.mode live is still expected to write receipts, so the
+    stage alone is never used here.
+    """
+    mode = (lane.get("dispatch") or {}).get("mode")
+    if not isinstance(mode, str):
+        return None
+    normalized = mode.strip().lower().replace("-", "_")
+    return normalized if normalized in DRY_RUN_DISPATCH_MODES else None
+
+
 
 def instant(value: object) -> datetime | None:
     try:
@@ -250,6 +271,8 @@ def evaluate(
     refusals = attributed
     windows = run_windows(events, now=now)
     rows = []
+    dry_run_only_lane_ids = []
+    dry_run_only_missed_lane_ids = []
     for lane in registry.get("lanes", []):
         if lane.get("state") != "ACTIVE" or not lane.get("expected_cadence_hours"):
             continue
@@ -279,6 +302,7 @@ def evaluate(
         times.extend(completed.get(component(lane) or "", []))
         if times:
             result["last_success_at"] = iso(max(times))
+        mode = dry_run_dispatch_mode(lane)
         try:
             zone = ZoneInfo(tz)
             local = now.astimezone(zone)
@@ -332,12 +356,32 @@ def evaluate(
                           in_progress_fires=len(in_progress),
                           status="MISSED_RUNS" if missed >= 2 else "OK",
                           reason="two_or_more_scheduled_successes_missing" if missed >= 2 else None)
+        if mode and result.get("status") != "OK":
+            # The dispatcher runs the dry-run argv for this lane, which writes nothing by design (AGENTS §6), so
+            # its receipt cannot advance and "no success since the last fire" says nothing about health. Reported
+            # as its own state, still listed, never a miss and never an alert (LQ-20261107-245: prospectus-build
+            # was graded MISSED_RUNS for ten days while behaving exactly as configured).
+            #
+            # Only when the live grade is not OK: a row that IS succeeding (fresh wrapper completions) is really
+            # running, and calling it dry run only would be the same kind of lie in the other direction. The grade
+            # the live path would have given is kept on the row, because a shadow lane that has also stopped
+            # succeeding is worth naming as such rather than hiding — the incident watcher reads exactly that.
+            if result.get("status") == "MISSED_RUNS":
+                result["missed_fires_if_live"] = result["missed_fires"]
+                dry_run_only_missed_lane_ids.append(lane_id)
+            dry_run_only_lane_ids.append(lane_id)
+            result.update(status="DRY_RUN_ONLY", missed_fires=0,
+                          reason=(f"dispatch_mode_{mode}: the dispatcher runs the dry-run argv, which writes no "
+                                  f"success receipt by design; scheduled success cannot be measured until the "
+                                  f"lane is promoted to live"))
         rows.append(result)
     gaps = [row["lane_id"] for row in rows if row["status"] == "NOT_MEASURED"]
     not_applicable = [row["lane_id"] for row in rows if row["status"] == "NOT_APPLICABLE"]
     missed = [row["lane_id"] for row in rows if row["status"] == "MISSED_RUNS"]
     return {"schema": SCHEMA, "observed_at": iso(now), "rows": rows,
             "missed_lane_ids": missed, "coverage_gap_lane_ids": gaps, "not_applicable_lane_ids": not_applicable,
+            "dry_run_only_lane_ids": dry_run_only_lane_ids,
+            "dry_run_only_missed_lane_ids": dry_run_only_missed_lane_ids,
             "refusals": refusals, "unattributed_refusals": unattributed, "acknowledged_refusals": acked,
             "alert_required": bool(missed or any(x["new"] for x in refusals)),
             "status": "CRIT" if missed or any(x["active"] for x in refusals) else ("UNKNOWN" if gaps else "OK"),

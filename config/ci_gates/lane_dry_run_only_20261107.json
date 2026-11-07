@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_dry_run_only_20261107",
+  "files": [
+    "tests/test_lane_dry_run_only_20261107.py"
+  ],
+  "anchor": "LANE_DRY_RUN_ONLY_20261107",
+  "comment": [
+    "ANCHOR: LANE_DRY_RUN_ONLY_20261107 — LQ-20261107-245: a lane whose row declares dispatch.mode dry_run cannot write a success receipt, so the watchdog reports DRY_RUN_ONLY instead of MISSED_RUNS and the incidents page says dry run only."
+  ]
+}
