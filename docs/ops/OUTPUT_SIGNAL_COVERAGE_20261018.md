@@ -158,3 +158,43 @@ operator-approved crontab change, not done here.
 * The five `DISABLED_UNRULED` ACTIVE rows (`systemd-tmpfiles-clean` and four agent runtimes) are a registry-truth
   contradiction of their own (declared ACTIVE, unit disabled). Their state is an open operator decision
   (`operator_decision_pending: true`), so it is reported, not flipped.
+
+## 2026-11-07 second update — the census rows: five receipts found, nine still signal-free
+
+The 2026-11-07 scheduler census added rows for lanes that had been running with no registry row at all
+(five OpenClaw agent jobs, the `tradeai-incident-*` units, the platform-maintenance trio, the health tick, the
+n8n lab watchdog, the Telegram callback poller, `ai-usage-governor`). Each row had to answer the same question
+the section above asks. Five of them already had an artifact that simply was not declared; the other nine do
+not, and say so with the reason on the row.
+
+**Declared after finding the producer (all `SCRIPT_RECEIPT`, verified on the host, not inferred):**
+
+| lane | declaration | evidence |
+|---|---|---|
+| `tradeai-health-tick` | `json_key` `data/runtime/health_tick_last.json` → `as_of` | `RECEIPT_REL` at `scripts/health_tick.py:116` is the receipt its own docstring promises every tick; host `as_of` 2026-11-07T04:55:01Z. The row had said "no per-run artifact is declared yet" — the artifact existed and the row did not name it. |
+| `tradeai-n8n-lab-watchdog` | `json_key` `data/runtime/n8n_lab_watchdog_last.json` → `checked_at` | the unit's `ExecStart` passes `--receipt …/n8n_lab_watchdog_last.json`; host `checked_at` 2026-11-07T04:51:26Z |
+| `tradeai-platform-maintenance-nightly` | `json_key` `data/runtime/platform_maintenance_nightly_last.json` → `as_of` | `run_platform_maintenance_pipeline.sh:25` names that path as the lane's `output_signal`, `:196` writes it on a real run only (a dry run prints the path instead); `PlatformMaintenanceRun@v1` `as_of` 2026-11-06T06:15:59Z |
+| `tradeai-platform-maintenance-monthly` | `json_key` `data/runtime/platform_maintenance_monthly_last.json` → `as_of` | same pipeline, monthly; host `as_of` 2026-11-01T11:00:03Z |
+| `tradeai-platform-maintenance-weekly` | `json_key` `data/runtime/platform_maintenance_weekly_last.json` → `as_of` | same pipeline, weekly; host `as_of` 2026-11-01T08:00:15Z |
+
+The maintenance receipts are the honest shape: the pipeline writes one only on a real run, so an absent or stale
+receipt means the cadence did not really fire, and a dry run cannot make the lane look fresh.
+
+**Still `none`, with the reason that makes the row honest rather than "unverified":**
+
+| lane | reason | why no artifact can be declared |
+|---|---|---|
+| `tradeai-incident-daily` | `JOURNAL_ONLY` | `incident_daily_brief.py` prints its brief to stdout; the unit sets no `StandardOutput=append:`, so the journal is the only record — and the journal is not readable by the grader |
+| `tradeai-incident-supervisor` | `JOURNAL_ONLY` | same shape (`incident_supervisor.py`, journal only) |
+| `tradeai-telegram-callback-poller` | `JOURNAL_ONLY` | long-running daemon; both stdout and stderr append to `logs/telegram_callback_poller.log`, so its mtime proves the process wrote, not that it answered a callback |
+| `ai-usage-governor` | `ACTION_ONLY_LOG` | appends `coordinator/ai_usage_governor.log` only when it records an action and discards stdout to `/dev/null`; a quiet window writes nothing, so an mtime signal would report a false silence |
+| `openclaw-aegis-evening-surveillance` | `UNVERIFIED_OUTPUT` | OpenClaw agent job: delivers to the operator's chat surface; writes no host artifact |
+| `openclaw-920bef5f-3b4b-4066-b695-92e72825e00a` | `UNVERIFIED_OUTPUT` | same shape (`0 9 1 * *` America/New_York) |
+| `openclaw-d7ab6f85-fd4c-4521-ac81-e989c08b4403` | `UNVERIFIED_OUTPUT` | same shape (`0 9 * * 0` America/New_York) |
+| `openclaw-729e2b82-7ace-4a13-8456-c469cb1072e9` | `UNVERIFIED_OUTPUT` | same shape (`5 16 * * 1-5` America/New_York) |
+| `openclaw-b8b18bf7-5154-42c6-b290-45f04854dfe0` | `UNVERIFIED_OUTPUT` | same shape (`0 9 * * *` America/New_York) |
+
+For the nine, the honest declaration is `none` + reason, not an invented path: a row that names an artifact the
+lane does not write is worse than a row that says it has none (AGENTS.md §0 rule 8). The three systemd units
+that could be given a receipt need a unit or script change (an `ExecStart` wrapper that writes a
+`LaneRunReceipt`), which is an operator decision on the units, not a registry edit.
