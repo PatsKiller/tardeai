@@ -836,6 +836,15 @@
     "evidence": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): ubuntu-insights-upload.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
     "exempt_since": "2026-10-19"
    }
+  },
+  "send-telegram-proposal-alert": {
+   "output_signal": {
+    "kind": "file_mtime",
+    "path": "data/runtime/send-telegram-proposal-alert_last.json"
+   },
+   "verified_token": "write_lane_receipt(",
+   "source_file": "scripts/send_telegram_proposal_alert.py",
+   "evidence": "scripts/send_telegram_proposal_alert.py:379-389 writes one LaneRunReceipt per REAL run through lib.lane_last_receipt.write_lane_receipt(...); a dry run writes nothing. The cron line's >> logs/proposal_alerts.log advances only when an alert is sent, so on 2026-11-06 the lane was graded late while it was firing every 2 minutes."
   }
  }
 }

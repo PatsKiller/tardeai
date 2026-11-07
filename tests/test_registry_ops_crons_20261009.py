@@ -232,17 +232,29 @@ def test_snapshot_carries_the_post_install_crontab():
     # market-risk-evaluate 2026-11-01 appends L1083-L1086 last (the Market Risk Engine, operator "run it now"; shadow
     # until ~11:10 ET, then --apply on "I also approve turning on real alerts"); market-quotes-extended 2026-11-01
     # appends L1089-L1090 after them ("I approve the after-hour"); market-quotes-offhours-schwab 2026-11-01 appends
-    # L1092-L1094 last ("enable schwab")
-    assert len(SNAP_LINES[-3:]) == 3 and all(
-        "scripts/market_quotes_offhours_schwab.py --apply" in ln for ln in SNAP_LINES[-3:]
+    # L1092-L1094 last ("enable schwab"); scheduler census 2026-11-07 (cc-deepseek-3) appends the seven live lines
+    # no row declared, measured from `crontab -l` that day: L649 social-ingest-scalp-hot, L1098 agent-nudger,
+    # L1104-L1105 schwab-position-sync off-hours, L1109-L1110 moomoo-live-read-sync off-hours, L1112 ai-usage-governor.
+    census = SNAP_LINES[-7:]
+    assert len(census) == 7
+    for needle, hits in (
+        ("scripts/social_ingest.py --source stocktwits --scalp-list", 1),
+        ("agent_nudger.py --apply", 1),
+        ("scripts/schwab_position_sync.py --apply", 2),
+        ("scripts/moomoo_live_read_sync.py", 2),
+        ("ai_usage_governor.py --hours 720", 1),
+    ):
+        assert sum(needle in ln for ln in census) == hits, needle
+    assert len(SNAP_LINES[-10:-7]) == 3 and all(
+        "scripts/market_quotes_offhours_schwab.py --apply" in ln for ln in SNAP_LINES[-10:-7]
     )
-    assert len(SNAP_LINES[-5:-3]) == 2 and all(
-        "scripts/market_quotes_extended.py --apply" in ln for ln in SNAP_LINES[-5:-3]
+    assert len(SNAP_LINES[-12:-10]) == 2 and all(
+        "scripts/market_quotes_extended.py --apply" in ln for ln in SNAP_LINES[-12:-10]
     )
-    assert len(SNAP_LINES[-9:-5]) == 4 and all(
-        "scripts/market_risk_evaluate.py --scheduled --apply" in ln for ln in SNAP_LINES[-9:-5]
+    assert len(SNAP_LINES[-16:-12]) == 4 and all(
+        "scripts/market_risk_evaluate.py --scheduled --apply" in ln for ln in SNAP_LINES[-16:-12]
     )
-    before = SNAP_LINES[:-9]
+    before = SNAP_LINES[:-16]
     assert before[-5:-3] == LINES
     assert not any("check_n8n_workflow_drift.py" in ln for ln in SNAP_LINES)
     assert before[-3:-1] == [

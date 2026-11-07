@@ -1,7 +1,7 @@
 {
  "schema": "SchedulerSnapshot@v1",
  "captured_on": "2026-10-09",
- "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point; 2026-10-11 w4-provider-owners-shadow: L638 finviz_enrichment.py --scalp-hot (the Finviz enrichment owner's scalp hot tier, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-11 L638) so the finviz-enrichment row can match its own line L142 only and the new finviz-enrichment-scalp-hot row stays the reconciler's fixed point; 2026-10-11 b-families-top5 (n8n-maturity B3/B7/B8/B2/B1): cron_lines carry the approved-pending install (packets ~/n8n-maturity-verification/packets/b-families-top5/<family>): the 13 retired lines (L379 L380 L581 L582 L583 L585 L729 L731 L732 L733 L844 L845 L846 in this snapshot's numbering) are replaced, on the same line numbers, by the 13 `scripts/run_family_slot.py --family <lane>` lines, so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-11 siem-active-flip: L1060 n8n-siem-bridge + L1063 n8n-failure-diagnosis (byte-identical to scheduler.install_line, TRADEAI_LANE markers; diagnoser installed under packet diagnoser-only-20261011) appended so the ACTIVE rows map on the committed snapshot; 2026-10-14 tmp-scratch-cleanup: appended L1065 (weekly /tmp pytest-scratch sweep, installed 2026-10-14 under cron grant 0cbad9ec6cef7eb6, packet tmp-scratch-cleanup) so the committed registry stays the reconciler's fixed point on the post-install host; 2026-10-14 scalp-premarket-onboard: L639 the scalp hot-list line (`--hot-list-only`, TRADEAI_LANE scalp-hot-list, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-14 L639) so the new scalp-hot-list row maps its own line and the finviz-momentum-scalp-early-lane row matches only --window early; 2026-10-27 n8n-drift-check-schedule: the projected L1053 (check_n8n_workflow_drift.py --write, TRADEAI_LANE n8n-workflow-drift-check) is withdrawn from the approved install. It was never on the host crontab (cron freeze 2026-10-09); the lane is now the systemd user timer tradeai-n8n-drift-watch.timer (config/systemd/user, PAUSED pending install), so no crontab line maps to it; 2026-11-01 market-risk-evaluate: appended L1083-L1086 (the Market Risk Engine evaluator in shadow, scripts/market_risk_evaluate.py --scheduled --shadow; installed 2026-11-01 ~09:10 ET on the operator's in-session \"run it now\", crontab backup in persistent-state/archive/crontab/; read-only crontab -l 2026-11-01) so the ACTIVE row maps on the committed snapshot and the committed registry stays the reconciler's fixed point",
+ "note": "crontab -l and systemctl --user (read-only); /home/<user> replaced by ~; 2026-10-09 registry-ops-crons: cron_lines carry the approved install (packet ops-crons-install.md: 4 edited lines L792/L823/L824/L832 + 3 appended L1051-L1053) so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-10 registry-drift: L608 compute_intraday_vwap carries the live hours */20 9-16 (crontab hygiene 2026-10-10 ~03:54Z, backup n8n_cutover/crontab-before-hygiene-now-20261010T035420Z.txt; read-only crontab -l 2026-10-10 L608) so the generated compute-intraday-vwap row stays the reconciler's fixed point; 2026-10-11 w4-provider-owners-shadow: L638 finviz_enrichment.py --scalp-hot (the Finviz enrichment owner's scalp hot tier, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-11 L638) so the finviz-enrichment row can match its own line L142 only and the new finviz-enrichment-scalp-hot row stays the reconciler's fixed point; 2026-10-11 b-families-top5 (n8n-maturity B3/B7/B8/B2/B1): cron_lines carry the approved-pending install (packets ~/n8n-maturity-verification/packets/b-families-top5/<family>): the 13 retired lines (L379 L380 L581 L582 L583 L585 L729 L731 L732 L733 L844 L845 L846 in this snapshot's numbering) are replaced, on the same line numbers, by the 13 `scripts/run_family_slot.py --family <lane>` lines, so the committed registry is the reconciler's fixed point on the post-install host; 2026-10-11 siem-active-flip: L1060 n8n-siem-bridge + L1063 n8n-failure-diagnosis (byte-identical to scheduler.install_line, TRADEAI_LANE markers; diagnoser installed under packet diagnoser-only-20261011) appended so the ACTIVE rows map on the committed snapshot; 2026-10-14 tmp-scratch-cleanup: appended L1065 (weekly /tmp pytest-scratch sweep, installed 2026-10-14 under cron grant 0cbad9ec6cef7eb6, packet tmp-scratch-cleanup) so the committed registry stays the reconciler's fixed point on the post-install host; 2026-10-14 scalp-premarket-onboard: L639 the scalp hot-list line (`--hot-list-only`, TRADEAI_LANE scalp-hot-list, live since the 2026-10-10 hot-tier install; read-only crontab -l 2026-10-14 L639) so the new scalp-hot-list row maps its own line and the finviz-momentum-scalp-early-lane row matches only --window early; 2026-10-27 n8n-drift-check-schedule: the projected L1053 (check_n8n_workflow_drift.py --write, TRADEAI_LANE n8n-workflow-drift-check) is withdrawn from the approved install. It was never on the host crontab (cron freeze 2026-10-09); the lane is now the systemd user timer tradeai-n8n-drift-watch.timer (config/systemd/user, PAUSED pending install), so no crontab line maps to it; 2026-11-01 market-risk-evaluate: appended L1083-L1086 (the Market Risk Engine evaluator in shadow, scripts/market_risk_evaluate.py --scheduled --shadow; installed 2026-11-01 ~09:10 ET on the operator's in-session \"run it now\", crontab backup in persistent-state/archive/crontab/; read-only crontab -l 2026-11-01) so the ACTIVE row maps on the committed snapshot and the committed registry stays the reconciler's fixed point 2026-11-07 scheduler census (cc-deepseek-3): appends cron_lines n=649,1098,1104,1105,1109,1110,1112 measured from crontab -l on 2026-11-07 (~ for the home dir), so the committed registry can declare them and the fixed-point test can see them.",
  "cron_lines": [
   {
    "n": 92,
@@ -1818,6 +1818,34 @@
   {
    "n": 1094,
    "line": "*/15 0-9 * * 5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/market_quotes_offhours_schwab.lock $PY scripts/market_quotes_offhours_schwab.py --apply >> logs/market_quotes_offhours_schwab.log 2>&1"
+  },
+  {
+   "n": 649,
+   "line": "*/10 6-10 * * 1-5 cd $PROJ && SCALP_HOT_TIER=1 flock -n /tmp/social_ingest_scalp_hot.lock timeout 240 bash scripts/market_day_gate.sh $PY scripts/social_ingest.py --source stocktwits --scalp-list >> logs/social_ingest_scalp_hot.log 2>&1  # TRADEAI_LANE social-ingest-scalp-hot"
+  },
+  {
+   "n": 1098,
+   "line": "*/5 * * * * /usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.py --apply >> ~/trade-ai-releases/persistent-state/data/coordination/coordinator/agent_nudger.log 2>&1"
+  },
+  {
+   "n": 1104,
+   "line": "3,33 0-8,17-23 * * * cd $PROJ && flock -n /tmp/schwab_pos_sync.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/schwab_position_sync.py --apply\" >> logs/schwab_position_sync.log 2>&1"
+  },
+  {
+   "n": 1105,
+   "line": "3,33 9-16 * * 0,6 cd $PROJ && flock -n /tmp/schwab_pos_sync.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/schwab_position_sync.py --apply\" >> logs/schwab_position_sync.log 2>&1"
+  },
+  {
+   "n": 1109,
+   "line": "9,39 0-8,17-23 * * * cd ~/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/moomoo_live_read.lock timeout --kill-after=30s 10m $PY scripts/moomoo_live_read_sync.py >> logs/moomoo_live_read_sync.log 2>&1"
+  },
+  {
+   "n": 1110,
+   "line": "9,39 9-16 * * 0,6 cd ~/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/moomoo_live_read.lock timeout --kill-after=30s 10m $PY scripts/moomoo_live_read_sync.py >> logs/moomoo_live_read_sync.log 2>&1"
+  },
+  {
+   "n": 1112,
+   "line": "*/15 * * * * flock -n /tmp/ai_usage_governor.lock /usr/bin/python3 ~/trade-ai-releases/persistent-state/data/coordination/coordinator/ai_usage_governor.py --hours 720 >/dev/null 2>&1"
   }
  ],
  "units": {

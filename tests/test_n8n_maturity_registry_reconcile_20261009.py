@@ -215,7 +215,11 @@ def test_every_live_crontab_line_maps_to_exactly_one_row(inputs, committed):
     # + L1083-L1086 market-risk-evaluate (2026-11-01: Market Risk Engine shadow, installed on the operator's "run it now")
     # + L1089-L1090 market-quotes-extended (2026-11-01: Alpaca extended-session writer, operator "I approve the after-hour")
     # + L1092-L1094 market-quotes-offhours-schwab (2026-11-01: Schwab off-hours market data, operator "enable schwab")
-    assert len(lines) == 454
+    # + L649, L1098, L1104-L1105, L1109-L1110, L1112 (2026-11-07 scheduler census, cc-deepseek-3: the seven live
+    #   crontab lines no row declared — social-ingest-scalp-hot, agent-nudger, the schwab/moomoo off-hours pairs and
+    #   ai-usage-governor — measured from `crontab -l` on 2026-11-07; the snapshot appends them so the registry can
+    #   declare them: 454 + 7 = 461)
+    assert len(lines) == 461
     mapping = R.line_mapping(committed, lines)
     bad = {R.sanitize(ln)[:120]: ids for ln, ids in mapping.items() if len(ids) != 1}
     assert not bad, bad
@@ -427,7 +431,14 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # re-derive them ACTIVE: 209 - 13 - 1 = 195.
     # Operator 2026-10-31 ("turn off the mcporter job, we don't need it") hand-curates mcporter-token-refresh as
     # RETIRED (unit disabled on the host by the coordinator; unit files kept): 195 - 1 = 194.
-    assert len(gen) >= 194
+    # Retire wave 2 2026-11-06 (retire_batch retire-alpaca-paper-20261106, operator "retire alpaca, paper
+    # background") hand-curates eight generated rows to RETIRED, keeping each cron line as
+    # scheduler_before_retirement — which moves them from `gen` to `adopted`: paper-execution-sweep,
+    # alpaca-paper-adapter, paper-performance-governance, alpaca-paper-reconciler, paper-execution-quality-analyzer,
+    # paper-execution-quality, paper-trade-advisory, run-options-paper-position-monitor: 194 - 8 = 186.
+    # The 2026-11-07 scheduler census (cc-deepseek-3) adds no generated rows — its rows are hand-written — so it
+    # records the count it measured.
+    assert len(gen) >= 186
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
@@ -440,6 +451,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
             or "retire_pending" in r  # lane retire wave 1 (2026-10-15): flipped RETIRED after the read-back
             or r.get("retire_batch") == "retire-ld-w1"  # ...and flipped (install 2026-10-15, apply_registry.py)
             or "retire_declined" in r  # indicator-engine: operator NO 2026-10-15, kept ACTIVE
+            # retire-alpaca-paper (2026-11-06): generated rows hand-curated to RETIRED on the operator's
+            # "retire alpaca, paper background"; scheduler_before_retirement keeps the retired cron line
+            or r.get("state") == "RETIRED" and "scheduler_before_retirement" in r
             or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax")
             # train 2026-10-15 d: adopted unchanged to keep its lane_id (else re-derived as ...-overnight-2)
             or r["lane_id"] == "run-research-intelligence-overnight-archive"
