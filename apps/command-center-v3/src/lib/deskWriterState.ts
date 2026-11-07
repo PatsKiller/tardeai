@@ -17,3 +17,16 @@ export function writerStateWords(state: DeskWriterState, loading = false): strin
     default: return loading ? 'Checking' : 'State unavailable'
   }
 }
+
+/** The newest successful run among a source's writers (ISO instant), or null. Used as the headline clock when the page
+ *  supplies no update time of its own: it is labelled as the writer's run, never as the source's update time. */
+export function newestWriterRun(writers: ReadonlyArray<{ last_success_at?: string | null } | undefined>): string | null {
+  let best: string | null = null, bestAt = -Infinity
+  for (const w of writers) {
+    const v = w?.last_success_at
+    if (!v || !/T.*(?:Z|[+-]\d\d:\d\d)$/.test(v)) continue
+    const at = Date.parse(v)
+    if (Number.isFinite(at) && at > bestAt) { best = v; bestAt = at }
+  }
+  return best
+}

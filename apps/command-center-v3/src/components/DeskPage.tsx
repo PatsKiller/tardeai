@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
-import { writerStateWords } from '../lib/deskWriterState'
+import { newestWriterRun, writerStateWords } from '../lib/deskWriterState'
 import ReadableTime from './ReadableTime'
 import { cioPageDataFrom, HomeBoardMount, withHomeClocks } from './homeDeskMount'
 
@@ -19,6 +19,8 @@ export type DeskSource = {
   note?: string
   /** A receipt clock with no single writer lane. Skips the missing-writer warning. */
   clockOnly?: boolean
+  /** With no asOf, headline the newest writer's last successful run (labelled as such) instead of "unavailable". */
+  writerClockFallback?: boolean
 }
 export type DeskDecision = { id: string; title: string; detail?: string; href?: string }
 export type DeskWriter = {
@@ -132,13 +134,16 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
       {pageSources.length === 0 && <DeskGap title="Source evidence unavailable" reason="This view has not supplied source clocks." />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: 12 }}>
         {pageSources.map(source => {
-          const age = clock(source.asOf, now)
           const sourceWriters = (source.laneIds ?? []).map(id => writers.get(id))
+          const writerRun = !source.asOf && source.writerClockFallback ? newestWriterRun(sourceWriters) : null
+          const shownAt = source.asOf ?? writerRun
+          const age = clock(shownAt, now)
           const staleSource = source.maxAgeHours !== undefined && age.hours !== undefined && age.hours > source.maxAgeHours
-          const gap = source.gap || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
+          const gap = (writerRun ? null : source.gap) || age.gap || (staleSource ? 'This source is older than the freshness window for this view.' : null)
+            || (writerRun && age.hours !== undefined && age.hours > 26 ? 'The writer has not succeeded in over a day.' : null)
           return <article key={source.id} style={{ ...panel, padding: 12 }}>
-            <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `Updated ${age.text}` : sentence(age.text)}</div>
-            {source.asOf && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>As of <ReadableTime value={source.asOf} testId="desk-source-as-of" /></div>}
+            <strong>{source.label}</strong><div data-testid="desk-source-age" style={{ color: gap ? BB.amber : BB.text2, marginTop: 6 }}>{age.hours !== undefined ? `${writerRun ? 'Writer last ran' : 'Updated'} ${age.text}` : sentence(age.text)}</div>
+            {shownAt && <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{writerRun ? 'Last successful run at' : 'As of'} <ReadableTime value={shownAt} testId="desk-source-as-of" /></div>}
             {source.note && <div data-testid="desk-source-note" style={{ fontSize: TYPE.base, color: BB.text2, marginTop: 6 }}>{source.note}</div>}
             {sourceWriters.length === 0 && !source.clockOnly && <p style={{ color: BB.amber, fontSize: TYPE.base }}>Writer not identified for this source.</p>}
             {sourceWriters.map((writer, index) => {
