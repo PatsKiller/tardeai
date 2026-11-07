@@ -3874,6 +3874,13 @@
     },
     {
       "lane_id": "goal-gate-bridge",
+      "env_names": [
+        "TRADEAI_STATE_ROOT",
+        "TRADE_AI_PROJECT_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "cio_gate_measurement_bridge.py reads TRADE_AI_PROJECT_ROOT (line 67); its only non-stdlib import, lib/lane_last_receipt.py, reads TRADEAI_STATE_ROOT and the executor's run-id/mode/sha names (executor base set). No DB, no broker, no LLM.",
+      "env_report_reason": "LQ-20261107-33: under global enforce the row had no env_names and every live run was RUN_REFUSED env_names_missing (07:35Z). Report keeps the cron-equivalent env while the dropped-names list on the next receipts confirms the inventory; flip to enforce after one clean live RUN_DONE.",
       "source": "35 * * * *; flock -n /tmp/goal_gate_bridge.lock $PY scripts/cio_gate_measurement_bridge.py --write-measurements; onboarded 2026-11-07 (overnight wave LQ-20261107-25). The cron line ran the script inside `bash -c 'set -a; . /run/user/$(id -u)/tradeai/env; . agent_runtime_overrides.env; set +a; exec ...'`; the executor loads the rendered env itself, so the prospective line runs the script directly under the shared lock. | CW0 2026-10-15 (n8n_cutover_wave.py): canary — live_arg = the cron line's argv [], lock = the cron flock lock /tmp/goal_gate_bridge.lock (shared: the lock proves no double run).",
       "command": [
         "$PY",
