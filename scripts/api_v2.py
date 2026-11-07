@@ -2143,8 +2143,9 @@ def _stops_lifecycle_db_snapshot():
 
 #: A persisted stop_lifecycle row in one of these states is a FINISHED order: it can never fire, so a page view
 #: must not count it as protection (that hides the missing-stop action for an unprotected position).
-_TERMINAL_STOP_STATES = frozenset({"canceled", "cancelled", "filled", "rejected", "expired", "replaced",
-                                   "not_in_read", "triggered"})
+_TERMINAL_STOP_STATES = frozenset(
+    {"canceled", "cancelled", "filled", "rejected", "expired", "replaced", "not_in_read", "triggered"}
+)
 
 
 def _stored_lifecycle_stop(s):
@@ -3759,8 +3760,10 @@ def overview():
     else:
         today_change = None
     if today_change is not None:
-        today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change) else (
-            snap_totals.get("day_change_pct") or 0
+        today_pct = (
+            (today_change / (total_val - today_change) * 100)
+            if total_val > abs(today_change)
+            else (snap_totals.get("day_change_pct") or 0)
         )
     else:
         today_pct = None
@@ -3933,9 +3936,11 @@ def overview():
         total_val = _derived_total
         # Same rule as above: no measured row means UNKNOWN, not a flat $0.
         today_change = _measured_day_change_sum(holdings)
-        today_pct = (today_change / (total_val - today_change) * 100) if (
-            today_change is not None and total_val > abs(today_change)
-        ) else None
+        today_pct = (
+            (today_change / (total_val - today_change) * 100)
+            if (today_change is not None and total_val > abs(today_change))
+            else None
+        )
     _fv_meta = (_load_json(STATE_DIR / "finviz_quote_cache.json") or {}).get("_meta") or {}
     # Cash = sum of the actual CASH positions. The stored portfolio_totals.total_cash had drifted to
     # $478k while the real cash was $186k. The read-site recompute that used to
@@ -5348,9 +5353,13 @@ def _overview_with_today_move():
             portfolio_market_day(md_holdings), account_market_days(md_holdings), out.get("today_pnl") or {}
         )
     except Exception as exc:  # noqa: BLE001 -- UNKNOWN is explicit, never a guessed figure
-        out["today_move"] = {"contract_version": "TodayMove@v1", "status": "UNKNOWN", "change": None,
-                             "session_date": None,
-                             "gap": {"reason": f"market-day move unavailable: {type(exc).__name__}: {exc}"[:200]}}
+        out["today_move"] = {
+            "contract_version": "TodayMove@v1",
+            "status": "UNKNOWN",
+            "change": None,
+            "session_date": None,
+            "gap": {"reason": f"market-day move unavailable: {type(exc).__name__}: {exc}"[:200]},
+        }
     return out
 
 
@@ -17264,14 +17273,21 @@ def _defense_engine_get(query=None):
 
     path = PROJECT_ROOT / _de.OUT_REL
     doc = _load_json(path)
-    limit_h = float(_de.config(_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json"))
-                    .get("projection_serve_hours") or 1.5)
+    limit_h = float(
+        _de.config(_load_json(PROJECT_ROOT / "config" / "defense_recommendations.json")).get("projection_serve_hours")
+        or 1.5
+    )
     now = _dtm.now(_tz.utc)
     age = _de.age_hours((doc or {}).get("generated_at"), now) if isinstance(doc, dict) else None
     if isinstance(doc, dict) and doc.get("schema") == _de.SCHEMA and age is not None and age <= limit_h:
         return _out(True, "file", age, False, None, _json_clean(doc))
-    why = ("projection not on file" if doc is None else f"projection is {age} h old (limit {limit_h:g} h)"
-           if age is not None else "projection unreadable")
+    why = (
+        "projection not on file"
+        if doc is None
+        else f"projection is {age} h old (limit {limit_h:g} h)"
+        if age is not None
+        else "projection unreadable"
+    )
     hit = _DEFENSE_ENGINE_CACHE.get("doc")
     if hit and _t.time() - hit[0] < 60:
         return _out(True, "request_build", 0.0, False, why, hit[1])
@@ -24737,7 +24753,11 @@ def _recovery_latest_quote(symbol: str):
         price = None
     if price is None or price != price or price <= 0:
         return None
-    return {"price": price, "observed_at": _json_clean(row.get("fetched_at")), "source": row.get("source") or "market_quotes"}
+    return {
+        "price": price,
+        "observed_at": _json_clean(row.get("fetched_at")),
+        "source": row.get("source") or "market_quotes",
+    }
 
 
 def _recovery_case_projection(conn=None, quote_for=None, now=None) -> dict:
@@ -24766,7 +24786,13 @@ def _recovery_case_projection(conn=None, quote_for=None, now=None) -> dict:
         except ImportError:
             from scripts.lib import recovery_state as _rs  # type: ignore  # noqa: PLC0415
     except Exception:  # noqa: BLE001
-        return {**base, "state": "unavailable", "reason": "recovery state module not on this build", "count": None, "cases": []}
+        return {
+            **base,
+            "state": "unavailable",
+            "reason": "recovery state module not on this build",
+            "count": None,
+            "cases": [],
+        }
     if conn is None:
         try:
             from db_adapter import USE_DB, _get_conn  # noqa: PLC0415
@@ -24776,7 +24802,13 @@ def _recovery_case_projection(conn=None, quote_for=None, now=None) -> dict:
             conn = None
     store = _rs.store_accessor(conn, None)
     if store is None:
-        return {**base, "state": "unavailable", "reason": "recovery case store not reachable", "count": None, "cases": []}
+        return {
+            **base,
+            "state": "unavailable",
+            "reason": "recovery case store not reachable",
+            "count": None,
+            "cases": [],
+        }
     try:
         rows = store.list()
     except Exception as exc:  # noqa: BLE001
@@ -24784,8 +24816,13 @@ def _recovery_case_projection(conn=None, quote_for=None, now=None) -> dict:
             conn.rollback()  # never leave the thread's shared connection in an aborted transaction
         except Exception:  # noqa: BLE001
             pass
-        return {**base, "state": "unavailable", "reason": f"recovery case read failed ({type(exc).__name__})",
-                "count": None, "cases": []}
+        return {
+            **base,
+            "state": "unavailable",
+            "reason": f"recovery case read failed ({type(exc).__name__})",
+            "count": None,
+            "cases": [],
+        }
     quote_for = quote_for or _recovery_latest_quote
     cases = []
     for row in rows:
@@ -39205,9 +39242,12 @@ def _hermes_external_intel_map(query=None):
     for r, kind, reason in declined:
         declined_by_key.setdefault(r["symbol"], []).append(
             {
-                "lane": r["lane"], "model": r.get("model"),
-                "refusal_kind": kind, "reason": reason,
-                "text": r.get("recommendation"), "at": _json_clean(r.get("created_at")),
+                "lane": r["lane"],
+                "model": r.get("model"),
+                "refusal_kind": kind,
+                "reason": reason,
+                "text": r.get("recommendation"),
+                "at": _json_clean(r.get("created_at")),
             }
         )
     return {
@@ -39262,8 +39302,11 @@ def _hermes_subject_intel(query=None):
     declined_rows = [
         {
             "lane": r["lane"],
-            "model": r.get("model"), "refusal_kind": kind, "reason": reason,
-            "text": r.get("recommendation"), "at": _json_clean(r.get("created_at")),
+            "model": r.get("model"),
+            "refusal_kind": kind,
+            "reason": reason,
+            "text": r.get("recommendation"),
+            "at": _json_clean(r.get("created_at")),
         }
         for r, kind, reason in _declined
     ]
@@ -39333,8 +39376,7 @@ def _hermes_subject_intel_map(query=None):
     that is not there."""
     ttype = (query or {}).get("type", "")
     if not ttype:
-        return {"map": {}, "keys": 0, "declined": {},
-                **{f"declined_{k}": v for k, v in _refusal_counts({}).items()}}
+        return {"map": {}, "keys": 0, "declined": {}, **{f"declined_{k}": v for k, v in _refusal_counts({}).items()}}
     rows = (
         _db_query(
             """SELECT DISTINCT ON (symbol, lane) symbol, lane, model, recommendation, created_at
@@ -56353,8 +56395,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if _haa_out is not None:
                 return _haa_out
         except Exception as e:
-            return 503, {"ok": False, "code": "STORE_UNAVAILABLE",
-                         "reason": f"The approvals service is unavailable ({type(e).__name__}); nothing was decided."}
+            return 503, {
+                "ok": False,
+                "code": "STORE_UNAVAILABLE",
+                "reason": f"The approvals service is unavailable ({type(e).__name__}); nothing was decided.",
+            }
 
     # Approvals Center, amendment reader and Rulebook (boards 19-21, W11; docs/ops/APPROVALS_CENTER_20261024.md).
     # Reads for the authenticated reader; decisions only from the operator tailnet identity with same-origin CSRF.
@@ -56387,9 +56432,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # actionable rows without timelines. No query keeps the full projection for existing readers.
             if _sq.get("lane"):
                 from scripts.lib.scheduler_operations import lane_view as _lane_view
+
                 return 200, {"ok": True, "data": _lane_view(_proj, str(_sq.get("lane")))}
             if _sq.get("view") == "checks":
                 from scripts.lib.scheduler_operations import checks_view as _checks_view
+
                 return 200, {"ok": True, "data": _checks_view(_proj)}
             return 200, {"ok": True, "data": _proj}
         except Exception as e:
@@ -56441,8 +56488,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Co-coordinators by territory (operator 2026-11-02, PLAN_CO_COORDINATORS_20261102): the registry and the
     # shared notebook, read-only. scripts/coordinator.py is the only writer; these GETs never create the store,
     # never lock and never repair (a torn ledger tail is skipped). ?limit=N bounds the board's event tail.
-    if base_path in ("/api/v2/coordination/coordinators", "/api/v2/coordination/board",
-                     "/api/v2/coordination/join-command", "/api/v2/coordination/docs"):
+    if base_path in (
+        "/api/v2/coordination/coordinators",
+        "/api/v2/coordination/board",
+        "/api/v2/coordination/join-command",
+        "/api/v2/coordination/docs",
+    ):
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}
         try:

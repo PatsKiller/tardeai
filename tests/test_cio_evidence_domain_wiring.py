@@ -116,7 +116,10 @@ def test_store_construction_is_fail_soft():
     available when it has no data behind it.
     """
     src = (ROOT / "scripts/cio_wake_dispatch_entrypoint.py").read_text(encoding="utf-8")
-    segment = src.split("CIOHealthBoundary()", 1)[1][:400]
+    # CL-63 changed the call from `CIOHealthBoundary()` to `CIOHealthBoundary(health_snapshot)` when the
+    # boundary was fed the health agent's snapshot. Split on the constructor, not its 2026-08 empty-argument
+    # spelling: the property under test is the surrounding fail-soft, not that the boundary takes no input.
+    segment = src.split("CIOHealthBoundary(", 1)[1][:400]
     assert "except Exception" in segment
     assert "= None" in segment
 
