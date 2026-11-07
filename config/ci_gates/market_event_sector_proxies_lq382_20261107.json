@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_sector_proxies_lq382_20261107",
+  "files": [
+    "tests/test_market_event_sector_proxies_lq382_20261107.py"
+  ],
+  "anchor": "MARKET_EVENT_SECTOR_PROXIES_LQ382_20261107",
+  "comment": [
+    "ANCHOR: MARKET_EVENT_SECTOR_PROXIES_LQ382_20261107 — scripts/lib/market_event_sector_proxies.py is the detector's second sector source: MarketEventSectorMoves@v1 measures each SPDR sector and theme proxy ETF's 1/5/20-session return and its return relative to SPY on SPY's own session calendar, from the daily rows of market_ohlcv_bars that the market-reference-bars lane refreshes (Alpaca). A proxy with no bar is UNKNOWN with a named reason; a proxy more than two benchmark sessions behind is stale and never fires a hit; a window missing either endpoint is None, never a zero. The proxy map is config/market_reference_symbols.json proxy_groups (policy detector.sector_proxies wins when present); every proxy it names must be in that file's symbols or it never gets a bar, and the sector keys must equal config/market_risk_policy.yaml sectors.groups keys so affected_groups resolves in both sources. Advisory only, MBI_BEHAVIOR = 0. Synthetic rows only; no network, no DB."
+  ]
+}
