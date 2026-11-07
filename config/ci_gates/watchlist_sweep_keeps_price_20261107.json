@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_sweep_keeps_price_20261107",
+  "files": [
+    "tests/test_watchlist_sweep_keeps_price_20261107.py"
+  ],
+  "anchor": "WATCHLIST_SWEEP_KEEPS_PRICE_20261107",
+  "comment": [
+    "ANCHOR: WATCHLIST_SWEEP_KEEPS_PRICE_20261107 — LQ-20261107-56: the watchlist enrichment sweep must not overwrite a known price or",
+    "change% with NULL when a price lookup fails; the row is marked stale instead, through the sweep's single UPDATE."
+  ]
+}

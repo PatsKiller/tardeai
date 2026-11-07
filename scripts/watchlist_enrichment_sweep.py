@@ -102,6 +102,27 @@ def _num(v):
         return None
 
 
+STALE_PRICE_NOTE = " · price stale (last good price kept)"
+
+
+def _write_row(cur, sym, *, rsi, trend, score, advisory, price, chg, floatm, rvol, score_kind):
+    """The one watchlist_items UPDATE. LQ-20261107-56: a failed price lookup (price is None) must never overwrite a known
+    price or its change% with NULL (CXMT was wiped; 9 of 92 cards went stale). The last good values stay and the row says so in
+    setup_advisory; last_enriched_at still moves so a symbol that never prices cannot hold the front of the stalest-first queue.
+    A fresh price replaces both price and change% (a null change% with a fresh price is written as null: the pair stays coherent)."""
+    if price is None:
+        advisory = f"{advisory}{STALE_PRICE_NOTE}"
+    cur.execute("""UPDATE watchlist_items SET
+                     rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
+                     price=COALESCE(%s, price),
+                     change_pct=CASE WHEN %s::numeric IS NULL THEN change_pct ELSE %s END,
+                     float_m=%s, rvol=%s,
+                     first_seen_price=COALESCE(first_seen_price, %s),
+                     watch_score_kind=%s, last_enriched_at=NOW(), updated_at=NOW()
+                   WHERE symbol=%s AND status IN ('active','researched')""",
+                (rsi, trend, score, advisory, price, price, chg, floatm, rvol, price, score_kind, sym))
+
+
 def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | None = None,
                    clock=time.monotonic) -> dict:
     """Enrich explicit symbols (used by manual watchlist refresh in CC v3).
@@ -167,13 +188,8 @@ def enrich_symbols(symbols: list[str], *, dry: bool = False, deadline: float | N
                     print(f"  {sym}: rsi={rsi} trend={trend} price={price} score={score}({score_kind}) {advisory}")
                     enriched += 1  # would-update count (the UPDATE below is unreachable from a dry run)
                     continue
-                cur.execute("""UPDATE watchlist_items SET
-                                 rsi=%s, trend=%s, score=COALESCE(%s, score), setup_advisory=%s,
-                                 price=%s, change_pct=%s, float_m=%s, rvol=%s,
-                                 first_seen_price=COALESCE(first_seen_price, %s),
-                                 watch_score_kind=%s, last_enriched_at=NOW(), updated_at=NOW()
-                               WHERE symbol=%s AND status IN ('active','researched')""",
-                            (rsi, trend, score, advisory, price, chg, floatm, rvol, price, score_kind, sym))
+                _write_row(cur, sym, rsi=rsi, trend=trend, score=score, advisory=advisory, price=price, chg=chg,
+                           floatm=floatm, rvol=rvol, score_kind=score_kind)
                 if cur.rowcount:
                     enriched += 1
             except Exception as e:
