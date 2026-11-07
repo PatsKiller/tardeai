@@ -1490,6 +1490,42 @@ def _stable(ts: Any, fallback: datetime) -> datetime:
         return fallback
 
 
+def sha256_once(path: Path, digests: dict[tuple[int, int, int, int], str | None]) -> str | None:
+    """sha256 of ``path``, read at most once per run for an unchanged file; None when unreadable.
+
+    2026-11-07 (LQ-20261107-260): the artifact digest was recomputed for every finding that referenced a
+    file, and 144 dead-letter findings share ``data/governance/n8n_coordination_ledger.sqlite`` (597 MB).
+    One run read and hashed 88.5 GB — 101 s of its 135 s, and the reason the 5-minute lane hit its 180 s
+    timeout five times that day. Reading the same file twice in one run proves nothing the first read did
+    not; the cache key is (device, inode, size, mtime_ns), so a file rewritten mid-run is hashed again.
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    key = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+    if key not in digests:
+        try:
+            digests[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            digests[key] = None
+    return digests[key]
+
+
+def artifact_ref_factory(
+    f: dict[str, Any], *, root: Path, now: datetime, digests: dict[tuple[int, int, int, int], str | None]
+) -> Any:
+    """A zero-argument ref builder, handed to ``walk_to_artifact``: nothing is read unless the walk sends it."""
+    def build() -> dict[str, Any]:
+        ref: dict[str, Any] = {"store": f["store"], "ref": f["artifact_rel"], "as_of": now.isoformat()}
+        sha = sha256_once(root / f["artifact_rel"], digests)
+        if sha:
+            ref["sha256"] = sha
+        return ref
+
+    return build
+
+
 def build_event(f: dict[str, Any], *, day: str, now: datetime, sha: str, occurrence: int = 0) -> dict[str, Any]:
     key = occurrence_key(idem_key(f, day), occurrence)
     now = _stable(f.get("detected_at"), now)  # payload must not drift between runs
@@ -1629,6 +1665,7 @@ def main(argv: list[str] | None = None) -> int:
         client = GatewayClient(caller_id="tradeai-incident-fanin")
         gateway = {"url": client.url, "has_key": client.has_key, "healthz": client.healthz()}
     current_keys: set[str] = set()
+    digests: dict[tuple[int, int, int, int], str | None] = {}  # one artifact digest per distinct file per run
     resume = _resume_occurrences(prev)
     if args.apply:
         write_lane_registry_receipt(root, [f for f in findings if f["source"] == "lane_registry"], now, sha)
@@ -1689,12 +1726,9 @@ def main(argv: list[str] | None = None) -> int:
             if acc.get("state") == "ACCEPTED" or (
                 acc.get("duplicate") and acc.get("state") not in {"REFUSED", "CONSUMED"}
             ):
-                ref = {"store": f["store"], "ref": f["artifact_rel"], "as_of": now.isoformat()}
-                p = root / f["artifact_rel"]
-                try:
-                    ref["sha256"] = hashlib.sha256(p.read_bytes()).hexdigest()
-                except OSError:
-                    pass
+                # LQ-20261107-260: a key already holding ARTIFACT_WRITTEN never sends the ref, so the digest
+                # is built lazily — one read per distinct file per run, and none for an already-closed key.
+                ref = artifact_ref_factory(f, root=root, now=now, digests=digests)
                 row["ops"].extend(walk_to_artifact(client, ev["idempotency_key"], ref))
             row["state"] = row["ops"][-1].get("state") if row["ops"] else "UNKNOWN"
             if acc.get("state") == "CONSUMED":

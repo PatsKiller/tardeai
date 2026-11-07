@@ -91,8 +91,17 @@ class GatewayClient:
                 return exc.code, {"state": "REFUSED", "reason": f"http_{exc.code}"}
 
 
-def walk_to_artifact(client: GatewayClient, idempotency_key: str, artifact_ref: Mapping[str, Any]) -> list[dict]:
-    """ACCEPTED → CLAIMED → STARTED → ARTIFACT_WRITTEN, idempotently from whatever state the gateway holds."""
+def walk_to_artifact(
+    client: GatewayClient,
+    idempotency_key: str,
+    artifact_ref: Mapping[str, Any] | Callable[[], Mapping[str, Any]],
+) -> list[dict]:
+    """ACCEPTED → CLAIMED → STARTED → ARTIFACT_WRITTEN, idempotently from whatever state the gateway holds.
+
+    ``artifact_ref`` may be a zero-argument callable, resolved only when the walk is about to write the
+    artifact step. A key that already holds ARTIFACT_WRITTEN never sends the ref, so a caller whose ref
+    costs a file read must not pay for it on every already-closed key (LQ-20261107-260: 144 dead-letter
+    findings shared one 597 MB ledger and hashed it once each, 88 GB and 101 s of a 135 s run)."""
     out: list[dict] = []
     current = client.status(idempotency_key)
     out.append({"op": "status", **_brief(current)})
@@ -100,9 +109,11 @@ def walk_to_artifact(client: GatewayClient, idempotency_key: str, artifact_ref: 
     order = ["ACCEPTED", "CLAIMED", "STARTED", "ARTIFACT_WRITTEN"]
     if state not in order:
         return out
-    steps = {"ACCEPTED": ("claim", {}), "CLAIMED": ("start", {}), "STARTED": ("artifact", {"artifact_ref": dict(artifact_ref)})}
+    steps = {"ACCEPTED": ("claim", {}), "CLAIMED": ("start", {}), "STARTED": ("artifact", None)}
     while state in steps:
         op, extra = steps[state]
+        if op == "artifact":
+            extra = {"artifact_ref": dict(artifact_ref() if callable(artifact_ref) else artifact_ref)}
         r = client.transition(op, idempotency_key, **extra)
         out.append({"op": op, **_brief(r)})
         if r.get("state") in {"REFUSED", "UNREACHABLE"}:
