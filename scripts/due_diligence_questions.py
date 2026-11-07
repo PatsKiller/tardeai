@@ -187,6 +187,28 @@ def _db():
         user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"))
 
 
+def _usable(conn, cur):
+    """(conn, cur) that can execute right now; a fresh pair if the server has closed the socket.
+
+    ``conn.closed`` stays 0 when the SERVER closes the socket, so the check is an executed statement
+    (the same trap daily_incubator_refresh documents, 2026-11-03). 2026-11-07 15:20 ET: the run held one
+    connection and its open transaction across minutes of model calls; the server closed it and the next
+    dossier() raised ``SSL connection has been closed unexpectedly``. Callers only reach this with nothing
+    uncommitted, so a reconnect loses no write.
+    """
+    try:
+        cur.execute("SELECT 1")
+        return conn, cur
+    except Exception:  # noqa: BLE001 -- any failure means not usable
+        for step in (conn.rollback, conn.close):
+            try:
+                step()
+            except Exception:  # noqa: BLE001 -- the old socket is already gone
+                pass
+        conn = _db()
+        return conn, conn.cursor()
+
+
 def _guid(namespace: str, value: str) -> str:
     """Same minting as the rest of the spine — a pure function of its inputs."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"tradeai:{namespace}:{value}"))
@@ -966,7 +988,11 @@ def _apply_run(args, started: datetime) -> int:
     failed_calls = 0
     stopped = False
     for ch in curated:
+        conn, cur = _usable(conn, cur)
         items = dossier(cur, ch["subject_guid"])
+        # End the read transaction before the slow model call: an open transaction across minutes of
+        # model time is what the server closed (2026-11-07 15:20 ET).
+        conn.commit()
         if not items:
             # The window said this subject had evidence and dossier() found none. Prefilter and dossier can
             # only disagree at the margin; count it rather than let it leave a silent hole in the receipt.
@@ -1003,6 +1029,7 @@ def _apply_run(args, started: datetime) -> int:
             print(f"       settles : {q.get('what_would_settle_it')}")
 
         if args.apply:
+            conn, cur = _usable(conn, cur)   # the model call above may have outlived the socket
             _, n_written = persist(cur, ch, narrative, questions, got, len(items))
             cur.execute("UPDATE material_changes SET questioned_at=now() "
                         "WHERE change_guid=%s", (ch["change_guid"],))
@@ -1013,6 +1040,7 @@ def _apply_run(args, started: datetime) -> int:
 
     result["rows_produced"] = total_q if args.apply else None
     if args.apply and args.route:
+        conn, cur = _usable(conn, cur)
         result["routed"] = route(cur, MAX_ROUTED)
         conn.commit()
     conn.close()
