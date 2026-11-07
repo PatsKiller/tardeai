@@ -235,6 +235,13 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
+    # --dry-run wins over --apply (n8n onboarding, LQ-20261107-22). It used to be printed and then ignored: the loop
+    # passed `apply=args.apply` straight through, so `--pending --apply --dry-run` UPDATEd paper_trade_proposals and
+    # wrote lifecycle events, then printed "(dry-run — no DB writes)". A dry run that writes is worse than none
+    # (AGENTS.md 6), and the n8n executor's dry run is exactly the live command plus --dry-run, so this flag has to
+    # gate the write itself.
+    apply = args.apply and not args.dry_run
+
     conn = get_conn()
     try:
         if args.pending or args.symbol:
@@ -251,7 +258,7 @@ def main():
         log.info(f"Monitoring {len(proposals)} proposal(s)...")
         results = []
         for p in proposals:
-            r = monitor_proposal(conn, p, apply=args.apply)
+            r = monitor_proposal(conn, p, apply=apply)
             results.append(r)
 
         print(json.dumps({"monitored": len(results), "results": results}, indent=2, default=str))
