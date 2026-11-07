@@ -77,6 +77,18 @@ def _crontab_text() -> str:
             except Exception:
                 continue
 
+    if not text.strip():
+        # LQ-20261107-261: under the hardened health agent (NoNewPrivileges) both
+        # `crontab -l` and the spool are denied, so this reader always failed open.
+        # The cron-written snapshot (R-03, lib.crontab_snapshot) is the readable source.
+        try:
+            from lib.crontab_snapshot import read_crontab as _snap_read
+        except ImportError:  # pragma: no cover - package-relative fallback
+            from ..crontab_snapshot import read_crontab as _snap_read  # type: ignore
+        snap = _snap_read()
+        if snap.ok:
+            text = snap.text
+
     _CRONTAB_CACHE["ts"] = now
     _CRONTAB_CACHE["text"] = text or ""
     return str(_CRONTAB_CACHE["text"])
