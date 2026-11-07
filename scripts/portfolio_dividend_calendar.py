@@ -325,7 +325,7 @@ def main(argv=None) -> int:
         # schwab_position_sync -> schwab_transport (tests/test_lane_transitive_capabilities_20261015.py).
         portfolio = read_holdings(Path(args.root) if args.root else None)
         if not portfolio.get("holdings"):
-            raise RuntimeError("holdings.json has no holdings")
+            raise RuntimeError("the position store has no holdings")
         result = build_dividend_calendar(portfolio, root, state_dir, write=False)
         written = write_calendar(result, root, state_dir) if args.apply else []
     except Exception as exc:  # noqa: BLE001 - recorded on the receipt, exit 1

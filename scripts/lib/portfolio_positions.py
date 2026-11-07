@@ -43,8 +43,9 @@ def store_path(root: Path | str | None = None) -> Path:
         from persistent_overlay import overlay_data_source  # type: ignore
     return Path(overlay_data_source(canonical_source=ROOT)).joinpath(*STORE_REL)
 NEVER_TRUSTED_PRICE_FIELDS = ("current_price",)   # frozen by dict(prior) merges; see module docstring
-_DEFAULTS = {"price_stale_after_s": 6 * 3600, "price_tolerance_pct": 1.0, "value_tolerance_usd": 1.0,
-             "basis_tolerance_usd": 1.0, "qty_tolerance": 0.001}
+_DEFAULTS = {"price_stale_after_s": 30 * 60, "price_tolerance_pct": 1.0, "value_tolerance_usd": 1.0,
+             "basis_tolerance_usd": 1.0, "qty_tolerance": 0.001,
+             "backup_quote_providers": ["finviz", "schwab", "alpaca", "moomoo"]}
 
 
 def load_config(path: Optional[Path] = None) -> dict:
@@ -143,6 +144,16 @@ def is_cash(position: dict) -> bool:
     return bool(position.get("is_cash")) or str(position.get("symbol") or "").upper() in ("CASH", "SPAXX", "FDRXX")
 
 
+def _backup_ok(source: Any, cfg: dict) -> bool:
+    """A non-Finviz quote serves only from an operator-named backup provider (Schwab, Alpaca, moomoo) or a
+    Finviz-sourced DB row. A labelled row from any other provider (yfinance, …) never prices a holding; an
+    unlabelled quote is the caller's own data-broker read and is accepted."""
+    s = str(source or "").lower()
+    if not s or s in ("market_quotes", "data_broker.market_quotes"):
+        return True
+    return any(p in s for p in cfg.get("backup_quote_providers") or _DEFAULTS["backup_quote_providers"])
+
+
 def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Optional[dict] = None,
                  now: Optional[datetime] = None, cfg: Optional[dict] = None) -> dict:
     """The one price for a position. quote = data-broker {price, as_of|fetched_at, source};
@@ -153,15 +164,25 @@ def resolve_mark(position: dict, *, quote: Optional[dict] = None, finviz: Option
         return {"price": 1.0, "source": "cash_unit", "as_of": None, "age_s": None, "live": False, "stale": False}
     cands = []
     # Finviz is the live price (operator 2026-11-07: "live prices shouldn't be pulled from any database, it should
-    # always be refreshed by FinViz"). A market_quotes row serves only for a symbol Finviz has no price for.
-    # Data-truth audit 2026-11-07: market_quotes ranked first and showed 20 of 26 holdings at an older price
-    # (PFE 27.56 from a 16:45 ET row while the 23:30 ET Finviz fetch said 29.39).
+    # always be refreshed by FinViz"). When Finviz is down or older than price_stale_after_s, a FRESH backup quote
+    # (Schwab, Alpaca, moomoo: operator 2026-11-07) serves instead. If neither is fresh, the newer of the two is
+    # shown and flagged stale. Data-truth audit 2026-11-07: market_quotes ranked first and showed 20 of 26
+    # holdings at an older price (PFE 27.56 from a 16:45 ET row while the 23:30 ET Finviz fetch said 29.39).
+    limit = float(cfg["price_stale_after_s"])
+    live = []
     if finviz and (_f(finviz.get("price")) or 0) > 0:
-        cands.append((_f(finviz["price"]), "finviz", finviz.get("as_of"), True))
-    elif quote and (_f(quote.get("price")) or 0) > 0:
+        live.append((_f(finviz["price"]), "finviz", finviz.get("as_of"), True))
+    if quote and (_f(quote.get("price")) or 0) > 0 and _backup_ok(quote.get("source"), cfg):
         src = str(quote.get("source") or "market_quotes")
-        cands.append((_f(quote["price"]), f"data_broker:{src}" if not src.startswith("data_broker") else src,
-                      quote.get("as_of") or quote.get("fetched_at"), True))
+        live.append((_f(quote["price"]), f"data_broker:{src}" if not src.startswith("data_broker") else src,
+                     quote.get("as_of") or quote.get("fetched_at"), True))
+    ages = [_age_s(c[2], now) for c in live]
+    fresh = [c for c, a in zip(live, ages) if a is not None and a <= limit]
+    if fresh:
+        cands.append(fresh[0])                       # Finviz when fresh, else the fresh backup
+    elif live:
+        dated = [(a, i) for i, a in enumerate(ages) if a is not None]
+        cands.append(live[min(dated)[1]] if dated else live[0])   # nothing fresh: the newest, flagged stale
     # The repricer's named mark first. `price` is the position build's copy (holdings_export rebuilds it from the
     # morning positions run as market_value ÷ shares, price_field_role "derived_from_broker_mv"), so it lags the
     # repricer all day. Data-truth audit 2026-11-07: preferring `price` showed 24 of 30 holdings at stale prices

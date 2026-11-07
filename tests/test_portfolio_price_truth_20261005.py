@@ -264,7 +264,16 @@ def test_finviz_beats_an_older_market_quotes_row():
 def test_finviz_wins_even_over_a_newer_db_row():
     now = dt.datetime(2026, 10, 6, 5, 0, tzinfo=dt.timezone.utc)
     q = {"price": 31.0, "as_of": "2026-10-06T04:50:00+00:00", "source": "market_quotes"}
-    fv = {"price": 30.0, "as_of": "2026-10-05 23:30:02 ET"}
+    fv = {"price": 30.0, "as_of": "2026-10-06 00:40:02 ET"}   # fresh Finviz (20 min) beats a newer DB row
     assert pp.resolve_mark(LAG, quote=q, finviz=fv, now=now)["price"] == 30.0
     m = pp.resolve_mark(LAG, quote=q, finviz=None, now=now)   # no Finviz row: the DB quote is the fallback
     assert m["price"] == 31.0 and m["source"].startswith("data_broker")
+
+
+def test_fresh_backup_quote_serves_when_finviz_is_down_or_stale():
+    now = dt.datetime(2026, 10, 6, 5, 0, tzinfo=dt.timezone.utc)
+    q = {"price": 31.0, "as_of": "2026-10-06T04:50:00+00:00", "source": "data_broker.market_quotes:alpaca"}
+    old_fv = {"price": 30.0, "as_of": "2026-10-05 20:00:00 ET"}
+    assert pp.resolve_mark(LAG, quote=q, finviz=old_fv, now=now)["price"] == 31.0
+    m = pp.resolve_mark(LAG, quote=q, finviz=None, now=now)
+    assert m["price"] == 31.0 and m["live"] is True

@@ -150,6 +150,48 @@ def _day_coverage(rows) -> dict:
             "unknown_accounts": sorted({r.get("account_id") or "" for r in unknown} - {""})}
 
 
+def finviz_reprice(holdings_doc: dict, finviz: dict | None, *, now: datetime | None = None,
+                   quotes: dict | None = None, cfg: dict | None = None) -> dict:
+    """Mark every non-cash row at the Finviz live price (operator 2026-11-07: "live prices shouldn't be pulled
+    from any database, it should always be refreshed by FinViz").
+
+    The DB render carries each row's price from whenever the repricer or a broker sync last wrote it, so the
+    holdings page, total value and day P&L showed a different price than the Finviz cache (NVDA 204.64 vs
+    186.64; NOC 525.04 vs 525.01). Value is shares x mark. A known day change moves by exactly the price delta x
+    shares, which equals (price - prev_close) x shares under the repricer's own formula and keeps its fill
+    reconciliation. When Finviz is down or stale, ``quotes`` ({SYM: {price, as_of, source}} from the data broker)
+    supplies a fresh Schwab/Alpaca/moomoo backup through the same resolve_mark rule. A symbol with neither keeps
+    its stored mark, labelled as such. Never raises.
+    """
+    from .portfolio_positions import is_cash, resolve_mark
+    finviz = finviz if isinstance(finviz, dict) else {}
+    quotes = quotes if isinstance(quotes, dict) else {}
+    if not finviz and not quotes:
+        return holdings_doc
+    doc = deepcopy(holdings_doc)
+    for r in doc.get("holdings") or []:
+        if not isinstance(r, dict) or is_cash(r) or r.get("is_loan"):
+            continue
+        sym = str(r.get("symbol") or "").upper()
+        row = finviz.get(sym)
+        fv_px = _number(row.get("price")) if isinstance(row, dict) else None
+        fv = ({"price": fv_px, "as_of": row.get("last_fetched") or row.get("last_updated")}
+              if fv_px is not None and fv_px > 0 else None)
+        q = quotes.get(sym) if isinstance(quotes.get(sym), dict) else None
+        shares = _number(r.get("shares", r.get("quantity")))
+        if (fv is None and q is None) or shares is None:
+            continue
+        mark = resolve_mark(r, finviz=fv, quote=q, now=now, cfg=cfg)
+        if mark["source"] in ("stored_mark", "none") or not mark["price"]:
+            continue
+        old_px, new_px = _number(r.get("price")), mark["price"]
+        if old_px is not None and _number(r.get("day_change")) is not None:
+            r["day_change"] = round(_number(r["day_change"]) + (new_px - old_px) * shares, 2)
+        r.update(price=new_px, current_price=new_px, market_value=round(shares * new_px, 2),
+                 price_source=mark["source"], price_as_of=mark["as_of"], price_stale=mark["stale"])
+    return doc
+
+
 def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     """One holdings aggregate for every display, including all account rows.
 
@@ -1751,7 +1793,24 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     from .holdings_document import load_document
     # DB first (operator 2026-11-06): the export's render of positions_current, the file only as the stated
     # fallback. A non-production root (fixtures, offline copies) never reaches the live DB.
-    portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_document(store_path(root)), now=now)
+    holdings_doc = inputs.get("holdings") if "holdings" in inputs else load_document(store_path(root))
+    finviz = inputs.get("finviz_quotes") if "finviz_quotes" in inputs else _read_json(state / "finviz_quote_cache.json")
+    from .portfolio_positions import load_config as _pp_config, _age_s
+    pp_cfg = _pp_config()
+    quotes = inputs.get("backup_quotes") if "backup_quotes" in inputs else None
+    if quotes is None and db_query is not None:
+        # Finviz down or stale for a held symbol: the data broker's Schwab/Alpaca/moomoo rows are the backup.
+        need = sorted({str(r.get("symbol") or "").upper() for r in (holdings_doc or {}).get("holdings") or []
+                       if isinstance(r, dict) and not r.get("is_cash")
+                       and ((_age_s(((finviz or {}).get(str(r.get("symbol") or "").upper()) or {}).get("last_fetched"),
+                                    now) or 1e12) > float(pp_cfg["price_stale_after_s"]))} - {""})
+        if need:
+            try:
+                from .data_broker.market_quote import get_price_batch
+                quotes = get_price_batch(db_query, need, skip_live=True)
+            except Exception:  # noqa: BLE001 -- a missing backup leaves the row stale-flagged, never crashes
+                quotes = None
+    portfolio = portfolio_for(finviz_reprice(holdings_doc, finviz, now=now, quotes=quotes, cfg=pp_cfg), now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,order_type,stop_price,qty,status,captured_at FROM stop_last_known")
     if "broker_stops" not in inputs:
