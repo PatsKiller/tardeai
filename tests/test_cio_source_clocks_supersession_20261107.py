@@ -29,6 +29,7 @@ T1 = datetime(2026, 11, 7, 14, 35, tzinfo=timezone.utc)  # Sat 09:35 ET
 
 def _root(tmp_path: Path, lanes: list[dict], pipeline: dict | None = None) -> Path:
     (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- a pytest tmp_path fixture written once, then only read; no live store is touched or truncated
     (tmp_path / "config/lane_registry.json").write_text(json.dumps({"lanes": lanes}), encoding="utf-8")
     if pipeline is not None:
         (tmp_path / "config/pipelines").mkdir(parents=True, exist_ok=True)
