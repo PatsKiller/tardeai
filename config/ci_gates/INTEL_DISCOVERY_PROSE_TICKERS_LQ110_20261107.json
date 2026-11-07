@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "INTEL_DISCOVERY_PROSE_TICKERS_LQ110_20261107",
+  "files": [
+    "tests/test_intel_discovery_card_types_20261107.py"
+  ],
+  "anchor": "INTEL_DISCOVERY_PROSE_TICKERS_LQ110_20261107",
+  "comment": [
+    "ANCHOR: INTEL_DISCOVERY_PROSE_TICKERS_LQ110_20261107 — intel_auto_discovery applied re.IGNORECASE",
+    "to its whole ticker pattern, so any capitalised word after 'stock'/'shares of'/'bought'/'sold'",
+    "became a symbol. Read-only over 1,310 live articles on 2026-11-07 that yielded 67 candidates,",
+    "59 of them English (PRICE 49, SEES 12, HAS 9, JUMPS 7 ...); each became a watchlist row and then",
+    "a strategy card — 170 of the 350 cards classified intel_discovery have no price bar at all, and",
+    "206 of the 221 NULL-price cards never had one. Three behaviours are pinned here: the SYMBOL is",
+    "case-sensitive while the context word is not; a candidate with no price bar inside the lookback",
+    "is dropped AND counted, with the symbol named on the run result (a gate that only shortens a",
+    "list is indistinguishable from a scan that found nothing); and one failing insert rolls back to",
+    "its own savepoint instead of discarding every earlier insert of the run while still being",
+    "counted as added. Hermetic: synthetic symbols only, fake cursor, no DB, no network."
+  ]
+}
