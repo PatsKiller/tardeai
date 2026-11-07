@@ -263,8 +263,10 @@ def check_target(target: Mapping[str, Any], root: Path, *, now: datetime,
     if error:
         return {"id": tid, "verdict": "FAIL", "checked": 0, "findings": [
             {"kind": "missing_artifact", "target": tid, "why": error, "path": str(target.get("path"))}],
-            "claims": [], "claim_verdicts": {}, "claim_records": 0, "claim_records_skipped": 0,
-            "missing_artifacts": 1}
+            "claims": [],
+            # an artifact that could not be read holds no claims: zero here is a true count, not an unknown
+            "claim_verdicts": {"supported": 0, "refuted": 0, "HALLUCINATION": 0, "unverifiable": 0, "disputed": 0},
+            "claim_records": 0, "claim_records_skipped": 0, "missing_artifacts": 1}
     findings = data_checks(target, records, now=now)
     claims: list[dict] = []
     claim_field = target.get("claim_field")
@@ -319,8 +321,8 @@ def build_verdicts(targets: Iterable[Mapping[str, Any]], root: Path, *, now: dat
         "records": sum(r["checked"] for r in results),
         "findings": sum(len(r["findings"]) for r in results),
         "claims": sum(len(r["claims"]) for r in results),
-        "hallucinations": sum(r["claim_verdicts"].get("HALLUCINATION", 0) for r in results),
-        "unverifiable_claims": sum(r["claim_verdicts"].get("unverifiable", 0) for r in results),
+        "hallucinations": sum(r["claim_verdicts"]["HALLUCINATION"] for r in results),
+        "unverifiable_claims": sum(r["claim_verdicts"]["unverifiable"] for r in results),
         # direct indexing on purpose: every check_target row carries these counters, and a result that lost one is a
         # bug that must raise here rather than be summed as a confident zero (the producer flattens failure trap)
         "claim_records": sum(r["claim_records"] for r in results),
