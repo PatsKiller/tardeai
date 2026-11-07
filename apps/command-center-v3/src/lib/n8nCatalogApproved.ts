@@ -86,10 +86,12 @@ export function tabsHtml(sub: SubKey): string {
 export function overviewHtml(w: Wire): string {
   const st = w.stats || {}, a = st.audit || {}, m = st.modes || {}, v = st.verdicts || {}
   const n = (x: unknown) => (typeof x === 'number' ? String(x) : '—')
-  const idle = v.PASS_IDLE ?? 0
+  // A verdict absent from a reported tally has zero lanes; with no tally at all every count is unknown ("—").
+  const vcount = (k: string): number | null => (st.verdicts ? (typeof v[k] === 'number' ? v[k] : 0) : null)
+  const idle = n(vcount('PASS_IDLE'))
   const when = w.audit && w.audit.written_at ? `Audited ${esc(etFmt(w.audit.written_at))}.` : 'Not audited yet.'
   const counts = VERDICT_ORDER.filter(k => k !== 'HALLUCINATION' || v[k]).map(k =>
-    `<button type="button" data-sub="audit" data-filter="${k}" class="${vc(k)}" title="${esc(VTIP[k])} Tap to list them.">${esc(vl(k))} <b>${n(v[k] ?? 0)}</b></button>`).join('')
+    `<button type="button" data-sub="audit" data-filter="${k}" class="${vc(k)}" title="${esc(VTIP[k])} Tap to list them.">${esc(vl(k))} <b>${n(vcount(k))}</b></button>`).join('')
   return `<header><h1>What n8n is configured to handle</h1><p style="margin:6px 0 0;padding:8px 10px;border-left:4px solid var(--shadow);background:var(--card)"><b>${when}</b> Each of the ${n(a.audited)} n8n-only lanes was checked on six points: config, runs, output, data accuracy against an independent source, AI claims against sources, and what the page shows. Only <b>PASS</b> means working. Every failure has a fix assigned (LQ id).</p>
 <p class="sub">Configuration plus audit verdicts · jobs as of ${esc(etFmt(w.computed_at))} · relay live-lane list: ${n(w.relay && w.relay.lanes)} lanes · refreshes every minute</p></header>
 <section class="stats">
@@ -119,9 +121,9 @@ export function healthHtml(c: Wire): string {
   const mix = c.status_mix
   if (!mix) return ''
   const jobs = typeof c.jobs === 'number' ? c.jobs : null
-  const inactive = mix.inactive ?? 0
+  const inactive = typeof mix.inactive === 'number' ? mix.inactive : null
   const chips = HEALTH.filter(([k]) => mix[k]).map(([k, label, cls, tip]) => `<span class="${cls}" ${tipAttr(`${label}: ${tip} Same count as the Job catalog page.`)}>${mix[k]} ${label} ⓘ</span>`).join('')
-  const tally = jobs === null ? '' : `<p class="tally">${jobs - inactive} active + ${inactive} paused/retired = ${jobs} jobs in this category (the Job catalog counts all ${jobs})</p>`
+  const tally = jobs === null || inactive === null ? '' : `<p class="tally">${jobs - inactive} active + ${inactive} paused/retired = ${jobs} jobs in this category (the Job catalog counts all ${jobs})</p>`
   return `<div class="health" aria-label="Job health">${chips}</div>${tally}`
 }
 
@@ -129,7 +131,7 @@ export function lanesHtml(w: Wire, q = ''): string {
   const cats = (w.categories || []).map((c: Wire, i: number) => {
     const jobs: Lane[] = (c.lanes || []).map((id: string) => (w.lanes || {})[id]).filter((l: Lane) => l && MODE[l.mode])
     const n = (m: string) => jobs.filter(j => MODE[j.mode] === m).length
-    const other = (c.modes && c.modes.none) || 0
+    const other: number | string = c.modes && typeof c.modes.none === 'number' ? c.modes.none : '—'
     let h = `<details data-cat="${esc(c.key)}"${jobs.length && i < 3 ? ' open' : ''}><summary><h2>${esc(c.label)}</h2><span class="bar"><span class="pill live" ${tipAttr(TIP.live)}>${n('live')} live ⓘ</span><span class="pill shadow" ${tipAttr(TIP.shadow)}>${n('shadow')} both ⓘ</span><span class="pill dry" ${tipAttr(TIP.dry)}>${n('dry')} dry run ⓘ</span><span class="pill none" ${tipAttr(TIP.none)}>${other} not on n8n ⓘ</span></span></summary><div class="body">${c.blurb ? `<p class="blurb">${esc(c.blurb)}</p>` : ''}${healthHtml(c)}`
     if (!jobs.length) h += `<p class="blurb">Nothing in this bucket is on n8n. All ${other} jobs run on cron or systemd.</p>`
     for (const m of ['live', 'shadow', 'dry']) {

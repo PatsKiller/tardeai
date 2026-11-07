@@ -157,7 +157,7 @@ check([...auF.matchAll(/<li data-lane="([^"]+)"/g)].map(m => m[1]).join() === 's
 const unk = A.auditHtml({ ...wire, work_items: {} })
 check(unk.includes('fix LQ-9 · status unknown'), 'audit: a fix id the ledger lacks says status unknown')
 const none = A.pageHtml({ notes: ['synthetic note'] }, 'overview')
-check(none.includes('synthetic note') && none.includes('<b class="live">— / —</b>') && none.includes('Not audited yet.'), 'missing data reads — and the note shows')
+check(none.includes('synthetic note') && none.includes('<b class="live">— / —</b>') && none.includes('Not audited yet.') && /FAIL DATA <b>—<\/b>/.test(none) && none.includes('incl. — weekend-idle'), 'missing data reads — (never 0) and the note shows')
 
 if (failed) { console.error(`n8nCatalog.render: ${failed} failed`); process.exit(1) }
 console.log('n8nCatalog.render: all checks passed')

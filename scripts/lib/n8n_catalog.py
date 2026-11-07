@@ -99,7 +99,7 @@ def read_relay(root: Path, environ: Mapping[str, str]) -> tuple[Optional[frozens
         from scripts.lib import n8n_relay_live_lanes as RL
 
         res = RL.resolve(environ, root)
-    except Exception as exc:  # noqa: BLE001 - a broken reader is a note, never a 500
+    except Exception as exc:  # noqa: BLE001 -- a broken relay reader is a note, never a 500
         return None, {"source": "unavailable", "lanes": None, "paused": [],
                       "note": f"Relay live list could not be read ({type(exc).__name__})."}
     lanes = res.get("lanes")
@@ -250,7 +250,7 @@ def compute(*, environ: Optional[Mapping[str, str]] = None, root: Optional[Path]
             return jobs_history.snapshot(state_root=state) if explicit_state else jobs_history.snapshot()
     try:
         snap = snapshot_fn()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 -- an unreadable jobs snapshot becomes a gap note, never a 500
         snap = {"rows": [], "categories": [], "computed_at": None,
                 "gaps": [f"jobs-history unavailable ({type(exc).__name__})"]}
     relay, relay_meta = read_relay(root, environ)
