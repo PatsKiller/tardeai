@@ -272,6 +272,22 @@ def _assign_trend_cluster(row: dict[str, Any], actor: str) -> dict[str, Any]:
 
 # ── public API ───────────────────────────────────────────────────────────────
 
+def _bump_meta(existing: dict | None, new: dict | None,
+               refresh: list | tuple | None = None) -> dict[str, Any]:
+    """meta_json on a re-sighting: the existing row wins (its enrichment is
+    sticky), except the keys the caller names in ``refresh`` — those describe
+    the latest observation and must move with the summary, which the bump also
+    rewrites. Without this a candidate's summary says "333x across 12 sources"
+    while its meta_json still says 24x/6 (id 3713, 2026-11-07)."""
+    bumped = dict(existing or {})
+    for k, v in (new or {}).items():
+        bumped.setdefault(k, v)
+    for k in refresh or ():
+        if k in (new or {}):
+            bumped[k] = new[k]
+    return bumped
+
+
 def upsert_candidate(candidate_type: str, label: str, *,
                      summary: str | None = None,
                      source_domain: str | None = None,
@@ -286,7 +302,8 @@ def upsert_candidate(candidate_type: str, label: str, *,
                      safe_action_level: str = "OPERATOR_REVIEW_REQUIRED",
                      ttl_days: int = 30,
                      normalized_key: str | None = None,
-                     signals: dict | None = None) -> dict[str, Any]:
+                     signals: dict | None = None,
+                     meta_refresh_keys: list | tuple | None = None) -> dict[str, Any]:
     """Idempotent intake. Returns the persisted candidate row (dict).
 
     Same (candidate_type, normalized_key) → bumps seen_count / last_seen_at and
@@ -333,9 +350,9 @@ def upsert_candidate(candidate_type: str, label: str, *,
         # Re-enrich domain/subject on every re-sighting: existing meta wins
         # (research_domain is sticky via classify_domain's pin), new meta keys
         # fill gaps, subject_json refreshes recurrence/last_seen/evidence.
-        bump_meta = dict(existing.get("meta_json") or {})
-        for k, v in meta.items():
-            bump_meta.setdefault(k, v)
+        # meta_refresh_keys is the exception: those counters must follow the
+        # freshly rewritten summary.
+        bump_meta = _bump_meta(existing.get("meta_json"), meta, meta_refresh_keys)
         view = dict(before)
         view.update({
             "summary": summary or before.get("summary"),

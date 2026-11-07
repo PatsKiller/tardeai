@@ -1,0 +1,27 @@
+{
+  "schema": "SectorSynonyms@v1",
+  "as_of": "2026-11-07",
+  "comment": [
+    "LQ-20261107-133 — the discovery lanes compare news sector names with symbol_profiles.sector,",
+    "and the two vocabularies name the same sector differently: GICS (what news entity extraction",
+    "emits) versus Yahoo (what symbol_profiles carries). Unmapped, a sector our universe covers",
+    "reads as a coverage gap forever: 'consumer_discretionary' and 'consumer_staples' were written",
+    "as MISSING_SECTOR candidates although symbol_profiles holds Consumer Cyclical 298 and Consumer",
+    "Defensive 131.",
+    "Each group is one SECTOR under different names. Names are compared after",
+    "dedupe.normalize_key (lowercase, punctuation to space, stopwords dropped), so write them the",
+    "way a reader would: 'consumer discretionary', not 'consumer_discretionary'.",
+    "Deliberately NOT here: sub-industries (retail, insurance, telecommunications, biotechnology,",
+    "pharmaceuticals, mining, ...). Those are narrower than the sector we hold and remain real",
+    "gaps worth surfacing — mapping them would suppress a signal, not fix a false positive.",
+    "A missing or unreadable file maps nothing (fail open to MORE gaps, never to fewer)."
+  ],
+  "groups": [
+    ["consumer discretionary", "consumer cyclical"],
+    ["consumer staples", "consumer defensive"],
+    ["financials", "financial services", "financial"],
+    ["information technology", "technology"],
+    ["health care", "healthcare"],
+    ["basic materials", "materials"]
+  ]
+}

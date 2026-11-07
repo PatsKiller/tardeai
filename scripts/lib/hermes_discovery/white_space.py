@@ -80,6 +80,11 @@ MIN_SOURCES = 2            # ... and be cross-source confirmed
 SCAN_LIMIT = 300           # max grouped subjects pulled per demand stream
 GAP_TTL_DAYS = 30
 DEFAULT_RUN_LIMIT = 8      # mirrors the white_space lane max_candidates_per_run
+# A re-sighting rewrites the summary from THIS run's counts; these meta keys must
+# be rewritten with it or the row's summary and meta_json disagree (id 2965:
+# "177x across 6 sources" in the summary, 100x/6 in meta_json, 2026-11-07).
+OBSERVATION_META_KEYS = ("recurrence_count", "source_count", "demand_sources",
+                         "demand_streams", "why_missing")
 
 GAP_TYPES = frozenset({
     "MISSING_THEME", "MISSING_SECTOR", "MISSING_STRATEGY", "MISSING_SOURCE",
@@ -589,6 +594,7 @@ def build_gap_payloads(gaps: list[dict[str, Any]],
             },
             safe_action_level="OPERATOR_REVIEW_REQUIRED",
             ttl_days=GAP_TTL_DAYS,
+            meta_refresh_keys=OBSERVATION_META_KEYS,
         ))
     return payloads
 

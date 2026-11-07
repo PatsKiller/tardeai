@@ -8,8 +8,11 @@ GAP_CANDIDATE rows (meta_json.gap_type = MISSING_SECTOR) in the Discovery Inbox.
 Observed set: content_entity_links entity_type='sector' over a config window,
 news-source attributed for a cross-source gate.
 Covered set: distinct symbol_profiles.sector (the taxonomy our universe spans) ∪
-active watch_directive / enabled topic_monitor keys (entity_spikes.covered_keys).
-A news sector whose normalized key is in neither is "novel".
+active watch_directive / enabled topic_monitor keys (entity_spikes.covered_keys),
+each expanded through config/hermes_sector_synonyms.json — news emits GICS names
+("consumer_discretionary") while symbol_profiles carries Yahoo names ("Consumer
+Cyclical"), and without the map a covered sector reads as a gap forever.
+A news sector whose names are in neither is "novel".
 
 HARD RULES (mirrors entity_spikes.py — tested):
   * candidates ONLY — OPERATOR_REVIEW_REQUIRED, never promotes, never auto-adds
@@ -36,6 +39,8 @@ from . import dedupe, domains, entity_spikes, inbox
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SCHEDULE_CONFIG_PATH = Path(os.getenv("HERMES_DISCOVERY_SCHEDULE_JSON")
                             or PROJECT_ROOT / "config" / "hermes_discovery_schedule.json")
+SYNONYMS_PATH = Path(os.getenv("HERMES_SECTOR_SYNONYMS_JSON")
+                     or PROJECT_ROOT / "config" / "hermes_sector_synonyms.json")
 
 PRODUCER = "industry_novelty_discovery"
 ACTOR = "discovery:industry_novelty"
@@ -45,6 +50,10 @@ GAP_TYPE = "MISSING_SECTOR"        # closed GAP_TYPES taxonomy (white_space.GAP_
 WINDOW_HOURS = 168                 # a week of news — coverage gaps are slow signals
 SCAN_LIMIT = 400
 GAP_TTL_DAYS = 30
+# A re-sighting rewrites the summary from THIS run's counts; these meta keys must
+# be rewritten with it or the row says "333x across 12" in its summary and
+# 24x/6 in its metadata (hermes_discovery_candidates id 3713, 2026-11-07).
+OBSERVATION_META_KEYS = ("recurrence_count", "source_count", "demand_sources", "why_missing")
 _WHY_IT_MATTERS = ("A sector/theme recurring in the news that our covered "
                    "universe (symbol_profiles sectors, watch directives, topic "
                    "monitors) does not represent — a candidate blind spot.")
@@ -127,21 +136,59 @@ def collect_observed_sectors(window_hours: int = WINDOW_HOURS,
             LIMIT %s""", (SCAN_LIMIT,))
 
 
-def covered_sector_keys(notes: list[str] | None = None) -> set[str]:
+def load_sector_synonyms(path: Path | str | None = None) -> dict[str, frozenset[str]]:
+    """Sector synonym groups from config/hermes_sector_synonyms.json, normalized.
+
+    Returns key -> the whole group it belongs to (including itself), so one
+    lookup answers "is any name for this sector in the covered set?". A missing
+    or unreadable file yields {} — the lane then compares raw keys and reports
+    MORE gaps, never fewer: a broken map must not hide a coverage gap.
+    """
+    p = Path(path) if path else SYNONYMS_PATH
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        groups = doc.get("groups") if isinstance(doc, dict) else None
+    except (OSError, ValueError):
+        return {}
+    out: dict[str, frozenset[str]] = {}
+    for group in groups or []:
+        if not isinstance(group, (list, tuple)):
+            continue
+        keys = {dedupe.normalize_key(str(name)) for name in group}
+        keys.discard("")
+        if len(keys) < 2:
+            continue
+        frozen = frozenset(keys)
+        for k in frozen:
+            out.setdefault(k, frozen)
+    return out
+
+
+def sector_keys(value: str, synonyms: dict[str, frozenset[str]]) -> frozenset[str]:
+    """Every name this sector is known by (just its own key when unmapped)."""
+    key = dedupe.normalize_key(str(value or ""))
+    if not key:
+        return frozenset()
+    return synonyms.get(key) or frozenset({key})
+
+
+def covered_sector_keys(notes: list[str] | None = None,
+                        synonyms: dict[str, frozenset[str]] | None = None) -> set[str]:
     """Normalized keys of the covered universe: distinct symbol_profiles.sector
-    plus active watch_directive / enabled topic_monitor keys."""
+    plus active watch_directive / enabled topic_monitor keys, each expanded to
+    every synonym so a GICS name matches the Yahoo name we store."""
+    syn = load_sector_synonyms() if synonyms is None else synonyms
     covered: set[str] = set()
     if _table_exists("symbol_profiles"):
         try:
             for r in _rows("SELECT DISTINCT sector FROM symbol_profiles "
                            "WHERE sector IS NOT NULL AND sector <> ''"):
-                key = dedupe.normalize_key(str(r.get("sector") or ""))
-                if key:
-                    covered.add(key)
+                covered |= sector_keys(str(r.get("sector") or ""), syn)
         except Exception as e:  # pragma: no cover - defensive
             if notes is not None:
                 notes.append(f"symbol_profiles coverage unavailable: {e}")
-    covered |= entity_spikes.covered_keys(notes)
+    for key in entity_spikes.covered_keys(notes):
+        covered |= sector_keys(key, syn)
     return covered
 
 
@@ -149,10 +196,13 @@ def covered_sector_keys(notes: list[str] | None = None) -> set[str]:
 
 def compute_novel(observed: list[dict[str, Any]], covered: set[str], *,
                   min_mentions: int = 3, min_sources: int = 2,
-                  skipped: dict[str, int] | None = None) -> list[dict[str, Any]]:
+                  skipped: dict[str, int] | None = None,
+                  synonyms: dict[str, frozenset[str]] | None = None) -> list[dict[str, Any]]:
     """Filter observed sectors to those meeting the recurrence + cross-source
     bars whose normalized key is NOT in the covered set. Returns novel-sector
     dicts sorted by mentions desc."""
+    syn = load_sector_synonyms() if synonyms is None else synonyms
+
     def _skip(reason: str) -> None:
         if skipped is not None:
             skipped[reason] = skipped.get(reason, 0) + 1
@@ -173,7 +223,7 @@ def compute_novel(observed: list[dict[str, Any]], covered: set[str], *,
         if n_sources < max(1, int(min_sources)):
             _skip("low_cross_source")
             continue
-        if key in covered:
+        if sector_keys(value, syn) & covered:
             _skip("already_covered")
             continue
         if key in seen:
@@ -233,6 +283,7 @@ def build_payloads(novel: list[dict[str, Any]], *, limit: int,
             },
             safe_action_level="OPERATOR_REVIEW_REQUIRED",
             ttl_days=GAP_TTL_DAYS,
+            meta_refresh_keys=OBSERVATION_META_KEYS,
         ))
     return payloads
 
@@ -266,11 +317,13 @@ def run_discovery(*, dry_run: bool = False, limit: int | None = None,
                      "(operator flips the flag to go live)")
 
     observed = collect_observed_sectors(cfg["industry_novelty_window_hours"], notes)
+    synonyms = load_sector_synonyms()
+    covered = covered_sector_keys(notes, synonyms)
     novel = compute_novel(
-        observed, covered_sector_keys(notes),
+        observed, covered,
         min_mentions=cfg["industry_novelty_min_mentions"],
         min_sources=cfg["industry_novelty_min_sources"],
-        skipped=skipped)
+        skipped=skipped, synonyms=synonyms)
 
     run_cap = int(limit) if limit else cfg["industry_novelty_max_per_day"]
     payloads = build_payloads(novel, limit=run_cap, skipped=skipped)

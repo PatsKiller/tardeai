@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "HERMES_SECTOR_TAXONOMY_LQ133_20261107",
+  "files": [
+    "tests/test_hermes_sector_taxonomy_lq133_20261107.py"
+  ],
+  "anchor": "HERMES_SECTOR_TAXONOMY_LQ133_20261107",
+  "comment": [
+    "ANCHOR: HERMES_SECTOR_TAXONOMY_LQ133_20261107 — LQ-20261107-133, the discovery worker pool",
+    "flagged sectors we already covered as MISSING_SECTOR gaps (news emits GICS vocabulary,",
+    "symbol_profiles stores Yahoo names: consumer_discretionary vs Consumer Cyclical 298,",
+    "consumer_staples vs Consumer Defensive 131), and a re-sighted candidate's summary disagreed",
+    "with its own meta_json (id 3713: '333x across 12 sources' in the summary, 24x/6 in meta). The",
+    "tests pin: the synonym map is a config document that fails open to MORE gaps, sub-industries",
+    "stay flagged, and the observation counters a producer names are refreshed on every bump while",
+    "sticky enrichment is preserved. Hermetic: fake rows, no database, no network."
+  ]
+}
