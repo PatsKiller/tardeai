@@ -199,3 +199,80 @@ def test_a_real_technical_price_is_still_labelled_technical_snapshot():
     assert px == pytest.approx(182.5)
     assert source == "technical_snapshot"
     assert as_of == "2026-11-06T20:00:00Z"
+
+
+# ── review fixes (independent review of the 30-min fold, 2026-11-07) ──────────────────────────────
+
+
+def test_a_stored_artifact_without_a_current_quote_is_never_shown_as_current(monkeypatch):
+    """derive_freshness(hold_last_close=True) kept a 90-min-old row CURRENT; the operator rule says no
+    price ≤30 min means not current."""
+    _patch_canonical(monkeypatch, {"NVDA": {"symbol": "NVDA", "last": 100.0, "price_source": "market_quotes",
+                                            "freshness_state": "CURRENT", "market_state": "OK"}})
+    _patch_batch(monkeypatch, {})
+
+    q = api_v2._canonical_quotes_fresh(["NVDA"])["NVDA"]
+
+    assert q["last"] == pytest.approx(100.0)
+    assert q["freshness_state"] == "STALE"
+    assert q["market_state"] == "STALE"
+
+
+def test_an_enrichment_or_yfinance_stored_price_is_not_shown(monkeypatch):
+    _patch_canonical(monkeypatch, {
+        "AAA": {"symbol": "AAA", "last": 10.0, "price_source": "enrichment", "day_change_pct": 2.0,
+                "freshness_state": "CURRENT"},
+        "BBB": {"symbol": "BBB", "last": 20.0, "price_source": "market_quotes:yfinance",
+                "freshness_state": "AFTER_HOURS_CURRENT"}})
+    _patch_batch(monkeypatch, {})
+
+    arts = api_v2._canonical_quotes_fresh(["AAA", "BBB"])
+
+    assert arts["AAA"]["last"] is None and arts["AAA"]["day_change_pct"] is None
+    assert arts["BBB"]["last"] is None
+    assert {arts["AAA"]["freshness_state"], arts["BBB"]["freshness_state"]} == {"STALE"}
+
+
+def test_an_unplaceable_current_quote_leaves_the_stored_artifact_stale_not_current(monkeypatch):
+    _patch_canonical(monkeypatch, {"NVDA": {"symbol": "NVDA", "last": 100.0, "price_source": "market_quotes",
+                                            "freshness_state": "CURRENT"}}, state="DATA_UNAVAILABLE")
+    _patch_batch(monkeypatch, {"NVDA": {"price": 182.5, "as_of": "junk", "source": "finviz_quote_cache"}})
+
+    assert api_v2._canonical_quotes_fresh(["NVDA"])["NVDA"]["freshness_state"] == "STALE"
+
+
+def test_nan_and_infinite_prices_are_absent(monkeypatch):
+    _patch_batch(monkeypatch, {"AAA": {"price": float("nan"), "as_of": "2026-11-07T06:30:01Z"},
+                               "BBB": {"price": "inf", "as_of": "2026-11-07T06:30:01Z"},
+                               "CCC": {"price": 5.0, "as_of": "2026-11-07T06:30:01Z", "source": "market_quotes"}})
+
+    assert set(api_v2._fresh_price_batch(["AAA", "BBB", "CCC"])) == {"CCC"}
+
+
+def test_a_finviz_price_does_not_borrow_another_rows_day_change(monkeypatch):
+    _patch_batch(monkeypatch, {
+        "AAA": {"price": 10.0, "chg_pct": 3.0, "as_of": "2026-11-07T06:30:01Z", "source": "finviz_quote_cache"},
+        "BBB": {"price": 20.0, "chg_pct": 1.5, "as_of": "2026-11-07T06:30:01Z", "source": "market_quotes:schwab"}})
+
+    out = api_v2._fresh_price_batch(["AAA", "BBB"])
+
+    assert out["AAA"]["chg_pct"] is None
+    assert out["BBB"]["chg_pct"] == pytest.approx(1.5)
+
+
+def test_no_price_from_any_source_is_labelled_none_not_technical_snapshot():
+    px, source, as_of = api_v2._holding_price_fallback({"symbol": "ZZZ", "broker_market_value": 50.0}, {}, {})
+
+    assert px == 0.0
+    assert source == "none"
+    assert as_of == ""
+
+
+def test_holdings_and_rotation_read_prices_with_source_and_as_of():
+    """Source guards: portfolio_holdings prices Finviz through the filtered shared reader, and both rotation
+    price maps carry the price's own source and as_of."""
+    src = Path(api_v2.__file__).read_text(encoding="utf-8")
+
+    assert '_pp_mod.finviz_cache(STATE_DIR / "finviz_quote_cache.json")' in src
+    assert src.count('"source": _q.get("source"),') == 2
+    assert src.count('"as_of": _q.get("as_of"),') >= 2

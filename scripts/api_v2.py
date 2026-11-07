@@ -5,6 +5,7 @@ Read-only aggregation + journal review write layer.
 """
 
 import json
+import math
 import logging
 import os
 import re
@@ -3291,13 +3292,16 @@ def _fresh_price_batch(symbols, *, live=False):
             price = float(q["price"])
         except (TypeError, ValueError):
             continue
-        if price <= 0:
-            continue
+        if not math.isfinite(price) or price <= 0:
+            continue  # NaN/inf/≤0 is never a price
+        src = str(q.get("source") or "unknown")
         out[str(sym).upper()] = {
             "price": price,
-            "chg_pct": q.get("chg_pct"),
+            # A Finviz-cache price overlays a market_quotes row; that row's chg_pct describes a different
+            # record, so it does not travel with the Finviz price (same-record contract).
+            "chg_pct": None if "finviz_quote_cache" in src.lower() else q.get("chg_pct"),
             "as_of": _iso_quote_time(q.get("as_of")),
-            "source": q.get("source") or "unknown",
+            "source": src,
         }
     return out
 
@@ -3319,7 +3323,25 @@ def _canonical_quotes_fresh(symbols):
 
     syms = [str(s or "").upper() for s in symbols or [] if s]
     arts = _batch(syms) if syms else {}
-    for sym, q in _fresh_price_batch(syms).items():
+    fresh = _fresh_price_batch(syms)
+    for sym, art in list(arts.items()):
+        # Operator rule 2026-11-07: no price ≤30 min ⇒ the stored selector's answer is NOT current, whatever
+        # derive_freshness says (hold_last_close kept a 90-min-old or yfinance row CURRENT). An enrichment-
+        # snapshot price has no observation record of its own, so it is not shown at all.
+        # Every stored artifact is marked first; a usable current quote below then replaces it outright.
+        if not isinstance(art, dict) or art.get("last") is None:
+            continue
+        art = dict(art)
+        art["freshness_state"] = "STALE"
+        art["market_state"] = "STALE"
+        if (
+            str(art.get("price_source") or "").lower() == "enrichment"
+            or "yfinance" in str(art.get("price_source") or "").lower()
+        ):
+            art["last"] = None
+            art["day_change_pct"] = None
+        arts[sym] = art
+    for sym, q in fresh.items():
         state, session = _freshness(q["as_of"], hold_last_close=True)
         if state == "DATA_UNAVAILABLE":
             continue
@@ -4694,7 +4716,8 @@ def _holding_price_fallback(position, t_snap, e_cache):
             f"{broker}: no market value",
             _json_clean(position.get("last_reconciled_at") or position.get("updated_at") or ""),
         )
-    return px, "technical_snapshot", _json_clean((t_snap or {}).get("as_of") or (e_cache or {}).get("as_of") or "")
+    # No price from any source: say so; 0.0 stays only as the arithmetic placeholder (callers gate on _px > 0).
+    return 0.0, "none", ""
 
 
 def portfolio_holdings():
@@ -4815,19 +4838,19 @@ def portfolio_holdings():
             _live_mq_ts[_sym] = str(_as)
     _fv = _load_json(STATE_DIR / "finviz_quote_cache.json") or {}
     _fv_meta = _fv.get("_meta") or {}
+    # Prices come from the shared reader (source filter + UTC ISO as_of); the raw read keeps _meta + change_pct.
+    _fv_ok = _pp_mod.finviz_cache(STATE_DIR / "finviz_quote_cache.json")
     _fv_day: dict[str, float] = {}
     for _fsym, _fvrow in _fv.items():
         if not isinstance(_fvrow, dict):
             continue
         _su = str(_fsym).upper()
-        try:
-            if _fvrow.get("price"):
-                _live_fv[_su] = float(_fvrow["price"])
-                _ffa = _fvrow.get("last_fetched") or _fvrow.get("last_updated")
-                if _ffa:
-                    _live_fv_ts[_su] = str(_ffa)
-        except (TypeError, ValueError):
-            pass
+        _fvok = _fv_ok.get(_su)
+        if not _fvok:
+            continue  # not a Finviz price (yfinance fallback / self-named overlay rows): no price, no day change
+        _live_fv[_su] = float(_fvok["price"])
+        if _fvok.get("as_of"):
+            _live_fv_ts[_su] = str(_fvok["as_of"])
         try:
             if _fvrow.get("change_pct") is not None:
                 _fv_day[_su] = float(_fvrow["change_pct"])
@@ -48314,6 +48337,8 @@ def _rotation_summary(force=False):
                 _price[_s] = {
                     "price": round(float(_q["price"]), 2),
                     "day_change_pct": round(float(_q["chg_pct"]), 2) if _q.get("chg_pct") is not None else None,
+                    "source": _q.get("source"),
+                    "as_of": _q.get("as_of"),
                 }
         except Exception:
             _price = {}
@@ -48405,6 +48430,8 @@ def _rotation_summary(force=False):
                     _eprice[_s] = {
                         "price": round(float(_q["price"]), 2),
                         "day_change_pct": round(float(_q["chg_pct"]), 2) if _q.get("chg_pct") is not None else None,
+                        "source": _q.get("source"),
+                        "as_of": _q.get("as_of"),
                     }
             except Exception:
                 pass
