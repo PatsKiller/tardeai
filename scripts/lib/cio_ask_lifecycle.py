@@ -1201,3 +1201,15 @@ def _apply_quarantine(quarantine, report: dict) -> None:
     errs = quarantine.save()
     if errs:
         report.setdefault("quarantine_errors", []).extend(errs)
+
+
+def receipt_empty_reason(summary: dict, *, events_only: bool, has_outputs: bool) -> str | None:
+    """Why a receipt produced nothing. A run with source errors never reads as "no new events": that hid a missing
+    feed behind a healthy-looking empty (LQ-20261107-147/183). The errors are listed in the receipt's ``error``."""
+    if has_outputs:
+        return None
+    if summary.get("source_errors"):
+        return "source_error"
+    if not summary.get("tracked_threads"):
+        return "no_tracked_threads"
+    return "no_new_events" if events_only else "no_due_threads"

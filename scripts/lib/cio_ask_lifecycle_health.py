@@ -104,7 +104,7 @@ def _receipt(doc: Any, attempt: Any, lane: str, now: datetime, conditions: list[
         if type(produced) is not int or produced < 0 or produced < summary['checked_count']:
             issue('host_output_unverified')
         elif produced == 0 and attempt.get('empty_reason') not in {
-                'no_tracked_threads', 'no_new_events', 'no_due_threads'}:
+                'no_tracked_threads', 'no_new_events', 'no_due_threads', 'source_error'}:
             issue('host_empty_reason_unverified')
         at_summary = attempt.get('summary')
         if not isinstance(at_summary, Mapping) or dict(at_summary) != dict(summary):

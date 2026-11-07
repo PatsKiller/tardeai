@@ -61,7 +61,9 @@ class SecFilingEventsFile:
     def fetch(self, guids: set[str], since: datetime) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         if not self.path.exists():
-            return out
+            # A missing feed file is a broken producer, not "no filings": raising lets the caller record it in
+            # source_errors (an empty-but-present file still returns [] below). LQ-20261107-183.
+            raise FileNotFoundError(f"sec_filing_events input missing: {self.path.name}")
         with self.path.open(encoding="utf-8", errors="ignore") as fh:
             for line in fh:
                 try:

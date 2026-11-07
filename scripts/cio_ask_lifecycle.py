@@ -24,7 +24,7 @@ def main(argv=None):
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--events-only", action="store_true")
     args = parser.parse_args(argv)
-    from scripts.lib.cio_ask_lifecycle import run_once
+    from scripts.lib.cio_ask_lifecycle import receipt_empty_reason, run_once
 
     started = datetime.now(timezone.utc)
     run_id = os.environ.get("TRADEAI_RUN_ID")
@@ -50,15 +50,7 @@ def main(argv=None):
         attempted_count=summary.get("tracked_threads", 0),
         produced_count=summary.get("checked_count", 0),
         output_evidence=outputs,
-        empty_reason=None
-        if outputs
-        else (
-            "no_tracked_threads"
-            if not summary.get("tracked_threads")
-            else "no_new_events"
-            if args.events_only
-            else "no_due_threads"
-        ),
+        empty_reason=receipt_empty_reason(summary, events_only=args.events_only, has_outputs=bool(outputs)),
         error="; ".join(summary.get("source_errors", []))[:400] or None,
     )
     return 0 if summary.get("ok") else 1
