@@ -219,6 +219,18 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
     claim_env: list[str] = []          # values of TRADEAI_EFFECT_CLAIM=... in the prefix
     claim_lanes: list[str] = []        # LANE_ID arguments of effect_claim_cron.sh in the prefix
     has_wrapper = any(_is_effect_claim_wrapper(t) for t in prefix)
+    # An env assignment on the cron prefix (operator lanes: `SCALP_HOT_TIER=1`, `MOMENTUM_SCALP_OUTER_DEADLINE_S=170`)
+    # is a wrapper the executor CAN reproduce when the allowlist command declares the same `env NAME=value` pair before
+    # the script (`env` is the argv the executor runs). It is mapped then, and never silently dropped: a declared name
+    # with a different value is a problem of its own.
+    declared_env: dict[str, str] = {}
+    for t in entry_command:
+        if t == script:
+            break
+        m = re.match(r"^([A-Z_][A-Z0-9_]*)=(.*)$", t)
+        if m:
+            declared_env[m.group(1)] = m.group(2)
+    mapped_env: list[str] = []
     i = 0
     while i < len(prefix):
         t = prefix[i]
@@ -249,7 +261,14 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
             i += 1
             continue
         if re.match(r"^[A-Z_][A-Z0-9_]*=", t):
-            unmapped.append(f"env:{t.split('=', 1)[0]}")
+            name, _, value = t.partition("=")
+            if name in declared_env:
+                if declared_env[name] == value:
+                    mapped_env.append(t)
+                else:
+                    problems.append(f"wrapper_env_value_differs:{t} (allowlist declares {name}={declared_env[name]})")
+            else:
+                unmapped.append(f"env:{name}")
             i += 1
             continue
         unmapped.append(t)
@@ -273,7 +292,8 @@ def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] =
     if any(t.endswith("safe_flock.sh") for t in toks[:idx]):
         problems.append("cron_line_uses_safe_flock (executor live lock is flock; needs a flock -n line first)")
     return {"problems": problems, "live_arg": live, "cron_args": args, "market_gate": market_gate,
-            "offpeak_gate": offpeak, "script": script, "effect_claim": effect_claim}
+            "offpeak_gate": offpeak, "script": script, "effect_claim": effect_claim,
+            "env_wrapper": mapped_env}
 
 
 # ── per-lane builders ──────────────────────────────────────────────────────────────────────────
