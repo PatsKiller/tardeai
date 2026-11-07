@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { useNarrowViewport } from '../hooks/useNarrowViewport'
 import { BB, T, TYPE } from '../lib/watchTokens'
 import { RADIUS } from '../lib/designTokens'
 import { newestWriterRun, writerStateWords } from '../lib/deskWriterState'
@@ -109,6 +110,7 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
     const el = contentRef.current
     if (el && el.getBoundingClientRect().top > window.innerHeight * 0.5) el.scrollIntoView({ block: 'start' })
   }, [active])
+  const narrow = useNarrowViewport()
   const [now, setNow] = useState(Date.now)
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 60_000); return () => window.clearInterval(id) }, [])
   const laneIds = [...new Set(pageSources.flatMap(source => source.laneIds ?? []))].sort()
@@ -126,8 +128,16 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
         border: `1px solid ${active === tab.id ? T.link : BB.border}`, color: active === tab.id ? T.link : BB.text2, background: BB.bgPanel,
       }}>{tab.label}</button>)}
     </nav>}
+    {/* Mobile first (operator 2026-11-07 "catalog not showing on mobile"): on a phone the clocks pushed the page's own
+        content a full screen down. Below 820px they fold into one tap-to-open line; nothing is removed, and they open
+        on their own when the clocks could not be read. */}
     <section aria-label="Source clocks" style={panel}>
-      <h2 style={{ margin: '0 0 12px', fontSize: TYPE.md }}>Source clocks</h2>
+      <details data-testid="desk-source-clocks" open={!narrow || !!(error || stale || sourceReadFailed)}>
+      <summary style={{ cursor: 'pointer', minHeight: 44, display: 'flex', alignItems: 'center', gap: 8, listStyle: narrow ? undefined : 'none' }}>
+        <h2 style={{ margin: 0, fontSize: TYPE.md }}>Source clocks</h2>
+        {narrow && <span style={{ fontSize: TYPE.sm, color: BB.text3 }}>{pageSources.length} source{pageSources.length === 1 ? '' : 's'} · tap for when each was last updated</span>}
+      </summary>
+      <div style={{ marginTop: 12 }}>
       {(error || stale || sourceReadFailed) && <DeskGap title="Writer clocks unavailable" reason="The latest execution evidence could not be loaded. Any retained clocks are historical.">
         <button type="button" onClick={refetch} style={{ minHeight: 44, width: '100%', marginTop: 8 }}>Retry writer clocks</button>
       </DeskGap>}
@@ -172,6 +182,8 @@ export default function DeskPage({ title, purpose, tabs = [], defaultTab, tabAli
           </article>
         })}
       </div>
+      </div>
+      </details>
     </section>
     <section aria-label="Decisions for you" style={panel}>
       <h2 style={{ fontSize: TYPE.md, margin: '0 0 8px' }}>Decisions for you</h2>
