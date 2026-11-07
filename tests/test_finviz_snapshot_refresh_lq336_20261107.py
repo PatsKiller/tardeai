@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import sys
 import types
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -115,6 +115,7 @@ def test_last_session_close_refuses_to_guess(monkeypatch):
 def test_holdings_symbols_skip_cash_and_loans(tmp_path):
     p = tmp_path / "data" / "portfolios" / "state"
     p.mkdir(parents=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture inside pytest's tmp_path, not a live store
     (p / "holdings.json").write_text(json.dumps({"holdings": [
         {"symbol": "noc"},
         {"symbol": "cash", "is_cash": True},
@@ -127,6 +128,7 @@ def test_holdings_symbols_skip_cash_and_loans(tmp_path):
 
 def test_universe_is_a_deduped_union_in_source_order(tmp_path, monkeypatch):
     (tmp_path / "data" / "portfolios" / "state").mkdir(parents=True)
+    # nosemgrep: tq-py-nonatomic-store-write -- synthetic fixture inside pytest's tmp_path, not a live store
     (tmp_path / "data" / "portfolios" / "state" / "holdings.json").write_text(
         json.dumps({"holdings": [{"symbol": "AAA"}, {"symbol": "BBB"}]}))
     monkeypatch.setattr(R, "watchlist_symbols", lambda conn, cap=0: ["BBB", "CCC"])
@@ -166,7 +168,7 @@ def test_lane_output_partitions_attempted():
 
 def test_apply_counts_the_table_not_what_it_sent(tmp_path, monkeypatch):
     """``save_ticker_snapshot_daily`` swallows its failure — so a write that lands nothing must read as zero."""
-    started = datetime.now()
+    started = datetime.now(timezone.utc)
     rec = {"cached_at": started.isoformat(), "price": 10.0}
     monkeypatch.setattr(R, "_connect", lambda readonly: FakeConn())
     monkeypatch.setattr(R, "build_universe", lambda *a, **k: {
@@ -191,7 +193,7 @@ def test_apply_counts_the_table_not_what_it_sent(tmp_path, monkeypatch):
 
 
 def test_apply_writes_the_verified_rows_and_reports_the_rest(tmp_path, monkeypatch):
-    started = datetime.now()
+    started = datetime.now(timezone.utc)
     fresh = {"cached_at": started.isoformat(), "price": 10.0}
     monkeypatch.setattr(R, "_connect", lambda readonly: FakeConn())
     monkeypatch.setattr(R, "build_universe", lambda *a, **k: {
