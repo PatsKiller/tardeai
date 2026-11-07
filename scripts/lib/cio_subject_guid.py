@@ -51,12 +51,20 @@ def lookup_subject(symbol: str, *, root=None) -> dict[str, Any]:
         return _empty(sym, NOT_APPLICABLE, "cash_or_non_entity_symbol" if sym else "empty_symbol")
     try:
         from scripts.lib.identity_registry import load_cached, lookup_symbol
-        ent = lookup_symbol(load_cached(root), sym)
+        from scripts.lib.security_identity import normalize_symbol
+        doc = load_cached(root)
+        ent = lookup_symbol(doc, sym)
+        in_registry = normalize_symbol(sym) in (doc.get("by_symbol") or {})
     except Exception as exc:
         # The registry could not be read. That is not "this symbol is unknown".
         return _empty(sym, LOOKUP_FAILED, type(exc).__name__)
     if not isinstance(ent, dict) or not ent.get("subject_guid"):
-        return _empty(sym, UNRESOLVED, "registry_answered_no_entity")
+        # Both are UNRESOLVED, but they are different facts. "Never minted" is a coverage
+        # gap (the minter's feeds did not include the symbol, e.g. an ETF or fund with no
+        # e-confirm CUSIP); "minted but no subject" is a registry decision. Keep them apart
+        # so coverage can be measured.
+        reason = "registry_answered_no_entity" if in_registry else "symbol_not_in_registry"
+        return _empty(sym, UNRESOLVED, reason)
     return {
         "subject_guid": ent.get("subject_guid"),
         "entity_type": ent.get("entity_type") or "SECURITY",

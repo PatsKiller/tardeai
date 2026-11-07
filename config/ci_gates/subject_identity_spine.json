@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "subject_identity_spine",
   "files": [
-    "tests/test_backfill_subject_identity.py"
+    "tests/test_backfill_subject_identity.py",
+    "tests/test_lq188_identity_reason_20261107.py"
   ],
   "comment": [
     "Stage 0. ~336,000 rows could not be joined to a subject: three tables",
