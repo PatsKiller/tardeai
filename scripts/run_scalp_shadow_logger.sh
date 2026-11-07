@@ -6,7 +6,11 @@
 #   */5 9-15 * * 1-5  cd $PROJ && bash scripts/run_scalp_shadow_logger.sh >> logs/scalp_shadow_logger.log 2>&1
 #   0,5..55 16 ...    (16:00 handled by the 9-15 range ending; add a 16:00 line if wanted)
 set -euo pipefail
-PROJ="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# Resolve the tree from this script's own location, never a hardcoded checkout: the live cron line runs the copy in
+# the canonical tree (same result as before), while an n8n run executes the code root it was started from. A
+# hardcoded path would make an n8n cutover of this lane run the served tree and still exit 0 — a cutover that looks
+# like a success and changes nothing.
+PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJ"
 TOT=$("$PROJ/.venv/bin/python" -c "import json;d=json.load(open('data/portfolios/state/holdings.json'));print(d['portfolio_totals']['total_value'])" 2>/dev/null || echo 0)
 if [ "$(printf '%.0f' "$TOT" 2>/dev/null || echo 0)" -le 0 ]; then
@@ -16,4 +20,4 @@ if [ -f "$HOME/.tradeai/SCALP_ENGINE_DISABLED" ]; then
   echo "$(date -Is) HALT: kill file present"; exit 0
 fi
 exec bash "$PROJ/scripts/safe_flock.sh" /tmp/scalp_shadow_logger.lock \
-  "$PROJ/.venv/bin/python" scripts/scalp_shadow_logger.py --live --apply --top 0
+  "$PROJ/.venv/bin/python" scripts/scalp_shadow_logger.py --live --apply --top 0 "$@"
