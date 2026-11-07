@@ -2,7 +2,8 @@
 
 Status: report + explicit exemptions. Authority: READ_ONLY_ADVISORY. Packet:
 `docs/ops/packets/registry-runtime-truth-20261018/`. Pinned by `tests/test_registry_runtime_truth_20261018.py`
-(every ACTIVE kind-none lane below must be named in this file; the exemption set is pinned exactly).
+(every ACTIVE kind-none lane below must be named in this file; the exemption set is pinned exactly). The
+2026-11-07 update to D and E is pinned by `tests/test_lane_output_signal_cohort_20261107.py`.
 
 ## Counts
 
@@ -96,10 +97,12 @@ out of scope without an `execution-ops` grant).
 | `tradeai-watch-decision-scheduler` | receipt with decisions scheduled |
 | `hermes-deep-research-local` | receipt with briefs produced |
 | `mcporter-token-refresh` | credential refresh: receipt must carry only ok/expiry, never a token value |
-| `hermes-librarian-retention` | deletion-only: needs an archive-first receipt (rows archived/purged); ties to the open DB-retention item |
+| `hermes-librarian-retention` | **resolved 2026-11-07** — `HermesLibrarianRetentionReceipt@v1` declared as `json_key` `ts` (see the update section) |
 | `disk-hygiene-enforcer` | deletion-only; a parallel branch (`feat/disk-hygiene-n8n-20261018`) owns this row — not touched here |
 
 ### E. Backlog — cron lines that need a LaneRunReceipt (9)
+
+**2026-11-07:** nine of the eleven rows below are resolved — see the update section after this table.
 
 | lane | note |
 |---|---|
@@ -114,6 +117,39 @@ out of scope without an `execution-ops` grant).
 | `hermes-usefulness-backfill` | writes a score without a timestamp column; receipt with rows scored (or add `scored_at`) |
 | `release-train-claim` | claimer timer (2026-10-22): a pass with nothing pending writes nothing; receipts only on a claimed TrainWindowRequest — receipt per pass |
 | `ops-controls-applier` | long-running Ops Controls applier (2026-10-22): heartbeat is read by GET /api/v2/ops/controls/state — write the heartbeat as a file signal |
+
+## 2026-11-07 update — ten rows that said "no output proof declared"
+
+Ten ACTIVE rows were still `output_signal.kind = none` with no reason, so `GET /api/v2/scheduler-operations`
+reported each as `NO_SIGNAL` with `health_reason = "NO_SIGNAL_WITH_REASON missing; no output proof declared"`
+and `is_problem()` listed all ten on Jobs & n8n. Each row is now either a declared artifact or an explicit
+reason. Half of it was a declaration gap, not a missing producer.
+
+| lane | declaration | evidence |
+|---|---|---|
+| `crawl-v3-dashboard` | `json_key` `data/runtime/crawl-v3-dashboard_last.json` → `ok_at` | the receipt already existed on disk (`ok_at` 2026-11-06T11:53Z); the registry never named it |
+| `hermes-top20-external-intel` | `json_key` → `hermes_top20_external_intel_last.json` `ok_at` | existing `LaneRunReceipt@v1`; `ok_at` advances only when a researcher call succeeded |
+| `hermes-usefulness-backfill` | `json_key` → `hermes-usefulness-backfill_last.json` `ok_at` | existing receipt (selected/scored/failed); the timestamp-less `usefulness_score` column is no longer the only evidence |
+| `hermes-librarian-retention` | `json_key` → `hermes_librarian_retention_last.json` `ts` | `HermesLibrarianRetentionReceipt@v1`, written only on an applied pass (absent for a dry run) |
+| `rotation-rebalance-digest` | `json_key` → `rotation-rebalance-digest_last.json` `ok_at` | **producer added 2026-11-07**; `ok_at` advances only on exit 0, and a withheld publication exits 1, so a withheld digest goes stale instead of green |
+| `alert-missing-conditions` | `json_key` → `alert-missing-conditions_last.json` `ok_at` | **producer added 2026-11-07**; the receipt carries each alert count plus the credit-probe outcome, and a probe that could not answer is recorded as such instead of as "credits fine" |
+| `dof-run-pipeline` | `file_mtime` `~/nyc-dof-auction/outputs` | stage 6's dated reports; proves stage 6 produced reports, **not** that every upstream stage succeeded — there is no aggregate run receipt, and the row's note says so |
+| `ops-daily-digest` | `none` + `NO_SIGNAL_WITH_REASON` | external `~/.openclaw` script: prints one JSON line, sends Telegram, writes no artifact; the cron `>>` redirect carries stderr, so a traceback advances it |
+| `ops-weekly-learning-report` | `none` + `NO_SIGNAL_WITH_REASON` | same |
+| `sync-memory-to-drive` | `none` + `NO_SIGNAL_WITH_REASON` | external `~/.claude` script: the tarball mtime proves packing, not upload; the log line is the cron redirect; the upload leaves no local receipt |
+
+Two consequences worth stating plainly:
+
+* `rotation-rebalance-digest` and `alert-missing-conditions` have **no receipt on disk yet**, so between this
+  change and each lane's first real cron run the projection reports them `SILENT` (an actionable state, because
+  an absent artifact is silence and not unverifiability) rather than `NO_SIGNAL`. They clear on their own: the
+  rotation digest on its next Sunday 18:00 run, the missing-conditions check on its next weekday 07:30 run.
+* For the three reason-bearing rows the reason removes the row from the problem list; it does not make the lane
+  verified. The lane monitor still reports them UNVERIFIABLE, which is the honest verdict.
+
+The three reason rows and the dof per-stage gap need a change outside this repository (a wrapper that writes a
+`LaneRunReceipt`, and per-stage status in `run_pipeline.py`); those are written up as proposals against an
+operator-approved crontab change, not done here.
 
 ## Not done here, on purpose
 

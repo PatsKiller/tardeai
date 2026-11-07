@@ -57,8 +57,12 @@ def test_dof_cron_provenance_is_observed_not_n8n_activated():
         assert row["state"] == "ACTIVE"
         assert "SQL" in row["note"] and "Observed crontab" in row["note"]
         assert "N6 retained on cron by operator decision 2026-10-09 (AGENTS.md §23.3)" in row["note"]
-    assert rows["dof-run-pipeline"]["output_signal"]["kind"] == "none"
-    assert "NO_SIGNAL" in rows["dof-run-pipeline"]["note"]
+    # 2026-11-07 (WORK-QUEUE): the stage-6 report directory is now the declared output proof, and the note
+    # must keep saying what that proof does NOT cover - there is still no aggregate receipt for the five-stage
+    # run, so "stage 6 produced reports" can never be read as "every stage succeeded".
+    row = rows["dof-run-pipeline"]
+    assert row["output_signal"] == {"kind": "file_mtime", "path": "~/nyc-dof-auction/outputs"}
+    assert "no aggregate run receipt" in row["note"]
 
 
 def test_rescan_signal_is_a_bounded_read_of_the_actual_updated_column():

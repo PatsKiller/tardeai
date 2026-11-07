@@ -15,9 +15,10 @@
       "expected_cadence_hours": 168,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "file_mtime",
+        "path": "~/nyc-dof-auction/outputs"
       },
-      "note": "Observed crontab -l 2026-10-08: Saturday 20:00, cwd ~/nyc-dof-auction, .venv/bin/python3 scripts/run_pipeline.py, stdout -> logs/pipeline.log. NO_SIGNAL: no durable aggregate receipt; run_pipeline.py:74-91 prints failed stage numbers but main does not return a nonzero exit. stage6_reports.py writes dated outputs outside Trade AI state. Scheduling metadata only: SQL writers are barred by AGENTS 23.3; no shared cron lock or write-nothing dry-run. No foreign repository edited or command invoked. N6 retained on cron by operator decision 2026-10-09 (AGENTS.md §23.3).",
+      "note": "Observed crontab -l 2026-10-08: Saturday 20:00, cwd ~/nyc-dof-auction, .venv/bin/python3 scripts/run_pipeline.py, stdout -> logs/pipeline.log. OUTPUT PROOF 2026-11-07: stage 6 writes its dated CSV/PDF/XLSX reports into ~/nyc-dof-auction/outputs, so that directory's mtime is the lane's durable output. There is still no aggregate run receipt for the five-stage run: this proves stage 6 produced reports, NOT that every upstream stage succeeded (run_pipeline.py:74-91 prints failed stage numbers but main does not return a nonzero exit, and stages 5-6 run on partial data). Per-stage status is the stronger contract and needs a change inside that repository (proposed 2026-11-07). Scheduling metadata only: SQL writers are barred by AGENTS 23.3; no shared cron lock or write-nothing dry-run. No foreign repository edited or command invoked. N6 retained on cron by operator decision 2026-10-09 (AGENTS.md §23.3).",
       "state_since": "2026-10-08",
       "value_class": "Business Critical",
       "recommendation": "KEEP_ON_CRON",
@@ -286,9 +287,10 @@
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: ~/.openclaw/skills/tradeai-health-inspect/scripts/ops_daily_digest.py is outside this repository and writes no artifact - it prints one JSON line and sends Telegram. The cron >> log redirect is not proof: it carries stderr too, so a traceback advances it. A wrapper that writes a LaneRunReceipt (sent/skipped + counts) is the fix; proposed 2026-11-07, needs an operator-approved crontab change."
       },
-      "note": "Observed crontab -l 2026-10-08 10:53 EDT. External OpenClaw script main()/emit() prints JSON and sends Telegram; NO_SIGNAL: no durable job receipt. No external source was modified.",
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. External OpenClaw script main()/emit() prints JSON and sends Telegram; NO_SIGNAL_WITH_REASON: the script writes no artifact - it prints one JSON line and sends Telegram - and the cron >> log redirect carries stderr, so a traceback advances it. A wrapper that writes a LaneRunReceipt is the fix; proposed 2026-11-07, needs an operator-approved crontab change. No external source was modified.",
       "state_since": "2026-10-08",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P11",
@@ -314,9 +316,10 @@
       "expected_cadence_hours": 168,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: ~/.openclaw/skills/tradeai-health-inspect/scripts/ops_weekly_learning_report.py is outside this repository and writes no artifact - it prints one JSON line and sends Telegram. The cron >> log redirect is not proof: it carries stderr too, so a traceback advances it. A wrapper that writes a LaneRunReceipt (sent/skipped + counts) is the fix; proposed 2026-11-07, needs an operator-approved crontab change."
       },
-      "note": "Observed crontab -l 2026-10-08 10:53 EDT. External OpenClaw script main()/emit() prints JSON and sends Telegram; NO_SIGNAL: no durable job receipt. No external source was modified.",
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. External OpenClaw script main()/emit() prints JSON and sends Telegram; NO_SIGNAL_WITH_REASON: the script writes no artifact - it prints one JSON line and sends Telegram - and the cron >> log redirect carries stderr, so a traceback advances it. A wrapper that writes a LaneRunReceipt is the fix; proposed 2026-11-07, needs an operator-approved crontab change. No external source was modified.",
       "state_since": "2026-10-08",
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -461,9 +464,11 @@
       "expected_cadence_hours": 168,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/rotation-rebalance-digest_last.json",
+        "key": "ok_at"
       },
-      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/rotation_rebalance_digest.py:26-28 POSTs research requests and :73-74 sends Telegram. NO_SIGNAL: prints a summary, no durable per-run receipt; not allowlisted.",
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/rotation_rebalance_digest.py:26-28 POSTs research requests and :73-74 sends Telegram. OUTPUT PROOF 2026-11-07: a real run writes data/runtime/rotation-rebalance-digest_last.json (LaneRunReceipt@v1); ok_at advances only on exit 0 and a withheld publication exits 1, so the lane goes stale instead of green. --dry-run writes nothing.",
       "state_since": "2026-10-08",
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P11",
@@ -887,9 +892,11 @@
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/crawl-v3-dashboard_last.json",
+        "key": "ok_at"
       },
-      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/crawl_v3_dashboard.py:137-156 prints results and conditionally sends; cron uses --telegram. NO_SIGNAL: no durable per-run receipt, so not allowlisted.",
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. scripts/crawl_v3_dashboard.py:137-156 prints results and conditionally sends; cron uses --telegram. OUTPUT PROOF 2026-11-07: the script already wrote data/runtime/crawl-v3-dashboard_last.json (LaneRunReceipt@v1, ok_at only on success); the registry never declared it. --dry-run writes no receipt.",
       "state_since": "2026-10-08",
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P03",
@@ -926,9 +933,11 @@
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/alert-missing-conditions_last.json",
+        "key": "ok_at"
       },
-      "note": "Observed crontab -l 2026-10-08 10:53 EDT. main() prints and dispatches operator alerts; check_api_credits() makes a paid model probe. NO_SIGNAL: no durable per-run receipt; never allowlisted.",
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT. main() prints and dispatches operator alerts; check_api_credits() makes a paid model probe. OUTPUT PROOF 2026-11-07: a real run writes data/runtime/alert-missing-conditions_last.json (LaneRunReceipt@v1) carrying each alert count and the credit probe outcome; ok_at advances only on exit 0. --dry-run is offline and writes nothing.",
       "state_since": "2026-10-08",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P11",
@@ -986,9 +995,10 @@
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "NO_SIGNAL_WITH_REASON: ~/.claude/sync-memory-to-drive.sh packs the memory tarball, deletes the previous Drive copy, uploads, then echoes. The tarball mtime proves packing, not upload; the log line is the cron >> redirect (stderr included), so a failed upload advances it too; the Drive upload leaves no local receipt. A wrapper writing the upload result is the fix; proposed 2026-11-07, needs an operator-approved crontab change."
       },
-      "note": "Observed crontab -l 2026-10-08 10:53 EDT: 10 3 * * * flock -n /tmp/claude_memsync.lock ~/.claude/sync-memory-to-drive.sh. External source creates ~/.claude/projects/-home-johnclaw/memory_backup/claude_memory_backup.tar.gz, then permanently deletes Drive copies before upload. NO_SIGNAL: archive mtime proves packing, not upload, and no durable upload receipt exists. Not allowlisted.",
+      "note": "Observed crontab -l 2026-10-08 10:53 EDT: 10 3 * * * flock -n /tmp/claude_memsync.lock ~/.claude/sync-memory-to-drive.sh. External source creates ~/.claude/projects/-home-johnclaw/memory_backup/claude_memory_backup.tar.gz, then permanently deletes Drive copies before upload. NO_SIGNAL_WITH_REASON: the tarball mtime proves packing, not upload, the cron >> log redirect carries stderr so a failed upload advances it too, and the Drive upload leaves no local receipt. A wrapper writing the upload result is the fix; proposed 2026-11-07, needs an operator-approved crontab change.",
       "state_since": "2026-10-08",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -3262,9 +3272,11 @@
       "expected_cadence_hours": 2.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/hermes_top20_external_intel_last.json",
+        "key": "ok_at"
       },
-      "note": "Top-20 external LLM curation over the free OAuth lanes. Emits its report to stdout and the log only. UNVERIFIABLE until it writes a receipt.",
+      "note": "Top-20 external LLM curation over the free OAuth lanes. OUTPUT PROOF 2026-11-07: it writes data/runtime/hermes_top20_external_intel_last.json (LaneRunReceipt@v1) and ok_at advances only when at least one researcher call succeeded; the stdout report was never the only artifact.",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
       "rationalization": {
@@ -3291,9 +3303,11 @@
       "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/hermes-usefulness-backfill_last.json",
+        "key": "ok_at"
       },
-      "note": "Scores hermes_external_research.usefulness_score. The column it writes carries no companion timestamp, so there is nothing to take a max() of; a scored_at column or a run receipt would make this verifiable. | 2026-09-14: gated to the operator window; weekday nights skip (up to 12 h without a run). Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
+      "note": "Scores hermes_external_research.usefulness_score. OUTPUT PROOF 2026-11-07: the scorer writes data/runtime/hermes-usefulness-backfill_last.json (LaneRunReceipt@v1: selected/scored/failed) and ok_at advances only on exit 0, so the timestamp-less usefulness_score column is no longer the only evidence; a scored_at column would still be better. | 2026-09-14: gated to the operator window; weekday nights skip (up to 12 h without a run). Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P13",
       "rationalization": {
@@ -3318,9 +3332,11 @@
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "none"
+        "kind": "json_key",
+        "path": "data/runtime/hermes_librarian_retention_last.json",
+        "key": "ts"
       },
-      "note": "Retention timer; deletion-only effect, no durable artifact. Needs a run receipt to become verifiable.",
+      "note": "OUTPUT PROOF 2026-11-07: scripts/run_hermes_librarian_retention.py writes data/runtime/hermes_librarian_retention_last.json (HermesLibrarianRetentionReceipt@v1) on every applied pass; ts is that pass's time and the file is absent for a dry run, so ts proves the timer applied retention. Row counts are in the same file.",
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
