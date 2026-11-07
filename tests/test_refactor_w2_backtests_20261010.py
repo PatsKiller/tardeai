@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 import sys
 import types
 from datetime import datetime, timezone
@@ -61,6 +62,7 @@ class FakeCursor:
     def execute(self, sql, params=None):
         norm = " ".join(sql.split())
         self.conn.sql.append(norm)
+        self.conn.params.append(list(params) if params else [])
         if self.conn.fail_on and self.conn.fail_on in norm:
             raise RuntimeError("db failure")
         res = (self.conn.responder(norm, params) if self.conn.responder else None) or {}
@@ -81,7 +83,7 @@ class FakeCursor:
 class FakeConn:
     def __init__(self, responder=None, fail_on=None):
         self.responder, self.fail_on = responder, fail_on
-        self.sql, self.commits, self.readonly, self.closed = [], 0, None, False
+        self.sql, self.params, self.commits, self.readonly, self.closed = [], [], 0, None, False
 
     def cursor(self, *a, **k):
         return FakeCursor(self)
@@ -258,6 +260,95 @@ def test_proposal_backtest_persist_failure_exits_1(monkeypatch, _state):
     rec = _receipt(_state, "proposal-backtest-engine")
     assert rec["status"] == "failed" and rec["summary"]["persist_failures"] == 1
     assert rec["summary"]["load_errors"] == 1
+
+
+# ── one sample per row + min-n gate (audit 2026-11-07, AMWL #12438 / KRO #12432) ─────────────────────
+# The live table showed win_rate 1.0 beside profit_factor 2.63 under one sample_size 16: the 1.0 was
+# 3 of 3 similar setups while the 2.63 came from all 16 strategy trades, and a 2-trade sample printed
+# expectancy 241.4. Every metric a row reports must come from the sample its sample_size names, and a
+# sample below MIN_METRIC_SAMPLE reports no risk metrics at all.
+
+_STRATEGY_SAMPLE_16 = (16, 10, 6, 614.80, 233.44, 23.845, 0.97)  # trades, wins, losses, gains, losses, avg pnl, avg r
+_STRATEGY_SAMPLE_2 = (2, 2, 0, 482.80, 0.0, 241.40, 2.03)
+_SIMILAR_3_ALL_WINS = [(10.0, 1.0), (10.0, 1.0), (10.0, 1.0)]
+
+
+def _pbe_sample_env(monkeypatch, strategy_row, similar_rows, ids=(7,)):
+    def responder(sql, params):
+        if sql.startswith("SELECT id FROM paper_trade_proposals"):
+            return {"all": [(i,) for i in ids]}
+        if sql.startswith("SELECT id, symbol, strategy_id"):
+            return {
+                "description": [(c,) for c in _PROP_COLS],
+                "one": (params[0], "AMWL", "swing_breakout", "breakout", 3.0, 20.0, 4.0, None, None, None, None, "tech"),
+            }
+        if sql.startswith("SELECT COUNT(*), COALESCE") and "FROM paper_trades WHERE strategy_id" in sql:
+            return {"one": strategy_row}
+        if sql.startswith("SELECT COUNT(*), COALESCE"):
+            return {"one": (0, 0, 0)}
+        if sql.startswith("SELECT COUNT(*)"):
+            return {"one": (0,)}
+        if sql.startswith("SELECT pnl, outcome_verdict"):
+            return {"one": None}
+        if sql.startswith("SELECT pt.pnl, pt.r_multiple"):
+            return {"all": list(similar_rows)}
+        return None
+
+    conn = FakeConn(responder)
+    monkeypatch.setattr(pbe, "get_conn", lambda: conn)
+    return conn
+
+
+def _row_params(conn):
+    for sql, params in zip(conn.sql, conn.params):
+        if sql.startswith("INSERT INTO proposal_backtest_snapshots"):
+            return params
+    raise AssertionError("no proposal_backtest_snapshots insert")
+
+
+def test_metrics_all_come_from_the_sample_the_row_reports(monkeypatch):
+    """The similar-setup match (3 of 3) must not supply win_rate while the 16 strategy trades supply PF."""
+    conn = _pbe_sample_env(monkeypatch, _STRATEGY_SAMPLE_16, _SIMILAR_3_ALL_WINS)
+    res = pbe.backtest_proposal(conn, 7)
+
+    assert res["metrics_sample"] == "strategy" and res["metrics_sample_size"] == 16
+    assert res["sample_size"] == 16, "sample_size must be the n the metrics were computed on"
+    assert res["win_rate"] == 0.625, "10 of 16 strategy trades — not 3 of 3 similar setups"
+    assert res["profit_factor"] == 2.63 and res["expectancy"] == 23.84 and res["avg_r"] == 0.97
+    assert res["metrics_suppressed"] is False
+    # 3 similar matches are real evidence of a count and a PnL sum, not of a win rate
+    assert "3 similar setups" in res["similar_setup_summary"]
+    assert not re.search(r"win rate \d", res["similar_setup_summary"]), "no rate on 3 matches"
+    assert "withheld" in res["similar_setup_summary"]
+
+
+def test_persisted_snapshot_row_is_internally_consistent(monkeypatch):
+    conn = _pbe_sample_env(monkeypatch, _STRATEGY_SAMPLE_16, _SIMILAR_3_ALL_WINS)
+    assert pbe.backtest_proposal(conn, 7)["persisted"] is True
+    p = _row_params(conn)  # pid, symbol, strategy, setup, sample_size, symbol_n, strategy_n, pattern_n, wr, pf, exp, r
+    assert p[4] == 16 and p[8] == 0.625 and p[9] == 2.63 and p[10] == 23.84
+
+
+def test_metrics_suppressed_below_the_minimum_sample(monkeypatch):
+    """KRO #12432 printed win_rate 1.0 and expectancy 241.4 on two trades."""
+    conn = _pbe_sample_env(monkeypatch, _STRATEGY_SAMPLE_2, [])
+    res = pbe.backtest_proposal(conn, 7)
+
+    assert res["metrics_suppressed"] is True and res["metrics_sample_size"] == 2
+    assert res["sample_size"] == 2
+    assert res["win_rate"] is None and res["profit_factor"] is None
+    assert res["expectancy"] is None and res["avg_r"] is None
+    assert res["strategy_history"]["win_rate"] is None
+    assert any("withheld" in line and "10" in line for line in res["limitations"]), res["limitations"]
+    assert res["backtest_quality"] == "INSUFFICIENT"
+
+
+def test_minimum_sample_boundary_is_inclusive(monkeypatch):
+    """10 trades exactly is the first sample that may report metrics."""
+    ten = (10, 6, 4, 300.0, 120.0, 18.0, 0.5)
+    res = pbe.backtest_proposal(_pbe_sample_env(monkeypatch, ten, []), 7)
+    assert res["metrics_suppressed"] is False and res["sample_size"] == 10
+    assert res["win_rate"] == 0.6 and res["profit_factor"] == 2.5 and res["expectancy"] == 18.0
 
 
 # ── agent_outcome_linker ─────────────────────────────────────────────────────────────────────────────

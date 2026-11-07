@@ -17,6 +17,13 @@ strategy_backtest_results insert is not called. Without --dry-run the behaviour 
 import backtest_proposal still persist by default). A real --all-pending run writes
 <state_root>/data/runtime/proposal-backtest-engine_last.json (ok_at only on success) and exits 1 when any
 proposal failed to load or persist.
+
+One sample per row (2026-11-07, audit LQ-20261107-127): every risk metric (win rate, profit factor,
+expectancy, avg R) is computed from the strategy's closed trades, ``sample_size`` reports that sample's n,
+and a sample below ``MIN_METRIC_SAMPLE`` reports no metrics at all. The old code took win rate from the
+similar-setup match when it had any rows and profit factor/expectancy from every strategy trade, all shown
+under one sample_size — AMWL #12438 read "win_rate 1.0, profit_factor 2.63, sample_size 16" where the 1.0
+was 3 of 3 similar setups, and KRO #12432 printed expectancy 241.4 on 2 trades.
 """
 import argparse
 import json
@@ -34,6 +41,10 @@ def get_conn():
     return connect()
 
 LANE_ID = "proposal-backtest-engine"
+
+# Below this many closed trades a win rate, profit factor or expectancy is noise presented as evidence.
+# It is the metrics-sample floor; ``sample_size`` names the n the reported metrics came from.
+MIN_METRIC_SAMPLE = 10
 
 log = logging.getLogger("backtest_engine")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -128,9 +139,10 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
     if last:
         symbol_history["last_result"] = f"PnL ${float(last[0]):.2f} ({last[1]})"
 
-    # ── 2. Same strategy history ────────────────────────────────────────
+    # ── 2. Same strategy history — THE metrics sample ───────────────────
+    # Every risk metric the row reports is computed here and nowhere else, from this one sample.
     strategy_history = {"trades": 0, "wins": 0, "losses": 0, "win_rate": None,
-                        "profit_factor": None, "expectancy": None, "sample_size": 0}
+                        "profit_factor": None, "expectancy": None, "avg_r": None, "sample_size": 0}
 
     if strategy_id:
         cur.execute("""
@@ -152,7 +164,8 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
         total_losses = float(r[4] or 0)
         avg_pnl = float(r[5] or 0)
         avg_r = float(r[6] or 0)
-        if strategy_history["trades"] > 0:
+        if strategy_history["trades"] >= MIN_METRIC_SAMPLE:
+            # n == 0 keeps every metric None; 0 < n < MIN_METRIC_SAMPLE is "suppressed" (reported, not scored)
             strategy_history["win_rate"] = round(strategy_history["wins"] / strategy_history["trades"], 3)
             strategy_history["profit_factor"] = round(total_gains / total_losses, 2) if total_losses > 0 else None
             strategy_history["expectancy"] = round(avg_pnl, 2)
@@ -162,7 +175,6 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
     similar_count = 0
     similar_wins = 0
     similar_pnl = 0.0
-    similar_r = 0.0
 
     # Match by strategy + similar RVOL/float/gap buckets from scans
     rvol = _safe_float(prop.get('rvol'), 0)
@@ -186,12 +198,11 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
               AND pt.rvol_at_entry BETWEEN %s AND %s
               AND pt.float_m_at_entry BETWEEN %s AND %s
         """, [strategy_id, rvol_lo, rvol_hi, float_lo, float_hi])
-        for pnl, r_mult in cur.fetchall():
+        for pnl, _r_mult in cur.fetchall():
             similar_count += 1
             if pnl and float(pnl) > 0:
                 similar_wins += 1
             similar_pnl += float(pnl or 0)
-            similar_r += float(r_mult or 0)
     except Exception as e:
         log.debug(f"Similar setup query failed: {e}")
         try: conn.rollback()
@@ -231,11 +242,12 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
         pass
 
     # ── Aggregate ───────────────────────────────────────────────────────
-    total_samples = (symbol_history["paper_trades"] + symbol_history["real_trades"] +
-                     similar_count + strategy_history["trades"])
-    # Deduplicated approximate
-    sample_size = max(similar_count, strategy_history["trades"],
-                      symbol_history["paper_trades"] + symbol_history["real_trades"])
+    # One sample per row: sample_size IS the metrics sample, so a row can never show a win rate and a
+    # profit factor that came from different trades. Symbol and pattern counts stay as separate,
+    # clearly-labelled descriptive fields — they do not feed any metric.
+    metrics_sample_size = strategy_history["trades"]
+    metrics_suppressed = 0 < metrics_sample_size < MIN_METRIC_SAMPLE
+    sample_size = metrics_sample_size
 
     if sample_size >= 30:
         backtest_quality = "SUFFICIENT"
@@ -246,31 +258,24 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
     else:
         backtest_quality = "NO_DATA"
 
-    # Aggregate win rate
-    total_closed = similar_count if similar_count > 0 else strategy_history["trades"]
-    total_w = similar_wins if similar_count > 0 else strategy_history["wins"]
-    win_rate = round(total_w / total_closed, 3) if total_closed > 0 else None
+    # All four from the same sample (the strategy's closed trades)
+    win_rate = strategy_history["win_rate"]
+    profit_factor = strategy_history["profit_factor"]
+    expectancy = strategy_history["expectancy"]
+    avg_r = strategy_history["avg_r"]
 
-    # Profit factor from strategy
-    profit_factor = strategy_history.get("profit_factor")
-
-    # Expectancy
-    expectancy = strategy_history.get("expectancy")
-
-    # Avg R
-    avg_r = None
-    if similar_count > 0 and similar_r:
-        avg_r = round(similar_r / similar_count, 2)
-    elif strategy_history.get("avg_r"):
-        avg_r = strategy_history["avg_r"]
-
-    # Similar setup summary
-    similar_summary = f"{similar_count} similar setups found "
+    # Similar setup summary — a narrower, descriptive cut of the same strategy sample. It may name its
+    # count and PnL sum, but a rate needs the same sample floor as the headline metrics.
+    similar_summary = f"{similar_count} similar setups found"
     if similar_count > 0:
-        sim_wr = round(similar_wins / similar_count * 100, 1)
-        similar_summary += f"(win rate {sim_wr}%, total PnL ${similar_pnl:.2f})"
+        similar_summary += f" (total PnL ${similar_pnl:.2f})"
+        if similar_count >= MIN_METRIC_SAMPLE:
+            sim_wr = round(similar_wins / similar_count * 100, 1)
+            similar_summary += f" (win rate {sim_wr}%)"
+        else:
+            similar_summary += f" — win rate withheld below {MIN_METRIC_SAMPLE} matches"
     else:
-        similar_summary += "— no close matches in local data"
+        similar_summary += " — no close matches in local data"
 
     # Repeat pattern
     repeat_detected = len(patterns["proven"]) > 0 or len(patterns["killed"]) > 0
@@ -282,8 +287,12 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
 
     # Limitations
     limitations = []
+    if metrics_suppressed:
+        limitations.append(
+            f"Win rate, profit factor, expectancy and avg R withheld: only {metrics_sample_size} closed "
+            f"{strategy_id or 'strategy'} trade(s), minimum {MIN_METRIC_SAMPLE}")
     if sample_size < 30:
-        limitations.append(f"Only {sample_size} local samples")
+        limitations.append(f"Only {sample_size} trades in the metrics sample")
     if symbol_history["paper_trades"] == 0:
         limitations.append(f"No closed paper trades for {symbol} yet")
     if symbol_history["real_trades"] == 0:
@@ -298,6 +307,12 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
         "symbol": symbol,
         "strategy_id": strategy_id,
         "sample_size": sample_size,
+        "metrics_sample": "strategy" if metrics_sample_size else None,
+        "metrics_sample_size": metrics_sample_size,
+        "metrics_min_sample": MIN_METRIC_SAMPLE,
+        "metrics_suppressed": metrics_suppressed,
+        "evidence_sample_size": max(metrics_sample_size,
+                                    symbol_history["paper_trades"] + symbol_history["real_trades"]),
         "symbol_sample_size": symbol_history["paper_trades"] + symbol_history["real_trades"],
         "strategy_sample_size": strategy_history["trades"],
         "pattern_sample_size": len(patterns["proven"]) + len(patterns["killed"]) + len(patterns["watch"]),
@@ -373,6 +388,9 @@ def backtest_proposal(conn, proposal_id, *, persist: bool = True):
         """, [
             backtest_quality,
             json.dumps({"quality": backtest_quality, "sample_size": sample_size,
+                         "metrics_sample": result["metrics_sample"],
+                         "metrics_sample_size": metrics_sample_size,
+                         "metrics_suppressed": metrics_suppressed,
                          "win_rate": win_rate, "profit_factor": profit_factor,
                          "expectancy": expectancy, "avg_r": avg_r,
                          "similar_summary": similar_summary,
