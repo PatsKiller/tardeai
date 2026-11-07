@@ -67,23 +67,62 @@ def is_acknowledged(dead: dict, receipts: dict[str, dict]) -> bool:
                 and ack.get("lane_id") == dead.get("lane_id"))
 
 
-def successful_runs(path: Path, *, now: datetime) -> dict[tuple[str, str], dict]:
-    """Newest receipt-verified successful run per lane/effective mode; SQLite read only."""
+def successful_runs(
+    path: Path,
+    *,
+    now: datetime,
+    lanes: "list[str] | set[str] | None" = None,
+    per_lane: int = 25,
+    gaps: "list[str] | None" = None,
+) -> dict[tuple[str, str], dict]:
+    """Newest receipt-verified successful run per lane/effective mode; SQLite read only.
+
+    One bounded query per lane (the ``runs_lane_state`` index, ``per_lane`` newest rows) instead of one scan of the
+    newest 10000 rows with their receipt blobs. Measured 2026-11-07 on the 594 MB ledger: the scan alone took 2.2 s
+    against a 2 s wall-clock cut-off, so it was interrupted every cold run and the fan-in reported
+    ``dlq_recovery_source: unavailable`` and recovered nothing. Each query has its own budget, and the validator's
+    Python time no longer counts against it. A lane whose query is interrupted is appended to ``gaps`` (when given)
+    and skipped; it never fails the other lanes.
+    """
     if not path.is_file():
         return {}
-    out = {}
+    out: dict[tuple[str, str], dict] = {}
     conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
     conn.row_factory = sqlite3.Row
-    conn.set_progress_handler(lambda: 1 if datetime.now(timezone.utc).timestamp() > deadline else 0, 10000)
-    deadline = datetime.now(timezone.utc).timestamp() + 2
+    budget = {"deadline": 0.0}
+    conn.set_progress_handler(lambda: 1 if datetime.now(timezone.utc).timestamp() > budget["deadline"] else 0, 10000)
+
+    def arm() -> None:
+        budget["deadline"] = datetime.now(timezone.utc).timestamp() + 3
+
     try:
-        for row in conn.execute("SELECT * FROM runs WHERE state='RUN_DONE' AND exit_code=0 ORDER BY finished_at DESC LIMIT 10000"):
-            run = dict(row)
-            run["receipt"] = RV.receipt_of(run)
-            mode = RV.effective_mode(run)
-            key = (run.get("lane_id"), mode)
-            if key not in out and RV.validate(run, mode=mode, lane=key[0], now=now)[0]:
-                out[key] = run
+        arm()
+        wanted = (
+            sorted({str(x) for x in lanes})
+            if lanes is not None
+            else [r[0] for r in conn.execute("SELECT DISTINCT lane_id FROM runs WHERE state='RUN_DONE'")]
+        )
+        for lane in wanted:
+            arm()
+            try:
+                rows = [
+                    dict(r)
+                    for r in conn.execute(
+                        "SELECT * FROM runs WHERE lane_id=? AND state='RUN_DONE' AND exit_code=0"
+                        " ORDER BY finished_at DESC LIMIT ?",
+                        (lane, int(per_lane)),
+                    )
+                ]
+            except sqlite3.OperationalError:
+                if gaps is not None:
+                    gaps.append(lane)
+                continue
+            for run in rows:
+                run["receipt"] = RV.receipt_of(run)
+                mode = RV.effective_mode(run)
+                key = (run.get("lane_id"), mode)
+                if key not in out and RV.validate(run, mode=mode, lane=key[0], now=now)[0]:
+                    out[key] = run
     finally:
         conn.close()
     return out

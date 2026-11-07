@@ -549,6 +549,7 @@ OUTBOX_SOURCE_STATUS: dict[str, Any] = {"status": "not_run"}
 # because importing the executor pulls the ledger + gateway modules into the fan-in at import time.
 EXECUTOR_LAST_REL = "data/runtime/n8n_run_executor_last.json"
 RUNS_STALE_FACTOR = 2.0
+RUNS_READ_BUDGET_S = 12.0  # the projection's 2 s UI budget measured 1.3-1.8 s here, so a loaded host tipped it over
 RUNS_FAILURE_STATES = ("RUN_FAILED", "RUN_TIMEOUT")
 
 
@@ -570,9 +571,11 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
         if not n8n_lanes:
             NOTES["runs_source"] = "ok:no_n8n_lanes"
             return []
-        proj = project_runs(limit=500, now=now)
-        if proj.get("status") != "OK":
-            raise RuntimeError(str(proj.get("status")))
+        proj = project_runs(limit=500, now=now, budget_s=RUNS_READ_BUDGET_S)
+        # PARTIAL is a readable ledger with some unparsable receipts among the newest rows; the parsed rows are
+        # still the latest runs, so they are used and the count is a note (it used to drop the whole source).
+        if proj.get("status") not in ("OK", "PARTIAL"):
+            raise RuntimeError(str(proj.get("status")) + ":" + str(proj.get("note") or "")[:60])
         latest: dict[str, dict[str, Any]] = {}
         for it in proj.get("items") or []:  # newest first
             lane = str(it.get("lane_id") or "")
@@ -618,6 +621,7 @@ def _runs_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
                 )
         NOTES["runs_source"] = (
             f"ok:{len(found)}:n8n_lanes={len(n8n_lanes)}:executor_receipt={'yes' if exec_doc else 'no'}"
+            + (f":unparsable_receipts={(proj.get('coverage') or {}).get('invalid_detail_rows')}" if proj.get("status") == "PARTIAL" else "")
         )
         return found
     except Exception as exc:  # noqa: BLE001 — a broken source is a note on the receipt, not a crash
@@ -697,7 +701,12 @@ def _dlq_findings(root: Path, now: datetime) -> list[dict[str, Any]]:
     from scripts.lib import n8n_dlq_disposition as DD
     try:
         acknowledged = DD.acknowledgements(root / DD.RECEIPTS_REL)
-        successes = DD.successful_runs(ledger, now=now)
+        gaps: list[str] = []
+        successes = DD.successful_runs(ledger, now=now, lanes={str(d.get("lane_id")) for d in dead}, gaps=gaps)
+        NOTES["dlq_recovery_source"] = (
+            f"ok:lanes_verified={len({k[0] for k in successes})}:lanes_read={len({str(d.get('lane_id')) for d in dead})}"
+            + (f":read_interrupted={len(gaps)}" if gaps else "")
+        )
     except Exception as exc:
         acknowledged, successes = {}, {}
         NOTES["dlq_recovery_source"] = f"unavailable:{type(exc).__name__}"

@@ -191,11 +191,12 @@ def project(path: Optional[Path] = None, *, lane_id: Optional[str] = None, state
 
 
 def project_runs(path: Optional[Path] = None, *, lane_id: Optional[str] = None, state: Optional[str] = None,
-                 limit: int = 100, now: Optional[_dt.datetime] = None, mode: Optional[str] = None) -> dict[str, Any]:
-    return _project(path,lane_id=lane_id,state=state,limit=limit,now=now,source="runs",mode=mode)
+                 limit: int = 100, now: Optional[_dt.datetime] = None, mode: Optional[str] = None,
+                 budget_s: float = 2.0) -> dict[str, Any]:
+    return _project(path,lane_id=lane_id,state=state,limit=limit,now=now,source="runs",mode=mode,budget_s=budget_s)
 
 
-def _project(path, *, lane_id, state, limit, now, source, mode=None):
+def _project(path, *, lane_id, state, limit, now, source, mode=None, budget_s=2.0):
     now=now or _dt.datetime.now(_dt.timezone.utc)
     p=Path(path or ledger_path())
     page_limit=max(1,min(int(limit),500))
@@ -217,7 +218,7 @@ def _project(path, *, lane_id, state, limit, now, source, mode=None):
     try:
         conn=sqlite3.connect(f"file:{p}?mode=ro",uri=True,timeout=2)
         conn.row_factory=sqlite3.Row
-        deadline=time.monotonic()+2.0
+        deadline=time.monotonic()+float(budget_s)
         conn.set_progress_handler(lambda: int(time.monotonic()>deadline),10000)
         conn.execute("PRAGMA query_only=1");conn.execute("BEGIN")
         table="runs" if source=="runs" else "receipts"
