@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "LANE_REGISTRY_ACTIVE_DAYS_LQ271_20261107",
+  "files": [
+    "tests/test_lane_registry_active_days_lq271_20261107.py"
+  ],
+  "anchor": "LANE_REGISTRY_ACTIVE_DAYS_LQ271_20261107",
+  "comment": [
+    "ANCHOR: LANE_REGISTRY_ACTIVE_DAYS_LQ271_20261107 — LQ-20261107-271, the weekend half of SILENT.",
+    "Measured 2026-11-07 (Saturday): lane_registry graded 19 weekday/Sunday-only lanes SILENT because",
+    "config/lane_registry.json declared no active_days for them, and _within_declared_days treats an",
+    "absent declaration as 'in window every day'. Their cron expressions already stated the days",
+    "(* * 1-5, * * 0); only the declaration was missing.",
+    "This gate pins the declaration on exactly those nineteen rows, derived from each row's own cron day",
+    "field, and pins the blast radius: on a Saturday those nineteen move SILENT -> EXPECTED_SILENT and no",
+    "other row changes verdict; on a Monday the declaration changes nothing.",
+    "Hermetic: observe_signal is stubbed and the scheduler inventory is synthetic; no live artifact,",
+    "database, network or clock read."
+  ]
+}

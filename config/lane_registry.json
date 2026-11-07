@@ -365,6 +365,7 @@
     },
     {
       "lane_id": "generate-weekly-docx",
+      "active_days": [6],
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
@@ -453,6 +454,7 @@
     },
     {
       "lane_id": "rotation-rebalance-digest",
+      "active_days": [6],
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
@@ -922,6 +924,7 @@
     },
     {
       "lane_id": "alert-missing-conditions",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
@@ -5359,6 +5362,7 @@
     },
     {
       "lane_id": "reconcile-exit-advisory-outcomes",
+      "active_days": [6],
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
@@ -5406,6 +5410,7 @@
     },
     {
       "lane_id": "reconcile-pullback-outcomes",
+      "active_days": [6],
       "owner": "watch",
       "scheduler": {
         "kind": "cron",
@@ -5972,6 +5977,7 @@
     },
     {
       "lane_id": "finviz-momentum-scalp-early-lane",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
@@ -6176,6 +6182,7 @@
     },
     {
       "lane_id": "active-trader-premarket-watch",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
@@ -6345,6 +6352,7 @@
     },
     {
       "lane_id": "options-intent-matcher",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "options",
       "scheduler": {
         "kind": "cron",
@@ -6379,6 +6387,7 @@
     },
     {
       "lane_id": "active-trader-session-review",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
@@ -7828,6 +7837,7 @@
     },
     {
       "lane_id": "cio-opportunity-curator",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
@@ -7861,6 +7871,7 @@
     },
     {
       "lane_id": "advice-digest",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "comms",
       "scheduler": {
         "kind": "cron",
@@ -15601,6 +15612,7 @@
     },
     {
       "lane_id": "investment-costs",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
@@ -20759,6 +20771,7 @@
     },
     {
       "lane_id": "send-telegram-proposal-alert",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "proposals",
       "scheduler": {
         "kind": "cron",
@@ -20939,6 +20952,7 @@
     },
     {
       "lane_id": "social-scalp-scanner",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "scalp",
       "scheduler": {
         "kind": "cron",
@@ -21386,6 +21400,7 @@
     },
     {
       "lane_id": "event-detector",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "portfolio",
       "scheduler": {
         "kind": "cron",
@@ -21928,6 +21943,7 @@
     },
     {
       "lane_id": "run-profit-capture-refresh",
+      "active_days": [6],
       "owner": "learning",
       "scheduler": {
         "kind": "cron",
@@ -24606,6 +24622,7 @@
     },
     {
       "lane_id": "incubator-llm-screener",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "proposals",
       "scheduler": {
         "kind": "cron",
@@ -25110,6 +25127,7 @@
     },
     {
       "lane_id": "db-retention-timer",
+      "active_days": [6],
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
@@ -27008,6 +27026,7 @@
     },
     {
       "lane_id": "social-ingest-scalp-hot",
+      "active_days": [0, 1, 2, 3, 4],
       "owner": "research",
       "state": "ACTIVE",
       "scheduler": {
