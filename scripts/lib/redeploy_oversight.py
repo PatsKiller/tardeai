@@ -27,14 +27,9 @@ OVERSIGHT_POLICY_VERSION = "oversight_policy_1.1.0"
 def ensure_oversight_schema(cur) -> None:
     ensure_plan_tables(cur)
     ensure_monitor_tables(cur)
-    try:
-        from lib.redeploy_schema import run_migrations_once
-        run_migrations_once(cur, "oversight_keys", (MIGRATION_LOCK, MIGRATION_RUN_KEYS))
-    except Exception:
-        if MIGRATION_LOCK.is_file():
-            cur.execute(MIGRATION_LOCK.read_text())
-        if MIGRATION_RUN_KEYS.is_file():
-            cur.execute(MIGRATION_RUN_KEYS.read_text())
+    from lib.redeploy_schema import run_migrations_once
+
+    run_migrations_once(cur, "oversight_keys", (MIGRATION_LOCK, MIGRATION_RUN_KEYS))
 
 
 def _audit(cur, event_id: int, action: str, payload: dict, *, idempotency_key: str | None = None) -> None:

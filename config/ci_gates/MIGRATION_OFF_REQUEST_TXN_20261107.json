@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "MIGRATION_OFF_REQUEST_TXN_20261107",
+  "files": ["tests/test_migration_off_request_txn_20261107.py"],
+  "anchor": "MIGRATION_OFF_REQUEST_TXN_20261107",
+  "comment": ["ANCHOR: MIGRATION_OFF_REQUEST_TXN_20261107 — LQ-20261107-270: first-call migration DDL must run on its own autocommit connection, never the request transaction that would hold ACCESS EXCLUSIVE on deploy_events."]
+}
