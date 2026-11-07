@@ -4,12 +4,16 @@
 Links synthesis recommendations to actual price outcomes for learning.
 
 Usage:
-    python3 scripts/record_decision_outcome.py [--backfill] [--json] [--dry-run]
+    python3 scripts/record_decision_outcome.py [--no-backfill] [--json] [--dry-run]
 
-Dry run (n8n refactor wave 3, 2026-10-10): ``--dry-run`` runs ONLY the read-only selections
-(``_select_decisions`` and, with ``--backfill``, ``_select_unevaluated`` + the price lookups) on a session
-made READ ONLY at the server, prints a ``DRY-RUN`` report and returns; ``record_current_decisions`` and
-``backfill_prices`` (the INSERT / UPDATE / commit) are not reachable from it. It writes no receipt.
+A real run does BOTH steps: insert an outcome row for every current synthesis that has none, then fill the
++1d/+7d/+30d closes of every row that is still missing one (from ``ticker_prices``) and score the rows that
+became scoreable. ``--backfill`` is accepted for compatibility (it used to be opt-in, which is why the n8n
+lane, whose argv has no flags, never backfilled a single price); ``--no-backfill`` skips the second step.
+
+Dry run (n8n refactor wave 3, 2026-10-10): ``--dry-run`` runs ONLY read-only selections and the fill preview on
+a session made READ ONLY at the server, prints a ``DRY-RUN`` report and returns; ``record_current_decisions``
+and ``backfill_prices`` (the INSERT / UPDATE / commit) are not reachable from it. It writes no receipt.
 
 A REAL run (the cron form, no flags) writes LaneRunReceipt@v1
 ``<state_root>/data/runtime/record-decision-outcome_last.json`` (``ok_at`` only on success). Exit codes:
@@ -19,11 +23,18 @@ argument; previously ignored silently).
 """
 import argparse
 import json, os, sys
-from datetime import datetime, date, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LANE_ID = "record-decision-outcome"
+
+#: Provenance id prefix: an outcome row points back at the watchlist synthesis it was recorded from.
+DECISION_ID_PREFIX = "synthesis"
+#: The same instant, formatted for Python and for PostgreSQL, so a row inserted now and a row backfilled later
+#: get the identical id.
+_TS_FMT_PY = "%Y-%m-%dT%H:%M:%SZ"
+_TS_FMT_PG = 'YYYY-MM-DD"T"HH24:MI:SS"Z"'
 
 _DECISIONS_SQL = """
         SELECT fs.symbol, fs.recommendation, fs.confidence, fs.updated_at,
@@ -36,13 +47,75 @@ _DECISIONS_SQL = """
         AND NOT EXISTS (SELECT 1 FROM decision_outcomes dout WHERE dout.symbol = fs.symbol AND dout.created_at > fs.updated_at - INTERVAL '1 day')
     """
 
-_UNEVALUATED_SQL = """
-        SELECT dout.id, dout.symbol, dout.created_at, dout.price_at_decision
-        FROM decision_outcomes dout
-        WHERE dout.evaluated_at IS NULL AND dout.price_at_decision IS NOT NULL
-        AND dout.created_at < NOW() - INTERVAL '1 day'
-        LIMIT 100
+#: One row per outcome record, with the close nearest +1d/+7d/+30d (within +-3 days, matching the old per-row
+#: lookups) and the "fill" flags: a column is written only when it is still NULL and a close was found.
+_FILL_SRC_SQL = """
+        SELECT o.id,
+               o.price_1d IS NULL AND p.p1 IS NOT NULL AS fill_1d,
+               o.price_7d IS NULL AND p.p7 IS NOT NULL AS fill_7d,
+               o.price_30d IS NULL AND p.p30 IS NOT NULL AS fill_30d,
+               o.decision_id IS NULL AS fill_id,
+               p.p1, p.p7, p.p30
+        FROM decision_outcomes o
+        CROSS JOIN LATERAL (
+            SELECT
+              (SELECT t.close_price FROM ticker_prices t
+                WHERE t.symbol = o.symbol
+                  AND t.price_date BETWEEN o.created_at::date + 1 - 3 AND o.created_at::date + 1 + 3
+                ORDER BY ABS(t.price_date - (o.created_at::date + 1)) LIMIT 1) AS p1,
+              (SELECT t.close_price FROM ticker_prices t
+                WHERE t.symbol = o.symbol
+                  AND t.price_date BETWEEN o.created_at::date + 7 - 3 AND o.created_at::date + 7 + 3
+                ORDER BY ABS(t.price_date - (o.created_at::date + 7)) LIMIT 1) AS p7,
+              (SELECT t.close_price FROM ticker_prices t
+                WHERE t.symbol = o.symbol
+                  AND t.price_date BETWEEN o.created_at::date + 30 - 3 AND o.created_at::date + 30 + 3
+                ORDER BY ABS(t.price_date - (o.created_at::date + 30)) LIMIT 1) AS p30
+        ) p
     """
+
+#: Set-based and idempotent: every price and the provenance id are COALESCEd, so a value another writer already
+#: stored -- and the score computed from it -- is never overwritten. Row count = rows actually written.
+_FILL_PRICES_SQL = f"""
+        WITH src AS ({_FILL_SRC_SQL})
+        UPDATE decision_outcomes o
+        SET price_1d  = COALESCE(o.price_1d, src.p1),
+            price_7d  = COALESCE(o.price_7d, src.p7),
+            price_30d = COALESCE(o.price_30d, src.p30),
+            decision_id = COALESCE(o.decision_id,
+                                   '{DECISION_ID_PREFIX}:' || o.symbol || ':' ||
+                                   to_char(o.created_at AT TIME ZONE 'UTC', '{_TS_FMT_PG}'))
+        FROM src
+        WHERE o.id = src.id
+          AND (src.fill_1d OR src.fill_7d OR src.fill_30d OR src.fill_id)
+    """
+
+#: Read-only preview of the same fill (dry run).
+_FILL_PREVIEW_SQL = f"""
+        WITH src AS ({_FILL_SRC_SQL})
+        SELECT count(*) AS rows,
+               count(*) FILTER (WHERE fill_1d) AS fill_1d,
+               count(*) FILTER (WHERE fill_7d) AS fill_7d,
+               count(*) FILTER (WHERE fill_30d) AS fill_30d,
+               count(*) FILTER (WHERE fill_id) AS fill_id,
+               count(*) FILTER (WHERE fill_1d OR fill_7d OR fill_30d OR fill_id) AS would_backfill
+        FROM src
+    """
+
+#: Rows that became scoreable (runs after the fill, in the same transaction, so it reads the filled prices).
+_SCORE_CANDIDATES_SQL = """
+        SELECT id, recommendation, price_at_decision, price_7d
+        FROM decision_outcomes
+        WHERE outcome_score IS NULL AND price_at_decision IS NOT NULL AND price_7d IS NOT NULL
+    """
+
+#: Never rewrites an existing score, and never moves an already-stamped evaluated_at.
+_SCORE_UPDATE_SQL = """
+        UPDATE decision_outcomes
+        SET outcome_score = %s, evaluated_at = COALESCE(evaluated_at, NOW())
+        WHERE id = %s AND outcome_score IS NULL
+    """
+
 
 
 def _receipt_lib():
@@ -59,26 +132,41 @@ def _select_decisions(cur) -> list:
     return cur.fetchall()
 
 
-def _select_unevaluated(cur) -> list:
-    """Read-only: outcome records awaiting a price backfill."""
-    cur.execute(_UNEVALUATED_SQL)
-    return cur.fetchall()
+def decision_id_for(symbol, when) -> str:
+    """The deterministic provenance id of an outcome row: ``synthesis:<SYMBOL>:<UTC instant>``.
+
+    ``when`` is the synthesis' ``updated_at`` (the row's ``created_at``). The SQL fill builds the identical string
+    (``_TS_FMT_PG``), so a row inserted today and a row backfilled later agree, and re-running is a no-op.
+    """
+    if isinstance(when, str):
+        when = datetime.fromisoformat(when.replace("Z", "+00:00"))
+    elif not isinstance(when, datetime):  # a plain date from a driver/test double: midnight UTC
+        when = datetime(when.year, when.month, when.day, tzinfo=timezone.utc)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return f"{DECISION_ID_PREFIX}:{symbol}:{when.astimezone(timezone.utc).strftime(_TS_FMT_PY)}"
 
 
-def _price_points(cur, sym, decision_date) -> dict:
-    """Read-only: closes nearest +1d/+7d/+30d from ticker_prices."""
-    prices = {}
-    for label, delta in [("1d", 1), ("7d", 7), ("30d", 30)]:
-        target_date = decision_date + timedelta(days=delta)
-        cur.execute("""
-            SELECT close_price FROM ticker_prices
-            WHERE symbol=%s AND price_date BETWEEN %s AND %s
-            ORDER BY ABS(price_date - %s::date) LIMIT 1
-        """, (sym, target_date - timedelta(days=3), target_date + timedelta(days=3), target_date))
-        r = cur.fetchone()
-        if r:
-            prices[label] = float(r["close_price"])
-    return prices
+def _outcome_score(recommendation, price_at_decision, price_after):
+    """The categorical outcome score every stored row uses, exactly as the live writer computes it
+    (``overnight_batch.evaluate_past_decisions``): 1.0 when the recommendation was right, -0.5 when a move of more
+    than 5% went against it, 0 otherwise. None when it cannot be computed -- unknown is not zero.
+
+    Only one definition of this column may exist. AVOID/IGNORE/NONE carry no direction, so they score on the
+    fallback branch, which is what all 864 scored rows already do; changing that here would split the column into
+    two meanings. Reported, not changed (LQ-20261107-130).
+    """
+    if price_at_decision is None or price_after is None:
+        return None
+    p0, p7 = float(price_at_decision), float(price_after)
+    if p0 <= 0:
+        return None
+    change_pct = (p7 / p0 - 1) * 100
+    rec = (recommendation or "").strip().upper()
+    correct = ((rec in ("BUY", "ADD") and change_pct > 0)
+               or (rec in ("SELL", "TRIM") and change_pct < 0)
+               or (rec == "HOLD" and abs(change_pct) < 10))
+    return 1.0 if correct else (-0.5 if abs(change_pct) > 5 else 0.0)
 
 
 def _get_conn():
@@ -102,11 +190,11 @@ def record_current_decisions(real_only: bool = True) -> int:
     for d in decisions:
         cur.execute("""
             INSERT INTO decision_outcomes
-                (symbol, strategy_type, recommendation, price_at_decision, created_at)
-            VALUES (%s, %s, %s, %s, %s)
+                (symbol, strategy_type, recommendation, price_at_decision, created_at, decision_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """, (d["symbol"], d.get("strategy_type"), d["recommendation"],
               float(d["latest_price"]) if d.get("latest_price") else None,
-              d["updated_at"]))
+              d["updated_at"], decision_id_for(d["symbol"], d["updated_at"])))
         recorded += 1
 
     conn.commit()
@@ -116,46 +204,30 @@ def record_current_decisions(real_only: bool = True) -> int:
 
 
 def backfill_prices(days: int = 30) -> int:
-    """Backfill price outcomes for existing decision records."""
+    """Fill the +1d/+7d/+30d closes a decision outcome is still missing, and score the rows that became scoreable.
+
+    One set-based UPDATE, not a per-row loop: the old loop selected only ``evaluated_at IS NULL`` rows, so a row
+    another writer had touched was invisible to it forever. Fills are COALESCEd (an existing price, and the score
+    computed from it, is never rewritten) and only a scoreless row is scored. Returns the rows written.
+    """
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    outcomes = _select_unevaluated(cur)
+    cur.execute(_FILL_PRICES_SQL)
+    written = int(cur.rowcount or 0)
 
-    updated = 0
-    for o in outcomes:
-        sym = o["symbol"]
-        decision_date = o["created_at"].date() if hasattr(o["created_at"], "date") else o["created_at"]
-
-        # Try to get prices at +1d, +7d, +30d from ticker_prices
-        prices = _price_points(cur, sym, decision_date)
-
-        if prices:
-            p_at = float(o["price_at_decision"] or 0)
-            p_1d = prices.get("1d")
-            p_7d = prices.get("7d")
-            p_30d = prices.get("30d")
-
-            # Compute simple outcome score: did price go in recommended direction?
-            outcome_score = None
-            if p_7d and p_at > 0:
-                change_pct = (p_7d - p_at) / p_at * 100
-                # Positive score if BUY/ADD and price went up, or SELL/TRIM and price went down
-                outcome_score = change_pct  # Simple: positive = good for BUY, bad for SELL
-
-            cur.execute("""
-                UPDATE decision_outcomes
-                SET price_1d = %s, price_7d = %s, price_30d = %s,
-                    outcome_score = %s, evaluated_at = NOW()
-                WHERE id = %s
-            """, (p_1d, p_7d, p_30d, outcome_score, o["id"]))
-            updated += 1
+    # Same transaction, after the fill: a row whose +7d close was just found has become scoreable.
+    cur.execute(_SCORE_CANDIDATES_SQL)
+    for row in cur.fetchall():
+        score = _outcome_score(row["recommendation"], row["price_at_decision"], row["price_7d"])
+        if score is not None:
+            cur.execute(_SCORE_UPDATE_SQL, (score, row["id"]))
 
     conn.commit()
     conn.close()
-    print(f"[outcomes] Backfilled {updated} price outcomes")
-    return updated
+    print(f"[outcomes] Filled prices on {written} decision outcomes")
+    return written
 
 
 def dry_run(backfill: bool) -> dict:
@@ -170,58 +242,64 @@ def dry_run(backfill: bool) -> dict:
            "would_record_no_price": sum(1 for d in decisions if not d.get("latest_price"))}
     print(f"[outcomes] DRY-RUN would record {len(decisions)} new decision outcomes")
     if backfill:
-        outcomes = _select_unevaluated(cur)
-        priced = 0
-        for o in outcomes:
-            dd = o["created_at"].date() if hasattr(o["created_at"], "date") else o["created_at"]
-            if _price_points(cur, o["symbol"], dd):
-                priced += 1
-        out.update(unevaluated=len(outcomes), would_backfill=priced)
-        print(f"[outcomes] DRY-RUN would backfill {priced} of {len(outcomes)} price outcomes")
+        cur.execute(_FILL_PREVIEW_SQL)
+        r = cur.fetchone() or {}
+        out.update(would_backfill=int(r.get("would_backfill") or 0),
+                   would_fill={"1d": int(r.get("fill_1d") or 0), "7d": int(r.get("fill_7d") or 0),
+                               "30d": int(r.get("fill_30d") or 0),
+                               "decision_id": int(r.get("fill_id") or 0)})
+        print(f"[outcomes] DRY-RUN would fill prices on {out['would_backfill']} decision outcomes "
+              f"(1d {out['would_fill']['1d']}, 7d {out['would_fill']['7d']}, 30d {out['would_fill']['30d']}, "
+              f"decision_id {out['would_fill']['decision_id']})")
     conn.close()
     would_write = ["decision_outcomes (INSERT) x would_record"]
     if backfill:
-        would_write.append("decision_outcomes (UPDATE price_*/evaluated_at) x would_backfill")
+        would_write.append("decision_outcomes (UPDATE price_*/decision_id) x would_backfill")
     lr.dry_run_report(LANE_ID, out, would_write=would_write)
     return out
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Record and backfill decision outcomes")
-    ap.add_argument("--backfill", action="store_true", help="also backfill +1d/+7d/+30d prices")
+    ap.add_argument("--backfill", action="store_true",
+                    help="kept for compatibility; the backfill is now part of a real run")
+    ap.add_argument("--no-backfill", action="store_true", help="record new outcomes only; fill no prices")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="read-only preview; writes nothing")
     args = ap.parse_args(argv)
+    backfill = not args.no_backfill
 
     if args.dry_run:
-        out = dry_run(args.backfill)
+        out = dry_run(backfill)
         if args.json:
             print(json.dumps(out, indent=2))
         return 0
 
-    from datetime import timezone
     lr = _receipt_lib()
     started = datetime.now(timezone.utc).isoformat()
     summary: dict = {}
     try:
         summary["recorded"] = record_current_decisions()
-        if args.backfill:
+        if backfill:
             summary["backfilled"] = backfill_prices()
     except Exception as exc:
+        # Report what this run already wrote and committed, not a flat zero: the INSERT step commits on its own.
+        produced = int(summary.get("recorded") or 0) + int(summary.get("backfilled") or 0)
         lr.write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started,
                               script="record_decision_outcome.py", summary=summary,
                               error=f"{type(exc).__name__}: {exc}",
-                              output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})
+                              output={"produced_count": produced, "attempted_count": produced,
+                                      "skipped_reasons": {"dependency_unavailable": 1}})
         raise
     if args.json:
-        print(json.dumps({"recorded": summary["recorded"]}, indent=2))
-    recorded = int(summary.get("recorded") or 0)
-    # LaneRunReceipt@v2 output (n8n expected_output, unit: decision_outcomes rows inserted; every selected
-    # synthesis without an outcome row is inserted in one transaction, so attempted = produced). None = no_new_input.
+        print(json.dumps(summary, indent=2))
+    # LaneRunReceipt@v2 output (n8n expected_output, produced_field produced_count): the rows this run wrote --
+    # inserted outcomes + prices filled. None of either is a correct outcome for this lane; it says so.
+    written = int(summary.get("recorded") or 0) + int(summary.get("backfilled") or 0)
     lr.write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
                           script="record_decision_outcome.py", summary=summary,
-                          output={"produced_count": recorded, "attempted_count": recorded, "skipped_reasons": {},
-                                  "empty_reason": None if recorded else "no_new_input"})
+                          output={"produced_count": written, "attempted_count": written, "skipped_reasons": {},
+                                  "empty_reason": None if written else "no_new_input"})
     return 0
 
 

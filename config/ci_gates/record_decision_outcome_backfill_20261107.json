@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "record_decision_outcome_backfill_20261107",
+  "files": [
+    "tests/test_record_decision_outcome_backfill_20261107.py"
+  ],
+  "anchor": "RECORD_DECISION_OUTCOME_BACKFILL_20261107",
+  "comment": [
+    "ANCHOR: RECORD_DECISION_OUTCOME_BACKFILL_20261107 — record-decision-outcome's +1d/+7d/+30d price backfill",
+    "runs by default (the n8n argv has no flags), fills only NULL columns (COALESCE: a price another writer stored,",
+    "and the score computed from it, is never overwritten), stamps the deterministic decision_id, scores only",
+    "scoreless rows with the ONE categorical definition the live writer uses, and reports rows-written as",
+    "produced_count. Hermetic: fake cursor/conn and a fake receipt writer; no DB, no network."
+  ]
+}

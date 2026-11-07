@@ -68,6 +68,10 @@ def test_record_decision_outcome(monkeypatch, tmp_path, n, expect):
 
     run_id = H.attempt_env(monkeypatch, tmp_path, "record-decision-outcome")
     monkeypatch.setattr(m, "record_current_decisions", lambda real_only=True: n)
+    # The price fill is part of a real run since LQ-20261107-130; it is stubbed here so this test measures the INSERT
+    # step's count against the executor's verdict. tests/test_record_decision_outcome_backfill_20261107.py covers the
+    # fill itself and the combined count.
+    monkeypatch.setattr(m, "backfill_prices", lambda *a, **k: 0)
     assert m.main([]) == 0
     H.check(tmp_path, "record-decision-outcome", run_id, produced=n, expect=expect)
 
@@ -77,6 +81,7 @@ def test_record_decision_outcome_crash_is_a_fatal_skip(monkeypatch, tmp_path):
 
     run_id = H.attempt_env(monkeypatch, tmp_path, "record-decision-outcome")
     monkeypatch.setattr(m, "record_current_decisions", _boom)
+    monkeypatch.setattr(m, "backfill_prices", lambda *a, **k: 0)
     with pytest.raises(RuntimeError):
         m.main([])
     H.check(tmp_path, "record-decision-outcome", run_id, produced=0, expect="empty_output")

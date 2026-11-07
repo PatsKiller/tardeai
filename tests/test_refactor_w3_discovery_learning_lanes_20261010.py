@@ -690,7 +690,10 @@ def test_blc_source_ordering():
 
 
 # ── record_decision_outcome (L218) ───────────────────────────────────────────────────────────────────
-def _rdo_responder(n_dec=2, n_uneval=3):
+def _rdo_responder(n_dec=2, n_fill=3):
+    """The two steps a real run takes since LQ-20261107-130: insert the new outcomes, then fill the missing
+    prices (one set-based UPDATE that reports the rows it wrote) and score the rows that became scoreable."""
+
     def r(sql, params):
         if "FROM watchlist_final_synthesis" in sql:
             return {
@@ -706,15 +709,13 @@ def _rdo_responder(n_dec=2, n_uneval=3):
                     for i in range(n_dec)
                 ]
             }
-        if "FROM decision_outcomes dout WHERE dout.evaluated_at IS NULL" in sql:
-            return {
-                "all": [
-                    {"id": i, "symbol": "S", "created_at": date(2026, 9, 1), "price_at_decision": 10.0}
-                    for i in range(n_uneval)
-                ]
-            }
-        if "FROM ticker_prices" in sql:
-            return {"one": {"close_price": 11.0}}
+        if "AS would_backfill" in sql:  # the dry run's fill preview
+            return {"one": {"rows": n_dec + n_fill, "fill_1d": n_fill, "fill_7d": n_fill,
+                            "fill_30d": n_fill, "fill_id": n_dec + n_fill, "would_backfill": n_fill}}
+        if "UPDATE decision_outcomes" in sql and "COALESCE(o.price_1d" in sql:
+            return {"rowcount": n_fill}
+        if "outcome_score IS NULL AND price_at_decision IS NOT NULL" in sql:
+            return {"all": [{"id": 1, "recommendation": "BUY", "price_at_decision": 10.0, "price_7d": 11.0}]}
         return {}
 
     return r
@@ -727,7 +728,8 @@ def test_rdo_dry_run_reads_only(monkeypatch, capsys, _state):
     monkeypatch.setattr(rdo, "backfill_prices", _boom)
     assert rdo.main(["--dry-run", "--backfill"]) == 0
     rep = _dry_line(capsys.readouterr().out)
-    assert rep["summary"] == {"would_record": 2, "would_record_no_price": 1, "unevaluated": 3, "would_backfill": 3}
+    assert rep["summary"] == {"would_record": 2, "would_record_no_price": 1, "would_backfill": 3,
+                              "would_fill": {"1d": 3, "7d": 3, "30d": 3, "decision_id": 5}}
     assert conn.readonly is True and conn.writes() == [] and conn.commits == 0 and _no_runtime_files(_state)
 
 
@@ -741,9 +743,12 @@ def test_rdo_real_run_cron_form_writes_receipt(monkeypatch, _state):
     conn = FakeConn(_rdo_responder())
     monkeypatch.setattr(rdo, "_get_conn", lambda: conn)
     assert rdo.main([]) == 0
-    assert sum(s.startswith("INSERT INTO decision_outcomes") for s in conn.sql) == 2 and conn.commits == 1
+    assert sum(s.startswith("INSERT INTO decision_outcomes") for s in conn.sql) == 2
+    # The price fill runs on a flagless run and commits in its own transaction (LQ-20261107-130).
+    assert any("COALESCE(o.price_1d" in s for s in conn.sql), conn.sql
+    assert conn.commits == 2
     rec = _receipt(_state, "record-decision-outcome")
-    assert rec["status"] == "ok" and rec["ok_at"] and rec["summary"] == {"recorded": 2}
+    assert rec["status"] == "ok" and rec["ok_at"] and rec["summary"] == {"recorded": 2, "backfilled": 3}
 
 
 def test_rdo_failure_raises_with_failed_receipt(monkeypatch, _state):
