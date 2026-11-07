@@ -23,6 +23,12 @@ intent when >20% of items error or nothing lands (deduped: once per condition), 
 data/runtime/hermes-watchlist-scorer_last.json on a real run, and a write-free --dry-run (n8n shadow lane).
 2026-10-21 (PR #1899, n8n shadow lane): the alert is a QUEUED host comms intent, never a send (no telegram_alert
 import), and the DB connection is a plain psycopg2 connect, not db_adapter (whose closure reaches broker modules).
+
+2026-11-07 (LQ-20261107-189): rankings are global, not per batch. Every run recomputes the rank of every
+scoreable name from the whole list (this run's scores overlaid) after writing its scores, so a partial
+(event-tier / S0-only) rescore can no longer leave the list ordered by an older one; a scored row never keeps
+a NULL rank; the universe is validated symbols only (symbol_profiles, or a portfolio holding whose profile
+sync lags — symbol_validation.gate_watchlist_symbol), so headline words (OVER, WITH, PICKS) are not scored.
 """
 from __future__ import annotations
 try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
@@ -380,6 +386,34 @@ _BASE_SELECT = """SELECT wi.symbol, wi.rsi, wi.trend, wi.score, wi.watch_score_k
                    LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
                    WHERE wi.status IN ('active','researched')"""
 
+# A row is scoreable only when it names a validated security: a symbol_profiles row, or a portfolio holding
+# whose profile sync has not caught up (the same rule as symbol_validation.gate_watchlist_symbol). Binds the
+# holdings list. Before 2026-11-07 the scorer scored whatever sat in the row: English words the event queue
+# carried in (OVER, WITH, PICKS — scored with a NULL price) and 2,380 fund/identifier codes with no profile.
+# LQ-20261107-189.
+_VALIDATED_SYMBOL_SQL = """ AND (
+        EXISTS (SELECT 1 FROM symbol_profiles sp WHERE UPPER(sp.symbol) = UPPER(wi.symbol))
+        OR UPPER(wi.symbol) = ANY(%s))"""
+
+#: The ranking input: every scoreable symbol and the composite the list currently holds for it. The run
+#: overlays the scores it has just computed and ranks the whole list, so a partial (event-tier) rescore can
+#: no longer leave the rest of the list ordered by an older, larger one (DB retest 2026-11-07: rank reached
+#: 4013 on a 1,044-item list and corr(rank, score) fell to -0.025 after a 454-name run).
+_RANK_UNIVERSE_SQL = ("""SELECT UPPER(wi.symbol) AS symbol, MAX(wi.hermes_composite_score) AS score
+                         FROM watchlist_items wi
+                         WHERE wi.status IN ('active','researched')
+                           AND wi.hermes_composite_score IS NOT NULL""" + _VALIDATED_SYMBOL_SQL +
+                      """ GROUP BY UPPER(wi.symbol)""")
+
+#: What the list believes its ranks are, one row per symbol (watched rows may repeat a symbol).
+_CURRENT_RANKS_SQL = """SELECT UPPER(wi.symbol) AS symbol, MIN(wi.hermes_rank) AS rank
+                        FROM watchlist_items wi
+                        WHERE wi.status IN ('active','researched')
+                        GROUP BY UPPER(wi.symbol)"""
+
+#: Sentinel: "the list has no row for this symbol" — never equal to a stored rank (including NULL).
+_ABSENT = object()
+
 
 def _tier_plan(now_et=None):
     """Which scope tiers this run scores (design §1.2). Events are always drained.
@@ -407,19 +441,22 @@ def _pending_event_symbols(cur):
     return [r[0] for r in cur.fetchall()]
 
 
-def _fetch_tier_rows(cur, tiers, event_symbols, limit=None):
-    """Tier-aware universe: governed scope tiers for this run + event-lane symbols (any tier)."""
+def _fetch_tier_rows(cur, tiers, event_symbols, held, limit=None):
+    """Tier-aware universe: governed scope tiers for this run + event-lane symbols (any tier).
+
+    ``held`` is the portfolio holdings exception of the validated-symbol filter (see _VALIDATED_SYMBOL_SQL);
+    an event symbol that names no security (a headline word) is not fetched, so it is never scored."""
     lim = f" LIMIT {int(limit)}" if limit else ""
-    cur.execute(_BASE_SELECT +
+    cur.execute(_BASE_SELECT + _VALIDATED_SYMBOL_SQL +
                 " AND (wi.scope_tier = ANY(%s) OR UPPER(wi.symbol) = ANY(%s))" + lim,
-                (tiers or ["_none_"], [s.upper() for s in event_symbols] or ["_NONE_"]))
+                (list(held), tiers or ["_none_"], [s.upper() for s in event_symbols] or ["_NONE_"]))
 
 
-def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
+def _fetch_watchlist_rows(cur, held, limit=None, off_hours=False):
     """Off-hours: daily-priority (holdings/proposals/buy/start) + Hermes top-N; skip ~3k tail."""
     if not off_hours:
-        sql = _BASE_SELECT + (f" LIMIT {int(limit)}" if limit else "")
-        cur.execute(sql)
+        sql = _BASE_SELECT + _VALIDATED_SYMBOL_SQL + (f" LIMIT {int(limit)}" if limit else "")
+        cur.execute(sql, (list(held),))
         return
     cap = int(limit or WATCHLIST_TOP_N)
     dp = daily_priority_sql_params(project_root=PROJECT_ROOT)
@@ -479,8 +516,9 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                    JOIN watchlist_items wi ON wi.symbol = c.symbol AND wi.status IN ('active','researched')
                    LEFT JOIN intelligence_entities ie ON ie.display_name = wi.symbol
                    LEFT JOIN watchlist_strategy_cards sc ON sc.symbol = wi.symbol
+                   WHERE TRUE""" + _VALIDATED_SYMBOL_SQL + """
                    ORDER BY c.tier, c.best_rank ASC NULLS LAST""",
-                (dp[0], dp[1], dp[2], dp[3], *dp, WATCHLIST_TOP_N, cap, cap))
+                (dp[0], dp[1], dp[2], dp[3], *dp, WATCHLIST_TOP_N, cap, cap, list(held)))
 
 
 LANE_ID = "hermes-watchlist-scorer"
@@ -677,7 +715,8 @@ def emit_failure_alert(summary, *, queue=None, state_path=None, now=None):
 
 def _empty_summary(**kw):
     out = {"items": 0, "scored": 0, "unscored": 0, "written": 0, "skipped_unchanged": 0, "landed": 0,
-           "errored": 0, "skipped_errors": {}, "error_symbols": [], "top": [], "dry_run": False}
+           "errored": 0, "skipped_errors": {}, "error_symbols": [], "top": [], "dry_run": False,
+           "excluded": {}, "excluded_symbols": [], "rank_changes": 0}
     out.update(kw)
     return out
 
@@ -711,13 +750,14 @@ def run(limit=None, *, dry_run=False):
     pills = _pills_map(); secmap = _sector_momentum(conn); weights = _weights()
     vix = _vix(conn)
     weights, _regime = _regime_weights(weights, vix)
+    held = holdings_list(PROJECT_ROOT)
     if tier_mode:
         use_capped_fetch = False
-        _fetch_tier_rows(cur, tiers, event_syms, limit=limit)
+        _fetch_tier_rows(cur, tiers, event_syms, held, limit=limit)
     else:
         limit = scoring_top_n(limit)
         use_capped_fetch = limit is not None
-        _fetch_watchlist_rows(cur, limit=limit, off_hours=use_capped_fetch)
+        _fetch_watchlist_rows(cur, held, limit=limit, off_hours=use_capped_fetch)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     errors = {"reasons": {}, "symbols": []}
@@ -758,22 +798,31 @@ def run(limit=None, *, dry_run=False):
     penalized.sort(key=lambda x: -x[1])
     scored = penalized
     if tier_mode:
-        mode = "tiers[%s]+events(%d)%s" % (",".join(tiers) or "-", len(event_syms),
-                                           "-frozen-ranks" if off_hours else "")
+        mode = "tiers[%s]+events(%d)" % (",".join(tiers) or "-", len(event_syms))
     elif use_capped_fetch:
-        mode = "capped-top%d%s" % (limit or WATCHLIST_TOP_N, "-frozen-ranks" if off_hours else "")
+        mode = "capped-top%d" % (limit or WATCHLIST_TOP_N)
     else:
         mode = "full"
+    # An event symbol the validated-symbol filter refused (a headline word, a fund code) is never fetched,
+    # so it is never scored. Report it and let the run drain its queue slot — silence would hide it.
+    fetched = {str(r.get("symbol") or "").upper() for r in rows}
+    excluded_syms = [s for s in event_syms if str(s).upper() not in fetched]
+    excluded = {"not_validated_symbol": len(excluded_syms)} if excluded_syms else {}
+    # The rank of every name is its position in the whole scoreable list, this run's scores overlaid (LQ-189).
+    ranks = _global_ranks(cur, scored, held)
+    rank_changes = _rank_changes(cur, ranks)
 
     if dry_run:
         conn.rollback()
         summary = _empty_summary(
             dry_run=True, mode=mode, items=len(rows), scored=len(scored), unscored=unscored,
             landed=len(scored), errored=len(errors["symbols"]), skipped_errors=dict(errors["reasons"]),
-            error_symbols=errors["symbols"][:20], top=[(s, round(c, 1)) for s, c, *_ in scored[:10]])
+            error_symbols=errors["symbols"][:20], top=[(s, round(c, 1)) for s, c, *_ in scored[:10]],
+            excluded=excluded, excluded_symbols=excluded_syms[:20], rank_changes=rank_changes)
         summary["would_alert"] = failure_condition(summary)
         print(f"[hermes-scorer] DRY-RUN {mode}: {summary['items']} items, {summary['scored']} scored, "
-              f"{summary['unscored']} unscored, {summary['errored']} errored {summary['skipped_errors']} "
+              f"{summary['unscored']} unscored, {summary['errored']} errored {summary['skipped_errors']}, "
+              f"{rank_changes} rank changes, {len(excluded_syms)} excluded {excluded} "
               f"— nothing written, nothing sent (would_alert={summary['would_alert']})", flush=True)
         return summary
 
@@ -791,12 +840,13 @@ def run(limit=None, *, dry_run=False):
     from datetime import timedelta
     hb_cutoff = datetime.now(timezone.utc) - timedelta(hours=20)
     skipped = written = 0
-    for rank, (sym, comp, components, px) in enumerate(scored, 1):
+    history = []
+    for sym, comp, components, px in scored:
         # Per-symbol SAVEPOINT: a failed write rolls back only this symbol, not the whole transaction.
         cur.execute("SAVEPOINT hermes_sym")
         try:
-            outcome = _write_symbol(cur, sym, rank, comp, components, px, last_hist.get(sym),
-                                    off_hours=off_hours, hb_cutoff=hb_cutoff)
+            outcome = _write_score(cur, sym, comp, components, last_hist.get(sym),
+                                   rank=ranks[str(sym).upper()], off_hours=off_hours, hb_cutoff=hb_cutoff)
             cur.execute("RELEASE SAVEPOINT hermes_sym")
         except Exception as exc:
             cur.execute("ROLLBACK TO SAVEPOINT hermes_sym")
@@ -806,6 +856,28 @@ def run(limit=None, *, dry_run=False):
             skipped += 1
         else:
             written += 1
+            history.append((sym, comp, components, px))
+    # Rank AFTER the scores are in: every rank is a position in the whole list (LQ-20261107-189), and a
+    # scored row never keeps a NULL rank. Then the history row reads that persisted rank back.
+    cur.execute("SAVEPOINT hermes_rank")
+    try:
+        rank_changes, rank_failures = _apply_ranks(cur, ranks, skip=set(errors["symbols"]))
+        cur.execute("RELEASE SAVEPOINT hermes_rank")
+    except Exception as exc:
+        cur.execute("ROLLBACK TO SAVEPOINT hermes_rank")
+        _record_error(errors, None, "rerank", exc)
+        rank_changes, rank_failures = 0, {}
+    for sym, exc in rank_failures.items():
+        _record_error(errors, sym, "rerank", exc)
+    for sym, comp, components, px in history:
+        cur.execute("SAVEPOINT hermes_hist")
+        try:
+            _write_history(cur, sym, comp, components, px)
+            cur.execute("RELEASE SAVEPOINT hermes_hist")
+        except Exception as exc:
+            # the composite write stands; a missing history row is reported, never silent
+            cur.execute("ROLLBACK TO SAVEPOINT hermes_hist")
+            _record_error(errors, sym, "history", exc)
     if tier_mode and event_syms:
         # drain everything we attempted — an unscoreable symbol must not wedge its queue slot
         cur.execute("""UPDATE hermes_score_event_queue SET processed_at=NOW()
@@ -820,11 +892,78 @@ def run(limit=None, *, dry_run=False):
         mode=mode, items=len(rows), scored=len(scored), unscored=unscored, written=written,
         skipped_unchanged=skipped, landed=written + skipped, errored=errored,
         skipped_errors=dict(errors["reasons"]), error_symbols=errors["symbols"][:20],
-        top=[(s, round(c, 1)) for s, c, *_ in scored[:10]])
+        top=[(s, round(c, 1)) for s, c, *_ in scored[:10]],
+        excluded=excluded, excluded_symbols=excluded_syms[:20], rank_changes=rank_changes)
 
 
-def _write_symbol(cur, sym, rank, comp, components, px, prev, *, off_hours, hb_cutoff):
-    """Persist one symbol's score. Returns 'unchanged' (live row refreshed only) or 'written'."""
+def _global_ranks(cur, scored, held):
+    """Rank of every scoreable symbol: position in the WHOLE list, this run's new scores overlaid.
+
+    A partial run (an event-tier rescore, an S0-only tick) used to rank only its own rows 1..N and leave the
+    rest of the list holding the ranks of an older, larger list — 4,013 on a 1,044-item list, 39 NULL ranks
+    on scored rows, corr(rank, score) -0.025 after the 2026-11-07 10:15 ET run. Every score written by a run
+    now lands at the position the whole list gives it.
+    """
+    cur.execute(_RANK_UNIVERSE_SQL, (list(held),))
+    scores = {}
+    for sym, score in cur.fetchall():
+        val = _finite(score)
+        if sym is not None and val is not None:
+            scores[str(sym).upper()] = val
+    for sym, comp, *_ in scored:               # this run's scores win over the stored ones
+        scores[str(sym).upper()] = float(comp)
+    ordered = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
+    return {sym: i for i, (sym, _s) in enumerate(ordered, 1)}
+
+
+def _rank_delta(cur, ranks):
+    """{symbol: wanted rank} for every symbol whose stored rank is not the one the list now gives it."""
+    cur.execute(_CURRENT_RANKS_SQL)
+    current = {str(sym).upper(): rank for sym, rank in cur.fetchall()}
+    delta = {}
+    for sym in set(ranks) | set(current):
+        want = ranks.get(sym)
+        if current.get(sym, _ABSENT) != want:
+            delta[sym] = want
+    return delta
+
+
+def _rank_changes(cur, ranks):
+    """How many symbols hold a rank other than the one the list now gives them (dry-run proof)."""
+    return len(_rank_delta(cur, ranks))
+
+
+def _apply_ranks(cur, ranks, skip=()):
+    """Write the rank the whole list gives each name; clear a rank that no longer orders anything.
+
+    One UPDATE per changed symbol in its own SAVEPOINT: a symbol outside this run's batch whose stored rank
+    is still its true position is not rewritten, the first run repairs the NULL ranks and the ranks left over
+    from the 4,013-item era, and an unwritable row loses only its own rank write. A symbol whose score write
+    failed is skipped — ranking a score that never landed would order the list by a number the DB does not
+    hold. Returns (applied, {symbol: exception}).
+    """
+    delta = _rank_delta(cur, ranks)
+    applied, failures = 0, {}
+    for sym, want in delta.items():
+        if sym in skip:
+            continue
+        cur.execute("SAVEPOINT hermes_rank")
+        try:
+            cur.execute("""UPDATE watchlist_items SET hermes_rank=%s
+                           WHERE UPPER(symbol)=%s AND status IN ('active','researched')""", (want, sym))
+            cur.execute("RELEASE SAVEPOINT hermes_rank")
+            applied += 1
+        except Exception as exc:
+            cur.execute("ROLLBACK TO SAVEPOINT hermes_rank")
+            failures[sym] = exc
+    return applied, failures
+
+
+def _write_score(cur, sym, comp, components, prev, *, rank, off_hours, hb_cutoff):
+    """Persist one symbol's score. Returns 'unchanged' (live row refreshed only) or 'written'.
+
+    The rank is NOT written here: _apply_ranks gives it its place in the whole list after every score of
+    the run is in (LQ-20261107-189)."""
     if prev is not None and prev[0] is not None and abs(float(prev[0]) - comp) < 0.05 \
             and (off_hours or prev[1] == rank):
         prev_at = prev[2]
@@ -834,26 +973,19 @@ def _write_symbol(cur, sym, rank, comp, components, px, prev, *, off_hours, hb_c
             cur.execute("""UPDATE watchlist_items SET hermes_scored_at=NOW(), updated_at=NOW()
                            WHERE symbol=%s AND status IN ('active','researched')""", (sym,))
             return "unchanged"
-    body = _dumps(components)
-    if off_hours:
-        # Off-hours: refresh composite only — frozen global ranks prevent tail rank-jump spam.
-        cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s,
-                         hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
-                       WHERE symbol=%s AND status IN ('active','researched')""",
-                    (comp, body, sym))
-        cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
-                       SELECT %s, %s, hermes_rank, %s::jsonb, %s FROM watchlist_items
-                       WHERE symbol=%s AND status IN ('active','researched') LIMIT 1""",
-                    (sym, comp, body, px, sym))
-    else:
-        cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s, hermes_rank=%s,
-                         hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
-                       WHERE symbol=%s AND status IN ('active','researched')""",
-                    (comp, rank, body, sym))
-        cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
-                       VALUES (%s, %s, %s, %s::jsonb, %s)""",
-                    (sym, comp, rank, body, px))
+    cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s,
+                     hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
+                   WHERE symbol=%s AND status IN ('active','researched')""",
+                (comp, _dumps(components), sym))
     return "written"
+
+
+def _write_history(cur, sym, comp, components, px):
+    """Append the history row with the rank watchlist_items now holds (read back, never an in-batch counter)."""
+    cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
+                   SELECT %s, %s, hermes_rank, %s::jsonb, %s FROM watchlist_items
+                   WHERE symbol=%s AND status IN ('active','researched') LIMIT 1""",
+                (sym, comp, _dumps(components), px, sym))
 
 
 def all_failed(summary):
@@ -863,7 +995,8 @@ def all_failed(summary):
 
 
 def _receipt_fields(summary):
-    keys = ("mode", "items", "scored", "unscored", "written", "skipped_unchanged", "errored", "skipped_errors")
+    keys = ("mode", "items", "scored", "unscored", "written", "skipped_unchanged", "errored", "skipped_errors",
+            "excluded", "rank_changes")
     return {k: summary[k] for k in keys if k in summary}
 
 
@@ -931,6 +1064,7 @@ def main(argv=None):
                            output={"produced_count": int(summary.get("landed") or 0),
                                    "attempted_count": int(summary.get("items") or 0),
                                    "skipped_reasons": summary.get("skipped_errors") or {},
+                                   "excluded_reasons": summary.get("excluded") or {},
                                    "empty_reason": _empty_reason(summary)})
         if rc:
             # SystemExit(str) exits 1 and PipelineRun records the run failed with this reason.

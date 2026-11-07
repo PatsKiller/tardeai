@@ -1,0 +1,25 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_scorer_rerank_20261107",
+  "files": [
+    "tests/test_hermes_scorer_rerank_20261107.py"
+  ],
+  "anchor": "hermes_scorer_rerank_20261107",
+  "comment": [
+    "ANCHOR: hermes_scorer_rerank_20261107 — the watchlist rank drifted away from the scores it claims to",
+    "order. DB retest 2026-11-07 12:20 ET found the 11-07 10:15 ET run (an event-tier rescore of 454 names)",
+    "had corr(hermes_rank, hermes_composite_score) -0.025, ranks up to 4013 on a ~1,044-item list, and 39",
+    "scored rows holding a NULL rank; the 12:00 full run read -0.949. Two causes in",
+    "scripts/hermes_watchlist_scorer.py: a partial run ranked only the rows it had just scored (enumerate",
+    "1..N) and left every other row holding the rank of an older, larger list, and off-hours it froze",
+    "hermes_rank altogether (mode '...-frozen-ranks') so a rescored name kept the rank of its previous score.",
+    "The gate pins the contract: after any rescore a name's rank is its position in the WHOLE scoreable",
+    "list (this run's scores overlaid on the stored ones), a scored row never keeps a NULL rank and a rank",
+    "that no longer orders anything is cleared, the universe is validated symbols only",
+    "(symbol_profiles or a portfolio holding — symbol_validation.gate_watchlist_symbol, so headline words",
+    "like OVER/WITH are reported as excluded rather than scored), the history row records the rank the list",
+    "actually holds after the rerank (never an in-batch counter), and one unwritable row loses only its own",
+    "rank write — a symbol whose score write failed is not ranked at all.",
+    "Hermetic: fake connection/cursor; no DB, no network, no model."
+  ]
+}
