@@ -224,20 +224,44 @@ def main() -> int:
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
-    if args.enqueue:
-        out = enqueue(args.enqueue)
-    elif args.enqueue_category:
-        out = enqueue_category(args.enqueue_category)
-    elif args.drain:
-        out = drain(cap=args.cap)
-    elif args.list:
-        out = {"ok": True, "queue": list_queue()}
-    else:
-        out = {"ok": False, "error": "one of --enqueue/--enqueue-category/--list/--drain required"}
+    # LaneRunReceipt: only the --drain arm is the cron lane (LQ-20261107-20 overnight onboarding); the registry
+    # output_signal for research-intelligence-queue is this receipt's ok_at. --enqueue/--list are operator-triggered
+    # API actions and must not advance the lane's ok_at. The --dry-run branch returned above, before this point.
+    started_at = None
+    if args.drain:
+        from lib.lane_last_receipt import now_iso
+        started_at = now_iso()
+    try:
+        out = _run(args)
+    except Exception as exc:  # noqa: BLE001 — record the failure before it propagates
+        if args.drain:
+            from lib.lane_last_receipt import write_lane_receipt
+            write_lane_receipt("research-intelligence-queue", ok=False, started_at=started_at,
+                               script="scripts/research_intelligence_queue.py",
+                               error=f"{type(exc).__name__}: {exc}")
+        raise
+    if args.drain:
+        from lib.lane_last_receipt import write_lane_receipt
+        write_lane_receipt("research-intelligence-queue", ok=bool(out.get("ok")), started_at=started_at,
+                           script="scripts/research_intelligence_queue.py",
+                           summary={"processed": out.get("processed"), "still_queued": out.get("still_queued")},
+                           error=out.get("error"))
 
     print(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), **out},
                      indent=2, default=str))
     return 0 if out.get("ok") else 1
+
+
+def _run(args) -> dict:
+    if args.enqueue:
+        return enqueue(args.enqueue)
+    if args.enqueue_category:
+        return enqueue_category(args.enqueue_category)
+    if args.drain:
+        return drain(cap=args.cap)
+    if args.list:
+        return {"ok": True, "queue": list_queue()}
+    return {"ok": False, "error": "one of --enqueue/--enqueue-category/--list/--drain required"}
 
 
 if __name__ == "__main__":
