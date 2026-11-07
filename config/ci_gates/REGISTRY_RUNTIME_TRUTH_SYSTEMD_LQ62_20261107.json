@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "REGISTRY_RUNTIME_TRUTH_SYSTEMD_LQ62_20261107",
+  "files": [
+    "tests/test_registry_runtime_truth_systemd_lq62_20261107.py"
+  ],
+  "anchor": "REGISTRY_RUNTIME_TRUTH_SYSTEMD_LQ62_20261107",
+  "comment": [
+    "ANCHOR: REGISTRY_RUNTIME_TRUTH_SYSTEMD_LQ62_20261107 — LQ-20261107-62, the checker that disagrees with",
+    "crontab in 7 places. check_registry_runtime_truth joined the registry with the crontab, the n8n workflow",
+    "table and the ledger but never read systemd, so 168 kind:systemd rows were unverified in both directions",
+    "and one program under two live schedulers was invisible. The reader is read-only (list-unit-files and show",
+    "only) and unions BOTH managers, because they disagree here: systemd-tmpfiles-clean.timer is",
+    "disabled/inactive for the user and static/active for the system. Hermetic: canned systemctl output, tmp",
+    "roots and ledgers; no systemctl, no crontab, no docker, no live state."
+  ]
+}

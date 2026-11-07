@@ -19,6 +19,10 @@ Host evidence (read-only, each source optional; an unreadable source is NOT_MEAS
   n8n workflow_entity (docker exec psql SELECT, read-only)  active workflow ids (scripts/lib/n8n_live_inventory.py)
   `systemctl --user is-active <unit>`                       (2026-11-07) only the units a registry row names in
                                                             scheduler.host_twin_units — no other unit is asked about
+  systemd (user AND system managers, read-only)             per unit: installed, UnitFileState, ActiveState, Triggers
+                                                            and the triggered service's ExecStart command. Read only
+                                                            when the registry declares a kind:systemd lane; a unit is
+                                                            live when EITHER manager has it active (2026-11-07)
 
 Contradiction codes (rules are pure functions over the two sides; tests/test_registry_runtime_truth_20261018.py):
   DECLARED_OFF_BUT_RUNS_LIVE     state NEVER_SCHEDULED/RETIRED/PAUSED, but live RUN_DONE runs exist in the window
@@ -42,6 +46,24 @@ Contradiction codes (rules are pure functions over the two sides; tests/test_reg
                                  (data-plausibility 2026-11-07: n8n wrote n8n-data-plausibility-audit_last.json
                                  while tradeai-data-plausibility.timer rewrote data_plausibility_last_run.json,
                                  the file GET /api/v2/system/data-plausibility serves)
+  ACTIVE_TIMER_ABSENT            (2026-11-07) kind-systemd row declared ACTIVE naming a timer that is installed in
+                                 NEITHER manager: the registry says the job runs and there is no unit to run it
+  ACTIVE_TIMER_DISABLED          (2026-11-07) ACTIVE kind-systemd timer row whose unit file is disabled in every
+                                 manager that has it: it cannot start at boot or login, so it never fires
+  ACTIVE_TIMER_INACTIVE          (2026-11-07) ACTIVE kind-systemd timer row whose unit is enabled but not active in
+                                 any manager (started and stopped, or never started since this boot)
+  ACTIVE_SERVICE_INACTIVE        (2026-11-07) ACTIVE kind-systemd row naming a long-running .service that is not
+                                 installed or not active
+  DECLARED_OFF_TIMER_ACTIVE      (2026-11-07) kind-systemd timer row declared NEVER_SCHEDULED/RETIRED/PAUSED but the
+                                 timer is enabled and active: the registry says stopped and the host keeps firing it
+  DECLARED_OFF_SERVICE_ACTIVE    (2026-11-07) the same, for a long-running .service row
+  CRON_ROW_RUNS_UNDER_TIMER      (2026-11-07) kind-cron row declared ACTIVE with no active crontab line, but a live
+                                 systemd timer runs the same script: the lane runs, the declared MECHANISM is wrong
+                                 (reported instead of ACTIVE_CRON_LINE_ABSENT, which would invent a contradiction)
+  DUPLICATE_SCHEDULER           (2026-11-07) one program under two live schedulers at once: an n8n lane whose entry
+                                 script imports the module a live timer runs, or a cron row whose script a live timer
+                                 also runs. Two writers for one lane receipt and one effect (2026-11-07 finding:
+                                 data-plausibility-audit + n8n-data-plausibility-audit, and gap-resolution)
 
     python3 scripts/check_registry_runtime_truth.py              # --dry-run (default): print, write nothing
     python3 scripts/check_registry_runtime_truth.py --json       # dry run, JSON only
@@ -63,9 +85,11 @@ MBI_BEHAVIOR = 0. No broker, no send, no network beyond the local docker CLI. Au
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -218,6 +242,209 @@ def declared_host_twins(rows: Mapping[str, Mapping[str, Any]]) -> list[str]:
             if isinstance(unit, str) and unit.strip():
                 out.add(unit.strip())
     return sorted(out)
+#: A registry ``kind: systemd`` expression names a unit and may annotate it. The unit is the first ``*.timer`` /
+#: ``*.service`` token: ``tradeai-health-tick.timer (*:0/5)``, ``tradeai-telegram-callback-poller.service
+#: (Restart=always)``, ``hermes-external-feedback.timer (04:00, --model deepseek-v4-flash) — DISABLED``.
+UNIT_RE = re.compile(r"([A-Za-z0-9_:@.\-]+\.(?:timer|service))")
+#: UnitFileState values that let a unit start without anyone typing ``systemctl start``.
+ENABLED_UNIT_FILE_STATES = frozenset({"enabled", "enabled-runtime", "static", "indirect", "generated"})
+#: Both managers: a unit can exist in one, both, or neither, and the two disagree in both directions on this host.
+SYSTEMD_SCOPES = (("user", ["--user"]), ("system", []))
+SYSTEMD_TIMER_PROPS = "Id,LoadState,ActiveState,UnitFileState,Triggers"
+SYSTEMD_SERVICE_PROPS = "Id,LoadState,ActiveState,UnitFileState,ExecStart"
+SYSTEMD_TIMEOUT_S = 15
+#: ``systemctl show`` stops at the first missing unit; probe that many unanswered units one by one.
+SYSTEMD_PROBE_LIMIT = 200
+
+
+def unit_name(expression: Any) -> Optional[str]:
+    """The systemd unit a registry expression names, or None. Pure."""
+    m = UNIT_RE.search(str(expression or ""))
+    return m.group(1) if m else None
+
+
+def parse_unit_file_list(text: str) -> dict[str, str]:
+    """``systemctl list-unit-files --no-legend`` -> {unit: unit_file_state}. Pure."""
+    out: dict[str, str] = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and UNIT_RE.fullmatch(parts[0]):
+            out[parts[0]] = parts[1]
+    return out
+
+
+def parse_stanzas(text: str) -> dict[str, dict[str, str]]:
+    """``systemctl show`` output -> {Id: properties}. A repeated property (ExecStart) is joined with ' ; '. Pure."""
+    out: dict[str, dict[str, str]] = {}
+    cur: dict[str, str] = {}
+    for line in [*text.splitlines(), ""]:
+        if not line.strip():
+            if cur.get("Id"):
+                out[cur["Id"]] = cur
+            cur = {}
+        elif "=" in line:
+            key, value = line.split("=", 1)
+            cur[key] = f"{cur[key]} ; {value}" if key in cur else value
+    return out
+
+
+def redact_command(value: str) -> str:
+    """Strip an inline credential or destination from a command before it becomes evidence. Pure.
+
+    Mirrors ``scripts.lib.scheduler_operations.redact_command`` rather than importing it: that module's import
+    closure reaches the broker adapters (``schwab_transport``, ``auto_trader_sim``) through the cron helpers,
+    and this checker is read-only (``test_monitor_closure_reaches_no_db_adapter_sender_broker_or_order``).
+    """
+    value = re.sub(
+        r"(?i)(\b[\w]*(?:TOKEN|PASSWORD|SECRET|BEARER|API_KEY|HMAC_KEY|CREDENTIAL)[\w]*\s*=\s*)"
+        r"(\"[^\"]*\"|'[^']*'|[^\s;]+)",
+        r"\1[REDACTED]",
+        value,
+    )
+    value = re.sub(r"(?i)(Bearer\s+)[^\s\"']+", r"\1[REDACTED]", value)
+    value = re.sub(r"(?i)(--(?:password|token|key|chat-id|account-id|account-number)[=\s]+)\S+",
+                   r"\1[REDACTED]", value)
+    return re.sub(r"(https?://)[^/@\s:]+:[^/@\s]+@", r"\1[REDACTED]@", value)
+
+
+def exec_start_commands(value: str) -> list[str]:
+    """Every argv systemd would run from ``ExecStart={ path=… ; argv[]=… ; ignore_errors=no ; … }`` (one per
+    ExecStart line in a joined value), with credentials redacted. Pure."""
+    return [redact_command(m.group(1).strip()) for m in re.finditer(r"argv\[\]=([^;]*)", value or "")
+            if m.group(1).strip()]
+
+
+def command_programs(command: str) -> set[str]:
+    """Script stems a command runs: ``…/data_plausibility_monitor.py --alert`` -> {"data_plausibility_monitor"}."""
+    return {m.group(1) for m in re.finditer(r"([\w.\-]+)\.py\b", command or "")}
+
+
+def _systemctl(runner: Optional[Callable[[list[str]], tuple[int, str]]], argv: list[str]) -> tuple[int, str]:
+    if runner is not None:
+        try:
+            return runner(argv)
+        except OSError:
+            return 1, ""
+    try:
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=SYSTEMD_TIMEOUT_S, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return 1, ""
+    return p.returncode, p.stdout
+
+
+def _show_scope(
+    runner: Optional[Callable[[list[str]], tuple[int, str]]], flag: list[str], units: list[str], props: str,
+) -> dict[str, dict[str, str]]:
+    """``systemctl [--user] show`` for ``units``, retried one by one when the batch stopped at a missing unit."""
+    if not units:
+        return {}
+    rc, out = _systemctl(runner, ["systemctl", *flag, "show", *units, "--property=" + props])
+    if rc == 0:
+        return parse_stanzas(out)
+    answered = parse_stanzas(out)
+    for unit in [u for u in units if u not in answered][:SYSTEMD_PROBE_LIMIT]:
+        _rc, one = _systemctl(runner, ["systemctl", *flag, "show", unit, "--property=" + props])
+        answered.update(parse_stanzas(one))
+    return answered
+
+
+def read_systemd_units(
+    declared_units: Iterable[str] = (),
+    runner: Optional[Callable[[list[str]], tuple[int, str]]] = None,
+) -> tuple[str, dict[str, dict[str, Any]], str]:
+    """Installed + live systemd units, and the command each timer triggers, from BOTH managers. Read-only.
+
+    ``list-unit-files`` and ``show`` only — never start/stop/enable/disable/edit/reload. Both managers are needed
+    because they disagree in both directions on this host: ``systemd-tmpfiles-clean.timer`` is ``disabled`` /
+    ``inactive`` in the user manager and ``static`` / ``active`` in the system manager (it does run daily), while
+    ``db-retention.timer`` exists only in the user manager and is disabled there. Reading one manager reports a
+    timer that runs every day as absent.
+
+    ``units[unit]`` is one aggregate over the managers that have the unit::
+
+        {"present": bool, "enabled": bool, "live": bool, "scopes": ["user", ...],
+         "unit_file_state": str | None, "active_state": str | None, "triggers": str, "commands": [argv, ...]}
+
+    A timer's ``commands`` are the ExecStarts of the service it triggers. ``status`` is SOURCE_OK only when every
+    manager answered: a partial read cannot say "this timer is not installed", so it is NOT_MEASURED, not clean.
+    """
+    wanted = {str(u) for u in declared_units if u}
+    observed: dict[str, dict[str, dict[str, str]]] = {}
+    on_disk: dict[str, list[str]] = {}
+    triggered_by: dict[str, str] = {}
+    service_commands: dict[str, list[str]] = {}
+    failed: list[str] = []
+    for scope, flag in SYSTEMD_SCOPES:
+        rc, out = _systemctl(runner, ["systemctl", *flag, "list-unit-files", "--no-legend", "--no-pager"])
+        if rc != 0:
+            failed.append(f"`systemctl {' '.join(flag + ['list-unit-files'])}` rc {rc}")
+            continue
+        listed = parse_unit_file_list(out)
+        for unit in listed:
+            on_disk.setdefault(unit, []).append(scope)
+        timers = sorted(u for u in listed if u.endswith(".timer"))
+        timer_rows = _show_scope(runner, flag, timers, SYSTEMD_TIMER_PROPS)
+        for unit, props in timer_rows.items():
+            observed.setdefault(unit, {})[scope] = props
+        triggered = sorted({p.get("Triggers", "") for p in timer_rows.values()
+                            if str(p.get("Triggers", "")).endswith(".service")})
+        for unit in triggered:
+            triggered_by[unit] = unit
+        # Ask about every triggered service even when list-unit-files did not name it: a generated or transient
+        # unit still carries the ExecStart the timer actually runs, and the probe is read-only.
+        services = sorted({u for u in [*triggered, *wanted] if u.endswith(".service")})
+        for unit, props in _show_scope(runner, flag, services, SYSTEMD_SERVICE_PROPS).items():
+            observed.setdefault(unit, {})[scope] = props
+            service_commands.setdefault(unit, []).extend(exec_start_commands(props.get("ExecStart", "")))
+    units: dict[str, dict[str, Any]] = {}
+    for unit, scopes in on_disk.items():
+        # Every timer (twins can exist with no registry row), every declared unit, and every service a timer
+        # triggers (its ExecStart is the command the timer actually runs).
+        if not (unit.endswith(".timer") or unit in wanted or unit in triggered_by):
+            continue
+        props = [observed.get(unit, {})[s] for s in scopes if s in observed.get(unit, {})]
+        units[unit] = {
+            "present": True,
+            "enabled": any(p.get("UnitFileState") in ENABLED_UNIT_FILE_STATES for p in props),
+            "live": any(p.get("ActiveState") == "active" for p in props),
+            "scopes": list(scopes),
+            "live_scopes": [s for s in scopes
+                            if (observed.get(unit, {}).get(s) or {}).get("ActiveState") == "active"],
+            "unit_file_state": next((p.get("UnitFileState") for p in props if p.get("UnitFileState")), None),
+            "active_state": next((p.get("ActiveState") for p in props if p.get("ActiveState")), None),
+            "triggers": next((p.get("Triggers", "") for p in props if p.get("Triggers")), ""),
+            "commands": [c for p in props for c in exec_start_commands(p.get("ExecStart", ""))],
+        }
+    for unit, obs in units.items():
+        if unit.endswith(".timer") and not obs["commands"]:
+            obs["commands"] = list(service_commands.get(obs["triggers"]) or [])
+    if failed:
+        return SOURCE_UNAVAILABLE, units, "; ".join(failed)
+    return SOURCE_OK, units, (f"{len(units)} units from {len(SYSTEMD_SCOPES)} managers "
+                              f"({sum(1 for v in units.values() if v['live'])} active)")
+
+
+def read_script_modules(root: Path, paths: Iterable[str]) -> dict[str, list[str]]:
+    """Top-level module names each entry script imports (``from x import …`` / ``import x``), by relative path.
+
+    A declared-side read: an n8n entry script that imports ``data_plausibility_monitor`` is running the module a
+    timer also runs. A missing or unparseable file simply has no entry — that is no evidence, not "no import".
+    """
+    out: dict[str, list[str]] = {}
+    for rel in sorted({str(p) for p in paths if str(p).endswith(".py")}):
+        path = root / rel
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, ValueError):
+            continue
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                names.add(node.module.rsplit(".", 1)[-1])
+            elif isinstance(node, ast.Import):
+                names.update(a.name.rsplit(".", 1)[-1] for a in node.names)
+        out[rel] = sorted(names)
+    return out
 
 
 def connect_ro(path: Path) -> sqlite3.Connection:
@@ -319,6 +546,33 @@ def _stage_is_live(row: Mapping[str, Any]) -> bool:
     return s.get("stage") is None and s.get("kind") == "n8n" and str(s.get("expression") or "") not in DISPATCHER_EXPRESSIONS
 
 
+def _live_timers(systemd: Optional[Mapping[str, Mapping[str, Any]]]) -> dict[str, Mapping[str, Any]]:
+    """The timers that are actually firing (enabled and active in at least one manager). Pure."""
+    return {u: o for u, o in (systemd or {}).items() if u.endswith(".timer") and o.get("live")}
+
+
+def _marker_programs(markers: Iterable[str]) -> set[str]:
+    """Script stems named by cron markers (``scripts/foo.py --x`` -> {"foo"}). Pure."""
+    out: set[str] = set()
+    for marker in markers:
+        out |= command_programs(str(marker or ""))
+    return out
+
+
+def _live_timer_for(
+    timers: Mapping[str, Mapping[str, Any]], programs: Iterable[str],
+) -> Optional[tuple[str, str]]:
+    """(timer unit, command) of the first live timer whose command runs one of ``programs``; None otherwise. Pure."""
+    want = {p for p in programs if p}
+    if not want:
+        return None
+    for unit, obs in sorted(timers.items()):
+        for command in obs.get("commands") or []:
+            if command_programs(command) & want:
+                return unit, command
+    return None
+
+
 def evaluate(
     decl: Mapping[str, Any],
     *,
@@ -327,9 +581,13 @@ def evaluate(
     cron_lines: Optional[list[str]],
     n8n_active: Optional[Iterable[str]],
     timers: Optional[Mapping[str, str]] = None,
+    systemd: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    script_modules: Optional[Mapping[str, Iterable[str]]] = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     """(contradictions, not_measured rule codes, accepted debt). A source passed as None was not readable: its rules
-    are skipped and named in not_measured. Pure."""
+    are skipped and named in not_measured. ``systemd`` is :func:`read_systemd_units` output keyed by unit; it is
+    None for "not measured" and only matters when a kind-systemd row (or a possible scheduler twin) is declared.
+    Pure."""
     rows, contracts, allow, processes = decl["rows"], decl["contracts"], decl["allow"], decl["processes"]
     grandfathered = set(decl.get("grandfathered_draft") or ())
     accepted: list[dict[str, Any]] = []
@@ -489,10 +747,19 @@ def evaluate(
             # one readable label for the detail line: the single marker as before, or the list for a list match
             match = markers[0] if len(markers) == 1 else markers
             hits = [ln for ln in cron_lines if any(m in ln for m in markers)]
+            under = _live_timer_for(_live_timers(systemd), _marker_programs(markers))
             if row.get("state") == "ACTIVE" and not hits:
-                out.append(_c("ACTIVE_CRON_LINE_ABSENT", lane,
-                              f"registry state ACTIVE (kind cron) but no active crontab line runs {match!r}",
-                              registry_state="ACTIVE", match=match))
+                if under is not None:
+                    # The lane does run; the registry names the wrong mechanism. Reported, not suppressed: a
+                    # ACTIVE_CRON_LINE_ABSENT here would be a contradiction invented by the reader (LQ-115 lesson).
+                    out.append(_c("CRON_ROW_RUNS_UNDER_TIMER", lane,
+                                  f"registry state ACTIVE (kind cron) but the only live scheduler running {match!r} "
+                                  f"is the systemd timer {under[0]}",
+                                  registry_state="ACTIVE", match=match, timer_unit=under[0], command=under[1]))
+                else:
+                    out.append(_c("ACTIVE_CRON_LINE_ABSENT", lane,
+                                  f"registry state ACTIVE (kind cron) but no active crontab line runs {match!r}",
+                                  registry_state="ACTIVE", match=match))
             elif row.get("state") in OFF_STATES and hits:
                 out.append(_c("DECLARED_OFF_CRON_LINE_ACTIVE", lane,
                               f"registry state {row.get('state')} but {len(hits)} active crontab line(s) run {match!r}",
@@ -511,6 +778,100 @@ def evaluate(
                 out.append(_c("CUTOVER_CRON_LINE_ACTIVE", lane,
                               f"stage cutover but {len(hits)} active crontab line(s) still run {match!r} unwrapped",
                               lines=len(hits), line_sha256=[hashlib.sha256(h.encode()).hexdigest()[:12] for h in hits]))
+
+    # 2026-11-07 (LQ-62): 168 kind-systemd rows were never verified against the host. The checker joined the
+    # registry with the crontab, the n8n DB and the ledger only, so a timer that stopped firing (or one the registry
+    # had retired that keeps firing) could not be seen by any gate.
+    systemd_rows = [r for r in rows.values() if _sched(r).get("kind") == "systemd"]
+    if systemd is None:
+        if systemd_rows:
+            not_measured += ["ACTIVE_TIMER_ABSENT", "ACTIVE_TIMER_DISABLED", "ACTIVE_TIMER_INACTIVE",
+                             "ACTIVE_SERVICE_INACTIVE", "DECLARED_OFF_TIMER_ACTIVE",
+                             "DECLARED_OFF_SERVICE_ACTIVE", "CRON_ROW_RUNS_UNDER_TIMER",
+                             "DUPLICATE_SCHEDULER"]
+    else:
+        for lane, row in sorted(rows.items()):
+            s = _sched(row)
+            if s.get("kind") != "systemd":
+                continue
+            unit = unit_name(s.get("expression"))
+            if unit is None:
+                continue
+            obs = systemd.get(unit) or {}
+            present, enabled, live = bool(obs.get("present")), bool(obs.get("enabled")), bool(obs.get("live"))
+            state = row.get("state")
+            ev = {"registry_state": state, "unit": unit, "unit_file_state": obs.get("unit_file_state"),
+                  "active_state": obs.get("active_state"), "scopes": list(obs.get("scopes") or []),
+                  "live_scopes": list(obs.get("live_scopes") or [])}
+            is_timer = unit.endswith(".timer")
+            programs: set[str] = set()
+            for command in obs.get("commands") or []:
+                programs |= command_programs(command)
+            # A row can name a dead timer while the lane actually runs from the crontab (tradeai-iris-taxonomy is
+            # disabled as a timer and runs from two cron lines). Saying "disabled" alone would invite the reader to
+            # conclude the lane is off; name the alternate scheduler in the same finding.
+            alt = sum(1 for ln in (cron_lines or []) if command_programs(ln) & programs) if programs else 0
+            if alt:
+                ev["cron_lines_running_program"] = alt
+                ev["programs"] = sorted(programs)
+            alt_note = (f"; {alt} active crontab line(s) run {sorted(programs)} instead, so the declared mechanism "
+                        f"is wrong") if alt else ""
+            if state == "ACTIVE" and is_timer and not present:
+                out.append(_c("ACTIVE_TIMER_ABSENT", lane,
+                              f"registry state ACTIVE (kind systemd) but {unit} is installed in no systemd manager"
+                              f"{alt_note}", **ev))
+            elif state == "ACTIVE" and is_timer and not enabled:
+                out.append(_c("ACTIVE_TIMER_DISABLED", lane,
+                              f"registry state ACTIVE (kind systemd) but {unit} is disabled in every manager that "
+                              f"has it, so it cannot start at boot or login{alt_note}", **ev))
+            elif state == "ACTIVE" and is_timer and not live:
+                out.append(_c("ACTIVE_TIMER_INACTIVE", lane,
+                              f"registry state ACTIVE (kind systemd) but {unit} is enabled and not active "
+                              f"({obs.get('active_state')}){alt_note}", **ev))
+            elif state == "ACTIVE" and not is_timer and not live:
+                out.append(_c("ACTIVE_SERVICE_INACTIVE", lane,
+                              f"registry state ACTIVE (kind systemd) but {unit} is not active "
+                              f"({'not installed' if not present else obs.get('active_state')}){alt_note}", **ev))
+            elif state in OFF_STATES and live:
+                code = "DECLARED_OFF_TIMER_ACTIVE" if is_timer else "DECLARED_OFF_SERVICE_ACTIVE"
+                out.append(_c(code, lane,
+                              f"registry state {state} but {unit} is active in "
+                              f"{', '.join(obs.get('live_scopes') or []) or 'a systemd manager'}",
+                              **ev))
+
+        # One program under two live schedulers. A lane's receipt and effect are single-writer; when an n8n lane
+        # and a timer (or a cron row and a timer) both run the same script, the second fire overwrites the first's
+        # receipt and the health contract grades whichever ran last. 2026-11-07: data-plausibility-audit and
+        # gap-resolution each have an ACTIVE timer and an ACTIVE n8n lane whose wrapper imports the same module.
+        live_timers = _live_timers(systemd)
+        modules = script_modules or {}
+        for lane, row in sorted(rows.items()):
+            s = _sched(row)
+            if s.get("kind") != "n8n" or row.get("state") != "ACTIVE" or not _stage_is_live(row):
+                continue
+            entry = str(s.get("match") or "")
+            hit = _live_timer_for(live_timers, modules.get(entry) or ())
+            if hit is not None:
+                out.append(_c("DUPLICATE_SCHEDULER", lane,
+                              f"n8n lane {entry} imports the module the live timer {hit[0]} runs: one lane, two "
+                              f"live schedulers", n8n_entry=entry, timer_unit=hit[0], command=hit[1],
+                              registry_state=row.get("state")))
+        if cron_lines is not None:
+            for lane, row in sorted(rows.items()):
+                s = _sched(row)
+                if s.get("kind") != "cron" or row.get("state") != "ACTIVE":
+                    continue
+                markers = _match_markers(s)
+                if not markers or not any(ln for ln in cron_lines if any(m in ln for m in markers)):
+                    continue
+                hit = _live_timer_for(live_timers, _marker_programs(markers))
+                if hit is not None:
+                    out.append(_c("DUPLICATE_SCHEDULER", lane,
+                                  f"an active crontab line and the live timer {hit[0]} both run "
+                                  f"{markers[0] if len(markers) == 1 else markers!r}",
+                                  match=markers[0] if len(markers) == 1 else markers, timer_unit=hit[0],
+                                  command=hit[1], registry_state=row.get("state")))
+
     out.sort(key=lambda c: (c["code"], c["lane_id"]))
     return out, sorted(set(not_measured)), accepted
 
@@ -593,15 +954,30 @@ def build_report(
         report["sources"]["n8n_workflows"] = {"status": st, "note": note}
         n8n = ids if st == SOURCE_OK else None
     twins = declared_host_twins(decl["rows"])
+    declared_units = sorted({u for r in decl["rows"].values() if _sched(r).get("kind") == "systemd"
+                             for u in [unit_name(_sched(r).get("expression"))] if u})
+    systemd: Optional[dict[str, dict[str, Any]]] = None
+    timers: Optional[dict[str, str]] = None
     if skip_systemd:
+        report["sources"]["systemd"] = {"status": SOURCE_SKIPPED, "note": "--no-systemd"}
         report["sources"]["systemd_timers"] = {"status": SOURCE_SKIPPED, "note": "--no-systemd"}
-        timers = None
     else:
+        # Two questions, two readers: the declared host twins (a unit named in scheduler.host_twin_units) and the
+        # units the kind-systemd rows themselves declare. Keeping them apart is deliberate — the first rule asks
+        # "is a second scheduler running this lane", the second "is the declared one installed and running".
         st, states, note = read_systemd_states(twins, systemd_runner)
         report["sources"]["systemd_timers"] = {"status": st, "note": note, "units": dict(states)}
         timers = states if st == SOURCE_OK else None
+        if declared_units:
+            st2, systemd_units, note2 = read_systemd_units(declared_units, systemd_runner)
+            report["sources"]["systemd"] = {"status": st2, "note": note2, "units": len(systemd_units),
+                                            "declared_units": len(declared_units)}
+            systemd = systemd_units if st2 == SOURCE_OK else None
+    script_modules = read_script_modules(root, (str(_sched(r).get("match") or "") for r in decl["rows"].values()
+                                                if _sched(r).get("kind") == "n8n"))
     contradictions, not_measured, accepted = evaluate(decl, ledger=ledger, live_lanes=live, cron_lines=cron,
-                                                      n8n_active=n8n, timers=timers)
+                                                      n8n_active=n8n, timers=timers, systemd=systemd,
+                                                      script_modules=script_modules)
     report.update(
         accepted_debt=accepted,
         contradictions=contradictions,
@@ -767,7 +1143,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--no-crontab", action="store_true", help="skip crontab -l (its rule is NOT_MEASURED)")
     ap.add_argument("--no-n8n", action="store_true", help="skip the n8n DB SELECT (its rule is NOT_MEASURED)")
     ap.add_argument("--no-systemd", action="store_true",
-                    help="skip systemctl is-active on the declared host twins (its rule is NOT_MEASURED)")
+                    help="skip the systemd probes (its rules are NOT_MEASURED)")
     ap.add_argument("--root", help=argparse.SUPPRESS)  # tests: a fixture repo root
     ap.add_argument("--now", help=argparse.SUPPRESS)  # tests: pin the clock
     try:
