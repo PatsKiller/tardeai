@@ -31,6 +31,13 @@ is ok because each enabled lane's durable output clock (last_output_at in the
 worker state file, advanced only by a run that returned payloads) was checked
 inside its window; it no longer reads as "entirely skipped".
 
+The receipt also carries LaneRunReceipt@v2 output fields (2026-11-07, WORK-QUEUE
+item 16): produced_count / attempted_count / empty_reason. An hourly slot in
+which every lane is not due is the NORMAL shape, and it now says so
+("nothing_due", an empty_allowed_reason in the lane's n8n health contract)
+instead of reporting summary.upserted = 0 with no reason — which the quality
+grader can only read as an unexplained empty.
+
 --dry-run is an offline plan: it imports the lane config and runner modules
 (pure imports, no DB), reads the worker state file read-only, prints the plan
 with each lane's runner registration and expectation status, writes nothing,
@@ -57,6 +64,33 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 LANE_ID = "hermes-research-worker-pool"
 EXIT_LANE_FAILURES = 3
 worker_pool = None
+
+
+def lane_output(*, produced: int, attempted: int, healthy: bool) -> dict:
+    """The v2 output fields for this slot: what it produced, and — when it produced nothing — why.
+
+    The lane's contract (config/n8n_health_contracts.json) names ``produced_count`` as its unit and permits an
+    empty run only with ``nothing_due`` or ``no_new_input``. Until 2026-11-07 the receipt was v1 only, so an
+    all-lanes-not-due hour — the normal hourly shape — graded EMPTY with the reason literally unstated. The
+    reason is knowable from the run itself: nothing was due, or runners scanned candidates and wrote none.
+
+    ``attempted`` is the candidates the runners scanned (the contract's unit); ``produced`` the candidates
+    upserted. A lane refused by its cadence gate never became a candidate, so it is neither a skip nor an
+    attempt — the slot is simply ``nothing_due``. Both counts are passed in from the run's own account, never
+    defaulted here: an absent count is unknown, not zero.
+    """
+    produced = int(produced)
+    attempted = int(attempted)
+    if not healthy:
+        # A failed run is graded on its failure; naming an "empty" reason would describe only part of it.
+        return {"produced_count": produced, "attempted_count": attempted}
+    if produced:
+        empty_reason = None
+    elif attempted:
+        empty_reason = "no_new_input"
+    else:
+        empty_reason = "nothing_due"
+    return {"produced_count": produced, "attempted_count": attempted, "empty_reason": empty_reason}
 
 # The lane-runner modules (worker_pool.RUNNER_MODULES) register their runners
 # at import time. Tolerant on purpose: one broken lane module never takes down
@@ -247,7 +281,9 @@ def main(argv=None) -> int:
         error = "pool_error" if rc == 1 else "lane_failures"
     write_lane_receipt(LANE_ID, ok=healthy, exit_code=rc, started_at=started,
                        script="hermes_research_worker_pool.py", summary=summary,
-                       error=error)
+                       error=error,
+                       output=lane_output(produced=summary["upserted"],
+                                          attempted=summary["scanned"], healthy=healthy))
     return rc
 
 

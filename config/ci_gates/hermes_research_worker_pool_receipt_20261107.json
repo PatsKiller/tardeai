@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_research_worker_pool_receipt_20261107",
+  "files": [
+    "tests/test_hermes_research_worker_pool_receipt_20261107.py",
+    "tests/test_hermes_research_worker_pool.py",
+    "tests/test_hermes_worker_pool_wire_20261015.py"
+  ],
+  "anchor": "HERMES_RESEARCH_WORKER_POOL_RECEIPT_20261107",
+  "comment": [
+    "ANCHOR: HERMES_RESEARCH_WORKER_POOL_RECEIPT_20261107 — WORK-QUEUE item 16. The hourly lane wrote a v1-only",
+    "receipt, so an all-lanes-not-due slot (the normal shape: 9 lanes, skipped_lanes 9, upserted 0) graded EMPTY",
+    "with no stated reason. lane_output() now emits produced_count/attempted_count/empty_reason (nothing_due |",
+    "no_new_input) additively, keeping _last.json v1 for its readers and writing the per-attempt copy as v2.",
+    "Hermetic: synthetic run_pool report, tmp state root, real committed contract; no DB, network or runner import."
+  ]
+}
