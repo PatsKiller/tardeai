@@ -172,7 +172,7 @@ export function visibleItems(m: DoNowModel, tab: Tab, showAll: boolean, topN = T
  * positions as Risk, and the approval total comes from the same overview field as MetricStrip. A missing
  * current source is a gap, never permission to revive the old risk-snapshot stop claims. No writes. */
 export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: any, sourceError?: unknown,
-  retained: { positionsStale?: boolean; approvalsStale?: boolean } = {}): DoNowModel {
+  retained: { positionsStale?: boolean; approvalsStale?: boolean; nowMs?: number } = {}): DoNowModel {
   const isStop = (i: DoNowItem) => /^(?:stop:|stops:|protection:)/.test(i.id)
     || i.sources.some(s => s === 'risk' || s.includes('desk_truth')) && i.category === 'protect'
   const isApproval = (i: DoNowItem) => i.id.startsWith('approvals:') || i.sources.some(s => s.includes('approvals'))
@@ -181,9 +181,13 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
   const stops = pages?.stops
   const positionsStale = !!stops?.stale || !!retained.positionsStale
   const answered = rows !== null && !sourceError && !pages?.positions?.gap
+  const positionsClock = str(stops?.last_broker_read_at ?? stops?.as_of ?? pages?.positions?.as_of)
   const missing = [...model.unavailableSources]
   const sources = [...model.sources, { name: 'cio_positions', status: answered ? 'OK' : 'UNAVAILABLE',
-    asOf: str(stops?.last_broker_read_at ?? stops?.as_of), basis: 'CIO positions · same categories as Risk', ageS: null,
+    // The stop read is the freshest clock when it exists; otherwise the position rows' own observation time is
+    // the only honest clock this source has. Null age is for a source with NO clock, not for one we did not read.
+    asOf: positionsClock,
+    basis: 'CIO positions · same categories as Risk', ageS: ageFromClock(positionsClock, retained.nowMs),
     stale: positionsStale, error: answered ? null : 'Current stop categories unavailable' }]
   if (!answered) missing.push('cio_positions')
   if (answered) for (const row of rows!) {
@@ -203,7 +207,8 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
   const approvals = num(overview?.pending_approvals ?? overview?.approvals_count)
   if (approvals === null) missing.push('approvals')
   sources.push({ name: 'approvals', status: approvals === null ? 'UNAVAILABLE' : 'OK', asOf: str(overview?.as_of),
-    basis: 'overview.pending_approvals / approvals_count · same as header', ageS: null, stale: !!retained.approvalsStale,
+    basis: 'overview.pending_approvals / approvals_count · same as header',
+    ageS: ageFromClock(str(overview?.as_of), retained.nowMs), stale: !!retained.approvalsStale,
     error: approvals === null ? 'Approval count unavailable' : null })
   if (approvals !== null && approvals > 0) items.push({ id: 'approvals:pending', category: 'decide', severity: 'P2',
     title: `${approvals} approvals waiting`, why: 'Review the approval queue', actionLabel: 'Review approvals', where: '/approvals',
@@ -231,6 +236,17 @@ export function homeWithCurrentTruth(model: DoNowModel, pages: any, overview: an
 
 export function severityTone(s: Severity): 'danger' | 'warning' | 'info' {
   return s === 'P0' || s === 'P1' ? 'danger' : s === 'P2' ? 'warning' : 'info'
+}
+
+/** Seconds since a source clock, or null when the source has no clock we can read.
+ *
+ *  `ageLabel(null)` already says "age unknown"; this keeps that honest by only returning null when the clock is
+ *  genuinely absent or unparsable, never because a caller forgot to pass it. */
+export function ageFromClock(asOf: string | null, nowMs?: number): number | null {
+  if (!asOf || nowMs == null) return null
+  const t = parseObservedTime(asOf)
+  if (!Number.isFinite(t)) return null
+  return Math.max(0, (nowMs - t) / 1000)
 }
 
 export function ageLabel(s: number | null): string {

@@ -234,6 +234,17 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     if unobserved_accounts:
         clocks["positions"].update(as_of=None, complete=False, status="UNKNOWN",
                                     gap={"reason": "position observations incomplete for: " + ", ".join(unobserved_accounts)})
+    # The day-P&L coverage fact on its own (#2542). `reason` below widens to holding-value and clock gaps, so a
+    # consumer that asks specifically "is the day P&L complete?" must not receive one of those instead
+    # (claude-lead review, 2026-11-05). Per-account: an account with no day P&L is a day-P&L gap too (LIVEFIX-E).
+    _day_parts = []
+    if rows and not day_cov["complete"]:
+        _uv = day_cov["unknown_value_usd"]
+        _day_parts.append(f"day P&L partial: {day_cov['unknown_rows']} holding row(s) without a day change "
+                          + (f"(${_uv:,.2f} of value) excluded" if _uv is not None else "(value unknown) excluded"))
+    if missing_accounts:
+        _day_parts.append("day P&L missing accounts: " + ", ".join(missing_accounts))
+    day_pl_gap = {"reason": "; ".join(_day_parts)} if _day_parts else None
     reason = "holdings unavailable" if not rows else (
         "holding value or day P&L missing" if total is None or day is None else
         (f"day P&L partial: {day_cov['unknown_rows']} holding row(s) without a day change "
@@ -248,6 +259,8 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
             # Coverage travels with the day figure. Partial is shown as partial,
             # never blanked and never silently called complete.
             "day_pl_complete": day_complete,
+            # Day-P&L coverage alone; never a holdings-value or clock gap wearing that name (#2542).
+            "day_pl_gap": day_pl_gap,
             "day_pl_coverage": {"known_rows": day_cov["known_rows"], "unknown_rows": day_cov["unknown_rows"],
                                 "unknown_value_usd": day_cov["unknown_value_usd"],
                                 "unknown_accounts": day_cov["unknown_accounts"],
@@ -1674,7 +1687,16 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     from .holdings_document import load_document
     # DB first (operator 2026-11-06): the export's render of positions_current, the file only as the stated
     # fallback. A non-production root (fixtures, offline copies) never reaches the live DB.
-    portfolio = portfolio_for(inputs.get("holdings") if "holdings" in inputs else load_document(store_path(root)), now=now)
+    holdings_doc = inputs.get("holdings") if "holdings" in inputs else load_document(store_path(root))
+    # Readable means: a JSON object whose `holdings` member is a LIST OF OBJECTS. A 0-byte file, a missing file, a
+    # corrupt file, a caller-supplied None and a well-formed document of the WRONG SHAPE are all "we could not read
+    # the position store", never "empty book" (cc3 F1 + cc2 second review, 2026-11-03). Callers may supply
+    # `holdings` (tests, replay), so the shape is checked on that path too: `portfolio_for` expects a dict and a
+    # None/non-dict must not reach it (cc-deepseek review, 2026-11-05).
+    _rows = holdings_doc.get("holdings") if isinstance(holdings_doc, dict) else None
+    store_readable = isinstance(_rows, list) and all(isinstance(r, dict) for r in _rows)
+    # A malformed store must not crash the page either: project an empty set and let the gap say WHY it is empty.
+    portfolio = portfolio_for(holdings_doc if store_readable else {}, now=now)
     broker = inputs.get("broker_stops") if "broker_stops" in inputs else _query_rows(
         db_query, "SELECT account,symbol,order_id,order_type,stop_price,qty,status,captured_at FROM stop_last_known")
     if "broker_stops" not in inputs:
@@ -1705,7 +1727,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     counts = {state: sum(p["stop_state"] == state for p in counted_positions) for state in ("active", "pending_activation", "filled")}
     stop_rows = [{**{k: p.get(k) for k in ("account_id", "account_label", "symbol", "stop_price", "stop_source", "stop_state",
                                          "stop_captured_at", "broker_protected", "stop_qty", "stop_evidence", "stop_note",
-                                         "stop_history", "stop_order_type", "stop_state_observed", "stop_observation")},
+                                         "stop_state_observed", "stop_observation", "stop_history", "stop_order_type")},
                   # the stored broker order id, so a page can show a resting stop without a live broker read
                   "stop_order_id": p.get("order_id")} for p in positions]
     stops = {"rows": stop_rows, "active_count": counts["active"], "pending_count": counts["pending_activation"],
@@ -1764,7 +1786,19 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         "unprotected_value_usd": unprotected_mv, "unproven_value_usd": unproven_mv,
                         "largest_name": None,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
-                        **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
+                        # `gap` answers ONE question — are the positions available — because that is how every
+                        # consumer reads it (Home's Do-now source `cio_positions`, the Risk desk). The aggregate's
+                        # day-P&L coverage gap is a DIFFERENT fact and travels separately: with 26 priced rows and
+                        # no day change per row it used to make the whole positions feed read "unavailable"
+                        # (2026-11-03), hiding a complete position set behind a partial P&L.
+                        **{k: portfolio[k] for k in ("source", "as_of", "stale")},
+                        "gap": None if positions else (
+                            {"reason": "no positions in the canonical holdings store"} if store_readable
+                            else {"reason": "the holdings store could not be read (missing, empty, unparseable or the wrong shape)"}),
+                        # The DAY-P&L coverage fact only, from `portfolio_for`'s own day coverage — never the
+                        # aggregate's wider gap (holdings-value or clock), which would assert a cause this
+                        # section did not measure (claude-lead review, 2026-11-05).
+                        "day_pl_gap": portfolio.get("day_pl_gap")}
     position_section["as_of"] = portfolio["positions_as_of"]
     position_section.update(_resting_summary(counted_positions, portfolio.get("total_usd"), broker_available=broker is not None))
     if uncertain_observation:
