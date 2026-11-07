@@ -147,14 +147,24 @@ def main(argv: list[str] | None = None) -> int:
 
 def lane_output(summary: dict, rc: int) -> dict:
     """LaneRunReceipt@v2 output fields (n8n expected_output, unit: evaluated outcomes appended to
-    commitment_outcomes.jsonl). attempted = commitments due; none due = ``nothing_due``; no commitment store at all
-    (exit 2) = ``no_input_unexpected``."""
+    commitment_outcomes.jsonl). attempted = commitments due; no commitment past due = ``nothing_due``; every
+    past-due commitment already settled (a re-sweep of the same window) = ``all_already_settled``; no commitment
+    store at all (exit 2) = ``no_input_unexpected``.
+
+    ``nothing_due`` used to cover both empty cases, and it was untrue for the second: the 2026-11-06 run reported
+    ``due: 886, already_settled: 886, outcomes: 0`` under ``empty_reason: nothing_due`` — 886 commitments WERE past
+    due. While both cases say the same thing, a reader cannot tell "there is nothing to sweep" from "the sweep has
+    already settled everything"."""
     outcomes, due = int(summary.get("outcomes") or 0), int(summary.get("due") or 0)
-    skipped = {"already_settled": int(summary.get("already_settled") or 0)}
+    settled = int(summary.get("already_settled") or 0)
+    skipped = {"already_settled": settled}
     if rc == 2:
         skipped["no_input_unexpected"] = 1
+    empty_reason = None
+    if outcomes == 0 and rc == 0:
+        empty_reason = "all_already_settled" if due and settled >= due else "nothing_due"
     return {"produced_count": outcomes, "attempted_count": max(due, outcomes), "skipped_reasons": skipped,
-            "empty_reason": "nothing_due" if outcomes == 0 and rc == 0 else None}
+            "empty_reason": empty_reason}
 
 
 if __name__ == "__main__":

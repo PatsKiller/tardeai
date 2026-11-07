@@ -11763,7 +11763,10 @@
           "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
-          "no_new_input"
+          "no_new_input",
+          "no_unprocessed_news",
+          "already_present",
+          "no_eligible_candidates"
         ],
         "evidence": [
           {
@@ -21637,7 +21640,8 @@
           "dependency_unavailable"
         ],
         "empty_allowed_reasons": [
-          "nothing_due"
+          "nothing_due",
+          "all_already_settled"
         ],
         "evidence": [
           {

@@ -318,8 +318,14 @@ def main(argv=None):
     members = int(report["members"])
     write_lane_receipt(
         LANE_ID, ok=True, exit_code=0, started_at=started,
+        # The count of members missing a surface is this AUDIT's finding about the portfolio, not a gap in what the
+        # run produced. Under the old key name (``symbols_with_gaps``) scripts/lib/run_quality.py read it as the run
+        # reporting its own gap and graded every audit DEGRADED when coverage was bad — which is when the audit is
+        # working (2026-11-06: 128 of 130 members with gaps, alert_decision "worsened"). Name a subject metric so it
+        # cannot be read as the run's.
         summary={"members": members, "membership_source": report["membership"].get("source"),
-                 "symbols_with_gaps": report["symbols_with_gaps"], "surface_counts": report["surface_counts"],
+                 "symbols_missing_surfaces": report["symbols_with_gaps"],
+                 "surface_counts": report["surface_counts"],
                  "alert_requested": bool(a.alert), "alert_decision": report["alert_decision"]["reason"],
                  "alert_sent": bool(report.get("alert_sent"))},
         produced_count=members, attempted_count=members,

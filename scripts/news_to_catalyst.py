@@ -181,7 +181,7 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
             is_research_directive_slug = None  # type: ignore
 
     created = []
-    skipped = {"research_directive_slug": 0, "not_in_ticker_universe": 0}
+    skipped = {"research_directive_slug": 0, "not_in_ticker_universe": 0, "already_present": 0}
     for nid, symbol, strategy_type, title, summary, source, source_url, published_at in rows:
         # Filter BEFORE classify/LLM spend — junk must not reach identity later.
         if is_research_directive_slug is not None and is_research_directive_slug(symbol):
@@ -234,7 +234,10 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
         # timeout — losing every insert in the batch (2026-07-04 audit, residual offender).
         conn.commit()
         if _row is None:
-            continue  # (symbol, headline) already present (race with news_ingestion inline) — skip
+            # (symbol, headline) already present — a race with news_ingestion's inline insert, or the same headline
+            # on a second article for the same symbol. Counted, not silent: an empty run must be able to say so.
+            skipped["already_present"] += 1
+            continue
         new_id = _row[0]
         created.append({
             "catalyst_id": new_id, "news_id": nid, "symbol": symbol,
@@ -268,6 +271,28 @@ def run(as_json: bool = False, *, single_symbol: str | None = None, dry_run: boo
             "would_create": len(created) if dry_run else None, "skipped": dict(skipped)}
 
 
+def lane_output(summary: dict) -> dict:
+    """LaneRunReceipt@v2 output fields (n8n expected_output, unit: rows inserted into catalyst_events).
+
+    produced = catalyst rows created this run; attempted = news articles with no linked catalyst (the query's rows).
+    The receipt only carried ``summary.candidates``/``summary.created``, so an empty run said "produced nothing" and
+    nothing about why (2026-11-06, WORK-QUEUE item 26). An empty run now names its own kind of empty: no unprocessed
+    article at all (``no_unprocessed_news``), every candidate already had its catalyst row (``already_present``), or
+    every candidate was refused by an identity gate (``no_eligible_candidates``)."""
+    created, candidates = int(summary.get("created") or 0), int(summary.get("candidates") or 0)
+    skipped = {k: int(v) for k, v in (summary.get("skipped") or {}).items() if v}
+    empty_reason = None
+    if not created:
+        if not candidates:
+            empty_reason = "no_unprocessed_news"
+        elif skipped.get("already_present", 0) == candidates:
+            empty_reason = "already_present"
+        else:
+            empty_reason = "no_eligible_candidates"
+    return {"produced_count": created, "attempted_count": max(candidates, created),
+            "skipped_reasons": skipped, "empty_reason": empty_reason}
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     ap = argparse.ArgumentParser(description="news_articles -> catalyst_events")
@@ -291,7 +316,8 @@ def main(argv: list[str] | None = None) -> int:
                                           error=f"{type(exc).__name__}: {exc}")
         raise
     _receipt_lib().write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started,
-                                      script="news_to_catalyst.py", summary=summary)
+                                      script="news_to_catalyst.py", summary=summary,
+                                      output=lane_output(summary))
     return 0
 
 
