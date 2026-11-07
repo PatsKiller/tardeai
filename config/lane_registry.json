@@ -4454,17 +4454,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "35 * * * *",
-        "command_text": "35 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash -c 'set -a; . \"/run/user/$(id -u)/tradeai/env\" 2>/dev/null; . /home/johnclaw/.config/tradeai/agent_runtime_overrides.env 2>/dev/null; set +a; exec $PY scripts/cio_gate_measurement_bridge.py --write-measurements' >> /home/johnclaw/logs/goal_gate_bridge.log 2>&1",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/goal_gate_bridge.lock $PY scripts/cio_gate_measurement_bridge.py --write-measurements >> $HOME/logs/goal_gate_bridge.log 2>&1",
         "match": "cio_gate_measurement_bridge.py",
-        "stage": "shadow",
-        "wave": "LD-W1"
+        "stage": "canary",
+        "wave": "LD-W1",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 1,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "json_key",
-        "path": "data/runtime/goal-gate-bridge_last.json",
-        "key": "ok_at"
+        "kind": "file_mtime",
+        "path": "data/runtime/goal-gate-bridge_last.json"
       },
       "note": "P9 honesty bridge. Armed 2026-09-16 operator APPROVE E3.",
       "value_class": "Operationally Important",
@@ -4481,15 +4481,15 @@
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "35 * * * *"
         ],
         "tz": "America/New_York",
         "wave": "W4",
-        "class": "report",
-        "priority": 5,
-        "retry_policy": "none"
+        "class": "pipeline",
+        "priority": 6,
+        "retry_policy": "transient-2"
       },
       "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L983 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
     },
@@ -5332,16 +5332,18 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 9 * * 0",
-        "command_text": "cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
-        "match": "scripts/reconcile_exit_advisory_outcomes.py"
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
+        "match": "scripts/reconcile_exit_advisory_outcomes.py",
+        "stage": "canary",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 168.0,
       "state": "ACTIVE",
       "state_since": "2026-09-26",
-      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-02 — interpreter changed from the relative .venv/bin/python (releases ship no .venv since 2026-09-25; last successful run 2026-09-20, `flock: failed to execute .venv/bin/python` since) to $PY (/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python).",
+      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-02 — interpreter changed from the relative .venv/bin/python (releases ship no .venv since 2026-09-25; last successful run 2026-09-20, `flock: failed to execute .venv/bin/python` since) to $PY ($HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python).",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/exit_outcomes.log"
+        "path": "data/runtime/reconcile-exit-advisory-outcomes_last.json"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/check_cron_sanity.py::check_relative_interpreters (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r02_relative_venv_inside_release_is_flagged_and_fix_clears_it); persistent-state logs show `flock: failed to execute .venv/bin/python` after 2026-09-20; cio_phase2_exact_main_deploy.sh:533 excludes .venv from releases; grant dbe23b0073b3a925.",
@@ -5358,7 +5360,18 @@
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 9 * * 0"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "report",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
     },
     {
       "lane_id": "reconcile-pullback-outcomes",
@@ -20879,14 +20892,16 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 7 * * *",
-        "match": "scripts/agent_watchlist_engine.py"
+        "match": "scripts/agent_watchlist_engine.py",
+        "stage": "canary",
+        "command_text": "cd $PROJ && flock -n /tmp/agent_watchlist_engine.lock $PY scripts/agent_watchlist_engine.py --status >> logs/agent_watchlist_engine.log 2>&1",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/agent_watchlist_engine.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "path": "data/runtime/agent-watchlist-engine_last.json"
       },
       "value_class": "Duplicated",
       "recommendation": "MERGE_INTO:P14",
@@ -20903,7 +20918,18 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 7 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "pipeline",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
     },
     {
       "lane_id": "proposal-enrichment-loop",
@@ -21203,14 +21229,16 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 7,9,12,16,20 * * 1-5",
-        "match": "scripts/event_detector.py"
+        "match": "scripts/event_detector.py",
+        "stage": "canary",
+        "command_text": "cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/event_detector.lock $PY scripts/event_detector.py >> logs/event_detector.log 2>&1",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 59.0,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/event_detector.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "path": "data/runtime/event-detector_last.json"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -21232,6 +21260,17 @@
         "class": "pipeline_excluded_gate",
         "token": "market_day_gate.sh",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 7,9,12,16,20 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "pipeline",
+        "priority": 4,
+        "retry_policy": "transient-2"
       }
     },
     {
@@ -22319,15 +22358,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "40 7 * * 1-5",
-        "match": "scripts/portfolio_lookthrough_themes.py"
+        "match": "scripts/portfolio_lookthrough_themes.py",
+        "stage": "canary",
+        "command_text": "cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/portfolios/state/lookthrough_themes.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/portfolio_lookthrough_themes.py:287 writes API cache on every global (no --account) run; host mtime 2026-10-09T07:41:07"
+        "kind": "json_key",
+        "key": "ok_at",
+        "path": "data/runtime/portfolio-lookthrough-themes_last.json"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P14",
@@ -22344,7 +22385,18 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "40 7 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "llm",
+        "priority": 4,
+        "retry_policy": "llm-transient"
+      }
     },
     {
       "lane_id": "ask-alerts",
@@ -24236,14 +24288,17 @@
       "scheduler": {
         "kind": "cron",
         "expression": "10 8 * * 1-5",
-        "match": "scripts/incubator_llm_screener.py"
+        "match": "scripts/incubator_llm_screener.py",
+        "stage": "canary",
+        "command_text": "cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/incubator_llm_screener.lock $PY scripts/incubator_llm_screener.py --run >> logs/incubator_llm_screener.log 2>&1",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/incubator_llm_screener.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "kind": "json_key",
+        "key": "ok_at",
+        "path": "data/runtime/incubator-llm-screener_last.json"
       },
       "value_class": "Operationally Important",
       "recommendation": "PIPELINE:P07",
@@ -24260,7 +24315,18 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "10 8 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "llm",
+        "priority": 4,
+        "retry_policy": "llm-transient"
+      }
     },
     {
       "lane_id": "alpaca-live-read-sync",
@@ -24517,14 +24583,16 @@
       "scheduler": {
         "kind": "cron",
         "expression": "0 6 * * 1-5",
-        "match": "scripts/drain_discovery_backlog.py"
+        "match": "scripts/drain_discovery_backlog.py",
+        "stage": "canary",
+        "command_text": "cd $PROJ && flock -n /tmp/drain_discovery_backlog.lock $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1",
+        "cutover_wave": "CW0"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/drain_discovery_backlog.log",
-        "evidence": "CRON_LOG_REDIRECT"
+        "path": "data/runtime/drain-discovery-backlog_last.json"
       },
       "value_class": "Nice to Have",
       "recommendation": "PIPELINE:P10",
@@ -24541,7 +24609,18 @@
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 6 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "pipeline",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
     },
     {
       "lane_id": "run-governed-symbol-thesis-acquisition",

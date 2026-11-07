@@ -36050,6 +36050,1188 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "agent-watchlist-engine",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Daily watchlist engine: promotes high-quality validated intel to qualified_intelligence, proposes watchlist adds from it, and writes the 'What I Discovered' discovery summary",
+        "business_function": "research",
+        "source": "registry agent-watchlist-engine"
+      },
+      "owner": "portfolio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (n8n_run_relay, host and port declared in config/expected_services.json) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/agent_watchlist_engine.py --status",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/agent_watchlist_engine.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/agent-watchlist-engine_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "scripts/agent_watchlist_engine.py",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "lane script (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/agent-watchlist-engine_last.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "lane script (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
+        },
+        {
+          "check": "output_advanced",
+          "text": "data/runtime/agent-watchlist-engine_last.json advanced on that run"
+        },
+        {
+          "check": "fresh",
+          "text": "the output_signal is younger than 48 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240 s (80% of timeout_s 300)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h but younger than 72 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK twice in a row"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h"
+        },
+        {
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48,
+        "freshness_failed_after_h": 72,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (class default until 14 finished live runs exist)",
+        "timeout_s": 300,
+        "class": "pipeline",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "overnight onboarding wave LQ-20261107-25 (no finished live runs yet); class defaults",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "class default in the remediation catalogue",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram through scripts/incident_notifier.py",
+        "enforced": "declarations only at this stage; runtime coverage is NOT_MEASURED until live runs exist"
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/agent-watchlist-engine_last.json",
+        "verify": [
+          "stat / jq the receipt: data/runtime/agent-watchlist-engine_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='agent-watchlist-engine' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted and keep status 'running'",
+        "expected_output_basis": "derived 2026-11-07 from the lane's allowlist argv ($PY scripts/agent_watchlist_engine.py --status); produced_count emission is the executor's LaneRunReceipt@v2 attempt receipt"
+      },
+      "review_by": "2026-11-21",
+      "review": {
+        "prepared_by": "agent draft (overnight onboarding wave LQ-20261107-25, 2026-11-07)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "intel row promoted / proposal",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due",
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/agent-watchlist-engine_last.json produced_count (LaneRunReceipt@v2 top-level field)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "drain-discovery-backlog",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Drains the discovery backlog: applies queued discovery rows that passed validation so the intake pipeline stays current",
+        "business_function": "research",
+        "source": "registry drain-discovery-backlog"
+      },
+      "owner": "research",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (n8n_run_relay, host and port declared in config/expected_services.json) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/drain_discovery_backlog.py --apply",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/drain_discovery_backlog.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/drain-discovery-backlog_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "scripts/drain_discovery_backlog.py",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "lane script (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/drain-discovery-backlog_last.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "lane script (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
+        },
+        {
+          "check": "output_advanced",
+          "text": "data/runtime/drain-discovery-backlog_last.json advanced on that run"
+        },
+        {
+          "check": "fresh",
+          "text": "the output_signal is younger than 144 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 720 s (80% of timeout_s 900)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 144 h but younger than 216 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 720 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK twice in a row"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 216 h"
+        },
+        {
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 144,
+        "freshness_failed_after_h": 216,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (class default until 14 finished live runs exist)",
+        "timeout_s": 900,
+        "class": "pipeline",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "overnight onboarding wave LQ-20261107-25 (no finished live runs yet); class defaults",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 720
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "class default in the remediation catalogue",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram through scripts/incident_notifier.py",
+        "enforced": "declarations only at this stage; runtime coverage is NOT_MEASURED until live runs exist"
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/drain-discovery-backlog_last.json",
+        "verify": [
+          "stat / jq the receipt: data/runtime/drain-discovery-backlog_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='drain-discovery-backlog' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted and keep status 'running'",
+        "expected_output_basis": "derived 2026-11-07 from the lane's allowlist argv ($PY scripts/drain_discovery_backlog.py --apply); produced_count emission is the executor's LaneRunReceipt@v2 attempt receipt"
+      },
+      "review_by": "2026-11-21",
+      "review": {
+        "prepared_by": "agent draft (overnight onboarding wave LQ-20261107-25, 2026-11-07)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "backlog row applied",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due",
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/drain-discovery-backlog_last.json produced_count (LaneRunReceipt@v2 top-level field)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "incubator-llm-screener",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Morning incubator screen: scores incubator candidates and promotes the ones that clear the screen",
+        "business_function": "research",
+        "source": "registry incubator-llm-screener"
+      },
+      "owner": "proposals",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (n8n_run_relay, host and port declared in config/expected_services.json) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/incubator_llm_screener.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/incubator_llm_screener.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/incubator-llm-screener_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "scripts/incubator_llm_screener.py",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "lane script (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/incubator-llm-screener_last.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "lane script (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
+        },
+        {
+          "check": "output_advanced",
+          "text": "data/runtime/incubator-llm-screener_last.json advanced on that run"
+        },
+        {
+          "check": "fresh",
+          "text": "the output_signal is younger than 144 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440 s (80% of timeout_s 1800)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 144 h but younger than 216 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK twice in a row"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 216 h"
+        },
+        {
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 144,
+        "freshness_failed_after_h": 216,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (class default until 14 finished live runs exist)",
+        "timeout_s": 1800,
+        "class": "llm",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "overnight onboarding wave LQ-20261107-25 (no finished live runs yet); class defaults",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "class default in the remediation catalogue",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram through scripts/incident_notifier.py",
+        "enforced": "declarations only at this stage; runtime coverage is NOT_MEASURED until live runs exist"
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/incubator-llm-screener_last.json",
+        "verify": [
+          "stat / jq the receipt: data/runtime/incubator-llm-screener_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='incubator-llm-screener' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted and keep status 'running'",
+        "expected_output_basis": "derived 2026-11-07 from the lane's allowlist argv ($PY scripts/incubator_llm_screener.py); produced_count emission is the executor's LaneRunReceipt@v2 attempt receipt"
+      },
+      "review_by": "2026-11-21",
+      "review": {
+        "prepared_by": "agent draft (overnight onboarding wave LQ-20261107-25, 2026-11-07)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "candidate screened",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due",
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/incubator-llm-screener_last.json produced_count (LaneRunReceipt@v2 top-level field)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "portfolio-lookthrough-themes",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Look-through theme map: resolves holdings into themes and writes the CIO/Risk/Steph/Grok advisories",
+        "business_function": "portfolio",
+        "source": "registry portfolio-lookthrough-themes"
+      },
+      "owner": "portfolio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (n8n_run_relay, host and port declared in config/expected_services.json) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/portfolio_lookthrough_themes.py --grok",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/lookthrough_themes.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/portfolio-lookthrough-themes_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "scripts/portfolio_lookthrough_themes.py",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "lane script (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/portfolio-lookthrough-themes_last.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "lane script (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
+        },
+        {
+          "check": "output_advanced",
+          "text": "data/runtime/portfolio-lookthrough-themes_last.json advanced on that run"
+        },
+        {
+          "check": "fresh",
+          "text": "the output_signal is younger than 144 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440 s (80% of timeout_s 1800)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 144 h but younger than 216 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK twice in a row"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 216 h"
+        },
+        {
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 144,
+        "freshness_failed_after_h": 216,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (class default until 14 finished live runs exist)",
+        "timeout_s": 1800,
+        "class": "llm",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "overnight onboarding wave LQ-20261107-25 (no finished live runs yet); class defaults",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "class default in the remediation catalogue",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram through scripts/incident_notifier.py",
+        "enforced": "declarations only at this stage; runtime coverage is NOT_MEASURED until live runs exist"
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/portfolio-lookthrough-themes_last.json",
+        "verify": [
+          "stat / jq the receipt: data/runtime/portfolio-lookthrough-themes_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='portfolio-lookthrough-themes' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted and keep status 'running'",
+        "expected_output_basis": "derived 2026-11-07 from the lane's allowlist argv ($PY scripts/portfolio_lookthrough_themes.py --grok); produced_count emission is the executor's LaneRunReceipt@v2 attempt receipt"
+      },
+      "review_by": "2026-11-21",
+      "review": {
+        "prepared_by": "agent draft (overnight onboarding wave LQ-20261107-25, 2026-11-07)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "theme row",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due",
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/portfolio-lookthrough-themes_last.json produced_count (LaneRunReceipt@v2 top-level field)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "reconcile-exit-advisory-outcomes",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Weekly reconciliation of exit-advisory outcomes: compares what each exit advisory predicted with what the position actually did",
+        "business_function": "portfolio",
+        "source": "registry reconcile-exit-advisory-outcomes"
+      },
+      "owner": "watch",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (n8n_run_relay, host and port declared in config/expected_services.json) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/reconcile_exit_advisory_outcomes.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/exit_outcomes.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/reconcile-exit-advisory-outcomes_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "scripts/reconcile_exit_advisory_outcomes.py",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "lane script (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/reconcile-exit-advisory-outcomes_last.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "lane script (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
+        },
+        {
+          "check": "output_advanced",
+          "text": "data/runtime/reconcile-exit-advisory-outcomes_last.json advanced on that run"
+        },
+        {
+          "check": "fresh",
+          "text": "the output_signal is younger than 336 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480 s (80% of timeout_s 600)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 336 h but younger than 504 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK twice in a row"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 504 h"
+        },
+        {
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 336,
+        "freshness_failed_after_h": 504,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (class default until 14 finished live runs exist)",
+        "timeout_s": 600,
+        "class": "report",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "overnight onboarding wave LQ-20261107-25 (no finished live runs yet); class defaults",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "class default in the remediation catalogue",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram through scripts/incident_notifier.py",
+        "enforced": "declarations only at this stage; runtime coverage is NOT_MEASURED until live runs exist"
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/reconcile-exit-advisory-outcomes_last.json",
+        "verify": [
+          "stat / jq the receipt: data/runtime/reconcile-exit-advisory-outcomes_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='reconcile-exit-advisory-outcomes' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted and keep status 'running'",
+        "expected_output_basis": "derived 2026-11-07 from the lane's allowlist argv ($PY scripts/reconcile_exit_advisory_outcomes.py); produced_count emission is the executor's LaneRunReceipt@v2 attempt receipt"
+      },
+      "review_by": "2026-11-21",
+      "review": {
+        "prepared_by": "agent draft (overnight onboarding wave LQ-20261107-25, 2026-11-07)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "advisory outcome",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due",
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/reconcile-exit-advisory-outcomes_last.json produced_count (LaneRunReceipt@v2 top-level field)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "event-detector",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Intraday event detector: scans the day's market/catalyst stream and records detected events for the CIO memory",
+        "business_function": "research",
+        "source": "registry event-detector"
+      },
+      "owner": "portfolio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (n8n_run_relay, host and port declared in config/expected_services.json) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/event_detector.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/event_detector.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/event-detector_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "scripts/event_detector.py",
+          "kind": "inventory_text",
+          "direction": "read",
+          "source": "lane script (DRAFT: free text)"
+        },
+        {
+          "name": "data/runtime/event-detector_last.json",
+          "kind": "inventory_text",
+          "direction": "write",
+          "source": "lane script (DRAFT: free text)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "the latest live run is RUN_DONE in the coordination ledger"
+        },
+        {
+          "check": "output_advanced",
+          "text": "data/runtime/event-detector_last.json advanced on that run"
+        },
+        {
+          "check": "fresh",
+          "text": "the output_signal is younger than 118 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 720 s (80% of timeout_s 900)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 118 h but younger than 177 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 720 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy) or ended RUN_SKIPPED_LOCK twice in a row"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 177 h"
+        },
+        {
+          "check": "stale_output",
+          "text": "RUN_DONE but the output_signal did not advance"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 118,
+        "freshness_failed_after_h": 177,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (class default until 14 finished live runs exist)",
+        "timeout_s": 900,
+        "class": "pipeline",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "overnight onboarding wave LQ-20261107-25 (no finished live runs yet); class defaults",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 720
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "class default in the remediation catalogue",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram through scripts/incident_notifier.py",
+        "enforced": "declarations only at this stage; runtime coverage is NOT_MEASURED until live runs exist"
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/event-detector_last.json",
+        "verify": [
+          "stat / jq the receipt: data/runtime/event-detector_last.json",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='event-detector' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted and keep status 'running'",
+        "expected_output_basis": "derived 2026-11-07 from the lane's allowlist argv ($PY scripts/event_detector.py); produced_count emission is the executor's LaneRunReceipt@v2 attempt receipt"
+      },
+      "review_by": "2026-11-21",
+      "review": {
+        "prepared_by": "agent draft (overnight onboarding wave LQ-20261107-25, 2026-11-07)",
+        "status": "REVIEWED",
+        "reviewed_by": "agent n8n_cutover_wave.py 2026-10-15 (machine cross-check of runner, lock and receipt edges against config/n8n_run_allowlist.json and the live cron line; operator REVIEW pass still owed)",
+        "reviewed_on": "2026-10-15"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "event",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due",
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/event-detector_last.json produced_count (LaneRunReceipt@v2 top-level field)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "state_note": "CW0 2026-10-15: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     }
   ],
   "pending_changes": {

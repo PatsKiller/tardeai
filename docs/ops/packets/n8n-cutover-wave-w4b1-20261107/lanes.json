@@ -1,0 +1,157 @@
+{
+  "wave": "W4B1",
+  "ready": [
+    "agent-watchlist-engine",
+    "drain-discovery-backlog",
+    "goal-gate-bridge",
+    "incubator-llm-screener",
+    "portfolio-lookthrough-themes",
+    "reconcile-exit-advisory-outcomes",
+    "event-detector"
+  ],
+  "effect_keyed": [
+    "agent-watchlist-engine",
+    "drain-discovery-backlog",
+    "goal-gate-bridge",
+    "incubator-llm-screener",
+    "portfolio-lookthrough-themes",
+    "event-detector"
+  ],
+  "plan": [
+    {
+      "lane_id": "agent-watchlist-engine",
+      "row_id": "cron:L266",
+      "family_id": "F51",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/agent_watchlist_engine.lock",
+      "live_arg": [],
+      "slots": [
+        "0 7 * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 267,
+          "text": "0 7 * * * cd $PROJ && flock -n /tmp/agent_watchlist_engine.lock $PY scripts/agent_watchlist_engine.py --status >> logs/agent_watchlist_engine.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "drain-discovery-backlog",
+      "row_id": "cron:L867",
+      "family_id": "F39",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/drain_discovery_backlog.lock",
+      "live_arg": [],
+      "slots": [
+        "0 6 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 881,
+          "text": "0 6 * * 1-5 cd $PROJ && flock -n /tmp/drain_discovery_backlog.lock $PY scripts/drain_discovery_backlog.py --apply >> logs/drain_discovery_backlog.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "goal-gate-bridge",
+      "row_id": "cron:L983",
+      "family_id": "F51",
+      "tier_name": "append",
+      "status": "READY_CANARY",
+      "lock": "/tmp/goal_gate_bridge.lock",
+      "live_arg": [],
+      "slots": [
+        "35 * * * *"
+      ],
+      "cron_lines": [
+        {
+          "line": 997,
+          "text": "35 * * * * cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/goal_gate_bridge.lock $PY scripts/cio_gate_measurement_bridge.py --write-measurements >> $HOME/logs/goal_gate_bridge.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "incubator-llm-screener",
+      "row_id": "cron:L788",
+      "family_id": "F45",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/incubator_llm_screener.lock",
+      "live_arg": [
+        "--run"
+      ],
+      "slots": [
+        "10 8 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 799,
+          "text": "10 8 * * 1-5 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/incubator_llm_screener.lock $PY scripts/incubator_llm_screener.py --run >> logs/incubator_llm_screener.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "portfolio-lookthrough-themes",
+      "row_id": "cron:L486",
+      "family_id": "F51",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/lookthrough_themes.lock",
+      "live_arg": [],
+      "slots": [
+        "40 7 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 487,
+          "text": "40 7 * * 1-5 cd $PROJ && flock -n /tmp/lookthrough_themes.lock $PY scripts/portfolio_lookthrough_themes.py --grok >> logs/lookthrough_themes.log 2>&1  # theme look-through + CIO/Risk/Steph/Grok advisories"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "reconcile-exit-advisory-outcomes",
+      "row_id": "cron:L745",
+      "family_id": "F39",
+      "tier_name": "read/overwrite",
+      "status": "READY_CANARY",
+      "lock": "/tmp/exit_outcomes.lock",
+      "live_arg": [],
+      "slots": [
+        "0 9 * * 0"
+      ],
+      "cron_lines": [
+        {
+          "line": 756,
+          "text": "0 9 * * 0 cd $HOME/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1"
+        }
+      ],
+      "reasons": []
+    },
+    {
+      "lane_id": "event-detector",
+      "row_id": "cron:L329",
+      "family_id": "F40",
+      "tier_name": "llm",
+      "status": "READY_CANARY",
+      "lock": "/tmp/event_detector.lock",
+      "live_arg": [],
+      "slots": [
+        "0 7,9,12,16,20 * * 1-5"
+      ],
+      "cron_lines": [
+        {
+          "line": 330,
+          "text": "0 7,9,12,16,20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/event_detector.lock $PY scripts/event_detector.py >> logs/event_detector.log 2>&1"
+        }
+      ],
+      "reasons": []
+    }
+  ]
+}
