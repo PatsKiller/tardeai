@@ -20,7 +20,39 @@ from collections import Counter
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUT = PROJECT_ROOT / "docs" / "hermes" / "backlog_health"
 
+# The lane's declared output_signal (config/lane_registry.json), relative to the served persistent-state root.
+# QUALITY ROUND 2 items 1-2 (2026-11-07): the report was written ONLY into the checkout's docs/ copy, so the
+# grader — which resolves output_signal.path under the state root and only under data/ or logs/ — could not see
+# it and graded the lane EMPTY ("declared output file is missing") on a run that had in fact written its report.
+RESULT_REL = "data/hermes/backlog_health/latest_backlog_health_summary.json"
+RESULT_NAME = "latest_backlog_health_summary.json"
+
 STALE_DAYS = 7
+
+
+def result_targets() -> list[Path]:
+    """Served persistent-state copy first, then the checkout copy (the docs copy is kept for readers)."""
+    try:
+        from scripts.lib.persistent_state_root import durable_write_targets
+    except ImportError:
+        from lib.persistent_state_root import durable_write_targets
+    return durable_write_targets(RESULT_REL, PROJECT_ROOT, require_persistent_dir=False)
+
+
+def write_summary(summary: dict, targets: list[Path] | None = None, docs_dir: Path | None = None) -> list[str]:
+    """Write the declared artifact where the grader resolves it, then the checkout copy, then docs/."""
+    try:
+        from scripts.lib.atomic_json_store import atomic_write_json
+    except ImportError:
+        from lib.atomic_json_store import atomic_write_json
+    written: list[str] = []
+    for path in targets if targets is not None else result_targets():
+        atomic_write_json(path, summary, indent=2)
+        written.append(str(path))
+    docs = Path(docs_dir) if docs_dir is not None else OUT
+    atomic_write_json(docs / RESULT_NAME, summary, indent=2)
+    written.append(str(docs / RESULT_NAME))
+    return written
 
 
 def get_db():
@@ -155,8 +187,8 @@ def _execute():
         "total_warnings": len(warnings),
     }
 
-    # Write JSON
-    (OUT / "latest_backlog_health_summary.json").write_text(json.dumps(summary, indent=2, default=str))
+    # Write JSON — the declared state-root artifact first, then the checkout and docs copies
+    write_summary(summary)
 
     # Write markdown
     lines = [

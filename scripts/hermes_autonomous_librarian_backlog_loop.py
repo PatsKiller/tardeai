@@ -21,8 +21,40 @@ from collections import Counter
 PR = Path(__file__).resolve().parent.parent
 OUT_DR = PR / "docs" / "hermes" / "librarian_loop_dryruns"
 
+# The lane's declared output_signal (config/lane_registry.json), relative to the served persistent-state root.
+# QUALITY ROUND 2 items 1-2 (2026-11-07): the loop report was written ONLY into the checkout's docs/ copy, so the
+# grader — which resolves output_signal.path under the state root and only under data/ or logs/ — could not see
+# it and graded the lane EMPTY ("declared output file is missing") on runs that had in fact written their report.
+RESULT_REL = "data/hermes/librarian_loop_dryruns/latest_librarian_loop_dryrun.json"
+RESULT_NAME = "latest_librarian_loop_dryrun.json"
+
 MAX_ROWS = 5
 MAX_RUNTIME = 600
+
+
+def result_targets() -> list[Path]:
+    """Served persistent-state copy first, then the checkout copy (the docs copy is kept for readers)."""
+    try:
+        from scripts.lib.persistent_state_root import durable_write_targets
+    except ImportError:
+        from lib.persistent_state_root import durable_write_targets
+    return durable_write_targets(RESULT_REL, PR, require_persistent_dir=False)
+
+
+def write_report(report: dict, targets: list[Path] | None = None, docs_dir: Path | None = None) -> list[str]:
+    """Write the declared artifact where the grader resolves it, then the checkout copy, then docs/."""
+    try:
+        from scripts.lib.atomic_json_store import atomic_write_json
+    except ImportError:
+        from lib.atomic_json_store import atomic_write_json
+    written: list[str] = []
+    for path in targets if targets is not None else result_targets():
+        atomic_write_json(path, report, indent=2)
+        written.append(str(path))
+    docs = Path(docs_dir) if docs_dir is not None else OUT_DR
+    atomic_write_json(docs / RESULT_NAME, report, indent=2)
+    written.append(str(docs / RESULT_NAME))
+    return written
 
 # Engine Room v1 (WS-4): every backlog row carries the surface that produced it,
 # so the health check can attribute intake instead of reporting "unknown".
@@ -209,7 +241,8 @@ def _execute():
         "runtime_sec": round(time.time() - start, 1),
     }
 
-    (OUT_DR / "latest_librarian_loop_dryrun.json").write_text(json.dumps(report, indent=2, default=str))
+    # Write the report — the declared state-root artifact first, then the checkout and docs copies
+    write_report(report)
     (OUT_DR / f"{ds}_librarian_loop_dryrun.md").write_text(
         f"# Librarian Loop {'Dry-Run' if dry else 'Apply'} — {ds}\n\n"
         f"Findings: {len(findings)}\nMode: {'DRY-RUN' if dry else 'APPLY'}\n"
