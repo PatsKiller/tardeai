@@ -124,7 +124,7 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
     # PFE 27.56 from 16:45 ET while Finviz at 23:30 ET said 29.39.
     if finviz_first:
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime, timedelta, timezone
             from lib import portfolio_positions as _pp
             _fv, _lim, _now = _pp.finviz_cache(), float(_pp.load_config()["price_stale_after_s"]), datetime.now(timezone.utc)
             for sym in symbols:
@@ -132,7 +132,12 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
                 age = _pp._age_s(fv.get("as_of"), _now) if fv else None
                 if fv and age is not None and age <= _lim:
                     prev = out.get(sym) or {}
-                    out[sym] = {"price": fv["price"], "chg_pct": prev.get("chg_pct"), "as_of": fv["as_of"],
+                    # The cache spells its stamp "2026-11-07 01:30:01 ET"; `as_of` leaves this function as an ISO
+                    # instant, which is what every reader here expects. A strict consumer rejects the ET spelling
+                    # outright (CIO ask research's make_fact raised "fact without as_of" on the first live run,
+                    # 2026-11-07), so the overlay would have served its price and then lost the fact.
+                    out[sym] = {"price": fv["price"], "chg_pct": prev.get("chg_pct"),
+                                "as_of": (_now - timedelta(seconds=age)).isoformat(),
                                 "source": "finviz_quote_cache"}
         except Exception:  # noqa: BLE001 -- the cache is an overlay; without it the DB rows above stand
             pass

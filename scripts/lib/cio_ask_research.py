@@ -934,9 +934,22 @@ def _src_trades(ent: Entity, ctx: ResearchContext) -> list[Fact]:
 
 
 def _src_price(ent: Entity, ctx: ResearchContext) -> list[Fact]:
+    """Last price inside the operator's 30-minute window (2026-11-07 live-price rule).
+
+    `get_price_batch` is the shared helper: it overlays the Finviz live cache over the stored row when the
+    cache entry is younger than 30 minutes, keeps a market_quotes row only inside the window
+    (`max_age_hours=0.5`), and — with `skip_live=False` — asks the broker waterfall (Schwab/Alpaca) when
+    neither is fresh. The old call passed `max_age_hours=96, skip_live=True` and so published a four-day-old
+    row as "{symbol} last price": a price the research prose then compared with today's.
+
+    A yfinance answer is refused by name (the operator rule names Finviz, Schwab, Alpaca, moomoo and no
+    other provider), and no fresh price returns no fact at all: an empty list is "unknown", which is true,
+    where a stale number is false.
+    """
     mod = _imp("lib.data_broker.market_quote", "scripts.lib.data_broker.market_quote")
-    q = (mod.get_price_batch(_db(ctx), [ent.symbol], max_age_hours=96, skip_live=True) or {}).get(ent.symbol)
-    if not q or _num(q.get("price")) is None:
+    q = (mod.get_price_batch(_db(ctx), [ent.symbol], max_age_hours=0.5, skip_live=False) or {}).get(ent.symbol) or {}
+    price = _num(q.get("price"))
+    if price is None or "yfinance" in str(q.get("source") or "").lower():
         return []
     return [
         make_fact(
@@ -945,11 +958,12 @@ def _src_price(ent: Entity, ctx: ResearchContext) -> list[Fact]:
             kind="price",
             subject_key=ent.subject_key,
             symbol=ent.symbol,
-            claim=f"{ent.symbol} last price {q['price']}",
+            claim=f"{ent.symbol} last price {price}",
             as_of=q.get("as_of"),
-            citation={"projection": "data_broker.latest_quote", "source": q.get("source")},
+            citation={"projection": "data_broker.latest_quote", "source": q.get("source"),
+                      "freshness_rule": "live_price_le_30min"},
             field="last_price",
-            value=q["price"],
+            value=price,
             unit="usd",
         )
     ]

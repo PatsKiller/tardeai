@@ -15,6 +15,12 @@ Flow:
 8. Send Telegram notification for escalations
 9. Log to notification_log for audit
 
+Current price (operator 2026-11-07 live-price rule): every price this module compares against a stop or an exit
+comes from `_live_prices` -> `lib.portfolio_positions.resolve_mark`, which reads the Finviz live cache
+(`finviz_quote_cache.json`, refreshed every 15 min) first, a fresh broker backup quote when Finviz is stale, and
+nothing at all when neither is inside the 30-minute window. The holdings.json `price` copy and the
+technical_snapshot `price` are not current prices and are no longer read as one.
+
 Re-entry Classification (2026-05-11):
   - explicit_stop_out: confirmed decision to exit / abandon / price exceeded tolerance
   - relisted_without_stop_out: vehicle reappeared without us exiting — market behavior, not failure
@@ -89,6 +95,53 @@ def _db_write(sql, params=None):
         return None
 
 
+# ── Live price (operator 2026-11-07 rule) ────────────────────────────────
+
+def _live_prices(symbols) -> tuple[dict, str]:
+    """SYMBOL -> {price, price_source, price_as_of, price_stale, price_age_s, shares, account, name}.
+
+    One reader for the operator's live-price rule: `lib.portfolio_positions.resolve_mark` reads the Finviz
+    live cache itself (freshness = the symbol's own `last_fetched`, 30-minute window), falls back to a fresh
+    fresh broker backup quote, and flags anything older `stale`. A symbol the position store does not hold
+    (a stopped-out name being re-reviewed) is resolved from the same cache with an empty position row, so it
+    gets the same window instead of a technical_snapshot price from an earlier session.
+
+    `price` is None whenever nothing is fresh. Every caller below already treats a non-positive price as
+    unknown (no breach, no recovery %, verdict left to manual review), which is the honest answer: a
+    four-day-old mark is not today's price. Returns `(prices, store_status)` where store_status is the
+    position store's read state ("ok", "absent", "unreadable", ...), never a silent empty book.
+    """
+    from lib import portfolio_positions as pp
+
+    want = {str(s).upper() for s in (symbols or []) if s}
+    doc, status = pp.read_store_document()
+    rows: dict[str, dict] = {}
+    for row in (doc or {}).get("holdings") or []:
+        if isinstance(row, dict):
+            sym = str(row.get("symbol") or row.get("ticker") or "").upper()
+            if sym and sym not in rows:
+                rows[sym] = row
+
+    out: dict[str, dict] = {}
+    for sym in want:
+        row = rows.get(sym) or {"symbol": sym}
+        mark = pp.resolve_mark(row)
+        if mark.get("price") is None:
+            continue
+        fresh = not mark.get("stale")
+        out[sym] = {
+            "price": mark["price"] if fresh else None,
+            "price_source": mark.get("source"),
+            "price_as_of": mark.get("as_of"),
+            "price_stale": not fresh,
+            "price_age_s": mark.get("age_s"),
+            "shares": row.get("shares") or row.get("quantity") or 0,
+            "account": row.get("account") or row.get("account_id") or row.get("account_key") or "",
+            "name": row.get("name") or row.get("description") or "",
+        }
+    return out, status
+
+
 # ── Step 1: Detect new stop-outs ─────────────────────────────────────────
 
 def detect_new_stopouts() -> list[dict]:
@@ -101,25 +154,18 @@ def detect_new_stopouts() -> list[dict]:
       - unclassified: needs manual review
     """
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
-    h = _load_json(STATE_DIR / "holdings.json") or {}
-
-    # Build holdings price map
-    price_map = {}
-    for pos in h.get("holdings", []):
-        s = pos.get("symbol", "")
-        if s and s not in price_map:
-            price_map[s] = {"price": pos.get("price", 0), "shares": pos.get("shares", 0),
-                            "market_value": pos.get("market_value", 0), "name": pos.get("name", ""),
-                            "account": pos.get("account", "")}
+    triggered_rows = [p for p in rm.get("positions", []) if p.get("status") == "TRIGGERED"]
+    price_map, store_status = _live_prices([p.get("symbol") for p in triggered_rows])
 
     triggered = []
-    for p in rm.get("positions", []):
-        if p.get("status") != "TRIGGERED":
-            continue
+    for p in triggered_rows:
         sym = p.get("symbol", "")
         acct = p.get("account", "")
         live = price_map.get(sym, {})
-        current_price = live.get("price") or p.get("price") or 0
+        # A live price is at most 30 minutes old (operator 2026-11-07). 0 = unknown, which the classifier and
+        # the verdict logic already treat as "needs manual review" rather than as a breach.
+        fresh_price = live.get("price") or 0
+        current_price = fresh_price
         stop_price = p.get("stop_price", 0)
 
         # Check if already in stopped_out_watch (dedup)
@@ -133,14 +179,22 @@ def detect_new_stopouts() -> list[dict]:
         # ── Classify the exit event ──
         exit_classification = _classify_exit_event(sym, acct, current_price, stop_price, live, p)
 
+        # exit_price is the price at the exit event, so a stale live mark does not erase it: the risk engine's
+        # trigger-time price is the fallback (it is historical by definition, and is labelled as such).
+        exit_price = fresh_price or p.get("price") or 0
         triggered.append({
             "symbol": sym,
             "account": acct or live.get("account", ""),
-            "exit_price": current_price,
+            "exit_price": exit_price,
+            "exit_price_source": "live_mark" if fresh_price else ("risk_management_at_trigger" if exit_price else "none"),
             "stop_price": stop_price,
             "shares": live.get("shares", 0),
-            "market_value": live.get("market_value", 0),
+            "market_value": round(live["shares"] * fresh_price, 2) if (live.get("shares") and fresh_price) else 0,
             "name": live.get("name", ""),
+            "price_source": live.get("price_source"),
+            "price_as_of": live.get("price_as_of"),
+            "price_stale": live.get("price_stale", True),
+            "price_store": store_status,
             **exit_classification,
         })
 
@@ -371,15 +425,12 @@ def review_active_items() -> list[dict]:
         return []
 
     # Load enrichment data
-    h = _load_json(STATE_DIR / "holdings.json") or {}
     ts = _load_json(STATE_DIR / "technical_snapshot.json") or {}
     news = _load_json(STATE_DIR / "portfolio_news.json") or {}
 
-    price_map = {}
-    for pos in h.get("holdings", []):
-        s = pos.get("symbol", "")
-        if s:
-            price_map[s] = {"price": pos.get("price", 0), "market_value": pos.get("market_value", 0)}
+    # Current price from the live-price helper only; the technical snapshot supplies indicators, never a price
+    # (it is a session-old artifact and cannot answer "what is this worth now", operator 2026-11-07).
+    price_map, _store_status = _live_prices([item["symbol"] for item in items])
     for s, td in ts.items():
         if isinstance(td, dict):
             if s in price_map:
@@ -387,7 +438,7 @@ def review_active_items() -> list[dict]:
                                      "sma200_pct": td.get("sma200_pct"), "beta": td.get("beta"),
                                      "perf_week": td.get("perf_week")})
             else:
-                price_map[s] = {"price": td.get("price"), "rsi": td.get("rsi"),
+                price_map[s] = {"price": None, "price_stale": True, "rsi": td.get("rsi"),
                                 "sma200_pct": td.get("sma200_pct")}
 
     # News context
@@ -432,6 +483,8 @@ def review_active_items() -> list[dict]:
         old_verdict = item.get("analyst_verdict")
         evidence = {
             "current_price": current_price, "exit_price": exit_price,
+            "price_source": live.get("price_source"), "price_as_of": live.get("price_as_of"),
+            "price_stale": bool(live.get("price_stale", True)),
             "recovery_pct": round(recovery_pct, 1), "rsi": rsi,
             "journal_history": journal_ctx,
             "exit_classification": exit_ctx,
@@ -1126,11 +1179,16 @@ def _recovery_state_pass():
     except Exception:
         rows = []
     technical = R.technical_inputs(R.technical_symbols(rows))   # ONE batch read; never one cache rebuild per case
+    # The quote the state machine reasons on is the live mark, not the newest market_quotes row (which was
+    # unbounded in age — the operator's 30-minute rule, 2026-11-07). One read for every open case, and the
+    # engine's own freshness guard still applies on top of it.
+    prices, _price_status = _live_prices([case.get("symbol") for case in rows])
 
     def snapshot_for(case):
         symbol = str(case.get("symbol") or "").upper()
-        row = _db_query("SELECT * FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
-                        (symbol,), fetch="one")
+        live = prices.get(symbol) or {}
+        row = ({"price": live.get("price"), "fetched_at": live.get("price_as_of")}
+               if live.get("price") else None)
         return R.quote_snapshot(row, technical.get(symbol))
 
     out = R.run_pass(store, snapshot_for, dry_run=False)
