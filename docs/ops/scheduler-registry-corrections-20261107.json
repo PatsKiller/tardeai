@@ -172,8 +172,36 @@
       "lane_id": "agent_nudge",
       "path": "output_signal.path",
       "old": "data/coordination/agent_nudger/ledger.jsonl",
-      "new": "data/coordination/coordinator/ledger.jsonl",
-      "why": "declared path does not exist; the real ledger under coordinator/ is 3.8 MB and advanced 2026-11-06T21:40 local"
+      "new": "data/coordination/coordinator/agent_nudger.log",
+      "why": "the declared path does not exist; of the two real artifacts under coordinator/, the ledger (3.8 MB) appends only when a nudge is emitted, so a healthy 5-minute lane reads SLOW/AGING on every quiet cycle, while the log takes the cron redirect on every run (advanced 2026-11-06 21:45 local). The output signal measures the scheduler, so it names the log; the ledger stays the record of nudges."
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "state",
+      "old": "PAUSED",
+      "new": "ACTIVE",
+      "why": "declared PAUSED while cron:1098 has run the lane --apply every 5 minutes: present=True against declared_state=PAUSED reads DRIFT forever, and from the other side the row claimed the n8n dispatcher, whose rows are dry_run only"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "state_reason",
+      "old": "Shadow only. The dispatcher runs this lane with --dry-run, which writes no state, so an ACTIVE file_mtime signal on state.json could never advance: _scheduler_present would be true (the shadow run fires) while the output signal stayed null, and the SLA fallback would emit a false NO_OUTPUT every cycle (cc3/cx-openai-2, 2026-11-04). The signal below names the artifact a LIVE run advances; it does not advance in shadow, which is why the row is PAUSED rather than ACTIVE.",
+      "new": "ACTIVE. cron:1098 runs this lane with --apply every 5 minutes and redirects to data/coordination/coordinator/agent_nudger.log, which advanced 2026-11-06 21:45 local; the ledger it writes is data/coordination/coordinator/ledger.jsonl. The 2026-11-03 PAUSED reason described the shadow dispatcher phase (--dry-run, writes no state); the live crontab line has been present since at least the 2026-11-07T02:10Z queue snapshot, and the projection observed it live on 2026-11-07T02:45Z.",
+      "why": "declared PAUSED while cron:1098 has run the lane --apply every 5 minutes: present=True against declared_state=PAUSED reads DRIFT forever, and from the other side the row claimed the n8n dispatcher, whose rows are dry_run only"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "state_since",
+      "old": "2026-11-03",
+      "new": "2026-11-07",
+      "why": "date the live --apply line was confirmed (cron:1098, nudger log advanced 2026-11-06 21:45 local); not the date it was added, which the host does not record"
+    },
+    {
+      "lane_id": "agent_nudge",
+      "path": "output_signal.note",
+      "old": "advances on a live (--apply) run only; the shadow lane cannot advance it",
+      "new": "the cron redirect appends to this log on every run, including cycles that emit no nudge; the ledger at data/coordination/coordinator/ledger.jsonl records nudges only, so it is the wrong freshness signal for a 5-minute lane",
+      "why": "the old note described the shadow phase and the ledger; the row is now a live cron lane whose log advances every run"
     }
   ],
   "new_lanes": [
