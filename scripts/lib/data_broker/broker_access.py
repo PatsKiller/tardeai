@@ -682,17 +682,82 @@ def positions_store_row(cfg: dict, db_query: Optional[Callable], log: dict, now:
                 operator_log_step=step, semantics="positions_sync.py --check-fresh")
 
 
+# ── stop alerts: tied to the account's CURRENT position, one row per fill ────────────────────────
+def _payload(a: dict) -> dict:
+    p = a.get("parsed_payload")
+    if isinstance(p, str):
+        try:
+            p = json.loads(p)
+        except ValueError:
+            p = None
+    return p if isinstance(p, dict) else {}
+
+
+def position_state(qty: Any) -> str:
+    """flat | fractional (under one whole share: a stop cannot cover it) | held | unknown."""
+    try:
+        q = float(qty)
+    except (TypeError, ValueError):
+        return "unknown"
+    return "flat" if q <= 0 else ("fractional" if q < 1 else "held")
+
+
+def _stop_alert_rows(alerts: list, db_query: Optional[Callable]) -> list[dict]:
+    """Open stop alerts for display. A 'stop FILLED' line used to read as if the lot were gone ("position may be
+    flat") although the account still held some of it (2026-11-07: V in the Roth IRA kept 0.4985 sh after a 65 sh
+    stop filled; SCHD in the Rollover IRA kept 0.2529 sh after 8000). The line now carries the account's current
+    quantity from positions_current, keyed by ACCOUNT + symbol (the same symbol is held in other accounts, so a
+    symbol-only match would be wrong), and the hourly repeats of one fill collapse into one row with a count."""
+    filled_syms = sorted({str(a.get("symbol")) for a in alerts
+                          if _payload(a).get("condition") == "TRIGGERED" and a.get("symbol")})
+    held: Optional[dict] = None
+    if filled_syms:
+        pos = _q(db_query, "SELECT account_key, symbol, qty FROM positions_current "
+                           "WHERE symbol = ANY(%s) AND NOT COALESCE(is_cash, false)", (filled_syms,))
+        if pos is not None:
+            held = {(r.get("account_key"), r.get("symbol")): r.get("qty") for r in pos}
+    out: list[dict] = []
+    seen: dict[tuple, dict] = {}
+    for a in alerts:  # newest first
+        pl = _payload(a)
+        acct, sym = pl.get("account"), a.get("symbol")
+        msg = scrub(a.get("raw_text"), 160)
+        row = {"id": a.get("id"), "at": _iso(a.get("created_at")), "symbol": sym, "severity": a.get("severity"),
+               "message": msg, "lifecycle_state": a.get("lifecycle_state") or "active", "account": acct}
+        if pl.get("condition") == "TRIGGERED":
+            qty = None if held is None else held.get((acct, sym), 0)
+            state = "unknown" if held is None else position_state(qty)
+            row["position_state"] = state
+            row["position_qty_now"] = None if qty is None else float(qty)
+            row["position_now"] = {
+                "flat": "now flat in this account",
+                "fractional": f"{float(qty or 0):g} sh remain in this account (fractional only, no stop can cover it)",
+                "held": f"{float(qty or 0):g} sh still held in this account (the stop that filled is gone; check for a replacement)",
+                "unknown": "current position unknown",
+            }[state]
+            row["message"] = scrub(f"{msg} — {row['position_now']}", 320)
+        key = (sym, acct, pl.get("order_id"), pl.get("condition")) if pl.get("order_id") else None
+        if key and key in seen:
+            seen[key]["repeat_count"] += 1
+            seen[key]["first_at"] = row["at"]
+            continue
+        row["repeat_count"] = 1
+        row["first_at"] = row["at"]
+        if key:
+            seen[key] = row
+        out.append(row)
+    return out
+
+
 # ── stop health ───────────────────────────────────────────────────────────────────────────────────
 def stop_health(state_root: Path, db_query: Optional[Callable], now: datetime) -> dict:
     hb = _read_json(state_root / RUNTIME_REL / "stop_health_last.json")
-    alerts = _q(db_query, "SELECT id, created_at, symbol, severity, raw_text, lifecycle_state FROM alert_events "
+    alerts = _q(db_query, "SELECT id, created_at, symbol, severity, raw_text, lifecycle_state, parsed_payload FROM alert_events "
                           "WHERE source_script = 'stop_health' "
                           "AND COALESCE(lifecycle_state,'active') NOT IN ('resolved','acknowledged') "
-                          "AND created_at > now() - make_interval(days => %s) ORDER BY created_at DESC LIMIT 25",
+                          "AND created_at > now() - make_interval(days => %s) ORDER BY created_at DESC LIMIT 60",
                 (STOP_ALERT_LOOKBACK_DAYS,))
-    open_alerts = [{"id": a.get("id"), "at": _iso(a.get("created_at")), "symbol": a.get("symbol"),
-                    "severity": a.get("severity"), "message": scrub(a.get("raw_text"), 160),
-                    "lifecycle_state": a.get("lifecycle_state") or "active"} for a in (alerts or [])]
+    open_alerts = _stop_alert_rows(alerts or [], db_query)[:25]
     if not isinstance(hb, dict):
         return _row(DEGRADED, "no stop_health_last.json — no evidence that the stop check ran", headline=None,
                     finished_at=None, open_alerts=open_alerts, open_alert_count=len(open_alerts),

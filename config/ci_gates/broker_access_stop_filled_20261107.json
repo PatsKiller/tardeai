@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "broker_access_stop_filled_20261107",
+  "files": [
+    "tests/test_broker_access_stop_filled_20261107.py"
+  ],
+  "comment": [
+    "Broker-access stop FILLED rows state the account's current position and collapse repeats."
+  ]
+}
