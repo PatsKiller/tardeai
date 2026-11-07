@@ -22,36 +22,50 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from lib import stop_alert_price as sap  # noqa: E402 -- scripts/ is on sys.path above
+
 DEDUP_HOURS = 12          # one raise-your-stop nudge per symbol per ~half-day
 LIVE_STATUS = ("armed", "active", "live", "placed", "confirmed", "working", "new", "accepted", "held", "open")
 _TERMINAL_MANUAL = ("cancelled", "canceled", "filled", "closed", "replaced", "closed_position")
 
 
-def _live_holdings_map() -> dict[str, dict]:
-    """Current holdings price + basis keyed by symbol (portfolio_holdings is the live quote source)."""
+def _live_holdings_map(**kw) -> dict[str, dict]:
+    """Current holdings mark + basis keyed by symbol, each carrying its price evidence.
+
+    Holdings are DB-first (`holdings_document.load_document`) and the price is the operator's mark
+    (2026-11-07): the Finviz live cache, a fresh Schwab/Alpaca/moomoo quote, then a stored mark — always
+    labelled with source, as_of and freshness. It used to be `portfolio_holdings()`'s `current_price`, a
+    stored DB price shown as the live one (LQ-20261107-03).
+    """
     out: dict[str, dict] = {}
-    try:
-        from api_v2 import portfolio_holdings
-        for h in (portfolio_holdings() or {}).get("holdings") or []:
-            sym = str(h.get("symbol") or "").upper()
-            if not sym:
-                continue
-            px = h.get("current_price") or h.get("price")
-            if px in (None, ""):
-                continue
-            sh = float(h.get("shares") or 0)
-            cb = h.get("cost_basis")
-            basis_ps = (float(cb) / sh) if sh and cb else None
-            out[sym] = {
-                "price": float(px),
-                "shares": sh,
-                "cost_basis": float(cb) if cb not in (None, "") else None,
-                "basis_ps": basis_ps,
-                "account": str(h.get("account") or ""),
-            }
-    except Exception:
-        pass
+    for r in sap.holdings_marks(**kw):
+        sym = r["symbol"]
+        sh = r["shares"] or 0
+        cb = r["cost_basis"]
+        basis_ps = (cb / sh) if sh and cb else None
+        out[sym] = {
+            "price": r["price"],
+            **{k: r[k] for k in sap.MARK_FIELDS},
+            "shares": sh,
+            "cost_basis": cb,
+            "basis_ps": basis_ps,
+            "account": r["account"],
+        }
     return out
+
+
+def _price_tail(d: dict) -> str:
+    """' · mark $X (source, as of ...)' / ' · mark $X STALE (... — not live)' for an alert line."""
+    return " · " + sap.price_line(d.get("price"), d.get("price_source"), d.get("price_as_of"),
+                                  d.get("price_age_s"), d.get("price_stale"))
+
+
+def _hold_evidence(hold: dict, snap_price=None, snap_as_of=None) -> dict:
+    """Price evidence for an alert: the live mark when there is one, else the advisory snapshot, labelled
+    with its own source and as_of — an undated or old advisory price is never shown as live."""
+    if hold.get("price"):
+        return {k: hold.get(k) for k in sap.MARK_FIELDS}
+    return sap.mark_fields(sap.labelled_mark(snap_price, "advisory_snapshot", snap_as_of))
 
 
 def _trail_pct_from_rec(rec: dict) -> float | None:
@@ -69,11 +83,12 @@ def _trail_pct_from_rec(rec: dict) -> float | None:
 
 
 def _load_recent_advisories(cur, days: int = 5) -> dict[str, dict]:
-    cur.execute("""SELECT DISTINCT ON (symbol) symbol, evidence_json FROM hermes_research_intelligence
+    cur.execute("""SELECT DISTINCT ON (symbol) symbol, evidence_json, created_at
+                   FROM hermes_research_intelligence
                    WHERE research_type='protection_advisory' AND created_at > now() - %s * interval '1 day'
                    ORDER BY symbol, created_at DESC""", (int(days),))
     adv: dict[str, dict] = {}
-    for sym, ev in cur.fetchall():
+    for sym, ev, created_at in cur.fetchall():
         ev = ev if isinstance(ev, dict) else json.loads(ev or "{}")
         rec = ev.get("recommendation") or {}
         inp = ev.get("inputs") or {}
@@ -93,6 +108,8 @@ def _load_recent_advisories(cur, days: int = 5) -> dict[str, dict]:
                 "sma50": sma50,
                 "family": ev.get("family") or "position",
                 "trail_recommended": bool(rec.get("trail_recommended")),
+                # the advisory's own timestamp: its snapshot price is labelled with it, never as live
+                "as_of": created_at,
             }
     return adv
 
@@ -138,13 +155,14 @@ def _load_live_fixed_stops(cur) -> dict[str, dict]:
     return live_fixed
 
 
-def detect(cur):
+def detect(cur, live_map: dict[str, dict] | None = None):
     # latest advisory per symbol (last 3 days)
-    cur.execute("""SELECT DISTINCT ON (symbol) symbol, evidence_json FROM hermes_research_intelligence
+    cur.execute("""SELECT DISTINCT ON (symbol) symbol, evidence_json, created_at
+                   FROM hermes_research_intelligence
                    WHERE research_type='protection_advisory' AND created_at > now()-interval '3 days'
                    ORDER BY symbol, created_at DESC""")
     advised = {}
-    for sym, ev in cur.fetchall():
+    for sym, ev, created_at in cur.fetchall():
         ev = ev if isinstance(ev, dict) else json.loads(ev or "{}")
         rec = ev.get("recommendation") or {}; inp = ev.get("inputs") or {}
         try:
@@ -152,7 +170,8 @@ def detect(cur):
         except Exception:
             sp = None
         if sp:
-            advised[sym.upper()] = {"stop": sp, "atr": float(inp.get("atr") or 0), "price": float(inp.get("price") or 0)}
+            advised[sym.upper()] = {"stop": sp, "atr": float(inp.get("atr") or 0), "price": float(inp.get("price") or 0),
+                                    "as_of": created_at}
     # live / monitored stops (max across sources)
     live = {}
     for tbl, col, extra in (
@@ -175,11 +194,20 @@ def detect(cur):
         ls = live.get(sym)
         if ls is None:                                   # no live stop = "not placed" → protection_alerts' job
             continue
-        thr = max(0.5 * a["atr"], 0.01 * a["price"]) if a["price"] else max(0.5 * a["atr"], 0.0)
-        if a["stop"] > ls + thr and (not a["price"] or a["stop"] < a["price"]):
+        # The price this alert reasons about is the live mark when there is one; the advisory's own snapshot
+        # price only as a labelled, stale-flagged fallback (it can be days old — LQ-20261107-03).
+        hold = (live_map or {}).get(sym) or {}
+        ev = _hold_evidence(hold, a.get("price"), a.get("as_of"))
+        px = hold.get("price") or a.get("price") or 0.0
+        thr = max(0.5 * a["atr"], 0.01 * px) if px else max(0.5 * a["atr"], 0.0)
+        if a["stop"] > ls + thr and (not px or a["stop"] < px):
             drifts.append({"symbol": sym, "live_stop": round(ls, 2), "advised_stop": round(a["stop"], 2),
                            "raise_by": round(a["stop"] - ls, 2),
-                           "raise_pct": round(100 * (a["stop"] - ls) / a["price"], 2) if a["price"] else None})
+                           "raise_pct": round(100 * (a["stop"] - ls) / px, 2) if px else None,
+                           "price": round(px, 2) if px else None,
+                           "advisory_price": a.get("price") or None,
+                           "advisory_as_of": str(a.get("as_of")) if a.get("as_of") else None,
+                           **ev})
     return drifts
 
 
@@ -206,8 +234,10 @@ def detect_lockin(cur, live_map: dict[str, dict] | None = None):
         out.append({
             "symbol": sym, "live_fixed_stop": round(ls, 2), "trail_pct": round(a["trail_pct"], 1),
             "trailing_floor": floor, "price": round(px, 2), "advisory_snap_price": round(a.get("snap_price") or 0, 2),
+            "advisory_as_of": str(a.get("as_of")) if a.get("as_of") else None,
             "gain_above_fixed_pct": round(100 * (floor - ls) / ls, 1),
             "account": ls_row.get("account") or hold.get("account") or "",
+            **_hold_evidence(hold, a.get("snap_price"), a.get("as_of")),
         })
     return out
 
@@ -248,6 +278,7 @@ def detect_trail_nudge(cur, live_map: dict[str, dict] | None = None):
             "price": round(px, 2),
             "threshold_pct": hf.trail_pnl_threshold(family),
             "account": ls_row.get("account") or hold.get("account") or "",
+            **{k: hold.get(k) for k in sap.MARK_FIELDS},
         })
     return out
 
@@ -262,11 +293,35 @@ def _recently_alerted(cur, sym, kind="stop_drift"):
         return False
 
 
+def _broker_label(account) -> str:
+    return "manual @ Fidelity" if str(account or "").startswith("fidelity") else "Schwab API · 2FA"
+
+
+def _drift_message(d: dict) -> str:
+    return (f"↑ Raise stop: {d['symbol']} advised stop ${d['advised_stop']} is "
+            f"${d['raise_by']} above the live stop ${d['live_stop']} "
+            f"({d['raise_pct']}% of price) — consider ratcheting up (advisory)."
+            f"{_price_tail(d)}")
+
+
+def _lockin_message(d: dict, broker: str) -> str:
+    return (f"📈 Lock in profits: {d['symbol']} @ ${d['price']} — a {d['trail_pct']}% trailing stop now sits at "
+            f"${d['trailing_floor']} ({d['gain_above_fixed_pct']}% above your fixed ${d['live_fixed_stop']}). "
+            f"Switch fixed→trailing to lock the higher floor ({broker}) — advisory."
+            f"{_price_tail(d)}")
+
+
+def _trail_message(d: dict, broker: str) -> str:
+    return (f"📊 Trail eligible: {d['symbol']} is +{d['pnl_pct']}% (≥{d['threshold_pct']:.0f}% rule) with a "
+            f"fixed stop at ${d['live_fixed_stop']} — consider a {d['trail_pct']}% trailing stop ({broker})."
+            f"{_price_tail(d)}")
+
+
 def run(send=False):
     from db_adapter import _get_conn
     conn = _get_conn(); cur = conn.cursor()
     live_map = _live_holdings_map()
-    drifts = detect(cur)
+    drifts = detect(cur, live_map)
     lockins = detect_lockin(cur, live_map)
     trail_nudges = detect_trail_nudge(cur, live_map)
     emitted, lock_emitted, trail_emitted, sent = [], [], [], 0
@@ -297,29 +352,21 @@ def run(send=False):
     for d in drifts:
         if _recently_alerted(cur, d["symbol"], "stop_drift"):
             continue
-        msg = (f"↑ Raise stop: {d['symbol']} advised stop ${d['advised_stop']} is "
-               f"${d['raise_by']} above the live stop ${d['live_stop']} "
-               f"({d['raise_pct']}% of price) — consider ratcheting up (advisory).")
-        _emit(msg, d["symbol"], d, "stop_drift")
+        _emit(_drift_message(d), d["symbol"], d, "stop_drift")
         emitted.append(d)
 
     for d in lockins:
         if _recently_alerted(cur, d["symbol"], "stop_lockin"):
             continue
-        broker = "manual @ Fidelity" if str(d.get("account", "")).startswith("fidelity") else "Schwab API · 2FA"
-        msg = (f"📈 Lock in profits: {d['symbol']} @ ${d['price']} — a {d['trail_pct']}% trailing stop now sits at "
-               f"${d['trailing_floor']} ({d['gain_above_fixed_pct']}% above your fixed ${d['live_fixed_stop']}). "
-               f"Switch fixed→trailing to lock the higher floor ({broker}) — advisory.")
-        _emit(msg, d["symbol"], d, "stop_lockin")
+        broker = _broker_label(d.get("account", ""))
+        _emit(_lockin_message(d, broker), d["symbol"], d, "stop_lockin")
         lock_emitted.append(d)
 
     for d in trail_nudges:
         if _recently_alerted(cur, d["symbol"], "stop_trail_nudge"):
             continue
-        broker = "manual @ Fidelity" if str(d.get("account", "")).startswith("fidelity") else "Schwab API · 2FA"
-        msg = (f"📊 Trail eligible: {d['symbol']} is +{d['pnl_pct']}% (≥{d['threshold_pct']:.0f}% rule) with a "
-               f"fixed stop at ${d['live_fixed_stop']} — consider a {d['trail_pct']}% trailing stop ({broker}).")
-        _emit(msg, d["symbol"], d, "stop_trail_nudge")
+        broker = _broker_label(d.get("account", ""))
+        _emit(_trail_message(d, broker), d["symbol"], d, "stop_trail_nudge")
         trail_emitted.append(d)
 
     return {

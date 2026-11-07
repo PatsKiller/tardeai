@@ -149,8 +149,16 @@ _FV_MEMO: dict = {}
 
 
 def finviz_cache(path: Optional[Path] = None) -> dict:
-    """{SYMBOL: {price, as_of}} from finviz_quote_cache.json beside the position store (the repricer writes it
-    every 15 min). Re-read only when the file changes. Missing/unreadable -> {} (callers fall back, never crash)."""
+    """{SYMBOL: {price, as_of, source}} from finviz_quote_cache.json beside the position store (the repricer
+    writes it every 15 min). Re-read only when the file changes. Missing/unreadable -> {} (callers fall back,
+    never crash).
+
+    A row whose own ``source`` names a provider that is not Finviz is NOT a Finviz price and is dropped, so a
+    caller falls through to its next rung instead of showing it as the live Finviz mark (operator 2026-11-07:
+    Finviz, then a fresh Schwab/Alpaca/moomoo quote, never yfinance). The live cache carried two such rows —
+    SRNE and AMANX, `data_broker.market_quote:get_best_quote:yfinance` — the repricer's fallback for symbols
+    Finviz cannot price. Rows with no ``source`` predate the stamp and are kept.
+    """
     import json
     p = Path(path) if path is not None else store_path().parent / "finviz_quote_cache.json"
     try:
@@ -167,7 +175,12 @@ def finviz_cache(path: Optional[Path] = None) -> dict:
     out = {}
     for sym, row in (raw.items() if isinstance(raw, dict) else []):
         if isinstance(row, dict) and (_f(row.get("price")) or 0) > 0:
-            out[str(sym).upper()] = {"price": _f(row["price"]), "as_of": row.get("last_fetched") or row.get("last_updated")}
+            source = str(row.get("source") or "").strip()
+            if source and "finviz" not in source.lower():
+                continue
+            out[str(sym).upper()] = {"price": _f(row["price"]),
+                                     "as_of": row.get("last_fetched") or row.get("last_updated"),
+                                     "source": source or None}
     _FV_MEMO[str(p)] = (mt, out)
     return out
 

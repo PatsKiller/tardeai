@@ -24,6 +24,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from lib import stop_alert_price as sap  # noqa: E402 -- scripts/ is on sys.path above
+
 _COMPONENT = "stop_health"
 #: Per-run proof (2026-10-09 breach triage): cron runs this with --quiet, which prints nothing unless an alert
 #: fires, so the redirect log could not tell "ran clean" from "did not run". One small JSON per run, success
@@ -765,16 +767,23 @@ def run(quiet: bool = False) -> dict:
         # Alpaca stops are the automated paper account; say so on every line, because the batched card drops the
         # account column and a paper stop read as a real holding (2026-10-22: HPE "you don't own" was paper).
         _acct_tag = f"[{acct} · PAPER] " if (r.get("broker") or "").lower() == "alpaca" else f"[{acct}] "
+        # Every stop alert carries its mark's price, source and as_of; a price past the 30-minute limit is
+        # labelled STALE, never shown as the live one (operator price rule 2026-11-07, LQ-20261107-03).
+        _px_ev = {k: r.get(k) for k in sap.MARK_FIELDS}
+        _px = sap.price_line(r.get("current_price"), r.get("price_source"), r.get("price_as_of"),
+                             r.get("price_age_s"), r.get("price_stale"))
+        _px_line = f" · {_px}"
         if "orphaned" in r["flags"]:
-            cond, sev, line = "ORPHANED", "urgent", _acct_tag + f"stop with no matching {acct} holding (#{r['order_id']}) — on trigger it could short/reject. Cancel it."
+            cond, sev, line = "ORPHANED", "urgent", _acct_tag + f"stop with no matching {acct} holding (#{r['order_id']}) — on trigger it could short/reject. Cancel it.{_px_line}"
         elif "oversized" in r["flags"]:
-            cond, sev, line = "OVERSIZED", "urgent", _acct_tag + f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh.{_pl_line(_pl)}"
+            cond, sev, line = "OVERSIZED", "urgent", _acct_tag + f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh.{_pl_line(_pl)}{_px_line}"
         elif "filled" in r["flags"]:
-            cond, sev, line = "TRIGGERED", "urgent", _acct_tag + f"stop FILLED (#{r['order_id']}) — position may be flat; review.{_pl_line(_pl)}"
+            cond, sev, line = "TRIGGERED", "urgent", _acct_tag + f"stop FILLED (#{r['order_id']}) — position may be flat; review.{_pl_line(_pl)}{_px_line}"
         else:
-            cond, sev, line = "NEAR_TRIGGER", "warning", _acct_tag + f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire.{_pl_line(_pl)}"
+            cond, sev, line = "NEAR_TRIGGER", "warning", _acct_tag + f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire.{_pl_line(_pl)}{_px_line}"
         payload = {"kind": "stop_health", "condition": cond,
                    "pl_if_fired": (_pl or {}).get("pl"), "pl_if_fired_pct": (_pl or {}).get("pct"),
+                   **_px_ev,
                    **{k: r.get(k) for k in
                    ("account", "symbol", "broker", "order_id", "order_type", "stop_price", "qty",
                     "held_qty", "current_price", "proximity_pct", "coverage", "lifecycle", "health")}}

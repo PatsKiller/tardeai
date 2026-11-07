@@ -25,6 +25,8 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from lib import stop_alert_price as sap  # noqa: E402 -- scripts/ is on sys.path above
+
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 _TERMINAL_CANCEL = {"canceled", "cancelled", "rejected", "expired", "replaced"}
 _TERMINAL_FILL = {"filled"}
@@ -35,43 +37,32 @@ _FILLED_ALERT_HOURS = 12.0  # only a FRESH stop-out (filled within this window) 
                             # can't re-ping a days-old stop-out.
 
 
-def _holdings_map() -> dict:
-    """(account, SYMBOL) -> {shares, price} from canonical holdings.json (covers Schwab + Alpaca paper rows)."""
+def _holdings_map(**kw) -> dict:
+    """(account, SYMBOL) -> {shares, price, broker_shares, price_source, price_as_of, price_age_s, price_stale}.
+
+    Holdings are DB-first (`holdings_document.load_document`; holdings.json is its stated fallback) and the
+    price is the operator's mark (2026-11-07): the Finviz live cache, a fresh Schwab/Alpaca/moomoo quote,
+    then a stored mark — always carrying its source and as_of so a stop alert can say whether it is live.
+    A stored price older than `positions.price_stale_after_s` (30 min) is flagged stale, never shown as live
+    (LQ-20261107-03: this map used to read `current_price` straight out of the store with no provenance).
+    """
     out = {}
-    try:
-        import json
-        h = json.loads((STATE_DIR / "holdings.json").read_text())
-        for r in (h.get("holdings", []) or []):
-            if not isinstance(r, dict):
-                continue
-            acct = str(r.get("account", ""))
-            sym = str(r.get("symbol", r.get("ticker", ""))).upper()
-            if not sym:
-                continue
-            try:
-                sh = float(r.get("shares", r.get("qty")) or 0)
-            except Exception:
-                sh = None
-            try:
-                px = float(r.get("current_price", r.get("price")) or 0) or None
-            except Exception:
-                px = None
-            try:
-                bsh = float(r.get("broker_actual_shares")) if r.get("broker_actual_shares") is not None else None
-            except Exception:
-                bsh = None
-            out[(acct, sym)] = {"shares": sh, "price": px, "broker_shares": bsh}
-    except Exception:
-        pass
+    for r in sap.holdings_marks(**kw):
+        out[(r["account"], r["symbol"])] = {k: r[k] for k in
+                                            ("shares", "price", "broker_shares") + sap.MARK_FIELDS}
     return out
 
 
 def _alpaca_positions_map() -> dict:
-    """('tradeai_automated', SYMBOL) -> {shares, price} from the live Alpaca paper positions (paper held shares
-    are NOT in holdings.json — they come from the Alpaca API), so paper stops aren't falsely 'orphaned'."""
+    """('tradeai_automated', SYMBOL) -> {shares, price, price_source, price_as_of, price_age_s, price_stale}
+    from the live Alpaca paper positions (paper held shares are NOT in holdings.json — they come from the
+    Alpaca API), so paper stops aren't falsely 'orphaned'. The mark is the broker's own position price read
+    live in this scan: source `alpaca_paper_position`, as_of = the moment it was read (LQ-20261107-03)."""
     out = {}
     try:
         import alpaca_paper_reconciler as apr
+        from datetime import datetime, timezone
+        read_at = datetime.now(timezone.utc).isoformat()
         env = apr.get_env()
         for p in (apr.get_alpaca_positions(env) or []):
             sym = str(p.get("symbol", "")).upper()
@@ -85,7 +76,11 @@ def _alpaca_positions_map() -> dict:
                 px = float(p.get("current_price") or 0) or None
             except Exception:
                 px = None
-            out[("tradeai_automated", sym)] = {"shares": sh, "price": px}
+            out[("tradeai_automated", sym)] = {
+                "shares": sh, "price": px, "price_source": "alpaca_paper_position",
+                "price_as_of": read_at if px else None, "price_age_s": 0 if px else None,
+                "price_stale": False if px else None,
+            }
     except Exception:
         pass
     return out
@@ -296,9 +291,12 @@ def _classify(stop: dict, held: dict | None) -> dict:
     else:
         health = "ok"
 
-    # held_qty reported/persisted = broker-actual (what "you hold" at the broker); system view kept alongside
-    return {**stop, "held_qty": cover_qty, "system_shares": held_qty, "current_price": price, "coverage": coverage,
-            "proximity_pct": proximity_pct, "is_trailing": is_trail, "lifecycle": lifecycle,
+    # held_qty reported/persisted = broker-actual (what "you hold" at the broker); system view kept alongside.
+    # The mark travels with its evidence (price_source / price_as_of / price_age_s / price_stale) so every
+    # alert built from this record can show whether its price is live or stale (LQ-20261107-03).
+    price_ev = {k: (held or {}).get(k) for k in sap.MARK_FIELDS}
+    return {**stop, "held_qty": cover_qty, "system_shares": held_qty, "current_price": price, **price_ev,
+            "coverage": coverage, "proximity_pct": proximity_pct, "is_trailing": is_trail, "lifecycle": lifecycle,
             "health": health, "flags": flags}
 
 
@@ -358,16 +356,23 @@ def _persist(records: list[dict]) -> None:
         # A trailing order has no fixed trigger price: its trail offset IS the protection, so the persisted
         # snapshot must carry it or a stored-only page cannot recognise the order at all (codex review of PR 2180).
         cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS trail_offset NUMERIC")
+        # Price provenance travels with the snapshot (LQ-20261107-03): a stored-only page can show that a
+        # current_price is a stale mark rather than presenting it as the live one. as_of is TEXT because the
+        # Finviz cache stamps it "YYYY-MM-DD HH:MM:SS ET", which is not a timestamp Postgres should guess.
+        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_source TEXT")
+        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_as_of TEXT")
+        cur.execute("ALTER TABLE stop_lifecycle ADD COLUMN IF NOT EXISTS price_stale BOOLEAN")
         cur.execute("DELETE FROM stop_lifecycle")   # snapshot table — latest scan only
         for r in records:
             cur.execute("""INSERT INTO stop_lifecycle
                 (account,symbol,broker,order_id,order_type,status,stop_price,qty,held_qty,current_price,
-                 proximity_pct,coverage,lifecycle,health,flags,trail_offset)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                 proximity_pct,coverage,lifecycle,health,flags,trail_offset,
+                 price_source,price_as_of,price_stale)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (r["account"], r["symbol"], r["broker"], r["order_id"], r["order_type"], r["status"],
                  r.get("stop_price"), r.get("qty"), r.get("held_qty"), r.get("current_price"),
                  r.get("proximity_pct"), r["coverage"], r["lifecycle"], r["health"], json.dumps(r["flags"]),
-                 r.get("trail_offset")))
+                 r.get("trail_offset"), r.get("price_source"), r.get("price_as_of"), r.get("price_stale")))
         conn.commit()
     except Exception:
         pass
