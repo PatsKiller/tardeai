@@ -24,6 +24,7 @@ t('not-as-designed only on an explicit false', () => {
 t('quality query reads every job and only a known grade', () => {
   eq(qualityHistoryQuery({ quality: 'degraded' }), '/api/v2/jobs-history?filter=all&offset=0&limit=50&quality=degraded', 'degraded')
   eq(qualityHistoryQuery({ quality: 'bogus', q: ' disk ' }), '/api/v2/jobs-history?filter=all&offset=0&limit=50&q=disk', 'bogus')
+  eq(qualityHistoryQuery({ quality: 'degraded,empty,bogus,degraded' }), '/api/v2/jobs-history?filter=all&offset=0&limit=50&quality=degraded%2Cempty', 'multi')
   eq(isQualityKey('not_live'), true, 'key'); eq(isQualityKey('NOT_LIVE'), false, 'upper')
 })
 t('checks are ordered, marked and worded', () => {

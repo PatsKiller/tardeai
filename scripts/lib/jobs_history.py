@@ -892,6 +892,66 @@ STATUS_FILTERS = {
 #: ``?quality=`` values: the run-quality grades of scripts/lib/run_quality.py (= summary.quality_counts keys).
 QUALITY_GRADES = ("GOOD", "DEGRADED", "EMPTY", "FAILED", "NOT_LIVE", "UNPROVEN")
 _ORDER = {"failed": 0, "missed": 1, "late": 2, "running": 3, "not_measured": 4, "ok_unverified": 5, "ok": 6}
+#: ``?ran=`` last-run windows (operator 2026-11-06: "filter by last run"). ``older`` = last run more than 7 days ago,
+#: ``never`` = no run on record. The age is measured against the snapshot's ``computed_at``, not the wall clock.
+RAN_WINDOWS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timedelta(days=7)}
+RAN_FILTERS = (*RAN_WINDOWS, "older", "never")
+#: ``?sort=`` orders. ``attention`` is the original worst-first order and stays the default.
+SORTS = ("attention", "last_run_desc", "last_run_asc", "name", "quality", "missed")
+#: Worst grade first for ``sort=quality``; a row with no grade sorts last.
+_QUALITY_ORDER = {"FAILED": 0, "EMPTY": 1, "DEGRADED": 2, "UNPROVEN": 3, "NOT_LIVE": 4, "GOOD": 5}
+
+
+def _multi(value) -> list[str]:
+    """``a,b`` (or a list) → ['a', 'b'], blanks dropped, order kept, duplicates removed."""
+    parts = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    out: list[str] = []
+    for p in parts:
+        p = str(p).strip()
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
+def last_run_at(row: dict):
+    """When the job last ran: the last run's finish/start/request time, else its last success. None = never."""
+    last = row.get("last_run") or {}
+    for key in ("finished_at", "started_at", "requested_at"):
+        at = _at(last.get(key))
+        if at:
+            return at
+    return _at(row.get("last_success_at"))
+
+
+def _ran_match(row: dict, window: str, now: datetime) -> bool:
+    at = last_run_at(row)
+    if window == "never":
+        return at is None
+    if at is None:
+        return False
+    if window == "older":
+        return now - at > RAN_WINDOWS["7d"]
+    return now - at <= RAN_WINDOWS[window]
+
+
+def _name(r: dict) -> str:
+    return str(r.get("title") or r.get("job") or r.get("lane_id") or "").lower()
+
+
+def _sort_rows(rows: list[dict], sort: str) -> list[dict]:
+    attention = lambda r: (_ORDER.get(r["status"], 7), -(r.get("missed_count") or 0), _name(r))
+    if sort == "name":
+        return sorted(rows, key=_name)
+    if sort == "missed":
+        return sorted(rows, key=lambda r: (-(r.get("missed_count") or 0), *attention(r)))
+    if sort == "quality":
+        return sorted(rows, key=lambda r: (_QUALITY_ORDER.get((r.get("quality") or {}).get("grade"), 6), *attention(r)))
+    if sort in {"last_run_desc", "last_run_asc"}:
+        ran = [r for r in rows if last_run_at(r)]
+        never = sorted((r for r in rows if not last_run_at(r)), key=_name)  # never-run jobs always go last
+        ran.sort(key=lambda r: (last_run_at(r).timestamp() * (-1 if sort == "last_run_desc" else 1), _name(r)))
+        return ran + never
+    return sorted(rows, key=attention)
 
 
 def get_jobs_history(query=None, **kwargs) -> dict:
@@ -904,15 +964,23 @@ def get_jobs_history(query=None, **kwargs) -> dict:
     scope = query.get("filter", "attention")
     if scope not in {"attention", "all", "fixed", "n8n", "cron", "systemd", "other"}:
         raise ValueError("unknown filter")
-    status = str(query.get("status") or "").strip() or None
-    if status and status not in STATUS_FILTERS:
+    statuses = _multi(query.get("status"))
+    if any(x not in STATUS_FILTERS for x in statuses):
         raise ValueError("unknown status")
+    status = ",".join(statuses) or None
     category = str(query.get("category") or "").strip() or None
     if category and category not in {c["key"] for c in result.get("categories") or []} | {r.get("category_key") for r in rows}:
         raise ValueError("unknown category")
-    quality = str(query.get("quality") or "").strip().upper() or None
-    if quality and quality not in QUALITY_GRADES:
+    qualities = [x.upper() for x in _multi(query.get("quality"))]
+    if any(x not in QUALITY_GRADES for x in qualities):
         raise ValueError("unknown quality")
+    quality = ",".join(qualities) or None
+    ran = str(query.get("ran") or "").strip().lower() or None
+    if ran and ran not in RAN_FILTERS:
+        raise ValueError("unknown ran")
+    sort = str(query.get("sort") or "").strip().lower() or "attention"
+    if sort not in SORTS:
+        raise ValueError("unknown sort")
     if scope == "attention":
         rows = [r for r in rows if r["status"] in _ATTENTION or (r["missed_count"] or 0) > 0]
     elif scope == "fixed":
@@ -921,16 +989,19 @@ def get_jobs_history(query=None, **kwargs) -> dict:
         rows = [r for r in rows if r["scheduler"] == scope]
     elif scope == "other":
         rows = [r for r in rows if r["scheduler"] not in {"n8n", "cron", "systemd"}]
-    if status:
-        rows = [r for r in rows if STATUS_FILTERS[status](r)]
+    if statuses:
+        rows = [r for r in rows if any(STATUS_FILTERS[x](r) for x in statuses)]
     if category:
         rows = [r for r in rows if r.get("category_key") == category]
-    if quality:
-        rows = [r for r in rows if (r.get("quality") or {}).get("grade") == quality]
+    if qualities:
+        rows = [r for r in rows if (r.get("quality") or {}).get("grade") in qualities]
+    if ran:
+        now = _at(result.get("computed_at")) or datetime.now(timezone.utc)
+        rows = [r for r in rows if _ran_match(r, ran, now)]
     text = str(query.get("q") or "").strip().lower()
     if text:
         rows = [r for r in rows if any(text in str(r.get(k) or "").lower() for k in ("lane_id", "job", "title", "does"))]
-    rows = sorted(rows, key=lambda r: (_ORDER.get(r["status"], 7), -(r["missed_count"] or 0), (r.get("title") or r["job"]).lower()))
+    rows = _sort_rows(rows, sort)
     try:
         offset = max(0, int(query.get("offset", 0)))
         limit = max(1, min(200, int(query.get("limit", 50))))
@@ -938,7 +1009,8 @@ def get_jobs_history(query=None, **kwargs) -> dict:
         offset, limit = 0, 50
     return {**{k: v for k, v in result.items() if k != "rows"}, "rows": [_list_row(r) for r in rows[offset:offset + limit]],
             "total": len(rows), "offset": offset, "limit": limit, "has_more": offset + limit < len(rows), "filter": scope,
-            "status": status, "category": category, "quality": quality}
+            "status": status, "category": category, "quality": quality,
+            "statuses": statuses, "qualities": qualities, "ran": ran, "sort": sort}
 
 
 #: How the catalog buckets a job's status (the card's "3 failed · 40 ok · 12 not measured").
