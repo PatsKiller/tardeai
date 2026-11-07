@@ -132,6 +132,8 @@ QUOTE_MAX_AGE_S = 30 * 60
 
 def _quote_age_seconds(as_of) -> float | None:
     """Seconds since the quote's own stamp, or None when it cannot be read (an unreadable stamp is not a price)."""
+    # nosemgrep: tq-py-broad-except-returns-default -- None means "cannot date this quote", which the
+    # caller treats as no quote; an undated price is exactly what the operator rule forbids.
     try:
         if isinstance(as_of, (int, float)):
             stamp = datetime.fromtimestamp(float(as_of), timezone.utc)
@@ -145,8 +147,6 @@ def _quote_age_seconds(as_of) -> float | None:
             stamp = stamp.replace(tzinfo=timezone.utc)
         return max(0.0, (datetime.now(timezone.utc) - stamp).total_seconds())
     except Exception:  # noqa: BLE001 -- an unreadable stamp cannot be aged
-        # nosemgrep: tq-py-broad-except-returns-default -- None means "cannot date this quote", which the
-        # caller treats as no quote; an undated price is exactly what the operator rule forbids.
         return None
 
 
@@ -156,6 +156,8 @@ def _fresh_price(symbol: str) -> dict | None:
     None means: no quote satisfies the operator rule right now. The caller must not fall back to the
     bars' last close — that fallback is the defect this function exists to remove.
     """
+    # nosemgrep: tq-py-broad-except-returns-default -- None already means "no quote that satisfies the
+    # rule", and the caller skips the symbol as no_fresh_price rather than planning off a close.
     try:
         try:
             from lib.data_broker.market_quote import get_price_batch
@@ -163,8 +165,6 @@ def _fresh_price(symbol: str) -> dict | None:
             from scripts.lib.data_broker.market_quote import get_price_batch  # type: ignore -- package import when scripts/ is not on sys.path
         quote = (get_price_batch(_broker_db_query(), [symbol.upper()], max_age_hours=1) or {}).get(symbol.upper())
     except Exception:  # noqa: BLE001 -- a failed read is no quote
-        # nosemgrep: tq-py-broad-except-returns-default -- None already means "no quote that satisfies
-        # the rule", and the caller skips the symbol as no_fresh_price rather than planning off a close.
         return None
     if not quote or quote.get("price") is None:
         return None
