@@ -818,7 +818,9 @@ def _load(root: Path, registry_path: Path, now: datetime, descriptions_dir: Path
     inputs.update(descriptions=descriptions, categories=categories)
     if not registry.get("lanes"):
         gaps.append("the job list could not be read")
-    return build(registry, inputs, now=now, trading_day=is_trading_day)
+    result = build(registry, inputs, now=now, trading_day=is_trading_day)
+    from scripts.lib.run_quality import attach  # per-row run QUALITY grade (RUNQ 2026-11-06); read-only
+    return attach(result, registry, root, now=now)
 
 
 # ── API with a stale-while-revalidate cache ───────────────────────────────────────────────────────────────────────
@@ -866,7 +868,7 @@ def snapshot(*, state_root=None, registry_path=None, now=None, descriptions_dir=
 def _list_row(row: dict) -> dict:
     keep = ("lane_id", "job", "scheduler", "state", "status", "status_reason", "last_run", "last_success_at",
             "missed_count", "missed_gap", "fix_count", "last_fix", "history_sources", "history_gap",
-            "title", "category", "does", "breaks", "owner", "category_fallback", "category_key")
+            "title", "category", "does", "breaks", "owner", "category_fallback", "category_key", "quality")
     out = {k: row.get(k) for k in keep}
     out["cadence"] = {k: row["cadence"][k] for k in ("expressions", "timezone", "every_hours", "market_days_only")}
     out["output_written_at"] = (row.get("output") or {}).get("written_at")
@@ -887,6 +889,8 @@ STATUS_FILTERS = {
     "never_scheduled": lambda r: r["status"] == "never_scheduled",
     "fixed": lambda r: bool(r["fix_count"]),  # = summary.fixed_14d
 }
+#: ``?quality=`` values: the run-quality grades of scripts/lib/run_quality.py (= summary.quality_counts keys).
+QUALITY_GRADES = ("GOOD", "DEGRADED", "EMPTY", "FAILED", "NOT_LIVE", "UNPROVEN")
 _ORDER = {"failed": 0, "missed": 1, "late": 2, "running": 3, "not_measured": 4, "ok_unverified": 5, "ok": 6}
 
 
@@ -906,6 +910,9 @@ def get_jobs_history(query=None, **kwargs) -> dict:
     category = str(query.get("category") or "").strip() or None
     if category and category not in {c["key"] for c in result.get("categories") or []} | {r.get("category_key") for r in rows}:
         raise ValueError("unknown category")
+    quality = str(query.get("quality") or "").strip().upper() or None
+    if quality and quality not in QUALITY_GRADES:
+        raise ValueError("unknown quality")
     if scope == "attention":
         rows = [r for r in rows if r["status"] in _ATTENTION or (r["missed_count"] or 0) > 0]
     elif scope == "fixed":
@@ -918,6 +925,8 @@ def get_jobs_history(query=None, **kwargs) -> dict:
         rows = [r for r in rows if STATUS_FILTERS[status](r)]
     if category:
         rows = [r for r in rows if r.get("category_key") == category]
+    if quality:
+        rows = [r for r in rows if (r.get("quality") or {}).get("grade") == quality]
     text = str(query.get("q") or "").strip().lower()
     if text:
         rows = [r for r in rows if any(text in str(r.get(k) or "").lower() for k in ("lane_id", "job", "title", "does"))]
@@ -929,7 +938,7 @@ def get_jobs_history(query=None, **kwargs) -> dict:
         offset, limit = 0, 50
     return {**{k: v for k, v in result.items() if k != "rows"}, "rows": [_list_row(r) for r in rows[offset:offset + limit]],
             "total": len(rows), "offset": offset, "limit": limit, "has_more": offset + limit < len(rows), "filter": scope,
-            "status": status, "category": category}
+            "status": status, "category": category, "quality": quality}
 
 
 #: How the catalog buckets a job's status (the card's "3 failed · 40 ok · 12 not measured").
