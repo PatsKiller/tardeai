@@ -160,9 +160,11 @@ def write_lane_receipt(started: str, catalysts: int, graph: dict) -> None:
           output=lane_output(catalysts, graph))
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Build the catalyst→entity graph (Phase C)")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Build the catalyst→entity graph (Phase C)", allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write the projection")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="real read-only preview: builds the graph in memory, writes nothing (wins over --apply)")
     ap.add_argument("--limit", type=int, default=40000, help="catalysts to scan (newest first)")
     ap.add_argument("--symbol", default=None, help="print one entity's lifecycle timeline")
     ap.add_argument("--json", action="store_true")
@@ -171,7 +173,9 @@ def main() -> int:
         action="store_true",
         help="E5: report graph/momentum path freshness on the served state root",
     )
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        args.apply = False
 
     if args.diagnose_staleness:
         report = diagnose_writer_staleness()

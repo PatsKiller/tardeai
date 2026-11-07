@@ -528,28 +528,10 @@ def lane_output(stats: dict) -> dict:
 
 
 def cli(argv=None) -> int:
-    """Scheduled CLI: parse strictly and preview offline before imports or database access."""
+    """Scheduled CLI. ``--dry-run`` reaches the real preview in ``main`` (read-only DB session via
+    ``enforce_readonly``; computes and prints, writes nothing). It no longer returns a canned stub here:
+    that stub shadowed ``main`` and proved nothing (LQ-20261107-169)."""
     argv = list(sys.argv[1:] if argv is None else argv)
-    parser = argparse.ArgumentParser(description="Proposal backtest engine", allow_abbrev=False)
-    parser.add_argument("--proposal-id", type=int)
-    parser.add_argument("--all-pending", action="store_true")
-    parser.add_argument("--pending", action="store_true", help="Alias for --all-pending")
-    parser.add_argument("--strategy", type=str, help="Filter by strategy_id")
-    parser.add_argument("--statuses", type=str, help="comma list of statuses to backtest with --all-pending "
-                        "(default PENDING,APPROVED_FOR_PAPER_TEST). e.g. EXPIRED to backfill the Expired view.")
-    parser.add_argument("--limit", type=int, help="cap number of proposals (backfill batching)")
-    parser.add_argument("--apply", action="store_true", help="Write to DB (the default unless --dry-run)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="READ ONLY session; compute and print, write nothing (wins over --apply)")
-    args = parser.parse_args(argv)
-    if args.dry_run:
-        if not (args.all_pending or args.pending or args.proposal_id):
-            parser.error("--proposal-id or --all-pending/--pending is required")
-        print(f"DRY-RUN {LANE_ID}: would backtest proposals, upsert historical snapshots and "
-              f"strategy results; pending={bool(args.all_pending or args.pending)} "
-              f"proposal_id={args.proposal_id} strategy={args.strategy} statuses={args.statuses} limit={args.limit}; "
-              "no DB, provider, execution or writes")
-        return 0
     return main(argv)
 
 

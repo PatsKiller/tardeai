@@ -117,8 +117,10 @@ def events_from_filings(symbol: str, filings: list[dict], *, subject_guid: str |
     return out
 
 
-def load_ticker_map(root: Path, fetcher, *, now: _dt.datetime | None = None) -> dict[str, str]:
-    """{TICKER: 10-digit CIK} from the official map, cached under data/runtime for a week."""
+def load_ticker_map(root: Path, fetcher, *, now: _dt.datetime | None = None, persist: bool = True) -> dict[str, str]:
+    """{TICKER: 10-digit CIK} from the official map, cached under data/runtime for a week.
+
+    ``persist=False`` (dry run) reads the cache but never rewrites it: the dry preview must write nothing."""
     now = now or _now()
     cache = root / "data" / "runtime" / "sec_company_tickers.json"
     try:
@@ -129,6 +131,8 @@ def load_ticker_map(root: Path, fetcher, *, now: _dt.datetime | None = None) -> 
     except (OSError, json.JSONDecodeError, AttributeError):
         pass
     data = fetcher(TICKER_MAP_URL) or {}
+    if not persist:
+        return {str(v.get("ticker", "")).upper(): str(v["cik_str"]).zfill(10) for v in data.values() if isinstance(v, dict) and v.get("cik_str")}
     try:
         cache.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache.with_suffix(".json.tmp"); tmp.write_text(json.dumps(data), encoding="utf-8"); os.replace(tmp, cache)
@@ -180,7 +184,10 @@ def _execute(argv=None) -> int:
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     ap.add_argument("--since-days", type=int, default=7)
     ap.add_argument("--root", help="state root (default: production persistent-state)")
+    ap.add_argument("--dry-run", action="store_true", help="real preview; writes nothing; wins over --apply")
     a = ap.parse_args(argv)
+    if a.dry_run:
+        a.apply = False
     env = dict(os.environ)
     root = Path(a.root) if a.root else state_root(env)
     now = _now()
@@ -195,7 +202,7 @@ def _execute(argv=None) -> int:
 
     syms = [x.strip().upper() for x in a.symbols.split(",") if x.strip()] or universe(root, a.limit)
     try:
-        cik_map = load_ticker_map(root, fetcher, now=now)
+        cik_map = load_ticker_map(root, fetcher, now=now, persist=a.apply)
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({"schema": "FilingsFeedRun@v1", "as_of": now.isoformat(), "error": f"ticker_map:{type(exc).__name__}"}))
         return 2
@@ -285,10 +292,8 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply")
     args = ap.parse_args(argv)
     if args.dry_run:
-        print(f"DRY-RUN {LANE}: would read up to {args.limit} symbols, fetch EDGAR submissions for "
-              f"{args.since_days} days and append new FilingEvent rows and the latest summary; "
-              "no identity/state read, ticker-cache write, DB, provider or writes")
-        return 0
+        # Real preview (was an offline stub that proved nothing): same plan as --apply, no writes.
+        return _execute(argv)
     from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
     _LAST_COUNTS.clear()

@@ -1295,7 +1295,7 @@
       "lock": "/tmp/build_catalyst_graph.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
-      "dry_run_arg": [],
+      "dry_run_arg": ["--dry-run"],
       "live_arg": [
         "--apply"
       ],

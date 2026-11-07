@@ -19,31 +19,14 @@ Conservative: only RE-LABELS a clearly-wrong mean-reversion/income tag, never an
 momentum tag. Routing to swing_breakout fixes the dangerous exit-plan inversion; it is a best-fit
 momentum home, not a claim the name has a 20-day base.
 
-    .venv/bin/python scripts/reclassify_momentum_proposals.py            # dry-run
+    .venv/bin/python scripts/reclassify_momentum_proposals.py            # dry-run (default)
+    .venv/bin/python scripts/reclassify_momentum_proposals.py --dry-run  # same, explicit; wins over --apply
     .venv/bin/python scripts/reclassify_momentum_proposals.py --apply
+
+The dry run is the real read-only preview: one SELECT on paper_trade_proposals, then the plan is printed.
+It issues no UPDATE, sends nothing and writes no file (LQ-20261107-169).
 """
 from __future__ import annotations
-
-import sys as _dr_sys
-
-if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
-    # n8n onboarding (lane disposition 2026-10-15, MIGRATE_N8N): --dry-run is an OFFLINE plan and wins over every
-    # live flag (--apply). It returns here, before the .env load, any DB/LLM/network/sender import and any file
-    # write; it prints the plan and one LaneOutput@v1 line on stderr (produced 0, empty_reason dry_run).
-    import os as _dr_os
-
-    _dr_sys.path.insert(0, _dr_os.path.join(_dr_os.path.dirname(_dr_os.path.abspath(__file__))))
-    from lib.lane_output import emit as _dr_emit, output_block as _dr_block
-
-    _dr_lane = "reclassify-momentum-proposals"
-    _dr_would = (
-        "find high-RVOL gap-up proposals carrying a mean-reversion / income label and, with --apply, re-label"
-        " them to meme_squeeze_momentum or swing_breakout"
-    )
-    print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
-          "nothing read from env/DB/network, no model call, no send, no file write")
-    _dr_emit(_dr_lane, "dry_run", _dr_block(produced=0, attempted=0, empty_reason="dry_run", unit="proposal"))
-    raise SystemExit(0)
 
 import argparse
 import re
@@ -88,10 +71,13 @@ def _target(rvol, gap, flt, cat) -> str | None:
     return "swing_breakout"  # generic large-cap momentum gap (sympathy/news/breakout)
 
 
-def main():
-    ap = argparse.ArgumentParser()
+def main(argv=None):
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--apply", action="store_true", help="write the reclassification (default dry-run)")
-    args = ap.parse_args()
+    ap.add_argument("--dry-run", action="store_true", help="read-only preview; writes nothing (wins over --apply)")
+    args = ap.parse_args(argv)
+    if args.dry_run:
+        args.apply = False
     from db_adapter import _execute
 
     rows = _execute(
