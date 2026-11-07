@@ -84,6 +84,7 @@ if str(ROOT) not in sys.path:
 from scripts.lib import lane_last_receipt as R  # noqa: E402
 from scripts.lib import disk_hygiene_retention as SR  # noqa: E402
 from scripts.lib import workspace_closeout as WC  # noqa: E402
+from scripts.lib import disk_hygiene_report as DR  # noqa: E402
 
 LANE_ID = "disk-hygiene"
 APPLY_LANE_ID = "disk-hygiene-apply"
@@ -2656,6 +2657,14 @@ def apply(
         if done_bytes + size > max_bytes:
             rep["skipped"].append({"path": item["path"], "why": "byte_cap"})
             continue
+        try:
+            claim_hold = DR.live_claim_hold(Path(item["path"]), rules["_home"], DR.live_claims(
+                _claims_dir(rules), effective_now.timestamp()))
+        except DR.ClaimsUnreadable as exc:
+            claim_hold = "claims_unreadable:" + str(exc)[:80]
+        if claim_hold:
+            rep["skipped"].append({"path": item["path"], "why": claim_hold})
+            continue
         if standing:
             validation_now = now + timedelta(seconds=time.monotonic() - attempt_clock)
             if (validation_now - gen).total_seconds() > age_limit * 3600:
@@ -2821,6 +2830,12 @@ def held_top_reasons(m: Optional[Mapping[str, Any]], n: int = 5) -> list[dict]:
             for k, v in sorted(by.items(), key=lambda kv: -kv[1]["bytes"])[:n]]
 
 
+def _claims_dir(rules: Mapping[str, Any]) -> Path:
+    cfg = rules.get("standing_apply") or {}
+    base = _expand(str(cfg.get("coordination_root") or "~/trade-ai-releases/persistent-state/data/coordination"), rules["_home"])
+    return base / "claims"
+
+
 def _apply_main(a: argparse.Namespace, rules: Mapping[str, Any], now: datetime, state_root: Optional[Path],
                 wall_start: datetime, evidence: Optional[Mapping], evidence_error: Optional[str]) -> int:
     """One apply, or (``--standing``) up to ``pressure.max_passes`` re-planned passes under ``--until-target``.
@@ -2958,6 +2973,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--standing", action="store_true", help="optional reviewed A/S/W rules only (disabled until operator review)")
     ap.add_argument("--evidence-snapshot", help="hashed authorized source capture; offline snapshots support previews only")
     ap.add_argument("--manifest-sha256", help="--standing --apply: exact manifest file SHA256")
+    ap.add_argument("--candidate-report", action="store_true",
+                    help="READ-ONLY, bounded (<60 s): agent-tmp <owner>/<entry> dirs idle > 6 h whose owner holds no live claim, "
+                         "and release dirs beyond the newest 5 + CURRENT. Prints JSON, writes nothing, deletes nothing")
     ap.add_argument("--report", action="store_true", help="also print the human summary")
     ap.add_argument("--manifest", help="--apply: manifest path (default: the latest)")
     ap.add_argument("--rules", help="rules file (default config/disk_hygiene_rules.json)")
@@ -2998,6 +3016,13 @@ def main(argv: Optional[list[str]] = None) -> int:
                 output=lane_output(None, False),
             )
         return 1
+    if a.candidate_report:
+        if a.apply or a.plan or a.standing:
+            print("--candidate-report is read-only and takes no other mode", file=sys.stderr)
+            return 2
+        print(json.dumps(DR.build_report(rules["_home"], _claims_dir(rules), now=now.timestamp(),
+                                         never_touch=lambda q: bool(never_touch_reason(q, rules))), indent=2))
+        return 0
 
     pressure = (rules.get("standing_apply") or {}).get("pressure")
     if a.until_target is not None and (not (a.standing and a.apply) or not 0 < a.until_target < 100 or not isinstance(pressure, dict)):
