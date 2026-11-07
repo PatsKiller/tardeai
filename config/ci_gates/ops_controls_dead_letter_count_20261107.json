@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "OPS_CONTROLS_N8N_OUTCOMES_DEAD_LETTER_COUNT",
+  "files": [
+    "tests/test_ops_controls_n8n_outcomes_dead_letter_count_20261107.py"
+  ],
+  "anchor": "OPS_CONTROLS_N8N_OUTCOMES_DEAD_LETTER_COUNT_20261107",
+  "comment": [
+    "ANCHOR: OPS_CONTROLS_N8N_OUTCOMES_DEAD_LETTER_COUNT_20261107 — LQ-20261107-148. The Ops Controls n8n tab",
+    "reported 'N open dead letter(s)' from len() of the query that finds the newest dead letter, LIMIT 20.",
+    "The lane n8n-research-intake-consumer held 113 unreleased dead letters on 2026-11-07 (the tail of the",
+    "2026-10-23 safe_flock cron outage) and the site said 20. The count is now a count(*) on the same indexed",
+    "predicate; the newest-row example keeps its own bounded query. Listing this schedules nothing."
+  ]
+}

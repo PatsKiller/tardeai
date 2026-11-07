@@ -264,14 +264,24 @@ def read_ledger(path: Path, lane_ids: Iterable[str], now: datetime) -> dict[str,
                 )
                 if L.last_live_success:
                     L.live_output_advanced = _output_advanced(c, L.last_live_success["run_id"])
-            dl = c.execute(
-                "SELECT dead_at, last_state, last_reason FROM dead_letters WHERE lane_id=? "
-                "AND released_at IS NULL ORDER BY dead_at DESC LIMIT 20",
-                (lane,),
-            ).fetchall()
-            L.dead_letters_open = len(dl)
-            if dl:
-                L.dead_letter_last = {"at": dl[0][0], "state": dl[0][1], "reason": (dl[0][2] or "")[:200] or None}
+            # The count is the count. The newest-row example is bounded by its own LIMIT 20; reading the
+            # number off that page reported 20 open dead letters for a lane holding 113
+            # (n8n-research-intake-consumer, 2026-11-07 — the tail of the 2026-10-23 safe_flock outage).
+            # A page size standing in for a count is the same defect as a sentinel zero for missing data.
+            L.dead_letters_open = int(
+                c.execute(
+                    "SELECT count(*) FROM dead_letters WHERE lane_id=? AND released_at IS NULL", (lane,)
+                ).fetchone()[0]
+            )
+            if L.dead_letters_open:
+                dl = c.execute(
+                    "SELECT dead_at, last_state, last_reason FROM dead_letters WHERE lane_id=? "
+                    "AND released_at IS NULL ORDER BY dead_at DESC LIMIT 20",
+                    (lane,),
+                ).fetchall()
+                if dl:
+                    L.dead_letter_last = {"at": dl[0][0], "state": dl[0][1],
+                                          "reason": (dl[0][2] or "")[:200] or None}
             b = breakers.get(lane)
             if b and b[1] and (not b[2] or str(b[2]) < str(b[1])):
                 L.breaker_open = True
