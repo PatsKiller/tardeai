@@ -375,18 +375,18 @@
     "kind": "file_mtime",
     "path": "data/runtime/opening_intelligence/latest.json"
    },
-   "verified_token": "SNAPSHOT_DIR / \"latest.json\"",
+   "verified_token": "(d / \"latest.json\").write_text",
    "source_file": "scripts/opening_intelligence.py",
-   "evidence": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+   "evidence": "scripts/opening_intelligence.py:351 persist() writes (d / \"latest.json\") where d = snapshot_dir(); both lanes pass --persist and share the file. LQ-20261107-113 replaced the module-level SNAPSHOT_DIR with snapshot_dir(), so the previous token no longer appears in the source. Host mtime 2026-10-09T09:15:08"
   },
   "opening-intelligence-render": {
    "output_signal": {
     "kind": "file_mtime",
     "path": "data/runtime/opening_intelligence/latest.json"
    },
-   "verified_token": "SNAPSHOT_DIR / \"latest.json\"",
+   "verified_token": "(d / \"latest.json\").write_text",
    "source_file": "scripts/opening_intelligence.py",
-   "evidence": "scripts/opening_intelligence.py:317 persist() writes latest.json (both lanes pass --persist; shared file); host mtime 2026-10-09T09:15:08"
+   "evidence": "scripts/opening_intelligence.py:351 persist() writes (d / \"latest.json\") where d = snapshot_dir(); both lanes pass --persist and share the file. LQ-20261107-113 replaced the module-level SNAPSHOT_DIR with snapshot_dir(), so the previous token no longer appears in the source. Host mtime 2026-10-09T09:15:08"
   },
   "options-chain-snapshot": {
    "output_signal": {

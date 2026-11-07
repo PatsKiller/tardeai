@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_lane_output_signal_20261107",
+  "files": [
+    "tests/test_hermes_lane_output_signal_20261107.py"
+  ],
+  "anchor": "HERMES_LANE_OUTPUT_SIGNAL_20261107",
+  "comment": [
+    "ANCHOR: HERMES_LANE_OUTPUT_SIGNAL_20261107 — QUALITY ROUND 2 (2026-11-07): hermes-backlog-health-check and hermes-librarian-backlog-loop both ran, exited ok, and produced nothing the grader could see, so /v3/ops/jobs graded them EMPTY. Each now writes the artifact its health contract declares, at the path the grader reads, and the receipt says which path it wrote. The tests use a temp directory and a fake clock: no live lane runs, no database, no network."
+  ]
+}
