@@ -9,6 +9,14 @@ cycle_deadline_s: 295
 # Wall-clock guard (2026-10-09 forensics): catalyst lookups stop once fewer than post_enrich_reserve_s remain before
 # cycle_deadline_s, counted from process start. Scoring + persist + send measured 60-75 s under load.
 post_enrich_reserve_s: 100
+# Cap on optional per-ticker network enrichment inside the score phase (company name, industry, sector context,
+# Yahoo RSS fallback), counted from the moment scoring starts and never past cycle_deadline_s. 2026-11-07
+# forensics: the score phase was the one phase with no wall-clock cap, so on a throttled Yahoo the 5-min lane
+# spent its whole timeout there — 64 of 78 cycles that day were SIGTERMed in `score` at 295 s, and the monitor
+# saw them as lock skips/stale output. Past the cap a row scores on the data already in hand; the cycle receipt
+# records how many rows that was (scoring_network_skips + budget_skips "scoring_network"). 0 = no network in
+# scoring at all. ~0.4 s/name measured warm on 2026-11-06, so 60 s covers a ~144-name universe once.
+score_network_budget_s: 60
 # Catalysts are read in bulk (scripts/scalp_catalyst_bulk.py, 2026-10-09): one news_articles query through the data
 # broker plus the Finviz Elite news export for finviz_batch_size tickers per request (measured 2026-10-09: 76 names,
 # 8 requests, 17.7 s, 64 covered), replacing ~2 throttled Finviz page requests per ticker. Up to

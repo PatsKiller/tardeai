@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "SCALP_SCORE_NETWORK_DEADLINE_20261107",
+  "files": [
+    "tests/test_scalp_score_network_deadline_20261107.py"
+  ],
+  "anchor": "SCALP_SCORE_NETWORK_DEADLINE_20261107",
+  "comment": [
+    "ANCHOR: SCALP_SCORE_NETWORK_DEADLINE_20261107 — the 5-min scalp lane's score phase gets a wall-clock cap.",
+    "2026-11-06 forensics: 64 of 78 cycles were SIGTERMed by `timeout 295` inside `score` (one more in `ingest`),",
+    "because the phase was the only one with no cap and every ticker took a yfinance .actions (reverse split),",
+    "a .info (industry/sector/company name), up to two .history calls and, for an unverified headline, an",
+    "unbounded Yahoo RSS fetch — all serial. scoring.score_network_deadline() now bounds them by the cycle",
+    "deadline, the lane's score_network_budget_s and a 30 s tail kept for halt detection, persist and the alert;",
+    "past the window a row still scores on the data already held and the receipt records",
+    "scoring_network_skips + budget_skips ['scoring_network'] — a cut cycle never looks like a cold universe.",
+    "Callers that pass no deadline (the full run) keep the previous behaviour. Hermetic: fakes only, no network,",
+    "no database, no Telegram."
+  ]
+}

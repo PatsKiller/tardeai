@@ -709,7 +709,8 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
                    cycle_stats: Optional[Dict] = None,
                    state_saver=None,
                    deadline_monotonic: Optional[float] = None,
-                   post_enrich_reserve_s: float = 0.0) -> Optional[List[Dict]]:
+                   post_enrich_reserve_s: float = 0.0,
+                   score_network_budget_s: Optional[float] = None) -> Optional[List[Dict]]:
     sys.path.insert(0, str(root / "scripts"))
     # cycle_stats (optional, filled in place): the phase reached, symbols scanned, triggers, alert outcome and
     # errors, so a caller can write a per-cycle receipt (ScalpCycleReceipt@v1) even when the cycle is cut short.
@@ -931,7 +932,13 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             ranked = sorted(sm, key=lambda s:s.get("change_percent",0), reverse=True)
             top3 = {s["symbol"] for s in ranked[:3]}
             t["sector_momentum_score"] = 5 if etf in top3 else 0
-        scored = score_all(tickers, enrichments, str(root), use_llm=False)
+        # 2026-11-07: the score phase was the only one with no wall-clock cap. Its per-ticker network lookups
+        # (company name, industry, sector context, Yahoo RSS fallback) are now bounded by both the cycle
+        # deadline and score_network_budget_s; past that the rows score on the data already in hand and the
+        # skip count lands in the receipt (scoring_network_skips / budget_skips), never a silent zero.
+        scored = score_all(tickers, enrichments, str(root), use_llm=False,
+                           deadline_monotonic=deadline_monotonic,
+                           network_budget_s=score_network_budget_s, stats=_cs)
         scored = apply_squeeze_bonus_to_scores(scored)
         go_c = sum(1 for t in scored if t.get("decision")=="GO")
         print(f"  [live] GO={go_c} scored={len(scored)}")
