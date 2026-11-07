@@ -6,10 +6,13 @@ evidence/data-quality envelope for UI consumers.
 """
 from __future__ import annotations
 
+import copy
+import hashlib
 import importlib
 import json
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -140,6 +143,107 @@ def _read_json(path: Path) -> tuple[Any | None, str]:
 _JSONL_COMPACT_EVERY = 5000
 
 
+# LQ-20261107-177 / T-20261107-9bf308: a compacting JSONL read resumes where it stopped.
+#
+# The agents projection re-parsed the whole 138 MB, append-only ``agent_run_traces.jsonl`` on every GET
+# (5-17 s) to keep one row per agent. ``compact`` is idempotent and already runs mid-stream, so starting
+# from the compacted rows of the bytes read last time and parsing only what was appended is the same
+# computation as one long stream. A tail read was rejected: it drops agents that have not woken lately.
+#
+# The cache is keyed by (path, keep, compact). It is trusted only while the file is the same inode, is
+# no shorter than the offset reached, and still holds the same bytes at its head and just before that
+# offset; anything else (rotation, truncation, an in-place rewrite) is a full read. A torn final line is
+# parsed transiently, exactly as the full read would, and never cached. An unreadable or corrupt file is
+# never cached. Callers get deep copies, so nothing they do reaches the cache.
+_JSONL_CACHE_MAX = 16
+_JSONL_FINGERPRINT_BYTES = 4096
+_jsonl_cache: dict[tuple[str, int, int], dict[str, Any]] = {}
+_jsonl_cache_lock = threading.Lock()
+
+
+def _jsonl_cache_clear() -> None:
+    with _jsonl_cache_lock:
+        _jsonl_cache.clear()
+
+
+def _jsonl_fingerprint(handle: Any, offset: int) -> str:
+    """Hash of the file's first bytes and of the bytes just before ``offset``."""
+    digest = hashlib.blake2b(digest_size=16)
+    handle.seek(0)
+    digest.update(handle.read(min(offset, _JSONL_FINGERPRINT_BYTES)))
+    start = max(0, offset - _JSONL_FINGERPRINT_BYTES)
+    handle.seek(start)
+    digest.update(handle.read(offset - start))
+    return digest.hexdigest()
+
+
+def _read_jsonl_resumable(path: Path, *, keep: Any, compact: Any) -> tuple[list[dict[str, Any]] | None, str]:
+    key = (str(path), id(keep), id(compact))
+    with _jsonl_cache_lock:
+        try:
+            with path.open("rb") as handle:
+                st = os.fstat(handle.fileno())
+                entry = _jsonl_cache.get(key)
+                if (
+                    entry is None
+                    or entry["dev_ino"] != (st.st_dev, st.st_ino)
+                    or st.st_size < entry["offset"]
+                    or _jsonl_fingerprint(handle, entry["offset"]) != entry["fingerprint"]
+                ):
+                    entry = {"dev_ino": (st.st_dev, st.st_ino), "offset": 0, "rows": []}
+                if st.st_size == entry["offset"] and "fingerprint" in entry:
+                    return copy.deepcopy(entry["rows"]), "AVAILABLE"
+                rows = copy.deepcopy(entry["rows"])
+                compact_at = max(_JSONL_COMPACT_EVERY, 2 * len(rows))
+                offset = entry["offset"]
+                tail: dict[str, Any] | None = None
+                handle.seek(offset)
+                for raw in handle:
+                    complete = raw.endswith(b"\n")
+                    line = raw.decode("utf-8")
+                    if line.strip():
+                        try:
+                            value = json.loads(line)
+                        except ValueError:
+                            _jsonl_cache.pop(key, None)
+                            return None, "INVALID_SCHEMA"
+                        if not isinstance(value, dict):
+                            _jsonl_cache.pop(key, None)
+                            return None, "INVALID_SCHEMA"
+                        if keep is None or keep(value):
+                            if not complete:
+                                tail = value  # a final line with no newline yet: answer with it, never cache it
+                                break
+                            rows.append(value)
+                            if len(rows) >= compact_at:
+                                rows = compact(rows)
+                                compact_at = max(_JSONL_COMPACT_EVERY, 2 * len(rows))
+                    if complete:
+                        offset += len(raw)
+                rows = compact(rows)
+                _jsonl_cache.pop(key, None)
+                if len(_jsonl_cache) >= _JSONL_CACHE_MAX:
+                    _jsonl_cache.pop(next(iter(_jsonl_cache)))
+                _jsonl_cache[key] = {
+                    "dev_ino": (st.st_dev, st.st_ino),
+                    "offset": offset,
+                    "fingerprint": _jsonl_fingerprint(handle, offset),
+                    "rows": copy.deepcopy(rows),
+                }
+                if tail is not None:
+                    rows = compact([*rows, tail])
+                return rows, "AVAILABLE"
+        except FileNotFoundError:
+            _jsonl_cache.pop(key, None)
+            return None, "UNAVAILABLE"
+        except UnicodeDecodeError:
+            _jsonl_cache.pop(key, None)
+            return None, "INVALID_SCHEMA"
+        except OSError:
+            _jsonl_cache.pop(key, None)
+            return None, "UNAVAILABLE"
+
+
 def _read_jsonl(
     path: Path, *, keep: Any = None, compact: Any = None
 ) -> tuple[list[dict[str, Any]] | None, str]:
@@ -157,7 +261,12 @@ def _read_jsonl(
     projection that collapses many rows into few never holds the whole file.
     Every line is still parsed: one corrupt row keeps the file INVALID_SCHEMA
     exactly as before.
+
+    With a ``compact`` reducer the read resumes from the offset it reached last
+    time (``_read_jsonl_resumable``); without one it is a plain streaming read.
     """
+    if compact is not None:
+        return _read_jsonl_resumable(path, keep=keep, compact=compact)
     try:
         rows: list[dict[str, Any]] = []
         compact_at = _JSONL_COMPACT_EVERY

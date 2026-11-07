@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "control_plane_agents_trace_cache_20261107",
+  "files": [
+    "tests/test_control_plane_agents_trace_cache_20261107.py"
+  ],
+  "anchor": "CONTROL_PLANE_AGENTS_TRACE_CACHE_20261107",
+  "comment": [
+    "ANCHOR: CONTROL_PLANE_AGENTS_TRACE_CACHE_20261107 — LQ-20261107-177 / T-20261107-9bf308: a compacting JSONL read",
+    "(the control-plane agents and workflows projections) resumes from the byte offset it reached last time instead",
+    "of re-parsing the whole 138 MB agent_run_traces.jsonl per GET, and must answer exactly what a full read answers:",
+    "rotation, truncation and in-place rewrites fall back to a full read; a torn final line or a corrupt line is never",
+    "cached; callers get copies."
+  ]
+}
