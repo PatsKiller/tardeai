@@ -829,8 +829,9 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
     p1w = perf_data.get("periods", {}).get("1W", {})
     pytd = perf_data.get("periods", {}).get("YTD", {})
     p1y = perf_data.get("periods", {}).get("1Y", {})
-    total = perf_data.get("total_value", 0)
-    w_chg = p1w.get("change_pct", 0) or 0
+    total = _num(perf_data.get("total_value"))
+    w_chg = _num(p1w.get("change_pct"))
+    total_str = _fmt_num(perf_data.get("total_value"), ",.0f")
     w_color = "#00e676" if w_chg >= 0 else "#ff5252"
 
     acct_rows = ""
@@ -848,7 +849,7 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
 
     tech_rows = ""
     for t in sorted(tech_data.get("positions", []),
-                    key=lambda x: x.get("market_value", 0), reverse=True)[:10]:
+                    key=lambda x: _num(x.get("market_value")), reverse=True)[:10]:
         rsi = t.get("rsi", 0) or 0
         rsi_color = "#ff5252" if rsi > 70 else "#ffd740" if rsi < 30 else "#aaa"
         sma = t.get("sma200_pct")
@@ -856,7 +857,7 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
         sma_color = "#00e676" if (sma or 0) > 0 else "#ff5252"
         tech_rows += f"""
         <tr>
-          <td><b>{t['symbol']}</b></td>
+          <td><b>{t.get('symbol', '?')}</b></td>
           <td style="color:{rsi_color}">{rsi:.0f}</td>
           <td style="color:{sma_color}">{sma_str}</td>
           <td>{t.get('trend', '?')}</td>
@@ -928,7 +929,7 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
 <div class="kpi-grid">
   <div class="kpi">
     <div class="label">Total Value</div>
-    <div class="value">${total:,.0f}</div>
+    <div class="value">${total_str}</div>
     <div class="sub">Portfolio total</div>
   </div>
   <div class="kpi">

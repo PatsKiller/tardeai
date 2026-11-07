@@ -78,6 +78,21 @@ def test_generate_narrative_survives_null_metrics_with_previous_week(monkeypatch
     assert narratives
 
 
+def test_generate_html_survives_all_null_metrics(monkeypatch):
+    monkeypatch.setattr(pwr, "_report_llm", lambda prompt, **kw: "narrative text")
+    monkeypatch.setattr(pwr, "_load_previous_weeklies", lambda n=3: [])
+    narratives = {"performance": "p", "technical": "t", "risk": "r",
+                  "dividends": "d", "action": "a", "analyst_intelligence": "i"}
+    html = pwr._generate_html(
+        "2026-11-02", _null_perf(),
+        {"positions": [{"symbol": "V", "rsi": None, "sma200_pct": None,
+                        "market_value": None}]},
+        {"pnl": None, "win_rate": None}, narratives,
+    )
+    assert "—" in html
+    assert "None" not in html
+
+
 def test_fmt_num_keeps_unknown_distinct_from_zero():
     assert pwr._fmt_num(None, "+.1f") == "—"
     assert pwr._fmt_num("n/a", "+.1f") == "—"
