@@ -467,6 +467,16 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None, db_query
                 return {"last_output_at": None, "readable": False, "detail": sql + " (query unavailable)"}
             val = rows[0][0] if rows and rows[0] else None
             return {"last_output_at": _parse_ts(val), "readable": True, "detail": sql}
+        if kind == "none":
+            # A reviewed declaration that says WHY there is no artifact is not a missing declaration. The
+            # registry carries reason/detail (SIGNAL_FREE_EXEMPT, UNVERIFIED_OUTPUT, NO_SIGNAL_WITH_REASON); the
+            # projection used to print "no output signal declared" over all of them, so the screen said the
+            # opposite of the record (ollama-retired-host-runtime and the tradeai-agent-runtime@* lanes read that
+            # way on 2026-11-07). Keep the declared words, and keep the missing-declaration wording for a bare none.
+            reason = str(sig.get("reason") or "").strip()
+            detail = str(sig.get("detail") or "").strip()
+            text = " · ".join(part for part in (reason, detail) if part) or "no output signal declared"
+            return {"last_output_at": None, "readable": False, "detail": text}
     except Exception as e:  # never let a signal read break a cycle
         return {"last_output_at": None, "readable": False, "detail": f"{type(e).__name__}: {e}"}
     return {"last_output_at": None, "readable": False, "detail": "no output signal declared"}

@@ -525,6 +525,57 @@ def _cron_matches(lane: dict[str, Any], entry: dict[str, Any]) -> bool:
     return not bare
 
 
+def _declared_schedules(lane: dict[str, Any]) -> set[str]:
+    expr = str(lane.get("scheduler", {}).get("expression") or "")
+    return {f for f in cron_last_fire.cron_schedules(expr) if cron_last_fire.parse(f)}
+
+
+def _owns_strictly(lane: dict[str, Any], entry: dict[str, Any]) -> bool:
+    """This lane's declared schedule names this exact host line (marker present AND same cron fields).
+
+    The strict half of _cron_matches, without its pre-#1623 fallback: used to keep a line that another
+    multi-stage lane declares from counting as this lane's duplicate.
+    """
+    marker = str(lane.get("scheduler", {}).get("match") or "")
+    if not marker or marker not in entry.get("command", ""):
+        return False
+    return cron_last_fire.cron_fields(str(entry.get("expression") or "")) in _declared_schedules(lane)
+
+
+def duplicate_cron(
+    lane: dict[str, Any],
+    matched: list[dict[str, Any]],
+    same_commands: list[dict[str, Any]],
+    lanes: list[dict[str, Any]],
+    now: datetime,
+) -> tuple[bool, str | None]:
+    """Is this lane's work scheduled more than once? Returns (duplicate, reason).
+
+    A lane whose registry expression joins several windows with " + " declares ALL of them; those are its
+    cadence, not duplicates. The 2026-11-07 count treated `len(matched) > 1` as a duplicate, which put 19
+    healthy multi-window lanes into DRIFT (portfolio-repricer, research-scheduler, market-risk-evaluate, ...).
+    A duplicate is: a host line running this lane's command at a time the lane did NOT declare, or two host
+    lines claiming the same declared window. A line another lane declares strictly (shared runner, per-stage
+    schedule) belongs to that lane and is not counted here.
+    """
+    declared = _declared_schedules(lane)
+    own_ids = {e["id"] for e in matched}
+    for entry in same_commands:
+        if entry["id"] in own_ids:
+            continue
+        fields = cron_last_fire.cron_fields(str(entry.get("expression") or ""))
+        if fields in declared:
+            continue
+        if any(_owns_strictly(other, entry) for other in lanes if other is not lane):
+            continue
+        return True, f"host line {entry['id']} ({entry.get('expression')}) runs this lane's command at a schedule the registry does not declare"
+    counts = Counter(cron_last_fire.cron_fields(str(e.get("expression") or "")) for e in matched)
+    repeated = sorted(f for f, n in counts.items() if n > 1)
+    if repeated:
+        return True, f"two host lines claim the same declared schedule: {', '.join(repeated)}"
+    return False, None
+
+
 def cron_collides(a: dict[str, Any], b: dict[str, Any], now: datetime) -> bool:
     """Candidate overlap; distinct declared time windows are not duplicate fires."""
     left, right = cron_last_fire.parse(a["expression"]), cron_last_fire.parse(b["expression"])
@@ -634,6 +685,31 @@ def schedule_label(value: Any) -> str | None:
     return None
 
 
+def _openclaw_job_for(sched: dict[str, Any], jobs_by_id: dict[str, Any]) -> dict[str, Any] | None:
+    """The OpenClaw job a row names, if any: `openclaw-cron:<id>`, a bare job id, or the row's match string."""
+    candidates = [str(sched.get("expression") or ""), str(sched.get("match") or "")]
+    for candidate in candidates:
+        job_id = candidate[len("openclaw-cron:"):] if candidate.startswith("openclaw-cron:") else candidate
+        if job_id and job_id in jobs_by_id:
+            return jobs_by_id[job_id]
+    return None
+
+
+def _n8n_live_run_now(run: dict[str, Any], now: datetime, *, days: int = 7) -> bool:
+    """A live run the n8n dispatcher requested within ``days``: real duplicate work, not a shadow dry_run.
+
+    The coordination ledger is the n8n lane ledger but it records every caller and every mode: 78 lanes have
+    only dry_run rows (the dispatcher shadow), and host/agent callers appear as `host:...`. Only a live,
+    n8n-requested run inside the window means the work is executing twice right now.
+    """
+    if run.get("mode") != "live":
+        return False
+    if not str(run.get("requested_by") or run.get("caller_id") or "").startswith("n8n:"):
+        return False
+    at = timestamp(run.get("requested_at"))
+    return bool(at and 0 <= (now - at).total_seconds() <= days * 86400)
+
+
 def _base_row(lane: dict[str, Any]) -> dict[str, Any]:
     sched = lane.get("scheduler") or {}
     return {
@@ -709,13 +785,21 @@ def build_projection(
             row["scheduler_observations"] = matched
             claimed_cron.update(e["id"] for e in matched)
             same_commands = [e for e in host_matches if any(e.get("command") == m.get("command") for m in matched)]
-            colliding = [
-                e for e in same_commands if any(e["id"] != m["id"] and cron_collides(e, m, now) for m in matched)
-            ]
-            row["duplicate_scheduler"] = (len(matched) > 1 or bool(colliding)) if measured else None
+            duplicate, why = duplicate_cron(lane, matched, same_commands, registry.get("lanes") or [], now)
+            row["duplicate_scheduler"] = duplicate if measured else None
+            if why:
+                row["duplicate_reason"] = why
             if len(same_commands) > len(matched):
                 row["scheduler_observations"] = same_commands
                 claimed_cron.update(e["id"] for e in same_commands)
+            # The reverse of the n8n branch: a lane kept on cron while the n8n dispatcher also fires it is the
+            # "scheduled twice" case. Evidence must be live work, not the dispatcher's shadow: the ledger also
+            # records dry_run rows (78 lanes) and host/agent callers (`requested_by` host:cc-wave-c), and keying
+            # on lane_id alone marked every such lane DRIFT (2026-11-07). Require the cron line to be present
+            # now — an ORPHANED lane with n8n runs is moved, not doubled — and a live n8n run in the last week.
+            if measured and present and any(_n8n_live_run_now(r, now) for r in runs or [] if str(r.get("lane_id")) == str(row["lane_id"])):
+                row["duplicate_scheduler"] = True
+                row["duplicate_reason"] = "also fired live by the n8n dispatcher in the last 7 days while its crontab line is still present"
             if host_matches and not matched:
                 row["schedule_drift"] = True
                 row["scheduler_observations"] = host_matches
@@ -752,16 +836,27 @@ def build_projection(
             row["duplicate_scheduler"] = bool(host_matches) if measured and cron.get("measured") else None
         elif kind == "n8n":
             expression = str(sched.get("expression"))
+            shared = expression in N8N_EXPRESSION_ALIASES
             workflow = workflow_by_id.get(N8N_EXPRESSION_ALIASES.get(expression, expression))
             measured = bool(n8n.get("measured"))
             present = bool(workflow and workflow.get("active")) if measured else None
+            if shared and row["declared_state"] != "ACTIVE":
+                # The dispatcher fires 25+ lanes: its own active flag is not evidence that THIS lane is
+                # registered with it. Reporting drift from the shared workflow told a PAUSED lane it was
+                # running twice (agent_nudge, 2026-11-07).
+                present = None
+                row["health_reason"] = (
+                    "shared n8n dispatcher is active; this lane's own registration is not proven by it"
+                )
             if workflow:
-                if expression not in N8N_EXPRESSION_ALIASES:
+                if not shared:
                     # A shared dispatcher's trigger is not this lane's cadence; keep the declared one.
                     row["schedule"] = schedule_label(workflow.get("schedules"))
                 claimed_workflows.add(str(workflow["id"]))
                 row["scheduler_observations"] = [{"id": workflow["id"], "kind": "n8n", "active": workflow["active"]}]
             row["duplicate_scheduler"] = bool(host_matches) if cron.get("measured") else None
+            if row["duplicate_scheduler"]:
+                row["duplicate_reason"] = "this n8n lane's command is also present in the host crontab"
         elif kind == "openclaw":
             job = jobs_by_id.get(str(sched.get("expression")))
             measured = bool(oc.get("measured"))
@@ -769,9 +864,22 @@ def build_projection(
             if job:
                 claimed_jobs.add(str(job["id"]))
                 row["scheduler_observations"] = [{"id": job["id"], "kind": "openclaw", "enabled": job["enabled"]}]
-        # Event-driven work has no periodic scheduler; retain that exception as explicit intent.
+        # Event-driven work has no periodic scheduler; retain that exception as explicit intent. When the
+        # emitting scheduler is OpenClaw and its job id is named in the row, the job IS the presence evidence:
+        # four reminder lanes name their job id and were reported as unowned OpenClaw jobs beside them.
         if kind == "event":
-            row["health_reason"] = "event trigger presence needs producer evidence"
+            job = _openclaw_job_for(sched, jobs_by_id)
+            if job is not None:
+                measured = bool(oc.get("measured"))
+                present = bool(job.get("enabled")) if measured else None
+                claimed_jobs.add(str(job["id"]))
+                row["scheduler_observations"] = [
+                    {"id": job["id"], "kind": "openclaw", "enabled": job.get("enabled"), "schedule": job.get("schedule")}
+                ]
+                row["schedule"] = schedule_label(job.get("schedule")) or row["schedule"]
+                row["health_reason"] = None
+            else:
+                row["health_reason"] = "event trigger presence needs producer evidence"
         source_at = timestamp(observations.get(kind, {}).get("as_of"))
         if measured and source_at and not 0 <= (now - source_at).total_seconds() <= 300:
             measured, present = False, None
@@ -943,8 +1051,11 @@ def build_projection(
             row["runtime_state"] = "RUN_FAILED"
         elif sig.get("kind") == "none":
             row["runtime_state"] = "NO_SIGNAL" if measured else "NOT_MEASURED"
+            # observe_signal now carries the reviewed declaration's own words; the old first term was the
+            # registry's `reason` key, which most rows do not set, so every lane fell through to the
+            # "missing; no output proof declared" sentence even when its reason was recorded.
             row["health_reason"] = (
-                sig.get("reason")
+                signal.get("detail")
                 or lane.get("no_signal_reason")
                 or "NO_SIGNAL_WITH_REASON missing; no output proof declared"
             )
