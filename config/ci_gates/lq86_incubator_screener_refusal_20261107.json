@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq86_incubator_screener_refusal_20261107",
+  "files": [
+    "tests/test_lq86_incubator_screener_route_20261107.py"
+  ],
+  "comment": [
+    "ANCHOR: LQ86_INCUBATOR_SCREENER_REFUSAL_20261107 — a governed-lane refusal is ONE run-level line naming",
+    "the gate, the per-symbol loop is skipped, and the process exits EXIT_REFUSED; a run the governor allows",
+    "that screens nothing is EXIT_NO_SCREENS. From 2026-08-27 to 2026-11-07 the lane logged ten identical",
+    "'screen failed' warnings per weekday, wrote its log (its declared output signal) and exited 0 — ten",
+    "silent weeks."
+  ]
+}

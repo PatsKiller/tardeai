@@ -14,6 +14,16 @@ the allowlist ``llm_route`` of lane incubator-llm-screener) the screen is ONE go
 ``incubator_llm_screener`` (grok -> chatgpt -> DeepSeek server-side); llm_lane is never imported and the optional
 in-process cloud_review (CLOUD_REVIEW=1) is skipped, so no provider client is reachable. A refusal is a per-symbol
 ``error`` (no UPDATE). --dry-run makes no model call. The cron line is unchanged.
+
+Refusal is named once, at run level (LQ-20261107-86, 2026-11-07): the process is registered ``default_mode:
+manual`` and ``llm_consumption._seed_registry`` rewrites ``llm_process_config.mode`` from that registry value on
+every process start, so the in-process DeepSeek lane is refused ``manual_mode`` for the whole run. From 2026-08-27
+to 2026-11-07 that produced ten identical ``screen failed`` warnings per weekday run, a log mtime that read as a
+healthy lane, and exit 0 — 10 weeks of silence. ``preflight()`` asks the governor once and, when it refuses, logs
+ONE line naming the gate and the operator decision that would change it, skips the per-symbol loop entirely and
+exits ``EXIT_REFUSED``. A run the governor allows that screens nothing exits ``EXIT_NO_SCREENS``. The gate itself is
+not bypassed here: arming an LLM lane is the operator's decision (AGENTS.md §17), and ``default_mode`` is set in
+config/llm_process_registry.json.
 """
 import sys as _dr_sys
 
@@ -386,7 +396,62 @@ def _via_bridge():
     return os.environ.get(VIA_BRIDGE_ENV, "off").strip().lower() in {"1", "on", "bridge"}
 
 
-def screen_one(conn, candidate, dry_run=False):
+#: How this run reaches a model. ``bridge`` = the n8n executor bound the flag; ``in_process`` = the
+#: governor allows the DeepSeek lane; ``unknown`` = the governor could not be read (per-symbol path decides);
+#: ``dry_run`` = no model call at all.
+ROUTE_ENV = "env_bridge"
+ROUTE_IN_PROCESS = "in_process"
+ROUTE_UNKNOWN = "unknown"
+ROUTE_DRY = "dry_run"
+
+#: A run its own governance gate refuses — it screened nothing by design, not by accident.
+EXIT_REFUSED = 3
+#: The run was allowed to screen, and not one symbol produced a screen.
+EXIT_NO_SCREENS = 4
+
+
+def governor_decision(process_id=LLM_PROCESS_ID):
+    """The governor's answer for this process's in-process lane, or None when it cannot be read."""
+    try:
+        from lib.llm_consumption import should_call
+    except Exception:
+        try:
+            from llm_consumption import should_call  # type: ignore
+        except Exception:
+            return None
+    try:
+        return should_call(process_id, "deepseek-flash")
+    except Exception:
+        return None
+
+
+def preflight():
+    """One decision for the whole run, asked before the first symbol. Never calls a provider.
+
+    Returns ``(mode, refusal)``. A refusal is a one-line cause: the run cannot screen anything, and saying so
+    once with the gate named is the difference between "the lane is off on purpose" and ten identical
+    ``screen failed`` warnings that read as a provider outage. It does NOT route around the gate: arming an
+    LLM lane is the operator's decision (AGENTS.md §17), and ``default_mode`` lives in
+    config/llm_process_registry.json.
+    """
+    if _via_bridge():
+        return ROUTE_ENV, None
+    decision = governor_decision()
+    if decision is None:
+        return ROUTE_UNKNOWN, None
+    if decision.get("allow"):
+        return ROUTE_IN_PROCESS, None
+    why = str(decision.get("reason") or "denied")
+    mode = decision.get("mode")
+    return ROUTE_IN_PROCESS, (
+        f"governor refuses process {LLM_PROCESS_ID} lane deepseek-flash "
+        f"(reason={why}, mode={mode}); llm_process_config.mode is re-seeded from "
+        f"config/llm_process_registry.json default_mode on every process start, so unblocking this run is an "
+        f"operator decision: register the lane as automated, or retire the cron line"
+    )
+
+
+def screen_one(conn, candidate, dry_run=False, via_bridge=None):
     """Run LLM screen on one incubator candidate."""
     symbol = candidate['symbol']
 
@@ -456,7 +521,7 @@ def screen_one(conn, candidate, dry_run=False):
         # Default: existing momentum prompt (unchanged)
         prompt = build_screen_prompt(candidate, news, social, technical, web_news_line)
 
-    via_bridge = _via_bridge()
+    via_bridge = _via_bridge() if via_bridge is None else bool(via_bridge)
     try:
         if via_bridge:
             from lib.llm_bridge_route import require_text_via_bridge
@@ -585,10 +650,18 @@ def main():
 
         log.info(f"Found {len(candidates)} candidates for LLM screening")
 
+        route, refusal = (ROUTE_DRY, None) if args.dry_run else preflight()
+        via_bridge = route == ROUTE_ENV
+        log.info(f"Route: {'governed bridge' if via_bridge else 'in-process DeepSeek'} [{route}]")
+
         results = []
-        for c in candidates:
-            r = screen_one(conn, c, dry_run=args.dry_run)
-            results.append(r)
+        if refusal:
+            # One run-level line naming the gate, instead of one identical per-symbol warning per candidate.
+            log.error(f"REFUSED: {refusal}")
+        else:
+            for c in candidates:
+                r = screen_one(conn, c, dry_run=args.dry_run, via_bridge=via_bridge)
+                results.append(r)
 
         # Summary
         screened = sum(1 for r in results if r.get('status') == 'screened')
@@ -599,6 +672,8 @@ def main():
 
         print("\nIncubator LLM Screener")
         print(f"{'=' * 40}")
+        print(f"  Route:      {'governed bridge' if via_bridge else 'in-process DeepSeek'} [{route}]")
+        print(f"  Refused:    {len(candidates) if refusal else 0}")
         print(f"  Candidates: {len(candidates)}")
         print(f"  Screened:   {screened}")
         print(f"  Errors:     {errors}")
@@ -636,9 +711,20 @@ def main():
             except Exception as e:
                 log.debug(f"Telegram notification failed: {e}")
 
+        # Exit 0 is not evidence of work: a refused run and a run that screened nothing are both failures,
+        # and the cron line's log mtime — this lane's declared output signal — cannot tell either from a
+        # healthy run.
+        if refusal:
+            return EXIT_REFUSED
+        if args.run and candidates and screened == 0:
+            first = next((r.get('error') for r in results if r.get('status') == 'error'), 'no result rows')
+            log.error(f"NO SCREENS: 0 of {len(candidates)} symbols screened — first cause: {first}")
+            return EXIT_NO_SCREENS
+        return 0
+
     finally:
         conn.close()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
