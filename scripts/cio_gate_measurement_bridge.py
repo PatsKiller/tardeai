@@ -66,8 +66,10 @@ SCHEDULED_ENTRYPOINT = (
 # cron that `cd`s into CURRENT measures and writes there; the env override still wins.
 PROJECT_ROOT = Path(os.environ.get("TRADE_AI_PROJECT_ROOT") or Path(__file__).resolve().parents[1])
 
-# Default location for the measurements file that ``evaluate_gates()`` reads.
-MEASUREMENTS_RELPATH = ("data", "cio", "agent_gate_measurements.json")
+try:  # callers put either ROOT or ROOT/scripts on sys.path
+    from agent_runtime.gate_status import measurements_path as _measurements_path  # type: ignore
+except ImportError:
+    from scripts.agent_runtime.gate_status import measurements_path as _measurements_path  # type: ignore
 
 # Sentinel returned instead of a number when no store answers a gate. Kept
 # distinct from ``None``-as-missing-key so a caller can tell "I looked and there
@@ -611,7 +613,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--write-measurements", nargs="?", const="", default=None,
                         metavar="PATH",
                         help="Write the evaluate_gates() measurements file "
-                             "(default: data/cio/agent_gate_measurements.json)")
+                             "(default: persistent-state data/cio/agent_gate_measurements.json)")
     parser.add_argument("--update-catalog", action="store_true",
                         help="Write gate measurements into config/agent_maturity_catalog.json")
     parser.add_argument("--dry-run", action="store_true",
@@ -656,8 +658,10 @@ def _run(args) -> int:
         print(_format_report(measurements))
 
     if args.write_measurements is not None:
+        # Persistent state, not the release tree the cron runs from (LQ-109): an explicit --root is honoured,
+        # the default is production_state_root().
         path = (Path(args.write_measurements) if args.write_measurements
-                else root.joinpath(*MEASUREMENTS_RELPATH))
+                else _measurements_path(Path(args.root) if args.root else None))
         path.parent.mkdir(parents=True, exist_ok=True)
         doc = {
             "schema": SCHEMA,

@@ -41,6 +41,30 @@ SERVED_RELEASE_LINK = Path(
 )
 
 
+def _state_root_fn():
+    """production_state_root, imported either way round (callers put ROOT or ROOT/scripts on sys.path)."""
+    try:
+        from lib.canonical_store_registry import is_release_dir, production_state_root  # type: ignore  # noqa: PLC0415
+    except ImportError:
+        from scripts.lib.canonical_store_registry import is_release_dir, production_state_root  # type: ignore  # noqa: PLC0415
+    return is_release_dir, production_state_root
+
+
+def measurements_path(root: Path | str | None = None) -> Path:
+    """Where the gate measurements live: persistent state, never inside a release tree.
+
+    A release directory is immutable code that the next promote replaces, so a measurement written under one
+    is orphaned (LQ-109). ``root`` None or a release dir resolves through ``production_state_root()``; any other
+    explicit root (a dev tree, a test's tmp dir) is used as given.
+    """
+    is_release_dir, production_state_root = _state_root_fn()
+    if root is None or is_release_dir(root):
+        base = production_state_root()
+    else:
+        base = Path(root)
+    return base.joinpath(*MEASUREMENTS_RELPATH)
+
+
 def served_release_sha(link: Path | None = None) -> str | None:
     """Short SHA of the served release (``<sha>-main-exact-…`` dir name), or None."""
     try:
@@ -68,10 +92,10 @@ def gate_status(
     now: datetime | None = None,
     max_age_hours: float | None = None,
     served_sha: str | None = None,
-    measurements_path: Path | None = None,
+    measurements_path_override: Path | None = None,
 ) -> dict[str, Any]:
     """Return the current gate status for ``agent_id`` from the measurement store."""
-    path = measurements_path or Path(root).joinpath(*MEASUREMENTS_RELPATH)
+    path = measurements_path_override or measurements_path(root)
     limit = DEFAULT_MAX_AGE_HOURS if max_age_hours is None else float(max_age_hours)
     base: dict[str, Any] = {
         "schema": SCHEMA,
