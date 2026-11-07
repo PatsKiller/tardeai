@@ -19,5 +19,12 @@ fi
 if [ -f "$HOME/.tradeai/SCALP_ENGINE_DISABLED" ]; then
   echo "$(date -Is) HALT: kill file present"; exit 0
 fi
-exec bash "$PROJ/scripts/safe_flock.sh" /tmp/scalp_shadow_logger.lock \
+# A --dry-run run takes the dry-run lock, never the live one. n8n_run_executor.lock_path_for does the same for every
+# lane (DRY_RUN_LOCK_SUFFIX, 2026-10-11 LOCK_STEAL): a shadow fire that held the live lock would make the real cron
+# line skip, so a run that writes nothing would still cost a live run. The name matches what the executor uses.
+LOCK=/tmp/scalp_shadow_logger.lock
+for a in "$@"; do
+  if [ "$a" = "--dry-run" ]; then LOCK="$LOCK.dryrun"; fi
+done
+exec bash "$PROJ/scripts/safe_flock.sh" "$LOCK" \
   "$PROJ/.venv/bin/python" scripts/scalp_shadow_logger.py --live --apply --top 0 "$@"

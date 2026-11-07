@@ -29,7 +29,8 @@ printf '%s\\n' "$@" >> "$ARGV_LOG"
 """
 
 _STUB_SAFE_FLOCK = """#!/usr/bin/env bash
-# stub safe_flock.sh: <lock> <cmd...> -> exec the command
+# stub safe_flock.sh: <lock> <cmd...> -> record the lock, exec the command
+if [ -n "${LOCK_LOG:-}" ]; then printf '%s\\n' "${1:-}" >> "$LOCK_LOG"; fi
 shift
 exec "$@"
 """
@@ -52,7 +53,8 @@ def _tree(tmp_path: Path) -> Path:
 
 def _run(tree: Path, tmp_path: Path, argv: list[str]) -> list[str]:
     log = tmp_path / "argv.log"
-    env = dict(os.environ, HOME=str(tmp_path / "home"), ARGV_LOG=str(log))
+    env = dict(os.environ, HOME=str(tmp_path / "home"), ARGV_LOG=str(log),
+               LOCK_LOG=str(tmp_path / "lock.log"))
     env.pop("SCALP_ENGINE_DISABLED", None)
     proc = subprocess.run(["bash", str(tree / "scripts" / "run_scalp_shadow_logger.sh"), *argv],
                           env=env, capture_output=True, text=True, timeout=60)
@@ -80,6 +82,17 @@ def test_no_argument_is_forwarded_when_the_cron_line_passes_none(tmp_path):
     tree = _tree(tmp_path)
     argv = _run(tree, tmp_path, [])
     assert argv == ["scripts/scalp_shadow_logger.py", "--live", "--apply", "--top", "0"], argv
+
+
+def test_a_dry_run_takes_the_dry_run_lock_not_the_live_one(tmp_path):
+    """n8n's dry_run fires take <lock>.dryrun precisely so a shadow run cannot make the live cron line skip. The
+    wrapper does its own flock, so it has to make the same choice: a dry run holding the live lock would skip a real
+    run of the lane (and the cron twin at canary)."""
+    tree = _tree(tmp_path)
+    _run(tree, tmp_path, ["--dry-run"])
+    _run(tree, tmp_path, [])
+    locks = (tmp_path / "lock.log").read_text().splitlines()
+    assert locks == ["/tmp/scalp_shadow_logger.lock.dryrun", "/tmp/scalp_shadow_logger.lock"], locks
 
 
 def test_the_wrapper_no_longer_hardcodes_the_canonical_checkout():
