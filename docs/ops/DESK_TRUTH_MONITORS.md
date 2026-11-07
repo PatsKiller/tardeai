@@ -82,6 +82,33 @@ The existing `ACTIVE_N8N_WORKFLOW_INACTIVE` and `CUTOVER_CRON_LINE_ACTIVE` rules
 2026-10-22 the host dry run reported 17 `ACTIVE_CRON_LINE_ABSENT` and 2 `DECLARED_OFF_CRON_LINE_ACTIVE`. Each one is a
 registry row to correct by its owner; this PR corrects only `schwab-position-sync`.
 
+### 2a. systemd is host evidence too (2026-11-07, LQ-20261107-62)
+
+Until 2026-11-07 the lane joined the registry with the crontab, the n8n workflow table, the ledger and the relay env,
+and never read systemd, so the 168 `kind: systemd` rows were unverified in both directions: a timer the registry
+called ACTIVE could be disabled, and one called PAUSED could be firing. The source is read-only —
+`systemctl list-unit-files` and `systemctl show`, never start/stop/enable/disable/edit — and **both managers are
+unioned per unit**, because they disagree here in both directions: `systemd-tmpfiles-clean.timer` is
+`disabled`/`inactive` for the user and `static`/`active` for the system (it runs daily), and `db-retention.timer`
+exists only in the user manager. A single-scope read reports a daily timer as absent.
+
+A timer's command is the `ExecStart` of the service its `Triggers=` names (credentials redacted), so a lane can be
+matched to the script it actually runs. Eight codes:
+
+| code | meaning |
+|---|---|
+| `ACTIVE_TIMER_ABSENT` / `ACTIVE_TIMER_DISABLED` / `ACTIVE_TIMER_INACTIVE` | a `kind: systemd` row declared ACTIVE whose timer is installed nowhere / disabled in every manager that has it / enabled but not active |
+| `ACTIVE_SERVICE_INACTIVE` | the same for a `kind: systemd` row that names a `.service` |
+| `DECLARED_OFF_TIMER_ACTIVE` / `DECLARED_OFF_SERVICE_ACTIVE` | a PAUSED / RETIRED / NEVER_SCHEDULED row whose unit is active, naming the manager that has it live |
+| `CRON_ROW_RUNS_UNDER_TIMER` | a `kind: cron` row with no cron line because a live timer runs the same script — the lane is named, not called absent |
+| `DUPLICATE_SCHEDULER` | one program under two live schedulers: an n8n entry script importing the module a live timer runs, or a cron line beside a live timer |
+
+A declared systemd row with no readable source marks every timer rule NOT_MEASURED, never clean; the reader only runs
+when the declaration has a `kind: systemd` row, so a fixture repo never shells out (`--no-systemd` skips it
+deliberately). Read-only dry run on this host, 2026-11-07: 16 contradictions / fingerprint `32bdd14c5277ca79` before,
+27 / `6e106785948d1ad6` after, `systemd ok 309 units from 2 managers (119 active)` in ~4 s.
+
+
 ## 3. Options desk quote refresh — `scripts/options_desk_quote_refresh.py`
 
 This is a quote-only re-quote of the cards already on the desk. It never rebuilds, re-ranks or re-prices them, and
