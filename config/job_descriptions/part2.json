@@ -1,0 +1,1394 @@
+{
+ "hermes-overnight-pipeline-night": {
+  "title": "Hermes Overnight Night Stage",
+  "category": "research",
+  "does": "Runs the overnight night-time batch of Hermes research steps in a fixed order.",
+  "breaks": "Overnight research steps skip, so morning briefs and ideas are staler."
+ },
+ "hermes-overnight-pipeline-close": {
+  "title": "Hermes Overnight Close Stage",
+  "category": "research",
+  "does": "Runs the evening close-of-day batch of Hermes research steps in a fixed order.",
+  "breaks": "End-of-day research refresh is skipped and next-day ideas are staler."
+ },
+ "options-tick": {
+  "title": "Options Tick",
+  "category": "signals",
+  "does": "Checks open options ideas on a regular tick and records how they are moving.",
+  "breaks": "Options ideas stop being monitored and you may miss changes in them."
+ },
+ "orchestrator-slot": {
+  "title": "Orchestrator Time Slot",
+  "category": "ops",
+  "does": "Runs the scheduled slot that starts the day's coordinated jobs in the right order.",
+  "breaks": "Daily coordinated work does not start on time and outputs go stale."
+ },
+ "drive-syncs-hourly": {
+  "title": "Hourly Drive Sync",
+  "category": "ops",
+  "does": "Copies reports and files to cloud storage every hour.",
+  "breaks": "Cloud copies of your reports fall behind the local ones."
+ },
+ "hermes-subject-enhance-dispatch": {
+  "title": "Hermes Subject Enrichment Dispatch",
+  "category": "research",
+  "does": "Sends research subjects out for extra detail so Hermes briefs have more context.",
+  "breaks": "Research subjects stay thin and briefs have less supporting detail."
+ },
+ "platform-maintenance-nightly": {
+  "title": "Nightly Platform Maintenance",
+  "category": "hygiene",
+  "does": "Runs the nightly housekeeping bundle: tidying, checks and small repairs.",
+  "breaks": "Small messes pile up overnight and some problems go unnoticed."
+ },
+ "platform-maintenance-weekly": {
+  "title": "Weekly Platform Maintenance",
+  "category": "hygiene",
+  "does": "Runs the weekly housekeeping bundle: deeper cleanup and checks.",
+  "breaks": "Weekly cleanup is missed, so clutter and slow drift build up."
+ },
+ "platform-maintenance-monthly": {
+  "title": "Monthly Platform Maintenance",
+  "category": "hygiene",
+  "does": "Runs the monthly housekeeping bundle: the deepest cleanup and audits.",
+  "breaks": "Monthly cleanup is missed, so long-term clutter builds up."
+ },
+ "n8n-research-intake-consumer": {
+  "title": "Research Request Intake",
+  "category": "research",
+  "does": "Picks up research requests sent from n8n and turns them into queued research work.",
+  "breaks": "Research requests from n8n are never picked up and sit unanswered."
+ },
+ "lane-governance-packet-weekly": {
+  "title": "Weekly Job Governance Packet",
+  "category": "ops",
+  "does": "Planned weekly report on the state of all scheduled jobs; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "comms-lifecycle": {
+  "title": "Messaging Lifecycle",
+  "category": "alerts",
+  "does": "Manages the life of outgoing messages: sending, retrying, expiring and tidying them.",
+  "breaks": "Alerts and messages may not be retried or cleaned up properly."
+ },
+ "cio-opportunity-curator": {
+  "title": "CIO Opportunity Curator",
+  "category": "cio",
+  "does": "Picks the best opportunities for the CIO to consider from the raw candidate pool.",
+  "breaks": "The CIO sees a messier, less ranked list of opportunities."
+ },
+ "advice-digest": {
+  "title": "Advice Digest",
+  "category": "alerts",
+  "does": "Sends the investment advice digest on market days.",
+  "breaks": "You do not receive the periodic summary of current advice."
+ },
+ "n8n-workflow-drift-check": {
+  "title": "n8n Workflow Drift Check",
+  "category": "ops",
+  "does": "Compares live n8n workflows to the saved versions and flags any difference.",
+  "breaks": "Unplanned changes to n8n workflows go unnoticed (approved, not yet installed)."
+ },
+ "trade-ai-scalp-live": {
+  "title": "Live Scalp Scanner",
+  "category": "signals",
+  "does": "Runs the short-term scalp scanner every few minutes during the trading day.",
+  "breaks": "Quick-trade scalp setups are not detected or refreshed."
+ },
+ "storage-watch": {
+  "title": "Storage Watch",
+  "category": "hygiene",
+  "does": "Planned check on storage space and growth; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "n8n-comms-intent-consumer": {
+  "title": "n8n Message Request Handler",
+  "category": "alerts",
+  "does": "Turns message requests queued by n8n into incidents the messaging system can handle.",
+  "breaks": "Messages requested by n8n workflows never get delivered."
+ },
+ "registry-runtime-truth": {
+  "title": "Job Registry Truth Check",
+  "category": "ops",
+  "does": "Checks that what the job list says matches what the machine really runs.",
+  "breaks": "The job catalog can drift from reality without anyone noticing."
+ },
+ "n8n-data-plausibility-audit": {
+  "title": "n8n Data Sanity Audit",
+  "category": "ops",
+  "does": "Checks that data flowing through n8n looks plausible and not obviously wrong.",
+  "breaks": "Bad or odd n8n data could pass unnoticed."
+ },
+ "n8n-gap-resolution-audit": {
+  "title": "n8n Gap Resolution Audit",
+  "category": "ops",
+  "does": "Checks whether known gaps in n8n coverage have actually been closed.",
+  "breaks": "Open n8n gaps are not tracked to completion."
+ },
+ "pr-hygiene-audit": {
+  "title": "Code Change Hygiene Audit",
+  "category": "ops",
+  "does": "Audits open code change requests for stale, stuck or unreviewed items.",
+  "breaks": "Stuck code changes pile up unnoticed and slow down fixes."
+ },
+ "macro-calendar-refresh": {
+  "title": "Economic Calendar Refresh",
+  "category": "market_data",
+  "does": "Refreshes the calendar of major economic events such as Fed meetings and data releases.",
+  "breaks": "Market-moving event dates may be out of date or missing."
+ },
+ "active-trader-motion-watchdog": {
+  "title": "Active Trader Heartbeat Watchdog",
+  "category": "ops",
+  "does": "Checks that the active-trader scanner is still alive and moving.",
+  "breaks": "A frozen active-trader scanner may go unnoticed."
+ },
+ "backup-verify": {
+  "title": "Backup Verification",
+  "category": "hygiene",
+  "does": "Planned check that backups can really be read; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "trade-ai-restore-drill": {
+  "title": "Restore Drill",
+  "category": "hygiene",
+  "does": "Planned practice restore from backup; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "n8n-activation-grants": {
+  "title": "n8n Activation Grants Check",
+  "category": "ops",
+  "does": "Checks that every active n8n workflow has a valid approval on record.",
+  "breaks": "Unapproved n8n workflows could run without being flagged (not yet installed)."
+ },
+ "self-heal-fixer": {
+  "title": "Self-Heal Code Fixer",
+  "category": "ops",
+  "does": "Proposed job that sends code defects to an AI coder to fix automatically.",
+  "breaks": "Code defects need manual fixing (proposed, not installed)."
+ },
+ "run-automated-trade-proposal-revalidation": {
+  "title": "Trade Proposal Revalidation",
+  "category": "signals",
+  "does": "Re-checked automated trade proposals against current prices and rules.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-scheduled-atp2-research-cycle-evening": {
+  "title": "Evening Research Cycle",
+  "category": "research",
+  "does": "Ran the evening round of the automated trade-proposal research cycle.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-scheduled-atp2-research-cycle-at-0-4": {
+  "title": "4 AM Research Cycle",
+  "category": "research",
+  "does": "Ran the 4 AM pre-market round of the automated trade-proposal research cycle.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-scheduled-atp2-research-cycle-at-0-9": {
+  "title": "9 AM Research Cycle",
+  "category": "research",
+  "does": "Ran the 9 AM pre-market round of the automated trade-proposal research cycle.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-scheduled-stale-proposal-sweeper-report": {
+  "title": "Stale Proposal Sweeper Report",
+  "category": "signals",
+  "does": "Listed old trade proposals that should be expired, without changing anything.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-scheduled-stale-proposal-sweeper-dry": {
+  "title": "Stale Proposal Sweeper Dry Run",
+  "category": "signals",
+  "does": "Rehearsed expiring old trade proposals without changing anything.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-scheduled-stale-proposal-sweeper-at-25-8": {
+  "title": "Stale Proposal Sweeper",
+  "category": "signals",
+  "does": "Expires old trade proposals that are no longer valid.",
+  "breaks": "Old trade proposals linger and clutter the list of ideas."
+ },
+ "run-scheduled-atp2-research-cycle-overnight": {
+  "title": "Overnight Research Cycle",
+  "category": "research",
+  "does": "Ran the overnight round of the automated trade-proposal research cycle.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "rebalance-verifier": {
+  "title": "Rebalance Verifier",
+  "category": "learning",
+  "does": "Checked whether past rebalance suggestions were carried out and how they worked.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-scheduled-atp2-research-cycle-eod": {
+  "title": "End-of-Day Research Cycle",
+  "category": "research",
+  "does": "Ran the end-of-day round of the automated trade-proposal research cycle.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "rerun-cio-dual-consensus": {
+  "title": "CIO Dual Consensus Rerun",
+  "category": "cio",
+  "does": "Re-ran the two-model agreement check on CIO proposals.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "claude-challenger-curator": {
+  "title": "Claude Challenger Curator",
+  "category": "cio",
+  "does": "Had Claude challenge and curate portfolio ideas.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "momentum-scalp-validation-fast-path": {
+  "title": "Momentum Scalp Fast Validation",
+  "category": "signals",
+  "does": "Quickly validated momentum scalp ideas before they were shown.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "cloud-consensus-verdict": {
+  "title": "Cloud Consensus Verdict",
+  "category": "cio",
+  "does": "Collected cloud AI opinions into one agreed verdict on proposals.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-backlog-drain": {
+  "title": "Hermes Backlog Drain",
+  "category": "research",
+  "does": "Worked down the backlog of queued Hermes research items.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "opening-intelligence": {
+  "title": "Opening Intelligence",
+  "category": "research",
+  "does": "Built the pre-open intelligence data for the morning view.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "opening-intelligence-render": {
+  "title": "Opening Intelligence Page",
+  "category": "research",
+  "does": "Builds the pre-open intelligence page shown before the market opens.",
+  "breaks": "The pre-open intelligence view is missing or stale on market mornings."
+ },
+ "hermes-research-agenda-at-45-7": {
+  "title": "Hermes Morning Research Agenda",
+  "category": "research",
+  "does": "Sets the morning agenda of what Hermes should research today.",
+  "breaks": "Hermes has no fresh daily research priorities."
+ },
+ "hermes-research-agenda-at-15-18": {
+  "title": "Hermes Evening Research Agenda",
+  "category": "research",
+  "does": "Set the evening agenda of what Hermes should research.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-advisory-cache-worker": {
+  "title": "Hermes Advisory Cache Worker",
+  "category": "research",
+  "does": "Pre-computed Hermes advisory results so pages load fast.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-source-discovery-dryrun": {
+  "title": "Hermes Source Discovery Rehearsal",
+  "category": "research",
+  "does": "Rehearsed finding new research sources without saving anything.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "high-llm-execution-worker": {
+  "title": "High-Tier AI Worker",
+  "category": "agents_llm",
+  "does": "Ran queued jobs that needed the strongest AI model.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-advisory-shadow-session": {
+  "title": "Advisory Shadow Session",
+  "category": "cio",
+  "does": "Ran advice in shadow mode alongside the live advice for comparison.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-aegis": {
+  "title": "Aegis Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Aegis research agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-argus": {
+  "title": "Argus Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Argus agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-darwin": {
+  "title": "Darwin Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Darwin agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-iris": {
+  "title": "Iris Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Iris agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-maria": {
+  "title": "Maria Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Maria agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-reflection": {
+  "title": "Reflection Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Reflection agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-risk-agent": {
+  "title": "Risk Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Risk agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-sentinel": {
+  "title": "Sentinel Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Sentinel agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-tax-agent": {
+  "title": "Tax Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Tax agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "tradeai-agent-runtime-vega": {
+  "title": "Vega Agent Runtime",
+  "category": "agents_llm",
+  "does": "Kept the Vega agent running.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "write-state-freshness-history": {
+  "title": "Data Freshness History",
+  "category": "ops",
+  "does": "Records how fresh each data source is over time.",
+  "breaks": "You lose the history of which data sources went stale and when."
+ },
+ "classify-candidates": {
+  "title": "Candidate Classifier",
+  "category": "signals",
+  "does": "Sorted trade candidates into types and categories.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "sync-watchlist-items-to-db": {
+  "title": "Watchlist Database Sync",
+  "category": "portfolio",
+  "does": "Copied watchlist entries into the database.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "materialize-watchlist-strategy-cards": {
+  "title": "Watchlist Strategy Cards",
+  "category": "portfolio",
+  "does": "Builds the strategy card for each watchlist symbol shown in the app.",
+  "breaks": "Watchlist cards go stale or are missing."
+ },
+ "materialize-income-engine": {
+  "title": "Income Engine Builder",
+  "category": "portfolio",
+  "does": "Built the income (dividend and yield) view data.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "classifier-health-check": {
+  "title": "Classifier Health Check",
+  "category": "ops",
+  "does": "Checks that the instrument classifier is working and its results look sane.",
+  "breaks": "Classification problems go unnoticed and symbols may be mislabeled."
+ },
+ "enterprise-backtester": {
+  "title": "Enterprise Backtester",
+  "category": "learning",
+  "does": "Replays strategies on past data to see how they would have performed.",
+  "breaks": "Strategy track records stop updating."
+ },
+ "strategy-backtester": {
+  "title": "Strategy Backtester",
+  "category": "learning",
+  "does": "Replayed single strategies on past data.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "backtest-history-snapshot": {
+  "title": "Backtest History Snapshot",
+  "category": "learning",
+  "does": "Saved dated snapshots of backtest results.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "setup-quality-prior": {
+  "title": "Setup Quality Prior",
+  "category": "learning",
+  "does": "Learns which kinds of trade entries have worked or not and adds that note to proposals.",
+  "breaks": "Proposals lose the note on how similar past entries performed."
+ },
+ "audit-enrichment-coverage": {
+  "title": "Data Enrichment Coverage Audit",
+  "category": "ops",
+  "does": "Checks that symbols are getting all their extra data (fundamentals, ratings and so on).",
+  "breaks": "Silent gaps in symbol data go unnoticed."
+ },
+ "index-constituent-caps": {
+  "title": "Index Constituent Caps",
+  "category": "market_data",
+  "does": "Planned job to track index member weight limits; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "refresh-symbol-cards": {
+  "title": "Symbol Card Refresh",
+  "category": "portfolio",
+  "does": "Refreshed the summary card for each symbol.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "fee-efficiency-analyzer": {
+  "title": "Fee Efficiency Analyzer",
+  "category": "learning",
+  "does": "Checks how much trading and fund fees eat into returns.",
+  "breaks": "You lose visibility into fee drag on returns."
+ },
+ "journal-tilt-morning-hook": {
+  "title": "Journal Tilt Morning Check",
+  "category": "learning",
+  "does": "Morning check of your trading journal for emotional or bias patterns.",
+  "breaks": "The morning bias warning from your journal is not shown."
+ },
+ "hermes-governance-api": {
+  "title": "Hermes Governance Data",
+  "category": "research",
+  "does": "Prepares the data for the Hermes governance panel showing research scope and budget.",
+  "breaks": "The governance panel shows stale or no data on Hermes research spend."
+ },
+ "hermes-config-governor": {
+  "title": "Hermes Config Governor",
+  "category": "learning",
+  "does": "Adjusted Hermes settings based on results.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-entity-spike-discovery": {
+  "title": "Hermes Entity Spike Discovery",
+  "category": "research",
+  "does": "Finds companies or topics suddenly getting far more attention than usual.",
+  "breaks": "Sudden attention spikes on names are not flagged for research."
+ },
+ "data-gap-resolver-at-0-10-16": {
+  "title": "Data Gap Resolver (Midday)",
+  "category": "market_data",
+  "does": "Fills in missing data points found during the trading day.",
+  "breaks": "Missing data stays missing and some screens show blanks."
+ },
+ "data-gap-resolver-pre": {
+  "title": "Data Gap Resolver (Pre-Market)",
+  "category": "market_data",
+  "does": "Fills in missing data before the market opens.",
+  "breaks": "The day starts with known data gaps still open."
+ },
+ "data-gap-resolver-weekly": {
+  "title": "Data Gap Resolver (Weekly)",
+  "category": "market_data",
+  "does": "Runs a broader weekly sweep to fill missing data.",
+  "breaks": "Longer-standing data gaps are never cleaned up."
+ },
+ "backtest-results-aggregator": {
+  "title": "Backtest Results Aggregator",
+  "category": "learning",
+  "does": "Combined backtest results into summary tables.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-analyst-signal-discovery": {
+  "title": "Hermes Analyst Signal Discovery",
+  "category": "research",
+  "does": "Looks for new analyst upgrades, downgrades and target changes worth researching.",
+  "breaks": "Analyst rating changes are noticed late or missed."
+ },
+ "hermes-industry-novelty-discovery": {
+  "title": "Hermes Industry Novelty Discovery",
+  "category": "research",
+  "does": "Looked for new industry developments to research.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "cio-draft-plan-hygiene": {
+  "title": "CIO Draft Plan Cleanup",
+  "category": "cio",
+  "does": "Cleaned up old draft plans.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "agent-calibration-engine": {
+  "title": "Agent Calibration Engine",
+  "category": "learning",
+  "does": "Measures how accurate each agent's confidence has been and adjusts weights.",
+  "breaks": "Agent confidence stops being corrected by track record."
+ },
+ "agent-outcome-linker": {
+  "title": "Agent Outcome Linker",
+  "category": "learning",
+  "does": "Links each agent call to what later happened to the stock.",
+  "breaks": "Agents cannot be scored because outcomes are not connected to calls."
+ },
+ "catalyst-momentum-engine-overnight": {
+  "title": "Overnight Catalyst Momentum Engine",
+  "category": "signals",
+  "does": "Scans overnight for catalysts (news, earnings) that may drive momentum trades.",
+  "breaks": "Overnight catalyst-driven trade ideas are missing."
+ },
+ "news-to-catalyst": {
+  "title": "News to Catalyst",
+  "category": "research",
+  "does": "Turns news stories into catalyst events the trade scanners can use.",
+  "breaks": "News no longer feeds catalyst ideas."
+ },
+ "catalyst-calibration": {
+  "title": "Catalyst Calibration",
+  "category": "learning",
+  "does": "Checked how well past catalyst signals worked.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "signal-fusion-full": {
+  "title": "Full Signal Fusion",
+  "category": "learning",
+  "does": "Combines all signal sources into a single score for every symbol.",
+  "breaks": "Combined signal scores go stale for the full universe."
+ },
+ "signal-fusion-active": {
+  "title": "Active Signal Fusion",
+  "category": "learning",
+  "does": "Combines signal sources into a score for the symbols you are actively watching.",
+  "breaks": "Scores on your active names go stale."
+ },
+ "hermes-news-bridge": {
+  "title": "Hermes News Bridge",
+  "category": "research",
+  "does": "Passes new news items into the Hermes research queue.",
+  "breaks": "Hermes stops seeing fresh news."
+ },
+ "research-insight-extractor": {
+  "title": "Research Insight Extractor",
+  "category": "research",
+  "does": "Pulls the key takeaways out of research documents.",
+  "breaks": "Research notes stay as raw text without extracted insights."
+ },
+ "hermes-topic-monitor-bridge": {
+  "title": "Hermes Topic Monitor Bridge",
+  "category": "research",
+  "does": "Connects topics you follow to Hermes so they get researched.",
+  "breaks": "Followed topics stop getting fresh research."
+ },
+ "update-agent-performance": {
+  "title": "Agent Performance Update",
+  "category": "learning",
+  "does": "Updates the scorecard of how each agent's calls have performed.",
+  "breaks": "Agent scorecards go stale."
+ },
+ "build-symbol-profiles-at-0-19": {
+  "title": "Weekly Symbol Profiles",
+  "category": "portfolio",
+  "does": "Rebuilds the profile (business, sector, traits) of each symbol weekly.",
+  "breaks": "Symbol profiles slowly go out of date."
+ },
+ "classify-instruments": {
+  "title": "Instrument Classifier",
+  "category": "portfolio",
+  "does": "Labels each holding as stock, ETF, fund and so on.",
+  "breaks": "New holdings may be mislabeled, affecting reports and risk grouping."
+ },
+ "build-symbol-profiles-watchlist": {
+  "title": "Watchlist Symbol Profiles",
+  "category": "portfolio",
+  "does": "Built profiles for watchlist symbols.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "earnings-enrich": {
+  "title": "Earnings Enrichment",
+  "category": "portfolio",
+  "does": "Added earnings dates and results to symbols.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "fund-technicals-enrich": {
+  "title": "Fund Technicals Enrichment",
+  "category": "portfolio",
+  "does": "Added technical indicators to funds.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "distributions-enrich": {
+  "title": "Distributions Enrichment",
+  "category": "portfolio",
+  "does": "Added dividend and distribution data to symbols.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "sector-rs-daily": {
+  "title": "Daily Sector Strength",
+  "category": "portfolio",
+  "does": "Ranks market sectors by relative strength every day.",
+  "breaks": "Sector strength rankings go stale."
+ },
+ "mint-identity-registry": {
+  "title": "Identity Registry Builder",
+  "category": "portfolio",
+  "does": "Built the registry of symbol identities.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-outcome-learning": {
+  "title": "Hermes Outcome Learning",
+  "category": "learning",
+  "does": "Learned from how past Hermes ideas turned out.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-autonomous-self-tune": {
+  "title": "Hermes Self-Tune",
+  "category": "learning",
+  "does": "Let Hermes adjust its own settings.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-score-history-retention": {
+  "title": "Hermes Score History Retention",
+  "category": "hygiene",
+  "does": "Trimmed old Hermes score history.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-outcome-grader": {
+  "title": "Hermes Outcome Grader",
+  "category": "learning",
+  "does": "Graded how past Hermes ideas performed.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-outcome-feedback-agent": {
+  "title": "Hermes Outcome Feedback Agent",
+  "category": "learning",
+  "does": "Fed grading results back to Hermes.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-tag-engine": {
+  "title": "Hermes Tag Engine",
+  "category": "learning",
+  "does": "Tagged Hermes ideas by theme.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "finviz-enrichment": {
+  "title": "Finviz Enrichment",
+  "category": "signals",
+  "does": "Pulls extra stock data from Finviz to enrich scanner candidates.",
+  "breaks": "Scanner candidates lose Finviz detail such as float and short interest."
+ },
+ "finviz-enrichment-scalp-hot": {
+  "title": "Finviz Hot Scalp Enrichment",
+  "category": "signals",
+  "does": "Quickly pulls Finviz data for the hottest scalp candidates.",
+  "breaks": "Hot scalp candidates lack fast-refresh Finviz detail."
+ },
+ "sec-data-ingest": {
+  "title": "SEC Filings Ingest",
+  "category": "research",
+  "does": "Downloads new SEC filings such as insider trades and reports.",
+  "breaks": "New regulatory filings are not picked up."
+ },
+ "social-ingest-all": {
+  "title": "Social Media Ingest (All)",
+  "category": "research",
+  "does": "Collects posts and sentiment from all social sources.",
+  "breaks": "Social buzz data goes stale."
+ },
+ "social-ingest-stocktwits": {
+  "title": "StockTwits Ingest",
+  "category": "research",
+  "does": "Collects posts and sentiment from StockTwits.",
+  "breaks": "StockTwits sentiment goes stale."
+ },
+ "feedback-loop-processor": {
+  "title": "Feedback Loop Processor",
+  "category": "learning",
+  "does": "Processes your approvals and rejections so the system learns from them.",
+  "breaks": "Your feedback stops being used to improve ideas."
+ },
+ "record-decision-outcome": {
+  "title": "Decision Outcome Recorder",
+  "category": "learning",
+  "does": "Records what happened after each decision was made.",
+  "breaks": "Decision track records stop updating."
+ },
+ "agent-outcome-scorer": {
+  "title": "Agent Outcome Scorer",
+  "category": "learning",
+  "does": "Scores each agent call as right or wrong after enough time.",
+  "breaks": "Agent accuracy scores stop being updated."
+ },
+ "aegis-social-sentiment": {
+  "title": "Aegis Social Sentiment",
+  "category": "research",
+  "does": "Aegis reads social media to gauge the mood about tracked stocks.",
+  "breaks": "Aegis briefs lose the social mood signal."
+ },
+ "aegis-transcript-discovery": {
+  "title": "Aegis Transcript Discovery",
+  "category": "research",
+  "does": "Finds new earnings call transcripts and videos for Aegis to read.",
+  "breaks": "New transcripts are not found for Aegis analysis."
+ },
+ "aegis-nightly-ingestion": {
+  "title": "Aegis Nightly Ingestion",
+  "category": "research",
+  "does": "Loads the day's collected material into Aegis overnight.",
+  "breaks": "Aegis starts the day without the latest material."
+ },
+ "trade-backtest-engine": {
+  "title": "Trade Backtest Engine",
+  "category": "learning",
+  "does": "Tests how past trade entries and exits would have turned out.",
+  "breaks": "Entry and exit quality statistics go stale."
+ },
+ "update-lockup-earnings-dates": {
+  "title": "Lockup and Earnings Dates Update",
+  "category": "market_data",
+  "does": "Updates IPO lockup expiry and earnings dates.",
+  "breaks": "Upcoming lockup or earnings dates may be wrong."
+ },
+ "etf-analyst-enrich": {
+  "title": "ETF Analyst Enrichment",
+  "category": "portfolio",
+  "does": "Adds analyst ratings data to ETFs.",
+  "breaks": "ETF pages lack current analyst views."
+ },
+ "etf-performance-enrich": {
+  "title": "ETF Performance Enrichment",
+  "category": "portfolio",
+  "does": "Adds recent performance figures to ETFs.",
+  "breaks": "ETF performance numbers go stale."
+ },
+ "validate-expense-ratios": {
+  "title": "Expense Ratio Validation",
+  "category": "portfolio",
+  "does": "Checks fund fee percentages against trusted sources.",
+  "breaks": "Wrong fund fees could go unnoticed."
+ },
+ "hermes-tag-lift-discovery": {
+  "title": "Hermes Tag Lift Discovery",
+  "category": "learning",
+  "does": "Looked for which idea tags improved results.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "sync-social-to-intelligence": {
+  "title": "Social to Intelligence Sync",
+  "category": "research",
+  "does": "Copies social data into the main research intelligence store.",
+  "breaks": "Research intelligence misses the latest social data."
+ },
+ "hermes-social-sentiment": {
+  "title": "Hermes Social Sentiment",
+  "category": "research",
+  "does": "Hermes scores social sentiment for tracked names.",
+  "breaks": "Hermes loses the sentiment score."
+ },
+ "catalyst-momentum-engine-premarket": {
+  "title": "Pre-Market Catalyst Momentum",
+  "category": "signals",
+  "does": "Scanned pre-market for catalyst scalp ideas.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "catalyst-momentum-engine": {
+  "title": "Catalyst Momentum Engine",
+  "category": "signals",
+  "does": "Scans for catalyst-driven momentum trade ideas during the day.",
+  "breaks": "Catalyst-driven momentum ideas stop appearing."
+ },
+ "catalyst-momentum-engine-market": {
+  "title": "Market-Hours Catalyst Momentum",
+  "category": "signals",
+  "does": "Scanned market hours for swing catalyst ideas.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "topic-research-synthesizer-at-20-x": {
+  "title": "Topic Research Synthesizer (Evening)",
+  "category": "research",
+  "does": "Wrote evening summaries for followed topics.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "topic-research-synthesizer": {
+  "title": "Topic Research Synthesizer",
+  "category": "research",
+  "does": "Writes summaries of what is new for each topic you follow.",
+  "breaks": "Followed-topic summaries go stale."
+ },
+ "topic-ingestion": {
+  "title": "Topic Ingestion",
+  "category": "research",
+  "does": "Gathers new articles and data for each followed topic.",
+  "breaks": "Followed topics stop receiving new material."
+ },
+ "topic-ingestion-cron-lines": {
+  "title": "Topic Ingestion (Old Schedule)",
+  "category": "research",
+  "does": "Older schedule entries for gathering topic material.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "topic-research-synthesizer-reground": {
+  "title": "Topic Synthesizer Re-ground",
+  "category": "research",
+  "does": "Re-checked topic summaries against sources.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-cio-event-detector-once-at-0-5": {
+  "title": "CIO Event Detector (5 AM)",
+  "category": "cio",
+  "does": "Early-morning one-shot check for events the CIO should react to.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "cio-event-detector": {
+  "title": "CIO Event Detector",
+  "category": "cio",
+  "does": "Watches for events (news, price moves) that should make the CIO re-think advice.",
+  "breaks": "The CIO is slower to react to new events."
+ },
+ "run-cio-event-detector-once-at-0-8": {
+  "title": "CIO Event Detector (8 AM)",
+  "category": "cio",
+  "does": "Morning one-shot check for events the CIO should react to.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-cio-event-detector-once-at-0-9": {
+  "title": "CIO Event Detector (9 AM)",
+  "category": "cio",
+  "does": "Pre-open one-shot check for events the CIO should react to.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "price-db-sync": {
+  "title": "Price Database Sync",
+  "category": "market_data",
+  "does": "Synced prices into the database.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "market-regime-collector": {
+  "title": "Market Regime Collector",
+  "category": "market_data",
+  "does": "Collects the inputs that describe the market mood (trend, volatility, breadth).",
+  "breaks": "Market mood readings go stale."
+ },
+ "market-regime-classifier": {
+  "title": "Market Regime Classifier",
+  "category": "risk",
+  "does": "Labeled the market as risk-on, risk-off or neutral.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "sync-dividend-data": {
+  "title": "Dividend Data Sync",
+  "category": "market_data",
+  "does": "Synced dividend data.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "fred-data-ingest": {
+  "title": "FRED Economic Data Ingest",
+  "category": "market_data",
+  "does": "Downloaded economic series from the Federal Reserve database.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "overnight-batch-tax": {
+  "title": "Overnight Tax Sweep",
+  "category": "portfolio",
+  "does": "Overnight sweep checking tax lots and tax effects of holdings.",
+  "breaks": "Tax-lot views and tax flags go stale."
+ },
+ "iris-proposal-curator": {
+  "title": "Iris Proposal Curator",
+  "category": "signals",
+  "does": "Iris curated trade proposals.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "source-outcome-attribution": {
+  "title": "Source Outcome Attribution",
+  "category": "learning",
+  "does": "Credited outcomes back to the source that gave the idea.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "recommendation-intelligence-engine": {
+  "title": "Recommendation Intelligence Engine",
+  "category": "learning",
+  "does": "Analyzed how past recommendations performed.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "register-analyst-sources": {
+  "title": "Analyst Source Registration",
+  "category": "research",
+  "does": "Registered analyst sources.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "overnight-batch-outcomes": {
+  "title": "Overnight Outcomes Batch",
+  "category": "learning",
+  "does": "Overnight batch of outcome calculations.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "run-sec-form4-momentum-context": {
+  "title": "Insider Trade Momentum Context",
+  "category": "research",
+  "does": "Added insider-trade context to momentum ideas.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "volatility-tier-refresh": {
+  "title": "Volatility Tier Refresh",
+  "category": "risk",
+  "does": "Reassigned symbols to calm, normal or wild volatility tiers.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "research-intelligence-materialize": {
+  "title": "Research Intelligence Builder",
+  "category": "research",
+  "does": "Built the research intelligence tables.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "iris-taxonomy-agent-gaps": {
+  "title": "Iris Taxonomy Gap Finder",
+  "category": "agents_llm",
+  "does": "Found gaps in the Iris category scheme.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "watch-valuation-backfill": {
+  "title": "Watch Valuation Backfill",
+  "category": "portfolio",
+  "does": "Filled in valuation data for watched symbols.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "research-watchlist-discovery": {
+  "title": "Research Watchlist Discovery",
+  "category": "research",
+  "does": "Suggested new watchlist names from research.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "candidate-discovery-orchestrator": {
+  "title": "Candidate Discovery Orchestrator",
+  "category": "signals",
+  "does": "Coordinated the search for new trade candidates.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "shadow-batch-generator-at-15-9": {
+  "title": "Shadow Batch Generator (Old)",
+  "category": "signals",
+  "does": "Generated practice (shadow) trade batches.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "shadow-batch-generator-at-15-10": {
+  "title": "Weekly Shadow Batch Generator",
+  "category": "signals",
+  "does": "Generates a weekly batch of practice (shadow) trades to test ideas without risk.",
+  "breaks": "The weekly set of shadow trades is not created, so testing pauses."
+ },
+ "hermes-embedding-promotion-review": {
+  "title": "Hermes Embedding Promotion Review",
+  "category": "research",
+  "does": "Reviewed whether a new text-matching model should replace the current one.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "orchestrator-slot-midday": {
+  "title": "Midday Orchestrator Slot",
+  "category": "ops",
+  "does": "Ran a lighter midday round of coordinated jobs.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "finviz-screener-runner": {
+  "title": "Finviz Screener Runner",
+  "category": "signals",
+  "does": "Runs the saved Finviz stock screens each morning.",
+  "breaks": "Finviz-based candidate lists go stale."
+ },
+ "daily-incubator-refresh": {
+  "title": "Daily Incubator Refresh",
+  "category": "signals",
+  "does": "Refreshes the incubator, the holding pen for ideas not yet ready to act on.",
+  "breaks": "Incubator ideas go stale."
+ },
+ "weekly-incubator-builder": {
+  "title": "Weekly Incubator Builder",
+  "category": "signals",
+  "does": "Builds the weekly set of new ideas for the incubator.",
+  "breaks": "The incubator gets no new ideas each week."
+ },
+ "finviz-proactive-research": {
+  "title": "Finviz Proactive Research",
+  "category": "signals",
+  "does": "Scans Finviz several times a market day for notable movers worth a look.",
+  "breaks": "Notable movers are noticed later."
+ },
+ "hermes-research-worker-pool": {
+  "title": "Hermes Research Worker Pool",
+  "category": "research",
+  "does": "Runs the pool of workers that process queued Hermes research tasks hourly.",
+  "breaks": "Queued research tasks sit unprocessed."
+ },
+ "investment-costs": {
+  "title": "Investment Costs Report",
+  "category": "portfolio",
+  "does": "Computes what your investments cost in fees and expenses each market day.",
+  "breaks": "Fee and cost figures go stale."
+ },
+ "heartbeat-watch": {
+  "title": "Heartbeat Watch",
+  "category": "ops",
+  "does": "Checks that key jobs are still sending their I-am-alive signals.",
+  "breaks": "A silently stopped job may go unnoticed."
+ },
+ "finviz-sector-research": {
+  "title": "Finviz Sector Research",
+  "category": "signals",
+  "does": "Reviews sector performance on Finviz twice a market day.",
+  "breaks": "Sector research view goes stale."
+ },
+ "proposal-backtest-engine": {
+  "title": "Proposal Backtest Engine",
+  "category": "learning",
+  "does": "Tests how trade proposals would have done on past data during the day.",
+  "breaks": "Proposals lose their backtest scores."
+ },
+ "hermes-scope-governor": {
+  "title": "Hermes Scope Governor",
+  "category": "agents_llm",
+  "does": "Keeps Hermes research within its allowed scope and budget.",
+  "breaks": "Hermes could research too widely or overspend."
+ },
+ "hermes-score-event-feeder": {
+  "title": "Hermes Score Event Feeder",
+  "category": "research",
+  "does": "Feeds score-changing events into the Hermes scoring system.",
+  "breaks": "Hermes scores update more slowly after news."
+ },
+ "trade-thesis-review-engine": {
+  "title": "Trade Thesis Review",
+  "category": "learning",
+  "does": "Reviews whether each open trade's original reason still holds.",
+  "breaks": "Stale trade theses are not flagged."
+ },
+ "finviz-market-movers": {
+  "title": "Finviz Market Movers",
+  "category": "signals",
+  "does": "Grabs the biggest market movers from Finviz every 15 minutes during the day.",
+  "breaks": "The movers list is stale or empty."
+ },
+ "aegis-evening-packet": {
+  "title": "Aegis Evening Packet",
+  "category": "research",
+  "does": "Builds the Aegis evening summary of the day's findings.",
+  "breaks": "The evening research summary is missing."
+ },
+ "advisory-desk-run-now": {
+  "title": "Advisory Desk Run Now",
+  "category": "cio",
+  "does": "On-demand rebuild of the advisory desk facts and AI opinions.",
+  "breaks": "The Run now button for advisory desk refresh stops working."
+ },
+ "analyst-prospectus-generate": {
+  "title": "Analyst Prospectus Generator",
+  "category": "research",
+  "does": "On-demand creation of a research prospectus for one symbol or a batch.",
+  "breaks": "Requested prospectuses are not produced."
+ },
+ "aegis-brief-regenerate": {
+  "title": "Aegis Brief Regenerate",
+  "category": "research",
+  "does": "On-demand rebuild of today's Aegis morning brief without resending alerts.",
+  "breaks": "The regenerate brief button stops working."
+ },
+ "hermes-source-curation": {
+  "title": "Hermes Source Curation",
+  "category": "research",
+  "does": "Curated the list of Hermes research sources.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "hermes-discovery-yield-builder": {
+  "title": "Hermes Discovery Yield Builder",
+  "category": "learning",
+  "does": "Measured which discovery sources produced useful ideas.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "siem-to-hermes-backlog": {
+  "title": "Security Log to Hermes Backlog",
+  "category": "research",
+  "does": "Moved security log items into the Hermes queue.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "momentum-lifecycle-monitor": {
+  "title": "Momentum Lifecycle Monitor",
+  "category": "signals",
+  "does": "Checks the health of momentum ideas from start to expiry.",
+  "breaks": "Stuck or stale momentum ideas go unnoticed."
+ },
+ "momentum-cache-reconcile": {
+  "title": "Momentum Cache Reconcile",
+  "category": "signals",
+  "does": "Rebuilds the shared momentum summary from its source snapshots.",
+  "breaks": "The shared momentum summary can drift from the true data."
+ },
+ "tmp-scratch-cleanup": {
+  "title": "Scratch Folder Cleanup",
+  "category": "hygiene",
+  "does": "Deletes old temporary scratch files from disk.",
+  "breaks": "Temporary files build up and can fill the disk."
+ },
+ "hermes-learning-outcome-grader": {
+  "title": "Hermes Outcome Grader Step",
+  "category": "learning",
+  "does": "Grades how past Hermes ideas turned out.",
+  "breaks": "Hermes idea grades stop updating."
+ },
+ "hermes-learning-outcome-learning": {
+  "title": "Hermes Outcome Learning Step",
+  "category": "learning",
+  "does": "Learns lessons from graded Hermes outcomes.",
+  "breaks": "Hermes stops learning from results."
+ },
+ "hermes-learning-config-governor": {
+  "title": "Hermes Config Governor Step",
+  "category": "learning",
+  "does": "Adjusts Hermes settings within safe limits based on results.",
+  "breaks": "Hermes settings stop being tuned to results."
+ },
+ "hermes-learning-tag-engine": {
+  "title": "Hermes Tag Engine Step",
+  "category": "learning",
+  "does": "Tags Hermes ideas by theme to see which themes work.",
+  "breaks": "Theme-level performance stops updating."
+ },
+ "hermes-learning-outcome-feedback-agent": {
+  "title": "Hermes Outcome Feedback Step",
+  "category": "learning",
+  "does": "Planned step feeding outcomes back to Hermes; not scheduled.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "hermes-learning-autonomous-self-tune": {
+  "title": "Hermes Self-Tune Step",
+  "category": "learning",
+  "does": "Lets Hermes make small self-adjustments based on results.",
+  "breaks": "Hermes self-adjustment pauses."
+ },
+ "hermes-discovery-yield-on-learning": {
+  "title": "Hermes Discovery Yield",
+  "category": "learning",
+  "does": "Measures which discovery sources yield good ideas whenever new learning arrives.",
+  "breaks": "Source usefulness scores go stale."
+ },
+ "agent-intelligence-cron-deep": {
+  "title": "Agent Intelligence Deep Run",
+  "category": "agents_llm",
+  "does": "Ran the deep agent intelligence update.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "agent-intelligence-cron-daily": {
+  "title": "Agent Intelligence Daily Run",
+  "category": "agents_llm",
+  "does": "Ran the daily agent intelligence update.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "agent-intelligence-cron-intraday": {
+  "title": "Agent Intelligence Intraday Run",
+  "category": "agents_llm",
+  "does": "Ran the intraday agent intelligence update.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "cleanup-stale-locks": {
+  "title": "Stale Lock Cleanup",
+  "category": "hygiene",
+  "does": "Cleared leftover lock files from crashed jobs.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "symbol-enrichment": {
+  "title": "Symbol Enrichment",
+  "category": "portfolio",
+  "does": "Added extra data to symbols.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "indicator-engine": {
+  "title": "Technical Indicator Engine",
+  "category": "market_data",
+  "does": "Calculates technical indicators such as moving averages and RSI before the open.",
+  "breaks": "Technical indicators go stale and chart signals are off."
+ },
+ "risk-gate": {
+  "title": "Risk Gate",
+  "category": "risk",
+  "does": "Checked trades against risk limits.",
+  "breaks": "Retired \u2014 nothing depends on it."
+ },
+ "watchlist-entry-planner-limit": {
+  "title": "Watchlist Entry Planner (Limit)",
+  "category": "signals",
+  "does": "Plans limit-order entry levels for watchlist names.",
+  "breaks": "Planned entry prices for watchlist names go stale."
+ },
+ "watchlist-entry-planner-scope": {
+  "title": "Watchlist Entry Planner (Scope)",
+  "category": "signals",
+  "does": "Plans entry levels for a chosen scope of watchlist names.",
+  "breaks": "Entry plans for the chosen names go stale."
+ },
+ "run-research-intelligence-overnight": {
+  "title": "Overnight Research Intelligence",
+  "category": "research",
+  "does": "Builds the full research intelligence set overnight on weekdays.",
+  "breaks": "Research intelligence is stale the next morning."
+ },
+ "run-research-intelligence-overnight-archive": {
+  "title": "Research Intelligence Archive",
+  "category": "research",
+  "does": "Archives the overnight research intelligence output.",
+  "breaks": "Past research snapshots are not archived."
+ },
+ "incubator-rolloff-engine": {
+  "title": "Incubator Roll-Off",
+  "category": "signals",
+  "does": "Removes stale or failed ideas from the incubator after the close.",
+  "breaks": "The incubator fills with dead ideas."
+ },
+ "wire-advisory-lessons": {
+  "title": "Advisory Lessons Wiring",
+  "category": "learning",
+  "does": "Feeds lessons learned back into the advice system every six hours.",
+  "breaks": "Advice stops reflecting recent lessons."
+ },
+ "pattern-extractor": {
+  "title": "Pattern Extractor",
+  "category": "learning",
+  "does": "Monthly review of history to find repeating winning and losing patterns.",
+  "breaks": "Monthly pattern findings are not produced."
+ },
+ "hermes-discovery-scorecard": {
+  "title": "Hermes Discovery Scorecard",
+  "category": "learning",
+  "does": "Scores how well Hermes discovery sources are doing.",
+  "breaks": "The discovery scorecard goes stale."
+ },
+ "release-window": {
+  "title": "Release Window",
+  "category": "ops",
+  "does": "Planned job marking the window when releases may happen; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "nightly-cutover-controller": {
+  "title": "Nightly Cutover Controller",
+  "category": "ops",
+  "does": "Planned controller for moving jobs into n8n overnight; currently disarmed.",
+  "breaks": "Automatic overnight cutovers do not happen (paused on purpose)."
+ },
+ "disk-usage-monitor": {
+  "title": "Disk Usage Monitor",
+  "category": "hygiene",
+  "does": "Watches disk space and warns when it runs low.",
+  "breaks": "You may not get warned before the disk fills up."
+ },
+ "disk-hygiene": {
+  "title": "Disk Hygiene",
+  "category": "hygiene",
+  "does": "Cleans up old files to keep disk space free.",
+  "breaks": "Old files accumulate and disk space shrinks."
+ },
+ "tmp-hygiene": {
+  "title": "Temp Folder Hygiene",
+  "category": "hygiene",
+  "does": "Checks temporary folders for leftover files.",
+  "breaks": "Temp clutter goes unreported."
+ },
+ "tmp-hygiene-apply": {
+  "title": "Temp Hygiene Auto Cleanup",
+  "category": "hygiene",
+  "does": "Planned automatic temp cleanup; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "tmp-hygiene-pressure": {
+  "title": "Temp Hygiene Pressure Cleanup",
+  "category": "hygiene",
+  "does": "Planned cleanup of temp files when disk is tight; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "agent-claim-compact": {
+  "title": "Agent Claim Compaction",
+  "category": "hygiene",
+  "does": "Planned tidy-up of the agent work-claim log; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "hermes-watchlist-scorer": {
+  "title": "Hermes Watchlist Scorer",
+  "category": "research",
+  "does": "Scores every watchlist name with Hermes research.",
+  "breaks": "Watchlist scores go stale."
+ },
+ "archive-offbox-sync": {
+  "title": "Off-Box Archive Sync",
+  "category": "hygiene",
+  "does": "Planned copy of archives to another machine; never turned on.",
+  "breaks": "Never scheduled, so nothing is lost today."
+ },
+ "cio-portfolio-thesis": {
+  "title": "CIO Portfolio Thesis",
+  "category": "cio",
+  "does": "Builds the CIO's overall written view of your portfolio.",
+  "breaks": "The portfolio thesis shown by the CIO goes stale."
+ },
+ "advisory-maturity-evidence": {
+  "title": "Advisory Maturity Evidence",
+  "category": "cio",
+  "does": "Refreshes the evidence on how reliable the advice system has become.",
+  "breaks": "The advice maturity report goes stale."
+ },
+ "schwab-position-sync": {
+  "title": "Schwab Position Sync",
+  "category": "portfolio",
+  "does": "Reads your current positions from Schwab, read-only.",
+  "breaks": "Holdings shown may not match what the broker has."
+ },
+ "schwab-stream-daemon": {
+  "title": "Schwab Streaming Capture",
+  "category": "services",
+  "does": "Keeps a read-only live stream of quotes from Schwab running.",
+  "breaks": "Live quote streaming from Schwab stops."
+ },
+ "sync-basis-from-broker": {
+  "title": "Cost Basis Sync",
+  "category": "portfolio",
+  "does": "Reads cost basis for holdings from the broker.",
+  "breaks": "Gains and losses may be computed from wrong cost basis."
+ },
+ "audit-position-basis": {
+  "title": "Position Basis Audit",
+  "category": "portfolio",
+  "does": "Read-only check comparing cost basis across sources to catch mismatches.",
+  "breaks": "Wrong cost-basis figures could go unnoticed."
+ },
+ "grok-stop-review": {
+  "title": "Grok Stop Review",
+  "category": "risk",
+  "does": "Has Grok review protective stop levels on top of the technical rules.",
+  "breaks": "Stops lose the outside AI second opinion."
+ },
+ "coder-dispatch": {
+  "title": "Coder Dispatch",
+  "category": "ops",
+  "does": "Hands code problems from the health agent to an available AI coder (paused).",
+  "breaks": "Automatic fix hand-off is off; fixes are manual."
+ },
+ "stop-drift-alert": {
+  "title": "Stop Drift Alert",
+  "category": "risk",
+  "does": "Alerts when a protective stop no longer matches the intended level.",
+  "breaks": "A stop that drifted from plan may go unnoticed."
+ },
+ "options-chain-snapshot": {
+  "title": "Options Chain Snapshot",
+  "category": "market_data",
+  "does": "Saves a snapshot of available options contracts and prices.",
+  "breaks": "Options pricing history and views go stale."
+ },
+ "defense-execution": {
+  "title": "Defense Execution",
+  "category": "risk",
+  "does": "Carried out defensive stop actions at the broker (paused since the SPCX incident).",
+  "breaks": "Paused on purpose; defensive stops are not auto-executed."
+ },
+ "options-lifecycle-run": {
+  "title": "Options Lifecycle Run",
+  "category": "portfolio",
+  "does": "Tracks options positions through expiry and assignment (paused).",
+  "breaks": "Paused; options expiry tracking is off."
+ },
+ "options-lifecycle-digest": {
+  "title": "Options Lifecycle Digest",
+  "category": "alerts",
+  "does": "Sends a digest of options positions nearing expiry (paused).",
+  "breaks": "Paused; no options expiry digest is sent."
+ }
+}
