@@ -47,7 +47,7 @@ def _holdings_map(**kw) -> dict:
     (LQ-20261107-03: this map used to read `current_price` straight out of the store with no provenance).
     """
     out = {}
-    for r in sap.holdings_marks(**kw):
+    for r in sap.holdings_marks(keep_unpriced=True, **kw):
         out[(r["account"], r["symbol"])] = {k: r[k] for k in
                                             ("shares", "price", "broker_shares") + sap.MARK_FIELDS}
     return out

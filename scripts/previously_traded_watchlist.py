@@ -158,6 +158,8 @@ def fetch_current_prices():
                 px = float((quote or {}).get("price"))
             except (TypeError, ValueError):
                 continue
+            if "yfinance" in str((quote or {}).get("source") or "").lower():
+                continue  # operator 2026-11-07: never yfinance — the stored price stays rather than a yfinance one
             if px > 0:
                 prices[str(sym).upper()] = px
     unpriced = [s for s in symbols if s not in prices]

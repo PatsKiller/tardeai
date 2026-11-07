@@ -12,6 +12,7 @@
  * summing a subset of rows would invent a figure the backend never states.
  */
 import { deriveTodayPnlState } from './todayPnlState.ts'
+import { canonicalAccountKey } from './accountLabels.ts'
 
 export type PortfolioDayFigure = {
   /** The figure the page may show. null means the page shows no number. */
@@ -64,7 +65,8 @@ export function portfolioDayFigure(
     const move = overview.today_move && typeof overview.today_move === 'object'
       ? overview.today_move as { status?: string; by_account?: Record<string, { change?: number | null; change_pct?: number | null }> }
       : null
-    const row = move?.status === 'REPORTED' ? move.by_account?.[account] : undefined
+    const row = move?.status === 'REPORTED'
+      ? (move.by_account?.[canonicalAccountKey(account)] ?? move.by_account?.[account]) : undefined
     const change = finite(row?.change)
     if (change == null) {
       return { change: null, pct: null, note: null,

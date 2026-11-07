@@ -146,7 +146,7 @@ def load_prices(query, symbols: list[str], now: datetime | None = None) -> dict:
     """
     out = {}
     try:
-        rows = query("SELECT DISTINCT ON (symbol) symbol, price, day_change_pct, volume, fetched_at "
+        rows = query("SELECT DISTINCT ON (symbol) symbol, price, day_change_pct, volume, fetched_at, provider "
                      "FROM market_quotes WHERE symbol = ANY(%s) AND price IS NOT NULL "
                      "ORDER BY symbol, fetched_at DESC", (symbols,))
     except Exception:
@@ -155,7 +155,8 @@ def load_prices(query, symbols: list[str], now: datetime | None = None) -> dict:
         price = _num(r.get("price"))
         if price and price > 0:
             out[r["symbol"]] = {"symbol": r["symbol"], "price": price, "change_pct": _num(r.get("day_change_pct")),
-                                "volume": r.get("volume"), "as_of": _aware(r.get("fetched_at")), "source": "market_quotes"}
+                                "volume": r.get("volume"), "as_of": _aware(r.get("fetched_at")),
+                                "source": f"market_quotes:{r['provider']}" if r.get("provider") else "market_quotes"}
     missing = [s for s in symbols if s not in out]
     if missing:
         try:
@@ -172,6 +173,8 @@ def load_prices(query, symbols: list[str], now: datetime | None = None) -> dict:
     for sym in symbols:
         mark = _live_mark(sym, out.get(sym), now)
         if not mark.get("price"):
+            if sym in out:  # nothing fresh or acceptable prices it: the stored row stands only flagged stale
+                out[sym]["stale"] = True
             continue
         merged = dict(out.get(sym) or {})
         merged.update({"symbol": sym, "price": mark["price"], "as_of": mark.get("as_of"),

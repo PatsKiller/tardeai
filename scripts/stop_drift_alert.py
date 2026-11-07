@@ -29,6 +29,13 @@ LIVE_STATUS = ("armed", "active", "live", "placed", "confirmed", "working", "new
 _TERMINAL_MANUAL = ("cancelled", "canceled", "filled", "closed", "replaced", "closed_position")
 
 
+def _px_round(px):
+    """Cents for a dollar-plus mark; a sub-dollar mark keeps 4 significant places so it never rounds to 0.0
+    (a 0.0 price reads as "mark UNKNOWN" downstream although its source and as_of are known)."""
+    px = float(px)
+    return round(px, 2) if abs(px) >= 1 else float(f"{px:.4g}")
+
+
 def _live_holdings_map(**kw) -> dict[str, dict]:
     """Current holdings mark + basis keyed by symbol, each carrying its price evidence.
 
@@ -204,7 +211,7 @@ def detect(cur, live_map: dict[str, dict] | None = None):
             drifts.append({"symbol": sym, "live_stop": round(ls, 2), "advised_stop": round(a["stop"], 2),
                            "raise_by": round(a["stop"] - ls, 2),
                            "raise_pct": round(100 * (a["stop"] - ls) / px, 2) if px else None,
-                           "price": round(px, 2) if px else None,
+                           "price": _px_round(px) if px else None,
                            "advisory_price": a.get("price") or None,
                            "advisory_as_of": str(a.get("as_of")) if a.get("as_of") else None,
                            **ev})
@@ -233,7 +240,7 @@ def detect_lockin(cur, live_map: dict[str, dict] | None = None):
         floor = hf.trailing_floor(px, a["trail_pct"])
         out.append({
             "symbol": sym, "live_fixed_stop": round(ls, 2), "trail_pct": round(a["trail_pct"], 1),
-            "trailing_floor": floor, "price": round(px, 2), "advisory_snap_price": round(a.get("snap_price") or 0, 2),
+            "trailing_floor": floor, "price": _px_round(px), "advisory_snap_price": round(a.get("snap_price") or 0, 2),
             "advisory_as_of": str(a.get("as_of")) if a.get("as_of") else None,
             "gain_above_fixed_pct": round(100 * (floor - ls) / ls, 1),
             "account": ls_row.get("account") or hold.get("account") or "",
@@ -275,7 +282,7 @@ def detect_trail_nudge(cur, live_map: dict[str, dict] | None = None):
             "pnl_pct": round(pnl_pct, 1),
             "trail_pct": round(tpct, 1),
             "live_fixed_stop": round(ls_row["stop"], 2),
-            "price": round(px, 2),
+            "price": _px_round(px),
             "threshold_pct": hf.trail_pnl_threshold(family),
             "account": ls_row.get("account") or hold.get("account") or "",
             **{k: hold.get(k) for k in sap.MARK_FIELDS},

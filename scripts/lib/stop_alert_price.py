@@ -94,13 +94,15 @@ def labelled_mark(price: Any, source: Any, as_of: Any, *, now: Optional[datetime
 
 
 def holdings_marks(document: dict | None = None, *, finviz: Any = _AUTO, quotes: Any = _AUTO,
-                   now: Optional[datetime] = None) -> list[dict]:
+                   now: Optional[datetime] = None, keep_unpriced: bool = False) -> list[dict]:
     """Every held row, marked by ``resolve_mark()`` and carrying its price evidence.
 
     Holdings are DB-first — ``holdings_document.load_document()`` (holdings.json is its stated fallback).
     The mark is the operator's rule: the Finviz live cache first, a fresh Schwab/Alpaca/moomoo quote
     second (the data broker's batch, read only for symbols Finviz cannot serve fresh), a stored mark last.
-    Cash rows are skipped (no stop rests on cash), and a row with no price is dropped rather than marked 0.
+    Cash rows are skipped (no stop rests on cash), and a row with no price is dropped rather than marked 0 —
+    unless ``keep_unpriced``: then it stays with ``price: None`` (a held row with no mark is still HELD, so a
+    stop on it must not be called orphaned).
 
     Each result: ``symbol, account, shares, broker_shares, cost_basis, price, price_source, price_as_of,
     price_age_s, price_stale, held`` (``held`` is the source row). Never raises: an unreadable store
@@ -128,7 +130,7 @@ def holdings_marks(document: dict | None = None, *, finviz: Any = _AUTO, quotes:
             continue
         fv_row = fv.get(sym) if isinstance(fv.get(sym), dict) else None
         mark = resolve_mark(r, quote=backup.get(sym), finviz=fv_row, now=now)
-        if not mark.get("price"):
+        if not mark.get("price") and not keep_unpriced:
             continue
         shares = _f(r.get("shares", r.get("qty")))
         bsh = _f(r.get("broker_actual_shares"))
@@ -138,7 +140,7 @@ def holdings_marks(document: dict | None = None, *, finviz: Any = _AUTO, quotes:
             "shares": shares,
             "broker_shares": bsh,
             "cost_basis": _f(r.get("cost_basis")),
-            "price": mark["price"],
+            "price": mark.get("price") or None,
             **mark_fields(mark),
             "held": r,
         })
