@@ -340,3 +340,10 @@ def test_main_dry_run_never_touches_the_writers(lane, monkeypatch):
     monkeypatch.setattr(m, "backfill_prices", lambda *a, **k: pytest.fail("dry run must not update"))
     monkeypatch.setattr(m, "dry_run", lambda backfill: {"would_record": 0, "would_backfill": 0})
     assert m.main(["--dry-run"]) == 0
+
+
+def test_the_fill_never_reads_a_yfinance_close(lane):
+    """Operator rule: Finviz/DB closes only. All three horizons exclude yfinance and yfinance_eod rows."""
+    m, _ = lane
+    sql = m._FILL_SRC_SQL
+    assert sql.count("t.source NOT ILIKE 'yfinance%'") == 3 == sql.count("FROM ticker_prices t")

@@ -47,6 +47,7 @@ _DECISIONS_SQL = """
         AND NOT EXISTS (SELECT 1 FROM decision_outcomes dout WHERE dout.symbol = fs.symbol AND dout.created_at > fs.updated_at - INTERVAL '1 day')
     """
 
+#: yfinance-sourced closes (yfinance, yfinance_eod) are never used: operator rule, Finviz/broker/DB closes only.
 #: One row per outcome record, with the close nearest +1d/+7d/+30d (within +-3 days, matching the old per-row
 #: lookups) and the "fill" flags: a column is written only when it is still NULL and a close was found.
 _FILL_SRC_SQL = """
@@ -61,14 +62,17 @@ _FILL_SRC_SQL = """
             SELECT
               (SELECT t.close_price FROM ticker_prices t
                 WHERE t.symbol = o.symbol
+                  AND t.source NOT ILIKE 'yfinance%'
                   AND t.price_date BETWEEN o.created_at::date + 1 - 3 AND o.created_at::date + 1 + 3
                 ORDER BY ABS(t.price_date - (o.created_at::date + 1)) LIMIT 1) AS p1,
               (SELECT t.close_price FROM ticker_prices t
                 WHERE t.symbol = o.symbol
+                  AND t.source NOT ILIKE 'yfinance%'
                   AND t.price_date BETWEEN o.created_at::date + 7 - 3 AND o.created_at::date + 7 + 3
                 ORDER BY ABS(t.price_date - (o.created_at::date + 7)) LIMIT 1) AS p7,
               (SELECT t.close_price FROM ticker_prices t
                 WHERE t.symbol = o.symbol
+                  AND t.source NOT ILIKE 'yfinance%'
                   AND t.price_date BETWEEN o.created_at::date + 30 - 3 AND o.created_at::date + 30 + 3
                 ORDER BY ABS(t.price_date - (o.created_at::date + 30)) LIMIT 1) AS p30
         ) p
