@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "symbol_match_20261107",
+  "files": [
+    "tests/test_symbol_match_20261107.py"
+  ],
+  "anchor": "SYMBOL_MATCH_20261107",
+  "comment": [
+    "ANCHOR: SYMBOL_MATCH_20261107 — the one shared exact-symbol matcher (RE-6, LQ-20261107-191): a ticker is a case-sensitive whole word or cashtag, never inside T-Mobile/S&P/BRK.BX or after a foreign exchange prefix; word and single-letter tickers need a cashtag or the company name; a security is a CONFIRMED/CANDIDATE registry entity or a caller-vouched instrument, never mere registry membership; an empty registry raises."
+  ]
+}
