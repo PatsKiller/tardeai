@@ -16,6 +16,8 @@ recovered >= close pct). single_name_shock is configured but not opened by this 
 
 ``--dry-run`` (default) reads the DB read-only and prints what it would write; nothing is written.
 ``--apply`` upserts episodes and candidates and writes a LaneRunReceipt v2.
+The MRE snapshot is read from lib.lane_last_receipt.runtime_dir() (the same state root as the receipt);
+``TRADEAI_ENV_FILE`` overrides the .env used for DB credentials (default <repo>/.env).
 """
 from __future__ import annotations
 
@@ -198,10 +200,6 @@ def advance_state(ep: dict, cands: list[dict], triggers: Mapping[str, Any], poli
 
 
 # ------------------------------------------------------------------------------------------------ IO
-def state_root() -> Path:
-    return Path(os.environ.get("TRADEAI_STATE_ROOT") or os.environ.get("PROJECT_ROOT") or ROOT)
-
-
 def load_mre(path: Path) -> dict:
     try:
         return json.loads(path.read_text())
@@ -236,7 +234,7 @@ def run(args: argparse.Namespace) -> int:
     started = lr.now_iso()
     now = datetime.fromisoformat(args.now) if args.now else datetime.now(timezone.utc)
     policy = rank.load_policy(args.policy)
-    mre = load_mre(Path(args.mre) if args.mre else state_root() / MRE_REL)
+    mre = load_mre(Path(args.mre) if args.mre else lr.runtime_dir() / Path(MRE_REL).name)
     conn = connect(read_only=not args.apply)
     try:
         last_session = rank.last_completed_session(now, policy["data"].get("close_time_et", "16:00"))
