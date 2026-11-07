@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "supervisor_breach_dry_run_dispatch_20261107",
+  "files": [
+    "tests/test_supervisor_breach_dry_run_dispatch_20261107.py"
+  ],
+  "comment": [
+    "supervisor_breach_detector raised NO_OUTPUT for every lane the n8n dispatcher only ever runs in a dry mode",
+    "(LQ-20261107-297): 182 OPEN rows over 11 days on 17 lanes, one per lane per day, and n8n_self_heal could never",
+    "close them because no later run can be live. The lane's declared output_signal is unwritable by design there",
+    "(prospectus_window.py returns before write_receipt unless --apply). The exemption is scheduler.kind == 'n8n'",
+    "only: investment-costs is cron-scheduled with a stale dispatch.mode dry_run and still runs live, so it must keep",
+    "paging. The 18 exempt lanes are named on the run summary (dry_run_dispatch) so 'not breaching' never reads as",
+    "'producing'. Hermetic: pure detect() calls plus one main() dry run over a tmp code root and state root."
+  ]
+}

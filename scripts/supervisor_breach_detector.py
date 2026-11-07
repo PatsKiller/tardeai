@@ -43,6 +43,7 @@ import hashlib
 import json
 import os
 import sys
+from collections import Counter
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -71,6 +72,11 @@ KINDS = (
 #: W1-9 monitor fold (2026-10-11): kinds that are DETECT + RECORD only. They never reach the L1/L2 self-heal or
 #: the L4/L5 ladder (not even its shadow receipts); the fan-in reads them from the ledger like any other row.
 RECORD_ONLY_KINDS = ("STALE_OUTPUT", "INPUT_STARVATION")
+#: Dispatcher modes in which n8n runs a lane's argv WITHOUT its live flag (config/lane_registry.json
+#: ``lane.dispatch.mode``). A lane the dispatcher only ever runs in one of these cannot write the output its
+#: ``output_signal`` declares — ``prospectus_window.py`` returns before ``write_receipt`` unless ``--apply`` is
+#: passed — so an absent or old signal there is a promotion state, not a lane-health breach (LQ-20261107-297).
+DRY_RUN_DISPATCH_MODES = ("dry_run", "dry-run", "dryrun", "preflight", "rehearsal", "plan", "shadow")
 #: The slow checks (freshness contracts run ~30 SELECT max() queries; input starvation folds ~210 MB of CIO
 #: JSONL) are evaluated at most once per this many seconds — today's monitors run every 30-40 min — not on
 #: every 2-minute tick. The last evaluation time is kept in SLOW_CHECKS_STATE (written only under --write).
@@ -177,12 +183,39 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
     return now - _dt.timedelta(seconds=limit_s), f"cadence:{cad_h}h×3"
 
 
+def dispatch_never_live(lane: dict) -> str | None:
+    """The lane's dispatch mode when its only scheduled execution path runs it dry, else None.
+
+    Only ``scheduler.kind == "n8n"`` qualifies: for those lanes the dispatcher IS the scheduler and
+    ``dispatch.mode`` is the argv it passes. For a cron or systemd lane that field is not the execution path
+    at all — ``investment-costs`` is cron-scheduled with ``dispatch.mode: dry_run`` and its cron line runs
+    live every weekday, so trusting the field there would silence a real NO_OUTPUT.
+    """
+    if str((lane.get("scheduler") or {}).get("kind") or "").strip().lower() != "n8n":
+        return None
+    mode = str((lane.get("dispatch") or {}).get("mode") or "").strip().lower()
+    return mode if mode in DRY_RUN_DISPATCH_MODES else None
+
+
 def detect(
-    *, lanes: list[dict], sla_by_lane: dict[str, dict], heartbeats: dict[str, dict], observe, now: _dt.datetime
+    *,
+    lanes: list[dict],
+    sla_by_lane: dict[str, dict],
+    heartbeats: dict[str, dict],
+    observe,
+    now: _dt.datetime,
+    diagnostics: dict | None = None,
 ) -> list[dict]:
-    """Pure: returns Breach@v1 rows. ``observe(sig)`` returns {last_output_at, readable}."""
+    """Pure: returns Breach@v1 rows. ``observe(sig)`` returns {last_output_at, readable}.
+
+    ``diagnostics`` (optional, filled in place) collects ``dry_run_dispatch``: one entry per lane whose only
+    scheduler runs it in a dry mode, with the mode and what its signal currently reads. Those lanes raise no
+    NO_OUTPUT row (they cannot write the signal by design); the caller prints the count on the run summary.
+    """
     day = now.strftime("%Y-%m-%d")
     out: list[dict] = []
+    diag = diagnostics if diagnostics is not None else {}
+    dry_diag: dict[str, dict] = diag.setdefault("dry_run_dispatch", {})
 
     def add(lane, kind, evidence, level=1):
         out.append(
@@ -241,6 +274,21 @@ def detect(
                 )
         sig = lane.get("output_signal") or {}
         if sig.get("kind") in (None, "none"):
+            continue
+        # LQ-20261107-297: the n8n dispatcher only ever runs this lane in a dry mode, so the output its signal
+        # declares cannot be written (the dry argv returns before any receipt). NO_OUTPUT would page the
+        # operator once per lane per day for a promotion state, and n8n_self_heal could never close it — no
+        # later run can ever be live. Record it on the run summary instead; making it live is a config change
+        # (lane_registry dispatch.mode, the allowlist live_arg) and is reported separately.
+        dry_mode = dispatch_never_live(lane)
+        if dry_mode:
+            dry_diag[lid] = {
+                "dispatch_mode": dry_mode,
+                "signal": sig,
+                "observed": {
+                    k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in (observe(sig) or {}).items()
+                },
+            }
             continue
         max_run = float(sla.get("max_run_s") or 900)
         deadline, basis = _expected_since(lane, now, max_run)
@@ -786,7 +834,15 @@ def main() -> int:
         if state_root
         else (lambda sig: lane_registry.observe_signal(sig, db_query=db_query))
     )
-    rows = detect(lanes=reg.get("lanes", []), sla_by_lane=sla_by_lane, heartbeats=heartbeats, observe=observe, now=now)
+    diagnostics: dict = {}
+    rows = detect(
+        lanes=reg.get("lanes", []),
+        sla_by_lane=sla_by_lane,
+        heartbeats=heartbeats,
+        observe=observe,
+        now=now,
+        diagnostics=diagnostics,
+    )
     # W1-9 monitor fold: the slow checks, throttled (see SLOW_CHECK_EVERY_S). A failed slow check is reported on
     # the summary and never stops the lane checks above.
     due, slow_state = _slow_checks_due(runtime_dir, now, a.slow_checks)
@@ -822,6 +878,10 @@ def main() -> int:
     by_kind: dict[str, int] = {}
     for r in rows:
         by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
+    # Lanes the dispatcher only runs dry: no NO_OUTPUT row by design, but visible here so "not breaching"
+    # never reads as "producing". Promotion is a config change and is reported separately.
+    dry_lanes = diagnostics.get("dry_run_dispatch") or {}
+    dry_by_mode = dict(Counter(str(d.get("dispatch_mode")) for d in dry_lanes.values()))
     summary = {
         "schema": "BreachDetectorRun@v1",
         "as_of": now.isoformat(),
@@ -830,6 +890,16 @@ def main() -> int:
         "heartbeats": len(heartbeats),
         "breaches": len(rows),
         "by_kind": by_kind,
+        "dry_run_dispatch": {
+            "lanes": len(dry_lanes),
+            "by_mode": dict(sorted(dry_by_mode.items())),
+            "signal_reads": {k: v.get("observed") for k, v in sorted(dry_lanes.items())},
+            "note": (
+                "dispatch.mode is a dry mode on the lane's only (n8n) scheduler: the declared output signal "
+                "cannot be written, so no NO_OUTPUT row is raised (LQ-20261107-297). Promotion = "
+                "dispatch.mode live + the allowlist live_arg."
+            ),
+        },
         "ladder": "detect+record only (L1–L5 not executed in Wave 1)",
         "slow_checks": slow,
         "authority": "READ_ONLY_ADVISORY",
