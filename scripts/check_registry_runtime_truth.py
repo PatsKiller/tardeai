@@ -962,14 +962,18 @@ def build_report(
     timers: Optional[dict[str, str]] = None
     if skip_systemd:
         report["sources"]["systemd"] = {"status": SOURCE_SKIPPED, "note": "--no-systemd"}
-        report["sources"]["systemd_timers"] = {"status": SOURCE_SKIPPED, "note": "--no-systemd"}
+        if twins:
+            # Named only when a row actually declares a twin: a skipped source that had nothing to ask about would
+            # put a phantom gap in the receipt's skipped_reasons.
+            report["sources"]["systemd_timers"] = {"status": SOURCE_SKIPPED, "note": "--no-systemd"}
     else:
         # Two questions, two readers: the declared host twins (a unit named in scheduler.host_twin_units) and the
         # units the kind-systemd rows themselves declare. Keeping them apart is deliberate — the first rule asks
         # "is a second scheduler running this lane", the second "is the declared one installed and running".
-        st, states, note = read_systemd_states(twins, systemd_runner)
-        report["sources"]["systemd_timers"] = {"status": st, "note": note, "units": dict(states)}
-        timers = states if st == SOURCE_OK else None
+        if twins:
+            st, states, note = read_systemd_states(twins, systemd_runner)
+            report["sources"]["systemd_timers"] = {"status": st, "note": note, "units": dict(states)}
+            timers = states if st == SOURCE_OK else None
         if declared_units:
             st2, systemd_units, note2 = read_systemd_units(declared_units, systemd_runner)
             report["sources"]["systemd"] = {"status": st2, "note": note2, "units": len(systemd_units),
