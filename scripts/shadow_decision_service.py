@@ -198,12 +198,17 @@ def gather_facts(symbol: str, conn) -> dict:
         bars = wep._bars(sym, 90)
         if bars and len(bars) >= 50:
             t = wep._tech(bars)
-            facts["atr"] = round(float(t["atr"]), 4)
-            facts["rsi"] = facts.get("rsi") or t.get("rsi")
-            facts["support"] = sorted({round(float(t["swing_low"]), 2)})
-            facts["resistance"] = sorted({round(float(t["swing_high"]), 2)})
-            facts["sma50"] = round(float(t["sma50"]), 4)
-            facts["technicals_source"] = "ohlc_bars"
+            # A non-finite ATR/RSI/SMA50 means the computation failed (a NaN bar, an empty
+            # window), and every downstream gate tests TRUTHINESS — NaN is truthy, so a NaN ATR
+            # passed the "no ATR" gate and built a staged ladder whose prices were all NaN.
+            # 2026-11-01: PARA failed the batch on exactly that. Store None instead, which is
+            # what the gates already understand: no ATR, no levels, DATA_UNAVAILABLE with a reason.
+            facts["atr"] = _finite_round(t.get("atr"), 4)
+            facts["rsi"] = facts.get("rsi") or _finite_round(t.get("rsi"), 1)
+            facts["support"] = _finite_levels(t.get("swing_low"))
+            facts["resistance"] = _finite_levels(t.get("swing_high"))
+            facts["sma50"] = _finite_round(t.get("sma50"), 4)
+            facts["technicals_source"] = "ohlc_bars" if facts["atr"] is not None else None
             facts["bars_used"] = len(bars)
     except Exception as exc:
         facts["technicals_error"] = f"{type(exc).__name__}: {str(exc)[:140]}"
@@ -229,10 +234,10 @@ def assess_data_quality(facts: dict, event: ev.EventState) -> dict:
         if drift > 1.0:
             problems.append(f"enrichment price {enriched} differs from live {live} by {drift:.1f} pct")
             state = "PARTIAL"
-    if not facts.get("atr"):
+    if _finite_round(facts.get("atr"), 4) is None:
         problems.append("no ATR — levels and stops cannot be computed")
         state = "INSUFFICIENT"
-    if not facts.get("support"):
+    if not _any_finite(facts.get("support")):
         problems.append("no support levels — invalidation would be arbitrary")
         state = "INSUFFICIENT" if state != "INSUFFICIENT" else state
     if event.state in (ev.PROVIDER_DOWN,):
@@ -248,7 +253,7 @@ def assess_data_quality(facts: dict, event: ev.EventState) -> dict:
     # derive the overall state deterministically as the worst of them.
     price_dim = ("STALE" if (drift is not None and drift > 3.0)
                  else "PARTIAL" if (drift is not None and drift > 1.0) else "FRESH")
-    tech_dim = "FRESH" if facts.get("atr") else "STALE"
+    tech_dim = "FRESH" if _finite_round(facts.get("atr"), 4) is not None else "STALE"
     try:
         import fundamentals_freshness as ff
         fq = ff.classify(facts.get("fundamentals") or {},
@@ -304,8 +309,40 @@ def _pg_json(obj) -> str:
     return json.dumps(_json_finite(obj), default=str, allow_nan=False)
 
 
+def _finite_round(value, ndigits: int):
+    """``round(value, ndigits)`` for a finite number, else None.
+
+    The gate above every consumer is truthiness, and NaN is truthy: a NaN ATR reads as "we have
+    volatility" to ``if not facts.get("atr")``. Anything that is not a finite number is stored as
+    None so the existing gates state the absence instead of building levels out of NaN.
+    """
+    import math
+    if isinstance(value, bool):
+        return None
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(f, ndigits) if math.isfinite(f) else None
+
+
+def _finite_levels(value) -> list:
+    """One rounded price level as a list, or [] when it is missing or not finite."""
+    level = _finite_round(value, 2)
+    return [] if level is None else [level]
+
+
+def _any_finite(values) -> bool:
+    """True when at least one entry of a level list is a finite number.
+
+    A list is not evidence: ``[nan]`` is truthy, so ``if not facts["support"]`` passed on a
+    support level that does not exist. Every gate on a level list asks this instead.
+    """
+    return any(_finite_round(v, 2) is not None for v in (values or []))
+
+
 def build_long_term(facts, event, ownership, thesis_state, timing) -> dict:
-    if not facts.get("atr") or not facts.get("support"):
+    if _finite_round(facts.get("atr"), 4) is None or not _any_finite(facts.get("support")):
         return {"family": "LONG_TERM", "state": DATA_UNAVAILABLE,
                 "structures": [], "rejection_reasons": [
                     "insufficient price history to compute ATR or support — a staged "
@@ -524,7 +561,7 @@ def build_swing(facts, conn) -> dict:
     # built by assess_breakout_blueprint() under strict eligibility; distant
     # levels appear only as non-actionable watch_scenarios.
     price = facts.get("live_price") or facts.get("enriched_price")
-    atr = facts.get("atr")
+    atr = _finite_round(facts.get("atr"), 4)   # a NaN ATR would divide into a NaN distance
     res_list = facts.get("resistance") or []
     resistance = min(res_list) if res_list else None
     zlo_f = float(zlo) if zlo else None
@@ -580,7 +617,8 @@ def build_swing(facts, conn) -> dict:
 
 def build_bearish(facts, event, ownership) -> dict:
     price = facts.get("live_price") or facts.get("enriched_price")
-    if not price or not facts.get("atr") or not facts.get("resistance"):
+    if (not price or _finite_round(facts.get("atr"), 4) is None
+            or not _any_finite(facts.get("resistance"))):
         return {"family": "BEARISH", "state": DATA_UNAVAILABLE, "structures": [],
                 "rejection_reasons": ["insufficient levels to define a short entry or buy-stop"]}
     out = tb.short_stock(
@@ -1234,6 +1272,10 @@ def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operat
     for key, family in fam.items():
         for s in (family.get("structures") or [{"structure": family.get("family"),
                                                 "state": family.get("state")}]):
+            # _pg_json, not json.dumps: one non-finite float anywhere in a structure made
+            # PostgreSQL reject the whole symbol ("invalid input syntax for type json",
+            # 2026-11-01 PARA) and the transaction took the packet down with it. A NaN is
+            # stored as null — a stated absence — never as a silently dropped packet.
             cur.execute("""INSERT INTO decision_blueprints
                             (packet_id, symbol, family, structure, state, mechanics,
                              rejection_reasons, quote_source, event_state, eligibility)
@@ -1241,9 +1283,9 @@ def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operat
                         (packet_id, packet["symbol"], family.get("family", key.upper()),
                          s.get("structure") or key.upper(),
                          s.get("state") or family.get("state"),
-                         json.dumps(s, default=str),
-                         json.dumps(s.get("rejection_reasons")
-                                    or family.get("rejection_reasons") or [], default=str),
+                         _pg_json(s),
+                         _pg_json(s.get("rejection_reasons")
+                                  or family.get("rejection_reasons") or []),
                          (family.get("chain_attempt") or {}).get("provider"),
                          packet["event_state"]["earnings"]["state"],
                          family.get("state")))

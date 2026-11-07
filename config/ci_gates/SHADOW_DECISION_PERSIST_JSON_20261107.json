@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "SHADOW_DECISION_PERSIST_JSON_20261107",
+  "files": [
+    "tests/test_shadow_decision_persist_json_20261107.py"
+  ],
+  "anchor": "SHADOW_DECISION_PERSIST_JSON_20261107",
+  "comment": [
+    "ANCHOR: SHADOW_DECISION_PERSIST_JSON_20261107 — the weekly shadow batch (lane",
+    "shadow-batch-generator-at-15-10) reported failed = 1 of 86 on 2026-11-01, and the one failure was",
+    "PARA: 'invalid input syntax for type json' on the decision_blueprints insert. One yfinance bar of",
+    "ninety had NaN high/low/close; _tech summed over it, so ATR/RSI/SMA50 were NaN; NaN is TRUTHY, so",
+    "the 'no ATR' / 'no support' gates passed and a staged ladder priced in NaN was built; json.dumps",
+    "wrote the bare token NaN and PostgreSQL rejected the row, taking the whole packet with it.",
+    "Three boundaries must hold: a non-finite bar is not a bar, a gate on a level asks for a FINITE",
+    "number, and every jsonb write goes through _pg_json. Plus: a ladder whose levels are not positive",
+    "is refused rather than published. Hermetic: synthetic fixtures, no DB, no network, no broker.",
+    "Pre-existing suite failures in test_shadow_batch/test_stage_c_job_runner are the hermetic DSN",
+    "guard refusing live connections and are identical on wt/live-integration-20261106."
+  ]
+}
