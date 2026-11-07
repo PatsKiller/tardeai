@@ -33,10 +33,21 @@ from scripts.lib.cio_instrument_record import (
     content_hash,
     normalize_writer_author,
 )
+from scripts.lib.holding_intel_freshness import (
+    STALE_HOURS,
+    age_hours,
+    classify_freshness,
+)
 
 SCHEMA = "CashSleeveLetter@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI_BEHAVIOR = 0
+
+# 2026-11-07 data-truth audit (defect 7): the SPCX "Trim" narrative was dated 2026-10-07 and
+# its evidence 2026-08-29, but the desk served it as the current view. A narrative older than
+# the same 7-day boundary the holding drawers already use (holding_intel_freshness.STALE_HOURS)
+# is not current, and a HELD:<SYM> record for a symbol nobody holds any more is a leftover.
+NARRATIVE_MAX_AGE_HOURS = STALE_HOURS
 
 CASH_OPTION_IDS = ("hold_cash", "stage_into_X", "wait_until_month")
 
@@ -244,22 +255,50 @@ def narrative_for(
     return None
 
 
-def record_narratives(store: Any, *, kinds: tuple[str, ...] = ("HELD", "EXIT", "WATCH", "SECTOR")) -> dict[str, Any]:
-    """{subject_key: narrative} for every record that carries prose."""
+def record_narratives(store: Any, *, kinds: tuple[str, ...] = ("HELD", "EXIT", "WATCH", "SECTOR"),
+                      held_symbols: Optional[set[str]] = None,
+                      now: Optional[datetime] = None) -> dict[str, Any]:
+    """{subject_key: narrative} for every record that carries prose.
+
+    Each row carries ``age_days`` (of its ``as_of``) and ``freshness``; a caller can render
+    or withhold it by age instead of presenting an old record as the current view. With
+    ``held_symbols``, a ``HELD:<SYM>`` record whose symbol is no longer held is dropped —
+    it is a leftover, not a view of the book. The drop is counted in
+    :func:`record_narratives_report` so it is never silent.
+    """
+    return record_narratives_report(
+        store, kinds=kinds, held_symbols=held_symbols, now=now)["narratives"]
+
+
+def record_narratives_report(store: Any, *, kinds: tuple[str, ...] = ("HELD", "EXIT", "WATCH", "SECTOR"),
+                             held_symbols: Optional[set[str]] = None,
+                             now: Optional[datetime] = None) -> dict[str, Any]:
+    """{narratives, phantom_held, expired, counts} — the rows plus what was withheld."""
     out: dict[str, Any] = {}
+    phantom_held: list[str] = []
+    expired: list[str] = []
     try:
         rows = store.all()
     except Exception:                                            # noqa: BLE001
-        return out
+        return {"narratives": out, "phantom_held": [], "expired": [],
+                "counts": {"narratives": 0, "expired": 0, "phantom_held": 0}}
+    held = {str(s).upper() for s in held_symbols} if held_symbols is not None else None
     for rec in rows:
-        if str(rec.get("kind") or "").upper() not in kinds:
+        kind = str(rec.get("kind") or "").upper()
+        if kind not in kinds:
             continue
         nar = rec.get("cc_narrative") or {}
         if not str(nar.get("what") or "").strip():
             continue
         key = str(rec.get("subject_key"))
+        if kind == "HELD" and held is not None:
+            sym = key.split(":", 1)[1].upper() if ":" in key else ""
+            if sym and sym not in held:
+                phantom_held.append(key)
+                continue
         stamps = normalize_writer_author(
             writer=nar.get("writer"), author=nar.get("author"))
+        age = age_hours(nar.get("as_of"), now=now)
         row = {
             "subject_key": key,
             "kind": rec.get("kind"),
@@ -271,12 +310,22 @@ def record_narratives(store: Any, *, kinds: tuple[str, ...] = ("HELD", "EXIT", "
             "writer": stamps["writer"],
             "author": stamps["author"],
             "as_of": nar.get("as_of"),
+            "age_days": None if age is None else round(age / 24.0, 1),
+            "freshness": classify_freshness(nar.get("as_of"), now=now),
             "next_eligible_at": rec.get("next_eligible_at"),
             "next_research_question": rec.get("next_research_question"),
             "notify_priority": rec.get("notify_priority"),
             "from_record": True,
         }
+        if row["freshness"] == "EXPIRED":
+            expired.append(key)
         if stamps.get("copy_step") or nar.get("copy_step"):
             row["copy_step"] = stamps.get("copy_step") or nar.get("copy_step")
         out[key] = row
-    return out
+    return {
+        "narratives": out,
+        "phantom_held": sorted(phantom_held),
+        "expired": sorted(expired),
+        "counts": {"narratives": len(out), "expired": len(expired),
+                   "phantom_held": len(phantom_held)},
+    }
