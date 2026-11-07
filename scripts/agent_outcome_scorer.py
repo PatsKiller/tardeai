@@ -534,7 +534,7 @@ def run_scoring() -> dict:
 
     conn.close()
     return {"unscored_pairs": len(scored), "candidate_rows": match["candidate_rows"],
-            "held_back": match["held_back"], "saved": saved, "save_failed": stats.get("save_failed", 0),
+            "held_back": match["held_back"], "saved": saved, "save_failed": stats["save_failed"],
             "rule_write_failed": stats.get("rule_write_failed", 0), "source_performance_ok": source_ok}
 
 
