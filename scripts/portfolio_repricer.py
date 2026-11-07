@@ -1706,11 +1706,15 @@ def main(state_dirs, dry_run: bool = False) -> None:
               "ticker_prices, watchlist membership, run receipt")
         try:
             from scripts.lib import lane_output
+            # reprice_portfolio sets stats["holdings"] before returning, so this is a real count and not a
+            # missing-value default: a KeyError here would be a defect, and the guard below turns it into a
+            # logged warning rather than a silent 0.
+            _attempted = int(_stats["holdings"])
             lane_output.emit(
                 LANE_ID, "dry_run",
                 lane_output.output_block(
-                    produced=0, attempted=int(_stats.get("holdings") or 0),
-                    skipped={"dry_run": int(_stats.get("holdings") or 0)},
+                    produced=0, attempted=_attempted,
+                    skipped={"dry_run": _attempted},
                     empty_reason="dry_run", unit="holdings"),
                 started_at=_started_at,
             )

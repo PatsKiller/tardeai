@@ -66,14 +66,13 @@ def _document() -> dict:
 
 
 def _write_book(state: Path) -> Path:
+    from scripts.lib.atomic_json_store import atomic_write_json
     hp = state / "holdings.json"
-    hp.write_text(json.dumps(_document(), indent=2), encoding="utf-8")
+    atomic_write_json(hp, _document())
     # A stale cache entry so the dry run has a real delta to compute (and still must not write it).
-    (state / "finviz_quote_cache.json").write_text(
-        json.dumps({"ABC": {"symbol": "ABC", "price": 90.0, "change_pct": 0.0, "volume": 100},
-                    "_meta": {"last_updated": "2026-11-06 15:00:00 ET", "symbols_cached": 1}},
-                   indent=2),
-        encoding="utf-8")
+    atomic_write_json(state / "finviz_quote_cache.json",
+                      {"ABC": {"symbol": "ABC", "price": 90.0, "change_pct": 0.0, "volume": 100},
+                       "_meta": {"last_updated": "2026-11-06 15:00:00 ET", "symbols_cached": 1}})
     return hp
 
 

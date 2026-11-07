@@ -1,0 +1,17 @@
+{
+ "schema": "CiGate@v1",
+ "name": "PORTFOLIO_REPRICER_DRY_RUN_20261107",
+ "files": [
+  "tests/test_portfolio_repricer_dry_run_20261107.py"
+ ],
+ "anchor": "REPRICER_DRY_RUN_20261107",
+ "comment": [
+  "ANCHOR: REPRICER_DRY_RUN_20261107 — 2026-11-07 LQ-20261107-01, portfolio-repricer's n8n cutover dry run.",
+  "Pins that `scripts/portfolio_repricer.py --dry-run` is write-free: byte+mtime snapshot unchanged, raising",
+  "spies on the holdings write lock, atomic_write_bytes, the ticker snapshot, ticker_prices sync, the",
+  "watchlist-membership sync and the lane receipt; one LaneOutput@v1 line (mode dry_run, produced 0). Includes",
+  "a fail-on-old control (a real pass with the same fixture must write, or the no-change assertions are",
+  "vacuous) and the data-broker-record regression found by the first live dry run (KeyError('analyst') on a",
+  "quote record that omits the optional Finviz fields). Hermetic: tmp state root, stubbed providers, no DB."
+ ]
+}
