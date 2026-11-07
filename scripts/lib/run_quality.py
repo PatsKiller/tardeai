@@ -366,25 +366,38 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     receipt_skip = same_receipt and receipt_status(receipt) == "skipped"
     if graded["result"] in {"skipped_lock", "skipped"} or receipt_skip:
         why = skip_reason(receipt if (same_receipt or use_receipt) else None, run if not use_receipt else None)
-        reasons.append(f"Last live slot {_ago(when, now)} was skipped, so it did no work"
-                       + (f": {why}" if why else " (the record does not say why)"))
-        if receipt and r_mode == "live" and r_start and run_start and graded["source"] != "lane receipt" \
-                and receipt_status(receipt) == "ok" and r_finish and r_finish >= run_start - SAME_RUN:
-            count, key = item_count(receipt)
-            reasons.append(f"Its own receipt shows another scheduler's live run started {_ago(r_start, now)} and finished ok"
-                           + (f" ({key} = {count:g})" if count is not None else ""))
-        consecutive = 0
-        for r in reversed(live_ledger):
-            if r.get("state") != "RUN_SKIPPED_LOCK":
-                break
-            consecutive += 1
-        if consecutive >= 2:
-            reasons.append(f"The last {consecutive} n8n live slots were all skipped")
-        if stage == "cutover" or (scheduler.get("kind") == "n8n" and dispatch.get("mode") == "live"):
-            design.append("n8n is the scheduler of record but its last live slot did nothing")
-        checks["ran_live"] = _check("fail", "skipped", why)
-        checks["run_result"] = _check("fail", graded["result"])
-        return result("NOT_LIVE", "skipped", graded=graded)
+        # A lock-skip by the n8n arm is NOT lost work when the lane's own receipt proves the cron twin ran the same
+        # slot live and finished ok: the reviewed canary_live_done health contract names exactly this case
+        # (RUN_SKIPPED_LOCK while the cron twin holds the shared flock). Grade the twin's run, and say so in plain
+        # words. Without that proof the slot did nothing and NOT_LIVE/skipped stands.
+        twin = (graded["result"] == "skipped_lock" and same_receipt and not use_receipt
+                and scheduler.get("kind") not in {"n8n", None} and receipt_status(receipt) == "ok"
+                and r_start is not None and r_finish is not None)
+        if not twin:
+            reasons.append(f"Last live slot {_ago(when, now)} was skipped, so it did no work"
+                           + (f": {why}" if why else " (the record does not say why)"))
+            consecutive = 0
+            for r in reversed(live_ledger):
+                if r.get("state") != "RUN_SKIPPED_LOCK":
+                    break
+                consecutive += 1
+            if consecutive >= 2:
+                reasons.append(f"The last {consecutive} n8n live slots were all skipped")
+            if stage == "cutover" or (scheduler.get("kind") == "n8n" and dispatch.get("mode") == "live"):
+                design.append("n8n is the scheduler of record but its last live slot did nothing")
+            checks["ran_live"] = _check("fail", "skipped", why)
+            checks["run_result"] = _check("fail", graded["result"])
+            return result("NOT_LIVE", "skipped", graded=graded)
+        graded = {"source": "lane receipt", "started_at": _iso(r_start), "finished_at": _iso(r_finish),
+                  "mode": "live", "result": "succeeded", "run_id": receipt.get("run_id")}
+        run, led, use_receipt, same_receipt = None, None, True, True
+        when, run_start = r_finish, r_when
+        count, key = item_count(receipt)
+        reasons.append(f"Its n8n slot {_ago(when, now)} was skipped because the {scheduler.get('kind')} twin held the "
+                       f"shared lock; the twin ran live and finished ok"
+                       + (f" (produced {count:g} by {key})" if count is not None else ""))
+        checks["ran_live"] = _check("pass", "lane receipt (twin run)")
+        checks["run_result"] = _check("pass", "succeeded")
     if same_receipt and r_mode == "shadow":
         reasons.append(f"Last run {_ago(when, now)} ran in shadow mode; it wrote nothing live")
         checks["ran_live"] = _check("fail", "shadow")
@@ -465,11 +478,14 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
         duration = round((r_finish - r_start).total_seconds(), 3)
     durations = [r["duration_s"] for r in live_ledger if r is not led and r.get("state") == "RUN_DONE"
                  and _num(r.get("duration_s")) is not None]
+    # Only a live run's duration is comparable to another live run's: a dry run writes nothing, so its 0.1 s says
+    # nothing about how long the real job takes, and a median built from them makes every live run look slow.
     durations += [h["duration_s"] for h in evidence.get("history") or [] if _num(h.get("duration_s")) is not None
+                  and h.get("mode", "live") == "live"
                   and (_at(h.get("run_started_at")) or now) < (run_start or now) - SAME_RUN]
     if not durations:
         durations = [r["duration_s"] for r in (row.get("runs") or [])[1:] if r.get("result") == "succeeded"
-                     and _num(r.get("duration_s")) is not None]
+                     and r.get("mode", "live") == "live" and _num(r.get("duration_s")) is not None]
     dmed = _median(durations)
     limit = _num(((contract.get("baseline") or {}).get("duration_degraded_above_s")))
     dur_flag = None

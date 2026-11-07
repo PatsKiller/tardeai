@@ -112,25 +112,50 @@ def test_not_live_skipped_has_reason():
 
 # ── the three operator false positives (synthetic shapes) ─────────────────────────────────────────────────────────
 
-def test_false_positive_classifier_skipped_7_days_ago_with_cron_twin():
-    """n8n slot skipped on flock_held 7 days ago; the cron twin held the lock and ran. Must not read OK."""
+def test_cron_twin_lock_skip_is_graded_on_the_twins_live_run():
+    """n8n slot skipped on flock_held 7 days ago because the cron twin held the shared lock and ran the slot live.
+
+    The reviewed canary_live_done contract names exactly this case as healthy, and the lane's own receipt proves the
+    twin finished ok and produced 3435: the slot DID its work, so the screen must not say it did nothing."""
     slot = 7 * 24 * 60
     ln = lane("synthetic-classifier", sched="cron", stage="canary", kind="none")
     r = row(run(slot, result="skipped_lock", run_id="s1", exit_code=75, reason="flock_held"), lane_id="synthetic-classifier")
     rc = receipt(slot + 1, dur=900, produced_count=3435)
     q = g(r, ln, ev(receipt=rc, ledger=[led(slot, run_id="s1", state="RUN_SKIPPED_LOCK", reason="flock_held")]))
-    assert (q["grade"], q["sub"]) == ("NOT_LIVE", "skipped"), q
-    assert "7 d ago" in q["reasons"][0] and "another copy of the job still held its lock" in q["reasons"][0]
-    assert any("produced_count = 3435" in x for x in q["reasons"])
+    assert q["grade"] == "GOOD", q
+    assert "7 d ago" in q["reasons"][0] and "cron twin held the shared lock" in q["reasons"][0]
+    assert "produced 3435 by produced_count" in q["reasons"][0]
+    assert q["checks"]["ran_live"]["value"] == "lane receipt (twin run)"
+    assert q["graded_run"]["source"] == "lane receipt" and q["graded_run"]["result"] == "succeeded"
+    # the two arms still share only a lock: that fragility stays visible as a design issue
     assert q["as_designed"] is False and any("both cron and n8n" in d for d in q["design_issues"])
+
+
+def test_lock_skip_without_a_proving_receipt_still_did_no_work():
+    slot = 7 * 24 * 60
+    ln = lane("synthetic-classifier", sched="cron", stage="canary", kind="none")
+    r = row(run(slot, result="skipped_lock", run_id="s1", exit_code=75, reason="flock_held"), lane_id="synthetic-classifier")
+    q = g(r, ln, ev(ledger=[led(slot, run_id="s1", state="RUN_SKIPPED_LOCK", reason="flock_held")]))
+    assert (q["grade"], q["sub"]) == ("NOT_LIVE", "skipped"), q
+    assert "another copy of the job still held its lock" in q["reasons"][0]
+
+
+def test_lock_skip_with_a_receipt_from_another_slot_is_not_the_twin_run():
+    """A receipt 40 min from the skipped slot is a different run: it proves nothing about this slot."""
+    slot = 60
+    ln = lane("synthetic-classifier", sched="cron", stage="canary", kind="none")
+    r = row(run(slot, result="skipped_lock", run_id="s1", exit_code=75, reason="flock_held"), lane_id="synthetic-classifier")
+    q = g(r, ln, ev(receipt=receipt(100, dur=60, produced_count=3435),
+                    ledger=[led(slot, run_id="s1", state="RUN_SKIPPED_LOCK", reason="flock_held")]))
+    assert (q["grade"], q["sub"]) == ("NOT_LIVE", "skipped"), q
 
 
 def test_false_positive_scalp_every_n8n_slot_skipped():
     ln = lane("synthetic-scalp", sched="cron", stage="canary", kind="none")
     ledger = [led(m, run_id=f"s{m}", state="RUN_SKIPPED_LOCK", reason="flock_held") for m in (90, 60, 30)]
     r = row(run(30, result="skipped_lock", run_id="s30", exit_code=75, reason="flock_held"), lane_id="synthetic-scalp")
-    q = g(r, ln, ev(receipt=receipt(31, dur=120, universe=144), ledger=ledger,
-                    contract={"stage": "shadow"}))
+    # no receipt at all: every skipped slot really did nothing
+    q = g(r, ln, ev(ledger=ledger, contract={"stage": "shadow"}))
     assert (q["grade"], q["sub"]) == ("NOT_LIVE", "skipped")
     assert any("last 3 n8n live slots were all skipped" in x for x in q["reasons"])
     assert any("registry stage is canary but its n8n health contract says shadow" in d for d in q["design_issues"])
@@ -191,6 +216,28 @@ def test_degraded_duration_far_outside_history():
     q = g(row(run(dur=500)), lane(), ev(receipt=receipt(dur=500, produced_count=5), ledger=ledger))
     assert q["grade"] == "DEGRADED"
     assert "far above its median 10 s" in q["checks"]["duration_vs_history"]["detail"]
+
+
+def test_duration_median_ignores_dry_run_samples():
+    """A live 500 s run next to a history of 0.1 s dry runs is not slow: a dry run writes nothing, so its duration
+    measures the flag parsing, not the job."""
+    dry = [{"mode": "dry_run", "result": "succeeded", "started_at": z(NOW - timedelta(minutes=15 * (i + 1))),
+            "duration_s": 0.1, "run_id": f"d{i}"} for i in range(6)]
+    r = row(*dry, lane_id="synthetic-movers")
+    q = g(r, lane("synthetic-movers", sched="cron", dispatch="dry_run"),
+          ev(receipt=receipt(30, dur=500, produced_count=139),
+             ledger=[led(15 * (i + 1), run_id=f"d{i}", mode="dry_run", dur=0.1) for i in range(6)]))
+    assert q["grade"] == "GOOD", q
+    assert q["checks"]["duration_vs_history"]["result"] == "unknown"
+
+
+def test_duration_median_ignores_dry_run_history_samples():
+    hist = [{"lane_id": "synthetic-movers", "mode": "dry_run", "duration_s": 0.1,
+             "run_started_at": z(NOW - timedelta(days=d))} for d in range(1, 7)]
+    q = g(row(run(dur=500)), lane(dispatch="dry_run"),
+          ev(receipt=receipt(dur=500, produced_count=139), history=hist))
+    assert q["grade"] == "GOOD", q
+    assert q["checks"]["duration_vs_history"]["result"] == "unknown"
 
 
 def test_degraded_input_freshness_breach():
