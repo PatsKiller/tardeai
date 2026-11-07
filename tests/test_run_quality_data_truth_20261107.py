@@ -94,6 +94,13 @@ def test_a_written_count_is_still_the_runs_output():
     assert out["count"]["value"] == 9 and out["grade"] != "EMPTY"
 
 
+def test_an_unknown_unchanged_count_does_not_discard_the_count():
+    """Missing is not zero: with no ``skipped_unchanged`` the receipt has not proved every item was a re-look."""
+    rec = receipt(produced_count=40, summary={"written": 0})
+    assert Q.item_count(rec) == (40, "produced_count")
+    assert g(rec)["count"]["value"] == 40
+
+
 # ── case 3: a failed step is the run's outcome ──────────────────────────────────────────────────────────────
 MAINTENANCE = {"pipeline": "portfolio-maintenance", "cadence": "daily", "run_ts_utc": "2026-11-06T12:30:09Z",
                "dry_run": False, "overall_status": "degraded",
@@ -124,3 +131,13 @@ def test_a_step_on_a_declared_verdict_exit_is_not_a_failed_step():
                   steps=[{"name": "source_litmus_vs_yahoo", "status": "ok", "rc": 1}])
     assert Q.failed_step(rec) is None
     assert g(rec)["grade"] != "FAILED"
+
+
+def test_a_receipt_that_already_says_failed_keeps_its_own_reason():
+    """The step rule sits after the status rule: a receipt declaring failure keeps the more specific reason
+    (exit code, error, failure streak) instead of being reduced to the first failed step's name."""
+    rec = receipt(status="failed", exit=3, error="the writer raised",
+                  steps=[{"name": "portfolio_daily_report", "status": "FAILED(rc=1)"}])
+    out = g(rec)
+    assert out["grade"] == "FAILED"
+    assert out["reasons"][0].startswith("Last live run"), out["reasons"][0]

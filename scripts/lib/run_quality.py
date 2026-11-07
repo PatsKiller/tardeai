@@ -640,8 +640,10 @@ def grade(row: dict, lane: dict, evidence: dict, *, now: datetime) -> dict:
     # nothing. ``count_key`` moves to summary.written so the count is read for what it is, and to no history.
     if count is not None and count > 0 and count_key != "summary.written" and same_receipt:
         summary = receipt.get("summary") if isinstance(receipt.get("summary"), dict) else {}
-        unchanged = _num(summary.get("skipped_unchanged")) or 0
-        if _num(summary.get("written")) == 0 and unchanged >= count:
+        unchanged = _num(summary.get("skipped_unchanged"))
+        # Unknown is not zero: without the unchanged count the receipt does not prove every item was a re-look,
+        # so the count stands as the receipt stated it.
+        if _num(summary.get("written")) == 0 and unchanged is not None and unchanged >= count:
             count, count_key = 0, "summary.written"
     past = [h for h in evidence.get("history") or [] if h.get("count_key") == count_key and _num(h.get("count")) is not None
             and (_at(h.get("run_started_at")) or now) < (run_start or now) - SAME_RUN]

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "run_quality_data_truth_20261107",
+  "files": [
+    "tests/test_run_quality_data_truth_20261107.py"
+  ],
+  "anchor": "RUN_QUALITY_DATA_TRUTH_20261107",
+  "comment": [
+    "ANCHOR: RUN_QUALITY_DATA_TRUTH_20261107 — the run-quality grader must not read a per-mode execution",
+    "record as a produced item, must not call a run with a FAILED(rc=1) step DEGRADED, and must not count",
+    "items a receipt says it wrote none of (DATA-TRUTH-AUDIT-20261107 §4)."
+  ]
+}
