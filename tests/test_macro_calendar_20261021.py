@@ -666,3 +666,73 @@ def test_lane_closure_reaches_no_sender_broker_order_or_db():
     }, rels
     caps = set().union(*(res.info(m).caps for m in order))
     assert not caps & {"direct_sender", "broker_module", "order_placement", "chokepoint_send"}, caps
+
+
+# ── the receipt's two counters must count the same population (live forensics 2026-11-02..04) ──────────────────
+# Every live run 2026-11-02..04 wrote produced_count 11 (08:00 skip days) beside attempted_count 9 (mapped FRED
+# releases). n8n_output_verdict refuses attempted < produced, so a HEALTHY run read unverifiable/counts_inconsistent,
+# three of those in a row opened the lane's breaker, and the lane has not fired since. The fixture below is the same
+# shape: nine mapped releases, far more skip days.
+
+
+def _contract_expected_output() -> dict:
+    c = json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())
+    return next(x for x in c["contracts"] if x["id"] == LANE)["expected_output"]
+
+
+def test_the_receipt_counts_skip_days_against_the_days_it_examined_not_against_releases(state):
+    assert MCR.main([]) == 0
+    cal = json.loads((state / "data" / "runtime" / "macro_calendar.json").read_text())
+    rec = json.loads((state / RECEIPT).read_text())
+    produced = len(cal["skip_days_0800"])
+    assert produced > len(MCR.RELEASE_MAP), "the fixture must exercise the live shape (more skip days than releases)"
+    assert rec["produced_count"] == produced
+    assert rec["attempted_count"] == len(cal["dates"]) >= produced
+    assert rec["summary"]["candidate_days_0800"] == rec["attempted_count"]
+    assert rec["summary"]["releases_mapped"] == len(MCR.RELEASE_MAP)
+
+
+def _run_under_an_executor(monkeypatch, run_id: str) -> None:
+    """The env the n8n executor sets. It is what turns the mutable _last.json into the immutable v2 attempt receipt,
+    and the attempt receipt is the document the output contract judges."""
+    from scripts.lib import lane_last_receipt as LR
+
+    monkeypatch.setenv(LR.RUN_ID_ENV, run_id)
+    monkeypatch.setenv(LR.RUN_ATTEMPT_ENV, "1")
+    monkeypatch.setenv(LR.RUN_MODE_ENV, "live")
+    monkeypatch.setenv(LR.CODE_SHA_ENV, "0" * 40)
+
+
+def _attempt_doc(state, run_id: str) -> dict:
+    from scripts.lib import lane_last_receipt as LR
+
+    return json.loads(LR.attempt_receipt_path(LANE, run_id, state).read_text())
+
+
+def test_the_contract_marks_the_attempt_receipt_produced_and_the_old_unit_counts_inconsistent(state, monkeypatch):
+    from scripts.lib import n8n_output_verdict as V
+
+    run_id = "d:macro-calendar-refresh:live:t1"
+    _run_under_an_executor(monkeypatch, run_id)
+    assert MCR.main([]) == 0
+    doc = _attempt_doc(state, run_id)
+    assert doc["schema"] == "LaneRunReceipt@v2"
+    rule = _contract_expected_output()
+    assert V.evaluate(rule, doc, run_id=run_id, lane_id=LANE, mode="live")["verdict"] == "produced"
+    # Exactly what the live receipts said: the mapped-release count as the denominator.
+    old = {**doc, "attempted_count": len(MCR.RELEASE_MAP)}
+    assert V.evaluate(rule, old, run_id=run_id, lane_id=LANE, mode="live")["why"] == "counts_inconsistent"
+
+
+def test_a_failed_attempt_receipt_says_why_and_claims_no_attempt_count(state, monkeypatch):
+    from scripts.lib import n8n_output_verdict as V
+
+    run_id = "d:macro-calendar-refresh:live:t2"
+    _run_under_an_executor(monkeypatch, run_id)
+    monkeypatch.setattr(MCR, "urllib_fetch", FakeFred(raw={"/releases": b"<html>Site Maintenance</html>"}))
+    assert MCR.main([]) == 1
+    last = json.loads((state / RECEIPT).read_text())
+    assert last["status"] == "failed" and "attempted_count" not in last
+    assert last["summary"]["releases_mapped"] == len(MCR.RELEASE_MAP)
+    out = V.evaluate(_contract_expected_output(), _attempt_doc(state, run_id), run_id=run_id, lane_id=LANE, mode="live")
+    assert (out["verdict"], out["why"]) == ("empty_violation", "receipt_status_failed")

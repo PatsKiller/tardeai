@@ -472,6 +472,19 @@ def build_calendar(
     }
 
 
+def candidate_windows_0800(cal: dict) -> int:
+    """How many 08:00 windows this calendar actually decided: every covered date that carries an event.
+
+    ``produced_count`` is the subset of those dates whose 08:00 window is skipped, so this count is always >=
+    ``produced_count`` — which is the invariant ``n8n_output_verdict`` enforces between the two receipt fields.
+    It is deliberately **not** the number of mapped FRED releases. On 2026-11-02..04 a healthy run reported
+    ``produced_count`` 11 (skip days) against ``attempted_count`` 9 (mapped releases), the verdict read
+    ``unverifiable`` / ``counts_inconsistent`` on the good run, and three of those in a row opened the lane's
+    breaker. If you add a field here, count the same population as ``produced_count``.
+    """
+    return len(cal.get("dates") or {})
+
+
 def resolve_key(env: Optional[dict] = None) -> str:
     """FRED_API_KEY from the process env only. Returns '' when absent; never logs it.
 
@@ -607,10 +620,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 started_at=started,
                 script="macro_calendar_refresh.py",
                 error=f"RefreshError: {exc.reason}",
-                summary={"failure_kind": exc.reason, "detail": _scrub(str(exc), key)[:300]},
+                summary={
+                    "failure_kind": exc.reason,
+                    "detail": _scrub(str(exc), key)[:300],
+                    "releases_mapped": len(RELEASE_MAP),
+                },
                 output={
+                    # No calendar means no 08:00 window was classified: attempted_count has no honest value, and
+                    # the number of mapped releases is a different unit from produced_count (see
+                    # candidate_windows_0800). The failure itself is carried by status + skipped_reasons.
                     "produced_count": 0,
-                    "attempted_count": len(RELEASE_MAP),
                     "skipped_reasons": {exc.skip_reason: 1},
                 },
             )
@@ -637,6 +656,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     atomic_write_json(target, cal, indent=1)
     n = len(cal["skip_days_0800"])
+    examined = candidate_windows_0800(cal)
     write_lane_receipt(
         LANE_ID,
         ok=True,
@@ -648,11 +668,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "covers_from": cal["covers_from"],
             "valid_through": cal["valid_through"],
             "skip_days_0800": n,
+            "candidate_days_0800": examined,
+            "releases_mapped": len(RELEASE_MAP),
             "fetched_at": cal["fetched_at"],
         },
         output={
             "produced_count": n,
-            "attempted_count": len(RELEASE_MAP),
+            # Same population as produced_count: the covered dates examined for the 08:00 window (>= n).
+            "attempted_count": examined,
             "output_evidence": [{"kind": "file_artifact", "ref": str(target), "fetched_at": cal["fetched_at"]}],
         },
     )
