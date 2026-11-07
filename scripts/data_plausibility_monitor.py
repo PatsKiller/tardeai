@@ -26,6 +26,17 @@ USAGE
     python scripts/data_plausibility_monitor.py --dry-run # measure + print; writes nothing (no receipt, no state)
     ... --lane-receipt [--alert --notify queue]           # the n8n lane argv (n8n-data-plausibility-audit)
 
+2026-11-07 (LQ-20261107-185):
+  * ``null_rate`` contracts measure PRESENCE, not scale: the share of rows in a
+    window whose column is NULL, for the rows a named producer (``where``) was
+    meant to write. Every value-shaped rule treats NULL as "absent, not wrong",
+    which is right until the producer stops writing -- then
+    analyst_consensus_history.recom_score passed its 1-5 range contract
+    vacuously on 1,512 of 1,512 rows for three months while the audit read OK;
+  * ``min_rows`` and ``max_null_pct`` are REQUIRED, not defaulted: an empty
+    window is also a 0% null rate, so a rule that only bounds the percentage
+    fails open exactly when the producer is most broken.
+
 2026-10-18 (data-integrity fix PR):
   * the alert fingerprint is (contract, column, rule, severity band), not raw
     counts -- a count that creeps every day is not news; crossing a band is
