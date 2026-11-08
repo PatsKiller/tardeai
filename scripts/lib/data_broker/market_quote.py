@@ -121,8 +121,10 @@ def _extended_batch(db_query, symbols: list[str], window_s: float,
             (symbols, now - __import__("datetime").timedelta(seconds=window_s)),
             "all",
         )
-    except Exception:  # noqa: BLE001 -- an additive read: no extended mark is the same as none stored
-        return {}
+    except Exception:  # noqa: BLE001 -- the read failed; the caller is told so instead of being handed "none stored"
+        # An empty map would read as "nothing printed after-hours", which is a DIFFERENT fact from "I could not look".
+        # The caller marks its rows ``extended_unknown`` so the card can say the off-hours view is unavailable.
+        return {"__unknown__": True}
     out: dict[str, dict[str, Any]] = {}
     for row in rows or []:
         sym, session, price, chg, basis, bar_end, feed = row
@@ -206,7 +208,13 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
     # row above is kept when it is newer; an after-hours / overnight / futures-open print replaces it when it is newer.
     from datetime import datetime as _dt
 
-    for sym, ext in _extended_batch(db_query, symbols, window_s).items():
+    ext_marks = _extended_batch(db_query, symbols, window_s)
+    if ext_marks.pop("__unknown__", False):
+        # the off-hours store could not be read: say so on every mark already found, never by silently keeping the
+        # older regular-session row as though it were the newest print
+        for row in out.values():
+            row["extended_unknown"] = True
+    for sym, ext in ext_marks.items():
         cur = out.get(sym)
         if cur is not None:
             try:

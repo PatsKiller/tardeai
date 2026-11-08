@@ -205,11 +205,29 @@ def test_the_extended_mark_carries_its_session_and_a_ready_label():
     assert out["V"]["source"] == "data_broker.market_quotes_extended:schwab:afterhours"
 
 
-def test_a_broken_extended_read_is_an_empty_mark_not_an_exception():
+def test_a_broken_extended_read_is_stated_as_unknown_not_as_none_stored():
+    """A failed read must not be indistinguishable from "nothing printed after-hours"."""
     def boom(*a, **k):
         raise RuntimeError("relation does not exist")
 
-    assert mq._extended_batch(boom, ["V"], 3600.0, now=datetime(2026, 11, 7, tzinfo=timezone.utc)) == {}
+    assert mq._extended_batch(boom, ["V"], 3600.0, now=datetime(2026, 11, 7, tzinfo=timezone.utc)) == {"__unknown__": True}
+
+
+def test_the_failed_extended_read_reaches_the_marks_the_caller_keeps(monkeypatch):
+    class _LQ:
+        @staticmethod
+        def get_latest_quotes(db_query, symbols, max_age_seconds):
+            return {"fresh": symbols, "symbols": {s: {"price": 420.0, "chg_pct": -0.5,
+                                                      "as_of": "2026-11-06T21:00:00+00:00", "provider": "alpaca"}
+                                                  for s in symbols}}
+
+    monkeypatch.setattr("lib.data_broker.latest_quote.get_latest_quotes", _LQ.get_latest_quotes)
+
+    def boom(*a, **k):
+        raise RuntimeError("relation does not exist")
+
+    out = mq.get_price_batch(boom, ["V"], max_age_hours=96, skip_live=True)
+    assert out["V"]["extended_unknown"] is True and out["V"]["price"] == 420.0
 
 
 def test_the_newer_of_the_two_stores_wins(monkeypatch):
