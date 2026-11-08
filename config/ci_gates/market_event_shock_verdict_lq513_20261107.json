@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_shock_verdict_lq513_20261107",
+  "anchor": "MARKET_EVENT_SHOCK_VERDICT",
+  "files": [
+    "tests/test_market_event_shock_verdict_lq513_20261107.py"
+  ],
+  "comment": [
+    "LQ-20261107-513: the Home market-event banner names the shock with the Market Risk Engine verdict the risk card shows.",
+    "A market-scope episode is never titled 'Broad selloff' from its trigger kind; Python and marketRisk.ts shock words stay equal. Synthetic fixtures."
+  ]
+}

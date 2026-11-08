@@ -272,7 +272,7 @@ def build_active(*, db_query: DbQuery, snapshot: Optional[Mapping[str, Any]],
                          "candidates": cand_stamp},
         "stale": bool(stale),
         "stale_reasons": stale,
-    })
+    }, snapshot=snapshot)
 
 
 _EVIDENCE_NUMBERS = {"fwd_pe": "forward_pe", "sector_median_pe": "sector_median_pe", "peg": "peg", "roic_pct": "roic_pct"}
@@ -326,7 +326,64 @@ def _tranche_shares(t: Mapping[str, Any]) -> Optional[int]:
     return int(v)
 
 
-def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
+# The Market Risk Engine's shock classes in the words the Home risk card uses (marketRisk.ts SHOCK_WORDS and
+# STRESSED; tests/test_market_event_shock_verdict_lq513_20261107.py keeps the two maps equal).
+SHOCK_WORDS = {"SECTOR": "Sector selloff", "SYSTEMIC": "Market-wide selloff", "FACTOR": "Factor rotation",
+               "RATES": "Rates shock", "CREDIT": "Credit stress", "EVENT": "Event shock"}
+STRESSED_STATES = ("STRESS", "WEAK")
+
+
+def shock_verdict(snapshot: Optional[Mapping[str, Any]]) -> Optional[dict[str, Any]]:
+    """The MRE shock classification as the Home risk card states it (marketRisk.ts ``verdictLine``), or None.
+
+    One source for "what kind of selloff is this": the episode KIND is a trigger label (the detector opens
+    ``broad_selloff/market`` on MRE tier or an index drawdown, neither of which measures breadth), so a
+    market-scope banner must not call the shock broad when the classifier measured a sector shock
+    (LQ-20261107-513). Groups and counts come from the snapshot's heatmap exactly as the card counts them.
+    """
+    if not isinstance(snapshot, Mapping):
+        return None
+    st = snapshot.get("shock_type")
+    cls = str(st.get("class") or "").upper() if isinstance(st, Mapping) else ""
+    if not cls:
+        return None
+    heat = [h for h in snapshot.get("heatmap") or [] if isinstance(h, Mapping)]
+    stressed = [str(h.get("label")) for h in heat
+                if h.get("state") in STRESSED_STATES and h.get("kind") in ("sector", "theme")]
+    sector_rows = [h for h in heat if h.get("kind") == "sector" and h.get("state") != "UNKNOWN"]
+    holding = sum(1 for h in sector_rows if h.get("state") not in STRESSED_STATES)
+    sectors = snapshot.get("sectors")
+    measured = sectors.get("sectors_measured") if isinstance(sectors, Mapping) else None
+    n = measured if isinstance(measured, int) and not isinstance(measured, bool) else len(sector_rows)
+    word = SHOCK_WORDS.get(cls)
+    groups = " / ".join(stressed) if stressed else "no group in stress"
+    if not word:
+        line = f"Stressed: {groups}." if stressed else "No sector or theme in stress."
+    elif cls == "SYSTEMIC":
+        line = f"{word} — {n - holding} of {n} sectors down."
+    elif cls == "SECTOR":
+        line = f"{word} — {groups}. Not market-wide: {holding} of {n} sectors holding."
+    else:
+        line = f"{word} — {groups}."
+    return {"source": "market_risk", "class": cls, "word": word, "groups": stressed, "holding": holding,
+            "measured": n, "line": line, "as_of": snapshot.get("as_of")}
+
+
+def _episode_name(ep: Mapping[str, Any], shock: Optional[Mapping[str, Any]]) -> str:
+    """Banner/brief name of an episode, without the baseline. A market-scope episode is named by the MRE verdict;
+    without one it says the type was not measured rather than repeating the trigger label as a breadth claim."""
+    kind = str(ep.get("kind") or "market event").replace("_", " ")
+    scope = ep.get("scope")
+    if scope not in (None, "market"):
+        return " · ".join((kind.capitalize(), str(scope)))
+    if shock and shock.get("word"):
+        return " · ".join(x for x in (shock["word"], " / ".join(shock.get("groups") or [])) if x)
+    if shock and shock.get("class") == "MIXED":
+        return "Mixed selloff"
+    return "Selloff · type not measured" if ep.get("kind") == "broad_selloff" else kind.capitalize()
+
+
+def consumer_view(doc: dict[str, Any], snapshot: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
     """Add the fields the two consumers read (LQ-366 fold rehearsal), without removing any.
 
     * the banner and sheet (apps/command-center-v3/src/lib/marketEvent.ts): episode.id/title/tier,
@@ -357,12 +414,11 @@ def consumer_view(doc: dict[str, Any]) -> dict[str, Any]:
     if isinstance(ep, dict):
         ep.setdefault("id", ep.get("episode_id"))
         ep.setdefault("tier", mg.get("tier"))
-        kind = str(ep.get("kind") or "market event").replace("_", " ")
-        scope = ep.get("scope")
-        ep.setdefault("title", " · ".join(x for x in (kind.capitalize(),
-                                                        None if scope in (None, "market") else str(scope),
-                                                        f"baseline {ep['baseline_date']}" if ep.get("baseline_date")
-                                                        else None) if x))
+        shock = shock_verdict(snapshot)
+        ep.setdefault("shock", shock)
+        ep.setdefault("name", _episode_name(ep, shock))
+        ep.setdefault("title", " · ".join(x for x in (ep["name"], f"baseline {ep['baseline_date']}"
+                                                        if ep.get("baseline_date") else None) if x))
     rows_by_symbol: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
     for acct in doc.get("accounts") or []:
         for nm in acct.get("names") or []:

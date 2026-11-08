@@ -203,10 +203,17 @@ def changes_since(prev: dict[str, Any], now_snap: dict[str, Any]) -> list[str]:
 
 
 # --------------------------------------------------------------------------- rendering
+def _event_name(ep: dict[str, Any], default: str) -> str:
+    """The episode's name as the Home banner shows it (``market_event_api.consumer_view`` ``episode.name``: the
+    MRE shock verdict for a market-scope episode, LQ-20261107-513); the raw kind only when a payload lacks it."""
+    name = ep.get("name")
+    return str(name) if name else str(ep.get("kind") or default).replace("_", " ")
+
+
 def _headline(payload: dict[str, Any]) -> str:
     ep, gate, cands = payload.get("episode") or {}, payload.get("market_gate") or {}, ranked(payload)
     ready = sum(1 for c in cands if c.get("state") == "READY")
-    return (f"{str(ep.get('kind') or 'episode').replace('_', ' ')} {ep.get('state')} - tier {gate.get('tier') or '?'}"
+    return (f"{_event_name(ep, 'episode')} {ep.get('state')} - tier {gate.get('tier') or '?'}"
             f" - {len(cands)} candidates - {ready} ready")
 
 
@@ -278,11 +285,11 @@ def text_events(payload: dict[str, Any], state: dict[str, Any]) -> list[dict[str
     n_ready = sum(1 for c in cands if c.get("state") == "READY")
     if ep_state != TERMINAL and prev.get("episode_id") != eid:
         out.append({"alert_class": "market_event", "event_id": f"market_event:{eid}:open", "symbol": "",
-                    "trigger": f"{str(ep.get('kind') or 'event').replace('_', ' ')} opened, tier {gate.get('tier') or '?'}, {len(cands)} names watched",
+                    "trigger": f"{_event_name(ep, 'event')} opened, tier {gate.get('tier') or '?'}, {len(cands)} names watched",
                     "action": "read the brief; advisory only"})
     if ep_state == TERMINAL and prev.get("episode_id") == eid and prev.get("episode_state") != TERMINAL:
         out.append({"alert_class": "market_event", "event_id": f"market_event:{eid}:close", "symbol": "",
-                    "trigger": f"{str(ep.get('kind') or 'event').replace('_', ' ')} closed", "action": "read the closing brief"})
+                    "trigger": f"{_event_name(ep, 'event')} closed", "action": "read the closing brief"})
     if ep_state != TERMINAL:
         for c in cands:
             tr = _tranche_no(c)

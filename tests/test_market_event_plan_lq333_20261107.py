@@ -346,7 +346,9 @@ def test_consumer_contract_banner_fields():
     # apps/command-center-v3/src/lib/marketEvent.ts normalizeMarketEvent reads these paths
     d = _ready_payload()
     ep, mg, c = d["episode"], d["market_gate"], d["candidates"][0]
-    assert ep["id"] == ep["episode_id"] and ep["title"].startswith("Broad selloff") and ep["tier"] == mg["tier"]
+    # the synthetic snapshot carries no shock_type, so the title claims no breadth (LQ-20261107-513)
+    assert ep["id"] == ep["episode_id"] and ep["title"] == "Selloff · type not measured · baseline 2026-11-04"
+    assert ep["tier"] == mg["tier"]
     assert mg["state"] in ("pass", "fail", "unknown") and mg["chips"]
     assert all(set(g) >= {"id", "label", "state"} and g["state"] in ("pass", "partial", "fail", "unknown")
                for g in c["gates"])
