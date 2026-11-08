@@ -107,12 +107,44 @@ lane cannot be promoted as written. The operator has three routes, each a decisi
 
 | Route | What it needs | Guarantee |
 |---|---|---|
-| Read every fd table | the lane runs with `CAP_SYS_PTRACE` (a root-run systemd unit or a sudoers rule for this one command) | full: holders are enumerated, the current code needs no change |
+| Read every fd table — **chosen 2026-11-07** | a root-owned read-only helper behind one sudoers line (never `CAP_SYS_PTRACE` or sudo on the rotation script itself: it lives in an agent-writable directory); see below | full: holders are enumerated by the helper; the rotation keeps its refusal when the helper is absent or incomplete |
 | Coordinate with writers | every writer takes `LOCK_SH` on `<store>.rotate.lock` around open+append, and the rotation takes `LOCK_EX` and holds it across rename, install and unlink | full only if every writer is in-repo; an outside writer silently voids it |
 | Accept a narrower view | an operator-signed allowlist of specific uninspectable processes (by pid and start time, revalidated each run) | weaker: an allowlisted process that does hold the store is missed |
 
 Until one is chosen, the lane stays at SHADOW/`--dry-run` and the `uncovered` report is the operator's
 inventory of what is growing.
+
+#### Route 1 chosen, 2026-11-07 20:19 ET (operator: "1,"; LQ-20261107-501)
+
+The operator chose **full fd visibility**, with one design constraint: the rotation script must not be given
+`CAP_SYS_PTRACE` or a sudoers line itself, because it lives in an agent-writable release directory and that
+would be root-equivalent for every agent. So the privileged half is a separate, tiny, read-only command:
+
+| piece | where | what it does |
+|---|---|---|
+| helper source | `scripts/ops/tradeai_fd_holders.py` (stdlib only) | `tradeai-fd-holders PATH [PATH ...]`: stats each path, scans `/proc/<pid>/fd`, prints one JSON `tradeai_fd_holders.v1` object naming every holder and every fd table it could not read. Reads nothing else: no file contents, no signals, no write, no network, no DB. Exit 0 complete, 3 incomplete, 2 usage. |
+| installed | `/usr/local/sbin/tradeai-fd-holders`, `root:root 0755` | an operator-run script installs it and passes the two checks below |
+| sudoers | `/etc/sudoers.d/tradeai-fd-holders` `0440`, validated `visudo -cf` | `johnclaw ALL=(root) NOPASSWD: /usr/local/sbin/tradeai-fd-holders` — exactly that path |
+| caller | `jsonl_archive_rotate.py` `_helper_scan` | when the helper is a file this user may execute, it runs `sudo -n <helper> <store>` and takes a `complete: true` answer as the full view |
+
+The refusal logic did not weaken; it moved. **Absent helper** (the host before the install): exactly the
+class-B refusal above. **Installed but failing** — non-zero exit other than 3, unparseable or wrong-schema
+output, no row for the path, a row whose `dev`/`ino` no longer match the file, or any `unknown` row: an
+*incomplete view*, so `rotate_store` still returns `fd_visibility_unknown` and now names the helper in
+`detail` (`helper_failed:exit_4`, `helper_failed:stale_inode`, `999:ghost:fd_dir_denied`, …). A helper that
+cannot see is never read as "nobody holds it".
+
+The plan row and the receipt now say which authority answered: `fd_view: "helper"` or `"proc"`, beside
+`fd_visibility` and `fd_unknown`. A receipt claiming `fd_visibility: "ok"` on `fd_view: "helper"` is a
+positive statement about the host; the same `ok` on `fd_view: "proc"` only says this process could read every
+table it tried — which, on this host, it cannot.
+
+Two env knobs, both narrowing: `TRADEAI_FD_HOLDERS=<path>` points at another helper (tests, staging) and
+`TRADEAI_FD_HOLDERS_SUDO=0` drops the `sudo` prefix (an unprivileged call reports `complete: false` and the
+caller refuses).
+
+The lane's promotion (patch `inbox/claude-lead/20261108T0104Z-cc-deepseek-6-LQ-480-jsonl-archive-rotate-promotion.patch`)
+is armed only after the operator ran the install script and one shadow run came back clean.
 
 The tripwire is a `RetentionArchiveTripwire@v1` line per archive. `scripts/lib/retention_tripwire.py` reads it nightly through `report_db_hygiene.py`, and any live reference to `archive/file_prune` becomes an ARCHIVE_TRIPWIRE P1.
 

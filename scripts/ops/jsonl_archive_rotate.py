@@ -49,6 +49,14 @@ MODES
   python3 scripts/ops/jsonl_archive_rotate.py --recover --confirm APPLY
 --apply refuses Mon–Fri 04:00–16:15 America/New_York (``refuse_window_et``), and without ``--confirm APPLY``.
 
+THE FD VIEW. Step 1 needs to prove that no process still holds a store's inode. An unprivileged process cannot
+read some fd tables on this host (systemd --user, sd-pam, codex sandboxes, gpg-agent), so the scan refuses
+rather than reading "unreadable" as "absent" (class B, 2026-11-04). The operator's route 1 (2026-11-07 20:19 ET,
+LQ-20261107-501) is a root-owned, read-only helper installed at ``/usr/local/sbin/tradeai-fd-holders``
+(``scripts/ops/tradeai_fd_holders.py``, sudoers line for that one path): when it is installed this script calls
+it and treats a ``complete: true`` answer as the full view; when it is absent, or its answer is not complete,
+the refusal stands. The helper is never granted capabilities itself and this script never runs as root.
+
 Exit: 0 ok; 1 a store failed or a refusal; 2 usage; 75 another rotation holds the lock.
 MBI_BEHAVIOR = 0. No broker, no network, no send, no DB.
 """
@@ -64,6 +72,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 from collections import deque
@@ -92,6 +102,12 @@ EXIT_LOCKED = 75
 RENAME_NOREPLACE = 1
 RENAME_EXCHANGE = 2
 AT_FDCWD = -100
+#: operator route 1 (2026-11-07 20:19 ET, LQ-20261107-501): a root-owned, read-only holder helper, installed
+#: by the coordinator's install script. ``TRADEAI_FD_HOLDERS`` overrides the path (tests, staging);
+#: ``TRADEAI_FD_HOLDERS_SUDO=0`` drops the sudo prefix (an unprivileged call can only report what it sees).
+FD_HOLDERS_HELPER = "/usr/local/sbin/tradeai-fd-holders"
+FD_HOLDERS_SCHEMA = "tradeai_fd_holders.v1"
+FD_HOLDERS_TIMEOUT_S = 20.0
 
 
 class RotateError(RuntimeError):
@@ -245,13 +261,104 @@ def _pid_comm(proc_root: Path, pid: str) -> str:
     return (name or "?")[:32]
 
 
+def fd_holders_helper() -> Optional[Path]:
+    """The installed root-owned helper, when it is a file this user may execute; ``None`` when it is absent.
+
+    Absent is the pre-2026-11-07 host: the strict class-B refusal below stays exactly as it was. A helper that
+    exists but cannot run is *not* absent — see :func:`_helper_scan`, which turns its failure into an incomplete
+    view so the refusal still happens and names the helper as the cause."""
+    p = Path(os.environ.get("TRADEAI_FD_HOLDERS") or FD_HOLDERS_HELPER)
+    try:
+        if p.is_file() and os.access(p, os.X_OK):
+            return p
+    except OSError:
+        return None
+    return None
+
+
+def _sudo_bin() -> Optional[str]:
+    """An absolute sudo path when one exists: the executor's enforced child env keeps PATH, but a lane must
+    not depend on that to reach the helper."""
+    for c in ("/usr/bin/sudo", "/bin/sudo"):
+        if os.access(c, os.X_OK):
+            return c
+    return shutil.which("sudo")
+
+
+def _helper_argv(helper: Path, path: Path) -> Optional[list[str]]:
+    if os.geteuid() == 0 or os.environ.get("TRADEAI_FD_HOLDERS_SUDO") == "0":
+        return [str(helper), str(path)]
+    sudo = _sudo_bin()
+    if not sudo:
+        return None
+    return [sudo, "-n", str(helper), str(path)]
+
+
+def _helper_scan(path: Path, proc_root: Path) -> Optional[tuple[list[tuple[int, str]], list[str]]]:
+    """The helper's answer for ``path``, or ``None`` when the helper does not apply to this scan.
+
+    It applies only to the real ``/proc`` view: a caller that passes a fake proc_root is exercising the
+    in-process scanner (every test in this repo does) and must not be answered by a host-level helper.
+    A helper that is installed but fails — non-zero exit, unreadable or unexpected output, a row for another
+    path, a stale inode — is reported as an incomplete view with the reason in ``unknown``; it is never read
+    as "nobody holds it". That keeps class B closed in the one case where trusting the helper would open it."""
+    if Path(proc_root) != Path("/proc"):
+        return None
+    helper = fd_holders_helper()
+    if helper is None:
+        return None
+    argv = _helper_argv(helper, path)
+    if argv is None:
+        return [], ["helper_unusable:sudo_not_found"]
+    try:
+        cp = subprocess.run(argv, capture_output=True, text=True, timeout=FD_HOLDERS_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return [], [f"helper_unusable:timeout_after_{int(FD_HOLDERS_TIMEOUT_S)}s"]
+    except OSError as exc:
+        return [], [f"helper_unusable:{exc.strerror or exc}"]
+    if cp.returncode not in (0, 3):
+        return [], [f"helper_failed:exit_{cp.returncode}"]
+    try:
+        doc = json.loads(cp.stdout or "")
+    except ValueError:
+        return [], ["helper_failed:output_not_json"]
+    if not isinstance(doc, dict) or doc.get("schema") != FD_HOLDERS_SCHEMA:
+        return [], ["helper_failed:unexpected_schema"]
+    want = path.resolve()
+    rows = [r for r in (doc.get("paths") or []) if isinstance(r, dict)]
+    row = next((r for r in rows if Path(str(r.get("path") or "")).resolve() == want), None)
+    if row is None:
+        return [], ["helper_failed:no_row_for_path"]
+    try:
+        st = os.stat(path)
+    except OSError:
+        return [], ["helper_failed:path_stat"]
+    dev, ino = row.get("dev"), row.get("ino")
+    if not isinstance(dev, int) or not isinstance(ino, int) or (dev, ino) != (st.st_dev, st.st_ino):
+        return [], ["helper_failed:stale_inode"]
+    holders = [(int(h.get("pid") or 0), str(h.get("fd") or ""))
+               for h in (row.get("holders") or []) if isinstance(h, dict)]
+    unknown = [f"{u.get('pid')}:{u.get('comm') or '?'}:{u.get('reason') or 'unknown'}"
+               for u in (row.get("unknown") or []) if isinstance(u, dict)]
+    if not doc.get("complete", False) and not unknown:
+        unknown.append("helper_incomplete_view")
+    return holders, unknown
+
+
 def _scan_holders(path: Path, proc_root: Path) -> tuple[list[tuple[int, str]], list[str]]:
     """(holders, unknown). ``unknown`` names the pids whose fd table this user should be able to read but cannot:
     a process that cannot be inspected might hold the file, so "nobody holds it" is unprovable while one exists.
     Another uid's unreadable fd table is not unknown for a 0600 store this user owns, because that process cannot
     open the file at all. A label is ``pid:comm:reason``, so an operator reading a refusal knows which process to
     look at. On 2026-11-07 the live host names systemd (--user), codex (sandboxed), tailscaled, gpg-agent, sd-pam
-    and flock: all same-uid, all hide their fd tables, none can be read by an unprivileged agent process."""
+    and flock: all same-uid, all hide their fd tables, none can be read by an unprivileged agent process.
+
+    When the operator's root-owned helper is installed this process cannot be the authority, so the helper's
+    answer is used as the complete view instead (see :func:`_helper_scan`); the scan below is then the fallback
+    for the host it ran on before 2026-11-07 and for every test that passes a fake ``proc_root``."""
+    via_helper = _helper_scan(path, proc_root)
+    if via_helper is not None:
+        return via_helper
     try:
         st = os.stat(path)
     except OSError:
@@ -460,6 +567,9 @@ def plan_store(store: Mapping[str, Any], cfg: Mapping[str, Any], root: Path, now
         "archive_to": str(archive_dir(cfg, root, sid) / f"{sid}.{_stamp(now)}.jsonl.gz"),
         "fd_holders_now": len(holders),
         "fd_visibility": "unknown" if unknown else "ok",
+        # which authority answered: the root-owned helper (operator route 1) or this process's /proc scan.
+        # A receipt that says "ok" should name the blind source it trusted (LQ-20261107-501).
+        "fd_view": "helper" if fd_holders_helper() is not None else "proc",
         "fd_unknown": unknown[:8],
     })
     if not s["split"]:

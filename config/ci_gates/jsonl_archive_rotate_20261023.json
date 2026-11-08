@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "jsonl_archive_rotate_20261023",
   "files": [
-    "tests/test_jsonl_archive_rotate_20261023.py"
+    "tests/test_jsonl_archive_rotate_20261023.py",
+    "tests/test_jsonl_archive_rotate_fd_holders_20261107.py"
   ],
   "anchor": "JSONL_ARCHIVE_ROTATE_20261023",
   "comment": [
@@ -11,6 +12,11 @@
     "byte-exact to the file-prune archive (<store>/<store>.<UTC>.jsonl.gz) + sha256/line-count manifest + tripwire; writer-safe",
     "(rename aside, quiesce, renameat2 NOREPLACE/EXCHANGE, late sweep; a concurrent O_APPEND writer loses no row);",
     "refuses Mon-Fri 04:00-16:15 ET and without --confirm APPLY; cio_workflow_lineage rotate=false; retention preview",
-    "reads only. Hermetic: tmp state roots, a fake /proc."
+    "reads only. Hermetic: tmp state roots, a fake /proc.",
+    "ANCHOR: JSONL_ARCHIVE_ROTATE_FD_HOLDERS_20261107 — operator route 1, 2026-11-07 20:19 ET (LQ-20261107-501):",
+    "the fd view is read through a root-owned, read-only helper (scripts/ops/tradeai_fd_holders.py at",
+    "/usr/local/sbin/tradeai-fd-holders, one sudoers line); absent helper -> the class-B refusal is unchanged;",
+    "a helper that fails, answers for another path or reports a stale inode is an incomplete view, never",
+    "'nobody holds it'. A fake helper in tmp_path, so no test needs root or the host's /proc."
   ]
 }
