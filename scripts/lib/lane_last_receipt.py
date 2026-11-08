@@ -166,7 +166,7 @@ def _validated_error_class(value: Any) -> str | None:
     try:
         from scripts.lib.n8n_error_class import normalise_declared
     except ImportError:  # scripts/ on sys.path, repo root not
-        from lib.n8n_error_class import normalise_declared  # type: ignore[no-redef]
+        from lib.n8n_error_class import normalise_declared  # type: ignore[no-redef] -- same module through its scripts/-relative name when only scripts/ is on sys.path
     return normalise_declared(value)
 
 

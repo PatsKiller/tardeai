@@ -194,7 +194,7 @@ def declared_from_lane_receipt(state_root: Any, lane_id: str, run_id: str) -> An
     try:
         from scripts.lib.lane_last_receipt import attempt_receipt_path, receipt_path
     except ImportError:  # scripts/ on sys.path, repo root not
-        from lib.lane_last_receipt import attempt_receipt_path, receipt_path  # type: ignore[no-redef]
+        from lib.lane_last_receipt import attempt_receipt_path, receipt_path  # type: ignore[no-redef] -- same module through its scripts/-relative name when only scripts/ is on sys.path
     import json
     from pathlib import Path
 
