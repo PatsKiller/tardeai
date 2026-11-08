@@ -2867,6 +2867,9 @@ def execute_governed_call(
             (r["credit_refusal"] for r in route_receipts if r.get("credit_refusal")), None
         )
         if refusal:
+            # nosemgrep: tq-py-except-pass -- log_call returns None on any failure, but its
+            # argument expressions (sanitize_log_summary, float) run in THIS frame, so the
+            # guard is what keeps a logging defect from changing the refusal.
             try:
                 lc.log_call(
                     lane=requested_policy.lower(),

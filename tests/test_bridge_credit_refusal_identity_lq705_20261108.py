@@ -18,7 +18,12 @@ from unittest.mock import MagicMock
 from tests.test_anthropic_bridge_20261025 import (  # noqa: F401 -- activates the autouse fixture
     Provider, activated_fixture_promotion,
 )
-from tests.test_bridge_oauth_llm_step_20261014 import DIAG, bridge, hermetic, wire  # noqa: F401
+from tests.test_bridge_oauth_llm_step_20261014 import (  # noqa: F401 -- fixture: bridge/DIAG/wire/hermetic
+    DIAG,
+    bridge,
+    hermetic,
+    wire,
+)
 from tests.test_n8n_oauth_first_routing_20261015 import ledger
 
 JOURNAL = "data/runtime/provider_cost/anthropic_credit.jsonl"
