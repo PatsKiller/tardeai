@@ -23,6 +23,7 @@ from scripts.lib.market_outlook import calendar as cal_mod
 from scripts.lib.market_outlook import categories as cat_mod
 from scripts.lib.market_outlook import confidence as conf_mod
 from scripts.lib.market_outlook import levels as lvl_mod
+from scripts.lib.market_outlook import normalize as nz
 from scripts.lib.market_outlook import policy as policy_mod
 from scripts.lib.market_outlook import record as rec_mod
 from scripts.lib.market_outlook import regime as regime_mod
@@ -328,3 +329,134 @@ def test_runtime_mirror_is_written_under_the_state_root(tmp_path, policy):
     assert run_last["record_id"] == record["record_id"] and run_last["band"] == record["band"]
     # no .tmp file survives the atomic replace
     assert not list((tmp_path / "data" / "runtime" / "market_outlook").glob("*.tmp"))
+
+
+# ── 10. the event tilt IS tau (LQ-985 review finding 1) ---------------------------------------------------------
+def test_event_tilt_passes_tau_through_un_rescaled(policy):
+    """§2.6: tau = -0.15 * max impact, and tau IS category 10's signal (§2.10: CPI HIGH -> tau -0.15 -> C10 ~ -0.15).
+
+    Dividing tau by ``tilt_per_impact`` turned -0.15 into a full -1.00 and overstated the S penalty ~7 points."""
+    items = [
+        {
+            "date_et": "2026-11-10",
+            "time_et": "08:30",
+            "event": "cpi",
+            "name": "CPI",
+            "impact": "HIGH",
+            "impact_weight": 1.0,
+        }
+    ]
+    tau, detail = cal_mod.tilt(items, policy, SUNDAY)
+    assert tau == pytest.approx(-0.15)  # a HIGH catalyst two sessions out
+    assert cal_mod.tilt([], policy, SUNDAY)[0] == 0.0  # nothing scheduled -> no tilt, never a guess
+
+    # the raw normalizer agrees with the spec's own numbers
+    assert nz.event_tilt_state(tau, policy["events"])[0] == pytest.approx(-0.15)
+    # ...and so does the indicator the events category actually builds
+    ev = policy_mod.category(policy, "events")
+    spec = next(i for i in ev["indicators"] if i["key"] == "event_tilt")
+    res = cat_mod._event_tilt(spec, _ctx(_equity_bundle(), policy, tilt=tau, tilt_detail=detail), "macro_calendar")
+    assert res.normalized == pytest.approx(-0.15)
+
+    # end to end: with only the catalyst measured, C10 is tau itself (the surprise leg is unmeasured here)
+    cats = cat_mod.build_categories(_ctx(_equity_bundle(), policy, tilt=tau, tilt_detail=detail))
+    events = next(c for c in cats if c.key == "events")
+    assert events.state == "PARTIAL" and events.coverage == pytest.approx(0.60)
+    assert events.subscore == pytest.approx(-0.15, abs=1e-6)
+
+
+# ── 11. band boundaries are the spec's own table (LQ-985 review) ------------------------------------------------
+@pytest.mark.parametrize(
+    "score,band",
+    [
+        (25.0, "RISK_ON"),  # RISK-ON: S >= +25
+        (24.99, "NEUTRAL"),  # NEUTRAL: -10 < S < +25
+        (-10.0, "DEFENSIVE"),  # DEFENSIVE: -35 < S <= -10 (the boundary belongs to the defensive side)
+        (-9.99, "NEUTRAL"),
+        (-35.0, "RISK_OFF"),  # RISK-OFF: S <= -35
+        (-34.99, "DEFENSIVE"),
+    ],
+)
+def test_band_boundaries_follow_the_spec_table(policy, score, band):
+    assert scoring.band_of(score, policy) == band
+
+
+# ── 12. confidence: every factor is in the product (LQ-985 review) ---------------------------------------------
+def _synthetic_cat(key: str, weight: float, sub: float | None, *, as_of: str | None = None) -> cat_mod.CategoryResult:
+    if sub is None:
+        return cat_mod.CategoryResult(
+            key=key, title=key, weight_prior=weight, weight_effective=weight, subscore=None,
+            coverage=0.0, state="UNKNOWN",
+        )
+    return cat_mod.CategoryResult(
+        key=key, title=key, weight_prior=weight, weight_effective=weight, subscore=sub, coverage=1.0,
+        state="COLLECTED",
+        indicators=[
+            cat_mod.IndicatorResult(
+                key=f"{key}_i", label=key, type="trend", weight=1.0, normalized=sub,
+                as_of=as_of or SUNDAY.isoformat(),
+            )
+        ],
+    )
+
+
+def test_each_confidence_factor_moves_the_product(policy):
+    agree = [_synthetic_cat("a", 30.0, 0.5), _synthetic_cat("b", 70.0, 0.5)]
+    base = conf_mod.compute(agree, policy, SUNDAY, u_event=1.0, hitrate=1.0)
+    assert (base.coverage, base.freshness, base.agreement) == (1.0, 1.0, 1.0)
+    assert base.value == pytest.approx(1.0) and base.band == "HIGH"
+
+    # agreement: categories that disagree pull the product down (floored at 0.3)
+    disagree = [_synthetic_cat("a", 50.0, 1.0), _synthetic_cat("b", 50.0, -1.0)]
+    c_agr = conf_mod.compute(disagree, policy, SUNDAY, u_event=1.0, hitrate=1.0)
+    assert c_agr.agreement == pytest.approx(0.3) and c_agr.value == pytest.approx(0.3)
+
+    # freshness: the same evidence read nine days old decays the product with it
+    old = "2026-10-30T16:00:00-04:00"
+    stale = [_synthetic_cat("a", 30.0, 0.5, as_of=old), _synthetic_cat("b", 70.0, 0.5, as_of=old)]
+    c_fresh = conf_mod.compute(stale, policy, SUNDAY, u_event=1.0, hitrate=1.0)
+    assert c_fresh.freshness < 1.0
+    assert c_fresh.value == pytest.approx(c_fresh.freshness)
+
+    # event risk and the trailing hit rate, each alone
+    assert conf_mod.compute(agree, policy, SUNDAY, u_event=0.85, hitrate=1.0).value == pytest.approx(0.85)
+    assert conf_mod.compute(agree, policy, SUNDAY, u_event=1.0, hitrate=0.75).value == pytest.approx(0.75)
+
+    # coverage: one 30-weight category measured out of 100 (the weight test below pins the arithmetic)
+    partial = [_synthetic_cat("a", 30.0, 0.5), _synthetic_cat("b", 70.0, None)]
+    c_cov = conf_mod.compute(partial, policy, SUNDAY, u_event=1.0, hitrate=1.0)
+    assert c_cov.coverage == pytest.approx(0.30) and c_cov.value == pytest.approx(0.30)
+
+
+def test_coverage_is_measured_by_prior_weight_not_by_count(policy):
+    # two of the three categories are measured, but they carry 10 + 20 of the 100 points: coverage is 0.30, not 2/3
+    cats = [
+        _synthetic_cat("a", 10.0, 0.4),
+        _synthetic_cat("b", 20.0, 0.1),
+        _synthetic_cat("c", 70.0, None),
+    ]
+    conf = conf_mod.compute(cats, policy, SUNDAY, u_event=1.0, hitrate=1.0)
+    assert conf.coverage == pytest.approx(0.30)
+    assert conf.coverage != pytest.approx(2.0 / 3.0)
+
+
+# ── 13. --hitrate is refused with --apply (LQ-985 review) -------------------------------------------------------
+def test_hitrate_override_is_refused_with_apply(capsys):
+    import scripts.market_outlook_evaluate as cli
+
+    code = cli.main(["--hitrate", "0.9", "--apply"])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "--hitrate cannot be combined with --apply" in err
+
+
+def test_record_reads_use_a_read_only_connection(monkeypatch):
+    """The prior/grades/sequence SELECTs must not hold a read-write session (they run before --apply decides)."""
+    import scripts.market_outlook_evaluate as cli
+    from scripts.lib.market_outlook import sources
+
+    app, peer = object(), object()
+    monkeypatch.setattr(sources, "_app_conn", lambda: app)
+    monkeypatch.setattr(sources, "_peer_conn", lambda: peer)
+    assert cli._read_conn("app") is app
+    assert cli._read_conn("peer") is peer

@@ -258,7 +258,8 @@ confidence:
 events:
   impact:
     fomc_decision: 1.0
-    fomc_minutes: 0.5
+    fomc_minutes: 0.4            # §4.5 "FOMC minutes ... MED 0.4" — the specific calendar table wins over §2.6's
+                                 # MED 0.5 vocabulary (0.4 still grades MED at med_at 0.35); LQ-985 review minor
     cpi: 1.0
     pce: 1.0
     employment_situation: 1.0

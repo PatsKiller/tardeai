@@ -12,7 +12,8 @@ The engine is advisory only: it never sizes, orders, stops or weights anything (
 credential, and it refuses every row from a banned feed (yfinance / yahoo) instead of scoring it.
 
 Exit codes: 0 = the evaluation ran and every required section was produced; 2 = the record failed its own structural
-checks (the brief is still printed so the reason is visible); 3 = the input could not be read at all.
+checks (the brief is still printed so the reason is visible), or a refused argument combination (``--hitrate`` with
+``--apply``); 3 = the input could not be read at all.
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ def _state_root(explicit: str | None) -> Path:
 
 
 def _connect(db: str):
-    """A connection for the *record* reads/writes (the bundle has its own read-only reader)."""
+    """A connection for the *record* write (``--apply`` only; the bundle has its own read-only reader)."""
     if db == "peer":  # the documented read-only peer path; never used for a write
         return sources._peer_conn()
     try:
@@ -73,12 +74,20 @@ def _connect(db: str):
     return get_conn()
 
 
+def _read_conn(db: str):
+    """A read-only connection for the record SELECTs (prior band, grades, sequence).
+
+    The reads run before ``--apply`` decides to write, so they must not hold a read-write session: on ``--db app``
+    the lane connection is opened read-only by ``sources._app_conn`` (LQ-985 review: this used ``get_conn()``)."""
+    return sources._peer_conn() if db == "peer" else sources._app_conn()
+
+
 # ── prior record + grade history --------------------------------------------------------------------------------
 def _prior_from_db(db: str, now: datetime) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """The most recent record strictly before ``now`` and the last few band/score pairs for hysteresis."""
     conn = None
     try:
-        conn = _connect(db)
+        conn = _read_conn(db)
         cur = conn.cursor()
         try:
             cur.execute(
@@ -119,7 +128,7 @@ def _prior_from_runtime(state_root: Path) -> dict[str, Any] | None:
 def _hitrate(db: str, policy: dict[str, Any]) -> tuple[float, str]:
     conn = None
     try:
-        conn = _connect(db)
+        conn = _read_conn(db)
         cur = conn.cursor()
         try:
             cur.execute(
@@ -143,7 +152,7 @@ def _seq(db: str, state_root: Path, now: datetime, mode: str) -> int:
     day = now.astimezone(ET).date()
     conn = None
     try:
-        conn = _connect(db)
+        conn = _read_conn(db)
         cur = conn.cursor()
         try:
             cur.execute(
@@ -338,6 +347,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--hitrate", type=float, help="override the trailing band hit rate (0..1 -> 0.5..1 confidence factor)")
     ap.add_argument("--json", action="store_true", help="print the record as JSON instead of the brief")
     args = ap.parse_args(argv)
+    if args.hitrate is not None and args.apply:
+        # the hit rate is evidence, and the record's confidence must be reproducible from the grades table: an
+        # operator override may shape a dry-run view, but a written record keeps the measured value (LQ-985 review).
+        print("--hitrate cannot be combined with --apply: a written record's confidence uses the measured "
+              "market_outlook_grades hit rate, not an override (run the dry run without --apply to preview it)",
+              file=sys.stderr)
+        return 2
 
     try:
         payload, extra = evaluate(args)

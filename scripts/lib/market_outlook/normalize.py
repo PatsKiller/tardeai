@@ -209,9 +209,11 @@ def dollar_pct_state(values: Sequence[float], cfg: dict[str, Any]) -> tuple[floa
 
 
 def event_tilt_state(tilt: float, cfg: dict[str, Any]) -> tuple[float, str]:
-    """``tilt`` is tau in [-tilt_per_impact, 0] (§2.6). Rescaled to the event indicator's own -1..0 range."""
-    span = float(cfg["tilt_per_impact"]) or 1.0
-    return clip(tilt / span, -1.0, 0.0), f"tilt {tilt:+.2f} into the next {cfg['tilt_sessions']} sessions"
+    """``tilt`` is tau already scaled by ``impact_levels`` (§2.6: tau = -tilt_per_impact * max impact, e.g. -0.15
+    for a HIGH catalyst) and IS the category-10 signal. Pass it through un-rescaled: dividing by
+    ``tilt_per_impact`` turned tau=-0.15 into a full -1.00 and overstated the S penalty by ~7 points
+    (§2.10 worked example: CPI HIGH -> tau -0.15 -> C10 ~ -0.15; LQ-985 review finding 1)."""
+    return clip(float(tilt), -1.0, 0.0), f"tilt {tilt:+.2f} into the next {cfg['tilt_sessions']} sessions"
 
 
 __all__ = [
