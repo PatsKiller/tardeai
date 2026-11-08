@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sector_snapshot_overlay_20261108",
+  "files": [
+    "tests/test_sector_momentum_snapshot_overlay_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1137(a): /api/v2/defense/posture serves the sector snapshot overlay from a background-refreshed memo, never a ticker_prices scan per request."
+  ]
+}
