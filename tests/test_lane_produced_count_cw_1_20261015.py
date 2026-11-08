@@ -261,7 +261,7 @@ def test_document_mentions_run_counts_offered_rows(monkeypatch):
     monkeypatch.setattr(DM, "persist", lambda conn, **k: 1)
     table = sorted(DM.SOURCES)[0]
     monkeypatch.setitem(DM.SOURCES, table, {**DM.SOURCES[table], "subject_is_own_symbol": False})
-    stat = m.run(table, 10, True, mark=5)
+    stat = m.run(table, 10, True, mark=5, legacy=True)  # counts the legacy extract() offers; the default is match_mentions
     assert stat["offered"] == 4 and stat["written"] == 2
 
 

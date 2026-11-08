@@ -151,3 +151,39 @@ def test_run_refusal_makes_the_command_exit_2(monkeypatch):
     a = SimpleNamespace(budget_s=0, rescan=True, legacy_matcher=False, apply=False, limit=100)
     stats = {"scanned": 0, "written": 0, "offered": 0, "no_mention": 0, "undecided": 0}
     assert B._run(a, ["news_articles"], stats) == 2
+
+
+# --- one-token names bind only with their own ticker right after them (review B1) ----------------
+
+APPLE = {"AAPL": ["Apple Inc."]}
+
+
+def _apple(text: str, own: str | None = None) -> dict[str, str | None]:
+    return {row["symbol"]: row["role"] for row in match_mentions(text, names=APPLE, own_symbol=own)}
+
+
+def test_one_token_name_binds_with_its_own_parenthesised_ticker():
+    assert _apple("Apple Inc. (AAPL) raised its guidance.", own="AAPL") == {"AAPL": "subject"}
+    assert _apple("Apple Inc. (AAPL) raised its guidance.") == {"AAPL": "subject"}
+
+
+def test_one_token_name_binds_with_its_own_cashtag():
+    assert _apple("Apple rallied; $AAPL led the index.") == {"AAPL": "subject"}
+
+
+def test_one_token_name_alone_never_binds():
+    assert _apple("Apple raised its guidance.") == {}
+
+
+def test_bare_cashtag_never_binds_alone():
+    assert _apple("The desk noted $AAPL only.") == {}
+
+
+def test_one_token_name_with_another_companys_ticker_does_not_bind():
+    assert _apple("Apple (MSFT) rose after the call.") == {}
+    assert _apple("Apple (aapl) rose after the call.") == {}  # lowercase is not the symbol
+
+
+def test_one_token_name_ticker_outside_the_window_does_not_bind():
+    far = "Apple " + "filler " * 10 + "(AAPL) rose."
+    assert _apple(far) == {}

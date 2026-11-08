@@ -1,8 +1,9 @@
 """Document mention matcher. The desk tagger is not used and is not modified.
 
 A company phrase binds only when its content tokens equal one official name
-and that name has at least two content tokens. One content token is refused:
-"Apple Inc." is the word "apple", and that word appears outside the issuer.
+and that name has at least two content tokens. A one-token name ("Apple Inc."
+is the word "apple") binds only with its own ticker right after it, as "(SYM)"
+or "$SYM" within a short window. The word alone is not proof of the issuer.
 
 A ticker never binds alone, in any form. "$SYM", "(SYM)" and bare abbreviations
 such as "(ARR)", "(ETH)" or "(DRAM)" are only ever read next to the company name
@@ -25,6 +26,8 @@ _LEGAL = frozenset({
     "inc", "incorporated", "corp", "corporation", "ltd", "llc", "lp", "co", "company", "plc", "the", "and",
 })
 _TOKEN = re.compile(r"[a-z0-9]+")
+_ASCII_WORD = re.compile(r"[0-9A-Za-z]+")
+_ANCHOR_WINDOW = 40
 
 
 def content_tokens(name: str) -> list[str]:
@@ -59,6 +62,21 @@ def _phrase_in(text: str, official: str) -> bool:
     hay = content_tokens(text)
     width = len(want)
     return any(hay[i:i + width] == want for i in range(len(hay) - width + 1))
+
+
+def _anchored(text: str, official: str, symbol: str) -> bool:
+    """A one-token name binds only with its own ticker right after it: "(SYM)" or "$SYM", case-exact."""
+    want = content_tokens(official)
+    if len(want) != 1 or not symbol:
+        return False
+    ticker = re.compile(r"\(\s*\$?%s\s*\)|\$%s(?![0-9A-Za-z])" % (re.escape(symbol), re.escape(symbol)))
+    for match in _ASCII_WORD.finditer(text or ""):
+        word = match.group().casefold()
+        if word != want[0] or word in _LEGAL:
+            continue
+        if ticker.search(text[match.end():match.end() + _ANCHOR_WINDOW]):
+            return True
+    return False
 
 
 def names_from_registry(doc: Mapping[str, Any] | None) -> dict[str, list[str]]:
@@ -184,12 +202,19 @@ def match_mentions(
     book = _names_map(names)
     body = text or ""
     by_symbol: dict[str, dict[str, Any]] = {}
+    confidence_of: dict[str, float | None] = {}
     for symbol, official_names in book.items():
         for official in official_names:
-            if not _phrase_in(body, official) or not name_agrees(official, symbol, book):
+            if len(content_tokens(official)) >= 2:
+                if not _phrase_in(body, official) or not name_agrees(official, symbol, book):
+                    continue
+                confidence = agreement_ratio(official, symbol, book)
+            elif _anchored(body, official, symbol):
+                confidence = 1.0  # the name's own ticker is the agreement here
+            else:
                 continue
-            confidence = agreement_ratio(official, symbol, book)
             by_symbol.setdefault(symbol, _row(symbol, via="company_name", matched=official, role=None, confidence=confidence))
+            confidence_of.setdefault(symbol, confidence)
             break
     found = list(by_symbol.values())
     own = (own_symbol or "").strip().upper()
@@ -201,10 +226,10 @@ def match_mentions(
     if len(found) == 1:
         found[0]["role"] = "subject"
         found[0]["role_source"] = "document_mention_matcher"
-        found[0]["role_confidence"] = agreement_ratio(found[0]["matched_text"], found[0]["symbol"], book)
+        found[0]["role_confidence"] = confidence_of[found[0]["symbol"]]
     elif own:
         for row in found:
             row["role"] = "subject" if row["symbol"] == own else "mentioned"
             row["role_source"] = "document_mention_matcher"
-            row["role_confidence"] = agreement_ratio(row["matched_text"], row["symbol"], book)
+            row["role_confidence"] = confidence_of[row["symbol"]]
     return found

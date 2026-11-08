@@ -45,7 +45,7 @@ def test_backfill_moves_marks_only_on_apply_and_respects_budget(monkeypatch, tmp
     monkeypatch.setattr(dm, "SOURCES", {"a_table": {}, "b_table": {}}, raising=False)
     seen = []
 
-    def fake_run(table, limit, apply, mark=None, deadline=None, seed=False):
+    def fake_run(table, limit, apply, mark=None, deadline=None, seed=False, **kwargs):
         seen.append((table, mark, seed))
         return {"table": table, "documents": 3, "scanned": 3, "multi": 0, "subject": 1, "mentioned": 0,
                 "undecided_docs": 0, "no_mention": 2, "written": 1 if apply else 0,
