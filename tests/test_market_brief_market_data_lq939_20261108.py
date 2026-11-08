@@ -172,10 +172,13 @@ def test_a_configured_instrument_with_no_row_is_named_not_dropped():
     """INDA and EWZ had no quote in the 14-day window; a proxy that was not read is named, never silently absent."""
     md = bi.gather(_db(_good()), now=NOW)
     assert md["quotes"]["missing"] == ["/NQ", "/YM", "/RTY", "$COMPX", "$DJI", "$RUT", "$NDX"]
-    assert md["international"]["missing"] == ["EFA", "EEM", "FXI", "INDA", "EWZ"]
+    # Derived from the universe rather than re-pinned: the fixture quotes EWJ and nothing else, so every other
+    # configured proxy (now including the LQ-972 Europe proxies EWG EWU EZU VGK) is named.
+    expected = [s for s in bi.INTERNATIONAL_ETFS if s != "EWJ"]
+    assert md["international"]["missing"] == expected
     _, body = brief.render_email(_payload(md), slot="s", changes=[], top_n=5, stale=False)
     assert "no stored row: /NQ, /YM, /RTY, $COMPX, $DJI, $RUT, $NDX" in body
-    assert "no quote: EFA, EEM, FXI, INDA, EWZ" in body
+    assert "no quote: " + ", ".join(expected) in body
 
 
 def test_reads_are_bounded_and_named():

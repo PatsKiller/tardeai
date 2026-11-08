@@ -41,7 +41,10 @@ FUTURES_ROOTS: tuple[str, ...] = ("/ES", "/NQ", "/YM", "/RTY")
 CASH_INDICES: tuple[str, ...] = ("$SPX", "$COMPX", "$DJI", "$RUT", "$NDX")
 SECTOR_ETFS: tuple[str, ...] = ("XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY")
 # US-listed proxies for the foreign sessions a cash-index feed does not cover here (WU-7 owns real index levels).
-INTERNATIONAL_ETFS: tuple[str, ...] = ("EWJ", "EFA", "EEM", "FXI", "INDA", "EWZ")
+# LQ-20261107-972 (design WU-7, operator decision D3): the Europe proxies EWG EWU EZU VGK join the Asia and EM ones,
+# so tonight's fallback covers the European close as well as Asia. Every row is labelled `basis: etf_derived` — an ETF
+# proxy is not an index level, and is never passed off as one; a proxy with no quote is NAMED in `missing`, never zero.
+INTERNATIONAL_ETFS: tuple[str, ...] = ("EWJ", "EFA", "EEM", "FXI", "INDA", "EWZ", "EWG", "EWU", "EZU", "VGK")
 
 MOVERS_SIGNALS: tuple[str, ...] = ("top_gainers", "top_losers")
 MOVERS_LIMIT = 5

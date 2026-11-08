@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_brief_foreign_indices_lq972_20261108",
+  "files": [
+    "tests/test_market_brief_foreign_indices_lq972_20261108.py"
+  ],
+  "anchor": "LQ-20261107-972",
+  "comment": [
+    "ANCHOR: LQ-20261107-972 (design WU-7, operator decision D3) — the market brief's international block carries the Europe ETF proxies EWG EWU EZU VGK alongside the Asia/EM ones, every proxy it reads is in config/market_reference_symbols.json, every row is labelled basis etf_derived and never an index level (the moomoo foreign-index lane is refused today: no broker grant, no entitlement), and a proxy with no quote is named in `missing` rather than rendered as a zero."
+  ]
+}
