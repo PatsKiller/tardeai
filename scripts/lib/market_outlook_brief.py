@@ -108,10 +108,16 @@ def load_policy(path: Optional[Path] = None) -> dict[str, Any]:
 
 
 def load_record_file(path: Path) -> dict[str, Any]:
-    """Read and validate one record from disk. Every defect is named; nothing is repaired."""
+    """Read one record from disk, adapt the engine's shape, then validate. Every defect is named.
+
+    Adaptation is the documented ``normalize_record`` mapping, not a repair: ranges become absolute
+    from the record's own ATR band and anchor, thin level sides are padded so they render ``n/a``,
+    and a bare digest gains its algorithm prefix. No value is invented and no reading is guessed.
+    """
     doc = _read_json(Path(path))
     if not isinstance(doc, dict):
         raise BriefError(f"record is missing or not an object: {Path(path).name}")
+    doc = normalize_record(doc)
     errors = validate_record(doc)
     if errors:
         raise BriefError("record refused: " + "; ".join(errors))
@@ -126,11 +132,189 @@ def _stamp(value: Any) -> Optional[datetime]:
     return at if at.tzinfo is not None else None
 
 
+#: ``scenarios.<name>.<index>_range`` names the index whose key levels anchor the absolute band.
+RANGE_INDEXES = {"spx_range": "SPX", "ndx_range": "NDX", "rut_range": "RUT"}
+HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+LEVEL_SIDES = ("support", "resistance")
+MAX_LEVELS_PER_SIDE = 3
+UNRENDERABLE = "n/a"
+#: Set on ``scenarios`` by ``normalize_record`` when the engine's ATR dict became an absolute pair.
+#: A brief-shaped record states its own absolute bands, so it carries no marker and prints no label.
+RANGES_BASIS_KEY = "ranges_basis"
+RANGES_BASIS_ENGINE = "engine_1atr"
+
+
+def _anchor(record: Mapping[str, Any], index_key: str) -> Optional[float]:
+    """The close the engine measured levels against, recovered from any level's ``distance_pct``.
+
+    The engine states each level as ``{level, distance_pct, source}``, so ``level / (1 +
+    distance_pct/100)`` is the anchor for both sides. The first usable level wins; with no levels
+    there is no anchor and a band that needs one renders ``n/a``.
+    """
+    levels = record.get("key_levels")
+    row = levels.get(index_key) if isinstance(levels, Mapping) else None
+    if not isinstance(row, Mapping):
+        return None
+    for side in LEVEL_SIDES:
+        for item in row.get(side) or []:
+            if not isinstance(item, Mapping):
+                continue
+            level, distance = item.get("level"), item.get("distance_pct")
+            if not isinstance(level, (int, float)) or isinstance(level, bool):
+                continue
+            if not isinstance(distance, (int, float)) or isinstance(distance, bool):
+                continue
+            divisor = 1.0 + float(distance) / 100.0
+            if divisor > 0:
+                return float(level) / divisor
+    return None
+
+
+def _absolute_pair(value: Any, anchor: Optional[float]) -> Any:
+    """A scenario band as absolute ``[low, high]`` index levels.
+
+    The engine emits percent multiples of the anchor close - ``{low_1atr, high_1atr, low_2atr,
+    high_2atr}``, where 1 ATR is one weekly ATR in percent. The brief states absolute levels, so the
+    1-ATR band is applied to the anchor: ``anchor * (1 + multiple/100)``, rounded to 0.1. An already
+    absolute pair passes through untouched; a band with no derivable anchor is ``[None, None]`` and
+    the brief prints ``n/a`` rather than refusing the whole record.
+    """
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return list(value)
+    if isinstance(value, Mapping):
+        low, high = value.get("low_1atr"), value.get("high_1atr")
+        if isinstance(low, (int, float)) and isinstance(high, (int, float)):
+            if anchor is None:
+                return [None, None]
+            return [round(anchor * (1.0 + float(low) / 100.0), 1),
+                    round(anchor * (1.0 + float(high) / 100.0), 1)]
+    return value
+
+
+def _canonical_band(value: str) -> str:
+    """The brief's spelling of a band: the engine's ``RISK_OFF`` -> the brief's ``RISK-OFF``.
+
+    Every other band name and every non-band string passes through unchanged, so this is safe to
+    apply to any band field and is idempotent.
+    """
+    return value.replace("_", "-")
+
+
+def _is_atr_dict(value: Any) -> bool:
+    """True when ``value`` is the engine's percent-multiple band, i.e. a band that was derived."""
+    if not isinstance(value, Mapping):
+        return False
+    return all(isinstance(value.get(key), (int, float)) and not isinstance(value.get(key), bool)
+               for key in ("low_1atr", "high_1atr"))
+
+
+def _range_label(record: Mapping[str, Any]) -> Optional[str]:
+    """One line naming where the printed bands came from, or ``None`` when the record stated them itself.
+
+    The engine prints the same 1-ATR band for all three scenarios, anchored on a close it recovers
+    from the key levels rather than stating; an unlabelled rendered band would read as three measured
+    ranges. The label is printed only for a band this module derived, never for a brief-shaped record.
+    """
+    scenarios = record.get("scenarios")
+    if not isinstance(scenarios, Mapping) or scenarios.get(RANGES_BASIS_KEY) != RANGES_BASIS_ENGINE:
+        return None
+    label = ("Ranges: +/-1 weekly ATR around the Friday close, the same band for every scenario; "
+             "anchors derived from the engine's key levels.")
+    method = _clean(scenarios.get("method")).rstrip(".")
+    if method:
+        label += f" Engine method: {method}."
+    return label
+
+
+def _level_numbers(values: Any) -> list[Any]:
+    """A levels side as numbers in the record's order, at most three, padded with ``None`` to render ``n/a``.
+
+    ``None`` is "this side has fewer than three levels", which the brief states; it is not a level.
+    """
+    out: list[Any] = []
+    for item in values if isinstance(values, (list, tuple)) else []:
+        if isinstance(item, Mapping):
+            item = item.get("level")
+        out.append(item if isinstance(item, (int, float)) and not isinstance(item, bool) else None)
+    if len(out) >= MAX_LEVELS_PER_SIDE:
+        return out  # an over-full side stays over-full so validation names it instead of truncating
+    return (out + [None] * MAX_LEVELS_PER_SIDE)[:MAX_LEVELS_PER_SIDE]
+
+
+def normalize_record(record: Any) -> Any:
+    """The engine's ``MarketOutlookRecord@v1`` adapted to the brief's rendering contract.
+
+    Idempotent, copy-on-write, and values are only ever transformed:
+
+    * ``scenarios.<name>.<index>_range``: the engine's ATR-multiple dict becomes the absolute
+      ``[low, high]`` of its 1-ATR band, anchored on the index's own key levels (see ``_anchor``);
+    * ``key_levels.<INDEX>.<side>``: ``{level, source, ...}`` rows become the levels; a side with
+      fewer than three is padded with ``None`` so it renders what exists plus ``n/a``;
+    * ``inputs_snapshot_hash``: a bare 64-hex digest gains the ``sha256:`` prefix it names;
+    * ``band`` / ``prior_band`` / ``actions_template.band``: the engine spells the outer bands
+      ``RISK_OFF`` / ``RISK_ON`` (``scripts/lib/market_outlook/__init__.py:41``) while the brief and
+      its colour map use ``RISK-OFF`` / ``RISK-ON``. The underscore form is mapped to the hyphen form;
+      ``actions_template.band`` is also the value compared against ``band`` by validation, so both
+      are mapped together.
+
+    Anything already in the brief's own shape is returned as it was.
+    """
+    if not isinstance(record, Mapping):
+        return record
+    out = dict(record)
+
+    for band_key in ("band", "prior_band"):
+        if isinstance(out.get(band_key), str):
+            out[band_key] = _canonical_band(out[band_key])
+    actions = record.get("actions_template")
+    if isinstance(actions, Mapping):
+        adapted_actions = dict(actions)
+        if isinstance(adapted_actions.get("band"), str):
+            adapted_actions["band"] = _canonical_band(adapted_actions["band"])
+        out["actions_template"] = adapted_actions
+
+    levels = record.get("key_levels")
+    if isinstance(levels, Mapping):
+        adapted_levels: dict[str, Any] = {}
+        for name, row in levels.items():
+            if isinstance(row, Mapping):
+                adapted = dict(row)
+                for side in LEVEL_SIDES:
+                    if side in adapted:
+                        adapted[side] = _level_numbers(adapted[side])
+                adapted_levels[name] = adapted
+            else:
+                adapted_levels[name] = row
+        out["key_levels"] = adapted_levels
+
+    scenarios = record.get("scenarios")
+    if isinstance(scenarios, Mapping):
+        adapted_scenarios: dict[str, Any] = {}
+        for name, row in scenarios.items():
+            if isinstance(row, Mapping):
+                adapted = dict(row)
+                for band_key, index_key in RANGE_INDEXES.items():
+                    if band_key in adapted:
+                        adapted[band_key] = _absolute_pair(adapted[band_key], _anchor(record, index_key))
+                        if _is_atr_dict(row.get(band_key)):
+                            adapted_scenarios[RANGES_BASIS_KEY] = RANGES_BASIS_ENGINE
+                adapted_scenarios[name] = adapted
+            else:
+                adapted_scenarios[name] = row
+        out["scenarios"] = adapted_scenarios
+
+    digest = out.get("inputs_snapshot_hash")
+    if isinstance(digest, str) and HEX64_RE.match(digest):
+        out["inputs_snapshot_hash"] = "sha256:" + digest
+    return out
+
+
 def validate_record(record: Mapping[str, Any]) -> list[str]:
-    """Every reason the record cannot be briefed. Empty means it can."""
+    """Every reason the record cannot be briefed. Empty means it can. The engine's shape is accepted."""
     e: list[str] = []
     if not isinstance(record, Mapping):
         return ["record is not an object"]
+    record = normalize_record(record)
     if record.get("schema") != RECORD_SCHEMA:
         e.append(f"schema is {record.get('schema')!r}, expected {RECORD_SCHEMA!r}")
 
@@ -191,9 +375,17 @@ def validate_record(record: Mapping[str, Any]) -> list[str]:
                 continue
             if not isinstance(row.get("prob"), (int, float)):
                 e.append(f"scenarios.{name}.prob is not a number")
-            for band_key in ("spx_range", "ndx_range", "rut_range"):
+            for band_key in RANGE_INDEXES:
                 pair = row.get(band_key)
-                if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
+                if pair is None:
+                    # The engine writes null for an index whose ATR it could not measure; the brief
+                    # states the absence ("-") instead of refusing the whole record over one index.
+                    continue
+                # Normalization turned the engine's ATR dict into a pair; an unrenderable half is
+                # None (printed "n/a") and is not a defect, but a malformed pair still is.
+                if not (isinstance(pair, (list, tuple)) and len(pair) == 2
+                        and all(v is None or (isinstance(v, (int, float)) and not isinstance(v, bool))
+                                for v in pair)):
                     e.append(f"scenarios.{name}.{band_key} is not a [low, high] pair")
 
     levels = record.get("key_levels")
@@ -205,10 +397,13 @@ def validate_record(record: Mapping[str, Any]) -> list[str]:
             if not isinstance(row, Mapping):
                 e.append(f"key_levels.{index_key} is missing")
                 continue
-            for side in ("support", "resistance"):
+            for side in LEVEL_SIDES:
                 values = row.get(side)
-                if not isinstance(values, list) or len(values) != 3:
-                    e.append(f"key_levels.{index_key}.{side} is not three levels")
+                # A thin side is stated (it renders what exists plus "n/a"), never a refusal. A
+                # side the record does not carry at all, or one with more than three levels, is
+                # still a defect: the brief must not pick which levels to show.
+                if not isinstance(values, list) or not 1 <= len(values) <= MAX_LEVELS_PER_SIDE:
+                    e.append(f"key_levels.{index_key}.{side} is not one to {MAX_LEVELS_PER_SIDE} levels")
 
     if not isinstance(record.get("catalysts"), list):
         e.append("catalysts is not a list")
@@ -221,8 +416,11 @@ def validate_record(record: Mapping[str, Any]) -> list[str]:
     elif actions.get("band") != record.get("band"):
         e.append(f"actions_template.band {actions.get('band')!r} does not match the record band {record.get('band')!r}")
 
-    if not str(record.get("inputs_snapshot_hash") or "").startswith("sha256:"):
-        e.append("inputs_snapshot_hash is missing or not a sha256: digest")
+    # The engine writes the bare 64-hex digest; the brief states the algorithm with it. Both are
+    # the same fact, so either is accepted (normalize_record prefixes the bare form).
+    digest = str(record.get("inputs_snapshot_hash") or "")
+    if not (digest.startswith("sha256:") or HEX64_RE.match(digest)):
+        e.append("inputs_snapshot_hash is missing or not a sha256 digest")
     return e
 
 
@@ -255,9 +453,19 @@ def _clock(value: Any) -> str:
     return f"{match.group(1)}:{match.group(2)}" if match else raw
 
 
+def _price(value: Any) -> str:
+    """A level as the operator reads it: integers stay integers, halves keep one place, absence is n/a."""
+    if value is None:
+        return UNRENDERABLE
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        text = f"{float(value):.4f}".rstrip("0").rstrip(".")
+        return text or "0"
+    return str(value)
+
+
 def _pair(pair: Any) -> str:
     if isinstance(pair, (list, tuple)) and len(pair) == 2:
-        return f"{pair[0]}-{pair[1]}"
+        return f"{_price(pair[0])}-{_price(pair[1])}"
     return "-"
 
 
@@ -350,8 +558,8 @@ def _key_levels_rows(record: Mapping[str, Any]) -> list[tuple[str, str, str, str
     levels = record.get("key_levels") or {}
     for name in ("SPX", "NDX", "RUT"):
         row = levels.get(name) or {}
-        support = ", ".join(str(v) for v in (row.get("support") or [])) or "-"
-        resistance = ", ".join(str(v) for v in (row.get("resistance") or [])) or "-"
+        support = ", ".join(_price(v) for v in (row.get("support") or [])) or "-"
+        resistance = ", ".join(_price(v) for v in (row.get("resistance") or [])) or "-"
         rows.append((name, support, resistance, _clean(row.get("basis")) or "-"))
     return rows
 
@@ -558,6 +766,9 @@ def render_html(record: Mapping[str, Any], *, policy: Mapping[str, Any], max_cha
         for name in ("base", "bull", "bear")
     )
     parts.append(f'<div style="{_CSS_MUTED}">RUT: {rut}</div>')
+    range_label = _range_label(record)
+    if range_label:
+        parts.append(f'<div style="{_CSS_MUTED}">{_e(range_label)}</div>')
     for name in ("base", "bull", "bear"):
         triggers = [t for t in ((record.get("scenarios") or {}).get(name) or {}).get("triggers") or [] if _clean(t)]
         if triggers:
@@ -693,6 +904,9 @@ def render_email_text(record: Mapping[str, Any], *, policy: Mapping[str, Any],
         row = (record.get("scenarios") or {}).get(name) or {}
         lines.append(f"  {name.upper():5s} {round(float(row.get('prob') or 0) * 100):3d}%  "
                      f"SPX {_pair(row.get('spx_range'))}  NDX {_pair(row.get('ndx_range'))}  RUT {_pair(row.get('rut_range'))}")
+    range_label = _range_label(record)
+    if range_label:
+        lines.append(f"  {range_label}")
     lines += ["", "SCORECARD"]
     for cat in record.get("categories") or []:
         lines.append(f"  {_category_title(str(cat.get('key'))):22s} {_sub_text(cat):>8s} "
@@ -764,6 +978,9 @@ def render_telegram(record: Mapping[str, Any], *, policy: Mapping[str, Any],
         row = (record.get("scenarios") or {}).get(name) or {}
         lines.append(f"  {name.upper():5s} {round(float(row.get('prob') or 0) * 100):3d}% "
                      f"SPX {_pair(row.get('spx_range'))} NDX {_pair(row.get('ndx_range'))}")
+    range_label = _range_label(record)
+    if range_label:
+        lines.append(f"  {range_label}")
     lines.append("")
 
     lines.append("SCORECARD")
