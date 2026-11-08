@@ -15,7 +15,7 @@
     "output_receipt v2 and the dry_run_arg kept; the lane on the COMPUTED live set with no exclusion entry; the stage",
     "clamp lets a live request through; the health contract moves with the row (stage canary, target_reason stage:canary,",
     "empty_allowed/produced_count); a staged effect key (filesystem, n8n_claim false, executor-inert); and a negative",
-    "control that the pre-promotion shadow row is still refused and still silently unexcluded.",
+    "control that the pre-promotion shadow row is still refused, now named dispatch_mode:dry_run (LQ-20261107-736).",
     "Hermetic: reads the repo's config files only; no state root, no DB, no n8n, no live argv."
   ]
 }

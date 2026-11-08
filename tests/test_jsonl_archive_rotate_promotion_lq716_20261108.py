@@ -2,10 +2,11 @@
 
 Fail-before / pass-after. On the pre-promotion registry (``scheduler.stage: shadow``,
 ``dispatch.mode: dry_run``, allowlist ``live_arg: null``) the first assertion of every test below fails:
-``registry_live_lanes`` returns a list without the lane and the render reports nothing at all (the
-``dispatch.mode != live`` short-circuit at ``n8n_relay_live_lanes.registry_live_lanes`` runs before the
-stage is looked at, so the lane was absent from the render with an EMPTY ``excluded`` map — the silent
-FAIL_CONFIG symptom that produced this task).
+``registry_live_lanes`` returns a list without the lane, so the render omitted it — the silent FAIL_CONFIG
+symptom that produced this task. While the promotion fixes THIS lane, the silence itself was closed by
+LQ-20261107-736: since then the same drop is named ``dispatch_mode:dry_run`` in the render's ``excluded`` map
+(``scripts/lib/n8n_relay_live_lanes.py``), so a future lane cannot leave the live set with only the count as a
+signal. See ``tests/test_relay_live_lanes_exclusion_reasons_lq736_20261108.py``.
 
 What the promotion is, and what it is not: the lane stays a filesystem lane that ARCHIVES and never
 deletes an archive segment (AGENTS.md §24.12, §23.14); the live argv is the same ``--apply --confirm
@@ -147,9 +148,9 @@ def test_negative_control_a_shadow_row_is_still_refused():
     allowlist = {"lanes": [dict(_entry(), live_arg=None)]}
     lanes, excluded = RLL.registry_live_lanes(registry, allowlist)
     assert LANE not in lanes
-    # The dry_run short-circuit happens before the stage is read, so the lane is silently absent — the
-    # exact audit gap this promotion closes; the stage branch is the one that names a shadow row.
-    assert LANE not in excluded
+    # The dry_run short-circuit happens before the stage is read, so the dispatch mode is the reason named.
+    # Before LQ-20261107-736 this drop wrote NO entry (the audit gap); that fix is what names it now.
+    assert excluded[LANE] == "dispatch_mode:dry_run"
     assert SC.clamp_mode(LANE, "live", [row])["clamped"] is True
 
 

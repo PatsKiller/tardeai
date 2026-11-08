@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "relay_live_lanes_exclusion_reasons_lq736_20261108",
+  "files": [
+    "tests/test_relay_live_lanes_exclusion_reasons_lq736_20261108.py"
+  ],
+  "anchor": "RELAY_LIVE_LANES_EXCLUSION_REASONS_LQ736_20261108",
+  "comment": [
+    "ANCHOR: RELAY_LIVE_LANES_EXCLUSION_REASONS_LQ736_20261108 — LQ-20261107-736: the relay live-list render never drops a lane silently.",
+    "registry_live_lanes now writes a reason into `excluded` for EVERY registry row that carries a live claim (dispatch block,",
+    "scheduler.stage, scheduler.kind n8n, or a non-null allowlist live_arg). Before this, a non-live dispatch.mode short-circuited",
+    "with no entry, so 48 shadow/dry_run rows in the real registry (and 4 native n8n rows, and cron rows carrying a live argv)",
+    "left the render with an EMPTY excluded map and only the lane count moved. The gate pins: dispatch_mode:{dry_run|off|unset},",
+    "bad_dispatch_block:not_mapping, native_n8n_no_stage for every native n8n row without a stage, stage_<shadow>, scheduler_<kind>_not_n8n",
+    "for a live argv on a non-n8n row, a negative control (a row with no claim is not named), completeness over the real registry,",
+    "the LQ-716 lane still live and unexcluded, and that the reasons reach the rendered artifact.",
+    "Hermetic: synthetic one-row registries plus the repo's own config files read-only; no state root, no DB, no n8n, no live argv."
+  ]
+}
