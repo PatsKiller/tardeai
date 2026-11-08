@@ -1617,7 +1617,17 @@ def close_session_date(now=None):
     return None  # session open: an intraday mark is not a close
 
 
-def _sync_ticker_prices(portfolio, root):
+def _et_today(now=None):
+    """Today's date in America/New_York (``now`` may be naive ET, aware, or None for the clock)."""
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/New_York")
+    n = now if now is not None else datetime.now(tz)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=tz)
+    return n.astimezone(tz).date()
+
+
+def _sync_ticker_prices(portfolio, root, now=None):
     """Write each held symbol's repriced close into ticker_prices for the session it belongs to.
 
     Skips entirely while a session is open (``close_session_date`` is None) rather than stamping an
@@ -1629,8 +1639,13 @@ def _sync_ticker_prices(portfolio, root):
     ``on_conflict="overwrite"`` is the old UPDATE-then-INSERT under the (symbol, price_date) unique
     index, ``stamp_created_at`` is created_at=now(), and ``round_to=None`` writes the holdings price
     as given. ``price_date`` is now the resolved session, never CURRENT_DATE.
+
+    LQ-20261107-493: only the evening after a session's own close may overwrite that session's row.
+    A pre-market, weekend or holiday run resolves to an EARLIER session whose close was already
+    written at 16:05+ that day (by this lane or the session-close fill), so it inserts only a missing
+    row and never replaces a completed close with a mark observed hours or days later.
     """
-    session = close_session_date()
+    session = close_session_date(now)
     if session is None:
         print("  [repricer] ticker_prices skipped: the session is open, so the price in hand is not "
               "a close (a close is only ever stamped for a completed session)")
@@ -1650,12 +1665,13 @@ def _sync_ticker_prices(portfolio, root):
             continue
         seen.add(sym)
         rows.append({"symbol": sym, "price_date": session.isoformat(), "close_price": px})
-    rc = write_ticker_prices(cur, rows, source="portfolio_repricer", on_conflict="overwrite",
+    conflict = "overwrite" if session == _et_today(now) else "nothing"
+    rc = write_ticker_prices(cur, rows, source="portfolio_repricer", on_conflict=conflict,
                              round_to=None, stamp_created_at=True)
     n = rc.rows_accepted
     c.commit(); c.close()
     print(f"  [repricer] ticker_prices synced for {n} held symbols to session {session.isoformat()} "
-          "(unified with portfolio view)")
+          f"(on_conflict={conflict}; unified with portfolio view)")
     if rc.rows_rejected:
         print(f"  [repricer] ticker_prices REJECTED {len(rc.rows_rejected)} row(s): "
               + "; ".join(f"{r['row'].get('symbol')}: {r['reason']}" for r in rc.rows_rejected[:10]))
