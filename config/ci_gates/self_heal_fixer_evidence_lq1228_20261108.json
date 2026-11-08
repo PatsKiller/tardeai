@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_fixer_evidence_lq1228_20261108",
+  "files": [
+    "tests/test_self_heal_fixer_evidence_lq1228_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1228: the self-heal fixer never asks a model to fix a defect it cannot see. A job with no error text (no final exception and no stderr) or no script is refused and escalated as a FINDING, both at admission and for jobs that are already queued. The fix worktree is based on the served release (CURRENT/GIT_SHA), not origin/main, and if no served sha can be resolved there is no fallback. The evidence pack carries the lane's health-contract, registry and n8n-run rows, and names any row that is missing. Hermetic: tmp git repos and tmp state only."
+  ]
+}

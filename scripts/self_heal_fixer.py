@@ -56,6 +56,11 @@ from scripts.lib import recovery_validator as RV  # noqa: E402
 
 CONFIG = ROOT / "config" / "self_heal_fixer.json"
 REGISTRY = ROOT / "config" / "lane_registry.json"
+HEALTH_CONTRACTS = ROOT / "config" / "n8n_health_contracts.json"
+RUN_ALLOWLIST = ROOT / "config" / "n8n_run_allowlist.json"
+#: The served release's commit (LQ-20261107-1228). Read relative to the home directory, so no user path is committed.
+SERVED_SHA_FILE_DEFAULT = Path("trade-ai-releases") / "portfolio-server" / "CURRENT" / "GIT_SHA"
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
 CUTOVER_POLICY = ROOT / "config" / "lane_cutover_policy.json"
 _DEADLINE = contextvars.ContextVar("self_heal_absolute_deadline", default=None)
 
@@ -233,6 +238,49 @@ def failed_receipt(ledger: Path, lane: str, run_id: Optional[str] = None) -> Opt
 def registry_row(lane: str) -> Optional[dict]:
     doc = _load_json(REGISTRY) or {}
     return next((r for r in doc.get("lanes") or [] if r.get("lane_id") == lane), None)
+
+
+def lane_contracts_for(lane: str, row: Optional[dict]) -> dict:
+    """The lane's health-contract, registry and n8n-run rows from this code root's config (the served release)."""
+    return F.lane_contracts(
+        lane, health_doc=_load_json(HEALTH_CONTRACTS), registry_row=row, allowlist_doc=_load_json(RUN_ALLOWLIST)
+    )
+
+
+def resolve_base(repo: Path, cfg: dict, *, apply: bool, environ: dict) -> dict:
+    """The commit a fix worktree starts from (LQ-20261107-1228).
+
+    ``repo.base_ref`` "served" (the default): the served release's GIT_SHA (``repo.served_sha_file``, else
+    ``lifecycle.release_current_sha_file``, else ~/trade-ai-releases/portfolio-server/CURRENT/GIT_SHA). That is
+    the code the failing lane actually ran. Under the no-push order the live release holds local-only folds that
+    origin/main lacks, so a fix based on origin/main targets stale code. The SHA must be a full 40-hex commit that
+    exists in the repo. Otherwise there is NO base and every attempt is refused, never a silent fallback to
+    origin/main.
+    ``repo.base_ref`` "remote": the old behaviour, ``<remote>/<base_branch>`` after a fetch (apply only)."""
+    rcfg = cfg["repo"]
+    ref = str(rcfg.get("base_ref") or "served")
+    if ref == "remote":
+        fetch = git(repo, "fetch", "-q", rcfg["remote"], rcfg["base_branch"]) if apply else {"rc": 0}
+        sha = git(repo, "rev-parse", f"{rcfg['remote']}/{rcfg['base_branch']}")["out"].strip()
+        return {"sha": sha, "ref": ref, "source": f"{rcfg['remote']}/{rcfg['base_branch']}", "fetch_rc": fetch["rc"],
+                "why": None if sha else "remote_ref_unresolved"}
+    if ref != "served":
+        return {"sha": "", "ref": ref, "source": None, "fetch_rc": 0, "why": f"unknown_base_ref:{ref}"}
+    home = Path(environ.get("HOME") or Path.home())
+    src = Path(
+        rcfg.get("served_sha_file")
+        or (cfg.get("lifecycle") or {}).get("release_current_sha_file")
+        or home / SERVED_SHA_FILE_DEFAULT
+    )
+    try:
+        sha = src.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return {"sha": "", "ref": ref, "source": str(src), "fetch_rc": 0, "why": f"served_sha_unreadable:{exc.errno}"}
+    if not _FULL_SHA.fullmatch(sha):
+        return {"sha": "", "ref": ref, "source": str(src), "fetch_rc": 0, "why": "served_sha_not_a_full_sha"}
+    if git(repo, "cat-file", "-e", f"{sha}^{{commit}}")["rc"] != 0:
+        return {"sha": "", "ref": ref, "source": str(src), "fetch_rc": 0, "why": "served_sha_not_in_repo"}
+    return {"sha": sha, "ref": ref, "source": str(src), "fetch_rc": 0, "why": None}
 
 
 def operator_holds() -> dict:
@@ -1398,11 +1446,18 @@ def ready_local_finding(job: dict, now: datetime) -> tuple[str, str]:
 def non_code_finding(row: dict, now: datetime) -> tuple[str, str]:
     """(file name, markdown) for a failure a code change cannot fix: escalated to the lead, never admitted."""
     name = f"FINDING-SELF-HEAL-ESCALATION-{F.et_day(now)}-{_slug(row['lane'])}-{_slug(row.get('signature'))[:24]}.md"
+    no_ev = str(row["class"]).startswith("no_evidence:")
     lines = [
-        f"# FINDING — self-heal escalation (non-code): {row['lane']} — {row['class']}",
+        f"# FINDING — self-heal escalation ({'no evidence' if no_ev else 'non-code'}): {row['lane']} — {row['class']}",
         "",
-        "The self-heal fixer did NOT admit this failure for a code fix: its class is not a code defect. It needs a "
-        "person (dependency, data, timeout, audit block). One finding per signature per ET day.",
+        (
+            "The self-heal fixer did NOT hand this failure to an agent: its evidence pack has no error text or no "
+            "script (LQ-20261107-1228), so a fix could only be a guess. A person must find the failing run and its "
+            "stderr, or the producer must attach them. One finding per signature per ET day."
+            if no_ev
+            else "The self-heal fixer did NOT admit this failure for a code fix: its class is not a code defect. It "
+            "needs a person (dependency, data, timeout, audit block). One finding per signature per ET day."
+        ),
         "",
         f"- lane: `{row['lane']}`",
         f"- class: `{row['class']}`",
@@ -1665,6 +1720,16 @@ def _cycle(
             out["skipped"].append({"lane": lane, "why": f"non_code:{nc}", "finding": esc.get("path"),
                                    "deduped": bool(esc.get("deduped"))})
             continue
+        # LQ-20261107-1228: no error text or no script -> nothing for an agent to fix from; a person finds the run.
+        gap = F.evidence_gap(
+            F.build_evidence({"lane": lane}, incident=inc, receipt=rc, registry_row=row, base_sha="", cfg=cfg)
+        )
+        if gap:
+            sig = inc.get("signature") or F.local_signature(lane, (rc or {}).get("stderr_tail") or inc.get("stderr_tail"))
+            esc = escalate_non_code(f"no_evidence:{gap}", lane=lane, signature=sig, rc=rc, src=inc)
+            out["skipped"].append({"lane": lane, "why": f"no_evidence:{gap}", "finding": esc.get("path"),
+                                   "deduped": bool(esc.get("deduped"))})
+            continue
         job, why = F.admit(work, inc, now=t, cfg=cfg, held=held)
         if not job:
             out["skipped"].append({"lane": lane, "why": why})
@@ -1685,8 +1750,8 @@ def _cycle(
             job["escalated_at"] = t.isoformat()
     save()
     # arming + policy
-    fetch = git(repo, "fetch", "-q", cfg["repo"]["remote"], cfg["repo"]["base_branch"]) if apply else {"rc": 0}
-    base_sha = git(repo, "rev-parse", f"{cfg['repo']['remote']}/{cfg['repo']['base_branch']}")["out"].strip()
+    base = resolve_base(repo, cfg, apply=apply, environ=environ)
+    base_sha = base["sha"]
     agents = agents_text_at(repo, base_sha) if base_sha else ""
     grant = grant_reader(cfg["arming"]["grant_tier"])
     day = F.et_day(t)
@@ -1704,7 +1769,8 @@ def _cycle(
         arming=arming,
         policy=policy,
         base_sha=base_sha,
-        fetch_rc=fetch["rc"],
+        base={k: base[k] for k in ("ref", "source", "why")},
+        fetch_rc=base["fetch_rc"],
         backend={"name": backend, "why": backend_why},
     )
     names = [n for n in (cfg.get("backends") or {}) if not n.startswith("_")]
@@ -1730,10 +1796,32 @@ def _cycle(
             out["attempted"].append({"job_id": job["job_id"], "outcome": f"refused:non_code:{nc}",
                                      "finding": esc.get("path"), "deduped": bool(esc.get("deduped"))})
             continue
-        budget -= 1
         evidence = F.build_evidence(
-            job, incident=src["incident"], receipt=src["receipt"], registry_row=src["row"], base_sha=base_sha, cfg=cfg
+            job,
+            incident=src["incident"],
+            receipt=src["receipt"],
+            registry_row=src["row"],
+            base_sha=base_sha,
+            cfg=cfg,
+            contracts=lane_contracts_for(job["lane"], src["row"]),
         )
+        # LQ-20261107-1228: a job queued with an empty pack (no error text / no script) is refused and escalated,
+        # never handed to a model; it does not use the cycle's job budget.
+        gap = F.evidence_gap(evidence)
+        if gap:
+            F.transition(job, F.FIX_REFUSED, t, reason=f"no_evidence:{gap}", updated_at=t.isoformat())
+            job["escalated_at"] = t.isoformat()
+            esc = escalate_non_code(
+                f"no_evidence:{gap}", lane=job["lane"], signature=job.get("signature"), rc=src["receipt"], src=job
+            )
+            out["attempted"].append({"job_id": job["job_id"], "outcome": f"refused:no_evidence:{gap}",
+                                     "finding": esc.get("path"), "deduped": bool(esc.get("deduped"))})
+            continue
+        # No served base -> no attempt (never a silent fallback to a stale origin/main); the job stays queued.
+        if not base_sha:
+            out["attempted"].append({"job_id": job["job_id"], "outcome": f"no_base:{base['why']}"})
+            continue
+        budget -= 1
         try:
             rails = F.extract_rails(agents)
         except ValueError as exc:

@@ -340,6 +340,71 @@ def script_from_argv(argv: Iterable[Any]) -> Optional[str]:
     return None
 
 
+#: LQ-20261107-1228: what the agent is told "correct" means for the lane. Key subsets of the three config rows, so the
+#: pack stays bounded; each string is cut at CONTRACT_STR_CHARS.
+HEALTH_CONTRACT_KEYS = ("id", "workflow_id", "stage", "status", "purpose", "healthy", "degraded", "failed",
+                        "expected_output")
+REGISTRY_KEYS = ("lane_id", "owner", "scheduler", "state", "output_signal", "expected_cadence_hours", "value_class",
+                 "note")
+N8N_RUN_KEYS = ("command", "dry_run_arg", "live_arg", "timeout_s", "lock", "lock_kind", "market_gate", "output_signal")
+CONTRACT_STR_CHARS = 600
+
+
+def _bounded(value: Any, n: int = CONTRACT_STR_CHARS) -> Any:
+    if isinstance(value, str):
+        return value if len(value) <= n else value[:n] + "…"
+    if isinstance(value, Mapping):
+        return {str(k): _bounded(v, n) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_bounded(v, n) for v in value]
+    return value
+
+
+def lane_contracts(
+    lane: str,
+    *,
+    health_doc: Optional[Mapping[str, Any]],
+    registry_row: Optional[Mapping[str, Any]],
+    allowlist_doc: Optional[Mapping[str, Any]],
+) -> dict:
+    """The lane's rows from config/n8n_health_contracts.json, config/lane_registry.json and
+    config/n8n_run_allowlist.json (the argv the n8n run executor runs), bounded. Pure.
+
+    ``missing`` names every row the lane lacks: a lane with no row in any of the three is unknown to the system, and
+    the agent is told so rather than left to guess."""
+    hc = next(
+        (c for c in (health_doc or {}).get("contracts") or [] if isinstance(c, Mapping) and c.get("id") == lane), None
+    )
+    run = next(
+        (r for r in (allowlist_doc or {}).get("lanes") or [] if isinstance(r, Mapping) and r.get("lane_id") == lane),
+        None,
+    )
+    out = {
+        "health_contract": _bounded({k: hc.get(k) for k in HEALTH_CONTRACT_KEYS if k in hc}) if hc else None,
+        "registry": _bounded({k: registry_row.get(k) for k in REGISTRY_KEYS if k in registry_row})
+        if registry_row
+        else None,
+        "n8n_run": _bounded({k: run.get(k) for k in N8N_RUN_KEYS if k in run}) if run else None,
+    }
+    out["missing"] = [k for k in ("health_contract", "registry", "n8n_run") if out[k] is None]
+    return out
+
+
+def evidence_gap(evidence: Mapping[str, Any]) -> Optional[str]:
+    """Why an evidence pack is too empty to hand to a fixing agent, or None. Pure.
+
+    An agent asked to fix a defect with no error text, or with no script to look at, can only guess, and a guess
+    that passes its own new test is still a guess (LQ-20261107-1228: job shf-0644049006-1, lane
+    incident-identity-spine, had failing_run all null, final_exception null, script null). Such a job is refused
+    and escalated to a person as a FINDING; it never reaches a model."""
+    fr = evidence.get("failing_run") or {}
+    if not evidence.get("final_exception") and not str(fr.get("stderr_tail") or "").strip():
+        return "no_error_text"
+    if not evidence.get("script"):
+        return "no_script"
+    return None
+
+
 def build_evidence(
     job: Mapping[str, Any],
     *,
@@ -348,6 +413,7 @@ def build_evidence(
     registry_row: Optional[Mapping[str, Any]],
     base_sha: str,
     cfg: Mapping[str, Any],
+    contracts: Optional[Mapping[str, Any]] = None,
 ) -> dict:
     """Everything the fixer knows about the failure, bounded and redacted. Pure."""
     rc = dict(receipt or {})
@@ -389,6 +455,7 @@ def build_evidence(
         }
         if registry_row
         else None,
+        "contracts": dict(contracts) if contracts is not None else None,
         "repro": {
             "failing_command": " ".join(argv) or None,
             "do_not_run": "never run the lane itself (it writes the production DB and state); reproduce it in a "
@@ -454,6 +521,11 @@ def build_prompt(
         "4. Register the new test file: add config/ci_gates/<name>.json (one new file; add-only).\n"
         '5. Finish with ONE line of JSON: {"root_cause": "...", "fix": "...", "tests": ["tests/..."], '
         '"confidence": 0.0-1.0}. If you cannot fix it safely, change nothing and say why in that JSON.',
+        "## What correct means for this lane\n"
+        "`contracts` in the evidence pack holds the lane's own rows: `health_contract` (healthy / failed checks and "
+        "`expected_output`: what a good run produces), `registry` (owner, scheduler, output_signal) and `n8n_run` "
+        "(the exact argv and timeout the executor runs). Your fix must make the lane meet that contract, not just "
+        "silence the exception. Rows listed in `contracts.missing` do not exist: say so in your final JSON.",
         "## Evidence pack\n```json\n" + json.dumps(evidence, indent=1, sort_keys=True) + "\n```",
     ]
     if prev:

@@ -651,7 +651,10 @@ def sandbox(tmp_path):
     configured_python = CFG.get("repo", {}).get("python")
     test_python = configured_python if configured_python and Path(configured_python).is_file() else sys.executable
     cfg = _cfg(
-        repo={"repo_root": str(repo), "worktree_root": str(tmp_path / "wt"), "python": test_python},
+        # base_ref "remote": these tests drive the base through origin/main pushes (e.g. an AGENTS amendment); the
+        # served-release base (the LQ-1228 default) is covered by test_self_heal_fixer_evidence_lq1228_20261108.
+        repo={"repo_root": str(repo), "worktree_root": str(tmp_path / "wt"), "python": test_python,
+              "base_ref": "remote"},
         claude={"bin": str(bindir / "claude"), "env_names": ["HOME", "PATH"], "auth": {"mode": "none"}},
         sandbox={"enabled": False},
         agent_sandbox={"enabled": False},
