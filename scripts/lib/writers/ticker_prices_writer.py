@@ -219,8 +219,21 @@ def restore_ticker_prices_from_quarantine(conn_or_cursor: Any, symbol: str, *,
 
 
 def _quotes_sync_sql(symbol_filter: str, session_filter: str = "", *,
-                     only_missing: bool = False) -> str:
+                     only_missing: bool = False,
+                     close_window: tuple | None = None) -> str:
     keep = ", ".join(f"'{s}'" for s in AUTHORITATIVE_SOURCES)
+    # ``close_window`` = (start_time, end_time) in ET: the caller stores the FIRST print inside
+    # the window as the session close instead of the LAST print of the date. Without it the
+    # statement is unchanged, byte for byte (the golden test pins that): the last print of a
+    # session is that session's close for a caller reading the 06:10 full sync, and only the
+    # session-close fill knows the difference between the 16:00 consolidated close and the
+    # 16:45 after-hours refresh (LQ-20261107-459: XLF 57.13 stored for a 57.16 close, 5.2 bp).
+    window_pred = "" if close_window is None else (
+        "\n                 AND (fetched_at AT TIME ZONE 'America/New_York')::time"
+        " >= %(close_time)s"
+        "\n                 AND (fetched_at AT TIME ZONE 'America/New_York')::time"
+        " <  %(close_end)s")
+    order = "fetched_at ASC" if close_window is not None else "fetched_at DESC"
     # ``only_missing`` is for a caller filling a session that was never written (the sector
     # engine at 17:25). It must not displace a row another lane already decided on for that
     # session -- least of all the consolidated close eod_consolidated_close_sync wrote at 17:15.
@@ -236,8 +249,8 @@ def _quotes_sync_sql(symbol_filter: str, session_filter: str = "", *,
                       UPPER(symbol) AS symbol, fetched_at::date AS price_date, price
                FROM market_quotes
                WHERE price IS NOT NULL AND price > 0
-                 {symbol_filter}{session_filter}
-               ORDER BY UPPER(symbol), fetched_at::date, fetched_at DESC
+                 {symbol_filter}{session_filter}{window_pred}
+               ORDER BY UPPER(symbol), fetched_at::date, {order}
            ),
            bounded AS (
                SELECT c.symbol, c.price_date, c.price, prior.close_price AS prior_price
@@ -260,7 +273,8 @@ def sync_ticker_prices_from_market_quotes(conn_or_cursor: Any, symbols: list[str
                                           min_ratio: float, max_ratio: float,
                                           run_id: str | None = None,
                                           session: date | None = None,
-                                          only_missing: bool = False) -> WriteReceipt:
+                                          only_missing: bool = False,
+                                          close_window: tuple | None = None) -> WriteReceipt:
     """Daily closes from the last quote per symbol per day (price_db_sync), SQL unchanged.
 
     Bounded inline against the prior close: a candidate outside
@@ -273,6 +287,11 @@ def sync_ticker_prices_from_market_quotes(conn_or_cursor: Any, symbols: list[str
     ``only_missing`` turns the conflict rule into DO NOTHING so a caller that is filling a
     session nobody wrote cannot displace a row another lane already wrote for it. Defaults
     (``session=None, only_missing=False``) are the original statement, byte for byte.
+
+    ``close_window`` = ``(start_time, end_time)`` in ET changes the meaning of "the close" for
+    that session: the FIRST print inside the window replaces the last print of the date, which is
+    an after-hours print whenever the feed refreshes after 16:00. The session-close fill passes it;
+    the full sync keeps the default and its statement byte for byte.
     """
     syms = [str(s).upper() for s in (symbols or []) if s]
     symbol_filter = "AND UPPER(symbol) = ANY(%(syms)s)" if syms else ""
@@ -280,13 +299,20 @@ def sync_ticker_prices_from_market_quotes(conn_or_cursor: Any, symbols: list[str
     params: dict[str, Any] = {"syms": syms, "min_ratio": min_ratio, "max_ratio": max_ratio}
     if session:
         params["session"] = session
+    if close_window is not None:
+        # A window is only meaningful for one session: without it, every date's first print in
+        # [close, close+window) would be taken, which is not what a close is.
+        if not session:
+            raise ValueError("close_window needs a session: it selects one session's close print")
+        params["close_time"], params["close_end"] = close_window
     rule = ("ON CONFLICT (symbol, price_date) DO NOTHING" if only_missing else
             "ON CONFLICT (symbol, price_date) DO UPDATE SET close_price, "
             "source kept when authoritative")
     receipt = WriteReceipt(table=TABLE, source="market_quotes", written_by=WRITTEN_BY, run_id=run_id,
                            conflict_rule=rule, rows_in=len(syms))
     cur = cursor_of(conn_or_cursor)
-    cur.execute(_quotes_sync_sql(symbol_filter, session_filter, only_missing=only_missing), params)
+    cur.execute(_quotes_sync_sql(symbol_filter, session_filter, only_missing=only_missing,
+                                 close_window=close_window), params)
     receipt.statements = 1
     receipt.rows_written = receipt.rows_accepted = rowcount_of(cur)
     if syms:

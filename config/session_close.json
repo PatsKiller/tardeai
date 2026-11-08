@@ -1,0 +1,6 @@
+{
+  "schema": "SessionClose@v1",
+  "_why": "The session close written to ticker_prices is ONE print: the first quote at or after close_time_et and before close_time_et + window_minutes. Measured read-only on 2026-11-06, the broker feed (source=alpaca) printed 16:00:04 ET for every symbol in the sector universe and then refreshed at 16:30:03 and 16:45:02; taking the LAST print of the day stored the after-hours refresh as the close (XLF 57.13 instead of the 16:00:04 print's 57.16, 5.2 bp; SPY 735.53 instead of 735.40; XLK 164.80 instead of 164.79). The window is config and not a constant because how long the consolidated close takes to arrive depends on the feed's delay, and widening it is an operator decision, not a code change.",
+  "close_time_et": "16:00",
+  "window_minutes": 10
+}

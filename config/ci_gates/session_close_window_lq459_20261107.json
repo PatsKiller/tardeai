@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "session_close_window_lq459_20261107",
+  "files": [
+    "tests/test_session_close_window_lq459_20261107.py"
+  ],
+  "anchor": "SESSION_CLOSE_WINDOW_LQ459_20261107",
+  "comment": [
+    "ANCHOR: SESSION_CLOSE_WINDOW_LQ459_20261107 — LQ-20261107-459. The session close written to",
+    "ticker_prices was the LAST quote of the date, so the feed's after-hours refresh became the close:",
+    "measured read-only for 2026-11-06, every sector-universe symbol printed 16:00:04 ET (the",
+    "consolidated close) and the feed refreshed at 16:30:03 / 16:45:02 — XLF was stored at 57.13",
+    "instead of 57.16 (5.2 bp), SPY 735.53 instead of 735.40, XLK 164.80 instead of 164.79.",
+    "Now the close is the FIRST print in [close_time_et, close_time_et + window_minutes), and both",
+    "halves are config (config/session_close.json), not constants. The window is threaded into the",
+    "write itself (ticker_prices_writer._quotes_sync_sql ORDER BY fetched_at ASC + an ET-bounded",
+    "predicate), so this is not a cosmetic plan-side change; every other caller's statement stays",
+    "byte-identical (golden assertion). A symbol quoted that day with no print inside the window is",
+    "reported no_close_print rather than priced at its after-hours refresh, and a missing or",
+    "malformed config fails closed. Hermetic: synthetic rows, no DB."
+  ]
+}

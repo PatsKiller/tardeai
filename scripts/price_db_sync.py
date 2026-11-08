@@ -15,8 +15,9 @@ Consumers: watchlist strategy cards, agent synthesis, paper/broker proposals
 """
 import argparse
 import json, os, sys
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from typing import NamedTuple
 
 
 LANE_ID = "price-db-sync"
@@ -510,13 +511,69 @@ def sync_quotes_to_ticker_prices(symbols: list[str] | None = None) -> int:
 # quote by more than 5 bp (QQQ: 660.79 written at 11:39, post-close 656.31) — the intraday touch.
 #
 # This fills the missing session bars from the same source the 06:10 lane uses — market_quotes,
-# the broker read, never yfinance — for the session whose LAST quote is at/after the 16:00 ET
-# close. It writes only where no bar exists for (symbol, session), so it cannot displace finviz,
-# holdings, portfolio_repricer, or the consolidated close eod_consolidated_close_sync wrote, and
-# it cannot replace an intraday-written bar with a better one either (a separate, larger change).
-POST_CLOSE_HOUR_ET = 16
+# the broker read, never yfinance — for the session whose close the feed printed inside the
+# window config/session_close.json declares. It writes only where no bar exists for
+# (symbol, session), so it cannot displace finviz, holdings, portfolio_repricer, or the
+# consolidated close eod_consolidated_close_sync wrote, and it cannot replace an intraday-written
+# bar with a better one either (a separate, larger change).
+#
+# WHICH PRINT IS THE CLOSE (LQ-20261107-459). It is the FIRST print at or after the close inside
+# a configured window, never the last print of the date. Measured read-only for 2026-11-06: every
+# symbol in the sector universe printed at 16:00:04 ET — the consolidated close — and then the
+# feed refreshed at 16:30:03 and 16:45:02. Taking the last print stored the refresh as the close:
+# XLF 57.13 instead of 57.16 (5.2 bp), SPY 735.53 instead of 735.40, XLK 164.80 instead of 164.79.
+# A symbol with quotes that day but none inside the window is reported (never guessed at), so a
+# missing close shows up as `no_close_print` instead of as an after-hours price wearing its name.
+SESSION_CLOSE_CONFIG = PROJECT_ROOT / "config" / "session_close.json"
 SECTOR_UNIVERSE = ("XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU", "XLB", "XLRE", "XLC",
                    "SPY", "QQQ")
+
+
+class CloseWindow(NamedTuple):
+    """The close print window: [close, end) in ET, and the config label the reasons quote."""
+
+    close: time
+    end: time
+    minutes: int
+
+    @property
+    def label(self) -> str:
+        return f"{self.close:%H:%M}-{self.end:%H:%M} ET"
+
+
+def session_close_window(cfg_path=None) -> CloseWindow:
+    """Load ``config/session_close.json``: the close time ET and how long its print may take.
+
+    Config, not a constant: how late the consolidated close arrives is a property of the feed,
+    and widening the window is an operator decision. Missing or malformed config raises — a price
+    writer must not silently fall back to a guess about which price is a close.
+    """
+    path = Path(cfg_path or os.environ.get("TRADEAI_SESSION_CLOSE_CONFIG") or SESSION_CLOSE_CONFIG)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RuntimeError(f"session close window config unreadable: {path}: {exc}") from exc
+    except ValueError as exc:
+        raise RuntimeError(f"session close window config is not JSON: {path}: {exc}") from exc
+    if not isinstance(doc, dict):
+        raise ValueError(f"session close window config must be an object: {path}")
+    try:
+        hh, mm = str(doc["close_time_et"]).strip().split(":")
+        close = time(int(hh), int(mm))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"session close window config needs close_time_et 'HH:MM': {path}: {exc}") from exc
+    try:
+        minutes = int(doc["window_minutes"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"session close window config needs an integer window_minutes: {path}: {exc}") from exc
+    if not 1 <= minutes <= 240:
+        raise ValueError(f"session close window_minutes out of range (1..240): {minutes}")
+    end_dt = datetime.combine(date(2000, 1, 1), close) + timedelta(minutes=minutes)
+    if end_dt.date() != date(2000, 1, 1):
+        raise ValueError(f"session close window {close:%H:%M}+{minutes}m crosses midnight")
+    return CloseWindow(close=close, end=end_dt.time(), minutes=minutes)
 
 
 def _et():
@@ -524,16 +581,24 @@ def _et():
     return ZoneInfo("America/New_York")
 
 
-def resolve_session_close_date(cur, symbols, *, today=None):
-    """The newest session whose LAST quote for these symbols is at/after the 16:00 ET close.
+def _to_et(ts):
+    """A DB timestamp in ET. Naive values are already ET (the server's TimeZone)."""
+    return ts.astimezone(_et()) if getattr(ts, "tzinfo", None) else ts
 
-    A date whose last quote is a premarket or intraday print is not a closed session and is
-    never returned as the session to fill — writing one stores an intraday price as that day's
-    close, which is what the per-symbol callers do all day (on 11-06, 289 of the 659
-    quote-derived bars differed from that session's own post-close quote by more than 5 bp).
-    A date that is not closed is skipped, not fatal: at 08:00 ET on a trading day the newest
-    date is today (premarket) and yesterday is the answer.
+
+def resolve_session_close_date(cur, symbols, *, today=None, window=None):
+    """The newest session whose feed printed a close inside the configured window.
+
+    A date qualifies only when at least one of these symbols printed inside
+    ``[close_time_et, close_time_et + window_minutes)`` — the consolidated close. Both halves
+    matter: a date whose newest print is premarket or intraday never closed (on 11-06, 289 of the
+    659 quote-derived bars differed from that session's own post-close quote by more than 5 bp),
+    and a date whose only post-close prints are after-hours refreshes has no close to store (that
+    is what put a 16:45 print on XLF as the 11-06 close). A date that does not qualify is skipped,
+    not fatal: at 08:00 ET on a trading day the newest date is today (premarket) and yesterday is
+    the answer.
     """
+    win = window or session_close_window()
     syms = [str(s).upper() for s in (symbols or []) if s]
     if not syms:
         return None, "no symbols"
@@ -541,76 +606,110 @@ def resolve_session_close_date(cur, symbols, *, today=None):
         """SELECT fetched_at::date AS d,
                   max(fetched_at) AS last_q,
                   count(*) AS n,
+                  count(*) FILTER (
+                      WHERE (fetched_at AT TIME ZONE 'America/New_York')::time >= %(close)s
+                        AND (fetched_at AT TIME ZONE 'America/New_York')::time <  %(end)s
+                  ) AS n_close,
+                  min(fetched_at) FILTER (
+                      WHERE (fetched_at AT TIME ZONE 'America/New_York')::time >= %(close)s
+                        AND (fetched_at AT TIME ZONE 'America/New_York')::time <  %(end)s
+                  ) AS first_close,
                   EXTRACT(ISODOW FROM fetched_at::date) AS dow
            FROM market_quotes
-           WHERE UPPER(symbol) = ANY(%s) AND price IS NOT NULL AND price > 0
-             AND fetched_at::date <= COALESCE(%s, CURRENT_DATE)
+           WHERE UPPER(symbol) = ANY(%(syms)s) AND price IS NOT NULL AND price > 0
+             AND fetched_at::date <= COALESCE(%(today)s, CURRENT_DATE)
            GROUP BY 1
            ORDER BY 1 DESC
            LIMIT 10""",
-        (syms, today),
+        {"syms": syms, "today": today, "close": win.close, "end": win.end},
     )
     skipped = []
-    for d, last_q, n, dow in cur.fetchall() or []:
+    for d, last_q, n, n_close, first_close, dow in cur.fetchall() or []:
         if int(dow) >= 6:                       # a weekend print is not a session
             skipped.append(f"{d} is a weekend")
             continue
-        local = last_q.astimezone(_et()) if getattr(last_q, "tzinfo", None) else last_q
-        if local.hour >= POST_CLOSE_HOUR_ET:
-            why = f"last quote {local:%H:%M} ET on {d} ({n} quotes)"
-            return d, (f"{why}; skipped {'; '.join(skipped)}" if skipped else why)
-        skipped.append(f"{d} last quoted {local:%H:%M} ET (pre-close)")
+        if not n_close:                         # count() FILTER is 0, never NULL: 0 = no close print
+            skipped.append(f"{d} has no close print in {win.label} (last {_to_et(last_q):%H:%M} "
+                           f"ET, {n} quotes)")
+            continue
+        why = (f"first close print {_to_et(first_close):%H:%M:%S} ET on {d} "
+               f"({n_close} of {n} quotes inside {win.label}; last {_to_et(last_q):%H:%M} ET)")
+        return d, (f"{why}; skipped {'; '.join(skipped)}" if skipped else why)
     return None, "; ".join(skipped[:3]) or "no quoted session date"
 
 
-def plan_session_closes(cur, session, symbols):
-    """Read-only: what a session fill would write, one row per symbol. Never writes."""
+def plan_session_closes(cur, session, symbols, *, window=None):
+    """Read-only: what a session fill would write, one row per symbol. Never writes.
+
+    ``price`` is the FIRST print at or after the close inside the window — the close — and is
+    NULL for a symbol that quoted that day but not inside it (``no_close_print``).
+    """
+    win = window or session_close_window()
     syms = [str(s).upper() for s in (symbols or []) if s]
     cur.execute(
-        """WITH last_q AS (
+        """WITH day_q AS (
+               SELECT UPPER(symbol) AS symbol, max(fetched_at) AS last_q
+               FROM market_quotes
+               WHERE UPPER(symbol) = ANY(%(syms)s) AND price IS NOT NULL AND price > 0
+                 AND fetched_at::date = %(session)s
+               GROUP BY 1
+           ), close_q AS (
                SELECT DISTINCT ON (UPPER(symbol))
                       UPPER(symbol) AS symbol, price, fetched_at
                FROM market_quotes
                WHERE UPPER(symbol) = ANY(%(syms)s) AND price IS NOT NULL AND price > 0
                  AND fetched_at::date = %(session)s
-               ORDER BY UPPER(symbol), fetched_at DESC
+                 AND (fetched_at AT TIME ZONE 'America/New_York')::time >= %(close)s
+                 AND (fetched_at AT TIME ZONE 'America/New_York')::time <  %(end)s
+               ORDER BY UPPER(symbol), fetched_at ASC
            )
-           SELECT q.symbol, q.price, q.fetched_at,
+           SELECT d.symbol, c.price, c.fetched_at, d.last_q,
                   tp.close_price AS bar_close, tp.source AS bar_source,
                   (SELECT p.close_price FROM ticker_prices p
-                    WHERE p.symbol = q.symbol AND p.price_date < %(session)s
+                    WHERE p.symbol = d.symbol AND p.price_date < %(session)s
                     ORDER BY p.price_date DESC LIMIT 1) AS prior_close
-           FROM last_q q
+           FROM day_q d
+           LEFT JOIN close_q c ON c.symbol = d.symbol
            LEFT JOIN ticker_prices tp
-             ON tp.symbol = q.symbol AND tp.price_date = %(session)s
-           ORDER BY q.symbol""",
-        {"syms": syms, "session": session},
+             ON tp.symbol = d.symbol AND tp.price_date = %(session)s
+           ORDER BY d.symbol""",
+        {"syms": syms, "session": session, "close": win.close, "end": win.end},
     )
     rows = []
-    for sym, price, fetched_at, bar_close, bar_source, prior_close in cur.fetchall() or []:
+    for sym, price, fetched_at, last_q, bar_close, bar_source, prior_close in cur.fetchall() or []:
         if bar_close is not None:
             action, detail = "has_bar", f"{bar_source} {float(bar_close):.4f}"
+        elif price is None:
+            action = "no_close_print"
+            detail = f"no print inside {win.label} (last {_to_et(last_q):%H:%M:%S} ET)"
         else:
             outlier, reason = is_price_outlier(price, prior_close)
             action = "outlier" if outlier else "would_write"
             detail = reason if outlier else f"prior {prior_close}"
-        rows.append({"symbol": sym, "session": str(session), "close": float(price),
-                     "quoted_at": str(fetched_at)[:19], "action": action, "detail": detail})
+        rows.append({"symbol": sym, "session": str(session),
+                     "close": float(price) if price is not None else None,
+                     "quoted_at": str(fetched_at)[:19] if fetched_at is not None else None,
+                     "last_quote": str(last_q)[:19],
+                     "action": action, "detail": detail})
     missing = sorted(set(syms) - {r["symbol"] for r in rows})
-    return {"session": str(session), "rows": rows,
+    return {"session": str(session), "close_window": win.label, "rows": rows,
             "would_write": [r["symbol"] for r in rows if r["action"] == "would_write"],
             "has_bar": [r["symbol"] for r in rows if r["action"] == "has_bar"],
             "outliers": [r["symbol"] for r in rows if r["action"] == "outlier"],
+            "no_close_print": [r["symbol"] for r in rows if r["action"] == "no_close_print"],
             "no_quote": missing}
 
 
-def sync_session_closes(symbols=None, *, session=None, dry_run=False) -> dict:
+
+def sync_session_closes(symbols=None, *, session=None, dry_run=False, window=None) -> dict:
     """Fill the missing session bars for ``symbols`` (default: the sector universe).
 
-    Broker-read closes only (``market_quotes``); yfinance is never consulted. ``dry_run``
-    reports the plan and writes nothing.
+    Broker-read closes only (``market_quotes``); yfinance is never consulted. The close is the
+    FIRST print inside the configured window, so an after-hours refresh can never be stored as
+    the close (LQ-20261107-459). ``dry_run`` reports the plan and writes nothing.
     """
     from datetime import date as _date
+    win = window or session_close_window()
     syms = [str(s).upper() for s in (symbols or SECTOR_UNIVERSE) if s]
     if isinstance(session, str) and session.strip():
         session = _date.fromisoformat(session.strip()[:10])
@@ -619,17 +718,18 @@ def sync_session_closes(symbols=None, *, session=None, dry_run=False) -> dict:
     try:
         why = "session given"
         if session is None:
-            session, why = resolve_session_close_date(cur, syms)
+            session, why = resolve_session_close_date(cur, syms, window=win)
         if session is None:
             return {"ok": False, "session": None, "reason": why, "symbols": len(syms),
-                    "written": 0, "would_write": [], "has_bar": [], "outliers": [], "no_quote": []}
-        plan = plan_session_closes(cur, session, syms)
+                    "close_window": win.label, "written": 0, "would_write": [], "has_bar": [],
+                    "outliers": [], "no_close_print": [], "no_quote": []}
+        plan = plan_session_closes(cur, session, syms, window=win)
         written = 0
         if plan["would_write"] and not dry_run:
             receipt = sync_ticker_prices_from_market_quotes(
                 cur, plan["would_write"],
                 min_ratio=PRICE_OUTLIER_MIN_RATIO, max_ratio=PRICE_OUTLIER_MAX_RATIO,
-                session=session, only_missing=True,
+                session=session, only_missing=True, close_window=(win.close, win.end),
             )
             written = receipt.rows_written
             conn.commit()
@@ -722,6 +822,8 @@ def main(argv=None) -> int:
         print(f"{'DRY-RUN' if args.dry_run else 'APPLIED'} {LANE_ID} --session-close "
               f"{res['session']}: {'would write' if args.dry_run else 'wrote'} {filled} bars; "
               f"{len(res['has_bar'])} already had one, {len(res['outliers'])} out of bounds, "
+              f"{len(res.get('no_close_print') or [])} without a print in "
+              f"{res.get('close_window') or 'the close window'}, "
               f"{len(res['no_quote'])} unquoted")
         return 0
     if args.dry_run:

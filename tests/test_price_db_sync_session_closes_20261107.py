@@ -8,8 +8,13 @@ full-universe writer runs at 07:20 ET, before the session, so it can only ever w
 (11-05: 5,493 bars, all off the morning print); every other caller is per-symbol.
 
 These tests pin the fill that closes the gap: broker-read closes (``market_quotes``) only, the
-session resolved as the newest weekday whose LAST quote is post-close, and a write that cannot
-displace a bar another lane already wrote for that session.
+session resolved as the newest weekday whose feed printed a close inside the configured window,
+and a write that cannot displace a bar another lane already wrote for that session.
+
+LQ-20261107-459 (same file, same writer): the close is the FIRST print at or after 16:00 inside a
+configured window, not the last print of the date. A date whose only post-close prints are
+after-hours refreshes has no close, and a symbol with no print inside the window is reported
+(``no_close_print``) instead of having an after-hours price stored under its name.
 """
 
 from __future__ import annotations
@@ -17,7 +22,7 @@ from __future__ import annotations
 import inspect
 import re
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -36,8 +41,8 @@ def norm(sql: str) -> str:
     return re.sub(r"\s+", " ", sql).strip()
 
 
-def at(y, m, d, hh, mm):
-    return datetime(y, m, d, hh, mm, tzinfo=ET)
+def at(y, m, d, hh, mm, ss=0):
+    return datetime(y, m, d, hh, mm, ss, tzinfo=ET)
 
 
 class ScriptedCursor:
@@ -98,29 +103,42 @@ def writes(cur: ScriptedCursor) -> list[str]:
 def test_a_weekend_date_is_never_a_session():
     """2026-11-07 is a Saturday and has 48 quote rows; Friday 11-06 is the closed session."""
     cur = ScriptedCursor([[
-        (date(2026, 11, 7), at(2026, 11, 7, 9, 14), 48, 6),
-        (date(2026, 11, 6), at(2026, 11, 6, 16, 45), 5511, 5),
+        # session, last print, quotes, prints inside the close window, first of them, iso dow
+        (date(2026, 11, 7), at(2026, 11, 7, 9, 14), 48, 0, None, 6),
+        (date(2026, 11, 6), at(2026, 11, 6, 16, 45, 2), 5511, 13, at(2026, 11, 6, 16, 0, 4), 5),
     ]])
     d, why = pds.resolve_session_close_date(cur, ["SPY", "XLK"], today=date(2026, 11, 8))
     assert d == date(2026, 11, 6)
-    assert "16:45" in why
+    assert "16:00:04" in why and "16:45" in why and "is a weekend" in why
 
 
 def test_a_premarket_or_intraday_last_quote_is_not_a_close():
     """The defect in one line: a date whose last quote is at 11:39 has no close to write."""
     cur = ScriptedCursor([[
-        (date(2026, 11, 6), at(2026, 11, 6, 11, 39), 41, 5),
-        (date(2026, 11, 5), at(2026, 11, 5, 16, 45), 5500, 4),
+        (date(2026, 11, 6), at(2026, 11, 6, 11, 39), 41, 0, None, 5),
+        (date(2026, 11, 5), at(2026, 11, 5, 16, 45, 2), 5500, 13, at(2026, 11, 5, 16, 0, 3), 4),
     ]])
     d, why = pds.resolve_session_close_date(cur, ["SPY"], today=date(2026, 11, 7))
     assert d == date(2026, 11, 5)
-    assert "11:39" in why and "pre-close" in why
+    assert "11:39" in why and "no close print" in why
+
+
+def test_a_date_whose_only_post_close_prints_are_after_hours_has_no_close():
+    """LQ-459: 16:45 is after the close, not the close. A date with prints but none in the
+    window is skipped, so the after-hours refresh can never become a session close."""
+    cur = ScriptedCursor([[
+        (date(2026, 11, 6), at(2026, 11, 6, 16, 45, 2), 39, 0, None, 5),
+        (date(2026, 11, 5), at(2026, 11, 5, 16, 45, 2), 5500, 13, at(2026, 11, 5, 16, 0, 3), 4),
+    ]])
+    d, why = pds.resolve_session_close_date(cur, ["SPY"], today=date(2026, 11, 7))
+    assert d == date(2026, 11, 5)
+    assert "2026-11-06 has no close print in 16:00-16:10 ET" in why
 
 
 def test_the_newest_post_close_session_wins():
     cur = ScriptedCursor([[
-        (date(2026, 11, 6), at(2026, 11, 6, 19, 59), 5511, 5),
-        (date(2026, 11, 5), at(2026, 11, 5, 16, 45), 5500, 4),
+        (date(2026, 11, 6), at(2026, 11, 6, 19, 59), 5511, 5511, at(2026, 11, 6, 16, 0, 4), 5),
+        (date(2026, 11, 5), at(2026, 11, 5, 16, 45, 2), 5500, 5500, at(2026, 11, 5, 16, 0, 3), 4),
     ]])
     d, _ = pds.resolve_session_close_date(cur, ["SPY"], today=date(2026, 11, 7))
     assert d == date(2026, 11, 6)
@@ -138,20 +156,26 @@ def test_no_quoted_date_returns_none_with_a_reason():
 def test_the_plan_writes_nothing_and_names_every_symbol_it_cannot_fill():
     session = date(2026, 11, 6)
     cur = ScriptedCursor([[
-        # symbol, price, quoted_at, bar_close, bar_source, prior_close
-        ("SPY", 735.53, at(2026, 11, 6, 16, 45), None, None, 732.29),
-        ("XLK", 164.80, at(2026, 11, 6, 16, 45), None, None, 161.75),
-        ("RSP", 216.025, at(2026, 11, 6, 16, 8), 216.025, "market_quotes", 216.86),
-        ("XLF", 1000.0, at(2026, 11, 6, 16, 45), None, None, 57.53),
+        # symbol, close print inside the window, when, last print of the day,
+        # bar_close, bar_source, prior_close
+        ("SPY", 735.40, at(2026, 11, 6, 16, 0, 4), at(2026, 11, 6, 16, 45, 2), None, None, 732.29),
+        ("XLK", 164.79, at(2026, 11, 6, 16, 0, 4), at(2026, 11, 6, 16, 45, 2), None, None, 161.75),
+        ("RSP", 216.025, at(2026, 11, 6, 16, 0, 8), at(2026, 11, 6, 16, 0, 8), 216.025,
+         "market_quotes", 216.86),
+        ("XLF", 1000.0, at(2026, 11, 6, 16, 0, 4), at(2026, 11, 6, 16, 0, 4), None, None, 57.53),
+        ("XLU", None, None, at(2026, 11, 6, 16, 45, 2), None, None, 43.14),
     ]])
-    plan = pds.plan_session_closes(cur, session, ["SPY", "XLK", "RSP", "XLF", "XLU"])
+    plan = pds.plan_session_closes(cur, session, ["SPY", "XLK", "RSP", "XLF", "XLU", "XLB"])
     assert writes(cur) == []
     assert plan["would_write"] == ["SPY", "XLK"]
     assert plan["has_bar"] == ["RSP"]
     assert plan["outliers"] == ["XLF"]
-    assert plan["no_quote"] == ["XLU"]
+    assert plan["no_close_print"] == ["XLU"]            # quoted that day, not inside the window
+    assert plan["no_quote"] == ["XLB"]                  # not quoted at all
     by = {r["symbol"]: r for r in plan["rows"]}
-    assert by["SPY"]["close"] == 735.53 and by["SPY"]["quoted_at"].startswith("2026-11-06")
+    assert by["SPY"]["close"] == 735.40 and by["SPY"]["quoted_at"].startswith("2026-11-06")
+    assert by["XLU"]["close"] is None and "no print inside 16:00-16:10 ET" in by["XLU"]["detail"]
+    assert by["XLU"]["last_quote"].endswith("16:45:02")
 
 
 # ── the fill: dry run writes nothing, apply fills only the missing bars ──────
@@ -159,9 +183,10 @@ def test_the_plan_writes_nothing_and_names_every_symbol_it_cannot_fill():
 
 def _plan_rows():
     return [
-        ("SPY", 735.53, at(2026, 11, 6, 16, 45), None, None, 732.29),
-        ("XLK", 164.80, at(2026, 11, 6, 16, 45), None, None, 161.75),
-        ("RSP", 216.025, at(2026, 11, 6, 16, 8), 216.025, "market_quotes", 216.86),
+        ("SPY", 735.40, at(2026, 11, 6, 16, 0, 4), at(2026, 11, 6, 16, 45, 2), None, None, 732.29),
+        ("XLK", 164.79, at(2026, 11, 6, 16, 0, 4), at(2026, 11, 6, 16, 45, 2), None, None, 161.75),
+        ("RSP", 216.025, at(2026, 11, 6, 16, 0, 8), at(2026, 11, 6, 16, 0, 8), 216.025,
+         "market_quotes", 216.86),
     ]
 
 
@@ -191,7 +216,12 @@ def test_apply_is_narrowed_to_the_session_and_cannot_displace_an_existing_bar(mo
     assert "fetched_at::date = %(session)s" in sql      # one session, not every day
     assert "DO NOTHING" in sql.upper()                  # never displaces a bar already written
     assert "DO UPDATE" not in sql.upper()
+    # LQ-459: the write itself takes the FIRST print inside the window, not the last of the day
+    assert "fetched_at ASC" in sql and "fetched_at DESC" not in sql
+    assert "(fetched_at AT TIME ZONE 'America/New_York')::time >= %(close_time)s" in sql
     assert params["session"] == date(2026, 11, 6)
+    assert (params["close_time"].hour, params["close_time"].minute) == (16, 0)
+    assert (params["close_end"].hour, params["close_end"].minute) == (16, 10)
     assert params["syms"] == ["SPY", "XLK"]             # RSP already had its bar
     assert conn.committed == 1
 
