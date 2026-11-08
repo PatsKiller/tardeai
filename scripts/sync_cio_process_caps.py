@@ -54,6 +54,12 @@ CAPS: dict[str, tuple[float, int]] = {
     "options_thesis_cio_review": (0.40, 40),
     # Ask-CIO approved dollars; finite request bound, global cap unchanged.
     "cio_ask_deep_research": (5.00, 30),
+    # 2026-11-07 (LQ-20261107-387): the lane finally routed, spent $0.2467 of its unmeasured $0.25/day cap
+    # by 17:21 ET, and every later slot was refused COST_CAP_EXCEEDED before reserving. ~292 calls/day at
+    # the measured rate is ~$1.11. Same defect as this script's 2026-08-12 note: a cap below what the work
+    # costs. 2026-11-07 21:08 ET operator directive (LQ-20261107-538): "Leave the cap at 1.50", free first,
+    # and an alert when paid spend tops $0.75 on 3 days in a week (scripts/llm_paid_spend_watch.py).
+    "due_diligence_questions": (1.50, 200),
 }
 
 
