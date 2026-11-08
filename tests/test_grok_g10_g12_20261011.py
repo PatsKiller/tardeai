@@ -183,9 +183,7 @@ def test_earnings_lookup_error_exits_nonzero_and_does_not_write(monkeypatch, tmp
     def boom(symbol):
         raise RuntimeError("lookup down")
 
-    yf = types.ModuleType("yfinance")
-    yf.Ticker = boom
-    monkeypatch.setitem(sys.modules, "yfinance", yf)
+    monkeypatch.setattr(ule, "_next_earnings", boom)   # the lookup source is Finviz (LQ-1128), never yfinance
     assert ule.main([]) == 1
     assert seed.read_bytes() == before
 
