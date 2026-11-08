@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_brief_attempt_receipt_lq415_20261107",
+  "files": [
+    "tests/test_market_event_brief_attempt_receipt_lq415_20261107.py"
+  ],
+  "comment": [
+    "LQ-20261107-415: market-event-brief writes its LaneRunReceipt@v2 attempt copy on every live exit.",
+    "Registered per the LQ-431 review (cc-opus-1): CI must run the test."
+  ]
+}

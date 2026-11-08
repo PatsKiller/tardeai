@@ -41448,32 +41448,32 @@
         },
         {
           "check": "empty_output",
-          "text": "an exit-0 live run verified no row in ticker_snapshot_daily -> RUN_FAILED empty_output, P2"
+          "text": "a live run whose attempt receipt shows produced_count 0 with a fatal skip (payload_unavailable, no_channel_confirmed; both also exit 1) or an empty_reason outside the allowed list -> RUN_FAILED empty_output, P2"
         },
         {
           "check": "output_unverifiable",
-          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt under data/runtime/lane_attempts/market-event-data-refresh/ -> RUN_FAILED output_unverifiable"
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt under data/runtime/lane_attempts/market-event-brief/ -> RUN_FAILED output_unverifiable"
         },
         {
           "check": "stale",
-          "text": "receipt ok_at older than 48 h (a missed Saturday fire is visible before the Sunday fire)"
+          "text": "receipt ok_at older than 56 h (a missed Sunday 20:00 fire is visible by Monday 00:30 ET, before the 07:00 slot)"
         }
       ],
       "baseline": {
-        "freshness_degraded_after_h": 36,
-        "freshness_failed_after_h": 48,
-        "freshness_rule": "the longest legitimate gap is Friday 06:30 -> Saturday 18:00 (35.5 h); degraded beyond 36 h, failed beyond 48 h so one missed weekend fire is visible",
-        "timeout_s": 900,
-        "class": "ingest",
+        "freshness_degraded_after_h": 53,
+        "freshness_failed_after_h": 56,
+        "freshness_rule": "every fire that ends ok (delivered or an allowed empty reason) advances ok_at; the longest legitimate gap between fires is Friday 16:30 -> Sunday 20:00 ET (51.5 h); degraded beyond 53 h (the fall-back weekend gap is 52.5 h wall-clock), failed beyond 56 h so a missed Sunday fire is visible before Monday 07:00",
+        "timeout_s": 180,
+        "class": "report",
         "computed_on": "2026-11-07",
         "basis": "CLASS_DEFAULT_PROVISIONAL",
         "source": "no finished live runs yet; class defaults: duration degraded above 80% of timeout_s",
         "runs_considered": 0,
-        "duration_degraded_above_s": 720
+        "duration_degraded_above_s": 144
       },
       "alerting": {
         "lane_severity": "Medium",
-        "severity_basis": "the market-event brief reads these rows: a silent stop starves the brief rather than corrupting a trade",
+        "severity_basis": "the brief is the operator's scheduled market-event digest: a silent stop hides a READY name until the next slot; advisory only, no order is affected",
         "failed": {
           "siem_severity": "WARN",
           "notifier_priority": "P2"
@@ -41494,17 +41494,17 @@
           }
         ],
         "default_action": "suggest_only",
-        "suggest_only_reason": "a failed refresh is retried by the next fire and the writer upserts on (snapshot_date, symbol), so a rerun is safe; nothing to repair automatically"
+        "suggest_only_reason": "a live rerun sends email, Telegram and texts, so it is never automatic: an undelivered slot is not retried by the schedule (retry_policy none, slots at least 60 min apart > the 40-min grace); the next slot's brief carries the update; a manual live rerun within 40 min of the slot re-sends it; a dry run is safe"
       },
       "evidence": {
-        "receipt": "data/runtime/market-event-data-refresh_last.json",
+        "receipt": "data/runtime/market-event-brief_last.json",
         "verify": [
-          "python3 -c \"import sqlite3; c=sqlite3.connect('file:data/governance/n8n_coordination_ledger.sqlite?mode=ro', uri=True); print(*c.execute(\\\"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='market-event-data-refresh' ORDER BY requested_at DESC LIMIT 10\\\").fetchall(), sep=chr(10))\"",
-          "jq '{status, produced_count, attempted_count, skipped_reasons, summary: .summary.snapshot_date}' data/runtime/market-event-data-refresh_last.json",
-          "psql -h /var/run/postgresql -d trade_ai -c \"SELECT max(snapshot_date), count(*) FROM ticker_snapshot_daily\""
+          "python3 -c \"import sqlite3; c=sqlite3.connect('file:data/governance/n8n_coordination_ledger.sqlite?mode=ro', uri=True); print(*c.execute(\\\"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='market-event-brief' ORDER BY requested_at DESC LIMIT 10\\\").fetchall(), sep=chr(10))\"",
+          "jq '{status, ok_at, produced_count, attempted_count, skipped_reasons, empty_reason, slot: .summary.slot, channels: .summary.channels}' data/runtime/market-event-brief_last.json",
+          "ls -t data/runtime/lane_attempts/market-event-brief/ | head -5"
         ],
         "never": "an n8n execution status: successful executions are soft-deleted; prove work with the ledger and the receipt",
-        "expected_output_basis": "scripts/finviz_snapshot_refresh.py writes produced_count as a READ-BACK count of ticker_snapshot_daily rows for the run's snapshot_date and symbols, and empty_reason no_refreshed_records when it verified none"
+        "expected_output_basis": "scripts/market_event_brief.py writes a LaneRunReceipt@v2 on every live exit (write_lane_receipt: _last.json plus the immutable per-attempt copy the executor grades): produced_count 1 only when email or Telegram confirmed delivery; produced_count 0 with empty_reason no_slot_due, no_episode, episode_not_active or slot_already_delivered (allowed), or status failed with skipped_reasons payload_unavailable / no_channel_confirmed (fatal). A dry run writes nothing (LQ-20261107-415)"
       },
       "review_by": "2026-12-07",
       "expected_output": {
@@ -41527,7 +41527,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/market-event-brief_last.json produced_count (lane_output.emit LaneRunReceipt@v2)"
+            "ref": "data/runtime/lane_attempts/market-event-brief/<run_id>.json produced_count (write_lane_receipt LaneRunReceipt@v2; _last.json mirrors it)"
           }
         ],
         "on_violation": {
@@ -41539,7 +41539,7 @@
       "review": {
         "status": "REVIEWED",
         "prepared_by": "cc-deepseek-6 LQ-20261107-364",
-        "reviewed_by": "cc-deepseek-6, the author, against scripts/finviz_snapshot_refresh.py (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews the bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
+        "reviewed_by": "cc-deepseek-6, the author, against scripts/finviz_snapshot_refresh.py; cc-opus-3 (LQ-20261107-415) corrected the fields copied from market-event-data-refresh (baseline, freshness, failed texts, evidence, remediation, severity basis) against scripts/market_event_brief.py and config/n8n_run_allowlist.json (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews the bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
         "reviewed_on": "2026-11-07"
       }
     }

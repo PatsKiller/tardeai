@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "market_event_detect_receipt_counts_lq434_20261107",
+  "files": [
+    "tests/test_market_event_detect_receipt_counts_lq434_20261107.py"
+  ],
+  "anchor": "MARKET_EVENT_DETECT_RECEIPT_COUNTS_LQ434_20261107",
+  "comment": [
+    "ANCHOR: MARKET_EVENT_DETECT_RECEIPT_COUNTS_LQ434_20261107 — scripts/market_event_detect.py reports attempted_count and produced_count in the same unit (candidate rows upserted into market_event_candidates), with attempted floored at produced, so the n8n output verdict can never grade a normal run counts_inconsistent. A tables-missing exit writes a v2 receipt with empty_reason dependency_unavailable (graded empty_violation). Graded through the real n8n_output_verdict.evaluate() and apply_output_verdict(). Advisory only, MBI_BEHAVIOR = 0. Synthetic rows only."
+  ]
+}
