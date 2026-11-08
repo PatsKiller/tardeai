@@ -7,6 +7,13 @@
   "backoff_factor": 2,
   "max_interval_hours": 48,
   "max_probes": 6,
+  "canary": {
+    "enabled": true,
+    "max_probes": 2,
+    "page_on_failure": 2,
+    "page_priority": "P1"
+  },
+  "_canary_why": "Fable n8n design audit LQ-984 Q3.4 / Q6 #8, operator-approved 2026-11-08 (decision D7): an opened breaker on a live canary lane was a dead end — the lane was never probed, so only a human release could clear it (30 breaker rows historically, all released by hand). A canary lane may now spend a shorter budget than the fleet (2 probes, not 6): open_hours then open_hours*backoff_factor; a pass releases the breaker for good, and the SECOND failed probe is a P1 page (page_on_failure) after which a human decides REPAIR or REBUILD. The NEVER_PROBE code floor still binds: a canary lane whose id matches broker/order/stop/secret/sender/scalp/... is never probed whatever this switch says.",
   "probe_timeout_hours": 6,
   "ledger_rel": "data/governance/n8n_coordination_ledger.sqlite",
   "state_rel": "data/governance/n8n_breaker_probe_state.json",
@@ -15,7 +22,7 @@
   "producer": "n8n_breaker_probe",
   "alert_priority": "P2",
   "never_probe_extra": [],
-  "_never_probe_why": "Additions only: scripts/lib/n8n_breaker_probe.py NEVER_PROBE is the code floor (broker, order, stop, execution, scalp, sender, telegram, secret, deploy, release, guard, position, paper, account, dof, ...), plus every live canary lane from the lane registry (AGENTS.md \u00a723.14, review 2026-10-31).",
+  "_never_probe_why": "Additions only: scripts/lib/n8n_breaker_probe.py NEVER_PROBE is the code floor (broker, order, stop, execution, scalp, sender, telegram, secret, deploy, release, guard, position, paper, account, dof, ...) and binds every lane, canary or not. A live canary lane from the lane registry is probe-eligible only under the `canary` switch below (LQ-20261107-1007).",
   "holds_rel": "data/governance/n8n_breaker_probe_holds.json",
   "_holds_why": "Operator hold marker: a JSON object {lane_id: reason}. A held lane is never probed, judged or re-opened by the prober.",
   "message_class": "ops_breaker_probe",
