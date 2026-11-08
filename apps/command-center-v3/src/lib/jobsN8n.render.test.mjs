@@ -92,6 +92,17 @@ check((tab.match(/data-testid="jobs-n8n-lane"/g) || []).length === 3, 'three lan
 check(tab.indexOf('synthetic-failing') < tab.indexOf('synthetic-cutover'), 'failing lane listed first')
 check(tab.includes('Move to n8n: 2 of 3 lanes run for real through n8n; 1 rehearse (dry run)'), 'move-to-n8n sentence')
 check(/href="\/system\/ops-controls\?tab=n8n"/.test(tab), 'switches link to Ops Controls')
+// LQ-20261107-1157: the copy matches reality. Run now exists (LQ-611 "Run a lane" sheet in Ops Controls); the page links
+// straight to it and no longer says there is no Run button anywhere outside Ops Controls' switches.
+check(/href="\/system\/ops-controls\?tab=n8n&amp;run=lane"[^>]*>Run a lane</.test(tab), 'n8n tab links to the Run a lane sheet')
+{
+  const src = f => readFileSync(join(app, 'src', f), 'utf8')
+  const page = src('pages/JobsN8nPage.tsx'), views = src('components/JobsN8nViews.tsx'), frame = src('components/OpsDeskFrame.tsx')
+  for (const [name, text] of [['footer', page], ['views', views], ['frame', frame]])
+    check(!/No Run, Retry or Pause buttons here|switches stay in Ops Controls/.test(text), `${name}: the old "no Run button" copy is gone`)
+  check(/data-testid="jobs-n8n-readonly-note"[\s\S]{0,200}RUN_A_LANE_PATH[\s\S]{0,120}Run a lane<\/Link>/.test(page), 'footer links to Run a lane')
+  check(/useState\(\(\) => params\.get\('run'\) === 'lane'\)/.test(src('pages/OpsControls.tsx')), 'Ops Controls opens the sheet on ?run=lane')
+}
 check(!/>(Run|Retry|Pause|Add to live list|Remove from live list)</.test(tab), 'no write button on the page')
 check(!/<table/.test(tab), 'no table (phone-first cards)')
 check(!tab.includes('jobs-n8n-lane-sheet'), 'no sheet until a lane is opened')

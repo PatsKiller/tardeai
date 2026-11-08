@@ -1,7 +1,7 @@
 import { useCallback, useState, type CSSProperties } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import OpsDeskFrame from '../components/OpsDeskFrame'
-import { IncidentsTab, JobsHistoryTab, JobsN8nStyles, N8nLanesTab } from '../components/JobsN8nViews'
+import { IncidentsTab, JobsHistoryTab, JobsN8nStyles, N8nLanesTab, RUN_A_LANE_PATH } from '../components/JobsN8nViews'
 import { SchedulerChecksTab } from '../components/SchedulerChecksViews'
 import { N8nCatalogTab } from '../components/N8nCatalogViews'
 import { useApi } from '../hooks/useApi'
@@ -47,7 +47,7 @@ export default function JobsN8nPage() {
           {tab === 'incidents' && <IncidentsTab />}
         </div>
         <p data-testid="jobs-n8n-readonly-note" style={{ color: TOKENS.text[2], fontSize: TYPE.sm, margin: 0 }}>
-          Read-only page. No Run, Retry or Pause buttons here; those stay in <Link to={OPS_CONTROLS_PATH} style={{ color: TOKENS.info }}>Ops Controls</Link>.
+          This page only reads. To run an n8n lane once now (one lane or all, dry run or live), use <Link to={RUN_A_LANE_PATH} data-testid="jobs-n8n-run-a-lane-link" style={{ color: TOKENS.info }}>Run a lane</Link> in Ops Controls; to retry, run it again there. Pause and Resume are in <Link to={OPS_CONTROLS_PATH} style={{ color: TOKENS.info }}>Ops Controls</Link> › Jobs.
         </p>
       </div>
     </OpsDeskFrame>

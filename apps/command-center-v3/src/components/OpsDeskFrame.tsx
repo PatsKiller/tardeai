@@ -22,7 +22,7 @@ const PAGES: Record<OpsPageKey, PageSpec> = {
   },
   jobsN8n: {
     title: 'Jobs & n8n',
-    purpose: 'Did it run, did it fail, did it get fixed — every job, every n8n lane and the incidents in one read-only place. The switches stay in Ops Controls.',
+    purpose: 'Did it run, did it fail, did it get fixed — every job, every n8n lane and the incidents in one read-only place. To run a lane now or pause a job, use Ops Controls.',
     sources: [
       { id: 'receipts', label: 'Run receipts and wrapper events', laneIds: ['n8n-pilot-dispatch', 'n8n-incident-fanin'] },
       { id: 'registry', label: 'Job registry snapshot', laneIds: ['crontab-snapshot-for-health-agent'] },

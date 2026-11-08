@@ -24,8 +24,12 @@ import { ageText, INCIDENTS_PATH, matchesFilter, sortIncidents, sourceText, type
 import { rowModel } from '../lib/incidentRow'
 
 // Ops › Jobs & n8n (design pages/jobs v002, operator-approved 2026-11-06). Read-only views: no Run, Retry, Pause or
-// live-list button exists here — the switches stay in Ops Controls behind the operator's sign-in. Phone first: stacked
-// cards (no table at 390 px), 44 px tap targets, list → full-screen sheet.
+// live-list button exists here. Running a lane once (LQ-611 "Run a lane" sheet: one lane or all, dry or live), Pause and
+// the live list are in Ops Controls behind the operator's sign-in; these views link there (LQ-20261107-1157). Phone
+// first: stacked cards (no table at 390 px), 44 px tap targets, list → full-screen sheet.
+
+/** Opens Ops Controls on the n8n tab with the LQ-611 "Run a lane" sheet already open (OpsControls reads run=lane). */
+export const RUN_A_LANE_PATH = `${OPS_CONTROLS_PATH}?tab=n8n&run=lane`
 
 const panel: CSSProperties = { padding: 12, border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, background: TOKENS.bg[1], minWidth: 0 }
 const muted: CSSProperties = { color: TOKENS.text[2], fontSize: TYPE.sm, margin: 0 }
@@ -179,7 +183,7 @@ export function JobsHistoryTab({ tab, onTotal }: { tab: 'needs' | 'quality' | 'a
       {row && detail.data ? <HistoryDetail row={row} computedAt={detail.data.computed_at} />
         : <p role="status">{detail.error ? 'Run history for this job could not be read.' : detail.loading ? 'Loading run history…' : 'This job is not in the job list.'}</p>}
       <div style={{ marginTop: 16, maxWidth: 960, minWidth: 0 }}><SchedulerLaneDetail laneId={selectedId} compact /></div>
-      <p style={{ ...muted, marginTop: 16 }}>See every job by category in the <Link to={JOB_CATALOG_PATH} style={{ color: TOKENS.info }}>Job catalog</Link>. Read-only page. No Run, Retry or Pause buttons here; those stay in <Link to={OPS_CONTROLS_PATH} style={{ color: TOKENS.info }}>Ops Controls</Link> behind your sign-in.</p>
+      <p style={{ ...muted, marginTop: 16 }}>See every job by category in the <Link to={JOB_CATALOG_PATH} style={{ color: TOKENS.info }}>Job catalog</Link>. This page only reads. To run a lane once now, open <Link to={RUN_A_LANE_PATH} data-testid="jobs-n8n-run-a-lane-link" style={{ color: TOKENS.info }}>Run a lane</Link> in Ops Controls; to retry, run it again there. Pause is in <Link to={OPS_CONTROLS_PATH} style={{ color: TOKENS.info }}>Ops Controls</Link> › Jobs.</p>
     </div>}
   </section>
 }
@@ -298,6 +302,7 @@ export function N8nLanesTab({ state, loading, error }: { state: OpsControlsState
       {shown.map(r => <LaneCardView key={r.lane_id} card={laneCard(r, nowMs)} onOpen={select} info={infoOf(r.lane_id)} />)}
     </div>
     {!shown.length && <p style={{ ...panel, ...muted }}>{loading && !state ? 'Loading n8n lanes…' : rows.length ? 'No lanes match.' : 'No n8n lane is reported.'}</p>}
+    <p style={muted} data-testid="jobs-n8n-run-link">To run one lane or all of them once now (dry run, or live with your passkey), open <Link to={RUN_A_LANE_PATH} data-testid="jobs-n8n-run-a-lane-link" style={{ color: TOKENS.info }}>Run a lane</Link> in Ops Controls.</p>
     <p style={muted} data-testid="jobs-n8n-switches-link">To add or remove a lane from the live list, use <Link to={`${OPS_CONTROLS_PATH}?tab=n8n`} style={{ color: TOKENS.info }}>Ops Controls › n8n lanes</Link> (passkey and typed phrase).</p>
     {selectedId && <div role="dialog" aria-modal="true" aria-labelledby="jobs-n8n-lane-title" data-testid="jobs-n8n-lane-sheet"
       onKeyDown={e => { if (e.key === 'Escape') select(null) }} style={sheet}>
