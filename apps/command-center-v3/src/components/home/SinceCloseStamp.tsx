@@ -28,14 +28,14 @@ export function AsOfBadge({ stamp, nowMs, label = 'AS OF' }: { stamp: StampWire 
   const m = stampModel(stamp, nowMs)
   if (!m || !stamp) return null
   return (
-    <span data-testid="stamp-asof" data-warn={m.missed ? 'true' : 'false'} style={{ ...badge(m.missed), fontSize: 12 }}>
+    <span data-testid="stamp-asof" data-warn={m.missed || m.stale ? 'true' : 'false'} data-stale={m.stale ? 'true' : 'false'} style={{ ...badge(m.missed || m.stale), fontSize: 12 }}>
       {badgeText(stamp.updated_at).replace('UPDATED', label)}<span style={{ fontWeight: 500 }}>{m.ago}</span>
     </span>
   )
 }
 
-/** ``head``: the UPDATED badge, ago, next run and any missed-slot alarm (top of the card). ``detail``: per-source ages and
- *  today's schedule (under the action list). */
+/** ``head``: the UPDATED badge, ago, next run and any missed-slot or stale-age alarm (top of the card). ``detail``:
+ *  per-source ages and today's schedule (under the action list). */
 export default function SinceCloseStamp({ stamp, nowMs, part = 'head' }: { stamp: StampWire | null | undefined; nowMs: number; part?: 'head' | 'detail' }) {
   const m = stampModel(stamp, nowMs)
   if (!m || !stamp) return null
@@ -43,11 +43,14 @@ export default function SinceCloseStamp({ stamp, nowMs, part = 'head' }: { stamp
     <div data-testid={part === 'head' ? 'since-close-stamp' : 'since-close-stamp-detail'} style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
       {part === 'head' && <>
       <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span data-testid="stamp-badge" data-warn={m.missed ? 'true' : 'false'} style={badge(m.missed)}>{m.badge}</span>
+        <span data-testid="stamp-badge" data-warn={m.missed || m.stale ? 'true' : 'false'} data-stale={m.stale ? 'true' : 'false'} style={badge(m.missed || m.stale)}>{m.badge}</span>
         <span data-testid="stamp-ago" style={{ fontSize: 13, color: TOKENS.text[2], fontFamily: FONT.mono }}>{m.ago}</span>
         <span data-testid="stamp-next" style={{ fontSize: 12, color: TOKENS.text[3], fontFamily: FONT.mono }}>{m.nextText}</span>
       </div>
       {m.missedText && <div data-testid="stamp-missed" role="alert" style={{ fontSize: 13, fontWeight: 700, color: warn.color }}>⚠ {m.missedText}</div>}
+      {/* LQ-1269: the age alarm is separate from the missed-slot alarm. A producer that runs and writes nothing missed no
+          slot, yet the page is old — the snapshot's own clock says so. */}
+      {m.stale && m.staleText && !m.missedText && <div data-testid="stamp-stale" role="alert" style={{ fontSize: 13, fontWeight: 700, color: warn.color }}>⚠ {m.staleText}</div>}
       </>}
       {part === 'detail' && <>
       <div data-testid="stamp-sources" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

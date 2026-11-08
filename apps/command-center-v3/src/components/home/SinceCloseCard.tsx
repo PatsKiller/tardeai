@@ -1,14 +1,33 @@
 /** LQ-20261107-1253 Home "Since last close" card — always on, top of Home. From the last regular close to now it is
  *  the overnight / weekend / holiday recap; 09:30-16:00 ET it shrinks to one line (a link, not removed).
  *  Order: CIO brief (LQ-1257, advisory only) · analysis · held moves · futures · week ahead · news feed.
- *  Reads GET /api/v2/home/since-close (a snapshot n8n refreshes overnight); nothing here orders, sizes or stops. */
-import { useState, type CSSProperties } from 'react'
+ *  Reads GET /api/v2/home/since-close (a snapshot n8n refreshes overnight); nothing here orders, sizes or stops.
+ *  LIVE (LQ-20261107-1269, operator 18:15 ET "make sure it's not static"): re-fetched every 60 s while the tab is
+ *  VISIBLE, and re-read immediately on `visibilitychange` when it becomes visible again — a phone left on Home shows
+ *  what the producer has now, not what it had when the page loaded. A hidden tab holds no timer (no background
+ *  requests). What is drawn states its own age in the UPDATED/AS OF badge (SinceCloseStamp). */
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
 import SinceCloseStamp, { useNow } from './SinceCloseStamp'
 import SinceCloseSynopsis from './SinceCloseSynopsis'
 import SinceCloseStops from './SinceCloseStops'
 import { SINCE_CLOSE_API, pctText, sinceCloseModel, usdText, type SinceCloseWire } from '../../lib/sinceClose'
+
+/** The operator's target cadence (LQ-1269): one read a minute while the card is being looked at. */
+export const SINCE_CLOSE_POLL_MS = 60_000
+
+/** Visible-tab state: the poll interval is 0 while hidden, so `useApi` holds no timer, and the intervalMs change on
+ *  becoming visible re-runs its effect — an immediate re-read, not a wait for the next tick. */
+export function usePageVisible(): boolean {
+  const [visible, setVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden')
+  useEffect(() => {
+    const onVis = () => setVisible(document.visibilityState !== 'hidden')
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+  return visible
+}
 
 const info = toneVars('info')
 const up = toneVars('success')
@@ -37,7 +56,9 @@ const timeOf = (iso?: string | null) => {
 }
 
 export default function SinceCloseCard() {
-  const api = useApi<SinceCloseWire>(SINCE_CLOSE_API, 5 * 60_000)
+  // LQ-1269: a visible tab re-reads every 60 s; a hidden one is not polled at all and re-reads the moment it is shown.
+  const visible = usePageVisible()
+  const api = useApi<SinceCloseWire>(SINCE_CLOSE_API, visible ? SINCE_CLOSE_POLL_MS : 0)
   const nowMs = useNow()
   const m = sinceCloseModel(api.data, nowMs)
   const [open, setOpen] = useState(false)

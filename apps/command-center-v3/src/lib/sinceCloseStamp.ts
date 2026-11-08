@@ -1,5 +1,11 @@
 /** LQ-20261107-1253 amendments 3/4 + 1260/1261 — the UPDATED badge, per-source chips and schedule chip row.
- *  The server wrote the real source clocks and today's slots; the client only compares them with its own clock. */
+ *  The server wrote the real source clocks and today's slots; the client only compares them with its own clock.
+ *  LQ-20261107-1269: a snapshot whose own clock is older than the operator's limit is a STALE badge even when no
+ *  fixed slot was missed (the lane can run and write nothing, and a dead producer must not look fresh). */
+
+/** Operator limits (LQ-20261107-1269): 30 min while the market is open, 4 h while it is closed. */
+export const STALE_MARKET_MS = 30 * 60_000
+export const STALE_CLOSED_MS = 4 * 3_600_000
 
 export interface StampChip { key: string; label: string; at: string | null; at_text: string | null; age_text: string; warn: boolean; warn_text: string | null; note: string | null }
 export interface StampSchedule {
@@ -13,6 +19,8 @@ export interface StampWire {
 export interface SlotView { text: string; at: string; state: 'done' | 'next' | 'later' | 'missed'; cio: boolean }
 export interface StampModel {
   badge: string; ago: string; missed: boolean; missedText: string | null; nextText: string; chips: StampChip[]; slots: SlotView[]
+  /** LQ-1269: the snapshot is older than the operator's limit for the current session (see STALE_MARKET_MS). */
+  stale: boolean; staleText: string | null; staleLimitText: string
 }
 
 export function agoText(ms: number): string {
@@ -57,9 +65,18 @@ export function stampModel(s: StampWire | null | undefined, nowMs: number = Date
     }
     return { text: f.text, at: f.at, state, cio: cio.has(f.at) }
   })
+  // LQ-1269: the snapshot's OWN clock decides staleness. 30 min while the regular session is open, 4 h otherwise
+  // (overnight, weekends and holidays run on the slower producer cadence, so the tighter limit would cry wolf).
+  const inMarket = sch.trading_day && open != null && close != null && nowMs >= open && nowMs <= close
+  const limitMs = inMarket ? STALE_MARKET_MS : STALE_CLOSED_MS
+  const staleLimitText = inMarket ? '30 min during market hours' : '4 h while the market is closed'
+  const ageMs = nowMs - upd
+  const stale = Number.isFinite(ageMs) && ageMs > limitMs
   return {
     badge: badgeText(s.updated_at), ago: agoText(nowMs - upd), missed: missedAt != null,
     missedText: missedAt ? `The ${missedAt} update did not run — this page may be out of date` : null,
     nextText: `next ${s.next_refresh_text}`, chips: s.sources, slots,
+    stale, staleLimitText,
+    staleText: stale ? `This snapshot is ${agoText(ageMs)} — past the ${staleLimitText} limit` : null,
   }
 }
