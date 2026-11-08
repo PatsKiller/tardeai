@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "build_hermes_canonical_status_lineage_20261107",
+  "files": [
+    "tests/test_build_hermes_canonical_status_lineage_20261107.py"
+  ],
+  "anchor": "BUILD_HERMES_CANONICAL_STATUS_LINEAGE_20261107",
+  "comment": [
+    "ANCHOR: BUILD_HERMES_CANONICAL_STATUS_LINEAGE_20261107 — LQ-20261107-478. The canonical snapshot the",
+    "portal, the matrix Markdown and the Word doc are regenerated from carried a db_tables list of six tables",
+    "from data/hermes/hermes_db_lineage_latest.json (2026-06-07, its producer unscheduled):",
+    "hermes_research_intelligence 1,976 rows against 21,202 live, hermes_memory_events 438 against 17,492,",
+    "hermes_validation_findings 28 against 29,831. The list and its counts are now measured read-only from",
+    "the DB through the shared credential loader (never a psql shell-out), and the snapshot is the labelled",
+    "fallback that says the live read failed. Listing it schedules nothing."
+  ]
+}

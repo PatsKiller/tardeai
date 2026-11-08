@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """build_hermes_canonical_status.py — merge live Hermes state into ONE canonical snapshot (Phase 217).
 
-Read-only. Fetches the live /api/v2/hermes/* endpoints + systemd timer status and writes a normalized
-snapshot to data/runtime/hermes_canonical_status_latest.json. Portal labels, the matrix Markdown, and the
-Word doc are all regenerated FROM this single source so portal/state/docs agree. No secrets are stored.
+Read-only. Fetches the live /api/v2/hermes/* endpoints + systemd timer status, measures the Hermes DB
+table lineage read-only through the shared credential loader, and writes a normalized snapshot to
+data/runtime/hermes_canonical_status_latest.json. Portal labels, the matrix Markdown, and the Word doc
+are all regenerated FROM this single source so portal/state/docs agree. No secrets are stored.
+(LQ-20261107-478: the lineage used to be whatever the workflow-matrix endpoint served — a JSON whose
+producer nothing schedules — so the canonical file reported June's row counts in November. The DB is
+the source; the snapshot is the labelled fallback.)
 
   python3 scripts/build_hermes_canonical_status.py [--dry-run]
 
@@ -127,6 +131,19 @@ STATIC_COUNT_NOTE = "static System-page header scope; not measured from the host
 LINEAGE_MAX_AGE_DAYS = 2
 TABLE_COUNT_DEFINITION = ("entries in the `tables` list of data/hermes/hermes_db_lineage_latest.json, "
                           "as served by /api/v2/hermes/workflow-matrix; the snapshot names every table")
+#: Live lineage (LQ-20261107-478): the table list and its counts are measured from the DB, read-only,
+#: through the shared credential loader. The snapshot above is what the endpoint serves when nobody has
+#: re-run the audit (its producer is unscheduled and the file on this host is from 2026-06-07), so it is
+#: a labelled fallback — never mixed in silently with measured rows.
+LIVE_LINEAGE_DEFINITION = ("BASE TABLEs in schema public whose name starts `hermes_`, read read-only "
+                           "through session13_db (the shared credential loader): rows = count(*), "
+                           "last_write = max(<timestamp column>), writes_24h/7d = rows whose timestamp "
+                           "column falls inside the window")
+LIVE_VIEWS_DEFINITION = "VIEWs in schema public whose name starts `hermes_v_`"
+LINEAGE_SNAPSHOT_REL = "data/hermes/hermes_db_lineage_latest.json"
+LINEAGE_SNAPSHOT = ROOT / "data" / "hermes" / "hermes_db_lineage_latest.json"
+_TS_COLUMN_PREFERENCE = ("created_at", "run_at", "emitted_at", "scored_at", "promoted_at",
+                         "first_seen_at", "checked_at", "updated_at")
 
 
 def _run(cmd, env=None):
@@ -191,7 +208,103 @@ def _age_days(iso_text, now=None):
     return round(((now or datetime.now(timezone.utc)) - at.astimezone(timezone.utc)).total_seconds() / 86400, 2)
 
 
-def derive_matrix(wf):
+def _readonly_conn():
+    """A READ ONLY DB connection through the shared loader (never a psql shell-out, never os.environ)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import session13_db
+    conn = session13_db.get_conn(options="-c default_transaction_read_only=on", connect_timeout=8)
+    conn.set_session(readonly=True)
+    return conn
+
+
+def _sql_ident(name):
+    """A psycopg2 Identifier for a name read from information_schema — identifiers cannot be bound as
+    parameters, so they are composed (not interpolated) and quoted by the driver."""
+    from psycopg2 import sql
+    return sql.Identifier(str(name))
+
+
+def _timestamp_columns(cur):
+    """{table: [timestamp column, ...]} for the hermes tables, in ordinal order."""
+    cur.execute("select table_name, column_name from information_schema.columns "
+                "where table_schema='public' and table_name like 'hermes\\_%' "
+                "and data_type in ('timestamp with time zone','timestamp without time zone') "
+                "order by table_name, ordinal_position")
+    cols = {}
+    for table, column in cur.fetchall():
+        cols.setdefault(table, []).append(column)
+    return cols
+
+
+def measure_db_lineage(static_tables=None, connect=None):
+    """(tables, views, provenance) measured read-only from the live DB.
+
+    ``static_tables`` is the endpoint's (snapshot-sourced) list; its ``written_by``/``read_by`` name
+    scripts found by a code audit that no query can reproduce, so they are carried by name and the
+    provenance says where they came from. Any failure — no credentials, an unreachable server, a
+    missing table — returns ``(None, None, provenance)`` with ``source: "snapshot"`` and the reason,
+    so the caller keeps the snapshot and the snapshot stays labelled as one.
+    """
+    static = {t.get("table"): t for t in (static_tables or []) if isinstance(t, dict) and t.get("table")}
+    measured_at = datetime.now(timezone.utc).isoformat()
+    conn = None
+    try:
+        from psycopg2 import sql  # identifiers composed, never interpolated into the SQL text
+        conn = (connect or _readonly_conn)()
+        cur = conn.cursor()
+        cur.execute("select table_name, table_type from information_schema.tables "
+                    "where table_schema='public' and table_name like 'hermes\\_%' order by table_name")
+        relations = [(row[0], row[1]) for row in cur.fetchall()]
+        ts_columns = _timestamp_columns(cur)
+        tables = []
+        for name, kind in relations:
+            if kind != "BASE TABLE":
+                continue
+            columns = ts_columns.get(name) or []
+            ts = next((c for c in _TS_COLUMN_PREFERENCE if c in columns), columns[0] if columns else None)
+            if ts:
+                cur.execute(sql.SQL("select count(*), max({ts}), "
+                                    "count(*) filter (where {ts} >= now() - interval '24 hours'), "
+                                    "count(*) filter (where {ts} >= now() - interval '7 days') "
+                                    "from public.{tbl}").format(ts=_sql_ident(ts), tbl=_sql_ident(name)))
+                rows, last_write, writes_24h, writes_7d = cur.fetchone()
+            else:
+                cur.execute(sql.SQL("select count(*) from public.{tbl}").format(tbl=_sql_ident(name)))
+                rows = cur.fetchone()[0]
+                last_write = writes_24h = writes_7d = None
+            tables.append({
+                "table": name, "exists": True, "rows": rows,
+                "last_write": last_write.isoformat() if hasattr(last_write, "isoformat") else last_write,
+                "writes_24h": writes_24h, "writes_7d": writes_7d, "counted_by": ts,
+                "written_by": (static.get(name) or {}).get("written_by"),
+                "read_by": (static.get(name) or {}).get("read_by"),
+            })
+        views = [name for name, kind in relations if kind == "VIEW"]
+        cur.close()
+        provenance = {
+            "definition": LIVE_LINEAGE_DEFINITION, "source": "live", "measured_at": measured_at,
+            "tables_counted": len(tables), "views_counted": len(views),
+            "static_audit_fields_from": (LINEAGE_SNAPSHOT_REL if static else None),
+            "snapshot_tables_not_in_db": sorted(set(static) - {t["table"] for t in tables}),
+            "error": None,
+        }
+        return tables, views, provenance
+    except Exception as e:  # noqa: BLE001 — any failure is reported, never guessed around
+        provenance = {
+            "definition": LIVE_LINEAGE_DEFINITION, "source": "snapshot", "measured_at": None,
+            "snapshot_path": str(LINEAGE_SNAPSHOT),
+            "error": f"{type(e).__name__}: {str(e)[:180]}",
+        }
+        return None, None, provenance
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception as e:  # noqa: BLE001 — the answer is already decided; a close failure is noise
+                print(f"WARN: could not close the lineage connection: {type(e).__name__}: {e}", file=sys.stderr)
+
+
+def derive_matrix(wf, live=None):
     """(snapshot fields, provenance) for everything the workflow-matrix endpoint answers.
 
     An endpoint that could not answer yields ``None`` — the old shape turned a missing file into
@@ -199,6 +312,10 @@ def derive_matrix(wf):
     tables are named, not only counted (LQ-20261107-53), and the lineage's own age is carried: a
     ``writes_24h`` recorded on 2026-06-07 is not today's write count, so it is reported as unknown
     rather than as a five-month-old number with a 24-hour label.
+
+    ``live`` is ``measure_db_lineage()``'s ``(tables, views, provenance)``. When it measured, its
+    list and counts are the answer and the snapshot fields below are only the static-audit columns;
+    when it did not, the snapshot is the answer and its provenance stays exactly as it was.
     """
     wf = wf if isinstance(wf, dict) else {}
     audit = wf.get("audit_sources") if isinstance(wf.get("audit_sources"), dict) else {}
@@ -215,6 +332,10 @@ def derive_matrix(wf):
         {"table": t.get("table"), "exists": t.get("exists"), "rows": t.get("rows"),
          "writes_24h": t.get("writes_24h") if fresh else None, "last_write": t.get("last_write")}
         for t in tables if isinstance(t, dict)]
+    live_tables, live_views, live_provenance = live if live else (None, None, None)
+    measured = live_tables is not None
+    if measured:
+        names = live_tables
     by_table = {n["table"]: n for n in (names or [])}
     graph_nodes = wf.get("graph_nodes") if isinstance(wf.get("graph_nodes"), list) else None
     fields = {
@@ -225,7 +346,8 @@ def derive_matrix(wf):
             for n in graph_nodes if isinstance(n, dict)],
         "db_tables": names,
         "db_tables_count": None if names is None else len(names),
-        "safe_views_count": wf.get("safe_views_count") if isinstance(wf.get("safe_views_count"), int) else None,
+        "safe_views_count": (len(live_views) if measured else
+                             (wf.get("safe_views_count") if isinstance(wf.get("safe_views_count"), int) else None)),
         "db_writes_24h": {"research_intelligence": (by_table.get("hermes_research_intelligence") or {}).get("writes_24h"),
                           "memory_events": (by_table.get("hermes_memory_events") or {}).get("writes_24h")},
     }
@@ -243,6 +365,22 @@ def derive_matrix(wf):
         "graph_nodes_count": {"source": nodes_src.get("path"), "modified_at": nodes_src.get("modified_at"),
                               "error": nodes_src.get("error") or (None if nodes_src.get("present") else "graph source not found")},
     }
+    if measured:
+        provenance["db_tables_count"] = {
+            **live_provenance, "snapshot_at": lineage_at, "snapshot_age_days": age,
+            "snapshot_static_fields": {n["table"]: bool(n.get("written_by") or n.get("read_by"))
+                                       for n in names if n.get("written_by") or n.get("read_by")},
+        }
+        provenance["db_writes_24h"] = {
+            "definition": "rows whose timestamp column falls inside the 24-hour window, counted live",
+            "source": "live", "measured_at": live_provenance["measured_at"], "fresh": True,
+        }
+        provenance["safe_views_count"] = {"definition": LIVE_VIEWS_DEFINITION, "source": "live",
+                                          "measured_at": live_provenance["measured_at"]}
+    elif live_provenance:
+        # The measurement failed: the snapshot stands in, and its provenance says the live read failed.
+        for key in ("db_tables_count", "db_writes_24h", "safe_views_count"):
+            provenance.setdefault(key, {})["live_error"] = live_provenance["error"]
     return fields, provenance
 
 
@@ -251,7 +389,7 @@ def build_snapshot():
     results = {ep: api(ep) for ep in ENDPOINTS}
     wf = results["workflow-matrix"]; auth = results["llm-auth-status"]; sll = results["self-learning-loops"]
     leg = results["legacy-agents"]; health = results["health"]; ps = results["profiles-status"]
-    matrix, matrix_provenance = derive_matrix(wf)
+    matrix, matrix_provenance = derive_matrix(wf, measure_db_lineage(wf.get("db_lineage")))
 
     deep_timer = timer("hermes-deep-research-local")
     counts = measure_host_counts()
@@ -342,6 +480,9 @@ def main(argv=None):
     print("deep_research timer_enabled:", snap["deep_research_lane"]["timer_enabled"])
     print("codex headless_available:", snap["codex_lane"]["headless_available"], "reason:", snap["codex_lane"]["headless_reason"])
     print("serverops tools:", snap["serverops"]["tool_count"], "p1:", snap["serverops"]["p1_hardening_required"])
+    lineage_source = ("live" if (snap.get("counts_provenance") or {}).get("db_tables_count", {}).get("source")
+                      == "live" else "snapshot")
+    print("db lineage source:", lineage_source)
     print("wrote", OUT)
     rc = 1 if errors else 0
     if errors:
@@ -350,7 +491,8 @@ def main(argv=None):
     from lib.lane_last_receipt import write_lane_receipt
     write_lane_receipt(LANE_ID, ok=not errors, exit_code=rc, started_at=started,
                        summary={"out": str(OUT), "endpoints": len(ENDPOINTS),
-                                "endpoint_errors": sorted(errors)})
+                                "endpoint_errors": sorted(errors),
+                                "db_lineage_source": lineage_source})
     return rc
 
 
