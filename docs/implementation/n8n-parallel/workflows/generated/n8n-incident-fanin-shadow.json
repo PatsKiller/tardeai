@@ -144,6 +144,7 @@
   ],
   "settings": {
     "executionOrder": "v1",
+    "executionTimeout": 210,
     "saveManualExecutions": true,
     "timezone": "America/New_York"
   }
