@@ -52,8 +52,11 @@ def _enrichment_map() -> dict:
             return _ENRICH_CACHE["map"]
         if not isinstance(data, dict):
             data = {}
-        _ENRICH_CACHE["key"] = key
+        # Store the payload BEFORE the key that labels it. The fast path above reads the two without
+        # the lock and the server is threaded, so a key published first would let a concurrent
+        # request match the NEW key against the OLD map (LQ-20261107-566).
         _ENRICH_CACHE["map"] = data
+        _ENRICH_CACHE["key"] = key
         return data
 
 

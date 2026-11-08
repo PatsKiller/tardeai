@@ -122,6 +122,44 @@ def test_a_non_dict_payload_does_not_escape(monkeypatch, tmp_path):
     assert peb.load_enrichment("AAA") == {}
 
 
+class _PublishOrderCache(dict):
+    """The parse cache, recording what a lock-free reader sees the instant a new key lands.
+
+    The fast path in ``_enrichment_map`` reads ``key`` and then ``map`` WITHOUT the lock, and
+    ``portfolio_server.ReusableHTTPServer`` serves requests on threads, so "key visible => map is the
+    one that key labels" is a real invariant. This forces that interleaving instead of hoping for it:
+    the snapshot is taken inside the key's own store (LQ-20261107-566).
+    """
+
+    def __init__(self):
+        super().__init__(key=None, map={})
+        self.map_when_key_published = "the key was never published"
+
+    def __setitem__(self, name, value):
+        super().__setitem__(name, value)
+        if name == "key" and value is not None:
+            self.map_when_key_published = self.get("map")
+
+
+def test_a_new_map_is_published_before_the_key_that_labels_it(monkeypatch, tmp_path):
+    """A concurrent request must never get the OLD map under the NEW key. On the first load that is
+    {} (every symbol TECH_INCOMPLETE); on a refresh it is the previous version's grade."""
+    path = tmp_path / "ticker_enrichment_cache.json"
+    _write(path, {"AAA": {"rsi": 41}})
+    monkeypatch.setattr(peb, "ENRICH_PATH", path)
+    cache = _PublishOrderCache()
+    monkeypatch.setattr(peb, "_ENRICH_CACHE", cache)
+
+    assert peb.load_enrichment("AAA")["rsi"] == 41
+    assert cache.map_when_key_published == {"AAA": {"rsi": 41}}, "the new key labelled an unpublished map"
+
+    _write(path, {"AAA": {"rsi": 77}, "BBB": {"rsi": 22}})  # a lane rewrites the cache
+    cache.map_when_key_published = "the key was never republished"
+    assert peb.load_enrichment("AAA")["rsi"] == 77
+    assert cache.map_when_key_published == {"AAA": {"rsi": 77}, "BBB": {"rsi": 22}}, \
+        "the refreshed key labelled the previous version's map"
+
+
 # ── 2. entry_desk_ops.technical_grades_batch: one enrichment read per symbol ───────────────────
 
 
@@ -250,7 +288,10 @@ def test_latest_perf_week_asks_for_a_narrow_date_window_first(monkeypatch):
     assert len(calls) == 1
     sql, params = calls[0]
     assert "snapshot_date" in sql and "%s::int" in sql
-    assert params == (api_v2._PERF_RECENT_DAYS,)
+    # A fresh literal, not the constant under test: `params == (api_v2._PERF_RECENT_DAYS,)` passes
+    # for every value of that constant, including 3650 — which restores the whole-history read this
+    # test claims to pin (AGENTS.md §5/§8A; mutation proof in DONE-LQ-20261107-566).
+    assert params == (7,)
     assert "DISTINCT ON (symbol)" in sql
     assert "snapshot_date DESC" in sql
 
