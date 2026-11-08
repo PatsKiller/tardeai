@@ -5878,6 +5878,36 @@
       "output_receipt": "v2",
       "output_receipt_reason": null,
       "review_note": "No cron twin: this lane is the only writer of this baseline, so its lock protects n8n against itself and against a manual run, nothing else. market_gate is false because two of the thirteen weekly fires are on a weekend. timeout_s 900 covers 30 export requests at the 2.5 s throttle plus page fetches."
+    },
+    {
+      "lane_id": "llm-paid-spend-watch",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_CRITICAL_ALERT_CHAT_ID",
+        "TRADEAI_OPERATOR_CONTACT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/llm_paid_spend_watch.py reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (read-only psycopg2 session, no db_adapter, no env-file loader); lib/lane_last_receipt.py and lib/persistent_state_root.py resolve the state root (TRADEAI_STATE_ROOT is a base name, TRADEAI_PERSISTENT_STATE_ROOT); the real-run send path imports lib/critical_channels.py -> critical_delivery.py (TRADEAI_CRITICAL_ALERT_CHAT_ID, TRADEAI_OPERATOR_CONTACT) and the telegram_alert sender. No broker credential name (AGENTS \u00a723.18 ruling 3).",
+      "env_report_reason": "The real-run send path imports telegram_alert and the critical-text primitive, whose import closure is not inventoried here; report until that closure is pinned. The dry run reads only the DB names above.",
+      "source": "LQ-20261107-538 (operator directive 2026-11-07 21:08 ET: alert when paid LLM spend tops $0.75 on 3 days in a week). STAGED ONLY: live_arg null, no registry row, no cron, no schedule. Activation is the lead's/operator's call.",
+      "command": [
+        "$PY",
+        "scripts/llm_paid_spend_watch.py"
+      ],
+      "lock": "/tmp/llm_paid_spend_watch.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "market_gate": false,
+      "output_signal": "data/runtime/llm-paid-spend-watch_last.json"
     }
   ],
   "blocked_reasons": {

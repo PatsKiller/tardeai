@@ -1,0 +1,16 @@
+{
+  "schema": "LlmPaidSpendAlerts@v1",
+  "note": "Operator directive 2026-11-07 21:08 ET (LQ-20261107-538): \"Leave the cap at 1.50. Alert when it goes over .75, 3 times in a week.\" Read by scripts/llm_paid_spend_watch.py. Paid spend is llm_consumption_log.estimated_cost_usd on rows whose metadata billing is not free_oauth, summed per America/New_York day; the OAuth projection a bridge reservation settles (LQ-20261107-531) is not spend and is not read. A watch fires ONE alert when at least days_over of the last window_days ET days (today included) each exceed day_threshold_usd, then stays quiet for dedupe_days.",
+  "timezone": "America/New_York",
+  "watches": [
+    {
+      "process_id": "due_diligence_questions",
+      "source": "llm_consumption_log",
+      "day_threshold_usd": 0.75,
+      "days_over": 3,
+      "window_days": 7,
+      "dedupe_days": 7,
+      "alert_class": "llm_paid_spend_watch"
+    }
+  ]
+}

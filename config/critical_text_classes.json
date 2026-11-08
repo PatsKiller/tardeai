@@ -68,6 +68,11 @@
       "enabled": true,
       "part": "M",
       "title": "Market event (SPEC_MARKET_EVENT_REENTRY_20261107 D4): an episode opens or closes, or a name turns READY. Advisory only; no order."
+    },
+    "llm_paid_spend_watch": {
+      "enabled": false,
+      "part": "O",
+      "title": "LLM paid spend over the daily alert line on too many days in a week (operator directive 2026-11-07, LQ-20261107-538; thresholds in config/llm_paid_spend_alerts.json). Email and the Critical chat carry it; a text only if the operator enables this class. No order."
     }
   }
 }

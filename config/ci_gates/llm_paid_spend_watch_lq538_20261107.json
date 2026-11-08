@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "llm_paid_spend_watch_lq538_20261107",
+  "files": [
+    "tests/test_llm_paid_spend_watch_lq538_20261107.py"
+  ],
+  "anchor": "LLM_PAID_SPEND_WATCH_LQ538_20261107",
+  "comment": [
+    "ANCHOR: LLM_PAID_SPEND_WATCH_LQ538_20261107 — paid LLM spend above the configured daily line on too many",
+    "days in a week raises one deduped critical alert (operator directive 2026-11-07, LQ-20261107-538)."
+  ]
+}
