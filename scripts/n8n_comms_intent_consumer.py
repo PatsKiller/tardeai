@@ -42,6 +42,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sqlite3
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -58,6 +59,26 @@ from scripts.lib.n8n_fabric_store import FabricStoreError  # noqa: E402
 LANE_ID = C.LANE_ID
 SCRIPT = "scripts/n8n_comms_intent_consumer.py"
 DEFAULT_STATE_ROOT = Path.home() / "trade-ai-releases" / "persistent-state"
+
+#: The coordination ledger has one writer at a time (WAL + ``BEGIN IMMEDIATE``) and every lane on the fabric writes it.
+#: ``connect_rw`` sets a 5 s busy timeout, which a sibling lane's write can exhaust inside our own slot: the
+#: 2026-11-08 05:45 ET run raised ``sqlite3.OperationalError: database is locked`` at 5.0 s while disk-usage-monitor
+#: (~22.4 s of run time) and n8n-incident-fanin (~24.5 s) held the write lock, and the executor treated it as
+#: terminal out of a 60 s budget (``config/n8n_run_allowlist.json`` ``timeout_s``). Widened on this lane's own
+#: connection so a sibling's write is waited out, not dead-lettered. Must stay well under the lane budget.
+LEDGER_BUSY_TIMEOUT_MS = 30_000
+
+
+def _connect_ledger_rw(ledger: Path) -> sqlite3.Connection:
+    """``C.connect_rw`` (DDL + migration) with this lane's busy timeout — see :data:`LEDGER_BUSY_TIMEOUT_MS`."""
+    conn = C.connect_rw(ledger)
+    try:
+        # PRAGMA takes a literal, not a bound parameter: %d of a module int constant.
+        conn.execute("PRAGMA busy_timeout=%d" % LEDGER_BUSY_TIMEOUT_MS)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
 
 
 def resolve_paths(ledger: Optional[str], state_root: Optional[str]) -> tuple[Path, Path]:
@@ -118,7 +139,7 @@ def run(
         return _finish(R, False, receipt, ok=True, summary=summary, now=now, would=would)
     token = f"{LANE_ID}:{now.strftime('%Y%m%dT%H%M%SZ')}:{uuid.uuid4().hex[:8]}"
     try:
-        conn = C.connect_rw(ledger)
+        conn = _connect_ledger_rw(ledger)
     except (FileNotFoundError, OSError, Exception) as exc:  # noqa: BLE001 — the receipt names the cause
         summary["error"] = f"{type(exc).__name__}: ledger"
         return _finish(R, True, receipt, ok=False, summary=summary, now=now)

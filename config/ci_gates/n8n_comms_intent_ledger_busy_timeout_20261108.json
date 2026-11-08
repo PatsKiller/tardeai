@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_comms_intent_ledger_busy_timeout_20261108",
+  "files": [
+    "tests/test_n8n_comms_intent_ledger_busy_timeout_20261108.py"
+  ],
+  "anchor": "N8N_COMMS_INTENT_LEDGER_BUSY_TIMEOUT_20261108",
+  "comment": [
+    "ANCHOR: N8N_COMMS_INTENT_LEDGER_BUSY_TIMEOUT_20261108 — the 2026-11-08 05:45 ET slot of n8n-comms-intent-consumer dead-lettered on attempt 1 with sqlite3.OperationalError: database is locked while disk-usage-monitor (~22.4 s) and n8n-incident-fanin (~24.5 s) held the coordination ledger's single write lock; the shared connect_rw busy_timeout is 5 s and the lane budget is 60 s. The lane now opens its own connection at 30 s. The classification half (database is locked is retryable) is LQ-20261107-684 on head 73749a7db, not folded at this base; this gate skips that assertion loudly once it lands."
+  ]
+}
