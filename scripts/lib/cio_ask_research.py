@@ -486,6 +486,19 @@ class ResearchContext:
     env: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
     now: datetime = field(default_factory=_now)
     state_root: Path | str | None = None
+    # One collect shares one CIO record snapshot (LQ-20261107-484): the store is a ~420 MB jsonl and parsing it
+    # is ~3 s of CPU, so one parse per entity starved the other sources and timed them out.
+    shared: dict = field(default_factory=dict, repr=False, compare=False)
+    shared_lock: Any = field(default_factory=threading.Lock, repr=False, compare=False)
+
+
+def _cio_snapshot(ctx: ResearchContext) -> dict:
+    from scripts.lib.data_broker.cio_company_facts import load_snapshot
+
+    with ctx.shared_lock:
+        if "cio_snapshot" not in ctx.shared:
+            ctx.shared["cio_snapshot"] = load_snapshot(ctx.state_root)
+        return ctx.shared["cio_snapshot"]
 
 
 class SourceFacts(list):
@@ -673,9 +686,9 @@ def _db(ctx: ResearchContext) -> Callable[..., Any]:
 
 def _src_cio_record_research(ent: Entity, ctx: ResearchContext) -> list[Fact]:
     """Saved shared CIO facts; source timestamps are never replaced by cache/write time."""
-    from scripts.lib.data_broker.cio_company_facts import load_snapshot, for_security
+    from scripts.lib.data_broker.cio_company_facts import for_security
 
-    saved = for_security(load_snapshot(ctx.state_root), ent.symbol or "", ent.security_guid, now=ctx.now)
+    saved = for_security(_cio_snapshot(ctx), ent.symbol or "", ent.security_guid, now=ctx.now)
     facts = saved["company_facts"]
     out = []
     citation = {

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_snapshot_shared_20261108",
+  "files": [
+    "tests/test_cio_ask_snapshot_shared_20261108.py"
+  ],
+  "anchor": "CIO_ASK_SNAPSHOT_SHARED",
+  "comment": [
+    "ANCHOR: CIO_ASK_SNAPSHOT_SHARED - 2026-11-08 LQ-20261107-484: one Ask research collect parses the CIO record store once, not once per entity."
+  ]
+}
