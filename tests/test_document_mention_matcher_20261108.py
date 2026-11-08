@@ -47,7 +47,7 @@ def test_jack_henry_associates_binds_jkhy_not_jack():
     rows = match_mentions("Jack Henry & Associates reported results.", names=NAMES)
     assert [row["symbol"] for row in rows] == ["JKHY"]
     assert rows[0]["role"] == "subject"
-    assert rows[0]["role_confidence"] == 1.0
+    assert rows[0]["role_confidence"] is None  # LQ-20261107-1275: NULL when deterministic
 
 
 def test_the_full_name_binds_and_a_bare_ticker_or_parenthetical_does_not():
@@ -75,7 +75,7 @@ def test_a_foreign_name_is_not_the_subject_of_another_filing():
     agreed = match_mentions("Jack Henry & Associates reported.", names=NAMES, own_symbol="JKHY")
     assert [row["symbol"] for row in agreed] == ["JKHY"]
     assert agreed[0]["role"] == "subject"
-    assert agreed[0]["role_confidence"] == 1.0
+    assert agreed[0]["role_confidence"] is None  # LQ-20261107-1275: NULL when deterministic
 
 
 def test_a_registry_shaped_like_production_needs_symbol_profiles_for_names():

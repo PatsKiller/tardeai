@@ -181,14 +181,7 @@ def mention_names(instruments: Mapping[str, Any] | None, profile_rows: Iterable[
     return book
 
 
-def agreement_ratio(phrase: str, symbol: str, names: Mapping[str, Iterable[str]]) -> float | None:
-    """1.0 when the phrase's content tokens equal the registry name. Anything shorter is not a measure."""
-    if not name_agrees(phrase, symbol, names):
-        return None
-    return 1.0
-
-
-def _row(symbol: str, *, via: str, matched: str, role: str | None, confidence: float | None) -> dict[str, Any]:
+def _row(symbol: str, *, via: str, matched: str, role: str | None) -> dict[str, Any]:
     return {
         "symbol": symbol,
         "subject_guid": None,
@@ -198,7 +191,10 @@ def _row(symbol: str, *, via: str, matched: str, role: str | None, confidence: f
         "matched_text": matched,
         "role": role,
         "role_source": ROLE_SOURCE if role else None,
-        "role_confidence": confidence if role else None,
+        # The DDL's contract (LQ-20261107-1275): role_confidence is NULL when deterministic. The
+        # matcher's agreement is exact token equality, never a probability -- it either holds or the
+        # row is not emitted -- so a number here would be a confidence that measures nothing.
+        "role_confidence": None,
     }
 
 
@@ -212,19 +208,16 @@ def match_mentions(
     book = _names_map(names)
     body = text or ""
     by_symbol: dict[str, dict[str, Any]] = {}
-    confidence_of: dict[str, float | None] = {}
     for symbol, official_names in book.items():
         for official in official_names:
             if len(content_tokens(official)) >= 2:
-                if not _phrase_in(body, official) or not name_agrees(official, symbol, book):
-                    continue
-                confidence = agreement_ratio(official, symbol, book)
-            elif _anchored(body, official, symbol):
-                confidence = 1.0  # the name's own ticker is the agreement here
+                binds = _phrase_in(body, official) and name_agrees(official, symbol, book)
             else:
+                # A one-token name binds only with its own ticker: the ticker is the agreement here.
+                binds = _anchored(body, official, symbol)
+            if not binds:
                 continue
-            by_symbol.setdefault(symbol, _row(symbol, via="company_name", matched=official, role=None, confidence=confidence))
-            confidence_of.setdefault(symbol, confidence)
+            by_symbol.setdefault(symbol, _row(symbol, via="company_name", matched=official, role=None))
             break
     found = list(by_symbol.values())
     own = (own_symbol or "").strip().upper()
@@ -236,10 +229,8 @@ def match_mentions(
     if len(found) == 1:
         found[0]["role"] = "subject"
         found[0]["role_source"] = ROLE_SOURCE
-        found[0]["role_confidence"] = confidence_of[found[0]["symbol"]]
     elif own:
         for row in found:
             row["role"] = "subject" if row["symbol"] == own else "mentioned"
             row["role_source"] = ROLE_SOURCE
-            row["role_confidence"] = confidence_of[row["symbol"]]
     return found

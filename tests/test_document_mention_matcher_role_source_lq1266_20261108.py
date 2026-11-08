@@ -265,6 +265,25 @@ def test_the_matcher_emits_only_allowed_role_sources_where_it_decides():
     _assert_allowed(anchored, allowed)
 
 
+def test_deterministic_rows_carry_no_confidence():
+    """The DDL's contract, ruled on in LQ-20261107-1275: role_confidence is NULL when deterministic.
+
+    The matcher's agreement is exact token equality, not a probability -- it either holds or the row is
+    not emitted -- and the legacy extractor already writes NULL, so a 1.0 here marks nothing and
+    contradicts the column's own comment.
+    """
+    single = MM.match_mentions("Quasar Rocket Works wins a synthetic contract",
+                               names=NAMES, own_symbol="ZZQA")
+    multi = MM.match_mentions("Orbital Metal Works comments on Quasar Rocket Works guidance",
+                              names=NAMES, own_symbol="ZZQB")
+    anchored = MM.match_mentions("Northwind (ZZQN) wins a synthetic award", names=NAMES, own_symbol="ZZQN")
+    rows = [*single, *multi, *anchored]
+
+    assert rows and all(row["role"] for row in rows)
+    assert all(row["role_source"] == MM.ROLE_SOURCE for row in rows)
+    assert all(row["role_confidence"] is None for row in rows)
+
+
 def test_the_legacy_extractor_emits_only_allowed_role_sources(monkeypatch):
     from lib import document_mentions as DM
     from lib import inbound_identity_tagger as T
