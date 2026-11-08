@@ -1,0 +1,49 @@
+{
+  "_comment": "Synthetic Schwab /marketdata/v1/quotes answer for the Sunday 2026-11-08 20:01 ET fire of lane market-quotes-offhours-schwab (LQ-20261107-939 + design WU-1). /ES prints live (the CME Sunday open); the cash indices $SPX/$COMPX/$DJI/$RUT/$NDX are frozen at Friday 2026-11-06 16:47 ET (measured live: a cash index does not trade off-hours); SPY is a stale EQUITY and must still be refused -- only configured $ indices are carried, never equities or futures.",
+  "now": "2026-11-08T20:01:00-05:00",
+  "quotes": {
+    "/ES": {
+      "assetMainType": "FUTURE",
+      "symbol": "/ESZ26",
+      "quote": {"lastPrice": 6852.25, "closePrice": 6820.0, "netChange": 32.25,
+                "tradeTime": 1794186030000, "settleTime": 1793998800000}
+    },
+    "$SPX": {
+      "assetMainType": "INDEX",
+      "symbol": "$SPX",
+      "quote": {"lastPrice": 6720.5, "closePrice": 6720.5, "netChange": -12.5,
+                "tradeTime": 1794001620000, "settleTime": 1794001620000}
+    },
+    "$COMPX": {
+      "assetMainType": "INDEX",
+      "symbol": "$COMPX",
+      "quote": {"lastPrice": 23150.25, "closePrice": 23150.25, "netChange": 87.75,
+                "tradeTime": 1794001620000, "settleTime": 1794001620000}
+    },
+    "$DJI": {
+      "assetMainType": "INDEX",
+      "symbol": "$DJI",
+      "quote": {"lastPrice": 47120.75, "closePrice": 47120.75, "netChange": -140.5,
+                "tradeTime": 1794001620000, "settleTime": 1794001620000}
+    },
+    "$RUT": {
+      "assetMainType": "INDEX",
+      "symbol": "$RUT",
+      "quote": {"lastPrice": 2480.5, "closePrice": 2480.5, "netChange": -9.25,
+                "tradeTime": 1794001620000, "settleTime": 1794001620000}
+    },
+    "$NDX": {
+      "assetMainType": "INDEX",
+      "symbol": "$NDX",
+      "quote": {"lastPrice": 25610.75, "closePrice": 25610.75, "netChange": 143.5,
+                "tradeTime": 1794001620000, "settleTime": 1794001620000}
+    },
+    "SPY": {
+      "assetMainType": "EQUITY",
+      "symbol": "SPY",
+      "quote": {"lastPrice": 671.12, "closePrice": 671.12, "netChange": -1.2,
+                "tradeTime": 1794001620000},
+      "regular": {"regularMarketLastPrice": 671.12, "regularMarketTradeTime": 1794001620000}
+    }
+  }
+}

@@ -33,7 +33,27 @@ schwab:
   # contract stood behind it. A contract whose root is not listed here is skipped (unmapped_contract), never stored
   # under a name nothing reads.
   futures: ["/ES", "/NQ", "/RTY", "/YM"]
-  indices: ["$SPX", "$COMPX", "$VIX"]
+  # $DJI/$RUT/$NDX added per design WU-1 (ADDENDUM to LQ-20261107-939, lead 2026-11-08 10:58 ET):
+  # ["$SPX","$COMPX","$DJI","$RUT","$NDX","$VIX"]. Every index symbol must come back from Schwab as
+  # assetMainType INDEX; anything else is refused with a named ``index_asset_type_*`` reason on the receipt (never
+  # stored as if it were an index, never silently dropped), and the brief prints UNKNOWN for it.
+  indices: ["$SPX", "$COMPX", "$DJI", "$RUT", "$NDX", "$VIX"]
+  # CASH INDEX LEVELS (LQ-20261107-939, operator 2026-11-08: the Sunday 20:00 ET weekly-outlook brief needs them).
+  # A cash index has no off-hours print: Schwab's last $SPX/$COMPX/$DJI/$RUT trade is frozen at the regular close
+  # (measured: Friday 16:47 ET, age ~50 h at the Sunday 18:00 fire), so max_trade_age_minutes would refuse it as a
+  # quote. That is right for a QUOTE and wrong for a LEVEL: the cash index level off-hours IS its last close, and it
+  # is knowable (and true) for every fire until the next cash open. With this block present, an index whose print is
+  # older than max_trade_age_minutes but no older than carry_max_age_hours is stored as a LEVEL ONLY row in the
+  # NIGHT session the lane observes (overnight 20:00-04:00 ET; never futures_open, which the store reserves for
+  # futures, and never premarket/afterhours, which require a dated close). bar_end is that session's 20:00 ET start,
+  # so every later fire in the same night conflicts on (symbol, bar_start, feed) and writes nothing: one row per
+  # index per night, never a synthetic stream. reference_basis names the basis AND the print's ET date
+  # (<basis_prefix>_YYYY-MM-DD) -- a level is never shown as a fresh print; the receipt also carries carried_from.
+  # Equities and futures are never carried. Remove the block, or set carry_max_age_hours to 0, to go back to
+  # refusing every stale index print.
+  index_levels:
+    carry_max_age_hours: 120   # Fri close -> Tue 09:30 ET after a Monday holiday is 113 h; 120 covers the longest gap
+    basis_prefix: schwab_index_level_carried_print
   include_universe: true       # also the universe's extended-hours prices
   # ET window: Sunday 18:00 through Friday 09:30, regular session skipped on trading days.
   window: {start_day: sun, start: "18:00", end_day: fri, end: "09:30"}
@@ -63,17 +83,20 @@ schwab:
   #
   # A fresh STAMP does not prove a fresh close (Schwab stamped a Sunday, when CME does not settle), and the provider
   # derives netChange FROM that same close, so it cannot corroborate itself (round-2 review of #2485, 2026-11-02). A
-  # same-day-dated close is accepted ONLY when an INDEPENDENT stored reference for the session date agrees within
-  # max(tolerance_abs, tolerance_pct% of closePrice). reference_symbols names the independent feed's symbol per root
-  # (read from market_ohlcv_bars daily bars). No reference, or a disagreement, keeps the row LEVEL ONLY (not
-  # measured, so a stale close with a fresh stamp can never page on a phantom move).
+  # same-day-dated close is accepted ONLY when a stored reference for the session date agrees within
+  # max(tolerance_abs, tolerance_pct% of closePrice). No reference, or a disagreement, keeps the row LEVEL ONLY.
   same_day_reference_tolerance_pct: 0.25
   same_day_reference_tolerance_abs: 0.05
-  reference_symbols:
-    "/ES": "ES=F"
-    "/NQ": "NQ=F"
-    "/RTY": "RTY=F"
-    "/YM": "YM=F"
+  # SETTLE REFERENCE (design WU-1, ADDENDUM to LQ-20261107-939, lead 2026-11-08 10:58 ET): the reference is the LANE'S
+  # OWN last stored settle for the session date, read from market_quotes_extended on the feed below. It replaces the
+  # yfinance-named map (ES=F, NQ=F, RTY=F, YM=F) that read market_ohlcv_bars daily bars: those symbols had zero rows and
+  # would have brought a banned source into the Market Risk Engine (LQ-20261107-455). Friday's after-hours rows carry
+  # Friday's settle as their reference_close, so a Sunday close the provider dates to Sunday is corroborated against the
+  # settle this lane itself recorded on Friday. Stated plainly: that is the same provider's earlier observation, not a
+  # second provider -- it catches a provider re-stamping an old close with a fresh date (the 2026-11-01 defect) and it
+  # cannot catch an error both prints share. No stored settle (first run, a missed Friday) = no reference = level only.
+  settle_reference_source: market_quotes_extended_own_feed
+  settle_reference_feed: schwab
   settle_same_day_reference: true
   dated_reference_basis:
     equity: schwab_regular_market_last_price_dated

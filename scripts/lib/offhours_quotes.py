@@ -28,6 +28,12 @@ Contract reused exactly from #2384:
   disagrees beyond the configured tolerance, the row is level-only and can never page on a phantom move.
 * ``bar_end`` is when the print became knowable. A Schwab quote is a point in time, so ``bar_end`` = the trade
   instant exactly and ``bar_start`` = ``point_quote_span_ms`` earlier (the contract requires bar_end > bar_start).
+  ONE exception, for a configured cash index under ``schwab.index_levels`` (LQ-20261107-939): a cash index has no
+  off-hours print, so its last regular-session trade -- refused as a quote past ``max_trade_age_minutes`` -- is
+  stored as an overnight LEVEL whose ``bar_end`` is that night's 20:00 ET start. One row per index per night, never
+  a synthetic stream; ``reference_basis`` names the print's ET date and the receipt carries ``carried_from``; it is
+  never used for an equity or a future, and never written in the premarket/afterhours sessions (which require a
+  dated close) or in ``futures_open`` (reserved for futures).
 * Futures are stored under their ROOT (``contract_root``). Schwab keys a futures quote by the front-month CONTRACT,
   not by the root this lane requests: asking for ``/ES`` on 2026-11-01 returned ``/ESZ26``, so the engine -- which
   names futures ``/ES``, ``/NQ`` in ``market_risk_policy.yaml`` ``extended_hours.futures_proxies`` -- never saw the
@@ -108,6 +114,39 @@ def load_config(path: Path | str | None = None) -> dict[str, Any]:
     if s.get("settle_same_day_reference") and not str(basis.get("non_equity_same_day") or "").strip():
         raise ConfigError(f"{p}: schwab.settle_same_day_reference is true but "
                           "dated_reference_basis.non_equity_same_day is missing")
+    # The settle reference is the LANE'S OWN stored settle (design WU-1 / ADDENDUM to LQ-20261107-939, 2026-11-08).
+    # The yfinance-named map it replaced (reference_symbols: ES=F, NQ=F, ...) read market_ohlcv_bars, had zero rows,
+    # and would have put a banned source in front of the Market Risk Engine (LQ-20261107-455). Fail loud if the new
+    # source is missing -- the exception would silently stay uncorroborated -- or if the old map comes back.
+    if "reference_symbols" in s:
+        raise ConfigError(f"{p}: schwab.reference_symbols is retired (design WU-1, 2026-11-08): the settle reference "
+                          "is the lane's own stored settle (settle_reference_source), never a yfinance-named symbol "
+                          "read from market_ohlcv_bars")
+    if s.get("settle_same_day_reference"):
+        if str(s.get("settle_reference_source") or "") != "market_quotes_extended_own_feed":
+            raise ConfigError(f"{p}: schwab.settle_reference_source must be "
+                              f"'market_quotes_extended_own_feed', not {s.get('settle_reference_source')!r}")
+        if not str(s.get("settle_reference_feed") or "").strip():
+            raise ConfigError(f"{p}: schwab.settle_reference_feed missing (the feed whose stored settle corroborates "
+                              "a same-day-dated close)")
+    # Cash-index level carry (LQ-20261107-939). A bad block must fail loud: a quoted number or a missing prefix
+    # would otherwise silently disable the carry (rows stay stale_trade) or write an unlabelled level.
+    if "index_levels" in s:
+        lv = s["index_levels"]
+        if not isinstance(lv, dict):
+            raise ConfigError(f"{p}: schwab.index_levels must be a mapping, not {lv!r}")
+        h = lv.get("carry_max_age_hours")
+        if isinstance(h, bool) or not isinstance(h, (int, float)) or not math.isfinite(float(h)) or h <= 0:
+            raise ConfigError(f"{p}: schwab.index_levels.carry_max_age_hours must be a finite positive number, "
+                              f"not {h!r}")
+        prefix = str(lv.get("basis_prefix") or "").strip()
+        if not prefix:
+            raise ConfigError(f"{p}: schwab.index_levels.basis_prefix missing")
+        # extended_hours.py treats any basis containing this token as the same-day settlement exception. A carried
+        # level is not a settlement: sharing the token would make a stale close look like a measured one.
+        if "settle_same_day" in prefix:
+            raise ConfigError(f"{p}: schwab.index_levels.basis_prefix must not contain 'settle_same_day' "
+                              f"({prefix!r})")
     return doc
 
 
@@ -231,6 +270,58 @@ def _num(v: Any) -> float | None:
     return f if math.isfinite(f) and f > 0 else None
 
 
+def _night_start_et(now: datetime) -> datetime:
+    """The 20:00 ET that opened the overnight session containing ``now`` (a 00:00-04:00 print belongs to the
+    previous evening's session). The store's idempotency key is (symbol, bar_start, feed), so anchoring every fire
+    of the same night to this one instant writes ONE carried level per index per night, not a synthetic stream."""
+    et = now.astimezone(ET)
+    start = datetime.combine(et.date(), time(20, 0), tzinfo=ET)
+    return start if et >= start else start - timedelta(days=1)
+
+
+def index_level_row(sym_u: str, price: float, print_at: datetime, now: datetime, ext_cfg: dict[str, Any],
+                    s: dict[str, Any], span: timedelta) -> dict[str, Any] | None:
+    """A cash index's LEVEL in the night session the lane observes, or None when the carry does not apply.
+
+    A cash index does not print off-hours, so its last regular-session trade is refused by max_trade_age_minutes as
+    a quote -- correctly. It is still the level, and the store has a place for it: overnight rows may carry a level
+    with no dated reference (the engine then reads UNKNOWN unless it finds an anchor, which is honest).
+
+    Refused here (returns None, the caller records stale_trade): an unconfigured symbol, an equity or future, a
+    print older than ``carry_max_age_hours``, a lane clock that is not inside an overnight session (futures_open is
+    futures-only; premarket/afterhours rows require a dated close), or a missing prefix. ``reference_basis`` names the
+    basis AND the print's ET date, so a level is never displayed as a fresh print.
+    """
+    lv = s.get("index_levels") or {}
+    if not isinstance(lv, dict) or not lv or not sym_u.startswith("$"):
+        return None
+    if sym_u not in {str(x).strip().upper() for x in s.get("indices") or []}:
+        return None
+    max_h = lv.get("carry_max_age_hours")
+    if isinstance(max_h, bool) or not isinstance(max_h, (int, float)) or not math.isfinite(float(max_h)) or max_h <= 0:
+        return None
+    prefix = str(lv.get("basis_prefix") or "").strip()
+    if not prefix:
+        return None
+    if (now - print_at).total_seconds() / 3600.0 > float(max_h):
+        return None
+    night = ovn.label(now, ext_cfg)  # no asset_type: a cash index can never be labelled futures_open
+    if night is None or night[0] != ovn.OVERNIGHT:
+        return None
+    sess, tdate = night
+    start = _night_start_et(now)
+    if ovn.label(start, ext_cfg) != (sess, tdate):  # the anchor must sit in the same session as the observation
+        return None
+    print_date = print_at.astimezone(ET).date().isoformat()
+    return {"symbol": sym_u, "session": sess, "session_date": tdate,
+            "bar_start": start - span, "bar_end": start, "price": price, "volume": None,
+            "reference_close": None, "reference_date": None, "change_pct": None,
+            "reference_basis": f"{prefix}_{print_date}", "feed": str(s["feed"]),
+            # Receipt evidence only (the writer takes its COLUMNS): which print the level came from.
+            "carried_from": print_at.isoformat(),
+            "level_only_reason": f"cash index has no off-hours print; level is its last print {print_at.isoformat()}"}
+
+
 
 def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
                 ext_cfg: dict[str, Any] | None = None,
@@ -243,6 +334,8 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
     # Configured roots keyed by a spelling-insensitive form: '/ES' and 'ESZ26' must land on the SAME stored name, the
     # one market_risk_policy.yaml futures_proxies reads, or a provider spelling change silently hides futures again.
     roots = {str(x).strip().upper().lstrip("/"): str(x).strip().upper() for x in s.get("futures") or []}
+    # Configured cash indices, checked against the payload's own assetMainType below (design WU-1: verify, never assume).
+    index_names = {str(x).strip().upper() for x in s.get("indices") or []}
     # 'is this a futures print' is the store's own config (the list ovn.label uses), never a second hardcoded one.
     future_assets = {str(x).strip().upper()
                      for x in (ext_cfg.get("overnight") or {}).get("futures_open_asset_types") or _FUTURE_ASSETS}
@@ -286,6 +379,13 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
                 entry["contract"] = contract
             skipped.append(entry)
 
+        # A configured index must BE an index (design WU-1, ADDENDUM to LQ-20261107-939): verify, never assume, and
+        # name the refusal on the receipt. An EQUITY or FUND block under a "$" symbol (or a missing assetMainType)
+        # would otherwise be stored as if it were a cash index, and the brief would print a fund's price as the level.
+        if sym_u.startswith("$") and sym_u in index_names and asset.upper() != "INDEX":
+            skip(f"index_asset_type_{asset.strip().lower() or 'missing'}")
+            continue
+
         price, ts = _num(ext.get("lastPrice")), parse_ts(ext.get("tradeTime"))
         if price is None or ts is None:
             price, ts = _num(q.get("lastPrice")), parse_ts(q.get("tradeTime"))
@@ -297,6 +397,10 @@ def schwab_rows(payload: Any, now: datetime, cfg: dict[str, Any],
             continue
         age = (now - ts).total_seconds() / 60.0
         if age > float(s.get("max_trade_age_minutes", 30)):
+            carried = index_level_row(sym_u, price, ts, now, ext_cfg, s, span)
+            if carried is not None:  # a cash index's last close IS its off-hours level (see index_level_row)
+                rows.append(carried)
+                continue
             skip("stale_trade", as_of=ts.isoformat(), age_minutes=round(age, 1))
             continue
         if age < -5:

@@ -138,16 +138,21 @@ def _write(rows: list[dict]) -> dict:
         conn.close()
 
 
-def stored_reference(symbol: str, ref_date, symbols: dict | None = None) -> float | None:
-    """An INDEPENDENT stored close for a futures root on ``ref_date``, or None.
+def stored_reference(symbol: str, ref_date, cfg: dict | None = None) -> float | None:
+    """The lane's OWN last stored settle for ``ref_date``, or None (design WU-1, ADDENDUM to LQ-20261107-939).
 
-    Read from ``market_ohlcv_bars`` daily bars for the symbol named in ``schwab.reference_symbols`` (e.g. ES=F from
-    another feed). The provider's own ``netChange`` is derived from its ``closePrice`` and is never used to corroborate
-    it (round-2 review of #2485). A missing mapping, a missing bar, or a read error is "no reference": the row stays
-    level-only.
+    Read from ``market_quotes_extended`` on this lane's feed: Friday's after-hours rows carry Friday's settle as their
+    ``reference_close``, so a Sunday close the provider dates to Sunday is corroborated against the settle this lane
+    itself recorded. It replaces the yfinance-named map (ES=F, NQ=F, ...) that read ``market_ohlcv_bars`` daily bars --
+    zero rows, and a banned source in front of the Market Risk Engine (LQ-20261107-455). Being the same provider's
+    earlier observation, it cannot catch an error shared by both prints (see the config comment). A missing source
+    config, a missing row, a NULL reference, or a read error is "no reference": the row stays level-only.
     """
-    ref_sym = (symbols or {}).get(symbol)
-    if not ref_sym:
+    s = (cfg or {}).get("schwab") or {}
+    if str(s.get("settle_reference_source") or "") != "market_quotes_extended_own_feed":
+        return None
+    feed = str(s.get("settle_reference_feed") or "").strip()
+    if not feed:
         return None
     from db_adapter import _get_conn
 
@@ -155,9 +160,10 @@ def stored_reference(symbol: str, ref_date, symbols: dict | None = None) -> floa
     try:
         cur = conn.cursor()
         cur.execute(
-            "SELECT close FROM market_ohlcv_bars WHERE symbol = %s AND timeframe = 'daily' "
-            "AND (bar_time AT TIME ZONE 'America/New_York')::date = %s ORDER BY bar_time DESC LIMIT 1",
-            [str(ref_sym), ref_date],
+            "SELECT reference_close FROM market_quotes_extended "
+            "WHERE symbol = %s AND feed = %s AND reference_date = %s AND reference_close IS NOT NULL "
+            "ORDER BY bar_end DESC LIMIT 1",
+            [str(symbol), feed, ref_date],
         )
         row = cur.fetchone()
         return float(row[0]) if row and row[0] is not None else None
@@ -193,8 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(r, default=str, indent=1))
         return 0
     r = oq.run(cfg=cfg, now=now, fetch=lambda syms: live_fetch(syms, cfg), write=_write, dry_run=False,
-               reference_lookup=lambda sym, d: stored_reference(
-                   sym, d, (cfg.get("schwab") or {}).get("reference_symbols") or {}))
+               reference_lookup=lambda sym, d: stored_reference(sym, d, cfg))
     print(json.dumps(r, default=str, indent=1))
     return 0 if r.get("status") in ("ok", "partial", "disabled", "outside_window", "schwab_paused", "refused_domain_proposed") else 1
 

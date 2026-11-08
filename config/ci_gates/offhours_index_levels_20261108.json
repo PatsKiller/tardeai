@@ -1,0 +1,23 @@
+{
+  "schema": "CiGate@v1",
+  "name": "offhours_index_levels_20261108",
+  "files": [
+    "tests/test_offhours_index_levels_20261108.py"
+  ],
+  "anchor": "OFFHOURS_INDEX_LEVELS_20261108",
+  "comment": [
+    "ANCHOR: OFFHOURS_INDEX_LEVELS_20261108 — Cash-index levels off-hours for the Sunday 20:00 ET weekly-outlook",
+    "brief (LQ-20261107-939 + design WU-1). A cash index has no off-hours print, so its last regular trade is",
+    "refused by max_trade_age_minutes as a stale quote. With schwab.index_levels present, a configured $ index no",
+    "older than carry_max_age_hours is stored LEVEL ONLY in the night session the lane observes: overnight rows may",
+    "carry a level with no dated reference, validate() accepts the row unchanged, reference_basis names the basis and",
+    "the print's ET date, and the receipt carries carried_from. The carry is anchored on the session's 20:00 ET start,",
+    "so every fire of the same night conflicts on (symbol, bar_start, feed): one row per index per night.",
+    "Never widened: a stale EQUITY is still refused stale_trade, a fresh index keeps the normal settled-reference",
+    "path, and the carry is refused outside an overnight session (the Sunday futures_open window, a weekday regular",
+    "session) and past carry_max_age_hours. A configured index must come back as assetMainType INDEX; anything else",
+    "is refused by name (index_asset_type_*), never stored as if it were an index. The settle reference is the lane's",
+    "own stored Friday settle read from market_quotes_extended (the yfinance-named ES=F map is retired and refused at",
+    "config load). A bad index_levels block fails loud. Hermetic: fixture only, no network, no DB, no credential."
+  ]
+}
