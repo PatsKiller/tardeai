@@ -27,6 +27,7 @@ import { runLabel } from '../lib/homeLabels'
 import { DEPLOYS_PATHS, deploysSummary, freshness, type DeploysStatusWire } from '../lib/deploys'
 import DoNowQueue from '../components/home/DoNowQueue'
 import NeedsYouCard from '../components/home/NeedsYouCard'
+import SinceCloseCard from '../components/home/SinceCloseCard'
 import { AccountChip, AccountsBadge } from '../components/AccountChip'
 import { accountsBadge } from '../lib/accountLabels'
 import DeploysPanel from '../components/home/DeploysPanel'
@@ -237,6 +238,8 @@ export default function HomeDoNow() {
     <div data-testid="home-do-now-page" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1392, margin: '0 auto' }}>
       <style>{'@media(max-width:820px){[data-testid="home-do-now-page"] a{min-height:44px!important;display:inline-flex;align-items:center;box-sizing:border-box}[data-testid="home-do-now-page"] aside{max-width:none!important}}'}</style>
       {/* Design home/v008 (operator-approved 2026-11-03): "Needs you" one-tap approvals, the very top of Home. Additive. */}
+      {/* LQ-20261107-1253: "Since last close", always on, the top of Home (one line from 09:30 to 16:00 ET). */}
+      <SinceCloseCard />
       <NeedsYouCard surface="home" />
       {/* Design home/v002 §2: the market-risk banner, only while ORANGE or RED is evaluated; never sticky. */}
       <MarketRiskBanner mr={mr} />
