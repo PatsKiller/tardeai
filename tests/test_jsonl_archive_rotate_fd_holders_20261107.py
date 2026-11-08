@@ -276,14 +276,15 @@ def test_apply_refuses_a_group_writable_installed_helper_even_when_root_owned(tm
     assert "helper_untrusted:group_or_world_writable" in res["detail"], res
 
 
-def test_apply_honours_an_override_that_is_root_owned_and_not_writable(tmp_path, helper, strict, monkeypatch):
+def test_apply_ignores_even_a_root_owned_unwritable_override(tmp_path, helper, strict, monkeypatch):
+    """LQ-20261107-546: owner is not identity. Under --apply the env override is never read, however clean the path."""
     monkeypatch.setattr(J, "_stat_for_trust", lambda c: _St(0, 0o755))
     live = _seed(tmp_path)
     assert J.helper_distrust(helper) is None
-    assert J.fd_holders_helper() == helper
+    assert J.fd_holders_helper() != helper
     res = J.rotate_store(_cfg()["stores"][0], _cfg(), tmp_path, NOW, proc_root=Path("/proc"),
                          sleep=_no_sleep, grace_s=0)
-    assert res["ok"] is True and res["action"] == "rotated", res
+    assert res["ok"] is False and res["reason"] == "fd_visibility_unknown", res
     assert live.is_file()
 
 
@@ -314,3 +315,128 @@ def test_main_apply_sets_the_strict_mode_and_refuses_the_override(tmp_path, help
     assert live.read_bytes() == before, "nothing was rotated"
     assert J._STRICT_HELPER is True
     monkeypatch.setattr(J, "_STRICT_HELPER", False)
+
+
+# ── LQ-20261107-553b: the review's bypasses A, B and Root, and changes 2-4 (each fails on b6dccab3b) ─────────────────
+
+def _root_owned_interpreter() -> str:
+    for c in ("/bin/bash", "/usr/bin/bash"):
+        if J.helper_distrust(Path(c)) is None:
+            return c
+    pytest.skip("no root-owned bash with a root-owned, non-writable directory chain on this host")
+
+
+def _evil_bash_env(tmp_path, store: Path) -> Path:
+    """What an agent can write: a BASH_ENV file that prints a complete, holder-free view of the real store."""
+    st = os.stat(store)
+    doc = {"schema": "tradeai_fd_holders.v1", "complete": True,
+           "paths": [{"path": str(store), "dev": st.st_dev, "ino": st.st_ino, "holders": [], "unknown": []}]}
+    ev = tmp_path / "evil.sh"
+    ev.write_text(f"echo '{json.dumps(doc)}'\n: > {tmp_path}/ran-as-helper\nexit 0\n")
+    return ev
+
+
+def test_bypass_a_a_root_owned_interpreter_named_by_the_env_is_never_the_helper(tmp_path, strict, monkeypatch):
+    """/bin/bash passes an ownership check, and BASH_ENV makes it print whatever the caller wrote."""
+    bash = _root_owned_interpreter()
+    live = _seed(tmp_path)
+    ev = _evil_bash_env(tmp_path, live)
+    monkeypatch.setenv("TRADEAI_FD_HOLDERS", bash)
+    monkeypatch.setenv("TRADEAI_FD_HOLDERS_SUDO", "0")
+    monkeypatch.setenv("BASH_ENV", str(ev))
+    monkeypatch.setattr(J, "FD_HOLDERS_HELPER", str(tmp_path / "not-installed"))
+    before = live.read_bytes()
+    res = J.rotate_store(_cfg()["stores"][0], _cfg(), tmp_path, NOW, proc_root=Path("/proc"),
+                         sleep=_no_sleep, grace_s=0)
+    assert res["ok"] is False and res["reason"] == "fd_visibility_unknown", res
+    assert not (tmp_path / "ran-as-helper").exists(), "the caller's BASH_ENV ran"
+    assert live.read_bytes() == before
+
+
+def test_bypass_b_the_file_run_is_the_file_checked_not_the_name_it_started_with(tmp_path, helper, strict, monkeypatch):
+    """The check resolves; the exec used the unresolved link, so a link could name two files. Run the resolved one."""
+    link = tmp_path / "link"
+    link.symlink_to(helper)
+    live = _seed(tmp_path)
+    monkeypatch.setattr(J, "FD_HOLDERS_HELPER", str(link))
+    monkeypatch.delenv("TRADEAI_FD_HOLDERS")
+    monkeypatch.setattr(J, "_stat_for_trust", lambda c: _St(0, 0o755))
+    monkeypatch.setattr(J, "_fstat_for_trust", lambda fd: _Fst(fd))
+    monkeypatch.setattr(J, "_sudo_bin", lambda: "/usr/bin/sudo")
+    seen = []
+    real_run = J.subprocess.run
+    monkeypatch.setattr(J.subprocess, "run", lambda argv, **kw: seen.append(argv) or real_run(
+        [str(helper), argv[-1]], **{k: v for k, v in kw.items() if k != "pass_fds"}))
+    J._helper_scan(live, Path("/proc"))
+    assert seen and str(link) not in seen[0] and str(helper.resolve()) in seen[0], seen
+
+
+def test_bypass_b_a_file_swapped_between_check_and_open_is_untrusted(tmp_path, helper, monkeypatch):
+    monkeypatch.setattr(J, "_stat_for_trust", lambda c: _St(0, 0o755))
+
+    class Other(_Fst):
+        def __init__(self, fd):
+            super().__init__(fd)
+            self.st_ino += 1
+
+    monkeypatch.setattr(J, "_fstat_for_trust", lambda fd: Other(fd))
+    fd, real, why = J._open_trusted_helper(helper)
+    assert fd is None and real is None and "swapped" in (why or ""), why
+
+
+class _Fst:
+    """The fd's real dev/ino/type, shown as a root-owned file nobody else may write."""
+    def __init__(self, fd):
+        st = os.fstat(fd)
+        self.st_dev, self.st_ino = st.st_dev, st.st_ino
+        self.st_uid, self.st_mode = 0, stat.S_IFREG | 0o755
+
+
+def test_root_never_execs_an_interpreter_the_env_chose(tmp_path, monkeypatch):
+    """euid 0 plus TRADEAI_FD_HOLDERS=/bin/bash used to exec bash with the caller's BASH_ENV, as root."""
+    bash = _root_owned_interpreter()
+    live = _seed(tmp_path)
+    ev = _evil_bash_env(tmp_path, live)
+    monkeypatch.setattr(J.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(J, "_STRICT_HELPER", False)
+    monkeypatch.setenv("TRADEAI_FD_HOLDERS", bash)
+    monkeypatch.setenv("BASH_ENV", str(ev))
+    monkeypatch.setattr(J, "FD_HOLDERS_HELPER", str(tmp_path / "not-installed"))
+    assert J.fd_holders_helper() is None
+    holders, unknown = J._helper_scan(live, Path("/proc")) or ([], [])
+    assert not (tmp_path / "ran-as-helper").exists(), "the caller's BASH_ENV ran"
+    assert holders == [] and "helper_failed" not in " ".join(unknown)
+
+
+def test_the_sudo_knob_is_ignored_under_apply_for_a_non_root_caller(tmp_path, helper, strict, monkeypatch):
+    monkeypatch.setattr(J, "_sudo_bin", lambda: "/usr/bin/sudo")
+    assert J._helper_argv(helper, tmp_path / "x")[:2] == ["/usr/bin/sudo", "-n"]
+    monkeypatch.setattr(J, "_STRICT_HELPER", False)
+    assert J._helper_argv(helper, tmp_path / "x")[0] == str(helper), "outside strict mode the knob still works"
+
+
+def test_root_runs_the_checked_descriptor_with_a_scrubbed_environment(tmp_path, helper, monkeypatch):
+    """End to end as 'root': the helper that answers is the open descriptor, and it sees none of the caller's env."""
+    live = _seed(tmp_path)
+    marker = tmp_path / "saw-env"
+    monkeypatch.setattr(J.os, "geteuid", lambda: 0)
+    monkeypatch.delenv("TRADEAI_FD_HOLDERS")
+    monkeypatch.setattr(J, "FD_HOLDERS_HELPER", str(helper))
+    monkeypatch.setattr(J, "_stat_for_trust", lambda c: _St(0, 0o755))
+    monkeypatch.setattr(J, "_fstat_for_trust", lambda fd: _Fst(fd))
+    monkeypatch.setenv("FAKE_MODE", "marker")        # a caller-chosen variable the helper would obey if it saw it
+    monkeypatch.setenv("FAKE_MARKER", str(marker))
+    seen = []
+    real_run = J.subprocess.run
+    monkeypatch.setattr(J.subprocess, "run", lambda argv, **kw: seen.append((argv, kw)) or real_run(argv, **kw))
+    holders, unknown = J._helper_scan(live, Path("/proc"))
+    argv, kw = seen[0]
+    assert argv[0].startswith("/proc/self/fd/") and kw["pass_fds"], argv
+    assert kw["env"] == {"PATH": "/usr/bin:/bin"}
+    assert holders == [] and unknown == [], (holders, unknown)
+    assert not marker.exists(), "the helper saw the caller's FAKE_MODE"
+
+
+def test_the_installed_helper_asks_for_an_isolated_interpreter():
+    first = Path(J.__file__).with_name("tradeai_fd_holders.py").read_text().splitlines()[0]
+    assert first == "#!/usr/bin/python3 -I", first

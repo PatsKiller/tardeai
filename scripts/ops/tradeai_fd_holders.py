@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """tradeai-fd-holders — print the pids holding a file's inode. Read-only, root-installed.
 
 Why this exists (LQ-20261107-501, operator route 1, 2026-11-07 20:19 ET): an unprivileged agent process

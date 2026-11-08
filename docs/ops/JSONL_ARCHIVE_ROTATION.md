@@ -140,13 +140,16 @@ positive statement about the host; the same `ok` on `fd_view: "proc"` only says 
 table it tried — which, on this host, it cannot.
 
 Two env knobs exist for tests and staging, and **neither is a narrowing**: `TRADEAI_FD_HOLDERS=<path>` points at another
-helper (whose JSON is then believed as the complete view) and `TRADEAI_FD_HOLDERS_SUDO=0` runs it without `sudo`. An
-override can therefore loosen the guard, so under `--apply`, and whenever the process is root, the helper (the override
-or the installed path) is used only when it is a file owned by root, not group- or world-writable, in a directory chain
-with the same property (`helper_distrust`, LQ-20261107-533). An override that fails the check is ignored and the
-installed path is used; an installed helper that fails it gives an incomplete view (`helper_untrusted:<why>`), so the
-refusal stands. `--dry-run` and `--plan` as an unprivileged user still honour the override. Nothing ever executes an
-environment-given path as root.
+helper (whose JSON is then believed as the complete view) and `TRADEAI_FD_HOLDERS_SUDO=0` runs it without `sudo`. Both are
+read **only outside strict mode**. Under `--apply`, and whenever the process is root, `TRADEAI_FD_HOLDERS` is ignored
+entirely (ownership is not identity: a root-owned `/bin/bash` plus `BASH_ENV` runs what the caller wrote, LQ-20261107-546)
+and `TRADEAI_FD_HOLDERS_SUDO` is ignored for an unprivileged caller, because an unprivileged call cannot give a complete
+view. The one helper used is the installed path, and only when it is root-owned, not group- or world-writable, in a root-owned
+chain (`helper_distrust`). It is resolved once and opened once; the descriptor's owner, mode and (dev, ino) are what is
+judged, and what runs is the resolved path (sudo) or that very descriptor (`/proc/self/fd/N`, root), never the name it
+started with. The child sees only `PATH=/usr/bin:/bin`, and the helper's shebang is `#!/usr/bin/python3 -I`. An installed
+helper that fails any check gives an incomplete view (`helper_untrusted:<why>`), so the refusal stands. `--dry-run` and
+`--plan` as an unprivileged user still honour both knobs. Nothing ever executes an environment-given path.
 
 The lane's promotion (patch `inbox/claude-lead/20261108T0104Z-cc-deepseek-6-LQ-480-jsonl-archive-rotate-promotion.patch`)
 is armed only after the operator ran the install script and one shadow run came back clean.

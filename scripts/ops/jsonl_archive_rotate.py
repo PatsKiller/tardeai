@@ -302,12 +302,12 @@ def fd_holders_helper() -> Optional[Path]:
     exists but cannot run is *not* absent — see :func:`_helper_scan`, which turns its failure into an incomplete
     view so the refusal still happens and names the helper as the cause.
 
-    ``TRADEAI_FD_HOLDERS`` is an override for tests and staging. Under ``--apply`` (or as root) it is honoured only
-    when the override itself passes :func:`helper_distrust`; otherwise it is ignored and the installed path is used."""
+    ``TRADEAI_FD_HOLDERS`` is an override for tests and staging and is read ONLY outside strict mode. Under
+    ``--apply`` (or as root) it is ignored entirely, however trustworthy the path it names looks: a root-owned file
+    is not *the* helper (``/bin/bash`` is root-owned and, with ``BASH_ENV``, runs what the caller wrote —
+    LQ-20261107-546). The one path honoured in strict mode is :data:`FD_HOLDERS_HELPER`."""
     env = os.environ.get("TRADEAI_FD_HOLDERS")
-    if env and _strict_helper() and helper_distrust(Path(env)) is not None:
-        env = None
-    p = Path(env or FD_HOLDERS_HELPER)
+    p = Path(env) if (env and not _strict_helper()) else Path(FD_HOLDERS_HELPER)
     try:
         if p.is_file() and os.access(p, os.X_OK):
             return p
@@ -325,8 +325,45 @@ def _sudo_bin() -> Optional[str]:
     return shutil.which("sudo")
 
 
+#: What a strict-mode helper child sees: nothing the caller exported (``BASH_ENV``, ``PYTHONPATH``, ``LD_PRELOAD``...).
+_HELPER_ENV = {"PATH": "/usr/bin:/bin"}
+
+
+def _fstat_for_trust(fd: int):
+    return os.fstat(fd)
+
+
+def _open_trusted_helper(helper: Path) -> tuple[Optional[int], Optional[Path], Optional[str]]:
+    """(fd, resolved path, None) for a helper that passes the trust check, else (None, None, why).
+
+    The file is resolved ONCE and opened ONCE; the descriptor's owner/mode/type are what is judged, and its
+    (dev, ino) must still be what the resolved path names. The caller then executes that resolved path (sudo) or
+    that very descriptor (root), never the name it started with, so the file checked is the file run."""
+    why = helper_distrust(helper)
+    if why is not None:
+        return None, None, why
+    try:
+        real = helper.resolve(strict=True)
+        fd = os.open(real, os.O_RDONLY | os.O_CLOEXEC)
+    except OSError as exc:
+        return None, None, f"unreadable:{exc.strerror or exc}"
+    try:
+        st = _fstat_for_trust(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != 0 or st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            raise OSError("not_a_root_owned_unwritable_regular_file")
+        now = os.stat(real)
+        if (now.st_dev, now.st_ino) != (st.st_dev, st.st_ino):
+            raise OSError("swapped_between_check_and_open")
+    except OSError as exc:
+        os.close(fd)
+        return None, None, f"untrusted:{exc.strerror or exc}"
+    return fd, real, None
+
+
 def _helper_argv(helper: Path, path: Path) -> Optional[list[str]]:
-    if os.geteuid() == 0 or os.environ.get("TRADEAI_FD_HOLDERS_SUDO") == "0":
+    """Root runs the helper directly. ``TRADEAI_FD_HOLDERS_SUDO=0`` also drops sudo, but only outside strict mode:
+    an unprivileged call cannot give a complete view, so under ``--apply`` it must never be the authority."""
+    if os.geteuid() == 0 or (not _strict_helper() and os.environ.get("TRADEAI_FD_HOLDERS_SUDO") == "0"):
         return [str(helper), str(path)]
     sudo = _sudo_bin()
     if not sudo:
@@ -347,19 +384,30 @@ def _helper_scan(path: Path, proc_root: Path) -> Optional[tuple[list[tuple[int, 
     helper = fd_holders_helper()
     if helper is None:
         return None
+    fd: Optional[int] = None
+    env: Optional[dict] = None
+    pass_fds: tuple = ()
     if _strict_helper():
-        why = helper_distrust(helper)
+        fd, real, why = _open_trusted_helper(helper)
         if why is not None:
             return [], [f"helper_untrusted:{why}"]
-    argv = _helper_argv(helper, path)
-    if argv is None:
-        return [], ["helper_unusable:sudo_not_found"]
+        helper, env = real, dict(_HELPER_ENV)
     try:
-        cp = subprocess.run(argv, capture_output=True, text=True, timeout=FD_HOLDERS_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        return [], [f"helper_unusable:timeout_after_{int(FD_HOLDERS_TIMEOUT_S)}s"]
-    except OSError as exc:
-        return [], [f"helper_unusable:{exc.strerror or exc}"]
+        argv = _helper_argv(helper, path)
+        if argv is not None and os.geteuid() == 0 and fd is not None:
+            argv[0], pass_fds = f"/proc/self/fd/{fd}", (fd,)
+        if argv is None:
+            return [], ["helper_unusable:sudo_not_found"]
+        try:
+            cp = subprocess.run(argv, capture_output=True, text=True, timeout=FD_HOLDERS_TIMEOUT_S, env=env,
+                                pass_fds=pass_fds)
+        except subprocess.TimeoutExpired:
+            return [], [f"helper_unusable:timeout_after_{int(FD_HOLDERS_TIMEOUT_S)}s"]
+        except OSError as exc:
+            return [], [f"helper_unusable:{exc.strerror or exc}"]
+    finally:
+        if fd is not None:
+            os.close(fd)
     if cp.returncode not in (0, 3):
         return [], [f"helper_failed:exit_{cp.returncode}"]
     try:
