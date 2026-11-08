@@ -21,6 +21,12 @@ const ROWS: Array<[string, string, string[]]> = [
 const str = (v: unknown): string | null => {
   if (typeof v === 'string') return v.trim() || null
   if (Array.isArray(v)) return v.map(str).filter(Boolean).join(' · ') || null
+  // LQ-1257's producer sends each row as a block carrying its own one-line summary under `line`
+  // ({line, tier, score, source_ids}). Take that line; a block with no readable line draws nothing.
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return str(o.line ?? o.text ?? o.summary ?? o.label)
+  }
   return null
 }
 const pick = (o: Record<string, unknown>, keys: string[]): unknown => keys.map(k => o[k]).find(v => v !== undefined && v !== null && v !== '')
@@ -38,7 +44,9 @@ export function synopsisModel(syn: unknown, fallbackBuiltAt: string | null, nowM
   if (!o || !verdict) return { state: 'missing', ...empty, notice: built ? `CIO synopsis not built since ${etClock(built)}` : 'CIO synopsis not built yet' }
   const age = built ? nowMs - new Date(built).getTime() : 0
   const stale = built != null && Number.isFinite(age) && age > SYNOPSIS_MAX_AGE_MS
+  // The tier may be its own key, or nested in the producer's market block ({line, tier, ...}); accept both.
   const risk = pick(o, ['risk', 'risk_tier', 'tier'])
+    ?? (o.market && typeof o.market === 'object' ? pick(o.market as Record<string, unknown>, ['tier', 'level', 'label']) : undefined)
   return {
     state: stale ? 'stale' : 'ok',
     posture: str(pick(o, ['posture', 'stance'])),
