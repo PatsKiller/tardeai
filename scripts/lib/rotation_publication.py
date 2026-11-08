@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Any
 
 from .account_state import observation_instant, position_observation, project_account_state
@@ -88,6 +89,24 @@ def exact_position(rows: list[dict], symbol: str, account: str | None) -> dict:
 
 def _iso_utc(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+_ET = ZoneInfo("America/New_York")
+
+
+def _iso_source(value: datetime, now: datetime) -> str:
+    """Emit a source clock without a UTC calendar date the market has not reached (LQ-20261107-505).
+
+    A date-only fact is held as the start of its day in UTC. A producer that took its date from the UTC clock after
+    8 pm ET stamped tomorrow, so /v3/rotation read "Source as of Nov 8" on Nov 7. A midnight-UTC stamp dated after the
+    current ET market date is emitted as that ET date. Only the emitted text changes: ``bound_times``, and so every
+    staleness judgement, keep the stamp as received.
+    """
+    stamp = value.astimezone(timezone.utc)
+    et_today = now.astimezone(_ET).date()
+    if stamp.time() == datetime.min.time() and stamp.date() > et_today:
+        stamp = datetime(et_today.year, et_today.month, et_today.day, tzinfo=timezone.utc)
+    return _iso_utc(stamp)
 
 
 def _aware_time(value):
@@ -273,7 +292,7 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         used.add(acct)
         account_stamp = observation_instant(as_of, now=now)
         accounts.append({"account_key": acct, "state": state,
-                         "source_as_of": _iso_utc(account_stamp) if account_stamp else None,
+                         "source_as_of": _iso_source(account_stamp, now) if account_stamp else None,
                          "source_as_of_raw": as_of})
         if account_stamp is None or account_stamp > now:
             unavailable.append("invalid_account_clock")
@@ -322,9 +341,9 @@ def project_summary(summary: dict, holdings: dict, *, cached: bool = False,
         "schema": SCHEMA, "status": status, "reasons": sorted(set(unavailable + stale)),
         "producer_ok": producer_ok is True,
         "checked_at": _iso_utc(now), "input_sha256": source_digest,
-        "source_as_of": _iso_utc(min(bound_times)) if bound_times and dated_positions == required_positions and dated_accounts == len(accounts) else None,
-        "oldest_known_source_as_of": _iso_utc(min(bound_times)) if bound_times else None,
-        "newest_known_source_as_of": _iso_utc(max(bound_times)) if bound_times else None,
+        "source_as_of": _iso_source(min(bound_times), now) if bound_times and dated_positions == required_positions and dated_accounts == len(accounts) else None,
+        "oldest_known_source_as_of": _iso_source(min(bound_times), now) if bound_times else None,
+        "newest_known_source_as_of": _iso_source(max(bound_times), now) if bound_times else None,
         "source_as_of_basis": "oldest_required_position_or_account_timestamp",
         "holdings_reported_as_of": holdings.get("as_of") if isinstance(holdings, dict) else None,
         "coverage": {"required_positions": required_positions, "dated_positions": dated_positions,
