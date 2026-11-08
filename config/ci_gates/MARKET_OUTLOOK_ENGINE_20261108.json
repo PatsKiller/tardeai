@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "MARKET_OUTLOOK_ENGINE_20261108",
+  "files": [
+    "tests/test_market_outlook_engine_20261108.py"
+  ],
+  "anchor": "MARKET_OUTLOOK_ENGINE_20261108",
+  "comment": [
+    "ANCHOR: MARKET_OUTLOOK_ENGINE_20261108 — LQ-20261107-966 / design FABLE-OUTLOOK-METHODOLOGY-LQ-946: the Market Outlook Engine v1 must prove UNKNOWN renormalisation (never a silent zero), the 2-evaluation band hysteresis and jump threshold, the MRE tier cap and FOMC window, banned-feed refusal (yfinance/yahoo), the policy-sha256 stamp on every record, and the exact §4.6 field names the brief contract depends on."
+  ]
+}
