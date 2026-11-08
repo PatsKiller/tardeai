@@ -291,3 +291,69 @@ def test_the_news_batch_skips_a_topic_slug_before_extraction(monkeypatch):
     assert out == []
     assert skips.get("topic_slug") == 1
     assert conn.commits == 0
+
+
+# LQ-20261107-1141: a one-word issuer name that is also a common word (Target, Visa, Apple, Gap) is not the
+# issuer on its own. Review of LQ-1081 head 293f401c6: "price target ... the gap widens" produced TGT.
+_COMMON = {"TGT": ["TARGET CORP"], "GAP": ["GAP INC"], "V": ["VISA INC"], "AAPL": ["APPLE INC"]}
+
+
+def _common_run(mod, text, *, symbol=None, held=()):
+    return _run(mod, text, symbol, known=set(_COMMON), universe=set(_COMMON), held=held, names=_COMMON)
+
+
+def test_price_target_is_not_target_corporation():
+    mod = _load()
+    row, _cur = _common_run(mod, "Analysts raise price target on regional banks; the gap widens")
+    assert row["symbol"] is None
+    # TGT is offered by name and refused, and counted. GAP is never offered: its name is under the 5-letter hint.
+    assert row["common_word_names_refused"] == ["TGT"]
+    assert row["bare_tickers_refused"] == []
+
+
+def test_target_corporation_with_its_legal_form_is_target():
+    mod = _load()
+    row, _cur = _common_run(mod, "Target Corporation raised guidance for the holiday quarter")
+    assert row["symbol"] == "TGT"
+
+
+def test_common_words_without_a_second_signal_are_not_issuers():
+    mod = _load()
+    for text in ("visa policy news lifts travel worries",
+                 "Apple orchard yields fall after a late frost",
+                 "the Gap between rich and poor widens again",
+                 "Shoppers at Target spent less this weekend"):
+        row, _cur = _common_run(mod, text)
+        assert row["symbol"] is None, text
+
+
+def test_a_held_common_word_issuer_capitalised_mid_sentence_is_kept():
+    mod = _load()
+    row, _cur = _common_run(mod, "Shoppers at Target spent less this weekend", held={"TGT"})
+    assert row["symbol"] == "TGT"
+    row, _cur = _common_run(mod, "Analysts raise price target on regional banks", held={"TGT"})
+    assert row["symbol"] is None
+    row, _cur = _common_run(mod, "Apple Orchard Yields Fall After Frost", held={"AAPL"})
+    assert row["symbol"] is None
+
+
+def test_a_cashtag_still_names_a_common_word_issuer():
+    mod = _load()
+    row, _cur = _common_run(mod, "$TGT price target raised to 180")
+    assert row["symbol"] == "TGT"
+
+
+def test_a_common_word_refusal_is_counted_apart_from_bare_tickers():
+    mod = _load()
+    skips: dict = {}
+    mod._note({"active": False, "bare_tickers_refused": [], "common_word_names_refused": ["TGT"]}, skips)
+    assert skips.get("common_word_no_evidence") == 1
+    assert "bare_ticker_no_evidence" not in skips
+
+
+def test_evidence_reason_names_the_common_word_refusal():
+    from lib.symbol_match import evidence
+    hit = evidence("Analysts raise price target", "TGT", company_names=["TARGET CORP"])
+    assert hit == {"matched": False, "how": None, "reason": "common_word_issuer_name"}
+    assert evidence("ResMed reports", "RMD", company_names=["RESMED INC"])["how"] == "company"
+    assert evidence("Visa Inc. beat estimates", "V", company_names=["VISA INC"])["how"] == "company"

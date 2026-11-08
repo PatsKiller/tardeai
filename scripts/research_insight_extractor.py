@@ -162,7 +162,10 @@ def _company_hit_symbols(session: dict, text: str, known: set, universe: set) ->
             continue
         if not any(len(word) >= 5 and word in body for name in names for word in re.split(r"[^A-Za-z]+", name.lower())):
             continue
-        if evidence(text, sym, company_names=names).get("how") == "company" and sym not in found:
+        # A common-word name ("price target" -> TGT) is offered too. The caller decides with the real source and
+        # held/watch signal, and counts a refusal, so it is visible rather than silently absent. LQ-1141.
+        ev = evidence(text, sym, company_names=names, corroborated=True)
+        if (ev.get("how") == "company" or ev.get("reason") == "common_word_issuer_name") and sym not in found:
             found.append(sym)
     return found
 
@@ -179,6 +182,7 @@ def _topic_skip(source_type: str, source_reference: str | None) -> dict:
         "active": False,
         "id": None,
         "bare_tickers_refused": [],
+        "common_word_names_refused": [],
     }
 
 
@@ -303,14 +307,20 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     tracked = _tracked(session, candidates)
     symbols_found: list[str] = []
     refused: list[str] = []
+    common_refused: list[str] = []
     if given and given in tracked:
         symbols_found.append(given)
     for sym in candidates:
         if sym in symbols_found:
             continue
-        how = evidence(text, sym, company_names=_names_for(session, sym)).get("how")
-        if how in {"cashtag", "company"}:
+        # A common-word issuer name (Target, Visa, Apple, Gap) needs a second signal: the source symbol, or a
+        # held/watch symbol. LQ-20261107-1141.
+        ev = evidence(text, sym, company_names=_names_for(session, sym),
+                      corroborated=(sym == given or sym in tracked))
+        if ev.get("how") in {"cashtag", "company"}:
             symbols_found.append(sym)
+        elif ev.get("reason") == "common_word_issuer_name":
+            common_refused.append(sym)
         else:
             refused.append(sym)
 
@@ -403,6 +413,7 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     # The source's own value, kept for the run's accounting (a topic code is reported, never written as a symbol).
     insight["source_symbol_not_ticker"] = bool(symbol) and given is None
     insight["bare_tickers_refused"] = refused
+    insight["common_word_names_refused"] = common_refused
     insight["skipped"] = None
 
     if dry_run:
@@ -455,6 +466,8 @@ def _note(row: dict, skips: dict | None) -> None:
         _count(skips, "source_symbol_not_ticker")
     if row.get("bare_tickers_refused"):
         _count(skips, "bare_ticker_no_evidence")
+    if row.get("common_word_names_refused"):
+        _count(skips, "common_word_no_evidence")
     if not row.get("active", True):
         _count(skips, "no_signal")
 
