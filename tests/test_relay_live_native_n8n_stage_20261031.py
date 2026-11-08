@@ -44,7 +44,16 @@ def test_rows_that_never_looked_live_stay_unlisted():
     allow = {"lanes": _allow("retired")["lanes"] + _allow("no_live_arg", live_arg=None)["lanes"]
              + _allow("cronrow")["lanes"]}
     lanes, excluded = R.registry_live_lanes(reg, allow)
-    assert lanes == [] and excluded == {}
+    assert lanes == []  # never widened
+    # 2026-11-08 (LQ-20261107-736): every row here carries a live claim (an n8n scheduler kind, a stage or a live
+    # argv), so it is NAMED rather than silently absent. The claim-free row is the negative control in
+    # tests/test_relay_live_lanes_exclusion_reasons_lq736_20261108.py.
+    assert excluded == {
+        "retired": "registry_state_RETIRED",
+        "no_live_arg": "native_n8n_no_stage",
+        "cronrow": "scheduler_cron_not_n8n",
+        "not_allowlisted": "native_n8n_no_stage",
+    }
 
 
 def test_render_report_and_file_name_the_dropped_lanes(tmp_path):

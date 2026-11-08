@@ -1,0 +1,21 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jsonl_archive_rotate_promotion_lq716_20261108",
+  "files": [
+    "tests/test_jsonl_archive_rotate_promotion_lq716_20261108.py"
+  ],
+  "anchor": "JSONL_ARCHIVE_ROTATE_PROMOTION_LQ716_20261108",
+  "comment": [
+    "ANCHOR: JSONL_ARCHIVE_ROTATE_PROMOTION_LQ716_20261108 — LQ-20261107-716: jsonl-archive-rotate left SHADOW for CANARY.",
+    "The lane was BROKEN (NOT_IN_LIVE_SET) because its dispatch block said mode dry_run:",
+    "n8n_relay_live_lanes.registry_live_lanes short-circuits on dispatch.mode != live BEFORE it reads the stage, so the",
+    "lane was silently absent from the rendered N8N_RELAY_LIVE_LANES with an empty excluded map, and the executor clamp",
+    "(stage shadow -> dry_run) meant its slot ran --dry-run forever. The gate pins: registry scheduler.stage canary +",
+    "dispatch.mode live (class hygiene, retry transient-2); allowlist live_arg [--apply --confirm APPLY] with",
+    "output_receipt v2 and the dry_run_arg kept; the lane on the COMPUTED live set with no exclusion entry; the stage",
+    "clamp lets a live request through; the health contract moves with the row (stage canary, target_reason stage:canary,",
+    "empty_allowed/produced_count); a staged effect key (filesystem, n8n_claim false, executor-inert); and a negative",
+    "control that the pre-promotion shadow row is still refused, now named dispatch_mode:dry_run (LQ-20261107-736).",
+    "Hermetic: reads the repo's config files only; no state root, no DB, no n8n, no live argv."
+  ]
+}
