@@ -24,6 +24,16 @@
       "old_budget_s": [30, 40],
       "note": "299 of the 358 grok cuts were the 30 s improve_queries site and 59 were the 40 s sites; 59 grok successes took 30-39.9 s, so a 40 s budget covers the whole observed successful tail"
     },
+    "iris_taxonomy_agent": {
+      "budget_s": 40,
+      "p95_ms": 29312,
+      "max_ok_ms": 29514,
+      "n_ok": 14,
+      "cuts_7d": 0,
+      "old_budget_s": [20, 30],
+      "window": "2026-10-09T13:00:00Z <= created_at < 2026-11-08T13:00:00Z (30 days, not the 7-day window above: iris runs weekly, so the 7-day window holds only one Sunday of rows)",
+      "note": "LQ-20261107-1010. The Sunday gap-recommendation site passed 20 s -- below this lane's own successful tail -- and its answer was swallowed into '(LLM unavailable)'; the two classification sites passed 30 s and 2 grok calls were cut at 30.03 s while 30-39.9 s answers are observed. 14 grok successes in 30 days, p95 29.312 s, max ok 29.514 s, so (29.312*1.25=36.64) derives 40 s. Cut count over the window is 3 (30.03, 30.03, 30.91 s), all read timeouts -- not a 7-day figure, hence cuts_7d 0 rather than a misleading mixed-window count"
+    },
     "topic_ingestion": {
       "budget_s": 30,
       "p95_ms": 20565,

@@ -16,7 +16,12 @@
     "says NOT to re-login, and the kind is recorded in the status file and the lane receipt so a long",
     "streak can be read without guessing. The dry run also stops trusting a 200 from /health: it passes",
     "the proxy's serving/last_upstream through lib.oauth_lane_status and reports a rate-limited lane",
-    "without spending a generate. Exit stays 1 — the lane really is unusable; only the advice changes.",
-    "Hermetic: fake probes and fake health snapshots, no network, no DB, no credential."
+    "without spending a generate. Hermetic: fake probes and fake health snapshots, no network, no DB,",
+    "no credential.",
+    "AMENDED by LQ-20261107-1010 / Fable Q5 (2026-11-08): the original exit rule ('Exit stays 1 — the",
+    "lane really is unusable') graded a quota wait as a dead lane, and the */30 cron then re-spent a",
+    "known-exhausted quota for days. A 429 is now ok_rate_limited: no alert, no regression, exit 0, with",
+    "quota_exhausted + rate_limited_until recorded so the ticks inside the 900 s window skip the ping.",
+    "The prompt from the same item — 'a 429 is a quota wait, not a failed lane' — is the rule that wins."
   ]
 }

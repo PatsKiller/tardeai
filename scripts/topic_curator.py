@@ -79,10 +79,88 @@ def _write_desk_projection(stats):
 
 
 # ════════════════════════════════════════════════════════════
+# LLM SPEND DISCIPLINE (LQ-20261107-1010; Fable Q5)
+# ════════════════════════════════════════════════════════════
+# Three cheap rules in front of every serial free-lane call:
+#  1. PRE-FILTER — a row the prompt's own policy already decides (nothing to judge, non-English) never
+#     reaches the lane. Before this the curator spent a call on a row whose text was empty.
+#  2. BATCH — 20 rows per call instead of 5 (rating) / 10 (entities). The lane answers an array, so the
+#     number of serial round trips per run drops ~3x for the same decisions.
+#  3. WALL BUDGET — a run stops after TOPIC_CURATOR_LLM_BUDGET_S and leaves the rest pending for the next
+#     run, instead of holding the lane for as long as the queue is. The check is per batch, so the
+#     overshoot is at most one lane budget (40 s for topic_curator).
+# DeepSeek off-peak as the primary lane is a SPEND decision (the process is lane_policy "either", so
+# pinning a paid lane changes cost) — queued, not changed here.
+RATE_BATCH_SIZE = max(1, int(os.environ.get("TOPIC_CURATOR_RATE_BATCH", "20")))
+ENTITY_BATCH_SIZE = max(1, int(os.environ.get("TOPIC_CURATOR_ENTITY_BATCH", "20")))
+LLM_WALL_BUDGET_S = float(os.environ.get("TOPIC_CURATOR_LLM_BUDGET_S", "900"))
+
+_NON_ASCII_LETTER = re.compile(r"[^\x00-\x7f]")
+
+
+class LlmWallBudget:
+    """A run-wide wall clock over the LLM steps. Expiry stops the step; rows it did not reach stay pending."""
+
+    def __init__(self, seconds: float | None = None):
+        self.seconds = LLM_WALL_BUDGET_S if seconds is None else float(seconds)
+        self._t0 = time.monotonic()
+        self.deferred = 0            # rows a step left for the next run because the budget expired
+        self.stopped_steps: list[str] = []
+
+    def remaining_s(self) -> float:
+        return self.seconds - (time.monotonic() - self._t0)
+
+    def expired(self) -> bool:
+        return self.remaining_s() <= 0
+
+    def stop(self, step: str, deferred: int) -> None:
+        self.deferred += max(0, int(deferred))
+        self.stopped_steps.append(step)
+        print(f"  [curator] wall budget {self.seconds:.0f} s exhausted at {step}: "
+              f"{max(0, int(deferred))} row(s) left pending for the next run")
+
+    def as_dict(self) -> dict:
+        return {"budget_s": self.seconds, "remaining_s": round(self.remaining_s(), 1),
+                "deferred": self.deferred, "stopped_steps": list(self.stopped_steps)}
+
+
+def _prefilter(row, *, kind: str = "article"):
+    """A deterministic verdict for a row the LLM need not see: ``(status, reason)`` or None.
+
+    Only the two rules the rating prompt itself states, applied from the row alone:
+    - nothing to judge (title and summary/preview both empty) → ``low_quality``;
+    - non-English (more than 20% of letters non-ASCII) → ``blocked``.
+    Everything else is a judgement call and goes to the lane.
+    """
+    parts = (str(row.get("title") or ""), str(row.get("summary") if kind == "article" else row.get("preview") or ""))
+    text = " ".join(parts).strip()
+    if len(text) < 8:
+        return ("low_quality", "prefilter: no text to rate")
+    letters = [ch for ch in text if ch.isalpha()]
+    if letters:
+        non_ascii = sum(1 for ch in letters if _NON_ASCII_LETTER.match(ch))
+        if non_ascii / len(letters) > 0.20:
+            return ("blocked", "prefilter: non-English")
+    return None
+
+
+def _within_budget(budget, step: str, remaining: int) -> bool:
+    """False when the run must stop before starting another call (and the deferral is recorded)."""
+    if budget is None or not budget.expired():
+        return True
+    budget.stop(step, remaining)
+    return False
+
+
+# ════════════════════════════════════════════════════════════
 # STEP 1: RATE PENDING CONTENT  (RAG / low_quality / blocked)
 # ════════════════════════════════════════════════════════════
-def rate_pending_content(conn, topic_id=None, limit=200):
-    """LLM rates pending articles and transcripts via the FREE OAuth lanes (grok→chatgpt→local). Tight prompt."""
+def rate_pending_content(conn, topic_id=None, limit=200, *, budget=None):
+    """LLM rates pending articles and transcripts via the FREE OAuth lanes (grok→chatgpt→local). Tight prompt.
+
+    Spend discipline (LQ-20261107-1010): deterministic rows are settled without a call, the rest are
+    batched 20 per call, and the run stops at the wall budget with the unreached rows left pending.
+    """
     cur = conn.cursor(cursor_factory=__import__('psycopg2.extras', fromlist=['RealDictCursor']).RealDictCursor)
 
     # Auto-approve high-relevance articles (score >= 0.4) without LLM — already quality-gated at ingest
@@ -113,19 +191,50 @@ def rate_pending_content(conn, topic_id=None, limit=200):
     cur.execute(sql2, params2)
     transcripts = cur.fetchall()
 
-    total = len(articles) + len(transcripts)
-    if total == 0:
+    if not (articles or transcripts):
         print("  [curator] No pending content to rate")
         return 0, 0, 0
-
-    print(f"  [curator] Rating {len(articles)} articles + {len(transcripts)} transcripts...")
 
     approved = 0
     blocked = 0
 
-    # Batch articles in groups of 5 for efficient LLM usage
-    for i in range(0, len(articles), 5):
-        batch = articles[i:i+5]
+    # Pre-filter: settle the rows the prompt's own policy already decides, without a lane call.
+    prefiltered = 0
+    articles_llm, transcripts_llm = [], []
+    for a in articles:
+        verdict = _prefilter(a, kind="article")
+        if verdict is None:
+            articles_llm.append(a)
+            continue
+        set_rag_status(cur, a['id'], verdict[0], verdict[1])
+        prefiltered += 1
+        approved += verdict[0] == "approved"
+        blocked += verdict[0] == "blocked"
+    for t in transcripts:
+        verdict = _prefilter(t, kind="transcript")
+        if verdict is None:
+            transcripts_llm.append(t)
+            continue
+        cur.execute("UPDATE youtube_transcripts SET rag_status=%s, rag_reason=%s WHERE id=%s",
+                    (verdict[0], verdict[1], t['id']))
+        prefiltered += 1
+        approved += verdict[0] == "approved"
+        blocked += verdict[0] == "blocked"
+    if prefiltered:
+        conn.commit()
+        print(f"  [curator] Pre-filter settled {prefiltered} row(s) without an LLM call "
+              f"({len(articles_llm)} articles + {len(transcripts_llm)} transcripts remain)")
+
+    print(f"  [curator] Rating {len(articles_llm)} articles + {len(transcripts_llm)} transcripts "
+          f"in batches of {RATE_BATCH_SIZE}...")
+
+    total = prefiltered
+
+    # Batch articles for efficient LLM usage
+    for i in range(0, len(articles_llm), RATE_BATCH_SIZE):
+        if not _within_budget(budget, "rate_articles", len(articles_llm) - i):
+            break
+        batch = articles_llm[i:i + RATE_BATCH_SIZE]
         titles = "\n".join(f"{j+1}. {a['title'][:80]}" for j, a in enumerate(batch))
         prompt = (
             f"/no_think Rate these articles for a financial intelligence RAG system. "
@@ -137,6 +246,7 @@ def rate_pending_content(conn, topic_id=None, limit=200):
             f"Reply ONLY with JSON array: "
             f'[{{"id": 1, "rag": "approved" or "low_quality" or "blocked", "reason": "5 words max"}}]'
         )
+        total += len(batch)
         raw = _free_lane_gen(prompt)
         if raw:
             try:
@@ -157,24 +267,38 @@ def rate_pending_content(conn, topic_id=None, limit=200):
                 pass
         conn.commit()
 
-    # Rate transcripts individually (they have more content to judge)
-    for t in transcripts:
+    # Rate transcripts in batches too (they carry more content, so the preview is the whole prompt body)
+    for i in range(0, len(transcripts_llm), RATE_BATCH_SIZE):
+        if not _within_budget(budget, "rate_transcripts", len(transcripts_llm) - i):
+            break
+        batch = transcripts_llm[i:i + RATE_BATCH_SIZE]
+        items = "\n".join(f"{j+1}. Title: {t['title'][:80]} | Preview: {t['preview'][:300]}"
+                          for j, t in enumerate(batch))
         prompt = (
-            f"/no_think Rate this transcript for RAG. Title: {t['title'][:80]}\n"
-            f"Preview: {t['preview'][:300]}\n\n"
-            f'Reply JSON: {{"rag": "approved"/"low_quality"/"blocked", "reason": "5 words"}}'
+            f"/no_think Rate these transcripts for a RAG system. APPROVE if the content is useful to a "
+            f"retail investor (finance, income strategy, retirement, trading); BLOCK only if spam, "
+            f"non-English or unrelated.\n\n{items}\n\n"
+            f'Reply ONLY with JSON array: [{{"id": 1, "rag": "approved"/"low_quality"/"blocked", "reason": "5 words"}}]'
         )
+        total += len(batch)
         raw = _free_lane_gen(prompt)
         if raw:
             try:
-                match = re.search(r'\{[^}]+\}', raw)
+                match = re.search(r'\[.*\]', raw, re.DOTALL)
                 if match:
-                    r = json.loads(match.group())
-                    status = r.get("rag", "pending")
-                    if status in ("approved", "low_quality", "blocked"):
+                    ratings = json.loads(match.group())
+                    for r in ratings:
+                        idx = r.get("id", 1) - 1
+                        if not (0 <= idx < len(batch)):
+                            continue
+                        status = r.get("rag", "pending")
+                        if status not in ("approved", "low_quality", "blocked"):
+                            status = "pending"
+                        t = batch[idx]
                         cur.execute("UPDATE youtube_transcripts SET rag_status=%s, rag_reason=%s WHERE id=%s",
                                     (status, r.get("reason", ""), t['id']))
-                        if status == "approved": approved += 1
+                        if status == "approved":
+                            approved += 1
                         if status == "blocked":
                             blocked += 1
                             cur.execute("""
@@ -243,7 +367,7 @@ def _promote_discovery_ticker(pcur, symbol, title, topic):
     return pcur.rowcount > 0
 
 
-def extract_and_link_entities(conn, topic_id=None, limit=100):
+def extract_and_link_entities(conn, topic_id=None, limit=100, *, budget=None):
     """
     LLM extracts tickers, sectors, topics, orgs from content.
     Links by whatever is logical:
@@ -279,9 +403,11 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
     print(f"  [curator] Extracting entities from {len(articles)} articles...")
     total_links = 0
 
-    # Batch 10 at a time
-    for i in range(0, len(articles), 10):
-        batch = articles[i:i+10]
+    # Batch ENTITY_BATCH_SIZE at a time (was 10; the lane answers an array, so fewer serial calls)
+    for i in range(0, len(articles), ENTITY_BATCH_SIZE):
+        if not _within_budget(budget, "extract_entities", len(articles) - i):
+            break
+        batch = articles[i:i + ENTITY_BATCH_SIZE]
         items = "\n".join(f"{j+1}. [{a['strategy_type']}] {a['title'][:80]}" for j, a in enumerate(batch))
         prompt = (
             f"/no_think Extract entities from these articles. For each, identify:\n"
@@ -353,7 +479,7 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
 # ════════════════════════════════════════════════════════════
 # STEP 3: IMPROVE QUERIES FOR NEXT RUN (learning loop)
 # ════════════════════════════════════════════════════════════
-def improve_queries(conn, topic_id=None):
+def improve_queries(conn, topic_id=None, *, budget=None):
     """
     LLM reviews what was found in the last run and generates
     better, more targeted queries for the next run.
@@ -369,8 +495,10 @@ def improve_queries(conn, topic_id=None):
     cur.execute(sql, params)
     topics = cur.fetchall()
 
-    for topic in topics:
+    for ti, topic in enumerate(topics):
         tid = topic['topic_id']
+        if not _within_budget(budget, "improve_queries", len(topics) - ti):
+            break
         # Get recent articles for this topic
         cur.execute("""
             SELECT title FROM news_articles
@@ -792,11 +920,14 @@ def _curate(args, stats: dict) -> int:
     print("  TOPIC CURATOR — Post-Ingestion Pipeline")
     print(f"{'='*60}\n")
 
+    # One wall clock over every LLM step of this run (LQ-20261107-1010): a queue larger than the
+    # budget stops cleanly and the unreached rows stay pending for the next run.
+    budget = LlmWallBudget()
 
     # Step 1: Rate pending content
     if not args.no_llm:
         print("[1/5] Rating pending content...")
-        total, approved, blocked = rate_pending_content(conn, args.topic)
+        total, approved, blocked = rate_pending_content(conn, args.topic, budget=budget)
         stats['rated'] = total
         if args.ensemble:
             print("  [1b] Ensemble rescue on borderline rejects (free-lane grok+chatgpt+local)...")
@@ -817,7 +948,7 @@ def _curate(args, stats: dict) -> int:
     # Step 2: Extract entities and link
     if not args.no_llm:
         print("\n[2/5] Extracting entities and linking...")
-        links = extract_and_link_entities(conn, args.topic)
+        links = extract_and_link_entities(conn, args.topic, budget=budget)
         stats['entity_links'] = links
     else:
         print("[2/5] Skipping entity extraction (--no-llm)")
@@ -825,7 +956,7 @@ def _curate(args, stats: dict) -> int:
     # Step 3: Improve queries for next run
     if args.improve_queries and not args.no_llm:
         print("\n[3/5] Improving queries for next run...")
-        improve_queries(conn, args.topic)
+        improve_queries(conn, args.topic, budget=budget)
 
         # Step 3b: AUTO-RUN improved queries through topic_ingestion
         # --no-auto-curate breaks the ingest<->curate loop: this re-ingest must NOT
@@ -895,6 +1026,9 @@ def _curate(args, stats: dict) -> int:
     _write_desk_projection(stats)
 
     conn.close()
+    # Record what the wall clock did (LQ-20261107-1010): a run that stopped early says so in its own
+    # receipt, and the rows it did not reach are still 'pending' in the DB for the next run.
+    stats['llm_budget'] = budget.as_dict()
     if stats.get('ensemble_status') not in (None, 'ok'):
         # the rest of the curation ran and the receipt is written; the cron exit code still says it failed
         print(f"  [curator] ensemble rescue status={stats['ensemble_status']} -> exit 1")

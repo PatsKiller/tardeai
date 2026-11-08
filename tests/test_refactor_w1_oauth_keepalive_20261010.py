@@ -46,6 +46,11 @@ def env(tmp_path, monkeypatch):
     gen = type(sys)("llm_lane")
     gen.generate = lambda *a, **k: pytest.fail("generate reached")
     monkeypatch.setitem(sys.modules, "llm_lane", gen)
+    # LQ-20261107-1010: a free-OAuth lane is pinged only when its token needs a roll (6 h idle window).
+    # These scenarios are about what a run does WHEN it probes, so the idle window is disabled here; the
+    # planner itself (4x/day, expiry lead, quota cooldown) is covered by
+    # tests/test_llm_lane_repairs_lq1010_20261108.py.
+    monkeypatch.setattr(oak, "KEEPALIVE_MAX_IDLE_S", 0)
     return {"root": tmp_path, "rt": rt, "status": status, "health": health, "sent": sent}
 
 

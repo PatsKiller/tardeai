@@ -147,27 +147,47 @@ def build_request(c: dict, left: str, right: str) -> dict:
 
 
 def parse_verdict(text: str) -> dict:
-    t = (text or "").strip()
-    obj: dict = {}
+    """Read one answer into a ContradictionVerdict row, through the shared contract (LQ-20261107-1010).
+
+    The local brace-slice is gone. ``lib.llm_json_contract.recover_json_object`` is the ONE place a
+    response becomes a JSON object (strict → fenced → embedded), so this lane and the governed gateway
+    cannot disagree about what counts as JSON — until 2026-11-08 they did, and the gateway threw away
+    116 fenced adjudicator answers the brace-slice here would have read. The recovered object is then
+    validated against ``contradiction_verdict.v1``, so a loosely shaped answer no longer becomes a row.
+
+    Anything unreadable or off-contract is UNRESOLVED with ``schema_invalid``; the caller retries once on
+    a different allowed lane and, failing that, writes the UNRESOLVED row (the pair stays open).
+    """
+    from lib.llm_json_contract import JsonContractError, recover_json_object
+    from lib.llm_output_schemas import validate_process_output
+
+    raw = "" if text is None else str(text).strip()
+
+    def _invalid(detail: str) -> dict:
+        return {"verdict": "UNRESOLVED", "confidence": 0.0, "rationale": f"SCHEMA_INVALID: {detail}"[:600],
+                "decisive_evidence_refs": [], "what_would_resolve": "", "schema_invalid": True}
+
     try:
-        obj = json.loads(t)
-    except Exception:  # noqa: BLE001
-        s, e = t.find("{"), t.rfind("}")
-        if s >= 0 and e > s:
-            try:
-                obj = json.loads(t[s:e + 1])
-            except Exception:  # noqa: BLE001
-                obj = {}
-    v = str(obj.get("verdict") or "").upper()
-    if v not in VERDICTS:
-        return {"verdict": "UNRESOLVED", "confidence": 0.0, "rationale": "SCHEMA_INVALID: " + t[:200], "decisive_evidence_refs": [], "schema_invalid": True}
+        obj, _how = recover_json_object(raw)
+    except JsonContractError as exc:
+        return _invalid(f"{exc.reason}: {raw[:160]}")
+    # Normalise what the contract allows to be loose, so the model is not failed for casing or for a
+    # confidence a hair outside the band; the shape itself is then strictly validated.
+    norm: dict = dict(obj)
+    norm["verdict"] = str(obj.get("verdict") or "").strip().upper()
     try:
-        conf = max(0.0, min(1.0, float(obj.get("confidence") or 0.0)))
+        norm["confidence"] = max(0.0, min(1.0, float(obj.get("confidence") or 0.0)))
     except (TypeError, ValueError):
-        conf = 0.0
-    return {"verdict": v, "confidence": conf, "rationale": str(obj.get("rationale") or "")[:600],
-            "decisive_evidence_refs": [str(x) for x in (obj.get("decisive_evidence_refs") or [])][:10],
-            "what_would_resolve": str(obj.get("what_would_resolve") or "")[:200]}
+        norm["confidence"] = 0.0
+    refs = obj.get("decisive_evidence_refs")
+    norm["decisive_evidence_refs"] = [str(x) for x in refs][:10] if isinstance(refs, (list, tuple)) else []
+    norm["rationale"] = str(obj.get("rationale") or "")[:600]
+    norm["what_would_resolve"] = str(obj.get("what_would_resolve") or "")[:200]
+    try:
+        v = validate_process_output("contradiction_verdict.v1", norm)
+    except ValueError as exc:
+        return _invalid(f"{str(exc)[:160]} | {raw[:120]}")
+    return {k: v[k] for k in ("verdict", "confidence", "rationale", "decisive_evidence_refs", "what_would_resolve")}
 
 
 def tier2_gate(env: dict, now: _dt.datetime) -> str | None:
@@ -188,18 +208,66 @@ def tier2_gate(env: dict, now: _dt.datetime) -> str | None:
     return pol.tier2_denial(spent_today_usd=spent, now=now, judge_provider="deepseek")
 
 
-def judge(request: dict, *, call_fn=None) -> tuple[str, dict]:
+def allowed_lanes() -> list[str]:
+    """The registry's allowlist for this process, fail-closed to the declared lane (LQ-20261107-1010)."""
+    try:
+        from llm_consumption import get_process_config  # type: ignore
+        cfg = get_process_config(PROCESS_ID) or {}
+        lanes = [str(x) for x in (cfg.get("allowed_lanes") or []) if str(x).strip()]
+        return lanes or [LLM_LANE]
+    except Exception:  # noqa: BLE001
+        return [LLM_LANE]
+
+
+def retry_lane(exclude: str, lanes: list[str] | None = None) -> str | None:
+    """A different lane this process is allowed to use, for the one off-contract retry."""
+    for lane in (allowed_lanes() if lanes is None else lanes):
+        if lane != exclude:
+            return lane
+    return None
+
+
+def judge(request: dict, *, call_fn=None, lane: str = LLM_LANE) -> tuple[str, dict]:
     """One governed call. call_fn(prompt) -> (text, provenance) is injectable for tests."""
     prompt = INSTRUCTION + "\n\n" + json.dumps(request, sort_keys=True, default=str)
     if call_fn is not None:
         return call_fn(prompt)
     from llm_consumption import gate_and_generate  # type: ignore
-    res = gate_and_generate(prompt, lane=LLM_LANE, process_id=PROCESS_ID, task_summary=f"adjudicate {request.get('candidate_id')}",
+    res = gate_and_generate(prompt, lane=lane, process_id=PROCESS_ID, task_summary=f"adjudicate {request.get('candidate_id')}",
                             response_json=True, max_tokens=600, return_provenance=True,
                             metadata={"candidate_id": request.get("candidate_id"), "prompt_version": PROMPT_VERSION})
     if isinstance(res, tuple):
         return str(res[0] or ""), dict(res[1] or {})
     return str(res or ""), {}
+
+
+def judge_with_retry(request: dict, *, lane: str = LLM_LANE, judge_fn=None):
+    """One governed call plus ONE bounded retry on a different allowed lane (LQ-20261107-1010).
+
+    Returns ``(verdict_row, provenance, lane_used)``. An off-contract answer is often a single-lane
+    accident (truncation, a fence the lane refused to close): the second lane gets exactly one attempt
+    from the process's own allowlist. If that is off-contract too, the returned row is the UNRESOLVED
+    one with ``schema_invalid`` — the pair stays open, which is the safe side — and ``lane_used`` names
+    the lane whose answer was kept.
+    """
+    call = judge if judge_fn is None else judge_fn
+    text, prov = call(request, lane=lane)
+    v = parse_verdict(text)
+    if not v.get("schema_invalid"):
+        return v, prov, lane
+    alt = retry_lane(lane)
+    if not alt:
+        return v, prov, lane
+    try:
+        text2, prov2 = call(request, lane=alt)
+    except Exception as exc:  # noqa: BLE001 — a failed retry keeps the first (UNRESOLVED) row
+        print(f"schema retry on {alt} failed: {type(exc).__name__}: {str(exc)[:160]}")
+        return v, prov, lane
+    v2 = parse_verdict(text2)
+    if v2.get("schema_invalid"):
+        print(f"schema retry on {alt} also off-contract; writing UNRESOLVED for {request.get('candidate_id')}")
+        return v, prov, lane
+    return v2, prov2, alt
 
 
 def main(argv=None) -> int:
@@ -239,17 +307,18 @@ def main(argv=None) -> int:
     for c in pairs:
         req = build_request(c, artifact_text(c.get("left_artifact_id"), root, loaders), artifact_text(c.get("right_artifact_id"), root, loaders))
         try:
-            text, prov = judge(req)
+            # One call, plus one off-contract retry on a DIFFERENT allowed lane (LQ-20261107-1010).
+            # A judge exception (deferred / cap / outage) still stops the batch with nothing half-written.
+            v, prov, lane_used = judge_with_retry(req)
         except Exception as exc:  # noqa: BLE001 — deferred / cap / outage: stop the batch, nothing half-written
             print(f"judge stopped: {type(exc).__name__}: {str(exc)[:160]}")
             failed += 1
             break
-        v = parse_verdict(text)
         row = {"schema": SCHEMA, "verdict_id": "cv_" + hashlib.sha256(f"{c.get('candidate_id')}|{PROMPT_VERSION}|{now.isoformat()}".encode()).hexdigest()[:16],
                "candidate_id": c.get("candidate_id"), "left_symbol": c.get("left_symbol"), "right_symbol": c.get("right_symbol"),
                "left_artifact_id": c.get("left_artifact_id"), "right_artifact_id": c.get("right_artifact_id"), **v,
                "provider": prov.get("provider") or "deepseek", "model": prov.get("model"), "cost_usd": prov.get("cost_usd") or prov.get("actual_usd"),
-               "prompt_version": PROMPT_VERSION, "process_id": PROCESS_ID, "judged_at": _now().isoformat(),
+               "lane": lane_used, "prompt_version": PROMPT_VERSION, "process_id": PROCESS_ID, "judged_at": _now().isoformat(),
                "authority": AUTHORITY, "memory_behavior_influence": 0, "financial_action": False}
         with out_p.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
