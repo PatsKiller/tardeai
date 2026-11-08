@@ -2470,6 +2470,36 @@ def _select_synthesis_rows(rows, *, per_agent=None, char_budget=None):
     return kept, len(rows or []) - len(kept)
 
 
+def _mark_synthesis_refused(conn, symbol: str, dual_meta, raw) -> None:
+    """LQ-20261107-512: a refused synthesis is a FAILED run, not a silent one. The prior
+    watchlist_final_synthesis row is left untouched (no upsert); maturity leaves 'processing' for
+    'failed' so the symbol is not stuck, and one watchlist_events row records which lanes refused.
+    A write error is reported and rolled back; it never turns the refusal into a success."""
+    meta = dual_meta if isinstance(dual_meta, dict) else {}
+    payload = {
+        "refused_lanes": list(meta.get("refused_lanes") or []),
+        "participating_lanes": list(meta.get("participating_lanes") or []),
+        "raw_head": str(raw or "")[:240],
+    }
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE watchlist_analysis_maturity SET final_synthesis_status='failed', updated_at=now() "
+                    "WHERE symbol=%s AND final_synthesis_status='processing'", (symbol,))
+        cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message, payload) "
+                    "VALUES ('synthesis_refused', %s, 'synthesis', 'failed', %s, %s::jsonb)",
+                    (symbol, "LLM refused the synthesis prompt; prior synthesis kept",
+                     json.dumps(payload)))
+        conn.commit()
+        print(f"  [synthesis] {symbol}: marked failed (refused lanes={payload['refused_lanes'] or 'winner text'})")
+    except Exception as exc:  # noqa: BLE001 -- the refusal is already reported to the caller; a dead
+        # connection must not mask it. Roll back so the shared connection stays usable.
+        print(f"  [synthesis] {symbol}: could not mark refusal failed: {type(exc).__name__}: {exc}")
+        try:
+            conn.rollback()
+        except Exception as rb_exc:  # noqa: BLE001 -- connection already dead; nothing left to undo
+            print(f"  [synthesis] {symbol}: rollback after refusal mark failed: {type(rb_exc).__name__}")
+
+
 def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, dry_run: bool = False, *, _drain_progress=None):
     """Run strategy-aware final synthesis combining all analyst narratives.
 
@@ -2720,12 +2750,17 @@ CRITICAL INSTRUCTIONS:
     synthesis_narrative = syn.get("synthesis_narrative") or syn.get("full_narrative", "")
     # LLM refusals ("**I cannot fulfill this request.**...") are failure artifacts, not synthesis —
     # normalize them and FAIL CLOSED: do not upsert / clobber prior good synthesis.
-    if _is_refusal(synthesis_narrative):
+    # LQ-20261107-512: the raw winner text is checked too — a parser fallback may lift a narrative
+    # out of a refusal's prose.
+    refused = _is_refusal(synthesis_narrative) or _is_refusal(raw)
+    if refused:
         synthesis_narrative = "LLM error: model refused the synthesis prompt (refusal suppressed)"
     if isinstance(synthesis_narrative, str) and synthesis_narrative.startswith("LLM error"):
         print(f"  [synthesis] {symbol}: refusal/error narrative — keeping prior synthesis, no upsert")
+        if refused and not dry_run:
+            _mark_synthesis_refused(conn, symbol, dual_meta, raw)
         return {"ok": False, "error": "llm_refusal_or_error", "symbol": symbol,
-                "detail": synthesis_narrative[:200], "persisted": False,
+                "detail": synthesis_narrative[:200], "persisted": False, "refused": refused,
                 "dual_consensus": dual_meta}
     dual_meta["agent_contract"] = AGENT_JSON_CONTRACT_VERSION
     dual_meta["structured_evidence"] = syn.get("evidence", [])

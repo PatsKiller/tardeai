@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "synthesis_refusal_lq512",
+  "files": [
+    "tests/test_synthesis_refusal_lq512.py",
+    "tests/test_llm_refusal_guard_20261107.py"
+  ],
+  "anchor": "SYNTHESIS_REFUSAL_LQ512",
+  "comment": [
+    "ANCHOR: SYNTHESIS_REFUSAL_LQ512 — a refused CIO synthesis is never stored, never served (LQ-20261107-407, -512). lib/llm_refusal.is_refusal is the one synthesis-refusal predicate, measured against every live watchlist_final_synthesis row; run_synthesis keeps the prior row, marks the run failed and records a synthesis_refused event; scrub_refused_synthesis blanks every field derived from a refusing run for readers."
+  ]
+}
