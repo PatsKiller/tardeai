@@ -87,6 +87,8 @@ def _good() -> dict[str, object]:
         "FROM sector_rs_daily s": [
             {"etf": "XLK", "rs_date": date(2026, 11, 6), "rs": 0.224, "close": 164.8, "state_as_of": date(2026, 11, 6),
              "sector": "Technology", "state": "LEADING", "rs5": 1.0, "rs20": 2.0},
+            {"etf": "XLP", "rs_date": date(2026, 11, 6), "rs": 0.12, "close": 84.1, "state_as_of": date(2026, 11, 5),
+             "sector": "Consumer Defensive", "state": "IMPROVING", "rs5": 0.5, "rs20": 0.7},
             {"etf": "XLE", "rs_date": date(2026, 11, 6), "rs": 0.084, "close": 61.64, "state_as_of": None,
              "sector": None, "state": None, "rs5": None, "rs20": None},
         ],
@@ -117,7 +119,9 @@ def test_gather_reads_the_four_sections_with_their_own_as_of():
     assert [(r["signal"], r["symbol"]) for r in mv["rows"]] == [("top_gainers", "AAA"), ("top_losers", "ZZZ")]
     sec = md["sectors"]
     assert sec["state"] == "ok" and sec["as_of"] == "2026-11-06"
-    assert sec["rows"][0]["state"] == "LEADING" and sec["rows"][1]["state"] is None  # LEFT JOIN, never invented
+    assert [r["state"] for r in sec["rows"]] == ["LEADING", "IMPROVING", None]  # LEFT JOIN, never invented
+    # Each ETF's state is its OWN newest one, so a state one session older than the RS date still appears, dated.
+    assert sec["rows"][1]["state_as_of"] == "2026-11-05" and sec["rows"][1]["rs"] == 0.12
     it = md["international"]
     assert it["state"] == "ok" and it["rows"][0]["basis"] == "etf_derived"
     assert it["rows"][0]["symbol"] == "EWJ" and it["rows"][0]["change_pct"] == 0.4
@@ -154,6 +158,24 @@ def test_movers_take_the_newest_capture_per_signal_with_a_limit():
     assert "ORDER BY change_pct DESC" in g_sql and g_params[0] == "top_gainers" and g_params[2] == bi.MOVERS_LIMIT
     assert "ORDER BY change_pct ASC" in l_sql and l_params[0] == "top_losers"
     assert g_params[1].isoformat() == "2026-11-06T16:45:00+00:00"  # the snapshot's own stamp, not "now"
+
+
+def test_the_sector_state_is_joined_per_etf_not_on_the_tables_newest_date():
+    """2026-11-06 held only STYLE rows in ``sector_momentum_state``; a join on the table's ``max(as_of)`` would have
+    shown 'no state' for all eleven sectors even though each has its own newest state the session before."""
+    assert "m2.etf = s.symbol" in bi.SECTORS_SQL, bi.SECTORS_SQL
+    assert "m.as_of = (SELECT max(as_of) FROM sector_momentum_state)" not in bi.SECTORS_SQL
+    assert "max(as_of) FROM sector_momentum_state m2 WHERE" in bi.SECTORS_SQL
+
+
+def test_a_configured_instrument_with_no_row_is_named_not_dropped():
+    """INDA and EWZ had no quote in the 14-day window; a proxy that was not read is named, never silently absent."""
+    md = bi.gather(_db(_good()), now=NOW)
+    assert md["quotes"]["missing"] == ["/NQ", "/YM", "/RTY", "$COMPX", "$DJI", "$RUT", "$NDX"]
+    assert md["international"]["missing"] == ["EFA", "EEM", "FXI", "INDA", "EWZ"]
+    _, body = brief.render_email(_payload(md), slot="s", changes=[], top_n=5, stale=False)
+    assert "no stored row: /NQ, /YM, /RTY, $COMPX, $DJI, $RUT, $NDX" in body
+    assert "no quote: EFA, EEM, FXI, INDA, EWZ" in body
 
 
 def test_reads_are_bounded_and_named():
@@ -210,6 +232,7 @@ def test_email_prints_each_section_with_its_as_of_and_no_invented_move():
     assert "level only (schwab_index_level_carried_print_2026-11-06)" in body
     assert "gainers: AAA +12.5%" in body and "losers: ZZZ -11.0%" in body
     assert "XLK LEADING" in body and "XLE no state" in body
+    assert "XLP IMPROVING (11-05)" in body  # a state older than the RS day carries its own date
     assert "EWJ 78.50 +0.4%" in body and "ETF proxies, not index levels" in body
 
 

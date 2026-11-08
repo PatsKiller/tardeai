@@ -257,6 +257,18 @@ def _md_state(sec: dict[str, Any]) -> str:
     return f"as of {_et(sec.get('as_of'))}"
 
 
+def _state_label(row: dict[str, Any], sec: dict[str, Any]) -> str:
+    """A sector's momentum state, dated when the state is older than the RS day it is shown beside.
+
+    ``sector_momentum_state`` is not rewritten for every ETF on every session (on 2026-11-06 it held only the two
+    STYLE rows), so a state one session older than the newest ``sector_rs_daily`` is still the newest state that ETF
+    has -- and it is labelled with its own date rather than passed off as the RS day's.
+    """
+    state = str(row.get("state") or "no state")
+    sa, ra = str(row.get("state_as_of") or "")[:10], str(sec.get("as_of") or "")[:10]
+    return f"{state} ({sa[5:]})" if sa and ra and sa != ra else state
+
+
 def market_data_lines(md: dict[str, Any], *, limit: int = 4) -> list[str]:
     """The MARKET DATA section of the email brief (LQ-20261107-939 part 4).
 
@@ -274,6 +286,8 @@ def market_data_lines(md: dict[str, Any], *, limit: int = 4) -> list[str]:
             move = f"{_fmt(r.get('change_pct'), '+.2f')}% vs {r.get('reference_date') or '-'}"
         L.append(f"    {str(r.get('symbol')):7} {_fmt(r.get('price'), ',.2f'):>12}  {move}"
                  f"  [{r.get('session')} {_et(r.get('as_of'))}]")
+    if q.get("missing"):
+        L.append(f"    no stored row: {', '.join(q['missing'])}")
     mv = md.get("movers") or {}
     L.append(f"  MOVERS: {_md_state(mv)}")
     for sig, label in (("top_gainers", "gainers"), ("top_losers", "losers")):
@@ -285,8 +299,7 @@ def market_data_lines(md: dict[str, Any], *, limit: int = 4) -> list[str]:
     L.append(f"  SECTORS (RS vs SPY, state): {_md_state(sec)}")
     rows = sec.get("rows") or []
     if rows:
-        L.append("    " + ", ".join(
-            f"{r.get('etf')} {r.get('state') or 'no state'}" for r in rows[:6]))
+        L.append("    " + ", ".join(f"{r.get('etf')} {_state_label(r, sec)}" for r in rows[:6]))
         L.append("    " + ", ".join(f"{r.get('etf')} rs {_fmt(r.get('rs'), '.2f')}" for r in rows[:6]))
     it = md.get("international") or {}
     L.append(f"  INTERNATIONAL (ETF proxies, not index levels): {_md_state(it)}")
@@ -295,6 +308,8 @@ def market_data_lines(md: dict[str, Any], *, limit: int = 4) -> list[str]:
         L.append("    " + ", ".join(
             f"{r.get('symbol')} {_fmt(r.get('price'), '.2f')} {_fmt(r.get('change_pct'), '+.1f')}%"
             for r in rows[:6]))
+    if it.get("missing"):
+        L.append(f"    no quote: {', '.join(it['missing'])}")
     return L
 
 

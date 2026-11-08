@@ -12,8 +12,9 @@ It is a READER. Four independent sections, each read with the caller's read-only
                       as a fresh print (``reference_basis`` names the print's ET date; ``bar_end`` is the night
                       anchor). ``session`` is the row's own session, so a row from Friday is never shown as Sunday's.
 * ``movers``        - the newest ``market_movers`` snapshot: top gainers and top losers for the freshest capture.
-* ``sectors``       - the newest ``sector_rs_daily`` relative strength joined to the newest
-                      ``sector_momentum_state`` state per ETF.
+* ``sectors``       - the newest ``sector_rs_daily`` relative strength, joined to each ETF's OWN newest
+                      ``sector_momentum_state`` row (with that row's ``as_of``, so an older state is dated, not
+                      passed off as the RS day's).
 * ``international`` - the newest quote per international ETF (``market_quotes``), labelled as an ETF, never as an
                       index level.
 
@@ -134,8 +135,12 @@ def quotes(db_query: DbQuery, *, feed: str, now: datetime) -> dict[str, Any]:
             "level_only": r.get("reference_close") is None,
         })
     newest = max((_dt(r.get("bar_end")) for r in got if r.get("bar_end") is not None), default=None)
-    return _section(as_of=newest, rows=rows,
-                    note=None if rows else f"no stored {feed} off-hours row in the last {LOOKBACK_DAYS} days")
+    sec = _section(as_of=newest, rows=rows,
+                   note=None if rows else f"no stored {feed} off-hours row in the last {LOOKBACK_DAYS} days")
+    # A configured instrument with no stored row is named, never silently absent: an unquoted symbol and a zero are
+    # different claims, and only one of them is true.
+    sec["missing"] = [s for s in symbols if s not in by]
+    return sec
 
 
 MOVERS_STAMP_SQL = "SELECT signal, max(captured_at) AS at FROM market_movers WHERE signal = ANY(%s) GROUP BY signal"
@@ -173,14 +178,19 @@ SECTORS_SQL = (
     "SELECT s.symbol AS etf, s.rs_date, s.rs, s.close, m.as_of AS state_as_of, m.sector, m.state, m.rs5, m.rs20 "
     "FROM sector_rs_daily s "
     "LEFT JOIN sector_momentum_state m ON m.etf = s.symbol "
-    " AND m.as_of = (SELECT max(as_of) FROM sector_momentum_state) "
+    " AND m.as_of = (SELECT max(as_of) FROM sector_momentum_state m2 WHERE m2.etf = s.symbol) "
     "WHERE s.rs_date = (SELECT max(rs_date) FROM sector_rs_daily) AND s.symbol = ANY(%s) "
     "ORDER BY s.rs DESC NULLS LAST"
 )
 
 
 def sectors(db_query: DbQuery) -> dict[str, Any]:
-    """Newest relative strength per sector ETF, with the newest momentum state when that row exists."""
+    """Newest relative strength per sector ETF, with that ETF's own newest momentum state when one exists.
+
+    The state is joined per ETF on ITS newest ``as_of``, not the table's: on 2026-11-06 the table held only the two
+    STYLE rows, so a join on ``max(as_of)`` would have shown no state for any sector. Each row reports its own
+    ``state_as_of`` so a state from an earlier session is never presented as the RS day's.
+    """
     got = _rows(db_query, SECTORS_SQL, [list(SECTOR_ETFS)])
     if got is None:
         return _section(as_of=None, rows=[], unavailable="sector_rs_daily / sector_momentum_state unreadable")
@@ -211,8 +221,12 @@ def international(db_query: DbQuery, *, now: datetime) -> dict[str, Any]:
                      "as_of": _iso(r.get("fetched_at")),
                      "age_hours": round((now - at).total_seconds() / 3600.0, 1) if at else None})
     newest = max((_dt(r.get("fetched_at")) for r in got if r.get("fetched_at") is not None), default=None)
-    return _section(as_of=newest, rows=rows,
-                    note=None if rows else f"no international ETF quote in the last {LOOKBACK_DAYS} days")
+    sec = _section(as_of=newest, rows=rows,
+                   note=None if rows else f"no international ETF quote in the last {LOOKBACK_DAYS} days")
+    # INDA and EWZ legitimately go days without a quote row; a proxy that was not read is named, never dropped.
+    seen = {str(r.get("symbol") or "").upper() for r in got}
+    sec["missing"] = [s for s in INTERNATIONAL_ETFS if s not in seen]
+    return sec
 
 
 def gather(db_query: DbQuery, *, feed: str = "schwab", now: Optional[datetime] = None) -> dict[str, Any]:

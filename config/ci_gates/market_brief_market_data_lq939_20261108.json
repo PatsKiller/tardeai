@@ -11,9 +11,13 @@
     "futures, cash-index levels, movers, sectors or international exposure. scripts/lib/market_brief_inputs.py reads",
     "four sections with the caller's read-only db_query -- market_quotes_extended (off-hours futures and cash indices;",
     "a carried cash-index level is level-only and labelled with its print), market_movers (newest capture per signal,",
-    "gainers DESC, losers ASC, bounded), sector_rs_daily + sector_momentum_state (newest RS date, LEFT JOIN so a",
-    "missing state is null, never invented), market_quotes (international ETFs, basis etf_derived) -- and the brief",
-    "renders them. OPT-IN via ?market_data=1 (policy market_data true), so the CC's poll of the route stays cheap.",
+    "gainers DESC, losers ASC, bounded), sector_rs_daily + sector_momentum_state (newest RS date, LEFT JOIN on each",
+    "ETF's own newest state as_of -- on 2026-11-06 the table held only the two STYLE rows, so a join on the table's",
+    "max(as_of) would have blanked all eleven; an older state is labelled with its own date -- and a missing state is",
+    "null, never invented), market_quotes (international ETFs, basis etf_derived) -- and the brief",
+    "renders them. A configured symbol with no stored row is NAMED (quotes.missing, international.missing), never",
+    "dropped: INDA and EWZ legitimately go days without a quote. OPT-IN via ?market_data=1 (policy market_data true),",
+    "so the CC's poll of the route stays cheap.",
     "Honesty: a failed read is 'unavailable' with its reason and an empty table is 'empty' with a note; neither is",
     "ever rendered as zeros, and every section states its own as-of. Hermetic: fake db_query, no DB, no network."
   ]
