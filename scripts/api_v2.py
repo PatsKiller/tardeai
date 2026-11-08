@@ -31429,6 +31429,24 @@ def _needs_action(query=None):
 _HOME_DO_NOW_CACHE: dict = {}
 
 
+def _home_since_close():
+    """GET /api/v2/home/since-close — the Home "Since last close" card (LQ-20261107-1253). Reads the snapshot file
+    scripts/since_close_snapshot.py writes overnight (n8n); never builds it and never calls an LLM on this thread.
+    ``freshness`` says how old it is and whether it still names the current window; a missing file is an honest
+    ``status: no_snapshot`` the card renders as "recap not built yet", not an empty body."""
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo as _Z
+
+    from lib import since_close_card as _sc
+
+    snap = _sc.load_json(STATE_DIR / "since_close_latest.json")
+    now = _dt.now(_Z("America/New_York"))
+    win = _sc.window(now)
+    if not snap:
+        return {"status": "no_snapshot", "window": win, "as_of_now": now.isoformat()}
+    return {"status": "ok", **snap, "window_now": win, "freshness": _sc.freshness(snap, now=now), "as_of_now": now.isoformat()}
+
+
 def _home_do_now(query=None):
     """GET /api/v2/home/do-now — the Home "Do now" queue (HomeDoNow@v1, data-broker projection home_do_now,
     scripts/lib/data_broker/home_do_now.py; operator-approved Home redesign 2026-10-22). One deduplicated queue over
@@ -49992,6 +50010,7 @@ ROUTES = {
     "/api/v2/system/pipeline-failures": lambda: _system_pipeline_failures(_current_query),
     "/api/v2/needs-action": lambda: _needs_action(),
     "/api/v2/home/do-now": lambda: _home_do_now(),
+    "/api/v2/home/since-close": lambda: _home_since_close(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
