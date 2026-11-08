@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lq1188_audit_lane_dry_run_exit_20261108",
+  "files": [
+    "tests/test_lq1188_audit_lane_dry_run_exit_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1188 (a5cc8dded): the two audit lanes' --dry-run exits 0 on findings; legacy CLI keeps exit 1. Registered at fold-3 (LQ-20261107-1216)."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "update_lockup_finviz_source_20261108",
+  "files": [
+    "tests/test_update_lockup_finviz_source_20261108.py"
+  ],
+  "comment": [
+    "LQ-20261107-1163/1179 (ddfd9fae0, cccb42afd): the lockup earnings lane reads Finviz Earnings Date, never yfinance. Registered at fold-3 (LQ-20261107-1216)."
+  ]
+}
