@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ddq_free_first_lq538_20261107",
+  "files": [
+    "tests/test_ddq_free_first_lq538_20261107.py"
+  ],
+  "anchor": "DDQ_FREE_FIRST_LQ538_20261107",
+  "comment": [
+    "ANCHOR: DDQ_FREE_FIRST_LQ538_20261107 — due-diligence curation tries the free OAuth lanes before any",
+    "paid lane on the cron path, and the bridge route stays grok, chatgpt, deepseek (operator directive",
+    "2026-11-07, LQ-20261107-538)."
+  ]
+}
