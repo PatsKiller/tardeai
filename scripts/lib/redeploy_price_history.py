@@ -377,12 +377,14 @@ def _alpaca_close_rows(symbol: str, period: str = "5y", *, fetch=None) -> list[d
     days = _PERIOD_DAYS.get(str(period), 1827)
     rows: list[dict[str, Any]] = []
     for b in fetch(symbol, days) or []:
+        raw, bt = b.get("close"), b.get("bar_time")
+        if raw is None or bt is None:
+            continue  # a bar without a close or a date is skipped, never written as 0
         try:
-            px = float(b.get("close") or 0)
+            px = float(raw)
         except (TypeError, ValueError):
             continue
-        bt = b.get("bar_time")
-        if px <= 0 or bt is None:
+        if px <= 0:
             continue
         d = bt.date() if isinstance(bt, datetime) else bt
         rows.append({"symbol": symbol, "price_date": d, "close_price": px})

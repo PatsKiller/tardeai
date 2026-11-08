@@ -117,7 +117,7 @@ def main() -> int:
     if args.apply:
         _ph = ensure_price_history(symbols, min_rows=args.min_rows)
         report["quotes_synced"] = _ph.get("quotes_synced", 0)
-        report["backfill_candidates"] = _ph.get("short_candidates", 0)
+        report["backfill_candidates"] = _ph.get("short_candidates")  # None = not reported
         report["backfill"] = _ph.get("backfill") or _ph.get("yfinance") or {}  # "yfinance" = pre-LQ-455 key
     else:
         short_preview = []
