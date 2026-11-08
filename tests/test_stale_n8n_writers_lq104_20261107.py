@@ -196,12 +196,16 @@ def test_watch_reconciler_stays_clean_while_the_feed_is_live(monkeypatch, receip
     assert receipts[0]["ok"] is True and receipts[0]["empty_reason"] == "nothing_due"
 
 
-def _exit_execute(ever: int):
+def _exit_execute(ever: int, pending: int = 0, newest_age_days: int = 1):
+    import datetime as dt
+
+    newest = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=newest_age_days)
+
     def execute(sql, params=None, fetch=None):
         s = " ".join(sql.split()).lower()
         if s.startswith("select count(*) as ever"):
-            return {"ever": ever, "due": 0}
-        if s.startswith("select id, symbol"):
+            return {"ever": ever, "due": 0, "pending": pending, "newest": newest}
+        if s.startswith("select h.id, h.symbol") or s.startswith("select id, symbol"):
             return []
         return None
     return execute
@@ -217,27 +221,33 @@ def test_exit_reconciler_names_the_disabled_producer(monkeypatch, receipts, caps
 
 
 def test_exit_reconciler_is_clean_when_the_producer_is_live(monkeypatch, receipts):
+    """LQ-882: 'clean' is now 'no advisory still owes an outcome', not 'no row is older than 5 days'."""
     mod = _load("reconcile_exit_advisory_outcomes")
-    _db_stub(monkeypatch, _exit_execute(ever=40))
+    _db_stub(monkeypatch, _exit_execute(ever=40, pending=0))
     monkeypatch.setattr(mod, "gain_guardian_published", lambda: True)
     assert mod.reconcile() == 0
-    assert receipts[0]["ok"] is True and receipts[0]["empty_reason"] == "nothing_due"
+    assert receipts[0]["ok"] is True and receipts[0]["empty_reason"] == "up_to_date"
 
 
 def test_a_missing_count_stays_unknown_and_is_never_read_as_zero():
     """A failed read must not be able to impersonate 'the producer was never switched on'."""
     mod = _load("reconcile_exit_advisory_outcomes")
-    assert mod.producer_state(lambda *a, **k: {}) == {"ever": None, "due": None}
-    assert mod.producer_state(lambda *a, **k: {"ever": 3}) == {"ever": None, "due": None}
-    assert mod.producer_state(lambda *a, **k: {"ever": 3, "due": 1}) == {"ever": 3, "due": 1}
+    unknown = {"ever": None, "due": None, "pending": None, "newest_age_days": None}
+    assert mod.producer_state(lambda *a, **k: {}) == unknown
+    assert mod.producer_state(lambda *a, **k: {"ever": 3}) == unknown
+    assert mod.producer_state(lambda *a, **k: {"ever": 3, "due": 1, "pending": 2, "newest": None}) == \
+        {"ever": 3, "due": 1, "pending": 2, "newest_age_days": None}
 
 
 def test_an_unattributable_zero_is_not_a_clean_run():
     mod = _load("reconcile_exit_advisory_outcomes")
     assert mod.empty_input_reason({"ever": None, "due": None}, False)[0] == "input_unreadable"
-    assert mod.empty_input_reason({"ever": 0, "due": 0}, None)[0] == "input_unreadable"
-    assert mod.empty_input_reason({"ever": 0, "due": 0}, False)[0] == "dependency_unavailable"
-    assert mod.empty_input_reason({"ever": 0, "due": 0}, True)[0] == "nothing_due"
+    # a partial state (the pending count did not come back) cannot be attributed either
+    assert mod.empty_input_reason({"ever": 0, "due": 0}, False)[0] == "input_unreadable"
+    assert mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, None)[0] == "input_unreadable"
+    assert mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, False)[0] == "dependency_unavailable"
+    # LQ-882: with the switch ON and still 0 rows, the writer is failing -> a named failure, not clean.
+    assert mod.empty_input_reason({"ever": 0, "due": 0, "pending": 0}, True)[0] == "dependency_unavailable"
 
 
 def test_exit_reconciler_does_not_call_an_unreadable_count_clean(monkeypatch, receipts, capsys):
@@ -270,11 +280,14 @@ def test_the_switch_reader_returns_none_when_the_config_is_unreadable(monkeypatc
     assert mod.gain_guardian_published() is None
 
 
-def test_the_shipped_guardian_config_is_what_makes_the_input_empty():
-    """The reason the reconciler reports is a fact about the repo's own config, not a guess about the DB."""
+def test_the_shipped_guardian_switch_no_longer_describes_the_lane_input():
+    """LQ-882: Gain Guardian stays dark, but the lane reconciles every type its producers write, so the
+    shipped ``published: false`` is one producer's state, not 'the reconciler has no input'."""
     import json
     cfg = json.loads((ROOT / "config" / "gain_guardian_thresholds.json").read_text())
-    assert cfg.get("published") is False   # flip to true (operator --promote) and the reconciler has input
+    mod = _load("reconcile_exit_advisory_outcomes")
+    assert cfg.get("published") is False
+    assert {"protection_advisory", "stop_health"} <= set(mod.EXIT_ADVISORY_TYPES)
 
 
 # ── research-intelligence-queue: a dead process must not hold a row 'running' forever ─────────────────────────
