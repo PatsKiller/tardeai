@@ -1,0 +1,10 @@
+{
+  "schema": "AgentCalibrationEngineConfig@v1",
+  "_comment": "scripts/agent_calibration_engine.py (LQ-20261107-1032, 2026-11-08). The lane scored the newest 2000 joined rows out of 73,525 eligible ones (2.7%) because ROW_CAP was a constant in the script. The read is now a keyset page walk over EVERY eligible recommendation, one row per recommendation, and this file is the only place its size is set. There is no hard-coded cap: a run that stops early can only be a run whose max_rows_per_run was reviewed here.",
+  "page_rows": 500,
+  "_page_rows": "Keyset page size for the registry read (rows per round trip). It bounds memory, not coverage: the walk continues until the eligible set is exhausted.",
+  "max_rows_per_run": 0,
+  "_max_rows_per_run": "0 = no cap; read every eligible recommendation. A positive number is a deliberate, reported cap (the receipt records events_capped=true and the run prints why it stopped). It exists so an operator can bound a one-off backfill, not as a default.",
+  "window_days": 90,
+  "_window_days": "Default scoring window when --window is not passed. The window label ('90d') is half of the event's natural key."
+}
