@@ -1917,6 +1917,37 @@
       "anthropic_first": true
     },
     {
+      "id": "cio_overnight_brief",
+      "name": "CIO Overnight Brief (DeepSeek)",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Prose for the CIO overnight brief (scripts/cio_overnight_brief.py, LQ-20261107-1257): 4-6 summary sentences plus WHAT/WHY and IMPACT per flagged holding, from an evidence packet the script assembles. Advisory only, read-only, no tools. Every number and every action is computed by the script; the model writes words, never a size, stop, weight or order.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "PRO_THINK"
+      ],
+      "max_input_tokens": 16000,
+      "max_output_tokens": 4096,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.1,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "LQ-20261107-1257",
+      "registered_at": "2026-11-08T23:10:00Z",
+      "notes": "2026-11-08 (LQ-20261107-1257): NEW row. Two scheduled runs a day (05:50 ET pre-market, 17:30 ET post-close), one narrative call each, so two calls/day is the design point; 40/day leaves room for manual re-runs while the 0.10 dollar cap still bounds a runaway loop (~0.002/call at a ~3.5k-token packet and a 1.4k-token answer). Not measured yet: the caps are the design bound, to be calibrated from llm_consumption_log after the first week of real runs (the hermes_external_research row took the same route from an estimate to a measured rate). The model cannot change an action: cio_overnight_brief.py computes the advisory action deterministically and the prompt forbids price targets, sizes and buy/sell language. No bridge route yet: under TRADEAI_LLM_VIA_BRIDGE=1 route_for_process refuses this process (PROCESS_ROUTE_NOT_REGISTERED) and the script falls back to the deterministic summary, so the brief never blocks on a bridge restart. Adding the bridge route is a deploy step (both sides: this registry + governed_process_routes.CALLER_TASK_PROCESS_MAP + the bridge's server map) and is listed in the LQ-1257 DONE note as the follow-up.",
+      "reasoning_tier": "standard",
+      "anthropic_first": true
+    },
+    {
       "name": "Blind first-pass review (governed bridge)",
       "category": "Shadow",
       "lane_policy": "either",

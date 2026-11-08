@@ -155,6 +155,24 @@
           "latency_budget_ms": 150000,
           "cost_ceiling_usd": 2.0
         },
+        "cio_overnight_brief": {
+          "primary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.1,
+          "anthropic_first": true
+        },
         "cio_hermes_research": {
           "primary": {
             "provider": "deepseek",
