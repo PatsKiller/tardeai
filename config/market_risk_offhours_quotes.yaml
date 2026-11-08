@@ -17,6 +17,18 @@ universe:
   sources:
     - {file: config/market_quotes_extended.json, key: symbols}          # #2384's Alpaca universe (index/sector proxies + heavyweights)
     - {file: config/market_risk_policy.yaml, key: extended_hours.heavyweights}  # the engine's large-cap list
+    # LQ-20261107-1264 AMENDMENT 1 (operator 2026-11-08 17:56 ET: "names that moved since the close, like Visa, have
+    # not updated"). The two lists above are a fixed 23 names, so a held, stopped-out or watched name was never fetched
+    # off-hours at all and its card read "now —". These three are READ-ONLY queries over the operator's own state; the
+    # SQL lives here, never in code, so the set follows the book without a deploy. CUSIP/odd-format strings (settlement
+    # ids from exit records) are not tickers and are filtered out before the provider call.
+    - name: positions_current
+      sql: "SELECT DISTINCT upper(symbol) FROM positions_current WHERE coalesce(is_cash, false) = false AND upper(symbol) ~ '^[A-Z]{1,5}([.-][A-Z]{1,2})?$'"
+    - name: stopped_out_30d        # the re-entry snapshot's own scope: closed at a loss in the last 30 days
+      sql: "SELECT DISTINCT upper(symbol) FROM trade_closed WHERE pnl < 0 AND close_date >= current_date - 30 AND upper(symbol) ~ '^[A-Z]{1,5}([.-][A-Z]{1,2})?$'"
+    - name: watchlist_active
+      sql: "SELECT DISTINCT upper(symbol) FROM watchlist_items WHERE status = 'active' AND upper(symbol) ~ '^[A-Z]{1,5}([.-][A-Z]{1,2})?$'"
+      limit: 300               # a bound, not a filter: the receipt names the truncation instead of hiding it
 
 schwab:
   # ON: operator in session 2026-11-01 ~13:45 ET, "enable schwab", under the 2026-10-31 broker-market-data allowance
@@ -54,6 +66,12 @@ schwab:
   index_levels:
     carry_max_age_hours: 120   # Fri close -> Tue 09:30 ET after a Monday holiday is 113 h; 120 covers the longest gap
     basis_prefix: schwab_index_level_carried_print
+  # LQ-20261107-1239 asked for $NIKKEI/$DAX/$FTSE/$HSI here. LQ-20261107-1264 measured that this lane CANNOT deliver
+  # them: Schwab's quotes feed is the US market-data service, and no overseas index symbol is returned (nothing has
+  # ever written one). Finviz publishes no foreign index level either (LQ-20261107-939 Part 3, checked read-only:
+  # quote.ashx 404s for NIKKEI/HSI/^GDAXI; futures.ashx is US-only). Listing them here would only add four permanent
+  # refusals to every receipt, so they are NOT configured. The honest card source is a US-listed ETF proxy labelled
+  # ``etf_derived`` (EWJ/EWG/EWU/FXI, already in config/market_reference_symbols.json) -- never an index level.
   # Display names for the Home card's "since the close" block. A symbol absent here is shown by its raw symbol; the
   # names live with the symbols they describe so a spelling change moves both together.
   # LQ-20261107-1270 rebase: the four overseas cash indices LQ-20261107-1239 listed here ($NIKKEI/$DAX/$FTSE/$HSI) are
@@ -72,7 +90,17 @@ schwab:
     "$VIX": "VIX"
   include_universe: true       # also the universe's extended-hours prices
   # ET window: Sunday 18:00 through Friday 09:30, regular session skipped on trading days.
-  window: {start_day: sun, start: "18:00", end_day: fri, end: "09:30"}
+  # LQ-20261107-1264 AMENDMENT 1: the main span stops at Friday 09:30, so Friday's own 16:00-20:00 after-hours print was
+  # never fetched from Schwab (the amendment's measured defect: "Friday's 16:00-20:00 after-hours is only fetched from
+  # Alpaca, and only for the 23 symbols"). The extra segment closes that hole; the Sunday 20:00 overnight open is already
+  # inside the main span (it starts at 18:00), so it needs no segment of its own.
+  window:
+    start_day: sun
+    start: "18:00"
+    end_day: fri
+    end: "09:30"
+    extra_segments:
+      - {day: fri, start: "16:00", end: "20:00"}
   skip_regular_session: true
   max_trade_age_minutes: 30
   # A point quote has no bar: bar_end is the trade instant itself (when the print became knowable) and bar_start is

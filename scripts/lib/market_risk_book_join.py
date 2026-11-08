@@ -267,15 +267,19 @@ def overnight_markets(conn: Any, now: datetime, policy: dict[str, Any]) -> dict[
     stale_after = float(cfg.get("stale_after_hours") or 12)
     max_items = int(cfg.get("max_items") or 11)
     order = {s: i for i, s in enumerate(symbols)}
+    sn = _import("session_now")
+    next_text = sn.next_session_text(now, "futures")
     items = []
     for sym, session, session_date, price, change_pct, basis, ref_date, bar_end in rows:
         age_h = None
+        ts = None
         try:
             ts = bar_end if bar_end.tzinfo else bar_end.replace(tzinfo=timezone.utc)
             age_h = round((now - ts).total_seconds() / 3600.0, 2)
         except (TypeError, ValueError):
             pass
         level_only = not basis or str(basis).startswith("none_level_only") or change_pct is None
+        stale = bool(age_h is None or age_h > stale_after)
         items.append({
             "symbol": str(sym), "label": str(labels.get(str(sym)) or sym), "session": session,
             "session_date": str(session_date) if session_date is not None else None,
@@ -284,7 +288,11 @@ def overnight_markets(conn: Any, now: datetime, policy: dict[str, Any]) -> dict[
             "reference_date": str(ref_date) if ref_date is not None else None,
             "reference_basis": basis, "level_only": bool(level_only),
             "as_of": str(bar_end) if bar_end is not None else None, "age_hours": age_h,
-            "stale": bool(age_h is None or age_h > stale_after),
+            "stale": stale,
+            # LQ-20261107-1264 §3: a stale print before the Sunday 18:00 ET futures open is not a fault, and a bare
+            # "stale" reads like one. Name the session that will refresh it; after the open, plain stale stands.
+            "stale_reason": next_text if stale else None,
+            "mark_label": sn.mark_label(session, ts, price, None if level_only else change_pct),
         })
     items.sort(key=lambda r: order.get(r["symbol"], 999))
     # a configured symbol with no print in the window is NAMED: "the other index is quiet" and "nothing ever wrote
@@ -294,6 +302,9 @@ def overnight_markets(conn: Any, now: datetime, policy: dict[str, Any]) -> dict[
     if missing:
         out["gaps"].append({"reason": "no_recent_print: " + ",".join(missing)})
     out["stale_after_hours"] = stale_after
+    # The card states when the block refreshes; every item repeats it as stale_reason so a single row can say it too.
+    out["next_session"] = {"kind": "futures", "text": next_text,
+                           "at": sn.next_futures_open(now).isoformat()}
     return out
 
 

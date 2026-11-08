@@ -168,19 +168,48 @@ def _read_doc(path: Path) -> Any:
     return yaml.safe_load(text)
 
 
-def resolve_universe(cfg: dict[str, Any], *, root: Path = ROOT) -> tuple[list[str], dict[str, Any]]:
-    """(symbols, provenance): the union of every ``universe.sources`` list, in order. A missing file or key is named
-    in ``missing_refs``; nothing is filled in for it."""
-    prov: dict[str, Any] = {"included": {}, "missing_refs": []}
+def resolve_universe(cfg: dict[str, Any], *, root: Path = ROOT,
+                     db_query: Callable[[str], Any] | None = None) -> tuple[list[str], dict[str, Any]]:
+    """(symbols, provenance): the union of every ``universe.sources`` list, in order. A missing file, key or query is
+    named in ``missing_refs``; nothing is filled in for it.
+
+    A source is either a file (``{file: path, key: dotted}``) or, LQ-20261107-1264 AMENDMENT 1, a read-only SQL
+    source (``{name: label, sql: "...one symbol column...", limit?: N}``) run through the caller's ``db_query``. The
+    queries live in config, never in code: which names the operator holds, has been stopped out of, or watches is their
+    setting, and a code change must not be needed to follow it. ``prov["counts"]`` records how many symbols each source
+    contributed so a run receipt can show that a source went quiet instead of leaving it invisible."""
+    prov: dict[str, Any] = {"included": {}, "missing_refs": [], "counts": {}}
     for src in (cfg.get("universe") or {}).get("sources") or []:
-        ref = f"{src.get('file')}:{src.get('key')}"
-        try:
-            vals = _lookup(_read_doc(root / str(src["file"])), str(src["key"]))
-        except (OSError, ValueError, KeyError) as exc:
-            prov["missing_refs"].append(f"{ref} ({type(exc).__name__})")
-            continue
-        if isinstance(vals, list) and vals:
-            prov["included"][ref] = [str(s).strip().upper() for s in vals if str(s).strip()]
+        sql = str(src.get("sql") or "").strip()
+        ref = f"sql:{src.get('name')}" if sql else f"{src.get('file')}:{src.get('key')}"
+        if sql:
+            if db_query is None:
+                prov["missing_refs"].append(f"{ref} (no database reader wired)")
+                continue
+            try:
+                rows = db_query(sql)
+            except Exception as exc:  # noqa: BLE001 -- a source that fails is named, never invented around
+                prov["missing_refs"].append(f"{ref} ({type(exc).__name__})")
+                continue
+            vals = [r[0] if isinstance(r, (list, tuple)) and r else r for r in (rows or [])]
+        else:
+            try:
+                vals = _lookup(_read_doc(root / str(src["file"])), str(src["key"]))
+            except (OSError, ValueError, KeyError) as exc:
+                prov["missing_refs"].append(f"{ref} ({type(exc).__name__})")
+                continue
+        if isinstance(vals, list) and (vals or sql):
+            # A SQL source that answered zero rows ANSWERED: the count says 0 and the run continues. Only a source that
+            # could not be read at all is a missing ref -- "the book is empty" and "the read failed" are different facts.
+            got = [str(s).strip().upper() for s in vals if str(s).strip()]
+            limit = src.get("limit")
+            if isinstance(limit, int) and limit > 0 and len(got) > limit:
+                got = got[:limit]
+                prov["counts"][ref] = {"kept": limit, "truncated_from": len(vals)}
+            else:
+                prov["counts"][ref] = {"kept": len(got)}
+            if got:
+                prov["included"][ref] = got
         else:
             prov["missing_refs"].append(ref)
     merged = list(dict.fromkeys(s for v in prov["included"].values() for s in v))
@@ -237,6 +266,21 @@ def schwab_window(now: datetime, cfg: dict[str, Any]) -> tuple[bool, str]:
     start = _DAYS[str(w.get("start_day", "sun")).lower()] * 1440 + s.hour * 60 + s.minute
     end = _DAYS[str(w.get("end_day", "fri")).lower()] * 1440 + e.hour * 60 + e.minute
     inside = (start <= week_min or week_min <= end) if start > end else (start <= week_min <= end)
+    # LQ-20261107-1264 AMENDMENT 1 (operator 2026-11-08 17:56 ET): the main span stops at Friday 09:30, so Friday's
+    # 16:00-20:00 after-hours was never fetched from Schwab. Extra segments are a CONFIG list so the operator can widen
+    # or narrow coverage without a code change; a segment is honoured whether or not the main span covers that clock.
+    if not inside:
+        for seg in w.get("extra_segments") or []:
+            try:
+                ss, se = _hhmm(seg.get("start", "16:00")), _hhmm(seg.get("end", "20:00"))
+            except (AttributeError, TypeError, ValueError):
+                continue  # a malformed segment is ignored here and named by load_config's caller; it never widens
+            if str(seg.get("day", "")).lower() != et.strftime("%a").lower():
+                continue
+            lo, hi = ss.hour * 60 + ss.minute, se.hour * 60 + se.minute
+            if lo <= week_min % 1440 < hi:
+                inside = True
+                break
     if not inside:
         return False, "outside_window"
     if (cfg.get("schwab") or {}).get("skip_regular_session", True) and current_market_session(et) == "regular":
@@ -540,6 +584,7 @@ def _jsonable(r: dict[str, Any]) -> dict[str, Any]:
 def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any],
         write: Callable[[list[dict]], Any] | None, dry_run: bool, force_window: bool = False,
         promoted: Callable[[], bool] = mqe.domain_promoted, root: Path = ROOT,
+        db_query: Callable[[str], Any] | None = None,
         reference_lookup: Callable[[str, date], float | None] | None = None) -> dict[str, Any]:
     """Collect once. ``fetch(symbols)`` returns the Schwab payload (or ``{"_status": ...}``); ``write(rows)`` writes
     through market_quotes_extended_writer and returns its receipt. A dry run never calls ``write``."""
@@ -560,10 +605,12 @@ def run(*, cfg: dict[str, Any], now: datetime, fetch: Callable[[list[str]], Any]
         receipt["status"] = "refused_domain_proposed"
         receipt["detail"] = "§7A domain quote_extended_session is still in proposed_domains (#2384 activation first)"
         return receipt
-    universe, prov = resolve_universe(cfg, root=root)
+    universe, prov = resolve_universe(cfg, root=root, db_query=db_query)
     receipt["universe"] = prov
     symbols = schwab_symbols(cfg, universe)
     receipt["symbols"] = symbols
+    receipt["symbol_count"] = len(symbols)
+    receipt["symbol_sources"] = prov["counts"]  # per-source count: a source that went quiet is visible here
     payload = fetch(symbols)
     if isinstance(payload, dict) and payload.get("_status"):
         receipt["status"] = str(payload["_status"])

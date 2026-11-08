@@ -96,6 +96,52 @@ def _best_quote(symbol: str, max_age_s: int = 900) -> dict[str, Any] | None:
     }
 
 
+def _extended_batch(db_query, symbols: list[str], window_s: float,
+                    now: Any = None) -> dict[str, dict[str, Any]]:
+    """Newest extended-hours mark per symbol from ``market_quotes_extended`` (LQ-20261107-1264 AMENDMENT 1).
+
+    ``market_quotes`` holds the regular session only, so a name that moved after 16:00 read "now —" on the cards even
+    while the after-hours/overnight lane had printed it. This reads the second store and returns the newest row per
+    symbol, with the session name and a ready-to-render label. Read-only and fail-soft: a broken read is an empty map,
+    never an exception in the caller's request thread.
+    """
+    from datetime import datetime, timezone
+
+    from lib.session_now import mark_label
+
+    if not symbols:
+        return {}
+    now = now or datetime.now(timezone.utc)
+    try:
+        rows = db_query(
+            """SELECT DISTINCT ON (symbol) symbol, session, price, change_pct, reference_basis, bar_end, feed
+                 FROM market_quotes_extended
+                WHERE symbol = ANY(%s) AND bar_end >= %s
+                ORDER BY symbol, bar_end DESC""",
+            (symbols, now - __import__("datetime").timedelta(seconds=window_s)),
+            "all",
+        )
+    except Exception:  # noqa: BLE001 -- an additive read: no extended mark is the same as none stored
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for row in rows or []:
+        sym, session, price, chg, basis, bar_end, feed = row
+        if price is None or bar_end is None:
+            continue
+        level_only = not basis or str(basis).startswith("none_level_only") or chg is None
+        out[str(sym).upper()] = {
+            "price": float(price),
+            "chg_pct": None if level_only else float(chg),
+            "as_of": str(bar_end),
+            "session": str(session),
+            "feed": str(feed),
+            "level_only": bool(level_only),
+            "label": mark_label(session, bar_end, price, None if level_only else chg),
+            "source": f"data_broker.market_quotes_extended:{feed}:{session}",
+        }
+    return out
+
+
 def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
                     *, skip_live: bool = False, finviz_first: bool = True) -> dict[str, dict[str, Any]]:
     """Return {SYMBOL: {price, chg_pct, as_of, source}} for a batch.
@@ -155,6 +201,21 @@ def get_price_batch(db_query, symbols: list[str], max_age_hours: int = 12,
                                 "source": "finviz_quote_cache"}
         except Exception:  # noqa: BLE001 -- the cache is an overlay; without it the DB rows above stand
             pass
+
+    # LQ-20261107-1264 AMENDMENT 1: the newest mark wins, whichever store printed it. The regular-session (or Finviz)
+    # row above is kept when it is newer; an after-hours / overnight / futures-open print replaces it when it is newer.
+    from datetime import datetime as _dt
+
+    for sym, ext in _extended_batch(db_query, symbols, window_s).items():
+        cur = out.get(sym)
+        if cur is not None:
+            try:
+                if _dt.fromisoformat(str(cur["as_of"])) >= _dt.fromisoformat(str(ext["as_of"])):
+                    continue
+            except (TypeError, ValueError):
+                continue  # an unparsable existing stamp is not evidence it is newer
+        out[sym] = {**ext, "chg_pct": ext.get("chg_pct")}
+
 
     # Second pass: quote-only broker waterfall, only for missing symbols, bounded per batch.
     if not skip_live:

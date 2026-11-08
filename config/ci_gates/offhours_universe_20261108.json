@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "offhours_universe_20261108",
+  "files": [
+    "tests/test_offhours_universe_20261108.py"
+  ],
+  "anchor": "OFFHOURS_UNIVERSE_20261108",
+  "comment": [
+    "ANCHOR: OFFHOURS_UNIVERSE_20261108 — LQ-20261107-1264 AMENDMENT 1. The Schwab off-hours lane's universe now comes",
+    "from config: the two file lists plus three READ-ONLY SQL sources (positions_current, trade_closed losses in the",
+    "last 30 days, active watchlist), so a held, stopped-out or watched name is fetched instead of reading 'now —'.",
+    "The window gained the Friday 16:00-20:00 after-hours segment its main span never covered. session_now words the",
+    "one 'now' line (session + time + price + change) and the next-open sentence, and market_quote.get_price_batch takes",
+    "the newer of market_quotes and market_quotes_extended. The emulation test in",
+    "tests/test_news_risk_raise_emulation_20261108.py renders a synthetic Friday 19:58 ET V print on a throwaway",
+    "socket-only Postgres cluster, never the live database."
+  ]
+}

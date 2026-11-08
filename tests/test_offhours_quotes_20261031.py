@@ -492,8 +492,12 @@ def test_shipped_universe_reads_2384_list_and_engine_policy(cfg):
     srcs = cfg["universe"]["sources"]
     assert {"file": "config/market_quotes_extended.json", "key": "symbols"} in srcs
     assert {"file": "config/market_risk_policy.yaml", "key": "extended_hours.heavyweights"} in srcs
-    syms, prov = oq.resolve_universe(cfg)
+    # LQ-20261107-1264 AMENDMENT 1 added SQL sources (positions / stopped-out / watchlist). A shipped run always wires a
+    # read-only reader; an empty stub here keeps this assertion about the FILE sources, and the "no reader" case is
+    # covered by test_a_sql_source_with_no_reader_is_named_not_skipped_silently.
+    syms, prov = oq.resolve_universe(cfg, db_query=lambda _sql: [])
     assert prov["missing_refs"] == []
+    assert {"sql:positions_current", "sql:stopped_out_30d", "sql:watchlist_active"} <= set(prov["counts"])
     ext = json.loads((ROOT / "config" / "market_quotes_extended.json").read_text())["symbols"]
     for etf in ("QQQ", "SPY", "IWM", "DIA", "RSP", "SMH", "SOXX", "XLK"):  # the Alpaca universe extension
         assert etf in ext and etf in syms

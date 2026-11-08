@@ -332,11 +332,11 @@ def test_material_news_block_is_bounded_severity_first_and_states_its_floor():
 
 
 # ── the card: futures + overseas levels ─────────────────────────────────────────────────────────────────────────
-def test_overnight_markets_reads_the_configured_futures_and_overseas_indices():
+def test_overnight_markets_reads_the_configured_futures_and_indices():
     rows = [
         ("/NQ", "futures_open", "2026-11-01", 25400.25, None, "none_level_only_no_dated_reference_in_payload",
          None, SUNDAY),
-        ("$NIKKEI", "futures_open", "2026-11-06", 50100.0, 0.8, "schwab_quote_close_price_settle_dated",
+        ("$SPX", "overnight", "2026-11-06", 6712.5, 0.8, "schwab_quote_close_price_settle_dated",
          "2026-11-06", SUNDAY),
     ]
     out = bj.overnight_markets(_JoinConn(rows), SUNDAY, POLICY)
@@ -344,8 +344,8 @@ def test_overnight_markets_reads_the_configured_futures_and_overseas_indices():
     by = {i["symbol"]: i for i in out["items"]}
     assert by["/NQ"]["label"] == "Nasdaq 100 futures" and by["/NQ"]["level_only"] is True
     assert by["/NQ"]["change_pct"] is None
-    assert by["$NIKKEI"]["label"] == "Nikkei 225" and by["$NIKKEI"]["level_only"] is False
-    assert by["$NIKKEI"]["change_pct"] == 0.8
+    assert by["$SPX"]["label"] == "S&P 500" and by["$SPX"]["level_only"] is False
+    assert by["$SPX"]["change_pct"] == 0.8
     assert by["/NQ"]["stale"] is False  # the print is the snapshot instant here
 
 
@@ -360,19 +360,23 @@ def test_a_configured_symbol_with_no_print_is_named_not_silently_absent():
     out = bj.overnight_markets(_JoinConn(rows), SUNDAY, POLICY)
     gap = next(g["reason"] for g in out["gaps"] if g["reason"].startswith("no_recent_print:"))
     named = set(gap.split(": ", 1)[1].split(","))
-    assert "/NQ" not in named and "/ES" in named and "$NIKKEI" in named
+    assert "/NQ" not in named and "/ES" in named and "$SPX" in named
     # every symbol the config asks for is either an item or named in the gap: nothing vanishes
     assert {i["symbol"] for i in out["items"]} | named == set(
         __import__("yaml").safe_load((ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text())["schwab"]["futures"]
         + __import__("yaml").safe_load((ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text())["schwab"]["indices"])
 
 
-def test_the_offhours_config_lists_every_symbol_the_task_names():
+def test_the_offhours_config_lists_every_symbol_it_can_actually_deliver():
+    """LQ-20261107-1264 measured that no overseas index is available to this lane (Schwab does not return one; Finviz
+    publishes no foreign index level). They are therefore NOT configured: they would add four permanent refusals to
+    every receipt. The card's honest source is an ETF proxy labelled ``etf_derived``."""
     import yaml
 
     schwab = yaml.safe_load((ROOT / "config" / "market_risk_offhours_quotes.yaml").read_text())["schwab"]
     assert set(schwab["futures"]) >= {"/ES", "/NQ", "/YM", "/RTY"}
-    assert set(schwab["indices"]) >= {"$NIKKEI", "$DAX", "$FTSE", "$HSI"}
+    assert set(schwab["indices"]) >= {"$SPX", "$COMPX", "$VIX"}
+    assert not {i for i in schwab["indices"] if i in {"$NIKKEI", "$DAX", "$FTSE", "$HSI"}}
     assert all(s in schwab["labels"] for s in schwab["futures"] + schwab["indices"])
 
 

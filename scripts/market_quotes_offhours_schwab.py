@@ -115,7 +115,7 @@ def probe(cfg: dict) -> dict:
         url, url_ok = marketdata_url(cfg), True
     except ValueError as exc:
         url, url_ok = str(exc), False
-    universe, prov = oq.resolve_universe(cfg)
+    universe, prov = oq.resolve_universe(cfg, db_query=read_symbols)
     return {"schema": "OffHoursQuoteProbe@v2", "provider": "schwab", "store": oq.STORE, "enabled": bool(s.get("enabled")),
             "store_domain_granted": oq.mqe.domain_promoted(),
             "requires_policy": s.get("requires_policy"), "window_now": why, "in_window_now": ok,
@@ -123,6 +123,32 @@ def probe(cfg: dict) -> dict:
             "token_manager_present": importlib.util.find_spec("schwab_token_manager") is not None,
             "symbols": oq.schwab_symbols(cfg, universe), "universe_missing_refs": prov["missing_refs"],
             "live_call_made": False}
+
+
+def read_symbols(sql: str) -> list[str]:
+    """Run one configured universe query READ-ONLY and return its single column.
+
+    A separate connection is opened for this and ``readonly=True`` is set on it: the lane's write connection is
+    thread-local and shared (``db_adapter._get_conn``), so making THAT session read-only would silently break the
+    writer's insert later in the same run. Only the SELECTs declared in ``universe.sources`` reach here.
+    """
+    import os
+
+    import psycopg2
+
+    conn = psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"), port=int(os.getenv("DB_PORT", "5432")),
+        dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
+        password=os.getenv("DB_PASSWORD", ""), connect_timeout=10, application_name="market_quotes_offhours_schwab",
+    )
+    try:
+        conn.set_session(readonly=True, autocommit=True)
+        with conn.cursor() as cur:
+            cur.execute("SET statement_timeout = '20s'")
+            cur.execute(sql)
+            return [str(r[0]) for r in cur.fetchall() if r and r[0] is not None]
+    finally:
+        conn.close()
 
 
 def _write(rows: list[dict]) -> dict:
@@ -194,11 +220,12 @@ def main(argv: list[str] | None = None) -> int:
         doc = json.loads(Path(a.fixture).read_text(encoding="utf-8"))
         dry_cfg = {**cfg, "schwab": {**cfg["schwab"], "enabled": True}}  # parse path only; no Schwab, no DB
         r = oq.run(cfg=dry_cfg, now=now, fetch=lambda _s: doc.get("quotes", doc), write=None,
-                   dry_run=True, force_window=a.force_window)
+                   dry_run=True, force_window=a.force_window, db_query=read_symbols)
         r["config_enabled"] = bool(cfg["schwab"].get("enabled"))
         print(json.dumps(r, default=str, indent=1))
         return 0
     r = oq.run(cfg=cfg, now=now, fetch=lambda syms: live_fetch(syms, cfg), write=_write, dry_run=False,
+               db_query=read_symbols,
                reference_lookup=lambda sym, d: stored_reference(sym, d, cfg))
     print(json.dumps(r, default=str, indent=1))
     return 0 if r.get("status") in ("ok", "partial", "disabled", "outside_window", "schwab_paused", "refused_domain_proposed") else 1

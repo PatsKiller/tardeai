@@ -156,7 +156,7 @@ def _seed(psql):
                 "reference_basis, reference_date, feed) VALUES "
                 "('/ES','futures_open','2026-11-08','2026-11-08 13:30-05','2026-11-08 13:30:00.001-05',6810.25,NULL,"
                 "'none_level_only_no_dated_reference_in_payload',NULL,'schwab'), "
-                "('$NIKKEI','futures_open','2026-11-06','2026-11-06 01:00-05','2026-11-06 01:00:00.001-05',50100,0.8,"
+                "('$SPX','overnight','2026-11-06','2026-11-05 20:00-05','2026-11-05 20:00:00.001-05',6712.5,0.8,"
                 "'schwab_quote_close_price_settle_dated','2026-11-05','schwab')")[0] == 0
 
 
@@ -208,7 +208,7 @@ def test_the_lane_writes_and_the_home_card_reads_the_same_rows(cluster):
     assert [i["symbol"] for i in block["items"]] == ["V", "NVDA"]  # critical first
     assert block["since"] == "2026-11-06T16:00:00-05:00"
     assert markets["items"][0]["symbol"] == "/ES" and markets["items"][0]["level_only"] is True
-    assert markets["items"][1]["label"] == "Nikkei 225" and markets["items"][1]["level_only"] is False
+    assert markets["items"][1]["label"] == "S&P 500" and markets["items"][1]["level_only"] is False
 
     # the review item the Home card would show, built from the same map
     store = {"data_as_of": "2026-11-06", "portfolio_totals": {"total_value": 100_000.0},
@@ -239,3 +239,36 @@ def test_the_dry_run_on_the_same_cluster_writes_nothing(cluster):
     assert out["mode"] == "DRY" and out["tagged"] >= 3
     _, n = psql("SELECT count(*) FROM news_articles WHERE jsonb_array_length(COALESCE(agent_tags,'[]')) > 0")
     assert n == "3"  # exactly what the applied run above left behind
+
+
+# ── LQ-20261107-1264 AMENDMENT 1: the Friday after-hours print reaches the card ────────────────────────────────────
+# The operator's own example, on the same throwaway cluster: V printed after-hours on Friday 2026-11-06 at 7:58 PM ET.
+# Before the amendment `market_quotes` held only the regular session, so the re-entry card read "now —" for V.
+AMENDMENT_MARK = ("V", "afterhours", "2026-11-06",
+                  "2026-11-06 19:58:00-05", "2026-11-06 19:58:00.001-05",
+                  424.10, 0.3, "schwab_quote_close_price_settle_same_day", "2026-11-06", "schwab")
+
+
+@pytest.mark.skipif(BIN is None, reason="no PostgreSQL server binaries on this host")
+def test_a_friday_afterhours_print_is_the_mark_the_card_shows(cluster):
+    psql, connect = cluster
+    sym, sess, sdate, bstart, bend, price, chg, basis, rdate, feed = AMENDMENT_MARK
+    assert psql("DELETE FROM market_quotes_extended WHERE symbol = 'V'")[0] == 0
+    assert psql("INSERT INTO market_quotes_extended (symbol, session, session_date, bar_start, bar_end, price, "
+                "change_pct, reference_basis, reference_date, feed) VALUES "
+                f"('{sym}','{sess}','{sdate}','{bstart}','{bend}',{price},{chg},'{basis}','{rdate}','{feed}')")[0] == 0
+
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    from scripts.lib.data_broker import market_quote as mq
+
+    def db_query(sql, params, fetch="all"):
+        with connect() as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()
+
+    out = mq._extended_batch(db_query, ["V"], 96 * 3600.0,
+                             now=_dt(2026, 11, 7, 12, 0, tzinfo=ZoneInfo("America/New_York")))
+    assert out["V"]["label"] == "after-hours Fri 7:58 PM $424.10 (+0.3%)"
+    assert out["V"]["session"] == "afterhours" and out["V"]["price"] == 424.10
