@@ -761,3 +761,20 @@ def test_readme_has_an_ordered_step_for_every_element():
     for word in ("Dry run", "Apply", "Verify", "Rollback"):
         assert text.count(f"**{word}") >= 6, word
     assert "Status:" in text[:600] and "as_of:" in text[:600]
+
+
+def test_every_timer_apply_provisions_the_alert_env_before_it_installs():
+    # LQ-20261107-994: the drift-watch and dead-man units both read ~/.config/tradeai/n8n/host-alert.env
+    # (EnvironmentFile=-, optional). Without it a page is built and reported not_configured, so the apply line
+    # must come after the env step in EVERY timer section, not only the dead-man one.
+    text = (PACKET / "README.md").read_text(encoding="utf-8")
+    sections = {
+        "fw-p3": ("fw-p3", "fw-p6", "tradeai-n8n-drift-watch.service.proposed"),
+        "fw-p6": ("fw-p6", "final", "tradeai-n8n-host-deadman.service.proposed"),
+    }
+    for anchor, (start, end, unit) in sections.items():
+        body = text.split(f'<a id="{start}"></a>', 1)[1].split(f'<a id="{end}"></a>', 1)[0]
+        apply_at = body.index(f"install -m 644 {unit}")
+        before = body[:apply_at]
+        assert "n8n_host_alert_env.py" in before and "--write" in before, anchor
+        assert "host-alert.env" in before, anchor

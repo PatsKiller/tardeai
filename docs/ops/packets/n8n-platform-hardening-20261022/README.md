@@ -317,6 +317,18 @@ n8n drift watch (dry_run): verdict CLEAN  OK=17 DRIFT=0 MISSING_IN_GIT=0  page N
 Unit syntax: `systemd-analyze --user verify` on the four units → exit 0 (its only messages are about other,
 already-installed units). Calendar: `systemd-analyze calendar '*-*-* *:07/15:00'` → next 09:52, 10:07, 10:22 EDT.
 
+**Before Apply — provision the alert env file** `~/.config/tradeai/n8n/host-alert.env` (same file as FW-P6; create it
+once, it serves both timers). Without it the unit's `EnvironmentFile=-` is silently empty and the drift page reports `not_configured`. Dry run first (writes
+nothing), then the same command with `--write`:
+
+```
+cd ~/trade-ai-releases/portfolio-server/CURRENT && ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/ops/n8n_host_alert_env.py
+```
+
+**Before Apply — decide on current drift.** The dry run above must print `verdict CLEAN`. A `DRIFT` verdict means the
+first live fire pages P1 for each drifted workflow (one page per signature, reminders every 6 h). If the verdict is
+DRIFT, the operator decides first whether to accept those pages or reconcile the drift.
+
 **Apply** (one line):
 
 ```
