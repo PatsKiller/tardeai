@@ -2885,7 +2885,12 @@ def execute_governed_call(
                         "governance": "cio_bridge_v1",
                         "reservation_id": reservation_id,
                         "credit_refusal": refusal,
-                        "route_receipts": route_receipts,
+                        # Compact on purpose: log_call slices the serialized metadata at 4000 chars,
+                        # and full receipts on a four-lane walk can cross that cut.
+                        "route_outcomes": [
+                            {"provider": r.get("provider"), "lane": r.get("lane"), "outcome": r.get("outcome")}
+                            for r in route_receipts
+                        ],
                     },
                 )
             except Exception:  # noqa: BLE001 -- a log failure must never change the refusal

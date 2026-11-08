@@ -76,6 +76,9 @@ def test_credit_cap_refusal_is_written_as_a_consumption_failure(monkeypatch, tmp
     assert call["process_id"] == DIAG
     assert call["cost_basis"] == "refused_before_send"
     assert call["metadata"]["credit_refusal"] == "CREDIT_PROCESS_CAP"
+    assert [r["outcome"] for r in call["metadata"]["route_outcomes"]][0] == "serving_failure"
+    # log_call stores json.dumps(metadata)[:4000]; a longer refusal row is silently lost.
+    assert len(json.dumps(call["metadata"], default=str)) < 4000
 
 
 def test_a_non_credit_provider_failure_is_not_logged_as_a_consumption_failure(monkeypatch, tmp_path):
