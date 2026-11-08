@@ -4,8 +4,8 @@
  "as_of": "2026-10-09",
  "source": "docs/implementation/n8n-parallel/16-codex-assessment-review-20261008.md §4.2 (71 lanes, N1–N6)",
  "note": "Program list only. The registry (config/lane_registry.json) stays the scheduler-of-record truth; a lane here without a registry row is reported NO_REGISTRY_ROW by scripts/n8n_migration_board.py until stream D adds it. The doc's N2 'portfolio cadences ×5' overlaps N5's portfolio-backup-cadence; backup is counted once (N5) and portfolio-price-cache fills the fifth N2 slot. 2026-10-09: tranche N6 is RETAINED_BY_POLICY (operator decision 'N6 option 1'); its six lanes stay on their current schedulers, so the program scope is 65 lanes (lane_count stays the full list of 71; in_scope_lane_count is the target).",
- "lane_count": 71,
- "in_scope_lane_count": 65,
+ "lane_count": 60,
+ "in_scope_lane_count": 54,
  "retained_lane_count": 6,
  "tranches": {
   "N1": {
@@ -27,20 +27,7 @@
      "lane_id": "n8n-lab-watchdog"
     },
     {
-     "lane_id": "lane-governance-packet-weekly"
-    },
-    {
      "lane_id": "maturity-remeasure"
-    },
-    {
-     "lane_id": "n8n-monitor-trade-ai",
-     "match": "docs/implementation/n8n-parallel/workflows/n8n-monitor-trade-ai.json",
-     "note": "existing monitor workflow; lives in n8n, no registry row"
-    },
-    {
-     "lane_id": "n8n-monitor-dof",
-     "match": "docs/implementation/n8n-parallel/workflows/n8n-monitor-dof.json",
-     "note": "existing monitor workflow; lives in n8n, no registry row"
     }
    ]
   },
@@ -118,9 +105,6 @@
      "lane_id": "llm-spend-report-monthly"
     },
     {
-     "lane_id": "material-change-digest"
-    },
-    {
      "lane_id": "alert-daily-digest",
      "match": "scripts/alert_daily_digest.py"
     },
@@ -192,20 +176,8 @@
      "match": "scripts/job_coverage_monitor.py"
     },
     {
-     "lane_id": "llm-retry-monitor",
-     "match": "scripts/llm_retry_monitor.py"
-    },
-    {
-     "lane_id": "catalyst-calibration-monitor",
-     "match": "scripts/catalyst_calibration_monitor.py"
-    },
-    {
      "lane_id": "source-attribution-monitor",
      "match": "scripts/source_attribution_monitor.py"
-    },
-    {
-     "lane_id": "watch-directives-monitor",
-     "match": "scripts/watch_directives_monitor.py"
     },
     {
      "lane_id": "hermes-pipeline-health",
@@ -236,22 +208,8 @@
      "lane_id": "drive-syncs-hourly"
     },
     {
-     "lane_id": "backup-generated-docs",
-     "match": "scripts/backup_generated_docs.py"
-    },
-    {
      "lane_id": "sync-memory-to-drive",
      "match": "scripts/sync_memory_to_drive.py"
-    },
-    {
-     "lane_id": "commit-hermes-daily",
-     "match": "scripts/commit_hermes_daily.py"
-    },
-    {
-     "lane_id": "n8n-lab-backup"
-    },
-    {
-     "lane_id": "n8n-lab-restore-drill"
     },
     {
      "lane_id": "portfolio-backup-cadence"
