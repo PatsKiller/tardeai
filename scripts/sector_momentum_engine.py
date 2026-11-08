@@ -236,7 +236,11 @@ def compute_market(cur):
             cur.connection.rollback()
         except Exception:
             pass
-    return {"indices": indices, "styles": styles, "internals": internals}
+    # The STYLE rows are dated by the same SPY session the sector rows are dated by
+    # (LQ-20261107-483): CURRENT_DATE stamped a weekend or a bar-less session with a
+    # STYLE-only date, and every `max(as_of)` reader then read an empty sector table.
+    as_of = max(spy_by_date) if spy_by_date else None
+    return {"indices": indices, "styles": styles, "internals": internals, "as_of": as_of}
 
 
 def market_state_line(market, sectors):
@@ -383,12 +387,13 @@ def main() -> int:
         cur.execute("""SELECT state FROM sector_momentum_state WHERE etf=%s
                        ORDER BY as_of DESC LIMIT %s""", (key, CFG["debounce_days"]))
         prior = [r[0] for r in cur.fetchall()]
-        if not args.dry_run:
+        if not args.dry_run and market.get("as_of") is not None:
             cur.execute("""INSERT INTO sector_momentum_state (as_of, etf, sector, state, rs5, rs20, rs60, slope)
-                VALUES (CURRENT_DATE,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (as_of, etf) DO UPDATE SET state=EXCLUDED.state, rs5=EXCLUDED.rs5,
                   rs20=EXCLUDED.rs20, rs60=EXCLUDED.rs60, slope=EXCLUDED.slope""",
-                (key, st["pair"], st["state"], st["s5"], st["s20"], st["s60"], st["slope"]))
+                (market["as_of"], key, st["pair"], st["state"], st["s5"], st["s20"], st["s60"],
+                 st["slope"]))
         if len(prior) >= CFG["debounce_days"] and prior[0] == st["state"] and prior[-1] != st["state"]:
             alerts.append({"sector": st["pair"], "etf": key, "from": prior[-1], "to": st["state"],
                            "severity": "warning",
