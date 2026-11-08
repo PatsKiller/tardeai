@@ -6,6 +6,7 @@ Stored ticker_prices closes supply 5/20/60-session return differences. The
 from __future__ import annotations
 
 import json
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -149,6 +150,65 @@ def _snapshot_as_of(snap) -> Any:
     return snap.get("generated_at") or snap.get("captured_at") or snap.get("computed_at") or snap.get("as_of")
 
 
+# LQ-20261107-1137(a): /api/v2/defense/posture ran get_sector_signals (a ticker_prices scan over
+# 14 symbols x 200 days, a parallel seq scan) on EVERY request to refresh the snapshot rows, so
+# the desk's latency followed DB load (16-30 s under load vs 6 s before). The overlay now comes
+# from an in-process memo per db_query: the first read in a process computes it inline once;
+# after that a request serves the memo and, once it is older than SIGNALS_TTL_S, starts ONE
+# background refresh and does not wait for it. The rows say which they got (signals_overlay).
+SIGNALS_TTL_S = 300.0
+_SIGNALS_MEMO_MAX = 4
+_signals_lock = threading.Lock()
+_signals_memo: dict[Any, dict[str, Any]] = {}  # db_query -> {at, data, refreshing, error}
+
+
+def _spawn(fn) -> None:
+    threading.Thread(target=fn, name="sector-signals-refresh", daemon=True).start()
+
+
+def _refresh_signals(db_query) -> None:
+    try:
+        data = get_sector_signals(db_query)
+    except Exception as exc:  # the request already served the previous memo; record why it is ageing
+        with _signals_lock:
+            entry = _signals_memo.get(db_query)
+            if entry is not None:
+                entry.update(refreshing=False, error=f"{type(exc).__name__}: {exc}"[:200])
+        return
+    with _signals_lock:
+        _signals_memo[db_query] = {"at": time.monotonic(), "data": data, "refreshing": False, "error": None}
+
+
+def _overlay_signals(db_query) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """(signals or None, overlay status) for the snapshot rows; never more than one DB read per TTL."""
+    now = time.monotonic()
+    with _signals_lock:
+        entry = _signals_memo.get(db_query)
+        kick = False
+        if entry is not None:
+            age = now - entry["at"]
+            stale = age > SIGNALS_TTL_S
+            if stale and not entry["refreshing"]:
+                entry["refreshing"] = kick = True
+            status = {"state": "stale" if stale else "fresh", "age_s": round(age, 1),
+                      "ttl_s": SIGNALS_TTL_S, "refreshing": entry["refreshing"], "error": entry["error"]}
+            data = entry["data"]
+    if entry is not None:
+        if kick:
+            _spawn(lambda: _refresh_signals(db_query))
+        return data, status
+    try:  # cold: the first read in this process computes once, inline
+        data = get_sector_signals(db_query)
+    except Exception as exc:
+        return None, {"state": "unavailable", "age_s": None, "ttl_s": SIGNALS_TTL_S, "refreshing": False,
+                      "error": f"{type(exc).__name__}: {exc}"[:200]}
+    with _signals_lock:
+        if len(_signals_memo) >= _SIGNALS_MEMO_MAX and db_query not in _signals_memo:
+            _signals_memo.pop(next(iter(_signals_memo)))
+        _signals_memo[db_query] = {"at": time.monotonic(), "data": data, "refreshing": False, "error": None}
+    return data, {"state": "inline", "age_s": 0.0, "ttl_s": SIGNALS_TTL_S, "refreshing": False, "error": None}
+
+
 def get_sector_momentum_snapshot(*, runtime_dir: Path | None = None, now=None, registry=None, db_query=None) -> dict[str, Any]:
     """The sector_momentum_engine's disk snapshot (rows/states/transitions) + envelope.
 
@@ -164,9 +224,11 @@ def get_sector_momentum_snapshot(*, runtime_dir: Path | None = None, now=None, r
         from lib.sector_signals import normalize_signal_row
         snap = {**snap, "rows": [normalize_signal_row(row) for row in snap["rows"]]}
         if db_query is not None:
-            signals = get_sector_signals(db_query)
-            snap["rows"] = [{**row, **signals["sectors"].get(row.get("etf"), {})} for row in snap["rows"]]
-            snap["signals_as_of"] = signals.get("as_of")
+            signals, overlay = _overlay_signals(db_query)
+            if signals is not None:
+                snap["rows"] = [{**row, **signals["sectors"].get(row.get("etf"), {})} for row in snap["rows"]]
+                snap["signals_as_of"] = signals.get("as_of")
+            snap["signals_overlay"] = overlay
     env = envelope("sector_momentum", _snapshot_as_of(snap) if has_rows else None, now=now, registry=registry,
                    source={"file": SECTOR_SNAPSHOT_FILE})
     out = {"ok": True, "snapshot": snap if has_rows else None, "provider_calls": 0}
