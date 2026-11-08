@@ -116,6 +116,15 @@ def run(table: str, limit: int, apply: bool, mark=None, deadline: float | None =
             instruments = (load_instruments() or {}).get("instruments") or {}
             names = mention_names(instruments, profile_rows)
 
+    if not legacy and not names:
+        # Matching against no names binds nothing and would still advance the watermark: refuse, scan nothing.
+        if own_conn:
+            conn.close()
+        return {"table": table, "documents": 0, "subject": 0, "mentioned": 0, "undecided_docs": 0,
+                "no_mention": 0, "written": 0, "multi": 0, "scanned": 0, "max_id": None,
+                "budget_hit": False, "offered": 0,
+                "refused": "no company names in the registry, the Schwab book or symbol_profiles"}
+
     # ::text because some sources store JSON (research_insights.structured_thesis,
     # key_arguments) and COALESCE(json, '') is an invalid-input error, not an empty
     # string. Casting reads the JSON as prose, which is what the extractor wants.
@@ -246,6 +255,9 @@ def _run(a, targets, stats) -> int:
             continue
         s = run(t, a.limit, a.apply, mark=marks.get(t), deadline=deadline, seed=not a.rescan,
                 legacy=a.legacy_matcher, names=None)
+        if s.get("refused"):
+            print(f"REFUSED: {s['refused']}; nothing scanned", flush=True)
+            return 2
         stats["scanned"] += s["scanned"]
         stats.setdefault("rows_read", {})[t] = s["scanned"]
         stats["written"] += s["written"]

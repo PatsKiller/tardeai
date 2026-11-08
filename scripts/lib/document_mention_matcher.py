@@ -3,11 +3,17 @@
 A company phrase binds only when its content tokens equal one official name
 and that name has at least two content tokens. One content token is refused:
 "Apple Inc." is the word "apple", and that word appears outside the issuer.
-A bare ticker does not bind.
+
+A ticker never binds alone, in any form. "$SYM", "(SYM)" and bare abbreviations
+such as "(ARR)", "(ETH)" or "(DRAM)" are only ever read next to the company name
+of that same symbol, and the name row does the binding.
 
 The identity registry has no company names. The book is the Schwab instrument
 description (the store company_name_index reads) plus symbol_profiles phrases
 for symbols that description does not already name.
+
+When the document is filed under a symbol the text does not name, no rows are
+returned: one hit on another company is not proof of the subject.
 """
 
 from __future__ import annotations
@@ -176,23 +182,27 @@ def match_mentions(
 ) -> list[dict[str, Any]]:
     """Mentions whose name and symbol agree. Undecided rows keep role None and are not guessed."""
     book = _names_map(names)
+    body = text or ""
     by_symbol: dict[str, dict[str, Any]] = {}
     for symbol, official_names in book.items():
         for official in official_names:
-            if not _phrase_in(text or "", official) or not name_agrees(official, symbol, book):
+            if not _phrase_in(body, official) or not name_agrees(official, symbol, book):
                 continue
             confidence = agreement_ratio(official, symbol, book)
             by_symbol.setdefault(symbol, _row(symbol, via="company_name", matched=official, role=None, confidence=confidence))
             break
     found = list(by_symbol.values())
     own = (own_symbol or "").strip().upper()
-    if own and found and all(row["symbol"] != own for row in found):
+    if not found:
+        return found
+    if own and not any(row["symbol"] == own for row in found):
+        # Filed under a symbol the text does not name: no rows, never the lone hit as subject.
         return []
-    if len(found) == 1 and (not own or found[0]["symbol"] == own):
+    if len(found) == 1:
         found[0]["role"] = "subject"
         found[0]["role_source"] = "document_mention_matcher"
         found[0]["role_confidence"] = agreement_ratio(found[0]["matched_text"], found[0]["symbol"], book)
-    elif own and any(row["symbol"] == own for row in found):
+    elif own:
         for row in found:
             row["role"] = "subject" if row["symbol"] == own else "mentioned"
             row["role_source"] = "document_mention_matcher"
