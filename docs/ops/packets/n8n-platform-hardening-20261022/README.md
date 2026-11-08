@@ -329,6 +329,18 @@ cd ~/trade-ai-releases/portfolio-server/CURRENT && ~/trade-ai-v12-rebuild/trade-
 first live fire pages P1 for each drifted workflow (one page per signature, reminders every 6 h). If the verdict is
 DRIFT, the operator decides first whether to accept those pages or reconcile the drift.
 
+**A hand-run dry run reads `os.environ` only.** The systemd units load `host-alert.env` through `EnvironmentFile=-`;
+a shell does not. So `n8n_drift_watch.py` and `n8n_host_deadman.py` run by hand report the page as `not_configured`
+even after the file is provisioned. That is not a fault. To verify the provisioned file, load it into that one
+command's environment (the file is 0600 and its values are never printed; this is the command proven on
+2026-11-08 ~12:00 ET and recorded in `coordinator/RUNBOOK-PROVEN-PROCEDURES.md`, "FW-P6: n8n host dead-man can page"):
+
+```
+( set -a; . ~/.config/tradeai/n8n/host-alert.env; set +a; exec ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python ~/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_host_deadman.py --url http://127.0.0.1:9/healthz --threshold 1 --json ) | grep -A3 '"preview"'
+```
+
+Expect `"preview": {"would_send": true, …}`. `not_configured` in a plain shell is not a fault.
+
 **Apply** (one line):
 
 ```
@@ -401,6 +413,8 @@ cd ~/trade-ai-releases/portfolio-server/CURRENT/docs/ops/packets/n8n-platform-ha
 
 **Verify**: `cat ~/trade-ai-releases/persistent-state/data/runtime/n8n_host_deadman_last.json` → `"schema":
 "N8nHostDeadman@v1"`, `"mode": "live"`, `"status": "OK"`, `"runs_inside_n8n": false`; the probe → `FW-P6 PASS`.
+The live receipt does not prove the pager: to see the would-send page, run the forced-bad dry run with the env file
+loaded, exactly as in FW-P3's "A hand-run dry run reads `os.environ` only" (a plain shell says `not_configured`).
 Optional live drill (a P1 page reaches you): with n8n otherwise idle, `docker stop m8m-n8n` for 11 minutes, expect
 one "P1 n8n DEAD-MAN" message, then `docker start m8m-n8n` and one "CLEARED" (an n8n stop is an operator act; skip if
 not wanted — the hermetic tests cover the state machine).
