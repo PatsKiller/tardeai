@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import math
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -740,6 +740,54 @@ def _opaque(acct: Any) -> str:
     return opaque_account(acct)
 
 
+SNAPSHOT_CLOSE_SOURCE = "ticker_snapshot:finviz_elite"
+
+
+def snapshot_close_quotes(symbols: Any, *, now: datetime, path: Any = None) -> dict[str, dict[str, Any]]:
+    """Last-close fallback for symbols ``market_quotes`` has no regular-session row for (LQ-20261107-1240).
+
+    Reads the repricer's ``ticker_snapshot_latest.json`` (refreshed every 15 min, Finviz Elite quote cache); read-only,
+    no network, no yfinance. The price is the last close the snapshot holds, labelled with the last closed session
+    date, never as a live quote. A symbol with no positive finite price is simply absent.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    from scripts.lib.market_risk import sessions as market_sessions
+
+    if path is None:
+        root = Path(os.environ.get("TRADEAI_STATE_ROOT") or Path.home() / "trade-ai-releases" / "persistent-state")
+        path = root / "data" / "portfolios" / "state" / "ticker_snapshot_latest.json"
+    try:
+        tickers = (json.loads(Path(path).read_text(encoding="utf-8")) or {}).get("tickers") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    if not isinstance(tickers, dict):
+        return {}
+    day = market_sessions.last_closed_session(now).isoformat()
+    out: dict[str, dict[str, Any]] = {}
+    for sym in symbols:
+        rec = tickers.get(sym)
+        quote = (rec or {}).get("quote") if isinstance(rec, dict) else None
+        price = (quote or {}).get("price") if isinstance(quote, dict) else None
+        if isinstance(price, bool) or not isinstance(price, (int, float)) or not math.isfinite(float(price)) or price <= 0:
+            continue
+        as_of = None
+        try:
+            fetched = datetime.fromisoformat(str(rec.get("fetched_at")))
+            if fetched.tzinfo is None:  # the repricer writes naive America/New_York wall-clock
+                from zoneinfo import ZoneInfo
+                fetched = fetched.replace(tzinfo=ZoneInfo("America/New_York"))
+            as_of = fetched.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        except (TypeError, ValueError):
+            pass
+        out[sym] = {"schema": "ReentryRegularQuote@v1", "status": "available", "price": float(price),
+                    "source": SNAPSHOT_CLOSE_SOURCE, "session": "last_close", "session_date": day,
+                    "expected_session_date": day, "as_of": as_of, "basis": "snapshot_last_close", "reason": None}
+    return out
+
+
 def reentry_display_quote(quote: dict[str, Any] | None, *, exit_price: Any, sma20: Any) -> dict[str, Any]:
     """Display-only deltas for one canonical quote; never mutate confirmed stage evidence."""
     out = dict(quote or {"status": "unavailable", "price": None, "source": "market_quotes:alpaca",
@@ -857,6 +905,13 @@ def reentry_watch_block(
         current_quotes = quote_reader(sorted(exits), end=now) if callable(quote_reader) else {}
     except Exception:  # noqa: BLE001 — price failure cannot change a confirmed stage verdict
         current_quotes = {}
+    # LQ-20261107-1240: market_quotes has no weekend/overnight regular rows; fall back to the repricer's last close.
+    missing = [x for x in sorted(exits) if (current_quotes.get(x) or {}).get("status") != "available"]
+    if missing:
+        try:
+            current_quotes = {**current_quotes, **snapshot_close_quotes(missing, now=now)}
+        except Exception:  # noqa: BLE001 — a fallback failure leaves the quote as the reader reported it
+            pass
     for sym, e in exits.items():
         bars = [r for r in (reader.daily_bars([sym], sessions=400, end=now) or []) if r.get("close") is not None]
         closes = [float(r["close"]) for r in bars]
