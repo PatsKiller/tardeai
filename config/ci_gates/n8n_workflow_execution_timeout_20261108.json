@@ -1,7 +1,9 @@
 {
   "schema": "CiGate@v1",
   "name": "n8n_workflow_execution_timeout_20261108",
-  "files": ["tests/test_n8n_workflow_execution_timeout_20261108.py"],
+  "files": [
+    "tests/test_n8n_workflow_execution_timeout_20261108.py"
+  ],
   "anchor": "N8N_WORKFLOW_EXECUTION_TIMEOUT_20261108",
   "comment": [
     "ANCHOR: N8N_WORKFLOW_EXECUTION_TIMEOUT_20261108 — allowlisted ACTIVE n8n workflows set executionTimeout to allowlist timeout_s plus 30s. Hermetic."
