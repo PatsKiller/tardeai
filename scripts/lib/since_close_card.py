@@ -262,6 +262,7 @@ def build_summary(
     prior: Mapping[str, Any] | None = None,
     calls_today: int = 0,
     daily_cap: int = SUMMARY_DAILY_CAP,
+    carry_prior: bool = False,
 ) -> dict[str, Any]:
     """Cached 15 min per input hash; over the cap or on any LLM failure it returns the deterministic list."""
     payload = summary_input(moves, macro)
@@ -271,6 +272,9 @@ def build_summary(
     if prior and prior.get("input_hash") == h and prior.get("text") and prior.get("generated_at"):
         if now_utc - datetime.fromisoformat(str(prior["generated_at"]).replace("Z", "+00:00")) < SUMMARY_TTL:
             return {**base, "text": prior["text"], "source": "cache", "generated_at": prior["generated_at"], "llm_called": False}
+    if carry_prior and prior and prior.get("text"):
+        # a non-material rebuild keeps the last words rather than spending a call or dropping to the list
+        return {**base, "text": prior["text"], "source": "carried", "generated_at": prior.get("generated_at"), "llm_called": False}
     if llm is None:
         return {**base, "text": None, "source": "deterministic", "reason": "llm_unavailable", "generated_at": None, "llm_called": False}
     if calls_today >= daily_cap:
@@ -392,6 +396,72 @@ def cio_brief_block(brief: Mapping[str, Any] | None) -> dict[str, Any]:
     return {"status": "available", **{k: v for k, v in brief.items() if k != "status"}}
 
 
+
+# ---------------------------------------------------------------------------- intraday: "Today so far" and change detection (LQ-1260)
+
+MATERIAL_MOVE_PCT = 3.0
+
+
+def session_open_et(now: datetime) -> datetime:
+    return datetime.combine(now.astimezone(ET).date(), time(9, 30), ET)
+
+
+def build_today(now: datetime, moves: Sequence[Mapping[str, Any]], feed: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Only while the regular session is open: held moves and the feed items published since 09:30 ET.  The quote
+    snapshot carries no open price, so the move is against the prior close and the section says so."""
+    if not _session_open(now.astimezone(ET)):
+        return None
+    since = session_open_et(now).timestamp()
+    return {
+        "label": "Today so far",
+        "basis": "move vs prior close (the quote feed carries no open price)",
+        "since": session_open_et(now).astimezone(UTC).isoformat().replace("+00:00", "Z"),
+        "moves": [m for m in moves if m["held"] or m["big_move"]],
+        "news": [i for i in feed if _ts(i.get("published_at")) >= since and i.get("kind") != "macro"],
+    }
+
+
+def _akey(a: Mapping[str, Any]) -> str:
+    return hashlib.sha1(
+        f"{str(a.get('symbol') or '').upper()}|{re.sub(chr(92) + 'W+', ' ', str(a.get('title') or '').lower()).strip()}|{_iso(a.get('published_at'))}".encode()
+    ).hexdigest()[:12]
+
+
+def change_state(moves: Sequence[Mapping[str, Any]], articles: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """What --if-changed compares: every held/watch article id since the window start (not just the top 3 shown) and
+    each held move bucketed to 1%."""
+    names = {m["symbol"]: m["held"] for m in moves}
+    seen = sorted({(_akey(a), str(a.get("symbol") or "").upper()) for a in articles if str(a.get("symbol") or "").upper() in names})
+    held_pct = {m["symbol"]: round(m["change_pct"]) for m in moves if m["held"]}
+    exact = {m["symbol"]: m["change_pct"] for m in moves if m["held"]}
+    sig = hashlib.sha256(json.dumps([seen, sorted(held_pct.items())], sort_keys=True).encode()).hexdigest()[:16]
+    return {"signature": sig, "articles": [{"k": k, "s": sym} for k, sym in seen], "held_pct": held_pct, "held_exact": exact}
+
+
+def detect_change(
+    prior: Mapping[str, Any] | None, cur: Mapping[str, Any], moves: Sequence[Mapping[str, Any]], articles: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """``{changed, material, reason, kind, symbol, headline}``.  Material = a NEW article on a held name, or a held
+    name crossing +/-3% since the last build.  A change that is neither (watchlist news, a 1% bucket step) rebuilds
+    the data but never spends an LLM call."""
+    if not prior or not prior.get("signature"):
+        return {"changed": True, "material": True, "reason": "first build", "kind": "first"}
+    if prior["signature"] == cur["signature"]:
+        return {"changed": False, "material": False, "reason": "unchanged", "kind": "none"}
+    held = {m["symbol"] for m in moves if m["held"]}
+    old_keys = {x["k"] for x in prior.get("articles", [])}
+    for a in sorted(articles, key=lambda a: -_ts(a.get("published_at"))):
+        sym = str(a.get("symbol") or "").upper()
+        if sym in held and _akey(a) not in old_keys:
+            return {"changed": True, "material": True, "kind": "news", "symbol": sym, "headline": str(a.get("title") or ""),
+                    "reason": f"new {sym} article"}
+    old = prior.get("held_exact") or {}
+    for m in moves:
+        if m["held"] and abs(m["change_pct"]) >= MATERIAL_MOVE_PCT and abs(old.get(m["symbol"], 0.0)) < MATERIAL_MOVE_PCT:
+            return {"changed": True, "material": True, "kind": "move", "symbol": m["symbol"], "reason": f"{m['symbol']} {m['change_pct']:+.1f}%"}
+    return {"changed": True, "material": False, "reason": "minor change", "kind": "minor"}
+
+
 # ---------------------------------------------------------------------------- the snapshot
 
 
@@ -408,20 +478,42 @@ def build_snapshot(
     earnings: Mapping[str, Any] | None = None,
     ex_divs: Iterable[Mapping[str, Any]] = (),
     cio_brief: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
+    if_changed: bool = False,
+) -> dict[str, Any] | None:
+    """The whole card.  With ``if_changed`` returns None when nothing material moved since ``prior`` (no write, no LLM
+    call).  A rebuild that is not material keeps the prior summary text; only a material one may spend a call."""
     win = window(now)
     moves = attach_news(build_moves(ticker_snapshot, close_tag=win["close_tag"]), articles)
+    state = change_state(moves, articles)
+    if if_changed:
+        decision = detect_change((prior or {}).get("change_state"), state, moves, articles)
+        if not decision["changed"]:
+            return None
+    else:
+        decision = {"changed": True, "material": True, "reason": "scheduled", "kind": "scheduled"}
     macro = build_macro(articles, futures)
     summary = build_summary(
-        moves, macro, now=now, llm=llm, prior=(prior or {}).get("summary") if prior else None, calls_today=calls_today
+        moves, macro, now=now, llm=llm if decision["material"] else None,
+        prior=(prior or {}).get("summary") if prior else None, calls_today=calls_today, carry_prior=not decision["material"],
     )
+    feed = build_feed(moves, macro)
+    if decision["kind"] in ("news", "move", "first"):
+        updated = {
+            "at": now.astimezone(UTC).isoformat().replace("+00:00", "Z"), "at_et": now.astimezone(ET).strftime("%H:%M ET"),
+            "reason": decision["reason"], "kind": decision["kind"], "symbol": decision.get("symbol"), "headline": decision.get("headline"),
+        }
+    else:
+        updated = (prior or {}).get("updated")
     return {
         "schema": SCHEMA,
         "generated_at": now.astimezone(UTC).isoformat().replace("+00:00", "Z"),
         "window": win,
         "quotes_as_of": (ticker_snapshot.get("_meta") or {}).get("generated_at"),
+        "updated": updated,
+        "change_state": state,
+        "today": build_today(now, moves, feed),
         "cio_brief": cio_brief_block(cio_brief),
-        "feed": build_feed(moves, macro),
+        "feed": feed,
         "week_ahead": build_week_ahead(
             now=now, macro_calendar=macro_calendar, earnings=earnings, ex_divs=ex_divs,
             held=[m["symbol"] for m in moves if m["held"]], watch=[m["symbol"] for m in moves if not m["held"]],

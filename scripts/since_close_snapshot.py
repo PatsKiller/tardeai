@@ -29,7 +29,7 @@ from lib import since_close_card as card  # noqa: E402
 ET = ZoneInfo("America/New_York")
 STATE_DIR = Path(os.environ.get("TRADEAI_STATE_DIR") or Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state")
 OUT_NAME = "since_close_latest.json"
-CIO_BRIEF_NAME = "cio_brief_latest.json"  # LQ-1257 (cc-deepseek-3): pending until that file exists
+CIO_BRIEF_REL = Path("data") / "runtime" / "cio_overnight_brief" / "latest.json"  # LQ-1257 (cc-deepseek-3); pending until it exists
 TICKER_NAME = "ticker_snapshot_latest.json"
 FUTURES_REL = Path("data") / "market" / "futures_overseas_latest.json"  # cc-deepseek-9 LQ-1239 output, when it lands
 
@@ -53,7 +53,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--llm", action="store_true", help="allow the flash summary call (needs --apply)")
     ap.add_argument("--state-dir", type=Path, default=STATE_DIR)
     ap.add_argument("--futures", type=Path, default=None, help="futures/overseas quotes JSON (default: the LQ-1239 path)")
-    ap.add_argument("--cio-brief", type=Path, default=None, help="LQ-1257 CIO brief JSON (default: <state-dir>/cio_brief_latest.json)")
+    ap.add_argument("--if-changed", action="store_true", help="rebuild only on new held-name news or a held +/-3%% cross; else exit 0 untouched")
+    ap.add_argument("--cio-brief", type=Path, default=None, help="LQ-1257 CIO brief JSON (default: <state root>/data/runtime/cio_overnight_brief/latest.json)")
     ap.add_argument("--now", default=None, help="ISO instant, for replay (default: the clock)")
     a = ap.parse_args(argv)
     if a.llm and not a.apply:
@@ -97,8 +98,11 @@ def main(argv: list[str] | None = None) -> int:
         now=now, ticker_snapshot=ticker, articles=arts, futures=futures,
         llm=_flash if (a.apply and a.llm) else None, prior=prior, calls_today=calls,
         macro_calendar=card.load_json(_macro_path()), earnings=card.load_json(a.state_dir / "earnings_dates.json"),
-        ex_divs=ex_divs, cio_brief=card.load_json(a.cio_brief or (a.state_dir / CIO_BRIEF_NAME)),
+        ex_divs=ex_divs, if_changed=a.if_changed, cio_brief=card.load_json(a.cio_brief or (a.state_dir.parents[2] / CIO_BRIEF_REL)),
     )
+    if snap is None:
+        print(f"unchanged since the last build (window={win['label']!r}, articles={len(arts)}); no write, no LLM call")
+        return 0
     if snap["summary"].get("llm_called"):
         calls += 1
     snap["llm_calls"] = {today: calls}
@@ -108,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         f"window={win['label']!r} moves={len(snap['moves'])} held={sum(m['held'] for m in snap['moves'])} "
         f"articles={len(arts)} macro={len(snap['macro']['headlines'])} futures={snap['macro']['futures']['status']} "
         f"feed={len(snap['feed'])} week_ahead={len(snap['week_ahead']['events'])} cio_brief={snap['cio_brief']['status']} "
-        f"summary={s['source']}{'/' + s['reason'] if s.get('reason') else ''} llm_calls_today={calls}"
+        f"today={'yes' if snap['today'] else 'no'} updated={(snap['updated'] or {}).get('reason')!r} summary={s['source']}{'/' + s['reason'] if s.get('reason') else ''} llm_calls_today={calls}"
     )
     if not a.apply:
         print("DRY RUN: nothing written, no LLM call. Re-run with --apply [--llm].")

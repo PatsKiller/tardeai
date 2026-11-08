@@ -42,7 +42,7 @@ export default function SinceCloseCard() {
     return (
       <div data-testid="since-close-card" data-state="collapsed" style={{ ...S.card, padding: '4px 14px', gap: 0 }}>
         <button type="button" style={S.link} onClick={() => setOpen(true)} aria-expanded={false} data-testid="since-close-expand">
-          {m.label} · overnight recap
+          {m.collapsedNote ? <><b style={{ color: warn.color }}>{m.collapsedNote}</b>{' · '}</> : null}{m.label} · overnight recap
         </button>
       </div>
     )
@@ -52,6 +52,7 @@ export default function SinceCloseCard() {
       <div style={S.hd}>
         <h2 style={S.h2}>{m.label}</h2>
         <span style={{ ...S.meta, color: m.stale ? warn.color : TOKENS.text[3] }} data-testid="since-close-fresh">{m.freshnessText}</span>
+        {m.updatedText && <span style={{ ...S.meta, color: info.color }} data-testid="since-close-updated">{m.updatedText}</span>}
         {m.state === 'collapsed' && (
           <button type="button" style={{ ...S.link, marginLeft: 'auto' }} onClick={() => setOpen(false)} aria-expanded>Collapse</button>
         )}
@@ -75,6 +76,22 @@ export default function SinceCloseCard() {
             <h3 style={S.h3}>Analysis</h3>
             {m.summaryText ? <p style={S.p}>{m.summaryText}</p> : m.summaryLines.map(l => <p key={l} style={S.p}>{l}</p>)}
           </div>
+
+          {m.today && (
+            <div data-testid="since-close-today">
+              <h3 style={S.h3}>{m.today.label} <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· {m.today.basis}</span></h3>
+              <div style={S.row}>
+                {m.today.moves.map(t => (
+                  <span key={t.symbol} style={{ ...S.box, fontSize: 13, display: 'inline-flex', gap: 6, alignItems: 'baseline' }}>
+                    <b>{t.symbol}</b><span style={{ color: tone(t.change_pct), fontFamily: FONT.mono }}>{pctText(t.change_pct)}</span>
+                  </span>
+                ))}
+              </div>
+              {m.today.news.length === 0
+                ? <p style={{ ...S.p, fontSize: 13, marginTop: 6 }}>No news on your names since the open.</p>
+                : m.today.news.map(n => <p key={n.title} style={{ ...S.p, fontSize: 13, marginTop: 6 }}><b>{n.holdings.map(h => h.symbol).join(', ')}</b> · {n.title} <span style={S.meta}>{n.source} · {timeOf(n.published_at)}</span></p>)}
+            </div>
+          )}
 
           <div data-testid="since-close-moves">
             <h3 style={S.h3}>Held · {m.closeTag}</h3>

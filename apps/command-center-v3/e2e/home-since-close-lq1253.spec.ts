@@ -61,3 +61,20 @@ test('412: no snapshot yet is a visible card, not blank', async ({ page }) => {
   await expect(page.getByTestId('since-close-none')).toBeVisible()
   await shot(page, 'after-none-412')
 })
+
+test('412: intraday collapsed line says what arrived; expanding shows Today so far', async ({ page }) => {
+  const at = '2031-03-10T14:30:00Z' // the home fixture pins the browser clock to 2031-03-10 15:00Z
+  await open(page, 412, 915, wire(true, {
+    updated: { at, at_et: '10:30 ET', reason: 'new AAA article', kind: 'news', symbol: 'AAA', headline: 'Synthetic: AAA names a new CFO' },
+    today: { label: 'Today so far', basis: 'move vs prior close', since: at, moves: [mv('AAA', true, 8.6)], news: [] },
+  }))
+  const card = page.getByTestId('since-close-card')
+  await expect(card).toHaveAttribute('data-state', 'collapsed')
+  await expect(card).toContainText('New: AAA Synthetic: AAA names a new CFO')
+  expect(await noSideScroll(page)).toBeTruthy()
+  await shot(page, 'intraday-collapsed-412')
+  await page.getByTestId('since-close-expand').click()
+  await expect(page.getByTestId('since-close-today')).toContainText('Today so far')
+  await expect(page.getByTestId('since-close-updated')).toContainText('updated 10:30 ET — new AAA article')
+  await shot(page, 'intraday-expanded-412')
+})

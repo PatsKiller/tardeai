@@ -47,5 +47,21 @@ assert.equal(a2.feed.length, 1); assert.equal(a2.weekAhead[0].label, 'Consumer P
 assert.equal(a2.cio.pending, false); assert.equal(a2.cio.tier, 'YELLOW'); assert.deepEqual(a2.cio.actions, [{ symbol: 'AAA', text: 'raise stop — gap up' }])
 assert.equal(m.cio.pending, true); assert.equal(m.cio.label, 'CIO brief pending'); assert.equal(m.fedSpeakersText, 'no feed — not listed')
 
+// LQ-1260: intraday
+const NOW = Date.parse('2026-11-10T15:45:00Z')
+const openW = { label: 'Since Mon 4:00 PM', close_tag: 'Mon close', session_date: '2026-11-09', session_open: true }
+const upd = { at: '2026-11-10T15:30:00Z', at_et: '10:30 ET', reason: 'new AAA article', kind: 'news' as const, symbol: 'AAA', headline: 'AAA names a new CFO' }
+const intra = sinceCloseModel(wire({ window_now: openW, updated: upd, today: { label: 'Today so far', basis: 'move vs prior close', since: '2026-11-10T14:30:00Z', moves: [mv({})], news: [] } }), NOW)
+assert.equal(intra.state, 'collapsed'); assert.equal(intra.collapsedNote, 'New: AAA AAA names a new CFO')
+assert.equal(intra.updatedText, 'updated 10:30 ET — new AAA article'); assert.equal(intra.today?.label, 'Today so far')
+// yesterday's "new" is not today's news; a first build says nothing
+assert.equal(sinceCloseModel(wire({ window_now: openW, updated: upd }), Date.parse('2026-11-11T15:45:00Z')).collapsedNote, null)
+assert.equal(sinceCloseModel(wire({ updated: { ...upd, kind: 'first', reason: 'first build' } }), NOW).updatedText, null)
+assert.equal(sinceCloseModel(wire({ window_now: openW, updated: { ...upd, kind: 'move', symbol: 'BBB', reason: 'BBB +3.4%' } }), NOW).collapsedNote, null)
+// CIO brief aliases (LQ-1257 shape unconfirmed): nothing invented when a field is missing
+const c1 = sinceCloseModel(wire({ cio_brief: { status: 'available', overview: 'Calm.', risk: { level: 'GREEN' }, holding_actions: [{ ticker: 'AAA', recommendation: 'hold stop', rationale: 'no change' }, { ticker: 'BBB' }] } })).cio
+assert.equal(c1.summary, 'Calm.'); assert.equal(c1.tier, 'GREEN'); assert.deepEqual(c1.actions, [{ symbol: 'AAA', text: 'hold stop — no change' }])
+assert.equal(sinceCloseModel(wire({ cio_brief: { status: 'available' } })).cio.tier, null)
+
 assert.equal(pctText(-18.24), '-18.2%'); assert.equal(pctText(null), '—'); assert.equal(usdText(-1234.4), '−$1,234'); assert.equal(usdText(86), '+$86')
 console.log('sinceClose tests passed')

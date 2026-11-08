@@ -163,3 +163,69 @@ def test_cio_brief_pending_until_the_lq1257_file_exists_then_passed_through():
     assert _snap()["cio_brief"] == {"status": "pending", "label": "CIO brief pending"}
     b = _snap(cio_brief={"summary": "s", "risk_tier": "YELLOW", "actions": [{"symbol": "AAA", "action": "raise stop"}]})["cio_brief"]
     assert b["status"] == "available" and b["risk_tier"] == "YELLOW" and b["actions"][0]["action"] == "raise stop"
+
+
+# ---- LQ-1260: intraday "Today so far" and --if-changed -----------------------------------------------------------
+TUE_1030 = datetime(2026, 11, 10, 10, 30, tzinfo=ET)
+
+
+def _build(now, *, tickers=TICKERS, arts=ARTS, prior=None, llm=None, if_changed=True):
+    return c.build_snapshot(now=now, ticker_snapshot=tickers, articles=arts, futures=None, llm=llm, prior=prior, if_changed=if_changed)
+
+
+def _tick(**pct):
+    t = {k: dict(v) for k, v in TICKERS["tickers"].items()}
+    for sym, p in pct.items():
+        t[sym] = {**t[sym], "quote": {"price": 10.0, "change_pct": p}}
+    return {"tickers": t, "_meta": TICKERS["_meta"]}
+
+
+def test_no_change_skips_without_an_llm_call():
+    calls = []
+    first = _build(TUE_1030, llm=lambda p: calls.append(p) or "text")
+    assert first["updated"]["kind"] == "first" and len(calls) == 1
+    again = _build(TUE_1030 + timedelta(minutes=15), prior=first, llm=lambda p: calls.append(p) or "x")
+    assert again is None and len(calls) == 1
+
+
+def test_a_new_held_article_rebuilds_marks_updated_and_may_call_the_llm():
+    first = _build(TUE_1030, llm=lambda p: "old words")
+    new = {"symbol": "AAA", "title": "AAA names a new CFO", "source": "yahoo_rss", "published_at": TUE_1030 + timedelta(minutes=5), "relevance_score": 0.8}
+    calls = []
+    snap = _build(TUE_1030 + timedelta(minutes=15), arts=ARTS + [new], prior=first, llm=lambda p: calls.append(p) or "fresh words")
+    assert snap["updated"]["kind"] == "news" and snap["updated"]["symbol"] == "AAA"
+    assert snap["updated"]["headline"] == "AAA names a new CFO" and snap["updated"]["at_et"] == "10:45 ET"
+    assert snap["summary"]["text"] == "fresh words" and len(calls) == 1
+
+
+def test_a_held_move_crossing_3pct_rebuilds_with_the_reason():
+    first = _build(TUE_1030, tickers=_tick(CCC=1.0), llm=lambda p: "t")
+    snap = _build(TUE_1030 + timedelta(minutes=15), tickers=_tick(CCC=3.4), prior=first, llm=lambda p: "t2")
+    assert snap["updated"]["kind"] == "move" and snap["updated"]["reason"] == "CCC +3.4%"
+    # already past 3% last time: a further 1% step is not a new cross
+    again = _build(TUE_1030 + timedelta(minutes=30), tickers=_tick(CCC=4.6), prior=snap, llm=lambda p: "t3")
+    assert again["updated"] == snap["updated"] and again["summary"]["source"] == "carried" and again["summary"]["text"] == "t2"
+
+
+def test_watchlist_only_news_rebuilds_data_but_never_spends_a_call():
+    first = _build(TUE_1030, llm=lambda p: "kept")
+    new = {"symbol": "WWW", "title": "WWW downgraded", "source": "x", "published_at": TUE_1030, "relevance_score": 0.5}
+    calls = []
+    snap = _build(TUE_1030 + timedelta(minutes=15), arts=ARTS + [new], prior=first, llm=lambda p: calls.append(p) or "no")
+    assert snap is not None and not calls and snap["summary"]["text"] == "kept"
+    assert any(i["title"] == "WWW downgraded" for i in snap["feed"])
+
+
+def test_today_section_only_while_the_session_is_open_and_has_news_since_open():
+    arts = ARTS + [{"symbol": "AAA", "title": "AAA midday", "source": "x", "published_at": TUE_1030 - timedelta(minutes=30), "relevance_score": 0.9}]
+    mid = _build(TUE_1030, arts=arts, if_changed=False)
+    assert mid["window"]["session_open"] and mid["today"]["label"] == "Today so far"
+    assert [i["title"] for i in mid["today"]["news"]] == ["AAA midday"] and mid["today"]["moves"]
+    assert "prior close" in mid["today"]["basis"]
+    assert _build(TUE_0555, arts=arts, if_changed=False)["today"] is None
+    assert _build(datetime(2026, 11, 10, 16, 5, tzinfo=ET), arts=arts, if_changed=False)["today"] is None
+
+
+def test_cli_cio_path_is_the_lq1257_runtime_file():
+    import since_close_snapshot as cli
+    assert str(cli.CIO_BRIEF_REL) == "data/runtime/cio_overnight_brief/latest.json"
