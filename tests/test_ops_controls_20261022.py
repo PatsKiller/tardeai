@@ -759,8 +759,10 @@ def test_state_read_model_sections(env):
     assert s["applier"]["state"] == "ABSENT" and s["factors"]["hmac_key"] == "present"
     kinds = {k["kind"]: k for k in s["kinds"]}
     assert kinds["deploy.stop"]["direction"] == "safe" and kinds["kill_switch.engage"]["direction"] == "safe"
+    # LQ-611: the dry-run, run-all-dry and cancel-queued manual-lane kinds are safe by design (nothing durable changes)
     assert all(k["direction"] == "risky" for k in kinds.values() if k["kind"] not in
-               ("deploy.stop", "kill_switch.engage"))
+               ("deploy.stop", "kill_switch.engage", "n8n_lane_run.dry", "n8n_lane_run_all.dry", "n8n_lane_run.cancel"))
+    assert kinds["n8n_lane_run.live"]["direction"] == kinds["n8n_lane_run_all.live"]["direction"] == "risky"
 
 
 def test_unreadable_sections_are_unavailable_not_empty(env):

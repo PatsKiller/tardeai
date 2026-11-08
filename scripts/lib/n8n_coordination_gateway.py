@@ -54,6 +54,10 @@ SCOPES = frozenset({SCOPE_READ, SCOPE_RUN, SCOPE_INTENT})
 #: key that never grants anything but run+read; it never falls back to the dispatch key.
 DISPATCH_CALLER = "tradeai-dispatch"
 RELAY_CALLER = "n8n-relay"
+#: 2026-11-07 (LQ-20261107-611): the operator's manual-run identity. The host Ops Controls applier signs
+#: coordination/run with this caller's own key (TRADEAI_N8N_GATEWAY_HMAC_KEY_OPERATOR). It carries run+read
+#: scope only, never falls back to the dispatch key, and never shares n8n's key or bearer.
+OPERATOR_CALLER = "operator-manual"
 #: 2026-10-09 (n8n maturity B5.3, design 02 §3.1): `coordination/due` is a READ route (scope coordination_read,
 #: operation `due` only). It computes what is due from the registry; it writes nothing and runs nothing.
 #: 2026-10-14 (n8n fabric Phase 1): `coordination/run_outcome` is a READ route (scope coordination_read, operation
@@ -291,6 +295,7 @@ def build_caller_keys(
     previous_key: bytes | None = None,
     n8n_key: bytes | None = None,
     n8n_previous_key: bytes | None = None,
+    operator_key: bytes | None = None,
 ) -> dict[str, CallerKey]:
     """CALLER_KEYS for a gateway process. The dispatch key keeps its previous-key rotation overlap and serves
     every Trade AI-side caller_id (``default=True``). The n8n relay key is optional: without it the run scope is
@@ -304,6 +309,8 @@ def build_caller_keys(
             scopes=frozenset({SCOPE_RUN, SCOPE_READ, SCOPE_INTENT}),
             previous_key=n8n_previous_key,
         )
+    if operator_key is not None:
+        out[OPERATOR_CALLER] = CallerKey(key=operator_key, scopes=frozenset({SCOPE_RUN, SCOPE_READ}))
     return out
 
 
@@ -312,7 +319,7 @@ def resolve_caller(caller_keys: Mapping[str, CallerKey], caller_id: str) -> Call
     exact = caller_keys.get(caller_id)
     if exact is not None:
         return exact
-    if caller_id == RELAY_CALLER:
+    if caller_id in (RELAY_CALLER, OPERATOR_CALLER):
         return None
     for entry in caller_keys.values():
         if entry.default:
@@ -1283,7 +1290,7 @@ def _verify_claim(
     if not isinstance(claim.get("caller_id"), str) or len(claim["caller_id"]) < 3:
         raise GatewayError("malformed_claim")
     caller = resolve_caller(caller_keys, claim["caller_id"])
-    if caller is None and claim["caller_id"] == RELAY_CALLER:
+    if caller is None and claim["caller_id"] in (RELAY_CALLER, OPERATOR_CALLER):
         # the relay identity without its key: the run scope is unavailable on this gateway
         raise GatewayError("run_scope_unavailable")
     if caller is None:

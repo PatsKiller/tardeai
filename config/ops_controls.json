@@ -29,6 +29,12 @@
     "file": "~/.config/tradeai/n8n-live-lanes.env",
     "restart_units": ["tradeai-n8n-run-relay.service", "tradeai-n8n-coordination-gateway.service"]
   },
+  "n8n_lane_run": {
+    "_comment": "LQ-20261107-611 manual Run lane now. The host applier signs coordination/run as the dedicated caller operator-manual with its OWN key (env name below, in the applier's environment only, never the web process or n8n's key). batch_cooldown_s is fixed in scripts/lib/ops_n8n_lane_run.py (600).",
+    "gateway_url": "http://127.0.0.1:18091",
+    "key_env": "TRADEAI_N8N_GATEWAY_HMAC_KEY_OPERATOR",
+    "caller_id": "operator-manual"
+  },
   "n8n_ledger": {
     "file": "~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"
   },

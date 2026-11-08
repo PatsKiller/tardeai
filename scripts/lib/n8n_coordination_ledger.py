@@ -816,6 +816,27 @@ class LedgerRunStore:
         return out
 
     @_locked
+    def cancel_requested(self, run_id: str, *, caller_id: str, reason: str, now: float) -> bool:
+        """LQ-20261107-611: cancel ONE not-yet-started run. REQUESTED -> RUN_REFUSED with a receipt naming the
+        reason, only for a row requested by ``caller_id`` (the operator-manual caller); a row the executor has
+        already claimed (RUNNING or finished) is untouched and the call returns False. One conditional UPDATE
+        inside BEGIN IMMEDIATE, so a claim_next racing it has exactly one winner."""
+        at = _iso(now)
+        receipt = json.dumps({"schema": "RunReceipt@v1", "state": "RUN_REFUSED", "reason": reason,
+                              "finished_at": at, "exit_code": None, "duration_s": None}, sort_keys=True)
+        self._l._conn.execute("BEGIN IMMEDIATE")
+        try:
+            cur = self._l._conn.execute(
+                "UPDATE runs SET state = 'RUN_REFUSED', finished_at = ?, receipt_json = ? "
+                "WHERE run_id = ? AND state = ? AND caller_id = ?",
+                (at, receipt, run_id, RUN_STATE_REQUESTED, caller_id))
+            self._l._conn.execute("COMMIT")
+        except Exception:
+            self._l._conn.execute("ROLLBACK")
+            raise
+        return cur.rowcount == 1
+
+    @_locked
     def list(self, *, state: str | None = None, lane_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
         sql, args = "SELECT * FROM runs WHERE 1=1", []
         if state:

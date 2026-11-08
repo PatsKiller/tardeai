@@ -20,6 +20,9 @@ Type=simple
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 EnvironmentFile=-%t/tradeai/env
 EnvironmentFile=-%h/.config/tradeai/n8n-gateway.env
+# LQ-20261107-611: the operator-manual caller's HMAC key (TRADEAI_N8N_GATEWAY_HMAC_KEY_OPERATOR), in its own 0600 file so the
+# shared rendered env (loaded by many units) never carries it. Absent file = the manual-run scope stays unavailable (fail closed).
+EnvironmentFile=-%h/.config/tradeai/operator-manual.env
 # The live-lane list only (TRADEAI_N8N_RELAY_LIVE_LANES), the single source the relay also loads.
 # Secret-free on purpose: the gateway must never load n8n-relay.env (relay bearer + HMAC key).
 # Create it BEFORE this unit is installed (packets/live-lanes-env-split); if absent, live lanes fail
