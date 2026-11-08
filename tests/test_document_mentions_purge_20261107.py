@@ -67,8 +67,10 @@ def test_a_ticker_match_is_a_different_claim():
 
 def test_the_rule_still_refuses_what_it_refused_before():
     """No regression in the stoplist/phrase/ordinary-word paths the 2026-11-07 fix added."""
+    # LQ-411 (2026-11-07): a wire/exchange/place now carries its own reason, checked before the
+    # context gate. Still refused — only the reason string is more specific.
     assert DM.false_positive_reason("GLOBE NEWSWIRE", "GL", "company_name",
-                                    text="GLOBE NEWSWIRE — today") == "ambiguous_name_without_context"
+                                    text="GLOBE NEWSWIRE — today") == "non_issuer_phrase:globe newswire"
     assert DM.false_positive_reason("Moving Average", "MA", "company_name",
                                     text="Moving Average crossed") == "prose_phrase_without_context"
     assert DM.false_positive_reason("Here", "HERE", "ticker_alias",

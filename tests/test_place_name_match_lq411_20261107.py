@@ -30,6 +30,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import lib.company_name_index as C  # noqa: E402
 import lib.non_issuer_phrases as N  # noqa: E402
+from lib import document_mentions as DM  # noqa: E402
 from lib import inbound_identity_tagger as T  # noqa: E402
 
 #: The three symbols the live bug reached, with the live feed's descriptions
@@ -161,6 +162,43 @@ def test_non_issuer_match_names_the_phrase_a_stored_row_rests_on(text, phrase):
 def test_a_name_that_is_kept_is_never_named_a_place(text):
     """No row the matcher still produces may be selected for cleanup."""
     assert C.non_issuer_match(text) is None
+
+
+# ── the cleanup rule the operator's purge tool applies ─────────────────────
+
+def test_the_purge_rule_refuses_a_place_match():
+    """Measured 2026-11-07: today's rule refuses 0 of the 240 stored york/las-vegas rows, so the
+    operator's purge tool would have had nothing to archive for this defect."""
+    assert (DM.false_positive_reason("Las Vegas", "LVS", "company_name",
+                                     text="Analysts gathered in Las Vegas this week.")
+            == "non_issuer_phrase:las vegas")
+
+
+def test_the_purge_rule_refuses_a_narrowed_place_match():
+    assert (DM.false_positive_reason("Las Vegas Review-Journal", "LVS", "company_name",
+                                     text="The Las Vegas Review-Journal reported the filing.")
+            == "non_issuer_phrase:las vegas")
+
+
+def test_context_does_not_save_a_place_match():
+    """`own_symbol` and the surrounding text only ever ALLOW the ambiguity rules. A place is not a
+    company in context either, so this rule returns before that gate."""
+    why = DM.false_positive_reason("Las Vegas", "LVS", "company_name",
+                                   text="Las Vegas Sands will present in Las Vegas next week.",
+                                   own_symbol="LVS")
+    assert why == "non_issuer_phrase:las vegas"
+
+
+@pytest.mark.parametrize("name,symbol,text", [
+    ("Las Vegas Sands", "LVS", "Las Vegas Sands reported quarterly results."),
+    ("York Space Systems", "YSS", "York Space Systems won the contract."),
+])
+def test_the_purge_rule_keeps_a_real_issuer_whose_name_starts_with_a_place(name, symbol, text):
+    assert DM.false_positive_reason(name, symbol, "company_name", text=text) is None
+
+
+def test_a_ticker_alias_match_is_untouched():
+    assert DM.false_positive_reason("LVS", "LVS", "ticker_alias", text="LVS rose 2% today.") is None
 
 
 # ── the vocabulary is one vocabulary ───────────────────────────────────────

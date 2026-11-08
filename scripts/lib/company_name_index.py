@@ -49,7 +49,7 @@ from typing import Any, Optional
 try:
     from scripts.lib.non_issuer_phrases import is_non_issuer_phrase
 except Exception:  # pragma: no cover - direct-script import path
-    from lib.non_issuer_phrases import is_non_issuer_phrase  # type: ignore
+    from lib.non_issuer_phrases import is_non_issuer_phrase  # type: ignore -- same module under the scripts/ import root
 
 SCHEMA = "CompanyNameIndex@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -276,8 +276,9 @@ def _build() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
 
 
 def refresh() -> None:
-    """Drop the cache after a new sweep."""
+    """Drop the caches after a new sweep."""
     _build.cache_clear()
+    _match.cache_clear()
 
 
 def is_exact_name(name: Any) -> bool:
@@ -296,7 +297,11 @@ def is_exact_name(name: Any) -> bool:
     return len(set(hits)) == 1
 
 
-def _match(norm: str) -> tuple[list[str], Optional[str], Optional[str]]:
+#: Keyed by the normalised name. `refresh()` clears it with `_build`, so a new sweep
+#: cannot be shadowed by a stale verdict. Without it the narrowing loop rescans the
+#: whole index per query, and the 2026-11-07 cleanup decides ~105k stored rows.
+@lru_cache(maxsize=16384)
+def _match(norm: str) -> tuple[tuple[str, ...], Optional[str], Optional[str]]:
     """(symbols, matched_on, matched_width) for a normalised name.
 
     `matched_width` is the part of `norm` that actually identified the instrument:
@@ -338,7 +343,7 @@ def _match(norm: str) -> tuple[list[str], Optional[str], Optional[str]]:
             if len(cands) > 1:
                 # Ambiguous at this width; a SHORTER prefix can only be more
                 # ambiguous, so stop rather than keep shrinking into a guess.
-                return [], None, prefix
+                return (), None, prefix
 
     # COMPACTED BRAND. The feed often glues a spoken two-word name into one
     # token: "SENTINELONE INC A" for "Sentinel One". Progressive prefix cannot
@@ -354,11 +359,11 @@ def _match(norm: str) -> tuple[list[str], Optional[str], Optional[str]]:
                 hits, matched_on, width = compact_hits, "compacted", compact
 
     if not hits or len(set(hits)) != 1:
-        return [], None, width      # unknown, or ambiguous — never guess
-    return list(hits), matched_on, width
+        return (), None, width      # unknown, or ambiguous — never guess
+    return tuple(hits), matched_on, width
 
 
-def _non_issuer_match(name: Any, hits: list[str], matched_on: Optional[str],
+def _non_issuer_match(name: Any, hits: tuple[str, ...], matched_on: Optional[str],
                       width: Optional[str]) -> Optional[str]:
     """The exchange/wire/place phrase this match rests on, or None.
 

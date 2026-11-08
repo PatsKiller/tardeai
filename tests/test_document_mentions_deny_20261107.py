@@ -15,9 +15,19 @@ from lib import document_mentions as DM  # noqa: E402
 fp = DM.false_positive_reason
 
 
-def test_wire_service_exchange_place_and_word_names_are_refused_without_context():
-    for name, sym in [("GLOBE NEWSWIRE", "GL"), ("Globe", "GL"), ("ACCESS Newswire", "ACCS"), ("Nasdaq", "NDAQ"),
-                      ("NEW YORK", "NYT"), ("SAN DIEGO", "SJT"), ("ENHANCED", "ENHA"), ("BULLISH", "BLSH"),
+def test_wire_service_exchange_and_place_names_are_refused_by_name():
+    """LQ-411: an exchange, wire or place has its own reason, which runs BEFORE the context gate —
+    the same unconditional refusal the writer applies. Kept apart from the ordinary-word rows below
+    because the two rules are different claims: this one is "the phrase is not a company", that one
+    is "a word alone is ambiguous until the text names the symbol"."""
+    for name, sym, phrase in [("GLOBE NEWSWIRE", "GL", "globe newswire"), ("Nasdaq", "NDAQ", "nasdaq"),
+                              ("NEW YORK", "NYT", "new york"), ("SAN DIEGO", "SJT", "san diego")]:
+        text = f"SOMECITY, Jan. 1 -- {name} reported an enhanced, bullish outlook."
+        assert fp(name, sym, "company_name", text=text) == f"non_issuer_phrase:{phrase}", name
+
+
+def test_ordinary_word_names_are_refused_without_context():
+    for name, sym in [("Globe", "GL"), ("ACCESS Newswire", "ACCS"), ("ENHANCED", "ENHA"), ("BULLISH", "BLSH"),
                       ("Ideal", "IPWR"), ("Versus", "VS")]:
         text = f"SOMECITY, Jan. 1 -- {name} reported an enhanced, bullish outlook."
         assert fp(name, sym, "company_name", text=text) == "ambiguous_name_without_context", name
@@ -36,8 +46,17 @@ def test_ordinary_word_aliases_are_refused():
 def test_context_allows_an_ambiguous_name():
     assert fp("Globe", "GL", "company_name", text="Globe Life Inc. (GL) rose.") is None          # named as a ticker
     assert fp("ENHANCED", "ENHA", "company_name", text="ENHANCED report", own_symbol="enha") is None  # filed under it
-    assert fp("Nasdaq", "NDAQ", "company_name", text="Shares of Nasdaq, NASDAQ: NDAQ, rose") is None
     assert fp("Be", "BE", "ticker_alias", text="Fuel cell maker NYSE: BE gained") is None
+    # "Nasdaq" was allowed here until 2026-11-07 (LQ-411). It is an exchange name, and the writer's
+    # stoplist refuses it whether or not the text names the ticker; the judge must make the same claim.
+
+
+def test_context_does_not_save_a_non_issuer_phrase():
+    """The name rule returns before the context gate, so naming the symbol cannot rescue the phrase."""
+    assert fp("Nasdaq", "NDAQ", "company_name",
+              text="Shares of Nasdaq, NASDAQ: NDAQ, rose") == "non_issuer_phrase:nasdaq"
+    assert fp("NEW YORK", "NYT", "company_name",
+              text="NEW YORK (NYSE: NYT) -- shares rose", own_symbol="NYT") == "non_issuer_phrase:new york"
 
 
 def test_the_symbol_must_stand_alone_to_count_as_context():

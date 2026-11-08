@@ -187,6 +187,19 @@ def false_positive_reason(matched_text: Any, symbol: Any, matched_via: Any, *, t
     # what is refused is a name found only INSIDE a longer word ("Ideal" in "idealistic").
     if text and n and f" {n} " not in f" {_norm(text)} ":
         return "no_word_boundary"
+    # LQ-20261107-411: an exchange, wire or place is not a company name, and context does not make it
+    # one — "Las Vegas" inside an article about LVS is still the city. Judged on the words the match
+    # RESTS on, so "Las Vegas Review-Journal" (narrowed onto "LAS VEGAS") is refused while "Las Vegas
+    # Sands" keeps its company. Returns before the context gate below, which could only allow it.
+    if matched_via == "company_name":
+        try:  # same lazy import the tagger uses; unavailable => no rule, and nothing is purged
+            from lib.company_name_index import non_issuer_match  # noqa: PLC0415
+        except Exception:
+            non_issuer_match = None                          # type: ignore -- cleanup rule is optional, never guesses
+        if non_issuer_match is not None:
+            place = non_issuer_match(name)
+            if place:
+                return f"non_issuer_phrase:{place}"
     tokens = n.split()
     ambiguous = None
     if n in AMBIGUOUS_NAMES:
