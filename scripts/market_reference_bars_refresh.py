@@ -161,8 +161,12 @@ def main(argv: list[str] | None = None) -> int:
             summary={**{k: out[k] for k in ("symbols", "fetched_bars", "stored_bars", "empty")},
                      "source": out["source"]},
             error=f"no bars for {', '.join(out['empty'])}" if out["empty"] else None,
+            # The COUNTED unit is a bar, not a symbol: produced_count is bars stored, so the attempt it is
+            # compared against (n8n_output_verdict requires attempted_count >= produced_count) must be bars
+            # fetched. With symbols here a normal run graded ``unverifiable: counts_inconsistent`` (51 < 357)
+            # on its first live fire -- LQ-20261107-479.
             produced_count=out["stored_bars"],
-            attempted_count=out["symbols"],
+            attempted_count=out["fetched_bars"],
             empty_reason="provider returned no bars" if out["empty"] else None,
         )
     return rc
