@@ -1292,7 +1292,9 @@ def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any]
             "grant_ignored": isinstance(grant, dict),
             "jobs_today": jobs_today,
             "daily_job_cap": int(a["daily_job_cap"]),
-            "daily_cost_cap_usd": float(a.get("daily_cost_cap_usd", 0) or 0),
+            "daily_cost_cap_usd": (
+                float(a["daily_cost_cap_usd"]) if a.get("daily_cost_cap_usd") is not None else None
+            ),
         }
     if not isinstance(grant, dict):
         return {"armed": False, "why": f"no active {a['grant_tier']} guard grant"}

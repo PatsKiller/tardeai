@@ -21,10 +21,10 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib import self_heal_fixer as F  # noqa: E402
-import self_heal_fixer as S  # noqa: E402
-from tests import test_self_heal_fixer_20261016 as B  # noqa: E402
-from tests.test_self_heal_fixer_20261016 import sandbox  # noqa: E402,F401  (fixture)
+from lib import self_heal_fixer as F  # noqa: E402 -- scripts/ must be on sys.path first
+import self_heal_fixer as S  # noqa: E402 -- scripts/ must be on sys.path first
+from tests import test_self_heal_fixer_20261016 as B  # noqa: E402 -- scripts/ must be on sys.path first
+from tests.test_self_heal_fixer_20261016 import sandbox  # noqa: E402,F401 -- pytest fixture imported by name; needs sys.path first
 
 NOW = B.NOW
 REPO_CFG = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())

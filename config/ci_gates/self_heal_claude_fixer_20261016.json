@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "self_heal_claude_fixer_20261016",
   "files": [
-    "tests/test_self_heal_fixer_20261016.py"
+    "tests/test_self_heal_fixer_20261016.py",
+    "tests/test_lq1192_self_heal_local_only_20261108.py"
   ],
   "anchor": "SELF_HEAL_CLAUDE_FIXER_20261016",
   "comment": [
@@ -13,6 +14,7 @@
     "mocked claude CLI (red-first, feedback, no-progress stop, refusal, push only behind the 24.11 policy gate),",
     "lifecycle advance, and the daily-incubator-refresh dry run. Consumer of N8nCodeDefect@v1 (#1828) built with the",
     "producer's own code_defect_hook; independent evaluator (backend claims never read; PR-head CI); static selector,",
-    "repair memory + shadow router; a second backend kind through the same acceptance scenario. Never a real model."
+    "repair memory + shadow router; a second backend kind through the same acceptance scenario. Never a real model.",
+    "LQ-20261107-1192: arming.local_only arms without a grant (caps bind), never pushes (no gh call), FIX_READY_LOCAL and non-code escalation FINDINGs to inbox/claude-lead."
   ]
 }
