@@ -246,9 +246,8 @@ def test_closeout_note_waives_the_age_floor_when_it_names_the_worktree(tmp_path,
     assert row["evidence"]["closeout_note"] == note["path"]
 
 
-def test_note_matches_by_exact_identity_and_note_age_is_not_a_condition(tmp_path, monkeypatch):
-    """A note vouches by identity, not by date: a sibling path or a longer branch waives nothing, while an older
-    note that names this exact path or branch still does (the identifiers are unique per worktree)."""
+def test_note_matches_by_exact_identity_not_by_prefix(tmp_path, monkeypatch):
+    """A sibling path or a longer branch in the note waives nothing: the match is set membership, not a prefix."""
     main = _main_repo(tmp_path)
     rules = _rules(tmp_path, worktree={"untouched_hours": 24, "closeout_note_waives_age": True})
     wt = _worktree(main, rules["_home"])
@@ -260,11 +259,20 @@ def test_note_matches_by_exact_identity_and_note_age_is_not_a_condition(tmp_path
     assert held["candidate"] is False
     assert "worktree_not_untouched_24h" in held["reasons"]
 
-    older = _note(f"{NOTE_DIR}/DONE-LQ-9999-fixture.md", NOW.timestamp() - 30 * 3600,
-                  branches=["wt/synthetic"])
-    waived = _wt_row(rules, monkeypatch, wt, _evidence(notes=[older]))
-    assert waived["candidate"] is True, waived["reasons"]
-    assert waived["evidence"]["closeout_note"] == older["path"]
+
+def test_a_note_written_before_the_worktree_last_moved_does_not_waive(tmp_path, monkeypatch):
+    """Workers keep one worktree across tickets, so a DONE note for an earlier ticket names a tree that may still be
+    in use. If anything in the tree moved after the note, the note no longer vouches for it: the 24 h floor binds."""
+    main = _main_repo(tmp_path)
+    rules = _rules(tmp_path, worktree={"untouched_hours": 24, "closeout_note_waives_age": True})
+    wt = _worktree(main, rules["_home"])
+    _age(main, wt, 2)  # last activity ~2 h ago; the note is 3 h old
+    note = _note(f"{NOTE_DIR}/DONE-LQ-9999-fixture.md", NOW.timestamp() - 3 * 3600,
+                 paths=[str(wt)], branches=["wt/synthetic"])
+
+    row = _wt_row(rules, monkeypatch, wt, _evidence(notes=[note]))
+    assert row["candidate"] is False
+    assert "worktree_not_untouched_24h" in row["reasons"]
 
 
 def test_incomplete_note_scan_never_waives_the_floor(tmp_path, monkeypatch):

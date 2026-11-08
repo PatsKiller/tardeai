@@ -1574,20 +1574,25 @@ def archive_refs(repos: Iterable[Path], archive_ns: str, now: datetime, retentio
     return rows
 
 
-def _closeout_note_waiver(ctx: Mapping[str, Any], path: Path, branch: Optional[str]) -> Optional[str]:
+def _closeout_note_waiver(ctx: Mapping[str, Any], path: Path, branch: Optional[str],
+                          activity: Optional[float]) -> Optional[str]:
     """The closeout note that names this worktree, or None (LQ-20261107-1252).
 
     A note can only waive rule W's age floor: the caller has already applied every clean/in-use/reference/PR/lock
     hold, and this never removes a reason. Two identities are accepted — the worktree's absolute path, or the branch
-    it has checked out — and the match is exact. Reuse is what would make an old note dangerous, and the workspace
-    tooling blocks it: `new-worktree.sh` refuses an existing path, `git worktree add -b` refuses an existing branch,
-    and branches are never deleted by the sweep.
+    it has checked out — and the match is exact.
+
+    The note must also have been written at or after the worktree's newest activity. That is what makes reuse safe:
+    workers keep ONE worktree across tickets ("reuse yours"), so a DONE note for an earlier ticket names a tree that
+    is still in use; if anything in the tree moved after the note, the note no longer vouches for it and the age floor
+    binds. A false hold (an index refresh after the note) costs a worktree one more day; the opposite mistake deletes
+    a live agent's work.
     """
     coordination = (ctx.get("snapshot") or {}).get("coordination") or {}
     if coordination.get("closeout_notes_complete") is not True:
         return None  # an unreadable note tree proves nothing; the age floor binds
     notes = coordination.get("closeout_notes")
-    if not isinstance(notes, list):
+    if not isinstance(notes, list) or activity is None:
         return None
     names = {str(path)}
     try:
@@ -1597,6 +1602,9 @@ def _closeout_note_waiver(ctx: Mapping[str, Any], path: Path, branch: Optional[s
     branch_name = branch.removeprefix("refs/heads/") if isinstance(branch, str) and branch else None
     for note in notes:
         if not isinstance(note, dict) or not isinstance(note.get("path"), str):
+            continue
+        written = note.get("mtime")
+        if type(written) not in _NUM or written < activity:
             continue
         if names & set(note.get("paths") or ()):
             return note["path"]
@@ -1771,7 +1779,7 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
         worktree_cfg = cfg.get("worktree") if isinstance(cfg.get("worktree"), dict) else {}
         untouched_hours = float(worktree_cfg.get("untouched_hours", 48))
         if not activity or ctx["now"].timestamp() - activity <= untouched_hours * 3600:
-            note = (_closeout_note_waiver(ctx, path, branch)
+            note = (_closeout_note_waiver(ctx, path, branch, activity)
                     if worktree_cfg.get("closeout_note_waives_age") is True else None)
             if note is None:
                 item["reasons"].append(f"worktree_not_untouched_{untouched_hours:g}h")
