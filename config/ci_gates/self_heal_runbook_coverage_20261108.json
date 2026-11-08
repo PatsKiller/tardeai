@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_runbook_coverage_20261108",
+  "files": [
+    "tests/test_self_heal_runbook_coverage_20261108.py"
+  ],
+  "anchor": "SELF_HEAL_RUNBOOK_COVERAGE_20261108",
+  "comment": [
+    "ANCHOR: SELF_HEAL_RUNBOOK_COVERAGE_20261108 — the self-heal replay corpus (LQ-1238) is exercised through the",
+    "LQ-1231 engine the way the fixer calls it: plan_runbook(failure_class, evidence, contract, now) with the",
+    "fixture's receipt as evidence, a synthetic lane contract and a FIXED clock, so a plan does not change with the",
+    "hour. 22/22 fixtures must resolve to a definite plan in the catalog, with a whitelisted action, the lane echoed",
+    "and a byte-identical repeat; the printed table records each fixture's corpus expectation beside the engine's",
+    "answer. Signatures the catalog cannot classify yet are pinned as a CEILING (CATALOG_GAPS_20261108): a new",
+    "unclassified signature fails. Synthetic fixtures only; no DB, no network, no live coordination store."
+  ]
+}

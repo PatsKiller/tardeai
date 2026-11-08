@@ -1,25 +1,66 @@
-"""LQ-20261107-1238: replay corpus schema and runbook coverage (SYNTHETIC fixtures only).
+"""LQ-20261107-1238 / LQ-20261107-1256: replay corpus schema and runbook resolution (SYNTHETIC fixtures only).
 
-Schema: tests/fixtures/self_heal_runbooks/README.md. The coverage replay needs the taxonomy
-(SELFHEAL-FAILURE-TAXONOMY-20261108.json, LQ-1237) and the engine (scripts/lib/self_heal_runbooks.py, LQ-1231);
-until both exist the replay test skips with the reason shown.
+Schema: tests/fixtures/self_heal_runbooks/README.md.
+
+The replay drives every fixture through the LQ-1231 engine (``scripts/lib/self_heal_runbooks.py``) the way the fixer
+calls it -- ``plan_runbook(failure_class, evidence, contract, now)``. Three inputs are built here, per fixture,
+because a fixture is an INPUT and never a plan:
+
+* ``evidence`` -- the fixture's receipt plus the two names the engine reads (``lane`` and ``signature``). The receipt
+  is the fixer's incident record; its fields are copied, never invented.
+* ``contract`` -- the lane's synthetic health contract (timeout, freshness threshold). An entry that needs a
+  threshold refuses without one, so the replay supplies the one a lane would carry.
+* ``now`` -- a fixed clock. Deferral jitter, cooldowns and the idempotency key all depend on ``now``; a replay that
+  reads the wall clock proves something different every hour.
+
+The replay resolves all 22 fixtures to a definite plan and prints each fixture's expectation beside the engine's
+answer. It also pins, as a ceiling, the signatures the catalog cannot classify yet: those fall through to the K05
+catch-all and are reported to the catalog owner (LQ-1231). The ceiling may only shrink -- a NEW unclassified
+signature fails this test.
+
+The replay reads no live coordination store (the hermetic guard refuses one under pytest, AGENTS.md §24.6) and no
+taxonomy: the corpus is self-contained, and its provenance is recorded in the fixtures README.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
-import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "self_heal_runbooks"
-COORD = Path(os.environ.get("TRADEAI_COORDINATION_DIR", "/nonexistent-coordination-dir"))
-TAXONOMY = COORD / "SELFHEAL-FAILURE-TAXONOMY-20261108.json"
 CATALOG = ROOT / "config" / "self_heal_runbook_catalog.json"
 ENGINE = ROOT / "scripts" / "lib" / "self_heal_runbooks.py"
+
+#: The replay's clock. A literal, never ``datetime.now()``: the plan's deferral, jitter, cooldown and idempotency
+#: key are all functions of this value, and a corpus that changes with the hour proves nothing.
+NOW = datetime(2026, 11, 8, 17, 0, tzinfo=timezone.utc)
+#: The synthetic lane contract every fixture is replayed against: one lane timeout, one freshness threshold.
+CONTRACT_BASELINE = {"timeout_s": 1800, "freshness_failed_after_h": 26}
+#: The engine's catch-all. A fixture that resolves here has no catalog entry of its own.
+CATCH_ALL = "K05-unclassified-catch-all"
+#: Signatures with no catalog entry as of 2026-11-08 (engine/catalog at 647380c2a). These are catalog gaps reported
+#: to LQ-1231, not desired behaviour: the engine answers them with the catch-all, which escalates every one of them.
+#: This is a CEILING: closing a gap is green, and the id can be deleted; a new unclassified signature fails.
+CATALOG_GAPS_20261108 = frozenset({
+    "db-error-while-updating",
+    "discovery-empty-key",
+    "effect-already-claimed",
+    "effect-no-owner",
+    "env-names-missing",
+    "flock-skipped-pid-running",
+    "log-path-not-a-directory",
+    "output-unverifiable",
+    "rollback-connection-closed",
+    "setup-step-timeout",
+    "timeout-exit-124",
+    "upstream-verification-failed",
+})
 
 CATEGORIES = frozenset("ABCDEFGHIJK")
 TIERS = frozenset({"auto", "auto_notify", "human_only"})
@@ -38,6 +79,28 @@ def _fixture_paths() -> list[Path]:
 
 def _load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _engine():
+    """The LQ-1231 engine, loaded by path (``scripts`` is a namespace package, not importable as a module)."""
+    spec = importlib.util.spec_from_file_location("self_heal_runbooks", ENGINE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _evidence(doc: dict) -> dict:
+    """The fixer's incident for this fixture: its receipt, with the two names the engine matches and keys on."""
+    receipt = doc["receipt"]
+    return dict(receipt, lane=receipt["lane_id"], signature=doc["signature_id"])
+
+
+def _contract(doc: dict) -> dict:
+    return {"lane": doc["receipt"]["lane_id"], "baseline": dict(CONTRACT_BASELINE)}
+
+
+def _plan(engine, catalog: dict, doc: dict) -> dict:
+    return engine.plan_runbook(doc["receipt"]["failure_class"], _evidence(doc), _contract(doc), NOW, catalog=catalog)
 
 
 def test_fixture_dir_exists_and_schema_doc_is_present():
@@ -73,30 +136,56 @@ def test_corpus_has_one_fixture_per_signature_with_count_at_least_two():
     assert len(ids) == len(set(ids)) == 22
 
 
+def test_replay_resolves_every_fixture_to_a_definite_plan():
+    """22/22 fixtures resolve at the fixed clock; the corpus expectation is printed beside each answer.
 
-@pytest.mark.skipif(not (TAXONOMY.exists() and CATALOG.exists() and ENGINE.exists()),
-                    reason="needs LQ-1237 taxonomy, LQ-1231 catalog and engine (not on origin/main yet)")
-def test_replay_zero_unclassified_and_print_coverage():
-    import importlib.util
+    The expectation is the corpus's specification, not the engine's contract: where the two differ the replay says
+    so per fixture (see the printed table and the DONE note) instead of rewriting either side here.
+    """
+    engine = _engine()
+    catalog = engine.load_catalog(CATALOG)
+    paths = _fixture_paths()
+    resolved = 0
+    matching = 0
+    for path in paths:
+        doc = _load(path)
+        plan = _plan(engine, catalog, doc)
+        assert plan["schema"] == engine.PLAN_SCHEMA
+        assert plan["at"] == NOW.isoformat(), "the replay must answer at the fixed clock, not the wall clock"
+        assert plan["lane"] == doc["receipt"]["lane_id"]
+        assert plan["entry"] in catalog, plan["entry"]
+        assert plan["action"] in engine.ACTION_WHITELIST, plan["action"]
+        assert plan["tier"] in engine.TIERS, plan["tier"]
+        assert plan["fallback"] == (plan["entry"] == CATCH_ALL), "fallback flag and catch-all entry disagree"
+        again = _plan(engine, catalog, doc)
+        assert (again["entry"], again["action"], again["tier"], again["idempotency_key"]) == (
+            plan["entry"], plan["action"], plan["tier"], plan["idempotency_key"]
+        ), f"{doc['fixture_id']}: the plan is not deterministic at a fixed clock"
+        expect = doc["expect"]
+        matched = (plan["entry"] == expect["entry_id"] and plan["action"] == expect["action"]
+                   and plan["tier"] == expect["tier"])
+        print(f"replay {doc['fixture_id']:32s} expect {expect['entry_id']:34s} {expect['action']:26s} "
+              f"{expect['tier']:11s} -> got {plan['entry']:24s} {plan['action']:26s} {plan['tier']:11s} "
+              f"{'MATCH' if matched else 'DIFF'}")
+        resolved += 1
+        matching += int(matched)
+    print(f"replay resolved {resolved}/{len(paths)} fixtures; {matching}/{len(paths)} match the corpus expectation")
+    assert resolved == 22
 
-    spec = importlib.util.spec_from_file_location("self_heal_runbooks", ENGINE)
-    engine = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(engine)
-    taxonomy = json.loads(TAXONOMY.read_text(encoding="utf-8"))
-    # The taxonomy is a list of rows {signature, count_30d, ...}; fixtures carry sanitized copies of the text,
-    # so the check is one fixture per row with count_30d >= 2 (the README names the mapping).
-    counted = [s for s in taxonomy if s.get("count_30d", 0) >= 2]
-    assert len(counted) == len(_fixture_paths()), (len(counted), len(_fixture_paths()))
-    unclassified = []
-    per_category: dict[str, list[int]] = {}
+
+def test_replay_unclassified_set_cannot_grow():
+    """Every signature the catalog cannot classify is already on the known-gaps list; none may be added silently."""
+    engine = _engine()
+    catalog = engine.load_catalog(CATALOG)
+    unclassified = set()
     for path in _fixture_paths():
         doc = _load(path)
-        plan = engine.plan_runbook(doc["receipt"])
-        ok = plan is not None and getattr(plan, "status", None) != "unclassified"
-        per_category.setdefault(doc["category"], []).append(1 if ok else 0)
-        if not ok:
-            unclassified.append(doc["fixture_id"])
-    for cat in sorted(per_category):
-        vals = per_category[cat]
-        print(f"coverage {cat}: {sum(vals)}/{len(vals)} = {100 * sum(vals) // len(vals)}%")
-    assert unclassified == []
+        if _plan(engine, catalog, doc)["entry"] == CATCH_ALL:
+            unclassified.add(doc["fixture_id"])
+    assert unclassified <= CATALOG_GAPS_20261108, (
+        f"new signatures with no catalog entry: {sorted(unclassified - CATALOG_GAPS_20261108)}; add an entry to "
+        "config/self_heal_runbook_catalog.json (owner LQ-1231), do not widen the gap set"
+    )
+    closed = sorted(CATALOG_GAPS_20261108 - unclassified)
+    if closed:
+        print(f"catalog gaps now closed (delete from CATALOG_GAPS_20261108): {closed}")

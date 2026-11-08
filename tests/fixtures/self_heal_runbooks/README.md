@@ -53,5 +53,23 @@ Mapping notes:
 
 ## Replay
 
-Needs the taxonomy file (set `TRADEAI_COORDINATION_DIR`), `config/self_heal_runbook_catalog.json` and
-`scripts/lib/self_heal_runbooks.py` (LQ-1231). Until those land the replay test skips with its reason.
+`tests/test_self_heal_runbook_coverage_20261108.py` replays every fixture through `plan_runbook()` in
+`scripts/lib/self_heal_runbooks.py` with, per fixture, three inputs built by the harness:
+
+- `evidence` -- the fixture's `receipt`, plus `lane` (= `receipt.lane_id`) and `signature` (= `signature_id`);
+- `contract` -- a synthetic lane contract: `timeout_s 1800`, `freshness_failed_after_h 26`;
+- `now` -- a **fixed clock** (2026-11-08T17:00Z). The plan's deferral, jitter, cooldown and idempotency key all
+  depend on it, so a replay that read the wall clock would prove something different every hour.
+
+The replay reads no taxonomy and no live coordination store; the corpus is self-contained (the schema test checks
+`count_30d >= 2` on every fixture).
+
+It resolves all 22 fixtures to a definite plan in the catalog and prints each fixture's `expect` beside the engine's
+answer. The two are **reported**, not reconciled here: the `entry_id` column above was written before the catalog
+landed and uses `<letter>-<slug>`, while the catalog ids are `<letter><NN>-<slug>`; a few `action`/`tier` cells also
+disagree with the catalog's choice. Each disagreement is listed per fixture in
+`DONE-LQ-20261107-1256-cc-deepseek-8.md` and belongs to the catalog owner (LQ-1231) or to a reviewed corpus change,
+never to a silent edit on one side.
+
+Signatures the catalog cannot classify yet fall to the catch-all; they are pinned as a ceiling
+(`CATALOG_GAPS_20261108`) that a new unclassified signature fails and a closed gap may shrink.
