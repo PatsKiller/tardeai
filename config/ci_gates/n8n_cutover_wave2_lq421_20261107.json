@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_cutover_wave2_lq421_20261107",
+  "files": [
+    "tests/test_n8n_cutover_wave2_lq421_20261107.py"
+  ],
+  "anchor": "N8N_CUTOVER_WAVE2_LQ421_20261107",
+  "comment": [
+    "ANCHOR: N8N_CUTOVER_WAVE2_LQ421_20261107 - a registry row at dispatch.mode=live must render into",
+    "N8N_RELAY_LIVE_LANES.json with a non-null allowlist live_arg; otherwise n8n_due skips the lane, the",
+    "dispatcher writes no run row, and a lane the registry calls live is never run by n8n (the 2026-11-07",
+    "wave-2 shape: 21 of the 31 'both' lanes had no dispatch block at all until the 01:25 ET W5 fold 3e5058a4b)."
+  ]
+}
