@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_verify_20261108",
+  "files": [
+    "tests/test_self_heal_verify_20261108.py"
+  ],
+  "anchor": "SELF_HEAL_VERIFY_20261108",
+  "comment": [
+    "ANCHOR: SELF_HEAL_VERIFY_20261108 — the self-heal fixer's best-practice verification (LQ-20261107-1234):",
+    "repro 3x RED on base and 3x GREEN after (a run with no verdict is neither), an error-masking diff lint",
+    "with a positive and a negative fixture per rule (broad except + pass, early empty return on a failing",
+    "path, skip/xfail/deselect, a new conftest.py, a deleted assert, a forced exit code), and a companion",
+    "suite command that never runs nothing. Synthetic diffs and a scripted runner; no command is executed."
+  ]
+}
