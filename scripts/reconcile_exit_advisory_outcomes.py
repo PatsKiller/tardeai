@@ -125,6 +125,9 @@ BAR_COVER_SLACK_DAYS = 7
 # Why a run produced nothing. ``up_to_date`` is the only one that is clean; the rest are failures naming
 # a cause, never a green "0" (AGENTS.md rule 8: exit 0 is not evidence of work).
 CLEAN_EMPTY_REASONS = frozenset({"up_to_date"})
+# Skip reasons that describe a quiet but healthy run: the advisory is still inside its horizon, or it was
+# already scored for that horizon. Any other reason in an all-skipped run is a failure, not a quiet week.
+QUIET_SKIP_REASONS = frozenset({"not_due", "already_reconciled"})
 
 
 def _num(v) -> float | None:
@@ -424,9 +427,15 @@ def reconcile() -> int:
             )
             done += 1
     if done == 0:
-        # The selector found work and none of it could be written: name it instead of reporting a green 0.
+        # The selector found work and none of it could be written: name it instead of reporting a green 0. A
+        # quiet week (everything still inside its horizon, or already scored) is clean; anything else is not.
         why = f"{attempted} advisory-horizon pairs attempted, none written: {skipped or 'no reason recorded'}"
         print(f"[exit-outcomes] all_skipped — {why}", file=sys.stderr)
+        bad = {k: v for k, v in skipped.items() if k not in QUIET_SKIP_REASONS}
+        if bad:
+            _receipt(ok=False, produced=0, attempted=attempted, empty_reason="input_inconsistent",
+                     skipped=skipped, error=f"selected advisories were not attemptable: {bad}")
+            return 1
         _receipt(ok=True, produced=0, attempted=attempted, empty_reason="all_skipped", skipped=skipped)
         return 0
     print(f"[exit-outcomes] evaluated {done} advisory-horizon pairs (of {attempted} attempted)")

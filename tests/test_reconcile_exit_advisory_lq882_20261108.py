@@ -355,6 +355,21 @@ def test_pending_but_nothing_selected_is_a_contradiction(lane, monkeypatch, tmp_
     assert _receipt(tmp_path)["empty_reason"] == "input_inconsistent"
 
 
+def test_an_advisory_whose_date_cannot_be_read_fails_the_run_rather_than_quiet_week(lane, monkeypatch, tmp_path):
+    """`all_skipped` is only clean when every skip is 'not due' or 'already scored'. A selected advisory whose
+    own timestamp will not parse is an input defect: exit 1 and name it."""
+    rows = [_ri_row(1, "protection_advisory", "AAA", 60, _protection("AAA"))]
+    db = FakeDB(rows)
+    # the counts read the valid row; only the selector's output carries the unparseable timestamp
+    db._selected = lambda types: [dict(rows[0], created_at="not-a-timestamp")]
+    _wire(monkeypatch, lane, db)
+    assert lane.reconcile() == 1
+    receipt = _receipt(tmp_path)
+    assert receipt["status"] == "failed" and receipt["empty_reason"] == "input_inconsistent"
+    assert receipt["skipped_reasons"] == {"advisory_at_unreadable": 1}
+    assert db.inserts == []
+
+
 # ----------------------------------------------------------------------------------------------------------
 # cost and truthfulness of the rows written
 # ----------------------------------------------------------------------------------------------------------
