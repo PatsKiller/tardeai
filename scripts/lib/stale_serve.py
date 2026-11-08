@@ -67,10 +67,19 @@ DEFAULT_SWR_PATHS = (
     # LQ-20261107-258: 25-35 s cold (per-row decision snapshots, ATR bars, the picked SQL),
     # 3 MB, and the first thing a phone loads. Cleared on every watchlist write below.
     "/api/v2/watchlist/items",
+    # LQ-20261107-822: 3.8-4.3 s normally and 16.9 s at load 27, for a body that is a 30-day
+    # spend/usage rollup. Nearly every request re-parsed the 114 MB provider-cost events file
+    # before answering (anthropic_monitoring._events, 0.6-1.3 s of CPU alone). Bounded to
+    # PATH_MAX_STALE_S below because "today" counters move with every LLM call.
+    "/api/v2/consumption/overview",
 )
 #: A cached read older than this is recomputed inline, whatever MAX_STALE_S says.
 PATH_MAX_STALE_S = {
     "/api/v2/watchlist/items": 3600.0,
+    # LQ-20261107-822: a spend/usage page, not a price page — but its "today" counters and its
+    # advisory insights really do move during a session, so never present more than 5 minutes
+    # of staleness even when every background refresh fails.
+    "/api/v2/consumption/overview": 300.0,
 }
 #: cached GET path -> substrings of the POST paths that can change it. Over-matching only
 #: costs one inline compute; under-matching would show an operator the pre-write list.
@@ -79,6 +88,10 @@ _WATCH_WRITE_MARKERS = ("watch", "screener", "discovery", "prospect", "hermes", 
 WRITE_INVALIDATES = {
     "/api/v2/watchlist/items": _WATCH_WRITE_MARKERS,
     "/api/v3/data-broker/watch-curation": _WATCH_WRITE_MARKERS,
+    # LQ-20261107-822: the operator's own consumption writes — process-mode, stop-advisory,
+    # run-manual, caller-priorities — change the insights and the mode counts this body carries.
+    # A read right after one must compute with the write in it, not serve the pre-write view.
+    "/api/v2/consumption/overview": ("/api/v2/consumption",),
 }
 INVALIDATIONS_FILE = "_invalidated.json"
 FRESH_S = float(os.environ.get("TRADEAI_SWR_FRESH_S") or 60.0)

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "N8N_ERROR_CLASS_RECEIPT_20261108",
+  "files": [
+    "tests/test_n8n_error_class_receipt_20261108.py"
+  ],
+  "anchor": "N8N_ERROR_CLASS_RECEIPT_20261108",
+  "comment": [
+    "ANCHOR: N8N_ERROR_CLASS_RECEIPT_20261108 — measured in the Fable n8n design audit (LQ-984 Q4): 19,483 diagnosis events in one week, failure_kind unknown on 19,036 of them (97.7%), because the deterministic tier classified the SIEM row's error TEXT and a lane that exited non-zero without a traceback carried nothing to classify while an 800-char tail cut the useful frame out of the ones that did. This gate pins the three halves of LQ-20261107-992: one vocabulary (scripts/lib/n8n_error_class.py, the existing n8n_self_heal classes plus receipt-only states, the lane's own declared class first, unknown only when a failed run names nothing); the executor stamps error_class on every terminal RunReceipt and keeps a 4,000-char tail; and the diagnoser reads the receipt's class before any text rule (resolve()). It also pins that a stale _last.json from another run is not this attempt's evidence and that the 4,000-char tail keeps a whole Python traceback."
+  ]
+}

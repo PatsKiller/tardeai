@@ -30,6 +30,11 @@ The workflow only ever asks the relay to *request* a run. It never runs a comman
 sends, never touches a secret other than the one relay bearer; the executor on the host
 runs the lane's own runner under the lane's own lock (plan: streamed-humming-wolf, 2026-10-08).
 
+An allowlisted ACTIVE n8n lane whose scheduler names this live workflow gets
+``settings.executionTimeout`` = allowlist ``timeout_s`` + 30. The HTTP node's 10s
+timeout only bounds the relay POST. Shared dispatcher and fabric workflows keep the
+executionTimeout in their own JSON. This generator does not import or activate.
+
     python3 scripts/n8n_workflow_templates.py --lanes N1 --out docs/implementation/n8n-parallel/workflows/generated
     python3 scripts/n8n_workflow_templates.py --lanes all --check     # CI: committed files == regenerated
     python3 scripts/n8n_workflow_templates.py build-generic [--out DIR] [--check]   # six generic workflows
@@ -1096,6 +1101,53 @@ def _gated_chain(lane: dict, mode: str, name: str, relay_url: str, after: str) -
     return nodes, connections
 
 
+EXECUTION_TIMEOUT_MARGIN_S = 30
+_ALLOWLIST_TIMEOUT: dict[str, int] | None = None
+_REGISTRY_LANES: dict[str, dict] | None = None
+
+
+def _allowlist_timeout() -> dict[str, int]:
+    global _ALLOWLIST_TIMEOUT
+    if _ALLOWLIST_TIMEOUT is None:
+        doc = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))
+        out: dict[str, int] = {}
+        for row in doc.get("lanes") or []:
+            if isinstance(row, dict) and isinstance(row.get("lane_id"), str) and isinstance(row.get("timeout_s"), int):
+                out[row["lane_id"]] = row["timeout_s"]
+        _ALLOWLIST_TIMEOUT = out
+    return _ALLOWLIST_TIMEOUT
+
+
+def _registry_lanes() -> dict[str, dict]:
+    global _REGISTRY_LANES
+    if _REGISTRY_LANES is None:
+        doc = json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+        _REGISTRY_LANES = {
+            row["lane_id"]: row
+            for row in doc.get("lanes") or []
+            if isinstance(row, dict) and isinstance(row.get("lane_id"), str)
+        }
+    return _REGISTRY_LANES
+
+
+def execution_timeout_s(lane_id: str) -> int | None:
+    """Allowlist timeout_s + 30 when this generator owns that lane's live workflow.
+
+    Shared workflows (expression ``dispatcher`` or a fabric name) keep their own
+    executionTimeout. A lane that is not ACTIVE, not n8n, or not allowlisted is unchanged.
+    """
+    row = _registry_lanes().get(lane_id)
+    if not row or row.get("state") != "ACTIVE":
+        return None
+    sch = row.get("scheduler") or {}
+    if sch.get("kind") != "n8n" or str(sch.get("expression") or "") != _wf_id(lane_id):
+        return None
+    timeout = _allowlist_timeout().get(lane_id)
+    if timeout is None or timeout < 1:
+        return None
+    return timeout + EXECUTION_TIMEOUT_MARGIN_S
+
+
 def build_workflow(lane: dict, mode: str, relay_url: str = RELAY_URL_PLACEHOLDER) -> dict:
     """One n8n workflow (import shape for n8n 2.43.0) for a lane in a run mode."""
     assert mode in ("dry_run", "live"), mode
@@ -1118,13 +1170,17 @@ def build_workflow(lane: dict, mode: str, relay_url: str = RELAY_URL_PLACEHOLDER
     }
     if after:
         meta["after"] = after
+    settings: dict = {"executionOrder": "v1", "timezone": TIMEZONE, "saveManualExecutions": True}
+    bound = execution_timeout_s(lane_id)
+    if bound is not None:
+        settings["executionTimeout"] = bound
     return {
         "id": _wf_id(name),
         "name": name,
         "active": False,
         "nodes": nodes,
         "connections": connections,
-        "settings": {"executionOrder": "v1", "timezone": TIMEZONE, "saveManualExecutions": True},
+        "settings": settings,
         "meta": meta,
     }
 

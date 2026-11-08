@@ -131,7 +131,7 @@ def _synthesize(topic, context, articles=None):
     for lane in (("bridge",) if via_bridge else ("grok", "chatgpt")):  # local generation is refused by policy
         try:
             raw, _used = generate_cloud(_prompt(topic, context, articles), process_id=PROCESS_ID,
-                                        task_summary=f"topic research {str(topic)[:80]}", timeout=70,
+                                        task_summary=f"topic research {str(topic)[:80]}",
                                         lanes=(lane,))
             d = parse_hermes_topic_result(raw)
             if not d:

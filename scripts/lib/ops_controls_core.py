@@ -260,6 +260,14 @@ KINDS: dict[str, KindSpec] = {k.kind: k for k in (
     KindSpec("passkey.revoke", "Revoke a passkey", RISKY, EXEC_CC, "passkeys"),
     # Work pipeline Tier 2 (operator 2026-10-23, "both"): scripts/lib/work_pipeline_tier2.py; each also gated by
     # config/ops_controls.json work_pipeline.<flag> (merge, release and package approval default OFF).
+    # LQ-20261107-611: manual "Run lane now" (scripts/lib/ops_n8n_lane_run.py). Dry runs are one confirm; live runs and
+    # live run-all need step-up + a typed phrase. Applier signs coordination/run as the operator-manual caller.
+    KindSpec("n8n_lane_run.dry", "Run an n8n lane now (dry run)", SAFE, EXEC_APPLIER, "jobs"),
+    KindSpec("n8n_lane_run.live", "Run an n8n lane now (LIVE)", RISKY, EXEC_APPLIER, "jobs"),
+    KindSpec("n8n_lane_run_all.dry", "Run all n8n lanes (dry runs)", SAFE, EXEC_APPLIER, "jobs"),
+    KindSpec("n8n_lane_run_all.live", "Run all eligible n8n lanes (LIVE)", RISKY, EXEC_APPLIER, "jobs"),
+    KindSpec("n8n_lane_run.cancel", "Cancel the queued (not started) runs of a manual request", SAFE, EXEC_APPLIER,
+             "jobs"),
     KindSpec("pipeline.approve_design", "Work pipeline: approve a design, phase or packet", RISKY, EXEC_APPLIER,
              "pipeline"),
     KindSpec("pipeline.contract_reviewed", "Work pipeline: mark a DRAFT n8n health contract reviewed", RISKY,
@@ -300,6 +308,10 @@ def phrase_for(kind: str, params: Mapping[str, Any], today: str) -> Optional[str
         from scripts.lib import work_pipeline_tier2 as T2
 
         return T2.phrase(kind, params, today)
+    if kind.startswith("n8n_lane_run"):
+        from scripts.lib import ops_n8n_lane_run as LR
+
+        return LR.phrase(kind, params, today)
     target = {
         "crontab.pause": lambda: params.get("lane_id") or str(params.get("line_sha256", ""))[:8],
         "crontab.resume": lambda: params.get("lane_id") or str(params.get("line_sha256", ""))[:8],
@@ -341,6 +353,11 @@ class Hosts:
     runner: Runner = field(default=_run)
     clock: Callable[[], datetime] = field(default=utc_now)
     release_state_dir: Optional[Path] = None
+    # LQ-611 manual lane run: tests inject these; on the host they stay None (key from the applier's environment,
+    # real loopback transport, real trading-day check). The web process never holds a key.
+    operator_key: Optional[bytes] = None
+    gateway_transport: Optional[Callable[[str, dict], tuple[int, dict]]] = None
+    market_open: Optional[Callable[[], Optional[bool]]] = None
 
     # crontab
     def crontab_read(self) -> str:
@@ -616,6 +633,10 @@ def plan_change(kind: str, params: Mapping[str, Any], hosts: Hosts, store: Any, 
         from scripts.lib import work_pipeline_tier2 as T2
 
         return T2.plan(kind, p, hosts, store, request_id=request_id, actor=actor)
+    if kind.startswith("n8n_lane_run"):
+        from scripts.lib import ops_n8n_lane_run as LR
+
+        return LR.plan(kind, p, hosts, store, request_id=request_id, actor=actor)
 
     if kind in ("crontab.pause", "crontab.resume"):
         sha = _req_str(p, "line_sha256", SHA_RE)
@@ -852,6 +873,10 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
         from scripts.lib import work_pipeline_tier2 as T2
 
         return T2.apply(kind, plan, hosts, store, request_id=request_id, actor=actor)
+    if kind.startswith("n8n_lane_run"):
+        from scripts.lib import ops_n8n_lane_run as LR
+
+        return LR.apply(kind, plan, hosts, store, request_id=request_id, actor=actor)
     res: dict[str, Any] = {"kind": kind, "summary": plan.summary, "undo": plan.undo, "undo_reason": plan.undo_reason}
 
     if kind in ("crontab.pause", "crontab.resume"):

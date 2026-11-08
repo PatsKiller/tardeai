@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_manifest_20261108",
+  "files": [
+    "tests/test_lane_manifest_20261108.py"
+  ],
+  "anchor": "LANE_MANIFEST_20261108",
+  "comment": [
+    "ANCHOR: LANE_MANIFEST_20261108 — LQ-20261107-1003: one schema-validated lane manifest (LaneManifest@v1),",
+    "RETIRED disarms, no dev-tree $PY in a command, cron lines attributed by effect-claim key both ways, and the",
+    "lane_registry.json shim gives every existing reader identical answers."
+  ]
+}

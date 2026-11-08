@@ -86,7 +86,7 @@ def collect(led, state: dict) -> tuple[list[dict], dict]:
 
 
 def lane_stages() -> dict[str, str] | None:
-    """lane -> scheduler stage from the lane registry (live canary lanes are never probed)."""
+    """lane -> scheduler stage from the lane registry (a live canary lane spends the canary probe budget)."""
     try:
         reg = json.loads((PROJECT_ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
 
                 if not send_telegram(
                     msg,
-                    priority=cfg["alert_priority"],
+                    priority=BP.priority(acts, cfg),
                     dedupe_minutes=0,
                     producer=cfg["producer"],
                     message_class=cfg["message_class"],

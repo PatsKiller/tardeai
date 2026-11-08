@@ -32,6 +32,7 @@ import {
   readinessView, runsText, sortRows as sortN8nRows, stageView, type N8nFilter, type N8nRowX,
 } from '../lib/opsControlsN8n'
 import OpsDeskFrame from '../components/OpsDeskFrame'
+import RunLaneSheet from '../components/RunLaneSheet'
 import {
   changedText, effectiveOf, GATEWAY_MODE_KEY, isOn, laneToggles, maskPhone, settingRow, SMS_EMAIL_KEY, SMS_ENABLED_KEY,
   smsReadiness, SOURCE_TEXT, testSendText, validateSmsEmail,
@@ -143,7 +144,7 @@ function ActionButton({ state, kind, text, params, title, run, extraDisabled }: 
 }
 
 // ── the change flow (safe one click, or the 3-step risky modal) ──────────────────────────────────────
-type FlowStart = { title: string; start: () => Promise<OpsRequest> }
+type FlowStart = { title: string; start: () => Promise<OpsRequest>; onDone?: (r: OpsRequest) => void }
 type Stage = 'creating' | 'preview' | 'auth' | 'register' | 'applying' | 'done'
 
 function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsControlsState | null; onClose: () => void }) {
@@ -201,6 +202,8 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
     timer = setTimeout(tick, 1000)
     return () => { alive = false; if (timer) clearTimeout(timer) }
   }, [stage, req?.request_id])
+
+  useEffect(() => { if (stage === 'done' && req && req.status === 'APPLIED') flow.onDone?.(req) }, [stage])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose() }
@@ -1155,6 +1158,11 @@ export default function OpsControlsPage() {
     startFlow({ title, start: () => opsApi.createRequest(kind, params, safe) })
   }
   const close = () => { setFlow(null); api.refetch() }
+  const [sheet, setSheet] = useState(false)
+  const startLane = (kind: string, params: Record<string, unknown>, title: string, onDone?: (r: OpsRequest) => void) => {
+    const safe = kindFor(d, kind)?.direction === 'safe'
+    startFlow({ title, start: () => opsApi.createRequest(kind, params, safe), onDone })
+  }
 
   const inert = !!d && d.policy?.state !== 'ACTIVE'
   const TABS: Array<[TabKey, string, string]> = [
@@ -1181,6 +1189,7 @@ export default function OpsControlsPage() {
         {d ? <Chip tone="neutral">operator {s(d.operator)}</Chip> : null}
         {d ? <Chip tone="neutral">observed {et(d.as_of)}</Chip> : null}
       </ChipRow>
+      <button type="button" data-testid="ops-run-a-lane" disabled={inert} onClick={() => setSheet(true)} style={{ ...btnStyle('info', inert), marginTop: 8 }}>Run a lane</button>
       <p style={muted}>Agents cannot use this page. Safe direction (STOP, pause, engage kill switch) is one click; the risky direction needs a passkey on this device and a typed phrase. Telegram is notified; it confirms nothing. The host terminal remains a fallback.</p>
     </div>
 
@@ -1218,6 +1227,8 @@ export default function OpsControlsPage() {
     {tab === 'audit' ? <AuditTab d={d} startFlow={startFlow} /> : null}
 
     <PasskeysPanel d={d} run={run} />
+
+    {sheet ? <RunLaneSheet onClose={() => setSheet(false)} start={startLane} /> : null}
 
     {flow ? <FlowModal flow={flow} state={d} onClose={close} /> : null}
   </section>

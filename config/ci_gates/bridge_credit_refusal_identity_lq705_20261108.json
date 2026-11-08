@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "bridge_credit_refusal_identity_lq705_20261108",
+  "files": [
+    "tests/test_bridge_credit_refusal_identity_lq705_20261108.py"
+  ],
+  "anchor": "BRIDGE_CREDIT_REFUSAL_LQ705_20261108",
+  "comment": [
+    "ANCHOR: BRIDGE_CREDIT_REFUSAL_LQ705_20261108 — an Anthropic credit refusal must name the governed",
+    "process in anthropic_credit.jsonl (never unknown:<pid>) and must reach llm_consumption_log as a",
+    "failed consumption, while every non-credit provider failure keeps its existing path (INC-261108-hvtspn)."
+  ]
+}

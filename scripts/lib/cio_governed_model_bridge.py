@@ -1855,6 +1855,22 @@ def _attempt_failure_kind(exc: BaseException) -> tuple[str, int | None, float | 
     return "serving_failure", status, None
 
 
+# A credit refusal is decided before dispatch and costs nothing: the book raised instead of
+# reserving. These are the only codes written to llm_consumption_log as a failed consumption;
+# every other provider failure keeps its existing route receipt and journal path
+# (INC-261108-hvtspn: 7 refusals in 60 min left no row at all).
+CREDIT_REFUSAL_CODES = frozenset({
+    "NOT_CONFIGURED", "EXPIRED", "EXHAUSTED", "PAUSED_TODAY", "UNAVAILABLE",
+    "CREDIT_PER_CALL_CAP", "CREDIT_PROCESS_CAP", "EMERGENCY_TIER_REFUSED", "CALL_COST_CEILING",
+})
+
+
+def credit_refusal_code(exc: BaseException | None) -> str | None:
+    """The typed credit code carried by ``exc``, or None when it is not a credit refusal."""
+    code = getattr(exc, "code", None) or getattr(exc, "reason", None)
+    return code if isinstance(code, str) and code in CREDIT_REFUSAL_CODES else None
+
+
 def _receipt(cand: dict[str, Any], outcome: str, **extra: Any) -> dict[str, Any]:
     oauth = cand["provider"] in oauth_transport.OAUTH_PROVIDERS
     out = {
@@ -1939,8 +1955,15 @@ def walk_routes(
             except Exception as exc:
                 if funding is None:
                     raise
-                funding.record_fallback(getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"))
-                receipts.append(_receipt(cand, "transport_unavailable", detail=type(exc).__name__))
+                funding.record_fallback(
+                    getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"),
+                    funding.process_id,
+                )
+                receipt = _receipt(cand, "transport_unavailable", detail=type(exc).__name__)
+                refusal = credit_refusal_code(exc)
+                if refusal:
+                    receipt["credit_refusal"] = refusal
+                receipts.append(receipt)
                 last_error = exc
                 continue
             kwargs: dict[str, Any] = {
@@ -1986,8 +2009,15 @@ def walk_routes(
             try:
                 response = transport.generate(messages, cand.get("model_id"), **kwargs)
             except Exception as exc:  # noqa: BLE001 -- every failure becomes a receipt, then the next lane
+                refusal = None
                 if provider == "anthropic" and funding is not None:
-                    funding.record_fallback(getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"))
+                    # The journal row must name the governed process: reason codes are useless if
+                    # every refusal reads unknown:<pid> (INC-261108-hvtspn).
+                    funding.record_fallback(
+                        getattr(exc, "code", None) or getattr(exc, "reason", "PROVIDER_UNAVAILABLE"),
+                        funding.process_id,
+                    )
+                    refusal = credit_refusal_code(exc)
                 kind, status, retry_after = _attempt_failure_kind(exc)
                 sent = bool(getattr(exc, "possibly_billable", False) or getattr(exc, "request_sent", False))
                 billable = provider not in oauth_transport.OAUTH_PROVIDERS and provider != "anthropic" and sent
@@ -2008,6 +2038,7 @@ def walk_routes(
                         if provider in oauth_transport.OAUTH_PROVIDERS
                         else ("possibly_billable_unknown" if billable else "not_sent"),
                         detail=f"{type(exc).__name__}: {str(exc)[:160]}",
+                        **({"credit_refusal": refusal} if refusal else {}),
                     )
                 )
                 last_error = exc
@@ -2826,7 +2857,46 @@ def execute_governed_call(
                 paid_component_usd=float(paid_failure),
             )
         else:
+            failure_cost = None
             lc.settle_reservation(reservation_id, None, ok=False, billable_attempt=sent)
+        # A credit refusal is the one failure this branch reports as a consumption row: nothing
+        # was sent, so the reservation settles at zero and only the log can say the call happened.
+        # Every other provider failure keeps its existing receipt + journal path, so the spend
+        # readers' denominators stay comparable (INC-261108-hvtspn).
+        refusal = next(
+            (r["credit_refusal"] for r in route_receipts if r.get("credit_refusal")), None
+        )
+        if refusal:
+            # log_call returns None on any failure, but its argument expressions
+            # (sanitize_log_summary, float) run in THIS frame.
+            try:  # nosemgrep: tq-py-except-pass -- guard covers the arg expressions, not log_call
+                lc.log_call(
+                    lane=requested_policy.lower(),
+                    process_id=process_id,
+                    task_summary=sanitize_log_summary(messages),
+                    trigger_mode="manual" if str(cfg.get("mode") or "") == "manual" else "automated",
+                    success=False,
+                    model_name=model_id,
+                    error_message=refusal,
+                    estimated_cost_usd=float(failure_cost or 0),
+                    cost_basis="refused_before_send",
+                    requested_policy=requested_policy,
+                    requested_model_id=model_id,
+                    provider_request_id=rid,
+                    metadata={
+                        "governance": "cio_bridge_v1",
+                        "reservation_id": reservation_id,
+                        "credit_refusal": refusal,
+                        # Compact on purpose: log_call slices the serialized metadata at 4000 chars,
+                        # and full receipts on a four-lane walk can cross that cut.
+                        "route_outcomes": [
+                            {"provider": r.get("provider"), "lane": r.get("lane"), "outcome": r.get("outcome")}
+                            for r in route_receipts
+                        ],
+                    },
+                )
+            except Exception:  # noqa: BLE001 -- a log failure must never change the refusal
+                pass
         if e is not None or attempted:
             provider_name = "RealProvider" if BIND_MODE == "canary" else "MockProvider"
             _trip_circuit(f"provider_failure:{type(e).__name__ if e else 'none'}:{provider_name}")

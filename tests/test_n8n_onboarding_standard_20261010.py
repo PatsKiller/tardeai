@@ -156,7 +156,9 @@ def test_diagnoser_caps_and_exclusion_quoted_equal_the_code():
     # scalp-hot-list) -> 119 lanes, 56 auto-rerun.
     # Self-healing rebuild (2026-10-16): main's committed catalogue had drifted from the registry/allowlist since the
     # 10-14 onboarding (--check was false on main 94ee3770a); the rebuild adds rerun_live_once -> 137 lanes, 63 auto.
-    assert cat["summary"]["lanes"] == 137 and cat["summary"]["lanes_with_auto_rerun"] == 63
+    # LQ-20261107-1009 (2026-11-08): the 20 entries whose lane is RETIRED, NEVER_SCHEDULED or absent from the lane
+    # manifest moved to config/archive/lq1009-20261108/ (never deleted; approvals unchanged) -> 117 lanes, 61 auto.
+    assert cat["summary"]["lanes"] == 117 and cat["summary"]["lanes_with_auto_rerun"] == 61
 
 
 def test_class_caps_quoted_equal_the_retry_policies():

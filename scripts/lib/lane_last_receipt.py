@@ -159,6 +159,17 @@ def _scrub_error(value: Any) -> Any:
     return value[:_MAX_ERROR]
 
 
+def _validated_error_class(value: Any) -> str | None:
+    """The ONE taxonomy's class (scripts/lib/n8n_error_class.py), or None when absent/unreadable/out of vocabulary."""
+    if value in (None, ""):
+        return None
+    try:
+        from scripts.lib.n8n_error_class import normalise_declared
+    except ImportError:  # scripts/ on sys.path, repo root not
+        from lib.n8n_error_class import normalise_declared  # type: ignore[no-redef] -- same module through its scripts/-relative name when only scripts/ is on sys.path
+    return normalise_declared(value)
+
+
 def _scrub_summary(summary: Mapping[str, Any] | None) -> dict[str, Any]:
     out = dict(summary or {})
     for key, val in list(out.items()):
@@ -197,6 +208,7 @@ def build_receipt(
     previous_consecutive_failures: int | None = None,
     outcome: str | None = None,
     outcome_reason: str | None = None,
+    error_class: str | None = None,
 ) -> dict[str, Any]:
     if outcome is not None and outcome not in OUTCOMES:
         raise ValueError(f"outcome must be one of {OUTCOMES}")
@@ -234,6 +246,11 @@ def build_receipt(
         doc["consecutive_failures"] = 0 if ok else int(previous_consecutive_failures) + 1
     if error:
         doc["error"] = _scrub_error(str(error))
+    klass = _validated_error_class(error_class)
+    if klass:
+        # LQ-20261107-992: the lane's own class for its failure, read by the executor (n8n_error_class) and then by
+        # the diagnoser BEFORE any text rule. Out-of-vocabulary values are dropped here, never stored as a class.
+        doc["error_class"] = klass
     rid = run_id if run_id is not None else os.environ.get(RUN_ID_ENV)
     if rid:
         doc["run_id"] = str(rid)[:160]
@@ -330,8 +347,13 @@ def write_lane_receipt(
     output: Mapping[str, Any] | None = None,
     outcome: str | None = None,
     outcome_reason: str | None = None,
+    error_class: str | None = None,
 ) -> Path | None:
     """Atomically replace the lane receipt for one REAL run. Returns the path, or None on failure.
+
+    ``error_class`` (2026-11-08, LQ-20261107-992) is the lane's own failure class from the shared vocabulary
+    (scripts/lib/n8n_error_class.py). It is written on the receipt and, through the executor's stamp, on the n8n
+    RunReceipt, where the diagnoser reads it before any text rule. An out-of-vocabulary value is dropped.
 
     Never raises: the run's own result comes first. Never call this from a dry-run branch. With ``produced_count``
     the receipt is LaneRunReceipt@v2 and, when the executor set ``TRADEAI_RUN_ID``, it is also written once,
@@ -358,6 +380,7 @@ def write_lane_receipt(
             output=output,
             outcome=outcome,
             outcome_reason=outcome_reason,
+            error_class=error_class,
         )
         if doc.get("run_id") and (doc.get("schema") == SCHEMA_V2 or doc.get("output_fields") == SCHEMA_V2):
             # the per-attempt copy is always schema v2 (n8n_output_verdict requires it); the #1772 ``output=``
@@ -401,6 +424,7 @@ def write_receipt(
     started_at: str | datetime | None = None,
     path: Path | str | None = None,
     exit_code: int | None = None,
+    error_class: str | None = None,
 ) -> Path | None:
     """W3 spelling of :func:`write_lane_receipt` (``name`` is the lane id and the script name)."""
     return write_lane_receipt(
@@ -411,6 +435,7 @@ def write_receipt(
         summary=summary,
         error=error,
         path=path,
+        error_class=error_class,
     )
 
 

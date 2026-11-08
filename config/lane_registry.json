@@ -18671,20 +18671,20 @@
         "expression": "dispatcher",
         "match": "scripts/ops/jsonl_archive_rotate.py",
         "cadence": "45 16 * * 1-5",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
         "timezone": "America/New_York"
       },
       "expected_cadence_hours": 72.0,
       "state": "ACTIVE",
       "state_since": "2026-10-23",
-      "state_reason": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\". n8n-native dispatcher hygiene lane at stage SHADOW, weekdays 16:45 ET (after the close) plus on-demand: the stage clamp runs it --dry-run (reads the stores, prints the rotation plan: sizes, line counts, split, the archive each store would get; writes nothing). Promotion to live (live_arg [\"--apply\",\"--confirm\",\"APPLY\"]) is the operator's word. It ARCHIVES only; it deletes no archive segment: removal of archive segments is not automated (AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope; §23.14 keeps destructive retention off n8n). No cron line or unit exists or is added (cron freeze).",
+      "state_reason": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\". n8n-native dispatcher hygiene lane, weekdays 16:45 ET (after the close) plus on-demand: a --dry-run fire reads the stores and prints the rotation plan (sizes, line counts, split, the archive each store would get; writes nothing). Promoted SHADOW -> CANARY 2026-11-08 (LQ-20261107-716): dispatch.mode is live and the dispatcher fires the operator-approved live argv [\"--apply\",\"--confirm\",\"APPLY\"], first run by hand on 2026-10-23. Arming on THIS host is still gated: --apply refuses every store fd_visibility_unknown until the root-owned /usr/local/sbin/tradeai-fd-holders helper is installed (LQ-20261107-501 route 1), so the first live slot is expected to grade RUN_FAILED until then. It ARCHIVES only; it deletes no archive segment: removal of archive segments is not automated (AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope; §23.14 keeps destructive retention off n8n). No cron line or unit exists or is added (cron freeze).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/jsonl-archive-rotate_last.json",
         "key": "ok_at",
         "evidence": "SOURCE_ONLY",
-        "evidence_ref": "scripts/ops/jsonl_archive_rotate.py main() writes the LaneRunReceipt on --plan and --apply (tests/test_jsonl_archive_rotate_20261023.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+        "evidence_ref": "scripts/ops/jsonl_archive_rotate.py main() writes the LaneRunReceipt on --plan and --apply (tests/test_jsonl_archive_rotate_20261023.py); at CANARY the dispatcher fires that live argv, so the runtime proof is the immutable attempt receipt data/runtime/lane_attempts/jsonl-archive-rotate/<run_id>.json of the first live slot (Mon 16:45 ET); no live slot has fired since promotion, so runtime is NOT_MEASURED"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_jsonl_archive_rotate_20261023.py (split, dry run writes nothing, byte-exact archive + manifest + tripwire, concurrent O_APPEND writer loses no row, live file recreated mid-rotation merged, long-lived fd holder refused, failure merges back, recover, market-hours refusal, retention preview reads only); docs/ops/packets/jsonl-rotation-20261023/00_dry_run_20261023.txt",
@@ -18692,7 +18692,7 @@
       "note": "Reads the stores named in config/disk_hygiene_rules.json jsonl_retention.stores (rotate=true). A live run (after promotion) renames each store aside, archives the head to <state>/archive/file_prune/<store>/<store>.<UTC>.jsonl.gz with a sha256/line-count manifest and a RetentionArchiveTripwire@v1 record, re-installs the hot tail with renameat2 (writers reopen per write, so no row is lost), and writes data/runtime/jsonl_archive_rotate/rotate_<UTC>.json and the LaneRunReceipt. --apply refuses Mon-Fri 04:00-16:15 ET. No DB, no model, no sender, no broker. Exit 0 ok; 1 a store failed or a refusal; 75 another rotation holds the lock.",
       "severity": "Low",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "45 16 * * 1-5"
         ],

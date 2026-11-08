@@ -23,6 +23,13 @@ registry and allowlist bytes it was rendered from). A lane is on it when ALL hol
   * or a native n8n row: ``scheduler.kind == "n8n"``, no dispatch block, ``scheduler.stage`` ``canary``/``cutover``.
 A native n8n row with NO stage is not listed (the registry does not say it is live): never widen by default.
 
+Every row that carries a live claim -- a dispatch block, a ``scheduler.stage``, ``scheduler.kind: n8n``, or a
+non-null allowlist ``live_arg`` -- is either on the list or named in the returned ``excluded`` map with a reason
+code. A lane can therefore never leave the relay live set silently (LQ-20261107-736; before it, a non-live
+``dispatch.mode`` short-circuited with no entry, so shadow lanes saying ``dry_run`` vanished with an EMPTY map and
+only the lane count moved -- the audit gap that hid ``jsonl-archive-rotate``). A row with none of those claims
+(a cron/systemd row with no stage and no live argv) is not a relay candidate and is not named.
+
 Layers and precedence (20.4.0 ACTIVE). Every override layer can only REMOVE (pause) a lane; nothing outside a
 reviewed registry PR can ADD one. The effective list is
 
@@ -215,9 +222,24 @@ def live_source(root: Path | str = ROOT, state: Optional[Path | str] = None) -> 
 # --------------------------------------------------------------------------- registry -> list
 
 
+def _reason(row: Mapping[str, Any], code: str) -> str:
+    """The exclusion code for a dropped row. A row the registry has already RETIRED / PAUSED / NEVER_SCHEDULED is
+    not live because of its state, whatever its dispatch block or stage says, so name the state first (the Ops
+    Controls display reads it in that order too, ``live_exclusion``). Otherwise the specific gate's code stands."""
+    state = row.get("state")
+    return f"registry_state_{state}" if isinstance(state, str) and state and state != "ACTIVE" else code
+
+
 def registry_live_lanes(registry: Any, allowlist: Any, *, cutover_policy: Optional[Mapping[str, Any]] = None
                         ) -> tuple[list[str], dict[str, str]]:
-    """(sorted live lane ids, {lane_id: why excluded} for rows that looked live but were refused)."""
+    """(sorted live lane ids, {lane_id: why excluded} for every dropped lane that carried a live claim).
+
+    2026-11-08 (LQ-20261107-736): a "live claim" is a dispatch block, a ``scheduler.stage``, ``scheduler.kind:
+    n8n``, or a non-null allowlist ``live_arg``. Every claimed row is either live or named in ``excluded``; there
+    is no silent ``continue`` left on the claimed path. Reason precedence: a non-ACTIVE registry state first
+    (``_reason``; a RETIRED row is not live because it is retired), then the dispatch block (its mode is what
+    routes a dispatcher row), then the stage, then the scheduler kind, then the allowlist.
+    """
     try:
         from lib import lane_dispatch as _ld
     except ImportError:
@@ -238,44 +260,59 @@ def registry_live_lanes(registry: Any, allowlist: Any, *, cutover_policy: Option
         sched = row.get("scheduler") if isinstance(row.get("scheduler"), dict) else {}
         stage = sched.get("stage")
         raw = row.get("dispatch")
+        entry = entries.get(lane)
+        claimed = (raw is not None or stage is not None or sched.get("kind") == "n8n"
+                   or (entry or {}).get("live_arg") is not None)
         if raw is not None:
-            if not isinstance(raw, dict) or raw.get("mode") != "live":
+            if not isinstance(raw, dict):
+                excluded[lane] = _reason(row, "bad_dispatch_block:not_mapping")
+                continue
+            if raw.get("mode") != "live":
+                # 2026-11-08 (LQ-20261107-736): this used to continue with NO entry, so every shadow lane whose
+                # block said dry_run (48 rows at the time) left the render with an empty excluded map. Name it.
+                excluded[lane] = _reason(row, f"dispatch_mode:{raw.get('mode') or 'unset'}")
                 continue
             kind = "dispatcher"
         elif sched.get("kind") == "n8n" and stage in LIVE_STAGES:
             kind = "native_n8n"
         else:
-            if sched.get("kind") == "n8n" and stage is None and row.get("state") == "ACTIVE" \
-                    and (entries.get(lane) or {}).get("live_arg") is not None:
+            if sched.get("kind") == "n8n":
                 # 2026-10-31: four ACTIVE native n8n lanes (incident fan-in, pilot dispatch, research intake,
                 # crontab snapshot) had an allowlist live_arg but no scheduler.stage. The render left them off with
                 # no trace, so the relay refused every fire once the AGENTS.md header read ACTIVE. Still never
-                # widen; but say why, so the render, --check and the deploy log show the drop.
-                excluded[lane] = "native_n8n_no_stage"
+                # widen; but say why. 2026-11-08 (LQ-736): every native n8n row here gets a reason, not only an
+                # ACTIVE one with a live_arg (RETIRED / NEVER_SCHEDULED rows were the remaining silent class).
+                excluded[lane] = _reason(row, "native_n8n_no_stage" if stage is None else f"stage_{stage}")
+            elif stage is not None:
+                # A non-n8n scheduler with a stage: the relay only dispatches n8n rows.
+                excluded[lane] = _reason(row, f"stage_{stage}")
+            elif claimed:
+                # A live argv on a row the registry schedules on cron/systemd (or not at all): it has a live
+                # command but the relay only dispatches n8n rows, so it is off the live list by scheduler kind.
+                excluded[lane] = _reason(row, f"scheduler_{sched.get('kind') or 'unset'}_not_n8n")
             continue
         if stage is not None and stage not in LIVE_STAGES:
-            excluded[lane] = f"stage_{stage}"
+            excluded[lane] = _reason(row, f"stage_{stage}")
             continue
-        entry = entries.get(lane)
         if entry is None or entry.get("live_arg") is None:
-            excluded[lane] = "no_allowlist_live_arg"
+            excluded[lane] = _reason(row, "no_allowlist_live_arg")
             continue
         ok, why = _ld.dispatch_eligible(row, cutover_policy=cutover_policy)
         if not ok:
-            excluded[lane] = f"not_dispatch_eligible:{why}"
+            excluded[lane] = _reason(row, f"not_dispatch_eligible:{why}")
             continue
         if kind == "dispatcher":
             try:
                 block = _ld.parse_dispatch_block(row)
             except _ld.DispatchBlockError as exc:
-                excluded[lane] = f"bad_dispatch_block:{exc.code}"
+                excluded[lane] = _reason(row, f"bad_dispatch_block:{exc.code}")
                 continue
             if block is None or block.mode != "live":
-                excluded[lane] = "dispatch_not_live"
+                excluded[lane] = _reason(row, "dispatch_not_live")
                 continue
             admitted, why = _ld.r1_class_admission(row, entry)
             if not admitted:
-                excluded[lane] = f"class_not_admitted:{why}"[:160]
+                excluded[lane] = _reason(row, f"class_not_admitted:{why}"[:160])
                 continue
         live.append(lane)
     return sorted(set(live)), excluded

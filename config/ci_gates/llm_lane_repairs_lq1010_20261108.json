@@ -1,0 +1,33 @@
+{
+  "schema": "CiGate@v1",
+  "name": "llm_lane_repairs_lq1010_20261108",
+  "files": [
+    "tests/test_llm_lane_repairs_lq1010_20261108.py"
+  ],
+  "anchor": "llm_lane_repairs_lq1010_20261108",
+  "comment": [
+    "ANCHOR: llm_lane_repairs_lq1010_20261108 — review 999 found that 3c216df08 (LQ-978) fixed 1 of the",
+    "4 LLM lanes Fable Q5 named. This is the remaining package, and each item is proved here:",
+    "(1) keepalive quota burn — a */30 cron spent a real generate on each free OAuth lane every run",
+    "(~2,597 in 30 days) and graded a 429 as a dead lane (54 failed runs, exit 1, while /health said",
+    "authenticated=true). The ping now runs only when the token needs a roll (a stated expiry inside",
+    "2 h, or 6 h idle => 4/day), carries _skip_consumption=True, and a 429 is ok_rate_limited: no alert,",
+    "no regression, exit 0, with quota_exhausted + rate_limited_until recorded so the ticks inside the",
+    "900 s window skip the ping.",
+    "(2) adjudicator provider mismatch — the gateway walked the whole provider order, so",
+    "contradiction_adjudicator (allowed_lanes [fast, deepseek-flash]) was served by grok 129 times in",
+    "14 d. allowed_lanes now binds the plan (enabled_providers), the _anthropic_route exemption covers",
+    "only anthropic, and configured_plan marks anthropic no_transport for a process that is not",
+    "anthropic_first. The adjudicator also stops hand-parsing: lib.llm_json_contract.recover_json_object",
+    "(strict -> fenced -> embedded) plus the contradiction_verdict.v1 schema, with ONE retry on a",
+    "different allowed lane before the UNRESOLVED row is written.",
+    "(3) curator serial calls — one lane call per 5 articles and per transcript. Now: deterministic",
+    "pre-filter (nothing to judge, non-English), 20-row batches, and a run-wide wall budget",
+    "(TOPIC_CURATOR_LLM_BUDGET_S, default 900) that stops the step and leaves unreached rows pending.",
+    "(4) iris timeout — the Sunday gap-recommendation site passed 20 s, below the lane's own successful",
+    "tail (grok p95 29.3 s, max ok 29.5 s), and the answer was swallowed into '(LLM unavailable)'.",
+    "iris now adopts the LQ-865 resolver (timeout=None) and config/llm_lane_budgets.json sizes",
+    "iris_taxonomy_agent at 40 s from the measured tail; an AST check fails any new literal.",
+    "Hermetic: fake connections, fake lanes, fake probes, tmp state roots. No DB, no network, no LLM call."
+  ]
+}

@@ -74,4 +74,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # LQ-1058: a receipt per real run, so this lane no longer shares deploy_redeploy_cron.log with its siblings.
+    from lib.lane_receipt_main import run_main
+
+    raise SystemExit(run_main("deploy-recompute", main, script="deploy_recompute.py"))

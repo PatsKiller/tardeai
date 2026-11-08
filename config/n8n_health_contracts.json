@@ -32632,10 +32632,10 @@
       "kind": "lane",
       "workflow_id": "dispatcher",
       "status": "REVIEWED",
-      "target_reason": "stage:shadow",
-      "stage": "shadow",
+      "target_reason": "stage:canary",
+      "stage": "canary",
       "purpose": {
-        "text": "Weekdays at 16:45 ET (after the close), rotate the oversized append-only JSONL stores named in config/disk_hygiene_rules.json jsonl_retention.stores: the closed history before each store's hot tail moves byte-exact to <state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz (sha256 + line-count manifest, RetentionArchiveTripwire@v1), the hot tail stays in place. Writer-safe: rename aside, quiesce, renameat2 install, late-byte sweep. At SHADOW it prints the plan only. It archives; it deletes no archive segment.",
+        "text": "Weekdays at 16:45 ET (after the close), rotate the oversized append-only JSONL stores named in config/disk_hygiene_rules.json jsonl_retention.stores: the closed history before each store's hot tail moves byte-exact to <state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz (sha256 + line-count manifest, RetentionArchiveTripwire@v1), the hot tail stays in place. Writer-safe: rename aside, quiesce, renameat2 install, late-byte sweep. A --dry-run fire prints the plan only; at CANARY the dispatcher fires the live argv. It archives; it deletes no archive segment.",
         "business_function": "platform-ops",
         "source": "scripts/ops/jsonl_archive_rotate.py; operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
       },
@@ -32687,7 +32687,7 @@
       "healthy": [
         {
           "check": "dry_run_writes_nothing",
-          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no archive, no receipt"
+          "text": "a --dry-run fire runs only the plan: RUN_DONE mode dry_run, no archive, no receipt; at CANARY the dispatcher fires the live argv"
         },
         {
           "check": "last_live_run_done",
@@ -32770,7 +32770,7 @@
           "notifier_priority": "P3"
         },
         "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
-        "enforced": "NOT_MEASURED (shadow)"
+        "enforced": "NOT_MEASURED (promoted to canary 2026-11-08; no live slot has fired yet)"
       },
       "remediation": {
         "catalogue_entry": false,
@@ -32793,10 +32793,10 @@
         "reviewed_by": "operator 2026-10-24; explicit archive contract review in legacy-pr-carryforward.md",
         "reviewed_on": "2026-10-24",
         "approval_source": "coordinator-batch21-20261024/legacy-pr-carryforward.md item1",
-        "activation": "Separate operator step; source SHADOW only, no archive removal activation."
+        "activation": "Promoted shadow -> canary 2026-11-08 (LQ-20261107-716): the dispatcher fires the operator-approved live argv. Arming on this host still needs the root-owned /usr/local/sbin/tradeai-fd-holders helper (LQ-20261107-501 route 1); until then --apply refuses every store fd_visibility_unknown. No archive removal is ever activated."
       },
       "review_by": "2026-10-30",
-      "state_note": "DRAFT, agent-written 2026-10-23; awaiting the platform owner's REVIEWED (AGENTS.md §23.19). Promotion to live is the operator's word.",
+      "state_note": "REVIEWED 2026-10-24. Promoted shadow -> canary 2026-11-08 (LQ-20261107-716) so the dispatcher fires the operator-approved live argv; arming on this host waits on the root-owned fd-holders helper (LQ-20261107-501 route 1).",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "stores rotated",

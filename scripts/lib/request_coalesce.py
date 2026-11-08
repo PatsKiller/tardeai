@@ -58,6 +58,9 @@ DEFAULT_COALESCE_PATHS = (
     "/api/v2/defense/engine",
     "/api/v2/portfolio/holdings",
     "/api/v3/cio/home",
+    # LQ-20261107-822: the consumption hub polls this route from more than one place, and its
+    # cold compute re-parses a 114 MB events file; identical callers share one compute.
+    "/api/v2/consumption/overview",
 )
 TTL_S = float(os.environ.get("TRADEAI_COALESCE_TTL_S") or 2.0)
 WAIT_S = float(os.environ.get("TRADEAI_COALESCE_WAIT_S") or 180.0)

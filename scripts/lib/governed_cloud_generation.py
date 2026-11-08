@@ -11,6 +11,11 @@ bridge walks the registry row's route (n8n_oauth_first: grok -> chatgpt -> DeepS
 ``llm_lane`` is never imported. A refusal or an unreachable bridge raises CLOUD_GENERATION_FAILED_CLOSED with the
 BRIDGE_ROUTE_REFUSED reason: no in-process provider, no second lane. The returned lane is ``"bridge"``. Without the
 flag (every cron line) the in-process loop below is unchanged.
+
+Request budget (LQ-865): ``timeout=None`` resolves the caller lane's budget from
+``config/llm_lane_budgets.json`` (lib.llm_lane_budgets: measured p95 + margin, capped), so a scheduled
+lane no longer waits on a hand-picked number smaller than its own successful tail. An explicit
+``timeout`` is passed through untouched, and a missing config entry falls back to 90 s.
 """
 from __future__ import annotations
 
@@ -36,19 +41,30 @@ def generate_cloud(
     *,
     process_id: str,
     task_summary: str,
-    timeout: float = 90,
+    timeout: float | None = None,
     lanes: Iterable[str] | None = None,
     max_tokens: int = 2048,
     response_json: bool = False,
     manual_trigger: bool = False,
 ) -> tuple[str, str]:
-    """Return ``(text, lane)`` from the first available governed cloud lane (or the governed bridge, see above)."""
+    """Return ``(text, lane)`` from the first available governed cloud lane (or the governed bridge, see above).
+
+    ``timeout=None`` (the default) resolves the lane's measured budget from
+    ``config/llm_lane_budgets.json`` via :func:`lib.llm_lane_budgets.budget_s`, falling back to 90 s
+    (the historical default) for a lane the config does not size. A caller that passes a number
+    keeps it verbatim: explicit intent is never silently rewritten.
+    """
     from .governed_process_routes import OPERATOR_INTENT_PROCESS_IDS
 
     if process_id in OPERATOR_INTENT_PROCESS_IDS and manual_trigger is not True:
         raise RuntimeError(
             f"CLOUD_GENERATION_FAILED_CLOSED: {process_id}: MANUAL_TRIGGER_REQUIRED"
         )
+    if timeout is None:
+        from . import llm_lane_budgets as lane_budgets
+
+        timeout = lane_budgets.budget_s(process_id)
+    timeout = float(timeout)
     if via_bridge():
         from lib.llm_bridge_route import text_via_bridge
 

@@ -519,3 +519,25 @@ phrase. The one-time report for 2026-10-22 is `docs/ops/N8N_PROMOTION_READINESS_
 "Not measured", and readiness is at most NOT_READY. A missing ledger never reads as "never ran". If `crontab -l` fails,
 lock proofs read "not measured". An older server sends no `outcome` block; the page then shows "not measured" and no
 summary strip, never zeros.
+
+## Run a lane (LQ-20261107-611)
+
+**Run a lane** (button under the page title) opens a full-screen sheet listing every lane in `config/n8n_run_allowlist.json`.
+Each row has **Dry run** and **Live run**; Live is disabled with its reason when the lane is not on the relay live list,
+has no live mode, or is effect-keyed (the executor refuses a manual live run on an effect-keyed lane because it has no
+slot key for it). **Run all dry** queues every lane that has a dry-run mode. **Run all live** queues only the live-listed lanes
+that are safe to re-run off-slot, derived from config (never a hand list); every excluded lane is shown with its reason.
+Fail closed: a lane with no staged effect key is included only if its `config/n8n_run_allowlist.json` entry says
+`"manual_rerun_safe": true`, and a hygiene/cleanup/purge/`--standing` lane is never included. The gateway also binds the
+`operator-manual` key to `opm-` run ids and, for live, to lanes on the effective relay live list (`n8n_relay_live_lanes.resolve()`: the rendered registry list minus the Ops Controls and host-file pauses; the legacy `TRADEAI_N8N_RELAY_LIVE_LANES` key is only its fallback, and no list means refuse); Run all live
+always needs a fresh passkey (never phrase-only inside a sudo window).
+
+How it runs. Approving the request makes the host applier sign `coordination/run` to the gateway as the dedicated caller
+`operator-manual` (`requested_by=operator-manual:<request_id>`, `run_id=opm-<request_id>`) and the existing executor drains the
+rows, with the same locks and receipts as an n8n fire. The key (`TRADEAI_N8N_GATEWAY_HMAC_KEY_OPERATOR`) lives in
+`~/.config/tradeai/operator-manual.env` (0600), loaded only by the applier and the gateway; it is never in the web process,
+never n8n's key, and without it the gateway answers `run_scope_unavailable`. Dry = one click. Live = passkey and the typed
+phrase. **Undo is not supported**: a queued run cannot be reversed; **Cancel queued** stops rows that have not started.
+The progress view shows queued / running / done counts and each run's exit, duration, `flock_held` and whether the output
+signal advanced. Provisioning commands: the operator note filed with the LQ-611 DONE report.
+

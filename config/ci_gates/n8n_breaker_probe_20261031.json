@@ -9,6 +9,7 @@
     "ANCHOR: N8N_BREAKER_PROBE_20261031 — n8n breaker half-open probe (coordinator 2026-10-31). Pins on a real temp",
     "coordination ledger: probe after open_hours (release + receipt), RUN_DONE keeps it closed, RUN_FAILED re-opens at",
     "once with backoff, timeout re-opens, lock-skips decide nothing, broker/stop/execution lanes never probed, exhausted",
-    "pages once, enabled=false and --dry-run change nothing."
+    "pages once, enabled=false and --dry-run change nothing. LQ-20261107-1007 (Fable #8): a canary lane probes only under",
+    "the config canary switch, on a 2-probe budget, and its second failure is a P1 page that stays blocked for a human."
   ]
 }

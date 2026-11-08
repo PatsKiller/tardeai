@@ -1,0 +1,186 @@
+{
+  "schema": "LaneRegistryOverlay@v1",
+  "task": "LQ-20261107-1058",
+  "state_since": "2026-11-08",
+  "apply_with": "scripts/lib/lane_manifest.py apply_registry_overlay(registry, overlay), through the manifest source of truth; never a hand edit of config/lane_registry.json",
+  "apply_order": [
+    "1. the release carrying this commit's receipt writers is served (the 9 code-repaired lanes write no receipt before that)",
+    "2. one scheduled run of each code-repaired lane writes data/runtime/<lane>_last.json (check ok_at)",
+    "3. apply this overlay; applied early, the 9 lanes read stale (the safe direction), never falsely green"
+  ],
+  "retire": [
+    {
+      "lane_id": "tradeai-health-tick",
+      "duplicate_of": "health-tick",
+      "evidence": "tradeai-health-tick and health-tick both resolve to systemd unit tradeai-health-tick.timer; the plain id is the one the allowlist, cutover policy, job descriptions and heartbeat watch name (LQ-1054 G3)"
+    },
+    {
+      "lane_id": "tradeai-n8n-lab-watchdog",
+      "duplicate_of": "n8n-lab-watchdog",
+      "evidence": "tradeai-n8n-lab-watchdog and n8n-lab-watchdog both resolve to systemd unit tradeai-n8n-lab-watchdog.timer; the plain id is the one the allowlist, cutover policy, job descriptions and heartbeat watch name (LQ-1054 G3)"
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-monthly",
+      "duplicate_of": "platform-maintenance-monthly",
+      "evidence": "tradeai-platform-maintenance-monthly and platform-maintenance-monthly both resolve to systemd unit tradeai-platform-maintenance-monthly.timer; the plain id is the one the allowlist, cutover policy, job descriptions and heartbeat watch name (LQ-1054 G3)"
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-nightly",
+      "duplicate_of": "platform-maintenance-nightly",
+      "evidence": "tradeai-platform-maintenance-nightly and platform-maintenance-nightly both resolve to systemd unit tradeai-platform-maintenance-nightly.timer; the plain id is the one the allowlist, cutover policy, job descriptions and heartbeat watch name (LQ-1054 G3)"
+    },
+    {
+      "lane_id": "tradeai-platform-maintenance-weekly",
+      "duplicate_of": "platform-maintenance-weekly",
+      "evidence": "tradeai-platform-maintenance-weekly and platform-maintenance-weekly both resolve to systemd unit tradeai-platform-maintenance-weekly.timer; the plain id is the one the allowlist, cutover policy, job descriptions and heartbeat watch name (LQ-1054 G3)"
+    },
+    {
+      "lane_id": "tradeai-telegram-callback-poller",
+      "duplicate_of": "telegram-callback-poller",
+      "evidence": "both rows resolve to tradeai-telegram-callback-poller.service; the duplicate declares no output signal (kind none), so the LQ-1054 shared-output diff could not see it; the plain id is the one lane_cutover_policy.json and job_descriptions name. The survivor keeps its own signal: the daemon is the only writer of its log."
+    }
+  ],
+  "output_signal": {
+    "health-tick": {
+      "kind": "json_key",
+      "path": "data/runtime/health_tick_last.json",
+      "key": "as_of",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "moved from duplicate row tradeai-health-tick (LQ-1058). health_tick.py RECEIPT_REL (scripts/health_tick.py:116) is the receipt step 3 of its own docstring writes every tick; host file as_of 2026-11-07T04:55:01Z. The row said 'no per-run artifact is declared yet' - the artifact existed, the row did not name it."
+    },
+    "n8n-lab-watchdog": {
+      "kind": "json_key",
+      "path": "data/runtime/n8n_lab_watchdog_last.json",
+      "key": "checked_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "moved from duplicate row tradeai-n8n-lab-watchdog (LQ-1058). the unit passes --receipt data/runtime/n8n_lab_watchdog_last.json (systemctl --user cat tradeai-n8n-lab-watchdog.service); host file checked_at 2026-11-07T04:51:26Z"
+    },
+    "platform-maintenance-monthly": {
+      "kind": "json_key",
+      "path": "data/runtime/platform_maintenance_monthly_last.json",
+      "key": "as_of",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "moved from duplicate row tradeai-platform-maintenance-monthly (LQ-1058). same pipeline (run_platform_maintenance_pipeline.sh:25/:196), monthly cadence; host file as_of 2026-11-01T11:00:03Z"
+    },
+    "platform-maintenance-nightly": {
+      "kind": "json_key",
+      "path": "data/runtime/platform_maintenance_nightly_last.json",
+      "key": "as_of",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "moved from duplicate row tradeai-platform-maintenance-nightly (LQ-1058). run_platform_maintenance_pipeline.sh:25 names data/runtime/platform_maintenance_<cadence>_last.json as the lane's output_signal; :196 writes it on a real run only (dry-run prints the path instead). Host file: PlatformMaintenanceRun@v1 as_of 2026-11-06T06:15:59Z."
+    },
+    "platform-maintenance-weekly": {
+      "kind": "json_key",
+      "path": "data/runtime/platform_maintenance_weekly_last.json",
+      "key": "as_of",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "moved from duplicate row tradeai-platform-maintenance-weekly (LQ-1058). same pipeline (run_platform_maintenance_pipeline.sh:25/:196), weekly cadence; host file as_of 2026-11-01T08:00:15Z"
+    },
+    "deploy-detect": {
+      "kind": "json_key",
+      "path": "data/runtime/deploy-detect_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/deploy_detect.py run_main (scripts/lib/lane_receipt_main.py), --apply runs only; ok_at advances only on success. Replaces the shared logs/deploy_redeploy_cron.log, which any sibling mode refreshed."
+    },
+    "deploy-recompute": {
+      "kind": "json_key",
+      "path": "data/runtime/deploy-recompute_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/deploy_recompute.py run_main (scripts/lib/lane_receipt_main.py), --apply runs only; ok_at advances only on success. Replaces the shared logs/deploy_redeploy_cron.log, which any sibling mode refreshed."
+    },
+    "deploy-monitor": {
+      "kind": "json_key",
+      "path": "data/runtime/deploy-monitor_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/deploy_monitor.py run_main (scripts/lib/lane_receipt_main.py), --apply runs only; ok_at advances only on success. Replaces the shared logs/deploy_redeploy_cron.log, which any sibling mode refreshed."
+    },
+    "run-scheduled-quote-refresh-incubator": {
+      "kind": "json_key",
+      "path": "data/runtime/run-scheduled-quote-refresh-incubator_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/run_scheduled_quote_refresh.sh EXIT trap (scripts/lib/lane_receipt_trap.sh), receipt carries the child's exit; ok_at advances only on success. Replaces the shared logs/proactive_quote_refresh_cron.log, which any sibling mode refreshed."
+    },
+    "run-scheduled-quote-refresh-pending": {
+      "kind": "json_key",
+      "path": "data/runtime/run-scheduled-quote-refresh-pending_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/run_scheduled_quote_refresh.sh EXIT trap (scripts/lib/lane_receipt_trap.sh), receipt carries the child's exit; ok_at advances only on success. Replaces the shared logs/proactive_quote_refresh_cron.log, which any sibling mode refreshed."
+    },
+    "run-scheduled-watchpool-alerts-diagnostic": {
+      "kind": "json_key",
+      "path": "data/runtime/run-scheduled-watchpool-alerts-diagnostic_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/run_scheduled_watchpool_alerts.sh EXIT trap (scripts/lib/lane_receipt_trap.sh); ok_at advances only on success. Replaces the shared logs/watchpool_alerts_cron.log, which any sibling mode refreshed."
+    },
+    "run-scheduled-watchpool-alerts-maturity": {
+      "kind": "json_key",
+      "path": "data/runtime/run-scheduled-watchpool-alerts-maturity_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/run_scheduled_watchpool_alerts.sh EXIT trap (scripts/lib/lane_receipt_trap.sh); ok_at advances only on success. Replaces the shared logs/watchpool_alerts_cron.log, which any sibling mode refreshed."
+    },
+    "run-scheduled-two-way-curation-options": {
+      "kind": "json_key",
+      "path": "data/runtime/run-scheduled-two-way-curation-options_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/run_scheduled_two_way_curation.sh EXIT trap (scripts/lib/lane_receipt_trap.sh); ok_at advances only on success. Replaces the shared logs/two_way_curation_cron.log, which any sibling mode refreshed."
+    },
+    "run-scheduled-two-way-curation-desk": {
+      "kind": "json_key",
+      "path": "data/runtime/run-scheduled-two-way-curation-desk_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/run_scheduled_two_way_curation.sh EXIT trap (scripts/lib/lane_receipt_trap.sh); ok_at advances only on success. Replaces the shared logs/two_way_curation_cron.log, which any sibling mode refreshed."
+    },
+    "run-inference-cycle-preopen": {
+      "kind": "json_key",
+      "path": "data/runtime/run-inference-cycle-preopen_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by linux_launchers/run_inference_cycle.sh:44 completion_compound_receipt.py (already writing; host receipt ok_at 2026-11-06); ok_at advances only on success. Replaces the shared logs/inference_cron.log, which any sibling mode refreshed."
+    },
+    "run-inference-cycle-midday": {
+      "kind": "json_key",
+      "path": "data/runtime/run-inference-cycle-midday_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by linux_launchers/run_inference_cycle.sh:44 completion_compound_receipt.py (already writing; host receipt ok_at 2026-11-06); ok_at advances only on success. Replaces the shared logs/inference_cron.log, which any sibling mode refreshed."
+    },
+    "run-inference-cycle-postclose": {
+      "kind": "json_key",
+      "path": "data/runtime/run-inference-cycle-postclose_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by linux_launchers/run_inference_cycle.sh:44 completion_compound_receipt.py (already writing; host receipt ok_at 2026-11-06); ok_at advances only on success. Replaces the shared logs/inference_cron.log, which any sibling mode refreshed."
+    },
+    "generate-analyst-reports-autonomous-weekly": {
+      "kind": "json_key",
+      "path": "data/runtime/generate-analyst-reports-autonomous-weekly_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/generate_analyst_reports_autonomous.py:109-116 write_lane_receipt per --mode (already writing); ok_at advances only on success. Replaces the shared logs/analyst_reports_autonomous.log, which any sibling mode refreshed."
+    },
+    "generate-analyst-reports-autonomous-full": {
+      "kind": "json_key",
+      "path": "data/runtime/generate-analyst-reports-autonomous-full_last.json",
+      "key": "ok_at",
+      "evidence": "SCRIPT_RECEIPT",
+      "evidence_ref": "LaneRunReceipt@v1 written each real run by scripts/generate_analyst_reports_autonomous.py:109-116 write_lane_receipt per --mode (already writing); ok_at advances only on success. Replaces the shared logs/analyst_reports_autonomous.log, which any sibling mode refreshed."
+    }
+  },
+  "held": {
+    "active-trader-micro-recorder-premarket + active-trader-micro-recorder": "active-trader path: out of scope (AGENTS rule 2)",
+    "watchlist-entry-planner-limit + watchlist-entry-planner-scope": "scripts/watchlist_entry_planner.py claimed by grok-b-lq1006",
+    "holding-protection-advisor-at-5-17 + holding-protection-advisor-lane": "scripts/holding_protection_advisor.py claimed by grok-b-lq1006",
+    "external-market-data-ingest-fundamentals + external-market-data-ingest": "scripts/external_market_data_ingest.py claimed by cc-deepseek-5 (LQ-940)",
+    "schwab-transaction-ingest-classifier + schwab-transaction-ingest-at-3-18-33-48-9-16": "broker glob scripts/*schwab*: out of scope (AGENTS rule 2)",
+    "run-protection-pipeline-at-x-30-9-16 + run-protection-pipeline-at-30-20": "both rows run one argv at different times: a per-mode receipt needs a crontab argument (operator) or one merged row (registry owner)"
+  }
+}

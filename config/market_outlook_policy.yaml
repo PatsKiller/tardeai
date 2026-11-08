@@ -1,0 +1,356 @@
+# Market Outlook Engine policy — operator-owned priors (AGENTS.md §1 "trading policy lives under config/").
+# Born from operator 2026-11-08 10:45 ET ("the weekly outlook advice is badly architected — only ETFs + Finviz
+# movers + sector RS, no cash index levels, no foreign indices, nothing weighting the inputs") and design
+# FABLE-OUTLOOK-METHODOLOGY-LQ-946 §2/§4 (inbox/claude-lead/FABLE-OUTLOOK-METHODOLOGY-LQ-946.md).
+#
+# Every numeric prior of the engine lives here; no number is hardcoded in scripts/lib/market_outlook/. The file's
+# sha256 is the record's policy_version (§2, §4.6), so editing any number is visible on every record written after.
+# Advisory only: the engine never sizes, orders or stops anything (MBI_BEHAVIOR = 0).
+schema: MarketOutlookPolicy@v1
+as_of: 2026-11-08
+authority: READ_ONLY_ADVISORY
+lane_id: market-outlook-weekly
+schema_record: MarketOutlookRecord@v1
+record_schema_owner: LQ-20261107-966
+
+# ── Normalization: every indicator becomes a signed signal s in [-1, +1], + = supportive of risk (§2.1) ──────────
+normalization:
+  z:
+    window_sessions: 252        # same z window as MRE sectors (scripts/lib/market_risk/sectors.py)
+    min_history_sessions: 60    # fewer than this -> UNKNOWN with the count, never a short-window guess
+    clip: 2.5
+    scale: 2.5
+  percentile:
+    years: 3
+    min_observations: 100
+    scale: 2.0                  # s = 1 - 2*pct (so pct 0.9 -> -0.8)
+  trend:
+    close_vs_sma_sessions: 50
+    slope_sma_sessions: 20
+    slope_window_sessions: 10
+    close_vs_long_sma_sessions: 200
+    weights: {close_vs_sma: 0.5, slope_sma: 0.3, close_vs_long_sma: 0.2}
+    downtrend_penalty: 0.5      # 20DMA below 50DMA and both falling: s *= (1 - 0.5)
+    weekly_blend: 0.2           # §2.1: the 5-session change enters as a second indicator: s = 0.8*trend + 0.2*weekly
+    min_bars: 210               # 200DMA + slope + a 52-week high
+  weekly:
+    return_sessions: 5
+    rv_sessions: 20
+    clip: 2.0                   # return / RV, clipped +-2, then /2
+    min_bars: 25
+  vol:
+    term_full_inversion_cap: -0.6   # VIX9D > VIX > VIX3M forces s <= -0.6
+    contango_complacency_cap: 0.6   # contango with VIX < complacency_vix caps s at +0.6
+    complacency_vix: 15.0
+  breadth:
+    pct_above_center: 50.0
+    pct_above_scale: 50.0
+    high_low_divisor: 1.0          # §2.1 says ratio/0.1, but §2.10's worked example (504 highs / 660 lows -> -0.13)
+                                  # is the shape to reproduce and stays inside +-1; the worked example wins.
+    mcclellan_divisor: 100.0
+  positioning:
+    median_sessions: 252
+    min_history_sessions: 20
+    ratio_scale: 1.5            # s = -clip((ratio/median - 1) / 1.5)
+    contrarian_ratio: 2.5       # ratio > 2.5x median AND VIX pct > 0.8 -> s = +0.3 (capitulation)
+    contrarian_vix_percentile: 0.8
+    contrarian_score: 0.3
+    mover_skew_scale: 20.0      # (mean gainer move + mean loser move) / this
+  futures:
+    gap_pct_scale: 1.0          # s = clip(gap % since the reopen anchor / 1.0); the anchor is the prior settle or
+                                # the first print after the reopen, whichever the lane wrote (§2.9)
+  rates:
+    change_sessions: 20
+    bp_scale: 50.0              # s = -clip(delta_bp / 50)
+    bear_steepener_negative: true
+  dollar:
+    change_sessions: 20
+    pct_scale: 3.0              # s = -clip(delta_pct / 3)
+
+# Freshness decay on the MARKET clock (§2.5, §2.9). Reuses scripts/lib/market_risk/sessions.market_hours_between.
+freshness:
+  ladder:                       # [market hours, multiplier] — first rung whose ceiling >= age wins
+    - [12, 1.0]
+    - [24, 0.8]
+    - [48, 0.6]
+    - [72, 0.4]
+  after_last: 0.2
+  reopen_et: "18:00"            # Sunday futures reopen: weekend hours do not decay freshness from 18:00
+  fallback_hours_per_day: 24.0  # only when the market clock cannot be imported (never in production)
+
+# ── The eleven categories (§2.3), weights sum 100 ───────────────────────────────────────────────────────────────
+# Every indicator: key, label, type, weight (intra-category v_ki), max_age (sessions for daily series, or a
+# "<n>h"/"<n>m" literal for intraday), and the parameters of its type. A category with coverage < min_coverage is
+# UNKNOWN and renormalized out of S — never a silent zero (§2.2).
+categories:
+  - key: cash_indices
+    title: US cash indices trend & key levels
+    weight: 18
+    min_coverage: 0.5
+    max_age_sessions: 2
+    basis: etf_derived          # D6/§2.3: cash levels when a cash daily series exists, else the ETF proxy, labelled
+    # Cash levels are preferred; the ETF proxy is used ONLY while the cash row is absent, and the indicator is then
+    # labelled basis: etf_derived (§1.1, D6). Both are never scored at once (double-count guard §2.3).
+    indicators:
+      - {key: spx, label: S&P 500, type: trend, weight: 0.35, cash_symbol: "$SPX", etf_symbol: SPY}
+      - {key: ndx, label: Nasdaq 100, type: trend, weight: 0.25, cash_symbol: "$NDX", etf_symbol: QQQ}
+      - {key: dji, label: Dow Jones Industrial Average, type: trend, weight: 0.15, cash_symbol: "$DJI", etf_symbol: DIA}
+      - {key: rut, label: Russell 2000, type: trend, weight: 0.15, cash_symbol: "$RUT", etf_symbol: IWM}
+      - {key: rsp, label: S&P 500 equal weight, type: trend, weight: 0.10, etf_symbol: RSP}
+  - key: futures
+    title: Futures / overnight
+    weight: 8
+    min_coverage: 0.5
+    max_age: "180m"             # §2.9: futures max_age 90 min; a Sunday 20:00 brief is 30 min past the 18:00 reopen
+    min_prints: 2               # §2.9: fewer than 2 post-open prints -> UNKNOWN by design
+    indicators:
+      - {key: es, label: E-mini S&P 500, type: futures, weight: 0.40, symbol: "/ES"}
+      - {key: nq, label: E-mini Nasdaq 100, type: futures, weight: 0.40, symbol: "/NQ"}
+      - {key: rty, label: E-mini Russell 2000, type: futures, weight: 0.10, symbol: "/RTY"}
+      - {key: ym, label: E-mini Dow, type: futures, weight: 0.10, symbol: "/YM"}
+  - key: volatility
+    title: Volatility & term structure
+    weight: 12
+    min_coverage: 0.5
+    max_age_sessions: 2
+    indicators:
+      - {key: vix, label: VIX close, type: vol_percentile, weight: 0.35, fred_series: VIXCLS}
+      - {key: vxn, label: VXN close, type: vol_percentile, weight: 0.15, fred_series: VXNCLS}
+      - {key: rv_spy, label: SPY 20-session realized vol percentile, type: vol_percentile_bars, weight: 0.25, symbol: SPY}
+      - {key: term, label: VIX term structure, type: term_structure, weight: 0.15}
+      - {key: mre_volatility, label: MRE volatility, type: mre_state, weight: 0.10, mre_category: volatility}
+  - key: breadth
+    title: Breadth
+    weight: 12
+    min_coverage: 0.5
+    max_age_sessions: 2
+    indicators:
+      - {key: pct_above_sma50, label: share of symbols above their 50-DMA, type: breadth_pct, weight: 0.35, field: pct_above_sma50}
+      - {key: pct_above_sma200, label: share of symbols above their 200-DMA, type: breadth_pct, weight: 0.15, field: pct_above_sma200}
+      - {key: highs_lows, label: new highs minus new lows, type: breadth_high_low, weight: 0.25}
+      - {key: mre_breadth, label: MRE breadth proxy, type: mre_state, weight: 0.15, mre_category: breadth}
+      - {key: sector_mcclellan, label: 11-SPDR breadth (McClellan proxy), type: breadth_mcclellan, weight: 0.10}
+  - key: leadership
+    title: Sector leadership / rotation / style
+    weight: 10
+    min_coverage: 0.5
+    max_age_sessions: 3
+    indicators:
+      - {key: persistence, label: top-3 sector leadership durability, type: leadership_persistence, weight: 0.40, window_sessions: 20}
+      - {key: momentum_states, label: sector momentum states, type: momentum_states, weight: 0.30}
+      - {key: equal_vs_cap, label: equal-weight vs cap-weight, type: style_state, weight: 0.15, etf: "STYLE:equal_vs_cap"}
+      - {key: small_vs_large, label: small vs large, type: style_state, weight: 0.15, etf: "STYLE:small_vs_large"}
+  - key: global
+    title: Global (Asia + Europe)
+    weight: 7
+    min_coverage: 0.5
+    max_age_sessions: 2
+    basis: etf_derived          # D3: ETF proxies tonight, labelled; index levels land with WU-7
+    indicators:
+      - {key: efa, label: EAFE, type: trend, weight: 0.30, etf_symbol: EFA}
+      - {key: ewj, label: Japan, type: trend, weight: 0.20, etf_symbol: EWJ}
+      - {key: fxi, label: China large cap, type: trend, weight: 0.20, etf_symbol: FXI}
+      - {key: eem, label: Emerging markets, type: trend, weight: 0.15, etf_symbol: EEM}
+      - {key: ewz, label: Brazil, type: trend, weight: 0.15, etf_symbol: EWZ}
+  - key: rates
+    title: Rates, curve, dollar
+    weight: 8
+    min_coverage: 0.5
+    max_age_sessions: 5
+    indicators:
+      - {key: dgs10, label: 10-year yield 20-session change, type: rates_bp, weight: 0.35, fred_series: DGS10}
+      - {key: t10y2y, label: 2s10s curve, type: ratio_z, weight: 0.25, fred_series: T10Y2Y, invert: false}
+      - {key: uup, label: US dollar (UUP), type: dollar_pct, weight: 0.25, etf_symbol: UUP}
+      - {key: dtwexbgs, label: Broad dollar index, type: dollar_pct, weight: 0.15, fred_series: DTWEXBGS}
+  - key: credit
+    title: Credit
+    weight: 7
+    min_coverage: 0.5
+    max_age_sessions: 5
+    indicators:
+      - {key: hy_oas, label: High-yield OAS, type: ratio_z, weight: 0.50, fred_series: BAMLH0A0HYM2, invert: true}
+      - {key: hyg_lqd, label: HYG / LQD ratio, type: ratio_bars, weight: 0.30, numerator: HYG, denominator: LQD}
+      - {key: mre_credit, label: MRE macro credit, type: mre_state, weight: 0.20, mre_category: macro_credit}
+  - key: commodities
+    title: Commodities & crypto
+    weight: 4
+    min_coverage: 0.5
+    max_age_sessions: 3
+    indicators:
+      - {key: uso, label: WTI (USO), type: trend, weight: 0.25, etf_symbol: USO}
+      - {key: gld, label: Gold (GLD), type: trend, weight: 0.20, etf_symbol: GLD}
+      - {key: copper_gold, label: Copper / gold (CPER / GLD), type: ratio_bars, weight: 0.25, numerator: CPER, denominator: GLD}
+      - {key: ibit, label: Bitcoin (IBIT), type: trend, weight: 0.15, etf_symbol: IBIT}
+      - {key: dbc, label: Broad commodities (DBC), type: trend, weight: 0.15, etf_symbol: DBC}
+  - key: events
+    title: Macro / event calendar
+    weight: 8
+    min_coverage: 0.5
+    max_age: "168h"             # §2.9: calendar max_age 7 days
+    indicators:
+      - {key: event_tilt, label: event-risk tilt (next 2 sessions), type: event_tilt, weight: 0.60}
+      - {key: prior_surprise, label: prior-week release reaction, type: event_surprise, weight: 0.40}
+  - key: positioning
+    title: Positioning / sentiment / flows
+    weight: 6
+    min_coverage: 0.5
+    max_age_sessions: 2
+    indicators:
+      - {key: index_pc, label: index put/call vs its median, type: positioning_pc, weight: 0.50, symbols: [SPY, QQQ]}
+      - {key: mover_skew, label: gainers vs losers mean move, type: mover_skew, weight: 0.30}
+      - {key: aaii, label: AAII bull-bear, type: unavailable_source, weight: 0.10, reason: "AAII weekly survey has no in-house source (D4/WU-13)"}
+      - {key: cot, label: CFTC COT ES/NQ positioning, type: unavailable_source, weight: 0.10, reason: "CFTC COT has no in-house reader yet (D4/WU-13)"}
+
+# ── Regime conditioning (§2.4) — multipliers only; the MRE composite is never re-scored ─────────────────────────
+regimes:
+  vix_bands:
+    - {name: LOW, max: 15.0}
+    - {name: MID, max: 25.0}
+    - {name: HIGH, max: 35.0}
+    - {name: EXTREME, max: null}
+  stress_mre_tiers: [YELLOW, ORANGE, RED]   # every tier at or above YELLOW
+  stress_weight_tiers: [ORANGE, RED]        # §2.4: HIGH/EXTREME VIX or MRE >= ORANGE applies the stress multipliers
+  calm_mre_tiers: [BLUE, GREEN]
+  multipliers:
+    stress: {volatility: 1.3, breadth: 1.3, credit: 1.3, cash_indices: 0.8, leadership: 0.7}
+    calm: {cash_indices: 1.2, leadership: 1.2, volatility: 0.8}
+    episode_open: {futures: 1.25}
+  # MRE sub-scores enter as indicators (categories 3, 4, 8, 11), never the MRE composite (§2.4).
+  mre_state_map:
+    STRESS: -1.0
+    WARN: -0.4
+    IMPROVING: 0.5
+    CALM: 0.3
+  mre_latest: data/runtime/market_risk/latest.json
+  mre_max_age_hours: 36        # §4.6: older than 36 h on the market clock -> UNKNOWN
+
+# ── Bands, hysteresis, caps (§2.7) ──────────────────────────────────────────────────────────────────────────────
+bands:
+  risk_on_min: 25.0
+  neutral_min: -10.0
+  defensive_min: -35.0         # S <= -35 is RISK-OFF
+  names: [RISK_OFF, DEFENSIVE, NEUTRAL, RISK_ON]
+hysteresis:
+  confirm_evaluations: 2       # a band change needs 2 consecutive evaluations in the new band...
+  jump_threshold: 10.0         # ...or |delta S| >= 10 in one step
+  rise_one_band_per_week: true # from DEFENSIVE/RISK_OFF never skip a band inside one weekly cycle
+  window_hours: 168.0
+mre_caps:
+  YELLOW: NEUTRAL
+  ORANGE: DEFENSIVE
+  RED: DEFENSIVE
+  red_shock: RISK_OFF
+fomc_window:
+  sessions: 2                  # RISK-ON cannot be newly declared inside the 2 sessions before a decision
+  blocks: RISK_ON
+
+# ── Confidence (§2.5) ───────────────────────────────────────────────────────────────────────────────────────────
+confidence:
+  agreement_scale: 1.0         # agreement = 1 - stdev(C_k)/1.0
+  agreement_floor: 0.3
+  agreement_ceiling: 1.0
+  hitrate_base: 0.5
+  hitrate_min_graded_weeks: 8  # 0.5 until 8 graded weeks exist (§3.4)
+  hitrate_weight: 0.5
+  bands: {high: 0.7, moderate: 0.45}
+
+# ── Macro / event calendar (§2.6, §4.5) ────────────────────────────────────────────────────────────────────────
+events:
+  impact:
+    fomc_decision: 1.0
+    fomc_minutes: 0.4            # §4.5 "FOMC minutes ... MED 0.4" — the specific calendar table wins over §2.6's
+                                 # MED 0.5 vocabulary (0.4 still grades MED at med_at 0.35); LQ-985 review minor
+    cpi: 1.0
+    pce: 1.0
+    employment_situation: 1.0
+    ppi: 0.5
+    retail_sales: 0.5
+    gdp: 0.5
+    jolts: 0.3
+    durable_goods: 0.2
+    housing_starts: 0.2
+    jobless_claims: 0.2
+    default: 0.2
+  impact_levels: {high_at: 0.8, med_at: 0.35}
+  sep_multiplier: 1.2
+  tilt_per_impact: 0.15        # tau = -0.15 * max impact in the next tilt_sessions sessions
+  tilt_sessions: 2
+  u_event_per_impact: 0.15     # U_event = product(1 - 0.15*impact) floored at u_event_floor
+  u_event_floor: 0.6
+  minutes_offset_days: 21      # FOMC minutes = decision + 21 days, 14:00 ET (§1.11)
+  minutes_time_et: "14:00"
+  presser_time_et: "14:30"
+  horizon_days: 7              # Sunday brief covers the whole week; monday/daily the next 2 sessions
+  surprise:
+    window_minutes: 60         # reaction proxy = SPX move in the 60 min after a HIGH release (§1.11)
+    atr_sessions: 20
+    scale: 1.0                 # s = clip(reaction_atr / 1.0)
+    median_band_minutes: 30    # early close (13:00) shortens the window (§2.9)
+
+# ── Key levels (§4.2, §4.6) ────────────────────────────────────────────────────────────────────────────────────
+levels:
+  indices: [SPX, NDX, RUT]
+  proxy: {SPX: SPY, NDX: QQQ, RUT: IWM}
+  etf_to_index: {SPX: 10.0, NDX: 41.0, RUT: 10.0}  # a labelled ETF-derived level keeps the index's scale order
+  support_sources: [prior_week_low, dma50, dma200, round_number]
+  resistance_sources: [prior_week_high, dma50, dma200, round_number]
+  round_number_step: {SPX: 100.0, NDX: 500.0, RUT: 50.0}
+  round_number_tolerance_pct: 1.0
+  pivot_window_sessions: 20
+
+# ── Actions template (§2.8) — the CIO renders it per account; the outlook never issues an order ────────────────
+actions:
+  RISK_ON:
+    tranche_release: [1, 2, 3]
+    reserve_floor_pct: 5.0
+    exposure_note: "full target exposure; rotate toward leaders (category 5)"
+    mre_note: "tranche 3 requires MRE <= BLUE"
+  NEUTRAL:
+    tranche_release: [1]
+    reserve_floor_pct: 5.0
+    exposure_note: "hold; trims only per Gain Guardian / protection playbook"
+    mre_note: "tranche 2 after one weekly cycle NEUTRAL-or-better"
+  DEFENSIVE:
+    tranche_release: []
+    reserve_floor_pct: 5.0
+    exposure_note: "no new tranches; READY names stay READY (annotate, never silence)"
+    mre_note: "ORANGE/RED cap the stance here; hedges per MRE tier"
+  RISK_OFF:
+    tranche_release: []
+    reserve_floor_pct: 5.0
+    exposure_note: "no adds; tranche schedule paused; list what would change our view"
+    mre_note: "red_shock forces; hedges per MRE"
+
+# ── Sources: allowed, refused, and where each category's data lives (§1) ────────────────────────────────────────
+sources:
+  # Banned feeds are REFUSED, never scored: a refused row is reported with refused_reason and counts against
+  # coverage (§1.14 "Banned-source dependencies the outlook must NOT inherit").
+  banned_feeds: [yfinance, yahoo_finance, yahoo]
+  daily_bar_sources: [alpaca, schwab]     # OHLCV_DAILY_SOURCES analogue; never yfinance
+  cash_index_feed: schwab
+  cash_index_table: market_quotes_extended
+  snapshot_table: ticker_snapshot_daily
+  movers_table: market_movers
+  sector_rs_table: sector_rs_daily
+  sector_state_table: sector_momentum_state
+  options_table: option_chain_snapshots
+  regime_table: market_regime_indicators
+  fred_table: fred_economic_series
+  extended_table: market_quotes_extended
+  breadth_max_symbols: 8000              # the whole Finviz snapshot universe (6,925 today); a cap only guards runaway
+  movers_batch_window_minutes: 240        # newest batch only; an older movers batch is not today's breadth
+  snapshot_max_age_sessions: 2
+  extended_min_prints_newest: 2
+
+# ── Runtime + stores (§4.6) ────────────────────────────────────────────────────────────────────────────────────
+runtime:
+  dir: data/runtime/market_outlook      # under the state root (scripts/lib/lane_state_root.py), never a checkout
+  latest: latest.json
+  run_last: run_last.json
+  receipts: receipts
+stores:
+  records_table: market_outlook_records
+  grades_table: market_outlook_grades
+  writer: scripts/lib/writers/market_outlook_writer.py
+  migration: migrations/2026_11_08_market_outlook.sql
+  cio_decisions_strategy_type: market_outlook   # WU-3 inserts the CIO row; the writer exposes the payload

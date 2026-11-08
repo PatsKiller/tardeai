@@ -234,6 +234,15 @@ def handle(path: str, method: str, body: Any = None, query: Any = None, *, ctx: 
                                                          "agents, n8n and the service token are refused")
             if sub == "/state":
                 return 200, build_state(ctx, op)
+            if sub == "/lanes":
+                from scripts.lib import ops_n8n_lane_run as LR  # LQ-611: one row per allowlisted lane (read-only)
+
+                return 200, {"ok": True, "data": LR.lanes_view(ctx.hosts, ctx.clock())}
+            if sub.startswith("/lanes/batch/"):
+                from scripts.lib import ops_n8n_lane_run as LR  # progress of one manual request (read-only)
+
+                return 200, {"ok": True, "data": LR.batch_progress(ctx.hosts.n8n_ledger_path,
+                                                                    sub[len("/lanes/batch/"):])}
             mm = ROUTE_RE.match(sub)
             if mm and not mm.group(2):
                 r = ctx.store.get_request(mm.group(1))

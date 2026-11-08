@@ -54,11 +54,29 @@ class PipelineDiagnosisV1(BaseModel):
     severity: Literal["info", "warn", "error", "critical"] = "info"
 
 
+class ContradictionVerdictV1(BaseModel):
+    """ContradictionVerdict@v1 as the model must return it (LQ-20261107-1010).
+
+    The adjudicator used to accept any dict carrying a known ``verdict`` string and default every
+    other field, so a truncated or loosely-shaped answer still became a row. The contract is the one
+    the prompt states: a verdict, a bounded confidence, a rationale, the evidence refs relied on and
+    what would resolve it.
+    """
+
+    schema_id: Literal["contradiction_verdict.v1"] = "contradiction_verdict.v1"
+    verdict: Literal["LEFT", "RIGHT", "BOTH_STALE", "NOT_A_CONTRADICTION", "UNRESOLVED"]
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    rationale: str = ""
+    decisive_evidence_refs: list[str] = Field(default_factory=list)
+    what_would_resolve: str = ""
+
+
 SCHEMA_MODELS: dict[str, type] = {
     "watch_narrative.v1": WatchNarrativeV1,
     "cio_synthesis.v1": CioSynthesisV1,
     "strategy_plan.v1": StrategyPlanV1,
     "pipeline_diagnosis.v1": PipelineDiagnosisV1,
+    "contradiction_verdict.v1": ContradictionVerdictV1,
 }
 
 
@@ -118,6 +136,14 @@ def schema_example(schema_id: str) -> dict[str, Any]:
             "findings": ["stale timestamps"],
             "recommended_actions": ["refresh quotes"],
             "severity": "warn",
+        },
+        "contradiction_verdict.v1": {
+            "schema_id": "contradiction_verdict.v1",
+            "verdict": "NOT_A_CONTRADICTION",
+            "confidence": 0.6,
+            "rationale": "The two artifacts address different horizons.",
+            "decisive_evidence_refs": ["artifact-1"],
+            "what_would_resolve": "A same-horizon restatement from the same source.",
         },
     }
     if schema_id not in examples:

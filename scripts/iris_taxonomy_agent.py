@@ -37,7 +37,15 @@ except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
     from live_project_root import venv_python  # noqa: E402
 
 
-def llm_generate(prompt, timeout=30, **_kwargs):
+def llm_generate(prompt, timeout=None, **_kwargs):
+    """One governed cloud call. ``timeout=None`` resolves the budget for THIS process (LQ-865/LQ-1010).
+
+    The hand literals are gone — 30 s at the two classification sites and 20 s at the Sunday
+    gap-recommendation site (line 1691). The 20 s one sat below the lane's own successful tail
+    (grok p95 29.3 s, max ok 29.5 s), so it cut calls the lane answered and the answer was swallowed
+    into "(LLM unavailable)". ``config/llm_lane_budgets.json`` now sizes ``iris_taxonomy_agent`` from
+    the measured tail; a caller may still pass an explicit number.
+    """
     text, _lane = generate_cloud(
         prompt, process_id="iris_taxonomy_agent",
         task_summary="Iris taxonomy classification", timeout=timeout,
@@ -513,7 +521,7 @@ Categories: {cats}
 Reply with ONLY a JSON object:
 {{"category": "category_name", "confidence": 0.0-1.0, "reasoning": "one line"}}"""
 
-    result = llm_generate(prompt, timeout=30, fast=True)
+    result = llm_generate(prompt, fast=True)
     try:
         # Extract JSON from response
         if "{" in result:
@@ -538,7 +546,7 @@ Already have: {existing}
 Reply with ONLY a JSON array:
 [{{"channel_name": "name", "reason": "why", "estimated_quality": 1-100}}]"""
 
-    result = llm_generate(prompt, timeout=30, fast=True)
+    result = llm_generate(prompt, fast=True)
     try:
         if "[" in result:
             json_str = result[result.index("["):result.rindex("]") + 1]
@@ -1688,7 +1696,7 @@ def run_library_audit(dry_run=False):
                 cat = gap["category"]
                 try:
                     prompt = f"/no_think Suggest 2 real YouTube channels covering {cat.replace('_',' ')} for a disability retirement investor. Just channel names, one per line."
-                    result = llm_generate(prompt, timeout=20)
+                    result = llm_generate(prompt)
                     if result:
                         recs.append(f"  {cat.replace('_',' ')}: {result.strip()[:100]}")
                 except Exception:
