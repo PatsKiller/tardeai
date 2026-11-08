@@ -281,7 +281,8 @@ def run(args: argparse.Namespace) -> int:
         if not have_tables:
             lr.write_lane_receipt(LANE_ID, ok=False, exit_code=2, started_at=started, script="scripts/market_event_detect.py",
                                   summary={"error": "tables missing: apply migrations/2026_11_07_market_event.sql"},
-                                  error="tables missing")
+                                  error="tables missing", produced_count=0, attempted_count=0,
+                                  skipped_reasons={"dependency_unavailable": 1}, empty_reason="dependency_unavailable")
             print("market_event tables missing; apply migrations/2026_11_07_market_event.sql", file=sys.stderr)
             return 2
         written = 0
@@ -291,11 +292,15 @@ def run(args: argparse.Namespace) -> int:
             written += store.upsert_candidates(conn, ep["episode_id"], cands)
             store.unrank_missing(conn, ep["episode_id"], [c["symbol"] for c in cands])
         conn.commit()
+        # LQ-20261107-434: the contract's unit is candidate rows, so attempted_count counts the candidate rows this run
+        # tried to upsert (>= produced_count), not episodes; episodes go in the summary. 91 written / 1 episode graded
+        # counts_inconsistent -> RUN_FAILED output_unverifiable and opened the breaker.
+        attempted = sum(len(c) for _, c, _ in results)
         lr.write_lane_receipt(
             LANE_ID, ok=True, exit_code=0, started_at=started, script="scripts/market_event_detect.py",
             summary={"episodes": len(results), "candidates_written": written,
                      "open": [e["episode_id"] for e, _, _ in results if e["state"] != "CLOSED"]},
-            produced_count=written, attempted_count=len(results),
+            produced_count=written, attempted_count=max(attempted, written),
             output_evidence=[{"table": "market_event_candidates", "episode_id": e["episode_id"], "rows": len(c)}
                              for e, c, _ in results],
             empty_reason=None if written else "no_open_episode")
