@@ -1120,6 +1120,7 @@ def render_deterministic_summary(
     selected: Sequence[Mapping[str, Any]],
     week_ahead: Mapping[str, Any],
     totals: Mapping[str, Any],
+    risk_market: Optional[Mapping[str, Any]] = None,
 ) -> str:
     ups = [s for s in selected if (s.get("move_pct") or 0) > 0]
     downs = [s for s in selected if (s.get("move_pct") or 0) < 0]
@@ -1136,8 +1137,15 @@ def render_deterministic_summary(
         parts.append(
             f"{len(ups)} up and {len(downs)} down, on about ${totals.get('market_value_total', 0):,.0f} of measured holdings."
         )
-    tier = risk.get("regime_label") or "unavailable"
-    parts.append(f"Risk tier: {tier} (score {risk.get('regime_score')}, volatility {risk.get('volatility_state')}).")
+    # The regime snapshot and the market-risk tier are two different measures on two different
+    # scales; calling both "risk tier" made one document quote 5.0 and 59.6 for the same thing.
+    regime = risk.get("regime_label") or "unavailable"
+    line = f"Market regime: {regime} (score {risk.get('regime_score')}, volatility {risk.get('volatility_state')})"
+    tier = str((risk_market or {}).get("tier") or "").upper()
+    if tier:
+        tier_score = _f((risk_market or {}).get("score"))
+        line += f"; market risk tier {tier}" + (f" ({tier_score:.1f})" if tier_score is not None else "")
+    parts.append(line + ".")
     macro = week_ahead.get("macro") or []
     if macro:
         parts.append("Macro this week: " + "; ".join(f"{m['date']} {m['event']}" for m in macro[:4]) + ".")
@@ -1801,7 +1809,7 @@ def build_brief(
         "earnings": list(calendar.get("earnings") or []),
         "notes": list(calendar.get("notes") or []),
     }
-    summary_text = render_deterministic_summary(risk, items, week_ahead, totals)
+    summary_text = render_deterministic_summary(risk, items, week_ahead, totals, risk_market)
     summary_source = "deterministic"
 
     packet = {

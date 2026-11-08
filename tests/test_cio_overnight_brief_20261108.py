@@ -439,7 +439,21 @@ def test_llm_narrative_fills_prose_but_never_the_action():
 def test_llm_narrative_garbage_leaves_the_deterministic_summary():
     doc = build(AS_OF, narrative_fn=lambda packet: {"summary": ""})
     assert doc["summary"]["source"] == "deterministic"
-    assert "Risk tier" in doc["summary"]["text"]
+    assert "Market regime" in doc["summary"]["text"]
+
+
+def test_summary_labels_the_regime_and_the_market_risk_tier_separately():
+    # The regime snapshot (risk_off, -0.4) and the market-risk tier (RED, 59.6) are different
+    # measures on different scales; one document must not print the same label for both.
+    text = build(AS_OF)["summary"]["text"]
+    assert "Market regime: risk_off" in text
+    assert "market risk tier RED (59.6)" in text
+    assert "Risk tier: risk_off" not in text
+
+
+def test_synopsis_keeps_the_market_risk_tier_label():
+    doc = build(AS_OF)
+    assert "Risk tier RED (score 59.6)" in doc["synopsis"]["market"]["line"]
 
 
 def test_empty_tape_is_an_honest_empty_not_an_error(tmp_path):
