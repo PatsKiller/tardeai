@@ -27554,6 +27554,100 @@
         "priority": 5,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "market-event-outcomes",
+      "owner": "research",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/market_event_outcomes.py",
+        "cadence": "45 16 * * 1-5",
+        "stage": "canary",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "active_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "state_reason": "LQ-20261107-479, relayed by claude-lead 2026-11-07 19:45 ET: the operator approved going live on the market-event lanes. Scores every candidate of every market-event episode at +5/+20/+60 sessions from the baseline and from each READY tranche, daily after the close (16:45 ET Mon-Fri). Advisory telemetry only: nothing downstream reads a score to size, order or stop anything.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/market-event-outcomes_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/market_event_outcomes.py main() writes the LaneRunReceipt v2 on --apply only (tests/test_market_event_outcomes_20261107.py::test_cli_dry_run_writes_nothing); no n8n fire has happened yet, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_market_event_outcomes_20261107.py (9 synthetic cases: the anchor is the last completed close, +n sessions skip weekends/holidays, a missing return is not zero, malformed READY plans are skipped, scorecard and paired edge, the Friday check, the UPSERT never moves the entry, a dry run writes nothing). Live read-only dry run 2026-11-07 19:52 ET from e00b81e59: 1 episode, 91 signal rows, 0 returns observed (no +5 session has elapsed), 0 rows written.",
+      "review_by": "2026-11-21",
+      "note": "Advisory telemetry (MBI_BEHAVIOR = 0): reads market_event_episodes, market_event_candidates and Finviz closes (ticker_prices source='finviz'), writes only market_event_outcomes on --apply, upserting on (episode_id, symbol, signal) and never moving an entry (signal_at / price / anchor). --dry-run is the default: read-only connection, prints, writes no row and no receipt. Late-arriving closes fill ret_5/ret_20/ret_60 on a later fire (COALESCE), so a fire before the +n session exists is normal and not an empty output.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "45 16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 5,
+        "retry_policy": "transient-1-ingest"
+      }
+    },
+    {
+      "lane_id": "market-reference-bars",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/market_reference_bars_refresh.py",
+        "cadence": "10 18 * * 1-5",
+        "stage": "canary",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24,
+      "active_days": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-07",
+      "state_reason": "LQ-20261107-479, relayed by claude-lead 2026-11-07 19:45 ET: the operator approved going live on the market-event lanes, whose reference-bar feed this is (the Market Risk Engine's technical, volatility and correlation categories need 200+ sessions). Daily bars for the 51 reference ETFs, after the close (18:10 ET Mon-Fri); never yfinance.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/market-reference-bars_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/market_reference_bars_refresh.py main() writes the LaneRunReceipt v2 on --apply only (a dry run fetches and prints, writes nothing); the 2026-11-07T23:08:34Z receipt on disk came from a hand-run --apply, not from n8n"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_market_reference_bars_refresh_20261031.py (4 cases: the fetch window, a dry run never stores and --apply does, an empty symbol is named, symbols come from the shared config) and tests/test_market_reference_symbols_20261031.py. Live read-only dry run 2026-11-07 19:52 ET from e00b81e59: 51 symbols, 357 bars fetched (7 sessions each), 0 stored, empty: none. Stored state before the run: 19,614 daily bars across the 51 symbols through 2026-11-06.",
+      "review_by": "2026-11-21",
+      "note": "Market data only (MBI_BEHAVIOR = 0): daily OHLCV from Alpaca, the provider config/data_source_authority.json grants `bars` to (scripts/market_data_snapshot_loader.fetch_alpaca_daily_bars); never yfinance. --apply upserts market_ohlcv_bars on (symbol, timeframe, bar_time) so a refresh is idempotent, then writes the LaneRunReceipt v2. Exit 1 names any symbol the provider returned nothing for, so a partial provider failure is a failed run, not a quiet one. Class pipeline, not ingest: the allowlist entry declares the ALPACA_* names the loader reads, and \u00a723.18 refuses a broker-credential name in an R1 class's env_names.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "10 18 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "pipeline",
+        "priority": 4,
+        "retry_policy": "transient-2"
+      }
     }
   ],
   "freshness_contracts": [

@@ -5774,6 +5774,74 @@
       "review_note": "mirror of scripts/warm_read_endpoints.py ENDPOINTS; env_names is empty because the script reads no credential: lib.cc_client attaches the loopback service token from config/cc_auth.yaml itself, the same way every other loopback caller does. HOME is in CHILD_ENV_BASE_NAMES so the boot stamp path resolves."
     },
     {
+      "lane_id": "market-event-outcomes",
+      "command": [
+        "$PY",
+        "scripts/market_event_outcomes.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/tradeai_market_event_outcomes.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/market-event-outcomes_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_ENV_FILE",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "market_event_outcomes._load_env reads the code-root .env (or TRADEAI_ENV_FILE) into the process env and _connect then reads the five DB_* names literally; lib.lane_last_receipt adds the state-root names. report until the executor's base set is re-inventoried for enforce; no broker, sender or model name is read.",
+      "env_evidence": "scripts/market_event_outcomes.py: _load_env (TRADEAI_ENV_FILE fallback when the code-root .env is absent) and _connect (DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD); scripts/lib/lane_last_receipt.py runtime_dir (TRADEAI_PERSISTENT_STATE_ROOT / TRADEAI_STATE_ROOT) plus the executor base names TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA. No broker, sender or LLM name anywhere in the closure.",
+      "source": "LQ-20261107-479 (operator approved the market-event lanes live; relayed by claude-lead 2026-11-07 19:45 ET). n8n-native dispatcher lane: no cron line, no systemd unit. --dry-run is the script default (read-only connection, prints, writes nothing); --apply upserts market_event_outcomes and writes the v2 receipt. Lock protects n8n against itself and a manual run, nothing else."
+    },
+    {
+      "lane_id": "market-reference-bars",
+      "command": [
+        "$PY",
+        "scripts/market_reference_bars_refresh.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "lock": "/tmp/tradeai_market_reference_bars.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/market-reference-bars_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "ALPACA_API_KEY",
+        "ALPACA_SECRET_KEY",
+        "APCA_API_KEY_ID",
+        "APCA_API_SECRET_KEY",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_ENV_FILE",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "the closure reads Alpaca market-data keys (ohlc_charts._keys: ALPACA_API_KEY/ALPACA_SECRET_KEY with the APCA_* spellings) and the DB_* names through market_data_snapshot_loader (dotenv from the code-root .env, then session13_db.get_conn). report until the executor's env policy can express a market-data key that is not a trading credential; no order route, no account, no sender name is read.",
+      "env_evidence": "scripts/ohlc_charts.py _keys (ALPACA_API_KEY / APCA_API_KEY_ID, ALPACA_SECRET_KEY / APCA_API_SECRET_KEY, market data only: the data API /v2/stocks bars); scripts/market_data_snapshot_loader.py load_dotenv(PROJECT_ROOT/.env) and session13_db.get_conn (DB_*); lib.lane_last_receipt (state root + executor base names). The declared ALPACA_* names are why this lane's dispatch class is pipeline and not ingest: \u00a723.18 r1_class_admission refuses a broker-credential name in an R1 class's env_names.",
+      "source": "LQ-20261107-479 (operator approved the market-event lanes live; this is their reference-bar feed). n8n-native dispatcher lane: no cron line, no systemd unit. --dry-run is the script default (fetches, prints, writes nothing); --apply upserts market_ohlcv_bars and writes the v2 receipt. Exit 1 names any symbol the provider returned nothing for."
+    },
+    {
       "lane_id": "market-event-data-refresh",
       "env_names": [
         "DB_CONN_TRACE",

@@ -41367,6 +41367,355 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "market-event-outcomes",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Daily after the close (16:45 ET Mon-Fri): score every market-event candidate at +5/+20/+60 sessions from the baseline and from each READY tranche, so an episode's re-entry advice can be measured after the fact. Advisory telemetry only.",
+        "business_function": "Market Event Re-entry (SPEC_MARKET_EVENT_REENTRY_20261107 WP6)",
+        "source": "LQ-20261107-339; LQ-20261107-479; scripts/market_event_outcomes.py"
+      },
+      "owner": "research",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/market_event_outcomes.py (--apply live, --dry-run shadow)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_market_event_outcomes.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock"
+        },
+        {
+          "name": "Postgres market_event_outcomes (UPSERT)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/market_event_outcomes.py UPSERT"
+        },
+        {
+          "name": "Postgres market_event_episodes, market_event_candidates, ticker_prices (read)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/market_event_outcomes.py load_world"
+        },
+        {
+          "name": "data/runtime/market-event-outcomes_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_every_fire",
+          "text": "every live fire ends with a LaneRunReceipt@v2 bound to that attempt; a dry_run fire writes no row and no receipt"
+        },
+        {
+          "check": "live_run_produces_rows",
+          "text": "with an episode in the 150-day lookback, produced_count (outcome rows upserted) >= 1; with none, empty_reason no_new_input"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240 s (80% of timeout_s 300)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late_closes",
+          "text": "the newest session's Finviz close has not landed yet: ret_* stay NULL until a later fire fills them (COALESCE), so a score only degrades a report, never a trade"
+        },
+        {
+          "check": "stale_inputs",
+          "text": "market_event_episodes older than the lookback or no candidate re-ranked for days: scores are computed for episodes nobody is watching"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no LaneRunReceipt@v2 under data/runtime/lane_attempts/market-event-outcomes/ (exit 0 is not evidence)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run wrote no outcome row and named no contract-listed empty reason -> RUN_FAILED empty_output, P3"
+        },
+        {
+          "check": "stale",
+          "text": "receipt ok_at older than 100 h (a weekday fire missed twice on either side of a weekend is visible)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 80,
+        "freshness_failed_after_h": 100,
+        "freshness_rule": "the longest legitimate gap is Friday 16:45 -> Monday 16:45 (72 h); degraded beyond 80 h, failed beyond 100 h so a missed weekday pair is visible without a weekend false alarm",
+        "timeout_s": 300,
+        "class": "ingest",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no n8n fire has run yet; class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "advisory telemetry: a silent stop costs measurement of the re-entry advice, not a position",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P3"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": "the UPSERT is idempotent on (episode_id, symbol, signal) and never moves an entry, so the next fire re-scores; nothing to repair automatically"
+      },
+      "evidence": {
+        "receipt": "data/runtime/market-event-outcomes_last.json",
+        "verify": [
+          "jq '{status, produced_count, attempted_count, skipped_reasons, empty_reason, summary}' data/runtime/market-event-outcomes_last.json",
+          "python3 -c \"import sqlite3; c=sqlite3.connect('file:data/governance/n8n_coordination_ledger.sqlite?mode=ro', uri=True); print(*c.execute(\\\"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='market-event-outcomes' ORDER BY requested_at DESC LIMIT 10\\\").fetchall(), sep=chr(10))\"",
+          "psql -h /var/run/postgresql -d trade_ai -c \\\"SELECT count(*), max(scored_at) FROM market_event_outcomes\\\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted; prove work with the ledger and the receipt",
+        "expected_output_basis": "scripts/market_event_outcomes.py writes produced_count as the number of outcome rows it executed (len(scored), one per candidate x signal) and empty_reason no_new_input when the lookback held no episode at all"
+      },
+      "review_by": "2026-12-07",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "outcome rows upserted into market_event_outcomes",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/market-event-outcomes_last.json produced_count and summary (the executor grades data/runtime/lane_attempts/market-event-outcomes/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P3"
+        }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "cc-deepseek-5 LQ-20261107-479",
+        "reviewed_by": "cc-deepseek-5, the author, against scripts/market_event_outcomes.py (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews this bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
+        "reviewed_on": "2026-11-07"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "market-reference-bars",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Daily after the close (18:10 ET Mon-Fri): refresh the daily OHLCV bars of the 51 Market Risk Engine reference ETFs from Alpaca, so the engine's technical, volatility and correlation categories always have 200+ sessions.",
+        "business_function": "Market Risk Engine data prerequisite (SPEC_MARKET_EVENT_REENTRY_20261107 \u00a72)",
+        "source": "LQ-20261107-337; LQ-20261107-479; scripts/market_reference_bars_refresh.py; config/market_reference_symbols.json"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/market_reference_bars_refresh.py (--apply live, --dry-run shadow)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_market_reference_bars.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock"
+        },
+        {
+          "name": "Alpaca market data /v2/stocks/bars (read)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "scripts/market_data_snapshot_loader.fetch_alpaca_daily_bars; config/data_source_authority.json grants bars to alpaca"
+        },
+        {
+          "name": "Postgres market_ohlcv_bars (UPSERT on symbol, timeframe, bar_time)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/market_data_snapshot_loader.store_bars"
+        },
+        {
+          "name": "data/runtime/market-reference-bars_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_every_fire",
+          "text": "every live fire ends with a LaneRunReceipt@v2 bound to that attempt; a dry_run fire writes no row and no receipt"
+        },
+        {
+          "check": "live_run_produces_rows",
+          "text": "produced_count (bars stored) >= 1 for all 51 symbols, none named empty"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480 s (80% of timeout_s 600)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "partial_provider",
+          "text": "one provider page is throttled and a symbol returns fewer sessions than requested: bars are stored for the rest and the next fire re-requests the gap"
+        },
+        {
+          "check": "stale_inputs",
+          "text": "the last stored session is older than the previous trading day: the engine computes on stale prices (visible in the per-symbol stored-through column)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED; a symbol the provider returned nothing for exits 1 and names it"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no LaneRunReceipt@v2 under data/runtime/lane_attempts/market-reference-bars/ (exit 0 is not evidence)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run stored no bar -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "schema_breach",
+          "text": "the lane falls back to yfinance: config/data_source_authority.json grants `bars` to Alpaca only, and the operator price rule of 2026-11-07 forbids yfinance as a price source"
+        },
+        {
+          "check": "stale",
+          "text": "receipt ok_at older than 100 h (a weekday fire missed twice on either side of a weekend is visible)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 80,
+        "freshness_failed_after_h": 100,
+        "freshness_rule": "the longest legitimate gap is Friday 18:10 -> Monday 18:10 (72 h); degraded beyond 80 h, failed beyond 100 h so a missed weekday pair is visible without a weekend false alarm",
+        "timeout_s": 600,
+        "class": "pipeline",
+        "computed_on": "2026-11-07",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no n8n fire has run yet; one live read-only dry run of 51 symbols took a few seconds against the Alpaca bars API, and class defaults degrade above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "the Market Risk Engine and the market-event lanes read these bars: a silent stop degrades risk and re-entry reads rather than corrupting an order",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": "the writer upserts on (symbol, timeframe, bar_time), so a rerun is idempotent; a provider outage is retried by the next fire (transient-2) and nothing local is repaired automatically"
+      },
+      "evidence": {
+        "receipt": "data/runtime/market-reference-bars_last.json",
+        "verify": [
+          "jq '{status, produced_count, attempted_count, summary, empty}' data/runtime/market-reference-bars_last.json",
+          "python3 -c \"import sqlite3; c=sqlite3.connect('file:data/governance/n8n_coordination_ledger.sqlite?mode=ro', uri=True); print(*c.execute(\\\"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='market-reference-bars' ORDER BY requested_at DESC LIMIT 10\\\").fetchall(), sep=chr(10))\"",
+          "psql -h /var/run/postgresql -d trade_ai -c \\\"SELECT timeframe, count(DISTINCT symbol), max(bar_time) FROM market_ohlcv_bars WHERE timeframe='daily' GROUP BY timeframe\\\""
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted; prove work with the ledger and the receipt",
+        "expected_output_basis": "scripts/market_data_snapshot_loader.store_bars returns the number of rows it executed (one per bar), and market_reference_bars_refresh writes that as produced_count; a symbol the provider returned nothing for is named and exits 1, so an empty result is a failed run, never an allowed empty"
+      },
+      "review_by": "2026-12-07",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "daily bars upserted into market_ohlcv_bars",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "dependency_unavailable"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/market-reference-bars_last.json produced_count and summary.stored_bars (the executor grades data/runtime/lane_attempts/market-reference-bars/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "cc-deepseek-5 LQ-20261107-479",
+        "reviewed_by": "cc-deepseek-5, the author, against scripts/market_reference_bars_refresh.py and scripts/market_data_snapshot_loader.py (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews this bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
+        "reviewed_on": "2026-11-07"
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "market-event-brief",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
