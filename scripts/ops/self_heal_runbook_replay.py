@@ -373,8 +373,8 @@ def replay(*, as_of: datetime, window_days: int, runs_dir: Path, ledger: Path,
 def _print_report(snap: Mapping[str, Any], top: int) -> None:
     tot = snap["totals"]
     print(f"window {snap['window_start']} .. {snap['as_of']} ({snap['window_days']} d)")
-    print(f"receipts scanned {tot.get('receipts_scanned', 0)} · failures {tot.get('window_failures', 0)}"
-          f" · dead letters {tot.get('dead_letters', 0)} · signatures {len(snap['signatures'])}")
+    print(f"receipts scanned {tot['receipts_scanned']} · failures {tot['window_failures']}"
+          f" · dead letters {tot['dead_letters']} · signatures {len(snap['signatures'])}")
     print(f"{'hits':>6}  {'class':<20} {'entry':<38} {'action':<28} {'tier':<12} signature")
     for row in snap["signatures"][:top]:
         print(f"{row['hits']:>6}  {row['failure_class']:<20} {str(row['entry']):<38} {str(row['action']):<28}"

@@ -419,12 +419,35 @@ def _category_name(letter: str) -> str:
     return CATEGORY_NAMES[letter]
 
 
+def _count(doc: Mapping[str, Any], key: str, *, where: str) -> int:
+    """A count the operator reads (taxonomy #2). A missing count is an error, never 0.
+
+    Every count on a generated page comes from `COVERAGE.json`, which the replay writes and the docs gate
+    validates. If the key is absent the snapshot is malformed, and printing 0 would tell a reader "nothing
+    happened" when the truth is "we cannot say".
+    """
+    if key not in doc:
+        raise KeyError(f"{where}: the snapshot has no {key!r}; refusing to print 0 for an unobserved count")
+    return int(doc[key])
+
+
+def _entry_hits(entries: Mapping[str, Any], entry_id: str, *, where: str) -> int:
+    """One entry's window hits.
+
+    An entry **absent** from the snapshot is a true zero: the replay enumerated every failure in the window
+    and none mapped here. An entry **present** with no `hits` is a malformed snapshot and raises.
+    """
+    if entry_id not in entries:
+        return 0
+    return _count(entries[entry_id] or {}, "hits", where=f"{where} ({entry_id})")
+
+
 def _hits_text(row: Mapping[str, Any] | None, coverage: Mapping[str, Any] | None) -> str:
     if coverage is None:
         return "no replay snapshot on this commit"
     if not row:
         return "0 failures in the window"
-    return f"{row.get('hits', 0)} failure(s) on {len(row.get('lanes') or [])} lane(s)"
+    return f"{_count(row, 'hits', where='entry page')} failure(s) on {len(row.get('lanes') or [])} lane(s)"
 
 
 def _render_title(title: str, entry: Mapping[str, Any]) -> str:
@@ -720,10 +743,11 @@ def render_index(catalog: Mapping[str, Mapping[str, Any]], coverage: Mapping[str
     out.append("")
     if coverage:
         out.append(f"**Window:** {coverage.get('window_start')} .. {coverage.get('as_of')} "
-                   f"({coverage.get('window_days')} days). **{totals.get('window_failures', 0)} failures** · "
+                   f"({coverage.get('window_days')} days). "
+                   f"**{_count(totals, 'window_failures', where='INDEX')} failures** · "
                    f"**{len(coverage.get('signatures') or [])} signatures** · "
                    f"**{len(cov_entries)} entries hit** · catch-all "
-                   f"**{(coverage.get('catch_all') or {}).get('hits', 0)}**.")
+                   f"**{_count(coverage.get('catch_all') or {}, 'hits', where='INDEX')}**.")
     else:
         out.append("**No replay snapshot on this commit** — write one with `scripts/ops/self_heal_runbook_replay.py` "
                    "before trusting the coverage columns.")
@@ -738,7 +762,7 @@ def render_index(catalog: Mapping[str, Mapping[str, Any]], coverage: Mapping[str
         if not rows:
             continue
         tiers = {t: sum(1 for e in rows if e["tier"] == t) for t in TIER_RULES}
-        hits = sum(int((cov_entries.get(e["id"]) or {}).get("hits", 0)) for e in rows)
+        hits = sum(_entry_hits(cov_entries, e["id"], where="INDEX category table") for e in rows)
         out.append(f"| **{letter}** | {_category_name(letter)} | {len(rows)} | {tiers['auto']} | "
                    f"{tiers['auto_notify']} | {tiers['human_only']} | {hits} |")
     out.append("")
@@ -752,7 +776,8 @@ def render_index(catalog: Mapping[str, Mapping[str, Any]], coverage: Mapping[str
         row = cov_entries.get(eid) or {}
         out.append(
             f"| [{_cell(eid)}]({eid}.md) | {entry['category']} | `{entry['tier']}` | `{entry['action']}` | "
-            f"{entry.get('max_attempts')} | {entry.get('cooldown_min')} min | {row.get('hits', 0)} | "
+            f"{entry.get('max_attempts')} | {entry.get('cooldown_min')} min | "
+            f"{_entry_hits(cov_entries, eid, where='INDEX entry table')} | "
             f"{len(row.get('lanes') or [])} |"
         )
     out.append("")
@@ -789,7 +814,8 @@ def render_coverage(coverage: Mapping[str, Any]) -> str:
     entries = coverage.get("entries") or {}
     catch_all = coverage.get("catch_all") or {}
     catalog = coverage.get("catalog") or {}
-    receipt_failures = int(totals.get("window_failures", 0)) - int(totals.get("dead_letters", 0))
+    receipt_failures = (_count(totals, "window_failures", where="COVERAGE.md")
+                        - _count(totals, "dead_letters", where="COVERAGE.md"))
     out: list[str] = []
     out.append("# 14-day failure coverage — every real signature to one catalog entry")
     out.append("")
@@ -803,12 +829,13 @@ def render_coverage(coverage: Mapping[str, Any]) -> str:
     out.append("| --- | --- |")
     out.append(f"| Window | {coverage.get('window_start')} .. {coverage.get('as_of')} "
                f"({coverage.get('window_days')} days) |")
-    out.append(f"| Receipts scanned | {totals.get('receipts_scanned', 0)} |")
-    out.append(f"| Failures | **{totals.get('window_failures', 0)}** ({receipt_failures} receipt failures + "
-               f"{totals.get('dead_letters', 0)} dead letters) |")
+    out.append(f"| Receipts scanned | {_count(totals, 'receipts_scanned', where='COVERAGE.md')} |")
+    out.append(f"| Failures | **{_count(totals, 'window_failures', where='COVERAGE.md')}** "
+               f"({receipt_failures} receipt failures + "
+               f"{_count(totals, 'dead_letters', where='COVERAGE.md')} dead letters) |")
     out.append(f"| Signatures | {len(sigs)} |")
     out.append(f"| Entries hit | {len(entries)} of {catalog.get('entries', '?')} |")
-    out.append(f"| Catch-all | **{catch_all.get('hits', 0)}** hit(s), "
+    out.append(f"| Catch-all | **{_count(catch_all, 'hits', where='COVERAGE.md')}** hit(s), "
                f"{len(catch_all.get('missing_reason') or [])} without a written reason |")
     out.append("")
     out.append("## The rule")
@@ -845,15 +872,17 @@ def render_coverage(coverage: Mapping[str, Any]) -> str:
     out.append("")
     out.append("| Entry | hits | lanes | signatures |")
     out.append("| --- | --- | --- | --- |")
-    for eid in sorted(entries, key=lambda k: (-int((entries[k] or {}).get("hits", 0)), k)):
+    for eid in sorted(entries, key=lambda k: (-_entry_hits(entries, k, where="COVERAGE.md entry table"), k)):
         row = entries[eid] or {}
-        out.append(f"| [{_cell(eid)}]({_cell(eid)}.md) | {row.get('hits', 0)} | {len(row.get('lanes') or [])} | "
+        out.append(f"| [{_cell(eid)}]({_cell(eid)}.md) | "
+                   f"{_entry_hits(entries, eid, where='COVERAGE.md entry table')} | "
+                   f"{len(row.get('lanes') or [])} | "
                    f"{len(row.get('signatures') or [])} |")
     out.append("")
 
     out.append("## Catch-all")
     out.append("")
-    if not catch_all.get("hits"):
+    if _count(catch_all, "hits", where="COVERAGE.md") == 0:
         out.append("**Zero.** Every failure signature in the window plans to an entry of its own. That is the "
                    "catalog's hard requirement; `--check-gate` exits 3 if it ever stops being true.")
     else:
