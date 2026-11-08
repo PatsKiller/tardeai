@@ -163,7 +163,14 @@ def main(argv: list[str] | None = None) -> int:
             conn.commit()
             from scripts.lib.lane_last_receipt import write_lane_receipt  # noqa: PLC0415
 
-            empty = "no_new_input" if not world["episodes"] else None
+            # produced_count == 0 has two causes and the receipt must name which one (LQ-20261107-479, the same
+            # shape as LQ-458 in market_event_detect): no episode at all in the lookback (normal idle), or
+            # episodes in scope with nothing to signal -- an open episode the ranker left empty. The second is
+            # NOT "no new input"; before this both wrote the same receipt and the second graded
+            # empty_reason_not_allowed (RUN_FAILED) once the lane became dispatchable. Causes that really are
+            # failures (a candidate with no price, a malformed episode) stay failures through the contract's
+            # fatal_skip_reasons, which outranks any allowed empty reason.
+            empty = "no_new_input" if not world["episodes"] else "no_candidates_in_scope"
             write_lane_receipt(LANE, ok=True, exit_code=0, started_at=started, script="scripts/market_event_outcomes.py",
                                summary=summary, produced_count=len(scored), attempted_count=len(scored),
                                skipped_reasons=skipped or None, empty_reason=empty if not scored else None)

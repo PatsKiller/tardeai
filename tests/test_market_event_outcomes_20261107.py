@@ -154,3 +154,109 @@ def test_cli_dry_run_writes_nothing(monkeypatch, capsys):
     assert LANE.main([]) == 0
     out = capsys.readouterr().out
     assert '"mode": "dry_run"' in out and '"signal_rows": 1' in out and '"returns_observed": 1' in out
+
+
+# --- LQ-20261107-479: a zero-produced outcomes receipt names the cause and the contract grades it ------------
+class _WriteCur:
+    """Apply-path cursor: reads the lane queries, accepts the outcome upsert, records nothing else."""
+
+    def __init__(self, episodes, candidates):
+        self.episodes, self.candidates, self._r = episodes, candidates, []
+
+    def execute(self, q, p=None):
+        if "to_regclass" in q:
+            self._r = [(True,)]
+        elif "FROM market_event_episodes" in q:
+            self._r = self.episodes
+        elif "FROM market_event_candidates" in q:
+            self._r = self.candidates
+        elif "FROM ticker_prices" in q:
+            self._r = []
+        elif "INSERT INTO market_event_outcomes" in q:
+            self._r = []
+        else:
+            raise AssertionError("unexpected query: " + q)
+
+    def fetchone(self):
+        return self._r[0] if self._r else (None,)
+
+    def fetchall(self):
+        return self._r
+
+
+class _WriteConn:
+    def __init__(self, episodes, candidates):
+        self.c = _WriteCur(episodes, candidates)
+
+    def cursor(self):
+        return self.c
+
+    def commit(self):
+        pass
+
+    def close(self):
+        pass
+
+
+_EP = ("EP-1", date(2026, 11, 4), "OPEN", datetime(2026, 11, 5, tzinfo=ET))
+
+
+def _apply_receipt(tmp_path, monkeypatch, candidates, run_id):
+    import json
+
+    conn = _WriteConn([_EP], candidates)
+    monkeypatch.setattr(LANE, "_connect", lambda read_only: conn)
+    # Real time, not a future date: the receipt writer stamps finished_at itself and a started_at after it
+    # grades ``unverifiable: receipt_time_invalid`` (n8n_output_verdict), which would mask the verdict here.
+    now = datetime.now(timezone.utc)
+    monkeypatch.setattr(LANE, "_now", lambda: now)
+    monkeypatch.setattr(LANE, "sessions_for", lambda today: SESS)
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path))
+    monkeypatch.setenv("TRADEAI_RUN_ID", run_id)
+    monkeypatch.setenv("TRADEAI_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")
+    assert LANE.main(["--apply"]) == 0
+    path = tmp_path / "data/runtime/lane_attempts/market-event-outcomes" / f"{run_id}.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _outcomes_rule():
+    import json
+
+    rows = json.loads((ROOT / "config/n8n_health_contracts.json").read_text(encoding="utf-8"))["contracts"]
+    return next(c for c in rows if c["id"] == "market-event-outcomes")["expected_output"]
+
+
+def _grade(rule, doc, run_id):
+    from scripts.lib import n8n_output_verdict
+
+    return n8n_output_verdict.evaluate(rule, doc, run_id=run_id, lane_id="market-event-outcomes", mode="live")
+
+
+def test_episode_with_no_candidates_names_that_reason_and_grades_empty_allowed(tmp_path, monkeypatch):
+    """An open episode the ranker left empty is normal idle, not 'no new input' -- and the contract must say so."""
+    doc = _apply_receipt(tmp_path, monkeypatch, [], "lq479-no-candidates")
+    assert doc["produced_count"] == 0
+    assert doc["empty_reason"] == "no_candidates_in_scope"
+    verdict = _grade(_outcomes_rule(), doc, "lq479-no-candidates")
+    assert verdict["verdict"] == "empty_allowed", verdict
+
+
+def test_no_candidates_in_scope_is_allowed_only_because_the_contract_names_it(tmp_path, monkeypatch):
+    """Negative control: the pre-479 list (no_new_input only) is a valid rule and rejects the new reason."""
+    doc = _apply_receipt(tmp_path, monkeypatch, [], "lq479-negative-control")
+    rule = {**_outcomes_rule(), "empty_allowed_reasons": ["no_new_input"]}
+    verdict = _grade(rule, doc, "lq479-negative-control")
+    assert verdict["verdict"] == "empty_violation" and verdict["why"] == "empty_reason_not_allowed", verdict
+
+
+def test_a_candidate_with_no_price_stays_a_failure_not_an_allowed_empty(tmp_path, monkeypatch):
+    """Same zero rows, different cause: a price supply gap must grade empty_violation fatal_skip, not all-clear."""
+    doc = _apply_receipt(tmp_path, monkeypatch, [("EP-1", "AAA", None, None, "WATCH", None)], "lq479-no-price")
+    assert doc["produced_count"] == 0 and doc["skipped_reasons"] == {"baseline_no_price": 1}
+    rule = _outcomes_rule()
+    verdict = _grade(rule, doc, "lq479-no-price")
+    assert verdict["verdict"] == "empty_violation" and verdict["why"] == "fatal_skip", verdict
+    # ...and the fatal list is load-bearing: without it the same receipt would read as an allowed empty.
+    lenient = {**rule, "fatal_skip_reasons": ["dependency_unavailable"]}
+    assert _grade(lenient, doc, "lq479-no-price")["verdict"] == "empty_allowed"

@@ -41515,10 +41515,15 @@
         "window_h": null,
         "produced_field": "produced_count",
         "fatal_skip_reasons": [
-          "dependency_unavailable"
+          "dependency_unavailable",
+          "baseline_no_price",
+          "ready_no_price",
+          "episode_without_baseline_date",
+          "ready_before_calendar"
         ],
         "empty_allowed_reasons": [
-          "no_new_input"
+          "no_new_input",
+          "no_candidates_in_scope"
         ],
         "evidence": [
           {
