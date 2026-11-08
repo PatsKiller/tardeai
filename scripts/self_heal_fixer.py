@@ -862,6 +862,10 @@ class Attempt:
         return {"rc": r["rc"], "head": commit, "err": r["err"][-300:]}
 
     def push_and_pr(self, body: str, commit: str, gh_view: Optional[Callable[[list[str]], dict]] = None) -> dict:
+        # Belt (operator 2026-11-08 no-push order): under the local-only switch, or without push permission, this
+        # method refuses before any git/gh call, whatever the caller decided.
+        if F.local_only(self.cfg) is not None or not self.may_push:
+            return {"ok": False, "why": "local_only_no_push", "local_only_refused": True}
         env = dict(self.environ)
         env.pop("TRADEAI_REMOTE_PUSH_OVERRIDE", None)  # never an override: the budget binds
         env["TRADEAI_REMOTE_PUSH_AUTHORIZED"] = "1"
@@ -1044,7 +1048,7 @@ def attempt_job(
         }
         body = F.pr_body(job, evidence)
         (evidence_dir / "pr_body.md").write_text(body, encoding="utf-8")
-        if may_push:
+        if may_push and F.local_only(cfg) is None:
             pr = a.push_and_pr(body, commit)
             if pr.get("ok"):
                 F.transition(
@@ -1084,7 +1088,8 @@ def attempt_job(
             else:
                 F.transition(job, F.FIX_READY_LOCAL, now(), reason=pr["why"], updated_at=now().isoformat())
         else:
-            F.transition(job, F.FIX_READY_LOCAL, now(), reason="push_not_allowed", updated_at=now().isoformat())
+            why = "local_only_no_push" if F.local_only(cfg) is not None else "push_not_allowed"
+            F.transition(job, F.FIX_READY_LOCAL, now(), reason=why, updated_at=now().isoformat())
         a.teardown(keep_branch=True)
         return job
     new = F.FIX_REFUSED if stop == "guard_refused" else F.FIX_FAILED
@@ -1334,6 +1339,90 @@ def escalation_for(job: dict, now: datetime) -> dict:
     }
 
 
+# ---------------------------------------------------------------- findings for the lead (written, never sent)
+FINDINGS_INBOX_REL = "data/coordination/coordinator/inbox/claude-lead"
+
+
+def findings_dir(cfg: dict, root: Path) -> Path:
+    rel = str((cfg.get("findings") or {}).get("inbox_rel") or FINDINGS_INBOX_REL)
+    return root / rel
+
+
+def _slug(text: Any) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", str(text)).strip("-")[:80] or "x"
+
+
+def write_finding(cfg: dict, root: Path, name: str, text: str) -> str:
+    """Atomically write one FINDING file into the lead's inbox. Never overwrites an existing file."""
+    d = findings_dir(cfg, root)
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / name
+    if path.exists():
+        return str(path)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    return str(path)
+
+
+def ready_local_finding(job: dict, now: datetime) -> tuple[str, str]:
+    """(file name, markdown) for a job that reached fix_ready_local: the lead reviews and folds it; nothing was pushed."""
+    its = job.get("iterations") or []
+    last = its[-1] if its else {}
+    name = f"FINDING-SELF-HEAL-READY-LOCAL-{_slug(job['job_id'])}.md"
+    lines = [
+        f"# FINDING — self-heal fix ready locally: {job['lane']} ({job['job_id']})",
+        "",
+        "The self-heal fixer ran under `arming.local_only`: the fix is committed on a LOCAL branch only. Nothing was "
+        "pushed and no PR was opened. Lead: review the branch, then fold it or close it.",
+        "",
+        f"- lane: `{job['lane']}`",
+        f"- job_id: `{job['job_id']}`",
+        f"- defect_id: `{job.get('defect_id')}`",
+        f"- signature: `{job.get('signature')}`",
+        f"- branch (local, repo `{job.get('repo_root') or ''}`): `{job.get('branch')}`",
+        f"- commit: `{job.get('head_sha')}`",
+        f"- evidence dir: `{job.get('evidence_dir')}`",
+        f"- iterations: {len(its)}; cost: {F.cost_label(job.get('cost_usd'))}",
+        f"- test result (last iteration): passed={last.get('passed')} red_first={last.get('red_first')} "
+        f"ci_rc={last.get('ci_rc')} tests_run={last.get('tests_run')}",
+        f"- reason: `{job.get('reason')}`",
+        f"- at: {now.isoformat()}",
+        "",
+        f"Review line: `Adversarial-review: MERGE|CHANGES reviewer=<non-author> head={job.get('head_sha')}`",
+        "",
+    ]
+    return name, "\n".join(lines)
+
+
+def non_code_finding(row: dict, now: datetime) -> tuple[str, str]:
+    """(file name, markdown) for a failure a code change cannot fix: escalated to the lead, never admitted."""
+    name = f"FINDING-SELF-HEAL-ESCALATION-{F.et_day(now)}-{_slug(row['lane'])}-{_slug(row.get('signature'))[:24]}.md"
+    lines = [
+        f"# FINDING — self-heal escalation (non-code): {row['lane']} — {row['class']}",
+        "",
+        "The self-heal fixer did NOT admit this failure for a code fix: its class is not a code defect. It needs a "
+        "person (dependency, data, timeout, audit block). One finding per signature per ET day.",
+        "",
+        f"- lane: `{row['lane']}`",
+        f"- class: `{row['class']}`",
+        f"- signature: `{row.get('signature')}`",
+        f"- defect_id: `{row.get('defect_id')}`",
+        f"- job_id: `{row.get('job_id')}`",
+        f"- incident_key: `{row.get('incident_key')}`",
+        f"- failed_run_id: `{row.get('failed_run_id')}`",
+        f"- at: {now.isoformat()}",
+        "",
+        "Error tail (redacted):",
+        "",
+        "```",
+        F.redact(str(row.get("tail") or ""))[-1500:],
+        "```",
+        "",
+    ]
+    return name, "\n".join(lines)
+
+
 # ---------------------------------------------------------------- incident intake
 
 
@@ -1479,8 +1568,41 @@ def _cycle(
         "advanced": [],
         "escalations": [],
         "reconciled": [],
+        "findings": [],
     }
     work = state if apply else json.loads(json.dumps(state))
+    lo = F.local_only(cfg)
+    if lo is not None:
+        out["local_only"] = {"enabled": True, "why": str(lo.get("why") or "")[:200]}
+
+    def escalate_non_code(cls: str, *, lane: str, signature: Any, rc: Optional[dict], src: dict) -> dict:
+        """One ESCALATION FINDING per (ET day, lane, signature); dry runs report it without writing anything."""
+        key = F.non_code_finding_key(lane, str(signature or ""), t)
+        seen = work.setdefault("non_code_findings", {})
+        row = {
+            "kind": "non_code_escalation",
+            "class": cls,
+            "lane": lane,
+            "signature": signature,
+            "defect_id": src.get("defect_id"),
+            "job_id": src.get("job_id"),
+            "incident_key": src.get("incident_key") or src.get("key"),
+            "failed_run_id": src.get("failed_run_id"),
+            "tail": str((rc or {}).get("stderr_tail") or src.get("stderr_tail") or "")[-1500:],
+            "key": key,
+        }
+        if key in seen:
+            row["deduped"] = True
+            return row
+        name, text = non_code_finding(row, t)
+        row["path"] = write_finding(cfg, root, name, text) if apply else str(findings_dir(cfg, root) / name)
+        row["written"] = bool(apply)
+        seen[key] = {"at": t.isoformat(), "path": row["path"], "class": cls}
+        # keep a week of dedupe keys; older days can never collide with today's key
+        for k in [k for k in seen if k.split("|", 1)[0] < F.et_day(t - timedelta(days=7))]:
+            seen.pop(k, None)
+        out["findings"].append({k: v for k, v in row.items() if k != "tail"})
+        return row
 
     def save() -> None:
         if apply:
@@ -1536,6 +1658,13 @@ def _cycle(
             "script",
             F.script_from_argv((rc or {}).get("argv") or []) or ((row or {}).get("scheduler") or {}).get("match"),
         )
+        nc = F.non_code_class(inc, rc, cfg)
+        if nc:
+            sig = inc.get("signature") or F.local_signature(lane, (rc or {}).get("stderr_tail") or inc.get("stderr_tail"))
+            esc = escalate_non_code(nc, lane=lane, signature=sig, rc=rc, src=inc)
+            out["skipped"].append({"lane": lane, "why": f"non_code:{nc}", "finding": esc.get("path"),
+                                   "deduped": bool(esc.get("deduped"))})
+            continue
         job, why = F.admit(work, inc, now=t, cfg=cfg, held=held)
         if not job:
             out["skipped"].append({"lane": lane, "why": why})
@@ -1568,6 +1697,8 @@ def _cycle(
 
     arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today())
     policy = F.policy_verdict(agents, cfg)
+    # Under the local-only switch nothing may push, whatever AGENTS.md at the base says (operator 2026-11-08).
+    may_push = bool(policy["push_allowed"]) and lo is None and arming.get("may_push", True) is not False
     backend, backend_why = F.select_backend(cfg)
     out.update(
         arming=arming,
@@ -1580,12 +1711,26 @@ def _cycle(
     queue = [j for j in work.get("jobs", {}).values() if j.get("state") == F.FIX_REQUESTED]
     queue.sort(key=lambda j: str(j.get("created_at")))
     it = cfg["iteration"]
-    for job in queue[: int(cfg["arming"]["max_jobs_per_cycle"])]:
+    budget = int(cfg["arming"]["max_jobs_per_cycle"])
+    for job in queue:
+        if budget <= 0:
+            break
         src = ev_by_job.get(job["job_id"]) or {
             "incident": {"lane": job["lane"], "key": job.get("escalation_key")},
             "receipt": failed_receipt(ledger, job["lane"], job.get("failed_run_id")),
             "row": registry_row(job["lane"]),
         }
+        # A job queued before the non-code rule (or whose failing run shows a non-code cause) is refused, not fixed;
+        # it does not use the cycle's job budget.
+        nc = F.non_code_class({**src["incident"], "failure_kind": job.get("failure_kind")}, src["receipt"], cfg)
+        if nc:
+            F.transition(job, F.FIX_REFUSED, t, reason=f"non_code:{nc}", updated_at=t.isoformat())
+            job["escalated_at"] = t.isoformat()
+            esc = escalate_non_code(nc, lane=job["lane"], signature=job.get("signature"), rc=src["receipt"], src=job)
+            out["attempted"].append({"job_id": job["job_id"], "outcome": f"refused:non_code:{nc}",
+                                     "finding": esc.get("path"), "deduped": bool(esc.get("deduped"))})
+            continue
+        budget -= 1
         evidence = F.build_evidence(
             job, incident=src["incident"], receipt=src["receipt"], registry_row=src["row"], base_sha=base_sha, cfg=cfg
         )
@@ -1653,7 +1798,8 @@ def _cycle(
                     "seconds": float(it["max_minutes"]) * 60,
                 },
                 "branch": F.branch_name(job, cfg, t),
-                "would_push": bool(arming["armed"] and policy["push_allowed"]),
+                "would_push": bool(arming["armed"] and may_push),
+                "local_only": lo is not None,
                 "env_names": sorted(F.child_env(environ, cfg, scratch_state="<scratch>")),
             }
             prompt = F.build_prompt(evidence, rails=rails, cfg=cfg, iteration=1, pytest_cmd=pytest_cmd)
@@ -1729,7 +1875,7 @@ def _cycle(
                     environ=environ,
                     now=now,
                     evidence_dir=ev_dir,
-                    may_push=bool(policy["push_allowed"]),
+                    may_push=may_push,
                     rails=rails,
                     backend=backend,
                     remember=remember,
@@ -1781,8 +1927,17 @@ def _cycle(
         if job["state"] in (F.FIX_FAILED, F.FIX_REFUSED) and not job.get("escalated_at"):
             out["escalations"].append(escalation_for(job, now()))
             job["escalated_at"] = now().isoformat()
+        if job["state"] == F.FIX_READY_LOCAL and not job.get("finding_path"):
+            job["repo_root"] = str(repo)
+            name, text = ready_local_finding(job, now())
+            job["finding_path"] = write_finding(cfg, root, name, text)
+            out["findings"].append({"kind": "fix_ready_local", "job_id": job["job_id"], "path": job["finding_path"]})
+            save()
         arming = F.arming_verdict(grant, cfg=cfg, jobs_today=jobs_today())
     for job in work.get("jobs", {}).values():
+        if lo is not None:
+            # local-only: no gh call of any kind; the lead folds fix_ready_local branches by hand
+            break
         if job.get("state") in (F.FIX_READY_LOCAL, F.FIX_PR_OPENED, F.FIX_DEPLOYED, F.OUTPUT_RECOVERED):
             moved = advance(job, cfg=cfg, now=t, diag_state=diag, root=root, gh=gh, repo=repo)
             if moved:
@@ -1828,6 +1983,8 @@ def _cycle(
                     "reconciled",
                     "arming",
                     "policy",
+                    "local_only",
+                    "findings",
                     "backend",
                     "counts",
                 )

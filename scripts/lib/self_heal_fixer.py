@@ -1196,9 +1196,104 @@ def no_progress(history: list[Mapping[str, Any]], repeat: int) -> bool:
     return bool(tail[0]) and all(s == tail[0] for s in tail)
 
 
+# ---------------------------------------------------------------- non-code failures (never a code-fix job)
+#: Failure classes a code change does not fix. Config ``intake.non_code`` may add classes/markers; it never removes
+#: these defaults (operator 2026-11-08: data/dependency/timeout/data_quality are escalated, not admitted).
+NON_CODE_CLASSES = ("data", "data_quality", "dependency", "dependency_unavailable", "timeout", "transient", "network")
+NON_CODE_MARKERS: dict[str, tuple[str, ...]] = {
+    "dependency_unavailable": (
+        r"\bdependency_unavailable\b",
+        r"(?i)\bconnection refused\b",
+        r"(?i)could not connect to server",
+        r"(?i)temporary failure in name resolution",
+        r"(?i)\b503 service unavailable\b",
+    ),
+    "audit_block": (r"\baudit[ _:-]*BLOCK\b", r"\bAUDIT_BLOCK\b", r"\"verdict\"\s*:\s*\"BLOCK\""),
+    "timeout": (r"\bsubprocess\.TimeoutExpired\b", r"\bRUN_TIMEOUT\b", r"\btimeout_kill\b"),
+    "data_quality": (r"\bdata_quality\b", r"\bDATA_QUALITY\b"),
+    "data": (r"\bdata_unavailable\b", r"\bno_input_data\b"),
+}
+
+
+def non_code_class(
+    incident: Mapping[str, Any], receipt: Optional[Mapping[str, Any]], cfg: Mapping[str, Any]
+) -> Optional[str]:
+    """The non-code class of a failure, or None when it may be a code defect. Pure.
+
+    Checked in order: the incident's failure_class, its failure_kind (prefix before ':'), the receipt's reason and
+    event type, then marker regexes over the error text (receipt stderr/stdout tail, incident stderr). A marker that
+    matches wins over the producer's ``code_error`` label: a code fix cannot bring a dependency back."""
+    extra = (cfg.get("intake") or {}).get("non_code") or {}
+    classes = set(NON_CODE_CLASSES) | {str(c) for c in extra.get("classes") or []}
+    markers: dict[str, list[str]] = {k: list(v) for k, v in NON_CODE_MARKERS.items()}
+    for k, v in (extra.get("markers") or {}).items():
+        markers.setdefault(str(k), []).extend(str(x) for x in v or [])
+    rc = receipt or {}
+    for raw in (incident.get("failure_class"), str(incident.get("failure_kind") or "").split(":", 1)[0]):
+        c = str(raw or "").strip().lower()
+        if c in classes:
+            return c
+    for raw in (rc.get("reason"), rc.get("failure_class"), incident.get("event_type")):
+        c = str(raw or "").strip().lower()
+        if c in classes or c == "run_timeout":
+            return "timeout" if c == "run_timeout" else c
+    text = "\n".join(
+        str(x or "")
+        for x in (rc.get("stderr_tail"), rc.get("stdout_tail"), incident.get("stderr_tail"), incident.get("detail"))
+    )
+    for cls, pats in markers.items():
+        for pat in pats:
+            try:
+                if re.search(pat, text):
+                    return cls
+            except re.error:
+                continue
+    return None
+
+
+def non_code_finding_key(lane: str, signature: str, now: datetime) -> str:
+    """One escalation finding per failure signature per ET day."""
+    return f"{et_day(now)}|{lane}|{signature}"
+
+
 # ---------------------------------------------------------------- gates
+def local_only(cfg: Mapping[str, Any]) -> Optional[dict]:
+    """The operator's local-only switch (``arming.local_only``), or None. Only a literal ``enabled: true`` turns it
+    on; anything else (missing, "true", 1) is off, so a typo can never arm the lane."""
+    lo = (cfg.get("arming") or {}).get("local_only")
+    return dict(lo) if isinstance(lo, dict) and lo.get("enabled") is True else None
+
+
 def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any], jobs_today: int) -> dict:
+    """Armed or not, and why. Two ways to arm:
+
+    * ``arming.local_only.enabled`` (operator 2026-11-08, no-push order): armed WITHOUT a guard grant, but the verdict
+      carries ``local_only`` and ``may_push=False`` and the cycle can only reach ``fix_ready_local``. A git-push grant
+      present at the same time changes nothing: the switch is the narrower authority and it wins.
+    * otherwise an ACTIVE guard grant of ``grant_tier`` naming ``grant_reason_token`` (may push when policy allows).
+
+    The daily job cap binds both; the daily USD cap is enforced by the claims reservation."""
     a = cfg["arming"]
+    lo = local_only(cfg)
+    if lo is not None:
+        if jobs_today >= int(a["daily_job_cap"]):
+            return {
+                "armed": False,
+                "local_only": True,
+                "may_push": False,
+                "why": f"local_only: daily job cap reached ({jobs_today}/{a['daily_job_cap']})",
+            }
+        return {
+            "armed": True,
+            "local_only": True,
+            "may_push": False,
+            "why": "local_only switch enabled: armed for fix_ready_local only; never pushes, never opens a PR",
+            "local_only_why": str(lo.get("why") or "")[:200],
+            "grant_ignored": isinstance(grant, dict),
+            "jobs_today": jobs_today,
+            "daily_job_cap": int(a["daily_job_cap"]),
+            "daily_cost_cap_usd": float(a.get("daily_cost_cap_usd", 0) or 0),
+        }
     if not isinstance(grant, dict):
         return {"armed": False, "why": f"no active {a['grant_tier']} guard grant"}
     reason = str(grant.get("reason") or "")
@@ -1208,6 +1303,7 @@ def arming_verdict(grant: Optional[Mapping[str, Any]], *, cfg: Mapping[str, Any]
         return {"armed": False, "why": f"daily job cap reached ({jobs_today}/{a['daily_job_cap']})"}
     return {
         "armed": True,
+        "may_push": True,
         "why": "grant names self-heal-fixer; under the daily cap",
         "grant_id": str(grant.get("grant_id") or "")[:16],
         "grant_reason": reason[:200],

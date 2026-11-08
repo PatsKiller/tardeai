@@ -16,7 +16,16 @@
     "grant_reason_token": "self-heal-fixer",
     "daily_job_cap": 3,
     "max_jobs_per_cycle": 1,
-    "daily_cost_cap_usd": 24.0
+    "daily_cost_cap_usd": 24.0,
+    "local_only": {
+      "enabled": true,
+      "why": "operator 2026-11-08 no-push order (LQ-20261107-1192): enable self-healing now, with NO git pushes",
+      "_why": "When enabled (literal true), the lane is armed WITHOUT a guard grant, but may_push is forced False (the policy gate and any git-push grant are ignored), Attempt.push_and_pr refuses before any git/gh call, and the lifecycle advance makes no gh call. Jobs end at fix_ready_local and each writes a FINDING into findings.inbox_rel for the lead to review and fold. daily_job_cap and daily_cost_cap_usd still bind."
+    }
+  },
+  "findings": {
+    "_why": "Where the lane writes FINDING files for the lead (relative to the state root): one per fix_ready_local job, and one ESCALATION per non-code failure signature per ET day (data/dependency/timeout/data_quality/audit BLOCK are never admitted for a code fix).",
+    "inbox_rel": "data/coordination/coordinator/inbox/claude-lead"
   },
   "selector": {
     "_why": "STATIC. The adaptive router (lib/self_heal_fixer.shadow_route over repair memory) runs in SHADOW only: its recommendation is recorded on each job and in repair memory, never used to choose.",
@@ -315,6 +324,11 @@
       "*ledger*"
     ],
     "retry_cooldown_hours": 72,
+    "non_code": {
+      "_why": "Added to lib.self_heal_fixer.NON_CODE_CLASSES / NON_CODE_MARKERS (config can add, never remove). A matching failure is not admitted for a code fix; it is escalated as a FINDING (one per signature per ET day).",
+      "classes": [],
+      "markers": {}
+    },
     "contract_schema": "N8nCodeDefect@v1",
     "consumer": "claude_code_iterative_fix",
     "diagnoses_rel": "data/runtime/n8n_diagnoses/diagnoses.jsonl",

@@ -34,6 +34,9 @@ from lib import self_heal_fixer as F  # noqa: E402
 import self_heal_fixer as S  # noqa: E402
 
 CFG = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
+# These tests pin the GRANT arming path (push/PR when the amendment is ACTIVE). The repo config turns on the
+# operator's local-only switch (LQ-20261107-1192); that path is tested in test_lq1192_self_heal_local_only_20261108.
+CFG["arming"].pop("local_only", None)
 FIXTURE = ROOT / "tests" / "fixtures" / "self_heal_fixer" / "daily_incubator_refresh_20261016.json"
 NOW = datetime(2026, 10, 16, 18, 0, tzinfo=timezone.utc)
 AGENTS_TEXT = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
