@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from scripts.lib import n8n_relay_live_lanes as RLL
 from scripts.lib.effect_claim import load_effect_lanes
 
@@ -26,6 +28,13 @@ LQ361_LANES = (
     "fee-efficiency-analyzer",
     "overnight-batch-tax",
     "ask-alerts",
+)
+
+# LQ-20261107-508: the two lanes LQ-479 took live (scheduler.stage canary + dispatch.mode live) with no key. They ship
+# staged like the LQ-361 seven — the key exists and declares the effect, neither runner claims until a cutover arms it.
+LQ508_LANES = (
+    "market-event-outcomes",
+    "market-reference-bars",
 )
 
 # Relay-live lanes with no effect key at 2026-11-07. Baseline only: not individually audited by LQ-361. Remove a lane
@@ -69,10 +78,32 @@ def _relay_live() -> set[str]:
     return set(lanes)
 
 
-def test_every_relay_live_lane_is_keyed_or_on_the_unkeyed_baseline():
+def _unkeyed(live: set[str], keyed: set[str], baseline: frozenset[str] = UNKEYED_BASELINE) -> list[str]:
+    """The guard's one predicate: live lanes that declare no effect and are not on the audited baseline."""
+    return sorted(set(live) - set(keyed) - set(baseline))
+
+
+#: Every live lane at collection time, so the guard is ONE TEST PER LANE. A single assertion over the whole set kept
+#: the count flat when LQ-479 took two lanes live unkeyed (the message grew, "1 failed" did not), which is how the
+#: fold called it green. A new unkeyed lane now adds a failing test whose name is the lane.
+LIVE_LANES = sorted(_relay_live())
+
+
+@pytest.mark.parametrize("lane", LIVE_LANES)
+def test_every_relay_live_lane_is_keyed_or_on_the_unkeyed_baseline(lane):
     keyed = set(load_effect_lanes())
-    missing = sorted(_relay_live() - keyed - UNKEYED_BASELINE)
-    assert not missing, f"relay-live lanes with no effect key and not on the baseline: {missing}"
+    assert lane in keyed or lane in UNKEYED_BASELINE, (
+        f"relay-live lane {lane} has no effect key and is not on UNKEYED_BASELINE: key it (staged) in "
+        f"config/n8n_effect_keys.json instead of adding a baseline name"
+    )
+
+
+def test_the_guard_reports_a_new_unkeyed_live_lane_by_name():
+    """Negative control: the predicate above fails for a lane that goes live unkeyed, and only for that lane."""
+    live = {"keyed-lane", "baselined-lane", "new-unkeyed-lane"}
+    assert _unkeyed(live, {"keyed-lane"}, frozenset({"baselined-lane"})) == ["new-unkeyed-lane"]
+    assert _unkeyed(live, {"keyed-lane", "new-unkeyed-lane"}, frozenset({"baselined-lane"})) == []
+    assert _unkeyed(set(), set()) == []
 
 
 def test_the_baseline_only_shrinks():
@@ -100,3 +131,21 @@ def test_staged_keys_change_no_executor_behaviour():
 
     armed = load_effect_config()
     assert not (set(LQ361_LANES) & set(armed))
+
+
+def test_the_lq479_lanes_declare_an_effect_and_are_seeded():
+    """LQ-20261107-508: the two lanes LQ-479 takes live carry a staged key and an owner seed, like the LQ-361 seven."""
+    cfg = json.loads((ROOT / "config/n8n_effect_keys.json").read_text(encoding="utf-8"))["lanes"]
+    seed = SEED.read_text(encoding="utf-8")
+    loop = re.search(r"for lane in ([^;]+); do", seed).group(1).split()
+    live = _relay_live()
+    for lane in LQ508_LANES:
+        assert lane in live
+        spec = cfg[lane]
+        assert spec["process"] == lane and spec["effects"] == ["append"], lane
+        assert spec["n8n_claim"] is False and spec["cron_claim"] is False, f"{lane} must ship staged"
+        assert lane in loop, f"{lane} missing from the owner seed loop"
+
+    from scripts.lib.effect_claim import load_effect_config
+
+    assert not (set(LQ508_LANES) & set(load_effect_config()))
