@@ -122,6 +122,16 @@ def test_duplicate_ids_and_unknown_keys_are_refused():
     assert any("unexpected key 'c1_flip'" in e for e in errs)
 
 
+def test_lq1002_registry_fields_win_over_the_allowlist_fallback():
+    reg = _registry()
+    reg["lanes"][0]["market_hours_only"] = False
+    reg["lanes"][0]["shadow_expires_at"] = "2026-11-20T00:00:00Z"
+    man = lm.build_manifest(reg, _allowlist(), _contracts(), generated_at="x", sources={})
+    alpha = man["lanes"][0]
+    assert alpha["market_hours_only"] is False and alpha["shadow_expires_at"] == "2026-11-20T00:00:00Z"
+    assert lm.validate(man) == [] and lm.registry_view(man) == reg
+
+
 # ── shim ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 

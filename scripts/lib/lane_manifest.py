@@ -230,7 +230,11 @@ def build_lane(row: Mapping[str, Any], allow: Optional[Mapping[str, Any]], contr
     script = primary_script(row, allow)
     legacy = {k: v for k, v in row.items() if k not in CANONICAL_KEYS}
     legacy["_order"] = list(row.keys())
-    market = allow.get("market_gate") if allow else None
+    # LQ-1002 (cc-deepseek-7) owns the honoured flag: the registry row's market_hours_only wins once it lands;
+    # until then this mirrors allowlist.market_gate.
+    market = row.get("market_hours_only")
+    if not isinstance(market, bool):
+        market = allow.get("market_gate") if allow else None
     return {
         "id": lid,
         "state": state,
@@ -239,7 +243,6 @@ def build_lane(row: Mapping[str, Any], allow: Optional[Mapping[str, Any]], contr
         "script": script,
         "command": derive_command(row, allow, script),
         "schedule": derive_schedule(row),
-        # LQ-1002 (cc-deepseek-7) owns the honoured flag; until it lands this mirrors allowlist.market_gate.
         "market_hours_only": bool(market) if isinstance(market, bool) else None,
         # LQ-1002 owns shadow expiry; nothing sets it yet.
         "shadow_expires_at": row.get("shadow_expires_at") if isinstance(row.get("shadow_expires_at"), str) else None,
