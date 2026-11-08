@@ -41896,6 +41896,186 @@
         "reviewed_by": "cc-deepseek-6, the author, against scripts/finviz_snapshot_refresh.py; cc-opus-3 (LQ-20261107-415) corrected the fields copied from market-event-data-refresh (baseline, freshness, failed texts, evidence, remediation, severity basis) against scripts/market_event_brief.py and config/n8n_run_allowlist.json (the checker refuses a DRAFT contract for a new lane). This is an author review, not a lead review: claude-lead reviews the bundle before applying it, and the operator REVIEW pass for the lane is still owed.",
         "reviewed_on": "2026-11-07"
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "market-outlook-weekly",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Sun 20:00 ET (mode sunday) and Mon 07:00 ET (mode monday): evaluate the Market Outlook record (scripts/market_outlook_evaluate.py --apply writes market_outlook_records and data/runtime/market_outlook/latest.json, the banner/CC source), then deliver that record's brief once per channel: HTML email (full), Telegram (with the folded Monday plan), Google Fi text (class market_outlook). Advisory only.",
+        "business_function": "Market Outlook desk (FABLE-OUTLOOK-METHODOLOGY-LQ-946)",
+        "source": "LQ-20261107-1122; scripts/market_outlook_lane.py; spec 4.1/4.7"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY $CODE_ROOT/scripts/market_outlook_lane.py (--deliver live, --dry-run shadow)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_market_outlook_weekly.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock"
+        },
+        {
+          "name": "market_outlook_records (Postgres, single writer scripts/lib/writers/market_outlook_writer.py) + cio_decisions row",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/market_outlook_evaluate.py --apply; scripts/market_outlook_brief.py _write_cio_row"
+        },
+        {
+          "name": "data/runtime/market_outlook/{latest,run_last}.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/market_outlook_evaluate.py _write_runtime (live runs only)"
+        },
+        {
+          "name": "email, Telegram, Google Fi email-to-text (critical channels)",
+          "kind": "provider",
+          "direction": "calls",
+          "source": "operator_contact.json gateways (never in code)"
+        },
+        {
+          "name": "data/runtime/market-outlook-weekly_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_every_fire",
+          "text": "every fire ends with a RunReceipt; a dry_run fire sends nothing and writes no record"
+        },
+        {
+          "check": "record_delivered_once",
+          "text": "a fire applies one record and delivers it exactly once per channel (produced_count >= 1); a repeat fire for the same record is all_channels_delivered_earlier"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 432 s (80% of timeout_s 540)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "partial_channels",
+          "text": "delivered on some channels only: the record exists, a channel is down"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger), including an engine refusal (record problems, missing record store) or a brief validator refusal"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "empty_output",
+          "text": "a live run whose attempt receipt shows produced_count 0 with an empty_reason outside the allowed list -> RUN_FAILED empty_output, P2"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt under data/runtime/lane_attempts/market-outlook-weekly/ -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "stale",
+          "text": "receipt ok_at older than 160 h (the longest legitimate gap is Mon 07:00 -> Sun 20:00 ET, 157 h)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 158,
+        "freshness_failed_after_h": 160,
+        "freshness_rule": "every fire that ends ok advances ok_at; the longest legitimate gap between fires is Monday 07:00 -> Sunday 20:00 ET (157 h; 158 h across the fall-back weekend); degraded beyond 158 h, failed beyond 160 h, so a missed Sunday fire is visible Sunday night",
+        "timeout_s": 540,
+        "class": "report",
+        "computed_on": "2026-11-08",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no finished live runs yet; class defaults: duration degraded above 80% of timeout_s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 432
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "the operator's scheduled weekly outlook: a silent stop leaves the week without a stance until Monday 07:00; advisory only, no order is affected",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": "a live rerun applies a new record and sends email, Telegram and a text, so it is never automatic (retry_policy none); a dry run is safe; a manual live rerun of the same record sends nothing already sent (record_id:channel dedupe)"
+      },
+      "evidence": {
+        "receipt": "data/runtime/market-outlook-weekly_last.json",
+        "verify": [
+          "python3 -c \"import sqlite3; c=sqlite3.connect('file:data/governance/n8n_coordination_ledger.sqlite?mode=ro', uri=True); print(*c.execute(\\\"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='market-outlook-weekly' ORDER BY requested_at DESC LIMIT 10\\\").fetchall(), sep=chr(10))\"",
+          "jq '{status, ok_at, produced_count, attempted_count, skipped_reasons, empty_reason, record: .summary.record_id, channels: .summary.channels}' data/runtime/market-outlook-weekly_last.json",
+          "jq '{record_id, band, score, at}' data/runtime/market_outlook/run_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted; prove work with the ledger and the receipt",
+        "expected_output_basis": "scripts/market_outlook_brief.py writes a LaneRunReceipt@v2 on every live exit after the record loads: produced_count = channels confirmed sent; produced_count 0 with empty_reason all_channels_delivered_earlier (allowed) or status failed (a channel claimed with no notification_log row, the CIO row unwritten, or no channel confirmed). scripts/market_outlook_lane.py writes the same receipt with skipped_reasons refused when the engine fails before the brief runs. A dry run writes nothing."
+      },
+      "review_by": "2026-12-08",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "briefs delivered",
+        "rule": "empty_allowed",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "refused"
+        ],
+        "empty_allowed_reasons": [
+          "all_channels_delivered_earlier"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/lane_attempts/market-outlook-weekly/<run_id>.json produced_count (write_lane_receipt LaneRunReceipt@v2; _last.json mirrors it)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      },
+      "review": {
+        "status": "REVIEWED",
+        "prepared_by": "cc-opus-1 LQ-20261107-1122",
+        "reviewed_by": "cc-opus-1, the author, against scripts/market_outlook_lane.py, scripts/market_outlook_brief.py and config/n8n_run_allowlist.json, modelled on the market-event-brief contract. This is an author review, not a lead review: claude-lead reviews before folding, and the operator REVIEW pass for the lane is still owed.",
+        "reviewed_on": "2026-11-08"
+      }
     }
   ],
   "pending_changes": {

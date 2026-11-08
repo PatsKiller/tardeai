@@ -27088,6 +27088,50 @@
       "note": "WP4 brief (spec 4.5): Sun 20:00, Mon-Fri 07:00/09:00/10:15/12:30/15:30/16:30 ET while an episode is OPEN/STABILIZING/RECOVERING. Email full, Telegram compact, Fi text only on open/close and a name turning READY. Delivers email/Telegram/Fi text on --deliver, so it is send-like: declared class report while dry_run (a dry run sends nothing); the R2 (send class) ruling is the lead's before live_arg is used."
     },
     {
+      "lane_id": "market-outlook-weekly",
+      "owner": "platform",
+      "state": "ACTIVE",
+      "state_since": "2026-11-08",
+      "state_reason": "FABLE-OUTLOOK-METHODOLOGY-LQ-946 4.1 (lead-assigned LQ-20261107-1122): advisory weekly market outlook, Sun 20:00 + Mon 07:00 ET; dry run first, the lead promotes.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "SOURCE_AUTHORIZATION_ONLY: inbox/claude-lead/FABLE-OUTLOOK-METHODOLOGY-LQ-946.md 4.1/4.7 declares this lane and its schedule; LQ-20261107-1122 assigns the rows. No runtime output claimed.",
+      "review_by": "2026-11-22",
+      "expected_cadence_hours": 168,
+      "active_days": [
+        0,
+        1
+      ],
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "timezone": "America/New_York",
+        "stage": "canary",
+        "match": "scripts/market_outlook_lane.py"
+      },
+      "dispatch": {
+        "class": "report",
+        "retry_policy": "none",
+        "mode": "live",
+        "cron": [
+          "0 20 * * 0",
+          "0 7 * * 1"
+        ],
+        "after": [],
+        "priority": 2,
+        "wave": "W0",
+        "tz": "America/New_York"
+      },
+      "output_signal": {
+        "path": "data/runtime/market-outlook-weekly_last.json",
+        "expected_cadence_hours": 168,
+        "kind": "json_key",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "Spec 4.1/4.7: Sun 20:00 ET (mode sunday) and Mon 07:00 ET (mode monday). One run = market_outlook_evaluate.py (--apply live) then market_outlook_brief.py on that record_id (--deliver: HTML email + Telegram + Fi text, deduped per record_id:channel); the record's latest.json is the banner/CC source. Send-like, declared class report like market-event-brief; the R2 (send class) ruling is the lead's."
+    },
+    {
       "lane_id": "unit-run-snapshot",
       "owner": "platform",
       "scheduler": {
