@@ -86,10 +86,27 @@ def test_real_lane_error_still_counts_as_error_and_streak():
     assert "error_streak:5>=5" in out["firing"]
 
 
-def test_refusal_breaks_an_error_streak_like_a_success_does():
+def test_refusal_does_not_reset_an_error_streak():
+    # A refusal is neither a lane error nor a success: it is skipped, so the real errors on either
+    # side of it still count. Breaking on it hid a live error streak behind model refusals (LQ-554).
     rows = [
         _row(REFUSAL_TEXT, status="refused"),
         _row("[ERROR] boom", status="error"),
         _row("[ERROR] boom", status="error"),
     ]
-    assert consecutive_error_streak(rows) == 0
+    assert consecutive_error_streak(rows) == 2
+
+
+def test_error_refusal_error_interleaved_keeps_the_streak_and_the_error_count():
+    # Newest first: error, refusal, error. The refusal must not reset the streak to 1 nor add to errors.
+    rows = [
+        _row("[ERROR] read timed out", status="error"),
+        _row(REFUSAL_TEXT, status="refused"),
+        _row("[ERROR] read timed out", status="error"),
+    ]
+    assert consecutive_error_streak(rows) == 2
+    out = evaluate_lane("grok", newest_first=rows, last_24h=rows, now=NOW)
+    assert out["error_streak"] == 2
+    assert out["error_24h"] == 2
+    assert out["refused_24h"] == 1
+    assert out["non_error_24h"] == 0

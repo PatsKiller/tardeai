@@ -141,7 +141,9 @@ def consecutive_error_streak(rows_newest_first: Iterable[dict[str, Any]]) -> int
     n = 0
     for row in rows_newest_first:
         if is_refusal_row(row):
-            break
+            # A refusal is neither a lane error nor a success: skip it, so it neither adds to the
+            # streak nor ends it. Breaking here hid real errors interleaved with refusals (LQ-554).
+            continue
         rec = row.get("recommendation")
         if rec is None:
             rec = row.get("summary")
