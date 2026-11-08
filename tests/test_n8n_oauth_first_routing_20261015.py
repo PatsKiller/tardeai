@@ -158,9 +158,9 @@ def test_oauth_success_makes_no_deepseek_call(monkeypatch):
     meta = out["_tradeai"]
     assert meta["provider"] == "grok" and meta["escalation"] is None and meta["escalation_skipped_cap"] is False
     assert meta["reasoning_tier"] == "standard" and meta["routing_decision"]["route_profile"] == "n8n_oauth_first"
-    # OAuth is $0 on its receipt; the reservation settles at its projection (spend accounting unchanged)
+    # OAuth is $0 on its receipt; the reservation held the projection in flight and settles at $0 (LQ-20261107-531)
     assert meta["route_receipts"][0]["cost_basis"] == "free_oauth_unmetered"
-    assert led["reserve"].call_count == 1 and led["settle"].call_args.args[1] is None
+    assert led["reserve"].call_count == 1 and led["settle"].call_args.args[1] == 0.0
 
 
 def test_grok_failure_falls_to_chatgpt(monkeypatch):
@@ -315,10 +315,10 @@ def test_low_confidence_oauth_answer_escalates_exactly_once(monkeypatch):
         ("grok", "ok", None),
         ("deepseek", "ok", "escalation"),
     ]
-    # two reservations: the OAuth call's (settled at projection) and the escalation's (metered)
+    # two reservations: the OAuth call's (settled at $0, LQ-20261107-531) and the escalation's (metered)
     assert led["reserve"].call_count == 2
     assert led["reserve"].call_args_list[1].kwargs["metadata"]["request_id"] == "rid-n8n-1:esc1"
-    assert [c.args[1] for c in led["settle"].call_args_list] == [None, 0.0005]
+    assert [c.args[1] for c in led["settle"].call_args_list] == [0.0, 0.0005]
 
 
 def test_confident_oauth_answer_is_not_escalated(monkeypatch):

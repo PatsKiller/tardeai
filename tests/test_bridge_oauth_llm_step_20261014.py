@@ -253,8 +253,8 @@ def test_grok_serves_first_and_nothing_else_is_called(monkeypatch):
     assert meta["provider"] == "grok" and meta["model_id"] == "grok-3-mini"
     assert meta["route_receipts"][0]["cost_usd"] == "unknown"
     assert meta["route_receipts"][0]["cost_basis"] == "free_oauth_unmetered"
-    # unknown cost settles at the projection (conservative), never as free money
-    assert ledger["settle"].call_args.args[1] is None and ledger["settle"].call_args.kwargs["ok"] is True
+    # a free OAuth answer paid nothing: the reservation settles at $0, not the projection (LQ-20261107-531)
+    assert ledger["settle"].call_args.args[1] == 0.0 and ledger["settle"].call_args.kwargs["ok"] is True
     # the proxy request carries no model unless one is pinned, and no tools
     sent = grok.calls[0]["json"]
     assert "model" not in sent and "tools" not in sent and grok.calls[0]["url"].startswith("http://127.0.0.1:8645/")

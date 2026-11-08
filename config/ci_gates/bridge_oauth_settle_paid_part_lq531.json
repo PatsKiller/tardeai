@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "bridge_oauth_settle_paid_part_lq531",
+  "files": [
+    "tests/test_bridge_oauth_settle_paid_part_lq531_20261107.py"
+  ],
+  "anchor": "BRIDGE_OAUTH_SETTLE_PAID_PART_LQ531",
+  "comment": [
+    "ANCHOR: BRIDGE_OAUTH_SETTLE_PAID_PART_LQ531 — LQ-20261107-531.",
+    "Step 9 of cio_governed_model_bridge settled every OAuth-served call at its DeepSeek projection, so free",
+    "grok/chatgpt answers counted against per-process daily caps as paid calls (due_diligence_questions hit its",
+    "$0.25 cap on 2026-11-07 with $0 billed). Pins: the reservation holds the projection in flight and settles an",
+    "OAuth serve at 0.0, or at the metered cost of a rejected paid answer; a paid attempt of unknown cost before",
+    "the OAuth serve keeps the projection; DeepSeek serves settle at the registry estimate, or the projection when",
+    "unknown. No cap value changes. Hermetic: fake transports, patched consumption ledger."
+  ]
+}

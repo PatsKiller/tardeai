@@ -2911,8 +2911,8 @@ def execute_governed_call(
     if served_provider == "anthropic":
         actual_cost = response.get("_tradeai", {}).get("estimated_cost_usd")
     elif _oauth_served:
-        # Free OAuth subscription lane: no metered price. Cost is "unknown" on the receipt; the reservation
-        # settles at its projection (conservative) so the daily cap never under-counts.
+        # Free OAuth subscription lane: no metered price. Cost is "unknown" on the receipt. The reservation held
+        # the projection while the call was in flight; it settles at the real paid part below (LQ-20261107-531).
         actual_cost = None
         cost_basis = "free_oauth_unmetered"
     else:
@@ -2935,6 +2935,7 @@ def execute_governed_call(
     # OAuth lane then served, settle at that metered cost (OAuth stays $0) instead of leaving it unknown.
     _rejected_paid = 0.0
     _rejected_seen = False
+    _rejected_unmetered = False
     for _r in route_receipts:
         if _r.get("outcome") == "output_invalid" and _r.get("cost_basis") == "billed_output_rejected":
             _c = _metered_cost_usd(_r.get("model"), _r.get("usage"))
@@ -2942,6 +2943,12 @@ def execute_governed_call(
             if _c is not None:
                 _rejected_paid += float(_c)
                 _rejected_seen = True
+            else:
+                _rejected_unmetered = True
+        elif _r.get("outcome") != "ok" and _r.get("possibly_billable") is True:
+            # A paid request that was sent and then failed (timeout, network error) may have been billed at an
+            # unknown amount: an OAuth serve after it must keep the projection, never settle it at $0.
+            _rejected_unmetered = True
     if _oauth_served and _rejected_seen:
         actual_cost = _rejected_paid
         cost_basis = "metered_rejected_paid_attempt_plus_free_oauth"
@@ -2951,10 +2958,18 @@ def execute_governed_call(
         _paid = _funding.paid_projection if _paid_actual is None else promo.amount(_paid_actual)
         _funding.reprice(_funding.credit_total, _paid)
         actual_cost = float(_funding.credit_total + _paid)
+    # LQ-20261107-531: the caps bind real paid spend only. An OAuth-served call paid nothing, so it settles at $0
+    # (or at the metered cost of a rejected paid attempt, set above), never at the DeepSeek projection: settling it
+    # there charged every free grok/chatgpt answer as a paid call and tripped per-process caps on $0 of spend.
+    # A billed paid attempt whose cost could not be metered keeps the projection (None), as before. A DeepSeek-served
+    # call is unchanged: the registry estimate, or the projection when usage is unknown.
+    settle_usd = actual_cost
+    if _oauth_served and _funding is None:
+        settle_usd = None if _rejected_unmetered else (actual_cost if actual_cost is not None else 0.0)
     try:
         lc.settle_reservation(
             reservation_id,
-            actual_cost,
+            settle_usd,
             ok=True,
             billable_attempt=True,
             projected_fallback=projected,
