@@ -132,9 +132,24 @@ def test_the_query_excludes_free_oauth_and_groups_by_et_day(tmp_path):
     assert code == 0 and conn.closed
 
 
+def test_a_null_daily_row_fails_the_run_instead_of_reading_zero(tmp_path):
+    class NullConn(FakeConn):
+        def __init__(self):
+            super().__init__({})
+            self.rows = [(date(2026, 11, 5), None, 1)]
+
+    receipts: list[dict] = []
+    conn = NullConn()
+    code, report = W.run(dry_run=False, config_path=_cfg(tmp_path), connect=lambda: conn, deliver=lambda e: {},
+                         now=NOW, state_file=tmp_path / "s.json", write_receipt=lambda *a, **k: receipts.append(k),
+                         emit=lambda s: None)
+    assert code == 1 and report["error"] == "query:ValueError:paid_daily_row_incomplete:2026-11-05"
+    assert receipts[0]["ok"] is False
+
+
 def test_over_means_strictly_above_the_threshold():
     watch = {"process_id": "p", "day_threshold_usd": 0.75, "days_over": 3, "window_days": 7}
-    daily = {date(2026, 11, d): {"paid_usd": v} for d, v in [(5, 0.75), (6, 0.7501), (7, 2.0)]}
+    daily = {date(2026, 11, d): {"paid_usd": v, "paid_calls": 1} for d, v in [(5, 0.75), (6, 0.7501), (7, 2.0)]}
     result = W.evaluate(watch, daily, TODAY)
     assert result["over_days"] == ["2026-11-06", "2026-11-07"]
     assert result["breach"] is False
@@ -142,8 +157,8 @@ def test_over_means_strictly_above_the_threshold():
 
 def test_days_outside_the_window_do_not_count():
     watch = {"process_id": "p", "day_threshold_usd": 0.75, "days_over": 3, "window_days": 7}
-    daily = {date(2026, 10, 31): {"paid_usd": 5.0}, date(2026, 11, 1): {"paid_usd": 1.0},
-             date(2026, 11, 2): {"paid_usd": 1.0}}
+    daily = {date(2026, 10, 31): {"paid_usd": 5.0, "paid_calls": 1}, date(2026, 11, 1): {"paid_usd": 1.0, "paid_calls": 1},
+             date(2026, 11, 2): {"paid_usd": 1.0, "paid_calls": 1}}
     assert W.evaluate(watch, daily, TODAY)["over_count"] == 2
 
 

@@ -155,7 +155,11 @@ def window_dates(today: date, window_days: int) -> list[date]:
 
 
 def fetch_daily_paid(conn: Any, *, process_id: str, start: date, end: date, tz: str) -> dict[date, dict[str, Any]]:
-    """Paid spend per ET day for one process. Days with no paid row are absent (the caller fills them with zero)."""
+    """Paid spend per ET day for one process.
+
+    A day with no paid row is absent from the result. That is a measured zero: the query ran over the whole window.
+    A returned row with a NULL sum or count is unreadable data and raises, so the run fails instead of reading $0.
+    """
     cur = conn.cursor()
     try:
         cur.execute(PAID_DAILY_SQL, {"tz": tz, "process_id": process_id, "start": start, "end": end})
@@ -165,7 +169,9 @@ def fetch_daily_paid(conn: Any, *, process_id: str, start: date, end: date, tz: 
     out: dict[date, dict[str, Any]] = {}
     for et_day, paid_usd, paid_calls in rows:
         day = et_day if isinstance(et_day, date) else date.fromisoformat(str(et_day))
-        out[day] = {"paid_usd": float(paid_usd or 0.0), "paid_calls": int(paid_calls or 0)}
+        if paid_usd is None or paid_calls is None:
+            raise ValueError(f"paid_daily_row_incomplete:{day.isoformat()}")
+        out[day] = {"paid_usd": float(paid_usd), "paid_calls": int(paid_calls)}
     return out
 
 
@@ -174,10 +180,13 @@ def evaluate(watch: Mapping[str, Any], daily: Mapping[date, Mapping[str, Any]], 
     threshold = float(watch["day_threshold_usd"])
     days = []
     for day in window_dates(today, int(watch["window_days"])):
-        row = daily.get(day) or {}
-        paid = round(float(row.get("paid_usd") or 0.0), 6)
-        days.append({"et_day": day.isoformat(), "paid_usd": paid, "paid_calls": int(row.get("paid_calls") or 0),
-                     "over": paid > threshold})
+        row = daily.get(day)
+        if row is None:
+            # Absent means the window query found no paid row for this ET day: a measured zero (see fetch_daily_paid).
+            paid, calls = 0.0, 0
+        else:
+            paid, calls = round(float(row["paid_usd"]), 6), int(row["paid_calls"])
+        days.append({"et_day": day.isoformat(), "paid_usd": paid, "paid_calls": calls, "over": paid > threshold})
     over = [d["et_day"] for d in days if d["over"]]
     return {
         "process_id": watch["process_id"],
@@ -355,7 +364,7 @@ def run(
                         exit_code = 1
             report["watches"].append(row)
     except Exception as exc:  # noqa: BLE001 -- a failed query is the run's failure, reported by type
-        report.update(ok=False, error=f"query:{type(exc).__name__}")
+        report.update(ok=False, error=f"query:{type(exc).__name__}:{str(exc)[:160]}")
         _finish(report, dry_run=dry_run, started=started, write_receipt=write_receipt, emit=emit)
         return 1, report
     finally:
