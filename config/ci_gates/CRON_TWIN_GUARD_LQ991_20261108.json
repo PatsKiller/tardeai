@@ -1,0 +1,23 @@
+{
+  "schema": "CiGate@v1",
+  "name": "CRON_TWIN_GUARD_LQ991_20261108",
+  "files": [
+    "tests/test_cron_twin_guard_lq991_20261108.py"
+  ],
+  "anchor": "CRON_TWIN_GUARD_LQ991_20261108",
+  "comment": [
+    "ANCHOR: CRON_TWIN_GUARD_LQ991_20261108 — LQ-20261107-991: a lane live on n8n must not still own a firing cron line.",
+    "Fable's n8n design audit (LQ-984 Q6 #1/#14) measured 37 lines by matching a lane's script basename. Measured",
+    "2026-11-08T16:41Z against the 723-row registry: 25 lanes own 26 firing lines; eleven of the 37 were a sibling",
+    "lane's line running the same script with different arguments, which the audit mis-attributed.",
+    "The gate compares registry dispatch.mode=live to a sanitized committed snapshot of the crontab",
+    "(config/crontab_snapshot.txt, captured_at stamped, /home/<user> replaced by $HOME). A stale or unstamped",
+    "snapshot is CANNOT RUN (exit 2), never clean. Attribution is by tag, effect-claim wrapper, scheduler.match,",
+    "then script+arguments; a tie is reported ambiguous and assigned to nobody, so the gate never proposes to",
+    "comment a line it cannot name.",
+    "The inherited-debt baseline (config/cron_twin_baseline.json) holds today's 26 findings and can only shrink:",
+    "after the operator runs comment-cron, regenerate the snapshot and re-emit the baseline with --prune-baseline.",
+    "Tests are hermetic: synthetic registry rows and crontab text; one test grades the committed snapshot and",
+    "baseline so the gate is proven green on the day it lands. No crontab command, no systemd, no database."
+  ]
+}
