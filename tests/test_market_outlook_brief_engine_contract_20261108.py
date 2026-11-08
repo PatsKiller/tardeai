@@ -87,14 +87,15 @@ def engine_record() -> dict:
                    "episode_id": None},
         "categories": categories,
         "scenarios": {
-            name: {"prob": prob,
-                   "spx_range": _atr_band(3.0),
-                   "ndx_range": _atr_band(2.5),
-                   "rut_range": _atr_band(2.0),
-                   "triggers": [f"synthetic {name} trigger"]}
-            for name, prob in (("base", 0.47), ("bull", 0.16), ("bear", 0.37))
+            **{name: {"prob": prob,
+                      "spx_range": _atr_band(3.0),
+                      "ndx_range": _atr_band(2.5),
+                      "rut_range": _atr_band(2.0),
+                      "triggers": [f"synthetic {name} trigger"]}
+               for name, prob in (("base", 0.47), ("bull", 0.16), ("bear", 0.37))},
+            # the engine hangs the method string off the scenarios mapping itself (scoring.py:243)
+            "method": "synthetic; ranges are +-1/+-2 weekly ATR from the Friday close",
         },
-        "method": "synthetic",
         "key_levels": {
             "SPX": {"support": [_level(5940.0, -1.0, "dma50"), _level(5880.0, -2.0, "prior_week_low"),
                                 _level(5820.0, -3.0, "dma200")],
@@ -222,6 +223,38 @@ def test_normalization_is_idempotent_and_copies():
     twice = mob.normalize_record(once)
     assert once == twice
     assert original == frozen                          # copy-on-write: the input is untouched
+    assert twice["scenarios"][mob.RANGES_BASIS_KEY] == mob.RANGES_BASIS_ENGINE
+
+
+# ------------------------------------------------------------------- the derived band is labelled
+def test_a_derived_band_is_labelled_in_every_channel_that_prints_it():
+    """The engine emits one 1-ATR band for all three scenarios; an unlabelled band reads as three."""
+    record = mob.normalize_record(engine_record())
+    assert record["scenarios"][mob.RANGES_BASIS_KEY] == mob.RANGES_BASIS_ENGINE
+    label = mob._range_label(record)
+    assert "weekly ATR" in label and "same band for every scenario" in label
+    assert "Engine method: synthetic" in label          # sourced from scenarios.method
+    for rendering in (mob.render_html(record, policy=policy()),
+                      mob.render_email_text(record, policy=policy()),
+                      mob.render_telegram(record, policy=policy())):
+        # html escapes "engine's" to "engine&#x27;s", so the label is matched in its stable parts.
+        assert "weekly ATR" in rendering and "same band for every scenario" in rendering
+        assert "Engine method: synthetic" in rendering
+        assert "5820" in rendering                       # the derived band it labels is printed too
+    # The 300-char SMS carries no ranges, so it carries no range label.
+    assert "weekly ATR" not in mob.render_text(record, policy=policy(), max_chars=300)
+
+
+def test_a_brief_shaped_record_is_not_labelled(tmp_path):
+    """A record that states its own absolute pairs is not derived, so it must not claim it was."""
+    fixture = Path(__file__).with_name("fixtures") / "market_weekly_outlook_record_sample.json"
+    doc = json.loads(fixture.read_text(encoding="utf-8"))
+    assert mob.RANGES_BASIS_KEY not in (doc.get("scenarios") or {})
+    assert mob._range_label(doc) is None
+    for rendering in (mob.render_html(doc, policy=policy()),
+                      mob.render_email_text(doc, policy=policy()),
+                      mob.render_telegram(doc, policy=policy())):
+        assert "weekly ATR" not in rendering
 
 
 def test_a_brief_shaped_record_is_unchanged(tmp_path):

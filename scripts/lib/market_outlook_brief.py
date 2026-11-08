@@ -138,6 +138,10 @@ HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 LEVEL_SIDES = ("support", "resistance")
 MAX_LEVELS_PER_SIDE = 3
 UNRENDERABLE = "n/a"
+#: Set on ``scenarios`` by ``normalize_record`` when the engine's ATR dict became an absolute pair.
+#: A brief-shaped record states its own absolute bands, so it carries no marker and prints no label.
+RANGES_BASIS_KEY = "ranges_basis"
+RANGES_BASIS_ENGINE = "engine_1atr"
 
 
 def _anchor(record: Mapping[str, Any], index_key: str) -> Optional[float]:
@@ -185,6 +189,32 @@ def _absolute_pair(value: Any, anchor: Optional[float]) -> Any:
             return [round(anchor * (1.0 + float(low) / 100.0), 1),
                     round(anchor * (1.0 + float(high) / 100.0), 1)]
     return value
+
+
+def _is_atr_dict(value: Any) -> bool:
+    """True when ``value`` is the engine's percent-multiple band, i.e. a band that was derived."""
+    if not isinstance(value, Mapping):
+        return False
+    return all(isinstance(value.get(key), (int, float)) and not isinstance(value.get(key), bool)
+               for key in ("low_1atr", "high_1atr"))
+
+
+def _range_label(record: Mapping[str, Any]) -> Optional[str]:
+    """One line naming where the printed bands came from, or ``None`` when the record stated them itself.
+
+    The engine prints the same 1-ATR band for all three scenarios, anchored on a close it recovers
+    from the key levels rather than stating; an unlabelled rendered band would read as three measured
+    ranges. The label is printed only for a band this module derived, never for a brief-shaped record.
+    """
+    scenarios = record.get("scenarios")
+    if not isinstance(scenarios, Mapping) or scenarios.get(RANGES_BASIS_KEY) != RANGES_BASIS_ENGINE:
+        return None
+    label = ("Ranges: +/-1 weekly ATR around the Friday close, the same band for every scenario; "
+             "anchors derived from the engine's key levels.")
+    method = _clean(scenarios.get("method")).rstrip(".")
+    if method:
+        label += f" Engine method: {method}."
+    return label
 
 
 def _level_numbers(values: Any) -> list[Any]:
@@ -242,6 +272,8 @@ def normalize_record(record: Any) -> Any:
                 for band_key, index_key in RANGE_INDEXES.items():
                     if band_key in adapted:
                         adapted[band_key] = _absolute_pair(adapted[band_key], _anchor(record, index_key))
+                        if _is_atr_dict(row.get(band_key)):
+                            adapted_scenarios[RANGES_BASIS_KEY] = RANGES_BASIS_ENGINE
                 adapted_scenarios[name] = adapted
             else:
                 adapted_scenarios[name] = row
@@ -710,6 +742,9 @@ def render_html(record: Mapping[str, Any], *, policy: Mapping[str, Any], max_cha
         for name in ("base", "bull", "bear")
     )
     parts.append(f'<div style="{_CSS_MUTED}">RUT: {rut}</div>')
+    range_label = _range_label(record)
+    if range_label:
+        parts.append(f'<div style="{_CSS_MUTED}">{_e(range_label)}</div>')
     for name in ("base", "bull", "bear"):
         triggers = [t for t in ((record.get("scenarios") or {}).get(name) or {}).get("triggers") or [] if _clean(t)]
         if triggers:
@@ -845,6 +880,9 @@ def render_email_text(record: Mapping[str, Any], *, policy: Mapping[str, Any],
         row = (record.get("scenarios") or {}).get(name) or {}
         lines.append(f"  {name.upper():5s} {round(float(row.get('prob') or 0) * 100):3d}%  "
                      f"SPX {_pair(row.get('spx_range'))}  NDX {_pair(row.get('ndx_range'))}  RUT {_pair(row.get('rut_range'))}")
+    range_label = _range_label(record)
+    if range_label:
+        lines.append(f"  {range_label}")
     lines += ["", "SCORECARD"]
     for cat in record.get("categories") or []:
         lines.append(f"  {_category_title(str(cat.get('key'))):22s} {_sub_text(cat):>8s} "
@@ -916,6 +954,9 @@ def render_telegram(record: Mapping[str, Any], *, policy: Mapping[str, Any],
         row = (record.get("scenarios") or {}).get(name) or {}
         lines.append(f"  {name.upper():5s} {round(float(row.get('prob') or 0) * 100):3d}% "
                      f"SPX {_pair(row.get('spx_range'))} NDX {_pair(row.get('ndx_range'))}")
+    range_label = _range_label(record)
+    if range_label:
+        lines.append(f"  {range_label}")
     lines.append("")
 
     lines.append("SCORECARD")
