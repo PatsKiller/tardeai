@@ -32,6 +32,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -106,8 +107,12 @@ def live_fetch(symbols: list[str], cfg: dict) -> dict:
     return out
 
 
-def probe(cfg: dict) -> dict:
-    """Availability without calling Schwab: switch, policy dependency, window, URL rail, modules present."""
+def probe(cfg: dict, *, db_query: Callable[[str], Any] | None = None) -> dict:
+    """Availability without calling Schwab: switch, policy dependency, window, URL rail, modules present.
+
+    The universe's SQL sources are read through ``db_query`` (default: the read-only reader below). It is a parameter
+    so a caller can supply its own reader — a test supplies a stub instead of opening the live database.
+    """
     now = datetime.now(timezone.utc)
     ok, why = oq.schwab_window(now, cfg)
     s = cfg.get("schwab") or {}
@@ -115,7 +120,7 @@ def probe(cfg: dict) -> dict:
         url, url_ok = marketdata_url(cfg), True
     except ValueError as exc:
         url, url_ok = str(exc), False
-    universe, prov = oq.resolve_universe(cfg, db_query=read_symbols)
+    universe, prov = oq.resolve_universe(cfg, db_query=db_query or read_symbols)
     return {"schema": "OffHoursQuoteProbe@v2", "provider": "schwab", "store": oq.STORE, "enabled": bool(s.get("enabled")),
             "store_domain_granted": oq.mqe.domain_promoted(),
             "requires_policy": s.get("requires_policy"), "window_now": why, "in_window_now": ok,

@@ -596,7 +596,9 @@ def test_schwab_probe_makes_no_live_call(cfg, monkeypatch):
     import market_quotes_offhours_schwab as ent
 
     monkeypatch.setattr(ent, "live_fetch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("live call")))
-    p = ent.probe(cfg)
+    # LQ-20261107-1270: the universe's SQL sources are read through an injected reader. A test supplies a stub, so the
+    # probe opens no database connection at all (the hermetic guard is a backstop, not the contract).
+    p = ent.probe(cfg, db_query=lambda _sql: [])
     assert p["enabled"] is True and p["live_call_made"] is False and p["url_rail_ok"] is True
     assert p["store"] == "market_quotes_extended"
     # The configured futures and indices lead the probe, in config order; the prefix length is derived, never fixed,
@@ -695,6 +697,9 @@ def test_schwab_dry_run_writes_nothing(fx, n, monkeypatch, capsys):
         raise AssertionError("dry run reached live code")
     monkeypatch.setattr(ent, "_write", boom)
     monkeypatch.setattr(ent, "live_fetch", boom)
+    # LQ-20261107-1270: the dry run resolves the universe's SQL sources through read_symbols. Stub it here so the dry
+    # run touches no database at all — the assertion below is about what it WRITES, not about what it may read.
+    monkeypatch.setattr(ent, "read_symbols", lambda _sql: [])
     doc = json.loads(fx.read_text())
     assert ent.main(["--dry-run", "--fixture", str(fx), "--now", doc["now"]]) == 0
     out = json.loads(capsys.readouterr().out)
