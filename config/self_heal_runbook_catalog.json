@@ -1,0 +1,1739 @@
+{
+  "schema": "SelfHealRunbookCatalog@v1",
+  "version": "2026-11-08.1",
+  "source": "SELFHEAL-BEST-PRACTICE-PLAN-20261108.md section RUNBOOK CATALOG (operator order 2026-11-08 16:44 ET); seeds = the non-code signatures seen on 2026-11-08 (flock held, database is locked, LockNotAvailable, RUN_TIMEOUT 124, executor_lost, BRIDGE_ROUTE_REFUSED, NO_BRIEFS, disk floor)",
+  "_ordering": "Entries are selected by explicit integer priority (lowest wins); ids break ties, and a shared priority is reported as ambiguous by plan_runbook. The only entry with no match patterns is the K04 catch-all, which must stay last.",
+  "_safety": "Every action is one primitive from ACTION_WHITELIST in scripts/lib/self_heal_runbooks.py. No DB write, no kill, no crontab/systemd/env edit, no broker/order/stop, no credential read, no push. Mutating actions are refused on execution lanes before the catalog is consulted.",
+  "runbooks": [
+    {
+      "id": "A01-flock-held",
+      "category": "A",
+      "title": "flock held: the lock is doing its job; wait and recheck",
+      "tier": "auto_notify",
+      "priority": 100,
+      "match": {
+        "failure_class": [
+          "lock_skip",
+          "flock_held"
+        ],
+        "reason_regex": [
+          "\\bflock[_ -]?held\\b",
+          "\\bRUN_SKIPPED_LOCK\\b",
+          "(?i)another scheduler holds"
+        ],
+        "exception_regex": [
+          "\\bBlockingIOError\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 300
+      },
+      "max_attempts": 3,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "flock held across {max_attempts} rechecks on {lane}"
+      },
+      "human_steps": [
+        "compare the lock holder with the lane's schedule: ps -o pid,lstart,cmd -p <owner-pid>",
+        "never delete a flock file; a holder-less flock file blocks nothing (scripts/cleanup_stale_locks.sh)"
+      ],
+      "tests": [
+        "fx-flock-held-match",
+        "fx-flock-held-refuse",
+        "fx-flock-held-repeat"
+      ]
+    },
+    {
+      "id": "A02-stale-existence-lock",
+      "category": "A",
+      "title": "stale existence lock (pidfile) whose recorded owner is dead and whose age exceeds the lane timeout",
+      "tier": "auto_notify",
+      "priority": 110,
+      "match": {
+        "failure_class": [
+          "stale_lock"
+        ],
+        "reason_regex": [
+          "\\bstale[_ -]?lock\\b",
+          "\\bstale[_ -]?pidfile\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "lock_path_recorded",
+        "owner_pid_recorded",
+        "owner_pid_dead",
+        "lock_age_recorded",
+        "lock_age_gt_lane_timeout",
+        "lock_kind_existence"
+      ],
+      "action": "release_stale_flock",
+      "params": {},
+      "max_attempts": 2,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "lock_absent_or_free",
+        "window_s": 300
+      },
+      "on_fail": {
+        "title": "stale lock on {lane} did not pass its sanity checks"
+      },
+      "human_steps": [
+        "the lock is archived (renamed .stale-<utc>), never deleted; a kernel flock is never touched because the kernel releases it when the holder exits"
+      ],
+      "tests": [
+        "fx-stale-lock-match",
+        "fx-stale-lock-refuse-live-pid",
+        "fx-stale-lock-repeat"
+      ]
+    },
+    {
+      "id": "A03-sqlite-database-locked",
+      "category": "A",
+      "title": "sqlite 'database is locked': report the lock, never remove a WAL/SHM file",
+      "tier": "auto_notify",
+      "priority": 120,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)database is locked",
+          "\\bSQLITE_BUSY\\b"
+        ],
+        "exception_regex": [
+          "\\bOperationalError\\b.*database is locked"
+        ]
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane"
+      ],
+      "action": "release_stale_sqlite_wal_lock",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "next_run_opens_db"
+      },
+      "on_fail": {
+        "title": "sqlite lock persisted on {lane}"
+      },
+      "human_steps": [
+        "find the writer: lsof <db path> (read-only)",
+        "do not delete -wal/-shm files; that is how a database is corrupted"
+      ],
+      "tests": [
+        "fx-sqlite-locked-match",
+        "fx-sqlite-locked-refuse",
+        "fx-sqlite-locked-repeat"
+      ]
+    },
+    {
+      "id": "A04-pg-lock-not-available",
+      "category": "A",
+      "title": "PostgreSQL LockNotAvailable (SQLSTATE 55P03): a concurrent holder; wait it out",
+      "tier": "auto_notify",
+      "priority": 130,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "\\bLockNotAvailable\\b",
+          "\\b55P03\\b",
+          "(?i)could not obtain lock"
+        ],
+        "exception_regex": [
+          "\\bLockNotAvailable\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 180
+      },
+      "max_attempts": 3,
+      "cooldown_min": 15,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 600
+      },
+      "on_fail": {
+        "title": "LockNotAvailable persisted on {lane}"
+      },
+      "human_steps": [
+        "read-only: select pid, state, wait_event_type, left(query, 120) from pg_stat_activity where state <> 'idle'; never terminate a session from a runbook"
+      ],
+      "tests": [
+        "fx-pg-lock-match",
+        "fx-pg-lock-refuse",
+        "fx-pg-lock-repeat"
+      ]
+    },
+    {
+      "id": "A05-overlapping-schedule",
+      "category": "A",
+      "title": "overlapping schedule: the previous run has not finished",
+      "tier": "auto_notify",
+      "priority": 140,
+      "match": {
+        "failure_class": [
+          "overlap"
+        ],
+        "reason_regex": [
+          "(?i)overlapping (schedule|run)",
+          "\\bSKIP_OVERLAP\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 600
+      },
+      "max_attempts": 2,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 1200
+      },
+      "on_fail": {
+        "title": "overlap did not clear on {lane}"
+      },
+      "human_steps": [
+        "if the overlap repeats every slot, the lane needs a longer interval or a faster run; that is a schedule decision, not a runbook action"
+      ],
+      "tests": [
+        "fx-overlap-match",
+        "fx-overlap-refuse",
+        "fx-overlap-repeat"
+      ]
+    },
+    {
+      "id": "B01-rate-limited-429",
+      "category": "B",
+      "title": "provider rate limit (429): defer with jitter, capped at 3 retries per day",
+      "tier": "auto_notify",
+      "priority": 200,
+      "match": {
+        "failure_class": [
+          "rate_limit",
+          "rate_limited",
+          "429"
+        ],
+        "reason_regex": [
+          "\\b429\\b",
+          "(?i)rate[ _-]?limit",
+          "(?i)too many requests"
+        ],
+        "exception_regex": [
+          "\\bRateLimitError\\b",
+          "\\b429\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "retries_under_budget"
+      ],
+      "action": "defer_until",
+      "params": {
+        "delay_s": 300,
+        "jitter_s": 300,
+        "max_retries": 3
+      },
+      "max_attempts": 3,
+      "cooldown_min": 30,
+      "verify": {
+        "kind": "next_attempt_succeeds",
+        "window_s": 1800
+      },
+      "on_fail": {
+        "title": "rate limit did not clear after {max_attempts} deferred retries on {lane}"
+      },
+      "human_steps": [
+        "check the provider's current quota/credit, not the lane",
+        "never raise a retry cap to absorb a quota change; that is a budget decision"
+      ],
+      "tests": [
+        "fx-429-match",
+        "fx-429-refuse-budget",
+        "fx-429-repeat"
+      ]
+    },
+    {
+      "id": "B02-oauth-expired",
+      "category": "B",
+      "title": "OAuth token expired or revoked: human re-authentication only",
+      "tier": "human_only",
+      "priority": 210,
+      "match": {
+        "failure_class": [
+          "auth"
+        ],
+        "reason_regex": [
+          "(?i)oauth (token )?(expired|invalid)",
+          "\\binvalid_grant\\b",
+          "(?i)refresh token (expired|revoked)"
+        ],
+        "exception_regex": [
+          "\\binvalid_grant\\b",
+          "\\b401 Unauthorized\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "OAuth expired on {lane}: operator re-authentication needed",
+        "text": "An agent never refreshes, prints or copies a credential. The operator re-authenticates in an interactive shell."
+      },
+      "human_steps": [
+        "operator runs the provider's documented interactive re-auth (auth add <provider>); no token is pasted into a ticket",
+        "re-run the lane in shadow after re-auth"
+      ],
+      "tests": [
+        "fx-oauth-match",
+        "fx-oauth-refuse",
+        "fx-oauth-repeat"
+      ]
+    },
+    {
+      "id": "B03-budget-governor-refusal",
+      "category": "B",
+      "title": "budget governor refused the call: human_only, never a retry",
+      "tier": "human_only",
+      "priority": 220,
+      "match": {
+        "failure_class": [
+          "budget"
+        ],
+        "reason_regex": [
+          "(?i)budget (governor|refus|exceed)",
+          "\\bBUDGET_EXCEEDED\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "budget governor refused {lane}",
+        "text": "A refusal is a decision, not an error. Retrying it asks the same question again; only the operator can change the budget."
+      },
+      "human_steps": [
+        "operator reviews the spend journal and the governor's limit",
+        "no runbook raises a budget, cap or credit"
+      ],
+      "tests": [
+        "fx-budget-match",
+        "fx-budget-refuse",
+        "fx-budget-repeat"
+      ]
+    },
+    {
+      "id": "B04-provider-credit-exhausted",
+      "category": "B",
+      "title": "provider credit exhausted: human_only",
+      "tier": "human_only",
+      "priority": 230,
+      "match": {
+        "failure_class": [
+          "credit"
+        ],
+        "reason_regex": [
+          "(?i)(credit|balance) (exhausted|insufficient)",
+          "\\binsufficient_quota\\b"
+        ],
+        "exception_regex": [
+          "\\binsufficient_quota\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "provider credit exhausted on {lane}",
+        "text": "Top-up is an operator decision; a runbook never purchases credit."
+      },
+      "human_steps": [
+        "operator checks the provider billing page and the spend journal"
+      ],
+      "tests": [
+        "fx-credit-match",
+        "fx-credit-refuse",
+        "fx-credit-repeat"
+      ]
+    },
+    {
+      "id": "C01-late-data",
+      "category": "C",
+      "title": "late data: re-check freshness against the health contract, then re-run once",
+      "tier": "auto_notify",
+      "priority": 300,
+      "match": {
+        "failure_class": [
+          "data"
+        ],
+        "reason_regex": [
+          "(?i)\\bdata (is )?late\\b",
+          "(?i)stale (data|feed|source)",
+          "\\bFRESHNESS_FAILED\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "data_age_measured",
+        "contract_freshness_present",
+        "data_is_late",
+        "rerun_not_used_today"
+      ],
+      "action": "rerun_once_via_gateway",
+      "params": {
+        "delay_s": 0
+      },
+      "max_attempts": 2,
+      "cooldown_min": 120,
+      "verify": {
+        "kind": "freshness_restored",
+        "threshold_h_from": "contract.baseline.freshness_failed_after_h"
+      },
+      "on_fail": {
+        "title": "data still late after one re-run on {lane}",
+        "text": "The upstream producer, not the lane, owns the delay. The contract threshold is in config/n8n_health_contracts.json."
+      },
+      "human_steps": [
+        "compare the producer's last successful write with the contract's freshness_failed_after_h",
+        "never relax a freshness threshold to make a lane green"
+      ],
+      "tests": [
+        "fx-late-data-match",
+        "fx-late-data-refuse-fresh",
+        "fx-late-data-repeat"
+      ]
+    },
+    {
+      "id": "C02-empty-output",
+      "category": "C",
+      "title": "empty output: escalate as a finding; an empty result is not a success",
+      "tier": "auto_notify",
+      "priority": 310,
+      "match": {
+        "failure_class": [
+          "data_quality",
+          "empty_output"
+        ],
+        "reason_regex": [
+          "(?i)\\bempty (output|result|response)\\b",
+          "\\bEMPTY_OUTPUT\\b",
+          "\\bDATA_QUALITY\\b",
+          "\\bdata_unavailable\\b",
+          "\\bno_input_data\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "empty output is not a success on {lane}",
+        "text": "Nothing the runbook can do makes an empty universe non-empty. Look at the producer's own receipt."
+      },
+      "human_steps": [
+        "read the producer's receipt and the lane's input count",
+        "do not grade an empty output as ok"
+      ],
+      "tests": [
+        "fx-empty-match",
+        "fx-empty-refuse",
+        "fx-empty-repeat"
+      ]
+    },
+    {
+      "id": "C03-weekend-expected",
+      "category": "C",
+      "title": "weekend / market closed: the absence is expected, mark it and stop",
+      "tier": "auto_notify",
+      "priority": 320,
+      "match": {
+        "failure_class": [
+          "weekend_expected",
+          "market_closed"
+        ],
+        "reason_regex": [
+          "(?i)market (closed|holiday)",
+          "\\bWEEKEND\\b",
+          "\\bEXPECTED_OFF_HOURS\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "mark_weekend_expected",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "calendar_is_closed"
+      },
+      "on_fail": {
+        "title": "expected-off-hours marker did not apply on {lane}"
+      },
+      "human_steps": [
+        "config/market_holidays.py is total; a weekday holiday is still a closed day"
+      ],
+      "tests": [
+        "fx-weekend-match",
+        "fx-weekend-refuse",
+        "fx-weekend-repeat"
+      ]
+    },
+    {
+      "id": "C04-no-briefs",
+      "category": "C",
+      "title": "NO_BRIEFS: re-run once through the gateway, then escalate",
+      "tier": "auto_notify",
+      "priority": 330,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "\\bNO_BRIEFS\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "rerun_not_used_today"
+      ],
+      "action": "rerun_once_via_gateway",
+      "params": {
+        "delay_s": 0
+      },
+      "max_attempts": 1,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "NO_BRIEFS persisted after one re-run on {lane}"
+      },
+      "human_steps": [
+        "check whether the brief producer actually ran in this window"
+      ],
+      "tests": [
+        "fx-no-briefs-match",
+        "fx-no-briefs-refuse",
+        "fx-no-briefs-repeat"
+      ]
+    },
+    {
+      "id": "C05-stale-source",
+      "category": "C",
+      "title": "a source stopped updating: wait a slot and recheck",
+      "tier": "auto_notify",
+      "priority": 340,
+      "match": {
+        "failure_class": [
+          "stale_source"
+        ],
+        "reason_regex": [
+          "(?i)source (has )?not updated",
+          "\\bSOURCE_STALE\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 900
+      },
+      "max_attempts": 2,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "source_timestamp_advances",
+        "window_s": 1800
+      },
+      "on_fail": {
+        "title": "source stayed stale on {lane}"
+      },
+      "human_steps": [
+        "compare the source's own published timestamp with the lane's read time"
+      ],
+      "tests": [
+        "fx-stale-source-match",
+        "fx-stale-source-refuse",
+        "fx-stale-source-repeat"
+      ]
+    },
+    {
+      "id": "D01-network-transient",
+      "category": "D",
+      "title": "network / dependency transient: defer with jitter and retry",
+      "tier": "auto_notify",
+      "priority": 400,
+      "match": {
+        "failure_class": [
+          "network",
+          "transient",
+          "dependency_unavailable",
+          "dependency"
+        ],
+        "reason_regex": [
+          "(?i)name resolution",
+          "\\bgaierror\\b",
+          "\\bEAI_AGAIN\\b",
+          "(?i)network is unreachable",
+          "(?i)connection reset"
+        ],
+        "exception_regex": [
+          "\\bgaierror\\b",
+          "\\bConnectionResetError\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "retries_under_budget"
+      ],
+      "action": "defer_until",
+      "params": {
+        "delay_s": 120,
+        "jitter_s": 120,
+        "max_retries": 3
+      },
+      "max_attempts": 3,
+      "cooldown_min": 15,
+      "verify": {
+        "kind": "next_attempt_succeeds",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "network dependency did not recover for {lane}"
+      },
+      "human_steps": [
+        "resolve DNS/host reachability outside the lane; never edit /etc/hosts or a proxy env from a runbook"
+      ],
+      "tests": [
+        "fx-network-match",
+        "fx-network-refuse",
+        "fx-network-repeat"
+      ]
+    },
+    {
+      "id": "D02-provider-5xx",
+      "category": "D",
+      "title": "provider 5xx: defer briefly, then escalate",
+      "tier": "auto_notify",
+      "priority": 410,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "\\b(500|502|503|504)\\b",
+          "(?i)service unavailable",
+          "(?i)bad gateway"
+        ],
+        "exception_regex": [
+          "\\b503\\b",
+          "\\b502\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "retries_under_budget"
+      ],
+      "action": "defer_until",
+      "params": {
+        "delay_s": 120,
+        "jitter_s": 120,
+        "max_retries": 3
+      },
+      "max_attempts": 3,
+      "cooldown_min": 15,
+      "verify": {
+        "kind": "next_attempt_succeeds",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "provider 5xx persisted for {lane}"
+      },
+      "human_steps": [
+        "check the provider's status page; a 5xx is not a credential problem"
+      ],
+      "tests": [
+        "fx-5xx-match",
+        "fx-5xx-refuse",
+        "fx-5xx-repeat"
+      ]
+    },
+    {
+      "id": "D03-connection-refused",
+      "category": "D",
+      "title": "TCP connection refused: the listener is down; defer and recheck",
+      "tier": "auto_notify",
+      "priority": 420,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)connection refused",
+          "\\bECONNREFUSED\\b"
+        ],
+        "exception_regex": [
+          "\\bECONNREFUSED\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "retries_under_budget"
+      ],
+      "action": "defer_until",
+      "params": {
+        "delay_s": 60,
+        "jitter_s": 60,
+        "max_retries": 3
+      },
+      "max_attempts": 3,
+      "cooldown_min": 15,
+      "verify": {
+        "kind": "next_attempt_succeeds",
+        "window_s": 600
+      },
+      "on_fail": {
+        "title": "connection refused persisted for {lane}"
+      },
+      "human_steps": [
+        "check the unit that owns the listener; a runbook never starts, stops or restarts a unit"
+      ],
+      "tests": [
+        "fx-refused-match",
+        "fx-refused-refuse",
+        "fx-refused-repeat"
+      ]
+    },
+    {
+      "id": "E01-run-timeout-124",
+      "category": "E",
+      "title": "RUN_TIMEOUT / exit 124: the wall was hit; wait for the next slot, do not rerun blindly",
+      "tier": "auto_notify",
+      "priority": 500,
+      "match": {
+        "failure_class": [
+          "timeout"
+        ],
+        "reason_regex": [
+          "\\bRUN_TIMEOUT\\b",
+          "\\bexit(ed)?( with)?( code)? 124\\b",
+          "\\btimeout_kill\\b"
+        ],
+        "exception_regex": [
+          "\\bTimeoutExpired\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 900
+      },
+      "max_attempts": 2,
+      "cooldown_min": 30,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 1800
+      },
+      "on_fail": {
+        "title": "run kept timing out on {lane}",
+        "text": "A timed-out run may have written part of its output; a blind immediate rerun races its own leftovers. The next scheduled slot is the retry."
+      },
+      "human_steps": [
+        "compare the run duration with the contract's timeout_s",
+        "if duration is consistently at the wall, the route is slow, not dead (see E02)"
+      ],
+      "tests": [
+        "fx-124-match",
+        "fx-124-refuse",
+        "fx-124-repeat"
+      ]
+    },
+    {
+      "id": "E02-slow-gateway",
+      "category": "E",
+      "title": "slow-vs-dead gateway: the client deadline fired while the gateway was still working",
+      "tier": "auto_notify",
+      "priority": 510,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)(gateway|provider) (is )?(slow|busy)",
+          "\\bCLIENT_DEADLINE\\b",
+          "\\bGATEWAY_BUSY\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 600
+      },
+      "max_attempts": 2,
+      "cooldown_min": 30,
+      "verify": {
+        "kind": "journal_shows_completion",
+        "window_s": 1200
+      },
+      "on_fail": {
+        "title": "gateway stayed slow for {lane}"
+      },
+      "human_steps": [
+        "read the gateway journal: a busy timeout is the client's deadline, not necessarily a failed call"
+      ],
+      "tests": [
+        "fx-slow-gateway-match",
+        "fx-slow-gateway-refuse",
+        "fx-slow-gateway-repeat"
+      ]
+    },
+    {
+      "id": "F01-executor-lost",
+      "category": "F",
+      "title": "executor_lost: the existing reaper owns the orphan; do not duplicate the effect",
+      "tier": "auto_notify",
+      "priority": 490,
+      "match": {
+        "failure_class": [
+          "executor_lost"
+        ],
+        "reason_regex": [
+          "\\bexecutor_lost\\b",
+          "(?i)executor (was )?lost",
+          "(?i)lost its executor"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 600
+      },
+      "max_attempts": 2,
+      "cooldown_min": 30,
+      "verify": {
+        "kind": "orphan_reaped",
+        "window_s": 1200
+      },
+      "on_fail": {
+        "title": "orphan run stayed unreaped for {lane}",
+        "text": "reap_orphan_run in scripts/lib/n8n_self_heal.py is the single owner. A second actor claiming the same effect key duplicates it."
+      },
+      "human_steps": [
+        "inspect the run row's state; never mark it done by hand"
+      ],
+      "tests": [
+        "fx-executor-lost-match",
+        "fx-executor-lost-refuse",
+        "fx-executor-lost-repeat"
+      ]
+    },
+    {
+      "id": "F02-bridge-route-refused",
+      "category": "F",
+      "title": "BRIDGE_ROUTE_REFUSED: a rerun will be refused the same way; escalate",
+      "tier": "auto_notify",
+      "priority": 610,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "\\bBRIDGE_ROUTE_REFUSED\\b",
+          "(?i)bridge route (is )?refused"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "bridge refused the route for {lane}",
+        "text": "The refusal is a registry/config decision. Retrying asks the same question; the route row must be reviewed by a human."
+      },
+      "human_steps": [
+        "read the bridge's refusal reason and the lane's registry row",
+        "a route change is an operator edit, never a runbook write"
+      ],
+      "tests": [
+        "fx-bridge-match",
+        "fx-bridge-refuse",
+        "fx-bridge-repeat"
+      ]
+    },
+    {
+      "id": "F03-breaker-open",
+      "category": "F",
+      "title": "breaker open: hold the cooldown; only a human releases the breaker",
+      "tier": "auto_notify",
+      "priority": 620,
+      "match": {
+        "failure_class": [
+          "breaker_open"
+        ],
+        "reason_regex": [
+          "(?i)(circuit )?breaker (is )?open",
+          "\\bBREAKER_OPEN\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "open_breaker_cooldown",
+      "params": {
+        "cooldown_s": 900
+      },
+      "max_attempts": 1,
+      "cooldown_min": 15,
+      "verify": {
+        "kind": "breaker_state",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "breaker still open for {lane}"
+      },
+      "human_steps": [
+        "the breaker needs a manual release after the underlying cause is fixed; never clear it to make a run pass"
+      ],
+      "tests": [
+        "fx-breaker-match",
+        "fx-breaker-refuse",
+        "fx-breaker-repeat"
+      ]
+    },
+    {
+      "id": "F04-dead-letter",
+      "category": "F",
+      "title": "dead letter: human triage, never an automatic replay",
+      "tier": "human_only",
+      "priority": 630,
+      "match": {
+        "failure_class": [
+          "dead_letter"
+        ],
+        "reason_regex": [
+          "(?i)dead[ _-]?letter"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "dead-lettered run on {lane}",
+        "text": "A dead letter is a decision to stop retrying. Replaying it automatically undoes that decision."
+      },
+      "human_steps": [
+        "read the dead-letter payload and its last error",
+        "replay only with an operator decision"
+      ],
+      "tests": [
+        "fx-dead-letter-match",
+        "fx-dead-letter-refuse",
+        "fx-dead-letter-repeat"
+      ]
+    },
+    {
+      "id": "F05-restart-killed-child",
+      "category": "F",
+      "title": "killed by a deploy restart: re-run once through the gateway",
+      "tier": "auto_notify",
+      "priority": 640,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)killed by (a )?(deploy )?restart",
+          "\\bDEPLOY_RESTART_KILLED\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "rerun_not_used_today"
+      ],
+      "action": "rerun_once_via_gateway",
+      "params": {
+        "delay_s": 120
+      },
+      "max_attempts": 1,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "re-run after deploy restart failed on {lane}"
+      },
+      "human_steps": [
+        "a deploy restart is expected; the boot stamp is the restart signal"
+      ],
+      "tests": [
+        "fx-restart-match",
+        "fx-restart-refuse",
+        "fx-restart-repeat"
+      ]
+    },
+    {
+      "id": "G01-disk-floor",
+      "category": "G",
+      "title": "disk floor / ENOSPC: human_only; disk hygiene is the route, never a runbook delete",
+      "tier": "human_only",
+      "priority": 700,
+      "match": {
+        "failure_class": [
+          "disk_floor",
+          "disk_full"
+        ],
+        "reason_regex": [
+          "(?i)disk (floor|full|pressure)",
+          "\\bENOSPC\\b",
+          "(?i)no space left on device"
+        ],
+        "exception_regex": [
+          "\\bENOSPC\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "disk floor reached: {lane} cannot write",
+        "text": "Deleting the wrong path under disk pressure is how a store is lost. The reviewed disk-hygiene rules are the only remover, and its apply is operator-gated."
+      },
+      "human_steps": [
+        "python3 scripts/disk_hygiene.py --dry-run",
+        "operator: TRADEAI_DISK_HYGIENE_GRANT=<grant id> python3 scripts/disk_hygiene.py --apply (manifest-bound, re-validated)"
+      ],
+      "tests": [
+        "fx-disk-match",
+        "fx-disk-refuse",
+        "fx-disk-repeat"
+      ]
+    },
+    {
+      "id": "G02-tmp-enospc",
+      "category": "G",
+      "title": "/tmp ENOSPC: human_only; the tmp hygiene lane owns reclamation",
+      "tier": "human_only",
+      "priority": 695,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)/tmp .*(full|enospc|no space)",
+          "\\bTMPDIR_ENOSPC\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "/tmp pressure blocks {lane}",
+        "text": "scripts/tmp_hygiene_auto.py applies only its reviewed tmp.* rules; nothing else removes /tmp content."
+      },
+      "human_steps": [
+        "python3 scripts/tmp_hygiene_auto.py --dry-run",
+        "operator approves the apply outside the runbook"
+      ],
+      "tests": [
+        "fx-tmp-match",
+        "fx-tmp-refuse",
+        "fx-tmp-repeat"
+      ]
+    },
+    {
+      "id": "G03-memory-pressure",
+      "category": "G",
+      "title": "memory pressure / OOM: human_only",
+      "tier": "human_only",
+      "priority": 720,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)out of memory",
+          "\\bMemoryError\\b",
+          "\\bOOM\\b"
+        ],
+        "exception_regex": [
+          "\\bMemoryError\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "memory pressure on {lane}",
+        "text": "A runbook does not kill a process or change a memory limit."
+      },
+      "human_steps": [
+        "measure retained heap against the input size before blaming the lane"
+      ],
+      "tests": [
+        "fx-memory-match",
+        "fx-memory-refuse",
+        "fx-memory-repeat"
+      ]
+    },
+    {
+      "id": "H01-db-unreachable",
+      "category": "H",
+      "title": "database unreachable: defer briefly while the unit recovers",
+      "tier": "auto_notify",
+      "priority": 800,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)could not connect to server",
+          "\\bPG_CONNECTION_REFUSED\\b",
+          "(?i)server closed the connection unexpectedly"
+        ],
+        "exception_regex": [
+          "\\bOperationalError\\b.*could not connect"
+        ]
+      },
+      "preconditions": [
+        "lane_present",
+        "not_execution_lane",
+        "retries_under_budget"
+      ],
+      "action": "defer_until",
+      "params": {
+        "delay_s": 120,
+        "jitter_s": 60,
+        "max_retries": 2
+      },
+      "max_attempts": 2,
+      "cooldown_min": 30,
+      "verify": {
+        "kind": "next_attempt_succeeds",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "database stayed unreachable for {lane}",
+        "text": "A runbook never restarts the database or edits a DSN."
+      },
+      "human_steps": [
+        "read-only: pg_isready against the socket",
+        "with an execution-ops grant and markets closed, an operator may reload the owning unit"
+      ],
+      "tests": [
+        "fx-db-unreachable-match",
+        "fx-db-unreachable-refuse",
+        "fx-db-unreachable-repeat"
+      ]
+    },
+    {
+      "id": "H02-db-read-only-txn",
+      "category": "H",
+      "title": "read-only transaction refused a write: human_only",
+      "tier": "human_only",
+      "priority": 810,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)read-only transaction",
+          "\\b25006\\b",
+          "(?i)cannot execute .* in a read-only transaction"
+        ],
+        "exception_regex": [
+          "\\bReadOnlySqlTransaction\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "lane {lane} is pointed at a read-only target",
+        "text": "Which database a lane writes to is an operator decision; a runbook never flips a transaction mode or a DSN."
+      },
+      "human_steps": [
+        "compare the lane's DSN target with the intended primary",
+        "the agent connection is read-only on purpose (PGOPTIONS default_transaction_read_only)"
+      ],
+      "tests": [
+        "fx-readonly-match",
+        "fx-readonly-refuse",
+        "fx-readonly-repeat"
+      ]
+    },
+    {
+      "id": "H03-schema-missing",
+      "category": "H",
+      "title": "a relation/column does not exist: schema work is human_only",
+      "tier": "human_only",
+      "priority": 820,
+      "match": {
+        "failure_class": [
+          "schema"
+        ],
+        "reason_regex": [
+          "(?i)(relation|column|table) .* does not exist",
+          "\\bUndefinedTable\\b",
+          "\\bUndefinedColumn\\b"
+        ],
+        "exception_regex": [
+          "\\bUndefinedTable\\b",
+          "\\bUndefinedColumn\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "schema missing for {lane}",
+        "text": "A migration is a reviewed change, not a runbook action; no runbook executes DDL."
+      },
+      "human_steps": [
+        "find the migration that owns the object and whether it was applied",
+        "the index builds at the next writable open"
+      ],
+      "tests": [
+        "fx-schema-match",
+        "fx-schema-refuse",
+        "fx-schema-repeat"
+      ]
+    },
+    {
+      "id": "I01-duplicate-registry-row",
+      "category": "I",
+      "title": "duplicate registry rows: human_only config edit",
+      "tier": "human_only",
+      "priority": 900,
+      "match": {
+        "failure_class": [
+          "registry_duplicate"
+        ],
+        "reason_regex": [
+          "(?i)duplicate (registry )?row",
+          "(?i)multiple rows for (lane|id)"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "duplicate registry rows name {lane}",
+        "text": "Config files are operator-edited; a runbook never rewrites config/lane_registry.json."
+      },
+      "human_steps": [
+        "read config/lane_registry.json and config/n8n_run_allowlist.json for the repeated lane_id"
+      ],
+      "tests": [
+        "fx-duplicate-match",
+        "fx-duplicate-refuse",
+        "fx-duplicate-repeat"
+      ]
+    },
+    {
+      "id": "I02-lane-missing-from-registry",
+      "category": "I",
+      "title": "lane missing from the registry: human_only",
+      "tier": "human_only",
+      "priority": 910,
+      "match": {
+        "failure_class": [
+          "registry_missing"
+        ],
+        "reason_regex": [
+          "(?i)lane .*(missing|not found) (from|in) (the )?registry",
+          "\\bLANE_NOT_REGISTERED\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "lane {lane} is not registered",
+        "text": "A governed lane needs a row in the monitored table before it can run."
+      },
+      "human_steps": [
+        "check config/lane_registry.json and config/n8n_health_contracts.json for the lane id"
+      ],
+      "tests": [
+        "fx-missing-lane-match",
+        "fx-missing-lane-refuse",
+        "fx-missing-lane-repeat"
+      ]
+    },
+    {
+      "id": "I03-contract-missing",
+      "category": "I",
+      "title": "no health contract for the lane: human_only",
+      "tier": "human_only",
+      "priority": 920,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)no (health )?contract for lane",
+          "\\bCONTRACT_MISSING\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "no health contract names {lane}",
+        "text": "config/n8n_health_contracts.json is the contract store; adding a row is a reviewed change."
+      },
+      "human_steps": [
+        "check config/n8n_health_contracts.json (contracts is a list of rows)"
+      ],
+      "tests": [
+        "fx-contract-missing-match",
+        "fx-contract-missing-refuse",
+        "fx-contract-missing-repeat"
+      ]
+    },
+    {
+      "id": "I04-invalid-config-json",
+      "category": "I",
+      "title": "invalid/malformed config JSON: human_only",
+      "tier": "human_only",
+      "priority": 930,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [
+          "(?i)(invalid|malformed) (json|config)",
+          "\\bJSONDecodeError\\b"
+        ],
+        "exception_regex": [
+          "\\bJSONDecodeError\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "config JSON is invalid for {lane}",
+        "text": "A config edit is a reviewed change; a runbook never repairs JSON in place."
+      },
+      "human_steps": [
+        "python3 -m json.tool <config path> while the file is unchanged (read-only)"
+      ],
+      "tests": [
+        "fx-invalid-json-match",
+        "fx-invalid-json-refuse",
+        "fx-invalid-json-repeat"
+      ]
+    },
+    {
+      "id": "J01-code-defect",
+      "category": "J",
+      "title": "code defect: route to the LLM fixer with a repro; never a runbook action",
+      "tier": "auto_notify",
+      "priority": 1000,
+      "match": {
+        "failure_class": [
+          "code_error",
+          "code_defect"
+        ],
+        "reason_regex": [
+          "\\bCODE_ERROR\\b",
+          "\\bAssertionError\\b"
+        ],
+        "exception_regex": [
+          "\\bTraceback \\(most recent call last\\)\\b",
+          "\\bAssertionError\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "repro_exists"
+      },
+      "on_fail": {
+        "title": "code defect in {lane}",
+        "text": "The fixer path owns this: 3/3 repro on base, a fix, 3/3 green, a masked-error lint. A runbook cannot edit code."
+      },
+      "human_steps": [
+        "run the failing command 3 times on base before believing it is code"
+      ],
+      "tests": [
+        "fx-code-match",
+        "fx-code-refuse",
+        "fx-code-repeat"
+      ]
+    },
+    {
+      "id": "J02-test-failure",
+      "category": "J",
+      "title": "a failing test is a code signal: route to the fixer under the full-suite gate",
+      "tier": "auto_notify",
+      "priority": 1010,
+      "match": {
+        "failure_class": [
+          "test_failure"
+        ],
+        "reason_regex": [
+          "\\bFAILED tests/",
+          "\\b[0-9]+ failed\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "repro_exists"
+      },
+      "on_fail": {
+        "title": "test failure in {lane}",
+        "text": "Compare failure SETS across base, not counts: a count can hide one fix replacing another failure."
+      },
+      "human_steps": [
+        "run the touched test files on a clean base tree before attributing the failure"
+      ],
+      "tests": [
+        "fx-test-match",
+        "fx-test-refuse",
+        "fx-test-repeat"
+      ]
+    },
+    {
+      "id": "K01-credential-problem",
+      "category": "K",
+      "title": "credential problem: human_only, never read or print a secret",
+      "tier": "human_only",
+      "priority": 1100,
+      "match": {
+        "failure_class": [
+          "credential"
+        ],
+        "reason_regex": [
+          "(?i)(invalid|missing|expired) (api[ _-]?key|credential|token)",
+          "\\b401\\b",
+          "\\b403\\b"
+        ],
+        "exception_regex": [
+          "\\b401 Unauthorized\\b",
+          "\\b403 Forbidden\\b"
+        ]
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "credential failure on {lane}",
+        "text": "An agent never reads, copies, rotates or prints a credential. The secret store is the operator's surface."
+      },
+      "human_steps": [
+        "operator restores the credential in the secret store",
+        "do not paste a credential or an env file into a ticket"
+      ],
+      "tests": [
+        "fx-credential-match",
+        "fx-credential-refuse",
+        "fx-credential-repeat"
+      ]
+    },
+    {
+      "id": "K02-broker-orders",
+      "category": "K",
+      "title": "broker / order / stop: MBI_BEHAVIOR = 0; operator only",
+      "tier": "human_only",
+      "priority": 1110,
+      "match": {
+        "failure_class": [
+          "broker",
+          "order",
+          "execution"
+        ],
+        "reason_regex": [
+          "(?i)broker (request|order)",
+          "\\bORDER_REJECTED\\b",
+          "\\bSTOP_FAILED\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "broker/order failure on {lane}",
+        "text": "No agent sizes, orders, stops, weights or writes to a broker, ever, for any reason. The engine refuses every mutating action on an execution lane before this entry is even read."
+      },
+      "human_steps": [
+        "operator only; no agent call, no order route, no credential"
+      ],
+      "tests": [
+        "fx-broker-match",
+        "fx-broker-refuse",
+        "fx-broker-repeat"
+      ]
+    },
+    {
+      "id": "K03-data-correction",
+      "category": "K",
+      "title": "data correction request: human_only",
+      "tier": "human_only",
+      "priority": 1120,
+      "match": {
+        "failure_class": [
+          "data_correction"
+        ],
+        "reason_regex": [
+          "(?i)data correction (requested|needed)",
+          "\\bDATA_CORRECTION\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "data correction requested for {lane}",
+        "text": "Correcting stored data is an operator decision with a lineage record; no runbook writes a row."
+      },
+      "human_steps": [
+        "identify the rows and the correcting source before touching anything",
+        "the agent connection is read-only"
+      ],
+      "tests": [
+        "fx-correction-match",
+        "fx-correction-refuse",
+        "fx-correction-repeat"
+      ]
+    },
+    {
+      "id": "K04-audit-block",
+      "category": "K",
+      "title": "audit BLOCK verdict: human review, never an automatic override",
+      "tier": "human_only",
+      "priority": 1130,
+      "match": {
+        "failure_class": [
+          "audit_block"
+        ],
+        "reason_regex": [
+          "\\bAUDIT_BLOCK\\b",
+          "\\baudit[ _:-]*BLOCK\\b",
+          "\"verdict\"\\s*:\\s*\"BLOCK\""
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "audit BLOCK on {lane}",
+        "text": "A BLOCK is a reviewed decision. Clearing it automatically would make the audit decorative."
+      },
+      "human_steps": [
+        "read the audit finding that produced the BLOCK",
+        "no agent edits or clears an audit verdict"
+      ],
+      "tests": [
+        "fx-audit-match",
+        "fx-audit-refuse",
+        "fx-audit-repeat"
+      ]
+    },
+    {
+      "id": "K05-unclassified-catch-all",
+      "category": "K",
+      "title": "unclassified non-code failure: escalate, never guess",
+      "tier": "auto_notify",
+      "priority": 9999,
+      "match": {
+        "failure_class": [],
+        "reason_regex": [],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "unclassified failure on {lane}",
+        "text": "No runbook matched. This entry exists so that nothing is silently unclassified; add a specific entry with a synthetic fixture when this signature repeats."
+      },
+      "human_steps": [
+        "read the evidence pack and add a catalog entry if this signature recurs"
+      ],
+      "tests": [
+        "fx-catch-all-match",
+        "fx-catch-all-refuse",
+        "fx-catch-all-repeat"
+      ]
+    }
+  ]
+}

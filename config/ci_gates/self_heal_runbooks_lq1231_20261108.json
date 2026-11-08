@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_runbooks_lq1231_20261108",
+  "files": [
+    "tests/test_self_heal_runbooks_lq1231_20261108.py"
+  ],
+  "anchor": "SELF_HEAL_RUNBOOKS_LQ1231_20261108",
+  "comment": [
+    "ANCHOR: SELF_HEAL_RUNBOOKS_LQ1231_20261108 — before a non-code failure is escalated, a deterministic runbook must try what a code change cannot. config/self_heal_runbook_catalog.json holds 41 entries over categories A-K; scripts/lib/self_heal_runbooks.py plans by explicit priority and applies only a whitelisted primitive, dry-run by default. Stale existence locks are archived only when the recorded owner is dead, the age exceeds the lane timeout and a non-blocking probe is free; a kernel flock is never removed (a holder-less flock file blocks nothing, scripts/cleanup_stale_locks.sh). Quota defers are capped at 3 per day with deterministic jitter; late data is re-run once after the contract freshness check. One mutating action per lane per hour. No DB write, no kill, no crontab/systemd/env edit, no broker, no credentials, no push. Fixtures are synthetic."
+  ]
+}
