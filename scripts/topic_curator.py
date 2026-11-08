@@ -137,7 +137,7 @@ def rate_pending_content(conn, topic_id=None, limit=200):
             f"Reply ONLY with JSON array: "
             f'[{{"id": 1, "rag": "approved" or "low_quality" or "blocked", "reason": "5 words max"}}]'
         )
-        raw = _free_lane_gen(prompt, timeout=40)
+        raw = _free_lane_gen(prompt)
         if raw:
             try:
                 match = re.search(r'\[.*\]', raw, re.DOTALL)
@@ -164,7 +164,7 @@ def rate_pending_content(conn, topic_id=None, limit=200):
             f"Preview: {t['preview'][:300]}\n\n"
             f'Reply JSON: {{"rag": "approved"/"low_quality"/"blocked", "reason": "5 words"}}'
         )
-        raw = _free_lane_gen(prompt, timeout=40)
+        raw = _free_lane_gen(prompt)
         if raw:
             try:
                 match = re.search(r'\{[^}]+\}', raw)
@@ -193,13 +193,18 @@ def rate_pending_content(conn, topic_id=None, limit=200):
 # ════════════════════════════════════════════════════════════
 # STEP 2: EXTRACT ENTITIES (tickers, topics, sectors, etc.)
 # ════════════════════════════════════════════════════════════
-def _free_lane_gen(prompt, timeout=40):
-    """Generate research metadata through governed cloud lanes only."""
+def _free_lane_gen(prompt):
+    """Generate research metadata through governed cloud lanes only.
+
+    The request budget comes from config/llm_lane_budgets.json for this lane (LQ-865). The literals that
+    used to live here (40 s, and 30 s at the improve_queries site) sat below the lane's own measured
+    successful tail -- p95 28.4 s, max ok 39.9 s -- so the tighter one cut calls the lane answered.
+    """
     try:
         from lib.governed_cloud_generation import generate_cloud
         out, _lane = generate_cloud(
             prompt, process_id="topic_curator",
-            task_summary="topic entity extraction", timeout=timeout,
+            task_summary="topic entity extraction",
         )
         return out
     except Exception:
@@ -287,7 +292,7 @@ def extract_and_link_entities(conn, topic_id=None, limit=100):
             f'Reply JSON array: [{{"id": 1, "tickers": ["NVDA"], "topics": ["ai_infrastructure"], "sectors": ["technology"]}}]'
             f'\nIf no tickers, use topics/sectors. Every item must link to something.'
         )
-        raw = _free_lane_gen(prompt, timeout=40)
+        raw = _free_lane_gen(prompt)
         if raw:
             try:
                 match = re.search(r'\[.*\]', raw, re.DOTALL)
@@ -405,7 +410,7 @@ def improve_queries(conn, topic_id=None):
             f'"quality_note": "1 sentence about content quality"}}'
         )
 
-        raw = _free_lane_gen(prompt, timeout=30)
+        raw = _free_lane_gen(prompt)
         if raw:
             try:
                 match = re.search(r'\{[^}]+\}', raw, re.DOTALL)

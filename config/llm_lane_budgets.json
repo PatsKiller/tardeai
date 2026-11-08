@@ -1,0 +1,46 @@
+{
+  "schema": "LlmLaneBudgets@v1",
+  "as_of": "2026-11-08T14:00:00Z",
+  "authority": "ADVISORY request budget. It sizes how long a scheduled lane's in-process cloud call waits for its answer. It never authorizes spend, selects a provider, raises a process cap or narrows the routing policy.",
+  "method": "budget_s = min(cap_s, ceil_to_5s(max(p95_successful_ms / 1000 * (1 + margin), max_successful_ms / 1000)))",
+  "margin": 0.25,
+  "cap_s": 120,
+  "fallback_s": 90,
+  "measurement": {
+    "table": "llm_consumption_log",
+    "window": "2026-11-01T13:00:00Z <= created_at < 2026-11-08T13:00:00Z (fixed bounds, so a re-measure is reproducible; do not use now()-relative)",
+    "rows": "success = true only: a row cut at the old budget is censored at that budget and cannot measure the tail",
+    "population": "model_lane = 'grok' for each process_id: the lane's slow shared path, which every cron-mode call can be routed to. A blend over all providers understates the tail -- the Anthropic promotion answered 1251 of topic_ingestion's calls in 4.0 s p95 while its grok path ran 20.6 s p95.",
+    "why_capped": "the grok proxy spawns one hermes child per request with a 240 s timeout, so a caller budget above 120 s only lengthens a wait that is already failing; 120 s is also the value the keepalive probe adopted (LQ-750, fold step 30)",
+    "recheck": "re-derive from this file alone with `python scripts/lib/llm_lane_budgets.py --report` (no DB, exits 1 on drift); re-measure p95_ms/max_ok_ms from llm_consumption_log with the same window and population when re-sizing. The unit test re-computes every row from p95_ms/max_ok_ms and fails if this file drifts from its own method"
+  },
+  "lanes": {
+    "topic_curator": {
+      "budget_s": 40,
+      "p95_ms": 28552,
+      "max_ok_ms": 39900,
+      "n_ok": 2592,
+      "cuts_7d": 358,
+      "old_budget_s": [30, 40],
+      "note": "299 of the 358 grok cuts were the 30 s improve_queries site and 59 were the 40 s sites; 59 grok successes took 30-39.9 s, so a 40 s budget covers the whole observed successful tail"
+    },
+    "topic_ingestion": {
+      "budget_s": 30,
+      "p95_ms": 20565,
+      "max_ok_ms": 24977,
+      "n_ok": 1110,
+      "cuts_7d": 62,
+      "old_budget_s": [25, 30],
+      "note": "60 of the 62 grok cuts were the 25 s RAG-quality site (the 30 s sites carried none); 2 more carry a computed 19.52 s budget that is not a literal at any call site -- a separate residual, see DONE-LQ-20261107-865"
+    },
+    "topic_research_synthesizer": {
+      "budget_s": 70,
+      "p95_ms": 53080,
+      "max_ok_ms": 69354,
+      "n_ok": 432,
+      "cuts_7d": 16,
+      "old_budget_s": [70],
+      "note": "already correctly sized: the derived budget equals the existing 70 s, so this row records the measurement and changes no behaviour. 16 grok cuts at 70 s remain (p99 65.6 s), i.e. the far tail -- raising this needs a different decision, not a bigger number"
+    }
+  }
+}
