@@ -146,6 +146,37 @@ def test_the_bare_digest_is_the_sha256_digest():
     assert any("inputs_snapshot_hash" in e for e in mob.validate_record(broken))
 
 
+# ------------------------------------------------------------------- the band spelling
+@pytest.mark.parametrize(("engine_band", "brief_band", "colour"),
+                         [("RISK_OFF", "RISK-OFF", "#a50e0e"), ("RISK_ON", "RISK-ON", "#137333")])
+def test_the_engines_outer_band_spelling_validates_and_renders(engine_band, brief_band, colour):
+    """The engine spells the outer bands RISK_OFF / RISK_ON; the brief and its colour map use hyphens.
+
+    Unmapped, every RISK-OFF/RISK-ON week is a refused run that sends nothing - the week the brief
+    matters most. normalize_record maps band, prior_band and actions_template.band together.
+    """
+    record = engine_record()
+    record["band"] = engine_band
+    record["prior_band"] = engine_band
+    record["actions_template"]["band"] = engine_band
+    normalized = mob.normalize_record(record)
+    assert normalized["band"] == brief_band
+    assert normalized["prior_band"] == brief_band
+    assert normalized["actions_template"]["band"] == brief_band
+    assert record["band"] == engine_band               # copy-on-write: the engine record is untouched
+    assert mob.validate_record(record) == []           # the raw engine spelling is accepted
+    html = mob.render_html(normalized, policy=policy())
+    assert brief_band in html and engine_band not in html
+    assert colour in html                              # the band colour map now finds the band
+
+
+def test_a_band_mismatch_between_record_and_actions_is_still_refused():
+    record = engine_record()
+    record["band"] = "RISK_OFF"
+    record["actions_template"]["band"] = "RISK_ON"
+    assert any("actions_template.band" in e for e in mob.validate_record(record))
+
+
 # ------------------------------------------------------------------- the ATR band becomes absolute
 def test_the_atr_dict_becomes_the_absolute_one_atr_pair():
     """SPX anchor 6000, 1 ATR 3.0% -> [5820.0, 6180.0]; the 2-ATR band is not the band rendered."""

@@ -191,6 +191,15 @@ def _absolute_pair(value: Any, anchor: Optional[float]) -> Any:
     return value
 
 
+def _canonical_band(value: str) -> str:
+    """The brief's spelling of a band: the engine's ``RISK_OFF`` -> the brief's ``RISK-OFF``.
+
+    Every other band name and every non-band string passes through unchanged, so this is safe to
+    apply to any band field and is idempotent.
+    """
+    return value.replace("_", "-")
+
+
 def _is_atr_dict(value: Any) -> bool:
     """True when ``value`` is the engine's percent-multiple band, i.e. a band that was derived."""
     if not isinstance(value, Mapping):
@@ -241,13 +250,28 @@ def normalize_record(record: Any) -> Any:
       ``[low, high]`` of its 1-ATR band, anchored on the index's own key levels (see ``_anchor``);
     * ``key_levels.<INDEX>.<side>``: ``{level, source, ...}`` rows become the levels; a side with
       fewer than three is padded with ``None`` so it renders what exists plus ``n/a``;
-    * ``inputs_snapshot_hash``: a bare 64-hex digest gains the ``sha256:`` prefix it names.
+    * ``inputs_snapshot_hash``: a bare 64-hex digest gains the ``sha256:`` prefix it names;
+    * ``band`` / ``prior_band`` / ``actions_template.band``: the engine spells the outer bands
+      ``RISK_OFF`` / ``RISK_ON`` (``scripts/lib/market_outlook/__init__.py:41``) while the brief and
+      its colour map use ``RISK-OFF`` / ``RISK-ON``. The underscore form is mapped to the hyphen form;
+      ``actions_template.band`` is also the value compared against ``band`` by validation, so both
+      are mapped together.
 
     Anything already in the brief's own shape is returned as it was.
     """
     if not isinstance(record, Mapping):
         return record
     out = dict(record)
+
+    for band_key in ("band", "prior_band"):
+        if isinstance(out.get(band_key), str):
+            out[band_key] = _canonical_band(out[band_key])
+    actions = record.get("actions_template")
+    if isinstance(actions, Mapping):
+        adapted_actions = dict(actions)
+        if isinstance(adapted_actions.get("band"), str):
+            adapted_actions["band"] = _canonical_band(adapted_actions["band"])
+        out["actions_template"] = adapted_actions
 
     levels = record.get("key_levels")
     if isinstance(levels, Mapping):
