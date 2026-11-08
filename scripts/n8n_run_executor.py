@@ -135,6 +135,7 @@ from scripts.lib.n8n_retry_policy import (  # noqa: E402
 from scripts.lib.n8n_coordination_ledger import SINGLE_ATTEMPT_CLASSES  # noqa: E402
 from scripts.lib.n8n_policy_reload import PolicyFile  # noqa: E402
 from scripts.lib.n8n_output_verdict import FAILING as OUTPUT_FAILING, evaluate as evaluate_output  # noqa: E402
+from scripts.lib import n8n_error_class as EC  # noqa: E402
 from scripts.lib.lane_last_receipt import (  # noqa: E402
     CODE_SHA_ENV,
     RUN_ATTEMPT_ENV,
@@ -193,7 +194,10 @@ RUNS_REL = Path("data") / "runtime" / "n8n_runs"
 LAST_REL = Path("data") / "runtime" / "n8n_run_executor_last.json"
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")
 SAFE_FLOCK_SKIP = "safe_flock: skipped"
-TAIL_CHARS = 800
+#: 2026-11-08 (LQ-20261107-992, Fable audit item #11): 800 chars cut the useful frame out of a Python traceback, so
+#: the diagnoser had nothing to classify and 97.7% of a week's diagnosis events were ``unknown``. 4,000 keeps a full
+#: traceback tail; both tails are bounded by this constant, so the receipt stays a constant-size artifact.
+TAIL_CHARS = 4000
 # Bounded retry (2026-10-09 audit: RUN_FAILED / RUN_TIMEOUT were terminal and no workflow had retryOnFail).
 # Opt-in per allowlist entry: "retry": {"max": 1, "backoff_s": 60, "on": ["RUN_FAILED", "RUN_TIMEOUT"]}.
 # Off by default: only an entry whose command is safe to re-run (idempotent, same lock) may set it.
@@ -873,12 +877,20 @@ def _execute_once(
             out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
             if effect is not None:
                 effects.end(effect, out)  # from the RAW spawn state, before the output verdict
-            return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
+            out = apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
+            return _stamp_error_class(out, state_root, lane_id, run_id)
         finally:
             _SPAWN_FENCE_RELEASE.reset(token)
             admission.__exit__(None, None, None)
     out = _spawn(receipt, entry, argv, run, timeout_s, lane_env, code_root, signal_path, typed, started)
-    return apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
+    out = apply_output_verdict(out, outputs, lane_id=lane_id, mode=mode, state_root=state_root, entry=entry)
+    return _stamp_error_class(out, state_root, lane_id, run_id)
+
+
+def _stamp_error_class(receipt: dict[str, Any], state_root: Path, lane_id: str, run_id: str) -> dict[str, Any]:
+    """Final ``error_class``: the lane's own declaration (its LaneRunReceipt for THIS attempt) when valid, else the
+    executor's derivation — re-run after the output verdict, which can turn a RUN_DONE into ``empty_output``."""
+    return EC.stamp(receipt, lane_class=EC.declared_from_lane_receipt(state_root, lane_id, run_id))
 
 
 def read_attempt_receipt(state_root: Path, lane_id: str, run_id: str) -> Any:
@@ -1017,7 +1029,10 @@ def _finish(receipt: dict[str, Any], state: str, *, reason: str | None, started:
     receipt["reason"] = reason
     receipt["duration_s"] = round(ended - started, 3)
     receipt["finished_at"] = _iso(ended)
-    return receipt
+    # LQ-20261107-992: every terminal receipt carries a class decided from evidence (state / exit / reason / tails),
+    # never "unknown" merely because the lane was silent. The lane's own declaration is applied afterwards, by
+    # ``_execute_once``, once the output verdict has had its say.
+    return EC.stamp(receipt)
 
 
 # ── n8n fabric Phase 1 (2026-10-14; AGENTS.md §23.23, 10.0.0 PROPOSED): effect key + run outcome ──────────────
@@ -1871,7 +1886,7 @@ class ExecutorV2:
         no drain (keep working, as before)."""
         try:
             d = self.drain_check(now)
-        except Exception as exc:  # noqa: BLE001 - a broken drain check must never stop the executor
+        except Exception as exc:  # noqa: BLE001 -- a broken drain check must never stop the executor
             self._log({"executor": "drain_check_error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
             d = None
         if d and not self._draining:
@@ -2472,7 +2487,7 @@ def main(argv: list[str] | None = None) -> int:
     def v1_draining() -> dict[str, Any] | None:
         try:
             return executor_drain.drain_state(state_root, code_root, time.time())
-        except Exception:  # noqa: BLE001 - a broken drain check is no drain
+        except Exception:  # noqa: BLE001 -- a broken drain check is no drain
             return None
 
     try:

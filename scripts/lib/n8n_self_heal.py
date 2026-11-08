@@ -165,14 +165,19 @@ def failure_kind(text: Any, *, event_type: Any = None) -> str:
     return et.lower() if et == "RUN_TIMEOUT" else "unknown"
 
 
-def signature(lane: str, event_type: Any, error_text: Any) -> str:
+def signature(lane: str, event_type: Any, error_text: Any, *, error_class: Any = None) -> str:
     """Stable id of one failure KIND on one lane: lane | event type | failure class | normalized error tail. The lane
-    prefix the SIEM bridge puts on its error is dropped. Volatile tokens collapse; codes and classes do not."""
+    prefix the SIEM bridge puts on its error is dropped. Volatile tokens collapse; codes and classes do not.
+
+    ``error_class`` (2026-11-08, LQ-20261107-992): the class the executor wrote on the failed run's receipt. When
+    present it IS the failure class, so two silent non-zero exits of different real classes (timeout vs
+    ``nonzero_exit`` vs a traceback's ``code_error:ValueError``) never merge into one signature."""
     err = str(error_text or "")
     if err.startswith(f"{lane}:"):
         err = err[len(lane) + 1:]
     et = str(event_type or "").upper()
-    raw = f"{lane}|{et}|{failure_kind(err, event_type=et)}|{normalize_error(err)}"
+    kind = str(error_class or "").strip() or failure_kind(err, event_type=et)
+    raw = f"{lane}|{et}|{kind}|{normalize_error(err)}"
     return "sig-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
