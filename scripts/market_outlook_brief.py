@@ -62,7 +62,8 @@ def _now_iso() -> str:
 # --------------------------------------------------------------------------- inputs
 def _load_record(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
     """The record and the source that supplied it. Every absence is named, never guessed."""
-    from lib.market_outlook_brief import BriefError, load_record_file, validate_record  # noqa: PLC0415
+    from lib.market_outlook_brief import (  # noqa: PLC0415
+        BriefError, load_record_file, normalize_record, validate_record)
 
     if args.record_file:
         record = load_record_file(Path(args.record_file))
@@ -89,6 +90,7 @@ def _load_record(args: argparse.Namespace) -> tuple[dict[str, Any], str]:
     record = row.get("record")
     if isinstance(record, str):
         record = json.loads(record)
+    record = normalize_record(record)
     errors = validate_record(record)
     if errors:
         raise BriefError("record refused: " + "; ".join(errors))

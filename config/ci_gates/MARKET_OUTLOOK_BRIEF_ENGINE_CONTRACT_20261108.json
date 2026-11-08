@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "MARKET_OUTLOOK_BRIEF_ENGINE_CONTRACT_20261108",
+  "files": [
+    "tests/test_market_outlook_brief_engine_contract_20261108.py"
+  ],
+  "anchor": "MARKET_OUTLOOK_BRIEF_ENGINE_CONTRACT_20261108",
+  "comment": [
+    "ANCHOR: MARKET_OUTLOOK_BRIEF_ENGINE_CONTRACT_20261108 — LQ-20261107-1121: the brief must render the engine's own MarketOutlookRecord@v1 (ATR dict -> absolute 1-ATR band, thin level sides -> n/a, bare-hex digest), or the 20:00 ET brief cannot be produced from the engine at all."
+  ]
+}
