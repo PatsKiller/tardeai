@@ -102,6 +102,10 @@ def load_gateways(contact_path: Optional[Path] = None) -> tuple[list[str], Optio
         raw = [doc.get("critical_sms_email_gateway")] if doc.get("critical_sms_email_gateway") else []
     seen, out = set(), []
     for value in raw:
+        # The operator's list holds records ({address, label, verified}) — the same shape critical_delivery reads.
+        # str() of a record still contains "@", so without this the dict's repr reached Gmail as the To header.
+        if isinstance(value, dict):
+            value = value.get("address")
         address = str(value or "").strip()
         if "@" in address and address.lower() not in seen:
             seen.add(address.lower())

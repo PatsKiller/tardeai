@@ -542,3 +542,16 @@ def test_the_persistent_root_resolves_when_imported_as_a_package():
     out = subprocess.run([sys.executable, "-I", "-c", code], capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, (out.stderr or out.stdout)[-400:]
     assert out.stdout.strip(), out.stdout
+
+
+def test_load_gateways_reads_record_entries(tmp_path):
+    """LQ-20261107-1278: the contact list holds {address, label, verified} records, not bare strings."""
+    import json as _json
+    from scripts.lib import critical_texts as _ct
+    p = tmp_path / "contact.json"
+    p.write_text(_json.dumps({"critical_sms_email_gateways": [
+        {"address": "5550000001@example.test", "label": "line 1", "verified": True},
+        {"address": "5550000002@example.test", "label": "line 2", "verified": True},
+        "5550000001@example.test"]}))
+    out, err = _ct.load_gateways(p)
+    assert out == ["5550000001@example.test", "5550000002@example.test"] and err is None
