@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_fanin_no_output_close_20261108",
+  "files": [
+    "tests/test_n8n_fanin_no_output_close_20261108.py"
+  ],
+  "anchor": "NO_OUTPUT_AUTOCLOSE",
+  "comment": [
+    "ANCHOR: NO_OUTPUT_AUTOCLOSE - 2026-11-08 LQ-20261107-456: a NO_OUTPUT breach row the fresh detector no longer re-emits on a later UTC day closes."
+  ]
+}

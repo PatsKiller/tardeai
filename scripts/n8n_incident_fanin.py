@@ -135,8 +135,15 @@ def _breach_findings(rt: Path, now: datetime) -> list[dict[str, Any]]:
             continue
         latest[_breach_key(r)] = r
     out: list[dict[str, Any]] = []
+    from scripts.lib import n8n_fanin_no_output_close as NC
+
+    detector = _load(rt / "supervisor_breach_detector_latest.json")
+    closed = 0
     for key, r in latest.items():
         if r.get("state") != "OPEN":
+            continue
+        if NC.superseded(r, detector, now):  # LQ-20261107-456: the fresh detector run no longer re-emits it
+            closed += 1
             continue
         sev, basis = breach_severity(r)
         out.append(
@@ -151,6 +158,7 @@ def _breach_findings(rt: Path, now: datetime) -> list[dict[str, Any]]:
                 "detected_at": r.get("detected_at"),
             }
         )
+    NOTES["breach_no_output_closed"] = str(closed)
     return out
 
 
