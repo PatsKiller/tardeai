@@ -122,6 +122,34 @@ def _occurrence_problem(text: str, start: int, end: int) -> Optional[str]:
     return None
 
 
+def _phrase_in_body(body: str, phrase: str) -> bool:
+    words = [re.escape(w) for w in phrase.split()]
+    return bool(words) and re.search(_NB + r"[\s\-_]+".join(words) + _NA, body, re.I) is not None
+
+
+def _company_match(body: str, company_names: Iterable[str]) -> bool:
+    """True when a house name-phrase for this issuer occurs in ``body``. ``mention`` uses every phrase,
+    including the bare first word ``name_phrases`` adds."""
+    for phrase in name_phrases(company_names):
+        if _phrase_in_body(body, phrase):
+            return True
+    return False
+
+
+def _core_company_match(body: str, company_names: Iterable[str]) -> bool:
+    """The full issuer phrase only.
+
+    ``name_phrases`` also returns a bare first word ("income" from "INCOME OPPORTUNITY", "rising" from
+    "RISING DRAGON"). That word is not the company. ``evidence`` asks for the phrase legal suffixes were
+    stripped from, which is one word when the name is one word ("RESMED INC" -> "resmed").
+    """
+    for raw in company_names or []:
+        phrases = name_phrases([raw])
+        if phrases and _phrase_in_body(body, phrases[0]):
+            return True
+    return False
+
+
 def mention(text: Any, symbol: Any, *, company_names: Iterable[str] = ()) -> dict[str, Any]:
     """Does ``text`` name ``symbol``? -> {"matched", "how": cashtag|ticker|company|None, "reason"}."""
     sym = normalize(symbol)
@@ -145,11 +173,29 @@ def mention(text: Any, symbol: Any, *, company_names: Iterable[str] = ()) -> dic
             bare_ok = True
     if bare_ok:
         return {"matched": True, "how": "ticker", "reason": None}
-    for phrase in name_phrases(company_names):
-        words = [re.escape(w) for w in phrase.split()]
-        if re.search(_NB + r"[\s\-_]+".join(words) + _NA, body, re.I):
-            return {"matched": True, "how": "company", "reason": None}
+    if _company_match(body, company_names):
+        return {"matched": True, "how": "company", "reason": None}
     return {"matched": False, "how": None, "reason": blocked or NO_MENTION}
+
+
+def evidence(text: Any, symbol: Any, *, company_names: Iterable[str] = ()) -> dict[str, Any]:
+    """Cashtag or company-name evidence only.
+
+    A bare ticker word is not evidence, including a parenthetical ``(SYM)`` or an exchange prefix. ``mention``
+    returns ``how=ticker`` before it looks at the company name, so a headline that says both "COLA" and
+    "Coca-Cola Consolidated" would hide the name. This asks for the full issuer phrase anyway, not the bare
+    first word ``name_phrases`` also returns. LQ-20261107-1081.
+    """
+    hit = mention(text, symbol, company_names=company_names)
+    if hit.get("how") == "cashtag":
+        return hit
+    body = str(text or "").translate(_CURLY)
+    # mention() answers "company" for a bare first word. That is not issuer evidence.
+    if _core_company_match(body, company_names):
+        return {"matched": True, "how": "company", "reason": None}
+    if hit.get("how") == "ticker":
+        return {"matched": False, "how": None, "reason": "bare_ticker_not_evidence"}
+    return {"matched": False, "how": None, "reason": hit.get("reason") or NO_MENTION}
 
 
 def mentions(text: Any, symbol: Any, *, company_names: Iterable[str] = ()) -> bool:

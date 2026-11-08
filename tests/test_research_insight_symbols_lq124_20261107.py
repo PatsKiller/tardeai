@@ -17,8 +17,11 @@ Hermetic: a fake cursor/connection, synthetic rows, no database, no network.
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
+
+os.environ.setdefault("TRADE_AI_CI", "1")
 
 import pytest
 
@@ -170,19 +173,25 @@ def test_a_topic_code_from_the_source_row_is_not_written_as_a_symbol(monkeypatch
     r = mod.extract_insight("Medicare and IRMAA planning for retirees.", symbol="d194_closed_end_funds",
                             source_type="news", source_reference="news:1",
                             source_url="https://finance.yahoo.com/a")
+    # LQ-20261107-1081: a topic-slug row is skipped. It is not stored with a null symbol.
+    assert r.get("skipped") == "topic_slug"
     assert r["symbol"] is None and r["supporting_entities"] == []
     assert r["source_symbol_not_ticker"] is True
-    assert r["source_id"] == 1
-    assert conn.closed and conn.commits == 1
+    assert cur.insert_params is None
+    assert conn.commits == 0
 
 
-def test_a_real_source_symbol_is_kept_and_the_row_carries_source_id_and_active(monkeypatch):
+def test_a_held_or_watched_source_symbol_is_kept_and_the_row_carries_source_id_and_active(monkeypatch):
     mod = _load()
-    cur, _ = _conn(monkeypatch, mod, known={"AAOI"}, universe={"AAOI"}, strategy="growth",
-                   source_ids={"finance.yahoo.com": 1})
+    cur, conn = _conn(monkeypatch, mod, known={"AAOI"}, universe={"AAOI"}, strategy="growth",
+                      source_ids={"finance.yahoo.com": 1})
+    session = {
+        "conn": conn, "cur": cur, "known": {"AAOI"}, "universe": {"AAOI"},
+        "held_watch": {"AAOI"}, "names_by_symbol": {}, "source_ids": {},
+    }
     r = mod.extract_insight("AAOI upgrade: strong growth and a contract win.", symbol="aaoi",
                             source_type="catalyst", source_reference="catalyst:1",
-                            source_url="https://finance.yahoo.com/a")
+                            source_url="https://finance.yahoo.com/a", session=session)
     assert r["symbol"] == "AAOI" and r["strategy_type"] == "growth"
     assert r["active"] is True
     params = cur.insert_params
@@ -193,10 +202,14 @@ def test_a_real_source_symbol_is_kept_and_the_row_carries_source_id_and_active(m
 
 def test_a_signal_less_row_is_written_inactive(monkeypatch):
     mod = _load()
-    cur, _ = _conn(monkeypatch, mod, known=(), universe={"AIG"})
+    cur, conn = _conn(monkeypatch, mod, known=(), universe={"AIG"})
+    session = {
+        "conn": conn, "cur": cur, "known": set(), "universe": {"AIG"},
+        "held_watch": {"AIG"}, "names_by_symbol": {}, "source_ids": {},
+    }
     r = mod.extract_insight("The company filed its quarterly paperwork with the regulator today.",
-                            symbol="k_medicaid_application_planning", source_type="news",
-                            source_reference="news:2")
+                            symbol="AIG", source_type="news", source_reference="news:2", session=session)
+    assert r["symbol"] == "AIG"
     assert r["active"] is False
     assert cur.insert_params[19] is False          # stored, but no consumer reads it as research
 

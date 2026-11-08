@@ -55,6 +55,133 @@ def validate_symbol(candidate, universe) -> str | None:
     return s if s in universe else None
 
 
+def is_topic_slug(symbol) -> bool:
+    """A source ``symbol`` that is a topic code (``d194_closed_end_funds``, ``k_medicaid_...``), not a ticker.
+
+    Ticker shape is the same ``^[A-Z]{1,5}$`` rule as :func:`validate_symbol`. A class share such as ``BRK.B``
+    is not a slug: it has no underscore, no digit and is not longer than five characters, so the row is still
+    examined. An empty source symbol is not a slug.
+    """
+    raw = str(symbol or "").strip()
+    if not raw:
+        return False
+    upper = raw.upper()
+    if _TICKER_RE.fullmatch(upper):
+        return False
+    return "_" in raw or any(ch.isdigit() for ch in raw) or len(upper) > 5
+
+
+def _scripts_on_path() -> None:
+    root = str(PROJECT_ROOT / "scripts")
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+
+def _names_for(session: dict, symbol: str) -> list[str]:
+    """Issuer descriptions already on the instrument record. A test injects ``names_by_symbol``; CI does not
+    open the instrument file. No name means no company-name match, which is the closed answer."""
+    table = session.get("names_by_symbol")
+    if isinstance(table, dict):
+        return [str(n) for n in (table.get(symbol) or []) if n]
+    if os.environ.get("TRADE_AI_CI") == "1":
+        return []
+    cache = session.get("instrument_names")
+    if cache is None:
+        try:
+            _scripts_on_path()
+            from lib.company_name_index import _instruments
+            cache = _instruments() or {}
+        except Exception:
+            cache = {}
+        session["instrument_names"] = cache
+    entry = cache.get(symbol) if isinstance(cache, dict) else None
+    desc = entry.get("description") if isinstance(entry, dict) else None
+    return [str(desc)] if desc else []
+
+
+def _tracked(session: dict, candidates: list[str]) -> set[str]:
+    """Held symbols plus which of ``candidates`` are on the watchlist.
+
+    A test injects ``held_watch``. CI does not read holdings. Production uses the existing held reader
+    (holdings file, symbols only) and ``membership_watchlist`` for the candidates. A failed read is an empty
+    set: a bare ticker is then refused, which does not create a false symbol.
+    """
+    if "held_watch" in session:
+        return {str(s).strip().upper() for s in session["held_watch"] if str(s).strip()}
+    if os.environ.get("TRADE_AI_CI") == "1":
+        return set()
+    held = session.get("_held_symbols")
+    if held is None:
+        held = set()
+        try:
+            _scripts_on_path()
+            from lib.data_broker.watch_domains import membership_held
+            symbols, _label = membership_held()
+            held = {str(s).strip().upper() for s in symbols if str(s).strip()}
+        except Exception:
+            held = set()
+        session["_held_symbols"] = held
+    watch: set[str] = set()
+    try:
+        _scripts_on_path()
+        from lib.data_broker.watch_domains import membership_watchlist
+        watch = {str(s).strip().upper() for s in membership_watchlist(candidates) if str(s).strip()}
+    except Exception:
+        watch = set()
+    return set(held) | watch
+
+
+def _company_hit_symbols(session: dict, text: str, known: set, universe: set) -> list[str]:
+    """Symbols whose issuer name occurs in ``text``, even when the ticker word does not.
+
+    The candidate list is otherwise the uppercase tokens, so "Coca-Cola Consolidated reported" would
+    never be offered to the matcher. An injected ``names_by_symbol`` is the whole pool (tests). In
+    production the pool is the active strategy symbols, and a 5-letter hint word must occur before the
+    phrase matcher runs.
+    """
+    table = session.get("names_by_symbol")
+    if isinstance(table, dict):
+        pool = [str(s).strip().upper() for s in table if str(s).strip()]
+    elif os.environ.get("TRADE_AI_CI") == "1":
+        return []
+    else:
+        pool = list(known)
+    if not pool or not text:
+        return []
+    _scripts_on_path()
+    from lib.symbol_match import evidence
+
+    allowed = set(known) | set(universe)
+    body = text.lower()
+    found: list[str] = []
+    for sym in pool:
+        if allowed and sym not in allowed:
+            continue
+        names = _names_for(session, sym)
+        if not names:
+            continue
+        if not any(len(word) >= 5 and word in body for name in names for word in re.split(r"[^A-Za-z]+", name.lower())):
+            continue
+        if evidence(text, sym, company_names=names).get("how") == "company" and sym not in found:
+            found.append(sym)
+    return found
+
+
+def _topic_skip(source_type: str, source_reference: str | None) -> dict:
+    return {
+        "symbol": None,
+        "strategy_type": None,
+        "source_type": source_type,
+        "source_reference": source_reference,
+        "supporting_entities": [],
+        "skipped": "topic_slug",
+        "source_symbol_not_ticker": True,
+        "active": False,
+        "id": None,
+        "bare_tickers_refused": [],
+    }
+
+
 def _url_host(url) -> str | None:
     try:
         host = (urlparse(str(url or "")).hostname or "").lower().strip(".")
@@ -134,6 +261,9 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     (3) the neutral/0.5 default is written ``active=false``, so a row that says nothing is not read as research.
     """
     import psycopg2.extras
+    # A topic-slug source row is not an insight. Checked before any connection so the batch cannot write one.
+    if is_topic_slug(symbol):
+        return _topic_skip(source_type, source_reference)
     own = session is None
     if own:
         conn = _get_conn(dry_run)
@@ -150,16 +280,39 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     text_lower = text.lower()
     words = set(text_lower.split())
 
-    # Detect symbols mentioned
-    symbols_found = []
+    # A symbol needs a cashtag, the company's name, or a source symbol that is held or on the watchlist.
+    # A bare uppercase word that happens to be a listed ticker (COLA, RMD) is refused. lib.symbol_match.evidence
+    # is that check; how=ticker is not acceptance, and the LQ-1061 subject filter is a different question.
+    _scripts_on_path()
+    from lib.symbol_match import evidence
+
     given = validate_symbol(symbol, universe)
+    candidates: list[str] = []
     if given:
+        candidates.append(given)
+    for raw in re.findall(r"\$([A-Za-z]{1,5})\b", text or ""):
+        sym = raw.upper()
+        if sym in universe and sym not in candidates:
+            candidates.append(sym)
+    for w in re.findall(r"\b[A-Z]{2,5}\b", text or ""):
+        if (w in known or w in universe) and w not in candidates:
+            candidates.append(w)
+    for sym in _company_hit_symbols(session, text, known, universe):
+        if sym not in candidates:
+            candidates.append(sym)
+    tracked = _tracked(session, candidates)
+    symbols_found: list[str] = []
+    refused: list[str] = []
+    if given and given in tracked:
         symbols_found.append(given)
-    # Also scan for ticker patterns — only tokens a desk actually tracks (an uppercase word in prose is not an
-    # assertion, and words like "ALL", "NOW", "IT" are real tickers).
-    for w in re.findall(r'\b[A-Z]{2,5}\b', text):
-        if w in known and w not in symbols_found:
-            symbols_found.append(w)
+    for sym in candidates:
+        if sym in symbols_found:
+            continue
+        how = evidence(text, sym, company_names=_names_for(session, sym)).get("how")
+        if how in {"cashtag", "company"}:
+            symbols_found.append(sym)
+        else:
+            refused.append(sym)
 
     # Get strategy_type from classification
     strategy_type = None
@@ -249,6 +402,8 @@ def extract_insight(text: str, symbol: str = None, source_type: str = "manual",
     insight["active"] = has_signal(insight)
     # The source's own value, kept for the run's accounting (a topic code is reported, never written as a symbol).
     insight["source_symbol_not_ticker"] = bool(symbol) and given is None
+    insight["bare_tickers_refused"] = refused
+    insight["skipped"] = None
 
     if dry_run:
         insight["id"] = None
@@ -293,8 +448,13 @@ def _count(skips: dict | None, key: str) -> None:
 
 def _note(row: dict, skips: dict | None) -> None:
     """Account for a row that was examined but carries no usable symbol / no signal (never silently dropped)."""
+    if row.get("skipped") == "topic_slug":
+        _count(skips, "topic_slug")
+        return
     if row.get("source_symbol_not_ticker"):
         _count(skips, "source_symbol_not_ticker")
+    if row.get("bare_tickers_refused"):
+        _count(skips, "bare_ticker_no_evidence")
     if not row.get("active", True):
         _count(skips, "no_signal")
 
@@ -323,6 +483,9 @@ def extract_from_news(limit: int = 100, dry_run: bool = False, errors: list = No
             text = f"{a.get('title', '')}. {a.get('summary', '')}"
             if len(text.strip()) < 20:
                 _count(skips, "text_too_short")
+                continue
+            if is_topic_slug(a.get("symbol")):
+                _count(skips, "topic_slug")
                 continue
             try:
                 r = extract_insight(text, symbol=a.get("symbol"), source_type="news",
@@ -360,6 +523,9 @@ def extract_from_catalysts(limit: int = 100, dry_run: bool = False, errors: list
             text = f"{c.get('headline', '')}. {c.get('description', '')}"
             if len(text.strip()) < 20:
                 _count(skips, "text_too_short")
+                continue
+            if is_topic_slug(c.get("symbol")):
+                _count(skips, "topic_slug")
                 continue
             try:
                 r = extract_insight(text, symbol=c.get("symbol"), source_type="catalyst",
