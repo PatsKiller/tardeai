@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_worktree_notes_lq1252_20261108",
+  "files": [
+    "tests/test_disk_hygiene_worktree_notes_lq1252_20261108.py"
+  ],
+  "anchor": "DISK_HYGIENE_WORKTREE_NOTES_LQ1252_20261108",
+  "comment": [
+    "ANCHOR: DISK_HYGIENE_WORKTREE_NOTES_LQ1252_20261108 — rule W reclaims a linked worktree when it is clean, unheld and older than 24 h, or when a DONE-/REVIEW- closeout note names its path or branch; a note never overrides clean, in-use, live-claim or open-PR holds (LQ-20261107-1252)."
+  ]
+}

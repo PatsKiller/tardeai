@@ -223,8 +223,39 @@ _NUM = (int, float)
 ARCHIVE_NS_RE = re.compile(r"^refs/archive/[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$")
 
 
+def _validate_worktree(standing: Mapping[str, Any]) -> None:
+    """Rule W's age floor and closeout-note waiver (LQ-20261107-1252): fail closed, no arbitrary note roots.
+
+    ``closeout_note_dirs`` are relative to the coordination root. An absolute path, a ``..`` component or a
+    prefix containing a separator is refused rather than normalised: a waiver that can name any directory is
+    a hold bypass, and the note is the one input an agent writes freely.
+    """
+    wt = standing.get("worktree")
+    if wt is None:
+        return
+    if not isinstance(wt, dict):
+        raise RulesError("worktree_shape")
+    hours = wt.get("untouched_hours", 48)
+    if type(hours) not in _NUM or not hours >= 1:
+        raise RulesError("worktree_untouched_hours")
+    if "closeout_note_waives_age" in wt and not isinstance(wt["closeout_note_waives_age"], bool):
+        raise RulesError("worktree_closeout_note_waives_age")
+    dirs = wt.get("closeout_note_dirs", [])
+    if not isinstance(dirs, list) or any(
+        not isinstance(d, str) or not d or d.startswith("/") or ".." in Path(d).parts or "\\" in d
+        for d in dirs
+    ):
+        raise RulesError("worktree_closeout_note_dirs")
+    prefixes = wt.get("closeout_note_prefixes", ["DONE-", "REVIEW-"])
+    if not isinstance(prefixes, list) or any(
+        not isinstance(p, str) or not p or "/" in p or "\\" in p for p in prefixes
+    ):
+        raise RulesError("worktree_closeout_note_prefixes")
+
+
 def _validate_lifecycle(standing: Mapping[str, Any], doc: Mapping[str, Any]) -> None:
     """Rules C / R / X and the pressure loop (DSN-20261030-workspace-lifecycle P2): validated like rule T, fail closed."""
+    _validate_worktree(standing)
     wt = standing.get("abandoned_worktree")
     if wt is not None or "C" in standing["rules"]:
         if not isinstance(wt, dict):
@@ -1047,26 +1078,109 @@ def is_archived_coordination(relative: str) -> bool:
     return relative in ARCHIVED_RELATIVE_FILES or relative.startswith(ARCHIVED_RELATIVE_PREFIXES)
 
 
-def scan_coordination(base: Path, now: datetime) -> dict[str, Any]:
+#: A closeout note (LQ-20261107-1252) names the worktree it retired: the DONE/REVIEW note an agent writes when its
+#: branch is finished. Rule W may let it waive the age floor, so the index keeps only what can match a worktree —
+#: absolute paths and branch-like tokens (one or more "/" segments, never a leading "/"). A note over the token
+#: bound indexes no tokens at all: no waiver, never a refusal to plan, so a pathological note cannot grow the
+#: evidence document without bound.
+CLOSEOUT_NOTE_TOKEN_LIMIT = 4000
+CLOSEOUT_PATH_RE = re.compile(r"/[^\s\"'`<>|=,;)\]}]+")
+CLOSEOUT_BRANCH_RE = re.compile(r"(?<![\w./-])(?:refs/heads/)?((?:[A-Za-z][A-Za-z0-9_.-]*/)+[A-Za-z][A-Za-z0-9_.-]*)(?![\w./-])")
+#: Prose is full of slash paths that are not branches (`tests/test_x.py`, `--apply/--dry-run`, `1.16/8.06`). The
+#: branch index keeps only tokens whose every segment starts with a letter and whose last segment is not a file
+#: name. A miss costs a waiver, never a removal: the age floor still binds.
+CLOSEOUT_BRANCH_SKIP_SUFFIXES = (".py", ".md", ".json", ".jsonl", ".sh", ".ts", ".tsx", ".js", ".jsx", ".html",
+                                 ".css", ".yml", ".yaml", ".sql", ".txt", ".log", ".toml", ".ini", ".cfg",
+                                 ".patch", ".diff", ".png", ".svg")
+CLOSEOUT_PATH_TRAILING = ".,;:!?"
+
+
+def _closeout_note_rel(relative: str, note_dirs: Iterable[str], note_prefixes: Iterable[str]) -> bool:
+    """True when a coordination-root-relative path is a closeout note directly inside a configured dir."""
+    for d in note_dirs:
+        prefix = d.rstrip("/") + "/"
+        if not relative.startswith(prefix):
+            continue
+        name = relative[len(prefix):]
+        if "/" in name or not name.endswith(".md"):
+            return False
+        return any(name.startswith(p) for p in note_prefixes)
+    return False
+
+
+def closeout_note_index(base: Path, note_dirs: Iterable[str], note_prefixes: Iterable[str],
+                        texts: Mapping[str, str], mtimes: Mapping[str, float]) -> tuple[list[dict], bool]:
+    """``([{path, mtime, paths, branches}], complete)`` for the configured closeout notes.
+
+    ``texts``/``mtimes`` are what the main scan already read, so no note is read twice. ``complete`` is False when a
+    configured directory cannot be listed: the caller then withholds every waiver, because "could not read" is not
+    "nothing named". A missing directory is not an error (no notes there yet).
+    """
+    dirs, prefixes = tuple(note_dirs), tuple(note_prefixes)
+    if not dirs:
+        return [], True
+    notes: list[dict] = []
+    complete = True
+    for rel_dir in dirs:
+        target = base / rel_dir
+        if not target.exists():
+            continue
+        if not target.is_dir():
+            complete = False
+            continue
+        try:
+            names = sorted(entry.name for entry in os.scandir(target) if entry.is_file(follow_symlinks=False))
+        except OSError:
+            complete = False
+            continue
+        for name in names:
+            rel = f"{rel_dir.rstrip('/')}/{name}"
+            if not _closeout_note_rel(rel, [rel_dir], prefixes) or rel not in texts:
+                continue
+            text = texts[rel]
+            paths = [t.rstrip(CLOSEOUT_PATH_TRAILING) for t in CLOSEOUT_PATH_RE.findall(text)]
+            branches = [m.group(1) for m in CLOSEOUT_BRANCH_RE.finditer(text)
+                        if not m.group(1).lower().endswith(CLOSEOUT_BRANCH_SKIP_SUFFIXES)]
+            entry: dict[str, Any] = {"path": rel, "mtime": float(mtimes.get(rel, 0.0))}
+            if len(paths) + len(branches) > CLOSEOUT_NOTE_TOKEN_LIMIT:
+                entry.update(paths=[], branches=[], truncated=True)
+            else:
+                entry.update(paths=sorted(set(paths)), branches=sorted(set(branches)))
+            notes.append(entry)
+    notes.sort(key=lambda n: n["path"])
+    return notes, complete
+
+
+def scan_coordination(base: Path, now: datetime, *,
+                      closeout_note_dirs: Iterable[str] = (),
+                      closeout_note_prefixes: Iterable[str] = ("DONE-", "REVIEW-")) -> dict[str, Any]:
     """Live claims/worklogs plus the absolute paths the coordination tree references (AGENTS.md §24.13)."""
     claims_dir, worklogs = base / "claims", base / "worklogs"
     if not claims_dir.is_dir() or not worklogs.is_dir() or not (base / "handoffs" / "PROGRESS_LOG.md").is_file():
         raise ValueError("coordination_incomplete")
+    note_dirs, note_prefixes = tuple(closeout_note_dirs), tuple(closeout_note_prefixes)
     live, active_ids, refs, live_logs, archived = [], set(), [], [], 0
+    note_text: dict[str, str] = {}
+    note_mtime: dict[str, float] = {}
     files = list(base.rglob("*.json")) + list(base.rglob("*.jsonl")) + list(base.rglob("*.md"))
     total = 0
     for path in files:
-        if is_archived_coordination(path.relative_to(base).as_posix()):
+        relative = path.relative_to(base).as_posix()
+        if is_archived_coordination(relative):
             archived += 1
             continue  # history, never a live reference
         if path.is_symlink():
             raise ValueError("coordination_symlink")
-        size = path.stat().st_size
+        stat = path.stat()
+        size = stat.st_size
         total += size
         if size > COORD_MAX_FILE_BYTES or total > COORD_MAX_TOTAL_BYTES:
             raise ValueError("coordination_scan_limit")
         text = path.read_text()
         refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
+        if _closeout_note_rel(relative, note_dirs, note_prefixes):
+            note_text[relative] = text
+            note_mtime[relative] = stat.st_mtime
         if path.parent == claims_dir and path.suffix == ".json":
             claim = json.loads(text)
             if not isinstance(claim, dict) or not isinstance(claim.get("schema"), str):
@@ -1081,8 +1195,9 @@ def scan_coordination(base: Path, now: datetime) -> dict[str, Any]:
     for path in worklogs.rglob("*.md"):
         if any(str(cid) in path.name for cid in active_ids) or now.timestamp() - path.stat().st_mtime <= 48 * 3600:
             live_logs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", path.read_text())
+    notes, notes_complete = closeout_note_index(base, note_dirs, note_prefixes, note_text, note_mtime)
     return {"references": sorted(set(refs)), "live_claims": live, "live_worklogs": live_logs,
-            "archived_files": archived}
+            "archived_files": archived, "closeout_notes": notes, "closeout_notes_complete": notes_complete}
 
 
 def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github=None, runner=None) -> dict:
@@ -1181,7 +1296,10 @@ def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github
 
     def coordination():
         base = _expand(str(cfg.get("coordination_root") or "~/trade-ai-releases/persistent-state/data/coordination"), rules["_home"])
-        return scan_coordination(base, now)
+        worktree = cfg.get("worktree") if isinstance(cfg.get("worktree"), dict) else {}
+        return scan_coordination(base, now,
+                                 closeout_note_dirs=worktree.get("closeout_note_dirs") or (),
+                                 closeout_note_prefixes=worktree.get("closeout_note_prefixes") or ("DONE-", "REVIEW-"))
 
     def prs():
         reader = github
@@ -1456,6 +1574,37 @@ def archive_refs(repos: Iterable[Path], archive_ns: str, now: datetime, retentio
     return rows
 
 
+def _closeout_note_waiver(ctx: Mapping[str, Any], path: Path, branch: Optional[str]) -> Optional[str]:
+    """The closeout note that names this worktree, or None (LQ-20261107-1252).
+
+    A note can only waive rule W's age floor: the caller has already applied every clean/in-use/reference/PR/lock
+    hold, and this never removes a reason. Two identities are accepted — the worktree's absolute path, or the branch
+    it has checked out — and the match is exact. Reuse is what would make an old note dangerous, and the workspace
+    tooling blocks it: `new-worktree.sh` refuses an existing path, `git worktree add -b` refuses an existing branch,
+    and branches are never deleted by the sweep.
+    """
+    coordination = (ctx.get("snapshot") or {}).get("coordination") or {}
+    if coordination.get("closeout_notes_complete") is not True:
+        return None  # an unreadable note tree proves nothing; the age floor binds
+    notes = coordination.get("closeout_notes")
+    if not isinstance(notes, list):
+        return None
+    names = {str(path)}
+    try:
+        names.add(os.path.realpath(str(path)))
+    except OSError:
+        pass
+    branch_name = branch.removeprefix("refs/heads/") if isinstance(branch, str) and branch else None
+    for note in notes:
+        if not isinstance(note, dict) or not isinstance(note.get("path"), str):
+            continue
+        if names & set(note.get("paths") or ()):
+            return note["path"]
+        if branch_name and branch_name in (note.get("branches") or ()):
+            return note["path"]
+    return None
+
+
 def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: Optional[str] = None) -> list[dict]:
     """A/S/T/W/C/R (plus plan-only X), with fresh complete coordination/process/PR references.
 
@@ -1619,8 +1768,17 @@ def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any], *, only: 
             item["reasons"].append(git_why)
         if why:
             item["reasons"].append(why)
-        if not activity or ctx["now"].timestamp() - activity <= 48 * 3600:
-            item["reasons"].append("worktree_not_untouched_48h")
+        worktree_cfg = cfg.get("worktree") if isinstance(cfg.get("worktree"), dict) else {}
+        untouched_hours = float(worktree_cfg.get("untouched_hours", 48))
+        if not activity or ctx["now"].timestamp() - activity <= untouched_hours * 3600:
+            note = (_closeout_note_waiver(ctx, path, branch)
+                    if worktree_cfg.get("closeout_note_waives_age") is True else None)
+            if note is None:
+                item["reasons"].append(f"worktree_not_untouched_{untouched_hours:g}h")
+            else:
+                # The note waives the AGE FLOOR only; every other hold above still binds, and the manifest names
+                # the note that was trusted.
+                item["evidence"]["closeout_note"] = note
         item["evidence"].update(branch=branch, branch_preserved=bool(branch), detached_ancestor=not branch and item["evidence"].get("merged") == "ancestor")
         item["fingerprint"] = {"head": head, "branch": branch, "activity": activity, "kind": "git_worktree"}
         w_takes = not [r for r in item["reasons"] if not r.startswith("rule_plan_only_not_authorized:")]
