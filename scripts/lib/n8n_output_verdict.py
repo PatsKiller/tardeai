@@ -20,6 +20,19 @@ verdict                meaning / run outcome
                        receipt, or malformed / inconsistent counts. Missing evidence is never success.
 =====================  ======================================================================================
 
+Upstream citation (LQ-20261107-1004, Fable audit LQ-984 Q3.1): ``empty_reason`` is self-reported, so a lane can say
+``no_new_input`` forever and stay green. A contract may name ``upstream_count_field``: the receipt field holding how
+many upstream items the run READ (rows seen, queue depth, files listed). An empty result is then ``empty_allowed``
+only when that field is an int >= 0 in the receipt; absent or malformed is ``unverifiable`` (``upstream_count_missing``).
+An empty result under a contract with no ``upstream_count_field`` is still ``empty_allowed`` but carries
+``upstream_cited: False``, and :func:`enforcement_decision` fails it after the grace period like
+``declared_not_enforced``.
+
+Grace (LQ-20261107-1004): :func:`enforcement_decision` turns the two "not proven" verdicts (``declared_not_enforced``
+and an uncited ``empty_allowed``) into a failure once ``grace_starts_at + grace_hours`` has passed
+(config/n8n_output_enforcement.json, ``N8nOutputEnforcement@v1``). Before the deadline it is a recorded warning with the
+deadline in the verdict; an unreadable or invalid policy fails closed (enforced now) — it never extends the grace.
+
 ``validate_expected_output`` is the closed semantic schema the framework checker (FW-M6) and the executor share:
 a malformed declaration (numeric ``produced_field``/``unit``, ``evidence: [{}]``, ``empty_allowed`` without
 reasons...) is invalid everywhere, and an invalid declared rule makes the run ``unverifiable`` (fail closed).
@@ -30,7 +43,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 EXPECTED_OUTPUT_SCHEMA = "N8nExpectedOutput@v1"
@@ -52,12 +65,22 @@ VERDICTS = (
 FAILING = {"empty_violation": "empty_output", "unverifiable": "output_unverifiable"}
 _REASON_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
 _FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}$")
+#: a receipt field or a dotted path into it (``summary.checked_count``): many lanes already count their input in the
+#: receipt summary, and citing it there needs no lane change.
+_UPSTREAM_RE = re.compile(r"^[a-z][a-z0-9_]{1,47}(\.[a-z][a-z0-9_]{1,47}){0,2}$")
 # These states prove no useful execution. A contract cannot redefine them as valid empty work.
 NO_WORK_FAILURES = frozenset({"no_runner", "skipped_lock", "lock_skipped"})
 
 
 def _int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _dig(doc: Any, path: str) -> Any:
+    cur = doc
+    for part in path.split("."):
+        cur = cur.get(part) if isinstance(cur, Mapping) else None
+    return cur
 
 
 def _reasons(v: Any) -> bool:
@@ -92,6 +115,7 @@ def validate_expected_output(eo: Any) -> list[str]:
         "on_violation",
         "receipt",
         "applies_to",
+        "upstream_count_field",
     }
     out = [f"unknown key {k!r}" for k in sorted(set(eo) - allowed)]
     if eo.get("schema") != EXPECTED_OUTPUT_SCHEMA:
@@ -132,6 +156,9 @@ def validate_expected_output(eo: Any) -> list[str]:
                 and e["ref"].strip()
             ):
                 out.append(f"evidence[{i}] needs kind in {EVIDENCE_KINDS} and a ref")
+    up = eo.get("upstream_count_field")
+    if up is not None and not (isinstance(up, str) and _UPSTREAM_RE.fullmatch(up) and up != eo.get("produced_field")):
+        out.append("upstream_count_field must be a field name or dotted path (<= 3 parts), not produced_field")
     rec = eo.get("receipt")
     if rec is not None and not (isinstance(rec, str) and not rec.startswith("/") and ".." not in rec):
         out.append("receipt must be a relative path")
@@ -229,7 +256,68 @@ def evaluate(
     reason = doc.get("empty_reason")
     if isinstance(reason, str) and reason in set(rule.get("empty_allowed_reasons") or ()):
         out = {**base, "verdict": "empty_allowed", "empty_reason": reason}
+        field = rule.get("upstream_count_field")
+        if field:
+            upstream = _dig(doc, field)
+            if not _int(upstream) or upstream < 0:
+                return {**base, "verdict": "unverifiable", "why": "upstream_count_missing", "empty_reason": reason,
+                        "upstream_count_field": field}
+            out.update({"upstream_cited": True, "upstream_count_field": field, "upstream_count": upstream})
+        else:
+            out["upstream_cited"] = False
         if rule["rule"] == "per_window":
             out["window"] = "evaluated by the health monitors (P), not per run"
         return out
     return {**base, "verdict": "empty_violation", "why": "empty_reason_not_allowed"}
+
+
+# ── grace-gated enforcement (LQ-20261107-1004) ─────────────────────────────
+
+ENFORCEMENT_SCHEMA = "N8nOutputEnforcement@v1"
+#: verdict -> the failure reason it becomes once the grace period has ended.
+GAP_FAILURES = {"declared_not_enforced": "output_not_enforced", "empty_uncited": "empty_upstream_uncited"}
+
+
+def validate_enforcement_policy(policy: Any) -> list[str]:
+    """Defects of one N8nOutputEnforcement@v1 policy (empty = valid). Closed key set."""
+    if not isinstance(policy, Mapping):
+        return ["policy is not an object"]
+    out = [f"unknown key {k!r}" for k in sorted(set(policy) - {"schema", "grace_hours", "grace_starts_at", "note"})]
+    if policy.get("schema") != ENFORCEMENT_SCHEMA:
+        out.append(f"schema != {ENFORCEMENT_SCHEMA}")
+    g = policy.get("grace_hours")
+    if not (isinstance(g, (int, float)) and not isinstance(g, bool) and math.isfinite(g) and 0 <= g <= 24 * 14):
+        out.append("grace_hours must be a number in [0, 336]")
+    if _timestamp(policy.get("grace_starts_at")) is None:
+        out.append("grace_starts_at must be a timezone-aware ISO instant")
+    return out
+
+
+def gap_of(verdict: Mapping[str, Any] | None) -> str | None:
+    """Which proof gap a verdict leaves open, or None. Pure."""
+    v = (verdict or {}).get("verdict")
+    if v == "declared_not_enforced":
+        return "declared_not_enforced"
+    if v == "empty_allowed" and (verdict or {}).get("upstream_cited") is not True:
+        return "empty_uncited"
+    return None
+
+
+def enforcement_decision(verdict: Mapping[str, Any] | None, policy: Any, *, now: str) -> dict[str, Any]:
+    """{gap, phase, deadline, failing_reason}. ``phase``: ``none`` (no gap), ``grace`` (warn; before the deadline),
+    ``enforced`` (``failing_reason`` set: the caller turns the run into RUN_FAILED with it). An invalid policy or an
+    unreadable ``now`` is ``enforced`` with ``policy_problems`` — a broken policy never buys more grace."""
+    gap = gap_of(verdict)
+    if gap is None:
+        return {"gap": None, "phase": "none", "deadline": None, "failing_reason": None}
+    problems = validate_enforcement_policy(policy)
+    t = _timestamp(now)
+    if problems or t is None:
+        return {"gap": gap, "phase": "enforced", "deadline": None, "failing_reason": GAP_FAILURES[gap],
+                "policy_problems": (problems or ["now is not a timezone-aware ISO instant"])[:5]}
+    start = _timestamp(policy["grace_starts_at"])
+    deadline_ts = start + float(policy["grace_hours"]) * 3600.0
+    deadline = datetime.fromtimestamp(deadline_ts, tz=timezone.utc).isoformat(timespec="seconds")
+    if t < deadline_ts:
+        return {"gap": gap, "phase": "grace", "deadline": deadline, "failing_reason": None}
+    return {"gap": gap, "phase": "enforced", "deadline": deadline, "failing_reason": GAP_FAILURES[gap]}
