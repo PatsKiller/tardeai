@@ -142,6 +142,16 @@
       "mode": "credentials_file",
       "credentials_file": "{home}/.claude/.credentials.json",
       "rw": true
+    },
+    "provider": {
+      "_why": "Operator 2026-11-08 (LQ-20261107-1258): self-heal must use the free/cheap APIs, not Anthropic. With no block here the lane ran the Claude Code CLI on the operator's Anthropic subscription (the 16:21 cycle reported $3.72 notional for 3 failed jobs). DeepSeek carries its own key, so auth_mode none binds NO OAuth credential inside its run; a named but INCOMPLETE block REFUSES the cycle (exit 2, a receipt with `refused`) rather than fall back to the CLI's Anthropic login. key_file is a PATH the operator renders on this host: never in the repo, never printed, read by the fixer only on the host (O_NOFOLLOW, one line, first line of the agent's stdin). launcher: scripts/lib/self_heal_deepseek_launch.py seals that line in a memfd, sets the endpoint and the model (claude.model stays null; the launcher's ANTHROPIC_MODEL default deepseek-flash[1m] applies because no --model flag is passed) and execs claude.bin.",
+      "name": "deepseek",
+      "launcher": "{repo_root}/scripts/lib/self_heal_deepseek_launch.py",
+      "key_file": "{home}/.config/tradeai/deepseek_api_key",
+      "egress_allow": [
+        "api.deepseek.com:443"
+      ],
+      "auth_mode": "none"
     }
   },
   "sandbox": {

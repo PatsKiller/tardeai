@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_fixer_provider_deepseek_20261108",
+  "files": [
+    "tests/test_self_heal_fixer_provider_deepseek_20261108.py"
+  ],
+  "anchor": "SELF_HEAL_FIXER_PROVIDER_DEEPSEEK_20261108",
+  "comment": [
+    "ANCHOR: SELF_HEAL_FIXER_PROVIDER_DEEPSEEK_20261108 — the self-heal fixer runs its coding model on DeepSeek",
+    "(operator 2026-11-08, LQ-20261107-1258), never on the operator's Anthropic subscription. The shipped",
+    "config/self_heal_fixer.json must name a complete claude.provider (name deepseek, the repo launcher, a key_file",
+    "PATH only, the DeepSeek host in egress_allow, auth_mode none so no OAuth credential is bound), and the cycle",
+    "must REFUSE -- dry run included -- when that block is incomplete or, for --apply, when the key file is not",
+    "readable on this host. It never falls back to Anthropic silently. Synthetic fixtures only; no key is read."
+  ]
+}

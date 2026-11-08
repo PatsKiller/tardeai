@@ -37,6 +37,11 @@ CFG = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
 # These tests pin the GRANT arming path (push/PR when the amendment is ACTIVE). The repo config turns on the
 # operator's local-only switch (LQ-20261107-1192); that path is tested in test_lq1192_self_heal_local_only_20261108.
 CFG["arming"].pop("local_only", None)
+# These fixtures build a TEMP repo, which has no scripts/lib/self_heal_deepseek_launch.py and no operator key, so a
+# shipped `claude.provider` block would (correctly) make every cycle refuse provider_launcher_unavailable. The
+# provider path -- the shipped DeepSeek block, its plan view and the refusal -- is pinned in
+# test_self_heal_fixer_provider_deepseek_20261108; the fixtures here model a repo that runs the CLI's own auth.
+CFG["claude"].pop("provider", None)
 FIXTURE = ROOT / "tests" / "fixtures" / "self_heal_fixer" / "daily_incubator_refresh_20261016.json"
 NOW = datetime(2026, 10, 16, 18, 0, tzinfo=timezone.utc)
 AGENTS_TEXT = (ROOT / "AGENTS.md").read_text(encoding="utf-8")

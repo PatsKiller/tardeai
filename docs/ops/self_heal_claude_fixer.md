@@ -305,8 +305,9 @@ port; proxy allows only the listed target; the model's pytest sees no proxy/auth
 ## 6b. A non-Anthropic provider (DeepSeek, 2026-11-03)
 
 `claude.provider` selects the model provider for a job. Absent, or `name: anthropic`, is exactly the behaviour
-above. A full block (`name`, `launcher`, `key_file`; a half block is ignored and the CLI keeps its own auth)
-runs the model on DeepSeek:
+above. Since 2026-11-08 (operator: "self-heal must use the free/cheap APIs, not Anthropic") the shipped config
+carries a full DeepSeek block; a block that names a provider but is **incomplete refuses the cycle** — the CLI's
+own Anthropic login is never a fallback (§6b, *refusal* below).
 
 - **Key transport.** This host's bubblewrap (0.11.1) has **no `--preserve-fds`**, so a key file descriptor
   cannot be inherited into the sandbox; and a bind mount would put the key at a path the model's Bash can open.
@@ -331,15 +332,32 @@ runs the model on DeepSeek:
   dry run quoted to approve arming a provider block shows the provider host and no OAuth bind — not the static defaults.
 - **An active provider with an invalid auth_mode is refused.** An active provider (name + launcher +
   key_file) must set `auth_mode: "none"`; anything else (missing, `credentials_file`) fails the job with
-  `provider_auth_mode_invalid` instead of binding the OAuth file inside a DeepSeek run. A launcher that is
-  not readable fails with `provider_launcher_unavailable`. A **half-configured** block (no launcher or no
-  key_file) is not "refused" — it is inert: the provider never activates and the CLI keeps its own auth.
+  `provider_auth_mode_invalid` instead of binding the OAuth file inside a DeepSeek run.
+- **A named but incomplete block REFUSES the cycle** (2026-11-08, LQ-20261107-1258). Before this, a half block
+  (no launcher, no key_file, no `auth_mode: none`, no egress host) was inert — the provider never activated and
+  the CLI quietly kept the operator's Anthropic login, which is the one outcome the operator ruled out. Now
+  `provider_cycle_refusal()` runs before intake and stops the cycle (exit 2, a receipt with `refused`) — a **dry
+  run included**, because its plan would otherwise quote an Anthropic run — with one of these typed reasons:
+  `provider_block_incomplete:provider_launcher_missing|provider_key_file_missing|provider_auth_mode_invalid|
+  provider_egress_missing`, or `provider_launcher_unavailable` when the named launcher is not on this host.
+  A live (`--apply`) cycle also refuses `provider_key_unavailable` when the key file is not readable, rather than
+  starting a job that can only fail after a claim and a worktree. `provider_block_state()` is the single
+  classifier behind the cycle guard, the plan view and `Attempt.provider_setup_problem()`, so none of the three
+  can disagree about whether the provider is runnable. `off` (no block, or `name: anthropic`) is a decision, not
+  an accident, and it is the only configuration that still uses the OAuth login.
+- **The key file is a PATH the operator renders.** `config/self_heal_fixer.json` names
+  `{home}/.config/tradeai/deepseek_api_key`; the value is never in the repo, never printed, and read only on the
+  host (`O_NOFOLLOW`, one line). Until the operator renders it there, an `--apply` cycle refuses
+  `provider_key_unavailable` — visibly, once per cycle — and no Anthropic spend occurs.
 - **Residual risk.** As with the OAuth credential above, the CLI holds the key in a readable descriptor; a
   model-run Bash that deliberately opens `/proc/<claude-pid>/fd/<n>` could read it. Nothing puts it in the
   prompt, the diff, the transcript or a test wrapper. The same recommendation applies: arm with a dedicated,
   revocable key for this lane.
-- **The switch is config, not code.** No `provider` block ships until the code is reviewed and merged, the
-  §24.16 successor is active, a backup exists and a dry run is quoted (the same gate as §7).
+- **The switch is config, not code.** The block ships in `config/self_heal_fixer.json` (LQ-20261107-1258,
+  operator order 2026-11-08); changing providers is still a reviewed config change. A dry run quotes
+  `provider` (name, state, auth_mode, egress, the key file PATH and whether it is readable) plus `backend`
+  with `model_provider: deepseek`, so the approval is on what the run would do. Nothing here spends Anthropic:
+  `auth_mode: none` binds no OAuth file, and an incomplete block stops the cycle.
 
 ## 7. Gating (DISARMED by default)
 

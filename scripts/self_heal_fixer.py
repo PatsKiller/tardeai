@@ -405,24 +405,109 @@ def checkout_digest(root: Path) -> str:
     return h.hexdigest()
 
 
-def provider_plan_view(cfg: dict) -> tuple[list[str], dict]:
+#: What ``claude.provider`` says about the model backend. ``off`` = the Claude CLI on its own credential;
+#: ``active`` = a complete non-Anthropic provider; ``incomplete`` = a provider is NAMED but cannot run, and that is a
+#: refusal, never a fallback (operator 2026-11-08, LQ-20261107-1258: self-heal must not spend Anthropic). Before this,
+#: a half-configured block silently kept the CLI's own OAuth login -- the one outcome the operator ruled out.
+PROVIDER_OFF = "off"
+PROVIDER_ACTIVE = "active"
+PROVIDER_INCOMPLETE = "incomplete"
+
+
+def _provider_path(raw: Any, cfg: dict, environ: dict) -> str:
+    """A provider path with the placeholders every credential-shaped path in this config uses."""
+    home = environ.get("HOME") or str(Path.home())
+    repo = str((cfg.get("repo") or {}).get("repo_root") or "")
+    return str(raw).replace("{repo_root}", repo).replace("{home}", home)
+
+
+def provider_block_state(cfg: dict, environ: Optional[dict] = None, *, require_egress: bool = True) -> dict:
+    """Classify ``claude.provider`` for the cycle, the plan view and the attempt: state, typed reason, resolved paths.
+
+    ``off``: no provider block, or an explicit ``"name": "anthropic"`` -- the CLI's own auth, the legacy path.
+    ``active``: name + launcher + key_file, ``auth_mode`` exactly ``"none"``, at least one egress host.
+    ``incomplete``: a provider is named but one of those is missing -- the cycle REFUSES it.
+    ``launcher_readable``/``key_readable`` are ``os.access`` on the PATHS only, reported beside the state because a
+    missing launcher or key is a runtime fact about THIS host, not the shape of the config; the key's content is
+    never read here.
+    """
+    environ = dict(os.environ if environ is None else environ)
+    prov = dict(((cfg.get("claude") or {}).get("provider") or {}))
+    name = str(prov.get("name") or "").strip().lower()
+    egress = [str(h) for h in (prov.get("egress_allow") or []) if str(h).strip()]
+    state: dict[str, Any] = {
+        "name": name or None,
+        "state": PROVIDER_OFF,
+        "reason": "provider_absent",
+        "auth_mode": prov.get("auth_mode"),
+        "egress_allow": egress,
+        "launcher": _provider_path(prov["launcher"], cfg, environ) if prov.get("launcher") else None,
+        "key_file": _provider_path(prov["key_file"], cfg, environ) if prov.get("key_file") else None,
+        "launcher_readable": False,
+        "key_readable": False,
+    }
+    if not name:
+        return state
+    if name == "anthropic":
+        state["reason"] = "provider_is_anthropic_cli"
+        return state
+
+    def incomplete(reason: str) -> dict:
+        state.update(state=PROVIDER_INCOMPLETE, reason=reason)
+        return state
+
+    if not state["launcher"]:
+        return incomplete("provider_launcher_missing")
+    if not state["key_file"]:
+        return incomplete("provider_key_file_missing")
+    if str(prov.get("auth_mode") or "") != "none":
+        # The provider carries its own key, so the CLI's OAuth credential MUST NOT be bound inside its run.
+        return incomplete("provider_auth_mode_invalid")
+    if require_egress and not egress:
+        return incomplete("provider_egress_missing")
+    state.update(state=PROVIDER_ACTIVE, reason="provider_active")
+    state["launcher_readable"] = os.access(state["launcher"], os.R_OK)
+    state["key_readable"] = os.access(state["key_file"], os.R_OK)
+    return state
+
+
+def provider_cycle_refusal(
+    cfg: dict, environ: Optional[dict] = None, *, apply: bool
+) -> tuple[Optional[str], dict]:
+    """The cycle-level refusal, ``(reason, state)``. None means the cycle may run.
+
+    An incomplete block refuses a DRY RUN too: the plan would otherwise quote an Anthropic run the operator has
+    ruled out. An active block whose launcher is not readable cannot start on this host at all, and a live
+    (``--apply``) cycle also refuses when the provider's key file is not readable -- better a visible refusal than
+    jobs that can only end in ``provider_key_unavailable`` after a claim and a worktree.
+    """
+    state = provider_block_state(cfg, environ)
+    if state["state"] == PROVIDER_INCOMPLETE:
+        return f"provider_block_incomplete:{state['reason']}", state
+    if state["state"] == PROVIDER_ACTIVE and not state["launcher_readable"]:
+        return "provider_launcher_unavailable", state
+    if state["state"] == PROVIDER_ACTIVE and apply and not state["key_readable"]:
+        return "provider_key_unavailable", state
+    return None, state
+
+
+def provider_plan_view(cfg: dict, environ: Optional[dict] = None) -> tuple[list[str], dict]:
     """The effective egress list and auth config a provider block WOULD use (dry-run planning).
 
-    Mirrors Attempt.egress_allow() and Attempt.setup()'s auth_mode override so a quoted dry run shows
-    the provider host and no OAuth bind, never the static defaults. A half-configured block (name only,
-    or launcher/key_file missing) changes nothing.
+    Mirrors Attempt.egress_allow() and Attempt.setup()'s auth_mode override so a quoted dry run shows the provider
+    host and no OAuth bind, never the static defaults. It reuses the same classifier the cycle refuses on, so the
+    plan cannot describe a provider state the run would not use; an incomplete block adds nothing (the cycle refuses
+    before any plan is printed).
     """
     asb = cfg.get("agent_sandbox") or {}
-    prov = (cfg.get("claude") or {}).get("provider") or {}
-    active = (str(prov.get("name") or "").lower() not in ("", "anthropic")
-              and bool(prov.get("launcher")) and bool(prov.get("key_file")))
+    prov = provider_block_state(cfg, environ)
     egress = [str(h) for h in (asb.get("egress_allow") or [])]
-    if active:
-        for host in prov.get("egress_allow") or []:
-            if str(host) not in egress:
-                egress.append(str(host))
+    if prov["state"] == PROVIDER_ACTIVE:
+        for host in prov["egress_allow"]:
+            if host not in egress:
+                egress.append(host)
     auth_cfg = cfg
-    if prov.get("auth_mode"):
+    if prov["state"] == PROVIDER_ACTIVE:
         auth_cfg = {**cfg, "claude": {**cfg["claude"], "auth": {
             **(cfg["claude"].get("auth") or {}), "mode": str(prov["auth_mode"])}}}
     return egress, auth_cfg
@@ -491,20 +576,22 @@ class Attempt:
         return [str(self.cfg["claude"]["bin"])]
 
     def _provider_active(self) -> bool:
-        """A provider is active only with the full trio: name, launcher and key file. A half-configured block
-        keeps the CLI's own auth instead of risking the key line being read as prompt text."""
+        """The MECHANICS of a provider: a non-Anthropic name with a launcher and a key file, so its host is added to
+        the allowlist and the launcher wraps the CLI. Whether the block is complete enough to RUN is decided by
+        ``provider_setup_problem`` (and, one level up, by the cycle's ``provider_cycle_refusal``): a block that names
+        DeepSeek never silently falls back to the CLI's own OAuth login."""
         return (str(self.provider.get("name") or "").lower() not in ("", "anthropic")
                 and bool(self.provider.get("launcher")) and bool(self.provider.get("key_file")))
 
     def provider_setup_problem(self) -> Optional[str]:
         """A provider block must be complete AND safe: DeepSeek carries its own key, so it may never reuse the
         CLI's OAuth credential. auth_mode must therefore be exactly "none"; anything else is a half-configured
-        block that would bind the Anthropic credential inside a DeepSeek run."""
-        if not self._provider_active():
-            return None
-        if str(self.provider.get("auth_mode") or "") != "none":
-            return "provider_auth_mode_invalid"
-        if not os.access(self.launcher_path(), os.R_OK):
+        block that would bind the Anthropic credential inside a DeepSeek run. A block missing a field is a problem
+        here too, so an Attempt built directly cannot launch the CLI on the operator's Anthropic credential."""
+        state = provider_block_state(self.cfg, self.environ, require_egress=False)
+        if state["state"] == PROVIDER_INCOMPLETE:
+            return state["reason"]
+        if state["state"] == PROVIDER_ACTIVE and not state["launcher_readable"]:
             return "provider_launcher_unavailable"
         return None
 
@@ -1785,6 +1872,25 @@ def _cycle(
     lo = F.local_only(cfg)
     if lo is not None:
         out["local_only"] = {"enabled": True, "why": str(lo.get("why") or "")[:200]}
+    # REFUSAL, never a fallback (operator 2026-11-08, LQ-20261107-1258): self-heal runs on DeepSeek. If
+    # `claude.provider` names a provider that cannot run -- or, for a live cycle, its key file is not readable on this
+    # host -- the cycle stops HERE: no intake, no state write, no claim, and no model call on the operator's
+    # Anthropic credential. A dry run is refused too, because its plan would otherwise quote a run that cannot happen.
+    refusal, provider = provider_cycle_refusal(cfg, environ, apply=apply)
+    out["provider"] = {k: provider[k] for k in (
+        "name", "state", "reason", "auth_mode", "egress_allow", "launcher", "key_file",
+        "launcher_readable", "key_readable")}
+    if refusal:
+        out["refused"] = refusal
+        out["finished_at"] = t.isoformat()
+        out["counts"] = {st: sum(1 for j in work.get("jobs", {}).values() if j.get("state") == st) for st in F.STATES}
+        if apply:
+            _atomic_write(receipt_path, out)
+        elif args.out:
+            _atomic_write(Path(args.out) / "receipt.json", out)
+        print(json.dumps({k: out.get(k) for k in ("mode", "refused", "provider", "counts", "finished_at")},
+                         indent=1, default=str))
+        return 2
 
     def escalate_non_code(
         cls: str,
@@ -1998,7 +2104,9 @@ def _cycle(
         base_sha=base_sha,
         base={k: base[k] for k in ("ref", "source", "why")},
         fetch_rc=base["fetch_rc"],
-        backend={"name": backend, "why": backend_why},
+        backend={"name": backend, "why": backend_why,
+                 "model_provider": provider["name"] or "anthropic_cli",
+                 "provider_state": provider["state"]},
     )
     names = [n for n in (cfg.get("backends") or {}) if not n.startswith("_")]
     queue = [j for j in work.get("jobs", {}).values() if j.get("state") == F.FIX_REQUESTED]
@@ -2119,6 +2227,9 @@ def _cycle(
                 "job": job,
                 "evidence": evidence,
                 "backend": backend,
+                "provider": {k: provider[k] for k in (
+                    "name", "state", "auth_mode", "egress_allow", "launcher", "key_file",
+                    "launcher_readable", "key_readable")},
                 "backend_argv": F.backend_argv(
                     cfg, backend, budget_usd=float(cfg["iteration"]["per_iteration_budget_usd"]), pytest_cmd=pytest_cmd
                 ),
@@ -2351,6 +2462,8 @@ def _cycle(
                     "local_only",
                     "findings",
                     "backend",
+                    "provider",
+                    "refused",
                     "counts",
                 )
             },
