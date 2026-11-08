@@ -869,7 +869,7 @@ def route(cur, limit: int) -> dict:
 
 def _write_lane_receipt(*, ok: bool = True, exit_code: int = 0, produced_count: int | None = 0,
                         empty_reason: str | None = None, error: str | None = None,
-                        started_at: datetime | None = None) -> None:
+                        started_at: datetime | None = None, outcome_reason: str | None = None) -> None:
     """LaneRunReceipt for data/runtime/due-diligence-questions_last.json — a REAL run only.
 
     The cron twin's ``>> logs/due_diligence_questions.log`` redirect proves only that cron opened a file
@@ -890,7 +890,8 @@ def _write_lane_receipt(*, ok: bool = True, exit_code: int = 0, produced_count: 
         from scripts.lib.lane_last_receipt import write_lane_receipt
     write_lane_receipt(LANE_ID, ok=ok, exit_code=exit_code, started_at=started_at,
                        script="due_diligence_questions.py", produced_count=produced_count,
-                       empty_reason=empty_reason, error=error)
+                       empty_reason=empty_reason, error=error,
+                       **({"outcome_reason": outcome_reason} if outcome_reason else {}))
 
 
 def main(argv=None) -> int:
@@ -990,6 +991,7 @@ def _apply_run(args, started: datetime) -> int:
     attempted_calls = 0
     failed_calls = 0
     stopped = False
+    cap_hit = None
     for ch in curated:
         conn, cur = _usable(conn, cur)
         items = dossier(cur, ch["subject_guid"])
@@ -1012,6 +1014,15 @@ def _apply_run(args, started: datetime) -> int:
             stopped = True
             break
         except Exception as exc:  # noqa: BLE001
+            if getattr(exc, "cap_exceeded", False) is True:
+                # The governed bridge's daily cap for this process. Every later change would get the same
+                # refusal (measured 2026-11-08: one refused request per change, three runs dead-lettered), so
+                # stop asking. A quota wait, not a broken route -- LQ-20261107-1010's 429 rule.
+                attempted_calls -= 1
+                cap_hit = getattr(exc, "code", None) or "COST_CAP_EXCEEDED"
+                print(f"  {ch['symbol']}: skipped_budget ok_rate_limited -- governed bridge daily cap "
+                      f"({cap_hit}); stopping this run", file=sys.stderr)
+                break
             failed_calls += 1
             print(f"  {ch['symbol']}: model call failed "
                   f"({type(exc).__name__}: {str(exc)[:90]})", file=sys.stderr)
@@ -1042,6 +1053,11 @@ def _apply_run(args, started: datetime) -> int:
         result["questions"] += len(questions)
 
     result["rows_produced"] = total_q if args.apply else None
+    if cap_hit:
+        result["outcome"] = "ok_rate_limited"
+        result["rate_limited"] = {"code": cap_hit, "process_id": BRIDGE_PROCESS_ID,
+                                  "changes_not_asked": len(curated) - attempted_calls
+                                  - result["skipped"]["no_dossier"]}
     if args.apply and args.route:
         conn, cur = _usable(conn, cur)
         result["routed"] = route(cur, MAX_ROUTED)
@@ -1065,6 +1081,13 @@ def _apply_run(args, started: datetime) -> int:
         _write_lane_receipt(ok=False, exit_code=1, produced_count=0, empty_reason=None,
                             error="no_dossier_evidence", started_at=started)
         return 1
+    # The bridge's daily cap (LQ-20261107-1104). Like LQ-20261107-1010's 429: no alert, no regression, exit 0,
+    # no dead letter. The receipt says why it stopped; what was written before the cap is counted. A call that
+    # failed for any OTHER reason before the cap still makes this a failed run, so a real fault is not hidden.
+    if cap_hit and failed_calls == 0:
+        _write_lane_receipt(ok=True, exit_code=0, produced_count=total_q, empty_reason="rate_limited",
+                            outcome_reason=f"ok_rate_limited: {cap_hit}", started_at=started)
+        return 0
     if all_failed:
         _write_lane_receipt(ok=False, exit_code=1, produced_count=total_q, empty_reason=None,
                             error="all_model_calls_failed", started_at=started)
