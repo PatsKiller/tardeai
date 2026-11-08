@@ -1,0 +1,129 @@
+{
+  "_fixture_note": "SYNTHETIC MarketOutlookRecord@v1 for tests and the dry-run proof. Index levels, sub-scores, probabilities and catalyst names are invented; no real account, holding or address appears here (public repo). The contract is FABLE-OUTLOOK-METHODOLOGY-LQ-946 section 4.6.",
+  "schema": "MarketOutlookRecord@v1",
+  "record_id": "outlook:2026-11-08:sunday:1",
+  "as_of": "2026-11-08T20:00:00-05:00",
+  "mode": "sunday",
+  "session_clock": "America/New_York",
+  "engine_commit": "0000000000000000000000000000000000000000",
+  "policy_version": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "score": -21.4,
+  "band": "DEFENSIVE",
+  "prior_band": "NEUTRAL",
+  "confidence": {
+    "value": 0.14,
+    "band": "LOW",
+    "coverage": 0.72,
+    "freshness": 0.85,
+    "agreement": 0.55,
+    "u_event": 0.85,
+    "hitrate": 0.5
+  },
+  "regime": {
+    "vix_band": "MID",
+    "vix_value": 24.9,
+    "vix_source": "fred:VIXCLS",
+    "mre_tier": "RED",
+    "mre_score": 59.6,
+    "mre_as_of": "2026-11-08T15:00:00Z",
+    "episode_id": "broad_selloff:market:2026-11-04"
+  },
+  "categories": [
+    {"key": "us_cash_indices", "weight_prior": 18, "weight_effective": 14.4, "subscore": -0.7, "coverage": 0.6, "state": "PARTIAL",
+     "indicators": [
+       {"key": "SPY_vs_sma50", "raw": -3.97, "normalized": -0.8, "as_of": "2026-11-06", "source": "finviz", "table": "ticker_snapshot_daily", "stale": false, "refused_reason": null},
+       {"key": "$SPX_level", "raw": null, "normalized": null, "as_of": null, "source": "schwab", "table": "market_quotes_extended", "stale": true, "refused_reason": "no cash-index rows yet (WU-1)"}
+     ]},
+    {"key": "futures_overnight", "weight_prior": 8, "weight_effective": 10, "subscore": null, "coverage": 0.0, "state": "UNKNOWN",
+     "indicators": [
+       {"key": "ES_overnight", "raw": null, "normalized": null, "as_of": "2026-11-06T09:15:00-05:00", "source": "schwab", "table": "market_quotes_extended", "stale": true, "refused_reason": "no Sunday prints before 18:00 ET"}
+     ]},
+    {"key": "volatility", "weight_prior": 12, "weight_effective": 15.6, "subscore": -0.5, "coverage": 0.6, "state": "PARTIAL",
+     "indicators": [
+       {"key": "VIXCLS", "raw": 24.9, "normalized": -0.56, "as_of": "2026-11-05", "source": "fred", "table": "fred_economic_series", "stale": false, "refused_reason": null},
+       {"key": "vix3m_vix_ratio", "raw": null, "normalized": null, "as_of": null, "source": "yahoo_finance", "table": "market_regime_indicators", "stale": false, "refused_reason": "banned source"},
+       {"key": "SPY_rv20", "raw": 27.0, "normalized": -0.5, "as_of": "2026-11-06", "source": "alpaca", "table": "market_ohlcv_bars", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "breadth", "weight_prior": 12, "weight_effective": 15.6, "subscore": -0.1, "coverage": 0.7, "state": "PARTIAL",
+     "indicators": [
+       {"key": "new_highs_lows", "raw": -156, "normalized": -0.13, "as_of": "2026-11-06", "source": "finviz", "table": "market_movers", "stale": false, "refused_reason": null},
+       {"key": "mre_breadth", "raw": "CALM", "normalized": 0.3, "as_of": "2026-11-08T15:00:00Z", "source": "mre", "table": "market_risk/latest.json", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "sector_rotation", "weight_prior": 10, "weight_effective": 7, "subscore": 0.2, "coverage": 1.0, "state": "COLLECTED",
+     "indicators": [
+       {"key": "sector_rs", "raw": "XLV leads, XLU lags", "normalized": 0.2, "as_of": "2026-11-06", "source": "alpaca", "table": "sector_rs_daily", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "global", "weight_prior": 7, "weight_effective": 7, "subscore": -0.2, "coverage": 0.5, "state": "PARTIAL",
+     "indicators": [
+       {"key": "EFA_ewj_fxi", "raw": -0.9, "normalized": -0.2, "as_of": "2026-11-06", "source": "alpaca", "table": "market_ohlcv_bars", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "rates_dollar", "weight_prior": 8, "weight_effective": 8, "subscore": 0.4, "coverage": 1.0, "state": "COLLECTED",
+     "indicators": [
+       {"key": "DGS10_20d_change_bp", "raw": -44, "normalized": 0.88, "as_of": "2026-11-05", "source": "fred", "table": "fred_economic_series", "stale": false, "refused_reason": null},
+       {"key": "T10Y2Y_steepening", "raw": 0.41, "normalized": -0.3, "as_of": "2026-11-06", "source": "fred", "table": "fred_economic_series", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "credit", "weight_prior": 7, "weight_effective": 9.1, "subscore": 0.3, "coverage": 1.0, "state": "COLLECTED",
+     "indicators": [
+       {"key": "BAMLH0A0HYM2", "raw": 3.12, "normalized": 0.3, "as_of": "2026-11-05", "source": "fred", "table": "fred_economic_series", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "commodities_crypto", "weight_prior": 4, "weight_effective": 4, "subscore": 0.0, "coverage": 0.75, "state": "PARTIAL",
+     "indicators": [
+       {"key": "CPER_GLD", "raw": 0.31, "normalized": 0.0, "as_of": "2026-11-06", "source": "alpaca", "table": "market_ohlcv_bars", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "macro_events", "weight_prior": 8, "weight_effective": 8, "subscore": -0.15, "coverage": 1.0, "state": "COLLECTED",
+     "indicators": [
+       {"key": "event_tilt", "raw": "CPI Tuesday HIGH", "normalized": -0.15, "as_of": "2026-11-08", "source": "fred_releases", "table": "macro_calendar", "stale": false, "refused_reason": null}
+     ]},
+    {"key": "positioning", "weight_prior": 6, "weight_effective": 6, "subscore": -0.6, "coverage": 0.6, "state": "PARTIAL",
+     "indicators": [
+       {"key": "QQQ_put_call", "raw": 3.62, "normalized": -0.6, "as_of": "2026-11-06", "source": "cboe", "table": "option_chain_snapshots", "stale": false, "refused_reason": null}
+     ]}
+  ],
+  "scenarios": {
+    "base": {"prob": 0.45, "spx_range": [5950, 6050], "ndx_range": [20800, 21400], "rut_range": [2280, 2360],
+             "triggers": ["CPI prints in line or softer", "credit spreads stay calm"]},
+    "bull": {"prob": 0.2, "spx_range": [6080, 6200], "ndx_range": [21500, 22200], "rut_range": [2360, 2440],
+             "triggers": ["breadth thrust above 90% up-volume", "VIX term structure returns to contango"]},
+    "bear": {"prob": 0.35, "spx_range": [5800, 5920], "ndx_range": [20100, 20800], "rut_range": [2180, 2280],
+             "triggers": ["CPI surprise > 0.2 ATR", "HY OAS above 4.00%"]}
+  },
+  "key_levels": {
+    "SPX": {"support": [5900, 5850, 5800], "resistance": [6050, 6100, 6150], "basis": "etf_derived"},
+    "NDX": {"support": [20500, 20300, 20100], "resistance": [21400, 21700, 22000], "basis": "etf_derived"},
+    "RUT": {"support": [2250, 2220, 2180], "resistance": [2380, 2420, 2450], "basis": "etf_derived"}
+  },
+  "catalysts": [
+    {"date_et": "2026-11-10", "time_et": "08:30", "event": "Synthetic CPI", "impact": "HIGH", "consensus": "0.3% m/m", "prior": "0.4% m/m", "held_flag_per_account_id": []},
+    {"date_et": "2026-11-12", "time_et": "08:30", "event": "Synthetic claims", "impact": "LOW", "consensus": "220k", "prior": "218k", "held_flag_per_account_id": []},
+    {"date_et": "2026-11-13", "time_et": "10:00", "event": "Synthetic sentiment", "impact": "LOW", "consensus": null, "prior": "54.0", "held_flag_per_account_id": []},
+    {"date_et": "2026-11-13", "time_et": "08:30", "event": "Synthetic PPI", "impact": "MED", "consensus": "0.2% m/m", "prior": "0.3% m/m", "held_flag_per_account_id": []}
+  ],
+  "what_would_change_view": [
+    {"trigger": "SPX closes below", "threshold": "5900", "status": "NOT"},
+    {"trigger": "VIX term structure inverts fully", "threshold": "VIX9D > VIX > VIX3M", "status": "NOT"},
+    {"trigger": "HY OAS widens above", "threshold": "4.00%", "status": "NOT"},
+    {"trigger": "CPI reaction exceeds", "threshold": "1.0 ATR", "status": "NOT"}
+  ],
+  "actions_template": {
+    "band": "DEFENSIVE",
+    "tranche_release": "none",
+    "reserve_floor": "5%",
+    "exposure_note": "protect, no new adds; trims per the protection playbook"
+  },
+  "prior_record_id": "outlook:2026-11-01:sunday:1",
+  "grading": {
+    "for_prior_record_id": "outlook:2026-11-01:sunday:1",
+    "realized": "SPX -1.8% on the week",
+    "scenario_hit": "base",
+    "brier": 0.31,
+    "level_hits": "support 1 held, resistance 1 broke"
+  },
+  "inputs_snapshot_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "delivery": {"email": null, "text": null, "telegram": null},
+  "overnight": {
+    "futures_gap_pct": null,
+    "asia": "not measured (no Sunday prints before 19:00 ET)",
+    "crypto": "+0.8%",
+    "headlines": ["Synthetic headline one", "Synthetic headline two"]
+  }
+}
