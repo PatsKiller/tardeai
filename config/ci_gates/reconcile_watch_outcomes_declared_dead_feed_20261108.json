@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reconcile_watch_outcomes_declared_dead_feed_20261108",
+  "files": [
+    "tests/test_reconcile_watch_outcomes_declared_dead_feed_20261108.py"
+  ],
+  "comment": [
+    "LQ-1182 (re-delivers LQ-909): the watch-outcomes reconciler types an operator-approved no-producer declaration (data_source_authority watch_discovery, class dead_feed, operator 2026-09-13) as a no_new_input empty at exit 0, and keeps every undeclared or unreadable-registry death a dependency_unavailable failure at exit 1."
+  ]
+}
