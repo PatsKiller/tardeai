@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "since_close_lane_registration_20261108",
+  "files": [
+    "tests/test_since_close_lane_registration_20261108.py"
+  ],
+  "anchor": "SINCE_CLOSE_LANE_REGISTRATION_20261108",
+  "comment": [
+    "ANCHOR: SINCE_CLOSE_LANE_REGISTRATION_20261108 — the since-close-snapshot n8n lane is registered: registry",
+    "row + freshness contract + allowlist entry + health contract agree, the cadence table fires exactly what",
+    "the row declares, and an emulated Mon 2026-11-09 05:30 ET fire in an isolated state root writes nothing dry."
+  ]
+}

@@ -5936,6 +5936,34 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/llm-paid-spend-watch_last.json"
+    },
+    {
+      "lane_id": "since-close-snapshot",
+      "command": [
+        "$PY",
+        "scripts/since_close_snapshot.py"
+      ],
+      "dry_run_arg": [],
+      "live_arg": null,
+      "lock": "/tmp/since_close_snapshot.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/portfolios/state/since_close_latest.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_STATE_DIR",
+        "TRADEAI_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: the producer reads the quote snapshot, the macro calendar, earnings and dividends from the state root and news from Postgres; the only credential names read are DB_* for its own READ ONLY session. No model, provider or broker credential.",
+      "env_evidence": "scripts/lib/cio_market_context_state.connect_trade_ai_readonly reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ (no dotenv; session set READ ONLY). scripts/since_close_snapshot.py reads TRADEAI_STATE_DIR for its default state dir; scripts/lib/macro_calendar.default_path reads TRADEAI_STATE_ROOT else the persistent-state resolver (TRADEAI_PERSISTENT_STATE_ROOT). TRADEAI_RUN_ID / TRADEAI_RUN_ATTEMPT / TRADEAI_RUN_MODE / TRADEAI_CODE_SHA are executor base names.",
+      "source": "LQ-20261107-1261 (WORK-QUEUE, cc-deepseek-6, 2026-11-08), registering cc-sonnet-3 LQ-20261107-1253 head 0d593b2bc. SHADOW ONLY: live_arg null and registry dispatch.mode dry_run, so the only argv the executor can run is the script's default mode, which is the dry run (it has no --dry-run flag: it prints a summary and 'DRY RUN: nothing written, no LLM call' and returns before the atomic replace). dry_run_arg is therefore the empty list, not null. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). The canary live argv is a later registry PR: [--apply, --llm, --state-dir, <state root>/data/portfolios/state], and it needs a registered governed process for the summary call first (see the registry row note)."
     }
   ],
   "blocked_reasons": {

@@ -27692,6 +27692,62 @@
         "priority": 4,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "since-close-snapshot",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/since_close_snapshot.py",
+        "cadence": "0 6,16 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 2.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-11-08",
+      "state_reason": "LQ-20261107-1261 (WORK-QUEUE, cc-deepseek-6, 2026-11-08): register the 'Since last close' home-card producer built by cc-sonnet-3 (LQ-20261107-1253, head 0d593b2bc). SHADOW: dispatch.mode dry_run and allowlist live_arg null, so a fire runs the script's default write-free dry run; no cron line exists and none is added (cron freeze 2026-10-09). Activation (canary, then cutover) is the operator's; a live fire that spends also needs the summary model call on a registered governed process, which it does not have today (row note).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/portfolios/state/since_close_latest.json",
+        "key": "generated_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/since_close_snapshot.py writes the snapshot atomically only after --apply (the dry run returns before the tmpfile is created) and writes no LaneRunReceipt@v1 today, so generated_at is the durable artifact (LQ-1253). The executor's RunReceipt@v2 in the coordination ledger carries the run state and the output_signal mtimes before/after."
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_since_close_card_20261108.py (window/label from the last closed session, held-vs-watchlist moves, news attach with a no_news flag, macro block and futures degradation, summary cache + daily cap + deterministic fallback, week ahead, feed, cio brief block) and tests/test_since_close_lane_registration_20261108.py (this row, the cadence list, the allowlist entry, the freshness contract, and a hermetic dry run as of 2026-11-09T05:30 ET that writes nothing). Emulated dispatcher fire in an isolated state root: exit 0, no file, no model call (DONE-LQ-20261107-1261-cc-deepseek-6.md).",
+      "review_by": "2026-11-22",
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "Cadence table — one row per expression in dispatch.cron, and the cadence is data so an operator amendment lands as a diff, not prose. OPERATOR CADENCE AMENDMENT 2026-11-08 18:05 ET (supersedes the 17:33 'hourly 17:00-04:00 plus 05:30' table), trading days in America/New_York: 0 6,16 * * 1-5 = 06:00 and 16:00 fixed full rebuilds; 30 8 * * 1-5 = 08:30 fixed; 15 9,16 * * 1-5 = 09:15 and 16:15 fixed; 30,45 9 * * 1-5 = 09:30 and 09:45 (09:45 is a fixed rebuild, 09:30 the first 15-min check); */15 10-15 * * 1-5 = the 15-min --if-changed window 10:00-15:45, which also lands 10:30, 12:00, 14:00 and 15:30, the operator's fixed slots, so each of those is one fire and not two; 0 18-23,0-4 * * 1-5 = hourly 18:00-04:59; 0 */2 * * 0,6 = weekends and holidays every 2 h. LQ-20261107-1260 adds --if-changed to the script: this row fixes WHEN the dispatcher fires, and one fire carries one argv, so a fixed slot and a check slot cannot take different flags from the registry (the script decides rebuild-vs-noop). A market holiday is a weekday and so follows the weekday rows. Inputs: ticker_snapshot_latest.json, news_articles through a READ ONLY session, data/runtime/macro_calendar.json, earnings_dates.json, ticker_dividends, optional futures_overseas_latest.json and cio_brief_latest.json (LQ-1257). Exit 0 = snapshot built (written only under --apply); 2 = no quote snapshot, nothing built. OPEN before any live fire that spends: --llm calls lib.deepseek_client.chat(policy FAST) directly with source_process since_close_card, which is not a process in config/llm_process_registry.json, so the allowlist entry carries no llm_route and live_arg stays null; and the script's default state dir is checkout-relative, so the live argv must pass --state-dir <state root>/data/portfolios/state.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "0 6,16 * * 1-5",
+          "30 8 * * 1-5",
+          "15 9,16 * * 1-5",
+          "30,45 9 * * 1-5",
+          "*/15 10-15 * * 1-5",
+          "0 18-23,0-4 * * 1-5",
+          "0 */2 * * 0,6"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
     }
   ],
   "freshness_contracts": [
@@ -28141,6 +28197,23 @@
       "replaces": [
         "tick:system-freshness-monitor"
       ]
+    },
+    {
+      "key": "pfm.since_close_snapshot",
+      "lane_id": "since-close-snapshot",
+      "signal": {
+        "kind": "json_key",
+        "path": "data/portfolios/state/since_close_latest.json",
+        "key": "generated_at"
+      },
+      "max_age_hours": 0.75,
+      "basis": "lane_due",
+      "severity": "P2",
+      "source": "OPERATOR CADENCE AMENDMENT 2026-11-08 18:05 ET ('a freshness contract of 45 min in market hours and 2 h 30 min on weekends'), superseding the 17:33 queue text ('Freshness 3 h overnight'): the artifact is written by scripts/since_close_snapshot.py and read by GET /api/v2/home/since-close",
+      "replaces": [
+        "pipeline-freshness-monitor"
+      ],
+      "note": "Nothing is moved and nothing is retuned: the lane was born with the card on 2026-11-08 and no prior monitor check covered it, so the pipeline freshness monitor is named only as the owner of the check, not as a source that lost one. The operator's two bounds are one number here because the contract carries one max_age_hours: basis lane_due allows max(0.75 h, hours since the last DUE fire + min(0.75 h, 1 h)), so in market hours the lane fires every 15 min and the operative bound is about 45 min, and on a weekend the 2 h cadence plus the 45 min grace gives about 2 h 45 min against the operator's 2 h 30 min — the one place a single-number contract cannot carry both bounds exactly, written down here rather than approximated twice."
     }
   ],
   "pending_changes": {

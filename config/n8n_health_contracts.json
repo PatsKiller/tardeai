@@ -42076,6 +42076,194 @@
         "reviewed_by": "cc-opus-1, the author, against scripts/market_outlook_lane.py, scripts/market_outlook_brief.py and config/n8n_run_allowlist.json, modelled on the market-event-brief contract. This is an author review, not a lead review: claude-lead reviews before folding, and the operator REVIEW pass for the lane is still owed.",
         "reviewed_on": "2026-11-08"
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "since-close-snapshot",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "lq1261_registration_20261108",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Build one 'Since last close' snapshot (moves, news, macro, summary, week ahead, CIO brief block) for the Home card from the last regular-session close to now, so the home surface reads one file instead of calling a model on the request thread.",
+        "business_function": "cio",
+        "source": "scripts/since_close_snapshot.py and scripts/lib/since_close_card.py module docstrings"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay (docker host gateway, port 18092) -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md 23.3"
+        },
+        {
+          "name": "$PY scripts/since_close_snapshot.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/since_close_snapshot.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/since_close_snapshot.lock.dryrun)"
+        },
+        {
+          "name": "data/portfolios/state/since_close_latest.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "allowlist output_signal and registry output_signal (written under --apply only)"
+        },
+        {
+          "name": "data/portfolios/state/ticker_snapshot_latest.json, data/portfolios/state/earnings_dates.json, data/runtime/macro_calendar.json, data/portfolios/state/cio_brief_latest.json, data/market/futures_overseas_latest.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/since_close_snapshot.py main()"
+        },
+        {
+          "name": "Postgres news_articles, ticker_dividends (READ ONLY session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/since_close_card.fetch_articles / fetch_ex_divs"
+        },
+        {
+          "name": "GET /api/v2/home/since-close",
+          "kind": "service",
+          "direction": "read",
+          "source": "scripts/api_v2.py (reads the snapshot file only; no request-thread model call)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/portfolios/state/since_close_latest.json and no model call is made"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "snapshot_built",
+          "text": "the summary line names the window label and the card parts; the run does not exit 2 (no quote snapshot)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 4 h (2x the row's expected_cadence_hours 2.0) once live"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "the quote snapshot is missing (exit 2) or the news query or dividend read failed; the card degrades to visible pending/no_news states rather than failing the run"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 6 h (3x the row's expected_cadence_hours 2.0) once the lane runs live"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run created or changed data/portfolios/state/since_close_latest.json or made a model call"
+        }
+      ],
+      "baseline": {
+        "timeout_s": 300,
+        "class": "report",
+        "freshness_degraded_after_h": 4.0,
+        "freshness_failed_after_h": 6.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold) of expected_cadence_hours 2.0 (operator amendment 2026-11-08 18:05 ET: 15-min fires in market hours, hourly overnight, every 2 h at weekends, so the longest legitimate gap is the 2 h weekend/overnight one) — the operative tight bound is the registry freshness contract pfm.since_close_snapshot (0.75 h, basis lane_due, P2), which carries the operator's 45 min market-hours value",
+        "computed_on": "2026-11-08",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been dispatched (no cron line, no timer, no prior run); class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "registry value_class Operationally Important; a missing overnight Home card is visible but not an incident",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row severity, else the fan-in priority (RUN_* = P2). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md 7)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json yet: regenerate with scripts/build_remediation_catalogue.py --write after this allowlist entry merges (step 7 of the onboarding checklist)"
+      },
+      "evidence": {
+        "receipt": "data/portfolios/state/since_close_latest.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='since-close-snapshot' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.generated_at, .summary.source, .summary.reason' $STATE_ROOT/data/portfolios/state/since_close_latest.json",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:since-close-snapshot' ORDER BY created_at DESC LIMIT 10"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger and the snapshot",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "expected_output derived 2026-11-08 from scripts/since_close_snapshot.py: the dry run builds and prints a snapshot; --apply writes it. There is no produced_count receipt field yet (LQ-1253), so the rule reads the snapshot's generated_at"
+      },
+      "review_by": "2026-11-22",
+      "review": {
+        "prepared_by": "agent draft (cc-deepseek-6, LQ-20261107-1261, 2026-11-08)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null,
+        "note": "the owner (cio) marks this REVIEWED before any canary PR: check_n8n_health_contracts refuses a DRAFT contract for a lane that was not grandfathered on 2026-10-10, so that flip is the one remaining edit"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "since_close_latest.json snapshots written",
+        "rule": "empty_allowed",
+        "produced_field": null,
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "file",
+            "ref": "data/portfolios/state/since_close_latest.json generated_at (written under --apply only)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {
