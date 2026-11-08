@@ -22,9 +22,11 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 try:
     from scripts.lib import market_event_plan as plan
+    from scripts.lib import market_brief_inputs as brief_inputs
     from scripts.lib import wash_sale
 except ImportError:  # scripts/ on sys.path (the server)
     from lib import market_event_plan as plan  # type: ignore
+    from lib import market_brief_inputs as brief_inputs  # type: ignore
     from lib import wash_sale  # type: ignore
 
 SCHEMA = "MarketEvent@v1"
@@ -100,6 +102,11 @@ def read_candidates(db_query: DbQuery, episode_id: Any) -> tuple[list[dict[str, 
     if rows is None:
         return [], "market_event_candidates unreadable"
     return rows, None
+
+
+def _market_data(db_query: DbQuery, now: datetime) -> dict[str, Any]:
+    """The market-data block for the brief (LQ-20261107-939 part 4). A failed section is reported, never zeroed."""
+    return brief_inputs.gather(db_query, feed="schwab", now=now)
 
 
 BAR_SOURCES = ("finviz", "alpaca")
@@ -219,7 +226,8 @@ def accounts_from_holdings(holdings_rows: Sequence[Mapping[str, Any]],
 def build_active(*, db_query: DbQuery, snapshot: Optional[Mapping[str, Any]],
                  holdings_rows: Sequence[Mapping[str, Any]], label: Callable[[Any], str],
                  facts: Callable[[Mapping[str, Any]], Mapping[str, Any]], taxable: Callable[[Any], bool],
-                 policy: Optional[Mapping[str, Any]] = None, now: Optional[datetime] = None) -> dict[str, Any]:
+                 policy: Optional[Mapping[str, Any]] = None, now: Optional[datetime] = None,
+                 include_market_data: bool = False) -> dict[str, Any]:
     now = now or _now()
     today = wash_sale.as_date(now) or now.date()
     pol = dict(policy) if policy is not None else plan.load_policy()
@@ -267,6 +275,10 @@ def build_active(*, db_query: DbQuery, snapshot: Optional[Mapping[str, Any]],
         "candidates_total": len(candidates),
         "accounts": doc["accounts"],
         "policy": doc["policy"],
+        # Market data the weekly outlook needs and this payload never carried (LQ-20261107-939 part 4): off-hours
+        # futures / cash-index levels, movers, sector RS + momentum, international ETFs. Read only on request -- the
+        # brief asks for it (``?market_data=1``); the CC's poll of this route does not pay for eight extra queries.
+        **({"market_data": _market_data(db_query, now)} if include_market_data else {}),
         "computed_at": now.isoformat(),
         "inputs_as_of": {"market_risk": (snapshot or {}).get("as_of"), "daily_bars": last_bar,
                          "candidates": cand_stamp},
