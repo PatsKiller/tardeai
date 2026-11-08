@@ -96,6 +96,14 @@ def _norm_iso(value: Any) -> str | None:
     return _iso(_parse(value))
 
 
+def _mtime_iso(path: Path) -> str | None:
+    """A symlink's own mtime (not its target's) as aware UTC ISO; the activation clock of a CURRENT flip."""
+    try:
+        return _iso(datetime.fromtimestamp(path.lstat().st_mtime, tz=timezone.utc))
+    except OSError:
+        return None
+
+
 def stage_index(stage: str | None) -> int:
     return STAGES.index(stage) if stage in STAGES else -1
 
@@ -321,13 +329,18 @@ class ReleaseReader:
         if ident.get("availability") != "AVAILABLE":
             return {"sha": None, "reason": ident.get("reason") or "current_unavailable"}
         since = None
+        since_basis = None
         try:
             rec = json.loads((self.deploy_state_dir / "deploy_receipt.json").read_text(encoding="utf-8"))
             if rec.get("deployed_sha") == ident.get("sha"):
-                since = rec.get("at")
+                since, since_basis = _norm_iso(rec.get("at")), "deploy_receipt.at"
         except (OSError, ValueError):
             pass
-        return {"sha": ident.get("sha"), "since": _norm_iso(since), "release_dir": ident.get("release_dir")}
+        if since is None:
+            # An activation that flipped CURRENT without writing a receipt still has its own clock: the symlink's.
+            since, since_basis = _mtime_iso(self.releases_base / "CURRENT"), "CURRENT symlink mtime"
+        return {"sha": ident.get("sha"), "since": since, "since_basis": since_basis if since else None,
+                "release_dir": ident.get("release_dir")}
 
     def _receipt_sha(self, target: str | None) -> str | None:
         if not target:

@@ -533,8 +533,13 @@ def build(prs: list[Mapping], claims: list[Mapping], events: list[Mapping], appr
             history.append({"kind": "released", "as_of": release_at, "source": "release_pins",
                             "source_ref": (released or {}).get("basis"), "sha": (released or {}).get("sha")})
         if live:
-            history.append({"kind": "verified_live", "as_of": verified_at, "source": "deploy_receipt",
-                            "source_ref": "deploy_receipt.json", "sha": serving.get("sha")})
+            # Name the proof that actually ran: an activation record is not a deploy receipt.
+            basis = str(health.get("basis") or "deploy_receipt.json")
+            activation = basis.startswith("ACTIVE_RELEASE")
+            history.append({"kind": "verified_live", "as_of": verified_at,
+                            "source": "served_activation" if activation else "deploy_receipt",
+                            "source_ref": basis if activation else "deploy_receipt.json",
+                            "sha": serving.get("sha")})
         history.sort(key=lambda row: (_sort_time(row.get("as_of")), str(row.get("source_ref") or "")))
         row_gaps = []
         if len(history) > MAX_HISTORY:

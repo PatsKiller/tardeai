@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "work_pipeline_activation_health_20261108",
+  "files": [
+    "tests/test_work_pipeline_activation_health_20261108.py"
+  ],
+  "anchor": "WORK_PIPELINE_ACTIVATION_HEALTH_20261108",
+  "comment": [
+    "ANCHOR: WORK_PIPELINE_ACTIVATION_HEALTH_20261108 — LQ-20261107-1262: a live-integration activation flips CURRENT without writing deploy_receipt.json, so the receipt names an older build and the work pipeline's verified stage never advances. The served build is bound to the host's own activation record when all four agree: the release's BUILD_SHA/GIT_SHA/SOURCE_COMMIT, CURRENT still resolving to it, and ACTIVE_RELEASE + EXPECTED_RELEASE both naming it; CURRENT's lstat mtime is the activation clock and the evidence/timeline say served_activation, never a deploy health check. A receipt naming the served build stays authoritative (ok False stays red); a receipt for another build neither proves nor paints the served build; a flip between read and bind fails closed. Hermetic: temp release bases and temp state roots only."
+  ]
+}

@@ -607,6 +607,63 @@ def release_health(deploy_state_dir: Path | None = None) -> dict[str, Any]:
     }
 
 
+ACTIVATION_BASIS = "ACTIVE_RELEASE + CURRENT symlink mtime"
+
+
+def activation_health(serving: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The host's own activation record for the served build, for activations that wrote no deploy receipt.
+
+    ``activate_live`` flips ``CURRENT`` without writing ``deploy_receipt.json``, so the receipt keeps naming
+    whichever build last used the promote path. The served identity is only believed when the release directory's
+    own pins agree on its SHA, ``CURRENT`` still resolves to it and both release pins name it — the agreement the
+    releases view already reports as ``pins_agree``. The activation clock is ``CURRENT``'s own lstat mtime;
+    nothing here claims a health check ran. Never raises.
+    """
+    sha = str((serving or {}).get("sha") or "")
+    unavailable = {"sha": sha, "ok": None, "at": None, "basis": "served activation unavailable"}
+    release_dir = (serving or {}).get("release_dir")
+    if not isinstance(release_dir, str) or not release_dir:
+        return unavailable
+    try:
+        resolved = Path(release_dir).resolve(strict=True)
+        base = resolved.parent
+        pins_named = {name: (base / name).read_text(encoding="utf-8").strip()
+                      for name in ("ACTIVE_RELEASE", "EXPECTED_RELEASE")}
+        stat = (base / "CURRENT").lstat()
+        pins = {(resolved / name).read_text(encoding="utf-8").strip() for name in
+                ("BUILD_SHA", "GIT_SHA", "SOURCE_COMMIT")}
+    except (OSError, ValueError):
+        return unavailable
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        return {**unavailable, "ok": False, "basis": "served identity has no exact sha"}
+    if pins != {sha}:
+        return {**unavailable, "ok": False, "basis": "served release pins disagree with the served sha"}
+    if (base / "CURRENT").resolve() != resolved:
+        return {**unavailable, "ok": False, "basis": "CURRENT no longer names the served release"}
+    if any(not named or Path(named).resolve() != resolved for named in pins_named.values()):
+        return {**unavailable, "ok": False, "basis": "ACTIVE_RELEASE / EXPECTED_RELEASE do not both name CURRENT"}
+    at = _source_time(datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc))
+    return {"sha": sha, "ok": at is not None, "health": "activated", "at": at, "basis": ACTIVATION_BASIS}
+
+
+def bind_served_health(health: Mapping[str, Any] | None, serving: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Health for the *served* build: the deploy receipt when it names that build, else its activation record.
+
+    A receipt that names another build is evidence about that build, not this one, so it neither proves nor paints
+    the served build's merges; the served identity is bound to the host's activation record instead and the stale
+    receipt travels along as ``receipt_sha``/``receipt_ok`` for the evidence sentence. A receipt naming the served
+    build stays authoritative in both directions — including ``ok False``, which must keep the merge red.
+    """
+    rec = dict(health or {})
+    served = str((serving or {}).get("sha") or "")
+    if served and rec.get("sha") == served:
+        return rec
+    act = activation_health(serving)
+    if act.get("ok") is not True:
+        return rec
+    return {**act, "receipt_sha": rec.get("sha"), "receipt_ok": rec.get("ok"), "receipt_basis": rec.get("basis")}
+
+
 # --------------------------------------------------------------------------------------------- worklog tail
 
 
@@ -796,7 +853,16 @@ def derive(
         stage, rag, label = "verified", "green", "live"
         times["verified"] = (health or {}).get("at")
         ev["released"] = f"{released.get('basis') or 'release receipt'} ({str(released.get('sha') or '')[:9]})"
-        ev["verified"] = f"served {str((health or {}).get('sha') or '')[:9]} contains the merge; deploy health ok"
+        if str((health or {}).get("basis") or "") == ACTIVATION_BASIS:
+            # Say what proved it: this is the host's activation record, not a deploy health check.
+            other = str((health or {}).get("receipt_sha") or "")[:9]
+            note = f"the last deploy receipt names {other}" if other else "no deploy receipt exists"
+            ev["verified"] = (
+                f"served {str((health or {}).get('sha') or '')[:9]} contains the merge; activated on this host "
+                f"({(health or {}).get('basis')}, {(health or {}).get('at')}); {note}"
+            )
+        else:
+            ev["verified"] = f"served {str((health or {}).get('sha') or '')[:9]} contains the merge; deploy health ok"
         next_owner, next_text = "agent", "Nothing: live and verified"
     elif released:
         stage = "released"
@@ -1575,7 +1641,8 @@ class WorkPipeline:
         now = self.now()
         src = self.sources()
         census, meta = self.census.snapshot()
-        health = {**self.health(), "served_sha": ((census or {}).get("serving") or {}).get("sha")}
+        serving = (census or {}).get("serving") or {}
+        health = {**bind_served_health(self.health(), serving), "served_sha": serving.get("sha")}
         now = self.now()  # acquisition may finish after source building began
         state_path = self.source_state_path
         readers = read_coordination_sources(coord_dir=self.coord_dir, last_success=_load_source_state(state_path),

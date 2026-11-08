@@ -584,8 +584,8 @@ def build(ledger_path: Path, claims_dir: Path, prs: Iterable[Mapping[str, Any]],
             from scripts.lib.agent_claim_lifecycle import ReleaseReader
             serving = ReleaseReader().serving()
         if health is None:
-            from scripts.lib.work_pipeline import release_health
-            health = release_health()
+            from scripts.lib.work_pipeline import bind_served_health, release_health
+            health = bind_served_health(release_health(), serving)
         canonical = shared_sources.load(
             state_root, prs, canonical_claims, now, serving=serving or {}, health=health or {},
             source_gaps={key: gap for key, gap in (("claims", claims_gap), ("coordinator_ledger", ledger_gap)) if gap},
