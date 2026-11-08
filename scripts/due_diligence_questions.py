@@ -27,26 +27,28 @@ The narrative and the questions come from a single call, not two. They are the s
 act of reading; splitting them doubles the spend and lets the question drift from the
 description it is supposed to follow from.
 
-CURATION LANE ORDER (operator-set 2026-09-06)
----------------------------------------------
+CURATION LANE ORDER (operator directive 2026-11-07 21:08 ET, LQ-20261107-538)
+-----------------------------------------------------------------------------
 
-    1. deepseek-flash   paid, ~$0.000133/call, governed by the bridge caps
-    2. free OAuth          grok / chatgpt
-    3. deepseek-flash     paid, stronger, still under the same caps
+    1. free OAuth          chatgpt / grok (OAUTH_ORDER)
+    2. deepseek-flash      paid, governed by the bridge caps
+    3. CURATION_MODEL_PRO  paid, still under the same caps
     4. ASK THE OPERATOR    hard STOP before any further paid API
 
-This inverts the house default (free first) on purpose. Curation is a structured task
-— read a bounded dossier, emit strict JSON whose citations this code parses and
-enforces. Consistency matters more than being free, and flash answers the same way
-every time for a fraction of a cent. The OAuth lanes are free but rate-limited and
-variable: fine for prose, poor for a parsed contract. They remain step 2, so nothing
-is lost when flash is capped or unavailable.
+Free is first. The operator's words: "critical problem. Make sure free is first."
+This supersedes the flash-first order the operator set on 2026-09-06. A paid lane
+runs only after both free lanes have failed for this one request.
+
+The free lanes are slower and less complete curators (see the bake-off above
+OAUTH_ORDER), and their output is held to the same contract: the citations this code
+parses and enforces in ground(). A weak free answer loses ungrounded items; it does
+not reach the reader.
 
 Step 4 is a hard STOP, not a preference, and a failed notification is never treated
 as permission to spend.
 
-This inversion applies to CURATION ONLY. The research that follows goes out through
-the normal research lanes and the free web providers; nothing here changes that.
+On the governed-bridge (n8n) path the order lives in config/llm_routing_policy.json:
+grok, then chatgpt, then deepseek. A test pins it.
 
 GROUNDING IS ENFORCED, NOT REQUESTED
 ------------------------------------
@@ -401,9 +403,8 @@ RULES:
 - At most 4 narrative sentences and 4 questions."""
 
 
-#: Curation model. Cheap, and — more importantly — consistent: this output is parsed
-#: and its citations are enforced, so a lane that answers the same way every time is
-#: worth $0.000133 a call.
+#: Curation model: the first PAID step (step 2), reached only after both free OAuth
+#: lanes have failed for this request (operator directive 2026-11-07, LQ-20261107-538).
 CURATION_MODEL = os.getenv("DDQ_CURATION_MODEL", "deepseek-flash")
 
 #: Research lanes, RANKED BY MEASURED PERFORMANCE — never one hardcoded default.
@@ -466,8 +467,8 @@ def rank_research_lanes(cur) -> list[tuple[str, float, float]]:
     return ranked
 
 
-#: Step 3. Stronger and dearer than flash; still inside the bridge's four caps, so it
-#: cannot run away. Reached only when flash AND both free lanes have failed.
+#: Step 3. Still inside the bridge's four caps, so it cannot run away. Reached only
+#: when both free lanes AND flash have failed.
 CURATION_MODEL_PRO = os.getenv("DDQ_CURATION_MODEL_PRO", "deepseek-flash")
 
 
@@ -524,8 +525,9 @@ def _curate_via_deepseek(prompt: str, model: str) -> dict | None:
 #:     chatgpt-oauth    19.1       1           4          15
 #:     grok-oauth       28.3       3           2           8
 #:
-#: DeepSeek is 3-5x faster AND more complete than either free lane, which is why the
-#: operator's flash-first order is the right one. Between the two free lanes, grok is
+#: DeepSeek is 3-5x faster AND more complete than either free lane. The operator's
+#: directive of 2026-11-07 puts free first anyway (LQ-20261107-538); flash is the
+#: first paid step after both free lanes fail. Between the two free lanes, grok is
 #: the weakest curator on every axis that matters here — slowest, half the citations,
 #: half the questions — so chatgpt is tried first.
 OAUTH_ORDER = tuple(x.strip() for x in
@@ -533,7 +535,7 @@ OAUTH_ORDER = tuple(x.strip() for x in
 
 
 def _curate_via_oauth(prompt: str) -> dict | None:
-    """Step 2: the free lanes, best first. Never reaches a paid lane or the operator
+    """Step 1: the free lanes, best first. Never reaches a paid lane or the operator
     ask — escalation past OAuth is this module's decision, not llm_fallback's."""
     from hermes_external_researcher import LANE_CFG, call_external
 
@@ -567,10 +569,10 @@ def _curate_via_bridge(prompt: str) -> dict:
 
 
 def ask_model(change: dict, items: list[dict]) -> dict:
-    """One call, two outputs. Flash first, OAuth as escalation, then STOP.
+    """One call, two outputs. Free OAuth first, then flash, then pro, then STOP.
 
-    Inverted from the house default on purpose — see the module docstring. On the governed-bridge (n8n) path it is
-    ONE bridge request instead (see GOVERNED BRIDGE above).
+    Free first by operator directive (2026-11-07, LQ-20261107-538); see the module docstring. On the governed-bridge
+    (n8n) path it is ONE bridge request instead, routed grok, chatgpt, deepseek (see GOVERNED BRIDGE above).
     """
     ev = "\n".join(
         f'  {i["id"]}  ({i["date"]})'
@@ -588,10 +590,11 @@ def ask_model(change: dict, items: list[dict]) -> dict:
         if text.startswith("```"):
             text = text.split("```", 2)[1].lstrip("json").strip()
         return {"parsed": json.loads(text), "lane": res["lane"], "model": res["model"]}
-    # 1 flash -> 2 free OAuth -> 3 deepseek pro -> 4 ASK. Each step is tried once;
-    # a lane that refuses (cap, circuit breaker, rate limit) is skipped, not retried.
-    res = (_curate_via_deepseek(prompt, CURATION_MODEL)
-           or _curate_via_oauth(prompt)
+    # 1 free OAuth -> 2 flash -> 3 pro -> 4 ASK. Each step is tried once; a lane that
+    # refuses (cap, circuit breaker, rate limit) is skipped, not retried. No paid call
+    # is made while a free lane can still answer.
+    res = (_curate_via_oauth(prompt)
+           or _curate_via_deepseek(prompt, CURATION_MODEL)
            or _curate_via_deepseek(prompt, CURATION_MODEL_PRO))
     if res is None:
         # Step 4. run_with_escalation notifies and raises EscalationStopped, which is
@@ -601,7 +604,7 @@ def ask_model(change: dict, items: list[dict]) -> dict:
 
         res = run_with_escalation(
             prompt, purpose=f"due-diligence curation for {change['symbol']} "
-                            f"(flash, OAuth and pro all unavailable)")
+                            f"(OAuth, flash and pro all unavailable)")
     text = (res.get("text") or "").strip()
     if text.startswith("```"):
         text = text.split("```", 2)[1].lstrip("json").strip()

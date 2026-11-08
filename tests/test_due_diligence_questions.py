@@ -64,31 +64,29 @@ ITEMS = [{"id": "news:1", "date": "2026-09-04", "text": "earnings beat"},
 # ── lane policy ─────────────────────────────────────────────────────────────
 
 def test_the_curation_chain_is_in_the_operator_order(mod):
-    """flash -> free OAuth -> deepseek pro -> ASK. Inverted from the house default
-    (free first) on purpose: curation emits a parsed contract, so consistency beats
-    free, and the OAuth lanes stay as the escalation rather than the entry point."""
+    """free OAuth -> flash -> pro -> ASK. Free first by operator directive 2026-11-07
+    (LQ-20261107-538), superseding the 2026-09-06 flash-first order. The behaviour is
+    pinned by calls in tests/test_ddq_free_first_lq538_20261107.py; this pins the text."""
     assert mod.CURATION_MODEL.startswith("deepseek")
     assert mod.CURATION_MODEL_PRO == "deepseek-flash"  # Pro tier retired 2026-09-14 → V4.1 Flash
     src = SCRIPT.read_text(encoding="utf-8")
-    chain = src.split("res = (_curate_via_deepseek(prompt, CURATION_MODEL)", 1)[1]
+    chain = src.split("res = (_curate_via_oauth(prompt)", 1)[1]
     chain = chain.split("if res is None:", 1)[0]
-    assert "_curate_via_oauth(prompt)" in chain
-    assert "CURATION_MODEL_PRO" in chain
-    oauth_at = chain.index("_curate_via_oauth")
+    flash_at = chain.index("_curate_via_deepseek(prompt, CURATION_MODEL)")
     pro_at = chain.index("CURATION_MODEL_PRO")
-    assert oauth_at < pro_at, "pro must be tried AFTER the free lanes, not before"
+    assert flash_at < pro_at, "flash, then pro: both only after the free lanes"
 
 
 def test_ask_is_still_the_stop_after_the_whole_chain(mod):
-    """The inversion must not remove the hard stop."""
+    """Free first must not remove the hard stop."""
     src = SCRIPT.read_text(encoding="utf-8")
     after = src.split("or _curate_via_deepseek(prompt, CURATION_MODEL_PRO))", 1)[1]
     assert "run_with_escalation(" in after.split("text =", 1)[0]
 
 
 def test_oauth_is_the_escalation_and_ask_is_still_the_stop(mod):
-    """The inversion must not remove the hard stop. run_with_escalation ends in
-    notify-and-STOP, so keeping it as step 2 preserves it."""
+    """Free first must not remove the hard stop. run_with_escalation ends in
+    notify-and-STOP, so keeping it as step 4 preserves it."""
     src = SCRIPT.read_text(encoding="utf-8")
     assert "run_with_escalation(" in src
     assert "EscalationStopped" in src
