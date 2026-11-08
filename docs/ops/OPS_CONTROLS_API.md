@@ -121,7 +121,9 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
           "live_lanes": ["…"],
           "rows": [{"lane_id": "…", "stage": "shadow", "mode": "dry_run", "on_live_list": false, "workflow": "…",
                     "registry_state": "ACTIVE", "scheduler_kind": "cron" | "n8n", "dispatch_class": "report",
-                    // additive 2026-10-22 (n8n outcomes; scripts/lib/ops_controls_n8n_outcomes.py), cached 60 s:
+                    // additive 2026-10-22 (n8n outcomes; scripts/lib/ops_controls_n8n_outcomes.py). Additive
+                    // 2026-11-08: read in the background (see "Two sections are served from a background cache"
+                    // below); `cache` says how old it is, and `outcome`/`readiness` are absent until it lands.
                     "outcome": {"effective_mode": "off" | "dry_run" | "live" | "unknown",
                                 "health": "OK" | "FAILING" | "STALE" | "NEVER_RAN" | "OFF" | "UNKNOWN",
                                 "health_reason": "…" | null,
@@ -140,6 +142,9 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
           // additive 2026-10-22:
           "outcomes_state": "OK" | "UNAVAILABLE", "outcomes_reason": null, "outcomes_as_of": "…",
           "ledger_path": "…/n8n_coordination_ledger.sqlite", "crontab_read": true, "cache_ttl_s": 60,
+          // additive 2026-11-08: the age of the read this section was rendered from
+          "cache": {"state": "OK" | "STALE" | "WARMING" | "FAILED", "source": "n8n-1", "as_of": "…" | null,
+                    "age_s": 4 | null, "ttl_s": 60, "refreshing": false, "refresh_error": null},
           "summary": {"live_healthy": 62, "live_failing": 1, "rehearsing": 47, "ready_to_promote": 32,
                       "never_ran": 4, "off": 8, "cut_over": 13}},
   "settings": {"state": "OK" | "NOT_MIGRATED" | "UNAVAILABLE", "reason": null,
@@ -148,7 +153,10 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
                          "choices": null, "wired": false, "consumer": "…", "updated_at": "…", "updated_by": "…"}],
                "history": [{"key": "…", "old_value": 0.4, "new_value": 0.43, "actor": "…", "at": "…", "request_id": "…"}]},
   "grants": {"state": "OK" | "UNAVAILABLE", "reason": null, "tiers": ["db-write", "…"],
-             "active": [{"tier": "release-write", "uses": "3", "minutes_left": 230, "grant_id8": "4af07346", "reason": "…"}]},
+             "active": [{"tier": "release-write", "uses": "3", "minutes_left": 230, "grant_id8": "4af07346", "reason": "…"}],
+             // additive 2026-11-08: the age of the guard snapshot this list was rendered from
+             "cache": {"state": "OK" | "STALE" | "WARMING" | "FAILED", "source": "grants-1", "as_of": "…" | null,
+                       "age_s": 4 | null, "ttl_s": 60, "refreshing": false, "refresh_error": null}},
   "data_approvals": {"state": "OK" | "UNAVAILABLE", "schema": "DataDomainReadiness@v1",
                      "scan": {"state": "DONE" | "RUNNING" | "FAILED", "as_of": "…", "age_s": 12, "duration_s": 24.2,
                               "refreshing": false, "error": null, "refresh_error": null},
@@ -192,6 +200,26 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
 
 Every section whose `state` is not `OK` carries a non-empty `reason` (2026-10-22; a store that is not migrated names the
 missing tables and the migration to apply). `store.reason` is that sentence too.
+
+**Two sections are served from a background cache (2026-11-08).** `n8n` and `grants` are the only sub-reads that cost
+more than a fraction of a second: `bin/guard show` re-reads the grant ledger once per tier per field
+(`grant_expires`/`grant_left`/`grant_reason` in `.cursor/hooks/guard-lib.sh`), i.e. ~68 `python3` starts to describe
+22 tiers, 6.3–7.3 s measured; and the n8n outcomes fan-out runs a bounded indexed query set per lane over the ~200 MB
+coordination ledger (2.1 s warm, 9.4 s cold). Neither decides anything: this route is a GET, and a grant is enforced
+inside the guarded tool itself at the moment of use. So each answers from a single-flight background read — a request
+never waits for either, and one refresh starts in the background when the value is older than 60 s or, for `grants`,
+the moment the guard ledger's `(mtime, size)` changes (every grant, revocation and consumed use rewrites it). `cache`
+carries the age:
+
+| `cache.state` | Meaning |
+|---|---|
+| `OK` | read within the TTL, and the source has not changed since |
+| `STALE` | the value is older than the TTL and a refresh is running — render it, and say it is refreshing |
+| `WARMING` | nothing read yet since the server started, or the source changed: the section is `UNAVAILABLE` with "being read" as its reason (`n8n`: `outcomes_state` `UNAVAILABLE`, every row `health: UNKNOWN` with that reason) |
+| `FAILED` | the last read failed; `refresh_error` says why. A failed refresh keeps the last good value and reports the error beside it |
+
+Nothing warms into a zero: before the first value exists, `grants.active` is not presented as "no grants" and an n8n
+row is not presented as "never ran" — both say they are being read.
 
 The kill-switch state is NOT in `GET /state`: the page reads the existing read-only route
 `GET /api/v2/execution/kill-switches` (the one the Execution panel already reads) and shows the global switch ENGAGED /

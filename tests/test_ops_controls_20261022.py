@@ -651,7 +651,15 @@ def test_grant_issue_and_revoke_through_bin_guard(env):
     argv = [c for c in env.host.calls if len(c) > 1 and c[1] == "grant"][0]
     assert argv[2:] == ["broker-read", "--for", "7200s", "--uses", "3", "--reason",
                         f"operator read sync (ops-controls {rid})", "--yes"]
+    # 2026-11-08: the grant list is served from a background snapshot (bin/guard show costs ~7 s on the host). The
+    # first load after a start reports that it is being read — UNAVAILABLE, never an empty list presented as "no
+    # grants" — and the next poll carries it. `_drain_slow_reads()` is what a page poll does in production.
     st, state = get(env, "/state")
+    assert state["grants"]["state"] == "UNAVAILABLE" and state["grants"]["cache"]["state"] == "WARMING"
+    assert "being read" in state["grants"]["reason"] and state["grants"]["active"] == []
+    API._drain_slow_reads()
+    st, state = get(env, "/state")
+    assert state["grants"]["state"] == "OK" and state["grants"]["cache"]["state"] == "OK"
     assert state["grants"]["active"][0]["grant_id"] == issued
     st, body = post(env, f"/requests/{rid}/undo", {"idempotency_key": idem()})
     assert body["request"]["kind"] == "grant.revoke" and body["request"]["params"]["grant_id"] == issued

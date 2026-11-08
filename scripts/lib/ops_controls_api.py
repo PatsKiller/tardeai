@@ -19,10 +19,14 @@ for the always-fresh kinds; ``POST /sudo/end`` ends it. Every act in a window is
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import logging
+import os
 import re
 import secrets
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -894,6 +898,149 @@ def live_exclusion(lane: str, row: dict, eff: dict) -> Optional[str]:
     return "not_in_registry_render"
 
 
+# ── the two slow sub-reads: one background refresh each, so a state load never waits on them ──────────────────────
+
+#: A state load fans out into a dozen sub-reads; all but two answer in well under 200 ms (measured 2026-11-08,
+#: read-only, against the live DB). The two that do not:
+#:   * ``bin/guard show`` — the guard CLI re-reads the grant ledger once per tier per field
+#:     (``grant_expires``/``grant_left``/``grant_reason`` in ``.cursor/hooks/guard-lib.sh``), i.e. ~68 ``python3``
+#:     starts to describe 22 tiers: 6.3-7.3 s;
+#:   * the n8n outcomes fan-out — a bounded indexed query set per lane over a ~200 MB coordination ledger, for every
+#:     n8n lane (400 of 721 registry rows): 2.1 s with a warm page cache, 9.4 s cold.
+#: Neither is consulted by anything that decides: this route is a GET, and a grant is enforced inside the guarded
+#: tool itself, which reads the ledger under its own lock at the moment of use. So both are served from a
+#: single-flight background cache (the shape of ``data_domain_readiness.ReadinessCache``): a request gets the last
+#: good value with its age, and once that value is older than its TTL — or the source it was read from has changed —
+#: one refresh starts in a background thread. A request never waits on either. A section with nothing to serve yet
+#: says so (``UNAVAILABLE`` and "being read" as the reason); it never answers from a zero.
+
+GUARD_SNAPSHOT_TTL_S = 60.0
+_SLOW_READS_MAX = 4  # one key for the live server; tests add one tmp dir each
+
+
+class _SlowRead:
+    """Single-flight background refresh for one expensive sub-read. ``get()`` never blocks.
+
+    ``stamp`` is a cheap change detector for the source (for the guard ledger: ``(mtime_ns, size)``). A stamp that
+    differs from the one the current value was read under makes that value due at once — the guard ledger is
+    rewritten by every grant, every revocation and every consumed use, and the page must not sit on a snapshot the
+    ledger has already moved past. A failed read keeps the last good value and reports the error beside it; it never
+    replaces the value with a zero.
+    """
+
+    def __init__(self, name: str, *, ttl_s: float):
+        self.name = name
+        self.ttl_s = float(ttl_s)
+        self._lock = threading.Lock()
+        self._value: Any = None
+        self._stamp: Any = None
+        self._at: Optional[float] = None  # time.monotonic() when _value was read
+        self._error: Optional[str] = None
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+
+    def _read(self, compute: Callable[[], Any], stamp: Any) -> None:
+        try:
+            value, error = compute(), None
+        except Exception as exc:  # noqa: BLE001 — unreadable is reported, never answered as a zero
+            rid = getattr(exc, "code", None) or type(exc).__name__
+            value, error = None, f"{rid}: {str(getattr(exc, 'detail', '') or exc)[:160]}"
+        with self._lock:
+            if value is not None:
+                self._value, self._stamp, self._at, self._error = value, stamp, time.monotonic(), None
+            else:
+                self._error = error  # keep the last good value (if any) and say this refresh failed
+            self._running = False
+
+    def get(self, compute: Callable[[], Any], *, stamp: Any = None, now: Optional[datetime] = None
+            ) -> tuple[Any, dict]:
+        """(value or None, cache metadata). Starts a background read when none is due and returns immediately."""
+        thread = None
+        with self._lock:
+            age = None if self._at is None else max(time.monotonic() - self._at, 0.0)
+            due = (self._value is None or age is None or age > self.ttl_s
+                   or (stamp is not None and stamp != self._stamp))
+            if due and not self._running:
+                self._running = True
+                thread = self._thread = threading.Thread(target=self._read, args=(compute, stamp),
+                                                         name=f"ops-controls-{self.name}", daemon=True)
+            value, stored, error = self._value, self._stamp, self._error
+            running, age = self._running, (None if self._at is None else max(time.monotonic() - self._at, 0.0))
+        if thread is not None:
+            thread.start()
+        fresh = value is not None and age is not None and age <= self.ttl_s and (stamp is None or stamp == stored)
+        state = ("FAILED" if error else "WARMING") if value is None else ("OK" if fresh else "STALE")
+        return value, {"state": state, "source": self.name,
+                       "as_of": None if age is None or now is None else C.iso(now - timedelta(seconds=int(age))),
+                       "age_s": None if age is None else int(age), "ttl_s": int(self.ttl_s),
+                       "refreshing": running, "refresh_error": error}
+
+
+_SLOW_LOCK = threading.Lock()
+_SLOW_READS: dict[str, dict[tuple, _SlowRead]] = {"grants": {}, "n8n": {}}
+_SLOW_SEQ = itertools.count(1)  # a unique label per reader, so two never share a name after an eviction
+
+
+def _slow_read(kind: str, key: tuple, ttl_s: float) -> _SlowRead:
+    with _SLOW_LOCK:
+        reg = _SLOW_READS[kind]
+        read = reg.get(key)
+        if read is None:
+            read = reg[key] = _SlowRead(f"{kind}-{next(_SLOW_SEQ)}", ttl_s=ttl_s)
+            while len(reg) > _SLOW_READS_MAX:  # bounded: the live server uses one key, tests one tmp dir each
+                reg.pop(next(iter(reg)))
+        return read
+
+
+def _drain_slow_reads(timeout_s: float = 30.0) -> None:
+    """Wait for in-flight background refreshes. For tests: a page poll is the production equivalent."""
+    with _SLOW_LOCK:
+        threads = [r._thread for reg in _SLOW_READS.values() for r in reg.values() if r._thread is not None]
+    for t in threads:
+        if t.is_alive():
+            t.join(timeout_s)
+
+
+def grants_ledger_path() -> Path:
+    """The guard ledger ``bin/guard`` reads and writes (``.cursor/hooks/guard-lib.sh``: ``$GUARD_APPROVALS_DIR``)."""
+    return C.expand(os.environ.get("GUARD_APPROVALS_DIR", "~/.cursor/approvals")) / "grants.json"
+
+
+def _grants_stamp(path: Path) -> Optional[tuple]:
+    """Cheap change detector for the guard ledger: (mtime_ns, size), or None when it is absent/unreadable."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _warming_rows(ctx: Ctx, rows: list[dict], reg_rows: dict[str, dict], reason: str) -> None:
+    """Fill per-lane outcome/readiness while the ledger read has not finished (or failed), in the shape
+    ``ops_controls_n8n_outcomes.enrich`` uses for an unreadable ledger: health UNKNOWN with a reason, readiness from
+    registry and config facts only, no run-dependent verdict promoted. Nothing here reads as "never ran" or clean."""
+    from scripts.lib import ops_controls_n8n_outcomes as NO
+
+    entries, contracts, policy, blocked = NO.config_maps(ctx.hosts.code_root)
+    disp, effect_keys = NO.factory_maps(ctx.hosts.code_root)
+    try:
+        tab: Optional[str] = ctx.hosts.crontab_read()
+    except Exception:  # noqa: BLE001 — same as enrich(): the lock proof then reads "not measured"
+        tab = None
+    for r in rows:
+        lane = str(r.get("lane_id"))
+        reg = reg_rows.get(lane) or {}
+        r["outcome"] = {"effective_mode": NO.effective_mode(reg, r.get("on_live_list")),
+                        "health": "UNKNOWN", "health_reason": reason}
+        rd = NO.readiness(reg, entry=entries.get(lane), contract=contracts.get(lane),
+                          on_live_list=r.get("on_live_list"), L=None, crontab=tab, policy=policy,
+                          blocked_reasons=blocked, disp=disp.get(lane), effect_keys=effect_keys)
+        if rd["verdict"] in (NO.READY_CANARY, NO.READY_CUTOVER, NO.NOT_READY):
+            rd["verdict"] = NO.NOT_READY
+            rd["missing"].insert(0, "run evidence not measured yet: the coordination ledger read has not finished")
+        r["readiness"] = rd
+
+
 def n8n_view(ctx: Ctx) -> dict:
     eff = effective_live_list(ctx)
     path = ctx.hosts.live_list_path
@@ -928,7 +1075,8 @@ def n8n_view(ctx: Ctx) -> dict:
            "host_env_ignored": ignored if eff.get("source") == "registry_render" else [],
            "paused": sorted(set(eff["paused_ops"]) | set(eff["paused_host"]))}
     # Additive (n8n outcomes dashboard, 2026-10-22): last run / health / next run / promotion readiness per lane, read
-    # from the coordination ledger (sqlite mode=ro, bounded per-lane indexed queries) and cached 60 s. Read-only.
+    # from the coordination ledger (sqlite mode=ro, bounded per-lane indexed queries). Read-only. 2026-11-08: served
+    # from the background cache — the legacy ledger read measured 2.1 s warm and 9.4 s cold, and the page polls.
     from scripts.lib import ops_controls_n8n_outcomes as NO
 
     ledger = ctx.hosts.n8n_ledger_path
@@ -940,7 +1088,18 @@ def n8n_view(ctx: Ctx) -> dict:
                           crontab=ctx.hosts.crontab_read, now=ctx.clock())
         return {"rows": rs, **extra}
 
-    out.update(NO.cached(key, compute))
+    outcomes, cache = _slow_read("n8n", key, NO.CACHE_TTL_S).get(compute, now=ctx.clock())
+    if outcomes is None:
+        reason = cache.get("refresh_error") or (
+            "the coordination ledger is being read (first load after the server started); last run, health and "
+            "readiness fill themselves within a few seconds")
+        _warming_rows(ctx, rows, reg_rows, reason)
+        out.update({"outcomes_state": "UNAVAILABLE", "outcomes_reason": reason, "outcomes_as_of": None,
+                    "ledger_path": str(ledger), "crontab_read": False, "cache_ttl_s": int(NO.CACHE_TTL_S),
+                    "cache": cache})
+        return out
+    out.update(outcomes)
+    out["cache"] = cache
     return out
 
 
@@ -1109,11 +1268,12 @@ def toggles_view(ctx: Ctx) -> dict:
             "notifier": notifier_evidence(ctx)}
 
 
-def grants_view(ctx: Ctx) -> dict:
-    tiers = ctx.hosts.guard_tiers()
+def _guard_snapshot(ctx: Ctx) -> list[dict]:
+    """``bin/guard show``, parsed into the active grants. Slow (see the note above): always called off the request."""
     rc, out, err = ctx.hosts.guard("show")
     if rc != 0:
         raise C.OpsError("GUARD_SHOW_FAILED", (err or f"rc {rc}")[:160], 503)
+    tiers = ctx.hosts.guard_tiers()
     active = []
     for ln in ANSI_RE.sub("", out).splitlines():
         m = re.match(r"^\s+([a-z][a-z0-9-]+)\s+(\S+)\s+uses\s+(-?\d+)m left\s+id=(\S+)\s+—\s*(.*)$", ln)
@@ -1121,7 +1281,22 @@ def grants_view(ctx: Ctx) -> dict:
             full = ctx.hosts.guard_id(m.group(1))
             active.append({"tier": m.group(1), "uses": m.group(2), "minutes_left": int(m.group(3)),
                            "grant_id8": m.group(4)[:8], "grant_id": full, "reason": m.group(5)[:200]})
-    return {"state": "OK", "reason": None, "tiers": tiers, "active": active}
+    return active
+
+
+def grants_view(ctx: Ctx) -> dict:
+    """Active guard grants. The tier list is read live (a file read); the grant list comes from the background
+    snapshot, and its ledger is stamped so a grant, a revocation or a consumed use makes the next read due."""
+    tiers = ctx.hosts.guard_tiers()
+    ledger = grants_ledger_path()
+    read = _slow_read("grants", (str(ctx.hosts.guard_bin), str(ledger)), GUARD_SNAPSHOT_TTL_S)
+    active, cache = read.get(lambda: _guard_snapshot(ctx), stamp=_grants_stamp(ledger), now=ctx.clock())
+    if active is None:
+        return {"state": "UNAVAILABLE", "tiers": tiers, "active": [], "cache": cache,
+                "reason": cache.get("refresh_error") or (
+                    "the guard's grant ledger is being read (first load after the server started); this panel "
+                    "fills itself within a few seconds")}
+    return {"state": "OK", "reason": None, "tiers": tiers, "active": active, "cache": cache}
 
 
 def data_approvals_view(ctx: Ctx) -> dict:
