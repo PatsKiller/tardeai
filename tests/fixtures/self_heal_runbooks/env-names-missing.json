@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "I",
-    "entry_id": "I-env-names-missing",
+    "entry_id": "I05-env-names-missing",
     "action": "escalate_finding",
     "tier": "human_only"
   }

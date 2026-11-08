@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "J",
-    "entry_id": "J-code-defect-to-fixer",
+    "entry_id": "J01-code-defect",
     "action": "escalate_finding",
     "tier": "auto_notify"
   }

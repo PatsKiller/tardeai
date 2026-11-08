@@ -3,7 +3,7 @@
   "signature_id": "json-decode-error",
   "taxonomy_signature": "RUN_FAILED: json.decoder.JSONDecodeError: Expecting value: line <N> column <N> (char <N>)",
   "count_30d": 5,
-  "category": "J",
+  "category": "I",
   "synthetic": true,
   "receipt": {
     "lane_id": "synthetic-lane-13",
@@ -16,9 +16,9 @@
   },
   "expect": {
     "classified": true,
-    "category": "J",
-    "entry_id": "J-code-defect-to-fixer",
+    "category": "I",
+    "entry_id": "I04-invalid-config-json",
     "action": "escalate_finding",
-    "tier": "auto_notify"
+    "tier": "human_only"
   }
 }

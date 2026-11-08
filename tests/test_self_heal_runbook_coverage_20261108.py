@@ -13,10 +13,11 @@ because a fixture is an INPUT and never a plan:
 * ``now`` -- a fixed clock. Deferral jitter, cooldowns and the idempotency key all depend on ``now``; a replay that
   reads the wall clock proves something different every hour.
 
-The replay resolves all 22 fixtures to a definite plan and prints each fixture's expectation beside the engine's
-answer. It also pins, as a ceiling, the signatures the catalog cannot classify yet: those fall through to the K05
-catch-all and are reported to the catalog owner (LQ-1231). The ceiling may only shrink -- a NEW unclassified
-signature fails this test.
+The replay resolves all 22 fixtures to a definite plan and **asserts** each fixture's expectation against the
+engine's answer. The expectation is the corpus's specification; since LQ-20261107-1259 it uses the catalog's ids
+(``<letter><NN>-<slug>``) and the reviewed rulings recorded in ``docs/runbooks/self_heal/RULINGS.md``, so a
+disagreement is a failure here rather than a printed note. The unclassified set is pinned empty: the catch-all may
+not receive a signature that was not given an entry of its own and a written reason.
 
 The replay reads no live coordination store (the hermetic guard refuses one under pytest, AGENTS.md §24.6) and no
 taxonomy: the corpus is self-contained, and its provenance is recorded in the fixtures README.
@@ -44,30 +45,20 @@ NOW = datetime(2026, 11, 8, 17, 0, tzinfo=timezone.utc)
 CONTRACT_BASELINE = {"timeout_s": 1800, "freshness_failed_after_h": 26}
 #: The engine's catch-all. A fixture that resolves here has no catalog entry of its own.
 CATCH_ALL = "K05-unclassified-catch-all"
-#: Signatures with no catalog entry as of 2026-11-08 (engine/catalog at 647380c2a). These are catalog gaps reported
-#: to LQ-1231, not desired behaviour: the engine answers them with the catch-all, which escalates every one of them.
-#: This is a CEILING: closing a gap is green, and the id can be deleted; a new unclassified signature fails.
-CATALOG_GAPS_20261108 = frozenset({
-    "db-error-while-updating",
-    "discovery-empty-key",
-    "effect-already-claimed",
-    "effect-no-owner",
-    "env-names-missing",
-    "flock-skipped-pid-running",
-    "log-path-not-a-directory",
-    "output-unverifiable",
-    "rollback-connection-closed",
-    "setup-step-timeout",
-    "timeout-exit-124",
-    "upstream-verification-failed",
-})
+#: Signatures with no catalog entry. EMPTY since LQ-20261107-1259 closed the 12 gaps LQ-1256 reported (nine new
+#: entries plus the A01 ``lock_held`` and E01 ``wall_timeout`` matchers). It stays a ceiling, not an allowance: a
+#: signature that falls to the catch-all fails this test, and closing a gap is the only direction it may move.
+CATALOG_GAPS_20261108: frozenset[str] = frozenset()
 
 CATEGORIES = frozenset("ABCDEFGHIJK")
 TIERS = frozenset({"auto", "auto_notify", "human_only"})
 ACTIONS = frozenset({"noop_wait_recheck", "rerun_once_via_gateway", "defer_until", "release_stale_flock",
                      "release_stale_sqlite_wal_lock", "open_breaker_cooldown", "mark_weekend_expected",
                      "escalate_finding"})
-ENTRY_ID = re.compile(r"[A-K]-[a-z0-9]+(-[a-z0-9]+)*")
+#: The catalog's id scheme, ``<letter><NN>-<slug>`` (LQ-1231). The bare ``<letter>-<slug>`` the corpus was first
+#: written with is accepted so an older fixture does not have to be rewritten to stay schema-valid; the replay's
+#: equality assertion is what holds the ids to the catalog.
+ENTRY_ID = re.compile(r"[A-K](?:\d\d)?-[a-z0-9]+(-[a-z0-9]+)*")
 RECEIPT_KEYS = frozenset({"lane_id", "exit_code", "status", "reason", "exception", "failure_class", "ts_et"})
 # Public repo: no IPv4 addresses, no e-mail addresses, no token-looking strings in fixtures.
 FORBIDDEN = re.compile(r"(\b\d{1,3}(\.\d{1,3}){3}\b|[\w.+-]+@[\w-]+\.[\w.]+|\b(sk|ghp|xox[bp])[-_][A-Za-z0-9]{8,})")
@@ -125,7 +116,8 @@ def test_each_fixture_matches_schema(path: Path):
     assert expect["classified"] is True
     assert expect["category"] == doc["category"]
     assert ENTRY_ID.fullmatch(expect["entry_id"]), expect["entry_id"]
-    assert expect["entry_id"].startswith(doc["category"] + "-"), (expect["entry_id"], doc["category"])
+    assert re.fullmatch(re.escape(doc["category"]) + r"(?:\d\d)?-.*", expect["entry_id"]), (
+        expect["entry_id"], doc["category"])
     assert expect["action"] in ACTIONS, expect["action"]
     assert expect["tier"] in TIERS
     assert FORBIDDEN.search(path.read_text(encoding="utf-8")) is None, "fixture holds a forbidden pattern"
@@ -137,10 +129,10 @@ def test_corpus_has_one_fixture_per_signature_with_count_at_least_two():
 
 
 def test_replay_resolves_every_fixture_to_a_definite_plan():
-    """22/22 fixtures resolve at the fixed clock; the corpus expectation is printed beside each answer.
+    """22/22 fixtures resolve at the fixed clock and every one matches the corpus expectation.
 
-    The expectation is the corpus's specification, not the engine's contract: where the two differ the replay says
-    so per fixture (see the printed table and the DONE note) instead of rewriting either side here.
+    The expectation is the corpus's specification. A difference is a failure, not a printed note: the reviewed
+    rulings that put these cells in their current state are recorded in docs/runbooks/self_heal/RULINGS.md.
     """
     engine = _engine()
     catalog = engine.load_catalog(CATALOG)
@@ -169,8 +161,12 @@ def test_replay_resolves_every_fixture_to_a_definite_plan():
               f"{'MATCH' if matched else 'DIFF'}")
         resolved += 1
         matching += int(matched)
+        assert matched, (f"{doc['fixture_id']}: the engine answered {plan['entry']}/{plan['action']}/"
+                         f"{plan['tier']}, the corpus expects {expect['entry_id']}/{expect['action']}/"
+                         f"{expect['tier']}")
     print(f"replay resolved {resolved}/{len(paths)} fixtures; {matching}/{len(paths)} match the corpus expectation")
     assert resolved == 22
+    assert matching == 22, f"{22 - matching} fixture(s) disagree with the catalog"
 
 
 def test_replay_unclassified_set_cannot_grow():

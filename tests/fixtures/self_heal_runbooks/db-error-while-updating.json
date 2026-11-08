@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "H",
-    "entry_id": "H-db-error-escalate",
+    "entry_id": "H04-db-error-while-updating",
     "action": "escalate_finding",
     "tier": "auto_notify"
   }

@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "H",
-    "entry_id": "H-schema-missing-migration",
+    "entry_id": "H03-schema-missing",
     "action": "escalate_finding",
     "tier": "human_only"
   }

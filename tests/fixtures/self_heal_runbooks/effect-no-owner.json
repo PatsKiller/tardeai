@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "F",
-    "entry_id": "F-effect-no-owner",
+    "entry_id": "F06-effect-no-owner",
     "action": "escalate_finding",
     "tier": "auto_notify"
   }

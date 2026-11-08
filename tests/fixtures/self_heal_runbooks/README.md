@@ -6,6 +6,8 @@ Taxonomy text is sanitized (`<SYM>`, `/example/...`, `synthetic_*`) before it go
 
 Source of the rows: SELFHEAL-FAILURE-TAXONOMY-20261108.json (LQ-1237, 35 rows; 22 at count_30d >= 2).
 Categories and actions: SELFHEAL-BEST-PRACTICE-PLAN-20261108.md, RUNBOOK CATALOG.
+Catalog ids, actions and tiers: `config/self_heal_runbook_catalog.json` v2026-11-08.2, with the
+reviewed decisions in `docs/runbooks/self_heal/RULINGS.md`.
 
 ## Schema (enforced by `tests/test_self_heal_runbook_coverage_20261108.py`)
 
@@ -20,36 +22,45 @@ Categories and actions: SELFHEAL-BEST-PRACTICE-PLAN-20261108.md, RUNBOOK CATALOG
 | `receipt` | object | receipt-shaped input: `lane_id`, `exit_code`, `status`, `reason`, `exception`, `failure_class`, `ts_et` |
 | `expect.classified` | bool | must be `true` |
 | `expect.category` | str | equals `category` |
-| `expect.entry_id` | str | `<category letter>-<kebab slug>` (the catalog id the engine must return) |
+| `expect.entry_id` | str | `<category letter><NN>-<kebab slug>` — the catalog id the engine must return |
 | `expect.action` | str | one of the whitelist: noop_wait_recheck, rerun_once_via_gateway, defer_until, release_stale_flock, release_stale_sqlite_wal_lock, open_breaker_cooldown, mark_weekend_expected, escalate_finding |
 | `expect.tier` | str | auto, auto_notify or human_only |
 
-## Expected catalog entries (for LQ-1231 to match)
+## Expected catalog entries
+
+Every cell below is the **catalog's** answer as of v2026-11-08.2, and the replay asserts it
+(`test_replay_resolves_every_fixture_to_a_definite_plan`). A disagreement is a test failure, not a printed note.
 
 | entry_id | action | tier | fixtures |
 |---|---|---|---|
-| A-flock-held-wait-recheck | noop_wait_recheck | auto | flock-held-skip, flock-skipped-pid-running |
-| A-effect-already-claimed | noop_wait_recheck | auto | effect-already-claimed |
-| C-empty-output-recheck | noop_wait_recheck | auto | empty-output |
-| C-output-unverifiable | escalate_finding | auto_notify | output-unverifiable |
-| C-upstream-verification-failed | escalate_finding | auto_notify | upstream-verification-failed |
-| E-run-timeout | escalate_finding | auto_notify | timeout-exit-124, setup-step-timeout |
-| F-executor-lost-after-restart | escalate_finding | auto_notify | executor-lost |
-| F-effect-no-owner | escalate_finding | auto_notify | effect-no-owner |
-| F-bridge-route-refused | rerun_once_via_gateway | auto | bridge-route-refused-a, bridge-route-refused-b |
-| G-disk-full-lock-file | escalate_finding | human_only | lock-file-no-space, lock-file-dryrun-no-space |
-| H-schema-missing-migration | escalate_finding | human_only | schema-table-missing |
-| H-db-error-escalate | escalate_finding | auto_notify | db-error-while-updating |
-| H-db-connection-closed-recheck | noop_wait_recheck | auto | rollback-connection-closed |
-| I-log-path-not-a-directory | escalate_finding | auto_notify | log-path-not-a-directory |
-| I-env-names-missing | escalate_finding | human_only | env-names-missing |
-| J-code-defect-to-fixer | escalate_finding | auto_notify | exit-nonzero, json-decode-error, discovery-empty-key |
+| A01-flock-held | noop_wait_recheck | auto | flock-held-skip, flock-skipped-pid-running |
+| A06-effect-already-claimed | noop_wait_recheck | auto | effect-already-claimed |
+| C02-empty-output | rerun_once_via_gateway | auto | empty-output |
+| C06-output-unverifiable | escalate_finding | auto_notify | output-unverifiable |
+| C07-upstream-verification-failed | escalate_finding | auto_notify | upstream-verification-failed |
+| E01-run-timeout-124 | noop_wait_recheck | auto_notify | timeout-exit-124, setup-step-timeout |
+| F01-executor-lost | noop_wait_recheck | auto | executor-lost |
+| F02-bridge-route-refused | escalate_finding | auto_notify | bridge-route-refused-a, bridge-route-refused-b |
+| F06-effect-no-owner | escalate_finding | auto_notify | effect-no-owner |
+| G01-disk-floor | escalate_finding | human_only | lock-file-no-space, lock-file-dryrun-no-space |
+| H03-schema-missing | escalate_finding | human_only | schema-table-missing |
+| H04-db-error-while-updating | escalate_finding | auto_notify | db-error-while-updating |
+| H05-db-connection-closed | noop_wait_recheck | auto | rollback-connection-closed |
+| I04-invalid-config-json | escalate_finding | human_only | json-decode-error |
+| I05-env-names-missing | escalate_finding | human_only | env-names-missing |
+| I06-log-path-not-a-directory | escalate_finding | auto_notify | log-path-not-a-directory |
+| J01-code-defect | escalate_finding | auto_notify | exit-nonzero |
+| J03-data-defect-in-input | escalate_finding | auto_notify | discovery-empty-key |
 
 Mapping notes:
 - The taxonomy proposes `A` for `safe_flock: log path component is not a real directory`. It is a config path
-  defect, so the corpus uses `I`.
+  defect, so the corpus uses `I` and the catalog entry is `I06`.
 - The plan puts `BRIDGE_ROUTE_REFUSED` under `F` (scheduler/n8n plane), not `B`, so both bridge fixtures use `F`.
 - `J` rows are code defects: the action is an escalation that routes to the LLM fixer, never a runbook action.
+- `json-decode-error` moved from `J` to `I` with its entry (`I04`): invalid config JSON is a config defect a human
+  fixes. Fixture `category` and `expect.category` are both `I`. See RULINGS.md R5.
+- `empty-output` now re-runs once through the gateway (`auto`) instead of escalating; `executor-lost` and
+  `flock-held-skip` are `auto` (a normal skip/loss must not notify). See RULINGS.md R1–R3.
 
 ## Replay
 
@@ -64,12 +75,9 @@ Mapping notes:
 The replay reads no taxonomy and no live coordination store; the corpus is self-contained (the schema test checks
 `count_30d >= 2` on every fixture).
 
-It resolves all 22 fixtures to a definite plan in the catalog and prints each fixture's `expect` beside the engine's
-answer. The two are **reported**, not reconciled here: the `entry_id` column above was written before the catalog
-landed and uses `<letter>-<slug>`, while the catalog ids are `<letter><NN>-<slug>`; a few `action`/`tier` cells also
-disagree with the catalog's choice. Each disagreement is listed per fixture in
-`DONE-LQ-20261107-1256-cc-deepseek-8.md` and belongs to the catalog owner (LQ-1231) or to a reviewed corpus change,
-never to a silent edit on one side.
+It resolves all 22 fixtures to a definite plan and **asserts** each fixture's expectation against the engine's
+answer: 22/22 resolve, 22/22 match. The expectation is the corpus's specification — the reviewed rulings that put
+these cells where they are live in `docs/runbooks/self_heal/RULINGS.md`.
 
-Signatures the catalog cannot classify yet fall to the catch-all; they are pinned as a ceiling
-(`CATALOG_GAPS_20261108`) that a new unclassified signature fails and a closed gap may shrink.
+`CATALOG_GAPS_20261108` is **empty**: no fixture reaches `K05-unclassified-catch-all`. It stays a ceiling, not an
+allowance — a new unclassified signature fails the test, and closing a gap is the only direction it may move.

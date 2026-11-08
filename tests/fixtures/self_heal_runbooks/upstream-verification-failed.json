@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "C",
-    "entry_id": "C-upstream-verification-failed",
+    "entry_id": "C07-upstream-verification-failed",
     "action": "escalate_finding",
     "tier": "auto_notify"
   }

@@ -17,8 +17,8 @@
   "expect": {
     "classified": true,
     "category": "E",
-    "entry_id": "E-run-timeout",
-    "action": "escalate_finding",
+    "entry_id": "E01-run-timeout-124",
+    "action": "noop_wait_recheck",
     "tier": "auto_notify"
   }
 }

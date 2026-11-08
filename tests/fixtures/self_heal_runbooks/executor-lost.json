@@ -17,8 +17,8 @@
   "expect": {
     "classified": true,
     "category": "F",
-    "entry_id": "F-executor-lost-after-restart",
-    "action": "escalate_finding",
-    "tier": "auto_notify"
+    "entry_id": "F01-executor-lost",
+    "action": "noop_wait_recheck",
+    "tier": "auto"
   }
 }

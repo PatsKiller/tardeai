@@ -1,20 +1,21 @@
 {
   "schema": "SelfHealRunbookCatalog@v1",
-  "version": "2026-11-08.1",
-  "source": "SELFHEAL-BEST-PRACTICE-PLAN-20261108.md section RUNBOOK CATALOG (operator order 2026-11-08 16:44 ET); seeds = the non-code signatures seen on 2026-11-08 (flock held, database is locked, LockNotAvailable, RUN_TIMEOUT 124, executor_lost, BRIDGE_ROUTE_REFUSED, NO_BRIEFS, disk floor)",
-  "_ordering": "Entries are selected by explicit integer priority (lowest wins); ids break ties, and a shared priority is reported as ambiguous by plan_runbook. The only entry with no match patterns is the K04 catch-all, which must stay last.",
+  "version": "2026-11-08.2",
+  "source": "SELFHEAL-BEST-PRACTICE-PLAN-20261108.md section RUNBOOK CATALOG (operator order 2026-11-08 16:44 ET); seeds = the non-code signatures seen on 2026-11-08 (flock held, database is locked, LockNotAvailable, RUN_TIMEOUT 124, executor_lost, BRIDGE_ROUTE_REFUSED, NO_BRIEFS, disk floor); 2026-11-08.2 (LQ-20261107-1259): lock_held/wall_timeout matchers, the 14-day replay's nine gaps (A06, C06, C07, F06, H04, H05, I05, I06, J03), and three tier/action rulings (A01/F01 no notify on a normal skip, C02 re-runs once before escalating)",
+  "_ordering": "Entries are selected by explicit integer priority (lowest wins); ids break ties, and a shared priority is reported as ambiguous by plan_runbook. The only entry with no match patterns is the K05 catch-all, which must stay last.",
   "_safety": "Every action is one primitive from ACTION_WHITELIST in scripts/lib/self_heal_runbooks.py. No DB write, no kill, no crontab/systemd/env edit, no broker/order/stop, no credential read, no push. Mutating actions are refused on execution lanes before the catalog is consulted.",
   "runbooks": [
     {
       "id": "A01-flock-held",
       "category": "A",
       "title": "flock held: the lock is doing its job; wait and recheck",
-      "tier": "auto_notify",
+      "tier": "auto",
       "priority": 100,
       "match": {
         "failure_class": [
           "lock_skip",
-          "flock_held"
+          "flock_held",
+          "lock_held"
         ],
         "reason_regex": [
           "\\bflock[_ -]?held\\b",
@@ -218,6 +219,48 @@
         "fx-overlap-match",
         "fx-overlap-refuse",
         "fx-overlap-repeat"
+      ]
+    },
+    {
+      "id": "A06-effect-already-claimed",
+      "category": "A",
+      "title": "effect already claimed: a concurrent run holds the effect; wait for it",
+      "tier": "auto",
+      "priority": 150,
+      "match": {
+        "failure_class": [
+          "effect_claimed"
+        ],
+        "reason_regex": [
+          "\\beffect[_ :]*already[_ ]?claimed\\b",
+          "\\bEFFECT_ALREADY_CLAIMED\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 300
+      },
+      "max_attempts": 2,
+      "cooldown_min": 60,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "the effect claim on {lane} did not clear after {max_attempts} rechecks"
+      },
+      "human_steps": [
+        "read the claim in the coordination ledger's effect_claims (owner, claimed_at); a claim that outlives its run is the dispatcher's orphan, never something a runbook releases by hand",
+        "never release another process's effect claim by hand: the claim is what stops a double write"
+      ],
+      "tests": [
+        "fx-effect-already-claimed-match",
+        "fx-effect-already-claimed-refuse",
+        "fx-effect-already-claimed-repeat"
       ]
     },
     {
@@ -450,7 +493,7 @@
       "id": "C02-empty-output",
       "category": "C",
       "title": "empty output: escalate as a finding; an empty result is not a success",
-      "tier": "auto_notify",
+      "tier": "auto",
       "priority": 310,
       "match": {
         "failure_class": [
@@ -469,16 +512,18 @@
       "preconditions": [
         "lane_present"
       ],
-      "action": "escalate_finding",
-      "params": {},
+      "action": "rerun_once_via_gateway",
+      "params": {
+        "delay_s": 120
+      },
       "max_attempts": 1,
-      "cooldown_min": 0,
+      "cooldown_min": 60,
       "verify": {
-        "kind": "human_verified"
+        "kind": "next_attempt_succeeds",
+        "window_s": 900
       },
       "on_fail": {
-        "title": "empty output is not a success on {lane}",
-        "text": "Nothing the runbook can do makes an empty universe non-empty. Look at the producer's own receipt."
+        "title": "empty output on {lane} survived its one gateway re-run"
       },
       "human_steps": [
         "read the producer's receipt and the lane's input count",
@@ -609,6 +654,81 @@
         "fx-stale-source-match",
         "fx-stale-source-refuse",
         "fx-stale-source-repeat"
+      ]
+    },
+    {
+      "id": "C06-output-unverifiable",
+      "category": "C",
+      "title": "output unverifiable: the run completed but its receipt cannot prove what it produced",
+      "tier": "auto_notify",
+      "priority": 350,
+      "match": {
+        "failure_class": [
+          "output_unverifiable"
+        ],
+        "reason_regex": [
+          "\\boutput[_ ]?unverifiable\\b",
+          "\\bOUTPUT_UNVERIFIABLE\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "output of {lane} stayed unverifiable"
+      },
+      "human_steps": [
+        "read the run's receipt output_signal and output_verdict: an unverifiable output is the same evidence gap the audit standard calls UNPROVEN, not a failure to retry",
+        "if the lane's output contract is wrong, the contract is the defect: propose the fix, do not re-run"
+      ],
+      "tests": [
+        "fx-output-unverifiable-match",
+        "fx-output-unverifiable-refuse",
+        "fx-output-unverifiable-repeat"
+      ]
+    },
+    {
+      "id": "C07-upstream-verification-failed",
+      "category": "C",
+      "title": "upstream verification failed: a dependency's release or ids did not verify",
+      "tier": "auto_notify",
+      "priority": 360,
+      "match": {
+        "failure_class": [
+          "upstream_verification"
+        ],
+        "reason_regex": [
+          "\\bverification[_ ]failed\\b",
+          "\\bUPSTREAM_VERIFICATION_FAILED\\b",
+          "(?i)failed verification"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "upstream verification kept failing for {lane}"
+      },
+      "human_steps": [
+        "name the dependency whose release/ids failed verification and its owning lane; the defect is upstream of this lane and a re-run cannot verify what the source did not publish",
+        "do not relax the verification to make the lane green"
+      ],
+      "tests": [
+        "fx-upstream-verification-failed-match",
+        "fx-upstream-verification-failed-refuse",
+        "fx-upstream-verification-failed-repeat"
       ]
     },
     {
@@ -765,7 +885,8 @@
       "priority": 500,
       "match": {
         "failure_class": [
-          "timeout"
+          "timeout",
+          "wall_timeout"
         ],
         "reason_regex": [
           "\\bRUN_TIMEOUT\\b",
@@ -847,7 +968,7 @@
       "id": "F01-executor-lost",
       "category": "F",
       "title": "executor_lost: the existing reaper owns the orphan; do not duplicate the effect",
-      "tier": "auto_notify",
+      "tier": "auto",
       "priority": 490,
       "match": {
         "failure_class": [
@@ -1043,6 +1164,43 @@
         "fx-restart-match",
         "fx-restart-refuse",
         "fx-restart-repeat"
+      ]
+    },
+    {
+      "id": "F06-effect-no-owner",
+      "category": "F",
+      "title": "effect no owner: the lane's effect key has no registered n8n owner",
+      "tier": "auto_notify",
+      "priority": 650,
+      "match": {
+        "failure_class": [
+          "effect_no_owner"
+        ],
+        "reason_regex": [
+          "\\beffect[_ :]*no[_ ]?owner\\b",
+          "\\bEFFECT_NO_OWNER\\b"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "effect {lane} still has no registered owner"
+      },
+      "human_steps": [
+        "find the lane's effect key in config/n8n_effect_keys.json: an owner is a dispatch-plane fact, not something the lane can grant itself",
+        "registry/ownership drift is a config change the operator approves; propose it, do not apply it"
+      ],
+      "tests": [
+        "fx-effect-no-owner-match",
+        "fx-effect-no-owner-refuse",
+        "fx-effect-no-owner-repeat"
       ]
     },
     {
@@ -1301,6 +1459,87 @@
       ]
     },
     {
+      "id": "H04-db-error-while-updating",
+      "category": "H",
+      "title": "database error while the lane wrote: escalate, never retry a write",
+      "tier": "auto_notify",
+      "priority": 830,
+      "match": {
+        "failure_class": [
+          "db_error"
+        ],
+        "reason_regex": [
+          "(?i)while updating tuple",
+          "(?i)deadlock detected",
+          "(?i)serialization failure"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "write error on {lane} repeated"
+      },
+      "human_steps": [
+        "read the failing statement from the receipt's stderr; a write error is never retried by a runbook because a blind retry can duplicate the write",
+        "if the row already landed, the lane's effect key is what says so: check it before proposing a re-run"
+      ],
+      "tests": [
+        "fx-db-error-while-updating-match",
+        "fx-db-error-while-updating-refuse",
+        "fx-db-error-while-updating-repeat"
+      ]
+    },
+    {
+      "id": "H05-db-connection-closed",
+      "category": "H",
+      "title": "database connection closed mid-run: wait for the next slot, the run's own retry path owns it",
+      "tier": "auto",
+      "priority": 835,
+      "match": {
+        "failure_class": [
+          "db_connection_closed"
+        ],
+        "reason_regex": [
+          "(?i)connection already closed",
+          "(?i)connection has been closed"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [
+        "lane_present"
+      ],
+      "action": "noop_wait_recheck",
+      "params": {
+        "wait_s": 300
+      },
+      "max_attempts": 2,
+      "cooldown_min": 30,
+      "verify": {
+        "kind": "run_appears",
+        "window_s": 900
+      },
+      "on_fail": {
+        "title": "the connection on {lane} stayed closed across {max_attempts} slots"
+      },
+      "human_steps": [
+        "a closed connection during rollback is benign: the transaction is already gone",
+        "a cluster that closes idle connections is a pooler/config question for the DB owner, not a lane fix"
+      ],
+      "tests": [
+        "fx-rollback-connection-closed-match",
+        "fx-db-connection-closed-match",
+        "fx-db-connection-closed-refuse",
+        "fx-db-connection-closed-repeat"
+      ]
+    },
+    {
       "id": "I01-duplicate-registry-row",
       "category": "I",
       "title": "duplicate registry rows: human_only config edit",
@@ -1416,6 +1655,43 @@
       ]
     },
     {
+      "id": "I05-env-names-missing",
+      "category": "I",
+      "title": "env allowlist names missing: the lane's entry and the executor's allowlist disagree",
+      "tier": "human_only",
+      "priority": 925,
+      "match": {
+        "failure_class": [
+          "config_env"
+        ],
+        "reason_regex": [
+          "\\benv_names?_missing\\b",
+          "(?i)env_allowlist.*missing"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "env allowlist still refuses {lane}"
+      },
+      "human_steps": [
+        "diff the lane's argv and env_names in config/n8n_run_allowlist.json against what the executor applied (the receipt's env_allowlist.dropped_names); the lane is refused before it runs",
+        "adding an env name is a config edit the operator approves, never an agent's edit"
+      ],
+      "tests": [
+        "fx-env-names-missing-match",
+        "fx-env-names-missing-refuse",
+        "fx-env-names-missing-repeat"
+      ]
+    },
+    {
       "id": "I04-invalid-config-json",
       "category": "I",
       "title": "invalid/malformed config JSON: human_only",
@@ -1452,6 +1728,42 @@
         "fx-invalid-json-match",
         "fx-invalid-json-refuse",
         "fx-invalid-json-repeat"
+      ]
+    },
+    {
+      "id": "I06-log-path-not-a-directory",
+      "category": "I",
+      "title": "safe_flock log path is not a directory: the lane cannot take its lock or write its log",
+      "tier": "auto_notify",
+      "priority": 940,
+      "match": {
+        "failure_class": [
+          "config_path"
+        ],
+        "reason_regex": [
+          "(?i)log path component is not a real directory"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "the lock/log path for {lane} is still not a directory"
+      },
+      "human_steps": [
+        "the highest-count config defect of the 2026-10 taxonomy (659 failures, 10 lanes, 30 d): the log directory the lane's lock declares does not exist, so the lane fails before it runs",
+        "create the directory or fix the path in the lane's entry; that is a config change the operator approves"
+      ],
+      "tests": [
+        "fx-log-path-not-a-directory-match",
+        "fx-log-path-not-a-directory-refuse",
+        "fx-log-path-not-a-directory-repeat"
       ]
     },
     {
@@ -1534,6 +1846,46 @@
         "fx-test-match",
         "fx-test-refuse",
         "fx-test-repeat"
+      ]
+    },
+    {
+      "id": "J03-data-defect-in-input",
+      "category": "J",
+      "title": "data defect in the lane's input: escalate to the producer's owner, never patch the input",
+      "tier": "auto_notify",
+      "priority": 1020,
+      "match": {
+        "failure_class": [
+          "data_defect"
+        ],
+        "reason_regex": [
+          "(?i)dependency_unavailable",
+          "(?i)label normalizes to empty",
+          "\\bDiscoveryInboxError\\b",
+          "(?i)no (?:source|producer)\\b.*rows"
+        ],
+        "exception_regex": []
+      },
+      "preconditions": [],
+      "action": "escalate_finding",
+      "params": {},
+      "max_attempts": 1,
+      "cooldown_min": 0,
+      "verify": {
+        "kind": "human_verified"
+      },
+      "on_fail": {
+        "title": "the input defect for {lane} is unresolved"
+      },
+      "human_steps": [
+        "the lane's input is missing, empty-keyed or too old: name the producing lane from the receipt and escalate to its owner; a runbook must never write or repair the producer's rows",
+        "if the producer was retired, the consuming lane needs a retirement proposal, not a data patch"
+      ],
+      "tests": [
+        "fx-discovery-empty-key-match",
+        "fx-dependency-unavailable-match",
+        "fx-data-defect-refuse",
+        "fx-data-defect-repeat"
       ]
     },
     {

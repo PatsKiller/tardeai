@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "A",
-    "entry_id": "A-flock-held-wait-recheck",
+    "entry_id": "A01-flock-held",
     "action": "noop_wait_recheck",
     "tier": "auto"
   }

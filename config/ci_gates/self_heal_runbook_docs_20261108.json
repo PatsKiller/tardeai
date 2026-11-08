@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_runbook_docs_20261108",
+  "files": [
+    "tests/test_self_heal_runbook_docs_20261108.py"
+  ],
+  "anchor": "SELF_HEAL_RUNBOOK_DOCS_20261108",
+  "comment": [
+    "ANCHOR: SELF_HEAL_RUNBOOK_DOCS_20261108 — the self-heal workbook (docs/runbooks/self_heal/, LQ-1259) is",
+    "generated, and this gate proves it cannot drift: regenerating from config/self_heal_runbook_catalog.json +",
+    "docs/runbooks/self_heal/COVERAGE.json + the corpus index reproduces every committed page byte for byte,",
+    "every catalog entry has exactly one page, no page is orphaned, every page carries its ten sections and links",
+    "the index, and the index links every entry. The snapshot must be consistent with itself (hits add up per",
+    "signature and per entry) and with the catalog (it names this catalog version, every signature resolves to an",
+    "existing entry with a whitelisted action, and no catch-all signature lacks a written reason). A generated page",
+    "may carry no IPv4 address, e-mail, token or long hex: the repository is public. It does NOT prove the pages",
+    "reflect live state — that is the replay's own --check-gate — nor that any runbook action would work."
+  ]
+}

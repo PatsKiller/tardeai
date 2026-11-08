@@ -17,8 +17,8 @@
   "expect": {
     "classified": true,
     "category": "F",
-    "entry_id": "F-bridge-route-refused",
-    "action": "rerun_once_via_gateway",
-    "tier": "auto"
+    "entry_id": "F02-bridge-route-refused",
+    "action": "escalate_finding",
+    "tier": "auto_notify"
   }
 }

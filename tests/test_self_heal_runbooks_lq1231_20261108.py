@@ -34,6 +34,9 @@ MATCH_SAMPLE: dict[str, tuple[str, dict, dict | None]] = {
     "A03-sqlite-database-locked": ("", {"reason": "OperationalError: database is locked"}, None),
     "A04-pg-lock-not-available": ("", {"reason": "psycopg2.errors.LockNotAvailable: could not obtain lock"}, None),
     "A05-overlapping-schedule": ("overlap", {"reason": "overlapping run: the previous slot is still running"}, None),
+    # ---- the nine entries LQ-20261107-1259 added for signatures the 14-day replay found unclassified
+    "A06-effect-already-claimed": ("effect_claimed", {
+        "reason": "EFFECT_ALREADY_CLAIMED: another run holds the effect key"}, None),
     "B01-rate-limited-429": ("rate_limited", {"reason": "provider returned 429 rate limit", "retries_today": 0}, None),
     "B02-oauth-expired": ("auth", {"reason": "OAuth token expired"}, None),
     "B03-budget-governor-refusal": ("budget", {"reason": "budget governor refusal"}, None),
@@ -44,6 +47,10 @@ MATCH_SAMPLE: dict[str, tuple[str, dict, dict | None]] = {
     "C03-weekend-expected": ("market_closed", {"reason": "market closed for the holiday"}, None),
     "C04-no-briefs": ("", {"reason": "NO_BRIEFS", "reruns_today": 0}, None),
     "C05-stale-source": ("stale_source", {"reason": "source has not updated in 6 h"}, None),
+    "C06-output-unverifiable": ("output_unverifiable", {
+        "reason": "output_unverifiable: the receipt cannot prove what the run produced"}, None),
+    "C07-upstream-verification-failed": ("upstream_verification", {
+        "reason": "UPSTREAM_VERIFICATION_FAILED: the dependency's release did not verify"}, None),
     "D01-network-transient": ("network", {"reason": "temporary failure in name resolution", "retries_today": 0}, None),
     "D02-provider-5xx": ("", {"reason": "503 service unavailable", "retries_today": 0}, None),
     "D03-connection-refused": ("", {"reason": "connection refused on the socket", "retries_today": 0}, None),
@@ -54,18 +61,30 @@ MATCH_SAMPLE: dict[str, tuple[str, dict, dict | None]] = {
     "F03-breaker-open": ("breaker_open", {"reason": "circuit breaker open"}, None),
     "F04-dead-letter": ("dead_letter", {"reason": "dead letter queue"}, None),
     "F05-restart-killed-child": ("", {"reason": "killed by a deploy restart", "reruns_today": 0}, None),
+    "F06-effect-no-owner": ("effect_no_owner", {"reason": "EFFECT_NO_OWNER: the effect key has no registered owner"},
+                            None),
     "G01-disk-floor": ("disk_floor", {"reason": "disk floor reached: ENOSPC"}, None),
     "G02-tmp-enospc": ("", {"reason": "/tmp is full: ENOSPC"}, None),
     "G03-memory-pressure": ("", {"reason": "MemoryError: out of memory"}, None),
     "H01-db-unreachable": ("", {"reason": "could not connect to server: host is down", "retries_today": 0}, None),
     "H02-db-read-only-txn": ("", {"reason": "cannot execute INSERT in a read-only transaction"}, None),
     "H03-schema-missing": ("", {"reason": "UndefinedTable: relation \"fixture\" does not exist"}, None),
+    "H04-db-error-while-updating": ("db_error", {
+        "reason": "psycopg2.errors.DeadlockDetected: deadlock detected while updating tuple"}, None),
+    "H05-db-connection-closed": ("db_connection_closed", {
+        "reason": "psycopg2.InterfaceError: connection already closed"}, None),
     "I01-duplicate-registry-row": ("registry_duplicate", {"reason": "duplicate registry row for the lane"}, None),
     "I02-lane-missing-from-registry": ("registry_missing", {"reason": "lane missing from registry"}, None),
     "I03-contract-missing": ("", {"reason": "no health contract for lane"}, None),
     "I04-invalid-config-json": ("", {"reason": "invalid config JSON: JSONDecodeError"}, None),
+    "I05-env-names-missing": ("config_env", {
+        "reason": "env_names_missing: the lane's entry and the executor allowlist disagree"}, None),
+    "I06-log-path-not-a-directory": ("config_path", {
+        "reason": "safe_flock: log path component is not a real directory"}, None),
     "J01-code-defect": ("code_error", {"reason": "CODE_ERROR AssertionError"}, None),
     "J02-test-failure": ("test_failure", {"reason": "FAILED tests/fixture_x.py::test_y"}, None),
+    "J03-data-defect-in-input": ("data_defect", {
+        "reason": "dependency_unavailable: the producer has no rows for the window"}, None),
     "K01-credential-problem": ("credential", {"reason": "invalid api_key"}, None),
     "K02-broker-orders": ("broker", {"reason": "ORDER_REJECTED by broker"}, None),
     "K03-data-correction": ("data_correction", {"reason": "data correction requested"}, None),

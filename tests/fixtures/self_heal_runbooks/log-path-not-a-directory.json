@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "I",
-    "entry_id": "I-log-path-not-a-directory",
+    "entry_id": "I06-log-path-not-a-directory",
     "action": "escalate_finding",
     "tier": "auto_notify"
   }

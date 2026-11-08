@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "H",
-    "entry_id": "H-db-connection-closed-recheck",
+    "entry_id": "H05-db-connection-closed",
     "action": "noop_wait_recheck",
     "tier": "auto"
   }

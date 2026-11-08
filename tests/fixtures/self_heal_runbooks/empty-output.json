@@ -17,8 +17,8 @@
   "expect": {
     "classified": true,
     "category": "C",
-    "entry_id": "C-empty-output-recheck",
-    "action": "noop_wait_recheck",
+    "entry_id": "C02-empty-output",
+    "action": "rerun_once_via_gateway",
     "tier": "auto"
   }
 }

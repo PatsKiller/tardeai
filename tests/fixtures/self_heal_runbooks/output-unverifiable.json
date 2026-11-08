@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "C",
-    "entry_id": "C-output-unverifiable",
+    "entry_id": "C06-output-unverifiable",
     "action": "escalate_finding",
     "tier": "auto_notify"
   }

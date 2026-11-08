@@ -17,7 +17,7 @@
   "expect": {
     "classified": true,
     "category": "G",
-    "entry_id": "G-disk-full-lock-file",
+    "entry_id": "G01-disk-floor",
     "action": "escalate_finding",
     "tier": "human_only"
   }
