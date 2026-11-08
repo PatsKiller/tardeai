@@ -34,6 +34,8 @@ RECEIPT_KEYS = (
     "mode",
     "state",
     "reason",
+    "error_class",
+    "error_class_source",
     "stderr_tail",
     "stage_clamp",
     "output_verdict",
