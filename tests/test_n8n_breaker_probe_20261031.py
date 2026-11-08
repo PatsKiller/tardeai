@@ -157,7 +157,12 @@ def test_config_defaults():
     assert BP.blocked("Tradeai-SCALP-feed", CFG)  # case-insensitive
     assert BP.blocked("x-broker", {**CFG, "never_probe_extra": []})  # config cannot remove the floor
     assert BP.blocked("my-lane", {**CFG, "never_probe_extra": ["my-"]}) and not BP.blocked("my-lane", CFG)
-    assert BP.blocked("cio-ask-lifecycle", CFG, stage="canary") == "live canary lane"
+    # LQ-20261107-1007 (Fable audit #8): a canary lane is probe-eligible only under the canary switch
+    assert CFG["canary"] == {"enabled": True, "max_probes": 2, "page_on_failure": 2, "page_priority": "P1"}
+    assert BP.blocked("cio-ask-lifecycle", CFG, stage="canary") is None
+    assert BP.blocked("cio-ask-lifecycle", {**CFG, "canary": {"enabled": False}}, stage="canary") == (
+        "live canary lane"
+    )
 
 
 # ---------------------------------------------------------------- review 2026-10-31 (BLOCK on #2379): regressions
@@ -281,3 +286,154 @@ def test_unreadable_registry_returns_none(tmp_path, monkeypatch):
     (tmp_path / "config" / "lane_registry.json").write_text("{broken")
     monkeypatch.setattr(cli, "PROJECT_ROOT", tmp_path)
     assert cli.lane_stages() is None  # fail closed: decide() then starts no probe
+
+
+# ---------------------------------------------------------------- LQ-20261107-1007 (Fable audit #8, Q3.4/Q6 #8)
+# A canary lane's open breaker was a dead end: never probed, so only a human release cleared it. Under the canary
+# switch it probes with a 2-probe budget (not the fleet's 6) and the second failure is a P1 page, after which a human
+# decides REPAIR or REBUILD. The §23.14 code floor still binds whatever the switch says.
+CANARY_ON = dict(CFG, canary={"enabled": True, "max_probes": 2, "page_on_failure": 2, "page_priority": "P1"})
+CANARY_OFF = dict(CFG, canary={"enabled": False})
+CANARY_STAGES = {"canary-lane": "canary", "fleet-lane": ""}
+
+
+def _probing(lane="canary-lane", probes=0, hours=1):
+    return {lane: {"probes": probes, "probing_since": (NOW - timedelta(hours=hours)).isoformat(), "consecutive": 3}}
+
+
+def _released(lane="canary-lane"):
+    return [
+        {
+            "lane_id": lane,
+            "opened_at": (NOW - timedelta(hours=30)).isoformat(),
+            "released_by": CFG["released_by"],
+            "open": False,
+        }
+    ]
+
+
+def _runs(lane, state):
+    return {lane: [{"run_id": "r1", "slot_key": "s1", "state": state}]}
+
+
+def test_canary_probe_needs_its_switch_and_never_lifts_the_code_floor():
+    assert BP.blocked("cio-ask-lifecycle", CANARY_ON, stage="canary") is None
+    assert BP.blocked("cio-ask-lifecycle", CANARY_OFF, stage="canary") == "live canary lane"
+    assert BP.blocked("trade-ai-scalp-live", CANARY_ON, stage="canary")  # "scalp" floor still binds
+    assert BP.blocked("x-order-writer", CANARY_ON, stage="canary")  # "order" floor still binds
+
+
+def test_canary_budget_is_two_probes_and_the_fleet_keeps_six():
+    st = {"canary-lane": {"probes": 2}}
+    canary = BP.decide([_br("canary-lane", 99)], {}, st, CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert canary["action"] == "exhausted" and canary["max_probes"] == 2 and canary["page"] is True
+    early = BP.decide([_br("canary-lane", 99)], {}, {"canary-lane": {"probes": 1}}, CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert early["action"] == "probe"  # the second probe is allowed (12 h backoff; open 99 h)
+    fleet = BP.decide([_br("fleet-lane", 99)], {}, {"fleet-lane": {"probes": 2}}, CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert fleet["action"] == "probe" and fleet["max_probes"] == 6
+    spent = BP.decide([_br("fleet-lane", 99)], {}, {"fleet-lane": {"probes": 6}}, CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert spent["action"] == "exhausted" and spent["page"] is False  # the fleet keeps its P2 notice
+
+
+def test_canary_second_failure_is_the_page():
+    first = BP.decide(_released(), _runs("canary-lane", "RUN_FAILED"), _probing(probes=0), CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert first["action"] == "fail" and first["page"] is False
+    assert BP.priority([first], CANARY_ON) == CANARY_ON["alert_priority"]
+    second = BP.decide(_released(), _runs("canary-lane", "RUN_FAILED"), _probing(probes=1), CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert second["action"] == "fail" and second["page"] is True
+    assert BP.priority([second], CANARY_ON) == "P1"
+    msg = BP.render([second])
+    assert "canary probe 2/2 failed" in msg and "human must decide" in msg
+    fleet = BP.decide(_released("fleet-lane"), _runs("fleet-lane", "RUN_FAILED"), _probing("fleet-lane", probes=1),
+                      CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert fleet["action"] == "fail" and fleet["page"] is False
+    assert BP.priority([fleet], CANARY_ON) == CANARY_ON["alert_priority"]
+
+
+def test_canary_exhausted_pages_once_and_names_the_budget():
+    act = BP.decide([_br("canary-lane", 99)], {}, {"canary-lane": {"probes": 2}}, CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert act["action"] == "exhausted" and act["page"] is True
+    assert BP.priority([act], CANARY_ON) == "P1"
+    msg = BP.render([act])
+    assert "canary probe budget spent (2)" in msg and "REPAIR or REBUILD" in msg
+    assert BP.decide([_br("canary-lane", 99)], {}, {"canary-lane": {"probes": 2, "exhausted_at": "x"}}, CANARY_ON, NOW,
+                     stages=CANARY_STAGES) == []  # paged once
+
+
+def test_a_canary_pass_is_not_a_page():
+    passed = BP.decide(_released(), _runs("canary-lane", "RUN_DONE"), _probing(probes=1), CANARY_ON, NOW, stages=CANARY_STAGES)[0]
+    assert passed["action"] == "pass" and not passed.get("page")
+    assert BP.priority([passed], CANARY_ON) == CANARY_ON["alert_priority"]
+
+
+def test_end_to_end_canary_lane_is_released_by_the_prober(env, monkeypatch):
+    root, led, sent, cfg_p = env
+    (root / "config").mkdir()
+    (root / "config" / "lane_registry.json").write_text(
+        json.dumps({"lanes": [{"lane_id": "canary-lane", "scheduler": {"stage": "canary"}}]})
+    )
+    monkeypatch.setattr(cli, "PROJECT_ROOT", root)
+    cfg = json.loads(cfg_p.read_text())
+    cfg["canary"] = {"enabled": True, "max_probes": 2, "page_on_failure": 2, "page_priority": "P1"}
+    cfg_p.write_text(json.dumps(cfg))
+    store = LedgerRunStore(led)
+    store.open_breaker("canary-lane", 3, (datetime.now(timezone.utc) - timedelta(hours=30)).timestamp())
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0
+    assert store.breaker("canary-lane")["open"] is False  # released for the probe
+    assert store.breaker("canary-lane")["released_by"] == cfg["released_by"]
+    (rec,) = [json.loads(x) for x in (root / CFG["receipts_rel"]).read_text().splitlines()]
+    assert rec["action"] == "probe"
+    assert sent and sent[-1]["priority"] == cfg["alert_priority"]
+
+
+def test_end_to_end_canary_two_failures_exhaust_and_page_p1(env, monkeypatch):
+    root, led, sent, cfg_p = env
+    (root / "config").mkdir()
+    (root / "config" / "lane_registry.json").write_text(
+        json.dumps({"lanes": [{"lane_id": "canary-lane", "scheduler": {"stage": "canary"}}]})
+    )
+    monkeypatch.setattr(cli, "PROJECT_ROOT", root)
+    cfg = json.loads(cfg_p.read_text())
+    cfg["canary"] = {"enabled": True, "max_probes": 2, "page_on_failure": 2, "page_priority": "P1"}
+    cfg_p.write_text(json.dumps(cfg))
+    clock = {"now": datetime.now(timezone.utc)}
+
+    class Clock(datetime):  # the CLI reads datetime.now(timezone.utc) once per tick
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"] if tz is None else clock["now"].astimezone(tz)
+
+    monkeypatch.setattr(cli, "datetime", Clock)
+    store = LedgerRunStore(led)
+    store.open_breaker("canary-lane", 3, (clock["now"] - timedelta(hours=30)).timestamp())
+
+    def fail_run():
+        run_at = (clock["now"] + timedelta(seconds=1)).isoformat()
+        led._conn.execute(
+            "INSERT INTO runs (run_id, lane_id, mode, state, requested_at, finished_at, slot_key) VALUES (?,?,?,?,?,?,?)",
+            (f"r-{run_at}", "canary-lane", "live", "RUN_FAILED", run_at, run_at, f"s-{run_at}"),
+        )
+
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0  # probe 1
+    fail_run()
+    clock["now"] += timedelta(hours=1)
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0  # failure 1: routine notice, breaker re-opened
+    assert store.breaker("canary-lane")["open"] is True
+    assert sent[-1]["priority"] == cfg["alert_priority"]
+    clock["now"] += timedelta(hours=13)  # past the 12 h backoff
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0  # probe 2
+    assert store.breaker("canary-lane")["open"] is False
+    fail_run()
+    clock["now"] += timedelta(hours=1)
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0  # failure 2: the page
+    assert store.breaker("canary-lane")["open"] is True
+    assert sent[-1]["priority"] == "P1" and "canary probe 2/2 failed" in sent[-1]["message"]
+    clock["now"] += timedelta(hours=1)
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0  # exhausted: page once, lane stays blocked
+    assert store.breaker("canary-lane")["open"] is True
+    assert sent[-1]["priority"] == "P1" and "canary probe budget spent (2)" in sent[-1]["message"]
+    assert json.loads((root / CFG["state_rel"]).read_text())["canary-lane"]["probes"] == 2
+    kinds = [json.loads(x)["action"] for x in (root / CFG["receipts_rel"]).read_text().splitlines()]
+    assert kinds == ["probe", "fail", "probe", "fail", "exhausted"]
+    assert cli.main(["--apply", "--config", str(cfg_p)]) == 0  # nothing more to do
+    assert [json.loads(x)["action"] for x in (root / CFG["receipts_rel"]).read_text().splitlines()] == kinds

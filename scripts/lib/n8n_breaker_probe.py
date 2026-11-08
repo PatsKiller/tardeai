@@ -18,8 +18,12 @@ Half-open, driven by ``scripts/n8n_breaker_probe.py`` on a host tick:
   re-open, the retry policy re-opening it): the prober drops its state and leaves the lane alone.
 * **hold** — a lane in the operator hold marker is never touched.
 
-Never probed: NEVER_PROBE (code; config may add, never remove) and live canary lanes (AGENTS.md §23.14, review
-2026-10-31).
+Never probed: NEVER_PROBE (code; config may add, never remove). Live canary lanes are probed only under the
+``canary`` switch in the config (``enabled``), with their own budget: ``max_probes`` 2 (the fleet default is 6) and a
+P1 page when the second probe fails, after which a human must decide REPAIR or REBUILD (Fable n8n design audit
+LQ-984 Q3.4/Q6 #8, operator-approved 2026-11-08, decision D7). Before that switch a canary breaker was a dead end:
+never probed, so only a human release could clear it. The NEVER_PROBE floor still binds a canary lane (no broker,
+order, stop, secret, sender, scalp, ... lane is probed whatever the switch says).
 """
 
 from __future__ import annotations
@@ -71,14 +75,41 @@ def interval_hours(cfg: Mapping[str, Any], probes: int) -> float:
     return min(float(cfg["open_hours"]) * float(cfg["backoff_factor"]) ** int(probes), float(cfg["max_interval_hours"]))
 
 
+#: Canary budget (Fable audit LQ-984 Q6 #8): OFF unless the config enables it, two probes, page on the second.
+CANARY_DEFAULTS: Mapping[str, Any] = MappingProxyType(
+    {"enabled": False, "max_probes": 2, "page_on_failure": 2, "page_priority": "P1"}
+)
+
+
+def canary_policy(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """The canary probe budget; a partial ``canary`` block fills from ``CANARY_DEFAULTS``."""
+    return {**CANARY_DEFAULTS, **(cfg.get("canary") or {})}
+
+
+def is_canary(stage: Optional[str]) -> bool:
+    return str(stage or "").lower() == "canary"
+
+
+def probe_limit(cfg: Mapping[str, Any], stage: Optional[str] = None) -> int:
+    """How many half-open probes a lane may spend: the canary budget for a live canary lane, the fleet's otherwise."""
+    return int(canary_policy(cfg)["max_probes"] if is_canary(stage) else cfg["max_probes"])
+
+
 def blocked(lane: str, cfg: Mapping[str, Any], *, stage: Optional[str] = None) -> Optional[str]:
     low = lane.lower()
     for p in (*NEVER_PROBE, *[str(x).lower() for x in cfg.get("never_probe_extra") or []]):
         if p in low:
             return f"never-probe pattern {p!r}"
-    if stage and str(stage).lower() == "canary":
+    if is_canary(stage) and not canary_policy(cfg)["enabled"]:
         return "live canary lane"
     return None
+
+
+def priority(acts: Iterable[Mapping[str, Any]], cfg: Mapping[str, Any]) -> str:
+    """P1 when a canary probe has spent its budget (a human must decide); the configured ops priority otherwise."""
+    if any(a.get("page") for a in acts or ()):
+        return str(canary_policy(cfg)["page_priority"])
+    return str(cfg.get("alert_priority") or "P2")
 
 
 def decide(
@@ -97,7 +128,8 @@ def decide(
     release is REQUESTED, ``gate`` re-opens the breaker so no second slot can start; that one slot's verdict decides —
     ``pass`` releases the breaker for good, ``fail`` keeps it open with backoff. At most ``max_concurrent_probes`` lanes
     probe at once. ``holds`` None (holds file unreadable) or ``stages`` None (lane registry unreadable) = fail closed:
-    nothing new is probed.
+    nothing new is probed. A lane whose ``stage`` is ``canary`` spends the canary budget (``probe_limit``: 2 probes,
+    not the fleet's 6) and its second failure carries ``page`` for a P1 alert (LQ-1007).
 
     ``breakers``: rows {lane_id, opened_at, released_at, released_by, consecutive, open}. ``runs_after``: lane -> runs
     requested after the probe release, oldest first ({run_id, slot_key, state}). ``state``: lane -> {probes,
@@ -117,6 +149,8 @@ def decide(
         lane = str(b["lane_id"])
         st = dict(state.get(lane) or {})
         probes = int(st.get("probes") or 0)
+        stage = stages.get(lane)
+        limit = probe_limit(cfg, stage)
         if lane in hold:
             acts.append({"lane": lane, "action": "held", "probes": probes})
             continue
@@ -165,6 +199,10 @@ def decide(
                         "run_state": verdict["state"],
                         "gated": bool(gate),
                         "consecutive": st.get("consecutive") or 1,
+                        "canary": is_canary(stage),
+                        "max_probes": limit,
+                        # LQ-1007: a canary's second failure is the page — after it a human decides REPAIR or REBUILD
+                        "page": is_canary(stage) and probes + 1 >= int(canary_policy(cfg)["page_on_failure"]),
                     }
                 )
             elif runs and not gate:
@@ -197,9 +235,19 @@ def decide(
         if why:
             acts.append({"lane": lane, "action": "blocked", "probes": probes, "why": why})
             continue
-        if probes >= int(cfg["max_probes"]):
+        if probes >= limit:
             if not st.get("exhausted_at"):
-                acts.append({"lane": lane, "action": "exhausted", "probes": probes})
+                # a spent canary budget is a page (once): the lane stays blocked until a human decides
+                acts.append(
+                    {
+                        "lane": lane,
+                        "action": "exhausted",
+                        "probes": probes,
+                        "max_probes": limit,
+                        "canary": is_canary(stage),
+                        "page": is_canary(stage),
+                    }
+                )
             continue
         opened = parse_ts(b.get("opened_at"))
         need = interval_hours(cfg, probes)
@@ -214,6 +262,8 @@ def decide(
                         "open_hours": round((now - opened).total_seconds() / 3600, 1),
                         "interval_hours": need,
                         "consecutive": b.get("consecutive"),
+                        "canary": is_canary(stage),
+                        "max_probes": limit,
                     },
                 )
             )
@@ -276,6 +326,17 @@ def render(acts: list[dict]) -> Optional[str]:
         return None
     lines = ["🔌 *n8n breaker probes*"]
     for a in moved:
-        lines.append(f"• {a['lane']}: {a['action']}" + (f" ({a.get('run_state')})" if a.get("run_state") else ""))
+        line = f"• {a['lane']}: {a['action']}" + (f" ({a.get('run_state')})" if a.get("run_state") else "")
+        if a["action"] == "exhausted" and a.get("canary"):
+            line += (
+                f" — canary probe budget spent ({a.get('max_probes')}); the lane stays blocked until a human decides"
+                " REPAIR or REBUILD"
+            )
+        elif a.get("page"):
+            line += (
+                f" — canary probe {int(a.get('probes') or 0) + 1}/{a.get('max_probes')} failed; a human must decide"
+                " REPAIR or REBUILD"
+            )
+        lines.append(line)
     lines.append("Half-open probe: one natural slot runs; a pass keeps the lane open, a failure re-opens it.")
     return "\n".join(lines)
