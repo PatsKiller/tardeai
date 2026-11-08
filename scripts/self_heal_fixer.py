@@ -53,7 +53,9 @@ from lib import self_heal_egress as EG  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 from lib import self_heal_fixer_claims as C  # noqa: E402
 from lib import self_heal_metrics as M  # noqa: E402
+from lib import self_heal_runbooks as R  # noqa: E402
 from lib import self_heal_safety as SAFE  # noqa: E402
+from lib import self_heal_verify as V  # noqa: E402
 from scripts.lib import recovery_validator as RV  # noqa: E402
 
 CONFIG = ROOT / "config" / "self_heal_fixer.json"
@@ -286,6 +288,62 @@ def resolve_base(repo: Path, cfg: dict, *, apply: bool, environ: dict) -> dict:
     if git(repo, "cat-file", "-e", f"{sha}^{{commit}}")["rc"] != 0:
         return {"sha": "", "ref": ref, "source": str(src), "fetch_rc": 0, "why": "served_sha_not_in_repo"}
     return {"sha": sha, "ref": ref, "source": str(src), "fetch_rc": 0, "why": None}
+
+
+def already_fixed_on_served(repo: Path, evidence: dict, base_sha: str) -> Optional[dict]:
+    """LQ-1236: did the served release change the failing code after the failing run? Read-only git.
+
+    Only a definite answer counts: the failing run names its full ``code_sha``, that commit is in the repo and is not
+    the served commit, and ``git diff --quiet`` exits 1 over the files the failure names (the script plus every repo
+    file in the error text). Anything less (no code_sha, unknown commit, no paths, a git error) returns None and the
+    attempt proceeds; a model is never spared on a guess."""
+    code_sha = str((evidence.get("failing_run") or {}).get("code_sha") or "").strip().lower()
+    paths = F.error_paths(evidence)
+    if not base_sha or not _FULL_SHA.fullmatch(code_sha) or code_sha == base_sha or not paths:
+        return None
+    if git(repo, "cat-file", "-e", f"{code_sha}^{{commit}}", timeout=60)["rc"] != 0:
+        return None
+    d = git(repo, "diff", "--quiet", code_sha, base_sha, "--", *paths, timeout=120)
+    if d["rc"] != 1:
+        return None
+    changed = git(repo, "diff", "--name-only", code_sha, base_sha, "--", *paths, timeout=120)["out"].split()
+    return {"code_sha": code_sha, "served_sha": base_sha, "paths": paths, "changed": changed[:20]}
+
+
+def run_runbook(
+    cls: str, ev: dict, contract: Optional[dict], *, state: dict, now: datetime, apply_enabled: bool
+) -> dict:
+    """LQ-1231 wired in by LQ-1236: plan the non-code runbook for ``cls`` and apply it (a dry run unless the caller's
+    config arms it). ``state`` is the lane's durable runbook facts and is updated only when an action was taken.
+    A runbook error never stops the cycle: it is reported and the escalation stands."""
+    try:
+        plan = R.plan_runbook(cls, ev, contract, now, state=state)
+        rcpt = R.apply_runbook(plan, dry_run=not apply_enabled, now=now)
+    except Exception as exc:  # noqa: BLE001 -- the runbook layer is advisory to the escalation; it never ends a cycle
+        return {"error": f"{type(exc).__name__}:{exc}"[:300]}
+    taken = str(rcpt.get("action_taken") or "none")
+    mutating = str(plan.get("action") or "none") not in (*R.NON_MUTATING_ACTIONS, "none")
+    if apply_enabled and mutating and "refused" not in taken:
+        state["attempts"] = int(state.get("attempts") or 0) + 1
+        state["lane_last_action_at"] = state["entry_last_attempt_at"] = now.isoformat()
+    return {
+        "entry": plan.get("entry"),
+        "category": plan.get("category"),
+        "action": plan.get("action"),
+        "reason": plan.get("reason"),
+        "action_taken": taken,
+        "dry_run": bool(rcpt.get("dry_run")),
+        "human_steps": list(plan.get("human_steps") or [])[:6],
+        "finding_text": rcpt.get("finding_text"),
+    }
+
+
+def past_findings(cfg: dict, root: Path) -> list[str]:
+    """FINDING-SELF-HEAL* file names the triage may link a failure to (names only; it reads no file)."""
+    try:
+        return sorted(p.name for p in findings_dir(cfg, root).glob("FINDING-SELF-HEAL*"))[-200:]
+    except OSError:
+        return []
 
 
 def operator_holds() -> dict:
@@ -813,6 +871,14 @@ class Attempt:
         patch = self.dir / f"diff_iter{k}.patch"
         patch.write_text(d["full"], encoding="utf-8")
         refusals = self.guard(d)
+        vcfg = self.cfg.get("verify") or {}
+        # LQ-1234 masking lint (wired by LQ-1236): a fix that hides the failure is refused, softly, so the next
+        # iteration can redo it. Textual over added lines; the codes name the rule and the place.
+        if vcfg.get("masking_lint", True):
+            refusals = [*refusals, *(
+                {"hard": False, "code": f"masking:{m['rule']}", "path": m.get("path"), "line": m.get("line")}
+                for m in V.lint_masking(d["full"])
+            )]
         rec.update(
             candidate=cand,
             guard={"tree_sha": self.tree_of(commit), "refusals": refusals},
@@ -849,13 +915,39 @@ class Attempt:
             )
             co = self.checkout(f"it{k}-cand", commit)
             green = self.eval_run("targeted", co, commit, pyt, t_test)
-            runs = [red, green]
+            # LQ-1234 reliability (wired by LQ-1236): the first red/green must hold in every one of ``verify.runs``
+            # runs, each on a fresh checkout. A run with no verdict (timeout, integrity break) is neither red nor green.
+            n_runs = max(1, int(vcfg.get("runs", V.DEFAULT_RUNS)))
+            reps: list[dict] = []
+
+            def again(kind: str, name: str, sha: str, ov: Optional[dict] = None, ov_from: Optional[str] = None):
+                def runner(argv, *, cwd=None, env=None, timeout_s=t_test):  # noqa: ARG001 -- run_n's runner seam
+                    r = self.eval_run(kind, self.checkout(name, sha, ov), sha, list(argv), timeout_s, overlay_from=ov_from)
+                    reps.append(r)
+                    return r["rc"] if r["integrity_ok"] else None
+
+                return runner
+
+            red_ok = reproduced and (
+                n_runs == 1
+                or V.repro_reliable(
+                    pyt, n_runs - 1, runner=again("red_first", f"it{k}-base-rep", self.base, overlay, commit), timeout_s=t_test
+                )
+            )
+            green_ok = green["rc"] == 0 and (
+                n_runs == 1
+                or V.fixed_reliably(pyt, n_runs - 1, runner=again("targeted", f"it{k}-cand-rep", commit), timeout_s=t_test)
+            )
+            runs = [red, green, *reps]
             ci_argv = [str(a).replace("{python}", self.py).replace("{base_sha}", self.base) for a in it["ci_argv"]]
-            if green["rc"] == 0 and reproduced and red["integrity_ok"] and green["integrity_ok"]:
+            if green_ok and red_ok and red["integrity_ok"] and green["integrity_ok"]:
                 ci = self.eval_run("ci", co, commit, ci_argv, float(it["ci_timeout_s"]))
                 runs.append(ci)
             else:
                 ci = {"rc": None, "out": "", "err": "skipped"}
+            suite = self.companion_suite(d, co, commit, vcfg) if ci["rc"] == 0 else {"rc": None, "out": "", "err": "skipped"}
+            if suite.get("run_id"):
+                runs.append(suite)
             for r in runs:
                 if not r["integrity_ok"]:
                     rec["refusals"].append(
@@ -875,28 +967,65 @@ class Attempt:
                 failing.append(f"targeted:exit_{green['rc']}")
             if ci["rc"] not in (0, None) and not F.failing_set(ci["out"]):
                 failing.append(f"ci:exit_{ci['rc']}")
+            if reproduced and not red_ok:
+                failing.append("verify:repro_not_reliable")
+            if green["rc"] == 0 and not green_ok:
+                failing.append("verify:fix_not_reliable")
+            if suite["rc"] not in (0, None):
+                failing += F.failing_set(suite["out"]) or [f"suite:exit_{suite['rc']}"]
             failing += [f"guard:{r['code']}" for r in rec["refusals"]]
             rec.update(
-                red_first=reproduced,
+                red_first=red_ok,
                 targeted_rc=green["rc"],
                 ci_rc=ci["rc"],
                 ci_argv=ci_argv,
+                verify={
+                    "runs": n_runs,
+                    "repro_reliable": red_ok,
+                    "fixed_reliably": green_ok,
+                    "repeat_rcs": [r["rc"] for r in reps],
+                    "suite_rc": suite["rc"],
+                    "suite": suite.get("test_command") or suite.get("err"),
+                },
                 failing=sorted(set(failing)),
                 test_runs=[{k2: v for k2, v in r.items() if k2 not in ("out", "err")} for r in runs],
             )
             out_tail = (
                 f"--- red-first on base (rc {red['rc']}) ---\n{red['out'][-1500:]}\n"
                 f"--- targeted (rc {green['rc']}) ---\n{green['out'][-2500:]}\n"
-                f"--- ci pr profile (rc {ci['rc']}) ---\n{ci['out'][-3000:]}{ci['err'][-500:]}"
+                f"--- ci pr profile (rc {ci['rc']}) ---\n{ci['out'][-3000:]}{ci['err'][-500:]}\n"
+                f"--- companion suite (rc {suite['rc']}) ---\n{suite['out'][-1500:]}{str(suite.get('err') or '')[-300:]}"
             )
             (self.dir / f"tests_iter{k}.log").write_text(out_tail, encoding="utf-8")
             shutil.rmtree(self.eval_root / f"it{k}-base", ignore_errors=True)
             shutil.rmtree(self.eval_root / f"it{k}-cand", ignore_errors=True)
+            shutil.rmtree(self.eval_root / f"it{k}-base-rep", ignore_errors=True)
+            shutil.rmtree(self.eval_root / f"it{k}-cand-rep", ignore_errors=True)
         rec["seconds"] = round(time.monotonic() - t0, 1)
         rec["output_tail"] = out_tail
         rec["acceptance"] = E.local_verdict(rec)  # independent of the backend's claims
         rec["passed"] = rec["acceptance"]["accepted"]
         return rec
+
+    def companion_suite(self, d: dict, co: Optional[Path], commit: str, vcfg: dict) -> dict:
+        """LQ-1234 ``full_suite_cmd`` (wired by LQ-1236): every test the diff touches plus every test named for a
+        changed module, run on the candidate checkout. The CI gate registry is excluded from "changed" (its test IS
+        the CI run). When the selection widens to the whole ``tests/`` tree, the broad CI profile that already passed
+        stands in for it, and the record says so: a whole-tree run inside one fix attempt would only time out."""
+        if not vcfg.get("suite", True):
+            return {"rc": None, "out": "", "err": "suite_disabled"}
+        changed = [
+            ln.split("\t")[-1]
+            for ln in d["name_status"].splitlines()
+            if ln.strip() and not ln.startswith("D") and ln.split("\t")[-1] != "scripts/run_cio_hardening_ci.py"
+        ]
+        known = git(self.repo, "ls-tree", "-r", "--name-only", commit, "--", "tests")["out"].split()
+        argv = V.full_suite_cmd(
+            changed, pytest_cmd=[self.py, "-m", "pytest", "-rfE", "-p", "no:cacheprovider"], known_tests=known
+        )
+        if argv[argv.index("-q") + 1 :] == ["tests"]:
+            return {"rc": None, "out": "", "err": "whole_tree:covered_by_ci_profile"}
+        return self.eval_run("suite", co, commit, argv, float(self.cfg["iteration"]["ci_timeout_s"]))
 
     # -- ship exactly the evaluated commit
     def prepush_check(self, rec: dict) -> dict:
@@ -1490,6 +1619,18 @@ def non_code_finding(row: dict, now: datetime) -> tuple[str, str]:
         "```",
         "",
     ]
+    rb = row.get("runbook")
+    if rb:
+        lines += [
+            "## Runbook (LQ-1231)",
+            "",
+            f"- entry: `{rb.get('entry')}` (category {rb.get('category')}) · action: `{rb.get('action')}`",
+            f"- plan reason: `{rb.get('reason')}` · taken: `{rb.get('action_taken')}` · dry run: {rb.get('dry_run')}",
+            *([f"- error: `{rb['error']}`"] if rb.get("error") else []),
+            *(f"- step: {step}" for step in rb.get("human_steps") or []),
+            "",
+            *([str(rb["finding_text"]), ""] if rb.get("finding_text") else []),
+        ]
     return name, "\n".join(lines)
 
 
@@ -1645,8 +1786,19 @@ def _cycle(
     if lo is not None:
         out["local_only"] = {"enabled": True, "why": str(lo.get("why") or "")[:200]}
 
-    def escalate_non_code(cls: str, *, lane: str, signature: Any, rc: Optional[dict], src: dict) -> dict:
-        """One ESCALATION FINDING per (ET day, lane, signature); dry runs report it without writing anything."""
+    def escalate_non_code(
+        cls: str,
+        *,
+        lane: str,
+        signature: Any,
+        rc: Optional[dict],
+        src: dict,
+        runbook: Optional[tuple[str, dict, Optional[dict]]] = None,
+    ) -> dict:
+        """One ESCALATION FINDING per (ET day, lane, signature); dry runs report it without writing anything.
+
+        ``runbook`` = (failure class, evidence, lane contract): a non-code failure also gets its LQ-1231 runbook plan,
+        applied only when config ``runbooks.apply`` arms it (else a dry run), and rendered into the finding."""
         key = F.non_code_finding_key(lane, str(signature or ""), t)
         seen = work.setdefault("non_code_findings", {})
         row = {
@@ -1664,6 +1816,16 @@ def _cycle(
         if key in seen:
             row["deduped"] = True
             return row
+        if runbook is not None:
+            rb_cls, rb_ev, rb_contract = runbook
+            rb_state = work.setdefault("runbook_state", {}).setdefault(lane, {})
+            row["runbook"] = run_runbook(
+                rb_cls, {**rb_ev, "lane": lane}, rb_contract, state=rb_state, now=t,
+                apply_enabled=apply and bool(rbcfg.get("apply")),
+            )
+            out["runbooks"].append(
+                {"lane": lane, "class": rb_cls, **{k: v for k, v in row["runbook"].items() if k != "finding_text"}}
+            )
         name, text = non_code_finding(row, t)
         row["path"] = write_finding(cfg, root, name, text) if apply else str(findings_dir(cfg, root) / name)
         row["written"] = bool(apply)
@@ -1671,10 +1833,13 @@ def _cycle(
         # keep a week of dedupe keys; older days can never collide with today's key
         for k in [k for k in seen if k.split("|", 1)[0] < F.et_day(t - timedelta(days=7))]:
             seen.pop(k, None)
-        out["findings"].append({k: v for k, v in row.items() if k != "tail"})
+        out["findings"].append({k: v for k, v in row.items() if k not in ("tail", "runbook")})
         return row
 
     safety = cfg.get("safety") or {}
+    rbcfg = cfg.get("runbooks") or {}
+    tcfg = cfg.get("triage") or {}
+    out["runbooks"] = []
     metrics_path = root / str(safety.get("metrics_rel") or METRICS_REL)
     metric_extra: list[dict] = []
     out["metrics_rows"] = 0
@@ -1772,7 +1937,10 @@ def _cycle(
         nc = F.non_code_class(inc, rc, cfg)
         if nc:
             sig = inc.get("signature") or F.local_signature(lane, (rc or {}).get("stderr_tail") or inc.get("stderr_tail"))
-            esc = escalate_non_code(nc, lane=lane, signature=sig, rc=rc, src=inc)
+            esc = escalate_non_code(
+                nc, lane=lane, signature=sig, rc=rc, src=inc,
+                runbook=(nc, {**(rc or {}), **inc}, lane_contracts_for(lane, row)),
+            )
             out["skipped"].append({"lane": lane, "why": f"non_code:{nc}", "finding": esc.get("path"),
                                    "deduped": bool(esc.get("deduped"))})
             continue
@@ -1851,7 +2019,10 @@ def _cycle(
         if nc:
             F.transition(job, F.FIX_REFUSED, t, reason=f"non_code:{nc}", updated_at=t.isoformat())
             job["escalated_at"] = t.isoformat()
-            esc = escalate_non_code(nc, lane=job["lane"], signature=job.get("signature"), rc=src["receipt"], src=job)
+            esc = escalate_non_code(
+                nc, lane=job["lane"], signature=job.get("signature"), rc=src["receipt"], src=job,
+                runbook=(nc, {**(src["receipt"] or {}), **src["incident"]}, lane_contracts_for(job["lane"], src["row"])),
+            )
             out["attempted"].append({"job_id": job["job_id"], "outcome": f"refused:non_code:{nc}",
                                      "finding": esc.get("path"), "deduped": bool(esc.get("deduped"))})
             continue
@@ -1887,6 +2058,41 @@ def _cycle(
         if not cap_ok:
             out["attempted"].append({"job_id": job["job_id"], "outcome": f"global_cap:{cap_why}"})
             break
+        # Already fixed on the served release (LQ-1236): the failing code changed since the failing run -> no model
+        # is spent; the job closes (a fresh failure on the served code is admitted again after the cooldown).
+        af = already_fixed_on_served(repo, evidence, base_sha) if (cfg.get("already_fixed") or {}).get("enabled", True) else None
+        if af:
+            F.transition(job, F.FIX_CLOSED, t, reason=f"already_fixed_on_served:{base_sha[:12]}", already_fixed=af,
+                         updated_at=t.isoformat())
+            out["attempted"].append({"job_id": job["job_id"], "outcome": "closed:already_fixed_on_served",
+                                     "changed": af["changed"]})
+            continue
+        # Triage (LQ-1233): advisory, read-only, fail-closed to the rules. A confident non-code answer routes the job
+        # to its runbook + a person instead of an agent. Off unless config ``triage.enabled``; never in a dry run
+        # (it is a paid model call).
+        if tcfg.get("enabled"):
+            if apply:
+                from lib import self_heal_triage as T  # lazy: only an enabled, applying cycle loads the model client
+
+                tri = T.triage(evidence, evidence.get("contracts"), past_findings(cfg, root), now=t)
+            else:
+                tri = {"source": "skipped", "error": "dry_run"}
+            job["triage"] = {k: tri.get(k) for k in ("class", "confidence", "source", "error", "similar",
+                                                     "suggested_runbook")}
+            job["triage"]["root_cause"] = str(tri.get("root_cause") or "")[:300] or None
+            evidence["triage"] = job["triage"]
+            tcls = str(tri.get("class") or "")
+            if (tri.get("source") == "llm" and tcls in F.NON_CODE_CLASSES
+                    and float(tri.get("confidence") or 0) >= float(tcfg.get("min_confidence", 0.8))):
+                F.transition(job, F.FIX_REFUSED, t, reason=f"triage_non_code:{tcls}", updated_at=t.isoformat())
+                job["escalated_at"] = t.isoformat()
+                esc = escalate_non_code(
+                    f"triage:{tcls}", lane=job["lane"], signature=job.get("signature"), rc=src["receipt"], src=job,
+                    runbook=(tcls, {**(src["receipt"] or {}), **src["incident"]}, evidence.get("contracts")),
+                )
+                out["attempted"].append({"job_id": job["job_id"], "outcome": f"refused:triage_non_code:{tcls}",
+                                         "finding": esc.get("path"), "deduped": bool(esc.get("deduped"))})
+                continue
         budget -= 1
         try:
             rails = F.extract_rails(agents)

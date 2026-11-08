@@ -83,7 +83,9 @@ ACTIVE = frozenset(STATES) - TERMINAL
 HEALED = frozenset({OUTPUT_RECOVERED, INCIDENT_RESOLVED})
 
 TRANSITIONS: dict[str, frozenset[str]] = {
-    FIX_REQUESTED: frozenset({FIX_ATTEMPTING, FIX_REFUSED, FIX_INTERRUPTED}),
+    # FIX_CLOSED from the queue (LQ-1236): the served release already changed the failing code since the failing
+    # run, so no model is spent; a fresh failure on the served code is admitted again after the cooldown.
+    FIX_REQUESTED: frozenset({FIX_ATTEMPTING, FIX_REFUSED, FIX_INTERRUPTED, FIX_CLOSED}),
     FIX_ATTEMPTING: frozenset(
         {FIX_ATTEMPTING, FIX_READY_LOCAL, FIX_PR_OPENED, FIX_FAILED, FIX_REFUSED, FIX_INTERRUPTED, ESCALATED_NOT_CODE}
     ),
@@ -416,6 +418,29 @@ def evidence_gap(evidence: Mapping[str, Any]) -> Optional[str]:
     if not evidence.get("script") and not _REPO_FILE.search(text):
         return "no_script"
     return None
+
+
+_REPO_ROOTS = ("scripts/", "tests/", "lib/", "api/", "apps/")
+
+
+def error_paths(evidence: dict) -> list[str]:
+    """Repo-relative files the failure names: the lane script plus every repo file in the error text, in order.
+
+    An absolute traceback path (``/srv/x/scripts/a.py``) is cut back to its first repo root, so the result can be
+    handed to ``git diff -- <paths>``. Used by the already-fixed check (LQ-1236)."""
+    fr = evidence.get("failing_run") or {}
+    out: list[str] = []
+    found = [str(evidence.get("script") or "")]
+    found += [m.group(0) for m in _REPO_FILE.finditer(str(fr.get("stderr_tail") or ""))]
+    for raw in found:
+        parts = [x for x in raw.strip().split("/") if x not in ("", ".")]
+        start = next((k for k, x in enumerate(parts[:-1]) if x + "/" in _REPO_ROOTS), None)
+        if start is None or ".." in parts[start:]:
+            continue
+        rel = "/".join(parts[start:])
+        if rel not in out:
+            out.append(rel)
+    return out
 
 
 #: A repo source or test file named in error text (``scripts/x.py``, ``tests/test_y.py::t``, ``.../lib/z.py``).

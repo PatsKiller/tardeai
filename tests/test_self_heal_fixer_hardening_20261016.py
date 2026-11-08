@@ -133,8 +133,11 @@ def test_acceptance_is_bound_to_one_immutable_candidate_commit(sandbox):
     # every harness run is recorded with its own id, in a checkout of the candidate (red-first: of the base, with
     # the test overlaid from the commit object), and nothing in that checkout changed during the run
     runs = {r["kind"]: r for r in it["test_runs"]}
-    assert set(runs) == {"red_first", "targeted", "ci"}
-    assert runs["targeted"]["checkout_sha"] == runs["ci"]["checkout_sha"] == commit
+    # LQ-1236: red-first and targeted each hold in verify.runs (3) fresh runs; the companion suite runs on the candidate
+    assert set(runs) == {"red_first", "targeted", "ci", "suite"}
+    kinds = [r["kind"] for r in it["test_runs"]]
+    assert kinds.count("red_first") == kinds.count("targeted") == 3 and it["verify"]["repeat_rcs"] == [1, 1, 0, 0]
+    assert runs["targeted"]["checkout_sha"] == runs["ci"]["checkout_sha"] == runs["suite"]["checkout_sha"] == commit
     assert runs["red_first"]["checkout_sha"] == job["iterations"][0]["candidate"]["base_sha"]
     assert runs["red_first"]["overlay_from"] == commit
     assert all(r["integrity_ok"] and r["run_id"].startswith(r["kind"]) for r in runs.values())

@@ -555,6 +555,8 @@ with calls.open("a") as fh:
 n = sum(1 for _ in calls.open())
 cwd = pathlib.Path.cwd()
 TEST = "def test_ratio_handles_zero():\n    from scripts.buggy import ratio\n    try:\n        actual = ratio(1, 0)\n    except ZeroDivisionError as exc:\n        actual = type(exc).__name__\n    assert actual == 0.0\n"
+if (here / "test_text").exists():  # LQ-1236: a scenario may script the regression test itself
+    TEST = (here / "test_text").read_text()
 REG = '    # self-heal regression for buggy\n    ("self_heal_buggy", ["tests/test_self_heal_buggy.py"]),\n'
 def register():
     p = cwd / "scripts" / "run_cio_hardening_ci.py"
@@ -577,6 +579,10 @@ elif scen == "skip":
     p = cwd / "tests" / "test_a.py"
     p.write_text("import pytest\n@pytest.mark.skip(reason='x')\n" + p.read_text())
     (cwd / "tests" / "test_self_heal_buggy.py").write_text(TEST); register()
+elif scen == "mask":  # LQ-1236: a real fix plus a swallowed broad except elsewhere: green, but masking
+    (cwd / "tests" / "test_self_heal_buggy.py").write_text(TEST); fix(); register()
+    p = cwd / "scripts" / "buggy.py"
+    p.write_text(p.read_text() + "\n\ndef helper():\n    try:\n        return 1\n    except Exception:\n        pass\n")
 elif scen == "noprogress":
     (cwd / "tests" / "test_self_heal_buggy.py").write_text(TEST); register()
 if (here / "text_output").exists():
