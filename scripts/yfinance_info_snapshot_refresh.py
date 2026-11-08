@@ -31,11 +31,14 @@ Writes go through the single declared writer ``lib.writers.yfinance_info_snapsho
 
 Modes: ``--dry-run`` (the default, and what the n8n stage clamp passes at SHADOW) reads the universe and the store
 on a READ ONLY session, fetches at most ``--probe`` symbols (default 3) to prove the provider answers, prints, and
-writes nothing — no row, no receipt. ``--apply`` fetches what is due and writes rows plus the LaneRunReceipt
-(v2 output fields) ``data/runtime/yfinance-info-snapshot_last.json``.
+writes nothing — no row, no receipt. When the store table is absent it names the required migration and exits 0
+without reading the universe or calling the provider (the apply path stops at the same check, so a probe would
+advertise a run that cannot store its answer). ``--apply`` fetches what is due and writes rows plus the
+LaneRunReceipt (v2 output fields) ``data/runtime/yfinance-info-snapshot_last.json``; with the store absent it
+fails closed, exit 1, and its failed receipt names the migration.
 
-Exit 0 = run completed (rows written, or nothing due); 1 = the store is missing (migration not applied), the
-database or the provider is unavailable, or the universe is empty; 2 = bad arguments.
+Exit 0 = run completed (rows written, or nothing due), or a dry run whose store is not migrated; 1 = ``--apply``
+with the store missing, the database or the provider unavailable, or the universe empty; 2 = bad arguments.
 
 No broker, no order, no sender, no model. AUTHORITY: READ_ONLY_ADVISORY (market reference data only).
 """
@@ -55,6 +58,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 LANE_ID = "yfinance-info-snapshot"
 SCRIPT = "yfinance_info_snapshot_refresh.py"
+MIGRATION = "migrations/2026_10_10_yfinance_info_snapshot.sql"
 FUND_TYPES = frozenset({"ETF", "MUTUALFUND"})
 THROTTLE_MARKERS = ("too many requests", "rate limit", "ratelimit", "429")
 DEFAULTS = {"ok_hours": 20.0, "negative_hours": 168.0, "max_symbols": 300, "sleep": 1.0, "probe": 3}
@@ -311,11 +315,22 @@ def run(
         return fail("dependency_unavailable", f"database: {type(exc).__name__}")
     q = query_fn(conn)
     try:
-        if not table_present(q):
-            return fail("unconfigured", "table yfinance_info_snapshot does not exist (migration "
-                        "migrations/2026_10_10_yfinance_info_snapshot.sql not applied)")
+        present = table_present(q)
     except Exception as exc:  # noqa: BLE001
         return fail("dependency_unavailable", f"database: {type(exc).__name__}")
+    if not present:
+        detail = f"table yfinance_info_snapshot does not exist (migration {MIGRATION} not applied)"
+        if apply:
+            return fail("unconfigured", detail)
+        # A missing store is a configuration gap, not a run failure. The house rule for a dry run is to
+        # name the migration and write nothing (etf_analyst_enrich.py, classify_instruments.py). It also
+        # keeps dry and apply in step: --apply stops at this same check, so a provider probe here would
+        # advertise a run that could never store its answer. The dead letters this lane accumulated at
+        # SHADOW were this exit 1, one per slot, for a store nobody migrated.
+        print(f"[{LANE_ID}] STORE_ABSENT: {detail}", file=sys.stderr)
+        dry_run_report(LANE_ID, {"store_present": False, "required_migration": MIGRATION,
+                                 "provider_calls": 0, "detail": detail}, would_write=[])
+        return 0
     universe, sources = build_universe(state, db_query=q, store_doc=store_doc)
     print(f"[{LANE_ID}] universe {len(universe)} symbols; sources {sources}")
     if not universe:

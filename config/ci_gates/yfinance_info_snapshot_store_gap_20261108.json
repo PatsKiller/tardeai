@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "yfinance_info_snapshot_store_gap_20261108",
+  "files": [
+    "tests/test_yfinance_info_snapshot_store_gap_20261108.py"
+  ],
+  "comment": [
+    "yfinance-info-snapshot's SHADOW slot runs --dry-run, and on this host the store table has never",
+    "existed (to_regclass NULL; migrations/2026_10_10_yfinance_info_snapshot.sql unapplied). Every slot",
+    "exited 1 unconfigured and the executor filed five terminal dead letters (last 2026-11-08T20:53:47Z).",
+    "The dry run now follows the house rule etf_analyst_enrich.py and classify_instruments.py already use:",
+    "name the required migration, write nothing, exit 0. Pins: no universe read, no provider call, no",
+    "receipt and no output signal on that path; --apply still fails closed exit 1 with a failed receipt",
+    "naming the migration; a to_regclass error stays dependency_unavailable in both modes; the probe path",
+    "with the store present still probes at most --probe symbols (3). Stub DB, synthetic ZZ* symbols."
+  ]
+}
