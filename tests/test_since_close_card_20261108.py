@@ -125,3 +125,41 @@ def test_route_reads_the_snapshot_file_and_reports_no_snapshot_honestly(tmp_path
     assert got["status"] == "ok" and got["moves"] and got["summary"]["lines"]
     assert got["freshness"]["window_current"] is True
     assert "/api/v2/home/since-close" in open(api_v2.__file__).read()
+
+
+def _snap(**kw):
+    return c.build_snapshot(now=TUE_0555, ticker_snapshot=TICKERS, articles=ARTS, futures=None, llm=None, **kw)
+
+
+def test_feed_is_newest_first_with_exposure_and_so_what_and_macro_item():
+    feed = _snap()["feed"]
+    times = [c._ts(i["published_at"]) for i in feed]
+    assert times == sorted(times, reverse=True)
+    top = next(i for i in feed if i["title"] == "AAA founder plans to sell shares")
+    assert top["kind"] == "holding" and top["exposure"] == 1086.0
+    assert top["so_what"] == "You hold $1,086 here; AAA is +8.6% since Mon close."
+    macro = next(i for i in feed if i["kind"] == "macro")
+    assert macro["exposure"] == 0 and "whole book" in macro["so_what"]
+
+
+def test_same_story_under_two_held_names_is_one_item_with_summed_exposure():
+    arts = [{"symbol": s, "title": "Both names hit", "source": "x", "published_at": datetime(2026, 11, 9, 20, 0, tzinfo=ET), "relevance_score": 0.8} for s in ("AAA", "BBB")]
+    snap = c.build_snapshot(now=TUE_0555, ticker_snapshot=TICKERS, articles=arts, futures=None, llm=None)
+    items = [i for i in snap["feed"] if i["title"] == "Both names hit"]
+    assert len(items) == 1 and items[0]["exposure"] == 2042.0 and len(items[0]["holdings"]) == 2
+
+
+def test_week_ahead_lists_macro_fomc_earnings_exdiv_and_says_fed_speakers_have_no_feed():
+    cal = {"dates": {"2026-11-10": {"events": [{"event": "cpi", "name": "Consumer Price Index", "time_et": "08:30"}]},
+                     "2026-12-30": {"events": [{"event": "x", "name": "far"}]}}, "fomc_decisions": ["2026-11-11"]}
+    wa = c.build_week_ahead(now=TUE_0555, macro_calendar=cal, earnings={"AAA": {"earnings_date": "2026-11-12"}, "ZZZ": {"earnings_date": "2026-11-12"}, "WWW": {"earnings_date": "2027-02-01"}},
+                            ex_divs=[{"symbol": "BBB", "ex_date": "2026-11-13"}], held=["AAA", "BBB"], watch=["WWW"])
+    assert [(e["date"], e["kind"]) for e in wa["events"]] == [("2026-11-10", "macro"), ("2026-11-11", "fomc"), ("2026-11-12", "earnings"), ("2026-11-13", "ex_div")]
+    assert wa["events"][2]["symbols"] == ["AAA"]
+    assert "no feed" in wa["fed_speakers"]
+
+
+def test_cio_brief_pending_until_the_lq1257_file_exists_then_passed_through():
+    assert _snap()["cio_brief"] == {"status": "pending", "label": "CIO brief pending"}
+    b = _snap(cio_brief={"summary": "s", "risk_tier": "YELLOW", "actions": [{"symbol": "AAA", "action": "raise stop"}]})["cio_brief"]
+    assert b["status"] == "available" and b["risk_tier"] == "YELLOW" and b["actions"][0]["action"] == "raise stop"

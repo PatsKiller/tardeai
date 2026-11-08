@@ -291,6 +291,107 @@ def build_summary(
     return {**base, "text": text, "source": "llm", "generated_at": now_utc.isoformat().replace("+00:00", "Z"), "llm_called": True}
 
 
+
+# ---------------------------------------------------------------------------- the feed (amendment 2)
+
+
+def build_feed(moves: Sequence[Mapping[str, Any]], macro: Mapping[str, Any], *, limit: int = 30) -> list[dict[str, Any]]:
+    """A clean news feed, newest first: headline, source and time, the holdings it touches with $ exposure, and a
+    one-line "So what" built from those numbers (no LLM per item).  The same story under two names is one item."""
+    by_key: dict[str, dict[str, Any]] = {}
+    total_mv = sum(m["market_value"] or 0.0 for m in moves if m["held"])
+    for m in moves:
+        for n in m.get("news", []):
+            k = re.sub(r"\W+", " ", n["title"].lower()).strip()
+            it = by_key.setdefault(k, {**n, "kind": "holding" if m["held"] else "watch", "holdings": []})
+            if m["held"]:
+                it["kind"] = "holding"
+            it["holdings"].append(
+                {"symbol": m["symbol"], "held": m["held"], "market_value": m["market_value"], "change_pct": m["change_pct"],
+                 "dollar_impact": m["dollar_impact"], "close_tag": m["close_tag"]}
+            )
+    for h in macro.get("headlines", []):
+        k = re.sub(r"\W+", " ", h["title"].lower()).strip()
+        if k not in by_key:
+            by_key[k] = {**h, "kind": "macro", "holdings": []}
+    items = []
+    for it in by_key.values():
+        held = [x for x in it["holdings"] if x["held"]]
+        exposure = round(sum(x["market_value"] or 0.0 for x in held), 2)
+        if held:
+            top = max(held, key=lambda x: x["market_value"] or 0.0)
+            so = f"You hold ${exposure:,.0f} here; {top['symbol']} is {top['change_pct']:+.1f}% since {top['close_tag']}."
+        elif it["holdings"]:
+            w = it["holdings"][0]
+            so = f"Watchlist only, no position; {w['symbol']} is {w['change_pct']:+.1f}% since {w['close_tag']}."
+        else:
+            so = f"Market backdrop for the whole book (${total_mv:,.0f} held)."
+        items.append({**it, "exposure": exposure, "so_what": so})
+    items.sort(key=lambda i: -_ts(i.get("published_at")))
+    return items[:limit]
+
+
+# ---------------------------------------------------------------------------- week ahead
+
+
+def build_week_ahead(
+    *,
+    now: datetime,
+    macro_calendar: Mapping[str, Any] | None,
+    earnings: Mapping[str, Any] | None,
+    ex_divs: Iterable[Mapping[str, Any]],
+    held: Iterable[str],
+    watch: Iterable[str],
+    days: int = 8,
+) -> dict[str, Any]:
+    """CPI/PPI/jobs and FOMC from the macro calendar, earnings for held and watch names, ex-dividend dates, over the
+    next ``days`` calendar days (ET).  Fed speakers have no feed: the strip says so instead of omitting them."""
+    today = now.astimezone(ET).date()
+    end = today + timedelta(days=days)
+    held, watch = {s.upper() for s in held}, {s.upper() for s in watch}
+    out: list[dict[str, Any]] = []
+
+    def inside(d: str | None) -> bool:
+        try:
+            return bool(d) and today <= datetime.fromisoformat(str(d)).date() <= end
+        except ValueError:
+            return False
+
+    for day, rec in sorted(((macro_calendar or {}).get("dates") or {}).items()):
+        if not inside(day):
+            continue
+        for ev in rec.get("events", []):
+            out.append({"date": day, "kind": "macro", "label": ev.get("name") or ev.get("event"), "time_et": ev.get("time_et"), "symbols": []})
+    for day in (macro_calendar or {}).get("fomc_decisions", []):
+        if inside(day):
+            out.append({"date": day, "kind": "fomc", "label": "FOMC decision", "time_et": "14:00", "symbols": []})
+    for sym, rec in (earnings or {}).items():
+        sym = str(sym).upper()
+        if (sym in held or sym in watch) and isinstance(rec, Mapping) and inside(rec.get("earnings_date")):
+            out.append({"date": rec["earnings_date"], "kind": "earnings", "label": f"{sym} earnings", "time_et": None, "symbols": [sym], "held": sym in held})
+    for r in ex_divs:
+        sym = str(r.get("symbol") or "").upper()
+        if (sym in held or sym in watch) and inside(str(r.get("ex_date"))):
+            out.append({"date": str(r["ex_date"]), "kind": "ex_div", "label": f"{sym} ex-dividend", "time_et": None, "symbols": [sym], "held": sym in held})
+    out.sort(key=lambda e: (e["date"], e["kind"], e["label"] or ""))
+    return {"from": today.isoformat(), "to": end.isoformat(), "events": out, "fed_speakers": "no feed — not listed"}
+
+
+def fetch_ex_divs(conn: Any, *, today: datetime, days: int = 8) -> list[dict[str, Any]]:
+    d0 = today.astimezone(ET).date()
+    with conn.cursor() as cur:
+        cur.execute("SELECT symbol, ex_date FROM ticker_dividends WHERE ex_date BETWEEN %s AND %s", (d0, d0 + timedelta(days=days)))
+        return [{"symbol": r[0], "ex_date": r[1].isoformat()} for r in cur.fetchall()]
+
+
+def cio_brief_block(brief: Mapping[str, Any] | None) -> dict[str, Any]:
+    """The CIO brief (LQ-1257) passed through as written: summary, risk tier, per-holding advisory actions, week
+    ahead.  Absent or unreadable -> ``pending``; the card says so and the feed still renders."""
+    if not brief:
+        return {"status": "pending", "label": "CIO brief pending"}
+    return {"status": "available", **{k: v for k, v in brief.items() if k != "status"}}
+
+
 # ---------------------------------------------------------------------------- the snapshot
 
 
@@ -303,6 +404,10 @@ def build_snapshot(
     llm: Callable[[str], str] | None,
     prior: Mapping[str, Any] | None = None,
     calls_today: int = 0,
+    macro_calendar: Mapping[str, Any] | None = None,
+    earnings: Mapping[str, Any] | None = None,
+    ex_divs: Iterable[Mapping[str, Any]] = (),
+    cio_brief: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     win = window(now)
     moves = attach_news(build_moves(ticker_snapshot, close_tag=win["close_tag"]), articles)
@@ -315,6 +420,12 @@ def build_snapshot(
         "generated_at": now.astimezone(UTC).isoformat().replace("+00:00", "Z"),
         "window": win,
         "quotes_as_of": (ticker_snapshot.get("_meta") or {}).get("generated_at"),
+        "cio_brief": cio_brief_block(cio_brief),
+        "feed": build_feed(moves, macro),
+        "week_ahead": build_week_ahead(
+            now=now, macro_calendar=macro_calendar, earnings=earnings, ex_divs=ex_divs,
+            held=[m["symbol"] for m in moves if m["held"]], watch=[m["symbol"] for m in moves if not m["held"]],
+        ),
         "moves": moves,
         "macro": macro,
         "summary": summary,
