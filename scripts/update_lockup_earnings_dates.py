@@ -2,7 +2,7 @@
 """update_lockup_earnings_dates.py — snap earnings-tied IPO-lockup tranches to the REAL report date.
 
 Several SpaceX lockup tranches release on "the second full trading day following" a quarterly earnings
-release. Those dates are estimates (approx:true) until the company announces. This watches yfinance for the
+release. Those dates are estimates (approx:true) until the company announces. This watches Finviz (view 161) for the
 next earnings date and, when one appears, updates the still-approx earnings tranche group whose
 estimate is nearest that date to (earnings_date + 2 trading days), flips approx:false, and logs/alerts
 the change. Idempotent; runs on a
@@ -59,25 +59,46 @@ def _plus_trading_days(d: date, n: int) -> date:
     return cur
 
 
+def parse_finviz_earnings(raw, today: date | None = None) -> date | None:
+    """Parse a Finviz 'Earnings Date' cell ('Nov 12 AMC', '11/12/2026', '2026-11-12', '-') to a date or None."""
+    import re
+
+    today = today or date.today()
+    s = str(raw or "").strip()
+    if not s or s == "-":
+        return None
+    s = re.sub(r"\s+(AMC|BMO|DMH)\s*$", "", s, flags=re.I).strip()
+    s = re.sub(r"\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\s*$", "", s, flags=re.I).strip()   # '11/2/2026 4:30:00 PM'
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%b %d, %Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    try:
+        d = datetime.strptime(f"{s} {today.year}", "%b %d %Y").date()
+    except ValueError:
+        return None
+    if (today - d).days > 180:      # 'Jan 28' read in November is next year's report
+        d = d.replace(year=d.year + 1)
+    return d
+
+
 def _next_earnings(symbol: str):
     """Return the next announced earnings date (date) for a symbol, or None when none is announced.
 
-    A lookup error propagates. Swallowing it used to leave main() at exit 0."""
-    import yfinance as yf
-    t = yf.Ticker(symbol)
-    info = t.info or {}
-    ts = info.get("earningsTimestamp") or info.get("earningsTimestampStart")
-    if ts:
-        d = datetime.fromtimestamp(int(ts), timezone.utc).date()
-        if d >= date.today():
-            return d
-    cal = t.calendar
-    if isinstance(cal, dict):
-        eds = cal.get("Earnings Date") or []
-        future = sorted(x for x in eds if hasattr(x, "year") and x >= date.today())
-        if future:
-            return future[0]
-    return None
+    Source: the Finviz export view 161 'Earnings Date' column, through the existing finviz_enrichment
+    client (credentials stay inside it). A symbol with no row at all is a lookup failure and raises, so
+    main() exits 1 instead of reporting a quiet 'nothing announced'."""
+    import finviz_enrichment as fe
+
+    # A narrow col_map: the view's default map files this column under earnings_date2, which the client
+    # drops (SKIP_DUPLICATES). Other callers keep the default map.
+    rows = fe._fetch_view([symbol], 161, ROOT, col_map={"Ticker": "ticker", "Earnings Date": "earnings_date"})
+    row = rows.get(symbol.upper()) or rows.get(symbol)
+    if row is None:
+        raise RuntimeError(f"finviz returned no row for {symbol}")
+    d = parse_finviz_earnings(row.get("earnings_date"))
+    return d if d is not None and d >= date.today() else None
 
 
 def _tranche_day(t: dict) -> date | None:
