@@ -8,6 +8,11 @@ import type { ControlPlaneView } from './useControlPlaneEnvelope'
 
 const pageWrap: CSSProperties = {
   display: 'grid',
+  // minmax(0,1fr): the implicit `auto` track sized to the widest child's min-content — a table or a
+  // payload <pre> on a page at 412 px — so every panel grew to that width and the whole page scrolled
+  // sideways (LQ-20261107-525: audit 1642, maturity 1292, learning 836). A 0-minimum track lets the
+  // panels shrink and their own overflow-x:auto wrappers scroll instead of the document.
+  gridTemplateColumns: 'minmax(0, 1fr)',
   gap: 12,
   maxWidth: 1280,
 }
@@ -27,6 +32,9 @@ const panel: CSSProperties = {
   border: '1px solid var(--border)',
   borderRadius: 6,
   padding: 12,
+  // a grid item's automatic minimum size is its min-content; 0 is what lets the table / <pre>
+  // wrappers inside scroll rather than widen the page (LQ-20261107-525)
+  minWidth: 0,
 }
 
 const eyebrow: CSSProperties = {

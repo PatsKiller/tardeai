@@ -91,9 +91,11 @@ export function Table({ label: aria, heads, rows }: { label: string; heads: Reac
 
 function Banner({ tone, title, children }: { tone: Tone; title: string; children?: ReactNode }) {
   const t = toneVars(tone)
-  return <div role="alert" style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, padding: '10px 12px', minWidth: 0 }}>
-    <div style={{ fontSize: TYPE.base, fontWeight: 700, color: t.color }}>{title}</div>
-    {children ? <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1], marginTop: 4 }}>{children}</div> : null}
+  // overflowWrap on both lines: a banner carries the server's own words — a missing table name, a reason,
+  // an error — and one long unbroken token used to push the whole page sideways at 412 px (LQ-20261107-525)
+  return <div role="alert" style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, padding: '10px 12px', minWidth: 0, overflowWrap: 'anywhere' }}>
+    <div style={{ fontSize: TYPE.base, fontWeight: 700, color: t.color, overflowWrap: 'anywhere' }}>{title}</div>
+    {children ? <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1], marginTop: 4, overflowWrap: 'anywhere' }}>{children}</div> : null}
   </div>
 }
 
@@ -115,7 +117,7 @@ export function ControlsUnavailableBanner({ error }: { error: unknown }) {
 /** A section that is not OK renders its state and reason, never empty-green. */
 function SectionGate({ sec, children }: { sec?: { state?: string; reason?: string | null } | null; children: ReactNode }) {
   if (!sec || sec.state !== 'OK') {
-    return <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>
+    return <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600, overflowWrap: 'anywhere' }}>
       {sec?.state === 'NOT_MIGRATED' ? 'NOT_MIGRATED' : 'UNAVAILABLE'} — {s(sec?.reason || (sec ? `the server sent ${sec.state || 'no state'} without a reason (an old server build); see the store banner above` : 'section missing from state'))}
     </p>
   }

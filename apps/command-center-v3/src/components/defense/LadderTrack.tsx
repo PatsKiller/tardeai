@@ -55,15 +55,17 @@ export default function LadderTrack({ ladder, price }: { ladder: any; price?: nu
       {steps.map((s, i) => {
         const sg = seg(s.status)
         return (
-          <span key={i} style={{ display: 'flex', alignItems: 'center' }}>
+          <span key={i} style={{ display: 'flex', alignItems: 'center', minWidth: 0, maxWidth: '100%' }}>
             {i > 0 && <span style={{ width: 26, height: 2, background: BB.borderHair, display: 'inline-block' }} />}
             <span title={s.sub} style={{
               display: 'inline-flex', flexDirection: 'column', border: `1.5px solid ${sg.color}`,
-              background: sg.fill, borderRadius: 3, padding: '3px 10px',
+              background: sg.fill, borderRadius: 3, padding: '3px 10px', minWidth: 0, maxWidth: '100%',
               textDecoration: sg.strike ? 'line-through' : 'none',
             }}>
               <span style={{ fontSize: DASH.section, fontWeight: 800, color: sg.color, lineHeight: 1.15, whiteSpace: 'nowrap' }}>{s.label}</span>
-              {s.sub && <span style={{ ...numStyle, fontSize: DASH.data, color: s.status === 'fired' ? sg.color : BB.text3, lineHeight: 1.25, whiteSpace: 'nowrap' }}>{s.sub}</span>}
+              {/* the sub line ("FIRED Nov 6 · Communications still LAGGING …") is a sentence, so it wraps inside the
+                  step instead of holding the step at its nowrap width and pushing the page sideways (LQ-20261107-525) */}
+              {s.sub && <span style={{ ...numStyle, fontSize: DASH.data, color: s.status === 'fired' ? sg.color : BB.text3, lineHeight: 1.25, overflowWrap: 'anywhere' }}>{s.sub}</span>}
             </span>
           </span>
         )

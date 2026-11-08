@@ -91,7 +91,9 @@ export function OversightPills({ cardId, factorsN, oversight }: { cardId: string
   }
   split = sawConcur && sawObject
   return (
-    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', marginRight: 8 }}>
+    // seven seat pills in one nowrap inline-flex row held the card at 391 px and pushed /v3/defense/classic
+    // sideways at 412 px; wrapping keeps every pill and lets the row break (LQ-20261107-525)
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4, alignItems: 'center', marginRight: 8, maxWidth: '100%', minWidth: 0 }}>
       {rendered}
       {split && <span title="the seats DISAGREE on this card — read both tooltips before acting" style={{ fontSize: DASH.chip, fontWeight: 800, color: BB.amber, cursor: 'help' }}>⚖ split</span>}
     </span>

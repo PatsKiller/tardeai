@@ -152,7 +152,7 @@ export default function OpsIncidents() {
                 const severity = r.severity?.trim() ? severityLabel(r.severity) : { label: m.priority.code, tone: m.priority.tone }
                 return <li key={r.id} style={{ borderTop: `1px solid ${TOKENS.border}` }}>
                   <button type="button" data-testid={`incident-row-${r.id}`} aria-current={selectedId === r.id} onClick={() => sheet.open(r.id)}
-                    style={{ width: '100%', minHeight: 56, display: 'grid', gap: 6, textAlign: 'left', padding: '12px 14px', cursor: 'pointer',
+                    style={{ width: '100%', minHeight: 56, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 6, textAlign: 'left', padding: '12px 14px', cursor: 'pointer',
                       background: selectedId === r.id ? TOKENS.bg[2] : 'transparent', border: 0, color: TOKENS.text[0] }}>
                     {/* WHAT — the ledger's sentence with identifiers spelled out (FQ-046) */}
                     <span data-testid={`incident-headline-${r.id}`}
@@ -171,7 +171,7 @@ export default function OpsIncidents() {
                     <span data-testid={`incident-next-${r.id}`}
                       style={{ fontSize: sheet.mobile ? TYPE.sm : TYPE.xs, color: TOKENS.text[1], overflowWrap: 'anywhere' }}>{m.nextAction}</span>
                     {/* the next step is in nextAction above; the blocker itself is not, so it is stated here */}
-                    {r.status === 'blocked' && <span style={muted}>Blocked: {r.blocked_reason || 'Reason not recorded'}</span>}
+                    {r.status === 'blocked' && <span style={{ ...muted, overflowWrap: 'anywhere' }}>Blocked: {r.blocked_reason || 'Reason not recorded'}</span>}
                   </button>
                 </li>
               })}
